@@ -275,6 +275,15 @@ export function buildBuiltinChatCommands(
         ],
       },
     ),
+    defineBuiltinCommand(
+      "warnings",
+      "Show retained runtime warnings and plugin errors.",
+      "status",
+      "standard",
+      {
+        modelIndependent: "always",
+      },
+    ),
     defineBuiltinCommand("login", "Connect a model provider.", "management", "standard", {
       modelIndependent: "always",
       nativeProviders: ["discord", "slack", "telegram"],
