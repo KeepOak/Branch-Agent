@@ -2,11 +2,28 @@
 // patterns.cjs is byte-identical; validate.cjs adapts only the local patterns.cjs import.
 import detector from "./source-writing-detector/patterns.cjs";
 import validator from "./source-writing-detector/validate.cjs";
-import type { WritingContext, WritingSourceMode } from "./source-writing-detector/patterns.cjs";
 import { TripWire } from "./source-trip-wire.js";
 
-export type { WritingAnalysis, WritingFinding } from "./source-writing-detector/patterns.cjs";
-export type { PreservationResult } from "./source-writing-detector/validate.cjs";
+type WritingContext = "general" | "technical" | "marketing" | "personal";
+type WritingSourceMode = "plain" | "rendered-markdown";
+export type WritingFinding = { type: string; text: string; severity?: string; [key: string]: unknown };
+export type WritingAnalysis = {
+  issues: WritingFinding[];
+  stats: { wordCount: number; [key: string]: unknown };
+  score: number;
+  tooLong?: boolean;
+  tooShort?: boolean;
+  unsupportedScript?: boolean;
+  [key: string]: unknown;
+};
+export type PreservationResult = {
+  ok: boolean;
+  errors: { code: string; message: string }[];
+  warnings: { code: string; message: string }[];
+  preservation: { ok: boolean; errors: { code: string; message: string }[]; warnings: { code: string; message: string }[] };
+  quality: { status: string; policy: "error" | "warn"; [key: string]: unknown };
+  [key: string]: unknown;
+};
 export type WritingQualityOptions = {
   threshold?: number;
   context?: WritingContext;
@@ -14,7 +31,9 @@ export type WritingQualityOptions = {
 };
 
 /** Count deterministic source findings, matching the upstream gate rather than its score. */
-export function inspectWritingQuality(text: string, options: WritingQualityOptions = {}) {
+export function inspectWritingQuality(text: string, options: WritingQualityOptions = {}): {
+  pass: boolean; scannable: boolean; threshold: number; findings: number; types: string[]; analysis: WritingAnalysis;
+} {
   const threshold = options.threshold ?? 6;
   if (!Number.isSafeInteger(threshold) || threshold < 0) throw new TypeError("threshold must be a nonnegative safe integer");
   const analysis = detector.analyzeText(text, {
@@ -26,7 +45,7 @@ export function inspectWritingQuality(text: string, options: WritingQualityOptio
     types: [...new Set(analysis.issues.map(issue => issue.type))].sort(), analysis };
 }
 
-export function validateWritingRewrite(original: string, rewritten: string, residualPolicy: "error" | "warn" = "error") {
+export function validateWritingRewrite(original: string, rewritten: string, residualPolicy: "error" | "warn" = "error"): PreservationResult {
   return validator.validate(original, rewritten, { residualPolicy });
 }
 
