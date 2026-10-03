@@ -1,8 +1,9 @@
 // Where the desktop app finds the engine, the built window and its own data.
-// Defaults suit the owner's machine; C:/Users/you/BranchApp/desktop.json can override any field.
+// Packaged defaults are per user; desktop.json can override any field.
 // The engine is installed separately: use the published copy, with the source build as a development fallback.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 
 export interface DesktopConfig {
   /** The app's own data: engine home, gateway token, logs, Electron profile. */
@@ -24,13 +25,24 @@ export interface DesktopConfig {
   windowPort: number;
 }
 
-const DATA_DIR = process.env.BRANCH_DESKTOP_DATA ?? "C:/Users/you/BranchApp";
+export function defaultDataDirectory(): string {
+  if (process.env.BRANCH_DESKTOP_DATA) return process.env.BRANCH_DESKTOP_DATA;
+  const legacy = join(homedir(), "BranchApp");
+  if (existsSync(join(legacy, "desktop.json"))) return legacy;
+  if (process.platform === "win32") return join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "BranchAgent");
+  if (process.platform === "darwin") return join(homedir(), "Library", "Application Support", "BranchAgent");
+  return join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "BranchAgent");
+}
+
+const DATA_DIR = defaultDataDirectory();
+const RESOURCES = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath ?? join(__dirname, "..");
 
 const DEFAULTS: DesktopConfig = {
   dataDir: DATA_DIR,
-  engineDir: "C:/Users/you/Code/branch-wt/foundation/engine",
+  engineDir: join(RESOURCES, "engine"),
   windowDir: join(DATA_DIR, "window-current"),
-  nodePath: "C:/Program Files/nodejs/node.exe",
+  nodePath: (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
+    ? join(RESOURCES, "node", process.platform === "win32" ? "node.exe" : "node") : process.execPath,
   gatewayPort: 19031,
   windowPort: 19032,
 };

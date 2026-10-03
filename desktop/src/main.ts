@@ -2,18 +2,19 @@
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { portIsFree, readToken, startGateway, stopGateway, waitForReady } from "./gateway";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
+import { confirmComponentUpdate, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 const READY_TIMEOUT_MS = 180_000;
 const cfg: DesktopConfig = loadConfig();
 
-/** Appends one line to the app's own log (C:/Users/you/BranchApp/desktop.log). */
+/** Appends one line to the app's own data directory log. */
 function log(line: string): void {
   try {
     appendFileSync(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} ${line}
@@ -35,6 +36,8 @@ let win: BrowserWindow | undefined;
 let token = "";
 let engineUpdateReady = false;
 let stopEngineWatch: (() => void) | undefined;
+let stopComponentWatch: (() => void) | undefined;
+let stopWindowWatch: (() => void) | undefined;
 
 const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(
   "<!doctype html><title>Branch Agent</title><body style=\"font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f8;color:#333\">Starting Branch Agent…</body>",
@@ -88,15 +91,24 @@ async function start(): Promise<void> {
   ipcMain.on("branch-desktop:restart-engine", () => void restartEngine());
   win = createWindow();
   await win.loadURL(STARTING);
-  log("starting page shown");
+  log(`starting page shown after ${Date.now() - launchStarted} ms`);
   for (const port of [cfg.gatewayPort, cfg.windowPort]) {
     if (!(await portIsFree(port))) throw new Error(`port ${port} is already in use; is Branch Agent already running?`);
   }
+  await recoverComponentUpdate(cfg);
+  if (!existsSync(join(cfg.windowDir, "index.html")) || !existsSync(join(cfg.dataDir, "engine-current.txt")) && !existsSync(join(cfg.engineDir, "branch.mjs"))) {
+    log("Installing verified GitHub components for first launch");
+    await refreshComponentUpdate(cfg);
+  }
   server = await serveWindow(cfg.windowDir, cfg.windowPort);
-  await bootEngine();
   await win.loadURL(windowUrl());
   log(`window loaded after ${Date.now() - launchStarted} ms`);
+  if (await bootSelectedEngine()) {
+    await win.loadURL(windowUrl());
+    log("Reloaded retained window after component rollback");
+  }
   watchUpdates(win);
+  stopComponentWatch = watchComponentUpdates(cfg, log);
 }
 
 /** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
@@ -108,8 +120,12 @@ async function bootEngine(): Promise<void> {
   // publish-engine.sh never removes the folder named here.
   writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
 `);
-  await waitForReady(cfg, gateway, READY_TIMEOUT_MS);
-  log(`gateway ready after ${Date.now() - started} ms`);
+  try { await waitForReady(cfg, gateway, READY_TIMEOUT_MS); } catch (error) {
+    await rejectFailedComponentUpdate(cfg, engineDir);
+    throw error;
+  }
+  await confirmComponentUpdate(cfg);
+  log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
   engineUpdateReady = false;
   stopEngineWatch?.();
   stopEngineWatch = watchEngineBuild(() => engineSignature(cfg), () => {
@@ -119,8 +135,20 @@ async function bootEngine(): Promise<void> {
   });
 }
 
+/** A failed newly published build restores the prior pointer/window before booting the retained engine. */
+async function bootSelectedEngine(): Promise<boolean> {
+  try { await bootEngine(); return false; } catch (error) {
+    if (gateway) stopGateway(gateway);
+    if (!await rollbackComponentUpdate(cfg)) throw error;
+    log("Updated engine failed readiness; restored prior components");
+    for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise(r => setTimeout(r, 250));
+    await bootEngine();
+    return true;
+  }
+}
+
 function watchUpdates(w: BrowserWindow): void {
-  watchWindowBuild(cfg.windowDir, () => {
+  stopWindowWatch = watchWindowBuild(cfg.windowDir, () => {
     log("new window build found; reloading the window");
     if (w.webContents.getURL().startsWith(windowUrl())) w.webContents.reload();
   });
@@ -138,7 +166,7 @@ async function restartEngine(): Promise<void> {
   stopGateway(gateway);
   try {
     for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise((r) => setTimeout(r, 250));
-    await bootEngine();
+    await bootSelectedEngine();
     win.webContents.reload();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -150,6 +178,8 @@ async function restartEngine(): Promise<void> {
 function shutdown(): void {
   log(`quit; stopping gateway pid ${gateway?.pid}`);
   stopEngineWatch?.();
+  stopComponentWatch?.();
+  stopWindowWatch?.();
   if (gateway) stopGateway(gateway);
   server?.close();
 }
