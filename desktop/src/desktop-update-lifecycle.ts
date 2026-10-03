@@ -4,11 +4,12 @@ import { dirname } from "node:path";
 
 export interface DesktopReceipt { id: string; sessionKey: string; expectedSessionId: string; targetBuild: string; lifecycleGeneration: string }
 interface Journal { version: 1; phase: "intent" | "idle" | "idle-cancelled" | "prepared" | "ready" | "completed" | "cancelled"; operationId: string; targetBuild: string; receipt?: DesktopReceipt; cancellationAcknowledged?: boolean }
+export interface DesktopAttempt { lifecycleGeneration: string; targetBuild: string }
 export interface LifecycleHooks {
   prepare(input: { operationId: string; targetBuild: string }): Promise<unknown>;
   resume(receipt: DesktopReceipt): Promise<unknown>;
-  cancel(receipt: DesktopReceipt): Promise<unknown>;
-  phase(phase: "preparing" | "updating" | "reconnecting" | "complete" | "failed", operationId: string, outcome?: "rolled-back" | "cancelled" | "session-changed"): void;
+  cancel(receipt: DesktopReceipt | DesktopAttempt): Promise<unknown>;
+  phase(phase: "preparing" | "updating" | "reconnecting" | "complete" | "failed", operationId: string, outcome?: "rolled-back" | "cancelled" | "session-changed" | "deferred"): void;
 }
 function receipt(value: unknown): DesktopReceipt {
   if (!value || typeof value !== "object") throw new Error("Invalid engine restart receipt");
@@ -55,7 +56,7 @@ export class DesktopUpdateLifecycle {
     try { writeFileSync(fd, JSON.stringify(value)); fsyncSync(fd); } finally { closeSync(fd); }
     renameSync(temporary, this.path);
   }
-  async prepare(targetBuild: string): Promise<void> {
+  async prepare(targetBuild: string): Promise<boolean> {
     const existing = this.read();
     if (existing && (["idle", "prepared", "ready"].includes(existing.phase) || ["cancelled", "idle-cancelled"].includes(existing.phase) && !existing.cancellationAcknowledged)) throw new Error("A durable update continuation is pending");
     if (!/^[a-f0-9]{64}$/.test(targetBuild)) throw new Error("An immutable verified engine identity is required");
@@ -64,14 +65,29 @@ export class DesktopUpdateLifecycle {
     this.save({ version: 1, phase: "intent", operationId, targetBuild });
     this.hooks.phase("preparing", operationId);
     const response = await this.hooks.prepare({ operationId, targetBuild });
-    if (response && typeof response === "object" && (response as { status?: unknown }).status === "idle") {
-      this.save({ version: 1, phase: "idle", operationId, targetBuild });
-      this.hooks.phase("updating", operationId); return;
+    const status = response && typeof response === "object" ? (response as Record<string, unknown>).status : undefined;
+    if (status === "idle" || status === "deferred") {
+      const binding = response as Record<string, unknown>;
+      if (binding.lifecycleGeneration !== operationId || binding.targetBuild !== targetBuild) throw new Error("Engine update admission binding mismatch");
+      this.save({ version: 1, phase: status === "idle" ? "idle" : "completed", operationId, targetBuild });
+      this.hooks.phase(status === "idle" ? "updating" : "failed", operationId, status === "deferred" ? "deferred" : undefined);
+      return status === "idle";
     }
     const prepared = receipt(response);
     if (prepared.targetBuild !== targetBuild || prepared.lifecycleGeneration !== operationId) throw new Error("Engine restart receipt binding mismatch");
     this.save({ version: 1, phase: "prepared", operationId, targetBuild, receipt: prepared });
     this.hooks.phase("updating", operationId);
+    return true;
+  }
+  /** An aborted stop releases only this authenticated attempt's reversible engine admission lease. */
+  async abortBeforeStop(): Promise<void> {
+    const journal = this.read();
+    if (!journal || journal.phase === "completed") return;
+    const reference = journal.receipt ?? { lifecycleGeneration: journal.operationId, targetBuild: journal.targetBuild };
+    const result = await this.hooks.cancel(reference);
+    if (result !== "cancelled") throw new Error("Update admission cancellation remains uncertain");
+    this.save({ ...journal, phase: journal.receipt ? "cancelled" : "idle-cancelled", cancellationAcknowledged: true });
+    this.hooks.phase("failed", journal.operationId, "cancelled");
   }
   /** Durable local cancellation MUST precede rollback. Engine never auto-consumes these receipts. */
   cancelBeforeRollback(): void {
@@ -84,8 +100,8 @@ export class DesktopUpdateLifecycle {
     if (!journal || journal.phase === "completed") return;
     if (journal.phase === "intent") {
       if (runningBuild !== journal.targetBuild) throw new Error("Update preparation is pending on the retained engine");
-      await this.prepare(journal.targetBuild);
-      return this.recover(runningBuild);
+      if (await this.prepare(journal.targetBuild)) return this.recover(runningBuild);
+      return;
     }
     if (journal.phase === "idle" || journal.phase === "idle-cancelled") {
       if (journal.phase === "idle" && runningBuild !== journal.targetBuild) throw new Error("Running idle update candidate does not match");

@@ -219,12 +219,23 @@ async function performRestart(): Promise<void> {
   if (pending && pending.targetBuild === runningBuild && pending.phase !== "intent") {
     await lifecycle.recover(runningBuild); return;
   }
-  if (!pending || pending.phase === "intent") await lifecycle.prepare(targetBuild);
-  if (selectedBuildIdentity(resolveEngineDir(cfg)) !== targetBuild) throw new Error("Selected engine changed after checkpoint preparation");
+  try {
+    if ((!pending || pending.phase === "intent") && !await lifecycle.prepare(targetBuild)) return;
+    if (selectedBuildIdentity(resolveEngineDir(cfg)) !== targetBuild) throw new Error("Selected engine changed after checkpoint preparation");
+  } catch (error) {
+    // The old child is still alive, so release its exact generation lease through fresh normal authorization.
+    await lifecycle.abortBeforeStop();
+    throw error;
+  }
   log(`restart checkpoint persisted; stopping gateway pid ${gateway.pid}`);
   win.webContents.send("branch-desktop:engine-update", "restarting");
   stopGateway(gateway);
-  for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise(r => setTimeout(r, 250));
+  for (let i = 0; i < 40 && (gateway.exitCode === null && gateway.signalCode === null || !(await portIsFree(cfg.gatewayPort))); i++) await new Promise(r => setTimeout(r, 250));
+  if (gateway.exitCode === null && gateway.signalCode === null) {
+    await lifecycle.abortBeforeStop();
+    throw new Error("The owned gateway did not stop; retained the running engine");
+  }
+  if (!await portIsFree(cfg.gatewayPort)) throw new Error("The gateway port is occupied; retained the update checkpoint without starting another engine");
   await bootSelectedEngine();
   await win.loadURL(windowUrl());
   await lifecycle.recover(runningBuild);

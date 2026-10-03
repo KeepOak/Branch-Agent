@@ -58,12 +58,22 @@ test("invalid or mismatched prepare receipt leaves engine running and durable in
 
 test("authorized idle update records identity but never invents a continuation turn",async()=>fixture(async({owner,read,calls})=>{
   await owner.prepare(build);assert.equal((await read()).phase,"idle");await owner.recover(build);assert.equal((await read()).phase,"completed");assert.equal(calls.length,0);
-},{prepare:async()=>({status:"idle"})}));
+},{prepare:async input=>({status:"idle",lifecycleGeneration:input.operationId,targetBuild:input.targetBuild})}));
 test("failed idle candidate is tombstoned before rollback with no agent replay",async()=>fixture(async({owner,read,calls})=>{
   await owner.prepare(build);owner.cancelBeforeRollback();assert.equal((await read()).phase,"idle-cancelled");await owner.recover("b".repeat(64));assert.equal(owner.pending,undefined);assert.equal(calls.length,0);
-},{prepare:async()=>({status:"idle"})}));
+},{prepare:async input=>({status:"idle",lifecycleGeneration:input.operationId,targetBuild:input.targetBuild})}));
 
 test("launcher recovery restores input barrier before the early renderer reconnects",async()=>fixture(async({owner,file,hooks})=>{
   await owner.prepare(build);const restored=new DesktopUpdateLifecycle(file,hooks);assert.equal(restored.initialState.phase,"reconnecting");
   await restored.recover(build);assert.equal(restored.initialState,undefined);
 }));
+
+test("unrelated active work defers update and releases renderer barrier without stopping",async()=>fixture(async({owner,read,phases})=>{
+  assert.equal(await owner.prepare(build),false);assert.equal((await read()).phase,"completed");assert.equal(phases.at(-1)[0],"failed");assert.equal(owner.pending,undefined);
+},{prepare:async input=>({status:"deferred",lifecycleGeneration:input.operationId,targetBuild:input.targetBuild})}));
+test("aborted idle stop cancels exact admitted generation through real caller hook",async()=>fixture(async({owner,calls,read})=>{
+  await owner.prepare(build);const journal=await read();await owner.abortBeforeStop();assert.deepEqual(calls,[['cancel',{lifecycleGeneration:journal.operationId,targetBuild:build}]]);assert.equal(owner.pending,undefined);
+},{prepare:async input=>({status:"idle",lifecycleGeneration:input.operationId,targetBuild:input.targetBuild})}));
+test("lost generation cancellation ACK retains idle lease journal and input barrier",async()=>fixture(async({owner,hooks,read})=>{
+  await owner.prepare(build);hooks.cancel=async()=>{throw new Error("lost cancel ACK")};await assert.rejects(owner.abortBeforeStop(),/lost cancel/);assert.equal((await read()).phase,"idle");assert.equal(owner.pending.phase,"idle");
+},{prepare:async input=>({status:"idle",lifecycleGeneration:input.operationId,targetBuild:input.targetBuild})}));
