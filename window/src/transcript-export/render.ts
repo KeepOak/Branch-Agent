@@ -1,14 +1,15 @@
 // From OpenHands/OpenHands@a8c05584ec6bb063a0857460b9cbff48e136919f:src/utils/transcript-export/index.ts (atlas SESSIONS-0047). Adapted to Branch thread blocks.
-export type TranscriptExportFormat = "markdown" | "html";
+export type TranscriptExportFormat = "markdown" | "html" | "replay";
 
 export interface TranscriptExportOptions {
   includeToolDetails: boolean;
   includeTimestamps: boolean;
   title?: string | null;
   model?: string | null;
+  sessionKey?: string;
 }
 
-type TranscriptEntry =
+export type TranscriptEntry =
   | {
       kind: "message";
       author: "user" | "assistant";
@@ -80,7 +81,7 @@ import { markdownFence } from "./markdown-fence";
 import { splitInlineThink } from "./inline-think";
 
 
-function buildTranscriptEntries(blocks: readonly Block[], includeToolDetails: boolean): TranscriptEntry[] {
+export function buildTranscriptEntries(blocks: readonly Block[], includeToolDetails: boolean): TranscriptEntry[] {
   const entries: TranscriptEntry[] = [];
   for (const block of blocks) {
     if (block.kind === "user" || block.kind === "text") {
@@ -269,7 +270,7 @@ export const eventsToHtml = (
   <main>
     <h1>${escapeHtml(title)}</h1>
     ${model}
-    ${body}
+    <div class="transcript-entries">${body}</div>
   </main>
 </body>
 </html>
