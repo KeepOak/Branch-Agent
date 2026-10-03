@@ -27,6 +27,7 @@ import {
   type DiscordMessageRunQueueTestingHooks,
 } from "./message-run-queue.js";
 import { resolveDiscordMessageText } from "./message-text.js";
+import { recordDiscordChannelMessageSeen } from "./staleness.js";
 import type { DiscordMonitorStatusSink } from "./status.js";
 
 type PreflightDiscordMessage =
@@ -99,6 +100,7 @@ export function createDiscordMessageDispatcher(
     abortSignal?: AbortSignal;
     turnAdoptionLifecycle?: DiscordIngressLifecycle;
     debounceKey?: string;
+    stalenessStartSequence: number;
   };
   const pendingDebounceEntries = new Set<DiscordDebounceEntry>();
   const pendingCancellationSettlements = new Set<Promise<void>>();
@@ -187,6 +189,7 @@ export function createDiscordMessageDispatcher(
               await ingress.settle();
               return;
             }
+            ctx.stalenessStartSequence = last.stalenessStartSequence;
             messageRunQueue.enqueue({ context: ctx, ingressSettlement: ingress });
           } catch (error) {
             if (abortSignal?.aborted) {
@@ -253,6 +256,16 @@ export function createDiscordMessageDispatcher(
       const entry: DiscordDebounceEntry = {
         data,
         client,
+        stalenessStartSequence: recordDiscordChannelMessageSeen(
+          client,
+          data.message
+            ? resolveDiscordMessageChannelId({
+                message: data.message,
+                eventChannelId: data.channel_id,
+              })
+            : undefined,
+          data.message?.id,
+        ),
         abortSignal,
         turnAdoptionLifecycle: options?.turnAdoptionLifecycle,
       };

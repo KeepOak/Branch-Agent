@@ -1,4 +1,3 @@
-import type { APIAllowedMentions } from "discord-api-types/v10";
 import { resolveAgentConfig, resolveHumanDelayConfig } from "branch/plugin-sdk/agent-runtime";
 import {
   dispatchChannelInboundTurn,
@@ -14,6 +13,7 @@ import {
 } from "branch/plugin-sdk/channel-outbound";
 import { getAgentScopedMediaLocalRoots } from "branch/plugin-sdk/media-runtime";
 import {
+  copyReplyPayloadMetadata,
   getReplyPayloadTtsSupplement,
   isReplyPayloadNonTerminalToolErrorWarning,
   resolveSendableOutboundReplyParts,
@@ -25,6 +25,7 @@ import {
   shouldLogVerbose,
   sleepWithAbort,
 } from "branch/plugin-sdk/runtime-env";
+import type { APIAllowedMentions } from "discord-api-types/v10";
 import { chunkDiscordTextWithMode } from "../chunk.js";
 import { discordTextHasBroadcastMention } from "../mentions.js";
 import { buildDiscordMessageProcessContext } from "./message-handler.context.js";
@@ -46,6 +47,11 @@ import {
 } from "./reply-delivery.js";
 import { sanitizeDiscordFrontChannelReplyPayloads } from "./reply-safety.js";
 import { resolveDiscordWebhookId } from "./sender-identity.js";
+import {
+  applyDiscordStalenessGuard,
+  getDiscordChannelMessageSequence,
+  getDiscordStalenessConfig,
+} from "./staleness.js";
 
 const TARGETED_ONLY_ALLOWED_MENTIONS = {
   parse: ["users", "roles"],
@@ -74,6 +80,22 @@ export async function processDiscordMessage(
   observer?: DiscordMessageProcessObserver,
 ) {
   const dispatchStartedAt = Date.now();
+  const stalenessStartSequence =
+    ctx.stalenessStartSequence ??
+    getDiscordChannelMessageSequence(ctx.client, ctx.messageChannelId);
+  const stalenessConfig = getDiscordStalenessConfig((key) => {
+    const config = ctx.discordConfig?.staleness;
+    switch (key) {
+      case "DISCORD_STALENESS_ENABLED":
+        return config?.enabled;
+      case "DISCORD_STALENESS_BEHAVIOR":
+        return config?.behavior;
+      case "DISCORD_STALENESS_THRESHOLD":
+        return config?.threshold;
+      default:
+        return undefined;
+    }
+  });
   const {
     cfg,
     accountId,
@@ -282,6 +304,21 @@ export async function processDiscordMessage(
       );
       return { visibleReplySent: false };
     }
+    // Recheck every real payload send: newer ingress can arrive while a turn is queued or running.
+    const guardedPayload = copyReplyPayloadMetadata(incomingPayload, { ...incomingPayload });
+    const staleness = applyDiscordStalenessGuard({
+      config: stalenessConfig,
+      owner: ctx.client,
+      message: { channel_id: messageChannelId },
+      startSequence: stalenessStartSequence,
+      content: guardedPayload,
+    });
+    if (!staleness.shouldSend) {
+      logVerbose(
+        `discord: skip ${info.kind} reply superseded by ${staleness.messagesSinceTurnStart} newer channel messages`,
+      );
+      return { visibleReplySent: false };
+    }
     const deliverySession = options?.deliverySession ?? getGroupThreadDeliverySession();
     const deliveryOptions = {
       cfg,
@@ -302,7 +339,7 @@ export async function processDiscordMessage(
       onPlatformSendDispatch: info.onPlatformSendDispatch,
       assertPlatformSendAuthorized: info.assertPlatformSendAuthorized,
     };
-    let payload = incomingPayload;
+    let payload = guardedPayload;
     if (info.participant && (payload.text || payload.mediaUrl || payload.mediaUrls?.length)) {
       payload = {
         ...payload,

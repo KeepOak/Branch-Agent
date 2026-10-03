@@ -264,6 +264,8 @@ export type DiscordAccountConfig = Omit<
   ChannelReactionConfig<never, never, string> & {
     /** Post a room-specific introduction when joining a group. Default: true. */
     joinIntro?: boolean;
+    /** Optional stale-turn reply guard. Disabled by default; tag threshold defaults to 2. */
+    staleness?: { enabled?: boolean; behavior?: "tag" | "skip" | "ignore"; threshold?: number };
     /** Override native command registration for Discord (bool or "auto"). */
     commands?: ProviderCommandsConfig;
     token?: SecretInput;

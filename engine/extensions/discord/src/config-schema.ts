@@ -205,6 +205,14 @@ const DiscordAccountSchemaBase = z
   .object({
     ...accountShape,
     joinIntro: z.boolean().optional(),
+    staleness: z
+      .object({
+        enabled: z.boolean().optional(),
+        behavior: z.enum(["tag", "skip", "ignore"]).optional(),
+        threshold: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+      })
+      .strict()
+      .optional(),
     commands: ProviderCommandsSchema,
     token: registerSensitiveConfigSchema(SecretInputSchema.optional()),
     applicationId: DiscordIdSchema.optional(),
