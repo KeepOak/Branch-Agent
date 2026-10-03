@@ -153,6 +153,7 @@ const threadBindingSchema = z
     connectionScope: z.literal("supervision").optional(),
     supervisionSourceThreadId: z.string().trim().min(1).optional(),
     authProfileId: optionalStringSchema,
+    nativeAccountHome: optionalNonBlankStringSchema,
     // Empty captures no workspace instructions; absence still permits first capture.
     // Bootstrap refreshes must not mutate a captured native-thread snapshot.
     agentWorkspaceDeveloperInstructions: optionalStringSchema,
