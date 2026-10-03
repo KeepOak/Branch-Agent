@@ -241,8 +241,8 @@ export function tryResolveLegacyDataOwnerAgentId(cfg: BranchConfig): string | un
   return value;
 }
 
-/** Resolves the chosen contact default, recorded migration default, or sole/raw legacy owner. */
-export function tryResolveLegacyCompatibilityAgentId(cfg: BranchConfig): string | undefined {
+/** Resolves only the chosen contact; it never reassigns data or ambient work ownership. */
+export function tryResolveContactDefaultAgentId(cfg: BranchConfig): string | undefined {
   const contactDefault = normalizeOptionalString(cfg.agents?.defaultId);
   if (contactDefault) {
     const agentId = normalizeAgentId(contactDefault);
@@ -250,6 +250,11 @@ export function tryResolveLegacyCompatibilityAgentId(cfg: BranchConfig): string 
       return agentId;
     }
   }
+  return undefined;
+}
+
+/** Resolves the recorded default after migration, or a sole/raw legacy owner. */
+export function tryResolveLegacyCompatibilityAgentId(cfg: BranchConfig): string | undefined {
   const facts = readAgentRosterFacts(cfg);
   if (facts?.compatibilityAgentId) {
     return facts.compatibilityAgentId.value;

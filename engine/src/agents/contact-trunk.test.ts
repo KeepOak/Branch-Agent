@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { applyAgentConfig, pruneAgentConfig } from "../commands/agents.config.js";
+import {
+  retainLegacyDefaultAgentId,
+  resolveSessionStoreCompatibilityAgentId,
+} from "../config/legacy.default-agent-owner.js";
 import type { BranchConfig } from "../config/types.js";
 import { validateConfigObject } from "../config/validation-core.js";
 import { AgentsSchema } from "../config/zod-schema.agents.js";
 import { resolveGatewayAgentSelectionState } from "../gateway/agent-list.js";
 import { resolveAgentRoute } from "../routing/resolve-route.js";
-import { tryResolveAmbientOwnerAgentId } from "./agent-scope-config.js";
+import {
+  tryResolveAmbientOwnerAgentId,
+  tryResolveLegacyCompatibilityAgentId,
+  tryResolveLegacyDataOwnerAgentId,
+} from "./agent-scope-config.js";
+import { resolveSubagentRequesterAgentId } from "./subagent-requester-owner.js";
 
 describe("contact Trunk routing", () => {
   const cfg: BranchConfig = {
@@ -86,7 +95,23 @@ describe("contact Trunk routing", () => {
       agents: { ...cfg.agents, defaults: { systemAgent: { agentId: "oak" } } },
     };
     expect(tryResolveAmbientOwnerAgentId(systemCfg)).toBe("oak");
+    expect(tryResolveLegacyCompatibilityAgentId(systemCfg)).toBe("oak");
+    expect(resolveSubagentRequesterAgentId(systemCfg, { requesterSessionKey: "main" })).toBe("oak");
     expect(resolveAgentRoute({ cfg: systemCfg, channel: "telegram" }).agentId).toBe("fern");
+  });
+  it("does not turn a contact into an ambient fallback owner or reattribute retained legacy data", () => {
+    expect(tryResolveAmbientOwnerAgentId(cfg)).toBeUndefined();
+    expect(tryResolveLegacyCompatibilityAgentId(cfg)).toBeUndefined();
+    expect(resolveSubagentRequesterAgentId(cfg, { requesterSessionKey: "main" })).toBeUndefined();
+    const retained = retainLegacyDefaultAgentId(cfg, "oak");
+    expect(tryResolveLegacyDataOwnerAgentId(retained)).toBe("oak");
+    expect(resolveSessionStoreCompatibilityAgentId(retained)).toBe("oak");
+    const switched = retainLegacyDefaultAgentId(
+      { agents: { ...cfg.agents, defaultId: "oak" } },
+      "oak",
+    );
+    expect(tryResolveLegacyDataOwnerAgentId(switched)).toBe("oak");
+    expect(resolveSessionStoreCompatibilityAgentId(switched)).toBe("oak");
   });
   it("reassigns a removed default to a surviving Trunk", () => {
     const next = pruneAgentConfig(cfg, "fern").config;

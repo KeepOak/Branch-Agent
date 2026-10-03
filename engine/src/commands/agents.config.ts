@@ -10,6 +10,7 @@ import {
   resolveAgentDir,
   resolveAgentWorkspaceDir,
   tryResolveLegacyCompatibilityAgentId,
+  tryResolveContactDefaultAgentId,
   toAgentEntriesRecord,
 } from "../agents/agent-scope.js";
 import { resolveAgentAvatarUrlFromSource } from "../agents/identity-avatar-file.js";
@@ -59,7 +60,8 @@ export function findAgentEntryIndex(list: AgentEntry[], agentId: string): number
 
 /** Build config-derived summaries for text/JSON agent listing. */
 export async function buildAgentSummaries(cfg: BranchConfig): Promise<AgentSummary[]> {
-  const defaultAgentId = tryResolveLegacyCompatibilityAgentId(cfg);
+  const defaultAgentId =
+    tryResolveContactDefaultAgentId(cfg) ?? tryResolveLegacyCompatibilityAgentId(cfg);
   const configuredAgents = listAgentEntries(cfg);
   const orderedIds =
     configuredAgents.length > 0
