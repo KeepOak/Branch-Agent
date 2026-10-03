@@ -1,5 +1,4 @@
 import path from "node:path";
-import { projectCodexNativeAccount, readCodexNativeAccounts } from "./native-accounts.js";
 import type { PluginRuntime } from "branch/plugin-sdk/core";
 import { resolvePositiveTimerTimeoutMs } from "branch/plugin-sdk/number-runtime";
 import { normalizeResolvedSecretInputString } from "branch/plugin-sdk/secret-input";
@@ -68,6 +67,7 @@ import {
   resolveArgs,
 } from "./config-utils.js";
 import { readCodexAppServerConfigOptions } from "./launch-args.js";
+import { projectCodexNativeAccount, readCodexNativeAccounts } from "./native-accounts.js";
 import type { CodexSandboxMode, CodexSandboxPolicy } from "./protocol.js";
 
 /**
@@ -120,7 +120,9 @@ export function createCodexAppServerConfig({
     const env = params.env ?? process.env;
     const pluginConfig = readCodexPluginConfig(params.pluginConfig);
     const registry = readCodexNativeAccounts(pluginConfig);
-    const config = (registry ? projectCodexNativeAccount(pluginConfig, registry.selected.home) : pluginConfig).appServer ?? {};
+    const config =
+      (registry ? projectCodexNativeAccount(pluginConfig, registry.selected.home) : pluginConfig)
+        .appServer ?? {};
     const transport = resolveTransport(config.transport);
     const homeScope = resolveCodexAppServerHomeScope({ appServer: config });
     const codexHome = config.codexHome ? path.resolve(config.codexHome) : undefined;

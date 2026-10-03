@@ -142,7 +142,11 @@ const codexPluginConfigSchema = z.strictObject({
       transport: z.enum(["stdio", "websocket", "unix"]).optional(),
       homeScope: z.enum(["agent", "user"]).optional(),
       codexHome: z.string().trim().min(1).optional(),
-      nativeAccounts: z.array(z.strictObject({ id: z.string().trim().min(1), home: z.string().trim().min(1) })).min(1).max(16).optional(),
+      nativeAccounts: z
+        .array(z.strictObject({ id: z.string().trim().min(1), home: z.string().trim().min(1) }))
+        .min(1)
+        .max(16)
+        .optional(),
       nativeAccountId: z.string().trim().min(1).optional(),
       nativeAccountQuotaFailover: z.boolean().optional(),
       command: z.string().optional(),
@@ -194,7 +198,12 @@ export function readCodexPluginConfig(value: unknown): ParsedCodexPluginConfig {
   }
   const parsed = codexPluginConfigSchema.safeParse(value);
   if (!parsed.success) {
-    if (appServer && ["codexHome", "nativeAccounts", "nativeAccountId", "nativeAccountQuotaFailover"].some((key) => Object.hasOwn(appServer, key))) {
+    if (
+      appServer &&
+      ["codexHome", "nativeAccounts", "nativeAccountId", "nativeAccountQuotaFailover"].some((key) =>
+        Object.hasOwn(appServer, key),
+      )
+    ) {
       throw new Error(
         "Invalid Codex configuration for the selected native account home; refusing to use another account",
       );

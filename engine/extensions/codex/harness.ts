@@ -315,6 +315,8 @@ export function createCodexAppServerAgentHarness(
       // Keep app-server runtime code behind lazy imports so plugin discovery and
       // cold provider catalog reads do not pull in the whole Codex runtime.
       const { runCodexAppServerAttempt } = await import("./src/app-server/run-attempt.js");
+      const { runWithCodexNativeAccount } =
+        await import("./src/app-server/native-account-attempt.js");
       const {
         planCodexCyberEscalation,
         readCodexCyberAttemptVerdict,
@@ -328,7 +330,7 @@ export function createCodexAppServerAgentHarness(
       // reroutes one turn without touching the session's stored selection.
       const attemptModel = readCodexRuntimeModelId(params.model, params.modelId);
       const runAttemptOnModel = (model: string, isRetry = false) =>
-        runCodexAppServerAttempt(
+        runWithCodexNativeAccount(
           // The refused attempt already mirrored this prompt; a retry must not
           // write a second copy of it into the transcript.
           isRetry ? { ...params, suppressNextUserMessagePersistence: true } : params,
@@ -339,6 +341,11 @@ export function createCodexAppServerAgentHarness(
             runtimeModelId: model,
             nativeHookRelay: { enabled: true },
           },
+          (selectedOptions) =>
+            runCodexAppServerAttempt(
+              isRetry ? { ...params, suppressNextUserMessagePersistence: true } : params,
+              selectedOptions,
+            ),
         );
 
       const cyberFailover = resolveCodexCyberFailoverConfig(pluginConfig);
@@ -444,9 +451,14 @@ export function createCodexAppServerAgentHarness(
     },
     runSideQuestion: async (params) => {
       const { runCodexAppServerSideQuestion } = await import("./src/app-server/side-question.js");
+      const { projectBoundCodexNativeAccount } =
+        await import("./src/app-server/native-account-attempt.js");
       return runCodexAppServerSideQuestion(params, {
         bindingStore: options.bindingStore,
-        pluginConfig: options?.resolvePluginConfig?.() ?? options?.pluginConfig,
+        pluginConfig: projectBoundCodexNativeAccount(
+          resolveAttemptPluginConfig(options.resolveConfig?.()),
+          options.bindingStore.read(sessionBindingIdentity(params))?.nativeAccountHome,
+        ),
         runtime: sessionRuntime,
         runtimeModelId: readCodexRuntimeModelId(params.runtimeModel, params.model),
         nativeHookRelay: { enabled: true },
@@ -455,9 +467,14 @@ export function createCodexAppServerAgentHarness(
     compact: async (params) => {
       const admittedParams = requireCodexCompactionCapabilities(params);
       const { maybeCompactCodexAppServerSession } = await import("./src/app-server/compact.js");
+      const { projectBoundCodexNativeAccount } =
+        await import("./src/app-server/native-account-attempt.js");
       return maybeCompactCodexAppServerSession(admittedParams, {
         bindingStore: options.bindingStore,
-        pluginConfig: options?.resolvePluginConfig?.() ?? options?.pluginConfig,
+        pluginConfig: projectBoundCodexNativeAccount(
+          resolveAttemptPluginConfig(params.config),
+          options.bindingStore.read(sessionBindingIdentity(params))?.nativeAccountHome,
+        ),
       });
     },
     withSessionDeletion: async (params, run) => {
@@ -530,9 +547,14 @@ export function createCodexAppServerNativeCompaction(
     const admittedParams: AgentHarnessNativeCompactionParams<2> =
       requireCodexCompactionCapabilities(params);
     const { maybeCompactCodexAppServerSession } = await import("./src/app-server/compact.js");
+    const { projectBoundCodexNativeAccount } =
+      await import("./src/app-server/native-account-attempt.js");
     return maybeCompactCodexAppServerSession(admittedParams, {
       bindingStore: options.bindingStore,
-      pluginConfig: options.resolvePluginConfig?.() ?? options.pluginConfig,
+      pluginConfig: projectBoundCodexNativeAccount(
+        options.resolvePluginConfig?.() ?? options.pluginConfig,
+        options.bindingStore.read(sessionBindingIdentity(params))?.nativeAccountHome,
+      ),
       allowNonManualNativeRequest: true,
       nativeCompactionRequest: admittedParams.nativeCompactionRequest,
     });
