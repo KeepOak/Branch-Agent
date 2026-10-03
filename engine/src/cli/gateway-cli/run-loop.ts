@@ -26,6 +26,7 @@ import { createLazyImportLoader } from "../../shared/lazy-promise.js";
 import { formatCliCommand } from "../command-format.js";
 import { createGatewayHostLifecycle } from "./host-lifecycle.js";
 import { installGatewayHostLifeline } from "./host-lifeline.js";
+import { installGatewayParentWatchdog } from "./parent-watchdog.js";
 import { drainGatewayActiveWork } from "./run-loop-drain.js";
 import * as loopLogs from "./run-loop-log-flush.js";
 import {
@@ -115,6 +116,7 @@ export async function runGatewayLoop(params: {
   let shuttingDown = false;
   let hostExitRequested = false;
   let releaseHostLifeline: (() => void) | undefined;
+  let releaseParentWatchdog: (() => void) | undefined;
   let forcedExitStarted = false;
   let restartResolver: (() => void) | null = null;
   // The HTTP server can report ready before params.start returns its close handle.
@@ -147,6 +149,8 @@ export async function runGatewayLoop(params: {
     (pendingStartupRequest ?? activeRestartRequest)?.restartIntent?.successorOwner;
 
   const cleanupSignals = () => {
+    releaseParentWatchdog?.();
+    releaseParentWatchdog = undefined;
     releaseHostLifeline?.();
     releaseHostLifeline = undefined;
     releaseInstallationObserver();
@@ -1212,6 +1216,11 @@ export async function runGatewayLoop(params: {
     },
   });
   try {
+    releaseParentWatchdog = installGatewayParentWatchdog((reason) => {
+      hostExitRequested = true;
+      gatewayLog.info("Gateway parent process gone; shutting down");
+      request("stop", reason);
+    });
     releaseHostLifeline = installGatewayHostLifeline(() => {
       hostExitRequested = true;
       request("stop", "host lifeline closed");
