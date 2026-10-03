@@ -1,5 +1,10 @@
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
+  'extensions/codex/harness.test.ts',
+  'extensions/codex/src/app-server/config.test.ts',
+  'extensions/codex/src/app-server/native-auth.test.ts',
+  'extensions/codex/src/app-server/native-accounts.test.ts',
+  'extensions/codex/src/app-server/native-account-attempt.test.ts',
   'src/config/config.identity-avatar.test.ts',
   'src/gateway/assistant-avatar.test.ts',
   'src/gateway/assistant-identity.test.ts',
@@ -45,6 +50,13 @@ export const windowTests = [
 ];
 
 export const engineStrictFiles = [
+  'extensions/codex/harness.ts',
+  'extensions/codex/src/app-server/config-options.ts',
+  'extensions/codex/src/app-server/config-parsing.ts',
+  'extensions/codex/src/app-server/native-accounts.ts',
+  'extensions/codex/src/app-server/native-account-attempt.ts',
+  'extensions/codex/src/app-server/native-accounts.test.ts',
+  'extensions/codex/src/app-server/native-account-attempt.test.ts',
   'src/config/config.identity-avatar.test.ts',
   'src/gateway/assistant-avatar.test.ts',
   'src/gateway/assistant-identity.test.ts',
