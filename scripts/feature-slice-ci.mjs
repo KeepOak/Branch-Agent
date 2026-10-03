@@ -9,7 +9,9 @@ import { assertLocalModules, engineRoot, gitHead, preparePnpm, repoRoot, verifie
 
 const nodeHeap = '--max-old-space-size=1024';
 const baseEnv = { ...process.env, NODE_OPTIONS: nodeHeap, TSX_DISABLE_CACHE: '1',
-  TSX_TSCONFIG_PATH: path.join(engineRoot, 'tsconfig.json'), GOMEMLIMIT: '2GiB', GOMAXPROCS: '2' };
+  TSX_TSCONFIG_PATH: path.join(engineRoot, 'tsconfig.json'), GOMEMLIMIT: '2GiB', GOMAXPROCS: '2',
+  // The compiler owner joins its process group before the outer command's 180s deadline.
+  BRANCH_TSGO_TIMEOUT_MS: '120000' };
 const present = async file => fs.access(path.join(engineRoot, file)).then(() => true, error => {
   if (error.code !== 'ENOENT') throw error;
   return false;
