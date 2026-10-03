@@ -1,4 +1,6 @@
 export const AGENT_FIELD_HELP: Record<string, string> = {
+  "agents.defaultId":
+    "Default contact Trunk for unrouted conversations. Explicit channel bindings take precedence; changing it preserves each Trunk's ongoing conversation and existing session history.",
   ui: "UI presentation settings for accenting and operator display preferences. Use this for readability customization without changing runtime behavior.",
   "ui.seamColor":
     "Primary accent color used by UI surfaces for emphasis, badges, and visual identity cues. Use high-contrast values that remain readable across light/dark themes.",
@@ -64,7 +66,7 @@ export const AGENT_FIELD_HELP: Record<string, string> = {
   "plugins.entries.*.config":
     "Plugin-defined configuration payload interpreted by that plugin's own schema and validation rules. Use only documented fields from the plugin to prevent ignored or invalid settings.",
   "agents.entries.*.identity.avatar":
-    "Agent avatar (workspace-relative path, http(s) URL, or data URI).",
+    "Agent avatar (built-in Branch character such as branch:ember, workspace-relative path, http(s) URL, or data URI).",
   "agents.defaults.model.primary": "Primary model (provider/model).",
   "agents.defaults.model.fallbacks":
     "Ordered fallback models (provider/model). Used when the primary model fails.",

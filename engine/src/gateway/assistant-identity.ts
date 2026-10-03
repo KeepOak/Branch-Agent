@@ -20,6 +20,7 @@ import {
 import {
   hasAvatarUriScheme,
   isAvatarHttpUrl,
+  isBranchCharacterAvatar,
   isWindowsAbsolutePath,
   looksLikeAvatarPath,
 } from "../shared/avatar-policy.js";
@@ -78,7 +79,7 @@ function normalizeAvatarValue(value: string | undefined): string | undefined {
   if (!trimmed || trimmed.length > AVATAR_MAX_DATA_URL_CHARS) {
     return undefined;
   }
-  if (isAvatarUrl(trimmed)) {
+  if (isAvatarUrl(trimmed) || isBranchCharacterAvatar(trimmed)) {
     return trimmed;
   }
   // URI-like values are not local paths. Reject unsupported schemes before

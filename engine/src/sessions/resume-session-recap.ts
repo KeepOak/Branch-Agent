@@ -39,7 +39,7 @@ function visibleCounts(messages: readonly Message[]): [number, number, number] {
 function recentWindow(messages: readonly Message[]): readonly Message[] {
   let count = 0;
   for (let index = messages.length - 1; index >= 0; index--) {
-    if (["user", "assistant"].includes(String(messages[index].role)) && ++count >= 20) return messages.slice(index);
+    if (["user", "assistant"].includes(String(messages[index]!.role)) && ++count >= 20) return messages.slice(index);
   }
   return messages;
 }
@@ -61,7 +61,8 @@ function toolActivity(messages: readonly Message[]) {
   const counts = new Map<string, number>(); const files = new Map<string, string>();
   for (const { name, args } of calls.toReversed()) {
     counts.set(name, (counts.get(name) ?? 0) + 1);
-    const filename = args[FILE_TOOLS[name]];
+    const key = FILE_TOOLS[name];
+    const filename = key === undefined ? undefined : args[key];
     if (typeof filename === "string" && filename && !files.has(filename)) files.set(filename, shortenedPath(filename));
   }
   return { counts: [...counts].sort(([a, x], [b, y]) => y - x || a.localeCompare(b)), files: [...files.values()] };
