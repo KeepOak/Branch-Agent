@@ -100,6 +100,7 @@ async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typ
     for (const file of ["engine/branch.mjs", "engine/dist/build-info.json", "window/index.html"]) {
       if (!(await stat(join(directory, file))).isFile()) throw new Error(`Incomplete release: ${file}`);
     }
+    await replaceFile(join(directory, "engine", ".branch-component-sha256"), `${release.components.engine.sha256}\n`);
     await replaceFile(join(directory, "window", "branch-build.txt"), `${release.version}\n`);
     return { engine: join(directory, "engine"), window: join(directory, "window") };
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
@@ -133,13 +134,13 @@ export async function refreshComponentUpdate(cfg: DesktopConfig, request: typeof
   return true;
 }
 
-export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void): () => void {
+export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void, run: (check: () => Promise<boolean>) => Promise<void> = async check => { if (await check()) log("Verified GitHub component update staged; engine awaits Restart"); }): () => void {
   let busy = false;
   let stopped = false;
   const tick = async (): Promise<void> => {
     if (busy || stopped) return;
     busy = true;
-    try { if (await refreshComponentUpdate(cfg)) log("Verified GitHub component update staged; engine awaits Restart"); }
+    try { await run(() => refreshComponentUpdate(cfg)); }
     catch (error) { log(`Component update check: ${error instanceof Error ? error.message : String(error)}`); }
     finally { busy = false; }
   };

@@ -2,12 +2,14 @@
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
-import { appendFileSync, writeFileSync, existsSync } from "node:fs";
+import { appendFileSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { portIsFree, readToken, startGateway, stopGateway, waitForReady } from "./gateway";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
+import { DesktopRendererRpc } from "./desktop-renderer-rpc";
+import { DesktopUpdateLifecycle } from "./desktop-update-lifecycle";
 import { confirmComponentUpdate, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
@@ -35,6 +37,24 @@ let server: Server | undefined;
 let win: BrowserWindow | undefined;
 let token = "";
 let engineUpdateReady = false;
+let runningBuild = "";
+let updateState: { phase: string; operationId: string; outcome?: string } | undefined;
+const trustedWindow = (sender: Electron.WebContents): boolean => sender === win?.webContents && sender.getURL().startsWith(windowUrl());
+const rendererRpc = new DesktopRendererRpc({
+  isTrusted: () => Boolean(win && trustedWindow(win.webContents)),
+  send: (channel, payload) => win?.webContents.send(channel, payload),
+});
+const lifecycle = new DesktopUpdateLifecycle(join(cfg.dataDir, "desktop-update-continuation.json"), {
+  prepare: input => rendererRpc.request("prepare", input),
+  resume: receipt => rendererRpc.request("resume", { receipt }),
+  cancel: receipt => rendererRpc.request("cancel", { receipt }),
+  phase: (phase, operationId, outcome) => { updateState = { phase, operationId, ...(outcome ? { outcome } : {}) }; win?.webContents.send("branch-desktop:update-lifecycle", updateState); },
+});
+function selectedBuildIdentity(engineDir: string): string {
+  try { const identity = readFileSync(join(engineDir, ".branch-component-sha256"), "utf8").trim();
+    return /^[a-f0-9]{64}$/.test(identity) ? identity : "";
+  } catch { return ""; }
+}
 let stopEngineWatch: (() => void) | undefined;
 let stopComponentWatch: (() => void) | undefined;
 let stopWindowWatch: (() => void) | undefined;
@@ -85,10 +105,11 @@ async function start(): Promise<void> {
   token = readToken(cfg);
   // Registered before any page loads: the preload asks for it synchronously.
   ipcMain.on("branch-desktop:info", (e) => {
-    const served = e.sender.getURL().startsWith(windowUrl());
-    e.returnValue = served ? { gatewayUrl: `ws://127.0.0.1:${cfg.gatewayPort}`, gatewayToken: token } : null;
+    const served = trustedWindow(e.sender);
+    e.returnValue = served ? { gatewayUrl: `ws://127.0.0.1:${cfg.gatewayPort}`, gatewayToken: token, updateState } : null;
   });
-  ipcMain.on("branch-desktop:restart-engine", () => void restartEngine());
+  ipcMain.on("branch-desktop:restart-engine", e => { if (trustedWindow(e.sender)) void restartEngine(); });
+  ipcMain.on("branch-desktop:update-reply", (e, value) => rendererRpc.reply(value, trustedWindow(e.sender)));
   win = createWindow();
   await win.loadURL(STARTING);
   log(`starting page shown after ${Date.now() - launchStarted} ms`);
@@ -107,15 +128,29 @@ async function start(): Promise<void> {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");
   }
+  await lifecycle.exclusive(() => lifecycle.recover(runningBuild)).catch(error => log(`Continuation recovery retained: ${String(error)}`));
   watchUpdates(win);
-  stopComponentWatch = watchComponentUpdates(cfg, log);
+  stopComponentWatch = watchComponentUpdates(cfg, log, async check => {
+    await lifecycle.exclusive(async () => {
+      if (lifecycle.pending) {
+        if (["cancelled", "idle-cancelled"].includes(lifecycle.pending.phase) || lifecycle.pending.targetBuild === runningBuild) await lifecycle.recover(runningBuild);
+        else if (await rendererRpc.request("policy", {}) === true) await performRestart();
+        return;
+      }
+      if (await check()) engineUpdateReady = true;
+      if (!engineUpdateReady) return;
+      win?.webContents.send("branch-desktop:engine-update", "ready");
+      if (await rendererRpc.request("policy", {}) === true) await performRestart();
+    });
+  });
 }
 
 /** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
 async function bootEngine(): Promise<void> {
   const started = Date.now();
   const engineDir = resolveEngineDir(cfg);
-  gateway = startGateway(cfg, engineDir, token);
+  runningBuild = selectedBuildIdentity(engineDir);
+  gateway = startGateway(cfg, engineDir, token, runningBuild);
   log(`gateway started from ${engineDir}, pid ${gateway.pid}`);
   // publish-engine.sh never removes the folder named here.
   writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
@@ -139,6 +174,7 @@ async function bootEngine(): Promise<void> {
 async function bootSelectedEngine(): Promise<boolean> {
   try { await bootEngine(); return false; } catch (error) {
     if (gateway) stopGateway(gateway);
+    lifecycle.cancelBeforeRollback();
     if (!await rollbackComponentUpdate(cfg)) throw error;
     log("Updated engine failed readiness; restored prior components");
     for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise(r => setTimeout(r, 250));
@@ -150,7 +186,7 @@ async function bootSelectedEngine(): Promise<boolean> {
 function watchUpdates(w: BrowserWindow): void {
   stopWindowWatch = watchWindowBuild(cfg.windowDir, () => {
     log("new window build found; reloading the window");
-    if (w.webContents.getURL().startsWith(windowUrl())) w.webContents.reload();
+    if (!lifecycle.active && w.webContents.getURL().startsWith(windowUrl())) w.webContents.reload();
   });
   // A reload re-runs the preload; show the bar again if an engine update is still waiting.
   w.webContents.on("did-finish-load", () => {
@@ -158,25 +194,40 @@ function watchUpdates(w: BrowserWindow): void {
   });
 }
 
-/** Only on the owner's click: stops the gateway by PID, starts the new build and reloads the window. */
+/** Manual and authorized automatic activation share the same complete lifecycle lock. */
 async function restartEngine(): Promise<void> {
+  try { await lifecycle.exclusive(performRestart); } catch (error) { reportRestartFailure(error); }
+}
+function reportRestartFailure(error: unknown): void {
+  const msg = error instanceof Error ? error.message : String(error);
+  log(`restart failed: ${msg}`);
+  if (!HIDDEN) dialog.showErrorBox("Branch Agent could not restart the engine", msg);
+}
+async function performRestart(): Promise<void> {
   if (!gateway || !win) return;
-  log(`restart requested; stopping gateway pid ${gateway.pid}`);
+  const targetBuild = selectedBuildIdentity(resolveEngineDir(cfg));
+  // Both engine persistence and local journal fsync finish while the old child is alive.
+  const pending = lifecycle.pending;
+  if (!pending && targetBuild === runningBuild) throw new Error("No different verified engine candidate is selected");
+  if (pending && ["cancelled", "idle-cancelled"].includes(pending.phase)) { await lifecycle.recover(runningBuild); return; }
+  if (pending && pending.targetBuild !== targetBuild) throw new Error("Selected engine changed while continuation was pending");
+  if (pending && pending.targetBuild === runningBuild && pending.phase !== "intent") {
+    await lifecycle.recover(runningBuild); return;
+  }
+  if (!pending || pending.phase === "intent") await lifecycle.prepare(targetBuild);
+  if (selectedBuildIdentity(resolveEngineDir(cfg)) !== targetBuild) throw new Error("Selected engine changed after checkpoint preparation");
+  log(`restart checkpoint persisted; stopping gateway pid ${gateway.pid}`);
   win.webContents.send("branch-desktop:engine-update", "restarting");
   stopGateway(gateway);
-  try {
-    for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise((r) => setTimeout(r, 250));
-    await bootSelectedEngine();
-    win.webContents.reload();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    log(`restart failed: ${msg}`);
-    if (!HIDDEN) dialog.showErrorBox("Branch Agent could not restart the engine", msg);
-  }
+  for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise(r => setTimeout(r, 250));
+  await bootSelectedEngine();
+  await win.loadURL(windowUrl());
+  await lifecycle.recover(runningBuild);
 }
 
 function shutdown(): void {
   log(`quit; stopping gateway pid ${gateway?.pid}`);
+  rendererRpc.close();
   stopEngineWatch?.();
   stopComponentWatch?.();
   stopWindowWatch?.();

@@ -7,12 +7,41 @@ import { contextBridge, ipcRenderer } from "electron";
 interface DesktopInfo {
   gatewayUrl: string;
   gatewayToken: string;
+  updateState?: { phase: string; operationId: string; outcome?: string };
 }
 
 // Null on any page other than the served window (for example the "Starting" page).
 const info = ipcRenderer.sendSync("branch-desktop:info") as DesktopInfo | null;
 if (info) {
-  contextBridge.exposeInMainWorld("branchDesktop", { gatewayUrl: info.gatewayUrl, gatewayToken: info.gatewayToken });
+  const handlers = new Map<string, (input: unknown) => Promise<unknown>>();
+  const requests: Array<{ id: string; method: string; input: unknown }> = [];
+  const listeners = new Set<(value: unknown) => void>();
+  let state = info.updateState;
+  const deliver = (request: { id: string; method: string; input: unknown }): void => {
+    const handler = handlers.get(request.method);
+    if (!handler) { requests.push(request); return; }
+    Promise.resolve().then(() => handler(request.input)).then(
+      result => ipcRenderer.send("branch-desktop:update-reply", { id: request.id, result }),
+      error => ipcRenderer.send("branch-desktop:update-reply", { id: request.id, error: error instanceof Error ? error.message : String(error) }),
+    );
+  };
+  const register = (method: string, handler: (input: unknown) => Promise<unknown>): (() => void) => {
+    handlers.set(method, handler);
+    for (let i = requests.length - 1; i >= 0; i--) {
+      if (requests[i]?.method === method) deliver(requests.splice(i, 1)[0]!);
+    }
+    return () => { if (handlers.get(method) === handler) handlers.delete(method); };
+  };
+  ipcRenderer.on("branch-desktop:update-request", (_event, request: { id: string; method: string; input: unknown }) => deliver(request));
+  ipcRenderer.on("branch-desktop:update-lifecycle", (_event, value) => { state = value; for (const listener of listeners) listener(value); });
+  contextBridge.exposeInMainWorld("branchDesktop", {
+    gatewayUrl: info.gatewayUrl, gatewayToken: info.gatewayToken,
+    onUpdateLifecycle: (listener: (value: unknown) => void) => { listeners.add(listener); if (state) listener(state); return () => listeners.delete(listener); },
+    onPrepareUpdate: (handler: (input: unknown) => Promise<unknown>) => register("prepare", handler),
+    onResumeUpdate: (handler: (input: unknown) => Promise<unknown>) => register("resume", handler),
+    onCancelUpdate: (handler: (input: unknown) => Promise<unknown>) => register("cancel", handler),
+    onUpdatePolicy: (handler: (input: unknown) => Promise<unknown>) => register("policy", handler),
+  });
   window.addEventListener("DOMContentLoaded", () => {
     fillTokenForm(info);
     new MutationObserver(() => fillTokenForm(info)).observe(document.body, { childList: true, subtree: true });

@@ -187,7 +187,7 @@ async function freePort() {
   const port = probe.address().port; await new Promise(resolve => probe.close(resolve)); return port;
 }
 
-test("actual desktop caller retains running engine until explicit restart and rolls back a failed new build", async () => fixture(async ({ cfg, request }) => {
+async function restartDesktopCaller({ automatic, failed }) { return fixture(async ({ cfg, request, release }) => {
   const require = createRequire(import.meta.url); const Module = require("node:module");
   const load = Module._load; const previousFetch = globalThis.fetch;
   const previousData = process.env.BRANCH_DESKTOP_DATA; const previousHidden = process.env.BRANCH_DESKTOP_HIDDEN;
@@ -199,10 +199,21 @@ test("actual desktop caller retains running engine until explicit restart and ro
   const app = new EventEmitter(); Object.assign(app, { getVersion: () => "fixture", setPath: () => {}, setAppUserModelId: () => {},
     requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(), quit: () => app.emit("will-quit") });
   const ipcMain = new EventEmitter();
-  let servedAt; const launchedAt = Date.now();
+  let servedAt; let callerWindow; let oldPid; const requestsSeen = []; const launchedAt = Date.now();
   class BrowserWindow extends EventEmitter {
-    constructor() { super(); this.url = ""; this.webContents = new EventEmitter(); Object.assign(this.webContents, {
-      getURL: () => this.url, setWindowOpenHandler: () => {}, send: () => {}, reload: () => this.webContents.emit("did-finish-load") }); }
+    constructor() { super(); callerWindow = this; this.url = ""; this.webContents = new EventEmitter(); Object.assign(this.webContents, {
+      getURL: () => this.url, setWindowOpenHandler: () => {}, send: (channel, payload) => {
+        if (channel !== "branch-desktop:update-request") return;
+        requestsSeen.push(payload.method);
+        if (payload.method === "prepare") {
+          oldPid = Number(require("node:fs").readFileSync(join(cfg.dataDir, "gateway.pid"), "utf8"));
+          assert.doesNotThrow(() => process.kill(oldPid, 0), "old owned gateway remains alive during durable engine preparation");
+        }
+        const result = payload.method === "policy" ? automatic : payload.method === "prepare"
+          ? { id: "fixture-receipt", sessionKey: "agent:fixture:main", expectedSessionId: "fixture-session", targetBuild: payload.input.targetBuild, lifecycleGeneration: payload.input.operationId }
+          : payload.method === "cancel" ? "cancelled" : "accepted";
+        queueMicrotask(() => ipcMain.emit("branch-desktop:update-reply", { sender: this.webContents }, { id: payload.id, result }));
+      }, reload: () => this.webContents.emit("did-finish-load") }); }
     async loadURL(url) { if (url.startsWith("http://")) servedAt = Date.now(); this.url = url; this.webContents.emit("did-finish-load"); }
     setMenuBarVisibility() {} show() {} isMinimized() { return false; } focus() {}
   }
@@ -213,22 +224,38 @@ test("actual desktop caller retains running engine until explicit restart and ro
   globalThis.fetch = (url, options) => String(url).startsWith("https://github.com/") ? request(url, options) : previousFetch(url, options);
   delete require.cache[require.resolve(join(process.env.BRANCH_DESKTOP_TEST_DIST, "config.js"))];
   try {
+    delete require.cache[require.resolve(join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js"))];
     require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js")); Module._load = load;
-    await eventually(async () => { try { return JSON.parse(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8")).phase === "pending"; } catch { return false; } });
+    if (!automatic) await eventually(async () => { try { return JSON.parse(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8")).phase === "pending"; } catch { return false; } });
+    else await eventually(() => oldPid !== undefined);
     assert.ok(servedAt - launchedAt < 1000, "real renderer shell must load while the child engine is still starting");
     const phaseLog = await readFile(join(cfg.dataDir, "desktop.log"), "utf8");
     assert.ok(phaseLog.indexOf("window loaded after") < phaseLog.indexOf("gateway ready after"));
-    const oldPid = Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8"));
-    assert.doesNotThrow(() => process.kill(oldPid, 0));
-    assert.equal((await readFile(join(cfg.dataDir, "engine-running.txt"), "utf8")).trim(), cfg.engineDir);
-    ipcMain.emit("branch-desktop:restart-engine");
+    if (!automatic) {
+      oldPid = Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8"));
+      assert.doesNotThrow(() => process.kill(oldPid, 0));
+      assert.equal((await readFile(join(cfg.dataDir, "engine-running.txt"), "utf8")).trim(), cfg.engineDir);
+      ipcMain.emit("branch-desktop:restart-engine", { sender: { getURL: () => "https://foreign.invalid" } });
+      await new Promise(resolve => setTimeout(resolve, 30));
+      assert.equal(Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8")), oldPid, "foreign sender cannot stop gateway");
+      ipcMain.emit("branch-desktop:restart-engine", { sender: callerWindow.webContents });
+    }
     await eventually(async () => {
       const pointer = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
       const pid = Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8"));
-      if (pointer !== cfg.engineDir || pid === oldPid) return false;
+      if ((failed ? pointer !== cfg.engineDir : pointer === cfg.engineDir) || pid === oldPid) return false;
       try { const response = await previousFetch(`http://127.0.0.1:${desktop.gatewayPort}/readyz`); await response.body?.cancel(); return response.status === 200; } catch { return false; }
     });
-    await unchanged(cfg);
+    await eventually(async () => {
+      try { const journal = JSON.parse(await readFile(join(cfg.dataDir, "desktop-update-continuation.json"), "utf8")); return journal.phase === (failed ? "cancelled" : "completed") && (!failed || journal.cancellationAcknowledged); } catch { return false; }
+    });
+    assert.ok(requestsSeen.indexOf("prepare") >= 0);
+    if (failed) { await unchanged(cfg); assert.ok(requestsSeen.includes("cancel")); assert.equal(requestsSeen.includes("resume"),false); }
+    else {
+      assert.ok(requestsSeen.includes("resume"));
+      const response = await previousFetch(`http://127.0.0.1:${desktop.gatewayPort}/identity`);
+      assert.equal(await response.text(), release.components.engine.sha256, "actual owned candidate inherited the validated archive identity");
+    }
   } finally {
     app.emit("will-quit"); Module._load = load; globalThis.fetch = previousFetch;
     if (previousData === undefined) delete process.env.BRANCH_DESKTOP_DATA; else process.env.BRANCH_DESKTOP_DATA = previousData;
@@ -236,10 +263,13 @@ test("actual desktop caller retains running engine until explicit restart and ro
     await eventually(async () => { try { process.kill(Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8")), 0); return false; } catch { return true; } });
   }
 }, async ({ engine, output, release }) => {
-  await writeFile(join(engine, "branch.mjs"), "process.exit(31);\n");
+  await writeFile(join(engine, "branch.mjs"), failed ? "process.exit(31);\n" : 'import http from "node:http"; http.createServer((req,res)=>res.writeHead(200).end(req.url === "/identity" ? process.env.BRANCH_DESKTOP_ENGINE_BUILD_SHA256 : "ready")).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1");');
   for (const file of await readdir(output)) await rm(join(output, file));
   Object.assign(release, await makeComponentRelease({ version: "0.4.3", tag: "v0.4.3", engine, window: join(engine, "..", "source-window"), output }));
-}));
+}); }
+
+test("actual desktop caller retains running engine until trusted restart and rolls back a failed new build", async () => restartDesktopCaller({ automatic: false, failed: true }));
+test("actual desktop caller autonomously checkpoints, restarts immutable candidate and resumes with fresh renderer ACK", async () => restartDesktopCaller({ automatic: true, failed: false }));
 
 test("release maker assembles distinct Windows/macOS descriptors sharing only an identical renderer", async () => fixture(async ({ root, engine, window }) => {
   const output = join(root, "assembly");

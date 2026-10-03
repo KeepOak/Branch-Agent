@@ -41,10 +41,11 @@ function testProfile(): Record<string, string> {
   };
 }
 
-export function startGateway(cfg: DesktopConfig, engineDir: string, token: string): ChildProcess {
+export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, buildIdentity?: string): ChildProcess {
   const log = createWriteStream(join(cfg.dataDir, "gateway.log"), { flags: "a" });
   const env = {
     ...process.env,
+    BRANCH_DESKTOP_ENGINE_BUILD_SHA256: buildIdentity ?? "",
     BRANCH_PROFILE: "dev",
     BRANCH_HOME: join(cfg.dataDir, "home"),
     BRANCH_SKIP_CHANNELS: "1",
