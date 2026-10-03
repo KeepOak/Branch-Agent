@@ -105,10 +105,11 @@ export function updateLiveEditDiffProgress(
   // so fragmented large arguments cannot create quadratic work on the event path.
   progress.lastCheckedAtMs = now;
   const counted = countStreamingFileMutationLines(kind, parseStreamingJson(partialJson));
-  // Streaming parses are best effort. Never move a visible counter backwards if
-  // an incomplete JSON boundary temporarily exposes less of the same arguments.
-  progress.added = Math.max(progress.added, counted.added);
-  progress.removed = Math.max(progress.removed, counted.removed);
+  // Newly streamed context can turn an earlier apparent removal into a match.
+  // Emit the current diff, including corrections, rather than retaining inflated counts.
+  progress.added = kind === "edit" ? counted.added : Math.max(progress.added, counted.added);
+  progress.removed =
+    kind === "edit" ? counted.removed : Math.max(progress.removed, counted.removed);
   if (progress.added === progress.emittedAdded && progress.removed === progress.emittedRemoved) {
     return undefined;
   }

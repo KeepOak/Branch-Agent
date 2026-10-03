@@ -27,7 +27,7 @@ describe("updateLiveEditDiffProgress", () => {
     vi.useRealTimers();
   });
 
-  it("keeps streamed edit counts monotonic, throttled, and scoped to tool completion", () => {
+  it("keeps streamed edit counts throttled and scoped to tool completion", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
     const state = new Map();
