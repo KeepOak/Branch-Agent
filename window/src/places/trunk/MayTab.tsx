@@ -2,6 +2,8 @@
 // Each row writes the Trunk's own config entry; rows the engine has no setting for are drawn greyed with the reason.
 import { useState, type ReactNode } from "react";
 import type { ModelChoice } from "../../composer/model";
+import type { WindowEngine } from "../../connect/engine";
+import { GitHubSettings } from "../settings/GitHubSettings";
 import { Menu, type MenuAnchor } from "../../shell/Menu";
 import { Segmented, Switch } from "../../shell/Popover";
 import { Icon } from "../../shell/icons";
@@ -11,7 +13,6 @@ import type { May } from "./may";
 
 export const SEND_WHY = "Needs the engine’s per-Trunk setting for asking before it sends.";
 export const NOTES_WHY = "Each Trunk keeps its notes in its own folder; the engine has no setting to share them.";
-export const GITHUB_WHY = "Needs the engine’s per-Trunk GitHub sign-in in this window.";
 
 function Row({ title, hint, children, off }: { title: string; hint: string; children: ReactNode; off?: string }) {
   return <div className={off ? "tk-ctl off" : "tk-ctl"} title={off}><b>{title}</b><span className="tk-right">{children}</span><small>{off || hint}</small></div>;
@@ -51,7 +52,7 @@ function Fallbacks({ draft, models, setMay }: { draft: Draft; models: ModelChoic
   );
 }
 
-function Advanced({ name, draft, models, setMay }: { name: string; draft: Draft; models: ModelChoice[]; setMay: (m: Partial<May>) => void }) {
+function Advanced({ engine, agentId, name, draft, models, setMay }: { engine: WindowEngine; agentId: string; name: string; draft: Draft; models: ModelChoice[]; setMay: (m: Partial<May>) => void }) {
   return (
     <>
       <Row title="Model for decisions" hint={`Small yes-or-no, pick-one and score calls inside ${name}’s work. None means it makes no such calls; its main model is never used for them.`}>
@@ -63,15 +64,16 @@ function Advanced({ name, draft, models, setMay }: { name: string; draft: Draft;
         </select>
       </Row>
       <Fallbacks draft={draft} models={models} setMay={setMay} />
-      <Row title="GitHub account for new work" hint="" off={GITHUB_WHY}>
-        <span className="tk-seg">{["Same as Branch", "This computer’s GitHub", "Its own"].map((l) => <button key={l} type="button" disabled>{l}</button>)}</span>
-      </Row>
+      <div className="kit-page">
+        <p className="tk-hint">GitHub connection changes save immediately for {name}, even if you cancel this editor. Other changes use Save below.</p>
+        <GitHubSettings engine={engine} agentId={agentId} />
+      </div>
     </>
   );
 }
 
-type Props = { name: string; draft: Draft; models: ModelChoice[]; level: Level; set: (d: Partial<Draft>) => void; openSettings?: (page: string) => void };
-export function MayTab({ name, draft, models, level, set, openSettings }: Props) {
+type Props = { engine: WindowEngine; agentId: string; name: string; draft: Draft; models: ModelChoice[]; level: Level; set: (d: Partial<Draft>) => void; openSettings?: (page: string) => void };
+export function MayTab({ engine, agentId, name, draft, models, level, set, openSettings }: Props) {
   const may = draft.may, setMay = (m: Partial<May>) => set({ may: { ...may, ...m } });
   return (
     <div className="tk-may">
@@ -84,7 +86,7 @@ export function MayTab({ name, draft, models, level, set, openSettings }: Props)
       </Row>
       <Row title="Spend money" hint="Never, whatever mode Branch is in."><span className="tk-fixed">Never</span></Row>
       <ModelPick draft={draft} models={models} setModel={(model) => set({ model })} openSettings={openSettings} />
-      {shows(level, "advanced") && <Advanced name={name} draft={draft} models={models} setMay={setMay} />}
+      {shows(level, "advanced") && <Advanced engine={engine} agentId={agentId} name={name} draft={draft} models={models} setMay={setMay} />}
       <Row title="Keep its own notes" hint="Separate from other Trunks’ memory." off={NOTES_WHY}>
         <button type="button" role="switch" aria-checked={true} aria-label="Keep its own notes" className="switch" disabled />
       </Row>
