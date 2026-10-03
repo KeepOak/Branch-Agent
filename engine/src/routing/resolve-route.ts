@@ -4,6 +4,7 @@ import {
   listAgentEntries,
   resolveDefaultAgentId,
   tryResolveLegacyCompatibilityAgentId,
+  tryResolveContactDefaultAgentId,
 } from "../agents/agent-scope.js";
 import type { ChatType } from "../channels/chat-type.js";
 import { normalizeChatType } from "../channels/chat-type.js";
@@ -452,7 +453,10 @@ export function resolveAgentRoute(input: ResolveAgentRouteInput): ResolvedAgentR
     return route;
   }
 
-  const unboundAgentId = defaultAgentId || tryResolveLegacyCompatibilityAgentId(input.cfg);
+  const unboundAgentId =
+    defaultAgentId ||
+    tryResolveContactDefaultAgentId(input.cfg) ||
+    tryResolveLegacyCompatibilityAgentId(input.cfg);
   return choose(
     unboundAgentId ??
       resolveDefaultAgentId(input.cfg, {

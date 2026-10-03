@@ -56,7 +56,6 @@ describe("setup model", () => {
     expect(connectProblem(undefined, "pc:1").title).toBe("pc:1 didn't answer");
   });
 });
-
 function engine(answers: Record<string, unknown>) {
   const request = vi.fn(async (method: string) => answers[method] ?? {});
   const e = { request: request as unknown as WindowEngine["request"], onEvent: () => () => {}, sessionKey: "k", scopes: ["operator.admin"], agentId: "main" } as WindowEngine;
@@ -67,7 +66,7 @@ const params = (request: ReturnType<typeof vi.fn>, method: string) => request.mo
 describe("setup flow", () => {
   it("Welcome holds Start until the promise is ticked and has no Skip", async () => {
     const { engine: e } = engine({});
-    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={[]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
     expect(tid(host, "setup-next").disabled).toBe(true);
     expect(tid(host, "setup-skip")).toBeNull();
     await act(async () => tid(host, "setup-promise").click());
@@ -76,7 +75,7 @@ describe("setup flow", () => {
   it("Skip for now writes the setup record through config.patch", async () => {
     const { engine: e, request } = engine({ "config.get": { hash: "h", config: {} }, "config.patch": { ok: true } });
     const closed = vi.fn();
-    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={[]} defaultAgentId="main" defaultName="Sapling" startAt={3} onClose={closed} onLocalModel={() => {}} />);
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={3} onClose={closed} onLocalModel={() => {}} />);
     await act(async () => tid(host, "setup-skip").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     const raw = String(params(request, "config.patch")[0]?.raw);
@@ -108,7 +107,7 @@ describe("setup flow", () => {
   });
   it("an already set-up Branch opens at the first step not done, with Models marked done and its model shown", async () => {
     const { engine: e } = engine({ "config.get": { hash: "h", config: { wizard: { securityAcknowledgedAt: "x" }, agents: { defaults: { model: { primary: "openai/gpt" } } } } } });
-    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={[]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(host.querySelector("h2")?.textContent).toBe("Make it yours");
     const rail = [...host.querySelectorAll(".ob-rail li")].map((li) => li.className);
@@ -125,7 +124,7 @@ describe("setup's Reach step", () => {
       "wizard.start": { sessionId: "w1", done: false, step: { id: "s1", type: "text", message: "Paste the bot token" } },
       "device.pair.setupCode": { setupId: "p1", setupCode: "ABCD-2345", qrDataUrl: "" },
     });
-    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={[]} defaultAgentId="main" defaultName="Sapling" startAt={5} onClose={() => {}} onLocalModel={() => {}} />);
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={5} onClose={() => {}} onLocalModel={() => {}} />);
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(tid(host, "setup-app-slack").getAttribute("aria-pressed")).toBe("true");
     await act(async () => tid(host, "setup-app-telegram").click());
@@ -150,7 +149,7 @@ describe("setup's Two more things", () => {
       "config.get": { hash: "h", config: {} },
       "cron.add": { id: "j1" },
     });
-    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={[]} defaultAgentId="main" defaultName="Sapling" startAt={9} onClose={() => {}} onLocalModel={() => {}} />);
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={9} onClose={() => {}} onLocalModel={() => {}} />);
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(host.textContent).toContain("Claude Code · 2 ready to bring in");
     expect(host.textContent).not.toContain("Hermes Agent");
@@ -196,7 +195,7 @@ describe("setup on an already set-up Branch", () => {
       "config.patch": { ok: true },
     });
     const closed = vi.fn();
-    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={[]} defaultAgentId="main" defaultName="Sapling" startAt={2} onClose={closed} onLocalModel={() => {}} />);
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={2} onClose={closed} onLocalModel={() => {}} />);
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     await act(async () => host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")[2].click());
     await act(async () => tid(host, "setup-test").click());
