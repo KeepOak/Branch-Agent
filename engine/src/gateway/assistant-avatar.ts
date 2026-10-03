@@ -8,6 +8,7 @@ import {
   hasAvatarUriScheme,
   isAvatarDataUrl,
   isAvatarHttpUrl,
+  isBranchCharacterAvatar,
   isWindowsAbsolutePath,
   looksLikeAvatarPath,
 } from "../shared/avatar-policy.js";
@@ -66,6 +67,9 @@ export async function prepareGatewayAssistantAvatar(params: {
 }): Promise<PreparedGatewayAssistantAvatarProjection> {
   const { cfg, identity } = params;
   const source = identity.avatar;
+  if (isBranchCharacterAvatar(source)) {
+    return { resolution: null };
+  }
   if (isAvatarHttpUrl(source)) {
     return { resolution: { kind: "remote", url: source, source } };
   }

@@ -137,6 +137,39 @@ export async function assertLocalModules(root, names) {
   }
 }
 
+export async function publishWindowDependencies() {
+  const modules = path.join(windowRoot, 'node_modules');
+  await assertLocalModules(windowRoot, []);
+  const store = await fs.realpath(path.join(modules, '.pnpm'));
+  assert.equal(store, path.join(modules, '.pnpm'), 'Window virtual store must be owned locally');
+  const manifest = JSON.parse(await fs.readFile(path.join(toolingRoot, 'package.json'), 'utf8'));
+  for (const [name, pin] of Object.entries(manifest.dependencies)) {
+    const target = await fs.realpath(path.join(toolingRoot, 'node_modules', name));
+    const expected = pin.startsWith('link:')
+      ? await fs.realpath(path.resolve(toolingRoot, pin.slice(5))) : null;
+    if (expected) assert(target.startsWith(engineRoot + path.sep), `Foreign workspace package: ${name}`);
+    assert(expected ? target === expected : target.startsWith(store + path.sep),
+      `Window dependency must belong to this checkout: ${name}`);
+    if (!expected) {
+      const installed = JSON.parse(await fs.readFile(path.join(target, 'package.json'), 'utf8'));
+      assert.equal(installed.version, pin, `Unexpected Window dependency version: ${name}`);
+    }
+    const link = path.join(modules, name);
+    await fs.mkdir(path.dirname(link), { recursive: true });
+    const existing = await fs.lstat(link).catch(error => {
+      if (error.code !== 'ENOENT') throw error;
+      return null;
+    });
+    if (existing) {
+      assert(existing.isSymbolicLink(), `Refusing to replace an owned directory: ${link}`);
+      if (await fs.realpath(link) === target) continue;
+      await fs.unlink(link);
+    }
+    await fs.symlink(process.platform === 'win32' ? target : path.relative(path.dirname(link), target),
+      link, process.platform === 'win32' ? 'junction' : 'dir');
+  }
+}
+
 export async function hostedChrome() {
   assert.equal(process.platform, 'linux', 'The live browser fixture runs on hosted Ubuntu');
   for (const file of ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/opt/google/chrome/chrome']) {
