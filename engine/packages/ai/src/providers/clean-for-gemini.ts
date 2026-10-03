@@ -8,6 +8,7 @@ export const GEMINI_UNSUPPORTED_SCHEMA_KEYWORDS = new Set([
   // Serialized optional-property metadata is not part of Google's Schema message.
   "~optional",
   "patternProperties",
+  "propertyNames",
   "additionalProperties",
   "$schema",
   "$id",
@@ -259,6 +260,20 @@ function* cleanSchemaArray(
   return result;
 }
 
+// Adapted from mastra-ai/mastra's GoogleSchemaCompatLayer: Google expects one
+// items schema rather than JSON Schema's legacy positional tuple array.
+function* cleanGeminiTupleItems(
+  items: unknown[],
+  defs: SchemaDefs | undefined,
+  refStack: Set<string> | undefined,
+  ancestors: Set<object>,
+): SchemaWalk {
+  const variants: unknown[] = [];
+  yield cleanSchemaArray(items, defs, refStack, ancestors, variants);
+  const simplified = simplifyUnionVariants({ obj: {}, variants });
+  return simplified.kind === "simplified" ? simplified.value : { anyOf: simplified.value };
+}
+
 function* cleanSchemaForGeminiWithDefs(
   schema: unknown,
   defs: SchemaDefs | undefined,
@@ -393,9 +408,7 @@ function* cleanSchemaForGeminiWithDefs(
         }
       } else if (key === "items" && value) {
         if (Array.isArray(value)) {
-          const result: unknown[] = [];
-          yield cleanSchemaArray(value, nextDefs, refStack, ancestors, result);
-          cleaned[key] = result;
+          cleaned[key] = yield cleanGeminiTupleItems(value, nextDefs, refStack, ancestors);
         } else if (typeof value === "object") {
           cleaned[key] = yield cleanSchemaForGeminiWithDefs(value, nextDefs, refStack, ancestors);
         } else {

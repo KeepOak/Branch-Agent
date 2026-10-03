@@ -30,6 +30,7 @@ import { createLazyExecTool } from "./lazy-exec-tool.js";
 import { createLazyProcessTool } from "./lazy-process-tool.js";
 import type { MemoryWriteProvenanceObserver } from "./memory-write-provenance.js";
 import { relativePathInsideSandboxRoot, resolvePathFromInput } from "./path-policy.js";
+import { wrapToolsWithProjectInstructions } from "./project-instructions.js";
 import type { SandboxContext } from "./sandbox.js";
 import { buildSandboxFsMounts } from "./sandbox/fs-paths.js";
 import { resolveReadOnlyWorkspaceSkillMounts } from "./sandbox/workspace-mounts.js";
@@ -412,5 +413,11 @@ export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgent
 
   base.forEach((tool) => bindAgentToolActionDescriptor(tool, filesystemAction));
   shell.forEach((tool) => bindAgentToolActionDescriptor(tool, processAction));
-  return [...base, ...shell];
+  return wrapToolsWithProjectInstructions([...base, ...shell], {
+    root: sandbox?.containerWorkdir ?? options.containmentRoot,
+    cwd: sandbox?.containerWorkdir ?? options.codingRoot,
+    normalizationCwd: sandboxRoot ?? options.codingRoot,
+    bridge: sandboxFsBridge,
+    deliveryCache: options.skillInstructionDeliveryCache,
+  });
 }
