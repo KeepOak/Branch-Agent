@@ -98,6 +98,8 @@ const CORE_GATEWAY_HANDLER_MODULES = {
   storage: () => import("./storage.js").then((module) => module.storageHandlers),
   push: () => import("./push.js").then((module) => module.pushHandlers),
   restart: () => import("./restart.js").then((module) => module.restartHandlers),
+  "desktop-continuation": () =>
+    import("./desktop-continuation.js").then((module) => module.desktopContinuationHandlers),
   suspend: () => import("./suspend.js").then((module) => module.suspendHandlers),
   send: () => import("./send.js").then((module) => module.sendHandlers),
   "sessions-files": () =>

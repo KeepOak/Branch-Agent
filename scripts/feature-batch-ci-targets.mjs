@@ -1,5 +1,7 @@
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
+  'src/infra/desktop-restart-continuation.test.ts',
+  'src/gateway/server-methods/desktop-continuation.test.ts',
   'src/agents/agent-create.test.ts',
   'src/agents/auth-profiles/usage-state.test.ts',
   'src/agents/auth-profiles/order.test.ts',
@@ -53,6 +55,13 @@ export const windowTests = [
 ];
 
 export const engineStrictFiles = [
+  'src/infra/desktop-restart-continuation.ts',
+  'src/infra/desktop-restart-continuation.test.ts',
+  'src/gateway/server-methods/desktop-continuation.ts',
+  'src/gateway/server-methods/desktop-continuation.test.ts',
+  'src/gateway/methods/core-descriptors.ts',
+  'src/gateway/methods/core-profile-access.ts',
+  'src/gateway/server-methods/core-handlers.ts',
   'src/agents/agent-create.test.ts',
   'src/agents/auth-profiles/usage-state.test.ts',
   'src/agents/auth-profiles/order.test.ts',

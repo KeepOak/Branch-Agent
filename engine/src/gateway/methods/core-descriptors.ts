@@ -690,4 +690,25 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["storage.locations.list", "storage", "operator.read", "2026.9"],
   ["storage.locations.probe", "storage", "operator.read", "2026.9"],
   ["agents.documents.create", "agents-workspace", "operator.admin", "2026.9"],
+  [
+    "desktop.continuation.prepare",
+    "desktop-continuation",
+    "operator.admin",
+    "2026.10",
+    SIDECAR_CONTROL_PLANE_WRITE,
+  ],
+  [
+    "desktop.continuation.resume",
+    "desktop-continuation",
+    "operator.admin",
+    "2026.10",
+    SIDECAR_CONTROL_PLANE_WRITE,
+  ],
+  [
+    "desktop.continuation.cancel",
+    "desktop-continuation",
+    "operator.admin",
+    "2026.10",
+    SIDECAR_CONTROL_PLANE_WRITE,
+  ],
 ] as const satisfies readonly CoreGatewayMethodSpecRow[];
