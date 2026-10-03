@@ -143,9 +143,13 @@ describe("native account attempt integration", () => {
   it("rejects an API-key native login instead of entering a billed turn or rotating accounts", async () => {
     probe.mockResolvedValueOnce({ nativeAuth: { runtime: "codex", mode: "api-key" } });
     const run = vi.fn();
-    await expect(runWithCodexNativeAccount(
-      params, { pluginConfig, bindingStore: createCodexTestBindingStore() }, run,
-    )).rejects.toThrow("not authenticated");
+    await expect(
+      runWithCodexNativeAccount(
+        params,
+        { pluginConfig, bindingStore: createCodexTestBindingStore() },
+        run,
+      ),
+    ).rejects.toThrow("not authenticated");
     expect(probe).toHaveBeenCalledTimes(1);
     expect(request).not.toHaveBeenCalled();
     expect(run).not.toHaveBeenCalled();

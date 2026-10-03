@@ -48,12 +48,14 @@ export async function runCodexSettledTurnFinalization(
     ...options,
     pluginConfig: projectBoundCodexNativeAccount(options.pluginConfig, nativeAccountHome),
   };
-  const authRequirement = nativeAccountHome ? "subscription" : hostAuthPlan?.modelRoute?.authRequirement;
+  const authRequirement = nativeAccountHome
+    ? "subscription"
+    : hostAuthPlan?.modelRoute?.authRequirement;
   // Capture fixes binding/ordered-profile selection. Ordinary user-home sessions
   // intentionally authorize private side turns through the host plan instead.
-  const authProfileId =
-    nativeAccountHome ? undefined :
-      selection.authProfileId ?? hostAuthPlan?.forwardedAuthProfileId ?? attempt.authProfileId;
+  const authProfileId = nativeAccountHome
+    ? undefined
+    : (selection.authProfileId ?? hostAuthPlan?.forwardedAuthProfileId ?? attempt.authProfileId);
   const authHandoff = await resolveCodexAppServerPreparedAuthHandoff({
     authRequirement,
     resolvedApiKey: nativeAccountHome ? undefined : attempt.resolvedApiKey,

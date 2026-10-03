@@ -175,32 +175,62 @@ describe("runCodexSettledTurnFinalization", () => {
   it("keeps the captured native home for finalization after the default changes", async () => {
     const captured = path.resolve("fixture-captured-home");
     const changed = path.resolve("fixture-new-default");
-    await runCodexSettledTurnFinalization({
-      attempt: createAttempt("api-key"),
-      settledAttempt: createSettledAttempt({ model: "gpt-5.6-luna", nativeAccountHome: captured }),
-    }, { pluginConfig: { appServer: {
-      homeScope: "user",
-      nativeAccounts: [{ id: "captured", home: captured }, { id: "changed", home: changed }],
-      nativeAccountId: "changed",
-    } } });
-    expect(authBridge.resolveCodexAppServerPreparedAuthHandoff).toHaveBeenCalledWith(
-      expect.objectContaining({ homeScope: "user", authProfileId: undefined,
-        resolvedApiKey: undefined, authRequirement: "subscription" }),
+    await runCodexSettledTurnFinalization(
+      {
+        attempt: { ...createAttempt("api-key"), resolvedApiKey: "synthetic-outer-billed-key" },
+        settledAttempt: createSettledAttempt({
+          model: "gpt-5.6-luna",
+          nativeAccountHome: captured,
+        }),
+      },
+      {
+        pluginConfig: {
+          appServer: {
+            homeScope: "user",
+            nativeAccounts: [
+              { id: "captured", home: captured },
+              { id: "changed", home: changed },
+            ],
+            nativeAccountId: "changed",
+          },
+        },
+      },
     );
-    expect(mocks.runBounded).toHaveBeenCalledWith(expect.objectContaining({
-      profile: undefined, authRequirement: "subscription", isolation: "configured-transport",
-      options: expect.objectContaining({ pluginConfig: expect.objectContaining({
-        appServer: expect.objectContaining({ codexHome: captured }),
-      }) }),
-    }));
+    expect(authBridge.resolveCodexAppServerPreparedAuthHandoff).toHaveBeenCalledWith(
+      expect.objectContaining({
+        homeScope: "user",
+        authProfileId: undefined,
+        resolvedApiKey: undefined,
+        authRequirement: "subscription",
+      }),
+    );
+    expect(mocks.runBounded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profile: undefined,
+        authRequirement: "subscription",
+        isolation: "configured-transport",
+        options: expect.objectContaining({
+          pluginConfig: expect.objectContaining({
+            appServer: expect.objectContaining({ codexHome: captured }),
+          }),
+        }),
+      }),
+    );
   });
 
   it("refuses finalization if the captured native home is no longer registered", async () => {
-    await expect(runCodexSettledTurnFinalization({
-      attempt: createAttempt(),
-      settledAttempt: createSettledAttempt({ model: "gpt-5.6-luna",
-        nativeAccountHome: path.resolve("fixture-removed-home") }),
-    }, { pluginConfig: {} })).rejects.toThrow("no longer registered");
+    await expect(
+      runCodexSettledTurnFinalization(
+        {
+          attempt: createAttempt(),
+          settledAttempt: createSettledAttempt({
+            model: "gpt-5.6-luna",
+            nativeAccountHome: path.resolve("fixture-removed-home"),
+          }),
+        },
+        { pluginConfig: {} },
+      ),
+    ).rejects.toThrow("no longer registered");
     expect(mocks.runBounded).not.toHaveBeenCalled();
     expect(authBridge.resolveCodexAppServerPreparedAuthHandoff).not.toHaveBeenCalled();
   });

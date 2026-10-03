@@ -30,9 +30,13 @@ Only a positive exhausted-quota result permits admission through the next config
 account. Unknown quota keeps the selected account; login, network and other errors
 stop admission. Ambient API-key/access-token environment variables are cleared so
 they cannot replace the chosen home login.
+API-key native logins are rejected by this subscription-account registry rather
+than admitting a metered turn or trying another home.
 
 The admitted home is saved in the native thread binding and preserved for subsequent
-turns, side questions and compaction. Changing the configured default does not move
+turns, side questions, compaction and tool-free settled-turn finalization. Finalization
+retains the captured home, does not forward Branch credentials, and fails if that
+home is removed from the registry. Changing the configured default does not move
 an existing thread to another account. Existing bindings without a registered home
 owner require explicit migration rather than automatic adoption.
 

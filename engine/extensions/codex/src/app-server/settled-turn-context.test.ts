@@ -86,6 +86,7 @@ async function captureContext(params: {
   model?: string;
   modelProvider?: string;
   authProfileId?: string;
+  nativeAccountHome?: string;
 }) {
   mocks.readHistory.mockImplementation(
     (_target, read: (messages: Iterable<AgentMessage>) => unknown) => read(params.historyMessages),
@@ -99,12 +100,27 @@ async function captureContext(params: {
     model: params.model ?? "gpt-5.6-luna",
     modelProvider: params.modelProvider,
     authProfileId: params.authProfileId,
+    nativeAccountHome: params.nativeAccountHome,
   });
 }
 
 describe("captureCodexSettledTurnFinalizationContext", () => {
   beforeEach(() => {
     mocks.readHistory.mockReset();
+  });
+
+  it("captures the settled native account home as detached immutable selection", async () => {
+    const messages = settledTurn();
+    const selection = { nativeAccountHome: "/fixture/account-owned-home" };
+    const context = await captureContext({
+      historyMessages: messages,
+      mirroredMessages: messages,
+      settledMessages: messages,
+      ...selection,
+    });
+    selection.nativeAccountHome = "/fixture/changed-default";
+    expect(context?.selection.nativeAccountHome).toBe("/fixture/account-owned-home");
+    expect(Object.isFrozen(context?.selection)).toBe(true);
   });
 
   it.each([

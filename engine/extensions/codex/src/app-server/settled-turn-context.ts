@@ -59,7 +59,10 @@ export async function captureCodexSettledTurnFinalizationContext(
     params.assertActive?.();
     if (result.status === "ok") {
       return new CodexSettledTurnContext(result.value, {
-        model, modelProvider, authProfileId, nativeAccountHome,
+        model,
+        modelProvider,
+        authProfileId,
+        nativeAccountHome,
       });
     }
     reason = result.reason;
