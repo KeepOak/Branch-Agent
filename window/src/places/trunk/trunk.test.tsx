@@ -135,16 +135,16 @@ describe("Customize › Trunks", () => {
     expect(request).toHaveBeenCalledWith("agents.delete", { agentId: "birch" });
     expect(document.body.textContent).not.toContain("Undo");
   });
-  it("moves the default marker in one patch, and greys Make default under explicit ownership", async () => {
+  it("saves the contact default in one patch, including explicit ownership", async () => {
     const request = fake();
     await mount(tab(request));
     await act(async () => { document.querySelectorAll(".tk-row")[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
     await click(byText("Make default"));
-    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { birch: { default: true }, oak: { default: null } } } }) });
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { defaultId: "birch" } }) });
     await act(async () => root!.unmount()); root = null; document.body.innerHTML = "";
     await mount(<TrunksTab engine={engine(fake())} level="regular" openConversation={() => {}} trunks={{ data: { ...ROSTER, ownership: "explicit" } as never, loading: false, error: null, reload: () => {} }} />);
     await act(async () => { document.querySelectorAll(".tk-row")[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
-    expect(byText("Make default").disabled).toBe(true);
+    expect(byText("Make default").disabled).toBe(false);
   });
   it("shows Defaults for every Trunk only at Technical and patches a number", async () => {
     const request = fake();
