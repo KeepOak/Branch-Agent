@@ -46,7 +46,10 @@ export async function runCodexSettledTurnFinalization(
   const nativeAccountHome = selection.nativeAccountHome;
   options = {
     ...options,
-    pluginConfig: projectBoundCodexNativeAccount(options.pluginConfig, nativeAccountHome),
+    pluginConfig: projectBoundCodexNativeAccount(
+      options.pluginConfig,
+      nativeAccountHome ? { nativeAccountHome } : undefined,
+    ),
   };
   const authRequirement = nativeAccountHome
     ? "subscription"
