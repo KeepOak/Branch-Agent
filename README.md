@@ -11,7 +11,7 @@ This is a source snapshot under active development. A feature being present in s
 - Git; npm for the desktop package.
 - A configured model provider for assistant replies.
 
-Snapshot package versions: engine `2026.9.7`, window `0.0.0`, desktop `0.4.2` with Electron `44.5.1`.
+Snapshot package versions: engine `2026.9.7`, window `0.0.0`, desktop `0.4.3` with Electron `44.5.1`.
 
 ## Build
 
@@ -69,7 +69,9 @@ Create `gateway-token` in that directory containing a random token. Keep it priv
 
 ## Source builds on GitHub
 
-The `Source builds` workflow runs only when a maintainer dispatches it on `main`. Choose engine, window, desktop, or all three. It uses hosted Linux and Windows runners, a maximum of eight matrix jobs, and a 45-minute limit per job. The window job builds its engine packages first. It uses the package commands above and does not call model providers.
+The `Source builds` workflow runs only when a maintainer dispatches it on `main`. Choose engine, window, desktop, or all three. It uses hosted Linux and Windows runners with Node `24.19.0` and a 15-minute limit per job. The window job builds its engine packages first. It uses the package commands above and does not call model providers. A build that exceeds the deadline fails; source presence does not establish a passing build.
+
+`Desktop checks` runs on pull requests, relevant pushes to `main`, and manual dispatch. Hosted Windows, macOS and Linux jobs install the desktop lockfile with `npm ci`, compile strict TypeScript, and run the two named update/readiness checks at 96 MiB. These jobs build only the desktop sources and skip the Electron binary download. They do not build the engine, launch a visible app, or call model providers.
 
 Saved `dist/` outputs are source build artifacts. The workflow does not create installers or publish releases. Artifact retention is three days.
 
