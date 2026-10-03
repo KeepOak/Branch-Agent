@@ -102,6 +102,8 @@ function lockDown(w: BrowserWindow): void {
 const windowUrl = (): string => `http://127.0.0.1:${cfg.windowPort}/`;
 
 async function start(): Promise<void> {
+  // The preload must block retained input before the early renderer can reconnect.
+  updateState = lifecycle.initialState;
   token = readToken(cfg);
   // Registered before any page loads: the preload asks for it synchronously.
   ipcMain.on("branch-desktop:info", (e) => {
@@ -128,8 +130,11 @@ async function start(): Promise<void> {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");
   }
-  await lifecycle.exclusive(() => lifecycle.recover(runningBuild)).catch(error => log(`Continuation recovery retained: ${String(error)}`));
+  await lifecycle.recover(runningBuild).catch(error => log(`Continuation recovery retained: ${String(error)}`));
   watchUpdates(win);
+}
+
+function startComponentUpdates(): void {
   stopComponentWatch = watchComponentUpdates(cfg, log, async check => {
     await lifecycle.exclusive(async () => {
       if (lifecycle.pending) {
@@ -248,7 +253,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.on("window-all-closed", () => app.quit());
   app.on("will-quit", shutdown);
-  app.whenReady().then(start).catch((err: unknown) => {
+  app.whenReady().then(async () => { await lifecycle.exclusive(start); startComponentUpdates(); }).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);
     log(`could not start: ${msg}`);
     if (!HIDDEN) dialog.showErrorBox("Branch Agent could not start", msg);

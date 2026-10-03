@@ -62,3 +62,8 @@ test("authorized idle update records identity but never invents a continuation t
 test("failed idle candidate is tombstoned before rollback with no agent replay",async()=>fixture(async({owner,read,calls})=>{
   await owner.prepare(build);owner.cancelBeforeRollback();assert.equal((await read()).phase,"idle-cancelled");await owner.recover("b".repeat(64));assert.equal(owner.pending,undefined);assert.equal(calls.length,0);
 },{prepare:async()=>({status:"idle"})}));
+
+test("launcher recovery restores input barrier before the early renderer reconnects",async()=>fixture(async({owner,file,hooks})=>{
+  await owner.prepare(build);const restored=new DesktopUpdateLifecycle(file,hooks);assert.equal(restored.initialState.phase,"reconnecting");
+  await restored.recover(build);assert.equal(restored.initialState,undefined);
+}));

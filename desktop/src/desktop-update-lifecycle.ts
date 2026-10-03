@@ -25,6 +25,11 @@ export class DesktopUpdateLifecycle {
   private busy = false;
   constructor(private readonly path: string, private readonly hooks: LifecycleHooks) {}
   get active(): boolean { return this.busy; }
+  get initialState(): { phase: "preparing" | "reconnecting"; operationId: string } | undefined {
+    const journal = this.read();
+    if (!this.pending || !journal) return undefined;
+    return { phase: journal.phase === "intent" ? "preparing" : "reconnecting", operationId: journal.operationId };
+  }
   get pending(): { phase: "intent" | "idle" | "idle-cancelled" | "prepared" | "ready" | "cancelled"; targetBuild: string } | undefined {
     const journal = this.read();
     if (!journal || journal.phase === "completed" || ["cancelled", "idle-cancelled"].includes(journal.phase) && journal.cancellationAcknowledged) return undefined;
