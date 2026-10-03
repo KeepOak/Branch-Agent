@@ -29,6 +29,12 @@ import {
 import type { BrowserDownloadResult } from "./download-types.js";
 import type { BrowserPageTextResult } from "./pw-page-markdown.js";
 import type {
+  SearchPageOptions,
+  FindElementsOptions,
+  PageSearchResult,
+  PageFindResult,
+} from "./pw-page-search.js";
+import type {
   BrowserConsoleMessage,
   BrowserNetworkRequest,
   BrowserPageError,
@@ -299,6 +305,34 @@ export async function browserPageText(
     }),
     maxChars: opts.maxChars,
   });
+}
+
+export async function browserSearchPage(
+  baseUrl: BrowserClientTarget,
+  opts: BrowserActionOptions & SearchPageOptions,
+): Promise<BrowserActionTabResult & PageSearchResult> {
+  const { profile, signal, ...body } = opts;
+  return await postBrowserJson(
+    baseUrl,
+    "/search",
+    body,
+    browserClientTimeout(baseUrl, undefined, 20000),
+    { profile, signal },
+  );
+}
+
+export async function browserFindElements(
+  baseUrl: BrowserClientTarget,
+  opts: BrowserActionOptions & FindElementsOptions,
+): Promise<BrowserActionTabResult & PageFindResult> {
+  const { profile, signal, ...body } = opts;
+  return await postBrowserJson(
+    baseUrl,
+    "/find",
+    body,
+    browserClientTimeout(baseUrl, undefined, 20000),
+    { profile, signal },
+  );
 }
 
 export async function browserEmulateSetting(

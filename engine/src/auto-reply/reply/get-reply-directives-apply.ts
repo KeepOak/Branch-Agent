@@ -440,6 +440,8 @@ export async function applyInlineDirectiveOverrides(params: {
           formatModelSelectionScopeAck({
             isDefault: modelSelection.isDefault,
             label: labelWithAlias,
+            selectedModel: modelSelection,
+            modelCatalog: modelState.allowedModelCatalog,
             configuredDefaultUpdate: applied.configuredDefaultUpdate,
             ...(stickyModelSelectionTarget ? { stickyModelSelectionTarget } : {}),
           }),

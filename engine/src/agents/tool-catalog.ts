@@ -127,6 +127,13 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
     profiles: ["coding"],
   },
   {
+    id: "report_findings",
+    description: "Report structured review findings and their resolution outcomes",
+    sectionId: "agents",
+    profiles: ["coding"],
+    includeInBranchGroup: true,
+  },
+  {
     id: "exec",
     description: EXEC_TOOL_DISPLAY_SUMMARY,
     sectionId: "runtime",

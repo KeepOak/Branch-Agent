@@ -284,6 +284,17 @@ export function buildBuiltinChatCommands(
         modelIndependent: "always",
       },
     ),
+    defineBuiltinCommand(
+      "doctor",
+      "Investigate conversation and context problems.",
+      "status",
+      "standard",
+      {
+        args: [
+          defineCommandArgument("symptom", "Problem to investigate", { captureRemaining: true }),
+        ],
+      },
+    ),
     defineBuiltinCommand("login", "Connect a model provider.", "management", "standard", {
       modelIndependent: "always",
       nativeProviders: ["discord", "slack", "telegram"],

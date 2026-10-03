@@ -51,6 +51,8 @@ const BROWSER_TOOL_ACTIONS = [
   "requests",
   "errors",
   "text",
+  "search",
+  "find",
   "emulate",
   "pdf",
   "download",
@@ -67,8 +69,6 @@ const BROWSER_SNAPSHOT_MODES = ["efficient"] as const;
 const BROWSER_SNAPSHOT_REFS = ["role", "aria"] as const;
 
 const BROWSER_IMAGE_TYPES = ["png", "jpeg"] as const;
-
-const TAB_REFERENCE_DESCRIPTION = "Tab label/id or CDP targetId.";
 
 // NOTE: Using a flattened object schema instead of Type.Union([Type.Object(...), ...])
 // because Claude API on Vertex AI rejects nested anyOf schemas as invalid JSON Schema.
@@ -112,7 +112,8 @@ export function resolveBrowserToolCapabilities(params?: {
         (profileCapabilities?.supportsPdf !== false || action !== "pdf") &&
         (profileCapabilities?.supportsRequests !== false || action !== "requests") &&
         (profileCapabilities?.supportsErrors !== false || action !== "errors") &&
-        (profileCapabilities?.supportsPageText !== false || action !== "text") &&
+        (profileCapabilities?.supportsPageText !== false ||
+          !["text", "search", "find"].includes(action)) &&
         (profileCapabilities?.supportsEmulation !== false || action !== "emulate") &&
         (profileCapabilities?.supportsScreenshots !== false || action !== "screenshot") &&
         (profileCapabilities?.supportsUploads !== false || action !== "upload") &&
@@ -141,7 +142,7 @@ function createBrowserActProperties(capabilities: BrowserToolCapabilities) {
   const supportsBatch = capabilities.actKinds.includes("batch");
   return {
     // Common fields
-    targetId: Type.Optional(Type.String({ description: TAB_REFERENCE_DESCRIPTION })),
+    targetId: Type.Optional(Type.String()),
     ref: Type.Optional(Type.String()),
     // batch - permissive children keep the provider schema flat; runtime validates each action.
     actions: Type.Optional(
@@ -154,7 +155,7 @@ function createBrowserActProperties(capabilities: BrowserToolCapabilities) {
       Type.Boolean(supportsBatch ? { description: "Stop on error; default true." } : {}),
     ),
     // click
-    doubleClick: Type.Optional(Type.Boolean({ description: "Double-click/clickCoords." })),
+    doubleClick: Type.Optional(Type.Boolean()),
     button: Type.Optional(Type.String()),
     modifiers: Type.Optional(Type.Array(Type.String())),
     ...(capabilities.actKinds.includes("clickCoords")
@@ -224,17 +225,12 @@ export function createBrowserToolSchema(capabilities: BrowserToolCapabilities) {
           dashboard: Type.Optional(
             Type.String({
               pattern: "^[a-z0-9][a-z0-9._-]{0,63}$",
-              description: "browser:dashboard widget name.",
             }),
           ),
         }
       : {}),
     node: Type.Optional(Type.String()),
-    profile: Type.Optional(
-      Type.String({
-        description: capabilities.tabBound ? "Run-bound browser profile." : "default if omitted.",
-      }),
-    ),
+    profile: Type.Optional(Type.String()),
     browser: Type.Optional(Type.String()),
     systemProfile: Type.Optional(Type.String()),
     into: Type.Optional(Type.String()),
@@ -260,7 +256,7 @@ export function createBrowserToolSchema(capabilities: BrowserToolCapabilities) {
       : {}),
     ...(capabilities.actions.includes("screenshot")
       ? {
-          labels: Type.Optional(Type.Boolean({ description: "Label snapshot/screenshot." })),
+          labels: Type.Optional(Type.Boolean()),
           fullPage: Type.Optional(Type.Boolean()),
           element: Type.Optional(Type.String()),
           type: optionalStringEnum(BROWSER_IMAGE_TYPES),
@@ -276,6 +272,19 @@ export function createBrowserToolSchema(capabilities: BrowserToolCapabilities) {
     filter: Type.Optional(Type.String()),
     clear: Type.Optional(Type.Boolean()),
     query: Type.Optional(Type.String()),
+    ...(capabilities.actions.includes("search") || capabilities.actions.includes("find")
+      ? {
+          pattern: Type.Optional(Type.String()),
+          selector: Type.Optional(Type.String()),
+          regex: Type.Optional(Type.Boolean()),
+          caseSensitive: Type.Optional(Type.Boolean()),
+          contextChars: optionalNonNegativeIntegerSchema(),
+          cssScope: Type.Optional(Type.String()),
+          maxResults: optionalNonNegativeIntegerSchema(),
+          attributes: Type.Optional(Type.Array(Type.String())),
+          includeText: Type.Optional(Type.Boolean()),
+        }
+      : {}),
     ...(capabilities.actions.includes("emulate")
       ? {
           device: Type.Optional(Type.String()),

@@ -9,6 +9,7 @@ import { handleConfigCommand, handleDebugCommand } from "./commands-config.js";
 import { handleContextCommand } from "./commands-context-command.js";
 import { handleDashboardCommand } from "./commands-dashboard.js";
 import { handleDiagnosticsCommand } from "./commands-diagnostics.js";
+import { handleDoctorCommand } from "./commands-doctor.js";
 import { handleGoalCommand } from "./commands-goal.js";
 import {
   handleCommandsListCommand,
@@ -71,6 +72,7 @@ export function loadCommandHandlers(): CommandHandler[] {
     handleStatusCommand,
     handleGoalCommand,
     handleDashboardCommand,
+    handleDoctorCommand,
     handleLearnCommand,
     handleLoopCommand,
     handleNameCommand,

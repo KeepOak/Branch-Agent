@@ -506,6 +506,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       agentId: sessionAgentId,
       label: p.label,
       displayName: preparedDisplayName,
+      sessionType: p.sessionType,
       category: p.category,
       ...(catalogTarget
         ? { catalogTarget: catalogTarget.target }

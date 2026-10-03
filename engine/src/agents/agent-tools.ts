@@ -6,8 +6,8 @@
 
 import { HEARTBEAT_RESPONSE_TOOL_NAME } from "../auto-reply/heartbeat-tool-response.js";
 import { messageToolOwnsVisibleReply } from "../auto-reply/source-reply-delivery-mode.js";
-import { resolveEventSessionRoutingPolicy } from "../infra/event-session-routing.js";
 import { mergeGatewayAgentCliPath } from "../infra/branch-cli-shim.js";
+import { resolveEventSessionRoutingPolicy } from "../infra/event-session-routing.js";
 import { logWarn } from "../logger.js";
 import type { PluginHookToolRequesterContext } from "../plugins/hook-types.js";
 import { appendRuntimePluginToolGrant } from "../plugins/tool-grant-allowlist.js";
@@ -37,6 +37,10 @@ import {
 import type { AnyAgentTool } from "./agent-tools.types.js";
 import { waitForExecScope } from "./bash-process-registry.js";
 import { resolveProcessToolScopeKey } from "./bash-process-scope.js";
+import { resolveBranchPluginToolsForOptions } from "./branch-plugin-tools.js";
+import { createBranchTools, filterToolsByClientCaps } from "./branch-tools.js";
+import { filterRequesterYieldTools } from "./branch-tools.requester-yield.js";
+import { applySwarmCollectorToolContract } from "./branch-tools.swarm.js";
 import { listChannelAgentTools } from "./channel-tools.js";
 import { resolveConversationCapabilityProfile } from "./conversation-capability-profile.js";
 import { isConversationToolAllowed } from "./conversation-tool-policy-pipeline.js";
@@ -51,10 +55,6 @@ import { prepareGitHubToolEnvironment } from "./github-tool-identity.js";
 import { resolveExecToolConfig } from "./lazy-exec-tool.js";
 import { resolveLocalModelLeanPreserveToolNames } from "./local-model-lean.js";
 import { createMemoryWriteProvenanceObserver } from "./memory-write-provenance.js";
-import { resolveBranchPluginToolsForOptions } from "./branch-plugin-tools.js";
-import { createBranchTools, filterToolsByClientCaps } from "./branch-tools.js";
-import { filterRequesterYieldTools } from "./branch-tools.requester-yield.js";
-import { applySwarmCollectorToolContract } from "./branch-tools.swarm.js";
 import { prepareCoreToolPolicy } from "./prepared-tool-surface.js";
 import { resolveSandboxFileIdentity } from "./sandbox/file-mutation-identity.js";
 import { createEmbeddedMessageInvocationPolicy } from "./scheduled-message-invocation.js";
@@ -249,6 +249,8 @@ export function createBranchCodingToolsInternal(
   const coreTools =
     preparedTools === undefined
       ? createCoreCodingTools({
+          agentId: executionAgentId,
+          sessionKey: executionSessionKey,
           abortSignal: options?.abortSignal,
           attachmentReadRoot,
           codingRoot,

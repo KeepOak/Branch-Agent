@@ -25,6 +25,7 @@ export function buildSkillsSection(params: {
       : []),
     "Several: most specific. No relevant skill: read none.",
     "Up-front max one. Never invent paths.",
+    "A [SKILL_PRUNED: ...] marker means those instructions are gone. Reload the named skill with skills_read (or skills.read in exec) before relying on it; one reload is enough, then ignore older markers for that skill.",
     "External writes: batch safely; no tight loops; honor 429/Retry-After.",
     ...(trimmed ? [trimmed] : []),
     "",

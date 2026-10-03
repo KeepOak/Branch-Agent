@@ -35,10 +35,7 @@ export {
 export { saveMediaBuffer } from "branch/plugin-sdk/media-runtime";
 export { describeImageFile } from "branch/plugin-sdk/media-understanding-runtime";
 export { wrapExternalContent } from "branch/plugin-sdk/security-runtime";
-export {
-  normalizeOptionalString,
-  readStringValue,
-} from "branch/plugin-sdk/string-coerce-runtime";
+export { normalizeOptionalString, readStringValue } from "branch/plugin-sdk/string-coerce-runtime";
 export type { BrowserToolCapabilities } from "./browser-tool.schema.js";
 export {
   browserAct,
@@ -48,6 +45,8 @@ export {
   browserRequests,
   browserErrors,
   browserPageText,
+  browserSearchPage,
+  browserFindElements,
   browserEmulateSetting,
   browserDownload,
   browserNavigate,

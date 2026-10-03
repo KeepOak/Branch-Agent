@@ -6,6 +6,7 @@ import { readRegularFile } from "@openclaw/fs-safe/advanced";
 import { hasErrnoCode, toErrorObject } from "../../../infra/errors.js";
 import { decodeWindowsTextFileBuffer } from "../../../infra/windows-encoding.js";
 import type { ImageContent, TextContent } from "../../../llm/types.js";
+import { extractEpubText } from "../../../media/epub-extract.js";
 import {
   classifyMediaReferenceSource,
   normalizeMediaReferenceSource,
@@ -363,7 +364,7 @@ export function createReadToolDefinition(
   return {
     name: "read",
     label: "read",
-    description: `Read text, DOCX, XLSX, ODS or image file (jpg/png/gif/webp/bmp); images attach to model context. Text caps ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. Continue with offset/limit, or cursor within a long line.`,
+    description: `Read text, DOCX, XLSX, ODS, EPUB or image file (jpg/png/gif/webp/bmp); images attach to model context. Text caps ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. Continue with offset/limit, or cursor within a long line.`,
     promptSnippet: "Read file contents",
     promptGuidelines: ["Use read to examine files and its offset, limit, or cursor to continue."],
     parameters: readToolInputSchema,
@@ -460,7 +461,12 @@ export function createReadToolDefinition(
             const attachment = mimeType ? undefined : await classifyAttachmentBytes({ buffer });
             const officeContent = mimeType
               ? undefined
-              : await extractOfficeContent(absolutePath, buffer, signal);
+              : absolutePath.toLowerCase().endsWith(".epub")
+                ? {
+                    kind: "text" as const,
+                    text: await extractEpubText(buffer, basename(absolutePath), signal),
+                  }
+                : await extractOfficeContent(absolutePath, buffer, signal);
             let content: (TextContent | ImageContent)[];
             let textDetails: Parameters<typeof createReadToolDetails>[1];
             const modelHasVision = options?.modelHasVision ?? ctx?.model?.input.includes("image");

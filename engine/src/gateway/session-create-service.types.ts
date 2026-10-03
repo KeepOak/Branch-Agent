@@ -108,6 +108,7 @@ export type CreateGatewaySessionParams = {
   label?: string;
   /** Creation-only title seed; never renames an existing session. */
   displayName?: string;
+  sessionType?: NonNullable<SessionEntry["sessionType"]>;
   category?: string;
   model?: string;
   agentRuntime?: string;

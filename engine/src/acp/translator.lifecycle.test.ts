@@ -125,7 +125,10 @@ describe("acp translator stable lifecycle handlers", () => {
     expect(second.sessions.map((session) => session.cwd)).toEqual(["/work/a", "/work/a"]);
     expect(second.nextCursor).toBeNull();
     expect(request.mock.calls).toEqual(
-      [3, 6, 5, 10].map((limit) => ["sessions.list", { limit, includeDerivedTitles: true }]),
+      [3, 6, 5, 10].map((limit) => [
+        "sessions.list",
+        { limit, includeDerivedTitles: true, sessionTypes: ["user", "scheduled", "acp"] },
+      ]),
     );
     await expect(
       agent.listSessions({ cwd: "/work/a", cursor: ` ${first.nextCursor} ` }),
@@ -241,6 +244,9 @@ describe("acp translator stable lifecycle handlers", () => {
       recorded.resolve();
     });
     const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+      if (method === "sessions.create") {
+        return { ok: true, key: params?.key, entry: { spawnedCwd: params?.cwd } };
+      }
       if (method === "chat.send") {
         return { runId: params?.idempotencyKey, status: "started" };
       }

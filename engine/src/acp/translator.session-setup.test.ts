@@ -55,7 +55,10 @@ function harness(
 ) {
   const sessionStore = createInMemorySessionStore();
   const connection = createAcpConnection();
-  const request = vi.fn(async (method: string) => {
+  const request = vi.fn(async (method: string, params: Record<string, unknown>) => {
+    if (method === "sessions.create") {
+      return { ok: true, key: params.key, entry: { spawnedCwd: params.cwd } };
+    }
     if (method === "sessions.list" && options.row) {
       return { sessions: [options.row] };
     }

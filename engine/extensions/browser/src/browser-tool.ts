@@ -433,7 +433,7 @@ export function createBrowserTool(
       if (
         !proxyRequest &&
         isUserBrowserProfile &&
-        ["requests", "errors", "text", "emulate"].includes(action)
+        ["requests", "errors", "text", "search", "find", "emulate"].includes(action)
       ) {
         throw new Error(
           `action=${action} is not supported for existing-session profiles; use action=snapshot to inspect this page, or select a managed browser profile for ${action}.`,
@@ -552,6 +552,8 @@ export function createBrowserTool(
         "screenshot",
         "snapshot",
         "text",
+        "search",
+        "find",
         "requests",
         "errors",
         "console",

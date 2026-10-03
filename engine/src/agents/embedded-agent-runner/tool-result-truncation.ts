@@ -11,6 +11,14 @@ import { sha256Base64Url } from "../../infra/crypto-digest.js";
 import { createDedupeCache } from "../../infra/dedupe.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { emitSessionTranscriptUpdate } from "../../sessions/transcript-events.js";
+import {
+  collectProtectedSkillNames,
+  skillReadCallSites,
+  skillMessageText,
+  skillInstructionLength,
+  skillPrunedMarker,
+  SKILL_VIEW_PRUNE_MIN_CHARS,
+} from "../../skills/runtime/pruned-skill-markers.js";
 import { compileGlobPatterns, matchesAnyGlobPattern } from "../glob-pattern.js";
 import type { AgentMessage } from "../runtime/index.js";
 import type { SessionManager } from "../sessions/index.js";
@@ -169,6 +177,24 @@ function softPruneCacheTtlToolResult(
   return { ...message, content: [{ type: "text", text: projected }] };
 }
 
+function markPrunedSkillResult(
+  message: CacheTtlToolResultMessage,
+  source: AgentMessage | undefined,
+  skillName: string | undefined,
+): CacheTtlToolResultMessage {
+  if (!skillName || !source || skillInstructionLength(source) <= SKILL_VIEW_PRUNE_MIN_CHARS) {
+    return message;
+  }
+  const marker = skillPrunedMarker(skillName);
+  const text = skillMessageText(message);
+  return text.includes(marker)
+    ? message
+    : {
+        ...message,
+        content: [{ type: "text", text: `${text}\n${marker}` }],
+      };
+}
+
 /** Projects expired cache-TTL history without mutating the transcript. */
 export function pruneExpiredCacheTtlToolResults(params: {
   messages: AgentMessage[];
@@ -235,6 +261,10 @@ export function pruneExpiredCacheTtlToolResults(params: {
     return unchanged;
   }
   let pruned = false;
+  const skillCalls = new Map(
+    skillReadCallSites(params.messages).map((site) => [site.id, site.name]),
+  );
+  const protectedSkills = collectProtectedSkillNames(params.messages, cutoff);
   const eligible: { index: number; chars: number }[] = [];
   for (let index = start; index < cutoff; index++) {
     const message = messages[index];
@@ -256,7 +286,19 @@ export function pruneExpiredCacheTtlToolResults(params: {
     }
     // Trim the canonical source, not the oversized projection, so a restart re-derives identical bytes.
     const source = params.messages[index];
-    const projected = source?.role === "toolResult" ? softPruneCacheTtlToolResult(source) : source;
+    const skillName =
+      message.toolName === "skills_read" ? skillCalls.get(message.toolCallId) : undefined;
+    if (
+      skillName &&
+      (protectedSkills.has(skillName.toLowerCase()) ||
+        (source && skillInstructionLength(source) <= SKILL_VIEW_PRUNE_MIN_CHARS))
+    ) {
+      continue;
+    }
+    const projected =
+      source?.role === "toolResult"
+        ? markPrunedSkillResult(softPruneCacheTtlToolResult(source), source, skillName)
+        : source;
     if (projected && projected !== source && projected.role === "toolResult") {
       const projectedChars = cacheTtlMessageChars(projected);
       totalChars += projectedChars - candidate.chars;
@@ -282,8 +324,11 @@ export function pruneExpiredCacheTtlToolResults(params: {
         ...message,
         content: [{ type: "text" as const, text: settings.placeholder }],
       };
-      totalChars += cacheTtlMessageChars(cleared) - chars;
-      recordProjection(index, cleared, "hard");
+      const skillName =
+        message.toolName === "skills_read" ? skillCalls.get(message.toolCallId) : undefined;
+      const marked = markPrunedSkillResult(cleared, params.messages[index], skillName);
+      totalChars += cacheTtlMessageChars(marked) - chars;
+      recordProjection(index, marked, "hard");
       pruned = true;
     }
   }

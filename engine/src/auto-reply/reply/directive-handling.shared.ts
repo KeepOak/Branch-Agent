@@ -1,5 +1,10 @@
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
 import type { AgentModelPrimaryWriteTarget } from "../../agents/agent-scope.js";
+import type { ModelCatalogEntry } from "../../agents/model-catalog.types.js";
+import {
+  formatModelSuitabilityWarning,
+  type ModelSuitabilitySelection,
+} from "../../agents/model-suitability.js";
 import type { StickyModelSelectionDispatchOutcome } from "../../agents/sticky-model-selection.js";
 import { formatCliCommand } from "../../cli/command-format.js";
 import {
@@ -43,12 +48,24 @@ export const DIRECTIVE_ACK_MESSAGES = {
 
 export const withOptions = (line: string, options: string) => `${line}\nOptions: ${options}.`;
 
-export function formatModelSelectionScopeAck(params: {
+type ModelSelectionScopeAckParams = {
   isDefault: boolean;
   label: string;
   configuredDefaultUpdate?: StickyModelSelectionDispatchOutcome;
   stickyModelSelectionTarget?: AgentModelPrimaryWriteTarget;
-}): string {
+  selectedModel?: ModelSuitabilitySelection;
+  modelCatalog?: readonly ModelCatalogEntry[];
+};
+
+export function formatModelSelectionScopeAck(params: ModelSelectionScopeAckParams): string {
+  const acknowledgement = formatModelSelectionScopeMessage(params);
+  const warning = params.selectedModel
+    ? formatModelSuitabilityWarning(params.selectedModel, params.modelCatalog)
+    : undefined;
+  return warning ? `${acknowledgement} ${warning}` : acknowledgement;
+}
+
+function formatModelSelectionScopeMessage(params: ModelSelectionScopeAckParams): string {
   if (params.isDefault && !params.stickyModelSelectionTarget) {
     return `Session model reset to configured default (${params.label}).`;
   }
@@ -406,9 +423,7 @@ export function formatElevatedUnavailableText(params: {
     );
   }
   if (params.sessionKey) {
-    lines.push(
-      `See: ${formatCliCommand(`branch sandbox explain --session ${params.sessionKey}`)}`,
-    );
+    lines.push(`See: ${formatCliCommand(`branch sandbox explain --session ${params.sessionKey}`)}`);
   }
   return lines.join("\n");
 }

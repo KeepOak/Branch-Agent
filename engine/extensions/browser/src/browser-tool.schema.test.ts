@@ -66,6 +66,8 @@ describe("browser tool schema", () => {
       "requests",
       "errors",
       "text",
+      "search",
+      "find",
       "emulate",
       "pdf",
       "download",
@@ -114,7 +116,7 @@ describe("browser tool schema", () => {
     expect(Value.Check(schema, { action: "text" })).toBe(true);
     expect(Value.Check(schema, { action: "act", request: { kind: "batch" } })).toBe(false);
     expect(Value.Check(schema, { action: "act", kind: "clickCoords" })).toBe(false);
-    expect(schema.properties).not.toHaveProperty("selector");
+    expect(schema.properties).toHaveProperty("selector");
     expect(Value.Check(schema, { action: "snapshot", snapshotFormat: "aria" })).toBe(false);
     expect(Value.Check(schema, { action: "snapshot", refs: "role" })).toBe(false);
     expect(Value.Check(schema, { action: "snapshot", snapshotFormat: "ai", refs: "aria" })).toBe(

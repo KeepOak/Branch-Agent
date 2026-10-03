@@ -7,6 +7,7 @@ import {
   SessionPermissionModeSchema,
   SessionRepositorySourceSchema,
   SessionToolOverridesSchema,
+  SessionTypeSchema,
 } from "./sessions-row.js";
 import { SessionVisibilitySchema } from "./sessions-sharing-values.js";
 
@@ -22,11 +23,12 @@ export const SessionsCreateParamsSchema = closedObject({
   displayName: Type.Optional(
     Type.String({
       minLength: 1,
-      maxLength: 500,
       description:
         "Prepared presentation title for a newly created session. Unlike label it is not unique and never claims a label; ignored when adopting an existing key.",
     }),
   ),
+  /** Creation-only discovery type; adoption preserves the existing row. */
+  sessionType: Type.Optional(SessionTypeSchema),
   titleSource: Type.Optional(
     Type.String({
       maxLength: 1_000,

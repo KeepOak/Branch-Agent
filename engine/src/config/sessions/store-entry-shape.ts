@@ -1,6 +1,7 @@
 import { asNonNegativeFiniteNumber } from "@branch/normalization-core/number-coercion";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
+import { SESSION_TYPE_VALUES } from "../../../packages/gateway-protocol/src/schema/sessions-row.js";
 import {
   normalizeSessionColorValue,
   normalizeSessionIconValue,
@@ -78,6 +79,10 @@ export function projectCanonicalSessionEntryShape(value: Record<string, unknown>
       delete canonicalValue[key];
     }
   };
+  // Goose defaults an unrecognized stored type to User; retain legacy absence on disk.
+  if (!SESSION_TYPE_VALUES.some((type) => type === canonicalValue.sessionType)) {
+    delete canonicalValue.sessionType;
+  }
   const icon =
     typeof canonicalValue.icon === "string" ? normalizeSessionIconValue(canonicalValue.icon) : null;
   setOptionalField("icon", icon);

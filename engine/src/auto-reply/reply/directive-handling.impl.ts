@@ -660,6 +660,8 @@ export async function handleDirectiveOnly(
       formatModelSelectionScopeAck({
         isDefault: modelSelection.isDefault,
         label: labelWithAlias,
+        selectedModel: modelSelection,
+        modelCatalog: allowedModelCatalog,
         configuredDefaultUpdate,
         ...(params.stickyModelSelectionTarget
           ? { stickyModelSelectionTarget: params.stickyModelSelectionTarget }

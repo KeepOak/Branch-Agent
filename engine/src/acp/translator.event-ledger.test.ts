@@ -23,6 +23,9 @@ function createHarness(eventLedger: AcpEventLedger, rejectSend = false) {
   const connection = createAcpConnection();
   const sent = createDeferred<string>();
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+    if (method === "sessions.create") {
+      return { ok: true, key: params?.key, entry: { spawnedCwd: params?.cwd } };
+    }
     if (method === "sessions.get") {
       throw new Error("ledger replay must not load the transcript");
     }
