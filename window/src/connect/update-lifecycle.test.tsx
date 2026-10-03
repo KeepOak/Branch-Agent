@@ -17,7 +17,7 @@ function fixture() {
   let phase = "connected";
   let key = receipt.sessionKey;
   const listeners = new Set<() => void>();
-  const request = vi.fn(async (method: string) => {
+  const request = vi.fn(async (method: string): Promise<unknown> => {
     if (method === "sessions.describe") return { session: { sessionId: "original" } };
     if (method === "desktop.restart.prepare") return receipt;
     if (method === "desktop.restart.resume") return { status: "accepted" };
@@ -111,4 +111,34 @@ it("the real session sender cannot admit queued input while the restart barrier 
   const session = new SaplingSession("ws://fixture", undefined, receipt.sessionKey);
   await expect(session.send("kept", { idempotencyKey: "stable", sessionKey: receipt.sessionKey })).rejects.toThrow("updating");
   expect(gateway.request).not.toHaveBeenCalled(); session.stop();
+});
+
+
+it("requests authoritative minimal idle admission for a first-use conversation without a physical ID", async () => {
+  const f = fixture();
+  f.request.mockImplementation(async (method) => method === "sessions.describe" ? { session: {} } : { status: "idle", lifecycleGeneration: "operation", targetBuild: "candidate" });
+  expect(await f.prepare({ operationId: "operation", targetBuild: "candidate" })).toEqual({ status: "idle", lifecycleGeneration: "operation", targetBuild: "candidate" });
+  expect(f.request).toHaveBeenCalledWith("desktop.restart.prepare", { lifecycleGeneration: "operation", targetBuild: "candidate" });
+  expect(updateBlocked()).toBe(true); f.unbind();
+});
+
+it("defers when the engine reports unrelated active work instead of inventing an idle receipt", async () => {
+  const f = fixture(); f.open("");
+  f.request.mockResolvedValue({ status: "deferred", lifecycleGeneration: "operation", targetBuild: "candidate" });
+  expect(await f.prepare({ operationId: "operation", targetBuild: "candidate" })).toEqual({ status: "deferred", lifecycleGeneration: "operation", targetBuild: "candidate" });
+  expect(f.request).toHaveBeenCalledWith("desktop.restart.prepare", { lifecycleGeneration: "operation", targetBuild: "candidate" });
+  expect(updateBlocked()).toBe(false); f.unbind();
+});
+
+it("cancels an aborted idle update with the exact engine generation binding", async () => {
+  const f = fixture(); setUpdateBarrier(true);
+  expect(await f.cancel({ receipt: { lifecycleGeneration: "operation", targetBuild: "candidate" } })).toBe("cancelled");
+  expect(f.request).toHaveBeenCalledWith("desktop.restart.cancel", { lifecycleGeneration: "operation", targetBuild: "candidate" });
+  expect(updateBlocked()).toBe(true); f.unbind();
+});
+
+it("does not checkpoint a different contact when the user switches during the actual session read", async () => {
+  const f = fixture(); f.request.mockImplementation(async () => { f.open("agent:other:main"); return { session: { sessionId: "original" } }; });
+  await expect(f.prepare({ operationId: "operation", targetBuild: "candidate" })).rejects.toThrow("conversation changed");
+  expect(f.request).toHaveBeenCalledTimes(1); expect(updateBlocked()).toBe(true); f.unbind();
 });

@@ -134,6 +134,10 @@ export function Composer(props: Props) {
   const trunkName = conv.trunk?.name || name;
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
 
+  const deliver = useCallback(
+    (text: string, files = draft.files, people = draft.people, queue?: string) => onSend(text, { ...buildExtras(text, files, people, queue, props.replyTo), idempotencyKey: crypto.randomUUID(), sessionKey: engine?.sessionKey ?? undefined, sessionId: str(row.sessionId) || undefined }),
+    [onSend, draft.files, draft.people, props.replyTo, engine?.sessionKey, row.sessionId],
+  );
   const line = useWaitingLine(engine?.sessionKey ?? null, working, Boolean(props.offline) || !conv.loaded, (item, steer) => {
     return onSend(item.text, { ...buildExtras(item.text, item.files, item.people ?? [], steer ? "steer" : undefined, item.reply), idempotencyKey: item.id, sessionId: item.sessionId, sessionKey: engine?.sessionKey ?? undefined }).then(() => {
       if (steer) toast(`Steered ${trunkName}. It picks this up at its next step.`);
@@ -430,7 +434,8 @@ export function Composer(props: Props) {
         people={draft.people}
         onForget={draft.forget}
         onSteer={async (text) => {
-          deliver(text, [], [], "steer");
+          try { await deliver(text, [], [], "steer"); }
+          catch (error) { setProblem(error instanceof Error ? error.message : "Delivery not confirmed."); return false; }
           toast(`Steered ${trunkName}. It picks this up at its next step.`);
           return true;
         }}
@@ -609,7 +614,7 @@ export function Composer(props: Props) {
         ) : null}
         {menu === "mode" ? <ModeMenu anchor={anchors.mode} onClose={() => setMenu(null)} mode={mode} asSet={asSet} canSelectFull={admin} onPick={(m) => void pickMode(m)} onOpen={onOpen} row={row} onElevated={(level) => void patch({ elevatedLevel: level })} /> : null}
       </form>
-      {picture ? <PictureDialog onClose={() => setPicture(false)} onMake={(words) => deliver(`Make a picture: ${words}`, [], [])} /> : null}
+      {picture ? <PictureDialog onClose={() => setPicture(false)} onMake={(words) => { void deliver(`Make a picture: ${words}`, [], []).catch((error: unknown) => setProblem(error instanceof Error ? error.message : "Delivery not confirmed.")); }} /> : null}
       {photo ? <PhotoDialog onClose={() => setPhoto(false)} onUse={(f) => void draft.addFiles([f], "file")} onUpload={() => fileInput.current?.click()} /> : null}
     </div>
   );
