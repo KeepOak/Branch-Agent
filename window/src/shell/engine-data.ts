@@ -9,7 +9,7 @@ const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
 export type Trunk = { id: string; name: string; isDefault: boolean; avatar?: string; theme?: string; paused?: boolean };
-export type Trunks = { list: Trunk[]; defaultId: string | null };
+export type Trunks = { list: Trunk[]; defaultId: string | null; loaded?: boolean };
 
 const EMPTY_LIST: ConversationsSnapshot = { rows: [], loaded: false, error: null };
 
@@ -34,7 +34,9 @@ export function useConversations(session: SaplingSession, ready: boolean, mainKe
 /** The Trunks, as OpenClaw's agents.list returns them (identity.name, defaultId). */
 export function readTrunks(result: unknown): Trunks {
   const r = rec(result);
-  const agents = Array.isArray(r.agents) ? r.agents.map(rec) : [];
+  // Only the engine's semantic system kind is hidden. Configured contacts (even
+  // one named Branch or used as a bootstrap owner) remain ordinary agents.
+  const agents = Array.isArray(r.agents) ? r.agents.map(rec).filter((a) => str(a.id) && a.kind !== "system") : [];
   const defaultId = str(r.defaultId) || null;
   return {
     defaultId,
@@ -57,7 +59,7 @@ export function useTrunks(session: SaplingSession, ready: boolean): Trunks {
     }
     const load = () =>
       session.request("agents.list", {}).then(
-        (r) => setTrunks(readTrunks(r)),
+        (r) => setTrunks({ ...readTrunks(r), loaded: true }),
         (error: unknown) => console.warn("agents.list failed", error),
       );
     void load();
