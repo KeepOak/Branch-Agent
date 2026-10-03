@@ -240,6 +240,7 @@ export function createDiscordDraftPreviewController(params: {
       payload: ReplyPayload,
       info: ReplyDispatchRuntimeInfo,
       target: { to: string; threadId?: string | number },
+      canAdopt: () => boolean = () => true,
     ) {
       const adopt = info.adoptProgressContinuation;
       if (
@@ -266,6 +267,9 @@ export function createDiscordDraftPreviewController(params: {
       };
       return await withDiscordRequestAuthority(assertCurrent, async () => {
         assertCurrent();
+        if (!canAdopt()) {
+          return false;
+        }
         // beforeDeliver has frozen the compositor. Its retained display data can
         // still publish a delayed card, without reopening progress callbacks.
         freezeProgress();
@@ -273,6 +277,9 @@ export function createDiscordDraftPreviewController(params: {
         draftStream.update(text, { complete: true });
         await draftStream.flush();
         assertCurrent();
+        if (!canAdopt()) {
+          return false;
+        }
         const messageId = draftStream.messageId();
         if (!messageId || !text || draftStream.lastDeliveredText() !== text) {
           return false;

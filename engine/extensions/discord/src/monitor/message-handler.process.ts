@@ -304,21 +304,24 @@ export async function processDiscordMessage(
       );
       return { visibleReplySent: false };
     }
-    // Recheck every real payload send: newer ingress can arrive while a turn is queued or running.
-    const guardedPayload = copyReplyPayloadMetadata(incomingPayload, { ...incomingPayload });
-    const staleness = applyDiscordStalenessGuard({
-      config: stalenessConfig,
-      owner: ctx.client,
-      message: { channel_id: messageChannelId },
-      startSequence: stalenessStartSequence,
-      content: guardedPayload,
-    });
-    if (!staleness.shouldSend) {
-      logVerbose(
-        `discord: skip ${info.kind} reply superseded by ${staleness.messagesSinceTurnStart} newer channel messages`,
-      );
-      return { visibleReplySent: false };
-    }
+    // Keep canonical text intact until transcript recovery has finished.
+    const canonicalPayload = copyReplyPayloadMetadata(incomingPayload, { ...incomingPayload });
+    const guardDelivery = (candidate: ReplyPayload) => {
+      const guarded = copyReplyPayloadMetadata(candidate, { ...candidate });
+      const decision = applyDiscordStalenessGuard({
+        config: stalenessConfig,
+        owner: ctx.client,
+        message: { channel_id: messageChannelId },
+        startSequence: stalenessStartSequence,
+        content: guarded,
+      });
+      if (!decision.shouldSend) {
+        logVerbose(
+          `discord: skip ${info.kind} reply superseded by ${decision.messagesSinceTurnStart} newer channel messages`,
+        );
+      }
+      return { payload: guarded, decision };
+    };
     const deliverySession = options?.deliverySession ?? getGroupThreadDeliverySession();
     const deliveryOptions = {
       cfg,
@@ -339,7 +342,7 @@ export async function processDiscordMessage(
       onPlatformSendDispatch: info.onPlatformSendDispatch,
       assertPlatformSendAuthorized: info.assertPlatformSendAuthorized,
     };
-    let payload = guardedPayload;
+    let payload = canonicalPayload;
     if (info.participant && (payload.text || payload.mediaUrl || payload.mediaUrls?.length)) {
       payload = {
         ...payload,
@@ -348,7 +351,11 @@ export async function processDiscordMessage(
     }
     const isFinal = info.kind === "final";
     if (payload.isReasoning) {
-      const raw = (payload.text ?? "").trim();
+      const guarded = guardDelivery(payload);
+      if (!guarded.decision.shouldSend) {
+        return { visibleReplySent: false };
+      }
+      const raw = (guarded.payload.text ?? "").trim();
       const body = raw.startsWith("Reasoning:\n") ? raw.slice("Reasoning:\n".length).trim() : raw;
       if (!body) {
         return { visibleReplySent: false };
@@ -419,13 +426,26 @@ export async function processDiscordMessage(
       );
       return { visibleReplySent: false };
     }
+    const preparedGuard = guardDelivery(deliverablePayload);
+    if (!preparedGuard.decision.shouldSend) {
+      return { visibleReplySent: false };
+    }
     if (
-      await draftPreview.adoptProgressContinuation(deliverablePayload, info, {
-        to: isDirectMessage
-          ? (ctxPayload.OriginatingTo ?? ctxPayload.To ?? deliverTarget)
-          : deliverTarget,
-        threadId: deliverThreadId,
-      })
+      await draftPreview.adoptProgressContinuation(
+        deliverablePayload,
+        info,
+        {
+          to: isDirectMessage
+            ? (ctxPayload.OriginatingTo ?? ctxPayload.To ?? deliverTarget)
+            : deliverTarget,
+          threadId: deliverThreadId,
+        },
+        () => {
+          const { decision } = guardDelivery(deliverablePayload);
+          // A stale tagged answer must deliver its text rather than transfer an untagged card.
+          return decision.shouldSend && !decision.stale;
+        },
+      )
     ) {
       replyReference.markSent();
       return { visibleReplySent: true };
@@ -477,14 +497,19 @@ export async function processDiscordMessage(
           !deliverablePayload.text?.trim()
             ? { ...deliverablePayload, text: ttsSupplement.spokenText }
             : deliverablePayload;
+        // Recheck after typing, preview adoption and lifecycle preparation have awaited.
+        const guarded = guardDelivery(finalPayload);
+        if (!guarded.decision.shouldSend) {
+          return deliveryResult;
+        }
         // Preserve intended user/role pings without escalating broadcast mentions.
         const allowedMentions =
-          freshPreviewFinal && discordTextHasBroadcastMention(finalPayload.text ?? "")
+          freshPreviewFinal && discordTextHasBroadcastMention(guarded.payload.text ?? "")
             ? TARGETED_ONLY_ALLOWED_MENTIONS
             : undefined;
         deliveryResult = await deliverDiscordReply({
           ...deliveryOptions,
-          replies: [finalPayload],
+          replies: [guarded.payload],
           target: deliverTarget,
           replyToId: replyReference.use(),
           allowedMentions,
