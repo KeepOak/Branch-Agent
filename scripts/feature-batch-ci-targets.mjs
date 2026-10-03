@@ -1,5 +1,9 @@
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
+  'src/agents/agent-create.test.ts',
+  'src/agents/auth-profiles/usage-state.test.ts',
+  'src/agents/auth-profiles/order.test.ts',
+  'src/agents/contact-trunk.test.ts',
   'src/config/config.identity-avatar.test.ts',
   'src/gateway/assistant-avatar.test.ts',
   'src/gateway/assistant-identity.test.ts',
@@ -38,6 +42,10 @@ export const engineTests = [
 ];
 
 export const windowTests = [
+  'src/setup/FirstTrunk.test.tsx',
+  'src/setup/setup.test.tsx',
+  'src/places/trunk/trunk.test.tsx',
+  'src/shell/conversation-actions.test.ts',
   'src/transcript-export/replay-html.test.ts',
   'src/transcript-export/ExportDialog.test.tsx',
   'src/transcript-export/render.test.ts',
@@ -45,6 +53,10 @@ export const windowTests = [
 ];
 
 export const engineStrictFiles = [
+  'src/agents/agent-create.test.ts',
+  'src/agents/auth-profiles/usage-state.test.ts',
+  'src/agents/auth-profiles/order.test.ts',
+  'src/agents/contact-trunk.test.ts',
   'src/config/config.identity-avatar.test.ts',
   'src/gateway/assistant-avatar.test.ts',
   'src/gateway/assistant-identity.test.ts',
@@ -85,6 +97,17 @@ export const engineStrictFiles = [
 ];
 
 export const windowStrictFiles = [
+  'src/shell/WindowShell.tsx',
+  'src/stage/novnc.d.ts',
+  'src/setup/FirstTrunk.tsx',
+  'src/setup/FirstTrunk.test.tsx',
+  'src/setup/SetupFlow.tsx',
+  'src/setup/setup.test.tsx',
+  'src/shell/engine-data.ts',
+  'src/places/trunk/api.ts',
+  'src/places/trunk/trunk.test.tsx',
+  'src/shell/conversation-actions.ts',
+  'src/shell/conversation-actions.test.ts',
   'src/transcript-export/replay-runtime.ts',
   'src/transcript-export/replay-html.ts',
   'src/transcript-export/render.ts',

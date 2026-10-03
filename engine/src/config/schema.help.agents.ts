@@ -1,4 +1,6 @@
 export const AGENT_FIELD_HELP: Record<string, string> = {
+  "agents.defaultId":
+    "Default contact Trunk for unrouted conversations. Explicit channel bindings take precedence; changing it preserves each Trunk's ongoing conversation and existing session history.",
   ui: "UI presentation settings for accenting and operator display preferences. Use this for readability customization without changing runtime behavior.",
   "ui.seamColor":
     "Primary accent color used by UI surfaces for emphasis, badges, and visual identity cues. Use high-contrast values that remain readable across light/dark themes.",

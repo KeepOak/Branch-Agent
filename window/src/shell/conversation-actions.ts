@@ -145,12 +145,14 @@ export function conversationActions(request: Request, list: ConversationList, op
       notify(failed.length ? `Couldn't delete ${failed.join(", ")}.` : `Deleted ${rows.length} conversations.`, failed.length ? { tone: "bad" } : undefined);
       await list.refresh();
     },
-    /** A new conversation with a Trunk (sessions.create, as OpenClaw's ui/src/lib/sessions/create.ts). */
+    /** Open the Trunk's ongoing contact conversation without creating a fresh thread. */
     async create(agentId?: string): Promise<string | null> {
       try {
-        const result = (await request("sessions.create", agentId ? { agentId } : {})) as { key?: unknown };
-        await list.refresh();
-        return typeof result.key === "string" ? result.key : null;
+        const roster = (await request("agents.list", {})) as { defaultId?: unknown; mainKey?: unknown };
+        const id = agentId || (typeof roster.defaultId === "string" ? roster.defaultId : "");
+        if (!id) throw new Error("Create a Trunk before starting a conversation");
+        const main = typeof roster.mainKey === "string" && roster.mainKey ? roster.mainKey : "main";
+        return `agent:${id}:${main}`;
       } catch (e) {
         notify(`Couldn't start a conversation: ${reason(e)}.`, { tone: "bad" });
         return null;
