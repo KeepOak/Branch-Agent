@@ -30,6 +30,10 @@ const AgentEntryConfigSchema = z.preprocess(
 export const AgentsSchema = z
   .strictObject({
     ownership: z.literal("explicit").optional(),
+    defaultId: z
+      .string()
+      .regex(/^[a-z0-9_][a-z0-9_-]{0,63}$/i, "Invalid agent id")
+      .optional(),
     defaults: z.lazy(() => AgentDefaultsSchema).optional(),
     entries: z
       .record(
@@ -40,6 +44,16 @@ export const AgentsSchema = z
   })
   .superRefine((value, ctx) => {
     const entries = Object.entries(value.entries ?? {});
+    if (
+      value.defaultId &&
+      !entries.some(([id]) => normalizeAgentId(id) === normalizeAgentId(value.defaultId!))
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["defaultId"],
+        message: "agents.defaultId must name a configured Trunk",
+      });
+    }
     if (entries.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -76,12 +90,17 @@ export const AgentsSchema = z
         message: "agents.ownership=explicit cannot be combined with a legacy default=true marker",
       });
     }
-    if (entries.length > 1 && marked.length === 0 && value.ownership !== "explicit") {
+    if (
+      entries.length > 1 &&
+      marked.length === 0 &&
+      !value.defaultId &&
+      value.ownership !== "explicit"
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["ownership"],
         message:
-          'multi-agent rosters require agents.ownership="explicit" or one legacy default=true marker; add agents.ownership="explicit" or run branch doctor',
+          'multi-agent rosters require agents.defaultId, agents.ownership="explicit", or one legacy default=true marker; select a default Trunk or run branch doctor',
       });
     }
   })

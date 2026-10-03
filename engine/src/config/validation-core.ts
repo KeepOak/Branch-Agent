@@ -18,6 +18,7 @@ import {
   hasAvatarUriScheme,
   isAvatarDataUrl,
   isAvatarHttpUrl,
+  isBranchCharacterAvatar,
   isPathWithinRoot,
   isWindowsAbsolutePath,
 } from "../shared/avatar-policy.js";
@@ -177,14 +178,19 @@ function validateIdentityAvatar(
       continue;
     }
     const avatar = avatarRaw.trim();
-    if (!avatar || isAvatarDataUrl(avatar) || isAvatarHttpUrl(avatar)) {
+    if (
+      !avatar ||
+      isAvatarDataUrl(avatar) ||
+      isAvatarHttpUrl(avatar) ||
+      isBranchCharacterAvatar(avatar)
+    ) {
       continue;
     }
     if (avatar.startsWith("~") || (hasAvatarUriScheme(avatar) && !isWindowsAbsolutePath(avatar))) {
       issues.push(
         createIdentityAvatarIssue(
           source,
-          "identity.avatar must be a workspace-relative path, http(s) URL, or data URI.",
+          "identity.avatar must be a built-in Branch character, workspace-relative path, http(s) URL, or data URI.",
         ),
       );
       continue;
