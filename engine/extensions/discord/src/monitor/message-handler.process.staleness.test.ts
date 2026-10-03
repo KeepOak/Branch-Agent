@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  createBaseContext,
+  createAutomaticSourceDeliveryContext,
   deliverDiscordReply,
   dispatchInboundMessageForTest as dispatchInboundMessage,
   registerDiscordProcessTestLifecycle,
@@ -13,7 +13,7 @@ registerDiscordProcessTestLifecycle();
 describe("Discord real reply delivery staleness", () => {
   for (const behavior of ["skip", "tag", "ignore"] as const) {
     it(`applies ${behavior} after newer messages arrive during the model turn`, async () => {
-      const ctx = await createBaseContext({
+      const ctx = await createAutomaticSourceDeliveryContext({
         discordConfig: {
           staleness: { enabled: true, behavior, threshold: 0 },
           streaming: { mode: "off" },
@@ -43,7 +43,7 @@ describe("Discord real reply delivery staleness", () => {
   }
 
   it("uses receipt sequence when newer ingress arrived before processing started", async () => {
-    const ctx = await createBaseContext({
+    const ctx = await createAutomaticSourceDeliveryContext({
       discordConfig: {
         staleness: { enabled: true, behavior: "skip", threshold: 0 },
         streaming: { mode: "off" },
@@ -65,7 +65,9 @@ describe("Discord real reply delivery staleness", () => {
   });
 
   it("retains existing delivery by default after newer messages", async () => {
-    const ctx = await createBaseContext({ discordConfig: { streaming: { mode: "off" } } });
+    const ctx = await createAutomaticSourceDeliveryContext({
+      discordConfig: { streaming: { mode: "off" } },
+    });
     ctx.stalenessStartSequence = recordDiscordChannelMessageSeen(
       ctx.client,
       ctx.messageChannelId,
@@ -87,7 +89,7 @@ describe("Discord ingress staleness receipt", () => {
     const { createDiscordMessageDispatcher } = await import("./message-dispatcher.js");
     const { createDiscordHandlerParams } = await import("./message-handler.test-helpers.js");
     const params = createDiscordHandlerParams();
-    const ctx = await createBaseContext({ messageChannelId: "receipt-room" });
+    const ctx = await createAutomaticSourceDeliveryContext({ messageChannelId: "receipt-room" });
     const process = vi.fn(async (_ctx: unknown) => {});
     const dispatcher = createDiscordMessageDispatcher({
       ...params,
