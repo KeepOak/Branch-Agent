@@ -12,7 +12,7 @@ export function extractThoughtChain(value = ""): string | null {
   const matches: string[] = [];
   const pattern = new RegExp(`<(${THOUGHT_TAGS})[^>]*>([\\s\\S]*?)</(${THOUGHT_TAGS})\\s*>`, "gi");
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(value)) !== null) matches.push(match[2].trim());
+  while ((match = pattern.exec(value)) !== null) matches.push(match[2]!.trim());
   return matches.join("\n\n") || null;
 }
 
