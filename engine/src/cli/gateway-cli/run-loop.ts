@@ -1216,10 +1216,10 @@ export async function runGatewayLoop(params: {
     },
   });
   try {
-    releaseParentWatchdog = installGatewayParentWatchdog((reason) => {
+    releaseParentWatchdog = installGatewayParentWatchdog(() => {
       hostExitRequested = true;
       gatewayLog.info("Gateway parent process gone; shutting down");
-      request("stop", reason);
+      request("stop", "host lifeline closed");
     });
     releaseHostLifeline = installGatewayHostLifeline(() => {
       hostExitRequested = true;

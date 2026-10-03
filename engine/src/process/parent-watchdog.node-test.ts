@@ -151,10 +151,13 @@ test("the upstream real missing-parent case fires after an owned child exits", {
   // Only this short-lived fixture child is created; no existing process is signalled.
   const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
   const pid = child.pid!;
-  await once(child, "close");
+  const closed = once(child, "close");
+  const reapBound = setTimeout(() => child.kill("SIGKILL"), 2000);
   let stop = () => {};
-  let bound: ReturnType<typeof setTimeout>;
+  let bound: ReturnType<typeof setTimeout> | undefined;
   try {
+    const [code] = await closed;
+    assert.equal(code, 0, "owned fixture did not exit normally before its deadline");
     await Promise.race([
       new Promise<void>((resolve) => {
         stop = startParentWatchdog(resolve, 10, { env: { BRANCH_PARENT_PID: String(pid) } });
@@ -165,7 +168,12 @@ test("the upstream real missing-parent case fires after an owned child exits", {
     ]);
   } finally {
     stop();
-    clearTimeout(bound!);
+    clearTimeout(bound);
+    clearTimeout(reapBound);
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+    }
+    await closed.catch(() => undefined);
   }
 });
 

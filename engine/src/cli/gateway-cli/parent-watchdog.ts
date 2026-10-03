@@ -5,8 +5,8 @@ import {
 
 /** Bind parent loss to the run loop's existing graceful stop and drain owner. */
 export function installGatewayParentWatchdog(
-  requestStop: (reason: string) => void,
+  requestStop: () => void,
   options: ParentWatchdogOptions = {},
 ): () => void {
-  return startParentWatchdog(() => requestStop("parent process gone"), undefined, options);
+  return startParentWatchdog(requestStop, undefined, options);
 }

@@ -2,17 +2,17 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { installGatewayParentWatchdog } from "./parent-watchdog.ts";
 
-test("parent loss binds to the real gateway stop request with one shutdown reason", (t) => {
+test("parent loss invokes the real gateway stop binding once", (t) => {
   t.mock.timers.enable({ apis: ["setInterval"] });
-  const reasons: string[] = [];
-  const release = installGatewayParentWatchdog((reason) => reasons.push(reason), {
+  let stops = 0;
+  const release = installGatewayParentWatchdog(() => stops++, {
     env: { BRANCH_PARENT_PID: "123" },
     readParentPid: () => 123,
     isParentDead: () => true,
   });
   t.mock.timers.tick(1000);
   t.mock.timers.tick(5000);
-  assert.deepEqual(reasons, ["parent process gone"]);
+  assert.equal(stops, 1);
   release();
 });
 
