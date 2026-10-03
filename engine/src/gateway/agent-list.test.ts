@@ -77,8 +77,8 @@ describe("listGatewayAgentsBasic", () => {
 
     expect(result.agents).toEqual([
       { id: "main", kind: "agent", name: undefined },
-      { id: "crestodian", kind: "system", name: undefined },
       { id: "branch", kind: "system", name: undefined },
+      { id: "crestodian", kind: "system", name: undefined },
     ]);
     await fs.rmdir(path.join(stateDir, "agents", "crestodian"));
     expect((await listGatewayAgentsBasic(cfg)).agents.map(({ id }) => id)).toEqual([

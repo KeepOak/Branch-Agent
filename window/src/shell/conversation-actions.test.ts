@@ -1,5 +1,17 @@
-import { describe, expect, it } from "vitest";
-import { snoozeChoices, wakeWords } from "./conversation-actions";
+import { describe, expect, it, vi } from "vitest";
+import { ConversationList } from "../connect/conversations";
+import { conversationActions, snoozeChoices, wakeWords } from "./conversation-actions";
+
+describe("contact navigation", () => {
+  it("reopens the selected default contact with its configured main key instead of creating threads", async () => {
+    const request = vi.fn().mockResolvedValue({ defaultId: "fern", mainKey: "home" });
+    const actions = conversationActions(request, new ConversationList(request, null), () => null);
+    expect(await actions.create()).toBe("agent:fern:home");
+    expect(await actions.create()).toBe("agent:fern:home");
+    expect(await actions.create("oak")).toBe("agent:oak:home");
+    expect(request.mock.calls.every(([method]) => method === "agents.list")).toBe(true);
+  });
+});
 
 describe("snoozeChoices", () => {
   it("offers This evening only when 18:00 is more than an hour away", () => {
