@@ -523,6 +523,27 @@ describe("Codex app-server config", () => {
     );
   });
 
+  it("selects a native account home without changing the host environment", () => {
+    const runtime = resolveAppServer({ homeScope: "user", codexHome: "./native-work-account" });
+    const selectedHome = path.resolve("./native-work-account");
+    expect(runtime.start.codexHome).toBe(selectedHome);
+    expect(runtime.start.env?.CODEX_HOME).toBe(selectedHome);
+    expect(
+      resolveAppServer({ homeScope: "user", codexHome: "./native-personal-account" }).start
+        .codexHome,
+    ).not.toBe(selectedHome);
+    expect(() => resolveAppServer({ codexHome: selectedHome })).toThrow("codexHome requires");
+    expect(() =>
+      resolveAppServer({ homeScope: "user", transport: "unix", codexHome: selectedHome }),
+    ).toThrow("codexHome requires");
+    expect(() => readCodexPluginConfig({ appServer: { codexHome: " " } })).toThrow(
+      "codexHome must be a nonempty directory path",
+    );
+    expect(() =>
+      readCodexPluginConfig({ appServer: { codexHome: selectedHome, typo: true } }),
+    ).toThrow("refusing to use another account");
+  });
+
   it("checks shared user config before enabling model-backed approval review", async () => {
     await withTempDir("branch-codex-user-home-", async (codexHome) => {
       await fs.writeFile(
