@@ -56,26 +56,26 @@ function trimmedMatch(fileContent: string, searchContent: string): BasicMatchRes
  * Case-insensitive matching strategy
  */
 function caseInsensitiveMatch(fileContent: string, searchContent: string): BasicMatchResult | null {
-  const offsets: Array<{ start: number; end: number }> = [];
+  // A folded character can expand (İ -> i + combining dot) or contain a
+  // surrogate pair. Only complete source-character boundaries can be spliced.
+  const boundaries: Array<number | undefined> = [0];
   let originalOffset = 0;
+  let foldedOffset = 0;
   for (const character of fileContent) {
-    const folded = character.toLowerCase();
-    offsets.push(
-      ...Array.from({ length: folded.length }, () => ({
-        start: originalOffset,
-        end: originalOffset + character.length,
-      })),
-    );
+    foldedOffset += character.toLowerCase().length;
     originalOffset += character.length;
+    boundaries[foldedOffset] = originalOffset;
   }
   const lowerFileContent = fileContent.toLowerCase();
   const lowerSearchContent = searchContent.toLowerCase();
-  const index = lowerFileContent.indexOf(lowerSearchContent);
-  if (index !== -1) {
-    return {
-      startIndex: offsets[index]!.start,
-      endIndex: offsets[index + lowerSearchContent.length - 1]!.end,
-    };
+  let index = lowerFileContent.indexOf(lowerSearchContent);
+  while (index !== -1) {
+    const startIndex = boundaries[index];
+    const endIndex = boundaries[index + lowerSearchContent.length];
+    if (startIndex !== undefined && endIndex !== undefined) {
+      return { startIndex, endIndex };
+    }
+    index = lowerFileContent.indexOf(lowerSearchContent, index + 1);
   }
   return null;
 }

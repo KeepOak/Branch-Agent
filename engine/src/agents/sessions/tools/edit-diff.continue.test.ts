@@ -25,6 +25,8 @@ for (const [name, source, search, replacement, expected] of [
     "before\nconst value = 2;\nafter\n",
   ],
   ["Unicode source offsets", "İ keep\nTARGET\n", "target", "changed", "İ keep\nchanged\n"],
+  ["complete expanded Unicode fold", "🌍İ!", "i\u0307", "X", "🌍X!"],
+  ["later complete Unicode fold", "İ I", "i", "X", "İ X"],
   ["mixed terminators", "keep\r\nHELLO\nlast\r\n", "hello", "changed", "keep\r\nchanged\nlast\r\n"],
 ] as const) {
   test(`Continue fallback in real edit planner: ${name}`, () => {
@@ -70,5 +72,32 @@ test("exact match takes precedence over looser source strategies", () => {
   assert.ok(result.changed);
   if (result.changed) {
     assert.equal(result.content, "HELLO\nbye\n");
+  }
+});
+
+test("real edit planner rejects partial Unicode folds before mutation", () => {
+  for (const [source, oldText] of [
+    ["İ", "\u0307"],
+    ["İ", "i"],
+    ["Aİ", "ai"],
+    ["İB", "\u0307b"],
+  ]) {
+    assert.throws(
+      () => prepareFileEdit(source!, [{ oldText: oldText!, newText: "X" }], "fixture"),
+      /Could not find the exact text/,
+    );
+  }
+});
+
+test("real edit planner retains exact and NFKC priority before case folding", () => {
+  for (const [source, oldText, expected] of [
+    ["İ\ni\u0307", "i\u0307", "İ\nX"],
+    ["FFI\nﬃ", "ffi", "FFI\nX"],
+  ]) {
+    const result = prepareFileEdit(source!, [{ oldText: oldText!, newText: "X" }], "fixture");
+    assert.ok(result.changed);
+    if (result.changed) {
+      assert.equal(result.content, expected);
+    }
   }
 });
