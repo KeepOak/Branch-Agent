@@ -6,6 +6,7 @@ import {
 } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Container, Text } from "@earendil-works/pi-tui";
+import { merge3 } from "../../../coding/markdown-merge.js";
 import { isMissingPathError } from "../../../infra/errors.js";
 import { captureAgentToolSourceExecutionGuard } from "../../agent-tool-source-execution-guard.js";
 import { assertCompleteFileWriteContent } from "../../file-omission-guards.js";
@@ -13,6 +14,7 @@ import { keyHint } from "../../modes/interactive/components/keybinding-hints.js"
 import { getLanguageFromPath, highlightCode } from "../../modes/interactive/theme/theme.js";
 import type { AgentTool, AgentToolResult } from "../../runtime/index.js";
 import { textResult } from "../../tools/tool-results.js";
+import { decodeUtf8File } from "../../utf8-file.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
 import { WRITE_DIFF_MAX_BYTES } from "./file-diff.js";
 import {
@@ -397,19 +399,58 @@ export function createWriteToolDefinition(
   return {
     name: "write",
     label: "write",
-    description: "Write/overwrite file; creates parent directories.",
+    description:
+      "Write/overwrite file; creates parent directories. Supply base_content to merge non-conflicting concurrent edits.",
     promptSnippet: "Create/overwrite files",
-    promptGuidelines: ["Use only new files/complete rewrites."],
+    promptGuidelines: [
+      "Use only new files/complete rewrites. Supply the previously read base_content when preserving concurrent Markdown edits.",
+    ],
     parameters: writeSchema,
     outputSchema: WriteToolOutputSchema,
-    async execute(_toolCallId, { path, content }, signal, _onUpdate, _ctx) {
+    async execute(_toolCallId, { path, content, base_content }, signal, _onUpdate, _ctx) {
       const assertCurrent = captureAgentToolSourceExecutionGuard();
       assertCompleteFileWriteContent(content);
       const absolutePath = resolvePath(path, cwd);
       const dir = dirname(absolutePath);
       const queueKey = resolveFileMutationQueueKey(absolutePath, ops.resolveQueueKey, signal);
       return withFileMutationQueueKeyResolution(queueKey, async () => {
-        const precheck = await readOriginalWriteState(absolutePath, content, ops);
+        let mergePrecheck: WriteToolPrecheck | undefined;
+        if (base_content !== undefined) {
+          if (signal?.aborted) {
+            throw new Error("Operation aborted");
+          }
+          assertCurrent();
+          const beforeStat = await ops.statFile(absolutePath);
+          if (beforeStat && beforeStat.type !== "file") {
+            throw new Error(`Cannot merge ${path}: the target is not a regular file.`);
+          }
+          const original = beforeStat ? await ops.readFile(absolutePath) : "";
+          const current = Buffer.isBuffer(original) ? decodeUtf8File(original, path) : original;
+          const merged = merge3(base_content, current, content);
+          if (merged.outcome === "conflict") {
+            const ranges = merged.regions
+              .map(({ baseStart, baseEnd }) =>
+                baseStart > baseEnd ? `after line ${baseEnd}` : `lines ${baseStart}-${baseEnd}`,
+              )
+              .join(", ");
+            throw new Error(
+              `Cannot merge ${path}: concurrent edits conflict at ${ranges}. Read the current file and resolve the overlapping edits.`,
+            );
+          }
+          content = merged.content;
+          assertCompleteFileWriteContent(content);
+          mergePrecheck = {
+            state:
+              current === content && (beforeStat !== null || base_content !== "")
+                ? "same"
+                : "different",
+            beforeStat,
+            beforeText: current,
+            readAttempted: true,
+          };
+        }
+        const precheck =
+          mergePrecheck ?? (await readOriginalWriteState(absolutePath, content, ops));
         if (signal?.aborted) {
           throw new Error("Operation aborted");
         }

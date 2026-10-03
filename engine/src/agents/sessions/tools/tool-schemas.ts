@@ -147,6 +147,12 @@ export const readToolOutputSchema = Type.Union([
 export const writeSchema = Type.Object({
   path: Type.String({ description: "File path; relative/absolute." }),
   content: Type.String({ description: "File content." }),
+  base_content: Type.Optional(
+    Type.String({
+      description:
+        "Previously read content. Merge non-conflicting concurrent changes instead of overwriting them; overlapping edits report a conflict without writing.",
+    }),
+  ),
 });
 
 export const WriteToolOutputSchema = Type.Union([
