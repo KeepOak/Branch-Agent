@@ -1,3 +1,5 @@
+import path from "node:path";
+import { projectCodexNativeAccount, readCodexNativeAccounts } from "./native-accounts.js";
 import type { PluginRuntime } from "branch/plugin-sdk/core";
 import { resolvePositiveTimerTimeoutMs } from "branch/plugin-sdk/number-runtime";
 import { normalizeResolvedSecretInputString } from "branch/plugin-sdk/secret-input";
@@ -117,9 +119,16 @@ export function createCodexAppServerConfig({
   ): CodexAppServerRuntimeOptions {
     const env = params.env ?? process.env;
     const pluginConfig = readCodexPluginConfig(params.pluginConfig);
-    const config = pluginConfig.appServer ?? {};
+    const registry = readCodexNativeAccounts(pluginConfig);
+    const config = (registry ? projectCodexNativeAccount(pluginConfig, registry.selected.home) : pluginConfig).appServer ?? {};
     const transport = resolveTransport(config.transport);
     const homeScope = resolveCodexAppServerHomeScope({ appServer: config });
+    const codexHome = config.codexHome ? path.resolve(config.codexHome) : undefined;
+    if (codexHome && (homeScope !== "user" || transport !== "stdio")) {
+      throw new Error(
+        "plugins.entries.codex.config.appServer.codexHome requires appServer.homeScope=user and appServer.transport=stdio",
+      );
+    }
     if (transport !== "stdio" && pluginConfig.sessionCatalog?.homes?.length) {
       throw new Error(
         "plugins.entries.codex.config.sessionCatalog.homes requires appServer.transport=stdio",
@@ -172,6 +181,7 @@ export function createCodexAppServerConfig({
         agentDir: params.agentDir,
         codexConfigToml: params.codexConfigToml,
         homeScope,
+        ...(codexHome ? { env: { ...env, CODEX_HOME: codexHome } } : {}),
       },
       resolveProviderIdForAuth,
     );
@@ -188,9 +198,7 @@ export function createCodexAppServerConfig({
       (execMode !== "auto" || !canUseModelBackedReviewer);
     const forceUserReviewer = forceUserReviewerForUnknownModel || forceUserReviewerForExecMode;
     const forceGuardianReviewer = execMode === "auto" && canUseModelBackedReviewer;
-    const execModeRequiringPromptingApprovals:
-      | Extract<BranchExecMode, "auto" | "ask">
-      | undefined =
+    const execModeRequiringPromptingApprovals: Extract<BranchExecMode, "auto" | "ask"> | undefined =
       execMode === "auto" || execMode === "ask" ? execMode : forceUserReviewer ? "ask" : undefined;
     const forceDangerFullAccessSandbox =
       params.execPolicy?.touched === true &&
@@ -324,6 +332,7 @@ export function createCodexAppServerConfig({
       start: {
         transport,
         homeScope,
+        ...(codexHome ? { codexHome, env: { CODEX_HOME: codexHome } } : {}),
         command,
         commandSource,
         ...(includeManagedCommandOrder ? { managedCommandOrder } : {}),

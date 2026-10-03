@@ -18,6 +18,21 @@ const config: BranchConfig = {
 };
 
 describe("Codex native login discovery", () => {
+  it("probes each explicitly selected native account home with its own environment", async () => {
+    for (const codexHome of ["./fixture-personal-home", "./fixture-work-home"]) {
+      await probeCodexNativeAuth({
+        pluginConfig: {
+          appServer: { command: "native-codex-fixture", homeScope: "user", codexHome },
+        },
+        env: { CODEX_HOME: "unchosen-host-home" },
+      });
+    }
+    const probes = run.mock.calls.map((call) => call[1].baseEnv.CODEX_HOME);
+    expect(probes).toHaveLength(2);
+    expect(probes[0]).toMatch(/fixture-personal-home$/);
+    expect(probes[1]).toMatch(/fixture-work-home$/);
+    expect(probes[0]).not.toBe(probes[1]);
+  });
   beforeEach(() => {
     run.mockReset().mockResolvedValue({
       termination: "exit",

@@ -141,6 +141,10 @@ const codexPluginConfigSchema = z.strictObject({
       mode: z.enum(["yolo", "guardian"]).optional(),
       transport: z.enum(["stdio", "websocket", "unix"]).optional(),
       homeScope: z.enum(["agent", "user"]).optional(),
+      codexHome: z.string().trim().min(1).optional(),
+      nativeAccounts: z.array(z.strictObject({ id: z.string().trim().min(1), home: z.string().trim().min(1) })).min(1).max(16).optional(),
+      nativeAccountId: z.string().trim().min(1).optional(),
+      nativeAccountQuotaFailover: z.boolean().optional(),
       command: z.string().optional(),
       args: z.union([z.array(z.string()), z.string()]).optional(),
       url: z.string().optional(),
@@ -174,6 +178,15 @@ export type ParsedCodexPluginConfig = Omit<
 
 export function readCodexPluginConfig(value: unknown): ParsedCodexPluginConfig {
   const appServer = asNullableRecord(asNullableRecord(value)?.appServer);
+  if (
+    appServer &&
+    Object.hasOwn(appServer, "codexHome") &&
+    (typeof appServer.codexHome !== "string" || !appServer.codexHome.trim())
+  ) {
+    throw new Error(
+      "plugins.entries.codex.config.appServer.codexHome must be a nonempty directory path",
+    );
+  }
   if (appServer?.approvalPolicy === "untrusted") {
     throw new Error(
       'plugins.entries.codex.config.appServer.approvalPolicy="untrusted" is retired; run "branch doctor --fix" to migrate it to "on-request".',
@@ -181,6 +194,11 @@ export function readCodexPluginConfig(value: unknown): ParsedCodexPluginConfig {
   }
   const parsed = codexPluginConfigSchema.safeParse(value);
   if (!parsed.success) {
+    if (appServer && ["codexHome", "nativeAccounts", "nativeAccountId", "nativeAccountQuotaFailover"].some((key) => Object.hasOwn(appServer, key))) {
+      throw new Error(
+        "Invalid Codex configuration for the selected native account home; refusing to use another account",
+      );
+    }
     if (asNullableRecord(appServer?.networkProxy)?.enabled === true) {
       const issuePath = parsed.error.issues[0]?.path ?? [];
       // Record keys (domains, headers, etc.) are values, not safe diagnostic field names.
