@@ -9,7 +9,11 @@ import { probeCodexNativeAuth } from "./native-auth.js";
 import { summarizeCodexAccountUsage } from "./rate-limits.js";
 import { requestCodexAppServerJson } from "./request.js";
 import type { CodexRunAttemptOptions } from "./run-attempt-types.js";
-import { sessionBindingIdentity, type CodexAppServerBindingStore } from "./session-binding.js";
+import {
+  sessionBindingIdentity,
+  type CodexAppServerBindingStore,
+  type CodexAppServerThreadBinding,
+} from "./session-binding.js";
 
 export function nativeAccountBindingStore(
   store: CodexAppServerBindingStore,
@@ -45,9 +49,20 @@ export function nativeAccountBindingStore(
   };
 }
 
-export function projectBoundCodexNativeAccount(value: unknown, home: string | undefined): unknown {
-  if (!home) return value;
+export function projectBoundCodexNativeAccount(
+  value: unknown,
+  binding: Pick<CodexAppServerThreadBinding, "nativeAccountHome"> | undefined,
+): unknown {
   const registry = readCodexNativeAccounts(value);
+  const home = binding?.nativeAccountHome;
+  if (!home) {
+    if (registry && binding) {
+      throw new Error(
+        "Existing Codex thread has no registered native account owner; explicit migration required",
+      );
+    }
+    return value;
+  }
   if (!registry || !registry.accounts.some((account) => account.home === home)) {
     throw new Error("Codex thread native account owner is no longer registered");
   }
@@ -59,13 +74,16 @@ export async function runWithCodexNativeAccount<T>(
   options: CodexRunAttemptOptions,
   run: (options: CodexRunAttemptOptions) => Promise<T>,
 ): Promise<T> {
-  if (!readCodexNativeAccounts(options.pluginConfig)) return run(options);
+  const binding = options.bindingStore.read(sessionBindingIdentity(params));
+  if (!readCodexNativeAccounts(options.pluginConfig)) {
+    projectBoundCodexNativeAccount(options.pluginConfig, binding);
+    return run(options);
+  }
   if (params.authProfileId || params.sandbox?.enabled || params.expectedSessionRuntimeOwnership) {
     throw new Error(
       "Codex native account registry cannot replace profile, sandbox or native ownership authority",
     );
   }
-  const binding = options.bindingStore.read(sessionBindingIdentity(params));
   return selectCodexNativeAccount({
     value: options.pluginConfig,
     bindingHome: binding?.nativeAccountHome,
