@@ -28,10 +28,10 @@ export function MathTex({ tex, display, raw }: { tex: string; display: boolean; 
 }
 
 /** Inline maths: $…$ (not "$5 and $6"), or \(…\). */
-export const INLINE_MATH = /(\$[^\s$](?:[^$\n]*[^\s$])?\$(?!\d)|\\([^\n]+?\\))/;
+export const INLINE_MATH = /(\$[^\s$](?:[^$\n]*[^\s$])?\$(?!\d)|\\\([^\n]+?\\\))/;
 
 export function readInlineMath(part: string): string | null {
-  if (part.startsWith("\(")) return part.slice(2, -2);
+  if (part.startsWith("\\(")) return part.slice(2, -2);
   if (part.startsWith("$") && part.endsWith("$") && part.length > 2) return part.slice(1, -1);
   return null;
 }

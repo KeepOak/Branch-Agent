@@ -49,7 +49,7 @@ class SequentialThinkingServer {
   }
 
   public processThought(input: unknown): {
-    content: Array<{ type: string; text: string }>;
+    content: [{ type: "text"; text: string }];
     isError?: boolean;
   } {
     try {
@@ -62,10 +62,8 @@ class SequentialThinkingServer {
       this.thoughtHistory.push(validatedInput);
 
       if (validatedInput.branchFromThought && validatedInput.branchId) {
-        if (!this.branches[validatedInput.branchId]) {
-          this.branches[validatedInput.branchId] = [];
-        }
-        this.branches[validatedInput.branchId].push(validatedInput);
+        const branch = (this.branches[validatedInput.branchId] ??= []);
+        branch.push(validatedInput);
       }
 
       return {
