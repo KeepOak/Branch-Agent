@@ -11,6 +11,7 @@ for (const value of [undefined, "", "0", "-1", "1.5", "garbage"]) {
     let calls = 0;
     const stop = startParentWatchdog(() => calls++, undefined, {
       env: { BRANCH_PARENT_PID: value },
+      readParentStartTime: () => null,
       readParentPid: () => assert.fail("inactive watchdog read the parent"),
       isParentDead: () => assert.fail("inactive watchdog probed a PID"),
     });
@@ -26,6 +27,7 @@ test("preserves the 1000ms default and fires only once on definite death", (t) =
   let probes = 0;
   const stop = startParentWatchdog(() => calls++, undefined, {
     env: { BRANCH_PARENT_PID: "123" },
+    readParentStartTime: () => null,
     readParentPid: () => 123,
     isParentDead: (pid) => {
       assert.equal(pid, 123);
@@ -48,6 +50,7 @@ test("stays alive after an inconclusive probe, then detects definite death", (t)
   let calls = 0;
   const stop = startParentWatchdog(() => calls++, 10, {
     env: { BRANCH_PARENT_PID: "123" },
+    readParentStartTime: () => null,
     readParentPid: () => 123,
     isParentDead: () => dead,
   });
@@ -65,10 +68,98 @@ test("detects reparenting even when the configured PID still exists", (t) => {
   let calls = 0;
   const stop = startParentWatchdog(() => calls++, 10, {
     env: { BRANCH_PARENT_PID: "123" },
+    readParentStartTime: () => null,
     readParentPid: () => ppid,
     isParentDead: () => assert.fail("reparenting must not require a liveness probe"),
   });
   ppid = 1;
+  t.mock.timers.tick(10);
+  assert.equal(calls, 1);
+  stop();
+});
+
+for (const unknown of [-1, 0]) {
+  test(`unknown parent query ${unknown} defers to configured parent liveness`, (t) => {
+    t.mock.timers.enable({ apis: ["setInterval"] });
+    let ppid = 123;
+    let dead = false;
+    let calls = 0;
+    const stop = startParentWatchdog(() => calls++, 10, {
+      env: { BRANCH_PARENT_PID: "123" },
+      readParentStartTime: () => null,
+      readParentPid: () => ppid,
+      isParentDead: (pid) => { assert.equal(pid, 123); return dead; },
+    });
+    ppid = unknown;
+    t.mock.timers.tick(30);
+    assert.equal(calls, 0);
+    dead = true;
+    t.mock.timers.tick(10);
+    assert.equal(calls, 1);
+    t.mock.timers.tick(30);
+    assert.equal(calls, 1);
+    stop();
+  });
+}
+
+test("an unknown initial parent does not turn its first successful read into reparenting", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  let ppid = -1;
+  let calls = 0;
+  const stop = startParentWatchdog(() => calls++, 10, {
+    env: { BRANCH_PARENT_PID: "123" },
+    readParentStartTime: () => null,
+    readParentPid: () => ppid,
+    isParentDead: () => false,
+  });
+  ppid = 123;
+  t.mock.timers.tick(30);
+  assert.equal(calls, 0);
+  stop();
+});
+
+test("sticky Windows creator PID cannot hide a changed parent birth identity", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  let birth: number | null = 100;
+  let calls = 0;
+  let probes = 0;
+  const stop = startParentWatchdog(() => calls++, 10, {
+    env: { BRANCH_PARENT_PID: "123" },
+    readParentPid: () => 123,
+    isParentDead: () => false, // Models a reused numerical PID that still exists.
+    readParentStartTime: (pid) => { assert.equal(pid, 123); probes++; return birth; },
+  });
+  t.mock.timers.tick(10);
+  assert.equal(calls, 0);
+  birth = null;
+  t.mock.timers.tick(10);
+  assert.equal(calls, 0, "unknown birth query must preserve the original identity");
+  birth = 101;
+  t.mock.timers.tick(10);
+  assert.equal(calls, 1);
+  const finalProbes = probes;
+  t.mock.timers.tick(30);
+  assert.equal(calls, 1);
+  assert.equal(probes, finalProbes, "one-shot timer kept probing after orphaning");
+  stop();
+});
+
+test("failed initial birth identity retries without treating recovery as PID reuse", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  let birth: number | null = null;
+  let calls = 0;
+  const stop = startParentWatchdog(() => calls++, 10, {
+    env: { BRANCH_PARENT_PID: "123" },
+    readParentPid: () => 123,
+    isParentDead: () => false,
+    readParentStartTime: () => birth,
+  });
+  t.mock.timers.tick(20);
+  assert.equal(calls, 0);
+  birth = 100;
+  t.mock.timers.tick(20);
+  assert.equal(calls, 0);
+  birth = 101;
   t.mock.timers.tick(10);
   assert.equal(calls, 1);
   stop();
@@ -80,6 +171,7 @@ test("does not treat PID 1 or an initial init parent as missing", (t) => {
   let calls = 0;
   const stop = startParentWatchdog(() => calls++, 10, {
     env: { BRANCH_PARENT_PID: "1" },
+    readParentStartTime: () => null,
     readParentPid: () => ppid,
     isParentDead: () => assert.fail("PID 1 must not be probed"),
   });
@@ -94,6 +186,7 @@ test("explicit cleanup cancels observation before the parent exits", (t) => {
   let calls = 0;
   const stop = startParentWatchdog(() => calls++, 10, {
     env: { BRANCH_PARENT_PID: "123" },
+    readParentStartTime: () => null,
     readParentPid: () => 123,
     isParentDead: () => true,
   });
@@ -110,6 +203,7 @@ test("native ESRCH stops but EPERM and unknown errors keep the engine alive", (t
   let calls = 0;
   const stop = startParentWatchdog(() => calls++, 10, {
     env: { BRANCH_PARENT_PID: "123" },
+    readParentStartTime: () => null,
     readParentPid: () => 123,
   });
   t.mock.timers.tick(10);
@@ -133,6 +227,7 @@ test("native Linux liveness rejects zombies while retaining live sibling threads
   let calls = 0;
   const stop = startParentWatchdog(() => calls++, 10, {
     env: { BRANCH_PARENT_PID: "123" },
+    readParentStartTime: () => null,
     readParentPid: () => 123,
   });
   try {
@@ -144,6 +239,46 @@ test("native Linux liveness rejects zombies while retaining live sibling threads
   } finally {
     stop();
     Object.defineProperty(process, "platform", platform);
+  }
+});
+
+test("observation sees an owned parent fixture exit naturally with a sticky creator PID", { timeout: 5000 }, async () => {
+  const child = spawn(process.execPath, ["-e", `
+    process.once("message", () => { process.disconnect(); });
+    process.send("ready");
+  `], { stdio: ["ignore", "ignore", "ignore", "ipc"] });
+  const closed = once(child, "close");
+  const reapBound = setTimeout(() => child.kill("SIGKILL"), 2000);
+  let stop = () => {};
+  let bound: ReturnType<typeof setTimeout> | undefined;
+  let calls = 0;
+  try {
+    await once(child, "message");
+    const orphan = new Promise<void>((resolve) => {
+      stop = startParentWatchdog(() => { calls++; resolve(); }, 10, {
+        env: { BRANCH_PARENT_PID: String(child.pid) },
+        // Models Windows's retained creator PID while using real native liveness.
+        readParentPid: () => child.pid!,
+      });
+    });
+    child.send("exit");
+    const [code] = await closed;
+    assert.equal(code, 0, "owned fixture did not exit naturally");
+    await Promise.race([
+      orphan,
+      new Promise<void>((_, reject) => {
+        bound = setTimeout(() => reject(new Error("watchdog did not observe owned parent exit")), 2000);
+      }),
+    ]);
+    assert.equal(calls, 1);
+  } finally {
+    stop();
+    clearTimeout(bound);
+    clearTimeout(reapBound);
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+    }
+    await closed.catch(() => undefined);
   }
 });
 
