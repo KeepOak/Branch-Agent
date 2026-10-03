@@ -295,7 +295,7 @@ export async function browserPageText(
       targetId: opts.targetId,
       selector: opts.selector,
       format: opts.format,
-      pageNumber: opts.pageNumber,
+      pageNumber: opts.pageNumber === undefined ? undefined : String(opts.pageNumber),
     }),
     maxChars: opts.maxChars,
   });

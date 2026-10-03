@@ -337,7 +337,11 @@ function pageTextPrefix(result: BrowserPageTextResult, maxChars: number): string
   return result.truncated ? "Page text was truncated. Retry with a narrower selector." : undefined;
 }
 
-function readPageTextOptions(input: Record<string, unknown>) {
+function readPageTextOptions(input: Record<string, unknown>): {
+  format?: "text" | "markdown";
+  pageNumber?: number;
+  maxChars: number;
+} {
   const format = normalizeOptionalString(input.format);
   if (format !== undefined && format !== "text" && format !== "markdown") {
     throw new Error("format must be text or markdown.");
