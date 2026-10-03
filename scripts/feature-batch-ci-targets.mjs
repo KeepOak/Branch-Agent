@@ -1,5 +1,6 @@
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
+  'src/agents/contact-trunk.test.ts',
   'src/coding/unified-diff.test.ts',
   'src/agents/apply-patch.unified-diff.test.ts',
   'src/agents/apply-patch.test.ts',
@@ -35,6 +36,8 @@ export const engineTests = [
 ];
 
 export const windowTests = [
+  'src/places/trunk/trunk.test.tsx',
+  'src/shell/conversation-actions.test.ts',
   'src/transcript-export/replay-html.test.ts',
   'src/transcript-export/ExportDialog.test.tsx',
   'src/transcript-export/render.test.ts',
@@ -42,6 +45,7 @@ export const windowTests = [
 ];
 
 export const engineStrictFiles = [
+  'src/agents/contact-trunk.test.ts',
   'extensions/browser/src/browser-tool-description.ts',
   'extensions/browser/src/browser-tool.actions.ts',
   'extensions/browser/src/browser-tool.schema.ts',
@@ -79,6 +83,10 @@ export const engineStrictFiles = [
 ];
 
 export const windowStrictFiles = [
+  'src/places/trunk/api.ts',
+  'src/places/trunk/trunk.test.tsx',
+  'src/shell/conversation-actions.ts',
+  'src/shell/conversation-actions.test.ts',
   'src/transcript-export/replay-runtime.ts',
   'src/transcript-export/replay-html.ts',
   'src/transcript-export/render.ts',

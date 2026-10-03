@@ -162,6 +162,7 @@ export function applyAgentConfig(
     ...cfg,
     agents: {
       ...agentsConfig,
+      ...(list.length === 0 ? { defaultId: agentId } : {}),
       ...(nextList.length > 1 ? { ownership: "explicit" as const } : {}),
       entries: toAgentEntriesRecord(nextList),
     },
@@ -298,6 +299,9 @@ export function pruneAgentConfig(
   const nextAgentsConfig = cfg.agents
     ? {
         ...agentsConfig,
+        ...(cfg.agents.defaultId && normalizeAgentId(cfg.agents.defaultId) === id
+          ? { defaultId: nextAgentsList[0]?.id }
+          : {}),
         ...(nextAgentsList.length > 1 ? { ownership: "explicit" as const } : {}),
         defaults: nextDefaults,
         entries: nextAgents,

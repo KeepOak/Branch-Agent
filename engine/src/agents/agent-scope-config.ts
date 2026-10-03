@@ -130,10 +130,7 @@ export function resolveAgentNativeModelPrimary(
 }
 
 /** Native requests inherit the raw default, including its configured auth-profile suffix. */
-export function resolveNativeModelPrimary(
-  cfg: BranchConfig,
-  agentId: string,
-): string | undefined {
+export function resolveNativeModelPrimary(cfg: BranchConfig, agentId: string): string | undefined {
   return (
     resolveAgentNativeModelPrimary(cfg, agentId) ??
     resolvePrimaryStringValue(cfg.agents?.defaults?.model)
@@ -244,8 +241,15 @@ export function tryResolveLegacyDataOwnerAgentId(cfg: BranchConfig): string | un
   return value;
 }
 
-/** Resolves the recorded default after migration, or a sole/raw legacy owner. */
+/** Resolves the chosen contact default, recorded migration default, or sole/raw legacy owner. */
 export function tryResolveLegacyCompatibilityAgentId(cfg: BranchConfig): string | undefined {
+  const contactDefault = normalizeOptionalString(cfg.agents?.defaultId);
+  if (contactDefault) {
+    const agentId = normalizeAgentId(contactDefault);
+    if (listAgentIds(cfg).includes(agentId)) {
+      return agentId;
+    }
+  }
   const facts = readAgentRosterFacts(cfg);
   if (facts?.compatibilityAgentId) {
     return facts.compatibilityAgentId.value;
@@ -313,10 +317,7 @@ export function resolveAgentOperationAgentId(
  * system agent is honored; explicit-selection surfaces use resolveSoleAgentId. This
  * accepts raw shipped markers only for input compatibility.
  */
-export function resolveDefaultAgentId(
-  cfg: BranchConfig,
-  context?: AgentSelectionContext,
-): string {
+export function resolveDefaultAgentId(cfg: BranchConfig, context?: AgentSelectionContext): string {
   return tryResolveRawLegacyDefaultAgentId(cfg) ?? resolveSoleAgentId(cfg, context);
 }
 

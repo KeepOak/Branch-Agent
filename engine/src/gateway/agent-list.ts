@@ -45,6 +45,10 @@ async function listExistingAgentIdsFromDisk(): Promise<string[]> {
 
 export function resolveGatewayAgentSelectionState(cfg: BranchConfig): GatewayAgentSelectionState {
   const configuredIds = listAgentEntries(cfg).map((entry) => normalizeAgentId(entry.id));
+  const contactDefault = cfg.agents?.defaultId && normalizeAgentId(cfg.agents.defaultId);
+  if (contactDefault && configuredIds.includes(contactDefault)) {
+    return { defaultId: contactDefault, ownership: "explicit", selectionRequired: false };
+  }
   const soleAgentId = tryResolveDefaultAgentId(cfg);
   if (soleAgentId) {
     return {
