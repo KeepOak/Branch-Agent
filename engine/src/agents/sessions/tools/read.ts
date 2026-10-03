@@ -1,8 +1,8 @@
 import { constants } from "node:fs";
 import { access as fsAccess, readdir as fsReaddir, stat as fsStat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve as resolvePath, sep } from "node:path";
-import { readRegularFile } from "@openclaw/fs-safe/advanced";
 import { classifyAttachmentBytes } from "@branch/media-core/attachment-classify";
+import { readRegularFile } from "@openclaw/fs-safe/advanced";
 import { hasErrnoCode, toErrorObject } from "../../../infra/errors.js";
 import { decodeWindowsTextFileBuffer } from "../../../infra/windows-encoding.js";
 import type { ImageContent, TextContent } from "../../../llm/types.js";
@@ -11,6 +11,7 @@ import {
   normalizeMediaReferenceSource,
   resolveMediaReferenceLocalPath,
 } from "../../../media/media-reference.js";
+import { extractOfficeContent } from "../../../media/office-extract.js";
 import { normalizeNativePathSeparators } from "../../../shared/ignore-rules.js";
 import { levenshteinDistance } from "../../../shared/levenshtein-distance.js";
 import { keyHint, keyText } from "../../modes/interactive/components/keybinding-hints.js";
@@ -37,6 +38,7 @@ import {
   resolveLocalPathToCwd,
   resolveToCwd,
 } from "./path-utils.js";
+import { createOfficeReadTextPage } from "./read-office-page.js";
 import { createBoundedReadTextPage } from "./read-page.js";
 import { createReadToolDetails } from "./read-tool-contract.js";
 import {
@@ -176,9 +178,7 @@ function formatReadCall(args: ReadRenderArgs | undefined, theme: Theme): string 
   return `${theme.fg("toolTitle", theme.bold("read"))} ${pathDisplay}${formatReadLineRange(args, theme)}`;
 }
 
-function getBranchDocsClassification(
-  absolutePath: string,
-): CompactReadClassification | undefined {
+function getBranchDocsClassification(absolutePath: string): CompactReadClassification | undefined {
   const packageRoot = dirname(getReadmePath());
   const relativePath = relative(resolvePath(packageRoot), resolvePath(absolutePath));
   if (
@@ -363,7 +363,7 @@ export function createReadToolDefinition(
   return {
     name: "read",
     label: "read",
-    description: `Read text/image file (jpg/png/gif/webp/bmp); images attach to model context. Text caps ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. Continue with offset/limit, or cursor within a long line.`,
+    description: `Read text, DOCX, XLSX, ODS or image file (jpg/png/gif/webp/bmp); images attach to model context. Text caps ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. Continue with offset/limit, or cursor within a long line.`,
     promptSnippet: "Read file contents",
     promptGuidelines: ["Use read to examine files and its offset, limit, or cursor to continue."],
     parameters: readToolInputSchema,
@@ -458,6 +458,9 @@ export function createReadToolDefinition(
               ? ops.detectImageMimeType(absolutePath, buffer)
               : detectSupportedImageMimeType(buffer));
             const attachment = mimeType ? undefined : await classifyAttachmentBytes({ buffer });
+            const officeContent = mimeType
+              ? undefined
+              : await extractOfficeContent(absolutePath, buffer, signal);
             let content: (TextContent | ImageContent)[];
             let textDetails: Parameters<typeof createReadToolDetails>[1];
             const modelHasVision = options?.modelHasVision ?? ctx?.model?.input.includes("image");
@@ -465,7 +468,22 @@ export function createReadToolDefinition(
               modelHasVision === false
                 ? "[Current model does not support images. The image will be omitted from this request.]"
                 : undefined;
-            if (attachment?.class === "document") {
+            if (officeContent?.kind === "stream") {
+              const page = createOfficeReadTextPage({
+                chunks: officeContent.chunks,
+                offset,
+                limit,
+                cursor,
+                maxBytes,
+                fileBytes: buffer.length,
+                note,
+                modelBudget: options?.modelBudget,
+                adaptive: options?.maxBytes !== undefined,
+                signal,
+              });
+              content = [{ type: "text", text: page.text }];
+              textDetails = page.details;
+            } else if (attachment?.class === "document" && officeContent === undefined) {
               content = [
                 {
                   type: "text",
@@ -491,7 +509,9 @@ export function createReadToolDefinition(
               }
             } else {
               const decodedText =
-                ops.decodeText?.({ buffer, absolutePath }) ?? buffer.toString("utf8");
+                officeContent?.text ??
+                ops.decodeText?.({ buffer, absolutePath }) ??
+                buffer.toString("utf8");
               const textContent = (
                 decodedText.startsWith("\uFEFF") ? decodedText.slice(1) : decodedText
               ).replaceAll("\r\n", "\n");

@@ -41,6 +41,8 @@ export function createBoundedReadTextPage(params: {
   /** A source page can already be partial before this tighter budget is applied. */
   continuation?: ReadToolContinuation;
   cursor?: number;
+  /** Full remaining first-line length when the source collected only a bounded prefix. */
+  firstLineLength?: number;
   limit?: number;
   maxBytes: number;
   pageMaxBytes?: number;
@@ -105,7 +107,7 @@ export function createBoundedReadTextPage(params: {
   const cursorEstimate: ReadToolContinuation = {
     kind: "cursor",
     offset: params.startLine,
-    cursor: (params.cursor ?? 0) + firstLine.length,
+    cursor: (params.cursor ?? 0) + (params.firstLineLength ?? firstLine.length),
     ...boundedLimit,
   };
   const lineEstimate: ReadToolContinuation = {
