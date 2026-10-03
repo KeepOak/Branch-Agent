@@ -30,6 +30,20 @@ async function projectAvatar(cfg: BranchConfig) {
 }
 
 describe("resolveGatewayAssistantAvatar", () => {
+  it.each([undefined, ""])(
+    "preserves a built-in character for native and browser clients (base %s)",
+    async (httpBasePath) => {
+      const { cfg } = createWorkspace();
+      expect(
+        await resolveGatewayAssistantAvatar({
+          cfg,
+          identity: { agentId: "main", avatar: "branch:ember" },
+          httpBasePath,
+        }),
+      ).toEqual({ avatar: "branch:ember", resolution: null });
+    },
+  );
+
   it("inlines the selected local file", async () => {
     const { cfg, workspace } = createWorkspace();
     fs.writeFileSync(path.join(workspace, "avatar.png"), REAL_PNG);
