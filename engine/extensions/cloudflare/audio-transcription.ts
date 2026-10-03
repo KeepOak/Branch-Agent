@@ -52,10 +52,14 @@ export async function transcribeCloudflareAudio(
     dispatcherPolicy,
   });
   try {
-    await assertOkOrThrowHttpError(response, "Cloudflare audio transcription failed");
+    await assertOkOrThrowHttpError(response, "Cloudflare audio transcription failed", {
+      requestHeaders: headers,
+      signal: params.signal,
+    });
     const payload = await readProviderJsonObjectResponse(
       response,
       "Cloudflare audio transcription failed",
+      { requestHeaders: headers, signal: params.signal },
     );
     if (payload.success === false) {
       throw new Error("Cloudflare audio transcription failed: provider reported failure");
