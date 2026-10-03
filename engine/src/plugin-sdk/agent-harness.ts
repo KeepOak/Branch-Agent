@@ -10,6 +10,12 @@ export {
 } from "../agents/source-streaming-context.js";
 export type { StreamingContext } from "../agents/source-streaming-context.js";
 export type { TurnBudgetDirective, TurnBudgetSnapshot } from "../agents/source-turn-budget.js";
+export {
+  createWritingQualityFinalizeHook,
+  inspectWritingQuality,
+  validateWritingRewrite,
+} from "../agents/source-writing-quality.js";
+export type { WritingAnalysis, WritingFinding, WritingQualityOptions, PreservationResult } from "../agents/source-writing-quality.js";
 
 export {
   abortAgentHarnessRun,

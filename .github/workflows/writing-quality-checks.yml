@@ -1,0 +1,51 @@
+name: Writing quality checks
+
+on:
+  pull_request:
+    paths:
+      - 'engine/src/agents/source-writing-*'
+      - 'engine/src/agents/source-writing-detector/**'
+      - 'engine/src/plugin-sdk/agent-harness.ts'
+      - '.github/workflows/writing-quality-checks.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'engine/src/agents/source-writing-*'
+      - 'engine/src/agents/source-writing-detector/**'
+      - 'engine/src/plugin-sdk/agent-harness.ts'
+      - '.github/workflows/writing-quality-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: writing-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  writing:
+    name: Writing on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up supported Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Run explicit detector, preservation and native caller checks
+        working-directory: engine
+        env:
+          NODE_OPTIONS: '--max-old-space-size=64'
+        run: node --max-old-space-size=64 --test src/agents/source-writing-detector/patterns.native-tests.cjs src/agents/source-writing-detector/validate.native-tests.cjs src/agents/source-writing-quality.native-tests.mts
