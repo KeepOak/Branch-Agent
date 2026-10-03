@@ -39,8 +39,9 @@ export async function inventory(exists = present) {
       if (state === 'ready') { extraVitest.push(...followup.vitest); extraStrict.push(...followup.strict); }
       if (state === 'incomplete') missing.push(...files.filter((_, index) => !found[index]));
     }
+    const registered = active || followupCoverage.some(followup => followup.state !== 'absent');
     result.push({ ...slice, vitest: [...slice.vitest, ...extraVitest], strict: [...slice.strict, ...extraStrict],
-      followupCoverage, state: !active ? 'absent' : missing.length ? 'incomplete' : 'ready', missing });
+      followupCoverage, state: !registered ? 'absent' : missing.length ? 'incomplete' : 'ready', missing });
   }
   return result;
 }
@@ -219,8 +220,10 @@ async function selfTest() {
   slices.find(slice => slice.id === 'cron').native.slice(2).forEach(file => inherited.add(file));
   const baseline = await inventory(async file => inherited.has(file));
   assert(baseline.every(slice => slice.state === 'absent'));
+  const followupOnly = await inventory(async file => file === 'extensions/cloudflare/audio-transcription.http-errors.test.ts');
+  assert.equal(followupOnly.find(slice => slice.id === 'cloudflare-voice').state, 'incomplete');
   assert(slices.find(slice => slice.id === 'continue-edits').native.includes('src/agents/sessions/tools/edit-diff.continue.test.ts'));
-  console.log(JSON.stringify({ ...validateInventory(), selectionControls: 5, passed: true }));
+  console.log(JSON.stringify({ ...validateInventory(), selectionControls: 6, passed: true }));
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
