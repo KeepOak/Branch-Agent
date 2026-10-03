@@ -1,0 +1,866 @@
+/* §4.8.1 setup (preview 60-journeys, 61-journeysp: .ob9 .ob-rail .ob-body .ob-foot .provs .ob-pick15 .ob-tr .ch12 .tl) */
+.ob9 {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  background: var(--bg);
+  color: var(--ink);
+  animation: ob9in 0.25s ease;
+}
+@keyframes ob9in {
+  from {
+    opacity: 0;
+    transform: scale(0.99);
+  }
+}
+.ob-rail {
+  background: var(--side);
+  border-right: 1px solid var(--line);
+  padding: 22px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  overflow: auto;
+}
+.ob-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 15px;
+}
+.ob-rail ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.ob-rail li button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.ob-rail li button:hover:not(:disabled) {
+  background: var(--fill);
+}
+.ob-rail li button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ob-rail li em {
+  font-style: normal;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 600 11px var(--mono);
+  background: var(--fill);
+  color: var(--ink-3);
+  flex: none;
+}
+.ob-rail li.now button {
+  background: var(--raise);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.ob-rail li.now em {
+  background: var(--accent);
+  color: var(--on-btn);
+}
+.ob-rail li.done em {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+.ob-rail .ob-skip {
+  margin-top: auto;
+  align-self: flex-start;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.ob-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.ob-body {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  padding: 48px 32px 24px;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+.ob-body h2 {
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  margin: 0 0 8px;
+  font-weight: 650;
+}
+.ob-body h2:focus {
+  outline: none;
+}
+.ob-body > p {
+  color: var(--ink-2);
+  font-size: 15px;
+  margin: 0 0 20px;
+  max-width: 560px;
+}
+.ob-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px max(32px, calc((100% - 720px) / 2 + 32px));
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+.ob-foot .grow {
+  flex: 1;
+}
+.pose11 {
+  display: block;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+.ob-stage11 {
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  margin: -6px 0 18px -10px;
+  background: radial-gradient(circle at 50% 55%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 62%);
+  display: grid;
+  place-items: center;
+}
+.ob-art11 {
+  width: 180px;
+  height: 180px;
+}
+.ob-pose11 {
+  position: absolute;
+  right: 24px;
+  top: 36px;
+  width: 120px;
+  height: 120px;
+}
+@media (min-width: 900px) {
+  .ob-body > h2,
+  .ob-body > p {
+    padding-right: 130px;
+  }
+}
+@media (max-width: 899px) {
+  .ob-pose11 {
+    display: none;
+  }
+}
+
+/* Welcome */
+.ob-trust {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--raise);
+  display: grid;
+  gap: 10px;
+}
+.may6 {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.may6 li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.may6 .i {
+  color: var(--ok);
+  flex: none;
+  margin-top: 2px;
+  display: grid;
+}
+.ob9 .chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.ob9 .chk input {
+  accent-color: var(--accent);
+}
+
+/* Choice cards */
+.provs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+/* The preview's setup cards stretch their rows to the card's height and mark the pressed card only by aria-pressed. */
+.prov {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: transparent;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+}
+.prov:hover {
+  border-color: var(--ink-3);
+}
+.prov[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.prov small {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.ob9 .ico-tile {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--wash17);
+  color: var(--ink-2);
+  flex: none;
+}
+.ob-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--fill-2);
+  color: var(--ink);
+  font: 700 11px var(--sans);
+  flex: none;
+}
+
+/* Forms, status boxes and rows */
+.ob-remote {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  max-width: 480px;
+}
+.ob9 .fld {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.ob9 .fld > span:first-child {
+  font: 500 10.5px/1.2 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ob9 .hint {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  margin: 4px 0 0;
+}
+.ob-remote .btn {
+  justify-self: start;
+}
+.ob-problem {
+  color: var(--bad);
+  font-size: 13px;
+  margin: 0;
+}
+.ob-status,
+.ob-status-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-top: 14px;
+  border-radius: 16px;
+  background: var(--raise);
+  border: 1px solid var(--hair17);
+  font-size: 13.5px;
+}
+.ob-status-box b {
+  display: block;
+  font-weight: 600;
+}
+.ob-status-box p {
+  margin: 2px 0 0;
+  color: var(--ink-2);
+}
+.ob9 .sdot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ok);
+  margin-top: 6px;
+  flex: none;
+  box-shadow: 0 0 0 4px var(--ok-tint);
+}
+.ob9 .sdot.bad {
+  background: var(--bad);
+  box-shadow: 0 0 0 4px var(--bad-tint);
+}
+.ob9 .sdot.warn {
+  background: var(--warn);
+  box-shadow: 0 0 0 4px var(--warn-tint);
+}
+.ob-steps {
+  margin: 8px 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.ob-raw summary {
+  font-size: 12px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.ob-raw code {
+  display: block;
+  font: 12px var(--mono);
+  color: var(--ink-2);
+  margin-top: 4px;
+  white-space: pre-wrap;
+}
+.ob9 .rows {
+  display: grid;
+}
+.ob9 .prow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 4px;
+  border-bottom: 1px solid var(--hair17);
+  flex-wrap: wrap;
+}
+.ob9 .prow .grow {
+  flex: 1;
+  min-width: 200px;
+}
+.ob9 .prow b {
+  font-weight: 600;
+  font-size: 14px;
+  display: block;
+}
+.ob9 .prow small {
+  display: block;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+.ob9 .acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.ob-acts {
+  margin-top: 10px;
+}
+.ob9 .logo {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+  border-radius: 28%;
+}
+.ob9 .btn .logo {
+  margin-right: 2px;
+}
+.ob-add {
+  position: relative;
+}
+.ob-add-list {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 4px);
+  left: 0;
+  display: grid;
+  min-width: 260px;
+  max-height: 300px;
+  overflow: auto;
+  padding: 6px;
+  border-radius: 16px;
+  background: var(--glass17);
+  backdrop-filter: var(--glass-blur17);
+  box-shadow: var(--pop);
+}
+.ob9 .switch:disabled,
+.ob9 .seg[aria-disabled="true"] {
+  opacity: 0.5;
+}
+
+/* Make it yours */
+.ob-q15 {
+  margin-top: 16px;
+}
+.ob-q15 > b {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+  margin-bottom: 8px;
+}
+.ob-pick15 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.ob-pick15.col15x {
+  grid-template-columns: 1fr;
+}
+.ob-card15,
+.ob-row15 {
+  font: inherit;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  background: var(--raise);
+}
+.ob-card15 {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  border-radius: 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.ob-card15[aria-pressed="true"],
+.ob-row15[aria-pressed="true"] {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+.ob-row15[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+.ob-sw15 {
+  display: flex;
+  width: 100%;
+  max-width: 92px;
+  height: 48px;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.ob-sw15 i {
+  flex: 1;
+}
+.look-light .ob-sw15 i:nth-child(1),
+.look-system .ob-sw15 i:nth-child(1) {
+  background: #eff3f5;
+}
+.look-light .ob-sw15 i:nth-child(2) {
+  background: #f8fafb;
+}
+.look-light .ob-sw15 i:nth-child(3) {
+  background: #ffffff;
+}
+.look-dark .ob-sw15 i:nth-child(1) {
+  background: #111518;
+}
+.look-dark .ob-sw15 i:nth-child(2) {
+  background: #161b1f;
+}
+.look-dark .ob-sw15 i:nth-child(3),
+.look-system .ob-sw15 i:nth-child(3) {
+  background: #1e252a;
+}
+.look-system .ob-sw15 i:nth-child(2) {
+  background: linear-gradient(90deg, #f8fafb 50%, #161b1f 50%);
+}
+.ob-row15 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+.ob-row15 > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+.ob-row15 small {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* Your first Trunks */
+.ob-tr {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+.ob-tpl {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line-2);
+  background: var(--raise);
+  font: inherit;
+  color: var(--ink);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ob-tpl:hover {
+  border-color: var(--ink-3);
+}
+.ob-tpl[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+.ob-tpl b {
+  font-size: 14px;
+}
+.ob-tpl small {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.ob-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+.ob-propose {
+  margin-top: 12px;
+}
+.ob9 .ob-life {
+  margin-top: 12px;
+}
+.ob9 .ob-life + .ob-propose {
+  margin-top: 2px;
+}
+.ob9 textarea.inp {
+  resize: vertical;
+}
+
+/* Reach */
+.ch-grid12 {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+.ob9 .ob-phone {
+  margin-top: 12px;
+}
+.ch12 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--raise);
+  font: inherit;
+  color: var(--ink);
+}
+.ch12[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+.ch12 span {
+  display: grid;
+  min-width: 0;
+}
+.ch12 b {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.ch12 small {
+  font-size: 12px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ch12.on12 {
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+}
+
+/* Two more things */
+.ob-two15 {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.ob9 .tile {
+  border: 1px solid var(--hair17);
+  border-radius: 16px;
+  padding: 16px;
+  display: grid;
+  gap: 8px;
+  background: var(--raise);
+}
+.ob9 .tile .th {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ob9 .tile p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.ob9 .tile .th b {
+  font-weight: 600;
+}
+.ob9 .tile .btn {
+  justify-content: normal;
+  white-space: nowrap;
+}
+.ob-pill {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--fill);
+  color: var(--ink-2);
+}
+.ob-pill.ok {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+.bring-lPF18 {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.bringPF18 .chk {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.chk-sPF18 {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.formR418 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+.formR418 .inp {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+/* Rows like the preview's settings rows (Keep it running, What Trunks may use) */
+.ob9 .ctl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 16px;
+  align-items: center;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+}
+.ob9 .ctl > b {
+  font-size: 14px;
+  font-weight: 500;
+}
+.ob9 .ctl > small {
+  grid-column: 1;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.ob9 .ctl > .right {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ob-seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 10px;
+  background: var(--fill);
+}
+.ob-seg button {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.ob-seg button[aria-pressed="true"] {
+  background: var(--raise);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.ob-seg[aria-disabled="true"] button {
+  cursor: not-allowed;
+}
+.lendPF18 {
+  margin-top: 12px;
+}
+.ob-off {
+  margin-top: 12px;
+}
+
+/* Health check */
+.readyPF18 {
+  margin-bottom: 16px;
+}
+.readyPF18 h3,
+.checks-hPF18 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.readyPF18 .waitPF18 > svg {
+  color: var(--ink-3);
+}
+.ob9 .ob-ready-hint {
+  margin: 6px 0 0;
+}
+.foldPF18 {
+  margin-top: 8px;
+}
+.foldPF18 > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-2);
+  padding: 6px 0;
+}
+.foldPF18 > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.ob9 .tl {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+  max-width: 480px;
+}
+.ob9 .tl li {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 8px;
+  font-size: 13px;
+}
+.ob9 .tl li > svg {
+  margin-top: 2px;
+  color: var(--ink-3);
+}
+.ob9 .tl li.ok > svg {
+  color: var(--ok);
+}
+.ob9 .tl li.badF18 > svg {
+  color: var(--bad);
+}
+.ob9 .tl b {
+  font-weight: 400;
+}
+.ob9 .tl small {
+  display: block;
+  color: var(--ink-3);
+  font: 12px/1.45 var(--mono);
+}
+
+/* Narrow (§4.8.1 States): the rail becomes a strip of numbered circles. */
+@media (max-width: 760px) {
+  .ob9 {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+  .ob-rail {
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    overflow: hidden;
+    gap: 10px;
+  }
+  .ob-rail ol {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .ob-rail li button {
+    padding: 6px;
+    font-size: 0;
+    gap: 0;
+  }
+  .ob-rail li em {
+    font-size: 11px;
+  }
+  .ob-brand {
+    font-size: 0;
+    gap: 0;
+  }
+  .ob-rail .ob-skip {
+    margin: 0 0 0 auto;
+    white-space: nowrap;
+  }
+  .ob-body {
+    padding: 24px 16px;
+  }
+  .ob-body h2 {
+    font-size: 22px;
+  }
+  .ob-foot {
+    padding: 12px 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob9 {
+    animation: none;
+  }
+}
+.ob9 .ob-life textarea.inp {
+  height: 34px;
+  min-height: 34px;
+  padding: 6px 10px;
+}

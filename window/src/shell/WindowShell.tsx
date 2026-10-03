@@ -1,0 +1,1230 @@
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
+import type { Conversation } from "../connect/conversations";
+import type { SendExtras } from "../connect/engine";
+import type { SaplingSession, SessionSnapshot } from "../connect/session";
+import { Composer, VOICE_OFF } from "../composer/Composer";
+import { Thread } from "../thread/Thread";
+import { PlaceView } from "../places-nav/PlaceView";
+import { SettingsFrame } from "../places-nav/SettingsFrame";
+import { lookStore } from "../places/settings/set1/appearance-store";
+import { loadRoute, saveRoute, windowTitle, PLACES, type PlaceId, type Route } from "../places-nav/routes";
+import { pageName } from "../places-nav/settings-nav";
+import { effectiveDark, readThemeChoice, setThemeChoice, toggleTheme, type ThemeChoice } from "../theme/theme";
+import { BannerView, raiseBanner } from "./Banner";
+import { bannerFor } from "./banner-news";
+import { useProblemBanners } from "./problem-banners";
+import { askBeforeDelete, ConfirmCatalogDelete, ConfirmDelete } from "./ConfirmDelete";
+import { conversationActions } from "./conversation-actions";
+import { SessionUnreadPatchGuard } from "../connect/unread-guard";
+import { useConversations, useListPeople, useMachine, usePendingApprovals, useTrunks } from "./engine-data";
+import { FilterButton, FilterSortPopover, readPrefs, savePrefs } from "./FilterSort";
+import { Icon } from "./icons";
+import { buildSections, clearFilters, emptyLineFor, filterRows, filterSummary, hasFolders, homeRow, owners, roomUsed, type ListPrefs } from "./list-model";
+import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./AppSections";
+import { batchMenuItems } from "./batch-menu";
+import { iconColourItem } from "./row-look";
+import { RowCard } from "./RowCard";
+import { MIN_PANE, NO_ROOM, PaneDivider, SplitPanes, TOO_NARROW, type Pane } from "./SplitPanes";
+import { useRowCard, useRowExtras, useSelection } from "./sidebar-state";
+import { machineMenuItems, MachineSwitcher } from "./MachineMenu";
+import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
+import { newMenuItems } from "./new-menu";
+import { notify } from "./notify";
+import { Palette } from "./Palette";
+import { paletteRows } from "./palette-rows";
+import { PersonMenu, usePersonName } from "./PersonMenu";
+import { SideResizer } from "./Resizer";
+import { rowMenuItems } from "./row-menu";
+import { SearchBox, SearchResultsView, useSearch } from "./Search";
+import { ShortcutsDialog } from "./ShortcutsDialog";
+import { QuickAsk } from "./QuickAsk";
+import { NewProjectDialog, useProjects } from "./Projects";
+import { Sidebar, type TalkEntry } from "./Sidebar";
+import { TalkBeside, useTalkLayout } from "./TalkBeside";
+import { StatusBar, type StatusItem } from "./StatusBar";
+import { KeepLastDialog, remindedToday, StatusPopover, statusAnchor, tidy } from "./StatusLayer";
+import { copyMarkdown, copyText } from "./row-actions";
+import { readLevel } from "../places-nav/SettingsFrame";
+import type { Above } from "./Popover";
+import { ringReading } from "./status-data";
+import { useGatewayFacts, useLimits, useUpdate } from "./use-status";
+import { Toasts } from "./Toasts";
+import { HeaderRow, PlaceHead, TopBar, type FaceState } from "./TopBar";
+import { useLayout } from "./use-layout";
+import { hideMenuItems, hideTarget, HIDEABLE, usePetLook, useShown } from "./shown";
+import { StatusGfx, StatusLeftExtras, StatusPet } from "./StatusExtras";
+import { paneKeyFor, useShortcuts } from "./use-shortcuts";
+import { currentKeys, keyActions, readCustomKeys } from "./keymap";
+import { ComputerActivityCard } from "../thread/ComputerActivityCard";
+import { PlanCard, usePlanDismiss, usePlanRefresh, useProgressCard } from "../thread/PlanCard";
+import { ComputerStage, type StageMode } from "../stage/ComputerStage";
+import { SidePane, type PaneTab } from "../stage/SidePane";
+import { StagePip } from "../stage/StagePip";
+import { AddComputer } from "../stage/AddComputer";
+import { computersChanged } from "../stage/computers";
+import { TrunkAppearances, trunkAppearance, type Appearance } from "../face/appearance";
+import { CharacterPanel } from "../face/CharacterPanel";
+import { useShellRoom } from "../rooms/useShellRoom";
+import { NewGroupChatHost } from "../rooms/NewGroupChat";
+import { agentState, STATE_LABEL } from "../face/agentState";
+import { conversationLink, useConversationMenu } from "./ConversationMenu";
+import { TALK_EVENT, useVoiceCatalog } from "../composer/VoiceParts";
+import { DockQuestion } from "../thread/QuestionCard";
+import { WhereChips } from "../thread/WhereChips";
+import { FIND_EVENT } from "../thread/FindBar";
+import { useQuestions } from "../thread/questions";
+import { Walkthrough } from "./Walkthrough";
+import { installedRows, WhatsNew } from "./WhatsNew";
+import { SetupFlow } from "../setup/SetupFlow";
+import { useFirstRun } from "../setup/use-first-run";
+import { useNeedsCount } from "../places/inbox";
+import { TrunkStudio } from "../places/trunk";
+import "./preview.css";
+
+const DONE_MS = 7000;
+
+/** While working: "Working · using the computer" when the step running now uses a computer, else what the face says
+ *  it is doing (the preview's statusLine and AG_LABEL). */
+function workWords(s: SessionSnapshot, now: number): string {
+  const step = [...s.live].reverse().find((b) => b.kind === "step");
+  if (step?.kind === "step" && step.status === "running" && /browser|computer|screen|desktop/i.test(step.tool)) {
+    return "Working · using the computer";
+  }
+  const state = agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now });
+  return state === "work" || state === "idle" ? "Working on it" : STATE_LABEL[state];
+}
+
+function faceState(s: SessionSnapshot, now: number): FaceState {
+  if (s.live.some((b) => b.kind === "approval" && b.approval.state === "pending")) {
+    return "waiting";
+  }
+  if (s.liveRunId) {
+    return "working";
+  }
+  return s.doneAt && now - s.doneAt < DONE_MS ? "done" : "here";
+}
+
+/** The clock for row times; it also ticks just after a "Done" so the header goes back to ready (§4.2.5). */
+function useNow(doneAt: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    setNow(Date.now());
+    if (!doneAt) {
+      return;
+    }
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, doneAt + DONE_MS - Date.now()) + 50);
+    return () => clearTimeout(timer);
+  }, [doneAt]);
+  return now;
+}
+
+type Overlay =
+  | { kind: "menu"; id: string; at: MenuAnchor; items: MenuItem[]; label: string; upward?: boolean }
+  | { kind: "filter"; at: MenuAnchor }
+  | { kind: "person"; at: MenuAnchor; from: Above }
+  | { kind: "palette" }
+  | { kind: "shortcuts" }
+  | { kind: "status"; item: StatusItem; above: Above }
+  | { kind: "ask" }
+  | { kind: "studio" }
+  | null;
+
+const below = (e: MouseEvent<HTMLElement>): MenuAnchor => {
+  if (e.type === "contextmenu") {
+    return { x: e.clientX, y: e.clientY };
+  }
+  const r = e.currentTarget.getBoundingClientRect();
+  return { x: r.left, y: r.bottom + 4 };
+};
+const above = (e: MouseEvent<HTMLElement>): MenuAnchor => {
+  const r = e.currentTarget.getBoundingClientRect();
+  return { x: r.left, y: r.top - 8 - 320 };
+};
+
+
+/** Banners for news about a conversation that is not on screen (§4.10.1): a Trunk needs a yes, or finished. */
+function useBannerNews(session: SaplingSession, shownKey: string | null, rowName: (k: string) => string, trunkOf: (k: string) => string) {
+  const latest = { shownKey, rowName, trunkOf };
+  const ref = useRef(latest);
+  ref.current = latest;
+  useEffect(
+    () =>
+      session.onGatewayEvent((event, payload) => {
+        const { shownKey: open, rowName: title, trunkOf: trunk } = ref.current;
+        const news = bannerFor(event, payload, open, { title, trunk });
+        if (news) {
+          raiseBanner(news);
+        }
+      }),
+    [session, ref],
+  );
+}
+
+/** Opening a conversation clears its unread flag (§4.1.1 Interactions), once per unread episode, the way OpenClaw's
+ *  chat pane does (ui/src/pages/chat/chat-pane-session.ts markSessionRead, with its SessionUnreadPatchGuard). */
+function useMarkRead(request: <T>(m: string, p?: unknown) => Promise<T>, row: Conversation | null, shown: boolean, refresh: () => void) {
+  const guard = useMemo(() => new SessionUnreadPatchGuard(), []);
+  const key = shown && row ? row.key : "";
+  const unread = row?.unread === true;
+  const marker = row?.markedUnreadAt;
+  useEffect(() => {
+    if (!key || !row) {
+      return;
+    }
+    if (!guard.shouldPatch(key, unread, marker)) {
+      return;
+    }
+    const agentId = row.agentId;
+    request("sessions.patch", { key, unread: false, ...(agentId ? { agentId } : {}), expectedMarkedUnreadAt: marker ?? null }).then(
+      () => refresh(),
+      (error: unknown) => guard.patchFailed(key, error),
+    );
+  }, [guard, key, unread, marker, row, request, refresh]);
+}
+
+/** Whether the window is 760 px or narrower (§3.4). */
+function useNarrow(): boolean {
+  const query = "(max-width: 760px)";
+  const [narrow, setNarrow] = useState(() => matchMedia(query).matches);
+  useEffect(() => {
+    const m = matchMedia(query);
+    const on = () => setNarrow(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  return narrow;
+}
+
+/** Follows the computer's light/dark setting and theme changes made elsewhere in the window (Settings > Appearance). */
+function useThemeSync(setTheme: (t: ThemeChoice) => void): boolean {
+  const [systemDark, setSystemDark] = useState(() => matchMedia("(prefers-color-scheme: dark)").matches);
+  useEffect(() => {
+    const changed = (event: Event) => {
+      const choice = (event as CustomEvent).detail;
+      setTheme(choice === "dark" || choice === "light" || choice === "system" ? choice : readThemeChoice());
+    };
+    const media = matchMedia("(prefers-color-scheme: dark)");
+    const systemChanged = () => setSystemDark(media.matches);
+    window.addEventListener("branch:theme-change", changed);
+    window.addEventListener("storage", changed);
+    media.addEventListener("change", systemChanged);
+    return () => {
+      window.removeEventListener("branch:theme-change", changed);
+      window.removeEventListener("storage", changed);
+      media.removeEventListener("change", systemChanged);
+    };
+  }, [setTheme]);
+  return systemDark;
+}
+
+/** Whether the character panel is shown; remembered across windows. */
+function useCharacterShown() {
+  const [shown, setShown] = useState(() => {
+    try {
+      return localStorage.getItem("branch.characterShown") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("branch.characterShown", shown ? "1" : "0");
+    } catch {
+      // storage blocked: the choice lasts for this window only
+    }
+  }, [shown]);
+  useEffect(() => {
+    // Settings › Appearance changes the switch too ("branch:look-change"): follow it without a reload.
+    const reread = () => {
+      try {
+        setShown(localStorage.getItem("branch.characterShown") !== "0");
+      } catch {
+        // storage blocked: keep what this window shows
+      }
+    };
+    window.addEventListener("branch:look-change", reread);
+    return () => window.removeEventListener("branch:look-change", reread);
+  }, []);
+  return [shown, setShown] as const;
+}
+
+/** The character panel keeps its own one-second clock, so its talk, cheer and sleep faces change on time
+ *  without re-rendering the whole shell every second. */
+function LiveCharacter({ name, snapshot: s, onClose, others }: { name: string; snapshot: SessionSnapshot; onClose: () => void; others?: string[] }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return <CharacterPanel name={name} state={agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now })} onClose={onClose} others={others} />;
+}
+
+/** Engine reads the shell needs, in one place. */
+function useEngineReads(session: SaplingSession) {
+  const s = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const ready = s.status.phase === "connected";
+  const [lists, list] = useConversations(session, ready, s.mainKey);
+  return {
+    s,
+    ready,
+    lists,
+    list,
+    trunks: useTrunks(session, ready),
+    pending: usePendingApprovals(session, ready),
+    machine: useMachine(session, ready),
+    limits: useLimits(session, ready),
+    gateway: useGatewayFacts(session, ready),
+    person: usePersonName(session, ready),
+  };
+}
+
+/** The whole window once connected (DESIGN-SPEC §3): top bar, sidebar, main, status bar, menus and toasts. */
+export function WindowShell({ session, url }: { session: SaplingSession; url: string }) {
+  const { s, ready, lists, list, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  const people = useListPeople(session, ready);
+  const update = useUpdate(session, ready, machine?.version ?? "");
+  const projects = useProjects(session, ready);
+  const [newProject, setNewProject] = useState(false);
+  const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null);
+  const now = useNow(s.doneAt);
+  const [layout, setLayout] = useLayout();
+  const [liveW, setLiveW] = useState<number | null>(null);
+  const isNarrow = useNarrow();
+  const [slideOpen, setSlideOpen] = useState(false);
+  const [route, setRoute] = useState<Route>(loadRoute);
+  const [theme, setTheme] = useState<ThemeChoice>(readThemeChoice);
+  const [prefs, setPrefs] = useState<ListPrefs>(readPrefs);
+  const [overlay, setOverlay] = useState<Overlay>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Conversation | null>(null);
+  const [deletingMany, setDeletingMany] = useState<Conversation[] | null>(null);
+  const [panes, setPanes] = useState<Pane[]>([]);
+  const [splitW, setSplitW] = useState(50);
+  const [reading, setReading] = useState<{ thread: CatalogThread; label: string; remove?: boolean } | null>(null);
+  const [keeping, setKeeping] = useState<Conversation | null>(null);
+  const [replyTo, setReplyTo] = useState<{ entryId: string; name: string; text: string } | null>(null);
+  const [stage, setStage] = useState<StageMode | null>(null);
+  const [pane, setPane] = useState<PaneTab | null>(null);
+  const [pip, setPip] = useState<{ id: string; name: string } | null>(null);
+  const [stageComputer, setStageComputer] = useState<string | null>(null);
+  const [addingComputer, setAddingComputer] = useState(false);
+  const [stageTakeOver, setStageTakeOver] = useState(false);
+  const [guide, setGuide] = useState<"news" | "news-ready" | "tour" | null>(null);
+  const [characterShown, setCharacterShown] = useCharacterShown();
+  const [talk, setTalk] = useTalkLayout(); // the default Trunk beside a place or Settings page (§3.3)
+  const shown = useShown(session.engine); // Appearance › What's shown
+  useEffect(() => {
+    // The whole status bar, off: its row folds away everywhere --status-h is read, dialogs drawn over the body included.
+    document.documentElement.classList.toggle("no-status", !shown.statusBar);
+    return () => document.documentElement.classList.remove("no-status");
+  }, [shown.statusBar]);
+  // The person's look (theme, accent, fonts, text size) follows them: read it from the engine once connected.
+  useEffect(() => {
+    if (ready) void lookStore(session.engine).load();
+  }, [ready, session.engine]);
+  const progress = useProgressCard(session.engine);
+  const planRefresh = usePlanRefresh(session.engine, progress.card);
+  const planDismiss = usePlanDismiss(progress.card);
+  const systemDark = useThemeSync(setTheme);
+  useEffect(() => {
+    setStage(null);
+    setPip(null);
+  }, [s.sessionKey, ready]);
+  useEffect(() => setReplyTo(null), [s.sessionKey]); // a reply belongs to the conversation it was started in
+  useEffect(() => setPanes((cur) => (cur.some((x) => x.key === s.sessionKey) ? cur.filter((x) => x.key !== s.sessionKey) : cur)), [s.sessionKey]);
+
+  const request = useCallback(<T,>(m: string, p?: unknown) => session.request<T>(m, p), [session]);
+  const onGatewayEvent = useCallback((listener: (event: string, payload: unknown) => void) => session.onGatewayEvent(listener), [session]);
+  const trunkName = useCallback((id: string | undefined) => trunks.list.find((t) => t.id === id)?.name || s.name || "Sapling", [trunks, s.name]);
+  const defaultName = trunkName(trunks.defaultId ?? undefined);
+  const appearances = useMemo(
+    () => Object.fromEntries(trunks.list.map((t) => [t.name, trunkAppearance(t.avatar, t.name)]).filter((entry): entry is [string, Appearance] => Boolean(entry[1]))),
+    [trunks],
+  );
+  const openKey = s.sessionKey;
+  const actions = useMemo(() => conversationActions(request, list, () => session.getSnapshot().sessionKey), [request, list, session]);
+  const search = useSearch(request, lists.rows, trunkName);
+
+  const go = useCallback((next: Route) => {
+    setStage(null);
+    setRoute(next);
+    setSlideOpen(false); // opening anything closes the slide-over (§4.1.8)
+    saveRoute(next.kind === "chat" ? { kind: "chat", key: next.key ?? session.getSnapshot().sessionKey } : next);
+    if (next.kind === "chat" && next.key) {
+      void session.open(next.key);
+    }
+  }, [session]);
+  const openConversation = useCallback((key: string) => go({ kind: "chat", key }), [go]);
+  const openPlace = useCallback((place: PlaceId) => go({ kind: "place", place }), [go]);
+  const openSettings = useCallback((page: string) => go({ kind: "settings", page }), [go]);
+  /** The Trunk's profile, drawn by People's TrunkHost on `branch:open-trunk` (claude/win-places). */
+  const openTrunkProfile = useCallback((agentId: string | undefined) => {
+    openPlace("people");
+    window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId, view: "profile" } }));
+  }, [openPlace]);
+  useEffect(() => {
+    const navigate = (event: Event) => {
+      const page = (event as CustomEvent<{ page?: string }>).detail?.page;
+      if (typeof page === "string" && /^[a-z][a-z0-9-]*$/.test(page)) {
+        openSettings(page);
+      }
+    };
+    window.addEventListener("branch:navigate-settings", navigate);
+    return () => window.removeEventListener("branch:navigate-settings", navigate);
+  }, [openSettings]);
+  useEffect(() => {
+    // "Watch its screen" from anywhere (Settings › Computer & browser): the open conversation's stage on that computer.
+    const watch = (event: Event) => {
+      const id = (event as CustomEvent<{ computerId?: string }>).detail?.computerId;
+      if (typeof id !== "string" || !id) return;
+      go({ kind: "chat", key: null });
+      setStageComputer(id);
+      setStage("Computer");
+    };
+    window.addEventListener("branch:watch-computer", watch);
+    // "Add a computer" from anywhere opens the stage's dialog; it says branch:computers-changed when one is added.
+    const add = () => setAddingComputer(true);
+    window.addEventListener("branch:add-computer", add);
+    return () => {
+      window.removeEventListener("branch:watch-computer", watch);
+      window.removeEventListener("branch:add-computer", add);
+    };
+  }, [go]);
+  useEffect(() => {
+    // Settings rows and other areas open a place: detail { place, tab? }; the tab is handed to the place as a
+    // "branch:place-tab" event once it shows (places that have tabs listen for it).
+    const navigate = (event: Event) => {
+      const detail = (event as CustomEvent<{ place?: string; tab?: string }>).detail;
+      const place = PLACES.find((p) => p.id === detail?.place)?.id;
+      if (place) {
+        openPlace(place);
+        if (typeof detail?.tab === "string") {
+          const tab = detail.tab;
+          setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place, tab } })), 0);
+        }
+      }
+    };
+    window.addEventListener("branch:navigate-place", navigate);
+    return () => window.removeEventListener("branch:navigate-place", navigate);
+  }, [openPlace]);
+  useEffect(() => {
+    // Ctrl+` shows or hides the side panel's Terminal tab, Ctrl+Shift+B its Files tab (the preview's pane keys).
+    // Ctrl+Shift+K is use-shortcuts' sidePanel; a key the person set for another action wins over these.
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    const key = (event: KeyboardEvent) => {
+      const tab = paneKeyFor(event, mac, currentKeys(keyActions(""), readCustomKeys()));
+      if (tab === "Browser" || tab === "Computer") {
+        event.preventDefault();
+        setStage((value) => (value === tab ? null : tab));
+      } else if (tab) {
+        event.preventDefault();
+        setPane((value) => (value === tab ? null : tab));
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, []);
+  // Settings › "Learn more": a new conversation with the default Trunk, started with the question (§4.7.0).
+  const askDefault = useCallback(async (text: string) => {
+    const key = await actions.create(trunks.defaultId ?? undefined);
+    if (!key) {
+      return;
+    }
+    openConversation(key);
+    await session.open(key);
+    await session.send(text);
+  }, [actions, trunks.defaultId, openConversation, session]);
+  useEffect(() => {
+    // Right-click a part What's shown can hide (data-hide): Hide this, or Choose what's shown… (the preview's menu).
+    const onMenu = (e: globalThis.MouseEvent) => {
+      const part = hideTarget(e.target);
+      if (!part) return;
+      e.preventDefault();
+      const hide = () => {
+        lookStore(session.engine).set(HIDEABLE[part], false).catch((error: unknown) => notify(`Couldn't save that: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+        notify("Hidden. Bring it back in Settings › Appearance."); // fakes-ok: F4 the preview's own toast after Hide this (app-latest ACTS.hide); not yet in DESIGN-SPEC
+      };
+      setOverlay({ kind: "menu", id: `hide:${part}`, at: { x: e.clientX, y: e.clientY }, items: hideMenuItems(hide, () => openSettings("appearance")), label: "Hide" });
+    };
+    document.addEventListener("contextmenu", onMenu);
+    return () => document.removeEventListener("contextmenu", onMenu);
+  }, [session, openSettings]);
+  const startNew = useCallback(async (agentId?: string) => {
+    const key = await actions.create(agentId ?? trunks.defaultId ?? undefined);
+    if (key) {
+      openConversation(key);
+    }
+  }, [actions, trunks.defaultId, openConversation]);
+
+  // A saved conversation that no longer exists reopens the default Trunk's main conversation (§3.3 Parity adds).
+  useEffect(() => {
+    if (lists.loaded && openKey && s.mainKey && openKey !== s.mainKey && !lists.rows.some((r) => r.key === openKey)) {
+      openConversation(s.mainKey);
+    }
+  }, [lists, openKey, s.mainKey, openConversation]);
+
+  const questions = useQuestions(ready ? session.engine : undefined);
+  const waitingQuestion = questions.list.find((q) => q.status === "pending" && (!q.expiresAtMs || q.expiresAtMs > now)) ?? null;
+  const faceNow = waitingQuestion ? "waiting" : faceState(s, now);
+  const rowState = useCallback((row: Conversation) => {
+    const open = row.key === openKey;
+    return { waiting: (pending.get(row.key) ?? 0) > 0 || (open && faceNow === "waiting"), working: row.working || (open && faceNow === "working") };
+  }, [pending, openKey, faceNow]);
+  const home = homeRow(lists.rows, s.mainKey, defaultName);
+  const sections = buildSections(lists.rows, prefs, now, openKey, people);
+  const shownCount = sections.reduce((n, x) => n + x.rows.length, 0);
+  const level = readLevel();
+  const selection = useSelection(useCallback(() => sections.flatMap((x) => x.rows), [sections]));
+  const rowCard = useRowCard(!layout.rail);
+  const catalogs = useCatalogs(request, ready);
+  const personName = useCallback((id: string) => people.names.get(id) ?? lists.rows.find((r) => r.ownerId === id)?.ownerName ?? id, [people, lists.rows]);
+  const openRow = lists.rows.find((r) => r.key === openKey) ?? (openKey === s.mainKey ? home : null);
+  const waitingTotal = [...pending.values()].reduce((a, b) => a + b, 0);
+  const needsYou = useNeedsCount(session.engine, ready); // what Inbox › Needs you counts: the badge and the title
+  const running = lists.rows.filter((r) => r.working).length;
+  const name = openRow?.isMain || !openRow ? defaultName : openRow.title || "New conversation";
+  const room = useShellRoom({ engine: session.engine, rowKind: openRow?.kind, agentId: openRow?.agentId, title: name, ownTrunk: trunkName(openRow?.agentId), history: s.history, trunks: trunks.list });
+  const rowName = (key: string) => {
+    const r = lists.rows.find((x) => x.key === key);
+    return !r || r.isMain || key === s.mainKey ? defaultName : r.title || "New conversation";
+  };
+  useMarkRead(request, openRow, route.kind === "chat" && ready, () => void list.refresh());
+  const rowExtras = useRowExtras(openKey, level, useCallback((key: string) => lists.rows.find((r) => r.key === key)?.title || "a conversation", [lists.rows]));
+  useBannerNews(session, route.kind === "chat" ? openKey : null, rowName, (key) => trunkName(lists.rows.find((r) => r.key === key)?.agentId));
+  useProblemBanners({
+    session,
+    phase: s.status.phase,
+    machineName: machine?.name ?? "",
+    defaultName,
+    openConnection: () => document.querySelector<HTMLElement>("[data-testid=sb-connection]")?.click(),
+    askDefault: (text) => {
+      if (!s.mainKey) return;
+      const key = s.mainKey;
+      openConversation(key);
+      void session.open(key).then(() => session.send(text));
+    },
+  });
+  const pageTitle = route.kind === "chat" ? name : route.kind === "place" ? PLACES.find((p) => p.id === route.place)?.name ?? "" : pageName(route.page);
+  useEffect(() => {
+    document.title = windowTitle(pageTitle, needsYou, !ready);
+  }, [pageTitle, needsYou, ready]);
+
+  const narrow = () => isNarrow;
+  const compact = isNarrow || layout.focus;
+  const toggleList = () => (narrow() ? setSlideOpen((o) => !o) : setLayout({ hidden: !(layout.hidden || layout.rail), rail: false }));
+  const showMenu = (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string, upward = false) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    const at = upward ? { x: r.left, y: r.top } : below(e);
+    // A second click on the button that opened a menu closes it (§5.4 behaviour 1).
+    setOverlay((cur) => (cur?.kind === "menu" && cur.id === id ? null : { kind: "menu", id, at, items, label, upward }));
+  };
+  const machineMenu = (e: MouseEvent<HTMLElement>, id: string, upward = false) =>
+    showMenu(e, id, machineMenuItems({ machineName: machine?.name ?? "", online: ready, level: readLevel(), roundTripMs: gateway.health?.durationMs ?? null, openSettings }), "Which computer", upward);
+  const guideItems = (): MenuItem[] => [
+    { label: "What’s new", hint: "this version", run: () => setGuide("news"), testid: "guide-news" },
+    { label: "Set up Branch", hint: "3 min", run: () => firstRun.open(0), testid: "guide-setup" },
+    { label: "Take the walkthrough", hint: "2 min", run: () => (setOverlay(null), setGuide("tour")), testid: "guide-tour" },
+    { kind: "sep" },
+    { label: "Docs", run: () => undefined, disabled: "The docs address isn't configured." },
+    { label: "Get help", run: () => undefined, disabled: "The help address isn't configured." },
+    { label: "Community", run: () => undefined, disabled: "The community address isn't configured." },
+  ];
+  const [, setReminded] = useState(0); // "Remind me tomorrow" redraws the person menu's update line
+  const statusItem = (item: StatusItem, e: MouseEvent<HTMLElement>) => {
+    if (item === "connection") {
+      machineMenu(e, "machine-sb", true);
+      return;
+    }
+    const above = statusAnchor(e, item);
+    setOverlay((cur) => (cur?.kind === "status" && cur.item === item ? null : { kind: "status", item, above }));
+  };
+  const rowMenu = (row: Conversation, e: MouseEvent<HTMLElement>) =>
+    selection.picked.size > 1 && selection.picked.has(row.key)
+      ? showMenu(e, `row:batch`, batchMenuItems(lists.rows.filter((r) => selection.picked.has(r.key)), actions, (rows) => (askBeforeDelete() ? setDeletingMany(rows) : void actions.removeMany(rows).then(selection.clear)), selection.clear), "Conversations")
+      : showMenu(e, `row:${row.key}`, rowMenuItems(row, {
+      actions,
+      now,
+      trunkName: trunkName(row.agentId),
+      open: openConversation,
+      rename: (r) => {
+        openConversation(r.key);
+        setRenaming(r.key);
+      },
+      confirmDelete: (r) => (askBeforeDelete() ? setDeleting(r) : void actions.remove(r)),
+      newWith: (agentId) => void startNew(agentId),
+      level: readLevel(),
+      ask: (r) => {
+        openConversation(r.key);
+        void session.open(r.key).then(() => session.send("What can you do?"));
+      },
+      editTrunk: () => openPlace("customize"),
+      tidy: (r, keepLast) => (keepLast ? setKeeping(r) : void tidy({ session, list }, r, false)),
+      copyMarkdown: (r) => void copyMarkdown(session.engine, r.key, rowName(r.key)),
+      copyText: (text) => void copyText(text),
+      copyLink: (r) => void copyText(conversationLink(r.key)),
+      lookItem: iconColourItem(row, (change) => actions.setLook(row, change)),
+    }), "Conversation");
+  const changeTheme = (t: ThemeChoice) => setTheme(setThemeChoice(t));
+  const changePrefs = (p: ListPrefs) => {
+    setPrefs(p);
+    savePrefs(p);
+  };
+  const focusSearch = () => {
+    if (layout.rail || layout.hidden) {
+      setLayout({ rail: false, hidden: false });
+    }
+    if (narrow()) {
+      setSlideOpen(true);
+    }
+    setTimeout(() => document.querySelector<HTMLInputElement>("[data-testid=search] input")?.focus(), 0);
+  };
+
+  useShortcuts({
+    palette: () => setOverlay((o) => (o?.kind === "palette" ? null : { kind: "palette" })),
+    newConversation: () => void startNew(),
+    settings: () => openSettings("appearance"),
+    sidePanel: () => setPane((value) => (value ? null : "Activity")), // Ctrl Shift K unless the person set other keys
+    quickAsk: () => setOverlay((o) => (o?.kind === "ask" ? null : { kind: "ask" })),
+    focusMode: () => setLayout({ focus: !layout.focus }),
+    toggleList,
+    inbox: () => openPlace("inbox"),
+    focusSearch,
+    talkBeside: () => {
+      if (route.kind !== "chat") setTalk({ open: !talk.open });
+    },
+    archiveOpen: () => {
+      if (openRow && !openRow.isMain && !overlay) {
+        void actions.archive(openRow);
+      }
+    },
+    talkLive: () => window.dispatchEvent(new Event(TALK_EVENT)),
+    stop: () => void session.stopRun(),
+    nextConversation: () => {
+      const order = [home, ...sections.flatMap((x) => x.rows)].filter((r): r is Conversation => r !== null);
+      const next = order[(order.findIndex((r) => r.key === openKey) + 1) % Math.max(order.length, 1)];
+      if (next) {
+        openConversation(next.key);
+      }
+    },
+    shortcuts: () => setOverlay({ kind: "shortcuts" }),
+    escape: () => {
+      // Escape closes, in order: the popover, then the dialog, then focus mode, then the slide-over (§3.6).
+      if (overlay) {
+        setOverlay(null);
+        return true;
+      }
+      if (stage) {
+        setStage(null);
+        return true;
+      }
+      if (pane) {
+        setPane(null);
+        return true;
+      }
+      if (layout.focus) {
+        setLayout({ focus: false });
+        return true;
+      }
+      if (slideOpen) {
+        setSlideOpen(false);
+        return true;
+      }
+      return false;
+    },
+  });
+
+  const header =
+    route.kind === "chat"
+      ? {
+          name,
+          trunkName: trunkName(openRow?.agentId),
+          state: faceNow,
+          isDefaultTrunk: !openRow?.agentId || openRow.agentId === trunks.defaultId,
+          role: trunks.list.find((t) => t.id === (openRow?.agentId ?? trunks.defaultId))?.theme,
+          workWords: workWords(s, now),
+          renaming: renaming !== null && renaming === openKey,
+          onProfile: room.header ? undefined : () => openTrunkProfile(openRow?.agentId ?? trunks.defaultId ?? undefined),
+          room: room.header,
+          onRename: (value: string | null) => {
+            setRenaming(null);
+            if (value !== null && openRow && value.trim() !== openRow.title) {
+              void actions.rename(openRow, value);
+            }
+          },
+        }
+      : null;
+  const voiceReady = useVoiceCatalog(ready ? session.engine : undefined);
+  const pet = usePetLook(session.engine);
+  const pausedTrunks = trunks.list.filter((t) => t.paused);
+  const statusExtras = {
+    session,
+    ready,
+    paused: pausedTrunks.map((t) => ({ id: t.id, name: t.name })),
+    allPaused: pausedTrunks.length > 0 && pausedTrunks.length === trunks.list.length,
+    gfx: shown.gfx,
+    pet,
+    onMenu: (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string) => showMenu(e, id, items, label, true),
+    onSettings: openSettings,
+  };
+  /** "Open another conversation beside": the first pane shows the one picked (the preview's beside15). */
+  const besideItems = (): MenuItem[] => [
+    { kind: "head", label: "Open beside this one" },
+    ...lists.rows.filter((r) => r.key !== openKey && !r.archived).map((r): MenuItem => ({
+      label: rowName(r.key),
+      sub: r.preview.slice(0, 44) || undefined,
+      run: () => {
+        setPanes((cur) => (cur.length ? cur.map((x, i) => (i === 0 ? { ...x, key: r.key } : x)) : [{ key: r.key, dir: "right" }]));
+        if (innerWidth < 1000) notify(TOO_NARROW);
+      },
+    })),
+  ];
+  const split = (dir: "right" | "down") => {
+    const w = document.getElementById("main")?.clientWidth ?? innerWidth;
+    const cols = panes.filter((x) => x.dir === "right").length + 1;
+    if (dir === "right" && w / (cols + 1) < MIN_PANE) {
+      notify(NO_ROOM);
+      return;
+    }
+    setPanes((cur) => [...cur, { key: null, dir: cur.length ? dir : "right" }]);
+    if (innerWidth < 1000) notify(TOO_NARROW);
+  };
+  const conversationMenu = useConversationMenu({
+    session,
+    url,
+    ready,
+    now,
+    row: openRow,
+    isMain: !openRow || openRow.isMain || openKey === s.mainKey,
+    title: name,
+    trunk: { id: openRow?.agentId ?? trunks.defaultId ?? undefined, name: trunkName(openRow?.agentId) },
+    trunks,
+    actions,
+    history: s.history,
+    onRename: () => openKey && setRenaming(openKey),
+    onDelete: (row) => (askBeforeDelete() ? setDeleting(row) : void actions.remove(row)),
+    openPlace,
+    characterHidden: !characterShown,
+    onShowCharacter: () => setCharacterShown(true),
+    talkOff: voiceReady.live ? null : VOICE_OFF,
+    onTalk: () => window.dispatchEvent(new Event(TALK_EVENT)),
+    besideOpen: panes.length > 0,
+    onBeside: (at) => setOverlay({ kind: "menu", id: "beside", at, label: "Open beside this one", items: besideItems() }),
+    onSplit: split,
+    onAddComputer: () => setAddingComputer(true),
+    onManageComputers: () => openSettings("computer"),
+    room: room.menu,
+  });
+  const areaProps = {
+    engine: session.engine,
+    sessionKey: s.sessionKey,
+    onReload: () => void session.reload(),
+    onToast: (text: string) => notify(text),
+    onOpenSession: openConversation,
+    onReply: (target: { entryId: string; name: string; text: string }) => setReplyTo(target),
+  };
+  const sideWidth = liveW ?? (layout.hidden ? 0 : layout.rail ? 68 : layout.sideW);
+  const frameClass = ["frame", layout.hidden ? "list-hidden" : "", layout.rail ? "rail" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
+  const summary = filterSummary(prefs, trunkName, personName);
+  const dark = theme === "system" ? systemDark : effectiveDark(theme);
+  const filterOpen = overlay?.kind === "filter";
+
+  const conversationTools = (
+    <>
+      <button type="button" className="ib" aria-label="Computer" title="Computer" onClick={() => setStage("Computer")}><Icon name="monitor" /></button>
+      <button type="button" className="ib" aria-label="Browser" title="Browser" onClick={() => setStage("Browser")}><Icon name="globe" /></button>
+      <button type="button" className="ib" aria-label="Side panel" title="Side panel · Ctrl Shift K" aria-pressed={pane !== null} onClick={() => setPane((v) => (v ? null : "Activity"))}><Icon name="panel" /></button>
+      {openRow?.kind === "group" || openRow?.kind === "channel" ? null : (
+        <button type="button" className="ib" aria-label={`Who ${trunkName(openRow?.agentId)} knows and may talk to`} title="Who it knows" data-testid="who-it-knows-button" onClick={conversationMenu.whoItKnows}><Icon name="users" /></button>
+      )}
+      <button type="button" className="ib" aria-label="Find in this conversation" title="Find in this conversation (Ctrl+F)" onClick={() => window.dispatchEvent(new Event(FIND_EVENT))}><Icon name="search" /></button>
+      <button type="button" className="ib" aria-label="Conversation menu" title="Conversation menu" data-testid="conversation-menu-button" onClick={conversationMenu.open}>
+        <Icon name="more" />
+      </button>
+    </>
+  );
+  let main: ReactNode;
+  if (route.kind === "chat") {
+    const composerProps = {
+      ...areaProps,
+      replyTo,
+      onClearReply: () => setReplyTo(null),
+      onOpenConversation: openConversation,
+      offline: !ready,
+      onOpen: (target: string) => {
+        if (target.startsWith("settings/")) {
+          openSettings(target.slice("settings/".length));
+        } else if (target === "customize/tools") {
+          openPlace("customize");
+        } else if (target === "local-model-setup") {
+          openSettings("local");
+        }
+      },
+    };
+    main = (
+      <>
+        <div className="conversation-column">
+        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} onList={toggleList} /> : null}
+        <SplitFrame panes={panes} width={splitW} onWidth={setSplitW} side={
+          <SplitPanes
+            panes={panes}
+            rows={lists.rows}
+            openKey={openKey}
+            request={request}
+            onEvent={onGatewayEvent}
+            trunkName={trunkName}
+            rowName={rowName}
+            onOpen={openConversation}
+            onPick={(n, key) => setPanes((cur) => cur.map((x, i) => (i === n ? { ...x, key } : x)))}
+            onClose={(n) => setPanes((cur) => cur.filter((_, i) => i !== n).map((x, i) => (i === 0 ? { ...x, dir: "right" } : x)))}
+            onMenu={(e, id, items, label) => showMenu(e, id, items, label)}
+            onSplit={split}
+          />
+        }>
+        <Thread
+          {...areaProps}
+          onOpenActivity={() => setPane("Activity")}
+          supplement={
+            <>
+              <ComputerActivityCard blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} name={trunkName(openRow?.agentId)} engine={session.engine} gatewayUrl={url} onWatch={(mode, takeOver) => { setStageTakeOver(Boolean(takeOver)); setStage(mode); }} />
+            </>
+          }
+          name={trunkName(openRow?.agentId)}
+          room={room.thread}
+          history={s.history}
+          live={s.live}
+          questions={questions.list}
+          onStart={(text: string) => void session.send(text)}
+          plan={progress.card && !planDismiss.dismissed ? <PlanCard card={progress.card} onRefresh={planRefresh.refresh} refreshing={planRefresh.status} onDismiss={planDismiss.dismiss} /> : null}
+          pendingUser={s.pendingUser}
+          running={Boolean(s.liveRunId)}
+          onAnswer={(id, decision) => void session.answer(id, decision)}
+        />
+        </SplitFrame>
+        {s.error ? <p className="notice indent">{s.error}</p> : null}
+        <Composer
+          {...composerProps}
+          name={trunkName(openRow?.agentId)}
+          placeholder={room.placeholder}
+          working={Boolean(s.liveRunId)}
+          disabled={!s.sessionKey || !ready}
+          plan={progress.card?.steps?.length && !planDismiss.dismissed ? { done: progress.card.steps.filter((x) => x.status === "completed").length, total: progress.card.steps.length, steps: progress.card.steps } : null}
+          above={
+            waitingQuestion ? (
+              <DockQuestion record={waitingQuestion} trunkName={trunkName(openRow?.agentId)} onResolve={questions.resolve} />
+            ) : ready && !s.history.length && !s.pendingUser && !s.liveRunId ? (
+              <WhereChips key={s.sessionKey} engine={session.engine} row={openRow} trunkName={trunkName(openRow?.agentId)} advanced={level !== "regular"}
+                projectName={projects.projects.find((x) => x.id === openRow?.projectId)?.name ?? null} onOpenConversation={openConversation} />
+            ) : null
+          }
+          onSend={(text: string, extras?: SendExtras) => void session.send(text, extras)}
+          onStop={() => void session.stopRun()}
+        />
+        </div>
+        {pane && ready ? (
+          <SidePane key={s.sessionKey} engine={session.engine} name={trunkName(openRow?.agentId)} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} cardError={progress.error} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={notify} title={name} onReload={() => void session.reload()} />
+        ) : null}
+      </>
+    );
+  } else if (route.kind === "place") {
+    main = (
+      <>
+        {isNarrow ? <PlaceHead onList={toggleList} onSettings={() => openSettings("general")} /> : null}
+        <PlaceView place={route.place} engine={session.engine} facts={{ running, waiting: waitingTotal }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={(agentId) => void startNew(agentId)} />
+      </>
+    );
+  } else {
+    main = <SettingsFrame page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} />;
+  }
+  const talkEntry: TalkEntry | null =
+    route.kind === "chat" ? null : { name: defaultName, keys: currentKeys(keyActions(defaultName), readCustomKeys()).talkBeside, open: talk.open, onToggle: () => setTalk({ open: !talk.open }) };
+  const talkShown = talkEntry !== null && talk.open && !layout.focus;
+  if (route.kind !== "chat") {
+    main = (
+      <>
+        <div className="talk-page">{main}</div>
+        {talkShown ? (
+          <TalkBeside
+            request={request}
+            onEvent={onGatewayEvent}
+            sessionKey={s.mainKey}
+            name={defaultName}
+            page={pageTitle}
+            layout={talk}
+            onLayout={setTalk}
+            onFull={() => {
+              setTalk({ open: false });
+              if (s.mainKey) openConversation(s.mainKey);
+            }}
+          />
+        ) : null}
+      </>
+    );
+  }
+  const mainClass = route.kind === "chat" ? (pane ? "main with-pane" : "main") : talkShown ? (talk.dock === "bottom" ? "main with-talk talk-bottom" : "main with-talk") : "main";
+
+  return (
+    <TrunkAppearances.Provider value={appearances}>
+    <div className={frameClass} data-connection={ready ? "ready" : s.status.phase} data-route={route.kind} style={{ ["--side-w" as string]: `${sideWidth}px` }}>
+      <a className="skip" href="#main">
+        {route.kind === "chat" ? "Skip to the conversation" : "Skip to the page"}
+      </a>
+      <TopBar
+        compact={compact}
+        machine={<MachineSwitcher online={ready} connecting={s.status.phase === "connecting"} onOpen={(e) => machineMenu(e, "machine")} />}
+        header={header}
+        dark={dark}
+        listHidden={layout.hidden || layout.rail}
+        onTheme={() => setTheme(toggleTheme(theme))}
+        onToggleList={toggleList}
+        onCharacter={() => setCharacterShown((v) => !v)}
+        onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
+        conversationTools={conversationTools}
+        ask={talkEntry}
+      />
+      <Sidebar
+        home={home}
+        sections={sections}
+        openKey={route.kind === "chat" ? openKey : null}
+        currentPlace={route.kind === "place" ? route.place : null}
+        now={now}
+        showPreview={prefs.preview}
+        rowState={rowState}
+        trunkName={trunkName}
+        inboxCount={needsYou}
+        runningCount={running}
+        personName={person}
+        hasUnread={lists.rows.some((r) => r.unread && r.key !== openKey)}
+        filterSlot={<FilterButton prefs={prefs} open={filterOpen} onOpen={(e) => (filterOpen ? setOverlay(null) : setOverlay({ kind: "filter", at: below(e) }))} />}
+        summary={
+          summary ? (
+            <span className="filter-sum" data-testid="filter-summary">
+              {summary}
+              <button type="button" className="ib sm" aria-label="Clear filters" title="Clear filters" onClick={() => changePrefs(clearFilters(prefs))}>
+                <Icon name="x" size={12} />
+              </button>
+            </span>
+          ) : null
+        }
+        emptyLine={emptyLineFor(prefs, shownCount)}
+        search={<SearchBox query={search.query} onQuery={search.setQuery} />}
+        searchResults={
+          search.query.trim() ? (
+            <SearchResultsView
+              query={search.query}
+              chip={search.chip}
+              results={search.results}
+              now={now}
+              trunkName={trunkName}
+              rowName={rowName}
+              onChip={search.setChip}
+              onOpen={(key) => {
+                search.setQuery("");
+                openConversation(key);
+              }}
+              onLibrary={() => {
+                search.setQuery("");
+                openPlace("library");
+              }}
+            />
+          ) : null
+        }
+        rail={layout.rail}
+        onRailSearch={focusSearch}
+        onOpen={(key) => {
+          selection.clear();
+          openConversation(key);
+        }}
+        onPlace={openPlace}
+        onNew={(e) => showMenu(e, "new", newMenuItems({ newConversation: () => void startNew(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
+        onMenu={rowMenu}
+        onPin={(r) => void actions.pin(r)}
+        onArchive={(r) => void (r.archived ? actions.restore(r) : actions.archive(r))}
+        onMarkAllRead={() => void actions.markAllRead(lists.rows)}
+        onPerson={(e) => (overlay?.kind === "person" ? setOverlay(null) : setOverlay({ kind: "person", at: above(e), from: statusAnchor(e, "connection") }))}
+        onSettings={() => openSettings("general")}
+        talk={talkEntry}
+        projects={shown.projects ? projects.projects : undefined}
+        allRows={lists.rows}
+        onNewProject={() => setNewProject(true)}
+        rowExtras={rowExtras}
+        machine={isNarrow ? <MachineSwitcher online={ready} connecting={s.status.phase === "connecting"} onOpen={(e) => machineMenu(e, "machine-side")} /> : undefined}
+        selected={selection.picked}
+        onSelect={selection.select}
+        onCard={rowCard.onCard}
+        showOnly={prefs.groupBy === "person" ? { current: prefs.people, name: personName, onShow: (id) => changePrefs({ ...prefs, people: id ? `p:${id}` : "everyone" }) } : undefined}
+        onClearFilters={() => changePrefs(clearFilters(prefs))}
+        appSections={
+          <AppSections
+            data={catalogs}
+            now={now}
+            onMenu={(e, id, items, label) => showMenu(e, id, items, label)}
+            onRead={(thread, label) => setReading({ thread, label })}
+            onDelete={(thread, label) => setReading({ thread, label, remove: true })}
+          />
+        }
+      />
+      {rowCard.card ? (
+        <RowCard
+          row={rowCard.card.row}
+          anchor={rowCard.card.el}
+          request={request}
+          trunkName={trunkName(rowCard.card.row.agentId)}
+          personName={person}
+          project={projects.projects.find((x) => x.id === rowCard.card?.row.projectId)?.name ?? null}
+          advanced={level !== "regular"}
+          extras={rowExtras(rowCard.card.row)}
+        />
+      ) : null}
+      {layout.focus ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
+      {slideOpen ? <div className="slide-scrim" onClick={() => setSlideOpen(false)} /> : null}
+      <main className={mainClass} id="main">
+        {layout.focus ? (
+          <button type="button" className="btn sm focus-exit" onClick={() => setLayout({ focus: false })}>
+            Leave focus mode · Ctrl+.
+          </button>
+        ) : null}
+        {main}
+      </main>
+      {route.kind === "chat" && stage ? (
+        <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
+      ) : null}
+      {addingComputer && ready ? <AddComputer engine={session.engine} onClose={() => setAddingComputer(false)} onAdded={computersChanged} /> : null}
+      {route.kind === "chat" && pip && !stage ? (
+        <StagePip key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} computer={pip} onOpen={() => { setPip(null); setStage("Computer"); }} onClose={() => setPip(null)} />
+      ) : null}
+      {shown.statusBar ? (
+        <StatusBar
+          connection={ready ? "connected" : s.status.phase === "connecting" ? "connecting" : "offline"}
+          gateway={!ready ? (s.status.phase === "connecting" ? "checking" : "offline") : gateway.health?.ok ? "on" : gateway.error || gateway.health ? "offline" : "checking"}
+          machineName={machine?.name ?? url.replace(/^wss?:\/\//, "")}
+          roomUsed={route.kind === "chat" ? roomUsed(openRow) : null}
+          running={running}
+          version={machine?.version ?? ""}
+          usage={shown.usage ? ringReading(limits) : null}
+          gatewayShown={shown.gateway}
+          open={overlay?.kind === "status" ? overlay.item : overlay?.kind === "menu" && overlay.id === "machine-sb" ? "connection" : null}
+          extras={{
+            left: <StatusLeftExtras {...statusExtras} />,
+            gfx: <StatusGfx {...statusExtras} />,
+            pet: <StatusPet pet={statusExtras.pet} />,
+          }}
+          onItem={statusItem}
+        />
+      ) : null}
+      {overlay?.kind === "status" ? (
+        <StatusPopover
+          item={overlay.item}
+          above={overlay.above}
+          onClose={() => setOverlay(null)}
+          ctx={{
+            session,
+            list,
+            limits,
+            gateway,
+            update,
+            version: machine?.version ?? "",
+            openRow,
+            working: lists.rows.filter((r) => r.working).map((r) => ({ key: r.key, title: trunkName(r.agentId), line: r.isMain ? "Working" : r.title || "New conversation" })),
+            openSettings,
+            openAutomations: () => openPlace("automations"),
+            openConversation,
+            onWhatsNew: () => setGuide("news-ready"),
+            onReminded: () => setReminded((n) => n + 1),
+          }}
+        />
+      ) : null}
+      {overlay?.kind === "menu" ? <Menu at={overlay.at} items={overlay.items} label={overlay.label} upward={overlay.upward} testid={`${overlay.id.split(":")[0]}-menu`} onClose={() => setOverlay(null)} /> : null}
+      {overlay?.kind === "filter" ? (
+        <FilterSortPopover
+          at={overlay.at}
+          prefs={prefs}
+          facts={{
+            trunks: trunks.list,
+            people,
+            owners: owners(lists.rows).length,
+            folders: hasFolders(lists.rows),
+            level,
+            unreadTrunks: new Set(filterRows(lists.rows, { ...prefs, trunk: null }, now, openKey, people).filter((r) => r.unread && r.key !== openKey).map((r) => r.agentId ?? "")),
+          }}
+          onChange={changePrefs}
+          onClose={() => setOverlay(null)}
+          onSettings={openSettings}
+        />
+      ) : null}
+      {overlay?.kind === "person" ? (
+        <PersonMenu
+          at={overlay.at}
+          above={overlay.from}
+          person={person}
+          theme={theme}
+          onTheme={changeTheme}
+          onClose={() => setOverlay(null)}
+          onSettings={() => openSettings("general")}
+          onAchievements={() => openSettings("achievements")}
+          onShortcuts={() => setOverlay({ kind: "shortcuts" })}
+          onAbout={() => openSettings("updates")}
+          onGuide={() => {
+            const r = document.querySelector("[data-testid=guide]")?.getBoundingClientRect();
+            setOverlay({ kind: "menu", id: "guide", at: { x: r ? r.left : 8, y: r ? r.bottom + 4 : 48 }, items: guideItems(), label: "Guide" });
+          }}
+          onReplay={() => firstRun.open(0)}
+          onAddPerson={() => openSettings("people")}
+          onLock={() => openSettings("permissions")}
+          updateTo={update?.latest && update.latest !== machine?.version && !remindedToday(update.latest) ? update.latest : null}
+          onUpdate={() => {
+            const r = document.querySelector("[data-testid=sb-version]")?.getBoundingClientRect();
+            const above = r && r.width ? { left: r.left, right: r.right, top: r.top, align: "right" as const } : { left: 8, right: 8, top: innerHeight - 40, align: "left" as const };
+            setOverlay({ kind: "status", item: "version", above });
+          }}
+        />
+      ) : null}
+      {overlay?.kind === "palette" ? (
+        <Palette
+          request={request}
+          rowName={rowName}
+          onOpenConversation={openConversation}
+          onClose={() => setOverlay(null)}
+          rows={paletteRows({
+            conversations: [...(home ? [home] : []), ...lists.rows.filter((r) => !r.isMain && !r.archived)],
+            trunks: trunks.list,
+            trunkName,
+            newConversation: () => void startNew(),
+            toggleTheme: () => setTheme(toggleTheme(theme)),
+            focusMode: () => setLayout({ focus: true }),
+            shortcuts: () => setOverlay({ kind: "shortcuts" }),
+            setup: () => firstRun.open(0),
+            tour: () => setGuide("tour"),
+            quickAsk: () => setOverlay({ kind: "ask" }),
+            openConversation,
+            openPlace,
+            openSettings,
+          })}
+        />
+      ) : null}
+      {overlay?.kind === "ask" ? (
+        <QuickAsk
+          trunks={trunks.list}
+          defaultId={trunks.defaultId}
+          onClose={() => setOverlay(null)}
+          onSend={(text, agentId) => {
+            void actions.create(agentId).then((key) => {
+              if (key) {
+                openConversation(key);
+                void session.open(key).then(() => session.send(text));
+              }
+            });
+          }}
+        />
+      ) : null}
+      {overlay?.kind === "studio" ? <TrunkStudio engine={session.engine} onClose={() => setOverlay(null)} openTrunk={openTrunkProfile} /> : null}
+      {overlay?.kind === "shortcuts" ? <ShortcutsDialog defaultName={defaultName} onClose={() => setOverlay(null)} /> : null}
+      {newProject ? <NewProjectDialog session={session} onDone={projects.reload} onClose={() => setNewProject(false)} /> : null}
+      {keeping ? <KeepLastDialog onCancel={() => setKeeping(null)} onKeep={() => (setKeeping(null), void tidy({ session, list }, keeping, true))} /> : null}
+      {deletingMany && deletingMany.length ? (
+        <ConfirmDelete
+          row={deletingMany[0]}
+          count={deletingMany.length}
+          onCancel={() => setDeletingMany(null)}
+          onDelete={() => {
+            const rows = deletingMany;
+            setDeletingMany(null);
+            void actions.removeMany(rows).then(selection.clear);
+          }}
+        />
+      ) : null}
+      {reading && !reading.remove ? (
+        <ReadOnlyThread
+          request={request}
+          thread={reading.thread}
+          label={reading.label}
+          onClose={() => setReading(null)}
+          onBringIn={() => {
+            const t = reading.thread;
+            setReading(null);
+            void catalogs.bringIn(t).then((key) => key && openConversation(key));
+          }}
+        />
+      ) : null}
+      {reading?.remove ? (
+        <ConfirmCatalogDelete
+          name={reading.thread.name}
+          onCancel={() => setReading(null)}
+          onDelete={() => {
+            const t = reading.thread;
+            setReading(null);
+            void catalogs.remove(t);
+          }}
+        />
+      ) : null}
+      {deleting ? (
+        <ConfirmDelete
+          row={deleting}
+          onCancel={() => setDeleting(null)}
+          onDelete={() => {
+            const row = deleting;
+            setDeleting(null);
+            void actions.remove(row);
+          }}
+        />
+      ) : null}
+      {route.kind === "chat" && characterShown ? (
+        <LiveCharacter name={trunkName(openRow?.agentId)} snapshot={s} onClose={() => setCharacterShown(false)} others={room.others} />
+      ) : null}
+      <NewGroupChatHost engine={ready ? session.engine : undefined} onOpen={openConversation} />
+      {guide === "tour" ? <Walkthrough defaultName={defaultName} onClose={() => setGuide(null)} /> : null}
+      {guide === "news" || guide === "news-ready" ? (
+        <WhatsNew
+          version={machine?.version ?? ""}
+          update={update}
+          startOnReady={guide === "news-ready"}
+          installed={installedRows({ setup: () => firstRun.open(0), shortcuts: () => setOverlay({ kind: "shortcuts" }), palette: () => setOverlay({ kind: "palette" }), settings: openSettings })}
+          onOpenUpdates={() => openSettings("updates")}
+          onInstall={() => void session.request("update.run", {}).catch((e: unknown) => notify(`Couldn't install the update: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" }))}
+          onClose={() => setGuide(null)}
+        />
+      ) : null}
+      {firstRun.step !== null && ready ? (
+        <SetupFlow
+          engine={session.engine}
+          version={machine?.version ?? ""}
+          trunkNames={trunks.list.map((t) => t.name)}
+          defaultAgentId={trunks.defaultId}
+          defaultName={defaultName}
+          startAt={firstRun.step}
+          onClose={(finished) => {
+            firstRun.close();
+            if (finished) {
+              setTimeout(() => setGuide("tour"), 700); // the walkthrough starts 700 ms after setup (§4.8.1.11 rule 3)
+            }
+          }}
+          onLocalModel={() => {
+            firstRun.close();
+            openSettings("local");
+          }}
+        />
+      ) : null}
+      {route.kind === "chat" ? conversationMenu.node : null}
+      <BannerView onOpen={openConversation} />
+      <Toasts />
+    </div>
+    </TrunkAppearances.Provider>
+  );
+}
+
+/** The thread alone, or the thread as the first of several panes with a divider (§4.2.6 Split view). */
+function SplitFrame({ panes, width, onWidth, side, children }: { panes: Pane[]; width: number; onWidth: (w: number) => void; side: ReactNode; children: ReactNode }) {
+  if (!panes.length) return <>{children}</>;
+  return (
+    <div className="split" style={{ ["--mainw" as string]: `${width}%` }}>
+      <div className="split-main">{children}</div>
+      <PaneDivider width={width} onWidth={onWidth} />
+      {side}
+    </div>
+  );
+}

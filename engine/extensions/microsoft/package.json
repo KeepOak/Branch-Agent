@@ -1,0 +1,18 @@
+{
+  "name": "@branch/microsoft-speech",
+  "version": "2026.9.7",
+  "private": true,
+  "description": "Branch Agent Microsoft speech plugin",
+  "type": "module",
+  "dependencies": {
+    "node-edge-tts": "1.2.10"
+  },
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

@@ -1,0 +1,283 @@
+// @vitest-environment jsdom
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { WindowEngine } from "../../../connect/engine";
+import { SettingsPage } from "../index";
+import { findings, parseDotenv } from "./secrets";
+import { campaignLine } from "./updates";
+
+type Answers = Record<string, unknown | ((params: Record<string, unknown>) => unknown)>;
+function engineWith(answers: Answers) {
+  const request = vi.fn(async (method: string, params: Record<string, unknown> = {}) => {
+    const a = answers[method];
+    if (a === undefined) return {};
+    return typeof a === "function" ? (a as (p: Record<string, unknown>) => unknown)(params) : a;
+  });
+  const engine: WindowEngine = { request: request as WindowEngine["request"], onEvent: () => () => {}, sessionKey: "agent:main:main", agentId: "main", scopes: ["operator.admin"] };
+  return { engine, request };
+}
+let host: HTMLDivElement; let root: Root;
+beforeEach(() => { (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true; window.matchMedia ??= ((q: string) => ({ matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, onchange: null, dispatchEvent: () => false })) as unknown as typeof window.matchMedia; host = document.createElement("div"); host.className = "set-col"; document.body.append(host); root = createRoot(host); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.restoreAllMocks(); });
+
+const flush = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); };
+async function show(page: string, engine: WindowEngine, level: "regular" | "advanced" | "technical" = "regular") {
+  await act(async () => root.render(<SettingsPage page={page} title={page} level={level} engine={engine} />));
+  await flush();
+}
+function button(text: string): HTMLButtonElement {
+  const b = [...document.querySelectorAll("button")].find((x) => x.textContent?.trim() === text);
+  if (!b) throw new Error(`no button "${text}"`);
+  return b as HTMLButtonElement;
+}
+async function click(text: string) { await act(async () => button(text).click()); await flush(); }
+
+const READY = { sentinel: null, updateAvailable: { currentVersion: "1.0.0", latestVersion: "1.1.0", channel: "stable" }, effectiveChannel: "stable", schedule: { channel: "stable", autoEnabled: false } };
+const RUNNING = { sessions: [{ key: "agent:main:a", agentId: "main", hasActiveRun: true, activeRunIds: ["r1"] }, { key: "agent:main:b", agentId: "main", hasActiveRun: false }] };
+
+describe("Settings › Updates & about", () => {
+  it("reads the version and the waiting update from the engine", async () => {
+    const { engine } = engineWith({ "update.status": READY, status: { runtimeVersion: "1.0.0" }, "system.info": { platform: "win32" } });
+    await show("updates", engine);
+    expect(document.body.textContent).toContain("Branch Agent 1.0.0 on Windows.");
+    expect(document.body.textContent).toContain("1.1.0 is ready to install");
+  });
+  it("says it is up to date when the engine reports no update", async () => {
+    const { engine } = engineWith({ "update.status": { ...READY, updateAvailable: null }, status: { runtimeVersion: "1.0.0" } });
+    await show("updates", engine);
+    expect(document.body.textContent).toContain("Branch is up to date.");
+    expect(document.body.textContent).not.toContain("Install when nothing is running");
+  });
+  it("Let them finish first runs update.run without stopping anything", async () => {
+    const { engine, request } = engineWith({ "update.status": READY, "sessions.list": RUNNING, "update.run": { ok: true, result: { status: "ok" } } });
+    await show("updates", engine);
+    await click("Install when nothing is running");
+    expect(document.body.textContent).toContain("1 task is working right now.");
+    await click("Continue");
+    expect(request.mock.calls.map(([m]) => m)).toContain("update.run");
+    expect(request.mock.calls.map(([m]) => m)).not.toContain("sessions.abort");
+    expect(document.body.textContent).toContain("It installs when the running tasks finish");
+  });
+  it("Install now stops each running conversation, then runs update.run", async () => {
+    const { engine, request } = engineWith({ "update.status": READY, "sessions.list": RUNNING, "sessions.abort": { ok: true }, "update.run": { ok: true } });
+    await show("updates", engine);
+    await click("Install when nothing is running");
+    await act(async () => button("Install nowStops them at a safe point. Afterwards you can pick each one up where it was.").click());
+    await click("Continue");
+    const methods = request.mock.calls.map(([m]) => m);
+    expect(request).toHaveBeenCalledWith("sessions.abort", { key: "agent:main:a", agentId: "main", runId: "r1" });
+    expect(methods.indexOf("sessions.abort")).toBeLessThan(methods.indexOf("update.run"));
+  });
+  it("shows the engine's refusal instead of claiming it installs", async () => {
+    const { engine } = engineWith({ "update.status": READY, "sessions.list": { sessions: [] }, "update.run": { ok: false, message: "Updates are managed by the package manager." } });
+    await show("updates", engine);
+    await click("Install when nothing is running");
+    await click("Continue");
+    expect(document.body.textContent).toContain("Updates are managed by the package manager.");
+  });
+  it("saves the channel and the by-itself switch through config.patch", async () => {
+    const { engine, request } = engineWith({ "update.status": READY, "config.get": { hash: "h", valid: true, config: {} }, "config.patch": { ok: true, hash: "h2", config: { update: { channel: "beta" } } } });
+    await show("updates", engine);
+    await click("Beta");
+    const patch = request.mock.calls.find(([m]) => m === "config.patch");
+    expect(JSON.parse(String((patch?.[1] as { raw: string }).raw))).toEqual({ update: { channel: "beta" } });
+  });
+  it("greys what the engine can't do yet, with the reason", async () => {
+    const { engine } = engineWith({ "update.status": READY });
+    await show("updates", engine);
+    expect(button("Skip this version").disabled).toBe(true);
+    expect(document.querySelector('[data-row="Undo the last update"]')?.textContent).toContain("needs the engine");
+  });
+});
+
+const PAIRS = {
+  "device.pair.list": { pending: [{ requestId: "r1", deviceId: "d1", publicKey: "k", displayName: "Studio laptop", platform: "win32", scopes: ["operator.admin"], ts: Date.now() }], paired: [] },
+  "node.pair.list": { pending: [{ requestId: "n1", nodeId: "node-a", displayName: "Desk Mac", platform: "darwin", commands: ["camera.snap"], ts: Date.now() }], paired: [{ nodeId: "node-a" }] },
+  "node.list": { nodes: [{ nodeId: "node-a", displayName: "Desk Mac", platform: "darwin", connected: true, approvalState: "approved", workerSlots: { total: 4, available: 3 } }] },
+  "agents.list": { agents: [{ id: "main", identity: { name: "Sapling" } }] },
+};
+
+describe("Settings › Computer & browser", () => {
+  it("lists requests from both pairing stores in plain words", async () => {
+    const { engine } = engineWith(PAIRS);
+    await show("computer", engine);
+    expect(document.body.textContent).toContain("Studio laptop wants to connect");
+    expect(document.body.textContent).toContain("Change Branch’s settings");
+    expect(document.body.textContent).toContain("Desk Mac asks to do more");
+    expect(document.body.textContent).toContain("Asks for more access than before");
+  });
+  it("Allow waits a moment, then approves through the matching store", async () => {
+    vi.useFakeTimers();
+    try {
+      const { engine, request } = engineWith(PAIRS);
+      await show("computer", engine);
+      const allow = () => [...document.querySelectorAll("button")].filter((b) => b.textContent === "Allow");
+      expect(allow()[0].disabled).toBe(true);
+      await act(async () => { vi.advanceTimersByTime(1600); });
+      expect(allow()[0].disabled).toBe(false);
+      await act(async () => allow()[1].click());
+      await flush();
+      expect(request).toHaveBeenCalledWith("node.pair.approve", { requestId: "n1" });
+    } finally { vi.useRealTimers(); }
+  });
+  it("Don't allow asks first, then rejects", async () => {
+    const { engine, request } = engineWith(PAIRS);
+    await show("computer", engine);
+    await act(async () => [...document.querySelectorAll("button")].find((b) => b.textContent === "Don’t allow")!.click());
+    expect(document.body.textContent).toContain("Studio laptop has to ask again before it can connect.");
+    expect(request).not.toHaveBeenCalledWith("device.pair.reject", expect.anything());
+    await click("Turn it down");
+    expect(request).toHaveBeenCalledWith("device.pair.reject", { requestId: "r1" });
+  });
+  it("draws paired computers with Ready, the busy meter and a rename on node.rename", async () => {
+    const { engine, request } = engineWith(PAIRS);
+    await show("computer", engine);
+    const card = document.querySelector('[data-row="Desk Mac"].s2-comp');
+    expect(card?.textContent).toContain("Ready");
+    expect(card?.textContent).toContain("1 of 4 busy");
+    await act(async () => (card!.querySelector('[aria-label="More for Desk Mac"]') as HTMLButtonElement).click());
+    await click("Rename…");
+    const input = document.querySelector(".dlg input") as HTMLInputElement;
+    await act(async () => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!; set.call(input, "Studio Mac"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click("Rename");
+    expect(request).toHaveBeenCalledWith("node.rename", { nodeId: "node-a", displayName: "Studio Mac" });
+  });
+});
+
+const STORE = { entries: [
+  { name: "OPENAI_API_KEY", kind: "secret", scopeKind: "team", scopeId: "", createdAtMs: 1, updatedAtMs: Date.now(), allowedHosts: ["api.openai.com"] },
+  { name: "HOME_URL", kind: "env", value: "http://home.local", scopeKind: "team", scopeId: "", createdAtMs: 1, updatedAtMs: Date.now() },
+] };
+function type(el: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(proto, "value")!.set!.call(el, value);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+describe("Settings › Saved sign-ins", () => {
+  it("lists the key store: protected keys hidden, readable ones shown", async () => {
+    const { engine } = engineWith({ "secrets.store.list": STORE, "config.get": { hash: "h", valid: true, config: {} } });
+    await show("secrets", engine, "advanced");
+    const prot = document.querySelector('[data-row="OPENAI_API_KEY"]')!;
+    expect(prot.textContent).toContain("Protected");
+    expect(prot.textContent).toContain("••••••••");
+    expect(prot.textContent).toContain("Sites: api.openai.com");
+    expect(document.querySelector('[data-row="HOME_URL"]')!.textContent).toContain("Trunks can read it");
+    expect(document.body.textContent).toContain("No password manager is connected");
+  });
+  it("Add a key saves a protected key with its sites through secrets.store.set", async () => {
+    const { engine, request } = engineWith({ "secrets.store.list": STORE, "config.get": { hash: "h", valid: true, config: {} }, "secrets.store.set": { ok: true, reloaded: true } });
+    await show("secrets", engine, "advanced");
+    await click("Add a key");
+    const [name] = document.querySelectorAll<HTMLInputElement>(".dlg input.inp");
+    const [value, sites] = document.querySelectorAll<HTMLTextAreaElement>(".dlg textarea");
+    await act(async () => { type(name, "brave_key"); type(value, "abc"); type(sites, "api.search.brave.com, x.example"); });
+    await click("Save");
+    expect(request).toHaveBeenCalledWith("secrets.store.set", { name: "BRAVE_KEY", value: "abc", kind: "secret", allowedHosts: ["api.search.brave.com", "x.example"] });
+  });
+  it("reads .env lines and finds plain-text keys and dangling pointers", () => {
+    expect(parseDotenv(["# c", 'export A_TOKEN="x y"', "bad line", "B=2"].join(String.fromCharCode(10)))).toEqual([{ name: "A_TOKEN", value: "x y" }, { name: "B", value: "2" }]);
+    const found = findings({ channels: { t: { botToken: "__BRANCH_REDACTED__" } }, tools: { k: { source: "store", provider: "default", id: "GONE" }, ok: { source: "store", provider: "default", id: "HERE" } } }, new Set(["HERE"]));
+    expect(found).toEqual([{ what: "Written in plain text", path: "channels.t.botToken" }, { what: "Points to nothing", path: "tools.k", note: "GONE" }]);
+  });
+});
+
+const RINGS_STATUS = { agentId: "main", embedding: { ok: true }, rings: { enabled: true, shortTermCount: 9, promotedToday: 2, promotedTotal: 3, shortTermEntries: [], signalEntries: [], promotedEntries: [], phases: { light: { enabled: true }, deep: { enabled: true, limit: 10 }, rem: { enabled: true } } } };
+
+describe("Settings › Seasons", () => {
+  it("reads Rings from the memory engine and saves the night window as its cron", async () => {
+    const { engine, request } = engineWith({ "doctor.memory.status": RINGS_STATUS, "skills.proposals.list": { proposals: [] }, "config.get": { hash: "h", valid: true, config: {} }, "config.patch": { ok: true, hash: "h2", config: {} } });
+    await show("seasons", engine);
+    expect(document.body.textContent).toContain("This season: 3 changes kept");
+    await click("1 AM");
+    const patch = request.mock.calls.find(([m]) => m === "config.patch");
+    expect(JSON.parse(String((patch?.[1] as { raw: string }).raw))).toEqual({ plugins: { entries: { "memory-core": { config: { rings: { frequency: "0 1 * * *" } } } } } });
+  });
+  it("turns Budding on as the skill workshop proposing, never installing by itself", async () => {
+    const { engine, request } = engineWith({ "doctor.memory.status": RINGS_STATUS, "config.get": { hash: "h", valid: true, config: {} }, "config.patch": { ok: true, hash: "h2", config: {} } });
+    await show("seasons", engine);
+    await act(async () => (document.querySelector('[aria-label="Learn what a Trunk can’t do yet"]') as HTMLInputElement).click());
+    await flush();
+    const patch = request.mock.calls.find(([m]) => m === "config.patch");
+    expect(JSON.parse(String((patch?.[1] as { raw: string }).raw))).toEqual({ skills: { workshop: { autonomous: { mode: "propose" } } } });
+  });
+  it("runs maintenance on doctor.memory and reports what it did", async () => {
+    const { engine, request } = engineWith({ "doctor.memory.status": RINGS_STATUS, "doctor.memory.dedupeDreamDiary": { removedEntries: 4 } });
+    await show("seasons", engine, "technical");
+    await click("Remove repeats");
+    expect(request).toHaveBeenCalledWith("doctor.memory.dedupeDreamDiary", { agentId: "main" });
+    expect(document.body.textContent).toContain("Removed 4 repeats.");
+  });
+});
+
+describe("Settings › Gateway", () => {
+  const H = { ok: true, ts: Date.now(), durationMs: 3, channels: { telegram: { connected: true } }, channelLabels: { telegram: "Telegram" } };
+  it("says the gateway is on from health and system.info, and restarts it on gateway.restart.request", async () => {
+    const { engine, request } = engineWith({ health: H, "system.info": { uptimeMs: 3 * 86_400_000 }, "gateway.restart.request": { ok: true, status: "scheduled" } });
+    await show("gateway", engine);
+    expect(document.body.textContent).toContain("On. Up 3 days. Telegram keeps working when the window is closed.");
+    await click("Restart the engine");
+    expect(request).toHaveBeenCalledWith("gateway.restart.request", { reason: "settings" });
+    expect(document.body.textContent).toContain("Restarting. The window reconnects by itself.");
+  });
+  it("says so when the gateway doesn't answer", async () => {
+    const { engine, request } = engineWith({});
+    request.mockImplementation(async (m: string) => { if (m === "health") throw new Error("socket closed"); return {}; });
+    await show("gateway", engine);
+    expect(document.body.textContent).toContain("The gateway isn’t answering");
+  });
+  it("saves who can reach it as gateway.bind", async () => {
+    const { engine, request } = engineWith({ health: H, "config.get": { hash: "h", valid: true, config: {} }, "config.patch": { ok: true, hash: "h2", config: {} } });
+    await show("gateway", engine, "advanced");
+    await click("My network");
+    const patch = request.mock.calls.find(([m]) => m === "config.patch");
+    expect(JSON.parse(String((patch?.[1] as { raw: string }).raw))).toEqual({ gateway: { bind: "lan" } });
+  });
+});
+
+describe("Settings › Branch itself", () => {
+  it("lists every change from branch.changes.list and greys roll back with its reason", async () => {
+    const { engine } = engineWith({ health: { ok: true }, "branch.changes.list": { entries: [{ id: "c1", at: Date.now(), kind: "config-write", source: "config-rpc", summary: "Updated update.channel", changedPaths: ["update.channel"] }] } });
+    await show("self", engine);
+    expect(document.body.textContent).toContain("Settings: Updated update.channel");
+    expect(button("Roll back").disabled).toBe(true);
+  });
+  it("tidies conversation storage on sessions.storage.run only when archiving is on", async () => {
+    const storage = { agents: [{ agentId: "main", storePath: "s", hotTranscripts: 5, coldTranscripts: 1, databaseBytes: 1, walBytes: 0, archiveBytes: 0, embeddedArchiveBytes: 0 }], maintenance: { running: false, lastStartedAt: null, lastCompletedAt: null, lastError: null, archivedTranscripts: 0, externalizedTranscripts: 0 } };
+    const { engine, request } = engineWith({ "sessions.storage.status": storage, "config.get": { hash: "h", valid: true, config: { session: { maintenance: { coldStorage: { enabled: true } } } } }, "sessions.storage.run": { ok: true } });
+    await show("self", engine, "advanced");
+    expect(document.body.textContent).toContain("5 ready · 1 archived");
+    await click("Run now");
+    expect(request).toHaveBeenCalledWith("sessions.storage.run", {});
+  });
+});
+
+describe("Settings › Updates & about, an update the engine started", () => {
+  it("words each campaign state as the preview does", () => {
+    const now = 1_000_000;
+    expect(campaignLine({ state: "waiting-for-idle", forceAtMs: now + 5 * 60_000 }, now)).toBe("Waiting for running tasks · updates anyway in 5 min");
+    expect(campaignLine({ state: "countdown", applyAtMs: now + 42_000 }, now)).toBe("Updating in 0:42");
+    expect(campaignLine({ state: "countdown", applyAtMs: now + 42_000, holdUntilMs: now + 3_600_000 }, now)).toBe("Held · resumes in 60 min");
+    expect(campaignLine({ state: "applying" }, now)).toBe("Installing");
+  });
+  it("shows the countdown and holds it on update.hold", async () => {
+    const at = Date.now();
+    const campaign = { id: "c1", state: "countdown", announcedAtMs: at, applyAtMs: at + 50_000, forceAtMs: at + 300_000, updatedAtMs: at };
+    const { engine, request } = engineWith({ "update.status": { ...READY, schedule: { channel: "stable", autoEnabled: true, campaign } }, "update.hold": { ok: true, schedule: { channel: "stable", autoEnabled: true, campaign: { ...campaign, holdUntilMs: at + 3_600_000 } } } });
+    await show("updates", engine);
+    expect(document.body.textContent).toContain("1.1.0 is installing by itself");
+    expect(document.body.textContent).toMatch(/Updating in 0:\d\d/);
+    await click("Hold for an hour");
+    expect(request).toHaveBeenCalledWith("update.hold", {});
+    expect(document.body.textContent).toContain("Held until");
+  });
+  it("says so when the engine won't hold it", async () => {
+    const at = Date.now();
+    const campaign = { id: "c1", state: "waiting-for-idle", announcedAtMs: at, forceAtMs: at + 300_000, updatedAtMs: at };
+    const { engine } = engineWith({ "update.status": { ...READY, schedule: { channel: "stable", autoEnabled: true, campaign } }, "update.hold": { ok: false } });
+    await show("updates", engine);
+    await click("Hold for an hour");
+    expect(document.body.textContent).toContain("The engine didn’t hold it");
+  });
+});

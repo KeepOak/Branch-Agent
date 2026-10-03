@@ -1,0 +1,26 @@
+import { registerSingleProviderPlugin } from "branch/plugin-sdk/plugin-test-runtime";
+import { describeVllmProviderDiscoveryContract } from "branch/plugin-sdk/provider-test-contracts";
+import { describe, expect, it } from "vitest";
+import vllmPlugin from "./index.js";
+
+describeVllmProviderDiscoveryContract({
+  load: () => import("./index.js"),
+});
+
+describe("vLLM provider registration", () => {
+  it("exposes the binary thinking profile hook", async () => {
+    const provider = await registerSingleProviderPlugin(vllmPlugin);
+
+    expect(
+      provider.resolveThinkingProfile?.({
+        provider: "vllm",
+        modelId: "Qwen/Qwen3-8B",
+        reasoning: true,
+        compat: { thinkingFormat: "qwen-chat-template" },
+      }),
+    ).toEqual({
+      levels: [{ id: "off" }, { id: "low", label: "on" }],
+      defaultLevel: "off",
+    });
+  });
+});

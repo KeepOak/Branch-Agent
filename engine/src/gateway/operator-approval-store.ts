@@ -1,0 +1,300 @@
+import { serialize } from "node:v8";
+import { expectDefined } from "@branch/normalization-core";
+import {
+  collectNestedErrorCandidates,
+  extractErrorCode,
+} from "@branch/normalization-core/error-coercion";
+import { isRecord } from "@branch/normalization-core/record-coerce";
+import type { SqliteWorkerInputPreparation } from "../infra/sqlite-worker-broker.types.js";
+import type { SqliteWorkerStore } from "../infra/sqlite-worker-contract.js";
+import type {
+  SqliteWorkerAdmissionFactory,
+  SqliteWorkerOperationAdmission,
+} from "../infra/sqlite-worker-operation-admission.js";
+// Runtime approval operations retain the shared-state owner through worker settlement.
+import {
+  createSqliteWorkerWriteAdmission,
+  reserveSqliteWorkerInputPreparation,
+} from "../infra/sqlite-worker-store.js";
+import { createKeyedFifoLeaseRegistry } from "../shared/keyed-fifo-lease.js";
+import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
+import { isStateDatabaseReadAdmissionInvalidatedError } from "../state/branch-state-db-async-lifecycle.js";
+import { executeExistingBranchStateRead } from "../state/branch-state-db-readonly.js";
+import type { BranchStateDatabaseOptions } from "../state/branch-state-db.js";
+import type {
+  BranchStateReadCommand,
+  BranchStateReadResult,
+} from "../state/branch-state-read.types.js";
+import { captureBranchStateWorkerContext } from "../state/branch-state-worker-context.js";
+import type { BranchStateWorkerContext } from "../state/branch-state-worker-context.types.js";
+import type { BranchStateWorkerOperationOptions } from "../state/branch-state-worker-contract.js";
+import { runBranchStateWorkerOperation } from "../state/branch-state-worker-store.js";
+import { decodeOperatorApprovalHistoryCursor } from "./operator-approval-store.rows.js";
+import type {
+  ListTerminalOperatorApprovalsInput,
+  ListTerminalOperatorApprovalsResult,
+  OperatorApprovalStoreGuard,
+} from "./operator-approval-store.types.js";
+import type { OperatorApprovalWorkerOperations } from "./operator-approval-store.worker-contract.js";
+
+export type {
+  OperatorApprovalKind,
+  OperatorApprovalStatus,
+  OperatorApprovalTerminalReason,
+  OperatorApprovalResolver,
+  OperatorApprovalRecord,
+  ResolveOperatorApprovalResult,
+  ForceDenyOperatorApprovalResult,
+} from "./operator-approval-store.types.js";
+export {
+  OPERATOR_APPROVAL_MAX_AUDIENCE_SESSION_KEYS,
+  OperatorApprovalHistoryCursorError,
+} from "./operator-approval-store.rows.js";
+export {
+  // Gateway boot admission closes orphaned rows and prunes before serving requests.
+  closeOrphanedOperatorApprovals,
+  pruneTerminalOperatorApprovals,
+} from "./operator-approval-store.transitions.js";
+
+/** Storage admission failure is not evidence that a pending row is corrupt. */
+export function isOperatorApprovalStoreRefusal(error: unknown): boolean {
+  return collectNestedErrorCandidates(error).some(
+    (cause) =>
+      isStateDatabaseReadAdmissionInvalidatedError(cause) ||
+      ["closed", "overloaded", "unavailable"].includes(extractErrorCode(cause) ?? ""),
+  );
+}
+
+export function isOperatorApprovalStoreOutcomeUnknown(error: unknown): boolean {
+  return collectNestedErrorCandidates(error).some(
+    (cause) => extractErrorCode(cause) === "outcome-unknown",
+  );
+}
+
+type Operation = keyof OperatorApprovalWorkerOperations;
+type Options = {
+  databaseOptions?: BranchStateDatabaseOptions;
+  assertCurrent?: () => void;
+  guard?: OperatorApprovalStoreGuard;
+};
+type Input<Key extends Operation> = OperatorApprovalWorkerOperations[Key]["input"] & Options;
+
+const loadNativeStore = createLazyRuntimeModule(
+  () => import("./operator-approval-store.native.js"),
+);
+const leases = createKeyedFifoLeaseRegistry(Symbol.for("branch.operatorApprovalStoreLeases"));
+
+async function runApprovalStoreOperation<T>(
+  context: BranchStateWorkerContext,
+  input: unknown,
+  operation: (
+    scope: Pick<SqliteWorkerStore<OperatorApprovalWorkerOperations>, "execute">,
+    preparation: SqliteWorkerInputPreparation,
+  ) => Promise<T>,
+  options?: Omit<BranchStateWorkerOperationOptions, "existingOnly">,
+  assertCurrent?: () => void,
+): Promise<T> {
+  context.admission.assertCurrent();
+  const preparation = reserveSqliteWorkerInputPreparation(serialize(input).byteLength);
+  const lease = expectDefined(
+    leases.reserve([
+      context.admission.identity.key,
+      `path:${context.admission.identity.canonicalPath}`,
+    ]),
+    "Operator approval storage lease",
+  );
+  try {
+    // Acquire FIFO before retaining an actor: a predecessor may need to retire it.
+    await lease.wait();
+    preparation.assertCurrent();
+    context.admission.assertCurrent();
+    assertCurrent?.();
+    return await runBranchStateWorkerOperation(
+      context,
+      (scope) => operation(scope, preparation),
+      options,
+    );
+  } finally {
+    preparation.release();
+    lease.release();
+  }
+}
+
+function execute<Key extends Operation>(
+  type: Key,
+  input: OperatorApprovalWorkerOperations[Key]["input"],
+  { databaseOptions, assertCurrent, guard }: Options,
+  onCommitted?: (resolutionKey: string) => void,
+): Promise<OperatorApprovalWorkerOperations[Key]["output"]> {
+  const context = captureBranchStateWorkerContext({
+    ...databaseOptions,
+    path: databaseOptions?.database?.path ?? databaseOptions?.path,
+  });
+  const captured = structuredClone(input);
+  const assertOperationCurrent = () => {
+    context.admission.assertCurrent();
+    guard?.assertCurrent();
+    assertCurrent?.();
+  };
+  const native = guard?.family === "native-compatibility";
+  let admission: SqliteWorkerOperationAdmission | undefined;
+  const createWriteAdmission = createSqliteWorkerWriteAdmission(assertOperationCurrent, [
+    context.admission.databasePath,
+  ]);
+  const createAdmission: SqliteWorkerAdmissionFactory = (operation) => {
+    const retained = createWriteAdmission(operation);
+    admission = retained.admission;
+    return retained;
+  };
+  const publishCommitted = (facts: unknown) => {
+    if (
+      onCommitted &&
+      isRecord(facts) &&
+      facts.type === "operatorApprovals.resolve" &&
+      typeof facts.resolutionKey === "string"
+    ) {
+      onCommitted(facts.resolutionKey);
+    }
+  };
+  return runApprovalStoreOperation(
+    context,
+    captured,
+    async (scope, preparation) => {
+      if (native) {
+        const store = await loadNativeStore();
+        preparation.assertCurrent();
+        assertOperationCurrent();
+        preparation.release();
+        return store.executeNativeOperatorApproval(
+          type,
+          captured,
+          context,
+          assertOperationCurrent,
+          onCommitted ? publishCommitted : undefined,
+        );
+      }
+      try {
+        return await preparation.handoff(() => scope.execute({ type, input: captured }));
+      } finally {
+        // Broker settlement retains the native receipt even when the command reply is lost.
+        publishCommitted(admission?.committed?.facts);
+      }
+    },
+    {
+      // Native guards run only after FIFO and outside worker-held transactions.
+      assertCurrent: native ? undefined : assertOperationCurrent,
+      ...(native ? {} : { createAdmission }),
+    },
+    assertOperationCurrent,
+  );
+}
+
+export function insertOperatorApproval(params: Input<"operatorApprovals.insert">) {
+  const { databaseOptions, assertCurrent, guard, ...input } = params;
+  return execute("operatorApprovals.insert", input, { databaseOptions, assertCurrent, guard });
+}
+export function getOperatorApprovalDetailed(params: Input<"operatorApprovals.get">) {
+  const { databaseOptions, assertCurrent, guard, ...input } = params;
+  return execute("operatorApprovals.get", input, { databaseOptions, assertCurrent, guard });
+}
+export function listPendingOperatorApprovals(params: Input<"operatorApprovals.pending"> = {}) {
+  const { databaseOptions, assertCurrent, guard, ...input } = params;
+  return execute("operatorApprovals.pending", input, { databaseOptions, assertCurrent, guard });
+}
+export function resolveOperatorApproval(
+  params: Input<"operatorApprovals.resolve"> & {
+    /** Non-throwing observer of this operation's real native commit. */
+    onCommitted?: (resolutionKey: string) => void;
+  },
+) {
+  const { databaseOptions, assertCurrent, guard, onCommitted, ...input } = params;
+  return execute(
+    "operatorApprovals.resolve",
+    input,
+    { databaseOptions, assertCurrent, guard },
+    onCommitted,
+  );
+}
+export function forceDenyOperatorApproval(params: Input<"operatorApprovals.deny">) {
+  const { databaseOptions, assertCurrent, guard, ...input } = params;
+  return execute("operatorApprovals.deny", input, { databaseOptions, assertCurrent, guard });
+}
+export function expireDueOperatorApprovals(params: Input<"operatorApprovals.expire">) {
+  const { databaseOptions, assertCurrent, guard, ...input } = params;
+  return execute("operatorApprovals.expire", input, { databaseOptions, assertCurrent, guard });
+}
+export function consumeOperatorApprovalAllowOnce(params: Input<"operatorApprovals.consume">) {
+  const { databaseOptions, assertCurrent, guard, ...input } = params;
+  return execute("operatorApprovals.consume", input, { databaseOptions, assertCurrent, guard });
+}
+
+async function readApprovalStore<T>(
+  command: Extract<BranchStateReadCommand, { type: `operatorApprovals.${string}` }>,
+  { databaseOptions, assertCurrent, guard }: Options,
+  project: (result: BranchStateReadResult) => T | undefined,
+): Promise<T> {
+  const context = captureBranchStateWorkerContext({
+    ...databaseOptions,
+    path: databaseOptions?.database?.path ?? databaseOptions?.path,
+  });
+  const captured = structuredClone(command);
+  const assertOperationCurrent = () => {
+    context.admission.assertCurrent();
+    guard?.assertCurrent();
+    assertCurrent?.();
+  };
+  // Preserve creating/writable admission, then use the existing read-only owner.
+  return runApprovalStoreOperation(
+    context,
+    captured,
+    async (_scope, preparation) => {
+      preparation.assertCurrent();
+      assertOperationCurrent();
+      preparation.release();
+      const result = await executeExistingBranchStateRead(
+        { env: context.environment, path: context.admission.databasePath },
+        captured,
+      );
+      assertOperationCurrent();
+      const value = result?.ok && result.type === command.type ? project(result) : undefined;
+      if (value !== undefined) {
+        return value;
+      }
+      throw new Error("Operator approval database became unavailable");
+    },
+    undefined,
+    assertOperationCurrent,
+  );
+}
+
+export async function listTerminalOperatorApprovals(
+  params: ListTerminalOperatorApprovalsInput & Options = {},
+): Promise<ListTerminalOperatorApprovalsResult> {
+  const { databaseOptions, assertCurrent, guard, ...input } = params;
+  if (input.cursor !== undefined) {
+    decodeOperatorApprovalHistoryCursor(input.cursor);
+  }
+  return readApprovalStore(
+    { type: "operatorApprovals.history", input },
+    { databaseOptions, assertCurrent, guard },
+    (result) => (result.type === "operatorApprovals.history" ? result.history : undefined),
+  );
+}
+
+export function listCronStandingGrants(params: { limit?: number } & Options = {}) {
+  const { databaseOptions, assertCurrent, guard, ...input } = params;
+  return readApprovalStore(
+    { type: "operatorApprovals.listCronGrants", input },
+    { databaseOptions, assertCurrent, guard },
+    (result) => (result.type === "operatorApprovals.listCronGrants" ? result.grants : undefined),
+  );
+}
+
+export function revokeCronStandingGrant(params: Input<"operatorApprovals.revokeCronGrant">) {
+  const { databaseOptions, assertCurrent, guard, ...input } = params;
+  return execute("operatorApprovals.revokeCronGrant", input, {
+    databaseOptions,
+    assertCurrent,
+    guard,
+  });
+}

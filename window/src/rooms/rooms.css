@@ -1,0 +1,294 @@
+/* Group chats, rooms and Trunks talking to each other (DESIGN-SPEC §4.2.4), drawn as the preview draws them
+   (.msg10, .ext10, .tag6, .a2a10, .a2a-l, .from, .stack, .ag-row12). */
+
+.rm-av {
+  position: relative;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--c);
+  color: #fff;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.rm-av img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A person or an outside agent: their initial, then a bubble with the name over the words */
+.thread .rm-msg {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  max-width: 620px;
+}
+
+.thread .rm-bubble {
+  background: var(--fill);
+  border-radius: 4px 16px 16px 16px;
+  padding: 8px 12px;
+  min-width: 0;
+}
+
+.thread .rm-ext .rm-bubble {
+  background: transparent;
+  border: 1px dashed var(--line-2);
+}
+
+.thread .rm-bubble b {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.thread .rm-bubble p {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.rm-tag {
+  overflow-wrap: anywhere;
+  font: 500 10px var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--brand-tint);
+  color: var(--ok);
+  vertical-align: middle;
+}
+
+.rm-mention {
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+
+/* "<A> and <B> talked it through · <n> messages" */
+.thread .reply.rm-talk-row {
+  align-self: stretch;
+}
+
+.thread .rm-talk {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--raise);
+  max-width: 560px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.thread .rm-talk summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+  list-style: none;
+}
+
+.thread .rm-talk summary::-webkit-details-marker {
+  display: none;
+}
+
+.thread .rm-talk[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.thread .rm-talk-l {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.thread .rm-talk-l + .rm-talk-l {
+  padding-top: 0;
+}
+
+.thread .rm-talk-l b {
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+/* In a room, the sender's name over the first block of each run */
+.thread .reply-from {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ink-2);
+  margin-bottom: 2px;
+}
+
+/* Two member characters stacked, each at 70% */
+.rm-stack {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+}
+
+.rm-stack-a,
+.rm-stack-b {
+  position: absolute;
+  display: grid;
+}
+
+.rm-stack-a {
+  left: 0;
+  top: 0;
+}
+
+.rm-stack-b {
+  right: 0;
+  bottom: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--side);
+}
+
+/* The agent window in a room: every member */
+.character-panel-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+/* "Messages from <A> and <B>" */
+.thread .rm-line {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.thread .rm-line-n {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* New group chat (the preview's .fld, .chips8, .chip6) */
+.rm-fld {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.rm-fld:first-child {
+  margin-top: 0;
+}
+
+.rm-fld > span:first-child {
+  font: 500 10.5px/1.2 var(--mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.rm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  background: var(--raise);
+  cursor: pointer;
+}
+
+.rm-chip[aria-pressed="true"] {
+  background: var(--btn);
+  color: var(--on-btn);
+  border-color: var(--btn);
+}
+
+.rm-chip:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* A setting row: the words on the left, the control on the right, a rule under it */
+.rm-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rm-row b {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.rm-row small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.rm-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--fill);
+}
+
+.rm-seg button {
+  border: 0;
+  border-radius: 7px;
+  padding: 4px 9px;
+  line-height: 18px;
+  background: transparent;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.rm-seg button:disabled {
+  cursor: default;
+}
+
+.rm-hint {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.rm-fail {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--bad);
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@branch/together-provider",
+  "version": "2026.9.7",
+  "private": true,
+  "description": "Branch Agent Together provider plugin",
+  "type": "module",
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

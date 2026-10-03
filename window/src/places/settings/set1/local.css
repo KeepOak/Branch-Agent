@@ -1,0 +1,39 @@
+/* Settings › On this computer (§4.7.7), from the preview's .hw12, .lm12, .tag6 and .under-pe18 rules. */
+.set-col .hw-k { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr)); gap: 8px; margin-top: 6px; }
+.set-col .hw-c-k { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border-radius: 16px; background: var(--raise); border: 1px solid var(--line); }
+.set-col .hw-c-k > span:last-child { min-width: 0; }
+.set-col .hw-c-k small { display: block; font-size: 11.5px; color: var(--ink-3); }
+.set-col .hw-c-k b { display: block; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.set-col .hw-c-k.off-k b { color: var(--ink-3); font-weight: 500; }
+.set-col .ico-tile-k { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: var(--r2-17); background: var(--wash17); color: var(--ink-2); }
+.set-col .scan-k { grid-template-columns: auto 1fr; align-items: center; gap: 4px 12px; padding: 14px; border-radius: 16px; background: var(--raise); border: 1px solid var(--line); }
+.set-col .scan-k small { grid-column: 2; color: var(--ink-3); font-size: 12.5px; }
+.set-col .spin-k { grid-row: span 2; width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--fill-2); border-top-color: var(--accent); animation: spinK 1s linear infinite; }
+@keyframes spinK { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .set-col .spin-k { animation: none; } }
+
+.set-col .lm-grid-k { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 10px; }
+.set-col .lm-k { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--raise); }
+.set-col .lm-k p { margin: 0; font-size: 13px; color: var(--ink-2); }
+.set-col .lm-k .acts { margin-top: 0; }
+.set-col .lm-k .btn svg { margin-right: 4px; vertical-align: -3px; }
+.set-col .lm-h-k { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.set-col .lm-h-k b { font-size: 15px; font-weight: 600; }
+.set-col .lm-h-k .pill { margin-left: auto; }
+.set-col .lm-tags-k { display: flex; flex-wrap: wrap; gap: 4px; }
+.set-col .tag-k { padding: 2px 6px; border-radius: 6px; background: var(--brand-tint); color: var(--ok); font: 500 10px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; }
+.set-col .pill.done-k { background: var(--fill); color: var(--ink-2); }
+.set-col .lm-grid-k + .ctl { margin-top: 10px; }
+
+.set-col .sec > .rows.rt-k { padding: 0 16px; border-radius: var(--r3-17); background: var(--raise); box-shadow: inset 0 0 0 1px var(--hair17); }
+.set-col .rows.rt-k > .prow:last-child { border-bottom: 0; }
+.set-col .rows.rt-k .prow .grow { min-width: min(200px, 100%); }
+.set-col .under-k { margin: 0 0 6px 46px; border-bottom: 1px solid var(--hair17); }
+.set-col .under-k > .ctl { border-bottom: 0; }
+
+.dlg .lead-k { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+@media (max-width: 640px) {
+  .set-col .ctl:is([data-row="Installed models"], [data-row="Its address"]) { grid-template-columns: minmax(0, 1fr); }
+  .set-col .ctl:is([data-row="Installed models"], [data-row="Its address"]) > .right { grid-row: auto; grid-column: 1; flex-wrap: wrap; margin-top: 6px; }
+  .set-col .under-k { margin-left: 0; }
+}

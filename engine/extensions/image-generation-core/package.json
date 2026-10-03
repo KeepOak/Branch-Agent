@@ -1,0 +1,10 @@
+{
+  "name": "@branch/image-generation-core",
+  "version": "2026.9.7",
+  "private": true,
+  "description": "Branch Agent image generation runtime package",
+  "type": "module",
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  }
+}

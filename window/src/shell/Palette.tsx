@@ -1,0 +1,137 @@
+import { useEffect, useRef, useState } from "react";
+import { Icon } from "./icons";
+import { filterPalette, GROUPS, moveSelection, type PaletteRow } from "./palette-model";
+import { readMessageHits, type MessageHit } from "./search-model";
+
+type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
+
+type Props = {
+  rows: PaletteRow[];
+  request: Request;
+  rowName: (key: string) => string;
+  onOpenConversation: (key: string) => void;
+  onClose: () => void;
+};
+
+/** Message rows from sessions.search after a 200 ms pause in typing (§4.1.7 Parity adds, palette-session-search). */
+function useMessageRows(request: Request, query: string, rowName: (k: string) => string, open: (k: string) => void) {
+  const [hits, setHits] = useState<MessageHit[]>([]);
+  const [note, setNote] = useState("");
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setHits([]);
+      setNote("");
+      return;
+    }
+    let current = true;
+    setNote("Searching…");
+    const timer = setTimeout(() => {
+      const scope = { includeGlobal: true, includeUnknown: true, configuredAgentsOnly: true, excludeSubagents: true, excludeCron: true, excludeSystem: true };
+      request("sessions.search", { query: q, limit: 25, scope }).then(
+        (r) => {
+          if (current) {
+            setHits(readMessageHits(r));
+            setNote((r as { indexing?: boolean }).indexing ? "Looking through older messages. Search again shortly." : "");
+          }
+        },
+        () => current && setNote("Message search isn't available right now. Showing names only."),
+      );
+    }, 200);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [request, query]);
+  const rows: PaletteRow[] = hits.map((h, i) => ({ id: `msg:${i}`, group: "Messages", label: h.snippet, hint: rowName(h.key), run: () => open(h.key) }));
+  return { rows, note };
+}
+
+/** Find anything (DESIGN-SPEC §4.1.7): the field, the grouped list, Up/Down/Enter/Escape, and the footer. */
+export function Palette({ rows, request, rowName, onOpenConversation, onClose }: Props) {
+  const [query, setQuery] = useState("");
+  const [sel, setSel] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const messages = useMessageRows(request, query, rowName, onOpenConversation);
+  const typing = query.trim() !== "";
+  // Trunks and Messages show only while typing (§4.1.7 Parity adds); groups keep their order.
+  const base = filterPalette(typing ? rows : rows.filter((r) => r.group !== "Trunks"), query);
+  const shown = [...base, ...(typing ? messages.rows : [])].sort((a, b) => GROUPS.indexOf(a.group) - GROUPS.indexOf(b.group));
+  useEffect(() => setSel(0), [query]);
+  useEffect(() => {
+    listRef.current?.querySelector(`[data-index="${sel}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [sel]);
+  const run = (row: PaletteRow | undefined) => {
+    if (row) {
+      onClose();
+      row.run();
+    }
+  };
+  let lastGroup = "";
+  return (
+    <div className="scrim palette-scrim in17" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="palette" role="dialog" aria-modal="true" aria-label="Find anything" data-testid="palette">
+        <label className="pal-field">
+          <Icon name="search" />
+          <input
+            autoFocus
+            aria-label="Find anything"
+            placeholder="Find anything, or say what to do"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                setSel(moveSelection(sel, e.key === "ArrowDown" ? 1 : -1, shown.length));
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                run(shown[sel]);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                onClose();
+              }
+            }}
+          />
+        </label>
+        {messages.note ? <p className="pal-note">{messages.note}</p> : null}
+        <div className="pal-list" ref={listRef} role="listbox" aria-label="Results">
+          {shown.length === 0 ? <p className="pal-none">Nothing matches. Try a Trunk’s name or a setting.</p> : null}
+          {shown.map((row, i) => {
+            const head = row.group !== lastGroup ? row.group : null;
+            lastGroup = row.group;
+            return (
+              <div key={row.id}>
+                {head ? <div className="ph">{head}</div> : null}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={i === sel}
+                  className={i === sel ? "pal-row sel" : "pal-row"}
+                  data-index={i}
+                  data-testid="palette-row"
+                  onMouseMove={() => setSel(i)}
+                  onClick={() => run(row)}
+                >
+                  <span className="pal-label">{row.label}</span>
+                  <span className="pal-hint">{row.hint}</span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="pal-foot">
+          <span>
+            <kbd>↑</kbd> <kbd>↓</kbd> move
+          </span>
+          <span>
+            <kbd>Enter</kbd> open
+          </span>
+          <span>
+            <kbd>Esc</kbd> close
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,399 @@
+/* §4.9 the status bar's popovers (preview patches 10-shell, 11-shellp: .pt .pp .row-in .bars .rounds15 .lims) */
+.pop.sp {
+  min-width: 260px;
+  max-width: min(360px, calc(100vw - 16px));
+}
+.pop.sp-wide {
+  max-width: min(490px, calc(100vw - 16px));
+}
+.pop .pt {
+  padding: 8px 10px 2px;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+.pop .pp {
+  padding: 0 10px 8px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  margin: 0;
+}
+.row-in {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 13.5px;
+}
+.row-in .seg {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  min-width: 190px;
+}
+.row-in .seg button {
+  padding: 0 7px;
+}
+.sp-seg[aria-disabled="true"] {
+  opacity: 0.55;
+}
+.row-in.sp-ev {
+  display: block;
+}
+.row-in.sp-ev > span {
+  display: block;
+}
+.row-in.sp-ev small,
+.sp-off,
+.sp-note {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.sp-off {
+  margin: -2px 10px 4px;
+}
+.sp-note {
+  margin: 6px 6px 4px;
+}
+
+/* Room left (§4.9.5) */
+.sp-bars {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 8px;
+}
+.brow {
+  display: grid;
+  grid-template-columns: 90px 1fr 64px;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+.brow > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.brow.sm {
+  font-size: 12px;
+  color: var(--ink-2);
+  margin-top: 4px;
+}
+.brow .track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--fill);
+  overflow: hidden;
+}
+.brow .track u {
+  display: block;
+  height: 100%;
+  background: var(--ink-2);
+  border-radius: 4px;
+}
+.brow .v {
+  font: 12px var(--mono);
+  text-align: right;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.sp-entries summary {
+  font-size: 12px;
+  color: var(--ink-3);
+  cursor: pointer;
+  margin-top: 2px;
+}
+.rounds15 {
+  border-top: 1px solid var(--line);
+  padding: 8px 10px 10px;
+  margin-top: 4px;
+}
+.r-h15 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+.r-h15 small {
+  color: var(--ink-3);
+}
+.r-bars15 {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 48px;
+  margin: 8px 0 6px;
+  overflow-x: auto;
+}
+.r-bars15 i {
+  flex: 1;
+  min-width: 6px;
+  position: relative;
+  border-radius: 3px 3px 1px 1px;
+  background: var(--ink);
+  overflow: hidden;
+}
+.r-bars15 u {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--ok);
+}
+.r-k15 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.k-a15,
+.k-b15 {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+.k-b15 {
+  background: var(--ok);
+  margin-left: 6px;
+}
+
+/* What each connection has left (§4.9.4) */
+.lims {
+  display: grid;
+  gap: 2px;
+  width: min(460px, calc(100vw - 32px));
+}
+.lims .ph {
+  padding: 4px 6px 6px;
+}
+.lim {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  padding: 9px 6px;
+  border-radius: 10px;
+}
+.lim:hover {
+  background: var(--fill);
+}
+.lim-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--fill-2);
+  color: var(--ink);
+  font: 700 12px var(--sans);
+}
+.lim-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.lim-h b {
+  font-weight: 600;
+}
+.lim-h .muted {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.lim-w {
+  display: grid;
+  grid-template-columns: 118px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ink-2);
+  margin-top: 5px;
+}
+.lim-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--fill-2);
+  overflow: hidden;
+}
+.lim-bar i {
+  display: block;
+  height: 100%;
+  background: var(--ink-2);
+  border-radius: 3px;
+}
+.lim small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+.lim-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px 4px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  font-size: 12.5px;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.pill.ok {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+.pill.idle {
+  background: var(--fill);
+  color: var(--ink-3);
+}
+.steps-list.sp-notes {
+  margin: 0;
+  padding: 0 10px 8px 28px;
+  display: grid;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.sp-spin {
+  display: grid;
+  color: var(--accent);
+  animation: sp-turn 1s linear infinite;
+}
+@keyframes sp-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-spin {
+    animation: none;
+  }
+}
+
+/* The bar's own items (§4.9.1) */
+.sb.usage {
+  gap: 7px;
+  color: var(--ink-2);
+  min-width: 0;
+  flex-shrink: 1;
+}
+.sb.usage > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb.usage > svg {
+  flex: none;
+}
+.sb-new {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+@media (max-width: 760px) {
+  .lim-w {
+    grid-template-columns: 90px 1fr;
+  }
+  .lim-w span:last-child {
+    grid-column: 1 / -1;
+  }
+}
+.pop .mi > span.sp-spin {
+  flex: none;
+}
+.pop .mi > span.mi-text {
+  flex: 1;
+  text-align: left;
+}
+.mi-text .mi-s {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* ≤520 px: the meter keeps its figure and drops its words; the computer's name shortens (preview at 520) */
+@media (max-width: 520px) {
+  .sb-room-w {
+    display: none;
+  }
+  .statusbar > .sb:first-child {
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  .statusbar > .sb:first-child > span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+@media (max-width: 440px) {
+  .pop.sp,
+  .pop.sp-wide {
+    left: 8px !important;
+    width: calc(100vw - 16px);
+    max-width: none;
+  }
+  .pop.sp-wide .lims {
+    width: auto;
+  }
+}
+
+/* §4.9 paused Trunks, a live call, the graphics and memory readout, and the pet (the preview's pzsb17c, live17d, hwA18, .sb.pet) */
+.statusbar .sb.pzsb,
+.statusbar .sb.live-call {
+  gap: 5px;
+}
+.statusbar .sb.live-call {
+  color: var(--accent-ink, var(--accent));
+}
+.statusbar .sb.hw {
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.statusbar .sb.hw .warn-hw {
+  color: var(--warn);
+  font-weight: 500;
+}
+.statusbar .sb.pet {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+}
+.statusbar .sb.pet img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+.statusbar .sb.pet .pet-px svg {
+  width: 24px;
+  height: 20px;
+}
+.statusbar .sb.pet.hop img,
+.statusbar .sb.pet.hop .pet-px {
+  animation: pet-hop 0.9s var(--ease17, ease) 1;
+}
+@keyframes pet-hop {
+  0% { transform: translateY(0) scaleY(1); }
+  20% { transform: translateY(0) scaleY(0.85); }
+  45% { transform: translateY(-6px) scaleY(1.05); }
+  70% { transform: translateY(0) scaleY(0.92); }
+  100% { transform: translateY(0) scaleY(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .statusbar .sb.pet.hop img,
+  .statusbar .sb.pet.hop .pet-px {
+    animation: none;
+  }
+}

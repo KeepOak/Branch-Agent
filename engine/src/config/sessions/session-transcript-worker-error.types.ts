@@ -1,0 +1,10 @@
+import type { BranchStateWorkerErrorPayload } from "../../state/branch-state-worker-error.js";
+import type { SessionTranscriptStorageUnavailableError } from "./session-transcript-projection-error.js";
+
+export type SessionTranscriptWorkerReadError =
+  | { kind: "read-error"; message: string; payload: BranchStateWorkerErrorPayload }
+  | { kind: "cold"; sessionId: string }
+  | { kind: "projection"; sessionId: string; reason?: "window-changed" }
+  | { kind: "fence"; message: string }
+  | { kind: "syntax"; message: string }
+  | { kind: "storage"; reason?: SessionTranscriptStorageUnavailableError["reason"] };

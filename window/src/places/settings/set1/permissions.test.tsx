@@ -1,0 +1,128 @@
+// @vitest-environment jsdom
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { WindowEngine } from "../../../connect/engine";
+import { KitProvider, type SaveReport } from "../kit";
+import { PermissionsPage, PERMISSIONS_ROWS } from "./permissions";
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let root: Root;
+let host: HTMLDivElement;
+beforeEach(() => { host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
+afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; });
+
+const SNAP = { path: "/x/exec-approvals.json", exists: true, hash: "e1", file: { version: 1, agents: { "*": { allowlist: [{ pattern: "git status" }, { pattern: "git log" }] } } }, resolvedDefaults: { security: "full", ask: "off", askFallback: "deny", autoAllowSkills: false } };
+const AGENTS = { defaultId: "main", agents: [{ id: "main", identity: { name: "Sapling" }, defaultPermissionMode: "full" }, { id: "t2", name: "Helper" }] };
+
+function engineOf(over: Record<string, unknown> = {}) {
+  const request = vi.fn(async (method: string, params?: unknown) => {
+    if (method in over) { const v = over[method]; return typeof v === "function" ? (v as (p: unknown) => unknown)(params) : v; }
+    if (method === "config.get") return { hash: "h1", valid: true, config: {} };
+    if (method === "config.patch") return { ok: true, hash: "h2", config: {} };
+    if (method === "agents.list") return AGENTS;
+    if (method === "exec.approvals.get") return SNAP;
+    if (method === "exec.approvals.set") return { ...SNAP, hash: "e2", file: (params as { file: unknown }).file };
+    if (method === "node.list") return { nodes: [] };
+    return {};
+  });
+  return { engine: { request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine, request };
+}
+const report: SaveReport = { saving: vi.fn(), saved: vi.fn(), failed: vi.fn() };
+async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
+  await act(async () => root.render(<KitProvider level={level} report={report} scope={null}><PermissionsPage page="permissions" title="Permissions" level="regular" engine={engine} /></KitProvider>));
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+}
+const heads = () => [...host.querySelectorAll(".sec > h2")].map((h) => h.textContent);
+const button = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === label)!;
+const patchOf = (request: ReturnType<typeof vi.fn>) => JSON.parse((request.mock.calls.find(([m]) => m === "config.patch") as [string, { raw: string }])[1].raw);
+
+describe("Settings › Permissions", () => {
+  it("shows the engine's mode and the Regular sections in the preview's order", async () => {
+    const { engine } = engineOf();
+    await render(engine);
+    expect(host.textContent).toContain("Full access is on");
+    expect(heads()).toEqual(["This PC", "Without asking, Trunks may…", "Locks and records", "Pinned settings", "Work style"]);
+    expect(button("Full access").getAttribute("aria-pressed")).toBe("true");
+    expect(button("Plan first").disabled).toBe(true);
+  });
+
+  it("adds the Advanced and Technical sections in place", async () => {
+    const { engine } = engineOf();
+    await render(engine, 1);
+    expect(heads()).toEqual(["This PC", "Without asking, Trunks may…", "Locks and records", "Pinned settings", "Rules for each tool and folder", "Commands, by default", "Without asking, more", "Checks before anything runs", "Isolation", "Test and explain", "Tools and loops", "Privacy", "Your terminal", "Folders the sandbox may reach", "Work style", "Approvals, more", "Guards, more", "Money", "What each connector may do"]);
+    await render(engine, 2);
+    expect(heads()).toContain("Tools, technical");
+    expect(heads().indexOf("Security, technical")).toBe(heads().indexOf("Guards that are always on") - 1);
+    expect(heads()).toContain("Network and sandbox, technical");
+  });
+
+  it("Mode everywhere saves tools.exec.mode without the older security/ask keys", async () => {
+    const { engine, request } = engineOf();
+    await render(engine);
+    await act(async () => button("Ask first").click());
+    expect(patchOf(request)).toEqual({ tools: { exec: { mode: "ask", security: null, ask: null } } });
+  });
+
+  it("lists the rules from the approvals file and saves with its base hash", async () => {
+    const { engine, request } = engineOf();
+    await render(engine, 1);
+    expect([...host.querySelectorAll(".prow b")].map((b) => b.textContent)).toEqual(expect.arrayContaining(["git status", "git log"]));
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button[aria-label="Move up"]')][1].click());
+    const set = request.mock.calls.find(([m]) => m === "exec.approvals.set") as [string, { file: typeof SNAP.file; baseHash: string }];
+    expect(set[1].baseHash).toBe("e1");
+    expect(set[1].file.agents["*"].allowlist.map((r) => r.pattern)).toEqual(["git log", "git status"]);
+  });
+
+  it("Commands may run writes the file's default security; each Trunk gets its own row", async () => {
+    const { engine, request } = engineOf();
+    await render(engine, 1);
+    expect(host.querySelector('[data-row="Helper"]')).not.toBeNull();
+    await act(async () => button("Only listed ones").click());
+    const set = request.mock.calls.find(([m]) => m === "exec.approvals.set") as [string, { file: { defaults: unknown } }];
+    expect(set[1].file.defaults).toEqual({ security: "allowlist" });
+  });
+
+  it("the empty rules list uses the empty line, and greyed rows say why", async () => {
+    const { engine } = engineOf({ "exec.approvals.get": { ...SNAP, file: { version: 1 } } });
+    await render(engine, 1);
+    expect(host.textContent).toContain("No rules yet. Everything follows the mode.");
+    const lock = host.querySelector('[data-row="App lock"]')!;
+    expect(lock.getAttribute("aria-disabled")).toBe("true");
+    expect(lock.textContent).toContain("The engine has no app lock or PIN yet.");
+  });
+
+  it("Stop a Trunk that repeats itself turns off by removing the key, keeping the engine's own guard", async () => {
+    const { engine, request } = engineOf({ "config.get": { hash: "h1", valid: true, config: { tools: { loopDetection: { enabled: true } } } } });
+    await render(engine, 1);
+    await act(async () => host.querySelector<HTMLInputElement>('input[aria-label="Stop a Trunk that repeats itself"]')!.click());
+    expect(patchOf(request)).toEqual({ tools: { loopDetection: { enabled: null } } });
+  });
+
+  it("the Approvals dialog lists standing permissions and revokes one", async () => {
+    const grant = { grantId: "g1", cronJobId: "c1", cronJobName: "Morning brief", command: "curl x", useCount: 2, revokedAtMs: null, expiresAtMs: null };
+    const { engine, request } = engineOf({ "exec.approval.grants.list": { grants: [grant] }, "exec.approval.grants.revoke": { outcome: "revoked" }, "exec.approval.list": [], "approval.history": { items: [] } });
+    await render(engine, 1);
+    await act(async () => button("Open").click());
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(document.querySelector('[data-testid="approvals"]')!.textContent).toContain("Morning brief");
+    await act(async () => button("Revoke").click());
+    expect(request).toHaveBeenCalledWith("exec.approval.grants.revoke", { grantId: "g1" });
+  });
+
+  it("every search entry has a row on the page to jump to", async () => {
+    const { engine } = engineOf();
+    await render(engine, 2);
+    const rows = new Set([...host.querySelectorAll<HTMLElement>("[data-row]")].map((r) => r.dataset.row));
+    expect(PERMISSIONS_ROWS.map((r) => r.title).filter((t) => !rows.has(t))).toEqual([]);
+  });
+
+  it("lists every row for search, at its level", () => {
+    const find = (t: string) => PERMISSIONS_ROWS.find((r) => r.title === t);
+    expect(find("Mode everywhere")?.lv).toBe(0);
+    expect(find("Commands may run")?.lv).toBe(1);
+    expect(find("Code mode")?.lv).toBe(2);
+    expect(find("Sandbox")?.sec).toBe("Isolation");
+  });
+});

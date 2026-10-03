@@ -1,0 +1,7 @@
+# Distinct BRANCH_* names in production source under src, packages, and extensions.
+# Ratchet: lower this number when cleanup removes names; never raise it without owner approval.
+# Worker bundle installation no longer injects BRANCH_STATE_DIR into a remote npm process.
+# The internal Node-version check no longer contributes a false BRANCH_* name.
+# The next-turn runtime-context preface constant no longer exists as an BRANCH_* name.
+# BRANCH_PACKAGE_BUN_LAUNCHER (#159431) is the updater-to-preinstall handoff for Bun-only installs.
+473

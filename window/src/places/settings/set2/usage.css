@@ -1,0 +1,115 @@
+/* Settings › Data & usage: the spend card, allowance rows, Trunk bars and the usage report (53-set3p, 50-settings). */
+.set-col .s2usage-rep { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 14px 0 4px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--raise); }
+.set-col .s2usage-reph { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.set-col .s2usage-reph > span:first-child { display: grid; gap: 1px; }
+.set-col .s2usage-reph small { font-size: 11.5px; color: var(--ink-3); }
+.set-col .s2usage-reph b { font-size: 26px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.set-col .s2usage-reph em { font-style: normal; font-size: 12px; color: var(--ink-3); }
+.set-col .s2usage-inc { display: block; }
+
+.set-col .s2usage-lims { display: grid; gap: 2px; }
+.set-col .s2usage-lim { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 9px 6px; border-radius: 10px; }
+.set-col .s2usage-lim:hover { background: var(--fill); }
+.set-col .s2usage-logo { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 28%; flex: none; overflow: hidden; background: var(--fill); font-size: 11px; font-weight: 600; color: var(--ink-2); }
+.set-col .s2usage-limh { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.set-col .s2usage-limh b { font-weight: 600; }
+.set-col .s2usage-limh .s2usage-muted { color: var(--ink-3); font-size: 12px; }
+.set-col .s2usage-limw { display: grid; grid-template-columns: 118px 1fr auto; gap: 10px; align-items: center; font-size: 12px; color: var(--ink-2); margin-top: 5px; }
+.set-col .s2usage-limbar { height: 6px; border-radius: 3px; background: var(--fill-2, var(--fill)); overflow: hidden; }
+.set-col .s2usage-limbar i { display: block; height: 100%; background: var(--ink-2); border-radius: 3px; }
+.set-col .s2usage-lim small { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 4px; }
+.set-col .s2usage-lim small.s2-err { color: var(--bad); }
+
+.set-col .s2usage-bars { display: grid; gap: 8px; margin: 10px 0 8px; }
+.set-col .s2usage-brow { display: grid; grid-template-columns: 90px 1fr 64px; gap: 10px; align-items: center; font-size: 13px; }
+.set-col .s2usage-brow > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-col .s2usage-track { height: 8px; border-radius: 4px; background: var(--fill); overflow: hidden; }
+.set-col .s2usage-track u { display: block; height: 100%; background: var(--ink-2); border-radius: 4px; }
+.set-col .s2usage-v { font: 12px var(--mono); text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+.set-col .s2usage-num { display: inline-flex; align-items: center; gap: 6px; }
+.set-col .s2usage-num .inp { width: 72px; height: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+.set-col .s2usage-num small { font-size: 12px; color: var(--ink-3); min-width: 0; }
+.set-col .s2usage-txt { width: min(240px, 46vw); }
+.set-col .s2usage-schema b code { font: 12px var(--mono); }
+.set-col .s2usage-wide { display: block; }
+.set-col .s2usage-data { list-style: none; padding: 0; margin: 6px 0 0; font-size: 13px; }
+.set-col .s2usage-data li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-top: 1px solid var(--line); }
+.set-col .s2usage-data li .hint { margin: 0; }
+.set-col .s2usage-sel { display: block; }
+.set-col .s2usage-sel > .right { display: block; margin: 6px 0; }
+.set-col .s2usage-sel select { width: 100%; max-width: 100%; }
+.set-col .s2usage-sel > small { display: block; }
+.set-col .s2usage-cmds { margin: 4px 0 6px; padding-left: 18px; display: grid; gap: 2px; font-size: 13px; }
+.set-col .s2usage-x { grid-column: 1 / -1; display: grid; gap: 6px; margin-top: 6px; min-width: 0; }
+.set-col .s2usage-x .acts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 0; }
+.set-col .s2usage-x .acts .inp { flex: 1 1 180px; min-width: 0; }
+.set-col .s2usage-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.set-col .s2usage-list .chip6 { gap: 4px; }
+.set-col .s2usage-v18 { font-size: 12.5px; color: var(--ink-2); }
+
+/* the usage report */
+.dlg .s2usage-top, .dlg .s2usage-filt, .dlg .s2usage-q { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 10px; }
+.dlg .s2usage-top .sseg { flex-wrap: wrap; }
+.dlg .s2usage-tsel { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-3); }
+.dlg .s2usage-tsel .inp { height: 32px; padding: 0 8px; width: auto; border: 1px solid var(--line); border-radius: var(--r1-17, 8px); background: var(--bg); color: var(--ink); }
+.dlg .s2usage-q .inp { flex: 1 1 260px; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r1-17, 8px); background: var(--bg); color: var(--ink); }
+.dlg .s2usage-ms { position: relative; }
+.dlg .s2usage-ms summary { cursor: pointer; font-size: 12.5px; color: var(--ink-2); padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; list-style: none; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dlg .s2usage-ms summary::-webkit-details-marker { display: none; }
+.dlg .s2usage-msbody { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; display: grid; gap: 6px; padding: 10px; min-width: 200px; max-height: 260px; overflow: auto; border-radius: 12px; background: var(--pop, var(--raise)); border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0, 0, 0, .14); }
+.dlg .s2usage-msbody .acts { display: flex; gap: 6px; margin: 0; }
+.dlg .s2usage-msbody label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.dlg .s2usage-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+.dlg .s2usage-tiles > div { display: grid; gap: 2px; padding: 10px 12px; border-radius: 11px; background: var(--fill); min-width: 0; }
+.dlg .s2usage-tiles small { font-size: 11px; color: var(--ink-3); }
+.dlg .s2usage-tiles b { overflow-wrap: anywhere; }
+.dlg .s2usage-tiles2 { margin-top: 8px; }
+.dlg .s2usage-g { margin-bottom: 14px; }
+.dlg .s2usage-g h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.dlg .s2usage-g > .hint { margin: 0 0 6px; }
+.dlg .s2usage-g .acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 6px; }
+.dlg .s2usage-r { display: grid; grid-template-columns: minmax(120px, 190px) 1fr 64px; align-items: center; gap: 10px; padding: 4px 0; font-size: 12.5px; }
+.dlg .s2usage-r > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dlg .s2usage-r b { text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }
+.dlg .s2usage-b { height: 8px; border-radius: 4px; background: var(--fill); }
+.dlg .s2usage-b u { display: block; height: 100%; border-radius: 4px; background: var(--ink); }
+.dlg .s2usage-chart { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.dlg .s2usage-bar { flex: 1 1 0; min-width: 2px; position: relative; display: flex; flex-direction: column-reverse; background: var(--ink-3); opacity: .55; border: 0; border-radius: 3px 3px 0 0; padding: 0; cursor: pointer; }
+.dlg .s2usage-bar u { display: block; text-decoration: none; background: var(--ink-2); opacity: .6; }
+.dlg .s2usage-bar:nth-child(odd) u:nth-child(2) { opacity: .35; }
+.dlg .s2usage-bar:hover, .dlg .s2usage-bar.on { opacity: 1; }
+.dlg .s2usage-bar:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dlg .s2usage-heat { contain: inline-size; display: grid; grid-template-rows: repeat(7, 10px); grid-auto-flow: column; grid-auto-columns: 10px; gap: 2px; overflow-x: auto; max-width: 100%; }
+.dlg .s2usage-heat i, .dlg .s2usage-legend i, .dlg .s2usage-dow i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--fill); }
+.dlg .s2usage-hm.h1 { background: color-mix(in srgb, var(--ink-3) 30%, transparent) !important; }
+.dlg .s2usage-hm.h2 { background: color-mix(in srgb, var(--ink-3) 55%, transparent) !important; }
+.dlg .s2usage-hm.h3 { background: color-mix(in srgb, var(--ink-3) 80%, transparent) !important; }
+.dlg .s2usage-hm.h4 { background: var(--ink-2) !important; }
+.dlg .s2usage-legend { display: flex; align-items: center; gap: 3px; margin: 4px 0 0; }
+.dlg .s2usage-dow { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--ink-3); margin-bottom: 6px; }
+.dlg .s2usage-dow span { display: inline-flex; align-items: center; gap: 4px; }
+.dlg .s2usage-hours { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 2px; }
+.dlg .s2usage-hours button { height: 22px; border: 0; border-radius: 3px; background: var(--fill); font-size: 0; color: var(--ink); padding: 0; cursor: pointer; }
+.dlg .s2usage-hours button.on { outline: 2px solid var(--ink); outline-offset: 1px; }
+.dlg .s2usage-chips { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.dlg .s2usage-chips .chip6 { gap: 4px; }
+.dlg .s2usage-chips .chip6 button { border: 0; background: none; padding: 0; color: var(--ink-3); cursor: pointer; display: inline-grid; }
+.dlg .s2usage-conv { padding: 8px 4px; }
+.dlg .s2usage-conv .link-k { text-align: left; display: grid; color: inherit; text-decoration: none; flex: 1; min-width: 0; }
+.dlg .s2usage-conv .s2-meta { font: 12px var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.dlg .s2usage-det { display: grid; gap: 8px; padding: 10px 12px; margin: 0 0 6px; border-radius: 12px; background: var(--fill); }
+.dlg .s2usage-det .s2usage-tiles { margin: 0; }
+.dlg .s2usage-det .s2usage-tiles > div { background: var(--raise); }
+.dlg .s2usage-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dlg .s2usage-two small { display: block; color: var(--ink-3); font-size: 12px; }
+.dlg .s2usage-err { color: var(--bad); }
+@media (max-width: 760px) {
+  .set-col .s2usage-limw { grid-template-columns: 90px 1fr; }
+  .set-col .s2usage-limw span:last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) {
+  .dlg .s2usage-tiles { grid-template-columns: 1fr 1fr; }
+  .dlg .s2usage-r { grid-template-columns: 100px 1fr 52px; }
+  .dlg .s2usage-two { grid-template-columns: 1fr; }
+}

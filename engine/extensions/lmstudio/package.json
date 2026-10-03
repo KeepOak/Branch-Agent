@@ -1,0 +1,12 @@
+{
+  "name": "@branch/lmstudio-provider",
+  "version": "2026.9.7",
+  "private": true,
+  "description": "Branch Agent LM Studio provider plugin",
+  "type": "module",
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

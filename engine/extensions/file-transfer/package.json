@@ -1,0 +1,19 @@
+{
+  "name": "@branch/file-transfer",
+  "version": "2026.9.7",
+  "description": "Branch Agent file transfer plugin (file_fetch, dir_list, dir_fetch, file_write)",
+  "type": "module",
+  "dependencies": {
+    "@openclaw/fs-safe": "0.22.0",
+    "minimatch": "10.2.6",
+    "typebox": "1.3.34"
+  },
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

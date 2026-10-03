@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.log
+
+/preview-reference/
+/output/library-live/
+/output/isolated-process/
+/window/output/
+
+__pycache__/

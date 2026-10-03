@@ -1,0 +1,326 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "allowSyntheticDefaultImports": true,
+    "declaration": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "lib": ["DOM", "DOM.Iterable", "ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "noEmitOnError": true,
+    "noUncheckedSideEffectImports": true,
+    "outDir": "dist",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "es2023",
+    "types": ["node"],
+    "useDefineForClassFields": false,
+    "verbatimModuleSyntax": true,
+    "paths": {
+      "branch/plugin-sdk/*": ["./src/plugin-sdk/*.ts"],
+      "@branch/ai": ["./packages/ai/src/index.ts"],
+      "@branch/ai/diagnostics": ["./packages/ai/src/utils/diagnostics.ts"],
+      "@branch/ai/event-stream": ["./packages/ai/src/utils/event-stream.ts"],
+      "@branch/ai/providers": ["./packages/ai/src/providers.ts"],
+      "@branch/ai/transports": ["./packages/ai/src/transports.ts"],
+      "@branch/ai/types": ["./packages/ai/src/types.ts"],
+      "@branch/ai/validation": ["./packages/ai/src/validation.ts"],
+      "@branch/ai/internal/anthropic": ["./packages/ai/src/internal/anthropic.ts"],
+      "@branch/ai/internal/google-model-family": [
+        "./packages/ai/src/internal/google-model-family.ts"
+      ],
+      "@branch/ai/internal/openai": ["./packages/ai/src/internal/openai.ts"],
+      "@branch/ai/internal/openai-completions-compat": [
+        "./packages/ai/src/internal/openai-completions-compat.ts"
+      ],
+      "@branch/ai/internal/openai-responses-payload-policy": [
+        "./packages/ai/src/internal/openai-responses-payload-policy.ts"
+      ],
+      "@branch/ai/internal/retry-after": ["./packages/ai/src/internal/retry-after.ts"],
+      "@branch/ai/internal/runtime": ["./packages/ai/src/internal/runtime.ts"],
+      "@branch/ai/internal/shared": ["./packages/ai/src/internal/shared.ts"],
+      "@branch/ai/internal/tool-schema": ["./packages/ai/src/internal/tool-schema.ts"],
+      "@branch/agent-core": ["./packages/agent-core/src/index.ts"],
+      "@branch/agent-core/*": ["./packages/agent-core/src/*"],
+      "@branch/llm-core": ["./packages/llm-core/src/index.ts"],
+      "@branch/llm-core/diagnostics": ["./packages/llm-core/src/utils/diagnostics.ts"],
+      "@branch/llm-core/event-stream": ["./packages/llm-core/src/utils/event-stream.ts"],
+      "@branch/llm-core/model-contracts/anthropic": ["./packages/llm-core/src/model-contracts/anthropic.ts"],
+      "@branch/llm-core/types": ["./packages/llm-core/src/types.ts"],
+      "@branch/llm-core/validation": ["./packages/llm-core/src/validation.ts"],
+      "@branch/llm-core/*": ["./packages/llm-core/src/*"],
+      "@branch/model-catalog-core": ["./packages/model-catalog-core/src/index.ts"],
+      "@branch/model-catalog-core/configured-model-refs": [
+        "./packages/model-catalog-core/src/configured-model-refs.ts"
+      ],
+      "@branch/model-catalog-core/model-catalog-normalize": [
+        "./packages/model-catalog-core/src/model-catalog-normalize.ts"
+      ],
+      "@branch/model-catalog-core/model-catalog-pricing": [
+        "./packages/model-catalog-core/src/model-catalog-pricing.ts"
+      ],
+      "@branch/model-catalog-core/model-catalog-refs": [
+        "./packages/model-catalog-core/src/model-catalog-refs.ts"
+      ],
+      "@branch/model-catalog-core/model-catalog-types": [
+        "./packages/model-catalog-core/src/model-catalog-types.ts"
+      ],
+      "@branch/model-catalog-core/provider-id": [
+        "./packages/model-catalog-core/src/provider-id.ts"
+      ],
+      "@branch/model-catalog-core/provider-model-id-normalization": [
+        "./packages/model-catalog-core/src/provider-model-id-normalization.ts"
+      ],
+      "@branch/model-catalog-core/provider-model-id-normalize": [
+        "./packages/model-catalog-core/src/provider-model-id-normalize.ts"
+      ],
+      "@branch/model-catalog-core/*": ["./packages/model-catalog-core/src/*"],
+      "@branch/gateway-client": ["./packages/gateway-client/src/index.ts"],
+      "@branch/gateway-client/browser": ["./packages/gateway-client/src/browser.ts"],
+      "@branch/gateway-client/scope-upgrade": [
+        "./packages/gateway-client/src/scope-upgrade.ts"
+      ],
+      "@branch/gateway-client/websocket-data": [
+        "./packages/gateway-client/src/websocket-data.ts"
+      ],
+      "@branch/gateway-client/*": ["./packages/gateway-client/src/*"],
+      "@branch/gateway-protocol": ["./packages/gateway-protocol/src/index.ts"],
+      "@branch/gateway-protocol/client-info": [
+        "./packages/gateway-protocol/src/client-info.ts"
+      ],
+      "@branch/gateway-protocol/connect-error-details": [
+        "./packages/gateway-protocol/src/connect-error-details.ts"
+      ],
+      "@branch/gateway-protocol/gateway-error-details": [
+        "./packages/gateway-protocol/src/gateway-error-details.ts"
+      ],
+      "@branch/gateway-protocol/frame-guards": [
+        "./packages/gateway-protocol/src/frame-guards.ts"
+      ],
+      "@branch/gateway-protocol/schema": ["./packages/gateway-protocol/src/schema.ts"],
+      "@branch/gateway-protocol/restart-unavailable": [
+        "./packages/gateway-protocol/src/restart-unavailable.ts"
+      ],
+      "@branch/gateway-protocol/startup-unavailable": [
+        "./packages/gateway-protocol/src/startup-unavailable.ts"
+      ],
+      "@branch/gateway-protocol/system-agent-context": ["./packages/gateway-protocol/src/system-agent-context.ts"],
+      "@branch/gateway-protocol/version": ["./packages/gateway-protocol/src/version.ts"],
+      "@branch/gateway-protocol/*": ["./packages/gateway-protocol/src/*"],
+      "@branch/media-generation-core": ["./packages/media-generation-core/src/index.ts"],
+      "@branch/media-generation-core/capability-model-ref": [
+        "./packages/media-generation-core/src/capability-model-ref.ts"
+      ],
+      "@branch/media-generation-core/catalog": [
+        "./packages/media-generation-core/src/catalog.ts"
+      ],
+      "@branch/media-generation-core/model-ref": [
+        "./packages/media-generation-core/src/model-ref.ts"
+      ],
+      "@branch/media-generation-core/normalization": [
+        "./packages/media-generation-core/src/normalization.ts"
+      ],
+      "@branch/media-generation-core/*": ["./packages/media-generation-core/src/*"],
+      "@branch/media-core": ["./packages/media-core/src/index.ts"],
+      "@branch/media-core/attachment-classify": [
+        "./packages/media-core/src/attachment-classify.ts"
+      ],
+      "@branch/media-core/base64": ["./packages/media-core/src/base64.ts"],
+      "@branch/media-core/constants": ["./packages/media-core/src/constants.ts"],
+      "@branch/media-core/content-length": ["./packages/media-core/src/content-length.ts"],
+      "@branch/media-core/file-name": ["./packages/media-core/src/file-name.ts"],
+      "@branch/media-core/inbound-path-policy": [
+        "./packages/media-core/src/inbound-path-policy.ts"
+      ],
+      "@branch/media-core/inline-image-data-url": [
+        "./packages/media-core/src/inline-image-data-url.ts"
+      ],
+      "@branch/media-core/media-source-url": [
+        "./packages/media-core/src/media-source-url.ts"
+      ],
+      "@branch/media-core/mime": ["./packages/media-core/src/mime.ts"],
+      "@branch/media-core/read-byte-stream-with-limit": [
+        "./packages/media-core/src/read-byte-stream-with-limit.ts"
+      ],
+      "@branch/media-core/*": ["./packages/media-core/src/*"],
+      "@branch/media-understanding-common/*": [
+        "./packages/media-understanding-common/src/*"
+      ],
+      "@branch/markdown-core": ["./packages/markdown-core/src/index.ts"],
+      "@branch/markdown-core/code-spans": ["./packages/markdown-core/src/code-spans.ts"],
+      "@branch/markdown-core/fences": ["./packages/markdown-core/src/fences.ts"],
+      "@branch/markdown-core/frontmatter": ["./packages/markdown-core/src/frontmatter.ts"],
+      "@branch/markdown-core/ir": ["./packages/markdown-core/src/ir.ts"],
+      "@branch/markdown-core/render": ["./packages/markdown-core/src/render.ts"],
+      "@branch/markdown-core/render-aware-chunking": [
+        "./packages/markdown-core/src/render-aware-chunking.ts"
+      ],
+      "@branch/markdown-core/tables": ["./packages/markdown-core/src/tables.ts"],
+      "@branch/markdown-core/types": ["./packages/markdown-core/src/types.ts"],
+      "@branch/markdown-core/*": ["./packages/markdown-core/src/*"],
+      "@branch/normalization-core": ["./packages/normalization-core/src/index.ts"],
+      "@branch/normalization-core/agent-id": [
+        "./packages/normalization-core/src/agent-id.ts"
+      ],
+      "@branch/normalization-core/agent-run-terminal-outcome": [
+        "./packages/normalization-core/src/agent-run-terminal-outcome.ts"
+      ],
+      "@branch/normalization-core/boolean-coercion": [
+        "./packages/normalization-core/src/boolean-coercion.ts"
+      ],
+      "@branch/normalization-core/cjk-chars": [
+        "./packages/normalization-core/src/cjk-chars.ts"
+      ],
+      "@branch/normalization-core/code-points": [
+        "./packages/normalization-core/src/code-points.ts"
+      ],
+      "@branch/normalization-core/error-coercion": [
+        "./packages/normalization-core/src/error-coercion.ts"
+      ],
+      "@branch/normalization-core/expect": ["./packages/normalization-core/src/expect.ts"],
+      "@branch/normalization-core/grapheme": ["./packages/normalization-core/src/grapheme.ts"],
+      "@branch/normalization-core/json-coercion": [
+        "./packages/normalization-core/src/json-coercion.ts"
+      ],
+      "@branch/normalization-core/json-schema": [
+        "./packages/normalization-core/src/json-schema.ts"
+      ],
+      "@branch/normalization-core/markdown-plain-text": [
+        "./packages/normalization-core/src/markdown-plain-text.ts"
+      ],
+      "@branch/normalization-core/mountinfo-path": [
+        "./packages/normalization-core/src/mountinfo-path.ts"
+      ],
+      "@branch/normalization-core/node-crypto": [
+        "./packages/normalization-core/src/node-crypto.ts"
+      ],
+      "@branch/normalization-core/number-coercion": [
+        "./packages/normalization-core/src/number-coercion.ts"
+      ],
+      "@branch/normalization-core/phone-presentation": [
+        "./packages/normalization-core/src/phone-presentation.ts"
+      ],
+      "@branch/normalization-core/promise-like": [
+        "./packages/normalization-core/src/promise-like.ts"
+      ],
+      "@branch/normalization-core/record-coerce": [
+        "./packages/normalization-core/src/record-coerce.ts"
+      ],
+      "@branch/normalization-core/result": [
+        "./packages/normalization-core/src/result.ts"
+      ],
+      "@branch/normalization-core/stable-node-path": [
+        "./packages/normalization-core/src/stable-node-path.ts"
+      ],
+      "@branch/normalization-core/stable-stringify": [
+        "./packages/normalization-core/src/stable-stringify.ts"
+      ],
+      "@branch/normalization-core/string-coerce": [
+        "./packages/normalization-core/src/string-coerce.ts"
+      ],
+      "@branch/normalization-core/string-normalization": [
+        "./packages/normalization-core/src/string-normalization.ts"
+      ],
+      "@branch/normalization-core/utf16-slice": [
+        "./packages/normalization-core/src/utf16-slice.ts"
+      ],
+      "@branch/normalization-core/uuid": ["./packages/normalization-core/src/uuid.ts"],
+      "@branch/normalization-core/home-dir": [
+        "./packages/normalization-core/src/home-dir.ts"
+      ],
+      "@branch/normalization-core/*": ["./packages/normalization-core/src/*"],
+      "@branch/retry": ["./packages/retry/src/index.ts"],
+      "@branch/mermaid-renderer": ["./packages/mermaid-renderer/src/renderer.ts"],
+      "@branch/session-url-contract": ["./packages/session-url-contract/src/index.ts"],
+      "@branch/session-url-contract/parse": ["./packages/session-url-contract/src/parse.ts"],
+      "@branch/session-url-contract/session-key-normalization": [
+        "./packages/session-url-contract/src/session-key-normalization.ts"
+      ],
+      "@branch/session-url-contract/share-build": [
+        "./packages/session-url-contract/src/share-build.ts"
+      ],
+      "@branch/session-url-contract/*": ["./packages/session-url-contract/src/*"],
+      "@branch/canopy-contract": ["./packages/canopy-contract/src/index.ts"],
+      "@branch/acp-core": ["./packages/acp-core/src/index.ts"],
+      "@branch/acp-core/meta": ["./packages/acp-core/src/meta.ts"],
+      "@branch/acp-core/session": ["./packages/acp-core/src/session.ts"],
+      "@branch/acp-core/session-interaction-mode": [
+        "./packages/acp-core/src/session-interaction-mode.ts"
+      ],
+      "@branch/acp-core/session-lineage-meta": [
+        "./packages/acp-core/src/session-lineage-meta.ts"
+      ],
+      "@branch/acp-core/types": ["./packages/acp-core/src/types.ts"],
+      "@branch/acp-core/runtime/error-text": [
+        "./packages/acp-core/src/runtime/error-text.ts"
+      ],
+      "@branch/acp-core/runtime/errors": ["./packages/acp-core/src/runtime/errors.ts"],
+      "@branch/acp-core/runtime/session-identifiers": [
+        "./packages/acp-core/src/runtime/session-identifiers.ts"
+      ],
+      "@branch/acp-core/runtime/session-identity": [
+        "./packages/acp-core/src/runtime/session-identity.ts"
+      ],
+      "@branch/acp-core/runtime/types": ["./packages/acp-core/src/runtime/types.ts"],
+      "@branch/acp-core/*": ["./packages/acp-core/src/*"],
+      "@branch/terminal-core": ["./packages/terminal-core/src/index.ts"],
+      "@branch/terminal-core/ansi": ["./packages/terminal-core/src/ansi.ts"],
+      "@branch/terminal-core/decorative-emoji": [
+        "./packages/terminal-core/src/decorative-emoji.ts"
+      ],
+      "@branch/terminal-core/health-style": [
+        "./packages/terminal-core/src/health-style.ts"
+      ],
+      "@branch/terminal-core/links": ["./packages/terminal-core/src/links.ts"],
+      "@branch/terminal-core/note": ["./packages/terminal-core/src/note.ts"],
+      "@branch/terminal-core/osc-progress": ["./packages/terminal-core/src/osc-progress.ts"],
+      "@branch/terminal-core/palette": ["./packages/terminal-core/src/palette.ts"],
+      "@branch/terminal-core/progress-line": [
+        "./packages/terminal-core/src/progress-line.ts"
+      ],
+      "@branch/terminal-core/prompt-select-styled": [
+        "./packages/terminal-core/src/prompt-select-styled.ts"
+      ],
+      "@branch/terminal-core/prompt-select-styled-params": [
+        "./packages/terminal-core/src/prompt-select-styled-params.ts"
+      ],
+      "@branch/terminal-core/prompt-style": [
+        "./packages/terminal-core/src/prompt-style.ts"
+      ],
+      "@branch/terminal-core/restore": ["./packages/terminal-core/src/restore.ts"],
+      "@branch/terminal-core/safe-text": ["./packages/terminal-core/src/safe-text.ts"],
+      "@branch/terminal-core/stream-writer": [
+        "./packages/terminal-core/src/stream-writer.ts"
+      ],
+      "@branch/terminal-core/table": ["./packages/terminal-core/src/table.ts"],
+      "@branch/terminal-core/terminal-link": [
+        "./packages/terminal-core/src/terminal-link.ts"
+      ],
+      "@branch/terminal-core/theme": ["./packages/terminal-core/src/theme.ts"],
+      "@branch/terminal-core/*": ["./packages/terminal-core/src/*"],
+      "@branch/net-policy": ["./packages/net-policy/src/index.ts"],
+      "@branch/net-policy/ip": ["./packages/net-policy/src/ip.ts"],
+      "@branch/net-policy/ipv4": ["./packages/net-policy/src/ipv4.ts"],
+      "@branch/net-policy/redact-sensitive-url": [
+        "./packages/net-policy/src/redact-sensitive-url.ts"
+      ],
+      "@branch/net-policy/url-protocol": ["./packages/net-policy/src/url-protocol.ts"],
+      "@branch/net-policy/url-userinfo": ["./packages/net-policy/src/url-userinfo.ts"],
+      "@branch/net-policy/*": ["./packages/net-policy/src/*"],
+      "@branch/sdk": ["./packages/sdk/src/index.ts"],
+      "@branch/plugin-sdk/*": ["./src/plugin-sdk/*.ts"],
+      "branch/plugin-sdk/account-id": ["./src/plugin-sdk/account-id.ts"],
+      "@branch/*": ["./extensions/*"]
+    }
+  },
+  "include": ["src/**/*", "ui/**/*", "extensions/**/*", "packages/**/*"],
+  "exclude": ["node_modules", "dist", "**/dist/**", "**/*.test-compat.d.ts"]
+}

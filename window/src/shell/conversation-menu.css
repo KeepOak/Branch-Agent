@@ -1,0 +1,122 @@
+/* The ⋯ menu's dialogs (DESIGN-SPEC §4.2.7): Share and Map of this conversation */
+.share-b {
+  display: grid;
+  gap: 14px;
+}
+.share-row {
+  display: grid;
+  gap: 6px;
+  font-size: 13.5px;
+}
+.share-row.share-sw,
+.share-sw {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.share-row.share-sw > span {
+  display: grid;
+  gap: 2px;
+}
+.share-sw small {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.share-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.share-people li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+}
+.share-people li b {
+  flex: 1;
+  font-weight: 500;
+}
+.share-av {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--fill-2);
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+.conv-map {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.conv-map-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raise);
+  font-size: 13.5px;
+  text-align: left;
+}
+.conv-map-row:hover:not(:disabled) {
+  background: var(--fill);
+}
+.conv-map-row.on {
+  border-color: var(--ink-3);
+}
+.conv-map-row small {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+/* At phone width the menu spans the window, as the preview's does */
+@media (max-width: 480px) {
+  .pop[data-testid="conversation-menu"],
+  .pop[data-testid="who-it-knows"] {
+    left: 8px !important;
+    width: calc(100vw - 16px);
+    max-width: none;
+  }
+}
+/* The header's people button gives way at phone width, as the preview's does; Who it knows stays in the ⋯ menu */
+@media (max-width: 480px) {
+  .ib[data-testid="who-it-knows-button"] { /* beats frame.css .ib display */
+    display: none;
+  }
+}
+
+/* Replay this conversation (the preview's .rpR118) */
+.rp {
+  display: grid;
+  gap: 12px;
+}
+.rp .rpc {
+  min-height: 120px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--fill);
+}
+.rp .rpc p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+.rp .rp-acts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rp .rp-acts input[type="range"] {
+  flex: 1;
+}

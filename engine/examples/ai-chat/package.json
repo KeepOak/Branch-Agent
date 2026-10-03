@@ -1,0 +1,13 @@
+{
+  "name": "@branch/example-ai-chat",
+  "version": "0.0.0-private",
+  "private": true,
+  "description": "Minimal external-consumer example for @branch/ai",
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@branch/ai": "workspace:*"
+  }
+}

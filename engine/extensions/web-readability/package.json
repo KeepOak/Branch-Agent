@@ -1,0 +1,19 @@
+{
+  "name": "@branch/web-readability-plugin",
+  "version": "2026.9.7",
+  "private": true,
+  "description": "Branch Agent local Readability web extraction plugin",
+  "type": "module",
+  "dependencies": {
+    "@mozilla/readability": "0.6.0",
+    "linkedom": "0.18.13"
+  },
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

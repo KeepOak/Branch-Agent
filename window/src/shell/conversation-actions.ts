@@ -1,0 +1,160 @@
+// What the row menu, hover buttons and keys do to a conversation (DESIGN-SPEC §4.1.6 and its Parity adds),
+// each through the engine method its row names, followed by a read-back of the list.
+import type { Conversation, ConversationList } from "../connect/conversations";
+import { notify } from "./notify";
+
+type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
+
+export type Actions = ReturnType<typeof conversationActions>;
+
+const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const nameOf = (row: Conversation) => row.title || "New conversation";
+
+/** The snooze choices (§4.1.6 Snooze and Wake): each with its wake time, built from `now`. */
+export function snoozeChoices(now: number): { label: string; until: number }[] {
+  const d = new Date(now);
+  const at = (days: number, hour: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, hour, 0, 0, 0).getTime();
+  const choices = [
+    { label: "In 1 hour", until: now + 3_600_000 },
+    { label: "In 3 hours", until: now + 3 * 3_600_000 },
+  ];
+  const evening = at(0, 18);
+  if (evening - now > 3_600_000) {
+    choices.push({ label: "This evening", until: evening });
+  }
+  choices.push({ label: "Tomorrow", until: at(1, 9) });
+  if (d.getDay() !== 0) {
+    const toMonday = ((8 - d.getDay()) % 7) || 7;
+    choices.push({ label: "Next week", until: at(toMonday, 9) });
+  }
+  return choices;
+}
+
+/** "18:00", "tomorrow 09:00" or "Mon 09:00" (§4.1.6 Snooze: the wake time). */
+export function wakeWords(until: number, now: number): string {
+  const d = new Date(until);
+  const hm = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  const today = new Date(now);
+  const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  if (until < dayStart + 86_400_000) {
+    return hm;
+  }
+  if (until < dayStart + 2 * 86_400_000) {
+    return `tomorrow ${hm}`;
+  }
+  return `${d.toLocaleDateString([], { weekday: "short" })} ${hm}`;
+}
+
+/** Who a patch is for: key, Trunk and the transcript it expects (archive and snooze need it). */
+function target(row: Conversation): Record<string, string> {
+  return { key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), ...(row.sessionId ? { expectedSessionId: row.sessionId } : {}) };
+}
+
+export function conversationActions(request: Request, list: ConversationList, openKey: () => string | null) {
+  const patch = async (row: Conversation, change: Record<string, unknown>) => {
+    await request("sessions.patch", { ...target(row), ...change });
+    await list.refresh();
+  };
+  return {
+    async pin(row: Conversation) {
+      await patch(row, row.pinned ? { pinned: false } : { pinned: true, snoozedUntil: null }).catch((e) => notify(`Couldn't change ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" }));
+    },
+    async archive(row: Conversation) {
+      try {
+        await patch(row, { archived: true, snoozedUntil: null });
+        notify("Archived.", { action: { label: "Undo", run: () => void patch(row, { archived: false }) } });
+      } catch (e) {
+        notify(`Couldn't archive ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" });
+      }
+    },
+    async restore(row: Conversation) {
+      await patch(row, { archived: false }).catch((e) => notify(`Couldn't change ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" }));
+    },
+    async setUnread(row: Conversation, unread: boolean) {
+      try {
+        await patch(row, { unread });
+        if (unread && row.key === openKey()) {
+          notify("Marked unread. The dot shows once you leave this conversation.");
+        } else {
+          notify(`${nameOf(row)}: marked ${unread ? "unread" : "read"}.`);
+        }
+      } catch (e) {
+        notify(`Couldn't change ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" });
+      }
+    },
+    async snooze(row: Conversation, until: number | null) {
+      try {
+        await patch(row, { snoozedUntil: until });
+        if (until) {
+          notify(`Snoozed until ${wakeWords(until, Date.now())}.`, { action: { label: "Undo", run: () => void patch(row, { snoozedUntil: null }) } });
+        }
+      } catch (e) {
+        notify(`Couldn't snooze ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" });
+      }
+    },
+    async rename(row: Conversation, label: string) {
+      await patch(row, { label: label.trim() || null }).catch((e) => notify(`Couldn't rename ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" }));
+    },
+    async remove(row: Conversation) {
+      try {
+        await request("sessions.delete", { key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), deleteTranscript: true });
+      } catch (e) {
+        notify(`Couldn't delete ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" });
+      }
+      await list.refresh();
+    },
+    async markAllRead(rows: Conversation[]) {
+      const targets = rows.filter((r) => r.unread && r.key !== openKey()).map(target);
+      if (!targets.length) {
+        return;
+      }
+      try {
+        await request("sessions.patchMany", { targets, patch: { unread: false } });
+        notify("All conversations marked read.");
+      } catch (e) {
+        notify(`Couldn't mark them read: ${reason(e)}.`, { tone: "bad" });
+      }
+      await list.refresh();
+    },
+    /** Icon and colour (sessions.patch icon / color); the gateway's refusal comes back as words for the picker. */
+    async setLook(row: Conversation, change: { icon?: string | null; color?: string | null }): Promise<string | null> {
+      try {
+        await patch(row, change);
+        return null;
+      } catch (e) {
+        return `Couldn't change it: ${reason(e)}.`;
+      }
+    },
+    /** One change to several conversations at once (sessions.patchMany), for the select-several menu. */
+    async patchMany(rows: Conversation[], change: Record<string, unknown>, done: string, undo?: Record<string, unknown>) {
+      if (!rows.length) return;
+      try {
+        await request("sessions.patchMany", { targets: rows.map(target), patch: change });
+        notify(done, undo ? { action: { label: "Undo", run: () => void request("sessions.patchMany", { targets: rows.map(target), patch: undo }).then(() => list.refresh()) } } : undefined);
+      } catch (e) {
+        notify(`Couldn't change them: ${reason(e)}.`, { tone: "bad" });
+      }
+      await list.refresh();
+    },
+    /** Delete several (sessions.delete for each, after one confirm). */
+    async removeMany(rows: Conversation[]) {
+      const failed: string[] = [];
+      for (const row of rows) {
+        await request("sessions.delete", { key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), deleteTranscript: true }).catch(() => failed.push(nameOf(row)));
+      }
+      notify(failed.length ? `Couldn't delete ${failed.join(", ")}.` : `Deleted ${rows.length} conversations.`, failed.length ? { tone: "bad" } : undefined);
+      await list.refresh();
+    },
+    /** A new conversation with a Trunk (sessions.create, as OpenClaw's ui/src/lib/sessions/create.ts). */
+    async create(agentId?: string): Promise<string | null> {
+      try {
+        const result = (await request("sessions.create", agentId ? { agentId } : {})) as { key?: unknown };
+        await list.refresh();
+        return typeof result.key === "string" ? result.key : null;
+      } catch (e) {
+        notify(`Couldn't start a conversation: ${reason(e)}.`, { tone: "bad" });
+        return null;
+      }
+    },
+  };
+}

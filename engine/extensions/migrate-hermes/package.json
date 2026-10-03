@@ -1,0 +1,28 @@
+{
+  "name": "@branch/migrate-hermes",
+  "version": "2026.9.7",
+  "private": true,
+  "description": "Hermes to Branch Agent migration provider",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "18.0.1",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*",
+    "branch": "workspace:*"
+  },
+  "peerDependencies": {
+    "branch": ">=2026.9.7"
+  },
+  "peerDependenciesMeta": {
+    "branch": {
+      "optional": true
+    }
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

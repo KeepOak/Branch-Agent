@@ -1,0 +1,34 @@
+{
+  "name": "@branch/diagnostics-prometheus",
+  "version": "2026.9.7",
+  "description": "Branch Agent diagnostics Prometheus exporter for runtime metrics.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openclaw/openclaw"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "install": {
+      "clawhubSpec": "clawhub:@branch/diagnostics-prometheus",
+      "npmSpec": "@branch/diagnostics-prometheus",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.4.25"
+    },
+    "compat": {
+      "pluginApi": ">=2026.9.7"
+    },
+    "build": {
+      "branchVersion": "2026.9.7"
+    },
+    "release": {
+      "publishToClawHub": true,
+      "publishToNpm": true
+    }
+  }
+}

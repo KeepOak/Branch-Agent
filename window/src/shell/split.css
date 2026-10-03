@@ -1,0 +1,110 @@
+/* Side by side and Split (the preview's 21-threadp.css .split-pb18 and .pane-pb18) */
+.split {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--mainw, 50%) 6px minmax(0, 1fr);
+}
+.split > .split-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.pane-divider {
+  background: var(--line);
+  width: 1px;
+  justify-self: center;
+}
+.pane-divider:hover,
+.pane-divider:focus-visible {
+  background: var(--line-2);
+  width: 3px;
+  outline: none;
+}
+.split-side {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.split-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+}
+.split-col:first-child {
+  border-left: 0;
+}
+.pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.split-col .pane + .pane {
+  border-top: 1px solid var(--line);
+}
+.pane-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.pane-h .grow {
+  flex: 1;
+  min-width: 0;
+}
+.pane-h b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pane-h small {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.pane-sc {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.pane-sc .talk-body {
+  padding: 16px;
+}
+.pane-c {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 8px 12px 12px;
+  padding: 4px 4px 4px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 18px;
+  background: var(--raise);
+}
+.pane-c .inp {
+  border: 0;
+  background: none;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 0;
+}
+.pane-pick {
+  overflow: auto;
+  padding: 6px;
+}
+@media (max-width: 999px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .split > .pane-divider,
+  .split > .split-side {
+    display: none;
+  }
+}

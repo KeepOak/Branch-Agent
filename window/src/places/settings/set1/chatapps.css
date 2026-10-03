@@ -1,0 +1,86 @@
+/* Settings › Chat apps (§4.7.10) and Manage <app> (§4.7.10.1), from the preview's 52-set2p, 95-g5p and base chat-app rules. */
+.set-col .n-ca { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--fill-2); color: var(--ink-2); font: 500 10.5px var(--mono); letter-spacing: 0; }
+.set-col .sec > h2:has(.n-ca) { justify-content: flex-start; }
+.set-col .filt-ca { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 6px; }
+.set-col .filt-ca .inp { height: 32px; }
+.set-col .req-ca { align-items: flex-start; }
+.set-col .req-ca .grow { display: grid; gap: 2px; min-width: 0; }
+.set-col .det-ca summary { margin-top: 4px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
+.set-col .kv-ca { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 6px 0 0; font-size: 12.5px; }
+.set-col .kv-ca dt { color: var(--ink-3); }
+.set-col .kv-ca dd { margin: 0; overflow-wrap: anywhere; }
+.set-col .contents-ca { display: contents; }
+.set-col .code-ca { display: flex; align-items: center; gap: 5px; }
+.set-col .code-ca input { width: 30px; height: 36px; padding: 0; text-align: center; font: 600 15px var(--mono); text-transform: uppercase; }
+.set-col .dash-ca { font-style: normal; color: var(--ink-3); }
+.set-col .chips-ca { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.set-col .chip-ca { height: 28px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--raise); font-size: 12.5px; color: var(--ink-2); }
+.set-col .chip-ca[aria-pressed="true"] { background: var(--btn); border-color: var(--btn); color: var(--on-btn); }
+.set-col .lines-ca { width: 100%; height: auto; min-height: 64px; padding: 8px 10px; font: inherit; font-size: 13px; resize: vertical; }
+.set-col .ico-ca { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 9px; background: var(--fill); color: var(--ink-2); }
+
+/* Each app, in depth: one fold per app */
+.set-col .fold-ca { border-top: 1px solid var(--line); }
+.set-col .fold-ca:first-of-type { border-top: 0; }
+.set-col .fold-ca > summary { display: flex; align-items: center; gap: 10px; padding: 10px 2px; list-style: none; cursor: pointer; }
+.set-col .fold-ca > summary::-webkit-details-marker { display: none; }
+.set-col .fold-ca > summary .grow { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.set-col .fold-ca > summary b { font-size: 14px; font-weight: 600; }
+.set-col .fold-ca > summary small { font-size: 12.5px; color: var(--ink-3); }
+.set-col .fold-ca > .ctl { margin-left: 36px; }
+
+/* dialogs: the app head, the approve dialog, Manage <app> */
+.dlg .ca-head { display: flex; align-items: center; gap: 12px; }
+.dlg .ca-head .grow { display: grid; min-width: 0; }
+.dlg .ca-head b { font-size: 16px; font-weight: 600; }
+.dlg .ca-head small { font-size: 12.5px; color: var(--ink-3); }
+.dlg .mono-ca { margin: 0 0 8px; font: 12.5px var(--mono); color: var(--ink-3); overflow-wrap: anywhere; }
+.dlg .info-ca { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--fill); font-size: 13px; color: var(--ink-2); }
+.dlg .row-ca { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px; }
+.dlg .row-ca > span { display: grid; gap: 2px; }
+.dlg .dlg-p-ca { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.dlg .fld-ca { display: grid; justify-items: start; gap: 8px; }
+.dlg .fld-ca > span:first-child { font: 500 10.5px/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.dlg .fld-ca .link-k { justify-self: center; }
+.set-col .list-ca { margin: 2px 0 6px; }
+.set-col .list-ca .prow, .dlg .list-ca .prow { padding: 10px 4px; }
+.set-col .prow.add-ca { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 0; }
+.set-col .prow.add-ca .inp { flex: 1; min-width: 120px; height: 32px; }
+.set-col .prow.add-ca select.inp { flex: 0 1 auto; }
+.dlg .sub-ca { margin-top: 8px; }
+.dlg .sub-ca > b { display: block; margin-bottom: 2px; font-weight: 500; }
+.dlg .box-ca { display: grid; gap: 4px; margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--fill); }
+.dlg .box-ca .ctl { border-bottom: 1px solid var(--hair17); }
+.dlg .box-ca .ctl:last-of-type { border-bottom: 0; }
+.dlg .box-h-ca { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dlg .box-h-ca small { font-size: 12.5px; color: var(--ink-2); }
+.dlg .mg-ca h3 { margin: 18px 0 4px; font: 500 10.5px var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+.dlg .grp-ca { flex-wrap: wrap; }
+.dlg .grp-ca select.inp { height: 30px; max-width: 160px; }
+.dlg .mini-ca { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); }
+.dlg .bad-ca { margin: 6px 0 0; font-size: 12.5px; color: var(--bad); }
+.dlg .kvform-ca { display: grid; gap: 8px; margin: 8px 0 10px; }
+.dlg .kvrow-ca { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 220px); align-items: center; gap: 2px 12px; }
+.dlg .kvrow-ca code { font: 12px var(--mono); overflow-wrap: anywhere; }
+.dlg .kvrow-ca .inp { width: 100%; height: 32px; }
+.dlg .kvrow-ca input.sw { justify-self: end; }
+.dlg .danger-ca { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 18px; padding: 16px; border: 1px solid color-mix(in srgb, var(--bad) 55%, transparent); border-radius: var(--r3-17); }
+.dlg .danger-ca > div { flex: 1; min-width: 200px; }
+.dlg .danger-ca b { display: block; font-weight: 600; }
+.dlg .danger-ca p { margin: 2px 0 0; font-size: 13px; color: var(--ink-2); }
+.dlg .pick-ca { cursor: pointer; }
+.dlg .pick-ca[aria-checked="true"] b { color: var(--accent-ink); }
+.dlg .ca-qr { display: grid; justify-items: center; gap: 8px; margin-top: 10px; text-align: center; }
+.dlg .ca-qr img { border-radius: 12px; }
+
+@media (max-width: 640px) {
+  .set-col .ctl:has(.code-ca), .set-col .ctl:has(.chips-ca) { grid-template-columns: minmax(0, 1fr); }
+  .set-col .ctl:has(.code-ca) > .right, .set-col .ctl:has(.chips-ca) > .right { grid-row: auto; grid-column: 1; justify-content: flex-start; margin-top: 6px; }
+  .set-col .code-ca input { width: 26px; height: 32px; }
+  .set-col .req-ca { flex-wrap: wrap; }
+  .set-col .req-ca .grow { flex: 1 1 calc(100% - 46px); }
+  .set-col .req-ca .btn { margin-left: auto; }
+  .set-col .fold-ca > .ctl { margin-left: 0; }
+  .dlg .kvrow-ca { grid-template-columns: minmax(0, 1fr); }
+}
+.dlg .ready-ca .status { background: var(--ok-tint); border-color: transparent; }

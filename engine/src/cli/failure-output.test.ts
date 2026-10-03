@@ -1,0 +1,310 @@
+// Failure output tests cover CLI error formatting and failure summaries.
+import { describe, expect, it } from "vitest";
+import { AgentSelectionRequiredError } from "../agents/agent-scope-config.js";
+import { ConfigReadOnlyError, NixModeConfigMutationError } from "../config/config-write-guard.js";
+import {
+  GatewayCredentialsRequiredError,
+  GatewayExplicitAuthRequiredError,
+  GatewayTransportError,
+} from "../gateway/call.js";
+import { UpdateSchemaRefusalError } from "../state/branch-update-schema-refusal.js";
+import {
+  ExpectedCliError,
+  formatCliFailureLines,
+  formatCliJsonFailure,
+  isExpectedCliError,
+} from "./failure-output.js";
+
+const PLUGIN_POLICY_MESSAGE =
+  'The `branch canopy` command is provided by the "canopy" plugin, but that bundled plugin is disabled by default. Run `branch plugins enable canopy` to enable that CLI surface.';
+
+// Mirrors the producer in ensureExplicitGatewayAuth: the message already carries the remedy.
+const EXPLICIT_GATEWAY_AUTH_MESSAGE = [
+  "gateway url override requires explicit credentials",
+  "Fix: pass --token or --password with --url (or gatewayToken in tools).",
+  "For the default local or SSH-tunneled Gateway, remove --url to use the configured target.",
+  "Config: /tmp/branch.json",
+].join("\n");
+
+describe("formatCliJsonFailure", () => {
+  it("preserves the typed schema refusal when a runner migration fails before Doctor starts", () => {
+    const databases = [
+      {
+        kind: "state" as const,
+        path: "/state/branch.sqlite",
+        foundVersion: 15,
+        supportedVersion: 16,
+      },
+    ];
+    const error = new UpdateSchemaRefusalError(databases, "2026.9.2", {
+      targetVersion: "2026.9.4",
+      cause: new Error("content migration failed"),
+    });
+    expect(formatCliJsonFailure(error, { env: {} })).toMatchObject({
+      ok: false,
+      error: {
+        type: "cli_error",
+        code: "update-schema-bump-unfenced",
+        updaterVersion: "2026.9.2",
+        message: expect.stringContaining("Deferral failed: content migration failed"),
+        databases,
+        commands: expect.arrayContaining(["branch gateway stop", "branch doctor --fix"]),
+      },
+    });
+  });
+
+  it("uses the canonical typed envelope and redacts the message", () => {
+    const token = "sk-abcdefghijklmnopqrstuv";
+    const payload = formatCliJsonFailure(new Error(`Authorization: Bearer ${token}`));
+
+    expect(payload).toEqual({
+      ok: false,
+      error: {
+        type: "cli_error",
+        message: expect.stringContaining("Authorization: Bearer"),
+      },
+    });
+    expect(payload.error.message).not.toContain(token);
+  });
+  it("keeps nested causes behind the debug gate", () => {
+    const error = new Error("Promotion is not available.", {
+      cause: new Error("Seedbank /api/v1/promotions/nope failed (404)"),
+    });
+
+    expect(formatCliJsonFailure(error, { env: {} }).error.message).toBe(
+      "Promotion is not available.",
+    );
+    expect(formatCliJsonFailure(error, { env: { BRANCH_DEBUG: "1" } }).error.message).toBe(
+      "Promotion is not available. | Seedbank /api/v1/promotions/nope failed (404)",
+    );
+  });
+
+  it("keeps the full parse guidance unchanged even with debug output", () => {
+    const env = { BRANCH_DEBUG: "1" };
+    const error = Object.assign(
+      new ExpectedCliError({
+        message: 'Branch Agent sessions has no command "lst".',
+        humanOutput:
+          '\u001B[31mBranch sessions has no command "lst".\u001B[39m\nDid you mean this?\n  branch sessions list\nTry: branch sessions --help\nDocs: \u001B]8;;https://docs.openclaw.ai/cli\u0007docs.openclaw.ai/cli\u001B]8;;\u0007\n',
+        machineOutput:
+          'Branch Agent sessions has no command "lst".\nDid you mean this?\n  branch sessions list\nTry: branch sessions --help\nDocs: https://docs.openclaw.ai/cli\n',
+      }),
+      { cause: new Error("internal parse cause") },
+    );
+    const payload = formatCliJsonFailure(error, { env });
+
+    expect(payload).toEqual({
+      ok: false,
+      error: {
+        type: "cli_error",
+        message:
+          'Branch Agent sessions has no command "lst".\nDid you mean this?\n  branch sessions list\nTry: branch sessions --help\nDocs: https://docs.openclaw.ai/cli',
+      },
+    });
+  });
+  it("keeps plugin policy messages in the canonical JSON envelope", () => {
+    const error = new ExpectedCliError({
+      message: PLUGIN_POLICY_MESSAGE,
+      humanOutput: PLUGIN_POLICY_MESSAGE,
+      machineOutput: PLUGIN_POLICY_MESSAGE,
+    });
+
+    expect(formatCliJsonFailure(error)).toEqual({
+      ok: false,
+      error: { type: "cli_error", message: PLUGIN_POLICY_MESSAGE },
+    });
+  });
+
+  it("keeps gateway credential guidance unchanged even with debug output", () => {
+    const env = { BRANCH_DEBUG: "1" };
+    const error = new GatewayCredentialsRequiredError({
+      method: "device.pair.list",
+      configPath: "/tmp/branch.json",
+    });
+
+    expect(formatCliJsonFailure(error, { env })).toEqual({
+      ok: false,
+      error: {
+        type: "cli_error",
+        message: error.message,
+      },
+    });
+  });
+
+  it("keeps explicit gateway auth guidance in the envelope even with debug output", () => {
+    const env = { BRANCH_DEBUG: "1" };
+    const error = new GatewayExplicitAuthRequiredError(EXPLICIT_GATEWAY_AUTH_MESSAGE);
+
+    const payload = formatCliJsonFailure(error, { env });
+
+    expect(payload).toEqual({
+      ok: false,
+      error: {
+        type: "cli_error",
+        message: expect.stringContaining("gateway url override requires explicit credentials"),
+      },
+    });
+    // The shared machine-output redaction still applies; the remedy lines survive it.
+    expect(payload.error.message).toContain("remove --url to use the configured target.");
+    expect(payload.error.message).toContain("Config: /tmp/branch.json");
+  });
+});
+
+describe("formatCliFailureLines", () => {
+  it("emits expected guidance only when not already written even with debug output", () => {
+    const env = { BRANCH_DEBUG: "1" };
+    const pending = new ExpectedCliError({
+      message: "bad input",
+      humanOutput: "\u001B[31mfirst\u001B[39m\nsecond\n",
+      machineOutput: "first\nsecond\n",
+    });
+    const written = new ExpectedCliError({
+      message: "bad input",
+      humanOutput: "\u001B[31mfirst\u001B[39m\nsecond\n",
+      humanOutputWritten: true,
+      machineOutput: "first\nsecond\n",
+    });
+
+    expect(formatCliFailureLines({ title: "ignored", error: pending, env })).toEqual([
+      "\u001B[31mfirst\u001B[39m",
+      "second",
+    ]);
+    expect(formatCliFailureLines({ title: "ignored", error: written, env })).toEqual([]);
+  });
+
+  it("shows a concise reason and recovery commands by default", () => {
+    const lines = formatCliFailureLines({
+      title: "Could not start the CLI.",
+      error: new Error("config file is invalid", {
+        cause: new Error("unexpected token at /internal/config.json:12"),
+      }),
+      argv: ["node", "branch", "status"],
+      env: {},
+    });
+
+    expect(lines).toEqual([
+      "[branch] Could not start the CLI.",
+      "[branch] Reason: config file is invalid",
+      "[branch] Debug: set BRANCH_DEBUG=1 to include the stack trace.",
+      "[branch] Try: branch doctor",
+      "[branch] Help: branch --help",
+    ]);
+  });
+
+  it.each([
+    {
+      label: "plugin policy refusal",
+      createError: () =>
+        new ExpectedCliError({
+          message: PLUGIN_POLICY_MESSAGE,
+          humanOutput: PLUGIN_POLICY_MESSAGE,
+          machineOutput: PLUGIN_POLICY_MESSAGE,
+        }),
+    },
+    {
+      label: "missing gateway credentials",
+      createError: () =>
+        new GatewayCredentialsRequiredError({
+          method: "device.pair.list",
+          configPath: "/tmp/branch.json",
+        }),
+    },
+    {
+      label: "gateway URL override without explicit credentials",
+      createError: () => new GatewayExplicitAuthRequiredError(EXPLICIT_GATEWAY_AUTH_MESSAGE),
+    },
+    {
+      label: "externally managed config",
+      createError: () => new ConfigReadOnlyError({ configPath: "/tmp/branch.json" }),
+    },
+    {
+      label: "Nix-managed config",
+      createError: () => new NixModeConfigMutationError({ configPath: "/tmp/branch.json" }),
+    },
+    {
+      label: "missing agent selection",
+      createError: () =>
+        new AgentSelectionRequiredError(["main", "analyst"], {
+          surface: "the skills command",
+          hint: "Pass --agent <id>.",
+        }),
+    },
+    {
+      label: "unreachable gateway",
+      createError: () =>
+        new GatewayTransportError({
+          kind: "closed",
+          message:
+            "Gateway not reachable at ws://127.0.0.1:51078 (ECONNREFUSED).\nStart it with `branch gateway run` or check `branch gateway status`.",
+          connectionDetails: {
+            url: "ws://127.0.0.1:51078",
+            urlSource: "local loopback",
+            message: "Gateway target: ws://127.0.0.1:51078",
+          },
+        }),
+    },
+  ])(
+    "routes $label through the shared expected-condition predicate without crash framing",
+    ({ createError }) => {
+      const error = createError();
+
+      expect(isExpectedCliError(error)).toBe(true);
+      const lines = formatCliFailureLines({
+        title: "The CLI command failed.",
+        error,
+        env: { BRANCH_DEBUG: "1" },
+      });
+
+      expect(lines).toEqual(error.message.split("\n"));
+      const output = lines.join("\n");
+      expect(output).not.toContain("[branch] The CLI command failed.");
+      expect(output).not.toContain("[branch] Reason:");
+      expect(output).not.toContain("BRANCH_DEBUG");
+      expect(output).not.toContain("Stack:");
+      expect(output).not.toContain("branch doctor");
+    },
+  );
+
+  it("prints stack details when debug output is requested", () => {
+    const lines = formatCliFailureLines({
+      title: "The CLI command failed.",
+      error: new Error("boom"),
+      env: { BRANCH_DEBUG: "1" },
+    });
+
+    expect(lines.slice(0, 4)).toEqual([
+      "[branch] The CLI command failed.",
+      "[branch] Reason: boom",
+      "[branch] Stack:",
+      "[branch] Error: boom",
+    ]);
+  });
+
+  it.each(["--debug", "--verbose"])("prints stack details for the root %s option", (debugFlag) => {
+    const lines = formatCliFailureLines({
+      title: "The CLI command failed.",
+      error: new Error("boom", { cause: new Error("transport detail") }),
+      argv: ["node", "branch", "proxy", "run", debugFlag],
+      env: {},
+    });
+
+    expect(lines).toContain("[branch] Reason: boom | transport detail");
+    expect(lines).toContain("[branch] Stack:");
+    expect(lines).toContain("[branch] Error: boom");
+  });
+
+  it.each(["--debug", "--verbose"])(
+    "does not enable root stack traces for a child %s option",
+    (debugFlag) => {
+      const lines = formatCliFailureLines({
+        title: "The CLI command failed.",
+        error: new Error("boom"),
+        argv: ["node", "branch", "proxy", "run", "--", "child", debugFlag],
+        env: {},
+      });
+
+      expect(lines).not.toContain("[branch] Stack:");
+      expect(lines).toContain("[branch] Debug: set BRANCH_DEBUG=1 to include the stack trace.");
+    },
+  );
+});

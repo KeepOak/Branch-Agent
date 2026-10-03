@@ -1,0 +1,90 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const readClawPackageRefsMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../groves/provenance.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../groves/provenance.js")>()),
+  readClawPackageRefs: readClawPackageRefsMock,
+}));
+
+const { collectGrovePluginUninstallWarnings } = await import("./uninstall-grove-references.js");
+
+const installRecord = {
+  source: "clawhub" as const,
+  clawhubPackage: "@owner/audit",
+  version: "2.0.1",
+};
+
+describe("collectGrovePluginUninstallWarnings", () => {
+  beforeEach(() => {
+    readClawPackageRefsMock.mockReset();
+  });
+
+  it("ignores a dependency that was conclusively rolled back", () => {
+    readClawPackageRefsMock.mockReturnValue([
+      {
+        kind: "plugin",
+        source: "clawhub",
+        ref: "@owner/audit",
+        version: "2.0.1",
+        status: "rolled_back",
+        groveName: "@owner/audit-grove",
+      },
+    ]);
+
+    expect(collectGrovePluginUninstallWarnings({ pluginId: "audit", installRecord })).toEqual([]);
+  });
+
+  it("keeps warning for an uncertain failed install", () => {
+    readClawPackageRefsMock.mockReturnValue([
+      {
+        kind: "plugin",
+        source: "clawhub",
+        ref: "@owner/audit",
+        version: "2.0.1",
+        status: "failed",
+        groveName: "@owner/audit-grove",
+      },
+    ]);
+
+    expect(collectGrovePluginUninstallWarnings({ pluginId: "audit", installRecord })).toContain(
+      'Warning: plugin "audit" is referenced by Grove: @owner/audit-grove.',
+    );
+  });
+
+  it.each([
+    {
+      label: "prefers the canonical package over the raw spec",
+      record: {
+        source: "clawhub" as const,
+        spec: "clawhub:@alias/audit@2.0.1",
+        clawhubPackage: "@owner/audit",
+        version: "2.0.1",
+      },
+      ref: "@owner/audit",
+    },
+    {
+      label: "falls back to the plugin id when the package fields are absent",
+      record: { source: "clawhub" as const, version: "2.0.1" },
+      ref: "audit",
+    },
+  ])("$label", ({ record, ref }) => {
+    readClawPackageRefsMock.mockReturnValue([
+      {
+        kind: "plugin",
+        source: "clawhub",
+        ref,
+        version: "2.0.1",
+        status: "complete",
+        groveName: "@owner/audit-grove",
+      },
+    ]);
+
+    expect(
+      collectGrovePluginUninstallWarnings({
+        pluginId: "audit",
+        installRecord: record,
+      }),
+    ).toContain('Warning: plugin "audit" is referenced by Grove: @owner/audit-grove.');
+  });
+});

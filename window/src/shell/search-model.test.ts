@@ -1,0 +1,30 @@
+import { describe, expect, it } from "vitest";
+import type { Conversation } from "../connect/conversations";
+import { countOf, cutAround, markParts, matchConversations, readFileHits, readMessageHits } from "./search-model";
+
+const conv = (key: string, title: string, archived = false) => ({ key, title, archived, preview: "", agentId: "dev" }) as Conversation;
+
+describe("search model", () => {
+  it("matches names case-insensitively and splits archived ones into Past", () => {
+    const r = matchConversations([conv("a", "Garden plan"), conv("b", "Old garden", true), conv("c", "Taxes")], "GARDEN", () => "Sapling");
+    expect(r.chats.map((c) => c.key)).toEqual(["a"]);
+    expect(r.past.map((c) => c.key)).toEqual(["b"]);
+    expect(matchConversations([conv("a", "x")], "sap", () => "Sapling").chats).toHaveLength(1);
+  });
+  it("reads sessions.search and memory.search", () => {
+    const m = readMessageHits({ results: [{ sessionKey: "k", role: "user", snippet: "a\nb", timestamp: 5, messageId: "m" }] });
+    expect(m).toEqual([{ key: "k", role: "user", snippet: "a b", at: 5, messageId: "m" }]);
+    expect(readMessageHits({ results: Array.from({ length: 40 }, () => ({})) })).toHaveLength(25);
+    expect(readFileHits({ results: [{ path: "memory/x.md", snippet: "hi" }] })).toEqual([{ title: "memory/x.md", snippet: "hi" }]);
+    expect(readFileHits(null)).toEqual([]);
+  });
+  it("cuts about 36 characters before the match and marks every match", () => {
+    const text = `${"x".repeat(50)}needle and needle`;
+    expect(cutAround(text, "needle").startsWith("…")).toBe(true);
+    expect(cutAround("short needle", "needle")).toBe("short needle");
+    expect(markParts("a Needle b needle", "needle").filter((p) => p.hit).map((p) => p.text)).toEqual(["Needle", "needle"]);
+  });
+  it("counts", () => {
+    expect(countOf({ chats: [conv("a", "x")], messages: [], past: [], files: [] }, "all")).toBe(1);
+  });
+});

@@ -1,0 +1,153 @@
+---
+summary: "Run multiple Branch Agent Gateways on one host (isolation, ports, and profiles)"
+read_when:
+  - Running more than one Gateway on the same machine
+  - You need isolated config/state/ports per Gateway
+title: "Multiple gateways"
+doc-schema-version: 1
+---
+
+Most setups need one Gateway - a single Gateway handles multiple messaging connections and agents. Run separate Gateways with isolated profiles/ports only when you need stronger isolation or redundancy (e.g., a rescue bot).
+
+## Rescue-bot quickstart
+
+The simplest rescue-bot setup:
+
+- Keep the main bot on the default profile.
+- Run the rescue bot on `--profile rescue`, with its own Telegram bot token.
+- Put the rescue bot on a different base port, e.g. `19789`.
+
+This keeps the rescue bot able to debug or apply config changes if the primary bot is down. Leave at least 120 ports between base ports so derived browser/CDP ports never collide. Each instance reaches base + 110: its browser control port is base + 2, and that port's CDP range runs to base + 110.
+
+```bash
+# Rescue bot (separate Telegram bot, separate profile, port 19789)
+branch --profile rescue onboard
+branch --profile rescue gateway install --port 19789
+```
+
+If your main bot is already running, that's usually all you need. If onboarding already installed the rescue service, skip the final `gateway install`.
+
+During `branch --profile rescue onboard`:
+
+- Use a separate Telegram bot token, dedicated to the rescue account. It is easy to keep operator-only, it stays independent from the main bot's channel and app install, and it gives a simple DM-based recovery path.
+- Keep the `rescue` profile name.
+- Use a base port at least 120 higher than the main bot.
+- Accept the default rescue workspace unless you already manage one yourself.
+
+### What `--profile rescue onboard` changes
+
+`--profile rescue onboard` runs the normal onboarding flow but writes everything into a separate profile, so the rescue bot gets its own:
+
+- Profile/config file
+- State directory
+- Workspace (default: `~/.branch/workspace-rescue`)
+- Managed service name
+- Base port (plus derived ports)
+- Telegram bot token
+
+Prompts are otherwise identical to normal onboarding.
+
+## General multi-gateway setup
+
+The same isolation pattern works for any pair or group of Gateways on one host. Give each extra Gateway its own named profile and base port.
+
+`branch setup` runs onboarding on a profile that is not configured yet. It does the same first-run job as the `onboard` command used for the rescue bot above. Use `onboard` when you want the onboarding flow on a profile that is already configured.
+
+```bash
+# main (default profile)
+branch setup
+branch gateway --port 18789
+
+# extra gateway
+branch --profile ops setup
+branch --profile ops gateway --port 19789
+```
+
+Named profiles on both sides also work:
+
+```bash
+branch --profile main setup
+branch --profile main gateway --port 18789
+
+branch --profile ops setup
+branch --profile ops gateway --port 19789
+```
+
+Services follow the same pattern:
+
+```bash
+branch gateway install
+branch --profile ops gateway install --port 19789
+```
+
+Use the rescue-bot quickstart for a fallback operator lane. Use the general profile pattern for multiple long-lived Gateways across different channels, tenants, workspaces, or operational roles.
+
+## Isolation checklist
+
+Keep these unique per Gateway instance:
+
+| Setting                      | Purpose                              |
+| ---------------------------- | ------------------------------------ |
+| `BRANCH_CONFIG_PATH`       | Per-instance config file             |
+| `BRANCH_STATE_DIR`         | Per-instance sessions, creds, caches |
+| `agents.defaults.workspace`  | Per-instance workspace root          |
+| `gateway.port` (or `--port`) | Unique per instance                  |
+| Derived browser/CDP ports    | See below                            |
+
+Sharing any of these causes config, state, or port conflicts. Gateway startup
+enforces unique state-directory ownership, including when
+`BRANCH_ALLOW_MULTI_GATEWAY=1` is set.
+
+<Warning>
+`BRANCH_STATE_DIR` alone does not isolate a managed Gateway service. Service names follow the profile, not the state directory. For onboarding or service-install tests, use a dedicated named profile and unique ports, or an isolated machine. Do not install or restart the default service against a temporary state directory.
+</Warning>
+
+## Port mapping (derived)
+
+Base port = `gateway.port` (or `BRANCH_GATEWAY_PORT` / `--port`).
+
+- Browser control service port = base + 2 (loopback only).
+- Hosted widget documents and A2UI renderer assets are served on the Gateway HTTP server itself (same port as `gateway.port`).
+- Browser profile CDP ports auto-allocate from `browser control port + 9` through `+ 108`.
+
+Override any of these in config or env and you must keep them unique per instance.
+
+## Browser/CDP notes (common footgun)
+
+- Do **not** pin `browser.cdpUrl` to the same value on multiple instances.
+- Each instance needs its own browser control port and CDP range (derived from its gateway port).
+- For explicit CDP ports, set `browser.profiles.<name>.cdpPort` per instance.
+- For remote Chrome, use `browser.profiles.<name>.cdpUrl` (per profile, per instance).
+
+## Manual env example
+
+```bash
+BRANCH_CONFIG_PATH=~/.branch/main.json \
+BRANCH_STATE_DIR=~/.branch \
+branch gateway --port 18789
+
+BRANCH_CONFIG_PATH=~/.branch/rescue.json \
+BRANCH_STATE_DIR=~/.branch-rescue \
+branch gateway --port 19789
+```
+
+## Quick checks
+
+```bash
+branch gateway status --deep
+branch --profile rescue gateway status --deep
+branch --profile rescue gateway probe
+branch status
+branch --profile rescue status
+branch --profile rescue browser status
+```
+
+- `gateway status --deep` catches stale launchd/systemd/schtasks services from older installs.
+- `doctor --deep` also reports when a recognizable service definition or native service manager could not be inspected. Restore inspection access and rerun Doctor; an incomplete scan does not prove that no other service exists. Inspection warnings never authorize service cleanup.
+- `gateway probe` warning text such as `multiple reachable gateway identities detected` is expected in two cases. You intentionally run more than one isolated gateway, or Branch Agent cannot prove that reachable probe targets are the same gateway. An SSH tunnel, proxy URL, or configured remote URL to the same gateway is one gateway with multiple transports, even when transport ports differ.
+
+## Related
+
+- [Gateway runbook](/gateway)
+- [Gateway lock](/gateway/gateway-lock)
+- [Configuration](/gateway/configuration)

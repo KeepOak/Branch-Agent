@@ -1,0 +1,38 @@
+import { LruCache } from "../infra/lru-cache.js";
+
+// Exact icon URLs learned from authenticated Seedbank catalog responses.
+const MAX_CATALOG_ICON_URLS = 1_024;
+
+const catalogIconUrls = new LruCache<string>(MAX_CATALOG_ICON_URLS);
+
+function normalizeCatalogIconUrl(value: string): string | undefined {
+  if (!value || value.length > 2_048) {
+    return undefined;
+  }
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname && !url.username && !url.password && !url.hash
+      ? url.href
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function registerClawHubCatalogIconUrls(values: Iterable<string | undefined>): void {
+  for (const value of values) {
+    if (!value) {
+      continue;
+    }
+    const normalized = normalizeCatalogIconUrl(value);
+    if (!normalized) {
+      continue;
+    }
+    catalogIconUrls.set(normalized, normalized);
+  }
+}
+
+export function resolveClawHubCatalogIconUrl(value: string): string | undefined {
+  const normalized = normalizeCatalogIconUrl(value);
+  return normalized ? catalogIconUrls.peek(normalized) : undefined;
+}

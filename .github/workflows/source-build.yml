@@ -1,0 +1,72 @@
+name: Source builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Source component to build
+        type: choice
+        required: true
+        default: all
+        options: [all, engine, window, desktop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    name: Build ${{ matrix.component }}
+    runs-on: ${{ matrix.component == 'desktop' && 'windows-latest' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        component: ${{ fromJSON(inputs.component == 'all' && '["engine","window","desktop"]' || format('["{0}"]', inputs.component)) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '26'
+          package-manager-cache: false
+      - name: Install pinned pnpm
+        if: matrix.component != 'desktop'
+        run: npm install --global pnpm@12.5.1
+      - name: Build engine
+        if: matrix.component != 'desktop'
+        working-directory: engine
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - name: Build window
+        if: matrix.component == 'window'
+        working-directory: window
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - name: Build desktop
+        if: matrix.component == 'desktop'
+        working-directory: desktop
+        run: |
+          npm ci
+          npm run build
+      - name: Save build output
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: source-build-${{ matrix.component }}-${{ github.run_id }}
+          path: ${{ matrix.component }}/dist/
+          if-no-files-found: error
+          retention-days: 3

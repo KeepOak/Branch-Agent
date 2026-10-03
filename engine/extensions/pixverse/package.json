@@ -1,0 +1,44 @@
+{
+  "name": "@branch/pixverse-provider",
+  "version": "2026.9.7",
+  "description": "Branch Agent PixVerse video generation provider plugin.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openclaw/openclaw"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*",
+    "branch": "workspace:*"
+  },
+  "peerDependencies": {
+    "branch": ">=2026.9.7"
+  },
+  "peerDependenciesMeta": {
+    "branch": {
+      "optional": true
+    }
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "install": {
+      "clawhubSpec": "clawhub:@branch/pixverse-provider",
+      "npmSpec": "@branch/pixverse-provider",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.5.26"
+    },
+    "compat": {
+      "pluginApi": ">=2026.9.7"
+    },
+    "build": {
+      "branchVersion": "2026.9.7",
+      "bundledDist": false
+    },
+    "release": {
+      "publishToClawHub": true,
+      "publishToNpm": true
+    }
+  }
+}

@@ -1,0 +1,228 @@
+/* Branch Slate tokens (DESIGN-SPEC §2): colour, type, spacing, radii, elevation, motion and layers.
+   Light is the default. Dark follows prefers-color-scheme unless data-theme="light" is set on <html>;
+   data-theme="dark" forces dark. Every other area uses these names. */
+
+:root {
+  /* §2.1 colour, Daylight */
+  --bg: #f6f8f9;
+  --side: #edf1f3;
+  --raise: #ffffff;
+  --title: #e7ecef;
+  --ink: #141d24;
+  --ink-2: #3a4751;
+  --ink-3: #5f6c76;
+  --line: #dfe5e9;
+  --line-2: #cad3d9;
+  --fill: #ecf0f3;
+  --fill-2: #e1e8ec;
+  --accent: #484ce5;
+  --accent-ink: #3a3eba;
+  --accent-tint: #e9efff;
+  --brand-tint: #e3eee1;
+  --btn: #16212a;
+  --on-btn: #f8fafb;
+  --ok: #2f8f5b;
+  --ok-tint: #e2f0e7;
+  --warn: #a86e12;
+  --warn-tint: #f6ebd5;
+  --bad: #c2412d;
+  --bad-tint: #f8e3df;
+  --scrim: rgba(14, 20, 26, 0.3);
+  --term-bg: #171a18;
+  --term-ink: #d5ddd6;
+  --term-dim: #7f8b82;
+  --term-ok: #7fd39a;
+  --term-accent: #8e93f5;
+  --screen-a: #9fb7a4;
+  --screen-b: #b6b0e2;
+  --screen-c: #5e7f9a;
+  --close-hover: #c42b1c;
+  --on-accent: #fff;
+
+  /* §2.1 derived (every theme) */
+  --hair17: color-mix(in srgb, var(--line) 70%, transparent);
+  --wash17: color-mix(in srgb, var(--ink) 5%, transparent);
+  --wash2-17: color-mix(in srgb, var(--ink) 9%, transparent);
+  --glass17: color-mix(in srgb, var(--raise) 90%, transparent);
+  --glass2-17: color-mix(in srgb, var(--raise) 97%, transparent);
+  --glass-blur17: blur(20px) saturate(1.4);
+  --tint14: transparent;
+
+  /* §2.6 elevation */
+  --sh1-17: 0 1px 2px rgba(16, 24, 32, 0.06), 0 0 0 1px color-mix(in srgb, var(--ink) 5%, transparent);
+  --sh2-17: 0 1px 2px rgba(16, 24, 32, 0.05), 0 12px 32px -16px rgba(16, 24, 32, 0.24);
+  --pop: 0 0 0 1px color-mix(in srgb, var(--ink) 7%, transparent), 0 8px 20px -10px rgba(16, 24, 32, 0.16),
+    0 28px 56px -24px rgba(16, 24, 32, 0.3);
+
+  /* §2.3 type */
+  --sans: "Geist", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, Consolas, monospace;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-15: 15px;
+  --fs-17: 17px;
+  --fs-26: 26px;
+  --fs-hint: 12.5px;
+  --fs-nav: 13.5px;
+  --fs-time: 11.5px;
+  --fs-label: 10.5px;
+
+  /* §2.4 spacing (4 px grid) */
+  --sp-2: 2px;
+  --sp-4: 4px;
+  --sp-6: 6px;
+  --sp-8: 8px;
+  --sp-10: 10px;
+  --sp-12: 12px;
+  --sp-16: 16px;
+  --sp-24: 24px;
+
+  /* §2.5 radii */
+  --r1-17: 8px;
+  --r2-17: 12px;
+  --r3-17: 16px;
+  --r4-17: 20px;
+  --r-pill: 999px;
+  --r-row: 14px;
+  --r-nav: 10px;
+  --r-composer: 26px;
+  --r-kbd: 6px;
+
+  /* §2.7 motion */
+  --ease17: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-enter: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-pop: cubic-bezier(0.3, 1.4, 0.5, 1);
+  --t-colour: 140ms;
+  --t-pop: 160ms;
+  --t-scrim: 180ms;
+  --t-dialog: 220ms;
+  --t-enter: 240ms;
+  --toast-ms: 6000;
+
+  /* §2.8 layers */
+  --z-scene: 0;
+  --z-body: 1;
+  --z-resizer: 12;
+  --z-slash: 20;
+  --z-pip: 24;
+  --z-stage: 25;
+  --z-float: 30;
+  --z-slide: 35;
+  --z-welcome: 40;
+  --z-pop: 60;
+  --z-scrim: 70;
+  --z-lock: 80;
+  --z-voice: 88;
+  --z-restart: 90;
+  --z-walk: 93;
+  --z-toast: 95;
+  --z-banner: 96;
+  --z-checkpoint: 97;
+  --z-achieve: 98;
+  --z-tip: 99;
+  --z-cheer: 110;
+  --z-burst: 120;
+  --z-splash: 130;
+
+  /* §3 layout */
+  --side-w: 292px;
+  --pane-w: 352px;
+  --rail-w: 68px;
+  --bar-h: 52px;
+  --status-h: 28px;
+  --thread-w: clamp(860px, 52vw, 1180px);
+
+  color-scheme: light;
+}
+
+/* §2.1 colour, Moonlight */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1418;
+    --side: #0b0f12;
+    --raise: #161d22;
+    --title: #080b0d;
+    --ink: #e6ecf0;
+    --ink-2: #aebac3;
+    --ink-3: #85929b;
+    --line: #1d262c;
+    --line-2: #2b363e;
+    --fill: #182026;
+    --fill-2: #212b32;
+    --accent: #6064e4;
+    --accent-ink: #b4bbfe;
+    --accent-tint: #1e2144;
+    --brand-tint: #17281c;
+    --btn: #e8eef2;
+    --on-btn: #11161a;
+    --ok: #5cc08a;
+    --ok-tint: #16291d;
+    --warn: #e0af3b;
+    --warn-tint: #2e2412;
+    --bad: #f0806c;
+    --bad-tint: #361c17;
+    --scrim: rgba(0, 0, 0, 0.52);
+    --term-bg: #0a0c0b;
+    --term-dim: #6e7a71;
+    --screen-a: #3e5a48;
+    --screen-b: #4d4576;
+    --screen-c: #2c4459;
+    --sh1-17: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 1px color-mix(in srgb, var(--ink) 7%, transparent);
+    --sh2-17: 0 1px 2px rgba(0, 0, 0, 0.3), 0 14px 34px -16px rgba(0, 0, 0, 0.7);
+    --pop: 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent), 0 10px 24px -10px rgba(0, 0, 0, 0.5),
+      0 30px 60px -24px rgba(0, 0, 0, 0.75);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0f1418;
+  --side: #0b0f12;
+  --raise: #161d22;
+  --title: #080b0d;
+  --ink: #e6ecf0;
+  --ink-2: #aebac3;
+  --ink-3: #85929b;
+  --line: #1d262c;
+  --line-2: #2b363e;
+  --fill: #182026;
+  --fill-2: #212b32;
+  --accent: #6064e4;
+  --accent-ink: #b4bbfe;
+  --accent-tint: #1e2144;
+  --brand-tint: #17281c;
+  --btn: #e8eef2;
+  --on-btn: #11161a;
+  --ok: #5cc08a;
+  --ok-tint: #16291d;
+  --warn: #e0af3b;
+  --warn-tint: #2e2412;
+  --bad: #f0806c;
+  --bad-tint: #361c17;
+  --scrim: rgba(0, 0, 0, 0.52);
+  --term-bg: #0a0c0b;
+  --term-dim: #6e7a71;
+  --screen-a: #3e5a48;
+  --screen-b: #4d4576;
+  --screen-c: #2c4459;
+  --sh1-17: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 1px color-mix(in srgb, var(--ink) 7%, transparent);
+  --sh2-17: 0 1px 2px rgba(0, 0, 0, 0.3), 0 14px 34px -16px rgba(0, 0, 0, 0.7);
+  --pop: 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent), 0 10px 24px -10px rgba(0, 0, 0, 0.5),
+    0 30px 60px -24px rgba(0, 0, 0, 0.75);
+  color-scheme: dark;
+}
+
+/* More contrast (§2.2): hairlines become the full line */
+:root.contrast17 {
+  --hair17: var(--line);
+}
+
+/* Text size (§2.3) */
+:root[data-size="small"] body {
+  font-size: 13px;
+}
+:root[data-size="large"] body {
+  font-size: 15.5px;
+}

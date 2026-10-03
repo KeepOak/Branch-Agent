@@ -1,0 +1,132 @@
+{
+ "branchStates": {
+  "think": "assets/anim-think.webm",
+  "search": "assets/anim-search.webm",
+  "read": "assets/anim-read.webm",
+  "talk": "assets/anim-talk.webm",
+  "wait": "assets/anim-wait.webm",
+  "oops": "assets/anim-oops.webm"
+ },
+ "art": {
+  "art17-cloud": {
+   "still": "assets/cloud.webp",
+   "loop": "assets/cloud.webm"
+  },
+  "art17-call": {
+   "still": "assets/call.webp",
+   "loop": "assets/call.webm"
+  },
+  "art17-meeting": {
+   "still": "assets/meeting.webp",
+   "loop": "assets/meeting.webm"
+  },
+  "art17-learn": {
+   "still": "assets/learn.webp",
+   "loop": "assets/learn.webm"
+  },
+  "art17-timeline": {
+   "still": "assets/timeline.webp",
+   "loop": "assets/timeline.webm"
+  },
+  "art17-branch-call": {
+   "still": "assets/branch-call.webp"
+  },
+  "art17-branch-workbook": {
+   "still": "assets/branch-workbook.webp"
+  }
+ },
+ "backgrounds": [
+  {
+   "id": "summer",
+   "name": "Summer Meadow",
+   "description": "sunlit summer meadow with tall grass and wildflowers at forest edge, warm haze",
+   "file": "assets/bg/grove-summer.webp"
+  },
+  {
+   "id": "rain",
+   "name": "Rainy Forest",
+   "description": "quiet forest in soft rain, wet leaves, gentle mist, cool green-grey tones",
+   "file": "assets/bg/grove-rain.webp"
+  },
+  {
+   "id": "lake",
+   "name": "Mountain Lake",
+   "description": "misty mountain lake at dawn with pine silhouettes and pale gold light",
+   "file": "assets/bg/grove-lake.webp"
+  },
+  {
+   "id": "blossom",
+   "name": "Blossoming Grove",
+   "description": "grove of blossoming trees with drifting petals in soft spring light",
+   "file": "assets/bg/grove-blossom.webp"
+  },
+  {
+   "id": "canyon",
+   "name": "Desert Canyon",
+   "description": "warm desert canyon at dusk with soft copper and violet-blue shadows",
+   "file": "assets/bg/grove-canyon.webp"
+  },
+  {
+   "id": "snownight",
+   "name": "Snowy Night",
+   "description": "snowy field under starry night sky with warm glowing lights among pines",
+   "file": "assets/bg/grove-snownight.webp"
+  },
+  {
+   "id": "bamboo",
+   "name": "Bamboo Grove",
+   "description": "misty bamboo grove with soft green light shafts",
+   "file": "assets/bg/grove-bamboo.webp"
+  },
+  {
+   "id": "hills",
+   "name": "Sunflower Hills",
+   "description": "rolling sunflower hills under soft afternoon sky",
+   "file": "assets/bg/grove-hills.webp"
+  },
+  {
+   "id": "night17-lake",
+   "name": "Still lake at night",
+   "file": "assets/bg/lake-night.webp"
+  },
+  {
+   "id": "night17-highland",
+   "name": "Moonlit highland",
+   "file": "assets/bg/highland-moon.webp"
+  },
+  {
+   "id": "day17-sea",
+   "name": "Morning sea",
+   "file": "assets/bg/sea-morning.webp"
+  },
+  {
+   "id": "day17-meadow",
+   "name": "Meadow afternoon",
+   "file": "assets/bg/meadow-afternoon.webp"
+  },
+  {
+   "id": "glow17-amber",
+   "name": "Amber glass",
+   "file": "assets/bg/glow-amber.webp"
+  },
+  {
+   "id": "season17-snow",
+   "name": "First snow",
+   "file": "assets/bg/first-snow.webp"
+  }
+ ],
+ "notes": {
+  "animationStates": {
+   "completed": 5,
+   "pending": 1,
+   "note": "oops animation (sheepish head-scratch, orb flicker) job 0019efb4-887e-4a71-a409-3ac01224dbdd still rendering after extended queue time; will retry in next session"
+  },
+  "backgrounds": {
+   "completed": 8,
+   "specs": "16:9 aspect, 1920x1080 WebP quality 78, painterly digital illustrations, soft focus, low contrast, minimal compositions with large open areas suitable for UI overlay, no characters/text/buildings/logos"
+  },
+  "characterAnimation": {
+   "specs": "360x360 VP9 WebM, 5s seamless loops, chromakey keyed to transparent, tight crop with 5% margin, no magenta fringe"
+  }
+ }
+}

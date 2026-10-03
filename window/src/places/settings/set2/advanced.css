@@ -1,0 +1,62 @@
+/* Settings › Advanced: service tiles, list rows, the log window and the conversations table (54-set4p: .tile, .list18u,
+   .logbox18u, .ct18u, .pips18u, .snap18u). */
+.set-col .s2advanced-tile { margin-top: 12px; padding: 16px; display: grid; gap: 8px; align-content: start; border: 1px solid var(--hair17); border-radius: var(--r3-17); background: var(--raise); }
+.set-col .s2advanced-tile b { font-weight: 600; }
+.set-col .s2advanced-th { display: flex; align-items: center; gap: 10px; }
+.set-col .s2advanced-ml { margin-left: auto; }
+.set-col .s2advanced-tile .s2-kv { background: none; padding: 0; margin: 0; }
+.set-col .s2advanced-tile .acts { margin: 0; flex-wrap: wrap; }
+.set-col .s2advanced-tile .acts .hint { flex-basis: 100%; }
+.set-col .s2advanced-v { font-size: 12.5px; color: var(--ink-2); }
+.set-col .s2advanced-lst { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.set-col .s2advanced-lst .chip6 { gap: 6px; }
+.set-col .s2advanced-add { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.set-col .s2advanced-add .inp { width: min(200px, 60vw); }
+.set-col .s2advanced-mono, .dlg .s2advanced-mono { font-family: var(--mono); font-size: 12px; }
+.set-col .inp.s2advanced-mono { width: min(320px, 60vw); }
+.set-col .s2advanced-addons { margin: 6px 0 0; }
+.set-col .s2advanced-after { grid-column: 1 / -1; display: flex; margin-top: 6px; }
+.set-col code.s2advanced-key { font: 11.5px var(--mono); color: var(--ink-3); font-weight: 400; }
+.set-col .s2advanced-find { grid-column: 1 / -1; display: grid; gap: 8px; margin-top: 6px; }
+.set-col .s2advanced-find > .inp { width: 100%; box-sizing: border-box; }
+.set-col .s2advanced-fields, .dlg .s2advanced-fields { margin: 0; display: grid; gap: 8px; font-size: 13px; }
+.set-col .s2advanced-fields > div, .dlg .s2advanced-fields > div { display: grid; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--hair17); min-width: 0; }
+.set-col .s2advanced-fields dt, .dlg .s2advanced-fields dt { min-width: 0; overflow-wrap: anywhere; }
+.set-col .s2advanced-fields dt code, .dlg .s2advanced-fields dt code { font: 11.5px var(--mono); color: var(--ink-3); }
+.set-col .s2advanced-fields dd, .dlg .s2advanced-fields dd { margin: 0; color: var(--ink-2); font: 12px var(--mono); overflow-wrap: anywhere; }
+.set-col .s2advanced-fields dd small, .dlg .s2advanced-fields dd small { display: block; font: 12px var(--font, inherit); color: var(--ink-3); margin-top: 2px; }
+.dlg .s2advanced-gap { margin: 0 0 8px; }
+.dlg .s2advanced-logbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dlg .s2advanced-logbar .inp { flex: 1 1 160px; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r1-17); background: var(--bg); color: var(--ink); }
+.dlg .s2advanced-swl { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.dlg .s2advanced-logbox { background: var(--fill); border-radius: 10px; padding: 8px 10px; max-height: 320px; overflow: auto; font: 12px/1.55 var(--mono); }
+.dlg .s2advanced-ll { display: grid; grid-template-columns: auto auto 1fr; gap: 10px; align-items: baseline; }
+.dlg .s2advanced-ll > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.dlg .s2advanced-ll time { color: var(--ink-3); }
+.dlg .s2advanced-lv { font-size: 11px; min-width: 54px; }
+.dlg .s2advanced-lv-trace, .dlg .s2advanced-lv-debug { color: var(--ink-3); }
+.dlg .s2advanced-lv-warning { color: var(--warn); }
+.dlg .s2advanced-lv-error, .dlg .s2advanced-lv-fatal { color: var(--bad); }
+.dlg .s2advanced-ctbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.dlg .s2advanced-ctbar .inp { flex: 1 1 180px; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r1-17); background: var(--bg); color: var(--ink); }
+.dlg .s2advanced-ctwrap { position: relative; width: 100%; min-width: 0; overflow-x: auto; }
+.dlg .s2advanced-ct { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.dlg .s2advanced-ct th, .dlg .s2advanced-ct td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.dlg .s2advanced-ct th { color: var(--ink-3); font-weight: 600; }
+.dlg .s2advanced-ct code { font: 11px var(--mono); color: var(--ink-3); }
+.dlg .s2advanced-ct .inp { min-width: 140px; }
+.dlg .s2advanced-ct .link-k { color: var(--ink); text-decoration: none; }
+.dlg .s2advanced-thb { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.dlg .s2advanced-thb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dlg .s2advanced-ctfoot { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: flex-end; margin-top: 8px; font-size: 12.5px; color: var(--ink-2); }
+.dlg .s2advanced-ctfoot .inp { width: auto; margin-left: 6px; }
+.dlg .s2advanced-pips { display: inline-flex; gap: 3px; }
+.dlg .s2advanced-pips i { width: 6px; height: 10px; border-radius: 2px; background: var(--fill-2, var(--line)); }
+.dlg .s2advanced-pips i.on { background: var(--ok); }
+.dlg .s2advanced-pips i.warn { background: var(--warn); }
+.dlg .s2advanced-pips i.bad { background: var(--bad); }
+.dlg .s2advanced-snap summary { cursor: pointer; font-size: 13px; padding: 4px 0; color: var(--ink-2); }
+.dlg .s2advanced-snap .s2-pre { margin: 8px 0; }
+.dlg .s2advanced-json { min-height: 240px; }
+.dlg .s2advanced-how { margin: 0; }
+.dlg .sseg { display: inline-flex; }

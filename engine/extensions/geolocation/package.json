@@ -1,0 +1,27 @@
+{
+  "name": "@branch/geolocation-plugin",
+  "version": "2026.9.7",
+  "description": "Branch Agent geolocation plugin resolving client IP addresses to a coarse city using a locally cached IP-geolocation database.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openclaw/openclaw"
+  },
+  "type": "module",
+  "dependencies": {
+    "maxmind": "5.0.7"
+  },
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.9.7"
+    },
+    "build": {
+      "branchVersion": "2026.9.7"
+    }
+  }
+}

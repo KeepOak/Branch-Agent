@@ -1,0 +1,58 @@
+.branch-settings { max-width: 760px; margin: 0 auto; padding: 0 0 48px; color: var(--ink); }
+.branch-settings header { margin: 0 0 20px; }
+.branch-settings h1 { font-size: 26px; font-weight: 650; line-height:39px; letter-spacing: -.025em; margin: 0; }
+.branch-settings header .bs-lede { color:var(--ink-2); font-size:14px; line-height:1.55; margin:4px 0 20px; max-width:62ch; }
+.branch-settings p { color: var(--ink-3); font-size: 13px; line-height: 1.6; margin: 6px 0; }
+.branch-settings section { margin: 28px 0; padding: 0; }
+.branch-settings h2 { font:500 10.5px/1.2 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); margin:0 0 8px; }
+.branch-settings .bs-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:13px 15px; border:1px solid var(--hair17); border-top:0; background:var(--raise); }
+.branch-settings .bs-row:first-of-type { border-top:1px solid var(--hair17); border-radius:var(--r3-17) var(--r3-17) 0 0; }
+.branch-settings .bs-row:last-of-type { border-radius:0 0 var(--r3-17) var(--r3-17); }
+.branch-settings .bs-row:only-of-type { border-radius:var(--r3-17); }
+.branch-settings .bs-label { display:block; font-size:14px; line-height:21px; font-weight:500; }
+.branch-settings small { display:block; color:var(--ink-3); font-size:12.5px; line-height:1.5; margin-top:5px; }
+.branch-settings input, .branch-settings select, .branch-settings textarea { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:9px 11px; }
+.branch-settings select { height:32px; font-size:13px; padding:0 8px; }
+.branch-settings input, .branch-settings select { max-width:260px; min-width:160px; }
+.branch-settings textarea { width:100%; box-sizing:border-box; min-height:230px; line-height:1.6; resize:vertical; margin:12px 0; }
+.branch-settings button { font:500 13px var(--sans); height:32px; color:inherit; border:1px solid var(--line); border-radius:var(--r-pill, 999px); padding:0 14px; background:var(--raise); cursor:pointer; }
+.branch-settings button:hover { background:var(--fill); }
+.branch-settings button:disabled { opacity:.45; cursor:default; }
+.branch-settings .bs-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:16px; }
+.branch-settings .bs-primary { background:var(--btn); color:var(--on-btn); border-color:transparent; }
+.branch-settings .bs-primary:hover { background:var(--btn); opacity:.9; }
+.branch-settings .bs-alert { margin:12px 0; padding:12px 15px; background:var(--fill); border:1px solid var(--line); border-radius:12px; font-size:13px; line-height:1.6; }
+.branch-settings .bs-error { color:var(--bad); }
+.branch-settings .bs-success { color:var(--ok); font-size:12px; }
+.branch-settings .bs-tabs { display:flex; gap:4px; flex-wrap:wrap; padding:3px; border-radius:var(--r-pill,999px); background:var(--fill); }
+.branch-settings .bs-tabs button { border:0; background:transparent; }
+.branch-settings .bs-tabs button[aria-pressed=true] { background:var(--raise); box-shadow:0 1px 2px color-mix(in srgb,var(--ink) 10%,transparent); }
+.branch-settings dl { margin:0; background:var(--raise); border:1px solid var(--hair17); border-radius:var(--r3-17); overflow:hidden; }
+.branch-settings dd dl { margin:8px 0; border:0; border-radius:0; }
+.branch-settings .bs-fact { display:grid; grid-template-columns:minmax(120px,1fr) 2fr; gap:18px; padding:13px 15px; border-top:1px solid var(--hair17); font-size:13px; }
+.branch-settings .bs-fact:first-child { border-top:0; }
+.branch-settings dt { color:var(--ink-3); overflow-wrap:anywhere; }
+.branch-settings dd { margin:0; overflow-wrap:anywhere; }
+.branch-settings details { margin:10px 0; }
+.branch-settings summary { font-size:12px; cursor:pointer; }
+.branch-settings .bs-chip { padding:4px 9px; background:var(--fill); border-radius:20px; font-size:11px; }
+.branch-settings .bs-grow { flex:1; min-width:0; }
+.branch-settings .bs-connected { background:var(--ok-tint); color:var(--ok); }
+.branch-settings .bs-spend-card { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; padding:16px; border:1px solid var(--line); border-radius:var(--r3-17); background:var(--raise); }
+.branch-settings .bs-big-number { display:block; font-size:24px; font-weight:600; line-height:36px; letter-spacing:-.02em; }
+.branch-settings .bs-spend-card small { margin:0; font-size:12px; }
+.branch-settings .bs-provider { padding:16px 6px 8px; }
+.branch-settings .bs-provider-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:14px; }
+.branch-settings .bs-provider-head small { display:inline; margin:0; font-size:12px; }
+.branch-settings .bs-service-icon { width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; flex:none; border-radius:8px; background:var(--btn); color:var(--on-btn); font:600 14px var(--sans); }
+.branch-settings .bs-quota { display:grid; grid-template-columns:120px minmax(60px,1fr) auto; align-items:center; gap:8px; margin:6px 0 6px 38px; font-size:12px; line-height:18px; color:var(--ink-2); }
+.branch-settings .bs-meter { background:var(--line); height:6px; overflow:hidden; border-radius:var(--r-pill); }
+.branch-settings .bs-meter i { display:block; height:100%; background:var(--ink-2); border-radius:inherit; }
+.branch-settings .bs-provider p { margin-left:38px; font-size:12px; }
+.branch-settings .bs-node-card { margin:8px 0; padding:16px; border:1px solid var(--hair17); background:var(--raise); border-radius:var(--r3-17); }
+.branch-settings .bs-node-head { display:flex; gap:12px; align-items:center; font-size:14px; }
+.branch-settings .bs-status-card { display:flex; align-items:flex-start; gap:12px; border:1px solid var(--hair17); background:var(--raise); border-radius:var(--r3-17); padding:16px; font-size:14px; }
+.branch-settings .bs-status-card p { margin:4px 0 0; font-size:12.5px; }
+.branch-settings .bs-status-dot { width:8px; height:8px; border-radius:50%; background:var(--ok); flex:none; margin-top:6px; }
+@media(max-width:760px) { .branch-settings .bs-quota { grid-template-columns:100px minmax(40px,1fr); } .branch-settings .bs-quota>span:last-child { grid-column:1/-1; } }
+@media(max-width:640px) { .branch-settings { padding:12px 0 60px; } .branch-settings section { padding:15px; } .branch-settings .bs-row { align-items:flex-start; flex-direction:column; gap:10px; } .branch-settings input, .branch-settings select { width:100%; max-width:100%; } }

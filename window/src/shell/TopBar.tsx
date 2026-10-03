@@ -1,0 +1,202 @@
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { Pebble } from "../face/Pebble";
+import { Icon } from "./icons";
+
+export type FaceState = "here" | "working" | "waiting" | "done";
+
+const STATE_WORDS: Record<FaceState, string> = {
+  here: "ready",
+  working: "Working on it",
+  waiting: "Waiting for you",
+  done: "Done",
+};
+
+export type HeaderInfo = {
+  name: string;
+  trunkName: string;
+  state: FaceState;
+  isDefaultTrunk: boolean;
+  /** What the Trunk is for (its identity theme), the words before "· ready" (the preview's c.role). */
+  role?: string;
+  /** While working: "Working · using the computer" when a computer step runs, else the face's state words. */
+  workWords?: string;
+  renaming: boolean;
+  onRename: (name: string | null) => void;
+  /** Opens the Trunk's profile (§4.2.1: the header character and name open it). */
+  onProfile?: () => void;
+  /** A room (rooms/): two member characters stacked, and "<description> · <rule>" as the state line (§4.2.4). */
+  room?: { faces: (size: number) => ReactNode; line: string } | null;
+};
+
+type Props = {
+  /** The 34 px bar (≤760 px or focus mode): no mark or name, as in the preview; the header moves into the main column. */
+  compact: boolean;
+  machine: ReactNode;
+  header: HeaderInfo | null;
+  dark: boolean;
+  listHidden: boolean;
+  onTheme: () => void;
+  onToggleList: () => void;
+  onCharacter?: () => void;
+  onGuide?: (event: MouseEvent<HTMLElement>) => void;
+  conversationTools?: ReactNode;
+  /** On a place or Settings page: "Ask <default Trunk>", which shows that Trunk beside the page (§3.3). */
+  ask?: { name: string; open: boolean; onToggle: () => void } | null;
+};
+
+/** The header's state line (the preview's statusLine): "<role> · ready", the working words, or Waiting / Done. */
+export function stateWords(h: Pick<HeaderInfo, "state" | "isDefaultTrunk" | "trunkName" | "role" | "workWords" | "room">): string {
+  if (h.room) return h.room.line;
+  if (h.state === "here") {
+    const role = h.role || (h.isDefaultTrunk ? `${h.trunkName} · on this computer` : h.trunkName);
+    return `${role} · ${STATE_WORDS.here}`;
+  }
+  if (h.state === "working") {
+    return h.workWords || STATE_WORDS.working;
+  }
+  return STATE_WORDS[h.state];
+}
+
+/** The header name, or its edit field while renaming (§4.1.6 "Rename": the name in an edit field). */
+function HeadName({ h }: { h: HeaderInfo }) {
+  const [value, setValue] = useState(h.name);
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (h.renaming) {
+      setValue(h.name);
+      ref.current?.select();
+    }
+  }, [h.renaming, h.name]);
+  if (!h.renaming) {
+    return h.onProfile ? (
+      <b className="head-name" role="button" tabIndex={0} title={`${h.trunkName}’s profile`} style={{ cursor: "pointer" }} onClick={h.onProfile}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), h.onProfile?.())}>{h.name}</b>
+    ) : (
+      <b className="head-name">{h.name}</b>
+    );
+  }
+  return (
+    <input
+      ref={ref}
+      className="head-name head-edit"
+      aria-label="Conversation name"
+      data-testid="rename-field"
+      value={value}
+      autoFocus
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => h.onRename(value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          h.onRename(value);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          h.onRename(null);
+        }
+      }}
+    />
+  );
+}
+
+/** The Trunk's face in the header; clicking it shows or hides the character panel. */
+function HeaderFace({ header, onCharacter, size = 32 }: { header: HeaderInfo; onCharacter?: () => void; size?: number }) {
+  const state = header.state === "working" ? "work" : header.state === "waiting" ? "wait" : header.state === "done" ? "yay" : "idle";
+  if (header.room) return <span className="header-face">{header.room.faces(size)}</span>;
+  return (
+    <button className="header-face" type="button" aria-label={header.onProfile ? `${header.trunkName}’s profile` : "Show or hide character"} title={header.onProfile ? `${header.trunkName}’s profile` : undefined} onClick={header.onProfile ?? onCharacter}>
+      <Pebble size={size} label={header.trunkName} state={state} priority={300} />
+    </button>
+  );
+}
+
+/** The conversation header as its own row in the main column (narrow windows and focus mode, §3.2). */
+export function HeaderRow({ header, onCharacter, tools, onList }: { header: HeaderInfo; onCharacter?: () => void; tools?: ReactNode; onList?: () => void }) {
+  const live = !header.room && (header.state === "working" || header.state === "waiting");
+  return (
+    <div className={live ? "head-row live" : "head-row"}>
+      {onList ? (
+        <button type="button" className="ib" aria-label="Conversations" title="Conversations" data-testid="head-list" onClick={onList}>
+          <Icon name="menu" />
+        </button>
+      ) : null}
+      <HeaderFace header={header} onCharacter={onCharacter} size={56} />
+      <div className="head-text">
+        <HeadName h={header} />
+        <span className={live ? "head-state live" : "head-state"} data-face-state={header.state}>
+          {live ? <i aria-hidden="true" /> : null}
+          {stateWords(header)}
+        </span>
+      </div>
+      {tools ? <div className="global head-tools">{tools}</div> : null}
+    </div>
+  );
+}
+
+/** A place's 58 px row under the 34 px bar (narrow windows, the preview's placeHead): ≡ shows the list, the gear opens Settings. */
+export function PlaceHead({ onList, onSettings }: { onList: () => void; onSettings: () => void }) {
+  return (
+    <div className="place-head" data-testid="place-head">
+      <button type="button" className="ib" aria-label="Show conversations" title="Show conversations" onClick={onList}>
+        <Icon name="menu" />
+      </button>
+      <button type="button" className="ib" aria-label="Settings" title="Settings" onClick={onSettings}>
+        <Icon name="gear" />
+      </button>
+    </div>
+  );
+}
+
+/** The merged 52 px top bar (DESIGN-SPEC §3.2): the machine switcher over the sidebar, the conversation header, the global buttons. */
+export function TopBar({ compact, machine, header, dark, listHidden, onTheme, onToggleList, onCharacter, onGuide, conversationTools, ask }: Props) {
+  const live = header !== null && !header.room && (header.state === "working" || header.state === "waiting");
+  return (
+    <header className={live ? "topbar live" : "topbar"}>
+      <div className="topbar-left">{machine}</div>
+      <div className="topbar-right">
+        {compact ? (
+          <span className="head" />
+        ) : header ? (
+          <div className="head">
+            <HeaderFace header={header} onCharacter={onCharacter} />
+            <div className="head-text">
+              <HeadName h={header} />
+              <span className={live ? "head-state live" : "head-state"} data-face-state={header.state}>
+                {live ? <i aria-hidden="true" /> : null}
+                {stateWords(header)}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="head" />
+        )}
+        <div className="global">
+          {header && !compact ? <span className="conv-tools">{conversationTools}</span> : null}
+          {onGuide ? <button type="button" className="ib guide-btn" title="Guide" data-testid="guide" onClick={onGuide}><Icon name="help" small /><span>Guide</span></button> : null}
+          {ask ? (
+            <button type="button" className="ib talk-btn" aria-label={`Ask ${ask.name}`} title={`Ask ${ask.name}`} aria-pressed={ask.open} data-testid="ask-default" onClick={ask.onToggle}>
+              <Icon name="ask" small />
+            </button>
+          ) : null}
+          <button type="button" className="ib" aria-label={dark ? "Light" : "Dark"} title={dark ? "Light" : "Dark"} data-testid="theme" onClick={onTheme}>
+            <Icon name={dark ? "sun" : "moon"} small />
+          </button>
+          <button
+            type="button"
+            className="ib"
+            aria-label={listHidden ? "Show the list · Ctrl+B" : "Hide the list · Ctrl+B"}
+            title={listHidden ? "Show the list · Ctrl+B" : "Hide the list · Ctrl+B"}
+            aria-pressed={!listHidden}
+            data-testid="list-toggle"
+            onClick={(e: MouseEvent) => {
+              e.currentTarget instanceof HTMLElement && e.currentTarget.blur();
+              onToggleList();
+            }}
+          >
+            <Icon name={listHidden ? "sidebarOff" : "sidebar"} small />
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@branch/google-plugin",
+  "version": "2026.9.7",
+  "private": true,
+  "description": "Branch Agent Google plugin",
+  "type": "module",
+  "dependencies": {
+    "@google/genai": "2.23.0",
+    "dotenv": "18.0.1",
+    "google-auth-library": "11.1.0"
+  },
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

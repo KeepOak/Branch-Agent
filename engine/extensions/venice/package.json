@@ -1,0 +1,35 @@
+{
+  "name": "@branch/venice-provider",
+  "version": "2026.9.7",
+  "description": "Branch Agent Venice provider plugin",
+  "type": "module",
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "install": {
+      "clawhubSpec": "clawhub:@branch/venice-provider",
+      "npmSpec": "@branch/venice-provider",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.6.9"
+    },
+    "compat": {
+      "pluginApi": ">=2026.9.7"
+    },
+    "build": {
+      "branchVersion": "2026.9.7",
+      "bundledDist": false
+    },
+    "release": {
+      "publishToClawHub": true,
+      "publishToNpm": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openclaw/openclaw"
+  }
+}

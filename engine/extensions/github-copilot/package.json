@@ -1,0 +1,15 @@
+{
+  "name": "@branch/github-copilot-provider",
+  "version": "2026.9.7",
+  "private": true,
+  "description": "Branch Agent GitHub Copilot provider plugin",
+  "type": "module",
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

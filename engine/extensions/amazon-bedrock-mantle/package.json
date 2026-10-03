@@ -1,0 +1,39 @@
+{
+  "name": "@branch/amazon-bedrock-mantle-provider",
+  "version": "2026.9.7",
+  "description": "Branch Agent Amazon Bedrock Mantle provider plugin for OpenAI-compatible model routing.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openclaw/openclaw"
+  },
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.127.0",
+    "@aws/bedrock-token-generator": "1.1.0"
+  },
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "install": {
+      "clawhubSpec": "clawhub:@branch/amazon-bedrock-mantle-provider",
+      "npmSpec": "@branch/amazon-bedrock-mantle-provider",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.5.12-beta.1"
+    },
+    "compat": {
+      "pluginApi": ">=2026.9.7"
+    },
+    "build": {
+      "branchVersion": "2026.9.7",
+      "bundledDist": false
+    },
+    "release": {
+      "publishToClawHub": true,
+      "publishToNpm": true
+    }
+  }
+}

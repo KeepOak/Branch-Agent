@@ -1,0 +1,240 @@
+{
+  "id": "canopy",
+  "uiCapabilities": [
+    "page",
+    "navigation",
+    "accessory",
+    "widget"
+  ],
+  "categories": [
+    "productivity"
+  ],
+  "cliCommands": [
+    {
+      "name": "canopy",
+      "description": "Manage Canopy cards and worker dispatch",
+      "hasSubcommands": true
+    }
+  ],
+  "doctorContract": {
+    "stateMigrations": [
+      {
+        "id": "canopy-28-kv-to-sqlite"
+      }
+    ]
+  },
+  "enabledByDefault": false,
+  "activation": {
+    "onStartup": true,
+    "onCommands": [
+      "canopy"
+    ]
+  },
+  "dashboard": {
+    "dataBindings": [
+      {
+        "id": "cards.list",
+        "method": "canopy.cards.list",
+        "description": "List Canopy cards and statuses."
+      },
+      {
+        "id": "stats",
+        "method": "canopy.cards.stats",
+        "description": "Read Canopy card statistics."
+      },
+      {
+        "id": "boards.list",
+        "method": "canopy.boards.list",
+        "description": "List Canopy boards."
+      }
+    ],
+    "actionVerbs": [
+      {
+        "id": "dispatch",
+        "method": "canopy.cards.dispatch",
+        "description": "Dispatch ready Canopy cards.",
+        "paramShape": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "boardId": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    ]
+  },
+  "name": "Canopy",
+  "description": "Dashboard canopy for agent-owned issues and sessions.",
+  "catalog": {
+    "featured": true,
+    "order": 10
+  },
+  "contracts": {
+    "tools": [
+      "canopy_list",
+      "canopy_create",
+      "canopy_link",
+      "canopy_read",
+      "canopy_claim",
+      "canopy_heartbeat",
+      "canopy_complete",
+      "canopy_attachment_add",
+      "canopy_attachment_read",
+      "canopy_attachment_delete",
+      "canopy_block",
+      "canopy_boards",
+      "canopy_board_create",
+      "canopy_board_archive",
+      "canopy_board_delete",
+      "canopy_sessions_board_read",
+      "canopy_sessions_board_update",
+      "canopy_sessions_board_move",
+      "canopy_stats",
+      "canopy_runs",
+      "canopy_specify",
+      "canopy_decompose",
+      "canopy_notify_subscribe",
+      "canopy_notify_list",
+      "canopy_notify_events",
+      "canopy_notify_advance",
+      "canopy_notify_unsubscribe",
+      "canopy_promote",
+      "canopy_reassign",
+      "canopy_reclaim",
+      "canopy_dispatch",
+      "canopy_release",
+      "canopy_comment",
+      "canopy_proof",
+      "canopy_worker_log",
+      "canopy_protocol_violation",
+      "canopy_unblock",
+      "canopy_move"
+    ]
+  },
+  "commandAliases": [
+    {
+      "name": "canopy"
+    }
+  ],
+  "toolMetadata": {
+    "canopy_list": {
+      "optional": true
+    },
+    "canopy_create": {
+      "optional": true
+    },
+    "canopy_link": {
+      "optional": true
+    },
+    "canopy_read": {
+      "optional": true
+    },
+    "canopy_claim": {
+      "optional": true
+    },
+    "canopy_heartbeat": {
+      "optional": true
+    },
+    "canopy_complete": {
+      "optional": true
+    },
+    "canopy_attachment_add": {
+      "optional": true
+    },
+    "canopy_attachment_read": {
+      "optional": true
+    },
+    "canopy_attachment_delete": {
+      "optional": true
+    },
+    "canopy_block": {
+      "optional": true
+    },
+    "canopy_boards": {
+      "optional": true
+    },
+    "canopy_board_create": {
+      "optional": true
+    },
+    "canopy_board_archive": {
+      "optional": true
+    },
+    "canopy_board_delete": {
+      "optional": true
+    },
+    "canopy_stats": {
+      "optional": true
+    },
+    "canopy_runs": {
+      "optional": true
+    },
+    "canopy_specify": {
+      "optional": true
+    },
+    "canopy_decompose": {
+      "optional": true
+    },
+    "canopy_notify_subscribe": {
+      "optional": true
+    },
+    "canopy_notify_list": {
+      "optional": true
+    },
+    "canopy_notify_events": {
+      "optional": true
+    },
+    "canopy_notify_advance": {
+      "optional": true
+    },
+    "canopy_notify_unsubscribe": {
+      "optional": true
+    },
+    "canopy_promote": {
+      "optional": true
+    },
+    "canopy_reassign": {
+      "optional": true
+    },
+    "canopy_reclaim": {
+      "optional": true
+    },
+    "canopy_dispatch": {
+      "optional": true
+    },
+    "canopy_release": {
+      "optional": true
+    },
+    "canopy_comment": {
+      "optional": true
+    },
+    "canopy_proof": {
+      "optional": true
+    },
+    "canopy_worker_log": {
+      "optional": true
+    },
+    "canopy_protocol_violation": {
+      "optional": true
+    },
+    "canopy_unblock": {
+      "optional": true
+    },
+    "canopy_move": {
+      "optional": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "controlUi": {
+    "entry": "dist/control-ui/03e93b0503244d9a441ffb35df59dd3df6081106dfe34ef94e872f23caa05f45/index.js",
+    "styles": [
+      "dist/control-ui/03e93b0503244d9a441ffb35df59dd3df6081106dfe34ef94e872f23caa05f45/index.css"
+    ]
+  }
+}

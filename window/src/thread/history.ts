@@ -1,0 +1,274 @@
+import { readBrowserPresentation } from "./browser-presentation";
+// Rebuilds the thread from `chat.history` messages and the engine's terminal approval ledger
+// (`approval.history`), so steps, approval outcomes and Done lines come back after a reload.
+import {
+  describeToolCall,
+  isDeniedResultText,
+  resultText,
+  type Approval,
+  type Attachment,
+  type Block,
+  type MessageMeta,
+  type StepStatus,
+} from "./model";
+import { readOwner, readSender } from "../rooms/sender";
+
+/** One terminal approval from `approval.history`. */
+export type ApprovalRecord = {
+  id: string;
+  status: string;
+  commandText: string;
+  sessionKey?: string;
+  createdAtMs: number;
+};
+
+type Message = Record<string, unknown>;
+type Builder = {
+  blocks: Block[];
+  steps: Map<string, { at: number; command: string; ts: number }>;
+  runId: string | null;
+  runStart: number;
+  runFinished: boolean;
+  lastTs: number;
+};
+
+const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
+const num = (v: unknown): number => (typeof v === "number" ? v : 0);
+
+/** Reads `approval.history` items into the fields the thread needs. */
+export function readApprovalRecords(result: unknown): ApprovalRecord[] {
+  const items = rec(result).items;
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items.map((item) => {
+    const r = rec(item);
+    return {
+      id: str(r.id),
+      status: str(r.status),
+      commandText: str(rec(r.presentation).commandText),
+      sessionKey: str(rec(r.source).sessionKey) || undefined,
+      createdAtMs: num(r.createdAtMs),
+    };
+  });
+}
+
+/** The Via line for Branch apps (DESIGN-SPEC §4.2.2 Parity adds), from the transport the engine recorded. */
+const VIA: Record<string, string> = {
+  cli: "via the branch command",
+  "branch-tui": "via the terminal",
+  "branch-control-ui": "via the browser",
+  webchat: "via the browser",
+  "branch-browser-copilot": "via the browser",
+  "gateway-client": "via a script",
+  "node-host": "via a script",
+};
+
+function readVia(branch: Record<string, unknown>): string | undefined {
+  const clients = rec(branch.transport).clients;
+  const first = Array.isArray(clients) ? rec(clients[0]) : {};
+  return VIA[str(first.id)];
+}
+
+/** What the engine recorded about a message: entry id, run, time, model and usage. */
+export function readMeta(m: Message): MessageMeta {
+  const branch = rec(m.__branch);
+  const sender = readSender(m);
+  const usage = rec(m.usage);
+  const cost = rec(usage.cost);
+  return {
+    ...(str(branch.id) ? { entryId: str(branch.id) } : {}),
+    ...(str(branch.runId) ? { runId: str(branch.runId) } : {}),
+    ...(num(m.timestamp) ? { timestamp: num(m.timestamp) } : {}),
+    ...(str(m.model) ? { model: str(m.model) } : {}),
+    ...(str(m.provider) ? { provider: str(m.provider) } : {}),
+    ...(str(m.stopReason) ? { stopReason: str(m.stopReason) } : {}),
+    ...(readVia(branch) ? { via: readVia(branch) } : {}),
+    ...(sender ? { sender } : {}),
+    ...(readOwner(m) ? { owner: true } : {}),
+    ...(m.usage
+      ? { usage: { input: num(usage.input), output: num(usage.output), total: num(usage.totalTokens), cost: num(cost.total) } }
+      : {}),
+  };
+}
+
+function messageText(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content
+    .filter((c) => rec(c).type === "text")
+    .map((c) => str(rec(c).text))
+    .join("");
+}
+
+const KIND_BY_TYPE: Record<string, Attachment["kind"]> = { image: "image", audio: "audio", video: "video", file: "file" };
+
+/** A media or file part of a message's content, as an attachment the thread can show. */
+export function readAttachment(part: unknown): Attachment | null {
+  const p = rec(part);
+  const kind = KIND_BY_TYPE[str(p.type)];
+  if (!kind) {
+    return null;
+  }
+  const mimeType = str(p.mimeType) || str(p.mediaType) || undefined;
+  const data = str(p.data);
+  const url = str(p.url) || str(rec(p.source).url);
+  const src = data ? `data:${mimeType ?? "application/octet-stream"};base64,${data}` : url || undefined;
+  return {
+    kind,
+    name: str(p.name) || str(p.fileName) || str(p.filename) || kind,
+    ...(mimeType ? { mimeType } : {}),
+    ...(src ? { src } : {}),
+    ...(num(p.sizeBytes) ? { sizeBytes: num(p.sizeBytes) } : {}),
+    kept: Boolean(src),
+  };
+}
+
+function attachmentsOf(content: unknown): Attachment[] {
+  return Array.isArray(content) ? content.map(readAttachment).filter((a): a is Attachment => a !== null) : [];
+}
+
+function closeRun(b: Builder, inFlightRunId: string | null): void {
+  if (b.runId && b.runFinished && b.runId !== inFlightRunId) {
+    b.blocks.push({ kind: "done", key: `${b.runId}:done`, runId: b.runId, durationMs: b.lastTs - b.runStart });
+  }
+  b.runId = null;
+  b.runFinished = false;
+}
+
+function onAssistantPart(b: Builder, part: unknown, key: string, m: Message): void {
+  const p = rec(part);
+  if (p.type === "text" && str(p.text).trim()) {
+    b.blocks.push({ kind: "text", key, text: str(p.text), streaming: false, meta: readMeta(m) });
+  } else if (p.type === "thinking" && str(p.thinking).trim()) {
+    b.blocks.push({ kind: "thinking", key, text: str(p.thinking), live: false });
+  } else if (p.type === "toolCall") {
+    const id = str(p.id) || key;
+    const title = describeToolCall(str(p.name), p.arguments);
+    b.blocks.push({ kind: "step", key: id, tool: str(p.name), title, detail: "", status: "ok" });
+    b.steps.set(id, { at: b.blocks.length - 1, command: str(rec(p.arguments).command), ts: num(m.timestamp) });
+  } else if (typeof part === "string" && part.trim()) {
+    b.blocks.push({ kind: "text", key, text: part, streaming: false, meta: readMeta(m) });
+  }
+}
+
+function onAssistant(b: Builder, m: Message, index: number): void {
+  const content = Array.isArray(m.content) ? m.content : [m.content];
+  for (const [i, part] of content.entries()) {
+    onAssistantPart(b, part, `h:${index}:${i}`, m);
+  }
+  const media = attachmentsOf(m.content);
+  if (media.length) {
+    b.blocks.push({ kind: "text", key: `h:${index}:media`, text: "", streaming: false, meta: readMeta(m), attachments: media });
+  }
+  if (str(m.stopReason) === "error" && str(m.errorMessage)) {
+    b.blocks.push({ kind: "error", key: `h:${index}:error`, runId: b.runId ?? undefined, message: str(m.errorMessage) });
+  }
+  b.runFinished = str(m.stopReason) !== "toolUse";
+}
+
+function findApproval(
+  records: readonly ApprovalRecord[],
+  sessionKey: string,
+  step: { command: string; ts: number },
+  resultTs: number,
+): ApprovalRecord | undefined {
+  return records.find(
+    (r) =>
+      r.commandText === step.command &&
+      (!r.sessionKey || r.sessionKey === sessionKey) &&
+      r.createdAtMs >= step.ts - 1000 &&
+      r.createdAtMs <= resultTs + 1000,
+  );
+}
+
+function approvalState(status: string): Approval["state"] {
+  return status === "allowed" ? "allowed" : status === "pending" ? "pending" : "denied";
+}
+
+function onToolResult(b: Builder, m: Message, records: readonly ApprovalRecord[], sessionKey: string): void {
+  const step = b.steps.get(str(m.toolCallId));
+  if (!step) {
+    return;
+  }
+  const text = resultText(m);
+  const status: StepStatus = isDeniedResultText(text) ? "denied" : m.isError ? "failed" : "ok";
+  const block = b.blocks[step.at] as Extract<Block, { kind: "step" }>;
+  b.blocks[step.at] = { ...block, status, detail: text.slice(0, 400), output: text, browser: status === "ok" ? readBrowserPresentation(m, block.tool, block.key) : undefined };
+  const deniedId = /gateway id=([0-9a-f-]{8,})/i.exec(text)?.[1];
+  const found = findApproval(records, sessionKey, step, num(m.timestamp));
+  const id = deniedId ?? found?.id;
+  if (!id) {
+    return;
+  }
+  const state = deniedId && status === "denied" ? "denied" : approvalState(found?.status ?? "");
+  const approval: Approval = { id, command: step.command, state };
+  b.blocks.splice(step.at + 1, 0, { kind: "approval", key: `approval:${id}`, approval });
+  for (const [key, value] of b.steps) {
+    if (value.at > step.at) {
+      b.steps.set(key, { ...value, at: value.at + 1 });
+    }
+  }
+}
+
+/** A `custom` transcript entry the engine marks for display: a failed run, or a note. */
+function onCustom(b: Builder, m: Message, index: number): void {
+  if (m.display !== true) {
+    return;
+  }
+  const text = messageText(m.content).trim();
+  if (!text) {
+    return;
+  }
+  if (str(m.customType) === "run-failed-before-reply") {
+    b.blocks.push({ kind: "error", key: `h:${index}`, runId: b.runId ?? undefined, message: text });
+    return;
+  }
+  b.blocks.push({ kind: "notice", key: `h:${index}`, text });
+}
+
+function onUser(b: Builder, m: Message, index: number, inFlightRunId: string | null): void {
+  closeRun(b, inFlightRunId);
+  b.runStart = num(m.timestamp);
+  const attachments = attachmentsOf(m.content);
+  b.blocks.push({
+    kind: "user",
+    key: `h:${index}`,
+    text: messageText(m.content),
+    meta: readMeta(m),
+    ...(attachments.length ? { attachments } : {}),
+  });
+}
+
+/** Builds the thread from `chat.history` messages. `inFlightRunId` is a run that is still going. */
+export function historyToBlocks(
+  messages: readonly unknown[],
+  records: readonly ApprovalRecord[],
+  sessionKey: string,
+  inFlightRunId: string | null,
+): Block[] {
+  const b: Builder = { blocks: [], steps: new Map(), runId: null, runStart: 0, runFinished: false, lastTs: 0 };
+  for (const [index, raw] of messages.entries()) {
+    const m = rec(raw);
+    const runId = str(rec(m.__branch).runId) || null;
+    if (m.role === "user") {
+      onUser(b, m, index, inFlightRunId);
+    } else if (m.role === "assistant") {
+      b.runId = runId ?? b.runId;
+      onAssistant(b, m, index);
+    } else if (m.role === "toolResult") {
+      onToolResult(b, m, records, sessionKey);
+    } else if (m.role === "custom") {
+      onCustom(b, m, index);
+      b.runFinished ||= str(m.customType) === "run-failed-before-reply";
+    }
+    b.lastTs = num(m.timestamp) || b.lastTs;
+  }
+  closeRun(b, inFlightRunId);
+  return b.blocks;
+}

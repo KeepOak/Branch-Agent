@@ -1,0 +1,129 @@
+import { readFileSync } from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  BASE_GATEWAY_BENCH_CONFIG,
+  createGatewayBenchEnv,
+  formatMb,
+  formatStats,
+  writeGatewayBenchConfig,
+} from "../../scripts/lib/gateway-bench-runtime.js";
+import type { BranchConfig } from "../../src/config/types.branch.js";
+import { startGatewayDiscovery } from "../../src/gateway/server-discovery-runtime.js";
+import { createGatewayPluginRuntimeGeneration } from "../../src/gateway/server-plugin-runtime-generation.js";
+import {
+  resolveWideAreaDiscoveryDomain,
+  writeWideAreaGatewayZone,
+} from "../../src/infra/widearea-dns.js";
+import { createEmptyPluginRegistry } from "../../src/plugins/registry-empty.js";
+import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
+
+vi.mock("../../src/infra/widearea-dns.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/infra/widearea-dns.js")>();
+  return {
+    ...actual,
+    resolveWideAreaDiscoveryDomain: vi.fn(actual.resolveWideAreaDiscoveryDomain),
+    writeWideAreaGatewayZone: vi.fn(async () => ({ changed: false, zonePath: "unused" })),
+  };
+});
+
+const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+
+describe("benchmark statistic units", () => {
+  const stats = { p50: 1.5, avg: 1.5, min: 1, max: 2, p95: 2 };
+  it.each([
+    {
+      name: "default duration",
+      format: undefined,
+      expected: "p50=1.5ms avg=1.5ms min=1.0ms max=2.0ms",
+    },
+    { name: "fractional counts", format: String, expected: "p50=1.5 avg=1.5 min=1 max=2" },
+    { name: "memory", format: formatMb, expected: "p50=1.5MB avg=1.5MB min=1.0MB max=2.0MB" },
+  ])("formats $name", ({ format, expected }) => {
+    expect(format === undefined ? formatStats(stats) : formatStats(stats, format)).toBe(expected);
+  });
+
+  it("keeps missing statistics unavailable", () => {
+    const format = vi.fn(() => "unexpected");
+    expect(formatStats(null, format)).toBe("n/a");
+    expect(format).not.toHaveBeenCalled();
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.clearAllMocks();
+});
+
+describe("gateway benchmark discovery isolation", () => {
+  it.each([
+    { name: "benchmark fixture", enabled: false },
+    { name: "enabled minimal-discovery control", enabled: true },
+  ])("$name reaches the publication boundary with the expected policy", async ({ enabled }) => {
+    const root = tempDirs.make("branch-bench-discovery-");
+    const configPath = writeGatewayBenchConfig(
+      root,
+      {
+        ...BASE_GATEWAY_BENCH_CONFIG,
+        ...(enabled ? { discovery: { mdns: { mode: "minimal" } } } : {}),
+      },
+      {},
+    );
+    vi.stubEnv("BRANCH_WIDE_AREA_DOMAIN", "inherited.example.test");
+    const childEnv = createGatewayBenchEnv(root, configPath, {});
+    for (const key of [
+      "HOME",
+      "BRANCH_HOME",
+      "BRANCH_STATE_DIR",
+      "BRANCH_CONFIG_PATH",
+      "NODE_ENV",
+      "VITEST",
+      "BRANCH_DISABLE_BONJOUR",
+      "BRANCH_WIDE_AREA_DOMAIN",
+      "BRANCH_TAILNET_DNS",
+      "BRANCH_CLI_PATH",
+      "BRANCH_SSH_PORT",
+      "BRANCH_GATEWAY_DISCOVERY_ADVERTISE_TIMEOUT_MS",
+    ]) {
+      vi.stubEnv(key, childEnv[key]);
+    }
+    const cfgAtStart: BranchConfig = JSON.parse(readFileSync(configPath, "utf8"));
+    const stop = vi.fn();
+    const advertise = vi.fn(async () => ({ stop }));
+    const pluginRegistry = createEmptyPluginRegistry();
+    pluginRegistry.gatewayDiscoveryServices.push({
+      pluginId: "fixture-discovery",
+      source: "test",
+      id: "fixture-discovery",
+      service: { id: "fixture-discovery", advertise },
+    });
+
+    const discovery = await startGatewayDiscovery({
+      machineDisplayName: "Benchmark fixture",
+      discovery: cfgAtStart.discovery,
+      pluginRuntimeClaim: createGatewayPluginRuntimeGeneration({
+        getServices: () => null,
+        setServices: () => {},
+      }).currentClaim(),
+      port: 18789,
+      gatewayTls: { enabled: false },
+      gatewayDirectReachable: false,
+      tailscaleMode: "off",
+      logDiscovery: { info: vi.fn(), warn: vi.fn() },
+      gatewayDiscoveryServices: pluginRegistry.gatewayDiscoveryServices,
+    });
+    await discovery.stop();
+
+    expect(childEnv.BRANCH_WIDE_AREA_DOMAIN).toBeUndefined();
+    expect(resolveWideAreaDiscoveryDomain).not.toHaveBeenCalled();
+    expect(writeWideAreaGatewayZone).not.toHaveBeenCalled();
+    if (enabled) {
+      expect(advertise).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ gatewayDirectReachable: false, minimal: true }),
+      );
+      expect(stop).toHaveBeenCalledOnce();
+    } else {
+      expect(advertise).not.toHaveBeenCalled();
+      expect(stop).not.toHaveBeenCalled();
+    }
+  });
+});

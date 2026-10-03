@@ -1,0 +1,44 @@
+/* §4.7.0 the Settings frame's additions: "Settings for", search rows, the save state, the settings-file box,
+   the level kept in view on narrow windows and the search box as an icon at phone width (preview 50-settings, 51-set1p). */
+.set-scope { display: grid; gap: 6px; margin: 8px 0 2px; padding: 0 4px; }
+.set-scope > span:first-child { font: 600 11px/1.2 var(--sans); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+.set-scope-r { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.set-scope-r select { flex: 1; min-width: 0; }
+.set-nav .set-row { display: flex; align-items: center; gap: 8px; height: auto; min-height: 30px; padding: 5px 10px 5px 22px; font-size: 12.5px; font-weight: 400; color: var(--ink-2); }
+.set-nav .set-row .grow { display: grid; gap: 1px; flex: 1; min-width: 0; text-align: left; }
+.set-nav .set-row .grow > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-nav .set-row small { font-size: 11.5px; color: var(--ink-3); }
+.set-nav .set-item:has(.set-lvtag) { display: flex; align-items: center; }
+.set-lvtag { flex: none; margin-left: 8px; padding: 3px 5px; border-radius: 6px; background: var(--wash17); font: 500 10px/1 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); }
+.set-row .set-lvtag { margin-left: auto; }
+.set-save { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; padding: 0 8px; font-size: 12px; color: var(--ink-3); }
+.set-save[hidden] { display: none; }
+.set-save.bad { color: var(--bad); }
+.set-col .set-fileproblem { margin-bottom: 20px; border-color: var(--bad-tint); }
+.set-col .set-fileproblem ul { margin: 6px 0 0; padding-left: 18px; font: 12px var(--mono); color: var(--ink-2); }
+
+@media (max-width: 1000px) {
+  .set-hit { display: contents; }
+  .set-nav .set-row { padding-left: 10px; white-space: nowrap; }
+  .set-nav .set-row small { display: none; }
+  .set-scope { display: flex; align-items: center; margin: 0; padding: 0; }
+  .set-scope > span:first-child { display: none; }
+  .set-scope-r select { width: 140px; }
+  .set-save { margin: 0; white-space: nowrap; }
+  /* "How much to show" stays visible at the end of the nav row (§4.7.0 rule 5) */
+  .settings .set-nav .set-level { position: sticky; right: -8px; z-index: 2; margin-left: auto; padding: 0 0 0 8px; background: var(--bg); box-shadow: -12px 0 12px -6px var(--bg); }
+}
+@media (max-width: 480px) {
+  /* the search box folds to its icon until it's used */
+  .set-nav .set-search { width: 34px; padding: 0 9px; gap: 0; overflow: hidden; transition: width 0.2s var(--ease17); }
+  .set-nav .set-search > svg { flex: none; }
+  .set-nav .set-search input { width: 0; }
+  .set-nav .set-search:focus-within,
+  .set-nav .set-search:has(input:not(:placeholder-shown)) { width: 170px; gap: 8px; }
+  .set-nav .set-search:focus-within input,
+  .set-nav .set-search:has(input:not(:placeholder-shown)) input { width: auto; }
+}
+/* the level block is as wide as its own line, as the preview's (its grid shrinks to the line under it) */
+@media (min-width: 1001px) {
+  .settings .set-nav > .set-level { align-self: flex-start; max-width: 100%; }
+}

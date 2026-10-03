@@ -1,0 +1,24 @@
+{
+  "name": "@branch/github",
+  "version": "2026.9.7",
+  "private": true,
+  "description": "Branch Agent GitHub link reader plugin",
+  "type": "module",
+  "author": {
+    "name": "Branch Agent"
+  },
+  "homepage": "https://docs.openclaw.ai/plugins/github",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openclaw/openclaw",
+    "directory": "extensions/github"
+  },
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

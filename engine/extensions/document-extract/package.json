@@ -1,0 +1,23 @@
+{
+  "name": "@branch/document-extract-plugin",
+  "version": "2026.9.7",
+  "private": true,
+  "description": "Branch Agent local document extraction plugin",
+  "type": "module",
+  "dependencies": {
+    "clawpdf": "0.3.2"
+  },
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "build": {
+      "workerEntries": [
+        "./document-extractor.worker.ts"
+      ]
+    },
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

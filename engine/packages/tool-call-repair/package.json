@@ -1,0 +1,12 @@
+{
+  "name": "@branch/tool-call-repair",
+  "version": "0.0.0-private",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@branch/normalization-core": "workspace:*"
+  }
+}

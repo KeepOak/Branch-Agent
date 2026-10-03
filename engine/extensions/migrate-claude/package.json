@@ -1,0 +1,27 @@
+{
+  "name": "@branch/migrate-claude",
+  "version": "2026.9.7",
+  "private": true,
+  "description": "Claude to Branch Agent migration provider",
+  "type": "module",
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*",
+    "branch": "workspace:*"
+  },
+  "peerDependencies": {
+    "branch": ">=2026.9.7"
+  },
+  "peerDependenciesMeta": {
+    "branch": {
+      "optional": true
+    }
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "@openclaw/fs-safe": "0.22.0"
+  }
+}

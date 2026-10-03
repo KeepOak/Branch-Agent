@@ -1,0 +1,86 @@
+/* §4.8.2 the walkthrough (preview .tour-layer .tour-spot .tour-card .tour-dots) */
+.tour-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 93;
+  pointer-events: none;
+}
+.tour-spot {
+  position: absolute;
+  border-radius: 14px;
+  box-shadow: 0 0 0 9999px rgba(8, 12, 16, 0.5);
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  transition: top 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), left 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.3s, height 0.3s;
+  pointer-events: none;
+}
+.tour-spot.none {
+  width: 0;
+  height: 0;
+  outline: 0;
+  left: 50%;
+  top: 50%;
+}
+.tour-card {
+  position: absolute;
+  width: min(340px, calc(100% - 24px));
+  background: var(--raise);
+  color: var(--ink);
+  border-radius: 16px;
+  box-shadow: var(--pop);
+  padding: 16px;
+  display: grid;
+  gap: 8px;
+  transition: top 0.3s, left 0.3s;
+  pointer-events: auto;
+}
+.tour-card .n {
+  font: 500 10.5px var(--mono);
+  color: var(--accent-ink);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tour-card b {
+  font-size: 16px;
+  font-weight: 600;
+}
+.tour-card p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.tour-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.tour-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line-2);
+}
+.tour-dots i.on {
+  background: var(--ink);
+  width: 14px;
+}
+.tour-card .acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tour-card .grow {
+  flex: 1;
+}
+/* While the walkthrough runs, toasts and banners wait (rule 2). */
+.touring .toasts,
+.touring .banner {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spot,
+  .tour-card {
+    transition: none;
+  }
+}
