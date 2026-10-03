@@ -398,7 +398,7 @@ describe("processGatewayAllowlist", () => {
 
   async function requireAuthorizationPlan(params: Parameters<typeof planShellAuthorization>[0]) {
     const authorizationPlan = await planShellAuthorization(params);
-    expect(authorizationPlan.ok).toBe(true);
+    expect(authorizationPlan.ok, authorizationPlan.ok ? undefined : authorizationPlan.reason).toBe(true);
     if (!authorizationPlan.ok) {
       throw new Error(authorizationPlan.reason);
     }
@@ -650,59 +650,123 @@ describe("processGatewayAllowlist", () => {
     },
   );
 
-  it("escalates the third session denial and resets after reviewer allowance or human resolution", async () => {
+  it("retries the exact rejected action once through human approval and preserves state on denial", async () => {
     const command = "echo review";
     await configurePlanBackedCommand({ command });
     defaultExecAutoReviewerMock.mockResolvedValue({
-      decision: "deny",
-      risk: "medium",
-      rationale: "narrow it",
+      decision: "deny", risk: "medium", rationale: "narrow it",
     });
-    const sessionKey = "agent:main:auto-denial-circuit";
+    const sessionKey = "agent:main:auto-denial-exact-retry";
     const run = (warnings: string[] = []) =>
       runGatewayAllowlist({ command, autoReview: true, sessionKey, warnings });
-    expect((await run()).deniedResult?.details).toMatchObject({
-      failureKind: "auto-review-denied",
-    });
-    expect((await run()).deniedResult?.details).toMatchObject({
-      failureKind: "auto-review-denied",
-    });
-    defaultExecAutoReviewerMock.mockResolvedValueOnce({
-      decision: "allow-once",
-      risk: "medium",
-      rationale: "safe now",
-    });
-    expect((await run()).deniedResult).toBeUndefined();
-    expect((await run()).deniedResult?.details).toMatchObject({
-      failureKind: "auto-review-denied",
-    });
-    expect((await run()).deniedResult?.details).toMatchObject({
-      failureKind: "auto-review-denied",
-    });
-    expect(createExecApprovalRequestRouteMock).not.toHaveBeenCalled();
-    // Human denial resolves the escalation and starts a new denial sequence.
+    expect((await run()).deniedResult?.details).toMatchObject({ failureKind: "auto-review-denied" });
     approvalDecisionMock.mockResolvedValueOnce("deny");
     const warnings: string[] = [];
     await run(warnings);
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(1);
     expect(createExecApprovalRequestRouteMock).toHaveBeenCalledTimes(1);
-    expect(warnings).toContain(
-      "Exec auto-review denied 3 consecutive commands for this session; escalating to human approval",
-    );
-    expect((await run()).deniedResult?.details).toMatchObject({
-      failureKind: "auto-review-denied",
-    });
-    expect((await run()).deniedResult?.details).toMatchObject({
-      failureKind: "auto-review-denied",
-    });
-    expect(createExecApprovalRequestRouteMock).toHaveBeenCalledTimes(1);
-    const otherSession = await runGatewayAllowlist({
-      command,
-      autoReview: true,
-      sessionKey: "agent:main:independent-circuit",
-    });
-    expect(otherSession.deniedResult?.details).toMatchObject({ failureKind: "auto-review-denied" });
+    expect(warnings).toContain("Exec auto-review deferred to human approval (classifier_blocked_retry)");
+    // The one-shot retry was consumed; rejection did not reset the first block.
+    expect((await run()).deniedResult?.details).toMatchObject({ failureKind: "auto-review-denied" });
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(2);
     await run();
     expect(createExecApprovalRequestRouteMock).toHaveBeenCalledTimes(2);
+    const thresholdWarnings: string[] = [];
+    await run(thresholdWarnings);
+    expect(thresholdWarnings).toContain("Exec auto-review deferred to human approval (consecutive_block)");
+    expect(createExecApprovalRequestRouteMock).toHaveBeenCalledTimes(3);
+    // A different session never inherits that reviewer signal.
+    expect((await runGatewayAllowlist({ command, autoReview: true,
+      sessionKey: "agent:main:independent-circuit" })).deniedResult?.details)
+      .toMatchObject({ failureKind: "auto-review-denied" });
+  });
+
+  it("clears denial counters after human allowance and re-engages the reviewer", async () => {
+    const command = "echo recovery";
+    await configurePlanBackedCommand({ command });
+    defaultExecAutoReviewerMock.mockResolvedValue({ decision: "deny", risk: "medium", rationale: "review" });
+    const sessionKey = "agent:main:auto-denial-human-recovery";
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey });
+    approvalDecisionMock.mockResolvedValueOnce("allow-once");
+    mockCompletedProcess();
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey });
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(1);
+    expect((await runGatewayAllowlist({ command, autoReview: true, sessionKey })).deniedResult?.details)
+      .toMatchObject({ failureKind: "auto-review-denied" });
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not consume a manual retry or register approval during headless denial", async () => {
+    const command = "echo headless-retry";
+    await configurePlanBackedCommand({ command });
+    defaultExecAutoReviewerMock.mockResolvedValue({ decision: "deny", risk: "medium", rationale: "review" });
+    const sessionKey = "agent:main:auto-denial-headless";
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await runGatewayAllowlist({ command, autoReview: true, sessionKey,
+        nonInteractiveApproval: true });
+      expect(result.deniedResult?.details).toMatchObject({ failureKind: "approval_required" });
+    }
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(1);
+    expect(createExecApprovalRequestRouteMock).not.toHaveBeenCalled();
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey });
+    expect(createExecApprovalRequestRouteMock).toHaveBeenCalledOnce();
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers after reviewer unavailability and preserves Full Access without extra approval", async () => {
+    const command = "echo unavailable";
+    await configurePlanBackedCommand({ command });
+    defaultExecAutoReviewerMock.mockResolvedValue({ decision: "ask", risk: "unknown", rationale: "offline" });
+    const sessionKey = "agent:main:auto-denial-unavailable";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await runGatewayAllowlist({ command, autoReview: true, sessionKey, nonInteractiveApproval: true });
+    }
+    // Source threshold2 selects manual fallback; a third call does not retry the unavailable reviewer.
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(2);
+    expect(createExecApprovalRequestRouteMock).not.toHaveBeenCalled();
+    approvalDecisionMock.mockResolvedValueOnce("allow-once");
+    mockCompletedProcess();
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey });
+    defaultExecAutoReviewerMock.mockResolvedValueOnce({ decision: "allow-once", risk: "low", rationale: "back" });
+    expect((await runGatewayAllowlist({ command, autoReview: true, sessionKey })).deniedResult).toBeUndefined();
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(3);
+    // Switching to Full Access clears the historic signal and uses existing direct execution.
+    mockHostPolicy({ hostSecurity: "full", hostAsk: "off", askFallback: "full" });
+    requiresExecApprovalMock.mockReturnValue(false);
+    const approvalsBefore = createExecApprovalRequestRouteMock.mock.calls.length;
+    await runGatewayAllowlist({ command, autoReview: false, sessionKey, nonInteractiveApproval: true });
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(3);
+    expect(createExecApprovalRequestRouteMock).toHaveBeenCalledTimes(approvalsBefore);
+  });
+
+  it("resets the exact-action retry when the owner changes approval mode", async () => {
+    const command = "echo mode-change";
+    await configurePlanBackedCommand({ command });
+    defaultExecAutoReviewerMock.mockResolvedValue({ decision: "deny", risk: "medium", rationale: "review" });
+    const sessionKey = "agent:main:auto-denial-mode-change";
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey });
+    mockHostPolicy({ hostSecurity: "full", hostAsk: "off", askFallback: "full" });
+    requiresExecApprovalMock.mockReturnValue(false);
+    await runGatewayAllowlist({ command, autoReview: false, sessionKey });
+    await configurePlanBackedCommand({ command });
+    expect((await runGatewayAllowlist({ command, autoReview: true, sessionKey })).deniedResult?.details)
+      .toMatchObject({ failureKind: "auto-review-denied" });
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(2);
+    expect(createExecApprovalRequestRouteMock).not.toHaveBeenCalled();
+  });
+
+  it("binds the manual retry to the exact command and requested environment", async () => {
+    const command = "echo environment";
+    await configurePlanBackedCommand({ command });
+    defaultExecAutoReviewerMock.mockResolvedValue({ decision: "deny", risk: "medium", rationale: "review" });
+    const sessionKey = "agent:main:auto-denial-env-change";
+    await runGatewayAllowlist({ command, autoReview: true, sessionKey, requestedEnv: { TASK: "first" } });
+    expect((await runGatewayAllowlist({ command, autoReview: true, sessionKey,
+      requestedEnv: { TASK: "second" } })).deniedResult?.details)
+      .toMatchObject({ failureKind: "auto-review-denied" });
+    expect(defaultExecAutoReviewerMock).toHaveBeenCalledTimes(2);
+    expect(createExecApprovalRequestRouteMock).not.toHaveBeenCalled();
   });
 
   it("returns approval-required when non-interactive auto-review asks for a human", async () => {
