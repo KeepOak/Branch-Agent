@@ -44,6 +44,7 @@ import { handleSystemAgentCommand } from "./commands-system-agent.js";
 import { handleTtsCommands } from "./commands-tts.js";
 import type { CommandHandler } from "./commands-types.js";
 import { handleUpdateCommand } from "./commands-update.js";
+import { handleWarningsCommand } from "./commands-warnings.js";
 import { handleWhoamiCommand } from "./commands-whoami.js";
 
 export function loadCommandHandlers(): CommandHandler[] {
@@ -74,6 +75,7 @@ export function loadCommandHandlers(): CommandHandler[] {
     handleLoopCommand,
     handleNameCommand,
     handleDiagnosticsCommand,
+    handleWarningsCommand,
     handleSteerCommand,
     handleAllowlistCommand,
     handleApproveCommand,

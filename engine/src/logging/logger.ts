@@ -36,10 +36,12 @@ import { defaultLoggerHostnameResolver, loggerHostnameState } from "./logger-hos
 import { setLoggerFileTargetResolver } from "./logger-settings-internal.js";
 import {
   redactSecrets,
+  redactLogRecordForTransport,
   redactSensitiveText,
   resolveFileLogRedactOptions,
   serializeRedactedFileLogRecord,
 } from "./redact.js";
+import { retainWarning, retainedWarningSeverity } from "./retained-warnings.js";
 import { APPLIED_LOGGING_CONFIG_UNOWNED, loggingState } from "./state.js";
 import { formatTimestamp } from "./timestamps.js";
 import type { LoggerSettings } from "./types.js";
@@ -417,15 +419,56 @@ function buildDiagnosticLogRecord(logObj: TsLogRecord) {
   };
 }
 
+function buildRetainedLogContent(logObj: TsLogRecord): { message?: string; stack?: string } {
+  const { messageParts } = prepareFileLogRecord(logObj);
+  const redacted = redactLogRecordForTransport(logObj, {
+    deriveMessage: (materialized) => buildFileLogMessage(materialized, messageParts),
+    decodedOptions: resolveFileLogRedactOptions(),
+  });
+  const sources = [redacted, ...getSortedNumericLogEntries(redacted).map(([, value]) => value)];
+  const stacks = sources
+    .map((value) => asOptionalRecord(value)?.stack)
+    .filter((value) => typeof value === "string" || Array.isArray(value));
+  const stackParts = stacks.map((stack, index) => ({
+    key: String(index),
+    json: typeof stack !== "string",
+  }));
+  return {
+    message: typeof redacted.message === "string" ? redacted.message : undefined,
+    stack: buildFileLogMessage(
+      Object.fromEntries(stacks.map((stack, index) => [String(index), stack])),
+      stackParts,
+    )?.text,
+  };
+}
+
 function attachDiagnosticEventTransport(logger: TsLogger<LogObj>): void {
   logger.attachTransport({
     format: () => "",
     write: (logObj: LogObj) => {
-      if (!areDiagnosticsEnabledForProcess() || !hasInternalDiagnosticEventInterest("log.record")) {
+      const emitEnabled =
+        areDiagnosticsEnabledForProcess() && hasInternalDiagnosticEventInterest("log.record");
+      const level = (logObj._meta as { logLevelName?: string } | undefined)?.logLevelName ?? "INFO";
+      if (!emitEnabled && !retainedWarningSeverity(level)) {
         return;
       }
       try {
         const record = buildDiagnosticLogRecord(redactSecrets(logObj) as TsLogRecord);
+        const subsystem = record.event.attributes?.subsystem;
+        const meta = logObj._meta as { date?: Date } | undefined;
+        const content = retainedWarningSeverity(level)
+          ? buildRetainedLogContent(logObj)
+          : undefined;
+        retainWarning({
+          ...record.event,
+          message: content?.message ?? record.event.message,
+          stack: content?.stack,
+          loggerName: typeof subsystem === "string" ? subsystem : record.event.loggerName,
+          timestamp: (logObj.date ?? meta?.date)?.getTime(),
+        });
+        if (!emitEnabled) {
+          return;
+        }
         const emit = record.trustedTraceContext
           ? emitDiagnosticEventWithTrustedTraceContext
           : emitDiagnosticEvent;
