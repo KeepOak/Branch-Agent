@@ -1,5 +1,6 @@
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
+  'src/agents/agent-create.test.ts',
   'src/agents/auth-profiles/usage-state.test.ts',
   'src/agents/auth-profiles/order.test.ts',
   'src/agents/contact-trunk.test.ts',
@@ -49,6 +50,7 @@ export const windowTests = [
 ];
 
 export const engineStrictFiles = [
+  'src/agents/agent-create.test.ts',
   'src/agents/auth-profiles/usage-state.test.ts',
   'src/agents/auth-profiles/order.test.ts',
   'src/agents/contact-trunk.test.ts',
@@ -96,7 +98,6 @@ export const windowStrictFiles = [
   'src/setup/SetupFlow.tsx',
   'src/setup/setup.test.tsx',
   'src/shell/engine-data.ts',
-  'src/shell/WindowShell.tsx',
   'src/places/trunk/api.ts',
   'src/places/trunk/trunk.test.tsx',
   'src/shell/conversation-actions.ts',

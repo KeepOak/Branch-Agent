@@ -35,6 +35,19 @@ describe("contact Trunk routing", () => {
     expect(validated.ok).toBe(true);
     if (validated.ok) expect(validated.config.agents?.defaultId).toBe("fern");
   });
+  it("preserves the bootstrap inference owner when creating and selecting a contact", () => {
+    const bootstrap: BranchConfig = {
+      agents: { entries: { bootstrap: { model: "ollama/local" } }, defaults: { model: "ollama/local" } },
+    };
+    const created = applyAgentConfig(bootstrap, { agentId: "fern", name: "Fern" });
+    const selected: BranchConfig = { ...created, agents: { ...created.agents, defaultId: "fern" } };
+    expect(selected.agents?.defaults?.systemAgent?.agentId).toBe("bootstrap");
+    expect(selected.agents?.entries?.bootstrap?.model).toBe("ollama/local");
+    expect(selected.agents?.defaults?.model).toBe("ollama/local");
+    expect(tryResolveAmbientOwnerAgentId(selected)).toBe("bootstrap");
+    expect(resolveAgentRoute({ cfg: selected, channel: "telegram" }).agentId).toBe("fern");
+    expect(AgentsSchema.safeParse({ entries: {} }).success).toBe(false);
+  });
   it("projects the chosen contact and routes direct messages from different channels to its ongoing conversation", () => {
     expect(resolveGatewayAgentSelectionState(cfg)).toMatchObject({
       defaultId: "fern",
