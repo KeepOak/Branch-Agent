@@ -34,15 +34,23 @@ describe("resolveGatewayAssistantAvatar", () => {
     "preserves a built-in character for native and browser clients (base %s)",
     async (httpBasePath) => {
       const { cfg } = createWorkspace();
+      cfg.agents!.list![0]!.identity = { avatar: "branch:ember", emoji: "🤖" };
+      const identity = await resolveAssistantIdentity({ cfg, agentId: "main" });
       expect(
         await resolveGatewayAssistantAvatar({
           cfg,
-          identity: { agentId: "main", avatar: "branch:ember" },
+          identity,
           httpBasePath,
         }),
       ).toEqual({ avatar: "branch:ember", resolution: null });
     },
   );
+
+  it("preserves a built-in character from the workspace identity file", async () => {
+    const { cfg, workspace } = createWorkspace();
+    fs.writeFileSync(path.join(workspace, "IDENTITY.md"), "- Avatar: branch:ember\n- Emoji: 🤖\n");
+    expect(await projectAvatar(cfg)).toEqual({ avatar: "branch:ember", resolution: null });
+  });
 
   it("inlines the selected local file", async () => {
     const { cfg, workspace } = createWorkspace();

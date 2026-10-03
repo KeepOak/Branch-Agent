@@ -1,5 +1,8 @@
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
+  'src/config/config.identity-avatar.test.ts',
+  'src/gateway/assistant-avatar.test.ts',
+  'src/gateway/assistant-identity.test.ts',
   'src/coding/unified-diff.test.ts',
   'src/agents/apply-patch.unified-diff.test.ts',
   'src/agents/apply-patch.test.ts',
@@ -42,6 +45,9 @@ export const windowTests = [
 ];
 
 export const engineStrictFiles = [
+  'src/config/config.identity-avatar.test.ts',
+  'src/gateway/assistant-avatar.test.ts',
+  'src/gateway/assistant-identity.test.ts',
   'extensions/browser/src/browser-tool-description.ts',
   'extensions/browser/src/browser-tool.actions.ts',
   'extensions/browser/src/browser-tool.schema.ts',
