@@ -81,7 +81,3 @@ Saved `dist/` outputs are source build artifacts. The workflow does not create i
 - `assets/`: artwork and manifests shipped with the product.
 
 Build instructions, requirements, decision records, design specifications, and source archives are maintained separately in the private [Branch Agent Instructions Build repository](https://github.com/KeepOak/Branch-Agent-Instructions-Build). Access is restricted.
-
-## Licenses
-
-The engine's MIT license and attribution are preserved in [`engine/LICENSE`](engine/LICENSE), with dependency notices in [`engine/THIRD_PARTY_NOTICES.md`](engine/THIRD_PARTY_NOTICES.md). Other source notices remain with their files. Artwork retains its original embedded metadata; this snapshot does not grant additional rights to third-party assets or change their licenses.
