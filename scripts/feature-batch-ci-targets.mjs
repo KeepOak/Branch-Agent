@@ -38,6 +38,8 @@ export const engineTests = [
 ];
 
 export const windowTests = [
+  'src/setup/FirstTrunk.test.tsx',
+  'src/setup/setup.test.tsx',
   'src/places/trunk/trunk.test.tsx',
   'src/shell/conversation-actions.test.ts',
   'src/transcript-export/replay-html.test.ts',
@@ -87,6 +89,14 @@ export const engineStrictFiles = [
 ];
 
 export const windowStrictFiles = [
+  'src/shell/WindowShell.tsx',
+  'src/stage/novnc.d.ts',
+  'src/setup/FirstTrunk.tsx',
+  'src/setup/FirstTrunk.test.tsx',
+  'src/setup/SetupFlow.tsx',
+  'src/setup/setup.test.tsx',
+  'src/shell/engine-data.ts',
+  'src/shell/WindowShell.tsx',
   'src/places/trunk/api.ts',
   'src/places/trunk/trunk.test.tsx',
   'src/shell/conversation-actions.ts',
