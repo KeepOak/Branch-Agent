@@ -31,7 +31,7 @@ export function createTraversaalWebSearchProvider(): WebSearchProviderPlugin {
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", minLength: 1, description: "Search query." },
+          query: { type: "string", description: "Search query." },
         },
         required: ["query"],
         additionalProperties: false,
