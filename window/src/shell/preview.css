@@ -46,7 +46,7 @@
 .character-panel-label small { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
 .character-panel-label i { width: 7px; height: 7px; border-radius: 50%; background: var(--line-2); }
 .character-panel-label i[data-state=think], .character-panel-label i[data-state=work], .character-panel-label i[data-state=search], .character-panel-label i[data-state=read] { background: var(--accent); }
-.character-panel-label i[data-state=wait] { background: var(--warn); }
+.character-panel-label i[data-state=wait] { background: var(--accent); }
 .character-panel-label i[data-state=yay] { background: var(--ok); }
 .character-panel-controls { display: grid; gap: 2px; align-self: flex-start; }
 .character-panel.small .character-panel-label b { display: none; }
