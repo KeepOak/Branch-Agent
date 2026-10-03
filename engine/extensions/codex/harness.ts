@@ -457,7 +457,7 @@ export function createCodexAppServerAgentHarness(
         bindingStore: options.bindingStore,
         pluginConfig: projectBoundCodexNativeAccount(
           resolveAttemptPluginConfig(options.resolveConfig?.()),
-          options.bindingStore.read(sessionBindingIdentity(params))?.nativeAccountHome,
+          options.bindingStore.read(sessionBindingIdentity(params)),
         ),
         runtime: sessionRuntime,
         runtimeModelId: readCodexRuntimeModelId(params.runtimeModel, params.model),
@@ -473,7 +473,7 @@ export function createCodexAppServerAgentHarness(
         bindingStore: options.bindingStore,
         pluginConfig: projectBoundCodexNativeAccount(
           resolveAttemptPluginConfig(params.config),
-          options.bindingStore.read(sessionBindingIdentity(params))?.nativeAccountHome,
+          options.bindingStore.read(sessionBindingIdentity(params)),
         ),
       });
     },
@@ -553,7 +553,7 @@ export function createCodexAppServerNativeCompaction(
       bindingStore: options.bindingStore,
       pluginConfig: projectBoundCodexNativeAccount(
         options.resolvePluginConfig?.() ?? options.pluginConfig,
-        options.bindingStore.read(sessionBindingIdentity(params))?.nativeAccountHome,
+        options.bindingStore.read(sessionBindingIdentity(params)),
       ),
       allowNonManualNativeRequest: true,
       nativeCompactionRequest: admittedParams.nativeCompactionRequest,
