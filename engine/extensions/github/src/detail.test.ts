@@ -73,6 +73,9 @@ function publicFetch(payload: unknown) {
     .fn<typeof fetch>()
     .mockImplementation(async (url) => {
       const href = requestUrl(url);
+      if (new URL(href).pathname.endsWith("/reviews")) {
+        return json([]);
+      }
       if (href.endsWith("/check-runs?filter=latest&per_page=100")) {
         return json({ total_count: 0, check_runs: [] });
       }
@@ -101,6 +104,9 @@ function requestUrl(input: Parameters<typeof fetch>[0]): string {
 function authenticatedFetch(payload: unknown = item()) {
   return vi.fn<typeof fetch>(async (url) => {
     const path = new URL(requestUrl(url)).pathname;
+    if (path.endsWith("/reviews")) {
+      return json([]);
+    }
     if (path.endsWith("/check-runs")) {
       return json({ total_count: 0, check_runs: [] });
     }
@@ -457,6 +463,7 @@ describe("GitHub detail public read boundary", () => {
         expect(first.metadata).toEqual([
           { label: "Files", value: "0" },
           { label: "Comments", value: "0" },
+          { label: "Mergeability", value: "Unknown" },
           { label: "Branch", value: "feature → main" },
         ]);
       }
@@ -468,7 +475,7 @@ describe("GitHub detail public read boundary", () => {
           "/" +
           (kind === "commit" ? sha : "1"),
       );
-      expect(fetchMock).toHaveBeenCalledTimes(kind === "pull" ? 4 : 2);
+      expect(fetchMock).toHaveBeenCalledTimes(kind === "pull" ? 5 : 2);
       if (kind !== "pull") {
         expect(first).not.toHaveProperty("checks");
       }
@@ -634,7 +641,7 @@ describe("GitHub detail public read boundary", () => {
         (entry) => entry.patchTruncated && (entry.patch?.length ?? 0) <= 16 * 1024,
       ),
     ).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(fetchMock).toHaveBeenCalledTimes(8);
     expect(fetchMock.mock.calls[2]?.[0]).toContain("/issues/1/comments?per_page=20");
     expect(fetchMock.mock.calls[3]?.[0]).toContain(
       "/pulls/1/comments?per_page=20&sort=created&direction=asc",
