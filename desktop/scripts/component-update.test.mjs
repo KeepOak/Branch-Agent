@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { gzipSync, gunzipSync } from "node:zlib";
-import test from "node:test";
+import test, { mock } from "node:test";
 import { makeComponentRelease } from "./make-component-release.mjs";
 import { bundleNode, validateRuntime } from "./bundle-node.mjs";
 
@@ -445,4 +445,33 @@ test("a manifest network failure stays retryable and does not reject its release
   await unchanged(cfg);
   await assert.rejects(readFile(join(cfg.dataDir, "component-update-rejected.json")), { code: "ENOENT" });
   assert.equal(await source.refreshComponentUpdate(cfg, request), true);
+}));
+
+test("legacy token and engine pointer select existing data without a desktop config", async () => fixture(async ({ root }) => {
+  const os = createRequire(import.meta.url)("node:os"); const home = mock.method(os, "homedir", () => root);
+  const previous = process.env.BRANCH_DESKTOP_DATA; delete process.env.BRANCH_DESKTOP_DATA;
+  const legacy = join(root, "BranchApp"); await mkdir(legacy);
+  await writeFile(join(legacy, "gateway-token"), "synthetic fixture token");
+  await writeFile(join(legacy, "engine-current.txt"), "fixture engine pointer");
+  try {
+    assert.equal(defaultDataDirectory(), legacy);
+    await assert.rejects(readFile(join(legacy, "desktop.json")), { code: "ENOENT" });
+    process.env.BRANCH_DESKTOP_DATA = join(root, "explicit-data");
+    assert.equal(defaultDataDirectory(), process.env.BRANCH_DESKTOP_DATA, "explicit data override remains authoritative");
+  } finally { home.mock.restore(); if (previous === undefined) delete process.env.BRANCH_DESKTOP_DATA; else process.env.BRANCH_DESKTOP_DATA = previous; }
+}));
+
+test("bare unrelated legacy folder and incomplete markers do not capture fresh data", async () => fixture(async ({ root }) => {
+  const os = createRequire(import.meta.url)("node:os"); const home = mock.method(os, "homedir", () => root);
+  const previous = process.env.BRANCH_DESKTOP_DATA; delete process.env.BRANCH_DESKTOP_DATA;
+  const legacy = join(root, "BranchApp"); await mkdir(legacy);
+  try {
+    assert.notEqual(defaultDataDirectory(), legacy);
+    await writeFile(join(legacy, "gateway-token"), "synthetic fixture token");
+    assert.notEqual(defaultDataDirectory(), legacy, "one marker is insufficient");
+    await mkdir(join(legacy, "engine-current.txt"));
+    assert.notEqual(defaultDataDirectory(), legacy, "directories masquerading as marker files are insufficient");
+    await writeFile(join(legacy, "desktop.json"), "{}");
+    assert.equal(defaultDataDirectory(), legacy, "an existing real desktop config remains authoritative");
+  } finally { home.mock.restore(); if (previous === undefined) delete process.env.BRANCH_DESKTOP_DATA; else process.env.BRANCH_DESKTOP_DATA = previous; }
 }));
