@@ -1365,6 +1365,12 @@ importers:
         specifier: workspace:*
         version: link:../..
 
+  extensions/google-search:
+    devDependencies:
+      '@branch/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+
   extensions/googlechat:
     dependencies:
       google-auth-library:
@@ -1530,6 +1536,12 @@ importers:
         version: link:../../packages/plugin-sdk
 
   extensions/lmstudio: {}
+
+  extensions/traversaal:
+    devDependencies:
+      '@branch/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
 
   extensions/trellis:
     dependencies:
