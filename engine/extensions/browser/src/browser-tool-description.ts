@@ -103,7 +103,7 @@ function describeBrowserTool(opts: {
     `navigate returns the loaded page's compact snapshot inline (efficient interactive tier; use action=snapshot for a full snapshot); do not call snapshot after navigate.${opts.capabilities.actKinds.includes("batch") ? " Batch act results that report a cross-document navigation also include fresh page state;" : ""} After a single act that triggers navigation, snapshot before using refs.`,
     "Use snapshot+act for UI automation. Avoid act:wait by default; use only in exceptional cases when no reliable UI state exists.",
     actions.has("text")
-      ? "For page prose, use action=text with optional selector and maxChars; it reads the first selector match, else article, main, or body. Use efficient snapshots for controls; they omit most prose."
+      ? "For page prose, use action=text with optional selector and maxChars; it reads the first selector match, else article, main, or body. Set format=markdown for Readability main content and pageNumber (1-based) to continue a long page; preserve maxChars between pages and inspect currentPage/totalPages/hasMorePages. Use efficient snapshots for controls; they omit most prose."
       : `For page text, use snapshot${evaluateEnabled ? " or a bounded act:evaluate" : ""}; efficient snapshots omit most prose.`,
     "Use snapshot query to keep lines matching all whitespace-separated tokens, case-insensitively; matching lines retain element refs.",
     ...(actions.has("requests")

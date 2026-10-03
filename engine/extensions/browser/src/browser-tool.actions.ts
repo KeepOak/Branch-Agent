@@ -5,6 +5,7 @@ import {
   readPositiveIntegerParam,
 } from "branch/plugin-sdk/param-readers";
 import { formatErrorMessage } from "branch/plugin-sdk/security-runtime";
+import { DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS } from "branch/plugin-sdk/text-utility-runtime";
 import { textResult } from "branch/plugin-sdk/tool-results";
 import type { BrowserProxyRequest } from "./browser-node-proxy.js";
 import {
@@ -38,6 +39,10 @@ import {
   DEFAULT_BROWSER_ACTION_TIMEOUT_MS,
   DEFAULT_AI_SNAPSHOT_MAX_CHARS,
 } from "./browser/constants.js";
+import {
+  DEFAULT_MARKDOWN_PAGE_SIZE,
+  type BrowserPageTextResult,
+} from "./browser/pw-page-markdown.js";
 
 type BrowserActRequest = Parameters<typeof browserAct>[1];
 
@@ -285,16 +290,13 @@ export async function executeTextAction(
   const { input, baseUrl, profile, proxyRequest, signal } = params;
   const targetId = normalizeOptionalString(input.targetId);
   const selector = normalizeOptionalString(input.selector);
-  const maxChars = Math.min(
-    readPositiveIntegerParam(input, "maxChars", {
-      message: "maxChars must be a positive integer.",
-    }) ?? DEFAULT_AI_SNAPSHOT_MAX_CHARS,
-    DEFAULT_AI_SNAPSHOT_MAX_CHARS,
-  );
+  const { maxChars, format, pageNumber } = readPageTextOptions(input);
   const result = await browserPageText(proxyRequest ?? baseUrl, {
     targetId,
     selector,
     maxChars,
+    format,
+    pageNumber,
     profile,
     signal,
   });
@@ -302,18 +304,80 @@ export async function executeTextAction(
     value: result.text,
     marker: "\n[truncated — retry with a narrower selector]",
     includeWarning: true,
-    maxChars,
-    prefix: result.truncated
-      ? "Page text was truncated. Retry with a narrower selector."
-      : undefined,
+    maxChars: result.format === "markdown" ? Math.max(maxChars, result.text.length) : maxChars,
+    prefix: pageTextPrefix(result, maxChars),
+    mediaDirectivesNeutralized: result.format === "markdown",
   });
   return textResult(wrapped.text, {
     ok: result.ok,
     targetId: result.targetId,
     url: result.url,
     truncated: result.truncated || wrapped.truncated,
+    ...(result.format === "markdown"
+      ? {
+          format: result.format,
+          title: result.title,
+          totalPages: result.totalPages,
+          currentPage: result.currentPage,
+          hasMorePages: result.hasMorePages,
+          pageSize: result.pageSize,
+        }
+      : {}),
     externalContent: { untrusted: true, source: "browser", kind: "text", wrapped: true },
   });
+}
+
+function pageTextPrefix(result: BrowserPageTextResult, maxChars: number): string | undefined {
+  if (result.format === "markdown") {
+    const continuation = result.hasMorePages
+      ? ` Continue with format=markdown, pageNumber=${(result.currentPage ?? 1) + 1}, maxChars=${maxChars}.`
+      : "";
+    return `Page ${result.currentPage} of ${result.totalPages}.${continuation}`;
+  }
+  return result.truncated ? "Page text was truncated. Retry with a narrower selector." : undefined;
+}
+
+function readPageTextOptions(input: Record<string, unknown>) {
+  const format = normalizeOptionalString(input.format);
+  if (format !== undefined && format !== "text" && format !== "markdown") {
+    throw new Error("format must be text or markdown.");
+  }
+  const pageNumber = readPositiveIntegerParam(input, "pageNumber", {
+    message: "pageNumber must be a positive integer.",
+  });
+  if (pageNumber !== undefined && format !== "markdown") {
+    throw new Error("pageNumber requires format=markdown.");
+  }
+  const requested = readPositiveIntegerParam(input, "maxChars", {
+    message: "maxChars must be a positive integer.",
+  });
+  const maxChars =
+    format === "markdown"
+      ? Math.min(requested ?? DEFAULT_MARKDOWN_PAGE_SIZE, markdownToolPageCapacity())
+      : Math.min(requested ?? DEFAULT_AI_SNAPSHOT_MAX_CHARS, DEFAULT_AI_SNAPSHOT_MAX_CHARS);
+  return { format, pageNumber, maxChars };
+}
+
+/** Fit whole pages through the existing tool-result envelope without losing their tail. */
+function markdownToolPageCapacity(): number {
+  const prefix = pageTextPrefix(
+    {
+      text: "",
+      truncated: false,
+      format: "markdown",
+      hasMorePages: true,
+      currentPage: Number.MAX_SAFE_INTEGER,
+      totalPages: Number.MAX_SAFE_INTEGER,
+    },
+    Number.MAX_SAFE_INTEGER,
+  );
+  const envelope = wrapBrowserExternalText({
+    value: "",
+    marker: "",
+    includeWarning: true,
+    prefix,
+  });
+  return Math.max(1, DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS - envelope.text.length);
 }
 
 /** Apply settings in order and pin later changes to the first resolved tab. */

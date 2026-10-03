@@ -3,7 +3,9 @@
  * and console messages from Playwright page state.
  */
 import { withTimeout } from "branch/plugin-sdk/text-utility-runtime";
+import type { Page } from "playwright-core";
 import { DEFAULT_AI_SNAPSHOT_MAX_CHARS, DEFAULT_BROWSER_SNAPSHOT_TIMEOUT_MS } from "./constants.js";
+import { readPageMarkdown, type BrowserPageTextResult } from "./pw-page-markdown.js";
 import type {
   BrowserConsoleMessage,
   BrowserNetworkRequest,
@@ -15,21 +17,20 @@ import {
   createAbortPromiseWithListener,
 } from "./pw-tools-core.interactions.navigation.js";
 
-/** Returns visible page text without evaluating caller-provided JavaScript. */
-export async function getPageTextViaPlaywright(opts: {
+type PageTextOptions = {
   cdpUrl: string;
   targetId?: string;
   selector?: string;
   maxChars?: number;
+  format?: "text" | "markdown";
+  pageNumber?: number;
   signal?: AbortSignal;
-}): Promise<{ text: string; truncated: boolean }> {
-  const maxChars = Math.min(
-    opts.maxChars ?? DEFAULT_AI_SNAPSHOT_MAX_CHARS,
-    DEFAULT_AI_SNAPSHOT_MAX_CHARS,
-  );
-  if (!Number.isSafeInteger(maxChars) || maxChars <= 0) {
-    throw new Error("maxChars must be a positive integer.");
-  }
+};
+
+/** Returns visible text or paginated Readability markdown from the current page. */
+export async function getPageTextViaPlaywright(
+  opts: PageTextOptions,
+): Promise<BrowserPageTextResult> {
   const timeout = DEFAULT_BROWSER_SNAPSHOT_TIMEOUT_MS;
   const deadline = Date.now() + timeout;
   const controller = new AbortController();
@@ -41,33 +42,52 @@ export async function getPageTextViaPlaywright(opts: {
     signal.throwIfAborted();
     const page = await getPageForTargetId(opts);
     signal.throwIfAborted();
-    let locator = page.locator(opts.selector ?? "body").first();
-    if (!opts.selector) {
-      for (const selector of ["article", "main"]) {
-        const candidate = page.locator(selector).first();
-        const count = await candidate.count();
-        signal.throwIfAborted();
-        if (count) {
-          locator = candidate;
-          break;
-        }
-      }
+    if (opts.format === "markdown") {
+      return await readPageMarkdown(page, opts);
     }
-    // oxlint-disable-next-line unicorn/prefer-dom-node-text-content -- This action reads rendered text, not hidden DOM text.
-    return await locator.innerText({ timeout: Math.max(1, deadline - Date.now()), signal });
+    return await readVisiblePageText(page, opts, signal, deadline);
   };
   try {
-    const text = await withTimeout(awaitActionWithAbort(read(), abortPromise), timeout, {
+    return await withTimeout(awaitActionWithAbort(read(), abortPromise), timeout, {
       createError: () => {
         const error = new Error(`Page text extraction timed out after ${timeout}ms`);
         controller.abort(error);
         return error;
       },
     });
-    return { text: text.slice(0, maxChars), truncated: text.length > maxChars };
   } finally {
     cleanup();
   }
+}
+
+async function readVisiblePageText(
+  page: Page,
+  opts: PageTextOptions,
+  signal: AbortSignal,
+  deadline: number,
+): Promise<BrowserPageTextResult> {
+  const maxChars = Math.min(
+    opts.maxChars ?? DEFAULT_AI_SNAPSHOT_MAX_CHARS,
+    DEFAULT_AI_SNAPSHOT_MAX_CHARS,
+  );
+  if (!Number.isSafeInteger(maxChars) || maxChars <= 0) {
+    throw new Error("maxChars must be a positive integer.");
+  }
+  let locator = page.locator(opts.selector ?? "body").first();
+  if (!opts.selector) {
+    for (const selector of ["article", "main"]) {
+      const candidate = page.locator(selector).first();
+      const count = await candidate.count();
+      signal.throwIfAborted();
+      if (count) {
+        locator = candidate;
+        break;
+      }
+    }
+  }
+  // oxlint-disable-next-line unicorn/prefer-dom-node-text-content -- This action reads rendered text, not hidden DOM text.
+  const text = await locator.innerText({ timeout: Math.max(1, deadline - Date.now()), signal });
+  return { text: text.slice(0, maxChars), truncated: text.length > maxChars };
 }
 
 /** Returns captured page errors, optionally clearing the per-page buffer. */
