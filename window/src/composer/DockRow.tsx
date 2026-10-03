@@ -182,17 +182,18 @@ function QueuePop(p: Props & PopBase) {
           <input
             aria-label={`Waiting message ${i + 1}`}
             defaultValue={item.text}
+            disabled={item.awaitingReceipt}
             onBlur={(e) => e.target.value !== item.text && p.onReword(item.id, e.target.value)}
           />
           {item.state === "waiting" && p.working ? (
             <button type="button" className="btn sm ghost" title={`Hand this to ${p.trunkName} now`} onClick={() => p.onSteerQueued(item.id)}>Steer now</button>
           ) : null}
           {item.state === "failed" ? (
-            <button type="button" className="btn sm ghost" onClick={() => p.onRetry(item.id)}>Retry</button>
+            <button type="button" className="btn sm ghost" onClick={() => p.onRetry(item.id)}>{item.awaitingReceipt ? "Check delivery" : "Retry"}</button>
           ) : null}
           <button type="button" className="c-x" aria-label="Move up" disabled={i === 0} onClick={() => p.onMoveUp(item.id)}><Icon name="up" size={13} /></button>
-          <button type="button" className="c-x" aria-label="Remove" onClick={() => p.onRemove(item.id)}><Icon name="x" size={13} /></button>
-          {item.state === "failed" ? <small className="c-qstate">Not sent{item.error ? `: ${item.error}` : ""}</small> : null}
+          <button type="button" className="c-x" aria-label="Remove" disabled={item.awaitingReceipt} onClick={() => p.onRemove(item.id)}><Icon name="x" size={13} /></button>
+          {item.state === "failed" ? <small className="c-qstate">{item.awaitingReceipt ? "Delivery not confirmed" : "Not sent"}{item.error ? `: ${item.error}` : ""}</small> : null}
           {item.state === "sending" ? <small className="c-qstate">Sending…</small> : null}
           {p.offline && item.state === "waiting" ? <small className="c-qstate">Offline · sends when Branch is back</small> : null}
         </div>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { UpdateLifecycle } from "./connect/update-lifecycle";
 import { startKey, type DesktopBridge } from "./connect/start-key";
 import { SaplingSession } from "./connect/session";
 import { loadRoute } from "./places-nav/routes";
@@ -64,7 +65,7 @@ function Window({ url, sharedToken, onConnect, onRetry }: WindowProps) {
   }, [s.status.phase]);
   // Once connected, the frame stays up through reconnects; the status bar says "Offline" or "Connecting" (§3.5).
   if (everConnected || s.status.phase === "connected") {
-    return <WindowShell session={session} url={url} />;
+    return <><UpdateLifecycle session={session} bridge={url === desktop?.gatewayUrl ? desktop : undefined} /><WindowShell session={session} url={url} /></>;
   }
   const status = s.status;
   if (status.phase === "pairing" || status.phase === "failed") {

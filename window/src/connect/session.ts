@@ -1,5 +1,6 @@
 // The open conversation on the engine: history, the live run, approvals and sending. It starts on the
 // default Trunk's main conversation and switches with open(key) (DESIGN-SPEC §4.1.1.1 row click).
+import { updateBlocked } from "./update-barrier";
 import type { EventFrame, HelloOk } from "@branch/gateway-client/browser";
 import { BranchGateway, type GatewayStatus } from "./gateway";
 import type { SendExtras, WindowEngine } from "./engine";
@@ -330,27 +331,29 @@ export class SaplingSession {
   }
 
   async send(text: string, extras?: SendExtras): Promise<void> {
-    const sessionKey = this.snapshot.sessionKey;
-    if (!sessionKey) {
+    const sessionKey = extras?.sessionKey ?? this.snapshot.sessionKey;
+    if (!sessionKey || updateBlocked()) {
+      if (extras?.idempotencyKey) throw new Error("Branch is updating. Your message is kept here.");
       return;
     }
-    this.set({ pendingUser: text, doneAt: null, error: null });
+    if (this.snapshot.sessionKey === sessionKey) this.set({ pendingUser: text, doneAt: null, error: null });
     try {
       const result = rec(
         await this.gateway.request("chat.send", {
           ...extras,
           sessionKey,
           message: text,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: extras?.idempotencyKey ?? crypto.randomUUID(),
         }),
       );
       const runId = str(result.runId);
-      if (runId && !this.finished.has(runId)) {
+      if (runId && !this.finished.has(runId) && this.snapshot.sessionKey === sessionKey) {
         this.set({ liveRunId: runId });
         this.refreshLive();
       }
     } catch (error) {
-      this.set({ pendingUser: null, error: error instanceof Error ? error.message : String(error) });
+      if (this.snapshot.sessionKey === sessionKey) this.set({ pendingUser: null, error: error instanceof Error ? error.message : String(error) });
+      if (extras?.idempotencyKey) throw error;
     }
   }
 

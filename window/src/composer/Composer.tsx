@@ -27,6 +27,7 @@ import { useDrawer, type Pick } from "./useDrawer";
 import { useHistoryKeys } from "./useHistoryKeys";
 import { HistorySearch } from "./HistorySearch";
 import { diffContext, folderContext } from "./context";
+import { registerInputCheckpoint, updateBlocked, useUpdateBarrier } from "../connect/update-barrier";
 import { useWaitingLine } from "./useWaitingLine";
 import { DictationStrip, TALK_EVENT, useDictation, useVoiceCatalog, useVoiceNote, VoiceNoteStrip, VoiceScreen } from "./VoiceParts";
 import "./composer.css";
@@ -35,7 +36,7 @@ type Props = {
   name: string;
   working: boolean;
   disabled: boolean;
-  onSend: (text: string, extras?: SendExtras) => void;
+  onSend: (text: string, extras?: SendExtras) => Promise<void>;
   onStop: () => void;
   engine?: WindowEngine;
   sessionKey?: string | null;
@@ -84,7 +85,11 @@ function useComposeEvent(open: string | null, setText: (t: string) => void, box:
 
 /** The composer (DESIGN-SPEC §4.3.1): the message box and Send, which becomes Stop while the Trunk works. */
 export function Composer(props: Props) {
-  const { name, working, disabled, onSend, onStop, engine, onToast, onOpen } = props;
+  const { name, working, onSend, onStop, engine, onToast, onOpen } = props;
+  const updating = useUpdateBarrier();
+  const disabled = props.disabled || updating;
+  const submitting = useRef<Promise<void> | null>(null);
+  useEffect(() => registerInputCheckpoint(async () => { await submitting.current; }), []);
   const conv = useConversation(engine);
   const draft = useDraft(engine?.sessionKey ?? null, engine?.attachmentPolicy);
   const [menu, setMenu] = useState<Menu>(null);
@@ -129,14 +134,13 @@ export function Composer(props: Props) {
   const trunkName = conv.trunk?.name || name;
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
 
-  const deliver = useCallback(
-    (text: string, files = draft.files, people = draft.people, queue?: string) => onSend(text, buildExtras(text, files, people, queue, props.replyTo)),
-    [onSend, draft.files, draft.people, props.replyTo],
-  );
-  const line = useWaitingLine(engine?.sessionKey ?? null, working, Boolean(props.offline), (item, steer) => {
-    onSend(item.text, buildExtras(item.text, item.files, [], steer ? "steer" : undefined));
-    if (steer) toast(`Steered ${trunkName}. It picks this up at its next step.`);
-  });
+  const line = useWaitingLine(engine?.sessionKey ?? null, working, Boolean(props.offline) || !conv.loaded, (item, steer) => {
+    return onSend(item.text, { ...buildExtras(item.text, item.files, item.people ?? [], steer ? "steer" : undefined, item.reply), idempotencyKey: item.id, sessionId: item.sessionId, sessionKey: engine?.sessionKey ?? undefined }).then(() => {
+      if (steer) toast(`Steered ${trunkName}. It picks this up at its next step.`);
+    });
+  }, { sessionId: str(row.sessionId), read: (inputRunIds) => engine!.request("chat.history", { sessionKey: engine!.sessionKey, inputRunIds, limit: 1 }) });
+  const reconcileQueued = line.reconcile;
+  useEffect(() => engine?.onEvent(({ event }) => { if (event === "chat" || event === "session.message" || event === "sessions.changed") void reconcileQueued(); }), [engine, reconcileQueued]);
   const bg = useBackground(engine, conv.trunkId);
   const levels = current?.levels ?? [];
   const drawer = useDrawer(engine, conv.trunks, levels, useMemo(() => ({ think: thinking }), [thinking]));
@@ -166,6 +170,8 @@ export function Composer(props: Props) {
   };
 
   const submit = (alt: boolean) => {
+    if (updateBlocked() || submitting.current || draft.preparing) return;
+    const sent = draft.snapshot();
     const plan = planSend(draft.text, draft.files.length > 0, working, queueMode, alt);
     if (plan.kind === "nothing") return;
     if (plan.kind === "stop") {
@@ -179,14 +185,19 @@ export function Composer(props: Props) {
     }
     if (noModel && plan.kind !== "command") return;
     if (plan.kind === "wait") {
-      line.add(draft.text.trim(), draft.files);
+      if (!line.add(draft.text.trim(), draft.files, { people: draft.people, reply: props.replyTo })) return;
+      history.record(draft.text.trim());
+      draft.clear();
+      props.onClearReply?.();
     } else {
-      deliver(draft.text.trim(), draft.files, draft.people, plan.kind === "send" ? plan.queueMode : undefined);
-      if (plan.kind === "send" && plan.queueMode === "steer") toast(`Steered ${trunkName}. It picks this up at its next step.`);
+      const job = Promise.resolve().then(() => onSend(draft.text.trim(), { ...buildExtras(draft.text.trim(), draft.files, draft.people, plan.kind === "send" ? plan.queueMode : undefined, props.replyTo), idempotencyKey: crypto.randomUUID(), sessionKey: engine?.sessionKey ?? undefined })).then(() => {
+        history.record(sent.text.trim());
+        draft.clearSent(sent);
+        props.onClearReply?.();
+        if (plan.kind === "send" && plan.queueMode === "steer") toast(`Steered ${trunkName}. It picks this up at its next step.`);
+      }).catch((error: unknown) => { setProblem(error instanceof Error ? error.message : "Delivery not confirmed. Your draft is kept here."); }).finally(() => { submitting.current = null; });
+      submitting.current = job;
     }
-    history.record(draft.text.trim());
-    draft.clear();
-    props.onClearReply?.();
   };
 
   /** "@" Add as context: @file and @folder pick from this computer, @diff and @git read sessions.diff, and @url,

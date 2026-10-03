@@ -1,7 +1,8 @@
+import type { UpdateBridge } from "./update-lifecycle";
 import { hasStoredDeviceToken } from "./device-token-store";
 
 /** Set by the desktop app's preload, only when the window runs inside the desktop app. */
-export type DesktopBridge = { gatewayUrl?: string; gatewayToken?: string };
+export type DesktopBridge = UpdateBridge & { gatewayUrl?: string; gatewayToken?: string };
 
 /** The key this window starts with for `url`: the desktop app's for its own gateway, none once paired elsewhere,
  *  null when it must ask. The desktop app always sends its key, so a pairing made with fewer scopes (an older

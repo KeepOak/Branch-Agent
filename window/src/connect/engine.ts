@@ -11,6 +11,11 @@ export type WindowEngine = {
 
 /** The extras a composer can send with a message; they are spread into chat.send's params. */
 export type SendExtras = {
+  /** Stable admission key for a persisted waiting message. */
+  idempotencyKey?: string;
+  /** Conversation captured at submit time, even if the user opens another one before ACK. */
+  sessionKey?: string;
+  sessionId?: string;
   attachments?: unknown[];
   queueMode?: string;
   mentions?: unknown[];

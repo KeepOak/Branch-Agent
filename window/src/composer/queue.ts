@@ -1,5 +1,7 @@
 // The waiting line (DESIGN-SPEC §4.3.7): messages sent while the Trunk works, held on this computer and sent
 // one at a time once the run ends, the way OpenClaw's browser UI keeps its outbox (ui/src/pages/chat/chat-queue.ts).
+import type { Person } from "./DockRow";
+import type { Reply } from "./sending";
 import type { DraftFile } from "./attachments";
 
 export type QueueState = "waiting" | "sending" | "failed";
@@ -8,6 +10,11 @@ export type QueueItem = {
   id: string;
   text: string;
   files: DraftFile[];
+  sessionId?: string;
+  awaitingReceipt?: boolean;
+  cancelled?: boolean;
+  people?: Person[];
+  reply?: Reply | null;
   state: QueueState;
   error?: string;
 };
@@ -64,16 +71,32 @@ export function loadLine(storage: Storage | undefined, sessionKey: string): Queu
     return [];
   }
   // A message that was going out when Branch closed waits again; nothing is sent twice by itself.
-  return (parsed as QueueItem[]).map((item) => (item.state === "sending" ? { ...item, state: "failed", error: "Delivery not confirmed" } : item));
+  return (parsed as QueueItem[]).map((item) => (item.state === "sending" ? { ...item, state: "failed", awaitingReceipt: true, error: "Delivery not confirmed" } : item));
 }
 
 export function saveLine(storage: Storage | undefined, sessionKey: string, line: readonly QueueItem[]): void {
-  if (!storage) {
-    return;
-  }
+  if (!storage) throw new Error("This computer cannot save waiting messages yet.");
   if (line.length === 0) {
     storage.removeItem(KEY + sessionKey);
     return;
   }
   storage.setItem(KEY + sessionKey, JSON.stringify(line));
+}
+
+/** Receipts are scoped to the exact physical conversation that admitted this UUID. */
+export function reconcileLine(line: readonly QueueItem[], history: unknown): QueueItem[] {
+  const h = history && typeof history === "object" ? history as Record<string, unknown> : {};
+  const info = h.sessionInfo && typeof h.sessionInfo === "object" ? h.sessionInfo as Record<string, unknown> : {};
+  const sessionId = h.sessionId ?? info.sessionId;
+  const receipts = Array.isArray(h.inputReceipts) ? h.inputReceipts as Array<Record<string, unknown>> : [];
+  const consumed = Array.isArray(h.inputConsumptions) ? h.inputConsumptions as Array<Record<string, unknown>> : [];
+  return line.flatMap((item) => {
+    if (!item.awaitingReceipt) return [item];
+    if (!item.sessionId || sessionId !== item.sessionId) return [{ ...item, state: "failed", error: "This conversation changed. Your waiting message is kept here." }];
+    const receipt = receipts.find((r) => r.runId === item.id);
+    if (receipt?.state === "consumed" || consumed.some((r) => r.runId === item.id)) return [];
+    if (receipt?.cancelled === true) return [{ ...item, state: "failed", awaitingReceipt: false, cancelled: true, error: "Delivery was cancelled. Your message is kept here." }];
+    if (receipt?.state === "pending") return [{ ...item, state: "sending", error: "Waiting for the conversation to finish receiving this message." }];
+    return [{ ...item, state: "failed", error: "Delivery not confirmed. Your message is kept here while Branch checks the conversation." }];
+  });
 }

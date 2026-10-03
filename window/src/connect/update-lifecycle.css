@@ -1,0 +1,16 @@
+.branch-update-status {
+  position: fixed;
+  z-index: 60;
+  left: 50%;
+  bottom: 38px;
+  transform: translateX(-50%);
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--raise);
+  color: var(--ink);
+  font-size: 13px;
+  box-shadow: var(--pop);
+  pointer-events: none;
+}

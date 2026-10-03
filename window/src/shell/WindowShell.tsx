@@ -822,7 +822,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
                 projectName={projects.projects.find((x) => x.id === openRow?.projectId)?.name ?? null} onOpenConversation={openConversation} />
             ) : null
           }
-          onSend={(text: string, extras?: SendExtras) => void session.send(text, extras)}
+          onSend={(text: string, extras?: SendExtras) => session.send(text, extras)}
           onStop={() => void session.stopRun()}
         />
         </div>
