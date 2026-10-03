@@ -58,6 +58,34 @@ it("does not mistake system workers for user contact Trunks", () => {
   expect(readTrunks({ defaultId: "branch", agents: [{ id: "branch", kind: "agent" }, { id: "helper", kind: "system" }, { id: "legacy" }, {}] }).list.map(a => a.id)).toEqual(["branch", "legacy"]);
 });
 
+it("supports form submission and ignores repeated submissions while creation is pending", async () => {
+  let release!: (value: unknown) => void;
+  const request = vi.fn(async (method: string) => {
+    if (method === "agents.create") return new Promise(resolve => { release = resolve; });
+    if (method === "agents.list") return { agents: [{ id: "fern" }] };
+    if (method === "config.get") return { hash: "h1", config: { agents: { entries: { fern: {} } } } };
+    return { ok: true };
+  });
+  const onCreated = vi.fn();
+  const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+  await act(async () => root!.render(<FirstTrunk engine={{ request } as unknown as WindowEngine} onCreated={onCreated} />));
+  const input = host.querySelector("input")!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Fern");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const form = host.querySelector("form")!;
+  await act(async () => {
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+  expect(request.mock.calls.filter(([method]) => method === "agents.create")).toHaveLength(1);
+  expect(form.getAttribute("aria-busy")).toBe("true");
+  expect(onCreated).not.toHaveBeenCalled();
+  await act(async () => release({ ok: true, agentId: "fern" }));
+  expect(onCreated).toHaveBeenCalledExactlyOnceWith("fern", "Fern");
+});
+
 it("requires contact creation for fresh bootstrap state but preserves existing users and confirmed contacts", () => {
   expect(needsFirstContact({ config: { agents: { entries: { bootstrap: {} } } } })).toBe(true);
   expect(needsFirstContact({ config: { wizard: { lastRunAt: "2026-10-03" }, agents: { entries: { dev: {} } } } })).toBe(false);
