@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { CHARACTERS, EXTRA, trunkAppearance } from "./appearance";
 import { FaceCap } from "./cap";
-describe("preview character identity", () => {
+describe("configured character identity", () => {
   it("keeps Sapling and unknown Trunks classic", () => { expect(trunkAppearance(undefined,"Sapling")).toBeUndefined(); expect(trunkAppearance(undefined,"Oak")).toBeUndefined(); });
+  it("keeps unconfigured Trunks classic even when named like preview examples", () => {
+    for (const name of ["Scout", "Ledger", "Ada", "Fieldnotes", "Quill", "SCOUT"]) {
+      expect(trunkAppearance(undefined, name), name).toBeUndefined();
+      expect(trunkAppearance("", name), name).toBeUndefined();
+    }
+  });
   it("uses the configured look rather than another Trunk's default", () => { expect(trunkAppearance("tide","Scout")?.still).toBe("/assets/agents/tide/still.webp"); expect(trunkAppearance("classic","Scout")).toBeUndefined(); });
   it("loads supplied extra characters and preserves outside avatars", () => { expect(trunkAppearance("branch:sorrel","Oak")?.states?.work).toBe("/assets/art17/agents/sorrel/work.webm"); expect(trunkAppearance("https://example.com/avatar.webp","Oak")?.still).toBe("https://example.com/avatar.webp"); });
   it("lists only characters whose art ships, including wisp and not willow", () => {

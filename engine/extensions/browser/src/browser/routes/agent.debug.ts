@@ -106,7 +106,16 @@ export function registerBrowserAgentDebugRoutes(
     (input) => {
       const selector = normalizeOptionalString(input.selector);
       const maxChars = readRoutePositiveInteger(input.maxChars, "maxChars");
-      return (pw, target) => pw.getPageTextViaPlaywright({ ...target, selector, maxChars });
+      const format = normalizeOptionalString(input.format);
+      if (format !== undefined && format !== "text" && format !== "markdown") {
+        throw new Error("format must be text or markdown.");
+      }
+      const pageNumber = readRoutePositiveInteger(input.pageNumber, "pageNumber");
+      if (pageNumber !== undefined && format !== "markdown") {
+        throw new Error("pageNumber requires format=markdown.");
+      }
+      return (pw, target) =>
+        pw.getPageTextViaPlaywright({ ...target, selector, maxChars, format, pageNumber });
     },
     EXISTING_SESSION_LIMITS.text,
   );

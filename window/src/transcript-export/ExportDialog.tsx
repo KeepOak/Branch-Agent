@@ -4,11 +4,12 @@ import type { WindowEngine } from "../connect/engine";
 import { Dialog } from "../shell/Dialog";
 import { loadCompleteTranscript } from "./load";
 import { eventsToHtml, eventsToMarkdown, type TranscriptExportFormat } from "./render";
+import { eventsToReplayHtml } from "./replay-html";
 import "./export.css";
 
 export function exportFilename(title: string, format: TranscriptExportFormat): string {
   const stem = title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").replace(/[. ]+$/g, "").trim() || "Conversation";
-  return `${/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(stem) ? "_" : ""}${stem}.${format === "markdown" ? "md" : "html"}`;
+  return `${/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(stem) ? "_" : ""}${stem}${format === "replay" ? ".replay" : ""}.${format === "markdown" ? "md" : "html"}`;
 }
 
 export function downloadTranscript(content: string, title: string, format: TranscriptExportFormat): void {
@@ -38,8 +39,9 @@ export function ExportDialog({ engine, sessionKey, title, onClose, initialFormat
     try {
       const blocks = await loadCompleteTranscript(engine, sessionKey, request.signal);
       request.signal.throwIfAborted();
-      const options = { title, includeToolDetails, includeTimestamps };
-      downloadTranscript(format === "markdown" ? eventsToMarkdown(blocks, options) : eventsToHtml(blocks, options), title, format);
+      const options = { title, sessionKey, includeToolDetails, includeTimestamps };
+      const render = format === "markdown" ? eventsToMarkdown : format === "replay" ? eventsToReplayHtml : eventsToHtml;
+      downloadTranscript(render(blocks, options), title, format);
       close();
     } catch (reason) {
       if (!request.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason));
@@ -50,7 +52,7 @@ export function ExportDialog({ engine, sessionKey, title, onClose, initialFormat
   };
   return <Dialog title="Export conversation" onClose={close} testid="export-conversation" footer={<><button className="btn" onClick={close}>Not now</button><button className="btn primary" disabled={busy} onClick={() => void save()}>{busy ? "Reading conversation…" : "Save file"}</button></>}>
     <p>Save this conversation as a file on this computer.</p>
-    <div className="export-fields"><label>Format <select aria-label="Export format" value={format} disabled={busy} onChange={e => setFormat(e.target.value as TranscriptExportFormat)}><option value="markdown">Markdown</option><option value="html">HTML</option></select></label>
+    <div className="export-fields"><label>Format <select aria-label="Export format" value={format} disabled={busy} onChange={e => setFormat(e.target.value as TranscriptExportFormat)}><option value="markdown">Markdown</option><option value="html">HTML</option><option value="replay">HTML replay</option></select></label>
     <label><input type="checkbox" checked={includeToolDetails} disabled={busy} onChange={e => setTools(e.target.checked)} /> Include tool details</label>
     <label><input type="checkbox" checked={includeTimestamps} disabled={busy} onChange={e => setTimestamps(e.target.checked)} /> Include timestamps</label></div>
     {error && <p role="alert">{error}</p>}

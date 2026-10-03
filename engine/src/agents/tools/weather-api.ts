@@ -105,7 +105,7 @@ export async function geocodeCity(
 
   if (!res.ok) throw new Error(`Geocoding request failed: ${res.status}`);
 
-  const data: GeocodingResult = await res.json();
+  const data = (await res.json()) as GeocodingResult;
 
   const result = data.results?.[0];
   if (!result) throw new Error(`City not found: "${city}"`);
@@ -133,7 +133,7 @@ export async function fetchWeather(city: string, signal?: AbortSignal): Promise<
 
   if (!res.ok) throw new Error(`Weather request failed: ${res.status}`);
 
-  const data: OpenMeteoWeather = await res.json();
+  const data = (await res.json()) as OpenMeteoWeather;
   const current = data.current;
   const isNight = current.is_day === 0;
   const { conditionCode, condition } = mapWmoCode(current.weather_code, isNight);

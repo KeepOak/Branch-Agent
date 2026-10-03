@@ -40,7 +40,11 @@ export function executeSkillWorkshopOperation<Key extends keyof SkillWorkshopExe
     }
     return scope.execute({
       type,
-      input: { value: captured, agentId: store.agentId, leaseIdentities },
+      input: {
+        value: captured,
+        agentId: store.agentId,
+        leaseIdentities,
+      } as SkillWorkshopExecutionOperations[Key]["input"],
     });
   };
   if (leases.length > 0) {

@@ -6,6 +6,11 @@
 import path from "node:path";
 import { PATH_ALIAS_POLICIES, type PathAliasPolicy } from "@openclaw/fs-safe/advanced";
 import { Type } from "typebox";
+import {
+  applyUnifiedDiffText,
+  isUnifiedDiffFormat,
+  parseUnifiedDiffFiles,
+} from "../coding/unified-diff.js";
 import { createAbortError } from "../infra/abort-signal.js";
 import {
   type ApplyPatchContainmentSource,
@@ -54,6 +59,7 @@ type AddFileHunk = {
 type DeleteFileHunk = {
   kind: "delete";
   path: string;
+  unifiedDiff?: string;
 };
 
 type UpdateFileHunk = {
@@ -61,6 +67,7 @@ type UpdateFileHunk = {
   path: string;
   movePath?: string;
   chunks: UpdateFileChunk[];
+  unifiedDiff?: string;
 };
 
 type Hunk = AddFileHunk | DeleteFileHunk | UpdateFileHunk;
@@ -91,12 +98,16 @@ function normalizeUpdateComparison(content: string): string {
 
 type ApplyPatchOptions = ApplyPatchFileOptions & {
   patchInputPaths?: ReadonlyMap<string, string>;
+  unifiedPath?: string;
 };
 
 const applyPatchSchema = Type.Object({
   input: Type.String({
-    description: "Patch content using the *** Begin Patch/End Patch format.",
+    description: "Patch content using *** Begin Patch/End Patch or unified diff format.",
   }),
+  path: Type.Optional(
+    Type.String({ description: "Target file for a unified diff without file headers." }),
+  ),
 });
 
 const ApplyPatchToolOutputSchema = Type.Object(
@@ -133,14 +144,15 @@ export function createApplyPatchTool(
   return {
     name: "apply_patch",
     label: "apply_patch",
-    description: "Patch one/many files. Input requires *** Begin Patch and *** End Patch.",
+    description:
+      "Patch one/many files using *** Begin Patch/End Patch or unified diffs. Headerless unified diffs require path.",
     parameters: applyPatchSchema,
     outputSchema: ApplyPatchToolOutputSchema,
     execute: async (_toolCallId, args, signal) => {
       const executionSignal = options.abortSignal
         ? AbortSignal.any(signal ? [signal, options.abortSignal] : [options.abortSignal])
         : signal;
-      const params = args as { input?: string };
+      const params = args as { input?: string; path?: string };
       const input = typeof params.input === "string" ? params.input : "";
       if (!input.trim()) {
         throw new Error("Provide a patch input.");
@@ -158,6 +170,7 @@ export function createApplyPatchTool(
           workspaceOnly,
           memoryWriteProvenance: options.memoryWriteProvenance,
           signal: executionSignal,
+          unifiedPath: params.path,
         });
       } catch (error) {
         throw withApplyPatchContainmentHint(
@@ -178,7 +191,7 @@ export function createApplyPatchTool(
 
 /** Parse and apply a patch envelope to the configured filesystem target. */
 async function applyPatch(input: string, options: ApplyPatchOptions): Promise<ApplyPatchResult> {
-  const parsed = parsePatchText(input);
+  const parsed = parseAnyPatchText(input, options.unifiedPath);
   if (parsed.hunks.length === 0) {
     throw new Error("No files were modified.");
   }
@@ -236,6 +249,12 @@ async function applyPatch(input: string, options: ApplyPatchOptions): Promise<Ap
         async () => {
           const target = await targetResolution;
           const fileOps = await getFileOps();
+          if (
+            hunk.unifiedDiff &&
+            applyUnifiedDiffText(await fileOps.readFile(target.resolved), hunk.unifiedDiff) !== ""
+          ) {
+            throw new Error("Unified deletion must remove the complete file contents.");
+          }
           await fileOps.remove(target.resolved);
         },
       );
@@ -259,7 +278,9 @@ async function applyPatch(input: string, options: ApplyPatchOptions): Promise<Ap
         const target = await targetResolution;
         const moveTarget = moveTargetResolution ? await moveTargetResolution : undefined;
         const fileOps = await getFileOps();
-        const applied = await applyUpdateHunk(target.resolved, hunk.chunks, fileOps);
+        const applied = hunk.unifiedDiff
+          ? applyUnifiedDiffText(await fileOps.readFile(target.resolved), hunk.unifiedDiff)
+          : await applyUpdateHunk(target.resolved, hunk.chunks, fileOps);
 
         if (hunk.movePath && moveTarget) {
           await ensureDir(moveTarget.resolved, fileOps);
@@ -278,7 +299,11 @@ async function applyPatch(input: string, options: ApplyPatchOptions): Promise<Ap
           return;
         }
         const existing = await fileOps.readFile(target.resolved);
-        if (normalizeUpdateComparison(existing) === normalizeUpdateComparison(applied)) {
+        if (
+          hunk.unifiedDiff
+            ? existing === applied
+            : normalizeUpdateComparison(existing) === normalizeUpdateComparison(applied)
+        ) {
           noOpPaths.add(target.display);
         } else {
           noOpPaths.delete(target.display);
@@ -421,6 +446,40 @@ async function resolvePatchPath(
     queueKey: await resolveFileMutationQueueKey(resolved),
     display: toDisplayPath(resolved, options.cwd),
   };
+}
+
+function parseAnyPatchText(input: string, unifiedPath?: string): { hunks: Hunk[] } {
+  return isUnifiedDiffFormat(input) && !input.trimStart().startsWith(BEGIN_PATCH_MARKER)
+    ? { hunks: parseUnifiedPatchHunks(input, unifiedPath) }
+    : parsePatchText(input);
+}
+
+/** Inspect admitted-tool input for context loading without granting filesystem access. */
+export function extractApplyPatchPaths(input: string, unifiedPath?: string): string[] {
+  const paths = new Set<string>();
+  for (const hunk of parseAnyPatchText(input, unifiedPath).hunks) {
+    paths.add(hunk.path);
+    if (hunk.kind === "update" && hunk.movePath) paths.add(hunk.movePath);
+  }
+  return [...paths];
+}
+
+function parseUnifiedPatchHunks(input: string, filePath?: string): Hunk[] {
+  return parseUnifiedDiffFiles(input, filePath).map((file): Hunk => {
+    if (file.oldPath === "/dev/null") {
+      return { kind: "add", path: file.newPath, contents: applyUnifiedDiffText("", file.diff) };
+    }
+    if (file.newPath === "/dev/null") {
+      return { kind: "delete", path: file.oldPath, unifiedDiff: file.diff };
+    }
+    return {
+      kind: "update",
+      path: file.oldPath,
+      chunks: [],
+      unifiedDiff: file.diff,
+      ...(file.newPath !== file.oldPath ? { movePath: file.newPath } : {}),
+    };
+  });
 }
 
 function parsePatchText(input: string): { hunks: Hunk[] } {

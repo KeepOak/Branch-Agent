@@ -65,6 +65,7 @@ export function wrapBrowserExternalText(params: {
   includeWarning: boolean;
   maxChars?: number;
   prefix?: string;
+  mediaDirectivesNeutralized?: boolean;
 }) {
   const wrap = (value: string) =>
     wrapExternalContent(value, {
@@ -77,7 +78,9 @@ export function wrapBrowserExternalText(params: {
     0,
     Math.min(params.maxChars ?? Infinity, DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS - wrapperOverhead),
   );
-  const value = neutralizeMediaDirectives(params.value);
+  const value = params.mediaDirectivesNeutralized
+    ? params.value
+    : neutralizeMediaDirectives(params.value);
   let bounded = truncateBrowserToolText(value, params.marker, maxInnerChars);
   let wrappedText = prefix + wrap(bounded.text);
   if (wrappedText.length > DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS) {

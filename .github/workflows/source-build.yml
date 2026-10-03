@@ -22,7 +22,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     name: Build ${{ matrix.component }}
     runs-on: ${{ matrix.component == 'desktop' && 'windows-latest' || 'ubuntu-latest' }}
-    timeout-minutes: 45
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       max-parallel: 8
@@ -40,7 +40,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '26'
+          node-version: '24.19.0'
           package-manager-cache: false
       - name: Install pinned pnpm
         if: matrix.component != 'desktop'

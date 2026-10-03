@@ -27,6 +27,7 @@ import {
   DEFAULT_BROWSER_SCREENSHOT_TIMEOUT_MS,
 } from "./constants.js";
 import type { BrowserDownloadResult } from "./download-types.js";
+import type { BrowserPageTextResult } from "./pw-page-markdown.js";
 import type {
   BrowserConsoleMessage,
   BrowserNetworkRequest,
@@ -279,16 +280,23 @@ export async function browserErrors(
   );
 }
 
-/** Read bounded visible text without executing page-supplied code. */
+/** Read visible text or paginated Readability markdown from the live page. */
 export async function browserPageText(
   baseUrl: BrowserClientTarget,
   opts: BrowserActionOptions & {
     selector?: string;
     maxChars: number;
+    format?: "text" | "markdown";
+    pageNumber?: number;
   },
-): Promise<{ ok: true; targetId: string; url?: string; text: string; truncated: boolean }> {
+): Promise<{ ok: true; targetId: string; url?: string } & BrowserPageTextResult> {
   return await readBrowserPageJson(baseUrl, "/text", opts, {
-    ...buildQuery({ targetId: opts.targetId, selector: opts.selector }),
+    ...buildQuery({
+      targetId: opts.targetId,
+      selector: opts.selector,
+      format: opts.format,
+      pageNumber: opts.pageNumber === undefined ? undefined : String(opts.pageNumber),
+    }),
     maxChars: opts.maxChars,
   });
 }

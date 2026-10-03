@@ -23,6 +23,14 @@ async function mount(request: ReturnType<typeof vi.fn>, onClose = vi.fn()) {
   return onClose;
 }
 async function press(text: string) { await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === text)!.click()); }
+async function blobText(blob: Blob): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(blob);
+  });
+}
 
 describe("conversation export dialog", () => {
   it("uses upstream defaults and downloads bytes for the chosen conversation", async () => {
@@ -48,6 +56,26 @@ describe("conversation export dialog", () => {
     await act(async () => resolve({ messages: [], hasMore: false }));
     expect(close).toHaveBeenCalledTimes(1);
     expect(click).not.toHaveBeenCalled();
+  });
+  it("downloads a self-contained replay from every persisted history page", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ messages: [{ role: "assistant", content: "last page" }], hasMore: true, nextOffset: 1 })
+      .mockResolvedValueOnce({ messages: [{ role: "user", content: "first page" }], hasMore: false });
+    const close = await mount(request);
+    const select = host.querySelector<HTMLSelectElement>("select")!;
+    await act(async () => { select.value = "replay"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    await press("Save file");
+    expect(request).toHaveBeenCalledTimes(2);
+    const html = await blobText(createUrl.mock.calls[0][0]);
+    expect(html).toContain('id="branch-replay-data"');
+    expect(html).toContain('id="branch-replay-play"');
+    expect(html).toContain("first page"); expect(html).toContain("last page");
+    const document = new DOMParser().parseFromString(html, "text/html");
+    const recording = JSON.parse(document.getElementById("branch-replay-data")!.textContent!);
+    expect(recording.session.id).toBe("chosen");
+    expect(recording.events.map((event: { content: string }) => event.content)).toEqual(["first page", "last page"]);
+    expect(exportFilename("Fixture", "replay")).toBe("Fixture.replay.html");
+    expect(click).toHaveBeenCalledTimes(1); expect(close).toHaveBeenCalledTimes(1);
   });
   it("keeps the dialog open on failure and permits a real retry", async () => {
     const request = vi.fn().mockRejectedValueOnce(new Error("Engine offline")).mockResolvedValueOnce({ messages: [], hasMore: false });

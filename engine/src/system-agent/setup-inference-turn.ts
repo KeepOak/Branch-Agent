@@ -14,6 +14,7 @@ import type { AgentExecutionAuthBinding } from "../agents/execution-auth-binding
 import type { AgentHarnessPluginSelection } from "../agents/harness/runtime-plugin-load-plan.js";
 import { loadAgentRuntimePluginRegistryHandle } from "../agents/runtime-plugins.js";
 import { SessionManager } from "../agents/sessions/index.js";
+import { resolveAgentTimeoutMs } from "../agents/timeout.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import type { PluginInstallRecord } from "../config/types.plugins.js";
 import { clearAgentRunContext } from "../infra/agent-run-registry.js";
@@ -44,7 +45,6 @@ import {
   resolveSetupInferenceWinnerError,
   resolveToolFreeCliSetupError,
   SETUP_INFERENCE_TEST_PROMPT,
-  SETUP_INFERENCE_TEST_TIMEOUT_MS,
   SetupInferenceCancelledError,
   type SetupInferenceFailureStatus,
   SetupInferenceOwnerDriftError,
@@ -86,7 +86,8 @@ export async function runSetupInferenceTurn(params: {
   // Probe ids stay under OpenAI's 64-char session cap and match the command-lane log filters.
   const runId = `probe-setup-inference-${randomUUID()}`;
   const sessionKey = `agent:${route.agentId}:setup-inference:incognito-${runId}`;
-  const timeoutMs = deps.timeoutMs ?? SETUP_INFERENCE_TEST_TIMEOUT_MS;
+  // Setup uses the same configured deadline as the agent route it verifies.
+  const timeoutMs = resolveAgentTimeoutMs({ cfg: route.runConfig, overrideMs: deps.timeoutMs });
   const started = Date.now();
   // A scratch workspace keeps the probe from reading the real workspace's bootstrap files.
   const workspaceDir = await (
@@ -332,9 +333,7 @@ async function revalidateSetupInferenceOwner(params: {
     });
   if (
     params.ownerPluginIds?.length ||
-    (params.route.runner === "embedded" &&
-      successfulHarnessId &&
-      successfulHarnessId !== "branch")
+    (params.route.runner === "embedded" && successfulHarnessId && successfulHarnessId !== "branch")
   ) {
     const workspaceDir = resolveAgentWorkspaceDir(
       params.route.runConfig,

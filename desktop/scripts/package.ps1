@@ -1,10 +1,16 @@
 param(
-    [string]$OutputRoot = 'C:\Users\you\BranchApp\dist',
-    [string]$BaseRuntime = 'C:\Users\you\BranchApp\dist\v0.2.0\Branch Agent-win32-x64',
+    [string]$OutputRoot,
+    [string]$BaseRuntime,
     [switch]$StampVersionMetadata
 )
 $ErrorActionPreference = 'Stop'
 $desktopRoot = Split-Path -Parent $PSScriptRoot
+if (!$OutputRoot) {
+    $legacy = Join-Path $env:USERPROFILE 'BranchApp'
+    $dataRoot = if ($env:BRANCH_DESKTOP_DATA) { $env:BRANCH_DESKTOP_DATA } elseif (Test-Path -LiteralPath (Join-Path $legacy 'desktop.json')) { $legacy } else { Join-Path $env:LOCALAPPDATA 'BranchAgent' }
+    $OutputRoot = Join-Path $dataRoot 'dist'
+}
+if (!$BaseRuntime) { $BaseRuntime = Join-Path $OutputRoot 'v0.2.0\Branch Agent-win32-x64' }
 $package = Get-Content -LiteralPath (Join-Path $desktopRoot 'package.json') -Raw | ConvertFrom-Json
 $versionRoot = [IO.Path]::GetFullPath((Join-Path $OutputRoot "v$($package.version)"))
 if (Test-Path -LiteralPath $versionRoot) { throw "Version folder already exists: $versionRoot. Bump the version first." }
@@ -27,6 +33,8 @@ try {
     $target = Join-Path $versionRoot (Split-Path -Leaf $BaseRuntime)
     & node (Join-Path $desktopRoot 'node_modules\@electron\asar\bin\asar.mjs') pack $stage (Join-Path $target 'resources\app.asar')
     if ($LASTEXITCODE -ne 0) { throw 'App archive packaging failed.' }
+    & node (Join-Path $PSScriptRoot 'bundle-node.mjs') (Join-Path $target 'resources') win32 x64
+    if ($LASTEXITCODE -ne 0) { throw 'Bundled Node24 runtime preparation failed.' }
     $targetExe = Join-Path $target 'Branch Agent.exe'
     if ($StampVersionMetadata) {
         & node (Join-Path $PSScriptRoot 'stamp-executable-version.mjs') $targetExe

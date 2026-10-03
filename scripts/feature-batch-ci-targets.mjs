@@ -1,0 +1,96 @@
+// Explicit regression scope. This list never discovers the repository test matrix.
+export const engineTests = [
+  'src/coding/unified-diff.test.ts',
+  'src/agents/apply-patch.unified-diff.test.ts',
+  'src/agents/apply-patch.test.ts',
+  'src/agents/apply-patch-update.test.ts',
+  'src/agents/apply-patch-context-bytes.test.ts',
+  'packages/ai/src/providers/clean-for-gemini-mastra.test.ts',
+  'packages/ai/src/providers/clean-for-gemini.test.ts',
+  'packages/ai/src/providers/agent-tools-parameter-schema.test.ts',
+  'packages/ai/src/providers/google-shared.test.ts',
+  'src/agents/project-instructions.test.ts',
+  'src/agents/core-coding-tools.project-instructions.test.ts',
+  'src/agents/core-coding-tools.sandbox.test.ts',
+  'src/agents/sessions/tools/read.office.test.ts',
+  'src/agents/sessions/tools/read-office-page.test.ts',
+  'src/agents/sessions/tools/read.test.ts',
+  'src/skills/review/resource-graph.test.ts',
+  'src/skills/review/skill-markdown-review.test.ts',
+  'src/agents/tools/installed-skill-tools.review.test.ts',
+  'src/agents/tools/installed-skill-tools.test.ts',
+  'src/agents/tools/installed-skill-catalog.test.ts',
+  'src/agents/tools/installed-skill-usage.test.ts',
+  'src/logging/retained-warnings.test.ts',
+  'src/auto-reply/reply/commands-warnings.test.ts',
+  'src/logging/logger-redaction-behavior.test.ts',
+  'src/auto-reply/commands-registry.test.ts',
+  'src/auto-reply/reply/commands-handlers.registration.test.ts',
+  'extensions/browser/src/browser/pw-page-markdown.test.ts',
+  'extensions/browser/src/browser/pw-tools-core.activity.test.ts',
+  'extensions/browser/src/browser/client.test.ts',
+  'extensions/browser/src/browser/routes/agent.text.test.ts',
+  'extensions/browser/src/browser-tool.schema.test.ts',
+  'extensions/browser/src/browser-tool.test.ts',
+];
+
+export const windowTests = [
+  'src/transcript-export/replay-html.test.ts',
+  'src/transcript-export/ExportDialog.test.tsx',
+  'src/transcript-export/render.test.ts',
+  'src/transcript-export/load.test.ts',
+];
+
+export const engineStrictFiles = [
+  'extensions/browser/src/browser-tool-description.ts',
+  'extensions/browser/src/browser-tool.actions.ts',
+  'extensions/browser/src/browser-tool.schema.ts',
+  'extensions/browser/src/browser-tool.snapshot.ts',
+  'extensions/browser/src/browser/client-actions.ts',
+  'extensions/browser/src/browser/pw-page-markdown.ts',
+  'extensions/browser/src/browser/pw-readability-script.ts',
+  'extensions/browser/src/browser/pw-tools-core.activity.ts',
+  'extensions/browser/src/browser/routes/agent.debug.ts',
+  'packages/ai/src/providers/clean-for-gemini.ts',
+  'src/agents/apply-patch.ts',
+  'src/agents/core-coding-tools.ts',
+  'src/agents/project-instructions.ts',
+  'src/agents/sessions/tools/read-office-page.ts',
+  'src/agents/sessions/tools/read-page.ts',
+  'src/agents/sessions/tools/read.ts',
+  'src/agents/tools/installed-skill-tools.ts',
+  'src/auto-reply/commands-registry.shared.ts',
+  'src/auto-reply/reply/commands-handlers.runtime.ts',
+  'src/auto-reply/reply/commands-warnings.ts',
+  'src/coding/unified-diff.ts',
+  'src/logging/logger.ts',
+  'src/logging/retained-warnings.ts',
+  'src/media/office-docx.ts',
+  'src/media/office-extract.ts',
+  'src/media/office-ods.ts',
+  'src/media/office-spreadsheet.ts',
+  'src/skills/review/resource-graph.ts',
+  'src/skills/review/resource-references.ts',
+  'src/skills/review/skill-markdown-review.ts',
+  'src/types/node-runtime-globals.d.ts',
+  'src/types/qrcode.d.ts',
+  'src/types/agent-sessions.d.ts',
+  'src/infra/host-env-security-policy.d.ts',
+];
+
+export const windowStrictFiles = [
+  'src/transcript-export/replay-runtime.ts',
+  'src/transcript-export/replay-html.ts',
+  'src/transcript-export/render.ts',
+  'src/transcript-export/ExportDialog.tsx',
+];
+
+export function namedTests(lane) {
+  if (!['engine', 'window'].includes(lane)) throw new Error('Unknown feature test lane');
+  const targets = lane === 'engine' ? engineTests : windowTests;
+  if (!targets.length || new Set(targets).size !== targets.length
+    || targets.some(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'))) {
+    throw new Error('Explicit unique repository-relative test files are required');
+  }
+  return targets;
+}
