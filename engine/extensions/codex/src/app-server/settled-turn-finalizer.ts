@@ -8,6 +8,7 @@ import { resolveCodexBoundedTurnIsolation } from "./bounded-turn-isolation.js";
 import { runBoundedCodexAppServerTurn, type CodexBoundedTurnOptions } from "./bounded-turn.js";
 import { createAttributedCodexAssistantMessage } from "./event-projector-assistant-message.js";
 import { resolveCodexLocalRuntimeAttribution } from "./local-runtime-attribution.js";
+import { projectBoundCodexNativeAccount } from "./native-account-attempt.js";
 import { assertCodexPassiveTurnItems } from "./protocol-validators.js";
 import { CodexSettledTurnContext } from "./settled-turn-context.js";
 import {
@@ -42,18 +43,24 @@ export async function runCodexSettledTurnFinalization(
   }
   const { selection, data: historyItems } = finalizationContext;
   const hostAuthPlan = attempt.runtimePlan?.auth;
-  const authRequirement = hostAuthPlan?.modelRoute?.authRequirement;
+  const nativeAccountHome = selection.nativeAccountHome;
+  options = {
+    ...options,
+    pluginConfig: projectBoundCodexNativeAccount(options.pluginConfig, nativeAccountHome),
+  };
+  const authRequirement = nativeAccountHome ? "subscription" : hostAuthPlan?.modelRoute?.authRequirement;
   // Capture fixes binding/ordered-profile selection. Ordinary user-home sessions
   // intentionally authorize private side turns through the host plan instead.
   const authProfileId =
-    selection.authProfileId ?? hostAuthPlan?.forwardedAuthProfileId ?? attempt.authProfileId;
+    nativeAccountHome ? undefined :
+      selection.authProfileId ?? hostAuthPlan?.forwardedAuthProfileId ?? attempt.authProfileId;
   const authHandoff = await resolveCodexAppServerPreparedAuthHandoff({
     authRequirement,
-    resolvedApiKey: attempt.resolvedApiKey,
+    resolvedApiKey: nativeAccountHome ? undefined : attempt.resolvedApiKey,
     authProfileId,
     authProfileStore: attempt.authProfileStore,
     agentDir: attempt.agentDir,
-    homeScope: "agent",
+    homeScope: nativeAccountHome ? "user" : "agent",
     config: attempt.config,
     subscriptionProfileRequiredError:
       "Prepared Codex settled-turn finalization requires its selected OpenAI subscription profile.",

@@ -21,6 +21,7 @@ type CodexSettledTurnSelection = {
   model: string;
   modelProvider?: string;
   authProfileId?: string;
+  nativeAccountHome?: string;
 };
 
 /** Only the Codex owner interprets this bounded, detached replay projection. */
@@ -47,7 +48,7 @@ export async function captureCodexSettledTurnFinalizationContext(
   try {
     params.signal?.throwIfAborted();
     params.assertActive?.();
-    const { model, modelProvider, authProfileId } = params;
+    const { model, modelProvider, authProfileId, nativeAccountHome } = params;
     if (!model) {
       throw new CodexHistoryRejection("model_unavailable");
     }
@@ -57,7 +58,9 @@ export async function captureCodexSettledTurnFinalizationContext(
     params.signal?.throwIfAborted();
     params.assertActive?.();
     if (result.status === "ok") {
-      return new CodexSettledTurnContext(result.value, { model, modelProvider, authProfileId });
+      return new CodexSettledTurnContext(result.value, {
+        model, modelProvider, authProfileId, nativeAccountHome,
+      });
     }
     reason = result.reason;
   } catch (error) {

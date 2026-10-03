@@ -74,7 +74,9 @@ export async function runWithCodexNativeAccount<T>(
     inspect: async (pluginConfig) => {
       params.hostCapabilities.assertActive();
       const auth = await probeCodexNativeAuth({ pluginConfig, signal: params.abortSignal });
-      if (!auth) return { authenticated: false, blocked: undefined };
+      if (!auth || auth.nativeAuth?.mode === "api-key") {
+        return { authenticated: false, blocked: undefined };
+      }
       const { start } = resolveCodexAppServerRuntimeOptions({ pluginConfig });
       const rateLimits = await requestCodexAppServerJson({
         startOptions: start,

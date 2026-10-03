@@ -478,6 +478,7 @@ export async function finalizeCodexAttempt(
               model: resourceState.thread.model,
               modelProvider: resourceState.thread.modelProvider,
               authProfileId: startupAuthProfileId,
+              nativeAccountHome: bindingStore.read(bindingIdentity)?.nativeAccountHome,
               mirroredMessages: mirrorOutcome.mirroredMessages,
               settledMessages: result.messagesSnapshot,
               turnId: activeTurnId,
