@@ -10,7 +10,7 @@ import {
 
 describe("realtime voice activation names", () => {
   it("normalizes and validates one- or two-word activation names", () => {
-    expect(normalizeSupportedRealtimeVoiceActivationName("  Branch Agent  ")).toBe("branch");
+    expect(normalizeSupportedRealtimeVoiceActivationName("  Branch Agent  ")).toBe("branch agent");
     expect(normalizeSupportedRealtimeVoiceActivationName("Open Grove")).toBe("open grove");
     expect(normalizeSupportedRealtimeVoiceActivationName("Grove Bot Helper")).toBeUndefined();
     expect(isSupportedRealtimeVoiceActivationName("Grove Bot")).toBe(true);
@@ -41,27 +41,27 @@ describe("realtime voice activation names", () => {
   });
 
   it("accepts bounded fuzzy matches at the transcript edge", () => {
-    expect(matchRealtimeVoiceActivationName("Malty, what changed?", ["sprig"])).toMatchObject({
+    expect(matchRealtimeVoiceActivationName("Sprug, what changed?", ["sprig"])).toMatchObject({
       allowed: true,
       activationName: "sprig",
       edge: "leading",
-      heardName: "malty",
+      heardName: "sprug",
       match: "fuzzy",
       text: "what changed?",
     });
-    expect(matchRealtimeVoiceActivationName("what changed, Malty?", ["sprig"])).toMatchObject({
+    expect(matchRealtimeVoiceActivationName("what changed, Sprug?", ["sprig"])).toMatchObject({
       allowed: true,
       activationName: "sprig",
       edge: "trailing",
-      heardName: "malty",
+      heardName: "sprug",
       match: "fuzzy",
       text: "what changed",
     });
-    expect(matchRealtimeVoiceActivationName("what changed, Marty?", ["sprig"])).toMatchObject({
+    expect(matchRealtimeVoiceActivationName("what changed, Splag?", ["sprig"])).toMatchObject({
       allowed: true,
       activationName: "sprig",
       edge: "trailing",
-      heardName: "marty",
+      heardName: "splag",
       match: "fuzzy",
       text: "what changed",
     });
