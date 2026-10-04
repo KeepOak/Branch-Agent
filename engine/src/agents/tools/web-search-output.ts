@@ -277,9 +277,18 @@ export function normalizeWebSearchOutput(params: {
       toHttpUrl(entry.url) !== undefined,
   );
   if (rows && conformingRows) {
-    budget.truncated ||= rows.length > MAX_SEARCH_COUNT;
+    const seenUrls = new Set<string>();
+    const uniqueRows = rows.filter((row) => {
+      const url = toHttpUrl(row.url as string) as string;
+      if (seenUrls.has(url)) {
+        return false;
+      }
+      seenUrls.add(url);
+      return true;
+    });
+    budget.truncated ||= uniqueRows.length > MAX_SEARCH_COUNT;
     // Reserve source URLs first so one oversized page cannot erase later valid sources.
-    const boundedRows = rows.slice(0, MAX_SEARCH_COUNT).flatMap((row) => {
+    const boundedRows = uniqueRows.slice(0, MAX_SEARCH_COUNT).flatMap((row) => {
       const url = toHttpUrl(row.url as string) as string;
       return consumeUrlBudget(url, budget) ? [{ row, url }] : [];
     });
