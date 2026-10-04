@@ -27,6 +27,8 @@
   .set-save { margin: 0; white-space: nowrap; }
   /* "How much to show" stays visible at the end of the nav row (§4.7.0 rule 5) */
   .settings .set-nav .set-level { position: sticky; right: -8px; z-index: 2; margin-left: auto; padding: 0 0 0 8px; background: var(--bg); box-shadow: -12px 0 12px -6px var(--bg); }
+  .settings .set-nav .set-level { width: auto; font-size: 12.5px; color: var(--ink-2); }
+  .settings .set-nav .set-level .seg { width: 228px; }
 }
 @media (max-width: 480px) {
   /* the search box folds to its icon until it's used */
@@ -40,12 +42,13 @@
 }
 /* the level block is as wide as its own line, as the preview's (its grid shrinks to the line under it) */
 @media (min-width: 1001px) {
-  .settings .set-nav > .set-level { align-self: flex-start; max-width: 100%; }
+  .settings .set-nav > .set-level { display: grid; gap: 6px; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--ink-2); }
 }
+.settings .set-back { gap: 8px; }
+.settings .set-search { border: 1px solid transparent; }
+.settings .set-nav .set-item { display: flex; align-items: center; gap: 10px; }
+.settings .set-level .seg { gap: 0; border: 1px solid transparent; }
+.settings .set-level .seg button { min-width: 0; padding: 0 1px; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: clip; }
 
-/* Section links share the page's plain link style and wrap in the tab-row layout. */
-.set-onpage { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 16px 0 0; }
-.set-onpage > span { font: 500 10.5px/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); }
-.set-onpage .link-k { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
 .set-col .sec { scroll-margin-block-start: 8px; }
 .set-col .sec > h2:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 5px; border-radius: 3px; }

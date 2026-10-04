@@ -42,7 +42,7 @@ export function Asking({ engine, apps, pairing, error, reload, filter, setFilter
       <Ctl title="Approve by code" sub="Approves the person who was sent that code." off="Branch can’t approve by code from here yet; approve the request above.">
         <span className="code-ca" role="group" aria-label="Approve by code">{[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <Fragment key={i}>{i === 4 ? <i className="dash-ca">-</i> : null}<input className="inp" maxLength={1} disabled aria-label={`Character ${i + 1}`} /></Fragment>)}</span>
       </Ctl>
-      {pairing ? <Hint>Requests expire after {Math.round(pairing.limits.ttlMs / 60000)} minutes. Each account holds up to {pairing.limits.pendingPerAccount} waiting.</Hint> : null}
+      {pairing?.limits ? <Hint>Requests expire after {Math.round(pairing.limits.ttlMs / 60000)} minutes. Each account holds up to {pairing.limits.pendingPerAccount} waiting.</Hint> : null}
       {approve ? <ApproveDialog engine={engine} r={approve} trunk={trunkFor(approve.channel)} ownerSet={pairing?.commandOwnerConfigured !== false} onClose={() => { setApprove(null); void reload(); }} /> : null}
       {dismiss ? <DismissDialog engine={engine} r={dismiss} onClose={() => { setDismiss(null); void reload(); }} /> : null}
     </Sec>
