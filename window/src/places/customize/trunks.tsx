@@ -34,7 +34,7 @@ type Props = Pick<PlaceProps, "engine" | "level" | "openConversation" | "openSet
 function TrunkRowView({ row, roster, open, menu }: { row: TrunkRow; roster: Roster; open: (o: Open) => void; menu: (e: ReactMouseEvent, row: TrunkRow) => void }) {
   return (
     <div className="tk-row" onContextMenu={(e) => menu(e, row)} onKeyDown={(e) => { if ((e.key === "F10" && e.shiftKey) || e.key === "ContextMenu") menu(e as unknown as ReactMouseEvent, row); }}>
-      <button type="button" className="tk-row-who" aria-label={`${row.name}’s profile`} onClick={() => open({ kind: "profile", id: row.id })}>
+      <button type="button" className="tk-row-who" aria-label={`${row.name}: profile`} onClick={() => open({ kind: "profile", id: row.id })}>
         <RowFace row={row} size={ROW_FACE} />
         <span className="tk-grow"><b>{row.name}{row.id === roster.defaultId && <span className="tk-pill">Default</span>}</b><small>{row.theme || "Just made"}</small></span>
       </button>
