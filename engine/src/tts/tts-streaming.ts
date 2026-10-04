@@ -36,6 +36,7 @@ export async function streamSpeech(
         synthesisText: normalizeSpeechText(params.text),
         providerOverrides: params.overrides?.providerOverrides,
         timeoutMs: params.timeoutMs,
+        signal: params.signal,
         target,
         logLabel: "TTS stream",
         selectOperation: ({ provider, resolvedProvider }) => {
