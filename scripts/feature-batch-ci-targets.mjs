@@ -55,6 +55,8 @@ export const windowTests = [
   'src/transcript-export/ExportDialog.test.tsx',
   'src/transcript-export/render.test.ts',
   'src/transcript-export/load.test.ts',
+  'src/places/library/documents.test.tsx',
+  'src/places/library/create-document.test.ts',
 ];
 
 export const engineStrictFiles = [
@@ -128,6 +130,11 @@ export const windowStrictFiles = [
   'src/transcript-export/replay-html.ts',
   'src/transcript-export/render.ts',
   'src/transcript-export/ExportDialog.tsx',
+  'src/places/library/documents.tsx',
+  'src/places/library/documents.test.tsx',
+  'src/places/library/index.tsx',
+  'src/places/library/create-document.ts',
+  'src/places/library/create-document.test.ts',
 ];
 
 export function namedTests(lane) {
