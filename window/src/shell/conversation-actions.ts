@@ -145,14 +145,26 @@ export function conversationActions(request: Request, list: ConversationList, op
       notify(failed.length ? `Couldn't delete ${failed.join(", ")}.` : `Deleted ${rows.length} conversations.`, failed.length ? { tone: "bad" } : undefined);
       await list.refresh();
     },
-    /** Open the Trunk's ongoing contact conversation without creating a fresh thread. */
+    /** Adopt the Trunk's canonical contact so the shell can retain its durable list row. */
     async create(agentId?: string): Promise<string | null> {
       try {
         const roster = (await request("agents.list", {})) as { defaultId?: unknown; mainKey?: unknown };
         const id = agentId || (typeof roster.defaultId === "string" ? roster.defaultId : "");
         if (!id) throw new Error("Create a Trunk before starting a conversation");
         const main = typeof roster.mainKey === "string" && roster.mainKey ? roster.mainKey : "main";
-        return `agent:${id}:${main}`;
+        const key = `agent:${id}:${main}`;
+        await list.refresh();
+        const refreshed = list.getSnapshot();
+        if (refreshed.error) throw new Error(refreshed.error);
+        // Reopening an existing contact must not reset its model, computer binding or active work.
+        if (refreshed.rows.some((row) => row.key === key)) return key;
+        const adopted = await request<{ key?: unknown }>("sessions.create", { key, agentId: id });
+        if (adopted.key !== key) throw new Error("The engine did not confirm this Trunk's contact conversation");
+        await list.refresh();
+        if (!list.getSnapshot().rows.some((row) => row.key === key)) {
+          throw new Error("The contact conversation is saved, but its list could not be refreshed. Try opening it again");
+        }
+        return key;
       } catch (e) {
         notify(`Couldn't start a conversation: ${reason(e)}.`, { tone: "bad" });
         return null;
