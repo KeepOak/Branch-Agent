@@ -1,0 +1,41 @@
+{
+  "id": "gladia",
+  "categories": [
+    "voice"
+  ],
+  "activation": {
+    "onStartup": false
+  },
+  "enabledByDefault": true,
+  "setup": {
+    "providers": [
+      {
+        "id": "gladia",
+        "envVars": [
+          "GLADIA_API_KEY"
+        ]
+      }
+    ]
+  },
+  "contracts": {
+    "mediaUnderstandingProviders": [
+      "gladia"
+    ]
+  },
+  "mediaUnderstandingProviderMetadata": {
+    "gladia": {
+      "capabilities": [
+        "audio"
+      ],
+      "defaultModels": {
+        "audio": "gladia"
+      }
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "description": "Gladia uploaded audio transcription, diarization and translation."
+}
