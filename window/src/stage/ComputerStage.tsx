@@ -199,12 +199,15 @@ type Props = {
   onClose: () => void;
   onChooseComputer: () => void;
   /** Shrinks the stage to a small window over the conversation, showing this computer. */
-  onPip?: (computer: { id: string; name: string }) => void;
+  onPip?: (small: PipTarget) => void;
   /** Opens on this computer instead of the conversation's own (the "branch:watch-computer" event). */
   initialComputer?: string | null;
   /** Opens already taken over ("Take over" on the conversation's computer card). */
   initialControl?: boolean;
 };
+
+/** What the small window over the conversation shows: a computer's screen, or the browser (the preview's S.pip.kind). */
+export type PipTarget = { kind: "computer" | "browser"; id: string; name: string };
 
 /** A conversation's computer and browser, full size: tabs per computer, the screen, the docked conversation and the plan's steps. */
 export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], running = false, card = null, onMode, onClose, onChooseComputer, onPip, initialComputer = null, initialControl = false }: Props) {
@@ -321,7 +324,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
             </button>
           ))}
         </span>
-        <button type="button" className="ib" aria-label="Shrink to a small window" title="Picture in picture" disabled={!onPip || browser || !viewing} onClick={() => viewing && onPip?.({ id: viewing, name: viewed?.name ?? view.title ?? viewing })}>
+        <button type="button" className="ib" aria-label="Shrink to a small window" title="Picture in picture" disabled={!onPip || (!browser && !viewing)} onClick={() => (browser ? onPip?.({ kind: "browser", id: "browser", name: "browser" }) : viewing && onPip?.({ kind: "computer", id: viewing, name: viewed?.name ?? view.title ?? viewing }))}>
           <SIcon name="pip" />
         </button>
         <button type="button" className="ib" aria-label="Open in its own window" title={OWN_WINDOW} disabled>
