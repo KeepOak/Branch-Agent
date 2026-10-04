@@ -89,6 +89,7 @@ export const windowTests = [
   'src/thread/format.test.ts',
   'src/thread/Rail.test.tsx',
   'src/stage/pane/PreviewTab.test.tsx',
+  'src/places/library/memory.test.tsx',
 ];
 
 export const engineStrictFiles = [
@@ -231,6 +232,8 @@ export const windowStrictFiles = [
   'src/stage/SidePane.tsx',
   'src/stage/pane/PreviewTab.tsx',
   'src/stage/pane/PreviewTab.test.tsx',
+  'src/places/library/memory.tsx',
+  'src/places/library/memory.test.tsx',
 ];
 
 export function namedTests(lane) {
