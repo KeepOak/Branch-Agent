@@ -5,6 +5,7 @@ import type { WindowEngine } from "../connect/engine";
 import { PairDialog } from "../places/customize/pairing";
 import { AccountLoginDialog } from "../places/settings/AccountLogin";
 import { ConnectDialog } from "../places/settings/set1/chatapps-connect";
+import { AddAccountDialog } from "../places/settings/set1/add-account";
 import type { LoginStart } from "../places/settings/account-login";
 import { Icon } from "../shell/icons";
 import { notify } from "../shell/notify";
@@ -191,7 +192,8 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
   }
   const dialogs = (
     <>
-      {login ? <AccountLoginDialog engine={p.engine} start={login} onClose={(signedIn) => { setLogin(null); if (signedIn) models.reload(); }} /> : null}
+      {login && login.method !== SECRET ? <AccountLoginDialog engine={p.engine} start={login} onClose={(signedIn) => { setLogin(null); if (signedIn) models.reload(); }} /> : null}
+      {login && login.method === SECRET ? <AddAccountDialog engine={p.engine} start={{ provider: login.provider }} caps={[]} providers={[]} agent={{ agentId: login.agentId }} onClose={(added) => { setLogin(null); if (added) models.reload(); }} /> : null}
       {connecting ? <ConnectDialog engine={p.engine} app={{ id: connecting.id, name: connecting.label, detail: "" }} onClose={(changed) => { setConnecting(null); if (changed) chat.reload(); }} /> : null}
       {pairing ? <PairDialog engine={p.engine} close={() => setPairing(false)} /> : null}
     </>
@@ -241,8 +243,12 @@ type Ctx = {
   setStep: (i: number) => void;
 };
 
+/** A setup menu entry signed in by pasting what the service hands out (Claude's setup-token), in the Add account dialog. */
+const SECRET = "secret";
+
 function AddAccount({ c }: { c: Ctx }) {
-  const options = c.models.detected?.authOptions ?? [];
+  const secrets = c.models.detected?.secretLogins ?? [];
+  const options = [...secrets.filter((o) => o.brand === "anthropic"), ...(c.models.detected?.authOptions ?? [])];
   return (
     <span className="ob-add">
       <button type="button" className="btn sm" aria-expanded={c.adding} disabled={!options.length || !c.p.defaultAgentId} title={options.length ? undefined : "The engine offered no account sign-ins."} onClick={() => c.setAdding(!c.adding)}>
@@ -252,8 +258,8 @@ function AddAccount({ c }: { c: Ctx }) {
       {c.adding ? (
         <span className="ob-add-list" role="menu">
           {options.map((o) => (
-            <button key={o.id} type="button" className="mi" role="menuitem" onClick={() => (c.setAdding(false), c.setLogin({ agentId: c.p.defaultAgentId ?? "", provider: o.label, choiceId: o.id }))}>
-              <span className="mi-label">{o.label}</span>
+            <button key={o.id} type="button" className="mi" role="menuitem" onClick={() => (c.setAdding(false), c.setLogin(o.brand ? { agentId: c.p.defaultAgentId ?? "", provider: o.brand, choiceId: o.id, method: SECRET } : { agentId: c.p.defaultAgentId ?? "", provider: o.label, choiceId: o.id, method: "branch.setup.auth.start" }))}>
+              <span className="mi-label">{o.brand === "anthropic" ? "Claude · Sign in with your Claude subscription" : o.label}</span>
               {o.hint ? <span className="mi-hint">{o.hint}</span> : null}
             </button>
           ))}

@@ -22,6 +22,22 @@ const FRESH_WORD: Record<string, string> = { ok: "Connected", static: "Connected
 const KIND_LABEL: Record<Kind, string> = { plan: "Your plan", key: "A key", local: "On this computer", custom: "Your own" };
 const KIND_SUB: Record<Kind, string> = { plan: "your plan", key: "a key", local: "on this computer", custom: "your own" };
 
+/** Pasted sign-in secrets the engine's setup offers (branch.setup.detect manualProviders, e.g. Anthropic's
+ *  setup-token), as plan sign-ins for a service with no browser sign-in. Keys stay under "A key". Adapted from
+ *  engine/ui/src/pages/model-providers/login-providers.ts ("setup-secret" choices). */
+function addSecretLogins(out: Service[], manual: RecordValue[], count: (id: string, key: boolean) => number): void {
+  for (const o of manual.filter((x) => !/api-?key/i.test(text(x.id)))) {
+    const brand = text(o.brandId ?? o.id);
+    const login = { ...o, kind: "setup-secret", featured: false };
+    const plan = out.find((s) => s.kind === "plan" && s.brand === brand);
+    if (plan) {
+      if (!plan.logins.some((l) => l.kind !== "setup-secret")) plan.logins.push(login);
+      continue;
+    }
+    out.push({ id: `plan:${brand}`, brand, name: serviceName(brand, o.groupLabel ?? o.label), kind: "plan", signedIn: count(brand, false), logins: [login] });
+  }
+}
+
 /** Every service, from the engine's provider capabilities and its setup options. */
 export function servicesOf(caps: RecordValue[], providers: Provider[], detect: RecordValue | undefined): Service[] {
   const count = (id: string, key: boolean) => providers.filter((p) => p.provider === id).flatMap((p) => p.profiles).filter((a) => (a.type === "api_key") === key).length;
@@ -33,6 +49,7 @@ export function servicesOf(caps: RecordValue[], providers: Provider[], detect: R
     if (logins.length) out.push({ id: `plan:${id}`, brand: id, name: serviceName(id, name), kind: "plan", signedIn: count(id, false), logins });
     if (c.apiKeySupported === true) out.push({ id: `key:${id}`, brand: id, name: serviceName(id, name, true), kind: "key", signedIn: count(id, true), logins: [] });
   }
+  addSecretLogins(out, list(detect?.manualProviders), count);
   for (const o of list(detect?.prepareOptions)) out.push({ id: `local:${text(o.id)}`, brand: text(o.brandId ?? o.id), name: visible(o.label), kind: "local", signedIn: 0, logins: [], choice: text(o.id) });
   for (const o of list(detect?.authOptions).filter((x) => x.kind === "custom")) out.push({ id: `custom:${text(o.id)}`, brand: text(o.brandId ?? o.id), name: visible(o.label), kind: "custom", signedIn: 0, logins: [], choice: text(o.id) });
   return out;
@@ -138,6 +155,7 @@ function SignIn({ engine, svc, agent, onRun, onKey }: SignInProps) {
   if (svc.kind === "custom") return <Lead text={`Branch asks for the address and sign-in of ${svc.name}.`} action="Start" onGo={() => onRun({ method: "branch.setup.auth.start", params: { authChoice: svc.choice, ...agent } })} />;
   const [main, ...rest] = [...svc.logins].sort((a, b) => Number(b.featured === true) - Number(a.featured === true));
   const go = (o: RecordValue) => onRun({ method: "models.authLogin", params: { authChoice: text(o.id), ...agent } });
+  if (main?.kind === "setup-secret") return <SecretSignIn svc={svc} login={main} agent={agent} onRun={onRun} />;
   return (
     <>
       <div className="aa-card">
@@ -146,6 +164,32 @@ function SignIn({ engine, svc, agent, onRun, onKey }: SignInProps) {
         {rest.length ? <div className="acts">{rest.map((o) => <button key={text(o.id)} type="button" className="btn sm" title={o.hint ? visible(o.hint) : undefined} onClick={() => go(o)}>{o.kind === "device-code" ? "Sign in with a code instead" : visible(o.label)}</button>)}</div> : null}
       </div>
       <p className="hint">Branch never sees or stores your password.</p>
+    </>
+  );
+}
+
+/** A sign-in the service hands out as a token (Claude: `claude setup-token`), saved through the engine's setup
+ *  activation as upstream's model setup does (kind "api-key" with the manual choice; a new auth profile each time). */
+function SecretSignIn({ svc, login, agent, onRun }: { svc: Service; login: RecordValue; agent: { agentId?: string }; onRun: (r: WizardStart) => void }) {
+  const [token, setToken] = useState("");
+  const claude = svc.brand === "anthropic";
+  const command = claude ? "claude setup-token" : "";
+  const start = () => onRun({ method: "branch.setup.activate.start", params: { kind: "api-key", authChoice: text(login.id), apiKey: token.trim(), ...agent } });
+  return (
+    <>
+      <div className="aa-card">
+        <b>{claude ? "Sign in with your Claude subscription" : visible(login.label)}</b>
+        {claude ? (
+          <ol className="aa-steps">
+            <li>Open a terminal on this computer and run <code>{command}</code> <button type="button" className="btn sm" onClick={() => void navigator.clipboard?.writeText(command)}>Copy</button></li>
+            <li>It opens claude.ai in your browser. Sign in with the Claude account you want to add.</li>
+            <li>Paste the token it prints below. It starts with <code>sk-ant-oat01-</code>.</li>
+          </ol>
+        ) : login.hint ? <p>{visible(login.hint)}</p> : null}
+        <label className="fld"><span>Token</span><input className="inp" type="password" autoComplete="off" aria-label="Token" value={token} onChange={(e) => setToken(e.target.value)} onKeyDown={(e) => e.key === "Enter" && token.trim() && start()} /></label>
+        <div className="acts"><button type="button" className="btn pri sm" disabled={!token.trim()} onClick={start}>Sign in</button></div>
+      </div>
+      <p className="hint">Each sign-in is saved as its own account, so you can add more than one.</p>
     </>
   );
 }

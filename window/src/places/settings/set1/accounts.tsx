@@ -61,7 +61,9 @@ export function movedUp(acc: Account, all: Account[]): string[] {
 
 export function AccountsPage(props: SettingsPageProps) {
   const scope = useScope();
-  const agent = scope ? { agentId: scope } : {};
+  // As in Models: with several Trunks the engine needs an owner, so the household view uses the default Trunk.
+  const owner = scope || props.engine.agentId;
+  const agent = owner ? { agentId: owner } : {};
   const status = useResource<RecordValue>(props.engine, "models.authStatus", agent);
   const [add, setAdd] = useState<AddStart | null>(null);
   const providers = providersOf(status.data?.providers);
