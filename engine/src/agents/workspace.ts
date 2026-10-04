@@ -713,7 +713,7 @@ export async function ensureAgentWorkspace(params?: {
   /** Approved custom-agent instructions; never replaces an existing AGENTS.md. */
   purpose?: string;
   /** Creation-time role content; existing workspace files are still preserved. */
-  templates?: Partial<Record<"AGENTS.md" | "SOUL.md" | "IDENTITY.md", string>>;
+  templates?: Partial<Record<"AGENTS.md" | "SOUL.md" | "IDENTITY.md" | "USER.md", string>>;
   /** Guard each new mutation after async preparation; admitted effects may settle. */
   beforePersistentApply?: () => void;
   /**
@@ -898,7 +898,8 @@ export async function ensureAgentWorkspace(params?: {
   const identityTemplate =
     params?.templates?.[DEFAULT_IDENTITY_FILENAME] ??
     (await loadTemplate(DEFAULT_IDENTITY_FILENAME));
-  const userTemplate = await loadTemplate(DEFAULT_USER_FILENAME);
+  const userTemplate =
+    params?.templates?.[DEFAULT_USER_FILENAME] ?? (await loadTemplate(DEFAULT_USER_FILENAME));
   // Template and filesystem checks above are async. Another process may have
   // completed setup while they ran, so optional-file policy needs fresh state.
   initialState = await readCanonicalWorkspaceStateSnapshot(dir, undefined, beforePersistentApply);

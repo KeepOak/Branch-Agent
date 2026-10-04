@@ -26,6 +26,11 @@ import {
   resolveAuthProfileDatabasePath,
 } from "../agents/auth-profiles/sqlite.js";
 import { loadAuthProfileStoreWithoutExternalProfiles } from "../agents/auth-profiles/store-runtime.js";
+import {
+  PERSONALITY_OPTIONS,
+  resolvePersonalityId,
+  type PersonalityId,
+} from "../agents/personality-presets.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { ExpectedCliError } from "../cli/failure-output.js";
 import { isTerminalInteractive } from "../cli/terminal-interactivity.js";
@@ -61,6 +66,7 @@ type AgentsAddOptions = {
   name?: string;
   workspace?: string;
   role?: string;
+  personality?: string;
   model?: string;
   agentDir?: string;
   bind?: string[];
@@ -99,6 +105,22 @@ function formatSkippedOAuthProfilesMessage(
     : `OAuth profiles were not copied from "${sourceAgentId}"; sign in separately for this agent.`;
 }
 
+function resolveAgentsAddPersonality(opts: AgentsAddOptions): PersonalityId | undefined {
+  if (opts.personality === undefined) {
+    return undefined;
+  }
+  if (opts.role !== undefined) {
+    failAgentsAdd("Use either --role or --personality, not both: each seeds SOUL.md.");
+  }
+  const personality = resolvePersonalityId(opts.personality);
+  if (!personality) {
+    failAgentsAdd(
+      `Unknown personality "${opts.personality}". Available personalities: ${PERSONALITY_OPTIONS.map((option) => option.id).join(", ")}.`,
+    );
+  }
+  return personality ?? undefined;
+}
+
 export async function agentsAddCommand(
   opts: AgentsAddOptions,
   runtime: RuntimeEnv = defaultRuntime,
@@ -111,6 +133,7 @@ export async function agentsAddCommand(
       failAgentsAdd(error instanceof Error ? error.message : String(error));
     }
   }
+  const personality = resolveAgentsAddPersonality(opts);
   const hasAutomationFlags = params?.hasAutomationFlags === true;
   const nonInteractive = opts.nonInteractive === true || hasAutomationFlags;
   const wizardOutput = opts.json ? process.stderr : process.stdout;
@@ -158,6 +181,7 @@ export async function agentsAddCommand(
         name: nameInput,
         workspace: workspaceFlag,
         ...(opts.role ? { role: opts.role } : {}),
+        ...(personality ? { personality } : {}),
         ...(opts.agentDir ? { agentDir: opts.agentDir } : {}),
         ...(opts.model ? { model: opts.model } : {}),
         ...(opts.bind?.length ? { bindingSpecs: opts.bind } : {}),
@@ -537,6 +561,7 @@ export async function agentsAddCommand(
         return await createAgent({
           entry: { ...stagedEntry, id: agentId },
           ...(opts.role ? { role: opts.role } : {}),
+          ...(personality ? { personality } : {}),
           stagedConfig: { config: nextConfig, writeSnapshot },
           transformConfig: transformConfigWithPendingPluginInstalls,
           ...(stagedAuthBatch

@@ -178,6 +178,12 @@ describe("agent command registration", () => {
       hasAutomationFlags: false,
     },
     {
+      args: "gamma --personality rooted --workspace /tmp/ws".split(" "),
+      options: { name: "gamma", personality: "rooted" },
+      workspace: "/tmp/ws",
+      hasAutomationFlags: true,
+    },
+    {
       args: "beta --workspace /tmp/ws --bind telegram --bind discord:acct --non-interactive --json".split(
         " ",
       ),

@@ -94,6 +94,10 @@ export function registerAgentsCommands(program: Command): void {
     .description("Add a new isolated agent")
     .option("--workspace <dir>", "Workspace directory for the new agent")
     .option("--role <role>", "Seed a role: coordinator, researcher, writer, reviewer")
+    .option(
+      "--personality <id>",
+      "Seed SOUL.md and USER.md from a personality: rooted, blank, thorn, blossom",
+    )
     .option("--model <id>", "Model id for this agent")
     .option("--agent-dir <dir>", "Agent state directory for this agent")
     .option("--bind <channel[:accountId]>", "Route channel binding (repeatable)", collectOption, [])

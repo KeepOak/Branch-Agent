@@ -64,6 +64,14 @@ vi.mock("./auth-profiles/path-resolve.js", () => ({
   resolveSharedAuthStoreOwnership: mocks.resolveSharedAuthStoreOwnership,
 }));
 
+vi.mock("./personality-presets.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./personality-presets.js")>()),
+  loadPersonalityFiles: async (id: string) => ({
+    "SOUL.md": `soul:${id}`,
+    "USER.md": `user:${id}`,
+  }),
+}));
+
 vi.mock("./workspace.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./workspace.js")>();
   return { ...actual, ensureAgentWorkspace: mocks.ensureAgentWorkspace };
@@ -725,6 +733,19 @@ describe("createAgent", () => {
     expect(mocks.persisted).toHaveProperty("agents.entries.researcher");
     expect(commit).toHaveBeenCalledOnce();
     expect(rollback).not.toHaveBeenCalled();
+  });
+
+  it("seeds SOUL.md and USER.md from a personality preset", async () => {
+    const result = await createAgent({ name: "Researcher", personality: "rooted" });
+
+    expect(result).toMatchObject({ status: "created", agentId: "researcher" });
+    expect(mocks.ensureAgentWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ensureBootstrapFiles: true,
+        skipOptionalBootstrapFiles: [],
+        templates: { "SOUL.md": "soul:rooted", "USER.md": "user:rooted" },
+      }),
+    );
   });
 
   it("keeps the template identity while bootstrap is pending", async () => {

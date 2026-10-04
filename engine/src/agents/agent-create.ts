@@ -45,6 +45,7 @@ import {
   mergeIdentityMarkdownContent,
   sanitizeAgentIdentityLine,
 } from "./identity-file.js";
+import { loadPersonalityFiles, type PersonalityId } from "./personality-presets.js";
 import {
   DEFAULT_IDENTITY_FILENAME,
   ensureAgentWorkspace,
@@ -94,6 +95,8 @@ type ConfigCommitReceipt = {
 type CreateAgentParams = {
   name?: string;
   role?: string;
+  /** Personality preset whose persona and human files seed SOUL.md and USER.md. */
+  personality?: PersonalityId;
   purpose?: string;
   entry?: CreateAgentEntry;
   /** Internal authorization for onboarding to materialize the sole implicit `main` agent. */
@@ -316,6 +319,8 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
   const automaticBootstrap = params.bootstrapMain === true || params.bootstrapFirstAgent === true;
 
   const template = params.role ? await loadAgentRole(params.role) : undefined;
+  const personalityFiles =
+    params.personality && !template ? await loadPersonalityFiles(params.personality) : undefined;
   const safeName = sanitizeAgentIdentityLine(rawName);
   const model = normalizeOptionalString(params.model);
   const identity = (template ? { ...template.identity, ...params.entry?.identity } : undefined) ??
@@ -559,9 +564,10 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
 
           // The outer lock makes this result-bearing transform single-attempt: setup
           // finishes before the final entry becomes visible to readers or delete flows.
-          const skipBootstrap = template
-            ? false
-            : (params.skipBootstrap ?? nextConfig.agents?.defaults?.skipBootstrap);
+          const skipBootstrap =
+            template || personalityFiles
+              ? false
+              : (params.skipBootstrap ?? nextConfig.agents?.defaults?.skipBootstrap);
           // Role files must not supply completion evidence for an unfinished workspace.
           if (template && (await isWorkspaceBootstrapPending(workspaceDir))) {
             throw new UnfinishedRoleBootstrapError();
@@ -584,11 +590,14 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
                       }
                     : template.files,
                 }
-              : {}),
-            skipOptionalBootstrapFiles: template
-              ? []
-              : (params.skipOptionalBootstrapFiles ??
-                nextConfig.agents?.defaults?.skipOptionalBootstrapFiles),
+              : personalityFiles
+                ? { templates: personalityFiles }
+                : {}),
+            skipOptionalBootstrapFiles:
+              template || personalityFiles
+                ? []
+                : (params.skipOptionalBootstrapFiles ??
+                  nextConfig.agents?.defaults?.skipOptionalBootstrapFiles),
           });
           if (workspace.dir !== workspaceDir) {
             const entries = listAgentEntries(nextConfig);

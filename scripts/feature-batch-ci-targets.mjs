@@ -51,6 +51,7 @@ export const engineTests = [
   'extensions/memory-core/src/forget-command.test.ts',
   'extensions/memory-core/index.test.ts',
   'src/auto-reply/reply/commands-init.test.ts',
+  'src/agents/personality-presets.test.ts',
 ];
 
 export const windowTests = [
@@ -154,6 +155,12 @@ export const engineStrictFiles = [
   'src/auto-reply/commands-registry-normalize.ts',
   'src/auto-reply/reply/commands-init.ts',
   'src/auto-reply/reply/commands-init.test.ts',
+  'src/agents/personality-presets.ts',
+  'src/agents/personality-presets.test.ts',
+  'src/agents/agent-create.ts',
+  'src/commands/agents.commands.add.ts',
+  'src/cli/program/register.agent.ts',
+  'src/agents/workspace.ts',
 ];
 
 export const windowStrictFiles = [

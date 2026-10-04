@@ -57,13 +57,26 @@ and unreadable local images also fall back to the workspace avatar.
 
 ### `agents add [name]`
 
-Options: `--role <role>`, `--workspace <dir>`, `--model <id>`, `--agent-dir <dir>`, `--bind <channel[:accountId]>` (repeatable), `--non-interactive`, `--json`.
+Options: `--role <role>`, `--personality <id>`, `--workspace <dir>`, `--model <id>`, `--agent-dir <dir>`, `--bind <channel[:accountId]>` (repeatable), `--non-interactive`, `--json`.
 
 - The automation flags `--workspace`, `--model`, `--agent-dir`, `--bind`, and `--non-interactive` select the non-interactive path. Non-interactive mode requires an agent name and, unless `--role` is supplied, `--workspace`.
 - `--json` alone keeps the guided wizard interactive. Prompts and status are written to stderr, and stdout contains one JSON summary after setup completes.
 - Non-interactive `--json` reports normalized agent IDs in the summary without extra stdout status messages.
 - `main` is an ordinary agent id. Recreating it after another agent owns the installation can require `branch doctor --fix` to repair legacy session or shared-auth ownership first.
 - Interactive mode offers optional auth copying. When the fleet has no default agent, choose a source agent or **Skip copying auth profiles** (the default). Selecting a source still requires confirmation before copying. Only portable static credentials (`api_key` and static `token` profiles) are copied unless a credential opts out with `copyToAgents: false`; OAuth refresh-token profiles are not copied unless a provider opts in with `copyToAgents: true`. Without a copy, OAuth stays available through the shared auth base. If the source agent has its own local OAuth profile, sign in separately for the new agent.
+
+#### Personality presets
+
+`--personality <id>` seeds the new workspace's `SOUL.md` (persona) and `USER.md`
+(notes about the person) from a bundled preset instead of the default templates.
+Existing files are never overwritten. It cannot be combined with `--role`.
+
+| Personality | Description                                 |
+| ----------- | ------------------------------------------- |
+| `rooted`    | The memory-first agent                      |
+| `blank`     | Blank starter — you provide the personality |
+| `thorn`     | Code with a stern hand                      |
+| `blossom`   | sugoi~ (◕‿◕)✨                              |
 
 #### Role templates
 
