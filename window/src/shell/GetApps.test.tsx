@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "./shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET_IT_OFF, GetAppsDialog } from "./GetApps";
@@ -21,6 +22,13 @@ describe("Get the apps", () => {
     await render();
     expect(getIt()).toHaveLength(6);
     for (const b of getIt()) { expect(b.disabled).toBe(true); expect(b.title).toBe(GET_IT_OFF); }
+  });
+
+  it("greys Get it for an older Branch app, without a developer note", async () => {
+    (window as { branchDesktop?: unknown }).branchDesktop = {};
+    await render();
+    for (const b of getIt()) { expect(b.disabled).toBe(true); expect(b.title).toBe(""); }
+    expect(visibleDevNotes(document.body)).toEqual([]);
   });
 
   it("asks the Branch app to open each app's download page", async () => {

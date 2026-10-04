@@ -2,6 +2,7 @@
 // browser.* config; launch flags live in browser.extraArgs; the profile list, status and check come from the
 // browser control service through browser.request. Rows the engine can't back are greyed with why.
 import { useState } from "react";
+import { shownWhy } from "../../../shell/shown-why";
 import { Btn, Ctl, Empty, Field, Pill, useConfig } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
@@ -121,7 +122,7 @@ function Sites() {
   return (
     <>
       <Empty>{why}</Empty>
-      <div className="s2cm-site" title={why}>
+      <div className="s2cm-site" title={shownWhy(why)}>
         <input className="inp" aria-label="Add a site" placeholder="Add a site, e.g. example.com" disabled />
         <Btn sm disabled>Add</Btn>
       </div>

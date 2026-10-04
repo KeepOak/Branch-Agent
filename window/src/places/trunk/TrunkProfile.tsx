@@ -2,6 +2,7 @@
 // engine can give, one row per thing to change (each opens the editor where it changes), its automations, then
 // Pause / Make default / Edit. It loads its own data, so any place (the thread header too) can open it by id.
 import { useState, type ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
@@ -115,7 +116,7 @@ function ProfileBody({ engine, level, onClose, openPlace, data, row, reload, edi
   const block = defaultBlock(data.roster, row.id), write = canWrite(engine);
   const toDefault = () => makeDefault(engine, data.roster, row.id).then(() => { notify(`${row.name} is now your default Trunk. Unrouted chats go to it.`); reload(); }, (e: unknown) => setError(errorText(e)));
   const footer = <>
-    <button type="button" className="btn ghost tk-pf-pause" disabled title={PAUSE_WHY}>Pause {row.name}</button>
+    <button type="button" className="btn ghost tk-pf-pause" disabled title={shownWhy(PAUSE_WHY)}>Pause {row.name}</button>
     {!isDefault && <button type="button" className="btn ghost" disabled={!!block || !write} title={block || (write ? undefined : WRITE_WHY)} onClick={() => void toDefault()}>Make default</button>}
     <button type="button" className="btn pri" onClick={() => edit("look")}>Edit {row.name}</button>
   </>;

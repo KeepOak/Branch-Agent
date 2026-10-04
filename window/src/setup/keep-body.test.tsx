@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeepBody } from "./steps-later";
@@ -20,6 +21,13 @@ describe("setup › Keep Branch running", () => {
   it("greys the Branch app's switches in a plain browser", async () => {
     await act(async () => root.render(<KeepBody autoUpdate onAutoUpdate={() => undefined} boot onBoot={() => undefined} />));
     for (const l of ["Start with Windows", "Type branch in any terminal"]) { expect(sw(l).disabled).toBe(true); expect(sw(l).title).toBe(IN_BROWSER); }
+  });
+
+  it("greys them for an older Branch app, without a developer note", async () => {
+    (window as { branchDesktop?: unknown }).branchDesktop = {};
+    await act(async () => root.render(<KeepBody autoUpdate onAutoUpdate={() => undefined} boot onBoot={() => undefined} />));
+    for (const l of ["Start with Windows", "Type branch in any terminal"]) { expect(sw(l).disabled).toBe(true); expect(sw(l).title).toBe(""); }
+    expect(visibleDevNotes(host)).toEqual([]);
   });
 
   it("Start with Windows is the setup choice (on by default); the branch command changes at once", async () => {

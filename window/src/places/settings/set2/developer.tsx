@@ -5,6 +5,7 @@
 // (config.get / config.apply) and copyable commands that exist in the branch command. Rows the engine has no
 // setting or method for are greyed with why; the dialogs are in developer-more.tsx.
 import { useEffect, useState } from "react";
+import { shownWhy } from "../../../shell/shown-why";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Field, Num, Page, Pick, Pill, Plist, Prow, Sec, Seg, Switch, useConfig, type RowEntry } from "../kit";
 import { Dialog } from "../../../shell/Dialog";
@@ -302,7 +303,7 @@ function RunWithout({ config, base }: Ctx) {
       <p className="hint">TypeScript, Python, Go, React, C and inside your own server: none of these kits is published yet. The gateway client is in Build on Branch, above.</p>
       <h3 className="s2-h3">Other agent programs on this computer</h3>
       <p className="hint">Branch checks the usual places (programs, npm, pip, Homebrew) and can hand work to them as helpers.</p>
-      <p className="hint s2developer-why">{ne("agent program finder")}</p>
+      {shownWhy(ne("agent program finder")) ? <p className="hint s2developer-why">{shownWhy(ne("agent program finder"))}</p> : null}
     </Sec>
   );
 }

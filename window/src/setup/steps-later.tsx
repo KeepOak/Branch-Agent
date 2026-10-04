@@ -1,5 +1,6 @@
 // Setup steps 4–11 (DESIGN-SPEC §4.8.1.4–§4.8.1.11). Controls the engine can't back yet are greyed with their reason.
 import type { ReactNode } from "react";
+import { shownWhy } from "../shell/shown-why";
 import { Icon as ModeIcon } from "../composer/icons";
 import { MODE_ROWS } from "../composer/mode";
 import { Icon, type IconName } from "../shell/icons";
@@ -214,7 +215,7 @@ export function KeepBody({ autoUpdate, onAutoUpdate, boot = null, onBoot }: {
   const why = desk.off;
   const sw = (title: string, sub: string, name: "startWithWindows" | "branchOnPath") => (
     <Ctl title={title} sub={sub}>
-      <button type="button" role="switch" aria-checked={desk.state?.[name] ?? false} aria-label={title} className="switch" disabled={why !== undefined || desk.busy !== null} title={why} onClick={() => void desk.set(name, !(desk.state?.[name] ?? false))} />
+      <button type="button" role="switch" aria-checked={desk.state?.[name] ?? false} aria-label={title} className="switch" disabled={why !== undefined || desk.busy !== null} title={shownWhy(why)} onClick={() => void desk.set(name, !(desk.state?.[name] ?? false))} />
     </Ctl>
   );
   return (
@@ -224,7 +225,7 @@ export function KeepBody({ autoUpdate, onAutoUpdate, boot = null, onBoot }: {
       </Ctl>
       {onBoot ? (
         <Ctl title="Start with Windows" sub="Quietly, in the tray.">
-          <button type="button" role="switch" aria-checked={why ? false : boot ?? desk.state?.startWithWindows ?? false} aria-label="Start with Windows" className="switch" disabled={why !== undefined} title={why} onClick={() => onBoot(!(boot ?? desk.state?.startWithWindows ?? false))} />
+          <button type="button" role="switch" aria-checked={why ? false : boot ?? desk.state?.startWithWindows ?? false} aria-label="Start with Windows" className="switch" disabled={why !== undefined} title={shownWhy(why)} onClick={() => onBoot(!(boot ?? desk.state?.startWithWindows ?? false))} />
         </Ctl>
       ) : sw("Start with Windows", "Quietly, in the tray.", "startWithWindows")}
       {sw("Type branch in any terminal", "Adds the branch command, so the terminal view and scripts work anywhere.", "branchOnPath")}

@@ -1,6 +1,7 @@
 // The Trunk editor (preview editTrunk + 12/15/30-trunks/31-trunksp): a wide dialog, the face and Shuffle on the left,
 // Look / What it may do / Its computers on the right; Cancel and Save. Save sends agents.update then one config.patch.
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { notify } from "../../shell/notify";
@@ -99,7 +100,7 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
       <div className="tk-editor">
         <div className="tk-big">
           <TrunkFace name={draft.name || initial.name} look={draft.look} emoji={draft.emoji} size={84} draft />
-          <button type="button" className="btn sm" disabled title={PEBBLE_WHY}>Shuffle</button>
+          <button type="button" className="btn sm" disabled title={shownWhy(PEBBLE_WHY)}>Shuffle</button>
         </div>
         <div className="tk-col">
           <TabRow tab={tab} setTab={setTab} />

@@ -1,6 +1,7 @@
 // Inbox › History (DESIGN-SPEC §4.6.2.3; preview 41-placesap p25-history): everyone's conversations by day,
 // time and person filters, search, Pulse, folded automation runs, recaps, and [T] "Look inside this run".
 import { useState, type ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
@@ -85,7 +86,7 @@ function HRow({ item, data, level, child, inspect, open }: { item: Item; data: H
     <span className="ib-grow"><b><button type="button" className="ib-title-btn" onClick={() => open(s.key)}>{s.title}</button>{s.automation ? <span className="ib-tag">Automation</span> : null}{s.archived ? <span className="ib-tag">Archived</span> : null}</b>
       <small>{[trunk, who !== data.self ? personName(data, who).split(" ")[0] : "", s.working ? "working now" : clock(at)].filter(Boolean).join(" · ")}</small><Recap s={s} /></span>
     <span className="ib-meta">{length}{length && cost ? " · " : ""}{cost ? <span title="Conversation so far">{cost}</span> : null}</span>
-    <button type="button" className="btn ghost sm" disabled title={REPLAY_GAP}>Watch again</button>
+    <button type="button" className="btn ghost sm" disabled title={shownWhy(REPLAY_GAP)}>Watch again</button>
     {shows(level, "technical") && runId ? <button type="button" className="ib-ib" aria-haspopup="menu" aria-label={`More for ${s.title}`} title={`More for ${s.title}`} onClick={e => { const r = e.currentTarget.getBoundingClientRect(); inspect({ ...item, run: run ?? { runId, agentId: s.agentId, sessionKey: s.key, status: "" } }, { x: r.right - 220, y: r.bottom + 4 }); }}><Icon name="more" /></button> : null}
   </div>;
 }
@@ -126,7 +127,7 @@ export function History({ engine, data, level, people: initialPeople, open, chil
   const whoItems: MenuItem[] = [{ label: "Everyone", run: () => { setWho([]); setShown(10); } }, ...persons.map(w => ({ label: `${who.includes(w) ? "✓ " : ""}${personName(data, w)}`, run: () => toggleWho(w) })), { label: `${who.includes("unmatched") ? "✓ " : ""}People we couldn’t match`, run: () => toggleWho("unmatched") }];
   return <>
     <section className="ib-tile-box"><b>Watch a task again</b><p>Step through what a task did, see the path it took, and keep it as a page or a workflow that repeats it.</p>
-      <div className="ib-acts"><button type="button" className="btn sm" disabled title={REPLAY_GAP}><G name="play" size={14} />{list[0] ? `Watch “${list[0].s.title}”` : "Watch a task"}</button></div></section>
+      <div className="ib-acts"><button type="button" className="btn sm" disabled title={shownWhy(REPLAY_GAP)}><G name="play" size={14} />{list[0] ? `Watch “${list[0].s.title}”` : "Watch a task"}</button></div></section>
     <Pulse list={inWindow} win={win} now={now} />
     <div className="ib-nl"><input className="ib-inp" value={q} placeholder="Search what ran" aria-label="Search history" onChange={e => { setQ(e.target.value); setShown(10); }} />
       <button type="button" className="ib-rec" disabled title={VERIFY_GAP} style={{ color: "var(--ink-3)" }}><G name="shield" size={15} /><span>Unverified</span><u>Verify</u></button></div>

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -126,8 +127,10 @@ describe("Overview screen", () => {
   });
   it("greys controls the engine cannot back, with their reasons", async () => {
     const { host } = await render();
-    expect(button(host, "Lockdown")).toMatchObject({ disabled: true, title: LOCKDOWN_GAP });
-    expect(button(host, "Pause all Trunks")).toMatchObject({ disabled: true, title: PAUSE_ALL_GAP });
+    expect(button(host, "Lockdown")).toMatchObject({ disabled: true, title: "" });
+    expect(button(host, "Pause all Trunks")).toMatchObject({ disabled: true, title: "" });
+    expect([LOCKDOWN_GAP, PAUSE_ALL_GAP].every(gap => gap.startsWith("Needs the engine"))).toBe(true);
+    expect(visibleDevNotes(host)).toEqual([]);
     expect(button(host, "Yes")).toMatchObject({ disabled: true, title: KEEP_RUNNING_GAP });
   });
 

@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import type { Level } from "../../places-nav/level";
 import { Checkins, checkItems, everyChoice, hoursChoice, withItem, withoutItem } from "./Checkins";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -58,7 +59,7 @@ describe("Check-ins", () => {
     const weekend = host.querySelector("[aria-label='Quiet on weekends']") as HTMLButtonElement;
     expect(weekend.disabled).toBe(true); expect(weekend.closest("[title]")?.getAttribute("title")).toMatch(/^Needs/);
     const add = [...host.querySelectorAll(".au-sec button")].find(b => b.textContent === "Add") as HTMLButtonElement;
-    expect(add.disabled).toBe(true); expect(add.title).toBe("Needs the engine’s long-goals store.");
+    expect(add.disabled).toBe(true); expect(add.title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
   });
   it("levels: the note box from Advanced, Edit as text only at Technical", async () => {
     await mount("regular");

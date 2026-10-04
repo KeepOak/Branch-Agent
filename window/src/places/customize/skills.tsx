@@ -2,6 +2,7 @@
 // (skills.gardener.status), Suggested and Drafts (skills.proposals.*), the detail with skills.update and
 // skills.install, kept versions (skills.library.*), and "Add a skill" (skills.search / skills.install).
 import { useState, type ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { shows } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
@@ -172,7 +173,7 @@ export function AddSkill({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
   return <Dialog wide title="Add a skill" onClose={close} footer={<button type="button" className="btn ghost" onClick={close}>Cancel</button>}>
     <div className="cz-provs">
       <button type="button" className="cz-prov" onClick={() => setLibrary(true)}><b>From the skill library</b><small>Search skills others have shared and install one.</small></button>
-      <div className="cz-prov" title="Needs the engine's skill upload from this window."><b>From a file</b><small>A SKILL.md or a folder.</small><Grey reason="Needs the engine's skill upload from this window.">Choose a file</Grey></div>
+      <div className="cz-prov" title={shownWhy("Needs the engine's skill upload from this window.")}><b>From a file</b><small>A SKILL.md or a folder.</small><Grey reason="Needs the engine's skill upload from this window.">Choose a file</Grey></div>
       <div className="cz-prov"><b>From GitHub</b><small>A repository with a SKILL.md.</small><Grey reason="Needs the engine's install from a GitHub address.">Add from GitHub</Grey></div>
       <div className="cz-prov"><b>Write one with Branch</b><small>Say what it should know how to do.</small><Grey reason="Needs the engine's skill drafting method.">Draft it</Grey></div>
     </div>

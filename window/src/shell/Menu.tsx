@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { shownWhy } from "./shown-why";
 import "./menu.css";
 
 // Glass menus (DESIGN-SPEC §5.4): opened at a point, Up/Down move, a letter runs its row, Right opens a
@@ -140,7 +141,7 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
     );
   }
   return (
-    <button key={i} type="button" role={it.checked !== undefined ? "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={it.disabled}
+    <button key={i} type="button" role={it.checked !== undefined ? "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={shownWhy(it.disabled)}
       onClick={() => {
         onClose();
         it.run();

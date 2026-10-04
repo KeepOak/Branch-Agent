@@ -2,6 +2,7 @@
 // a check first (cron trigger script) or a process event schedule (on-exit / stream), with the check readout
 // from their state. [A] Hooks lists hooks.status and switches hooks.internal.entries.<key>.enabled.
 import { useState } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { Menu, type MenuAnchor } from "../../shell/Menu";
@@ -52,7 +53,7 @@ function TriggerCard({ card, set, level, trunks, busy, canWrite, error, onCancel
     <SwitchRow title="Stop after the first time it fires" on={card.once} change={once => set({ once })} />
     {tech && <Field label="The check" hint="30 seconds, 5 tool calls and 16 KB of saved state per check."><textarea className="inp au-text" aria-label="The check" value={card.script} onChange={e => set({ script: e.target.value })} /></Field>}
     {error && <p className="au-error" role="alert">{error}</p>}
-    <div className="au-actions"><button type="button" className="btn ghost sm" onClick={onCancel}>Cancel</button><button type="button" className="btn pri sm" title={reason} disabled={busy || Boolean(reason)} onClick={onConfirm}>Confirm the trigger</button></div>
+    <div className="au-actions"><button type="button" className="btn ghost sm" onClick={onCancel}>Cancel</button><button type="button" className="btn pri sm" title={shownWhy(reason)} disabled={busy || Boolean(reason)} onClick={onConfirm}>Confirm the trigger</button></div>
   </section>;
 }
 
@@ -70,7 +71,7 @@ function HooksDialog({ engine, canWrite, onClose }: { engine: WindowEngine; canW
   const state = usePlaceData(engine, loadHooks), { busy, run } = useAct(state.refresh);
   const [onlyReady, setOnlyReady] = useState(false);
   const hooks = state.data ?? [], ready = hooks.filter(h => hookPill(h) === "Ready").length;
-  return <Dialog wide title="Hooks" onClose={onClose} footer={<><button type="button" className="btn sm" disabled title={TRIGGER_NEEDS.packs}>Add a hook pack…</button><button type="button" className="btn pri sm" onClick={onClose}>Close</button></>}>
+  return <Dialog wide title="Hooks" onClose={onClose} footer={<><button type="button" className="btn sm" disabled title={shownWhy(TRIGGER_NEEDS.packs)}>Add a hook pack…</button><button type="button" className="btn pri sm" onClick={onClose}>Close</button></>}>
     <p className="au-hint">Small programs that run when something happens in Branch: a command, a message, a conversation starting or being shortened, the Gateway starting. They run with full access to the Gateway’s computer.</p>
     {state.error && <p className="au-error" role="alert">{state.error}</p>}
     {hooks.length > 0 && <SwitchRow title={`${ready} of ${hooks.length} ready`} sub="Only ready ones" on={onlyReady} change={setOnlyReady} />}

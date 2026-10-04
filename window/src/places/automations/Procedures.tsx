@@ -3,6 +3,7 @@
 // procedure, so it has nothing to open). [T] Commands, technical edits config `commands` (engine
 // src/config/zod-schema.session.ts CommandsSchema) through config.patch.
 import { useState } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Segmented } from "../../shell/Popover";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
@@ -69,7 +70,7 @@ export function ProceduresTab({ engine, level }: { engine: WindowEngine; level: 
   const canWrite = engine.scopes.includes("operator.admin");
   return <div className="au-tab">
     <p className="au-hint">Saved step-by-step routines, including ones a Trunk learned by watching you.</p>
-    <div className="au-actions"><button type="button" className="btn" disabled title={PROCEDURE_NEEDS.store}><Glyph name="teach" size={14} />Show a Trunk how, once</button></div>
+    <div className="au-actions"><button type="button" className="btn" disabled title={shownWhy(PROCEDURE_NEEDS.store)}><Glyph name="teach" size={14} />Show a Trunk how, once</button></div>
     <EmptyLine icon={<Glyph name="flow" size={22} />}>No procedures yet. Show a Trunk how once, and it saves the steps to run again.</EmptyLine>
     <Section title="Your saved prompts" hint="Things you ask for often. Each has its own command that works in the window, on the phone, in the terminal and in chat apps.">
       <ToolRow icon="star" title="New prompt" sub="A prompt with blanks to fill in, and its own command." button="New prompt" reason={PROCEDURE_NEEDS.prompts} />

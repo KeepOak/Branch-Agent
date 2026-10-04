@@ -2,6 +2,7 @@
 // and Sends to; Advanced adds name, note, how it runs, Every…, model, time zone, limits and switches; Technical
 // adds routing, the spread and an editable cron line. Every field maps to a cron.add / cron.update field.
 import type { ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { Segmented, Switch } from "../../shell/Popover";
 import { shows, type Level } from "../../places-nav/level";
 import { Glyph } from "./glyphs";
@@ -21,7 +22,7 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   return <label className="au-field"><span className="au-flabel">{label}</span>{children}{hint ? <small className="au-hint">{hint}</small> : null}</label>;
 }
 export function SwitchRow({ title, sub, on, change, disabled }: { title: string; sub?: string; on: boolean; change: (v: boolean) => void; disabled?: string }) {
-  return <div className="au-swrow" title={disabled}><span><b>{title}</b>{sub ? <small>{sub}</small> : null}</span>{disabled ? <button type="button" role="switch" aria-checked={on} aria-label={title} className="switch" disabled /> : <Switch label={title} on={on} onChange={change} />}</div>;
+  return <div className="au-swrow" title={shownWhy(disabled)}><span><b>{title}</b>{sub ? <small>{sub}</small> : null}</span>{disabled ? <button type="button" role="switch" aria-checked={on} aria-label={title} className="switch" disabled /> : <Switch label={title} on={on} onChange={change} />}</div>;
 }
 
 function RepeatsField({ form, set, level }: { form: ScheduleForm; set: (f: Partial<ScheduleForm>) => void; level: Level }) {
@@ -60,7 +61,7 @@ function SendsToField({ draft, change, level, trunk }: { draft: Draft; change: P
     <Field label="Sends to"><select className="inp" aria-label="Sends to" value={draft.sendsTo} onChange={e => change({ sendsTo: e.target.value as SendsTo })}>
       {draft.mode === "edit" && <option value="keep">Where it sends now</option>}
       <option value="conversation">{trunk}’s conversation</option>
-      <option value="" disabled title={CHATS_REASON}>Chats in your chat apps · {CHATS_REASON}</option>
+      <option value="" disabled title={shownWhy(CHATS_REASON)}>Chats in your chat apps</option>
       {adv && <option value="nowhere">Nowhere: keep it in History</option>}
       {adv && <option value="webhook">Another app (web address)</option>}
     </select></Field>

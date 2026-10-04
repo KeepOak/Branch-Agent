@@ -1,5 +1,6 @@
 // Person menu › Get the apps (the preview's appsPA18): a tile per app, and Pair a phone, which pairs for real.
 import { Dialog } from "./Dialog";
+import { shownWhy } from "./shown-why";
 import { useState } from "react";
 import { Icon, type IconName } from "./icons";
 import { desktopControls, IN_BROWSER } from "../connect/desktop-controls";
@@ -33,7 +34,7 @@ export function GetAppsDialog({ onClose, onPair }: { onClose: () => void; onPair
           <div className="tile" key={name}>
             <div className="th"><span className="ico-tile"><Icon name={icon} small /></span><b>{name}</b></div>
             <p>{where}</p>
-            <button type="button" className="btn sm" disabled={off !== undefined} title={off} onClick={() => open(id)}>Get it</button>
+            <button type="button" className="btn sm" disabled={off !== undefined} title={shownWhy(off)} onClick={() => open(id)}>Get it</button>
           </div>
         ))}
       </div>

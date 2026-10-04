@@ -4,6 +4,7 @@
 // session.maintenance.coldStorage.*) and the settings file. The rest needs engine settings that don't exist yet, so
 // those rows are greyed with the reason.
 import { useState, type ReactNode } from "react";
+import { shownWhy } from "../../../shell/shown-why";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Num, Page, Pick, Sec, Seg, Status, Switch, Val, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
@@ -16,6 +17,7 @@ import "./self.css";
 const LEDE = "What Branch may change about itself, how it stays running, and every change it made, each one reversible.";
 const NO_SELF = "Needs the engine’s self-change policy.";
 const NO_LEARN = "Needs the engine’s learning loop.";
+const COSTS_NOTE = "Needs the engine to count what each skill, connector and agent costs.";
 const NO_ROLLBACK = "Rolling back a change needs the engine’s roll back.";
 const NO_SETTING = "Needs an engine setting for it.";
 const APP = "Runs in the Branch app on your computer.";
@@ -201,7 +203,7 @@ function NeverDies() {
       <Kv rows={[
         ["If the engine stops", "The gateway starts it again"],
         ["If it keeps crashing", "After 3 unclean starts in 5 minutes it starts without its chat apps, so it stays up"],
-        ["Interrupted work", "Needs the engine’s record of interrupted work"],
+        ["Interrupted work", shownWhy("Needs the engine’s record of interrupted work")],
         ["Last good settings", "Kept automatically"],
       ]} />
     </Sec>
@@ -244,7 +246,7 @@ function Learning({ lv }: { lv: number }) {
       <Ctl title={model[0]} sub="A cheaper model keeps the cost down." off={NO_LEARN}><Pick label={model[0]} value="" onChange={() => undefined} options={[{ id: "", label: "Same as the Trunk" }]} /></Ctl>
       <OffSwitches items={[idle, ...after]} />
       <SubHead>What it learned</SubHead>
-      <div className="rows"><Empty>{NO_LEARN}</Empty></div>
+      {shownWhy(NO_LEARN) ? <div className="rows"><Empty>{shownWhy(NO_LEARN)}</Empty></div> : null}
       {lv >= 1 ? (
         <>
           <OffSwitches items={LEARNING_MORE} />
@@ -253,7 +255,7 @@ function Learning({ lv }: { lv: number }) {
             <Pick label="Learn overnight on" value="both" onChange={() => undefined} options={[{ id: "local", label: "Models on this computer" }, { id: "plans", label: "Your plans" }, { id: "both", label: "Models on this computer, then your plans" }]} />
           </Ctl>
           <SubHead>Unused, and what each costs</SubHead>
-          <div className="rows"><Empty>Needs the engine to count what each skill, connector and agent costs.</Empty></div>
+          {shownWhy(COSTS_NOTE) ? <div className="rows"><Empty>{shownWhy(COSTS_NOTE)}</Empty></div> : null}
         </>
       ) : null}
     </Sec>

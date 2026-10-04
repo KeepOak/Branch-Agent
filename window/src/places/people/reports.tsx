@@ -1,6 +1,7 @@
 // People › Activity › Reports (§4.6.5.6 line 59): the Team Reports plugin's reports when it is on (team-reports.*),
 // otherwise its off row. Turning it on needs its GitHub and Discord sources set up in the engine.
 import { useState } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
 import { useOperation, useResource } from "../library/data";
@@ -16,7 +17,7 @@ export function Reports({ engine, level }: { engine: WindowEngine; level: Level 
   if (status.error) return <Section title="Reports"><div className="pp-rows flat"><div className="pp-prow">
     <span className="pp-tile"><Glyph name="pulse" /></span>
     <span className="grow"><b>Reports</b><small>Off until you choose: it reads your team's GitHub and Discord activity and your model writes summaries.</small></span>
-    <button type="button" className="btn sm" disabled title={REPORTS_OFF}>Set up</button></div></div></Section>;
+    <button type="button" className="btn sm" disabled title={shownWhy(REPORTS_OFF)}>Set up</button></div></div></Section>;
   return <ReportsOn engine={engine} level={level} />;
 }
 

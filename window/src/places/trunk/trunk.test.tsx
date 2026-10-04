@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -77,6 +78,17 @@ describe("Trunk data", () => {
 });
 
 describe("Trunk editor", () => {
+  it("greys colour, shape, eyes and Shuffle on the Look tab, without the developer note", async () => {
+    await mount(<TrunkEditor engine={engine(fake())} agentId="birch" level="regular" onClose={() => {}} />);
+    await click(document.querySelector('[aria-label^="Classic pebble"]'));
+    const fields = [...document.querySelectorAll<HTMLElement>(".tk-field")].filter((f) => ["Colour", "Shape", "Eyes"].includes(f.querySelector(".tk-label")?.textContent ?? ""));
+    expect(fields).toHaveLength(3);
+    for (const f of fields) { expect(f.title).toBe(""); expect([...f.querySelectorAll("button")].every((b) => b.disabled)).toBe(true); }
+    for (const s of document.querySelectorAll<HTMLButtonElement>(".tk-shape")) expect(s.title).toBe(s.getAttribute("aria-label"));
+    expect(document.querySelector(".tk-why")).toBeNull();
+    expect(byText("Shuffle").disabled).toBe(true); expect(byText("Shuffle").title).toBe("");
+    expect(visibleDevNotes(document.body)).toEqual([]);
+  });
   it("saves the look through agents.update, then what it's for and its rules in one config.patch", async () => {
     const request = fake();
     await mount(<TrunkEditor engine={engine(request)} agentId="birch" level="regular" onClose={() => {}} />);
@@ -84,7 +96,10 @@ describe("Trunk editor", () => {
     await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[1], "Money");
     await click(byText("What it may do"));
     await click(document.querySelector('[aria-label="Use the browser"]'));
-    expect(document.body.textContent).toContain("Needs the engine’s per-Trunk setting for asking before it sends.");
+    const send = [...document.querySelectorAll<HTMLElement>(".tk-ctl")].find(r => r.querySelector("b")?.textContent === "Send email and messages")!;
+    expect(send.classList.contains("off")).toBe(true); expect(send.title).toBe("");
+    expect(send.textContent).toContain("Overrides the mode for this Trunk only."); expect([...send.querySelectorAll("button")].every(b => b.disabled)).toBe(true);
+    expect(visibleDevNotes(document.body)).toEqual([]);
     await click(byText("Its computers"));
     await click(document.querySelector('[data-value="n1"]'));
     await click(byText("Save"));
@@ -123,7 +138,7 @@ describe("Customize › Trunks", () => {
     await click(byText("New group chat"));
     window.removeEventListener("branch:new-group-chat", asked);
     expect(asked).toHaveBeenCalledTimes(1);
-    expect(byText("Pause").title).toContain("pause");
+    expect(byText("Pause").disabled).toBe(true); expect(byText("Pause").title).toBe(""); expect(visibleDevNotes(document.body)).toEqual([]);
   });
   it("opens the new Trunk's profile when the shell hands over no way to start its conversation", async () => {
     const request = fake({ "agents.create": { ok: true, agentId: "new-trunk" } });

@@ -1,5 +1,6 @@
 // People › People dialogs: role, one-time code (device.pair.setupCode), invite, link an email, merge two people.
 import { useState } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { Dialog } from "../../shell/Dialog";
 import type { WindowEngine } from "../../connect/engine";
 import { useOperation } from "../library/data";
@@ -62,17 +63,17 @@ export function InviteDialog({ engine, onClose }: { engine: WindowEngine; onClos
   const [tab, setTab] = useState<InviteTab>("this");
   const code = useSetupCode(engine);
   const footer = <><button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-    {tab === "this" && <button type="button" className="btn pri" disabled title={ADD_HERE_OFF}>Add them</button>}
+    {tab === "this" && <button type="button" className="btn pri" disabled title={shownWhy(ADD_HERE_OFF)}>Add them</button>}
     {tab === "keepoak" && <button type="button" className="btn pri" disabled title={KEEPOAK_OFF}>Invite</button>}
     {tab === "device" && !code.setup && <button type="button" className="btn pri" disabled={code.busy} onClick={code.make}>{code.busy ? "Making…" : "Make a one-time code"}</button>}</>;
   return <Dialog title="Invite someone" onClose={onClose} footer={footer}>
     <div className="ppl-dlg" style={{ display: "grid", gap: 12 }}>
       <Tabs label="How they use Branch" value={tab} onChange={setTab} tabs={[{ id: "this", name: "On this computer" }, { id: "device", name: "On their own device" }, { id: "keepoak", name: "From your keepoak.com team" }]} />
-      {tab === "this" && <fieldset disabled title={ADD_HERE_OFF} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 12 }}>
+      {tab === "this" && <fieldset disabled title={shownWhy(ADD_HERE_OFF)} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 12 }}>
         <label className="fld"><span>Name</span><input className="inp" placeholder="Their name" /></label>
         <div className="fld"><span>Role</span><Seg label="Role" value={null} options={[{ id: "adult", name: "Adult" }, { id: "child", name: "Child" }]} off={ADD_HERE_OFF} /></div>
         <label className="fld"><span>Their PIN, at least four digits</span><input className="inp" inputMode="numeric" /></label>
-        <p className="pp-hint" style={{ margin: 0 }}>{ADD_HERE_OFF}</p></fieldset>}
+        {shownWhy(ADD_HERE_OFF) && <p className="pp-hint" style={{ margin: 0 }}>{shownWhy(ADD_HERE_OFF)}</p>}</fieldset>}
       {tab === "device" && (code.setup ? <CodeBody setup={code.setup} /> : <p style={{ margin: 0 }}>Make a one-time code. Their phone or computer uses it once to reach this Branch.</p>)}
       {tab === "keepoak" && <fieldset disabled title={KEEPOAK_OFF} style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 12 }}>
         <label className="fld"><span>Their email</span><input className="inp" type="email" placeholder="name@example.com" /></label>
