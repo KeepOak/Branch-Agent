@@ -8,7 +8,7 @@ export type MenuItem =
   | { kind: "sub"; label: string; items: MenuItem[]; letter?: string; testid?: string; icon?: ReactNode }
   | { kind: "sep" }
   | { kind: "head"; label: string }
-  | { kind: "info"; label: string; sub?: string; checked?: boolean }
+  | { kind: "info"; label: string; sub?: string; checked?: boolean; icon?: ReactNode }
   /** Controls drawn inside the menu (the Icon and colour grids); they keep the menu open. */
   | { kind: "custom"; node: ReactNode };
 
@@ -110,7 +110,7 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
   if (it.kind === "info") {
     return (
       <div key={i} className="mi info" role="presentation">
-        <span className="mi-tick">{it.checked ? "✓" : ""}</span>
+        {it.icon ? <span className="mi-face">{it.icon}</span> : <span className="mi-tick">{it.checked ? "✓" : ""}</span>}
         <span className="mi-text">
           <span>{it.label}</span>
           {it.sub ? <small className="mi-s">{it.sub}</small> : null}

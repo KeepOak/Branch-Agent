@@ -4,6 +4,7 @@ import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { describePlacement, listComputers, placementComputer, type Computer, type Placement } from "../stage/computers";
 import { ComputerPicker } from "../stage/ComputerPicker";
 import { ReplayDialog } from "./Replay";
+import { Face } from "../face/Face";
 import { iconColourItem } from "./row-look";
 import type { Conversation } from "../connect/conversations";
 import type { SaplingSession } from "../connect/session";
@@ -222,9 +223,11 @@ async function whoItKnows(p: ConversationMenuProps, setOpen: (o: Open) => void, 
     const known = knownTrunks(policy, self, p.trunks.list);
     const items: MenuItem[] = [
       { kind: "head", label: `${p.trunk.name} knows and may talk to` },
-      ...(known.length ? known.map((t): MenuItem => ({ kind: "info", label: t.name, sub: t.isDefault ? "Your default Trunk" : undefined })) : [{ kind: "info", label: policy.enabled === false ? "No other Trunk: talking between Trunks is off." : "No other Trunk yet." } as MenuItem]),
+      ...(known.length ? known.map((t): MenuItem => ({ kind: "info", label: t.name, sub: t.theme || (t.isDefault ? "Your default Trunk" : undefined), icon: <Face size={26} label={t.name} /> })) : [{ kind: "info", label: policy.enabled === false ? "No other Trunk: talking between Trunks is off." : "No other Trunk yet." } as MenuItem]),
     ];
-    setOpen({ kind: "known", at: { x: (anchor?.right ?? 300) - 260, y: (anchor?.bottom ?? 50) + 4 }, items });
+    // TODO(engine-lane): the artifact gives each Trunk here an on/off switch; tools.agentToAgent.allow is one list for
+    // every pair, so a switch per pair needs a per-Trunk rule in the engine.
+    setOpen({ kind: "known", at: { x: (anchor?.right ?? 360) - 340, y: (anchor?.bottom ?? 50) + 4 }, items });
   } catch (e) {
     bad(e);
   }

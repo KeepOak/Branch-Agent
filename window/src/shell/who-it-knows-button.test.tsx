@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SaplingSession } from "../connect/session";
 import type { Actions } from "./conversation-actions";
 import { useConversationMenu, type ConversationMenuProps } from "./ConversationMenu";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+// Each Trunk in the list is drawn with its face, which reads the reduced-motion setting.
+const matchMedia = () => ({ matches: false, media: "", addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn() });
+beforeEach(() => vi.stubGlobal("matchMedia", vi.fn(matchMedia)));
 let root: Root | undefined;
 afterEach(async () => {
   if (root) await act(async () => root?.unmount());
