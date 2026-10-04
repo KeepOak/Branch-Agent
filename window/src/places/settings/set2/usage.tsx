@@ -13,6 +13,8 @@ import { Ico } from "./icons";
 import { Logo } from "../set1/service";
 import { readMeasuredPercent } from "../../../shell/limit-window-reading";
 import { ModelPrices } from "./usage-prices";
+import { useShown } from "../../../shell/shown";
+import { lookStore } from "../set1/appearance-store";
 import "./usage.css";
 
 /* ---------- figures ---------- */
@@ -216,7 +218,7 @@ function Allowances({ engine }: { engine: WindowEngine }) {
       {res.data && !providers.length ? <p className="empty">No connection reports an allowance yet. Connect a model account to see what its service allows.</p> : null}
       {providers.length ? <div className="s2usage-lims">{providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} updatedAt={data.updatedAt} />)}</div> : null}
       {data.refreshing === true ? <Hint>Checking each connection again…</Hint> : null}
-      <AllowanceRows />
+      <AllowanceRows engine={engine} />
     </Sec>
   );
 }
@@ -750,7 +752,6 @@ function exportItems(data: RecordValue, all: Day[], names: Map<string, string>) 
    ====================================================================================================== */
 type Cfg = ReturnType<typeof useConfig>;
 const flag = (v: unknown, def: boolean) => (typeof v === "boolean" ? v : def);
-const NO_RING = "Drawing a usage ring needs a usage setting in the engine.";
 const NO_OFFER = "Offering to save progress needs a usage threshold in the engine.";
 const NO_ASK = "The engine asks each connected service when this page opens; turning that off needs an engine setting.";
 const TRAY = "The tray is part of the Branch app on your computer.";
@@ -792,10 +793,11 @@ export function gbFrom(v: unknown): string {
 const asNum = (v: string): number | undefined => (v.trim() === "" || !Number.isFinite(Number(v)) ? undefined : Number(v));
 
 /** The connection rows under the allowances: what the engine doesn't do yet is greyed with why. */
-function AllowanceRows() {
+function AllowanceRows({ engine }: { engine: WindowEngine }) {
+  const shown = useShown(engine); // the same "show.usage" switch as Appearance › What's shown and the status bar's right-click
   return (
     <>
-      <Ctl title="The ring bottom right" sub="The connection used next, how much of its window is left, and when it refills." off={NO_RING}><Switch label="Show the ring" checked={false} onChange={() => undefined} /></Ctl>
+      <Ctl title="The ring bottom right" sub="The connection used next, how much of its window is left, and when it refills."><Switch label="Show the ring" checked={shown.usage} onChange={(on) => void lookStore(engine).set("show.usage", on)} /></Ctl>
       <Ctl title="Offer to save progress at 95%" sub={<>It only asks, once per connection per window, and never for an estimate. <button type="button" className="link-k" disabled title={NO_OFFER}>Show me</button></>} off={NO_OFFER}><Switch label="Offer to save progress at 95%" checked={false} onChange={() => undefined} /></Ctl>
       <Ctl title="Asking a service what is left" off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
       <Ctl title="Show usage in the tray" sub="A small ring by the clock opens the same list." off={TRAY}><Switch label="Show usage in the tray" checked={false} onChange={() => undefined} /></Ctl>
