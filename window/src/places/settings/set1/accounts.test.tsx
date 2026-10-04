@@ -6,6 +6,7 @@ import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
 import { AccountsPage, accountsOf, movedUp, type Provider } from "./accounts";
 import { servicesOf } from "./add-account";
+import { BulkBar } from "./accounts-select";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const PROVIDERS: Provider[] = [
@@ -97,6 +98,46 @@ describe("Settings › Accounts", () => {
     await act(async () => host.querySelectorAll<HTMLInputElement>(".prow input.chk-acc")[1].click());
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".bulk-acc button")].find((b) => b.textContent === "Move to the top")!.click());
     expect(request).toHaveBeenCalledWith("models.authOrderSet", { provider: "openai", profileIds: ["openai:a", "openai:b"] });
+  });
+
+  it.each(["Move to the top", "Sign out"])("locks bulk %s until the native mutation completes", async (label) => {
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const request = vi.fn(() => pending);
+    const engine = { request } as unknown as WindowEngine;
+    const done = vi.fn();
+    const reload = vi.fn(async () => undefined);
+    await act(async () => root.render(<KitProvider level={1} report={report} scope={null}><BulkBar engine={engine} all={accountsOf(PROVIDERS)} picked={["openai/openai:a"]} agent={{ agentId: "scout" }} reload={reload} done={done} /></KitProvider>));
+    const buttons = [...host.querySelectorAll<HTMLButtonElement>("button")];
+    const chosen = buttons.find((button) => button.textContent === label)!;
+    await act(async () => { chosen.click(); chosen.click(); });
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0][0]).toBe(label === "Sign out" ? "models.authLogout" : "models.authOrderSet");
+    expect(buttons.every((button) => button.disabled)).toBe(true);
+    expect(done).not.toHaveBeenCalled();
+    await act(async () => finish());
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps selection and unlocks bulk actions after a failed mutation", async () => {
+    let fail = true;
+    const request = vi.fn(async () => { if (fail) throw new Error("Sign out unavailable"); });
+    const engine = { request } as unknown as WindowEngine;
+    const done = vi.fn();
+    const reload = vi.fn(async () => undefined);
+    await act(async () => root.render(<KitProvider level={1} report={report} scope={null}><BulkBar engine={engine} all={accountsOf(PROVIDERS)} picked={["openai/openai:a"]} agent={{}} reload={reload} done={done} /></KitProvider>));
+    const signOut = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Sign out")!;
+    await act(async () => signOut.click());
+    expect(done).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+    expect(signOut.disabled).toBe(false);
+    expect(host.textContent).toContain("1 selected");
+    expect(report.failed).toHaveBeenCalledWith("Sign out unavailable");
+    fail = false;
+    await act(async () => signOut.click());
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(done).toHaveBeenCalledTimes(1);
   });
 
   it("the wizard lists every service the engine can sign in to, by kind", () => {
