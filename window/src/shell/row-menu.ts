@@ -30,6 +30,9 @@ const WINDOW_OFF = "A conversation in its own window needs the desktop app, whic
 const FORK_OFF = "Copying a conversation needs an engine call that copies up to the last reply; it doesn't have one yet.";
 const MOVE_OFF = "Moving a conversation into a project needs an engine method Branch doesn't have yet.";
 const PAUSE_OFF = "Pausing a Trunk needs an engine method it doesn't have yet.";
+// TODO(engine-lane): "Mark done" (the artifact's doneR118: a check after the row's name, "Mark not done" to undo) needs a
+// done flag on a conversation in sessions.patch and the session row; the engine has none yet.
+const DONE_OFF = "Marking a conversation done needs a done flag in the engine, which it doesn't have yet.";
 
 export const CARD_LINK_OFF = "A link with a preview card needs the engine's share preview, which it doesn't have yet.";
 
@@ -88,6 +91,7 @@ export function rowMenuItems(row: Conversation, c: Ctx): MenuItem[] {
     copyItem(row, c),
     { kind: "sep" },
     snoozeItem(row, c),
+    { label: "Mark done", run: () => undefined, disabled: DONE_OFF, testid: "menu-done", ...ic("check") },
     row.isMain
       ? null
       : row.archived
