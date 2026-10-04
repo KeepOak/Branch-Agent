@@ -57,12 +57,13 @@ export function useWaitingLine(sessionKey: string | null, working: boolean, offl
   const add = useCallback((text: string, files: DraftFile[]) => update((l) => enqueue(l, { id: crypto.randomUUID(), text, files })), [update]);
   const steerNow = useCallback(
     (id: string) => {
+      if (offline) return;
       const item = line.find((i) => i.id === id);
       if (!item) return;
       update((l) => remove(l, id));
       deliverRef.current(item, true);
     },
-    [line, update],
+    [line, offline, update],
   );
   return {
     line,
