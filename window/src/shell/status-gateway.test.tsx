@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SaplingSession } from "../connect/session";
+import { Menu, type MenuItem } from "./Menu";
 import { StatusBar, type ConnectionPhase, type GatewayPhase, type StatusItem } from "./StatusBar";
+import { RESUME_MISSING, StatusLeftExtras } from "./StatusExtras";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -50,5 +53,25 @@ describe("independent gateway status", () => {
     expect(gateway.getAttribute("aria-expanded")).toBe("false");
     await act(async () => gateway.click());
     expect(gateway.getAttribute("aria-expanded")).toBe("true");
+  });
+});
+
+describe("paused Trunks", () => {
+  it("greys Resume with its reason because the engine has no resume method", async () => {
+    const request = vi.fn(async () => ({}));
+    let items: MenuItem[] = [];
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root?.render(<StatusLeftExtras session={{ request } as unknown as SaplingSession} ready={false}
+      paused={[{ id: "a", name: "Rowan" }]} allPaused={false} gfx={false} pet={null}
+      onMenu={(_e, _id, next) => { items = next; }} onSettings={() => {}} />));
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=sb-paused]")!.click());
+    await act(async () => root?.render(<Menu at={{ x: 0, y: 0 }} items={items} onClose={() => {}} label="Paused Trunks" />));
+    const resume = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("Resume Rowan"))!;
+    expect(resume.disabled).toBe(true);
+    expect(resume.title).toBe(RESUME_MISSING);
+    expect(resume.textContent).toContain(RESUME_MISSING);
+    await act(async () => resume.click());
+    expect(request).not.toHaveBeenCalled();
   });
 });

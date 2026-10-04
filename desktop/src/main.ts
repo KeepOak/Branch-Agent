@@ -75,7 +75,6 @@ function createWindow(): BrowserWindow {
     },
   });
   w.setMenuBarVisibility(false);
-  w.on("page-title-updated", (e) => e.preventDefault());
   if (!HIDDEN) w.once("ready-to-show", () => w.show());
   lockDown(w);
   keepWindowsWindowResident(app, w, join(__dirname, "..", "assets", "branch.ico"), { hidden: HIDDEN });
