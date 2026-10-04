@@ -4,11 +4,13 @@ import { GitHubConnection } from "./github-connection";
 import { Btn, Ctl, Pill, Sec, useScope } from "./kit";
 import { configStore } from "./config-store";
 
-export function GitHubSettings({ engine }: { engine: WindowEngine }) {
+/** An explicit agent pins embedded controls to their edited Trunk, not the active Settings scope. */
+export function GitHubSettings({ engine, agentId: owner }: { engine: WindowEngine; agentId?: string }) {
   const selected = useScope();
-  const agentId = selected ?? engine.agentId;
+  const agentId = owner ?? selected ?? engine.agentId;
   if (!agentId) return <Sec title="GitHub"><p>Select a Trunk to read its GitHub connection.</p></Sec>;
-  return <GitHubOwner key={`${selected ?? "system"}:${agentId}`} engine={engine} agentId={agentId} scope={selected ? "agent" : "system"} />;
+  const scope = owner !== undefined || selected !== null ? "agent" : "system";
+  return <GitHubOwner key={`${scope}:${agentId}`} engine={engine} agentId={agentId} scope={scope} />;
 }
 function GitHubOwner({ engine, agentId, scope }: { engine: WindowEngine; agentId: string; scope: "agent" | "system" }) {
   const [, redraw] = useState(0);
