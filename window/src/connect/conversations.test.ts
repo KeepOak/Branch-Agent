@@ -154,6 +154,7 @@ describe("exact selected contacts", () => {
     await list.selectContact(CONTACT.key, "fern"); exists = false;
     expect(await list.selectContact(CONTACT.key, "fern")).toBeNull();
     expect(list.getSnapshot().rows.some((row) => row.key === CONTACT.key)).toBe(false);
+    expect(list.getSnapshot()).toMatchObject({ loaded: true, error: null });
   });
 });
 

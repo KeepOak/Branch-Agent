@@ -268,7 +268,7 @@ export class ConversationList {
     if (!row) {
       if (this.selectedContact?.key === key) {
         this.selectedContact = null;
-        this.set({ rows: this.snapshot.rows.filter((item) => item.key !== key) });
+        this.set({ rows: this.snapshot.rows.filter((item) => item.key !== key), loaded: true, error: null });
       }
       return null;
     }
