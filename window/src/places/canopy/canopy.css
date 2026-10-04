@@ -17,11 +17,11 @@
 .cn-empty-i .cn-g { width: 22px; height: 22px; }
 
 /* tabs: pill tabs with a neutral count */
-.cn-tabs { display: flex; gap: 4px; margin: 18px 0 8px; overflow-x: auto; scrollbar-width: none; }
-.cn-tabs [role="tab"] { height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; font-size: 13px; color: var(--ink-2); flex: none; display: inline-flex; align-items: center; gap: 6px; }
-.cn-tabs [role="tab"]:hover { background: var(--wash17); }
+.cn-tabs { display: flex; gap: 4px; margin: 18px 0 8px; padding-bottom: 2px; overflow-x: auto; scrollbar-width: none; }
+.cn-tabs [role="tab"] { height: 32px; padding: 0 14px; border: 1px solid transparent; border-radius: 999px; background: transparent; font-size: 13px; color: var(--ink-2); flex: none; white-space: nowrap; }
+.cn-tabs [role="tab"]:hover { background: var(--wash17); color: var(--ink); }
 .cn-tabs [role="tab"][aria-selected="true"] { background: var(--fill-2); color: var(--ink); font-weight: 600; }
-.cn-tabn { font: 600 11px var(--mono); color: var(--ink-3); }
+.cn-tabn { margin-left: 4px; font: 600 11px var(--mono); opacity: .6; }
 
 /* computers strip and filters */
 .cn-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }

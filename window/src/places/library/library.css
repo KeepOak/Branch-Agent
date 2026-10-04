@@ -3,7 +3,7 @@
 .lib .lib-canvas { display: flex; margin: 0; }
 .lib-head-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
 .lib-tabs { margin: 18px 0 8px; }
-.lib-tabs .lib-n { margin-left: 4px; font: 600 11px var(--mono); color: var(--ink); }
+.lib-tabs .lib-n { margin-left: 4px; font: 600 11px var(--mono); opacity: .6; }
 .lib-body { display: block; }
 .lib-grow { flex: 1; min-width: 0; display: grid; }
 .lib-grow > b { font-weight: 600; font-size: 14px; line-height: 21px; overflow-wrap: anywhere; }
