@@ -73,6 +73,36 @@ export function createComputerToolSchema(
           ),
         }
       : {}),
+    uiTarsPrediction: Type.Optional(
+      Type.String({
+        description:
+          "Optional UI-TARS raw prediction for this single action. Set action to its corresponding computer action; retain the latest frameId or observationId.",
+      }),
+    ),
+    uiTarsScreen: Type.Optional(
+      Type.Array(Type.Number({ exclusiveMinimum: 0 }), {
+        minItems: 2,
+        maxItems: 2,
+        description:
+          "[width,height] of the latest delivered screenshot; required for UI-TARS prediction coordinates.",
+      }),
+    ),
+    uiTarsFactor: Type.Optional(
+      Type.Union(
+        [
+          Type.Number({ exclusiveMinimum: 0 }),
+          Type.Array(Type.Number({ exclusiveMinimum: 0 }), { minItems: 2, maxItems: 2 }),
+        ],
+        { description: "UI-TARS coordinate factor; source default 1000, or [xFactor,yFactor]." },
+      ),
+    ),
+    uiTarsMode: optionalStringEnum(["bc", "o1"] as const),
+    uiTarsModelVersion: optionalStringEnum([
+      "1.0",
+      "1.5",
+      "doubao-1.5-15B",
+      "doubao-1.5-20B",
+    ] as const),
     // Codex accepts a single schema in array `items`, not tuple item arrays.
     // Fixed bounds preserve the coordinate-pair contract across runtimes.
     coordinate: Type.Optional(
