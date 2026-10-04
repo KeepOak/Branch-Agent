@@ -170,6 +170,12 @@ unfinished step appear in the next active goal turn, so completed actions need n
 be repeated. `get_goal` and `/goal` show the full checkpoint and criteria. A stale
 `goal_id` cannot update a goal that the operator cleared and replaced.
 
+While a goal is paused, agent `complete` and `blocked` status updates are rejected,
+including updates from a turn admitted before the pause. Confirmed progress can
+still be checkpointed, but the checkpoint does not authorize continued work:
+the agent must wait for the user to resume. Operator `/goal complete` remains
+available without first resuming the goal.
+
 For agent completion of a goal with criteria, `completion_evidence` must include an
 entry for every criterion, with its zero-based `criterion` index and non-empty
 `evidence` describing an observed result and its receipt or source. Missing or

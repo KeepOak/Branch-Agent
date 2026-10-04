@@ -186,15 +186,23 @@ export async function updateSessionGoalStatus(
 ): Promise<SessionGoal> {
   return updateSessionGoal(
     options,
-    (entry, now) =>
-      buildUpdatedSessionGoalStatus(
+    (entry, now) => {
+      // Check the current persisted state under the mutation boundary: an admitted
+      // agent may still hold this goal's ID after the operator has paused it.
+      if (options.actor?.type === "agent" && entry.goal?.status === "paused") {
+        throw new SessionGoalTransitionError(
+          "Goal is paused; wait until the user resumes before changing its status.",
+        );
+      }
+      return buildUpdatedSessionGoalStatus(
         entry,
         {
           ...options,
           requireCompletionEvidence: options.actor?.type === "agent",
         },
         now,
-      ),
+      );
+    },
     (goal) => `goal status changed to ${goal.status}`,
   );
 }
