@@ -187,6 +187,7 @@ export const windowStrictFiles = [
   'src/places/settings/set2/updates.tsx',
   'src/places/settings/set2/seasons.tsx',
   'src/places/settings/set2/secrets.tsx',
+  'src/places/settings/set2/gateway.tsx',
   'src/places/settings/set2/set2.test.tsx',
   'src/places/settings/set2/computer.tsx',
   'src/places/settings/set2/computer-more.tsx',

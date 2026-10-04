@@ -254,8 +254,9 @@ export function Btn({ pri, sm, ghost, className, children, ...rest }: ButtonHTML
 export function Acts({ children }: { children: ReactNode }) {
   return <div className="acts">{children}</div>;
 }
-export function Pill({ tone = "idle", children }: { tone?: "ok" | "warn" | "bad" | "idle" | "work"; children: ReactNode }) {
-  return <span className={`pill ${tone}`}><i />{children}</span>;
+/** A status pill; `dot={false}` for the preview's plain pills ("Never, by itself", "Off"). */
+export function Pill({ tone = "idle", dot = true, children }: { tone?: "ok" | "warn" | "bad" | "idle" | "work"; dot?: boolean; children: ReactNode }) {
+  return <span className={`pill ${tone}`}>{dot ? <i /> : null}{children}</span>;
 }
 export function Hint({ children }: { children: ReactNode }) {
   return <p className="hint">{children}</p>;
