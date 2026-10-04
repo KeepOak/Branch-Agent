@@ -34,7 +34,11 @@ describe("conversation usage", () => {
     vi.useFakeTimers();
     const request = vi.fn().mockResolvedValueOnce(measured).mockRejectedValue(new Error("offline"));
     await render(<UsageBar engine={engine(request)} />);
+    await act(async () => vi.advanceTimersByTimeAsync(4 * 60_000));
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(container.querySelector("meter")?.value).toBe(75);
     await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(request).toHaveBeenCalledTimes(2);
     expect(container.querySelector("meter")).toBeNull();
     expect(container.textContent).toContain("Usage unavailable");
   });

@@ -38,7 +38,8 @@ export function UsageBar({ engine }: { engine?: WindowEngine }) {
       }
     };
     void refresh();
-    const timer = window.setInterval(() => { void refresh(); }, 60_000);
+    // Match the shell's established cadence; usage.status can refresh external allowances.
+    const timer = window.setInterval(() => { void refresh(); }, 5 * 60_000);
     return () => { live = false; window.clearInterval(timer); };
   }, [engine]);
   if (!engine) return null;
