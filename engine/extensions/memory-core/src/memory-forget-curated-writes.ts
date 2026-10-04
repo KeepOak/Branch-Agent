@@ -17,7 +17,10 @@ export function collectTranscriptWrites(params: {
     if (
       !call ||
       (call.type !== "toolCall" && call.type !== "tool_call" && call.type !== "tool_use") ||
-      (call.name !== "apply_patch" && call.name !== "write" && call.name !== "edit")
+      (call.name !== "apply_patch" &&
+        call.name !== "write" &&
+        call.name !== "edit" &&
+        call.name !== "memory_write")
     ) {
       continue;
     }
@@ -34,6 +37,10 @@ export function collectTranscriptWrites(params: {
       continue;
     }
     const candidates = [args.path, args.file_path, args.filePath];
+    if (call.name === "memory_write" && args.path === undefined) {
+      // memory_write defaults to MEMORY.md when no path is given.
+      candidates.push("MEMORY.md");
+    }
     if (call.name === "apply_patch") {
       const input = typeof args.input === "string" ? args.input : args.patch;
       if (typeof input === "string") {

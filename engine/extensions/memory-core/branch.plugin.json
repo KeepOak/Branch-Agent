@@ -24,7 +24,15 @@
   },
   "kind": "memory",
   "contracts": {
-    "tools": ["intent", "memory_get", "memory_search"]
+    "tools": [
+      "intent",
+      "memory_get",
+      "memory_search",
+      "memory_write",
+      "update_working_memory",
+      "task_clipboard",
+      "resolve_referent"
+    ]
   },
   "toolMetadata": {
     "intent": {
@@ -32,6 +40,18 @@
     },
     "memory_get": {
       "replaySafe": true
+    },
+    "memory_write": {
+      "profiles": ["coding", "messaging"]
+    },
+    "update_working_memory": {
+      "profiles": ["coding", "messaging"]
+    },
+    "task_clipboard": {
+      "profiles": ["coding", "messaging"]
+    },
+    "resolve_referent": {
+      "profiles": ["coding", "messaging"]
     }
   },
   "commandAliases": [
@@ -39,9 +59,30 @@
       "name": "rings",
       "kind": "runtime-slash",
       "cliCommand": "memory"
+    },
+    {
+      "name": "memory-inbox",
+      "kind": "runtime-slash",
+      "cliCommand": "memory"
     }
   ],
   "uiHints": {
+    "workingMemory.enabled": {
+      "label": "Working Memory",
+      "help": "Give the agent a persistent scratchpad it updates with update_working_memory and sees every turn."
+    },
+    "temporalMarkers": {
+      "label": "Time Gap Markers",
+      "help": "Tell the agent how much time passed when a message arrives after a pause of 10 minutes or more."
+    },
+    "memoryReview.requireApproval": {
+      "label": "Review Memory Changes",
+      "help": "Hold memory writes as pending proposals until you accept them (/memory-inbox)."
+    },
+    "linkCapture.enabled": {
+      "label": "Capture Links",
+      "help": "Save links shared in chat, with a title and short summary, to memory/links.md."
+    },
     "rings.enabled": {
       "label": "Rings Enabled",
       "help": "Run the default background memory consolidation sweep. Disable to stop the managed schedule."
@@ -73,6 +114,12 @@
       "title": "Rings",
       "order": 20,
       "properties": ["rings"]
+    },
+    {
+      "id": "memory-capture",
+      "title": "Memory capture",
+      "order": 30,
+      "properties": ["workingMemory", "temporalMarkers", "linkCapture", "memoryReview"]
     }
   ],
   "configSchema": {
@@ -101,6 +148,32 @@
               }
             }
           }
+        }
+      },
+      "workingMemory": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean", "default": false },
+          "scope": { "type": "string", "enum": ["agent", "session"], "default": "agent" },
+          "template": { "type": "string" },
+          "schema": { "type": "object" },
+          "readOnly": { "type": "boolean", "default": false }
+        }
+      },
+      "temporalMarkers": { "type": "boolean", "default": false },
+      "memoryReview": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requireApproval": { "type": "boolean", "default": false }
+        }
+      },
+      "linkCapture": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean", "default": true }
         }
       },
       "rings": {

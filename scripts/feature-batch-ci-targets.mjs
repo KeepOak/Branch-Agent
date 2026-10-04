@@ -42,6 +42,15 @@ export const engineTests = [
   'src/agents/cli-output-stream.test.ts',
   'src/agents/cli-output-records.test.ts',
   'src/agents/cli-output-jsonl.test.ts',
+  // feat-memory batch 2: memory capture and curation.
+  'extensions/memory-core/src/memory-write.test.ts',
+  'extensions/memory-core/src/working-memory.test.ts',
+  'extensions/memory-core/src/task-clipboard.test.ts',
+  'extensions/memory-core/src/temporal-markers.test.ts',
+  'extensions/memory-core/src/resolve-referent.test.ts',
+  'extensions/memory-core/src/link-capture.test.ts',
+  'extensions/memory-core/src/memory-inbox.test.ts',
+  'extensions/memory-core/index.test.ts',
 ];
 
 export const windowTests = [
@@ -130,6 +139,26 @@ export const engineStrictFiles = [
   'src/infra/host-env-security-policy.d.ts',
   'src/agents/cli-output-stream.ts',
   'src/agents/cli-output-stream.test.ts',
+  // feat-memory batch 2: memory capture and curation.
+  'extensions/memory-core/index.ts',
+  'extensions/memory-core/src/capture-registration.ts',
+  'extensions/memory-core/src/capture-registration.test-support.ts',
+  'extensions/memory-core/src/fact-write-dedupe.ts',
+  'extensions/memory-core/src/memory-write.ts',
+  'extensions/memory-core/src/memory-write.test.ts',
+  'extensions/memory-core/src/memory-forget-curated-writes.ts',
+  'extensions/memory-core/src/working-memory.ts',
+  'extensions/memory-core/src/task-clipboard.ts',
+  'extensions/memory-core/src/temporal-markers.ts',
+  'extensions/memory-core/src/resolve-referent.ts',
+  'extensions/memory-core/src/link-capture.ts',
+  'extensions/memory-core/src/working-memory.test.ts',
+  'extensions/memory-core/src/task-clipboard.test.ts',
+  'extensions/memory-core/src/temporal-markers.test.ts',
+  'extensions/memory-core/src/resolve-referent.test.ts',
+  'extensions/memory-core/src/link-capture.test.ts',
+  'extensions/memory-core/src/memory-inbox.ts',
+  'extensions/memory-core/src/memory-inbox.test.ts',
 ];
 
 export const windowStrictFiles = [

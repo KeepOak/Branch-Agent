@@ -16,6 +16,7 @@ import type { OpenKeyedStoreOptions } from "branch/plugin-sdk/plugin-state-runti
 import { configureMemoryCoreRingsState } from "./src/rings-state.js";
 import { registerShortTermPromotionRings } from "./src/rings.js";
 import { buildMemoryFlushPlan } from "./src/flush-plan.js";
+import { registerMemoryCaptureFeatures } from "./src/capture-registration.js";
 import "./src/memory/background-context.js";
 import {
   buildMemoryPromptSection,
@@ -216,6 +217,7 @@ export default definePluginEntry({
     const memoryRuntime = createLazyMemoryRuntime(host);
     registerShortTermPromotionRings(api);
     registerSessionBackfillGatewayMethods(api);
+    registerMemoryCaptureFeatures(api, host);
     api.registerMemoryCapability({
       deterministicRecallToolName: "memory_search",
       supportsPrivateTranscriptRecall: true,
