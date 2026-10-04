@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import "./plan.css";
 import type { WindowEngine } from "../connect/engine";
+import type { RefreshState } from "./plan-refresh";
+export { usePlanRefresh } from "./plan-refresh";
 // Mirrors engine/packages/gateway-protocol/src/schema/progress-card.ts. The
 // generated protocol declaration currently loses its TypeBox namespace types.
 export type ProgressCard = {
@@ -82,41 +84,12 @@ export function useProgressCard(engine: WindowEngine) {
   }, [engine]);
   return state.owner === engine ? state : { owner: engine, card: null, error: "" };
 }
-type RefreshState = "asking" | "updated" | "none" | "fail" | null;
 const REFRESH_WORDS: Record<Exclude<RefreshState, null>, string> = {
   asking: "Asking for an update…",
   updated: "Updated",
   none: "No new update yet.",
   fail: "Couldn’t refresh. The last update is kept.",
 };
-
-/** Refresh (§4.2.2 Plan card): progressCard.refresh starts a run that updates the card; "Updated" once a newer
- *  revision arrives, "No new update yet." if that run ends without one. */
-export function usePlanRefresh(engine: WindowEngine, card: ProgressCard | null) {
-  const [state, setState] = useState<{ run: string; from: number; status: RefreshState } | null>(null);
-  const revision = card?.revision ?? 0;
-  useEffect(() => {
-    if (state?.status === "asking" && revision > state.from) setState({ ...state, status: "updated" });
-  }, [revision, state]);
-  useEffect(() => {
-    if (state?.status !== "asking" || !state.run) return;
-    return engine.onEvent((e) => {
-      const p = e.payload as { runId?: string; state?: string } | undefined;
-      if (e.event === "chat" && p?.runId === state.run && (p.state === "final" || p.state === "error" || p.state === "aborted")) {
-        setState((s) => (s && s.status === "asking" ? { ...s, status: "none" } : s));
-      }
-    });
-  }, [engine, state]);
-  useEffect(() => setState(null), [engine]);
-  const refresh = () => {
-    if (!engine.sessionKey) return;
-    setState({ run: "", from: revision, status: "asking" });
-    engine
-      .request<{ runId?: string }>("progressCard.refresh", { sessionKey: engine.sessionKey, ...(engine.agentId ? { agentId: engine.agentId } : {}), idempotencyKey: crypto.randomUUID() })
-      .then((r) => setState((s) => (s && s.status === "asking" ? { ...s, run: String(r?.runId ?? "") } : s)), () => setState({ run: "", from: revision, status: "fail" }));
-  };
-  return { status: state?.status ?? null, refresh };
-}
 
 const DISMISSED = "branch.planDismissed";
 /** Dismiss hides this revision of the card; a newer revision shows again. Kept on this computer. */
