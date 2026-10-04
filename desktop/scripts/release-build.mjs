@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { bundleNode } from "./bundle-node.mjs";
 import { smokeProductionEngine } from "./production-engine-smoke.mjs";
+import { assertTrackedSourceClean } from "./release-source-freeze.mjs";
 import { makeComponentRelease } from "./make-component-release.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { engineRoot, windowRoot, toolingRoot, repoRoot, gitHead, run, preparePnpm,
@@ -17,7 +17,7 @@ const require = createRequire(join(desktopRoot, "package.json"));
 export async function releaseIdentity() {
   const commit = await gitHead();
   assert.equal(commit, process.env.BRANCH_RELEASE_COMMIT, "Release checkout differs from the authorized source SHA");
-  assert.equal(execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: repoRoot, encoding: "utf8" }).trim(), "", "Release source has tracked modifications");
+  assertTrackedSourceClean(repoRoot);
   const desktop = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
   const version = process.env.BRANCH_RELEASE_VERSION;
   assert(version === desktop.version || version === `${desktop.version}-build-${commit.slice(0, 12)}`, "Release version must derive from source desktop version");
