@@ -13,6 +13,7 @@ import { confirmComponentUpdate, readComponentUpdateStatus, recoverComponentUpda
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, registerDesktopControlsIpc } from "./desktop-controls";
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
+import { registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import type { Tray } from "electron";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
@@ -64,7 +65,7 @@ async function stageComponentUpdate(): Promise<boolean> {
 }
 
 const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(
-  "<!doctype html><title>Branch Agent</title><body style=\"font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f8;color:#333\">Starting Branch Agent…</body>",
+  "<!doctype html><title>Branch Agent</title><body style=\"-webkit-app-region:drag;font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f8;color:#333\">Starting Branch Agent…</body>",
 )}`;
 
 function createWindow(): BrowserWindow {
@@ -74,6 +75,8 @@ function createWindow(): BrowserWindow {
     height: 840,
     show: false,
     icon: ICON,
+    // Windows: no native title bar; the window's header carries the minimise, maximise and close buttons.
+    ...titleBarOptions(),
     webPreferences: {
       preload: join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -120,6 +123,7 @@ async function start(): Promise<void> {
   ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, win?.webContents, windowUrl())) void restartEngine(); });
   registerComponentUpdateIpc(ipcMain, () => win?.webContents, windowUrl(), componentUpdates);
   registerDesktopControlsIpc(ipcMain, () => win?.webContents, windowUrl(), controls);
+  registerTitleBarIpc(ipcMain, () => win?.webContents, windowUrl(), (overlay) => win?.setTitleBarOverlay(overlay));
   controls.apply();
   win = createWindow();
   await win.loadURL(STARTING);

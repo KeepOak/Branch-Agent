@@ -1293,3 +1293,30 @@ button.mi:focus-visible {
 .keeper .pet-say { position: absolute; bottom: 30px; left: 0; background: var(--raise); box-shadow: var(--pop); border-radius: 10px; padding: 6px 9px; font-size: 12px; line-height: 1.35; width: max-content; max-width: 190px; z-index: 3; }
 .keeper .pet-say::after { content: ""; position: absolute; left: 14px; bottom: -5px; width: 10px; height: 10px; background: var(--raise); transform: rotate(45deg); }
 .rail .keeper { display: none; }
+
+/* Inside the Branch app on Windows the top bar is the title bar (connect/title-bar.ts): drag it to move the window,
+   double-click it to maximise. The app's minimise, maximise and close buttons sit over its top-right, so the bar keeps
+   room for them (3 × 46 px Windows caption buttons). Everything you can press stays a control. */
+:root.desktop-titlebar {
+  --titlebar-reserve: 138px;
+}
+.desktop-drag-strip {
+  display: none;
+}
+:root.desktop-titlebar .desktop-drag-strip {
+  display: block;
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--titlebar-h, 51px);
+  pointer-events: none;
+  -webkit-app-region: drag;
+}
+:root.desktop-titlebar .topbar {
+  -webkit-app-region: drag;
+}
+:root.desktop-titlebar .topbar-right {
+  padding-right: var(--titlebar-reserve);
+}
+:root.desktop-titlebar :is(button, input, select, textarea, a, label, summary, [role="button"], [role="menu"], [role="menuitem"], [role="dialog"], [role="switch"], [tabindex], [contenteditable="true"]) {
+  -webkit-app-region: no-drag;
+}
