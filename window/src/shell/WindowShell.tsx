@@ -31,6 +31,7 @@ import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import { newMenuItems } from "./new-menu";
 import { notify } from "./notify";
 import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
+import { SidebarPet } from "./SidebarPet";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
 import { PersonMenu, usePersonName } from "./PersonMenu";
@@ -665,6 +666,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       : null;
   const voiceReady = useVoiceCatalog(ready ? session.engine : undefined);
   const pet = usePetLook(session.engine);
+  const reducedMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   const pausedTrunks = trunks.list.filter((t) => t.paused);
   const statusExtras = {
     session,
@@ -898,6 +900,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onSettings={route.kind === "place" ? () => openSettings("general") : undefined}
       />
       <Sidebar
+        pet={<SidebarPet pet={pet} still={reducedMotion} waiting={(() => { const w = lists.rows.find((r) => rowState(r).waiting); return w ? trunkName(w.agentId) : null; })()} />}
         home={home}
         sections={sections}
         openKey={route.kind === "chat" ? openKey : null}

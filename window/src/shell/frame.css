@@ -1282,3 +1282,14 @@ button.mi:focus-visible {
 :where(.frame *):hover {
   scrollbar-color: var(--line-2) transparent;
 }
+
+/* The pet in the list (the preview's .keeper and .petbox, as its last rules leave them). */
+.keeper { position: relative; height: 66px; margin: 0 8px; padding: 4px; border-top: 1px solid var(--hair17); flex: none; }
+.keeper .petbox { position: absolute; bottom: 2px; transition: left 0.32s linear; }
+.keeper .pet-btn { display: block; padding: 0; border: 0; background: none; cursor: pointer; }
+.keeper .pet-btn svg { width: 48px; height: 40px; display: block; image-rendering: pixelated; }
+.keeper .pet-btn img { display: block; margin-top: -8px; }
+.keeper .petbox.flip .pet-btn { transform: scaleX(-1); }
+.keeper .pet-say { position: absolute; bottom: 30px; left: 0; background: var(--raise); box-shadow: var(--pop); border-radius: 10px; padding: 6px 9px; font-size: 12px; line-height: 1.35; width: max-content; max-width: 190px; z-index: 3; }
+.keeper .pet-say::after { content: ""; position: absolute; left: 14px; bottom: -5px; width: 10px; height: 10px; background: var(--raise); transform: rotate(45deg); }
+.rail .keeper { display: none; }
