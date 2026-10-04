@@ -35,6 +35,7 @@ import type { RuntimeEnv } from "../runtime.js";
 import { isCronRunSessionKey } from "../sessions/session-key-utils.js";
 import { getAgentEventLifecycleGeneration } from "./agent-events.js";
 import { formatErrorMessage } from "./errors.js";
+import { GLOBAL_PAUSE_SKIP_REASON, readGlobalPause } from "./global-pause.js";
 import { isWithinActiveHours } from "./heartbeat-active-hours.js";
 import { tryResolveAmbientHeartbeatAgentId } from "./heartbeat-agent-resolution.js";
 import { resolveHeartbeatForWake, type HeartbeatConfig } from "./heartbeat-config.js";
@@ -169,6 +170,14 @@ export async function resolveHeartbeatWakeStage(opts: HeartbeatRunOptions) {
     // docs promise reason=quiet-hours); every sibling skip past this point
     // emits, so a silent return here hides the window from operators.
     return skippedHeartbeatStage("quiet-hours", startedAt);
+  }
+  // The owner's global pause holds proactive check-ins; cron owns its own pause gate.
+  if (
+    !allowsUnscheduledTarget &&
+    wakeSource !== "cron" &&
+    readGlobalPause(startedAt).active
+  ) {
+    return skippedHeartbeatStage(GLOBAL_PAUSE_SKIP_REASON, startedAt);
   }
 
   const shouldPreflightBeforeBusy = shouldPreflightWakeBeforeBusy(

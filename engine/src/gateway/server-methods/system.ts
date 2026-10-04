@@ -26,6 +26,7 @@ import { resolveAdvertisedLanHostCore } from "../../infra/advertised-lan-host.js
 import { loadOrCreateProcessDeviceIdentityAsync } from "../../infra/device-identity-async.js";
 import { publicKeyRawBase64UrlFromPem } from "../../infra/device-identity.js";
 import { tryReadDiskSpace } from "../../infra/disk-space.js";
+import { createGlobalPauseStore, readGlobalPause } from "../../infra/global-pause.js";
 import { getLastHeartbeatEvent } from "../../infra/heartbeat-events.js";
 import { requestHeartbeat, setHeartbeatsEnabled } from "../../infra/heartbeat-wake.js";
 import { getMachineDisplayName } from "../../infra/machine-name.js";
@@ -172,6 +173,37 @@ export const systemHandlers: GatewayRequestHandlers = {
     }
     setHeartbeatsEnabled(enabled);
     respond(true, { ok: true, enabled }, undefined);
+  },
+  "system.pause.get": ({ respond }) => {
+    respond(true, readGlobalPause(Date.now()), undefined);
+  },
+  "system.pause.set": ({ params, respond }) => {
+    const optional = (key: "startIso" | "endIso" | "reason") => {
+      const value = params[key];
+      return typeof value === "string" ? value : undefined;
+    };
+    try {
+      createGlobalPauseStore().set({
+        startIso: optional("startIso") ?? new Date().toISOString(),
+        endIso: optional("endIso"),
+        reason: optional("reason"),
+      });
+    } catch (error) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          error instanceof Error ? error.message : "invalid system.pause.set params",
+        ),
+      );
+      return;
+    }
+    respond(true, readGlobalPause(Date.now()), undefined);
+  },
+  "system.pause.clear": ({ respond }) => {
+    createGlobalPauseStore().clear();
+    respond(true, readGlobalPause(Date.now()), undefined);
   },
   "presence.activity": defineValidatedGatewayMethod(
     "presence.activity",

@@ -396,6 +396,20 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
     includeInBranchGroup: true,
   },
   {
+    id: "save_run_learning",
+    description: "Save a lesson for later runs of a schedule",
+    sectionId: "automation",
+    profiles: [],
+    includeInBranchGroup: true,
+  },
+  {
+    id: "delete_run_learning",
+    description: "Delete a stale lesson of a schedule",
+    sectionId: "automation",
+    profiles: [],
+    includeInBranchGroup: true,
+  },
+  {
     id: AUTOMATIONS_TOOL_NAME,
     description: CRON_TOOL_DISPLAY_SUMMARY,
     sectionId: "automation",

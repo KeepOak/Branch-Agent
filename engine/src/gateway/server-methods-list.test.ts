@@ -255,6 +255,9 @@ describe("listGatewayMethods", () => {
       "storage.locations.list",
       "storage.locations.probe",
       "agents.documents.create",
+      "system.pause.get",
+      "system.pause.set",
+      "system.pause.clear",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -331,6 +334,9 @@ describe("listGatewayMethods", () => {
       "storage.locations.list",
       "storage.locations.probe",
       "agents.documents.create",
+      "system.pause.get",
+      "system.pause.set",
+      "system.pause.clear",
     ]);
   });
 
@@ -535,6 +541,9 @@ describe("listGatewayMethods", () => {
       "storage.locations.list",
       "storage.locations.probe",
       "agents.documents.create",
+      "system.pause.get",
+      "system.pause.set",
+      "system.pause.clear",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));

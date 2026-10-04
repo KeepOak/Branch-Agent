@@ -19,6 +19,7 @@ import {
 import type { InputProvenance } from "../../sessions/input-provenance.js";
 import { resolveCronSkillsSnapshot } from "../../skills/runtime/cron-snapshot.js";
 import { resolveCronJobEffectiveAgentId } from "../agent-id.js";
+import { appendCronLearningsToCommandBody } from "../cron-learnings.js";
 import { createCronRunDiagnosticsFromError } from "../run-diagnostics.js";
 import { resolveCronScheduledToolPolicy } from "../scheduled-tool-policy.js";
 import { isDetachedCronSessionTarget } from "../session-target.js";
@@ -495,6 +496,7 @@ export async function prepareCronRunContext(params: {
       commandBody = `${base}\n${timeLine}`.trim();
     }
     commandBody = appendCronUnattendedRunPreamble(commandBody, { externalHook: isExternalHook });
+    commandBody = await appendCronLearningsToCommandBody(commandBody, input.job.id);
 
     const skillsSnapshot =
       input.skillsSnapshot ??

@@ -44,6 +44,8 @@ const CORE_TOOL_FACTORY_DESCRIPTORS = [
   { name: "github_identity_status", family: "branch" },
   { name: "github_publish", family: "branch" },
   { name: "heartbeat_respond", family: "branch" },
+  { name: "save_run_learning", family: "branch" },
+  { name: "delete_run_learning", family: "branch" },
   { name: "view_image", family: "branch" },
   { name: "image_generate", family: "branch" },
   { name: "message", family: "branch" },

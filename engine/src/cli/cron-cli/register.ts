@@ -16,6 +16,7 @@ import { registerCronPipelinesCommand } from "./register.cron-pipelines.js";
 import { registerCronEditCommand } from "./register.cron-edit.js";
 import { registerCronScratchCommand } from "./register.cron-scratch.js";
 import { registerCronSimpleCommands } from "./register.cron-simple.js";
+import { registerCronTransferCommands } from "./register.cron-transfer.js";
 
 function inheritCronGatewayOptions(command: Command): void {
   for (const name of CRON_GATEWAY_OPTION_NAMES) {
@@ -48,6 +49,7 @@ export function registerCronCli(program: Command) {
   registerCronAddCommand(cron);
   registerCronSimpleCommands(cron);
   registerCronScratchCommand(cron);
+  registerCronTransferCommands(cron);
   registerCronEditCommand(cron);
   setCommandJsonMode(cron, "output", ({ argv }) => isCronMachineOutput(argv));
 

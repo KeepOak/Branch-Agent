@@ -2,6 +2,7 @@ import pMap, { pMapSkip } from "p-map";
 import { DEFAULT_CRON_MAX_CONCURRENT_RUNS } from "../../config/cron-limits.js";
 import { isAbortError } from "../../infra/abort-signal.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { readGlobalPause, resolveGlobalPauseEndMs } from "../../infra/global-pause.js";
 import { formatTimestamp } from "../../logging/timestamps.js";
 import {
   beginGatewayRootWorkAdmissionWhenOpen,
@@ -83,6 +84,19 @@ export function armTimer(state: CronServiceState) {
     return;
   }
   const now = state.deps.nowMs();
+  const globalPause = readGlobalPause(now);
+  if (globalPause.active) {
+    // Paused work waits for the window end (or the next minute recheck) instead of firing.
+    const pauseEndMs = resolveGlobalPauseEndMs(globalPause);
+    const pauseDelay =
+      pauseEndMs === undefined ? MAX_CRON_TIMER_DELAY_MS : Math.max(pauseEndMs - now, MIN_REFIRE_GAP_MS);
+    setCronTimer(state, Math.min(pauseDelay, MAX_CRON_TIMER_DELAY_MS));
+    state.deps.log.debug(
+      { reason: globalPause.reason, endIso: globalPause.endIso },
+      "cron: timer armed for global pause recheck",
+    );
+    return;
+  }
   const delay = Math.max(nextAt - now, 0);
   // A past-due slot blocked by a run marker must use the refire floor; otherwise
   // re-arming at zero delay creates the hot loop fixed by #13992.
@@ -240,7 +254,8 @@ async function onAdmittedTimer(state: CronServiceState) {
       const dueCheckNow = state.deps.nowMs();
       const due = await skipCronJobsWithoutOwners(
         state,
-        collectRunnableJobs(state, dueCheckNow),
+        // A global pause holds every scheduled fire; manual runs do not pass through here.
+        readGlobalPause(dueCheckNow).active ? [] : collectRunnableJobs(state, dueCheckNow),
         dueCheckNow,
         { source },
       );
