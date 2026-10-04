@@ -33,6 +33,7 @@ import {
   type MemorySourceScan,
 } from "./cli-runtime-common.js";
 import type { MemoryCommandOptions } from "./cli.types.js";
+import { computeMemoryHealthScore } from "./memory-health-score.js";
 import {
   auditRingsArtifacts,
   repairRingsArtifacts,
@@ -155,6 +156,7 @@ export async function runMemoryStatus(
     repair?: RepairShortTermPromotionArtifactsResult;
     ringsAudit?: RingsArtifactsAuditSummary;
     ringsRepair?: RepairRingsArtifactsResult;
+    health: ReturnType<typeof computeMemoryHealthScore>;
   }> = [];
   const cfg = await withMemoryCommand({
     commandName: "memory status",
@@ -255,6 +257,7 @@ export async function runMemoryStatus(
         repair,
         ringsAudit,
         ringsRepair,
+        health: computeMemoryHealthScore({ status, embeddingProbe, indexError, ringsAudit }),
       });
     },
   });
@@ -304,6 +307,7 @@ export async function runMemoryStatus(
       extraPaths.length ? `${label("Extra paths")} ${info(extraPaths.join(", "))}` : null,
       `${label("Indexed")} ${success(indexedLabel)}`,
       `${label("Dirty")} ${status.dirty ? warn("yes") : muted("no")}`,
+      `${label("Health")} ${info(`${result.health.score}/100`)} ${muted(`(${result.health.findings.length} findings)`)}`,
       `${label("Store")} ${info(storePath)}`,
       `${label("Workspace")} ${info(workspacePath)}`,
       `${label("Rings")} ${info(formatRingsSummary(cfg))}`,

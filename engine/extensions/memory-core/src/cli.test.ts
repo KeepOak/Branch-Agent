@@ -1218,6 +1218,20 @@ describe("memory cli", () => {
     expect(error).toHaveBeenCalledWith(expect.stringContaining(inactiveMemorySecretDiagnostic));
   });
 
+  it("includes observed memory health in JSON status without claiming a probe", async () => {
+    mockStatusManager({ workspaceDir: undefined, dirty: true });
+    const writeJson = spyRuntimeJson(defaultRuntime);
+    await runMemoryCli(["status", "--json"]);
+    const output = firstWrittenJsonArg<Array<{ health: unknown }>>(writeJson);
+    expect(output?.[0]?.health).toEqual({
+      score: 97,
+      findings: [{
+        id: "pending-sync", severity: "info", description: "Memory changes await indexing.",
+      }],
+      embeddingChecked: false,
+    });
+  });
+
   it.each([
     { availability: "disabled", managerError: undefined, expectedExitCode: 0 },
     {
