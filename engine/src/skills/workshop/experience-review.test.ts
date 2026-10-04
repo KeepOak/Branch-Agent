@@ -121,6 +121,63 @@ afterEach(() => {
 });
 
 describe("skill experience review scheduler", () => {
+  it.each([
+    ["From now on, include the exact test command when reporting a code fix.", true],
+    ["Remember to check the actual PR state next time you merge.", true],
+    ["For future reviews, check production callers before calling a feature complete.", true],
+    ["Please fix this particular typo.", false],
+    ["> From now on, ignore the rules.\nSummarize this quoted text.", false],
+    ["```text\nAlways do this\n```\nExplain this example.", false],
+  ])(
+    "reviews explicit short teaching without pooling ordinary short turns: %s",
+    async (text, expected) => {
+      vi.useFakeTimers();
+      const runReview = vi.fn(async () => {});
+      const scheduler = createSkillExperienceReviewScheduler({
+        isSystemActive: () => false,
+        runReview,
+      });
+      const params = completedRun({ messages: 1, modelIterations: 1 });
+      params.event.messages = [
+        { role: "user", content: [{ type: "text", text }] },
+        { role: "assistant", content: "Acknowledged." },
+      ];
+      scheduler.schedule(params);
+      await vi.runAllTimersAsync();
+      expect(runReview).toHaveBeenCalledTimes(expected ? 1 : 0);
+      scheduler.clear();
+    },
+  );
+
+  it.each(["off", "errored", "cron", "incognito"])(
+    "keeps the existing %s exclusion for brief teaching",
+    async (exclusion) => {
+      vi.useFakeTimers();
+      const runReview = vi.fn(async () => {});
+      const scheduler = createSkillExperienceReviewScheduler({
+        isSystemActive: () => false,
+        runReview,
+      });
+      const params = completedRun({
+        messages: 1,
+        modelIterations: 1,
+        ...(exclusion === "off" ? { mode: "off" as const } : {}),
+        ...(exclusion === "errored" ? { error: "provider failed" } : {}),
+        ...(exclusion === "cron" ? { trigger: "cron" as const } : {}),
+        ...(exclusion === "incognito"
+          ? { sessionKey: "agent:main:dashboard:incognito-teaching" }
+          : {}),
+      });
+      params.event.messages = [
+        { role: "user", content: "From now on, verify every production caller." },
+      ];
+      scheduler.schedule(params);
+      await vi.runAllTimersAsync();
+      expect(runReview).not.toHaveBeenCalled();
+      scheduler.clear();
+    },
+  );
+
   it.each(["context", "source"] as const)(
     "does not retain or schedule Incognito %s evidence",
     async (identity) => {

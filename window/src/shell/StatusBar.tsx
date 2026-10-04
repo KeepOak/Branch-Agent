@@ -50,12 +50,26 @@ export function UsageRing({ left, low }: { left: number; low: boolean }) {
   );
 }
 
+/** Health polling and socket connectivity are independent facts. */
+function GatewayStatus(p: Pick<Props, "gateway" | "open" | "onItem">) {
+  const word = p.gateway === "offline" ? "Offline" : p.gateway === "checking" ? "Checking" : "";
+  const dot = p.gateway === "on" ? "dot on" : p.gateway === "checking" ? "dot wait" : "dot";
+  return (
+    <button type="button" className="sb sb-gw" title="The gateway keeps Branch running in the background"
+      aria-label="The gateway keeps Branch running in the background" data-testid="sb-gateway"
+      data-hide="gateway" data-state={p.gateway} aria-expanded={p.open === "gateway"} aria-haspopup="dialog"
+      onClick={(e) => p.onItem("gateway", e)}>
+      <i className={dot} aria-hidden="true" />
+      {word ? <span>{word}</span> : null}
+      <span>Gateway</span>
+    </button>
+  );
+}
+
 /** The status bar (DESIGN-SPEC §4.9.1): connection, gateway, room left, running, then the usage ring and version. */
 export function StatusBar(p: Props) {
   const word = WORDS[p.connection];
   const dot = p.connection === "connected" ? "dot on" : p.connection === "connecting" ? "dot wait" : "dot";
-  const gwWord = p.gateway === "offline" ? "Offline" : p.connection === "connecting" ? "Connecting" : "";
-  const gwDot = p.gateway === "on" ? "dot on" : p.connection === "connecting" ? "dot wait" : "dot";
   const left = p.roomUsed === null ? null : Math.max(0, Math.round((1 - p.roomUsed) * 100));
   const item = (id: StatusItem) => ({ "aria-expanded": p.open === id, "aria-haspopup": "dialog" as const, onClick: (e: MouseEvent<HTMLElement>) => p.onItem(id, e) });
   return (
@@ -65,13 +79,7 @@ export function StatusBar(p: Props) {
         {word ? <span>{word}</span> : null}
         <span>{p.machineName.toLowerCase()}</span>
       </button>
-      {p.gatewayShown === false ? null : (
-        <button type="button" className="sb sb-gw" title="The gateway keeps Branch running in the background" aria-label="The gateway keeps Branch running in the background" data-testid="sb-gateway" data-hide="gateway" data-state={p.gateway} {...item("gateway")}>
-          <i className={gwDot} aria-hidden="true" />
-          {gwWord ? <span>{gwWord}</span> : null}
-          <span>Gateway</span>
-        </button>
-      )}
+      {p.gatewayShown === false ? null : <GatewayStatus gateway={p.gateway} open={p.open} onItem={p.onItem} />}
       {left !== null && p.roomUsed !== null ? (
         <button type="button" className="sb" title={p.roomUsed >= 0.9 ? "How much room this conversation has left · Tidy up recommended" : "How much room this conversation has left"} data-testid="sb-room" {...item("room")}>
           <span className="sb-room-w">Room left</span>

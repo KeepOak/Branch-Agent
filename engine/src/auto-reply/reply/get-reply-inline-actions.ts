@@ -352,7 +352,35 @@ export async function handleInlineActions(params: {
       return finishCommand();
     }
 
-    const dispatch = skillInvocation.command.dispatch;
+    if (skillInvocation.command.skillBundle) {
+      opts?.abortSignal?.throwIfAborted();
+      const runtime = await skillCommandsRuntimeLoader.load();
+      const invocation = await runtime.prepareSkillBundleInvocationForWorkspace({
+        ...skillCommandContext,
+        skillFilter,
+        bundle: skillInvocation.command.skillBundle,
+        userInstruction: skillInvocation.args,
+        signal: opts?.abortSignal,
+        skillOverrides: opts?.skillOverrides,
+      });
+      opts?.abortSignal?.throwIfAborted();
+      if (!invocation) {
+        return finishCommand({
+          text: `No eligible skill instructions could be loaded for bundle "${skillInvocation.command.skillBundle.name}".`,
+        });
+      }
+      skillSelections = mergeSelections(skillSelections, invocation.selections);
+      updateAgentBody(invocation.message);
+      runtime.recordSkillBundleInvocationUsage(invocation, {
+        runId: opts?.runId,
+        sessionKey,
+        agentId,
+      });
+    }
+
+    const dispatch = skillInvocation.command.skillBundle
+      ? undefined
+      : skillInvocation.command.dispatch;
     if (dispatch?.kind === "tool") {
       const rawArgs = (skillInvocation.args ?? "").trim();
       const { resolveSkillDispatchTools } = await skillToolDispatchRuntimeLoader.load();
@@ -436,7 +464,7 @@ export async function handleInlineActions(params: {
       }
     }
 
-    if (skillInvocation.command.promptTemplate) {
+    if (!skillInvocation.command.skillBundle && skillInvocation.command.promptTemplate) {
       const rewrittenBody = expandBundleCommandPromptTemplate(
         skillInvocation.command.promptTemplate,
         skillInvocation.args,
@@ -449,6 +477,7 @@ export async function handleInlineActions(params: {
     allowTextCommands &&
     (hasSkillReferences || hasSkillSlashCandidate) &&
     !skillInvocation?.command.promptTemplate &&
+    !skillInvocation?.command.skillBundle &&
     (hasSkillSlashCandidate || resolveSlashCommandName(cleanedBody) === null)
       ? expandExplicitSkillReferences({
           text: explicitSkillReferenceBody,
@@ -456,7 +485,9 @@ export async function handleInlineActions(params: {
           allSkillCommands,
         })
       : null;
-  const hasExplicitSkillReferences = Boolean(referenced?.skills.length);
+  const hasExplicitSkillReferences = Boolean(
+    referenced?.skills.length || skillInvocation?.command.skillBundle,
+  );
 
   const sendInlineReply = async (reply?: ReplyPayload) => {
     if (!reply || !opts?.onBlockReply) {

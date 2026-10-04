@@ -19,6 +19,7 @@ import type { BrowserProfileCapabilities } from "./browser/profile-capabilities.
 const BROWSER_ACT_KINDS = [
   "batch",
   "click",
+  "humanClick",
   "clickCoords",
   "type",
   "press",
@@ -100,6 +101,7 @@ export function resolveBrowserToolCapabilities(params?: {
         | "supportsDialogs"
         | "supportsConsole"
         | "supportsNativeSnapshots"
+        | "usesChromeMcp"
       >
     >;
 }): BrowserToolCapabilities {
@@ -126,8 +128,10 @@ export function resolveBrowserToolCapabilities(params?: {
       (kind) =>
         (evaluateEnabled || kind !== "evaluate") &&
         (profileCapabilities?.supportsBatchActions !== false || kind !== "batch") &&
+        (profileCapabilities?.usesChromeMcp !== true || kind !== "humanClick") &&
         (profileCapabilities?.supportsVisualActions !== false ||
-          (kind !== "clickCoords" &&
+          (kind !== "humanClick" &&
+            kind !== "clickCoords" &&
             kind !== "drag" &&
             kind !== "resize" &&
             kind !== "hover" &&

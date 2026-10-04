@@ -66,12 +66,17 @@ function findSkillCommand(
   }
   const lowered = normalizeOptionalLowercaseString(trimmed) ?? "";
   const normalized = normalizeSkillCommandLookup(trimmed);
-  return skillCommands.find(
-    (entry) =>
-      normalizeOptionalLowercaseString(entry.name) === lowered ||
-      normalizeOptionalLowercaseString(entry.skillName) === lowered ||
-      normalizeSkillCommandLookup(entry.name) === normalized ||
-      normalizeSkillCommandLookup(entry.skillName) === normalized,
+  return (
+    skillCommands.find(
+      (entry) => entry.skillBundle && normalizeSkillCommandLookup(entry.name) === normalized,
+    ) ??
+    skillCommands.find(
+      (entry) =>
+        normalizeOptionalLowercaseString(entry.name) === lowered ||
+        normalizeOptionalLowercaseString(entry.skillName) === lowered ||
+        normalizeSkillCommandLookup(entry.name) === normalized ||
+        normalizeSkillCommandLookup(entry.skillName) === normalized,
+    )
   );
 }
 
@@ -115,9 +120,14 @@ export function resolveSkillCommandInvocation(params: {
   const command =
     commandName === "skill"
       ? findSkillCommand(params.skillCommands, invocation[1] ?? "")
-      : params.skillCommands.find(
+      : (params.skillCommands.find(
+          (entry) =>
+            entry.skillBundle &&
+            normalizeSkillCommandLookup(entry.name) === normalizeSkillCommandLookup(commandName),
+        ) ??
+        params.skillCommands.find(
           (entry) => normalizeOptionalLowercaseString(entry.name) === commandName,
-        );
+        ));
   return command ? { command, args: invocation[2]?.trim() || undefined } : null;
 }
 
@@ -143,6 +153,9 @@ export function expandExplicitSkillReferences(params: {
         skillCommands: params.skillCommands,
       })
     : null;
+  if (leadingInvocation?.command.skillBundle) {
+    return { body: params.text, skills: [] };
+  }
   if (leadingInvocation?.command.promptTemplate) {
     return {
       body: expandBundleCommandPromptTemplate(
@@ -169,7 +182,7 @@ export function expandExplicitSkillReferences(params: {
     for (const name of skillReferenceNames(params.text)) {
       const command = findSkillCommand(params.skillCommands, name);
       if (command) {
-        if (!command.promptTemplate && !seen.has(command.name)) {
+        if (!command.promptTemplate && !command.skillBundle && !seen.has(command.name)) {
           seen.add(command.name);
           available.push(command);
         }

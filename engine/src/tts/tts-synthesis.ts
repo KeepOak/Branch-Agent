@@ -196,6 +196,7 @@ type SpeechSynthesisParams = {
   overrides?: TtsDirectiveOverrides;
   disableFallback?: boolean;
   timeoutMs?: number;
+  signal?: AbortSignal;
   agentId?: string;
   accountId?: string;
 };
@@ -238,6 +239,7 @@ async function synthesizeSpeechInternal(
         synthesisText: normalizeSpeechText(params.text),
         providerOverrides: params.overrides?.providerOverrides,
         timeoutMs: params.timeoutMs,
+        signal: params.signal,
         target,
         logLabel: "TTS",
         selectOperation: ({ resolvedProvider }) => ({

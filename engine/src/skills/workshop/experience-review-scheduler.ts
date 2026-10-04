@@ -11,6 +11,7 @@ import type { RunSkillUsage } from "../runtime/run-usage.js";
 import { resolveSkillWorkshopConfig } from "./config.js";
 import {
   countSkillModelIterations,
+  hasExplicitDurableTeaching,
   selectCurrentSkillTurnMessages,
 } from "./experience-review-prompt.js";
 
@@ -219,7 +220,10 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
           : Number.isSafeInteger(reportedModelIterations) && reportedModelIterations >= 0
             ? reportedModelIterations
             : 0;
-      if (modelIterations < EXPERIENCE_REVIEW_MIN_MODEL_ITERATIONS) {
+      if (
+        modelIterations < EXPERIENCE_REVIEW_MIN_MODEL_ITERATIONS &&
+        !hasExplicitDurableTeaching(turnMessages)
+      ) {
         log.debug(
           `experience review skipped: reason=below-depth-bar iterations=${modelIterations} session=${sessionKey}`,
         );

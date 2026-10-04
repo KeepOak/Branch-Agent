@@ -10,6 +10,36 @@ import { getBrowserProfileCapabilities } from "./browser/profile-capabilities.js
 
 describe("browser tool schema", () => {
   const BrowserToolSchema = createBrowserToolSchema(resolveBrowserToolCapabilities());
+  it("advertises humanClick for native profiles without requiring user JavaScript", () => {
+    const capabilities = resolveBrowserToolCapabilities({ evaluateEnabled: false });
+    expect(capabilities.actKinds).toContain("humanClick");
+    expect(
+      Value.Check(createBrowserToolSchema(capabilities), {
+        action: "act",
+        kind: "humanClick",
+        ref: "e1",
+      }),
+    ).toBe(true);
+  });
+
+  it("hides humanClick for existing-session profiles that cannot replay pointer paths", () => {
+    const capabilities = resolveBrowserToolCapabilities({
+      profileCapabilities: {
+        usesChromeMcp: true,
+        supportsBatchActions: false,
+        supportsDownloads: false,
+        supportsPdf: false,
+      },
+    });
+    expect(capabilities.actKinds).not.toContain("humanClick");
+    expect(
+      Value.Check(createBrowserToolSchema(capabilities), {
+        action: "act",
+        kind: "humanClick",
+        ref: "e1",
+      }),
+    ).toBe(false);
+  });
   it("advertises the viewport resize maximum on nested and flattened act params", () => {
     for (const scope of ["properties", "properties.request.properties"]) {
       for (const dimension of ["width", "height"]) {
@@ -116,6 +146,7 @@ describe("browser tool schema", () => {
     expect(Value.Check(schema, { action: "text" })).toBe(true);
     expect(Value.Check(schema, { action: "act", request: { kind: "batch" } })).toBe(false);
     expect(Value.Check(schema, { action: "act", kind: "clickCoords" })).toBe(false);
+    expect(Value.Check(schema, { action: "act", kind: "humanClick", ref: "e1" })).toBe(false);
     expect(schema.properties).toHaveProperty("selector");
     expect(Value.Check(schema, { action: "snapshot", snapshotFormat: "aria" })).toBe(false);
     expect(Value.Check(schema, { action: "snapshot", refs: "role" })).toBe(false);

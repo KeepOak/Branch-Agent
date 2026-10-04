@@ -234,6 +234,29 @@ describe("isProfileInCooldown", () => {
 });
 
 describe("getSoonestCooldownExpiry", () => {
+  it.each(["rate_limit", "timeout", "model_not_found"] as const)(
+    "uses the account block reset, not a sibling model's %s cooldown",
+    (cooldownReason) => {
+      const now = 1_700_000_000_000;
+      const store = makeStore({
+        "openai:primary": {
+          blockedUntil: now + 30_000,
+          cooldownUntil: now + 120_000,
+          cooldownReason,
+          cooldownModel: "model-a",
+        },
+      });
+      expect(isProfileInCooldown(store, "openai:primary", now, "model-b")).toBe(true);
+      expect(
+        getSoonestCooldownExpiry(store, ["openai:primary"], { now, forModel: "model-b" }),
+      ).toBe(now + 30_000);
+      expect(
+        getSoonestCooldownExpiry(store, ["openai:primary"], { now, forModel: "model-a" }),
+      ).toBe(now + 120_000);
+      expect(isProfileInCooldown(store, "openai:primary", now + 30_000, "model-b")).toBe(false);
+    },
+  );
+
   it("excludes sibling models from model_not_found cooldowns — #116464", () => {
     const now = 1_700_000_000_000;
     const store = makeStore({

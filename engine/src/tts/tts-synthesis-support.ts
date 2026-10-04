@@ -269,10 +269,7 @@ export async function acquireTtsRequest(
         !overrideProvider && !preferredProvider ? config.provider : undefined,
         ...catalog.map((provider) => provider.id),
       ];
-      const prepareView = async (
-        queryConfig: BranchConfig,
-        providers: SpeechProviderPlugin[],
-      ) => {
+      const prepareView = async (queryConfig: BranchConfig, providers: SpeechProviderPlugin[]) => {
         const lookups = new Map<string, SpeechProviderPlugin | undefined>();
         const requested = new Set(
           [...requestedInputs, ...providers.map((provider) => provider.id)].flatMap((id) => {
@@ -388,6 +385,7 @@ export async function executeTtsProviderAttempts<TSynthesis, TResult>(params: {
   synthesisText: string;
   providerOverrides?: Record<string, SpeechProviderOverrides>;
   timeoutMs?: number;
+  signal?: AbortSignal;
   target: SpeechSynthesisTarget;
   logLabel: string;
   requireTelephony?: boolean;
@@ -398,6 +396,7 @@ export async function executeTtsProviderAttempts<TSynthesis, TResult>(params: {
   }) => TtsProviderOperation<TSynthesis>;
   buildSuccess: (params: TtsProviderSuccess<TSynthesis>) => TResult;
 }) {
+  params.signal?.throwIfAborted();
   const { cfg, config, persona, providers } = params;
   const errors: string[] = [];
   const attemptedProviders: string[] = [];
@@ -429,6 +428,7 @@ export async function executeTtsProviderAttempts<TSynthesis, TResult>(params: {
   );
 
   for (const { provider, voiceModel } of providers) {
+    params.signal?.throwIfAborted();
     attemptedProviders.push(provider);
     const providerStart = Date.now();
     try {
@@ -474,7 +474,9 @@ export async function executeTtsProviderAttempts<TSynthesis, TResult>(params: {
         personaProviderConfig: resolvedProvider.personaProviderConfig,
         target: params.target,
         timeoutMs,
+        signal: params.signal,
       });
+      params.signal?.throwIfAborted();
       const synthesis = await operation.synthesize({
         text: prepared.text,
         cfg,
@@ -482,8 +484,10 @@ export async function executeTtsProviderAttempts<TSynthesis, TResult>(params: {
         target: params.target,
         providerOverrides: prepared.providerOverrides,
         timeoutMs,
+        signal: params.signal,
       });
       try {
+        params.signal?.throwIfAborted();
         const latencyMs = Date.now() - providerStart;
         attempts.push({
           provider,
@@ -510,6 +514,7 @@ export async function executeTtsProviderAttempts<TSynthesis, TResult>(params: {
         );
       }
     } catch (err) {
+      params.signal?.throwIfAborted();
       const errorMsg = formatTtsProviderError(provider, err);
       const latencyMs = Date.now() - providerStart;
       errors.push(errorMsg);

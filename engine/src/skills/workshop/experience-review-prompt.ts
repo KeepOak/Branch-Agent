@@ -30,6 +30,39 @@ export function countSkillModelIterations(messages: readonly unknown[]): number 
   );
 }
 
+/** A brief explicit teaching turn is useful evidence even without ten model iterations.
+ * This only requests review; the reviewer still distinguishes reusable procedures
+ * from private facts, one-time requests, quoted instructions and unsuccessful work.
+ */
+export function hasExplicitDurableTeaching(messages: readonly unknown[]): boolean {
+  const user = selectCurrentSkillTurnMessages(messages)[0];
+  if (!isRecord(user) || user.role !== "user") {
+    return false;
+  }
+  const content = user.content;
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .flatMap((part) =>
+              isRecord(part) && part.type === "text" && typeof part.text === "string"
+                ? [part.text]
+                : [],
+            )
+            .join("\n")
+        : "";
+  // Do not treat documentation/code examples or quoted dialogue as direct teaching.
+  const unquoted = text
+    .replace(/```[\s\S]*?(?:```|$)/gu, "")
+    .split("\n")
+    .filter((line) => !/^\s*>/u.test(line))
+    .join("\n");
+  return /\b(?:from now on|going forward|next time|for future (?:tasks|reviews|requests|changes)|remember (?:this|to)|always|never)\b/iu.test(
+    unquoted,
+  );
+}
+
 function renderExistingSkillsSection(
   existingSkills: ExperienceReviewPromptCandidate["existingSkills"],
 ): string[] {

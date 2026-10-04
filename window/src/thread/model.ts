@@ -53,7 +53,7 @@ export type Block =
   | { kind: "user"; key: string; text: string; meta?: MessageMeta; attachments?: Attachment[] }
   | { kind: "text"; key: string; text: string; streaming: boolean; meta?: MessageMeta; attachments?: Attachment[] }
   | { kind: "thinking"; key: string; text: string; live: boolean }
-  | { kind: "step"; key: string; tool: string; title: string; detail: string; status: StepStatus; output?: string; browser?: BrowserPresentation }
+  | { kind: "step"; key: string; tool: string; title: string; detail: string; status: StepStatus; output?: string; browser?: BrowserPresentation; at?: number }
   | { kind: "approval"; key: string; approval: Approval }
   | { kind: "done"; key: string; runId: string; durationMs?: number }
   | { kind: "error"; key: string; runId?: string; message: string }
@@ -63,6 +63,11 @@ export type Block =
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 const str = (value: unknown): string => (typeof value === "string" ? value : "");
+
+/** Only positive finite timestamps recorded by the engine are observation times. */
+export function recordedAt(value: unknown): { at?: number } {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? { at: value } : {};
+}
 
 /** One line that says what a tool call does, for the step line. */
 export function describeToolCall(name: string, args: unknown): string {
@@ -125,10 +130,10 @@ function addThinking(b: Builder, event: RunEvent): void {
   b.blocks[b.thinking] = { ...block, text: text || block.text + delta };
 }
 
-function startStep(b: Builder, id: string, name: string, args: unknown): void {
+function startStep(b: Builder, id: string, name: string, args: unknown, at: number): void {
   b.text = null;
   b.thinking = null;
-  b.blocks.push({ kind: "step", key: id, tool: name, title: describeToolCall(name, args), detail: "", status: "running" });
+  b.blocks.push({ kind: "step", key: id, tool: name, title: describeToolCall(name, args), detail: "", status: "running", ...recordedAt(at) });
   b.steps.set(id, b.blocks.length - 1);
 }
 
@@ -140,7 +145,7 @@ function onTool(b: Builder, event: RunEvent): void {
     return; // Tool Search controls; the nested real tool gets its own step line.
   }
   if (d.phase === "start") {
-    startStep(b, id, name, d.args);
+    startStep(b, id, name, d.args, event.ts);
     return;
   }
   const at = b.steps.get(id);
@@ -150,7 +155,7 @@ function onTool(b: Builder, event: RunEvent): void {
   const step = b.blocks[at] as Extract<Block, { kind: "step" }>;
   if (d.phase === "update") {
     const output = resultText(d.partialResult);
-    b.blocks[at] = output ? { ...step, output } : step;
+    b.blocks[at] = output ? { ...step, output, ...recordedAt(event.ts) } : step;
     return;
   }
   if (d.phase !== "result") {
@@ -158,7 +163,7 @@ function onTool(b: Builder, event: RunEvent): void {
   }
   const text = resultText(d.result);
   const status: StepStatus = isDeniedResultText(text) ? "denied" : d.isError ? "failed" : "ok";
-  b.blocks[at] = { ...step, status, detail: text.slice(0, 400), output: text, browser: status === "ok" ? readBrowserPresentation(d.result, step.tool, id) : undefined };
+  b.blocks[at] = { ...step, status, detail: text.slice(0, 400), output: text, browser: status === "ok" ? readBrowserPresentation(d.result, step.tool, id) : undefined, ...recordedAt(event.ts) };
 }
 
 /** The visible text of a tool result: its text blocks, joined. */

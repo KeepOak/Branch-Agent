@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { TrunksTab } from "../customize/trunks";
+import { Jobs } from "../customize/jobs";
 import { TrunkEditor } from "./TrunkEditor";
 import { TrunkProfile } from "./TrunkProfile";
 import { TrunkStudio } from "./TrunkStudio";
@@ -33,9 +34,15 @@ async function type(el: HTMLInputElement, value: string) {
 const ROSTER = { defaultId: "oak", mainKey: "main", agents: [{ id: "oak", identity: { name: "Oak", theme: "Helps" } }, { id: "birch", identity: { name: "Birch", theme: "Reads", avatar: "branch:ember" }, model: { primary: "p/one" } }] };
 const CONFIG = { hash: "h1", valid: true, config: { agents: { entries: { oak: { default: true }, birch: { tools: { deny: ["exec"] } } } } } };
 function fake(extra: Record<string, unknown> = {}) {
-  return vi.fn((method: string, _params?: unknown) => Promise.resolve(method in extra ? extra[method] : method === "agents.list" ? ROSTER : method === "config.get" ? CONFIG
+  let created: string | undefined;
+  return vi.fn((method: string, _params?: unknown) => {
+    if (method === "agents.create") created = (extra[method] as { agentId?: string } | undefined)?.agentId;
+    const roster = created ? { ...ROSTER, agents: [...ROSTER.agents, { id: created }] } : ROSTER;
+    return Promise.resolve(method in extra ? extra[method] : method === "agents.list" ? roster : method === "config.get" ? CONFIG
     : method === "models.list" ? { models: [{ id: "one", provider: "p", name: "One", available: true }, { id: "two", provider: "p", name: "Two", available: true }] }
-    : method === "node.list" ? { nodes: [{ nodeId: "n1", displayName: "Box", platform: "linux", paired: true, connected: true }] } : { ok: true }));
+    : method === "node.list" ? { nodes: [{ nodeId: "n1", displayName: "Box", platform: "linux", paired: true, connected: true }] }
+    : method === "tools.github.status" ? { agentId: "oak", selectedScope: "agent", selected: { scope: "agent", configured: false, identity: null }, effective: null } : { ok: true });
+  });
 }
 
 describe("Trunk data", () => {
@@ -135,16 +142,16 @@ describe("Customize › Trunks", () => {
     expect(request).toHaveBeenCalledWith("agents.delete", { agentId: "birch" });
     expect(document.body.textContent).not.toContain("Undo");
   });
-  it("moves the default marker in one patch, and greys Make default under explicit ownership", async () => {
+  it("saves the contact default in one patch, including explicit ownership", async () => {
     const request = fake();
     await mount(tab(request));
     await act(async () => { document.querySelectorAll(".tk-row")[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
     await click(byText("Make default"));
-    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { birch: { default: true }, oak: { default: null } } } }) });
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { defaultId: "birch" } }) });
     await act(async () => root!.unmount()); root = null; document.body.innerHTML = "";
     await mount(<TrunksTab engine={engine(fake())} level="regular" openConversation={() => {}} trunks={{ data: { ...ROSTER, ownership: "explicit" } as never, loading: false, error: null, reload: () => {} }} />);
     await act(async () => { document.querySelectorAll(".tk-row")[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
-    expect(byText("Make default").disabled).toBe(true);
+    expect(byText("Make default").disabled).toBe(false);
   });
   it("shows Defaults for every Trunk only at Technical and patches a number", async () => {
     const request = fake();
@@ -157,6 +164,30 @@ describe("Customize › Trunks", () => {
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "30000"); input.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { defaults: { bootstrapMaxChars: 30000 } } }) });
+  });
+});
+
+describe("job creation across gateway replacement", () => {
+  it("enables creation on the new engine and cannot let the retired request clear its busy state", async () => {
+    let finishOld!: (value: unknown) => void, finishNew!: (value: unknown) => void;
+    const oldRequest = vi.fn(() => new Promise((resolve) => { finishOld = resolve; }));
+    const newRequest = vi.fn((method: string) => method === "agents.create"
+      ? new Promise((resolve) => { finishNew = resolve; })
+      : Promise.resolve(method === "agents.list" ? { agents: [{ id: "expense-manager" }] }
+        : method === "agents.files.get" ? { file: { missing: true } } : { ok: true }));
+    await mount(<Jobs engine={engine(oldRequest)} reload={() => {}} />);
+    await click(document.querySelector('[aria-label="Use this job: Inbox Manager"]'));
+    const replacement = engine(newRequest);
+    await act(async () => { root!.render(<Jobs engine={replacement} reload={() => {}} />); });
+    expect(document.querySelector<HTMLButtonElement>('[aria-label="Use this job: Expense Manager"]')!.disabled).toBe(false);
+    await click(document.querySelector('[aria-label="Use this job: Expense Manager"]'));
+    await act(async () => { finishOld({ ok: true, agentId: "inbox-manager" }); });
+    expect(document.querySelector<HTMLButtonElement>('[aria-label="Use this job: Expense Manager"]')!.disabled).toBe(true);
+    expect(document.body.textContent).not.toContain("Inbox Manager is ready.");
+    await act(async () => { finishNew({ ok: true, agentId: "expense-manager" }); });
+    expect(document.body.textContent).toContain("Expense Manager is ready.");
+    expect(oldRequest).toHaveBeenCalledTimes(1);
+    expect(newRequest).toHaveBeenCalledWith("agents.files.set", expect.objectContaining({ agentId: "expense-manager", expectedMissing: true }));
   });
 });
 

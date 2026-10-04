@@ -65,7 +65,8 @@ function shouldRunNativeSlashCommandFastPath(ctx: MsgContext): boolean {
     // These commands create agent prompts with exact skill selections. The full
     // reply pipeline must consume that command once, without re-resolving its text.
     commandName === "dashboard" ||
-    commandName === "doctor"
+    commandName === "doctor" ||
+    commandName === "rules"
   ) {
     return false;
   }

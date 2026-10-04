@@ -114,6 +114,7 @@ describe("tool-catalog", () => {
       "sequentialthinking",
       "decision_evaluate",
       "ls",
+      "glob",
       "read",
       "write",
       "edit",

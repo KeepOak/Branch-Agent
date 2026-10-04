@@ -7,6 +7,7 @@ import { hasErrnoCode, toErrorObject } from "../../../infra/errors.js";
 import { decodeWindowsTextFileBuffer } from "../../../infra/windows-encoding.js";
 import type { ImageContent, TextContent } from "../../../llm/types.js";
 import { extractEpubText } from "../../../media/epub-extract.js";
+import { extractMboxContent, isMboxPath } from "../../../media/mbox-read.js";
 import {
   classifyMediaReferenceSource,
   normalizeMediaReferenceSource,
@@ -122,6 +123,8 @@ export interface ReadOperations {
   decodeText?: (params: { buffer: Buffer; absolutePath: string }) => string;
   /** Read file contents as a Buffer */
   readFile: (absolutePath: string) => Promise<Buffer>;
+  /** Creation date from this authorized backend; absent metadata is unknown. */
+  getCreationDate?: (absolutePath: string) => Promise<string>;
   /** Check if file is readable (throw if not) */
   access: (absolutePath: string) => Promise<void>;
   /** Detect image MIME type, return null or undefined for non-images */
@@ -136,7 +139,19 @@ const defaultReadOperations: ReadOperations = {
   decodeText: ({ buffer }) => decodeWindowsTextFileBuffer({ buffer }),
   readFile: async (filePath) => (await readRegularFile({ filePath })).buffer,
   access: assertLocalReadableFile,
+  getCreationDate: async (filePath) => {
+    const stat = await fsStat(filePath);
+    return stat.birthtimeMs ? stat.birthtime.toLocaleString() : "unknown";
+  },
 };
+
+async function readCreationDate(ops: ReadOperations, absolutePath: string): Promise<string> {
+  try {
+    return (await ops.getCreationDate?.(absolutePath)) ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 export interface ReadToolOptions {
   /** Whether to auto-resize images to 2000x2000 max. Default: true */
@@ -364,7 +379,7 @@ export function createReadToolDefinition(
   return {
     name: "read",
     label: "read",
-    description: `Read text, DOCX, XLSX, ODS, EPUB or image file (jpg/png/gif/webp/bmp); images attach to model context. Text caps ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. Continue with offset/limit, or cursor within a long line.`,
+    description: `Read text, DOCX, XLSX, ODS, EPUB, MBOX email document records or image file (jpg/png/gif/webp/bmp); images attach to model context. Text caps ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. Continue with offset/limit, or cursor within a long line.`,
     promptSnippet: "Read file contents",
     promptGuidelines: ["Use read to examine files and its offset, limit, or cursor to continue."],
     parameters: readToolInputSchema,
@@ -402,6 +417,7 @@ export function createReadToolDefinition(
             let absolutePath: string;
             let note: string | undefined;
             let buffer: Buffer;
+            let published = "unknown";
             try {
               // Share write/edit ordering through byte capture only. Decode the
               // immutable snapshot below after releasing the path queue.
@@ -423,16 +439,24 @@ export function createReadToolDefinition(
                   if (aborted) {
                     return undefined;
                   }
+                  const bytes = await ops.readFile(resolved.absolutePath);
+                  if (aborted) return undefined;
+                  const mbox = isMboxPath(resolved.absolutePath);
+                  const snapshotBytes = mbox ? Buffer.from(bytes) : bytes;
+                  const creationDate = mbox
+                    ? await readCreationDate(ops, resolved.absolutePath)
+                    : undefined;
                   return {
                     ...resolved,
-                    buffer: await ops.readFile(resolved.absolutePath),
+                    buffer: snapshotBytes,
+                    published: creationDate ?? "unknown",
                   };
                 },
               );
               if (!snapshot) {
                 return;
               }
-              ({ absolutePath, note, buffer } = snapshot);
+              ({ absolutePath, note, buffer, published } = snapshot);
             } catch (error) {
               if (aborted) {
                 return;
@@ -467,6 +491,10 @@ export function createReadToolDefinition(
                     text: await extractEpubText(buffer, basename(absolutePath), signal),
                   }
                 : await extractOfficeContent(absolutePath, buffer, signal);
+            const mboxChunks =
+              !mimeType && attachment?.class !== "document" && isMboxPath(absolutePath)
+                ? await extractMboxContent({ absolutePath, buffer, published, signal })
+                : undefined;
             let content: (TextContent | ImageContent)[];
             let textDetails: Parameters<typeof createReadToolDetails>[1];
             const modelHasVision = options?.modelHasVision ?? ctx?.model?.input.includes("image");
@@ -474,9 +502,10 @@ export function createReadToolDefinition(
               modelHasVision === false
                 ? "[Current model does not support images. The image will be omitted from this request.]"
                 : undefined;
-            if (officeContent?.kind === "stream") {
+            if (officeContent?.kind === "stream" || mboxChunks) {
               const page = createOfficeReadTextPage({
-                chunks: officeContent.chunks,
+                chunks:
+                  mboxChunks ?? (officeContent?.kind === "stream" ? officeContent.chunks : []),
                 offset,
                 limit,
                 cursor,

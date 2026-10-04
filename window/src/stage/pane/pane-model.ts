@@ -1,6 +1,18 @@
 // What the side pane's Activity and Timeline tabs show, read from the conversation's blocks (chat.history and the
 // live run). Nothing here is invented: a value the engine didn't record is left out.
 import type { Block } from "../../thread/model";
+import { recordedAt } from "../../thread/model";
+
+/** Last observation in transcript/event order; never the renderer's mount time. */
+export function activityRecordedAt(blocks: readonly Block[]): number | undefined {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const block = blocks[i];
+    const value = block.kind === "step" ? block.at : block.kind === "text" || block.kind === "user" ? block.meta?.timestamp : undefined;
+    const at = recordedAt(value).at;
+    if (at !== undefined) return at;
+  }
+  return undefined;
+}
 
 export type TimelineKind = "model" | "tool" | "ok" | "help" | "you";
 export type TimelineItem = {
@@ -53,6 +65,7 @@ export function timelineItems(blocks: Block[], name: string): TimelineItem[] {
         had: firstLine(b.detail, 240) || undefined,
         happened: b.output ? firstLine(b.output, 240) : undefined,
         status: b.status,
+        ...recordedAt(b.at),
       });
     else if (b.kind === "approval")
       out.push({

@@ -103,6 +103,12 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
     profiles: ["coding"],
   },
   {
+    id: "glob",
+    description: "Find workspace files by glob pattern",
+    sectionId: "fs",
+    profiles: ["coding"],
+  },
+  {
     id: "read",
     description: "Read file contents",
     sectionId: "fs",

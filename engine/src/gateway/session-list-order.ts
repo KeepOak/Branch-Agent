@@ -15,10 +15,15 @@ export function compareSessionEntryPairs(
   sortBy: SessionsListParams["sortBy"] = "updatedAt",
 ): number {
   if (sortBy === "updatedAt") {
-    const aPinnedAt =
-      a[1]?.pinnedAt !== undefined && isPinnableSessionEntry(a[0], a[1]) ? (a[1].pinnedAt ?? 0) : 0;
-    const bPinnedAt =
-      b[1]?.pinnedAt !== undefined && isPinnableSessionEntry(b[0], b[1]) ? (b[1].pinnedAt ?? 0) : 0;
+    // Match deer-flow's pinned-first grouping before ordering within each group.
+    // Pin presence is authoritative, including the Unix epoch timestamp.
+    const aPinned = a[1]?.pinnedAt !== undefined && isPinnableSessionEntry(a[0], a[1]);
+    const bPinned = b[1]?.pinnedAt !== undefined && isPinnableSessionEntry(b[0], b[1]);
+    if (aPinned !== bPinned) {
+      return aPinned ? -1 : 1;
+    }
+    const aPinnedAt = aPinned ? (a[1].pinnedAt ?? 0) : 0;
+    const bPinnedAt = bPinned ? (b[1].pinnedAt ?? 0) : 0;
     if (aPinnedAt !== bPinnedAt) {
       return bPinnedAt - aPinnedAt;
     }

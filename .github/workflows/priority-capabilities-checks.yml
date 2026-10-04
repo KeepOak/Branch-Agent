@@ -1,0 +1,63 @@
+name: Priority capability checks
+
+on:
+  pull_request:
+    paths:
+      - "engine/**"
+      - "scripts/priority-capabilities-ci*.mjs"
+      - "scripts/feature-batch-ci-runtime.mjs"
+      - ".github/workflows/priority-capabilities-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "engine/**"
+      - "scripts/priority-capabilities-ci*.mjs"
+      - "scripts/feature-batch-ci-runtime.mjs"
+      - ".github/workflows/priority-capabilities-checks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: priority-capabilities-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  priority-capabilities:
+    name: Goals, learning, memory and monitors on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    env:
+      CI: "true"
+      NODE_OPTIONS: "--max-old-space-size=2048"
+      GOMEMLIMIT: "2GiB"
+      GOMAXPROCS: "2"
+    steps:
+      - name: Check out the exact commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.19.0"
+          package-manager-cache: false
+      - name: Validate exact named scope
+        run: node scripts/priority-capabilities-ci.mjs validate
+      - name: Install frozen dependencies and verify the capability slice
+        run: node scripts/priority-capabilities-ci.mjs all
+      - name: Retain exact-head proof
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: priority-capabilities-${{ matrix.os }}
+          path: ${{ runner.temp }}/branch-feature-batch-*/priority-capabilities-proof.json
+          if-no-files-found: error
+          retention-days: 7

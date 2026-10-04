@@ -146,6 +146,15 @@ export function normalizeActRequest(
   const targetId = toStringOrEmpty(body.targetId) || undefined;
 
   switch (kind) {
+    case "humanClick": {
+      const ref = toStringOrEmpty(body.ref) || undefined;
+      const selector = toStringOrEmpty(body.selector) || undefined;
+      if (!ref && !selector) {
+        throw new Error("humanClick requires ref or selector");
+      }
+      const timeoutMs = readRouteTimerTimeoutMs(body.timeoutMs);
+      return definedAction({ kind, ref, selector, targetId, timeoutMs });
+    }
     case "click": {
       const ref = toStringOrEmpty(body.ref) || undefined;
       const selector = toStringOrEmpty(body.selector) || undefined;
