@@ -17,6 +17,7 @@ import { useShown } from "../../../shell/shown";
 import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
 import { lookStore } from "../set1/appearance-store";
 import "./usage.css";
+import { DesktopCtl } from "../desktop-ctl";
 
 /* ---------- figures ---------- */
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -755,8 +756,6 @@ type Cfg = ReturnType<typeof useConfig>;
 const flag = (v: unknown, def: boolean) => (typeof v === "boolean" ? v : def);
 // TODO(engine-lane): turning off "Asking a service what is left" needs a usage setting (old usage/limits/settings).
 const NO_ASK = "The engine asks each connected service when this page opens; turning that off needs an engine setting.";
-// TODO(desktop-lane): the tray ring is the desktop app's.
-const TRAY = "The tray is part of the Branch app on your computer.";
 const NO_KEEP = "The engine archives old conversations and keeps them; deleting them by age needs an engine setting.";
 const NO_CKPT = "Listing checkpoints needs a checkpoint method in the engine.";
 const NO_EVAL = "Test sets and graders need evals in the engine.";
@@ -804,7 +803,7 @@ function AllowanceRows({ engine }: { engine: WindowEngine }) {
       <Ctl title="The ring bottom right" sub="The connection used next, how much of its window is left, and when it refills."><Switch label="Show the ring" checked={shown.usage} onChange={(on) => void lookStore(engine).set("show.usage", on)} /></Ctl>
       <Ctl title="Offer to save progress at 95%" sub={<>It only asks, once per connection per window, and never for an estimate. <button type="button" className="link-k" onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
       <Ctl title="Asking a service what is left" off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
-      <Ctl title="Show usage in the tray" sub="A small ring by the clock opens the same list." off={TRAY}><Switch label="Show usage in the tray" checked={false} onChange={() => undefined} /></Ctl>
+      <DesktopCtl title="Show usage in the tray" sub="A small ring by the clock opens the same list." name="trayUsage" />
     </>
   );
 }

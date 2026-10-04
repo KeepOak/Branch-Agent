@@ -10,6 +10,7 @@ import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { CallLine, CodeRow, Kv, bytes, lvOf, rec, span, str, useCall, useLive, when, type RecordValue } from "./common";
 import { Icon } from "../../../shell/icons";
+import { DesktopCtl } from "../desktop-ctl";
 import "./self.css";
 
 const LEDE = "What Branch may change about itself, how it stays running, and every change it made, each one reversible.";
@@ -88,7 +89,7 @@ export function SelfPage(props: SettingsPageProps) {
     <Page title={props.title} lede={LEDE}>
       <Running {...ctx} />
       <MayChange {...ctx} />
-      {lv >= 1 ? <Sec title=""><Ctl title="Type branch in any terminal" sub="Adds the branch command, so the terminal view and scripts work anywhere." off="The Branch app’s installer adds it."><Switch label="Type branch in any terminal" checked={false} onChange={() => undefined} /></Ctl></Sec> : null}
+      {lv >= 1 ? <Sec title=""><DesktopCtl title="Type branch in any terminal" sub="Adds the branch command, so the terminal view and scripts work anywhere." name="branchOnPath" /></Sec> : null}
       <NeverDies />
       <Changes {...ctx} />
       <Learning lv={lv} />

@@ -20,6 +20,7 @@ import { readPreConnect } from "./pre-connect-state";
 import { FirstTrunk } from "./FirstTrunk";
 import type { TalkHandle } from "./TalkSetup";
 import type { TalkOption, TalkQuestion } from "./talk-setup";
+import { desktopControls } from "../connect/desktop-controls";
 
 type Props = {
   engine: WindowEngine;
@@ -84,6 +85,8 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
   // null until the person changes it: setup writes update.auto.enabled only then (defaults stay the engine's).
   const [autoUpdate, setAutoUpdate] = useState<boolean | null>(null);
   const [talking, setTalking] = useState(false);
+  // Start with Windows: on for a fresh Branch (as the design has it), applied through the Branch app when setup finishes.
+  const [boot, setBoot] = useState<boolean | null>(null);
   const [checks, setChecks] = useState<Check[]>([]);
   const [login, setLogin] = useState<LoginStart | null>(null);
   const [adding, setAdding] = useState(false);
@@ -116,13 +119,15 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
     // Leaving the step and coming back starts the checks again (§4.8.1.11).
     setChecks(runChecks(p.engine, apps ?? [], (i, row) => setChecks((rows) => rows.map((r, j) => (j === i ? row : r)))));
   }, [step, p.engine, apps]);
-  const latest = useRef({ choices, autoUpdate });
-  latest.current = { choices, autoUpdate };
+  const latest = useRef({ choices, autoUpdate, boot });
+  latest.current = { choices, autoUpdate, boot };
   const close = async (finished: boolean) => {
     setBusy(true);
-    const { choices, autoUpdate } = latest.current;
+    const { choices, autoUpdate, boot } = latest.current;
     try {
       await recordSetup(p.engine, choices, p.version, finished ? autoUpdate : null);
+      const desk = desktopControls();
+      if (finished && "bridge" in desk && (boot !== null || !known?.promise)) await desk.bridge.set("startWithWindows", boot ?? true);
       if (finished) {
         const failed = await makeTrunks(p.engine, choices.jobs, p.trunkNames);
         notify("Branch is ready. Here’s the two-minute walkthrough.", failed.length ? { line: failed.join(" ") } : {});
@@ -155,7 +160,7 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [talking]);
   const doneChecks = checks.filter((c) => c.state !== "checking").length;
-  const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, adding, setAdding, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, checks, setStep });
+  const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, adding, setAdding, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, boot: boot ?? (known?.promise ? null : true), setBoot, checks, setStep });
   const [title, lede] = step === 5 ? [TITLES[5][0], reachLede(apps)] : TITLES[step];
   const footer = (
     <>
@@ -229,6 +234,9 @@ type Ctx = {
   setPairing: (on: boolean) => void;
   autoUpdate: boolean;
   setAutoUpdate: (v: boolean) => void;
+  /** Start with Windows as chosen in setup; null shows what the Branch app has now. */
+  boot: boolean | null;
+  setBoot: (v: boolean) => void;
   checks: Check[];
   setStep: (i: number) => void;
 };
@@ -304,7 +312,7 @@ function renderStep(step: number, c: Ctx): ReactNode {
     case "Tools":
       return <ToolsBody />;
     case "Keep it running":
-      return <KeepBody autoUpdate={c.autoUpdate} onAutoUpdate={c.setAutoUpdate} />;
+      return <KeepBody autoUpdate={c.autoUpdate} onAutoUpdate={c.setAutoUpdate} boot={c.boot} onBoot={c.setBoot} />;
     case "People":
       return <PeopleBody people={choices.people} onPeople={(people) => set({ people })} />;
     case "Two more things":
