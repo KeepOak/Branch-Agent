@@ -109,6 +109,11 @@ export function setupDone(config: unknown): boolean {
   return Boolean(str(rec(rec(rec(config).config).wizard).lastRunAt));
 }
 
+/** A fresh bootstrap owner is not yet the person's chosen contact. Existing setups stay intact. */
+export function needsFirstContact(config: unknown): boolean {
+  return !setupDone(config) && !str(rec(rec(rec(config).config).agents).defaultId);
+}
+
 /** The Trunk id agents.create gets for a picked job: lower case, dashes. */
 export function jobId(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
