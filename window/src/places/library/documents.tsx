@@ -141,7 +141,9 @@ function Managing() {
   </div></Section>;
 }
 
-type Passage = { path: string; snippet: string; startLine: number; endLine: number; score?: number; trunk: string };
+type Passage = { path: string; snippet: string; startLine: number; endLine: number; score?: number; trunk: string; agentId: string };
+
+function fileKey(agentId: string, path: string) { return JSON.stringify([agentId, path]); }
 
 function TestWhatItFinds({ engine, trunks, files }: { engine: WindowEngine; trunks: Trunk[]; files: Doc[] }) {
   const [query, setQuery] = useState("");
@@ -154,14 +156,19 @@ function TestWhatItFinds({ engine, trunks, files }: { engine: WindowEngine; trun
     setBusy(true);
     const answers = await mapLimited(trunks, 4, t => engine.request<unknown>("memory.search", { agentId: t.id, query: query.trim() })
       .then(r => ({ t, r, e: null as string | null }), err => ({ t, r: null, e: errorText(err) })));
-    const passages = answers.flatMap(a => hitsOf(rec(a.r).results).map(p => ({ ...p, trunk: trunkName(a.t) }))).sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    const passages = answers.flatMap(a => hitsOf(rec(a.r).results).map(p => ({ ...p, trunk: trunkName(a.t), agentId: a.t.id }))).sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     setFound({ passages, errors: answers.flatMap(a => (a.e ? [`${trunkName(a.t)}: ${a.e}`] : [])) });
     setBusy(false);
   }
-  const shown = found?.passages.filter(p => !only.length || only.some(name => p.path === name || p.path.endsWith("/" + name))) ?? [];
+  const chosen = only.filter(key => files.some(f => fileKey(f.agentId, f.path) === key));
+  const shown = found?.passages.filter(p => !chosen.length || chosen.includes(fileKey(p.agentId, p.path))) ?? [];
   return <Section title="Test what it finds" hint="The passages a Trunk would be given for a question." testid="test-finds">
     <form className="lib-form" onSubmit={find}><input className="inp" aria-label="A question to test" placeholder="who fixes the boiler?" value={query} onChange={e => setQuery(e.target.value)} /><button type="submit" className="btn sm" disabled={busy || !query.trim()}>Find</button></form>
-    {!!files.length && <div className="lib-only"><span>Only these files:</span>{files.slice(0, 12).map(f => <label key={f.agentId + f.path} className="lib-chk"><input type="checkbox" checked={only.includes(f.path)} onChange={e => setOnly(o => (e.target.checked ? [...o, f.path] : o.filter(x => x !== f.path)))} />{f.name}</label>)}</div>}
+    {!!files.length && <div className="lib-only"><span>Only these files:</span>{files.map(f => {
+      const key = fileKey(f.agentId, f.path);
+      const duplicate = files.some(other => other !== f && other.name === f.name);
+      return <label key={key} className="lib-chk"><input type="checkbox" checked={chosen.includes(key)} onChange={e => setOnly(o => (e.target.checked ? [...o, key] : o.filter(x => x !== key)))} />{f.name}{duplicate ? ` · ${f.trunk}` : ""}</label>;
+    })}</div>}
     {busy && <p className="lib-hint" role="status">Finding…</p>}
     {found?.errors.map(e => <p key={e} className="lib-bad" role="alert">{e}</p>)}
     {found && !busy && (shown.length ? <div className="lib-plain">{shown.map((p, i) => <Row key={p.path + i} icon="file" title={`${p.path} · lines ${p.startLine}–${p.endLine}`} line={`${p.trunk}${p.score !== undefined ? ` · score ${p.score.toFixed(2)}` : ""} · ${p.snippet}`} />)}</div>

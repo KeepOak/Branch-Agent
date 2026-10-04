@@ -292,4 +292,28 @@ describe("Library › Documents", () => {
     expect(finds.textContent).toContain("plan.md · lines 1–2");
     expect(finds.textContent).not.toContain("other.md");
   });
+  it("filters identically named documents by their owning Trunk and exposes every file", async () => {
+    const { engine } = engineOf(workspace((method, params) => {
+      if (method === "agents.workspace.list") return { entries: Array.from({ length: 13 }, (_, i) => ({ name: i ? `file-${i}.md` : "plan.md", path: i ? `file-${i}.md` : "plan.md", kind: "file" })) };
+      if (method === "memory.search") return { results: [{ path: "plan.md", snippet: params.agentId === "a" ? "Birch passage" : "Rowan passage", startLine: 1, endLine: 1 }] };
+      return undefined;
+    }));
+    await mount(engine, "advanced");
+    const finds = host.querySelector('[data-testid="test-finds"]')!;
+    expect(finds.querySelectorAll(".lib-chk")).toHaveLength(26);
+    const input = finds.querySelector('input[aria-label="A question to test"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "plan");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => { input.form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    await settle();
+    expect(finds.textContent).toContain("Rowan passage");
+    const label = [...finds.querySelectorAll<HTMLLabelElement>(".lib-chk")].find(row => row.textContent === "plan.md · Birch")!;
+    await act(async () => { label.querySelector("input")!.click(); });
+    expect(finds.textContent).toContain("Birch passage");
+    expect(finds.textContent).not.toContain("Rowan passage");
+    await act(async () => { label.querySelector("input")!.click(); });
+    expect(finds.textContent).toContain("Rowan passage");
+  });
 });
