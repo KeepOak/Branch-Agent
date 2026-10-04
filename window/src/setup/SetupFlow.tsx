@@ -109,7 +109,11 @@ function SetupFlowBody(p: Props) {
       return;
     }
     // Leaving the step and coming back starts the checks again (§4.8.1.11).
-    setChecks(runChecks(p.engine, apps ?? [], (i, row) => setChecks((rows) => rows.map((r, j) => (j === i ? row : r)))));
+    let active = true;
+    setChecks(runChecks(p.engine, apps ?? [], (i, row) => {
+      if (active) setChecks((rows) => rows.map((r, j) => (j === i ? row : r)));
+    }));
+    return () => { active = false; };
   }, [step, p.engine, apps]);
   const close = async (finished: boolean) => {
     setBusy(true);

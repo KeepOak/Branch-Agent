@@ -66,7 +66,10 @@ export function readChatApps(result: unknown): ChatApp[] {
   return order.map((id) => ({
     id,
     label: typeof labels[id] === "string" ? (labels[id] as string) : id,
-    connected: Array.isArray(accounts[id]) && (accounts[id] as unknown[]).some((a) => rec(a).connected === true || rec(a).running === true),
+    connected: Array.isArray(accounts[id]) && (accounts[id] as unknown[]).some((a) => {
+      const account = rec(a);
+      return account.connected === true || (account.connected !== false && account.running === true);
+    }),
   }));
 }
 
