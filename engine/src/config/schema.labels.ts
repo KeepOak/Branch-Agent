@@ -504,6 +504,14 @@ export const FIELD_LABELS: Record<string, string> = {
   "agents.defaults.embeddedAgent": "Embedded Branch Agent",
   "agents.defaults.emitToolUseSummaries": "Tool Batch Labels",
   "agents.defaults.skipNextSpeakerCheck": "Skip Next Speaker Check",
+  "agents.defaults.contextManagement": "Context Management",
+  "agents.defaults.contextManagement.enabled": "Context Management Enabled",
+  "agents.defaults.contextManagement.tools": "Context Management Tools",
+  "agents.defaults.contextManagement.tools.distillation": "Tool Output Distillation",
+  "agents.defaults.contextManagement.tools.distillation.maxOutputTokens":
+    "Tool Output Distillation Budget",
+  "agents.defaults.contextManagement.tools.distillation.summarizationThresholdTokens":
+    "Tool Output Summary Threshold",
   "agents.defaults.embeddedAgent.projectSettingsPolicy":
     "Embedded Branch Agent Project Settings Policy",
   "agents.defaults.embeddedAgent.executionContract": "Embedded Branch Agent Execution Contract",

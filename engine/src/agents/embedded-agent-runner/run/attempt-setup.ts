@@ -37,6 +37,7 @@ import type { AgentSession } from "../../sessions/index.js";
 import { invalidateComputerFrameIfMissing } from "../../tools/computer-tool.js";
 import { resolveAttemptWorkspaceSandbox } from "../../workspace-sandbox.js";
 import { isCacheTtlEligibleProvider, readLastCacheTtlTimestamp } from "../cache-ttl.js";
+import { installContextManagement } from "../context-management.js";
 import { log } from "../logger.js";
 import { installNextSpeakerContinuation } from "../next-speaker-continuation.js";
 import type { ToolResultPromptProjectionState } from "../session-prompt-state.js";
@@ -339,6 +340,13 @@ export function installEmbeddedAttemptContextGuards(input: {
       isHeartbeat: isHeartbeatLifecycleRunKind(attempt.bootstrapContextRunKind),
     });
   }
+  // Installed before the result guard so the guard's truncation runs after distillation.
+  const removeContextManagement = installContextManagement({
+    agent: activeSession.agent,
+    cfg: attempt.config,
+    agentId: input.sessionAgentId,
+    liveToolResultMaxChars: toolResultMaxChars,
+  });
   const removeToolResultGuard = installToolResultContextGuard({
     agent: activeSession.agent,
     contextWindowTokens: contextTokenBudget,
@@ -392,6 +400,7 @@ export function installEmbeddedAttemptContextGuards(input: {
       removeHistoryImagePruneContextTransform();
       removeNextSpeakerContinuation();
       removeToolResultGuard();
+      removeContextManagement();
       removeContextEngineLoopHook?.();
       activeSession.agent.transformContext = previousCacheTtlTransform;
     },

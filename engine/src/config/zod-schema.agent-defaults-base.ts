@@ -233,6 +233,25 @@ export const AgentDefaultsBaseSchema = z.strictObject({
   emitToolUseSummaries: z.boolean().optional(),
   /** Skip the utility-model check that continues a reply which stopped mid-task. Default: true. */
   skipNextSpeakerCheck: z.boolean().optional(),
+  /** Utility-model context management for long tool outputs and requests. Default: disabled. */
+  contextManagement: z
+    .strictObject({
+      /** Enable context management. Default: false. */
+      enabled: z.boolean().optional(),
+      tools: z
+        .strictObject({
+          distillation: z
+            .strictObject({
+              /** Tool output budget before truncation, in tokens. Default: 10000. */
+              maxOutputTokens: z.number().int().nonnegative().optional(),
+              /** Tool output size that also gets an intent summary, in tokens. Default: 20000. */
+              summarizationThresholdTokens: z.number().int().nonnegative().optional(),
+            })
+            .optional(),
+        })
+        .optional(),
+    })
+    .optional(),
   reasoningDefault: z.union([z.literal("off"), z.literal("on"), z.literal("stream")]).optional(),
   elevatedDefault: z
     .union([z.literal("off"), z.literal("on"), z.literal("ask"), z.literal("full")])

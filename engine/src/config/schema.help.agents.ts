@@ -183,6 +183,18 @@ export const AGENT_FIELD_HELP: Record<string, string> = {
     "Labels each completed batch of successful tool calls with a short past-tense summary (for example \"Searched in auth/\") written by the utility model and emitted on the agent event stream. Skipped when no utility model resolves. Default: true.",
   "agents.defaults.skipNextSpeakerCheck":
     'Skips the next-speaker check. When set to false, a reply that ends without tool calls is shown to the utility model, and if the reply stated a next step it never took (or stopped mid-thought) the agent is sent "Please continue." and keeps working. Default: true.',
+  "agents.defaults.contextManagement":
+    "Utility-model context management: distills oversized tool outputs and oversized parts of each new request so long sessions keep their facts in less context. Default: disabled.",
+  "agents.defaults.contextManagement.enabled":
+    "Turns on context management for embedded agent runs. Default: false.",
+  "agents.defaults.contextManagement.tools":
+    "Context management settings for tool outputs.",
+  "agents.defaults.contextManagement.tools.distillation":
+    "Tool outputs larger than the budget are saved to a private temp file, truncated head-and-tail with a pointer to the saved file, and (when very large) given a short utility-model summary of the key facts.",
+  "agents.defaults.contextManagement.tools.distillation.maxOutputTokens":
+    "Tool output budget in tokens (about 4 characters each) before the output is saved and truncated. 0 turns truncation off. Default: 10000.",
+  "agents.defaults.contextManagement.tools.distillation.summarizationThresholdTokens":
+    "Tool outputs above this many tokens (and under 1,000,000 characters) also get a utility-model summary of exact errors, paths and outcomes. Default: 20000.",
   "agents.defaults.embeddedAgent":
     "Embedded Branch Agent runner hardening controls for how workspace-local agent settings are trusted and applied in Branch Agent sessions.",
   "agents.defaults.embeddedAgent.projectSettingsPolicy":
