@@ -183,7 +183,7 @@ execute plugin code or require the Custom plugin UI Labs setting.
       "critters": {
         "ferris": {
           "source": "assets/theme-art/ferris.svg",
-          "title": "a crab, allegedly",
+          "title": "a beetle, allegedly",
           "crossMs": 12000
         }
       }

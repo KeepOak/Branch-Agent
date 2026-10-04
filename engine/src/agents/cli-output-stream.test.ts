@@ -254,47 +254,26 @@ describe("createCliJsonlStreamingParser", () => {
     expect(phases).toEqual(["start"]);
   });
 
-  it("observes exact parent native tools across chunked fresh and warm initialization", () => {
-    const snapshots: unknown[] = [];
-    const parser = createCliJsonlStreamingParser({
-      backend: { command: "claude", output: "jsonl", jsonlDialect: "claude-stream-json" },
-      providerId: "claude-cli",
-      onAssistantDelta: () => {},
-      onNativeTools: (tools: unknown) => snapshots.push(tools),
-    });
-    const initial = JSON.stringify({
-      type: "system",
-      subtype: "init",
-      session_id: "reused-session",
-      tools: ["Read", "Bash", "mcp__branch__automations"],
-    });
-    parser.push(initial.slice(0, -2));
-    expect(snapshots).toEqual([]);
-    parser.push(
-      initial.slice(-2) +
-        "\n" +
-        joinJsonlFrames(
-          { type: "result", result: "first turn complete" },
-          { type: "system", subtype: "init", session_id: "reused-session", tools: ["Read"] },
-          { type: "result", result: "warm turn complete" },
-          { type: "system", subtype: "init", session_id: "replacement-session", tools: [] },
-        ),
-    );
-    parser.finish();
-
-    expect(snapshots).toEqual([["Read", "Bash", "mcp__branch__automations"], ["Read"], []]);
-  });
-
-  it("ignores subagent and non-initialization native tool lists", () => {
-    const snapshots: unknown[] = [];
-    const parser = createCliJsonlStreamingParser({
-      backend: { command: "claude", output: "jsonl", jsonlDialect: "claude-stream-json" },
-      providerId: "claude-cli",
-      onAssistantDelta: () => {},
-      onNativeTools: (tools: unknown) => snapshots.push(tools),
-    });
-    parser.push(
-      joinJsonlFrames(
+  it.each([
+    {
+      name: "fresh and warm parent initialization",
+      frames: [
+        {
+          type: "system",
+          subtype: "init",
+          session_id: "reused-session",
+          tools: ["Read", "Bash", "mcp__branch__automations"],
+        },
+        result("first turn complete"),
+        { type: "system", subtype: "init", session_id: "reused-session", tools: ["Read"] },
+        result("warm turn complete"),
+        { type: "system", subtype: "init", session_id: "replacement-session", tools: [] },
+      ],
+      expected: [["Read", "Bash", "mcp__branch__automations"], ["Read"], []],
+    },
+    {
+      name: "subagent and non-initialization exclusion",
+      frames: [
         { type: "system", subtype: "init", parent_tool_use_id: null, tools: ["Read"] },
         { type: "system", subtype: "init", parent_tool_use_id: "child-call", tools: ["Bash"] },
         { type: "system", subtype: "status", tools: [] },
