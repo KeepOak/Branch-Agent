@@ -11,8 +11,14 @@ import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowsWindowResident } from "./resident-window";
 import { confirmComponentUpdate, readComponentUpdateStatus, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
+import { createDesktopControls, registerDesktopControlsIpc } from "./desktop-controls";
+import { desktopOs, START_IN_TRAY } from "./desktop-os";
+import type { Tray } from "electron";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
+/** Started with Windows: open quietly in the tray (only where the tray exists). */
+const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRAY);
+const ICON = join(__dirname, "..", "assets", "branch.ico");
 const READY_TIMEOUT_MS = 180_000;
 const cfg: DesktopConfig = loadConfig();
 
@@ -43,6 +49,8 @@ let stopWindowWatch: (() => void) | undefined;
 let componentsReady = false;
 let engineRestartInProgress = false;
 const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
+let tray: Tray | undefined;
+const controls = createDesktopControls(desktopOs(app, cfg, () => tray, ICON));
 
 /** Staging never invokes the restart IPC or the gateway's generic updater. */
 async function stageComponentUpdate(): Promise<boolean> {
@@ -65,7 +73,7 @@ function createWindow(): BrowserWindow {
     width: 1280,
     height: 840,
     show: false,
-    icon: join(__dirname, "..", "assets", "branch.ico"),
+    icon: ICON,
     webPreferences: {
       preload: join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -76,9 +84,14 @@ function createWindow(): BrowserWindow {
     },
   });
   w.setMenuBarVisibility(false);
-  if (!HIDDEN) w.once("ready-to-show", () => w.show());
+  if (!HIDDEN && !QUIET) w.once("ready-to-show", () => w.show());
   lockDown(w);
-  keepWindowsWindowResident(app, w, join(__dirname, "..", "assets", "branch.ico"), { hidden: HIDDEN });
+  tray = keepWindowsWindowResident(app, w, ICON, {
+    hidden: HIDDEN,
+    keepRunning: () => controls.settings().keepWorking,
+    // With the usage ring in the tray, a click opens the same list (Settings › Usage).
+    onTrayClick: () => { if (controls.settings().trayUsage) w.webContents.send("branch-desktop:open-usage"); },
+  });
   return w;
 }
 
@@ -106,6 +119,8 @@ async function start(): Promise<void> {
   });
   ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, win?.webContents, windowUrl())) void restartEngine(); });
   registerComponentUpdateIpc(ipcMain, () => win?.webContents, windowUrl(), componentUpdates);
+  registerDesktopControlsIpc(ipcMain, () => win?.webContents, windowUrl(), controls);
+  controls.apply();
   win = createWindow();
   await win.loadURL(STARTING);
   log(`starting page shown after ${Date.now() - launchStarted} ms`);
@@ -205,6 +220,7 @@ function shutdown(): void {
   stopEngineWatch?.();
   stopComponentWatch?.();
   stopWindowWatch?.();
+  controls.dispose();
   if (gateway) stopGateway(gateway);
   server?.close();
 }
