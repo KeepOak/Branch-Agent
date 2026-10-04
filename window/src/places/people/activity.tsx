@@ -112,7 +112,7 @@ function Event({ e, names, title, explain }: { e: Rec; names: Map<string, string
       <span className="pp-acts">{at !== undefined && <time>{when(at)}</time>}{run && explain && str(e.runId) && <button type="button" className="btn ghost sm" onClick={() => explain(str(e.runId))}>Explain</button>}</span></li>;
   }
   const inbound = str(e.direction) === "inbound";
-  return <li><Glyph name="chat" /><span>{inbound ? "Message in" : "Message out"} · {status}{trunk ? <> · <b>{trunk}</b></> : null}<small>From {str(e.channel)}</small></span>{at !== undefined && <time>{when(at)}</time>}</li>;
+  return <li><Glyph name="chat" /><span>{inbound ? "Message in" : "Message out"} · {status}{trunk ? <> · <b>{trunk}</b></> : null}{str(e.channel) ? <small>From {str(e.channel)}</small> : null}</span>{at !== undefined && <time>{when(at)}</time>}</li>;
 }
 
 const OUTCOME: Record<string, string> = { allowed: "Allowed", denied: "Denied", "not-applicable": "Not applicable", unknown: "Unknown" };
