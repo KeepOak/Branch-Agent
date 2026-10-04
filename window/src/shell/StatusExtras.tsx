@@ -17,6 +17,9 @@ const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export type LiveCall = { id: string; state: string; startedAt: number; direction: string };
 export type Vitals = { memUsed: number; memTotal: number; cpus: number; load: number[] | null; diskFree: number | null; diskTotal: number | null; upMs: number | null; node: string; pid: number | null };
 
+/** The engine has no method that resumes a paused Trunk, so Resume stays greyed with this reason. */
+export const RESUME_MISSING = "Resuming a paused Trunk isn't available yet";
+
 const GB = 1024 ** 3;
 const gb = (b: number) => (b / GB).toFixed(1).replace(/\.0$/, "");
 
@@ -126,13 +129,11 @@ export function StatusLeftExtras(p: Props) {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [calls.length]);
-  const resume = (id: string, name: string) =>
-    void p.session.request("agents.resume", { agentId: id }).then(() => notify(`${name} carries on.`), (e: unknown) => notify(`Couldn't resume ${name}: ${reason(e)}.`, { tone: "bad" }));
   return (
     <>
       {p.paused.length ? (
         <button type="button" className="sb pzsb" title="Paused Trunks" aria-label="Paused Trunks" data-testid="sb-paused"
-          onClick={(e) => p.onMenu(e, "paused", [{ kind: "head", label: "Paused" }, ...p.paused.map((t): MenuItem => ({ label: `Resume ${t.name}`, run: () => resume(t.id, t.name) }))], "Paused Trunks")}>
+          onClick={(e) => p.onMenu(e, "paused", [{ kind: "head", label: "Paused" }, ...p.paused.map((t): MenuItem => ({ label: `Resume ${t.name}`, run: () => {}, disabled: RESUME_MISSING, sub: RESUME_MISSING }))], "Paused Trunks")}>
           <Icon name="pause" small />
           {p.allPaused ? "All Trunks paused" : `${p.paused.length} paused`}
         </button>
