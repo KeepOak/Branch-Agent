@@ -317,6 +317,30 @@ describe("qa score", () => {
     expect(String(runQaManualLane.mock.calls[1]?.[0]?.message)).toContain("README contents");
   });
 
+  it("judges task completion of a stored run and gates on it", async () => {
+    const sessionFile = path.join(tmpDir, "session-1.jsonl");
+    await writeSession(sessionFile, readThenFailedWriteSession());
+    runQaManualLane.mockResolvedValueOnce({
+      reply: '{"completed": false, "reason": "The write to out.md failed."}',
+    });
+
+    await parseQa([
+      "score",
+      "--trajectory",
+      sessionFile,
+      "--scorer",
+      "task-completion",
+      "--judge-model",
+      "anthropic/claude-opus-4-8",
+      "--threshold",
+      "task-completion=1",
+    ]);
+
+    expect(String(runQaManualLane.mock.calls[0]?.[0]?.message)).toContain("- write (failed): EACCES");
+    expect(stdout.join("")).toContain("task_completion_reason: The write to out.md failed.");
+    expect(process.exitCode).toBe(1);
+  });
+
   it("requires a judge model for LLM-judged scorers", async () => {
     const sessionFile = path.join(tmpDir, "s.jsonl");
     await writeSession(sessionFile, readThenFailedWriteSession());

@@ -15,6 +15,7 @@ import {
   type AgentScorerRun,
   type ScorerRunOutputForAgent,
 } from "./scorer-utils.js";
+import { createTaskCompletionScorer } from "./task-completion.js";
 import { createToolCallAccuracyScorerCode } from "./tool-call-accuracy.js";
 
 export type QaAgentScorer = AnyBranchScorer<AgentScorerRun["input"], ScorerRunOutputForAgent>;
@@ -229,6 +230,14 @@ const DEFINITIONS: QaScorerDefinition[] = [
     argument: "none",
     needsJudge: true,
     create: (_arg, context) => createToxicityScorer({ model: requireJudge("toxicity", context) }),
+  },
+  {
+    name: "task-completion",
+    description: "LLM judge: is the user's task complete given the conversation and tool results",
+    argument: "none",
+    needsJudge: true,
+    create: (_arg, context) =>
+      createTaskCompletionScorer({ model: requireJudge("task-completion", context) }),
   },
   {
     name: "llm-tool-call-accuracy",
