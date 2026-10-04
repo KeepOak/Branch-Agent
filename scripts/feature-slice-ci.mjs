@@ -16,18 +16,26 @@ const present = async file => fs.access(path.join(engineRoot, file)).then(() => 
   if (error.code !== 'ENOENT') throw error;
   return false;
 });
+const sourceHash = async file => crypto.createHash('sha256').update(await fs.readFile(path.join(engineRoot, file))).digest('hex');
 
 // An absent branch is explicit coverage debt. A partial slice is a broken registration and fails.
-export async function inventory(exists = present) {
+export async function inventory(exists = present, digest = sourceHash) {
   validateInventory();
   const result = [];
   for (const slice of slices) {
-    const files = [...new Set([slice.anchor, ...slice.native, ...slice.vitest, ...slice.strict])];
+    const productionFiles = slice.productionAnchors.map(anchor => typeof anchor === 'string' ? anchor : anchor.file);
+    const files = [...new Set([slice.anchor, ...productionFiles, ...slice.native, ...slice.vitest, ...slice.strict])];
     const found = await Promise.all(files.map(exists));
     // Some inherited strict/test files exist on the base. Native/new primary files identify the slice.
-    const primary = slice.markers ?? (slice.native.length ? slice.native : [slice.anchor]);
+    const primary = slice.markers ?? slice.native;
     const primaryFound = await Promise.all(primary.map(exists));
-    const active = primaryFound.some(Boolean);
+    const sourceActivation = await Promise.all(slice.productionAnchors.map(async anchor => {
+      const file = typeof anchor === 'string' ? anchor : anchor.file;
+      const found = await exists(file);
+      const activates = found && (typeof anchor === 'string' || await digest(file) !== anchor.baselineSha256);
+      return { file, present: found, activates };
+    }));
+    const active = primaryFound.some(Boolean) || sourceActivation.some(anchor => anchor.activates);
     const missing = files.filter((_, index) => !found[index]);
     const followupCoverage = [];
     const extraVitest = [], extraStrict = [];
@@ -41,7 +49,7 @@ export async function inventory(exists = present) {
     }
     const registered = active || followupCoverage.some(followup => followup.state !== 'absent');
     result.push({ ...slice, vitest: [...slice.vitest, ...extraVitest], strict: [...slice.strict, ...extraStrict],
-      followupCoverage, state: !registered ? 'absent' : missing.length ? 'incomplete' : 'ready', missing });
+      sourceActivation, followupCoverage, state: !registered ? 'absent' : missing.length ? 'incomplete' : 'ready', missing });
   }
   return result;
 }
@@ -80,7 +88,8 @@ async function hashes(selected) {
     'engine/tsconfig.json', 'engine/tsconfig.core.json', 'scripts/feature-slice-ci.mjs',
     'scripts/feature-slice-ci-targets.mjs', '.github/workflows/feature-slice-checks.yml',
     ...ambientRoots.map(file => `engine/${file}`),
-    ...selected.flatMap(slice => [slice.anchor, ...slice.native, ...slice.vitest, ...slice.strict].map(file => `engine/${file}`))])];
+    ...selected.flatMap(slice => [slice.anchor, ...slice.productionAnchors.map(anchor => typeof anchor === 'string' ? anchor : anchor.file),
+      ...slice.native, ...slice.vitest, ...slice.strict].map(file => `engine/${file}`))])];
   return Object.fromEntries(await Promise.all(files.map(async file => [file,
     crypto.createHash('sha256').update(await fs.readFile(path.join(repoRoot, file))).digest('hex')])));
 }
@@ -210,20 +219,49 @@ async function all() {
 }
 
 async function selfTest() {
+  let controls = 0;
   const empty = await inventory(async () => false);
   assert(empty.every(slice => slice.state === 'absent'));
+  controls++;
   const full = await inventory(async () => true);
   assert(full.every(slice => slice.state === 'ready'));
+  controls++;
   const partial = await inventory(async file => file === slices[0].native[0]);
   assert.equal(partial[0].state, 'incomplete');
-  const inherited = new Set(slices.flatMap(slice => slice.vitest));
-  slices.find(slice => slice.id === 'cron').native.slice(2).forEach(file => inherited.add(file));
+  controls++;
+  const inherited = new Set(['src/cron/schedule-humanize.node-test.ts', 'src/cron/schedule-humanize-cli.node-test.ts',
+    'src/cron/service.restart-catchup.test.ts', 'src/cron/service.every-jobs-fire.test.ts',
+    'extensions/github/src/detail.test.ts', 'extensions/github/src/detail-checks.test.ts',
+    'src/agents/sessions/tools/write.test.ts', 'src/agents/bash-tools.exec-host-gateway.test.ts',
+    'src/plugin-sdk/pair-loop-guard-runtime.test.ts', 'src/agents/sessions/tools/edit-diff.test.ts',
+    'src/agents/embedded-agent-live-edit-diff.test.ts']);
   const baseline = await inventory(async file => inherited.has(file));
   assert(baseline.every(slice => slice.state === 'absent'));
+  controls++;
   const followupOnly = await inventory(async file => file === 'extensions/cloudflare/audio-transcription.http-errors.test.ts');
   assert.equal(followupOnly.find(slice => slice.id === 'cloudflare-voice').state, 'incomplete');
+  controls++;
+  for (const slice of slices) {
+    for (const anchor of slice.productionAnchors) {
+      const file = typeof anchor === 'string' ? anchor : anchor.file;
+      const sourceOnly = await inventory(async candidate => candidate === file, async () => 'changed-source');
+      assert.equal(sourceOnly.find(candidate => candidate.id === slice.id).state, 'incomplete', `${slice.id}: source-only ${file}`);
+      controls++;
+      if (typeof anchor !== 'string') {
+        const unchanged = await inventory(async candidate => candidate === file, async () => anchor.baselineSha256);
+        assert.equal(unchanged.find(candidate => candidate.id === slice.id).state, 'absent');
+        controls++;
+      }
+    }
+    for (const marker of slice.markers ?? slice.native) {
+      const testOnly = await inventory(async file => file === marker);
+      assert.equal(testOnly.find(candidate => candidate.id === slice.id).state, 'incomplete', `${slice.id}: test-only ${marker}`);
+      controls++;
+    }
+  }
   assert(slices.find(slice => slice.id === 'continue-edits').native.includes('src/agents/sessions/tools/edit-diff.continue.test.ts'));
-  console.log(JSON.stringify({ ...validateInventory(), selectionControls: 6, passed: true }));
+  controls++;
+  console.log(JSON.stringify({ ...validateInventory(), selectionControls: controls, passed: true }));
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
