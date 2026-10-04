@@ -18,7 +18,7 @@ export type Spec = {
   def?: unknown; opts?: Opt[]; unit?: string; ph?: string; min?: number; max?: number;
   /** Stored value → shown value, and back (MB ↔ bytes, inverted switches). */
   read?: (v: unknown) => unknown; write?: (v: unknown, saved: unknown) => unknown;
-  off?: string; btn?: string; add?: string; plug?: string;
+  off?: string; btn?: string; add?: string; plug?: string; mono?: boolean;
   /** Greys a wired row for a moment (e.g. a switch that needs another one on first). */
   hold?: (c: Ctx) => string | undefined;
   /** A row drawn by its own component. */
@@ -49,7 +49,7 @@ export function Row({ r, c }: { r: Spec; c: Ctx }) {
   if (r.off) return <Ctl title={r.t} sub={r.s} off={r.off}>{greyControl(r)}</Ctl>;
   if (r.plug) return <PlugRow r={r} c={c} />;
   const hold = r.hold?.(c);
-  return <Ctl title={r.t} sub={hold ?? r.s} stack={r.kind === "list"} after={r.kind === "list" ? <ListEditor r={r} c={c} /> : undefined}>{r.kind === "list" ? null : <Control r={r} c={c} disabled={Boolean(hold)} />}</Ctl>;
+  return <Ctl title={r.t} sub={hold ?? r.s} after={r.kind === "list" ? <ListEditor r={r} c={c} /> : undefined}>{r.kind === "list" ? null : <Control r={r} c={c} disabled={Boolean(hold)} />}</Ctl>;
 }
 
 /** The control a greyed row draws (inert), showing the engine's default where there is one. */
@@ -57,10 +57,10 @@ function greyControl(r: Spec): ReactNode {
   const noop = () => undefined;
   switch (r.kind ?? "sw") {
     case "sw": return <Switch label={r.t} checked={r.def === true} onChange={noop} />;
-    case "num": return <Num label={r.t} value={typeof r.def === "number" ? r.def : undefined} unit={r.unit} onCommit={noop} />;
+    case "num": return <Num label={r.t} value={typeof r.def === "number" ? r.def : undefined} unit={r.unit} placeholder={r.ph ?? "Default"} onCommit={noop} />;
     case "seg": return <Seg label={r.t} value={str(r.def) || r.opts?.[0]?.id || ""} options={r.opts ?? []} onChange={noop} />;
     case "pick": return <Pick label={r.t} value={str(r.def) || r.opts?.[0]?.id || ""} options={r.opts ?? []} onChange={noop} />;
-    case "text": return <Field label={r.t} value="" onCommit={noop} />;
+    case "text": return <Field label={r.t} value="" placeholder={r.ph ?? "Not set"} onCommit={noop} />;
     case "btn": return <Btn sm>{r.btn}</Btn>;
     default: return null;
   }
@@ -79,10 +79,10 @@ function Control({ r, c, disabled }: { r: Spec; c: Ctx; disabled: boolean }) {
   const off = disabled || config.loading;
   switch (r.kind ?? "sw") {
     case "sw": return <Switch label={r.t} checked={v === true} disabled={off} onChange={save} />;
-    case "num": { const n = r.read ? r.read(r.k ? config.get(r.k) : undefined) : r.k ? config.get(r.k) : undefined; return <Num label={r.t} value={typeof n === "number" ? n : undefined} unit={r.unit} min={r.min} max={r.max} placeholder={r.ph ?? (typeof r.def === "number" ? String(r.def) : undefined)} disabled={off} onCommit={save} />; }
+    case "num": { const n = r.read ? r.read(r.k ? config.get(r.k) : undefined) : r.k ? config.get(r.k) : undefined; return <Num label={r.t} value={typeof n === "number" ? n : undefined} unit={r.unit} min={r.min} max={r.max} placeholder={r.ph ?? (typeof r.def === "number" ? r.def.toLocaleString("en-US") : undefined)} disabled={off} onCommit={save} />; }
     case "seg": return <Seg label={r.t} value={str(v)} options={r.opts ?? []} disabled={off} onChange={save} />;
     case "pick": return <Pick label={r.t} value={str(v)} options={r.opts ?? []} disabled={off} onChange={(x) => save(x === "" ? null : x)} />;
-    case "text": return <Field label={r.t} value={str(v)} placeholder={r.ph} disabled={off} onCommit={(x) => save(x.trim() || null)} />;
+    case "text": return <span className={`s2advanced-txt${r.mono ? " s2advanced-tmono" : ""}`}><Field label={r.t} value={str(v)} placeholder={r.ph} disabled={off} onCommit={(x) => save(x.trim() || null)} /></span>;
     default: return null;
   }
 }
@@ -99,8 +99,8 @@ export function ListEditor({ r, c }: { r: Spec; c: Ctx }) {
     <div className="s2advanced-lst">
       {items.length ? items.map((x, i) => <span key={`${x}-${i}`} className="chip6">{x}<button type="button" className="s2-x" aria-label={`Remove ${x}`} onClick={() => put(saved.filter((_, j) => j !== i))}>×</button></span>) : <span className="hint">Nothing here yet.</span>}
       <span className="s2advanced-add">
-        <input className="inp s2advanced-mono" aria-label={`${r.t}: add`} placeholder={r.ph} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
-        <Btn sm disabled={!draft.trim() || c.config.loading} onClick={add}>{r.add ?? "Add"}</Btn>
+        <input className="inp s2advanced-mono" aria-label={`${r.t}: new item`} placeholder={r.ph} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
+        <Btn sm disabled={c.config.loading} onClick={add}>{r.add ?? "Add"}</Btn>
       </span>
     </div>
   );
@@ -178,9 +178,9 @@ const GB = (v: unknown): unknown => {
 };
 const DOCKER = "agents.defaults.sandbox.docker";
 export const DOCKER_SEC: SecSpec = { title: "Docker", lv: 2, hint: "For “Where commands run: Docker”. Every container drops extra rights and can’t gain new ones.", rows: [
-  { t: "CPUs", s: "Empty: no limit.", k: `${DOCKER}.cpus`, kind: "num", ph: "", min: 0 },
-  { t: "Memory", s: "Empty: no limit.", k: `${DOCKER}.memory`, kind: "num", unit: "GB", ph: "", min: 0, read: GB, write: (v) => `${Math.round(Number(v) * 1024)}m` },
-  no("Disk", "Empty: no limit.", "num", { unit: "GB" }),
+  { t: "CPUs", s: "Empty: no limit.", k: `${DOCKER}.cpus`, kind: "num", ph: "No limit", min: 0 },
+  { t: "Memory", s: "Empty: no limit.", k: `${DOCKER}.memory`, kind: "num", unit: "GB", ph: "No limit", min: 0, read: GB, write: (v) => `${Math.round(Number(v) * 1024)}m` },
+  no("Disk", "Empty: no limit.", "num", { unit: "GB", ph: "No limit" }),
   { t: "Network", k: `${DOCKER}.network`, def: "none", kind: "pick", opts: [{ id: "bridge", label: "On" }, { id: "none", label: "Off" }] },
   sw("Keep keys outside the container", "Requests that need a key go through a guard on this computer; the container never holds the key.", "secrets.egressProxy.enabled", false),
 ] };
