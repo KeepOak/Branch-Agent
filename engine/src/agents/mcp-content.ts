@@ -1,6 +1,6 @@
 import { stableStringify } from "@branch/normalization-core";
 import { isRecord } from "@branch/normalization-core/record-coerce";
-import type { GetPromptResult } from "@modelcontextprotocol/sdk/types.js";
+import { ReadResourceResultSchema, type GetPromptResult } from "@modelcontextprotocol/sdk/types.js";
 import type { AgentToolResult } from "./runtime/index.js";
 import { isToolResultError } from "./tool-result-error.js";
 import { toToolSearchJsonSafe } from "./tool-search-json.js";
@@ -209,6 +209,23 @@ export function projectMcpCallToolResult(
       : {}),
     ...(typeof result.isError === "boolean" || unprojectable ? { isError } : {}),
   });
+}
+
+/** Project resource reads through the same text/image boundary as embedded resources. */
+export function projectMcpReadResourceResult(
+  value: unknown,
+  details: Record<string, unknown>,
+): AgentToolResult<unknown> {
+  const result = ReadResourceResultSchema.parse(value);
+  return setMcpCodeModeGuestResult(
+    projectMcpCallToolResult(
+      {
+        content: result.contents.map((resource) => ({ type: "resource", resource })),
+      },
+      details,
+    ),
+    toToolSearchJsonSafe(result),
+  );
 }
 
 /** Keep template roles descriptive while projecting its content for the model. */

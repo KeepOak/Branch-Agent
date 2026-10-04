@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { consumeMcpCodeModeGuestResult, projectMcpCallToolResult } from "./mcp-content.js";
+import {
+  consumeMcpCodeModeGuestResult,
+  projectMcpCallToolResult,
+  projectMcpReadResourceResult,
+} from "./mcp-content.js";
 
 function nestedStructuredContent(depth: number): Record<string, unknown> {
   let value: Record<string, unknown> = { leaf: true };
@@ -8,6 +12,38 @@ function nestedStructuredContent(depth: number): Record<string, unknown> {
   }
   return value;
 }
+
+describe("projectMcpReadResourceResult", () => {
+  it("rejects malformed runtime resources at the SDK result boundary", () => {
+    expect(() =>
+      projectMcpReadResourceResult(
+        { contents: [{ uri: "file://chart", blob: 42, mimeType: "image/png" }] },
+        {},
+      ),
+    ).toThrow();
+  });
+
+  it("projects all read resources and preserves the protocol result for Code Mode", () => {
+    const wireResult = {
+      contents: [
+        { uri: "file://notes", text: "Read these notes" },
+        { uri: "file://chart", blob: "iVBORw0KGgo=", mimeType: "image/png" },
+      ],
+      _meta: { private: true },
+    };
+    const result = projectMcpReadResourceResult(wireResult, {
+      serverName: "documents",
+      operation: "resources_read",
+    });
+
+    expect(result.content).toEqual([
+      { type: "text", text: "Read these notes" },
+      { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+    ]);
+    expect(result.details).toEqual({ serverName: "documents", operation: "resources_read" });
+    expect(consumeMcpCodeModeGuestResult(result)).toEqual({ contents: wireResult.contents });
+  });
+});
 
 describe("projectMcpCallToolResult", () => {
   it("passes embedded image resources to vision and preserves the guest resource", () => {
