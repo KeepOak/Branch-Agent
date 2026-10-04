@@ -45,6 +45,8 @@ export const engineTests = [
 ];
 
 export const windowTests = [
+  'src/thread/PlanCard.test.ts',
+  'src/thread/PlanCard.note-only.test.tsx',
   'src/thread/activity-strip.test.tsx',
   'src/thread/Helpers.test.ts',
   'src/places/trunk/github-entry.test.tsx',
@@ -128,6 +130,9 @@ export const engineStrictFiles = [
 ];
 
 export const windowStrictFiles = [
+  'src/thread/PlanCard.tsx',
+  'src/thread/PlanCard.test.ts',
+  'src/thread/PlanCard.note-only.test.tsx',
   'src/thread/UsageBar.tsx',
   'src/thread/Helpers.tsx',
   'src/thread/Thread.tsx',
