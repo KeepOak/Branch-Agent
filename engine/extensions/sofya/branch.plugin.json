@@ -1,0 +1,93 @@
+{
+  "id": "sofya",
+  "categories": [
+    "web"
+  ],
+  "activation": {
+    "onStartup": false
+  },
+  "setup": {
+    "providers": [
+      {
+        "id": "sofya",
+        "envVars": [
+          "SOFYA_API_KEY"
+        ]
+      }
+    ]
+  },
+  "contracts": {
+    "webSearchProviders": [
+      "sofya"
+    ],
+    "webFetchProviders": [
+      "sofya"
+    ]
+  },
+  "uiHints": {
+    "webSearch.apiKey": {
+      "label": "Sofya Search API Key",
+      "sensitive": true
+    },
+    "webFetch.apiKey": {
+      "label": "Sofya Fetch API Key",
+      "sensitive": true
+    },
+    "webSearch.contentsMaxCharacters": {
+      "label": "Per-result content characters",
+      "help": "Default 2000. 0 preserves all returned content."
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "webSearch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiKey": {
+            "type": [
+              "string",
+              "object"
+            ]
+          },
+          "maxResults": {
+            "type": [
+              "number",
+              "string"
+            ],
+            "default": 5
+          },
+          "searchDepth": {
+            "type": "string",
+            "enum": [
+              "basic",
+              "snippets"
+            ],
+            "default": "basic"
+          },
+          "contentsMaxCharacters": {
+            "type": [
+              "number",
+              "string"
+            ],
+            "default": 2000
+          }
+        }
+      },
+      "webFetch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiKey": {
+            "type": [
+              "string",
+              "object"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
