@@ -120,9 +120,10 @@ button.tk-prow:disabled:hover { background: none; }
 
 /* Customize › Trunks */
 .tk-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+.tk-tab-root { display: flow-root; }
 .tk-list { display: grid; }
-.tk-row { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--line); min-width: 0; }
-.tk-row-who { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; text-align: left; border-radius: 10px; }
+.tk-row { display: flex; align-items: center; gap: 12px; padding: 13px 4px; border-bottom: 1px solid var(--hair17); min-width: 0; }
+.tk-row-who { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; text-align: left; border-radius: 12px; }
 .tk-row-who:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tk-row-who .tk-grow b { display: flex; align-items: center; gap: 6px; }
 .tk-row .btn.ghost { color: var(--ink-2); }
@@ -151,7 +152,7 @@ button.tk-prow:disabled:hover { background: none; }
 .kp .tk-tab-root .btn.ghost { background: transparent; border-color: transparent; color: var(--ink-2); }
 .kp .tk-tab-root .btn.sm { height: 28px; padding: 0 11px; font-size: 12.5px; }
 .kp .tk-tab-root .btn:disabled { opacity: .45; }
-.kp .tk-tab-root .tk-row-who { height: auto; padding: 0; border: 0; background: none; border-radius: 10px; color: inherit; font: inherit; }
+.kp .tk-tab-root .tk-row-who { height: auto; padding: 0; border: 0; background: none; border-radius: 12px; color: inherit; font: inherit; }
 .kp .tk-tab-root .tk-row-who:hover { background: none; }
 .kp .tk-tab-root .tk-ctl select.inp, .kp .tk-tab-root .tk-ctl input.inp { height: 32px; }
 .tk-pf .tk-sec { margin-top: 0; }

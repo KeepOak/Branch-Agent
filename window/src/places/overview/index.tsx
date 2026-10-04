@@ -87,7 +87,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   const data = useMemo(() => new OverviewData(engine), [engine]);
   useEffect(() => { data.start(); return () => data.stop(); }, [data]);
   const { tiles } = useSyncExternalStore(data.subscribe, data.getSnapshot);
-  const rows = sessions(tiles.sessions.value), running = rows.filter(row => row.working);
+  const rows = sessions(tiles.sessions.value), running = rows.filter(row => row.working && !row.helper);
   const trunks = agents(tiles.agents.value), runList = runs(tiles.runs.value);
   const def = trunks.list.find(a => a.id === trunks.defaultId) ?? trunks.list[0];
   const mode = def && isEngineMode(def.mode) ? modeName(def.mode) : "";
@@ -100,7 +100,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
     <div className="ov-grid">
       <Tile title="Now" action={<button type="button" className="ov-link" onClick={() => openPlace("canopy")}>Open Canopy</button>}>
         {status("sessions", "running conversations")}
-        {running.map(row => <button key={row.key} type="button" className="ov-now" onClick={() => openConversation(row.key)}><Face size={34} state="work" label={agentName(trunks.list, row.agentId)} /><span className="ov-grow"><b>{row.title}</b>{row.preview ? <small>{row.preview}</small> : null}</span></button>)}
+        {running.map(row => <button key={row.key} type="button" className="ov-now" onClick={() => openConversation(row.key)}><Face size={34} state="work" label={agentName(trunks.list, row.agentId)} /><span className="ov-grow"><b>{agentName(trunks.list, row.agentId)}</b><small>{row.preview || row.title}</small></span></button>)}
         {tiles.sessions.value !== undefined && !running.length ? <p>Nothing is running right now.</p> : null}
         <div className="ov-acts">{facts.waiting > 0 ? <button type="button" className="btn pri sm" onClick={() => openPlace("inbox")}>Answer {facts.waiting} waiting</button> : <span className="ov-pill"><i />Nothing waiting</span>}</div>
       </Tile>

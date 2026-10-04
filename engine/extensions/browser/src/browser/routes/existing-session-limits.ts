@@ -2,6 +2,7 @@ import type { BrowserActRequest } from "../client-actions.types.js";
 
 export const EXISTING_SESSION_LIMITS = {
   act: {
+    humanClick: "humanClick requires a native Playwright browser profile.",
     clickSelector: "existing-session click does not support selector targeting yet; use ref.",
     clickButtonOrModifiers:
       "existing-session click currently supports left-click only (no button overrides/modifiers).",
@@ -57,11 +58,22 @@ export const EXISTING_SESSION_LIMITS = {
     "emulate is not supported for existing-session profiles; use a managed browser profile for device, media, timezone, or locale settings.",
 } as const;
 
-type ExistingSessionAction = Exclude<BrowserActRequest, { kind: "batch" | "insertText" }>;
+type ExistingSessionAction = Exclude<
+  BrowserActRequest,
+  { kind: "batch" | "insertText" | "humanClick" }
+>;
 
 type ExistingSessionActionAdmission =
   | { ok: true; action: ExistingSessionAction }
   | { ok: false; error: string };
+
+/** Identify native pointer requests before existing-session tab or driver admission. */
+export function hasHumanClickAction(action: BrowserActRequest): boolean {
+  return (
+    action.kind === "humanClick" ||
+    (action.kind === "batch" && action.actions.some(hasHumanClickAction))
+  );
+}
 
 /** Validate existing-session support before admitting a narrowed action to dispatch. */
 export function admitExistingSessionAction(
@@ -69,6 +81,8 @@ export function admitExistingSessionAction(
 ): ExistingSessionActionAdmission {
   let error: string | undefined;
   switch (action.kind) {
+    case "humanClick":
+      return { ok: false, error: EXISTING_SESSION_LIMITS.act.humanClick };
     case "click":
       if (action.selector) {
         return { ok: false, error: EXISTING_SESSION_LIMITS.act.clickSelector };

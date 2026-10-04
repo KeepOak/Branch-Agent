@@ -60,3 +60,7 @@
 .dlg .s2advanced-json { min-height: 240px; }
 .dlg .s2advanced-how { margin: 0; }
 .dlg .sseg { display: inline-flex; }
+.set-col .s2advanced-add .inp.s2advanced-mono { width: min(200px, 60vw); }
+.set-col .ctl > .acts.s2advanced-acts { grid-column: 1 / -1; gap: 6px; }
+.set-col .s2advanced-txt .inp { width: min(260px, 46vw); }
+.set-col .s2advanced-tmono .inp { font-family: var(--mono); font-size: 12px; }

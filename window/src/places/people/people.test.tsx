@@ -78,6 +78,14 @@ describe("People › Live now", () => {
     expect(dialog.textContent).toContain("Opened the statement"); expect(dialog.textContent).toContain("Read-only.");
   });
 
+  it("draws one card per run and leaves helpers inside their parent run", async () => {
+    const helper = { key: "agent:books:h", agentId: "books", label: "Read the receipts", spawnedBy: "agent:books:a", hasActiveRun: true };
+    const withHelper = (p: Record<string, unknown>) => { const v = sessions(p); return p.includeOwnerSessionCounts ? v : { sessions: [...v.sessions, helper] }; };
+    const { engine } = fakeEngine({ ...BASE, "sessions.list": withHelper });
+    await mount(engine);
+    expect(host.querySelectorAll(".pp-run")).toHaveLength(2);
+    expect(host.textContent).not.toContain("Read the receipts");
+  });
   it("says nothing is running when the engine has no active runs, and shows the banner", async () => {
     const { engine } = fakeEngine({ ...BASE, "system-presence": [], "sessions.list": { sessions: [] } });
     await mount(engine);
@@ -244,10 +252,12 @@ describe("People › Activity", () => {
     expect(host.textContent).toContain("Records are kept 30 days.");
     await click("Load more"); expect(request).toHaveBeenCalledWith("audit.activity.list", { limit: 100, cursor: "c2" });
     expect(host.textContent).toContain("Sapling · Run · Failed");
-    const kind = host.querySelector('select[aria-label="Kind"]') as HTMLSelectElement;
-    const chat = host.querySelector('input[aria-label="Chat app"]') as HTMLInputElement; expect(chat.disabled).toBe(true);
-    await act(async () => { kind.value = "tool_action"; kind.dispatchEvent(new Event("change", { bubbles: true })); });
+    const pick = (label: string) => [...host.querySelectorAll<HTMLButtonElement>(".pp-pick")].find(x => x.textContent?.startsWith(label))!;
+    expect(pick("Chat app").disabled).toBe(true);
+    await act(async () => { pick("Kind").click(); });
+    await act(async () => { [...document.querySelectorAll<HTMLButtonElement>(".mi")].find(x => x.textContent?.includes("Tool steps"))!.click(); });
     expect(request).toHaveBeenCalledWith("audit.activity.list", { limit: 100, kind: "tool_action" });
+    expect(pick("Kind").textContent).toBe("Kind: Tool steps");
     expect(button("Clear")).toBeTruthy();
   });
 

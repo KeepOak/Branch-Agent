@@ -45,7 +45,11 @@ import {
   captureBrowserOperationTarget,
   resolveOperationTargetOutcome,
 } from "./agent.snapshot-target.js";
-import { EXISTING_SESSION_LIMITS, admitExistingSessionAction } from "./existing-session-limits.js";
+import {
+  EXISTING_SESSION_LIMITS,
+  admitExistingSessionAction,
+  hasHumanClickAction,
+} from "./existing-session-limits.js";
 import { readRoutePositiveInteger, readRouteTimerTimeoutMs } from "./route-numeric.js";
 import type { BrowserRouteRegistrar } from "./types.js";
 import { jsonError, toStringOrEmpty } from "./utils.js";
@@ -53,6 +57,7 @@ import { jsonError, toStringOrEmpty } from "./utils.js";
 const SELECTOR_ALLOWED_KINDS: ReadonlySet<string> = new Set([
   "batch",
   "click",
+  "humanClick",
   "drag",
   "hover",
   "scrollIntoView",
@@ -109,6 +114,16 @@ export function registerBrowserAgentActRoutes(
       return;
     }
     const isExistingSession = getBrowserProfileCapabilities(profileCtx.profile).usesChromeMcp;
+    if (isExistingSession && hasHumanClickAction(action)) {
+      return jsonActError(
+        res,
+        501,
+        BROWSER_ACT_ERROR_CODES.unsupportedForExistingSession,
+        action.kind === "batch"
+          ? EXISTING_SESSION_LIMITS.act.batch
+          : EXISTING_SESSION_LIMITS.act.humanClick,
+      );
+    }
     const existingSessionTimeouts = resolveExistingSessionActTimeouts(action);
     const requestDeadline = isExistingSession
       ? createExistingSessionDeadline(

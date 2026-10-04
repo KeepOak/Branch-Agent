@@ -63,3 +63,8 @@ it("does not shorten server-directed retry backoff to one minute", async () => {
   expect(request).toHaveBeenCalledTimes(2);
   await vi.advanceTimersByTimeAsync(1); expect(c.view.status).toEqual(githubStatus); c.dispose();
 });
+it("treats a status without a selected scope as not known yet", async () => {
+  const request = vi.fn().mockResolvedValueOnce({});
+  const c = new GitHubConnection(engine(request), "oak", "agent", () => {}); await c.refresh();
+  expect(c.view.status).toBeNull(); expect(c.view.phase).toBe("ready"); c.dispose();
+});

@@ -1,6 +1,7 @@
 const ACT_KINDS = [
   "batch",
   "click",
+  "humanClick",
   "clickCoords",
   "close",
   "drag",

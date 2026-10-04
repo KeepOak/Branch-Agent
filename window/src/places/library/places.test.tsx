@@ -106,13 +106,13 @@ describe("preview topology and supported followup operations", () => {
     expect(host.querySelectorAll('[aria-label^="Use this job:"]')).toHaveLength(6);
   });
   it("creates a real job Trunk and preserves the source instructions with version checks", async () => {
-    const request = vi.fn((method: string) => Promise.resolve(method === "agents.create" ? { ok: true, agentId: "research" } : method === "agents.files.get" ? { file: { content: "Source defaults", hash: "original" } } : { ok: true }));
+    const request = vi.fn((method: string) => Promise.resolve(method === "agents.create" ? { ok: true, agentId: "research" } : method === "agents.list" ? { agents: [{ id: "research" }] } : method === "agents.files.get" ? { file: { content: "Source defaults", hash: "original" } } : { ok: true }));
     await createJob(engine(request), JOBS[2]);
     expect(request).toHaveBeenCalledWith("agents.create", { name: "Researcher" });
     expect(request).toHaveBeenCalledWith("agents.files.set", { agentId: "research", name: "SOUL.md", expectedHash: "original", content: "Source defaults\n\n## Your job\n\nReads the web and writes short briefs with sources.\n" });
   });
   it("reports partial job creation and does not overwrite an unversioned instruction file", async () => {
-    const request = vi.fn((method: string) => Promise.resolve(method === "agents.create" ? { ok: true, agentId: "research" } : { file: { content: "Source defaults" } }));
+    const request = vi.fn((method: string) => Promise.resolve(method === "agents.create" ? { ok: true, agentId: "research" } : method === "agents.list" ? { agents: [{ id: "research" }] } : { file: { content: "Source defaults" } }));
     await expect(createJob(engine(request), JOBS[2])).rejects.toThrow("was created (research), but its job instructions were not saved");
     expect(request.mock.calls.some(([method]) => method === "agents.files.set")).toBe(false);
   });

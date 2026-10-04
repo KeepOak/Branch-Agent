@@ -1,6 +1,7 @@
 import { expectDefined } from "@branch/normalization-core/expect";
 import { parseStrictPositiveInteger } from "@branch/normalization-core/number-coercion";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
+import { validateCronExpression } from "../../cron/cron-expression-validation.js";
 import type { CronSchedule } from "../../cron/types.js";
 import { CronCliError } from "./cron-cli-error.js";
 import {
@@ -302,9 +303,17 @@ function resolveDirectSchedule(
     return { kind: "every", everyMs };
   }
   if (options.cronExpr) {
+    const validation = validateCronExpression(options.cronExpr);
+    if ("error" in validation) {
+      throw new CronCliError(
+        validation.error === "unreachable"
+          ? "Invalid --cron. This calendar date can never occur."
+          : "Invalid --cron. Use a valid cron expression.",
+      );
+    }
     return {
       kind: "cron",
-      expr: options.cronExpr,
+      expr: validation.schedule,
       tz: parseCronTimezoneOption(options.tz),
       staggerMs: options.requestedStaggerMs,
     };
