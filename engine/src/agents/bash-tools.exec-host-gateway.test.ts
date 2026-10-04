@@ -537,6 +537,16 @@ describe("processGatewayAllowlist", () => {
       segmentSatisfiedBy: ["allowlist"],
       authorizationPlan,
     });
+    if (process.platform === "win32") {
+      // Exercise the same reported expansion failure through the Windows backend fixture.
+      const unavailable = buildAuthorizedShellCommandFromPlan({
+        plan: authorizationPlan,
+        mode: "enforced",
+        segmentSatisfiedBy: ["allowlist"],
+      });
+      expect(unavailable).toEqual({ ok: false, reason: "shell expansion in enforced arguments" });
+      buildEnforcedShellCommandMock.mockReturnValue(unavailable);
+    }
     const captured = captureSecurityEvents();
 
     let result: Awaited<ReturnType<typeof runGatewayAllowlist>>;
@@ -1107,7 +1117,7 @@ describe("processGatewayAllowlist", () => {
     );
   });
 
-  it("binds mixed allowlist authorization to exact trust when it bypasses an unavailable plan", async () => {
+  it("binds mixed allowlist authorization to exact trust and keeps mutable executables one-shot", async () => {
     const command = fixtureCommand("ls *.ts", "/Q *.ts");
     const allowlistEntry: ExecAllowlistEntry = {
       pattern: "/usr/bin/ls",
@@ -1125,6 +1135,18 @@ describe("processGatewayAllowlist", () => {
     });
     mockExactTrust(command, [allowlistEntry]);
     commitExecAuthorizationMock.mockRejectedValueOnce(new Error("exact-command approval revoked"));
+    if (process.platform === "win32") {
+      // This native executable is mutable under the real Windows filesystem
+      // heuristic. Exact text trust must not silently authorize future bytes.
+      approvalDecisionMock.mockResolvedValueOnce("deny");
+      const denied = await runGatewayAllowlist({ command, ask: "off", autoReview: false });
+      expect(denied.deniedResult?.details.status).toBe("failed");
+      expect(denied.deniedResult?.content[0]).toMatchObject({ text: expect.stringContaining("user-denied") });
+      expect(createExecApprovalRequestRouteMock).toHaveBeenCalledOnce();
+      expect(commitExecAuthorizationMock).not.toHaveBeenCalled();
+      expect(runExecProcessMock).not.toHaveBeenCalled();
+      return;
+    }
 
     await expect(
       runGatewayAllowlist({
@@ -1240,7 +1262,7 @@ describe("processGatewayAllowlist", () => {
     });
   });
 
-  it("allows durable exact-command trust to bypass the synchronous allowlist miss", async () => {
+  it("allows immutable exact-command trust to bypass a miss but keeps mutable executables one-shot", async () => {
     const command = fixtureCommand("/bin/echo durable");
     mockAllowlist({
       analysisOk: false,
@@ -1254,6 +1276,16 @@ describe("processGatewayAllowlist", () => {
       command,
     });
     mockExactTrust(command);
+    if (process.platform === "win32") {
+      approvalDecisionMock.mockResolvedValueOnce("deny");
+      const denied = await runGatewayAllowlist({ command });
+      expect(denied.deniedResult?.details.status).toBe("failed");
+      expect(denied.deniedResult?.content[0]).toMatchObject({ text: expect.stringContaining("user-denied") });
+      expect(createExecApprovalRequestRouteMock).toHaveBeenCalledOnce();
+      expect(commitExecAuthorizationMock).not.toHaveBeenCalled();
+      expect(runExecProcessMock).not.toHaveBeenCalled();
+      return;
+    }
 
     const result = await runGatewayAllowlist({ command });
 
