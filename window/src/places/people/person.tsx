@@ -18,7 +18,8 @@ export const REMOVE_OFF = "Needs the engine's remove-a-person method.";
 const HOW = { this: "On this computer", device: "On their own device" } as const;
 type How = keyof typeof HOW;
 
-export const roleWord = (p: Profile) => p.id === OWNER_ID ? "Owner" : p.role || "No role";
+/** The role as the preview words it: "Owner", "Adult", "Child" (engine role ids are lower-case keys). */
+export const roleWord = (p: Profile) => p.id === OWNER_ID ? "Owner" : p.role ? p.role.charAt(0).toUpperCase() + p.role.slice(1) : "No role";
 /** Connected from another device puts someone under "On their own device"; anyone else, connected here or not
  *  connected now, is under the preview's "On this computer". */
 const howOf = (p: Profile, conns: Presence[]): How => p.id !== OWNER_ID && reachOf(presenceOf(conns, p.id)) === "device" ? "device" : "this";

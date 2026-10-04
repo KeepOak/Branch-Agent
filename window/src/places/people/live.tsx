@@ -23,7 +23,8 @@ export function LiveNow({ engine, users, runs, me, openConversation, onPerson }:
   const [watch, setWatch] = useState<Row | null>(null);
   const people = activeProfiles(profiles(users.data));
   const conns = presence(live.data);
-  const working = rows(runs.data).filter(r => r.working);
+  // a helper rides inside its parent run (the preview shows one card per run, never one per helper)
+  const working = rows(runs.data).filter(r => r.working && !r.helper);
   const names = trunkNames(trunks.data);
   const others = people.filter(p => p.id !== me && presenceOf(conns, p.id).length > 0);
   const tally = ownerCounts(counts.data);
