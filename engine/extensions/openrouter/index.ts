@@ -19,6 +19,7 @@ import {
 } from "branch/plugin-sdk/provider-stream-family";
 import { asOptionalRecord as readRecord } from "branch/plugin-sdk/string-coerce-runtime";
 import { truncateUtf16Safe } from "branch/plugin-sdk/text-utility-runtime";
+import { openrouterEmbeddingProviderAdapter } from "./embedding-adapter.js";
 import { buildOpenRouterImageGenerationProvider } from "./image-generation-provider.js";
 import { openrouterMediaUnderstandingProvider } from "./media-understanding-provider.js";
 import {
@@ -394,6 +395,7 @@ export default defineSingleProviderPluginEntry({
     };
   },
   register(api) {
+    api.registerEmbeddingProvider(openrouterEmbeddingProviderAdapter);
     api.registerMediaUnderstandingProvider(openrouterMediaUnderstandingProvider);
     api.registerImageGenerationProvider(buildOpenRouterImageGenerationProvider());
     api.registerMusicGenerationProvider(buildOpenRouterMusicGenerationProvider());

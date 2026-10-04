@@ -84,6 +84,7 @@
     }
   ],
   "contracts": {
+    "embeddingProviders": ["openrouter"],
     "mediaUnderstandingProviders": ["openrouter"],
     "imageGenerationProviders": ["openrouter"],
     "musicGenerationProviders": ["openrouter"],

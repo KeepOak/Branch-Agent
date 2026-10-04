@@ -42,6 +42,9 @@ export const engineTests = [
   'src/agents/cli-output-stream.test.ts',
   'src/agents/cli-output-records.test.ts',
   'src/agents/cli-output-jsonl.test.ts',
+  // feat-memory batch 3: knowledge and retrieval.
+  'extensions/openrouter/embedding-adapter.test.ts',
+  'extensions/vercel-ai-gateway/embedding-adapter.test.ts',
 ];
 
 export const windowTests = [
@@ -130,6 +133,15 @@ export const engineStrictFiles = [
   'src/infra/host-env-security-policy.d.ts',
   'src/agents/cli-output-stream.ts',
   'src/agents/cli-output-stream.test.ts',
+  // feat-memory batch 3: knowledge and retrieval.
+  'extensions/openrouter/embedding-provider.ts',
+  'extensions/openrouter/embedding-adapter.ts',
+  'extensions/openrouter/embedding-adapter.test.ts',
+  'extensions/vercel-ai-gateway/embedding-provider.ts',
+  'extensions/vercel-ai-gateway/embedding-adapter.ts',
+  'extensions/vercel-ai-gateway/embedding-adapter.test.ts',
+  'extensions/openrouter/index.ts',
+  'extensions/vercel-ai-gateway/index.ts',
 ];
 
 export const windowStrictFiles = [

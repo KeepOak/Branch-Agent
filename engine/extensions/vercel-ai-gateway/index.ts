@@ -1,4 +1,5 @@
 import { defineSingleProviderPluginEntry } from "branch/plugin-sdk/provider-entry";
+import { vercelAiGatewayEmbeddingProviderAdapter } from "./embedding-adapter.js";
 import { applyVercelAiGatewayConfig, VERCEL_AI_GATEWAY_DEFAULT_MODEL_REF } from "./onboard.js";
 import manifest from "./branch.plugin.json" with { type: "json" };
 import {
@@ -29,5 +30,8 @@ export default defineSingleProviderPluginEntry({
     },
     resolveDynamicModel: ({ modelId }) => resolveVercelAiGatewayModel(modelId),
     resolveThinkingProfile: ({ modelId }) => resolveVercelAiGatewayThinkingProfile(modelId),
+  },
+  register(api) {
+    api.registerEmbeddingProvider(vercelAiGatewayEmbeddingProviderAdapter);
   },
 });
