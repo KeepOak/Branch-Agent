@@ -69,6 +69,19 @@ describe("temporal markers", () => {
     expect(buildTemporalGapReminder({ messages: [], now })).toBeUndefined();
   });
 
+  it("measures from the previous turn when a retried attempt already holds the current message", () => {
+    const now = Date.parse("2025-01-01T08:50:00.000Z");
+    const reminder = buildTemporalGapReminder({
+      messages: [
+        { role: "assistant", content: "Earlier", timestamp: Date.parse("2025-01-01T08:20:00.000Z") },
+        { role: "user", content: [{ type: "text", text: "Current user message" }], timestamp: now },
+      ],
+      currentPrompt: "Current user message",
+      now,
+    });
+    expect(reminder).toContain("30 minutes later");
+  });
+
   it("adds the marker to user turns only when temporalMarkers is on", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2025-01-02T09:00:00.000Z"));

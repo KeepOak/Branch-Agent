@@ -8,6 +8,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCaptureHarness } from "./capture-registration.test-support.js";
 import { extractUrls, hasUrl, setLinkPreviewTransportForTests } from "./link-capture.js";
+import { listMemoryInbox } from "./memory-inbox.js";
 
 vi.mock("./memory-workspace-lock.js", () => ({
   withMemoryWorkspaceLock: async <T>(_workspaceDir: string, task: () => Promise<T>) => await task(),
@@ -137,6 +138,21 @@ describe("link capture", () => {
     await receive(harness, "shared https://example.com/d");
     expect(await readLinks()).toContain("- https://example.com/d — doc (link, auto_capture");
     expect(harness.warnings.some((warning) => warning.includes("link summarization failed"))).toBe(true);
+  });
+
+  it("parks captured links in the memory inbox when review is required", async () => {
+    vi.stubEnv("BRANCH_STATE_DIR", path.join(workspaceDir, "state"));
+    stubPreviewFetch("<html><title>doc</title><body>x</body></html>");
+    const harness = createCaptureHarness({
+      workspaceDir,
+      llmText: "summary",
+      pluginConfig: { memoryReview: { requireApproval: true } },
+    });
+    await receive(harness, "shared https://example.com/review");
+    expect(await readLinks()).toBe("");
+    const [proposal] = await listMemoryInbox("main");
+    expect(proposal).toMatchObject({ source: "link_capture", operation: { path: "memory/links.md" } });
+    vi.unstubAllEnvs();
   });
 
   it("respects the memory policy channel exclusion and the off switch", async () => {

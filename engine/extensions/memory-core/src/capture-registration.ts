@@ -381,8 +381,17 @@ async function captureLinks(
   if (urls.length === 0) {
     return;
   }
-  const { workspaceDir } = resolveAgentScope(api, ctx.sessionKey ?? event.sessionKey);
+  const { agentId, workspaceDir } = resolveAgentScope(api, ctx.sessionKey ?? event.sessionKey);
   const { applyMemoryWrite } = await loadMemoryWrite();
+  const write = async (operation: { action: "add"; path: string; content: string }) => {
+    if (settings.requireApproval) {
+      // Captured page text is attacker-controlled: with review on it waits in the inbox.
+      const { stageMemoryProposal } = await loadMemoryInbox();
+      await stageMemoryProposal({ agentId, workspaceDir, operation, source: "link_capture" });
+      return;
+    }
+    await applyMemoryWrite(workspaceDir, operation);
+  };
   const warn = (message: string) => api.logger.warn?.(message);
   const summarize = async (prompt: string) =>
     (
@@ -394,7 +403,7 @@ async function captureLinks(
   for (const url of urls) {
     try {
       const record = await links.buildLinkRecord(url, summarize, warn);
-      await applyMemoryWrite(workspaceDir, {
+      await write({
         action: "add",
         path: links.LINK_MEMORY_PATH,
         content: links.formatLinkEntry(record, ctx.channelId || "unknown", new Date()),
@@ -561,6 +570,7 @@ export function registerMemoryCaptureFeatures(api: BranchPluginApi, host: Memory
         const cfg = currentConfig(api);
         const reminder = buildTemporalGapReminder({
           messages: event.messages,
+          currentPrompt: event.currentUserMessage ?? event.prompt,
           now: Date.now(),
           timeZone: cfg.agents?.defaults?.userTimezone,
         });

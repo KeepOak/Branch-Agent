@@ -80,9 +80,36 @@ function messageTimestamp(message: unknown): number | undefined {
   return undefined;
 }
 
-/** Latest timestamp among the prepared session messages (the previous turn). */
-export function findPreviousMessageTimestamp(messages: readonly unknown[]): number | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
+function messageText(message: unknown): string | undefined {
+  const content = (message as { content?: unknown } | null)?.content;
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+  return content
+    .map((part) => ((part as { type?: unknown; text?: unknown })?.type === "text" ? (part as { text?: unknown }).text : ""))
+    .filter((text): text is string => typeof text === "string")
+    .join("");
+}
+
+/** True when the last prepared message is already the incoming user turn (a retried attempt). */
+function isCurrentTurn(message: unknown, currentPrompt: string | undefined): boolean {
+  if (!currentPrompt || (message as { role?: unknown } | null)?.role !== "user") {
+    return false;
+  }
+  return messageText(message)?.trim() === currentPrompt.trim();
+}
+
+/** Latest timestamp among the prepared session messages before the incoming turn. */
+export function findPreviousMessageTimestamp(
+  messages: readonly unknown[],
+  currentPrompt?: string,
+): number | undefined {
+  const last = messages.length - 1;
+  const start = last >= 0 && isCurrentTurn(messages[last], currentPrompt) ? last - 1 : last;
+  for (let index = start; index >= 0; index -= 1) {
     const timestamp = messageTimestamp(messages[index]);
     if (timestamp !== undefined) {
       return timestamp;
@@ -97,10 +124,11 @@ export function findPreviousMessageTimestamp(messages: readonly unknown[]): numb
  */
 export function buildTemporalGapReminder(params: {
   messages: readonly unknown[];
+  currentPrompt?: string;
   now: number;
   timeZone?: string;
 }): string | undefined {
-  const previous = findPreviousMessageTimestamp(params.messages);
+  const previous = findPreviousMessageTimestamp(params.messages, params.currentPrompt);
   if (previous === undefined) {
     return undefined;
   }
