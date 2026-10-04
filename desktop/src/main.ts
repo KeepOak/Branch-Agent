@@ -41,6 +41,7 @@ let stopEngineWatch: (() => void) | undefined;
 let stopComponentWatch: (() => void) | undefined;
 let stopWindowWatch: (() => void) | undefined;
 let componentsReady = false;
+let engineRestartInProgress = false;
 const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
 
 /** Staging never invokes the restart IPC or the gateway's generic updater. */
@@ -181,11 +182,12 @@ function watchUpdates(w: BrowserWindow): void {
 
 /** Only on the owner's click: stops the gateway by PID, starts the new build and reloads the window. */
 async function restartEngine(): Promise<void> {
-  if (!gateway || !win) return;
-  log(`restart requested; stopping gateway pid ${gateway.pid}`);
-  win.webContents.send("branch-desktop:engine-update", "restarting");
-  stopGateway(gateway);
+  if (!gateway || !win || !componentsReady || engineRestartInProgress) return;
+  engineRestartInProgress = true;
   try {
+    log(`restart requested; stopping gateway pid ${gateway.pid}`);
+    win.webContents.send("branch-desktop:engine-update", "restarting");
+    stopGateway(gateway);
     for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise((r) => setTimeout(r, 250));
     await bootSelectedEngine();
     win.webContents.reload();
@@ -193,6 +195,8 @@ async function restartEngine(): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     log(`restart failed: ${msg}`);
     if (!HIDDEN) dialog.showErrorBox("Branch Agent could not restart the engine", msg);
+  } finally {
+    engineRestartInProgress = false;
   }
 }
 
