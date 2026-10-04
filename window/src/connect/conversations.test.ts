@@ -64,6 +64,41 @@ describe("exact selected contacts", () => {
     await list.refresh();
     expect(list.getSnapshot().rows.some((row) => row.key === CONTACT.key)).toBe(false);
   });
+
+  it("restores a saved contact outside the initial page before marking the list loaded", async () => {
+    const page = Array.from({ length: 200 }, (_, i) => ({ key: `agent:fern:item-${i}`, sessionId: `s${i}` }));
+    const request = requestFixture((method: string) => Promise.resolve(method === "sessions.subscribe"
+      ? { list: { sessions: page } } : { session: CONTACT }));
+    const list = new ConversationList(request, "agent:fern:default", CONTACT.key);
+    const loadedSnapshots: string[][] = [];
+    list.subscribe(() => { if (list.getSnapshot().loaded) loadedSnapshots.push(list.getSnapshot().rows.map((row) => row.key)); });
+    await list.start();
+    expect(loadedSnapshots.length).toBeGreaterThan(0);
+    expect(loadedSnapshots.every((keys) => keys.includes(CONTACT.key))).toBe(true);
+    expect(request).toHaveBeenCalledWith("sessions.describe", expect.objectContaining({ key: CONTACT.key, agentId: "fern" }));
+    expect(request.mock.calls.some(([method]) => method === "sessions.create")).toBe(false);
+  });
+
+  it("leaves a deleted saved thread absent so the shell's normal fallback still applies", async () => {
+    const key = "agent:fern:deleted-thread";
+    const request = requestFixture((method: string) => Promise.resolve(method === "sessions.subscribe"
+      ? { list: { sessions: [{ key: "agent:fern:default", sessionId: "default-session" }] } } : { session: null }));
+    const list = new ConversationList(request, "agent:fern:default", key);
+    await list.start();
+    expect(list.getSnapshot().loaded).toBe(true);
+    expect(list.getSnapshot().rows.some((row) => row.key === key)).toBe(false);
+    expect(request.mock.calls.some(([method]) => method === "sessions.create")).toBe(false);
+  });
+
+  it("does not retain or recreate a saved private contact when the keyed read is denied", async () => {
+    const key = "agent:fern:incognito:private-session";
+    const request = requestFixture((method: string) => method === "sessions.subscribe"
+      ? Promise.resolve({ list: { sessions: [] } }) : Promise.reject(new Error("Contact access denied")));
+    const list = new ConversationList(request, null, key);
+    await list.start();
+    expect(list.getSnapshot()).toMatchObject({ loaded: true, rows: [], error: "Contact access denied" });
+    expect(request.mock.calls.some(([method]) => method === "sessions.create")).toBe(false);
+  });
 });
 
 describe("projectConversation", () => {

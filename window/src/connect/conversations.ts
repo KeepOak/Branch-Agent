@@ -173,9 +173,11 @@ export class ConversationList {
   private readonly request: Request;
   private mainKey: string | null;
 
-  constructor(request: Request, mainKey: string | null) {
+  constructor(request: Request, mainKey: string | null, selectedKey: string | null = null) {
     this.request = request;
     this.mainKey = mainKey;
+    const agentId = selectedKey ? agentIdOf(selectedKey) : "";
+    if (selectedKey && agentId) this.selectedContact = { key: selectedKey, agentId };
   }
 
   subscribe = (listener: () => void): (() => void) => {

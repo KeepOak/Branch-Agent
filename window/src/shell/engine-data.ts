@@ -14,7 +14,7 @@ export type Trunks = { list: Trunk[]; defaultId: string | null; loaded?: boolean
 const EMPTY_LIST: ConversationsSnapshot = { rows: [], loaded: false, error: null };
 
 export function useConversations(session: SaplingSession, ready: boolean, mainKey: string | null): [ConversationsSnapshot, ConversationList] {
-  const list = useMemo(() => new ConversationList((m, p) => session.request(m, p), null), [session]);
+  const list = useMemo(() => new ConversationList((m, p) => session.request(m, p), null, session.getSnapshot().sessionKey), [session]);
   list.setMainKey(mainKey);
   useEffect(() => {
     if (!ready) {
