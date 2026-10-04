@@ -84,6 +84,11 @@ export const windowTests = [
   'src/places/canopy/canopy.test.tsx',
   'src/places/library/documents.test.tsx',
   'src/places/library/create-document.test.ts',
+  // Shell and thread visual parity with the App Preview.
+  'src/shell/r2-shell.test.ts',
+  'src/thread/format.test.ts',
+  'src/thread/Rail.test.tsx',
+  'src/stage/pane/PreviewTab.test.tsx',
 ];
 
 export const engineStrictFiles = [
@@ -214,6 +219,17 @@ export const windowStrictFiles = [
   'src/places/library/index.tsx',
   'src/places/library/create-document.ts',
   'src/places/library/create-document.test.ts',
+  // Shell and thread visual parity with the App Preview.
+  'src/shell/TopBar.tsx',
+  'src/shell/r2-shell.test.ts',
+  'src/thread/format.ts',
+  'src/thread/format.test.ts',
+  'src/thread/blocks.tsx',
+  'src/thread/Rail.tsx',
+  'src/thread/Rail.test.tsx',
+  'src/stage/SidePane.tsx',
+  'src/stage/pane/PreviewTab.tsx',
+  'src/stage/pane/PreviewTab.test.tsx',
 ];
 
 export function namedTests(lane) {

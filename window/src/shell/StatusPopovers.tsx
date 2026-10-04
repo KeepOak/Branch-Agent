@@ -2,6 +2,7 @@
 // Running in the background and the version menu. Each reads the engine; controls the engine has no method for are
 // drawn greyed with the reason (WINDOW-BUILD-BRIEF "Hands off").
 import { useEffect, useState, type ReactNode } from "react";
+import { Logo } from "../places/settings/set1/service";
 import type { Conversation } from "../connect/conversations";
 import type { Level } from "../places-nav/settings-nav";
 import { Icon, type IconName } from "./icons";
@@ -120,7 +121,7 @@ export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & {
         <div className="ph">What each connection has left</div>
         {rows.map((row) => (
           <div className="lim" key={row.id}>
-            <span className="lim-logo" aria-hidden="true">{row.name.slice(0, 1).toUpperCase()}</span>
+            <Logo id={row.id.split(":")[0] || row.name} name={row.name} size={28} />
             <div>
               <div className="lim-h">
                 <b>{row.name}</b>

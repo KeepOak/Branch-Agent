@@ -133,7 +133,7 @@ export function ConversationRow(p: Props) {
       >
         <button type="button" className="row-open" aria-current={current ? "true" : undefined} aria-selected={p.selected ? true : undefined} onClick={p.onOpen}
           onFocus={(e) => e.currentTarget.matches(":focus-visible") && card(e.currentTarget.parentElement)} onBlur={() => card(null)}>
-          <span className="row-av" data-working={state.working ? "true" : undefined}>
+          <span className={state.working ? "row-av working-ring" : "row-av"} data-working={state.working ? "true" : undefined}>
             <Pebble size={twoLine ? 40 : 28} label={p.trunkName} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />
             {state.waiting ? <i className="needs-you" aria-label="Waiting for you" /> : null}
             {p.selected ? <span className="sel-tick" aria-hidden="true"><Icon name="tick" size={11} /></span> : null}

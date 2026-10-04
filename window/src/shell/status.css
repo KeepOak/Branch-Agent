@@ -180,16 +180,6 @@
 .lim:hover {
   background: var(--fill);
 }
-.lim-logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  background: var(--fill-2);
-  color: var(--ink);
-  font: 700 12px var(--sans);
-}
 .lim-h {
   display: flex;
   align-items: center;
