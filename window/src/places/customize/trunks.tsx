@@ -12,7 +12,7 @@ import type { PlaceProps } from "../../places-nav/PlaceFrame";
 import type { useResource, Trunks } from "../library/data";
 import { Status } from "../library/ui";
 import { RequestGeneration } from "../library/data";
-import { createTrunk, defaultBlock, makeDefault, newTrunkName } from "../trunk/api";
+import { createReadyTrunk, defaultBlock, makeDefault, newTrunkName } from "../trunk/api";
 import { canWrite, WRITE_WHY } from "../trunk/data";
 import { errorText, readRoster, type Roster, type TrunkRow } from "../trunk/model";
 import { RemoveTrunkDialog } from "../trunk/RemoveTrunk";
@@ -67,7 +67,7 @@ export function TrunksTab(props: Props) {
     const current = generation.current.next();
     setBusy(true); setError(null);
     try {
-      const name = newTrunkName(roster), id = await createTrunk(engine, name, current);
+      const name = newTrunkName(roster), id = await createReadyTrunk(engine, name, current);
       if (!current()) return;
       trunks.reload();
       // Its first conversation opens through the shell, which knows the new conversation once its list has it.

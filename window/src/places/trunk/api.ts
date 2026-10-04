@@ -60,11 +60,19 @@ export async function waitForTrunk(engine: WindowEngine, id: string, current: ()
   throw new Error(`The Trunk was created (${id}), but you left this screen before it was ready.`);
 }
 
-export async function createTrunk(engine: WindowEngine, name: string, current: () => boolean = () => true): Promise<string> {
+/** Returns the persisted receipt; onboarding retains this ID across its own retryable setup steps. */
+export async function createTrunk(engine: WindowEngine, name: string): Promise<string> {
   const result = rec(await engine.request("agents.create", { name }));
   refused(result, "The engine did not create the Trunk.");
   const id = str(result.agentId);
   if (!id) throw new Error("The engine did not confirm that the Trunk was created.");
+  return id;
+}
+
+/** A new contact or job must also be available in the running gateway before it can be used. */
+export async function createReadyTrunk(engine: WindowEngine, name: string, current: () => boolean = () => true): Promise<string> {
+  if (!current()) throw new Error("You left this screen before the Trunk was created.");
+  const id = await createTrunk(engine, name);
   await waitForTrunk(engine, id, current);
   return id;
 }

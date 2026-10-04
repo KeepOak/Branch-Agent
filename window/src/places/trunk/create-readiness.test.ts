@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { createJob, JOBS } from "../customize/jobs-data";
-import { createTrunk } from "./api";
+import { createReadyTrunk, createTrunk } from "./api";
 
 const engine = (request: ReturnType<typeof vi.fn>): WindowEngine => ({
   request: request as WindowEngine["request"], onEvent: () => () => {}, scopes: ["operator.admin"], sessionKey: null,
@@ -14,7 +14,7 @@ describe("new Trunk runtime availability", () => {
     const request = vi.fn().mockResolvedValueOnce({ ok: true, agentId: "new-trunk" })
       .mockResolvedValueOnce({ agents: [{ id: "dev" }] }).mockResolvedValue({ agents: [{ id: "dev" }, { id: "new-trunk" }] });
     let handedOff = false;
-    const creation = createTrunk(engine(request), "New Trunk").then((id) => { handedOff = true; return id; });
+    const creation = createReadyTrunk(engine(request), "New Trunk").then((id) => { handedOff = true; return id; });
     await vi.advanceTimersByTimeAsync(0);
     expect(handedOff).toBe(false);
     await vi.advanceTimersByTimeAsync(250);
@@ -26,7 +26,7 @@ describe("new Trunk runtime availability", () => {
     vi.useFakeTimers();
     const request = vi.fn((method: string) => Promise.resolve(method === "agents.create"
       ? { ok: true, agentId: "new-trunk" } : { agents: [{ id: "dev" }] }));
-    const creation = expect(createTrunk(engine(request), "New Trunk")).rejects.toThrow("was created (new-trunk), but the gateway");
+    const creation = expect(createReadyTrunk(engine(request), "New Trunk")).rejects.toThrow("was created (new-trunk), but the gateway");
     await vi.advanceTimersByTimeAsync(15_000);
     await creation;
     expect(request.mock.calls.filter(([method]) => method === "agents.create")).toHaveLength(1);
@@ -46,9 +46,21 @@ describe("new Trunk runtime availability", () => {
   it("never polls or navigates when creation is refused or returns no identifier", async () => {
     for (const response of [{ ok: false, error: { message: "Permission denied" } }, { ok: true }]) {
       const request = vi.fn().mockResolvedValue(response);
-      await expect(createTrunk(engine(request), "New Trunk")).rejects.toThrow();
+      await expect(createReadyTrunk(engine(request), "New Trunk")).rejects.toThrow();
       expect(request.mock.calls.map(([method]) => method)).toEqual(["agents.create"]);
     }
+  });
+
+  it("preserves the persisted receipt contract used by onboarding to retry without creating twice", async () => {
+    const request = vi.fn().mockResolvedValue({ ok: true, agentId: "first-trunk" });
+    expect(await createTrunk(engine(request), "First Trunk")).toBe("first-trunk");
+    expect(request.mock.calls.map(([method]) => method)).toEqual(["agents.create"]);
+  });
+
+  it("does not dispatch creation after its screen has already retired", async () => {
+    const request = vi.fn();
+    await expect(createReadyTrunk(engine(request), "New Trunk", () => false)).rejects.toThrow("before the Trunk was created");
+    expect(request).not.toHaveBeenCalled();
   });
 
   it.each(JOBS)("waits for $name before editing the source-generated SOUL.md", async (job) => {

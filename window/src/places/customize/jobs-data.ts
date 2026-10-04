@@ -1,6 +1,6 @@
 import type { WindowEngine } from "../../connect/engine";
 import { errorText, type FileEntry } from "../library/data";
-import { createTrunk } from "../trunk/api";
+import { createReadyTrunk } from "../trunk/api";
 export const JOBS = [
   { name: "Inbox Manager", description: "Clears your inbox and drafts replies in your voice" },
   { name: "Expense Manager", description: "Files receipts and builds monthly reports" },
@@ -11,7 +11,7 @@ export const JOBS = [
 ];
 /** Create an actual Trunk, then append the selected job to its source-generated instructions. */
 export async function createJob(engine: WindowEngine, job: typeof JOBS[number], current: () => boolean = () => true) {
-  const agentId = await createTrunk(engine, job.name, current);
+  const agentId = await createReadyTrunk(engine, job.name, current);
   try {
     if (!current()) throw new Error("You left this screen before its job instructions were saved.");
     const { file } = await engine.request<{ file: FileEntry }>("agents.files.get", { agentId, name: "SOUL.md" });
