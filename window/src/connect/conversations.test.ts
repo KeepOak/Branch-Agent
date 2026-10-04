@@ -125,6 +125,36 @@ describe("exact selected contacts", () => {
     expect(list.getSnapshot().rows.find((row) => row.key === CONTACT.key)?.sessionId).toBe(CONTACT.sessionId);
     expect(request.mock.calls.some(([method]) => method === "sessions.create")).toBe(false);
   });
+
+  it("hides a retained private row when a direct reopening read is denied without recreating it", async () => {
+    let denied = false;
+    const request = requestFixture((method: string) => method === "agents.list"
+      ? Promise.resolve({ defaultId: "fern", mainKey: "home" }) : denied
+        ? Promise.reject(new Error("Contact access denied")) : Promise.resolve({ session: CONTACT }));
+    const list = new ConversationList(request, null);
+    await list.selectContact(CONTACT.key, "fern"); denied = true;
+    expect(await conversationActions(request, list, () => CONTACT.key).create()).toBeNull();
+    expect(list.getSnapshot()).toMatchObject({ rows: [], loaded: false });
+    expect(request.mock.calls.some(([method]) => method === "sessions.create")).toBe(false);
+  });
+
+  it("hides a retained row when its direct keyed read returns a different identity", async () => {
+    let wrong = false;
+    const request = requestFixture(() => Promise.resolve({ session: wrong ? { ...CONTACT, key: "agent:fern:other" } : CONTACT }));
+    const list = new ConversationList(request, null);
+    await list.selectContact(CONTACT.key, "fern"); wrong = true;
+    await expect(list.selectContact(CONTACT.key, "fern")).rejects.toThrow("different or incomplete");
+    expect(list.getSnapshot()).toMatchObject({ rows: [], loaded: false });
+  });
+
+  it("removes an old retained projection when a direct exact read confirms it is missing", async () => {
+    let exists = true;
+    const request = requestFixture(() => Promise.resolve({ session: exists ? CONTACT : null }));
+    const list = new ConversationList(request, null);
+    await list.selectContact(CONTACT.key, "fern"); exists = false;
+    expect(await list.selectContact(CONTACT.key, "fern")).toBeNull();
+    expect(list.getSnapshot().rows.some((row) => row.key === CONTACT.key)).toBe(false);
+  });
 });
 
 describe("projectConversation", () => {

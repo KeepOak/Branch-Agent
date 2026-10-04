@@ -249,18 +249,29 @@ export class ConversationList {
 
   /** An exact authorized read is the absence authority; the paged sidebar is only a projection. */
   private async describeContact(key: string, agentId: string): Promise<Conversation | null> {
-    const result = rec(await this.request("sessions.describe", { key, agentId, includeDerivedTitles: true, includeLastMessage: true }));
-    if (!Object.hasOwn(result, "session")) throw new Error("The engine did not describe the contact conversation");
-    if (result.session === null) return null;
-    const row = projectConversation(result.session, this.mainKey);
-    if (row.key !== key || row.agentId !== agentId || !row.sessionId) throw new Error("The engine returned a different or incomplete contact conversation");
-    return row;
+    try {
+      const result = rec(await this.request("sessions.describe", { key, agentId, includeDerivedTitles: true, includeLastMessage: true }));
+      if (!Object.hasOwn(result, "session")) throw new Error("The engine did not describe the contact conversation");
+      if (result.session === null) return null;
+      const row = projectConversation(result.session, this.mainKey);
+      if (row.key !== key || row.agentId !== agentId || !row.sessionId) throw new Error("The engine returned a different or incomplete contact conversation");
+      return row;
+    } catch (error) {
+      if (this.selectedContact?.key === key) this.set({ rows: this.snapshot.rows.filter((row) => row.key !== key), loaded: false });
+      throw error;
+    }
   }
 
   /** Retains one actual described contact, including one outside the first sidebar page. */
   async selectContact(key: string, agentId: string): Promise<Conversation | null> {
     const row = await this.describeContact(key, agentId);
-    if (!row) return null;
+    if (!row) {
+      if (this.selectedContact?.key === key) {
+        this.selectedContact = null;
+        this.set({ rows: this.snapshot.rows.filter((item) => item.key !== key) });
+      }
+      return null;
+    }
     this.selectedContact = { key, agentId };
     this.set({ rows: [...this.snapshot.rows.filter((item) => item.key !== key), row], loaded: true, error: null });
     return row;
