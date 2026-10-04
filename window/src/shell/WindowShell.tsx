@@ -812,7 +812,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           name={trunkName(openRow?.agentId)}
           placeholder={room.placeholder}
           working={Boolean(s.liveRunId)}
-          disabled={!s.sessionKey || !ready}
+          disabled={!s.sessionKey || !ready || !trunks.loaded || !trunks.list.length || firstRun.requiresContact}
           plan={progress.card?.steps?.length && !planDismiss.dismissed ? { done: progress.card.steps.filter((x) => x.status === "completed").length, total: progress.card.steps.length, steps: progress.card.steps } : null}
           above={
             waitingQuestion ? (
@@ -1189,14 +1189,16 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onClose={() => setGuide(null)}
         />
       ) : null}
-      {firstRun.step !== null && ready ? (
+      {(firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded ? (
         <SetupFlow
           engine={session.engine}
           version={machine?.version ?? ""}
           trunkNames={trunks.list.map((t) => t.name)}
           defaultAgentId={trunks.defaultId}
           defaultName={defaultName}
-          startAt={firstRun.step}
+          startAt={firstRun.step ?? 0}
+          requireContact={firstRun.requiresContact}
+          onContactCreated={firstRun.contactCreated}
           onClose={(finished) => {
             firstRun.close();
             if (finished) {
