@@ -42,6 +42,8 @@ export const engineTests = [
 ];
 
 export const windowTests = [
+  'src/thread/activity-strip.test.tsx',
+  'src/thread/Helpers.test.ts',
   'src/places/trunk/github-entry.test.tsx',
   'src/places/settings/github-connection.test.ts',
   'src/places/settings/GitHubSettings.test.tsx',
@@ -100,6 +102,11 @@ export const engineStrictFiles = [
 ];
 
 export const windowStrictFiles = [
+  'src/thread/UsageBar.tsx',
+  'src/thread/Helpers.tsx',
+  'src/thread/Thread.tsx',
+  'src/thread/useEngineData.ts',
+  'src/thread/activity-strip.test.tsx',
   'src/places/trunk/github-entry.test.tsx',
   'src/places/settings/set1/accounts.tsx',
   'src/places/settings/github-connection.ts',
