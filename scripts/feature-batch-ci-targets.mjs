@@ -77,6 +77,8 @@ export const windowTests = [
   'src/shell/status-gateway.test.tsx',
   'src/places/inbox/inbox.test.tsx',
   'src/places/canopy/canopy.test.tsx',
+  'src/places/library/documents.test.tsx',
+  'src/places/library/create-document.test.ts',
 ];
 
 export const engineStrictFiles = [
@@ -188,6 +190,11 @@ export const windowStrictFiles = [
   'src/places/settings/set2/usage.test.tsx',
   'src/composer/composer-logic.test.ts',
   'src/shell/status-data.test.ts',
+  'src/places/library/documents.tsx',
+  'src/places/library/documents.test.tsx',
+  'src/places/library/index.tsx',
+  'src/places/library/create-document.ts',
+  'src/places/library/create-document.test.ts',
 ];
 
 export function namedTests(lane) {
