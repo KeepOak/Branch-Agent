@@ -19,7 +19,7 @@ Desktop code changes require a new desktop package. Component updates currently 
 Build and production-deploy the engine, including its production dependencies, launcher and dist build metadata. Build the renderer separately. For each supported target:
 
 ```sh
-node desktop/scripts/make-component-release.mjs --version 0.4.3 --tag v0.4.3 \
+node desktop/scripts/make-component-release.mjs --version 0.4.3 --tag v0.4.3 --sourceCommit "$(git rev-parse HEAD)" \
   --engine /path/to/deployed-engine --window /path/to/built-window \
   --output /path/to/release-assets --platform win32 --arch x64
 ```
@@ -31,6 +31,10 @@ Publish the target manifests, engine archives, common renderer archive and corre
 The `GitHub component release` workflow builds automatically for relevant merged changes on `main`, for a source-version tag, or through an explicit manual run. It freezes the current main commit, builds one shared renderer, runs the explicit feature and strict-build gates on Windows x64, macOS arm64 and Linux x64, production-deploys each engine, and packages each native Electron launcher with its validated Node runtime. Main builds use an immutable `<desktop-version>-build-<source-sha-prefix>` release version; a `v<desktop-version>` tag uses that exact source version. No pending PR source is included.
 
 Each platform supplies an exact-source inventory, runtime receipt, component manifest and hashes. Publication requires all three native jobs, checks every asset against its platform inventory, uploads a draft release, downloads all uploaded assets and compares their bytes before exposing the stable update. A newer main commit or an existing tag aborts publication. Failed builds leave the current latest release unchanged. Renderer archive modes are fixed to `0644` to preserve identical shared assets across hosts; engine executable modes remain intact.
+
+Before publication, each native job boots the actual production-deployed engine with its packaged Node24 executable. The smoke uses a fresh temporary profile, no inherited credentials, disabled plugins/channels/automatic engine updates, free loopback ports and a newly generated token. It requires real readyz, authenticated non-model health and owned process shutdown within three minutes; source identity and runtime receipts must match. No model requests or owner data are part of this gate. After stable publication, the publisher additionally verifies GitHub latest and downloads each latest platform manifest without authentication, comparing its exact bytes, source SHA, version and component hashes with the verified build.
+
+Triggers create release attempts, not a promise that every source commit ships. A failed gate or a newer main head prevents stable publication. Main attempts use distinct source-SHA build versions; an immutable `v0.4.3` source-version tag cannot be reused for changed code. Future version-tag releases require a desktop source version bump, matching tag and a fresh successful native build matrix.
 
 This release path supplies both component updates and desktop bootstrap packages. Existing launchers gain engine/renderer changes through their GitHub watcher. A launcher that predates the watcher needs the new desktop package installed once; later Electron/launcher changes still require a desktop package upgrade. Release availability and successful hosted builds do not establish an installed upgrade: verify the downloaded Windows package, retained profile, actual selected engine, renderer connection and owned rollback separately.
 

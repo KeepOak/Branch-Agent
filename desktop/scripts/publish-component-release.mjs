@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -32,7 +33,29 @@ async function ensureImmutableTag(tag, commit, request) {
   assert.equal(object.sha, commit, "Existing immutable tag points at a different source commit");
 }
 
-export async function publishRelease(directory, commit, version, request = gh) {
+export async function verifyPublicLatest(directory, commit, version, proof, request, download = fetch) {
+  const latest = JSON.parse(await request(["api", `repos/${repository}/releases/latest`]));
+  assert.equal(latest.tag_name, `v${version}`, "Published release is not GitHub latest");
+  assert.equal(latest.target_commitish, commit, "GitHub latest has a different source identity");
+  assert.equal(latest.draft, false); assert.equal(latest.prerelease, false);
+  for (const target of proof.targets) {
+    const name = `branch-release-${target}.json`, expected = proof.inventory[name];
+    assert(expected.bytes <= 1_048_576, "Release manifest exceeds readback limit");
+    const response = await download(`https://github.com/${repository}/releases/latest/download/${name}`, { signal: AbortSignal.timeout(30_000), cache: "no-store" });
+    assert.equal(response.status, 200, "Latest manifest is not publicly downloadable");
+    const chunks = []; let bytes = 0;
+    for await (const chunk of response.body) { bytes += chunk.length; assert(bytes <= expected.bytes, "Latest manifest exceeds expected byte count"); chunks.push(chunk); }
+    const body = Buffer.concat(chunks);
+    assert.equal(body.length, expected.bytes);
+    assert.equal(createHash("sha256").update(body).digest("hex"), expected.sha256, "Public latest manifest differs from verified upload");
+    const manifest = JSON.parse(body.toString("utf8"));
+    assert.equal(manifest.sourceCommit, commit); assert.equal(manifest.version, version);
+    assert.deepEqual(manifest, JSON.parse(await readFile(join(directory, name), "utf8")), "Public latest component hashes differ");
+  }
+  return { tag: latest.tag_name, commit, publiclyVerifiedTargets: proof.targets };
+}
+
+export async function publishRelease(directory, commit, version, request = gh, download = fetch) {
   const proof = await verifyReleaseDirectory(directory, commit, version);
   assert.deepEqual(proof.targets, ["darwin-arm64", "linux-x64", "win32-x64"], "All native release targets must pass");
   await assertCurrentMain(commit, request);
@@ -55,7 +78,8 @@ export async function publishRelease(directory, commit, version, request = gh) {
   await request(["release", "edit", tag, "--repo", repository, "--draft=false", "--latest"]);
   const release = JSON.parse(await request(["api", `repos/${repository}/releases/tags/${tag}`]));
   assert.equal(release.draft, false); assert.equal(release.prerelease, false); assert.equal(release.target_commitish, commit);
-  return release;
+  const publicLatest = await verifyPublicLatest(directory, commit, version, proof, request, download);
+  return { release, publicLatest };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -88,8 +88,9 @@ async function existingDigest(file) {
 }
 
 /** Deploy engine production dependencies first. In-root symlinks are materialized; external links are rejected. */
-export async function makeComponentRelease({ version, tag = version, engine, window, output, platform = process.platform, arch = process.arch }) {
+export async function makeComponentRelease({ version, tag = version, engine, window, output, sourceCommit, platform = process.platform, arch = process.arch }) {
   if (!/^[\w.-]+$/.test(version) || !/^[\w.-]+$/.test(tag)) throw new Error("Invalid release version/tag");
+  if (sourceCommit !== undefined && !/^[a-f0-9]{40}$/.test(sourceCommit)) throw new Error("Invalid release source commit");
   if (!["win32", "darwin", "linux"].includes(platform) || !["x64", "arm64", "arm", "ia32"].includes(arch)) throw new Error("Unsupported release target");
   await validateInputs(engine, window);
   await mkdir(output, { recursive: true });
@@ -111,7 +112,7 @@ export async function makeComponentRelease({ version, tag = version, engine, win
       if (!existing) assets.push(filename);
     }
     if (await existingDigest(join(output, manifestName))) throw new Error(`Release manifest already exists: ${manifestName}`);
-    const manifest = { schemaVersion: 1, version, components };
+    const manifest = { schemaVersion: 1, version, components, ...(sourceCommit ? { sourceCommit } : {}) };
     await writeFile(join(stage, manifestName), JSON.stringify(manifest, null, 2) + "\n");
     for (const filename of [...assets, manifestName]) await copyFile(join(stage, filename), join(output, filename), constants.COPYFILE_EXCL);
     return manifest;
@@ -122,7 +123,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const options = {};
   for (let index = 2; index < process.argv.length; index += 2) {
     const key = process.argv[index]?.replace(/^--/, "");
-    if (!["version", "tag", "engine", "window", "output", "platform", "arch"].includes(key) || !process.argv[index + 1]) throw new Error("Invalid release arguments");
+    if (!["version", "tag", "engine", "window", "output", "sourceCommit", "platform", "arch"].includes(key) || !process.argv[index + 1]) throw new Error("Invalid release arguments");
     options[key] = process.argv[index + 1];
   }
   for (const key of ["version", "engine", "window", "output"]) if (!options[key]) throw new Error(`Missing --${key}`);

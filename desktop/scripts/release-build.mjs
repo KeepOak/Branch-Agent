@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { bundleNode } from "./bundle-node.mjs";
+import { smokeProductionEngine } from "./production-engine-smoke.mjs";
 import { makeComponentRelease } from "./make-component-release.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { engineRoot, windowRoot, toolingRoot, repoRoot, gitHead, run, preparePnpm,
@@ -77,7 +78,7 @@ async function packageDesktop(scratch, output, identity) {
   const filename = `branch-desktop-${identity.version}-${identity.platform}-${identity.arch}.${identity.platform === "win32" ? "zip" : "tar.gz"}`;
   const tar = process.platform === "win32" ? join(process.env.SystemRoot, "System32/tar.exe") : "tar";
   await run(tar, identity.platform === "win32" ? ["-a", "-cf", join(output, filename), "-C", app, "."] : ["-czf", join(output, filename), "-C", app, "."]);
-  return { node, electron, electronVersion: identity.electronVersion };
+  return { node, electron, electronVersion: identity.electronVersion, nodePath: join(resources, "node", identity.platform === "win32" ? "node.exe" : "node") };
 }
 
 export async function buildRelease(mode, output, windowDirectory) {
@@ -94,9 +95,13 @@ export async function buildRelease(mode, output, windowDirectory) {
     assert(windowDirectory, "Components require the shared tested renderer build");
     await run(process.execPath, [join(repoRoot, "scripts/feature-batch-ci.mjs"), "all"]);
     const engine = await deployEngine(pnpm, scratch, identity);
-    await makeComponentRelease({ ...identity, tag: `v${identity.version}`, engine, window: windowDirectory, output });
-    const runtime = await packageDesktop(scratch, output, identity);
-    await writeReleaseInventory(output, { ...identity, runtime });
+    await makeComponentRelease({ ...identity, sourceCommit: identity.commit, tag: `v${identity.version}`, engine, window: windowDirectory, output });
+    const { nodePath, ...runtime } = await packageDesktop(scratch, output, identity);
+    const source = await readFile(join(engineRoot, "packages/gateway-protocol/src/version.ts"), "utf8");
+    const protocol = { min: Number(source.match(/MIN_CLIENT_PROTOCOL_VERSION = (\d+)/)?.[1]), max: Number(source.match(/PROTOCOL_VERSION = (\d+)/)?.[1]) };
+    assert(Number.isInteger(protocol.min) && Number.isInteger(protocol.max), "Missing source gateway protocol levels");
+    const smoke = await smokeProductionEngine(engine, nodePath, identity.commit, protocol);
+    await writeReleaseInventory(output, { ...identity, runtime, smoke });
   }
   assert.deepEqual(await releaseIdentity(), identity, "Source or release identity changed during the build");
 }

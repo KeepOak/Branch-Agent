@@ -71,6 +71,7 @@ async function verifyTarget(directory, proof, inventory) {
   const manifest = JSON.parse(await readFile(join(directory, manifestName), "utf8"));
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.version, proof.version);
+  assert.equal(manifest.sourceCommit, proof.commit, "Manifest source identity mismatch");
   for (const component of ["engine", "window"]) verifyComponent(manifest.components?.[component], proof, inventory, component);
 }
 
@@ -86,6 +87,10 @@ function verifyRuntime(proof) {
   const version = /^v24\.(\d+)\.\d+$/.exec(runtime.node.version);
   assert(version && Number(version[1]) >= 16, "Unsupported Node24 runtime");
   assert.match(runtime.node.sha256, /^[a-f0-9]{64}$/);
+  assert(proof.smoke?.ready === true && proof.smoke.authenticatedHealth === true && proof.smoke.exited === true, "Production engine smoke did not pass");
+  assert.equal(proof.smoke.commit, proof.commit, "Production smoke source identity mismatch");
+  assert(Number.isSafeInteger(proof.smoke.elapsedMs) && proof.smoke.elapsedMs > 0 && proof.smoke.elapsedMs < 180_000, "Production smoke exceeded its total deadline");
+  assert.deepEqual(proof.smoke.runtime, { version: runtime.node.version, platform: proof.platform, arch: proof.arch }, "Production smoke must use the native bundled runtime");
 }
 
 function verifyComponent(asset, proof, inventory, component) {

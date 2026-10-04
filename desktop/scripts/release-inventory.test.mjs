@@ -6,7 +6,7 @@ import { gunzipSync } from "node:zlib";
 import test from "node:test";
 import { makeComponentRelease } from "./make-component-release.mjs";
 import { fileDigest, verifyReleaseDirectory, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
-import { publishRelease } from "./publish-component-release.mjs";
+import { publishRelease, verifyPublicLatest } from "./publish-component-release.mjs";
 
 const commit = "a".repeat(40);
 const version = "0.4.3-build-aaaaaaaaaaaa";
@@ -22,12 +22,12 @@ async function fixture(body) {
     await writeFile(join(window, "index.html"), "<!doctype html><title>Branch</title>");
     for (const [platform, arch] of targets) {
       const output = join(root, platform); await mkdir(output);
-      await makeComponentRelease({ version, tag: `v${version}`, engine, window, output, platform, arch });
+      await makeComponentRelease({ version, sourceCommit: commit, tag: `v${version}`, engine, window, output, platform, arch });
       const name = `branch-desktop-${version}-${platform}-${arch}.${platform === "win32" ? "zip" : "tar.gz"}`;
       await writeFile(join(output, name), `${platform}/${arch} offline fixture only`);
       const identity = { commit, version, platform, arch, electronVersion: "44.5.1", runtime: {
         electronVersion: "44.5.1", electron: { sha256: "b".repeat(64), bytes: 1 },
-        node: { version: "v24.19.0", platform, arch, sha256: "c".repeat(64) } } };
+        node: { version: "v24.19.0", platform, arch, sha256: "c".repeat(64) } }, smoke: { commit, ready: true, authenticatedHealth: true, exited: true, elapsedMs: 10, runtime: { version: "v24.19.0", platform, arch } } };
       await writeReleaseInventory(output, identity); await cp(output, assets, { recursive: true });
     }
     await body({ root, engine, window, assets });
@@ -63,6 +63,8 @@ for (const [label, edit, message] of [
   ["wrong Node target", proof => { proof.runtime.node.arch = "arm64"; }, /runtime target/],
   ["old Node runtime", proof => { proof.runtime.node.version = "v24.15.0"; }, /Node24/],
   ["changed Electron receipt", proof => { proof.runtime.electronVersion = "1.0.0"; }, /Electron/],
+  ["missing production smoke", proof => { delete proof.smoke; }, /smoke did not pass/],
+  ["production smoke wrong source", proof => { proof.smoke.commit = "f".repeat(40); }, /smoke source/],
 ]) test(`release inventory rejects ${label}`, () => fixture(async ({ assets }) => {
   await alterProof(assets, edit); await assert.rejects(verifyReleaseDirectory(assets, commit, version), message);
 }));
@@ -108,6 +110,7 @@ function simulatedGitHub(options = {}) {
     calls.push(args);
     if (args[0] === "api" && args[1].endsWith("heads/main")) return ++mainReads === 2 && options.advance ? "f".repeat(40) : commit;
     if (args[0] === "api" && args[1].endsWith("/releases")) return JSON.stringify([options.existing ? [{ tag_name: `v${version}` }] : []]);
+    if (args[0] === "api" && args[1].endsWith("/releases/latest")) return JSON.stringify({ draft: false, prerelease: false, target_commitish: commit, tag_name: `v${version}` });
     if (args[0] === "api" && args[1].includes("/releases/tags/")) return JSON.stringify({ draft: false, prerelease: false, target_commitish: commit, tag_name: `v${version}` });
     if (args[0] === "api" && args[1].includes("/git/ref/tags/")) return JSON.stringify({ object: { type: "commit", sha: options.tagSha ?? commit } });
     if (args[0] === "release" && args[1] === "create") uploaded = args.slice(3, args.indexOf("--repo"));
@@ -123,7 +126,7 @@ function simulatedGitHub(options = {}) {
 
 test("publication exposes latest only after authenticated uploaded-byte readback and final source check", () => fixture(async ({ assets }) => {
   const remote = simulatedGitHub();
-  await publishRelease(assets, commit, version, remote.request);
+  await publishRelease(assets, commit, version, remote.request, async url => new Response(await readFile(join(assets, new URL(url).pathname.split("/").at(-1)))));
   assert(remote.calls.find(args => args[1] === "create").includes("--draft"));
   assert(remote.calls.find(args => args[1] === "create").includes("--verify-tag"));
   assert(remote.calls.findIndex(args => args[1] === "download") < remote.calls.findIndex(args => args[1] === "edit"));
@@ -139,4 +142,12 @@ for (const [label, options, expected] of [
   const remote = simulatedGitHub(options);
   await assert.rejects(publishRelease(assets, commit, version, remote.request), expected);
   assert(!remote.calls.some(args => args[1] === "edit"));
+}));
+
+test("public latest readback rejects stale aliases, inaccessible manifests and changed bytes", () => fixture(async ({ assets }) => {
+  const proof = await verifyReleaseDirectory(assets, commit, version);
+  const latest = () => JSON.stringify({ draft: false, prerelease: false, target_commitish: commit, tag_name: `v${version}` });
+  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest().replace(`v${version}`, "v0.1.0")), /not GitHub latest/);
+  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest(), async () => new Response("", { status: 404 })), /not publicly downloadable/);
+  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest(), async () => new Response("altered")), /Expected values|differs/);
 }));
