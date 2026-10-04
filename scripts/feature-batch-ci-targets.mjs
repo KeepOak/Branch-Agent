@@ -196,6 +196,7 @@ export const windowStrictFiles = [
   'src/places/inbox/inbox.test.tsx',
   'src/places/canopy/index.tsx',
   'src/places/canopy/canopy.test.tsx',
+  'src/places/canopy/RunCard.tsx',
   'src/places/settings/set2/usage.test.tsx',
   'src/composer/composer-logic.test.ts',
   'src/shell/status-data.test.ts',
