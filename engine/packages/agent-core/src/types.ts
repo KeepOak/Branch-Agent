@@ -1,3 +1,4 @@
+import type { ConsecutiveMistakeLimitHandler } from "./mistake-tracker.js";
 import type {
   AssistantMessage,
   AssistantMessageEvent,
@@ -293,6 +294,18 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
    * Contract: must not throw or reject. Throwing interrupts the low-level agent loop without producing a normal event sequence.
    */
   shouldStopAfterTurn?: (context: ShouldStopAfterTurnContext) => boolean | Promise<boolean>;
+
+  /**
+   * Stop the run after this many consecutive turns in which every tool call failed
+   * (cline's consecutive-mistake cap). Defaults to 6; 0 disables the cap.
+   */
+  maxConsecutiveMistakes?: number;
+
+  /**
+   * Decide what happens when the consecutive-mistake cap is reached. Without a handler the run stops.
+   * A `continue` decision with guidance adds that guidance as a user notice before the next turn.
+   */
+  onConsecutiveMistakeLimitReached?: ConsecutiveMistakeLimitHandler;
 
   /**
    * Called after `turn_end` and before the loop decides whether another provider request should start.

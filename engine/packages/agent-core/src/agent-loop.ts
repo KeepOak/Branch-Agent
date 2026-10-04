@@ -17,6 +17,11 @@ import {
   takeInternalToolBatchLifecycle,
   type InternalToolBatchLifecycle,
 } from "./internal-hooks.js";
+import {
+  DEFAULT_MAX_CONSECUTIVE_MISTAKES,
+  MistakeTracker,
+  recordToolTurnOutcome,
+} from "./mistake-tracker.js";
 import { resolveAgentReasoningOption } from "./reasoning.js";
 import type { AgentCoreStreamRuntimeDeps } from "./runtime-deps.js";
 import {
@@ -152,6 +157,31 @@ async function runLoop(
   let pendingMessages: AgentMessage[] = Array.isArray(initialSteering)
     ? initialSteering
     : await initialSteering;
+  let turnIteration = 0;
+  const mistakeTracker = new MistakeTracker({
+    maxConsecutiveMistakes:
+      initialConfig.maxConsecutiveMistakes ?? DEFAULT_MAX_CONSECUTIVE_MISTAKES,
+    onLimitReached: initialConfig.onConsecutiveMistakeLimitReached,
+    // Guidance from a limit handler rides into the next model turn as a user notice.
+    appendRecoveryNotice: (text) => {
+      pendingMessages.push({ role: "user", content: [{ type: "text", text }], timestamp: Date.now() });
+    },
+  });
+  const endRunWithTerminalMessage = async (text: string): Promise<void> => {
+    const terminalMessage = {
+      ...createFailureMessage(config.model, new Error(text), false),
+      content: [{ type: "text" as const, text }],
+    };
+    state.context.messages.push(terminalMessage);
+    newMessages.push(terminalMessage);
+    await emit({ type: "turn_start" });
+    turnOpen = true;
+    await emit({ type: "message_start", message: terminalMessage });
+    await emit({ type: "message_end", message: terminalMessage });
+    await emit({ type: "turn_end", message: terminalMessage, toolResults: [] });
+    turnOpen = false;
+    await emit({ type: "agent_end", messages: newMessages });
+  };
   const stopIfAborted = async (): Promise<boolean> => {
     if (!signal?.aborted) {
       return false;
@@ -339,29 +369,26 @@ async function runLoop(
         return newMessages;
       }
       if (executedToolBatch?.terminateRun) {
-        const terminalMessage = {
-          ...createFailureMessage(
-            config.model,
-            new Error(TOOL_LOOP_RECOVERY_TERMINATED_MESSAGE),
-            false,
-          ),
-          content: [{ type: "text" as const, text: TOOL_LOOP_RECOVERY_TERMINATED_MESSAGE }],
-        };
-        state.context.messages.push(terminalMessage);
-        newMessages.push(terminalMessage);
-        await emit({ type: "turn_start" });
-        turnOpen = true;
-        await emit({ type: "message_start", message: terminalMessage });
-        await emit({ type: "message_end", message: terminalMessage });
-        await emit({ type: "turn_end", message: terminalMessage, toolResults: [] });
-        turnOpen = false;
-        await emit({ type: "agent_end", messages: newMessages });
+        await endRunWithTerminalMessage(TOOL_LOOP_RECOVERY_TERMINATED_MESSAGE);
         return newMessages;
       }
 
       if (providerFailed) {
         await emit({ type: "agent_end", messages: newMessages });
         return newMessages;
+      }
+
+      turnIteration += 1;
+      if (executedToolBatch) {
+        const mistakeOutcome = await recordToolTurnOutcome(
+          mistakeTracker,
+          turnIteration,
+          toolResults,
+        );
+        if (mistakeOutcome.action === "stop") {
+          await endRunWithTerminalMessage(mistakeOutcome.message);
+          return newMessages;
+        }
       }
 
       const nextTurnSnapshot = await config.prepareNextTurn?.({

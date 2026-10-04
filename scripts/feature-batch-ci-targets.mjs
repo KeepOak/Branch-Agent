@@ -42,6 +42,9 @@ export const engineTests = [
   'src/agents/cli-output-stream.test.ts',
   'src/agents/cli-output-records.test.ts',
   'src/agents/cli-output-jsonl.test.ts',
+  // Agent loop and sessions (pack1).
+  'packages/agent-core/src/mistake-tracker.test.ts',
+  'packages/agent-core/src/agent-loop.mistake-limit.test.ts',
 ];
 
 export const windowTests = [
@@ -246,6 +249,10 @@ export const engineStrictFiles = [
   'src/skills/discovery/command-specs.skill-bundles.test.ts',
   'src/skills/loading/skill-bundles.test.ts',
   'src/skills/runtime/skill-bundle-invocation.test.ts',
+  // Agent loop and sessions (pack1).
+  'packages/agent-core/src/mistake-tracker.ts',
+  'packages/agent-core/src/mistake-tracker.test.ts',
+  'packages/agent-core/src/agent-loop.mistake-limit.test.ts',
 ];
 
 export const windowStrictFiles = [
