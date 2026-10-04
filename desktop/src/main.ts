@@ -8,6 +8,7 @@ import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } fro
 import { portIsFree, readToken, startGateway, stopGateway, waitForReady } from "./gateway";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
+import { keepWindowsWindowResident } from "./resident-window";
 import { confirmComponentUpdate, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
@@ -63,6 +64,7 @@ function createWindow(): BrowserWindow {
   w.on("page-title-updated", (e) => e.preventDefault());
   if (!HIDDEN) w.once("ready-to-show", () => w.show());
   lockDown(w);
+  keepWindowsWindowResident(app, w, join(__dirname, "..", "assets", "branch.ico"), { hidden: HIDDEN });
   return w;
 }
 
