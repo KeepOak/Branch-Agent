@@ -300,7 +300,7 @@ test("sessions.create keeps the crustacean fallback when no title source exists"
     expect(created.ok, JSON.stringify(created.error)).toBe(true);
     worktreeId = created.payload?.worktree.id;
     expect(created.payload?.worktree.branch).toMatch(
-      /^branch\/[a-z]+-(?:barnacle|grove|crab|crayfish|krill|langoustine|trellis|prawn|shrimp|shell)$/,
+      /^branch\/[a-z]+-(?:acorn|grove|birch|cedar|fern|maple|trellis|willow|sapling|pinecone)$/,
     );
     expect(dashboardTitleGenerationMocks.generate).not.toHaveBeenCalled();
   } finally {
