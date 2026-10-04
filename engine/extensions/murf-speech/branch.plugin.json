@@ -1,0 +1,90 @@
+{
+  "id": "murf-speech",
+  "categories": ["voice"],
+  "capabilityCatalogEntry": "./capability-catalog.ts",
+  "activation": {
+    "onStartup": false
+  },
+  "enabledByDefault": true,
+  "name": "Murf Speech",
+  "description": "Murf GEN1/GEN2 text-to-speech.",
+  "setup": {
+    "providers": [
+      {
+        "id": "murf-speech",
+        "envVars": ["MURF_API_KEY"]
+      },
+      {
+        "id": "murf",
+        "envVars": ["MURF_API_KEY"]
+      }
+    ]
+  },
+  "contracts": {
+    "speechProviders": ["murf-speech", "murf"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiKey": {
+        "type": "string",
+        "description": "Murf API key. Falls back to MURF_API_KEY."
+      },
+      "modelVersion": {
+        "type": "string",
+        "enum": ["GEN1", "GEN2"],
+        "default": "GEN2"
+      },
+      "voiceId": {
+        "type": "string",
+        "default": "en-UK-hazel"
+      },
+      "properties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "style": {
+            "type": "string"
+          },
+          "rate": {
+            "type": "number"
+          },
+          "pitch": {
+            "type": "number"
+          },
+          "sampleRate": {
+            "type": "number",
+            "enum": [8000, 24000, 44100, 48000]
+          },
+          "format": {
+            "type": "string",
+            "enum": ["MP3", "WAV", "FLAC", "ALAW", "ULAW"]
+          },
+          "channelType": {
+            "type": "string",
+            "enum": ["STEREO", "MONO"]
+          },
+          "pronunciationDictionary": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "encodeAsBase64": {
+            "type": "boolean"
+          },
+          "variation": {
+            "type": "number"
+          },
+          "audioDuration": {
+            "type": "number"
+          },
+          "multiNativeLocale": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
