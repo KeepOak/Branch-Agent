@@ -12,7 +12,14 @@ interface DesktopInfo {
 // Null on any page other than the served window (for example the "Starting" page).
 const info = ipcRenderer.sendSync("branch-desktop:info") as DesktopInfo | null;
 if (info) {
-  contextBridge.exposeInMainWorld("branchDesktop", { gatewayUrl: info.gatewayUrl, gatewayToken: info.gatewayToken });
+  contextBridge.exposeInMainWorld("branchDesktop", {
+    gatewayUrl: info.gatewayUrl, gatewayToken: info.gatewayToken,
+    componentUpdates: {
+      status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
+      check: () => ipcRenderer.invoke("branch-desktop:component-update:check"),
+      stage: () => ipcRenderer.invoke("branch-desktop:component-update:stage"),
+    },
+  });
   window.addEventListener("DOMContentLoaded", () => {
     fillTokenForm(info);
     new MutationObserver(() => fillTokenForm(info)).observe(document.body, { childList: true, subtree: true });

@@ -38,6 +38,7 @@ import {
   isComputerObservationAction,
   MAX_WAIT_SECONDS,
 } from "./computer-tool-shared.js";
+import { prepareUiTarsComputerInput } from "./computer-ui-tars-input.js";
 import { readGatewayCallOptions } from "./gateway.js";
 import { textResult } from "./tool-results.js";
 
@@ -58,7 +59,7 @@ function prepareComputerArguments(args: unknown): unknown {
       delete prepared[key];
     }
   }
-  return prepared;
+  return prepareUiTarsComputerInput(prepared);
 }
 
 export function createComputerTool(options?: {

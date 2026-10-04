@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { str, type Rec } from "./engine";
 import { accountLine, capitalize, groupModels, thinkingChoices, type ModelChoice } from "./model";
+import { ModelAccessInfo } from "./ModelAccessInfo";
+import type { AvailabilityReason } from "./model-capabilities";
 import { NO_ROUTE, type OpenTarget } from "./nav";
 import { Popover, moveFocus } from "./Popover";
 import { Head, MenuItem, Segmented, Sep } from "./ui";
@@ -51,13 +53,18 @@ function useAccounts(engine: WindowEngine | undefined): Account[] {
   return all;
 }
 const accountsFor = (all: Account[], provider: string | undefined) => (provider ? all.filter((a) => a.p.provider === provider || a.p.authProvider === provider) : []);
+const UNAVAILABLE_LABELS: Record<AvailabilityReason, string> = {
+  "missing-auth": "sign-in needed", "auth-failed": "sign-in needs attention",
+  cooldown: "resting after a limit", "unsupported-runtime": "runtime unavailable",
+};
 
 /** The line under a model: its first account by name ("Claude · you@example.com"), else its service. */
 function modelLine(m: ModelChoice, all: Account[]): string {
   if (m.local) return accountLine(m);
   const first = accountsFor(all, m.provider)[0];
   const line = first ? accountName(first) : brandName(m.provider);
-  return m.available ? line : `${line} · not signed in`;
+  const reason = m.runtimeMetadata?.unavailableReason;
+  return m.available ? line : `${line} · ${reason ? UNAVAILABLE_LABELS[reason] : "unavailable"}`;
 }
 
 const SPEEDS = [
@@ -166,6 +173,7 @@ export function ModelMenu(p: Props) {
         ) : null}
         <Sep />
         <ModelSettings {...p} levels={levels} speeds={speeds} advanced={advanced} />
+        <ModelAccessInfo model={p.current} />
         <p className="c-pp c-pp-end">
           Thinking options depend on the model.
           {accounts.length > 1 ? ` When ${accountName(accounts[0])} runs out, Branch moves to ${accountName(accounts[1])}.` : ""}

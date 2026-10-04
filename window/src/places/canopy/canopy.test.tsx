@@ -62,6 +62,68 @@ const button = (text: string, scope: ParentNode = document) => [...scope.querySe
 const runCard = (task: string) => [...document.querySelectorAll(".cn-run")].find(r => r.textContent?.includes(task)) as HTMLElement;
 const click = async (el: HTMLElement) => { await act(async () => { el.click(); await new Promise(r => setTimeout(r, 0)); }); };
 
+function canopyTab(name: "Now" | "Cards"): HTMLButtonElement {
+  const tab = [...host.querySelectorAll<HTMLButtonElement>('.cn-tabs[aria-label="Canopy"] [role=tab]')].find(t => t.textContent?.startsWith(name));
+  if (!tab) throw new Error(`Missing Canopy tab: ${name}`);
+  return tab;
+}
+async function pressTab(tab: HTMLButtonElement, key: string, modifiers: KeyboardEventInit = {}) {
+  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...modifiers });
+  await act(async () => { tab.focus(); tab.dispatchEvent(event); await new Promise(r => setTimeout(r, 0)); });
+  return event;
+}
+
+describe("Canopy tab-row keyboard parity", () => {
+  it("uses one roving tab stop and wraps Left/Right selection with actual focus", async () => {
+    const { calls } = await mount();
+    const nowTab = canopyTab("Now"), cardsTab = canopyTab("Cards"), before = [...calls];
+    expect([nowTab.tabIndex, cardsTab.tabIndex]).toEqual([0, -1]);
+    for (const [tab, key, expected] of [[nowTab, "ArrowRight", cardsTab], [cardsTab, "ArrowRight", nowTab], [nowTab, "ArrowLeft", cardsTab], [cardsTab, "ArrowLeft", nowTab]] as const) {
+      expect((await pressTab(tab, key)).defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(expected);
+      expect(expected.getAttribute("aria-selected")).toBe("true");
+      expect(expected.tabIndex).toBe(0);
+      expect(tab.tabIndex).toBe(-1);
+    }
+    expect(calls).toEqual(before);
+  });
+  it("Home/End select and focus the endpoints like the exact preview frame", async () => {
+    await mount();
+    const nowTab = canopyTab("Now"), cardsTab = canopyTab("Cards");
+    expect((await pressTab(nowTab, "End")).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(cardsTab);
+    expect(cardsTab.getAttribute("aria-selected")).toBe("true");
+    expect((await pressTab(cardsTab, "Home")).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(nowTab);
+    expect(nowTab.getAttribute("aria-selected")).toBe("true");
+    expect([nowTab.tabIndex, cardsTab.tabIndex]).toEqual([0, -1]);
+  });
+  it("leaves Ctrl/Alt/Meta shortcuts and unrelated keys untouched", async () => {
+    const { calls } = await mount();
+    const nowTab = canopyTab("Now"), before = [...calls];
+    for (const modifiers of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
+      for (const key of ["ArrowRight", "ArrowLeft", "Home", "End"]) expect((await pressTab(nowTab, key, modifiers)).defaultPrevented).toBe(false);
+    }
+    for (const key of ["Escape", "PageDown", "a"]) expect((await pressTab(nowTab, key)).defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(nowTab);
+    expect(nowTab.getAttribute("aria-selected")).toBe("true");
+    expect(calls).toEqual(before);
+  });
+  it("keeps mouse and cross-place routing as the source of the selected tab stop", async () => {
+    const { calls } = await mount();
+    const nowTab = canopyTab("Now"), cardsTab = canopyTab("Cards"), before = [...calls];
+    await click(cardsTab);
+    expect([nowTab.tabIndex, cardsTab.tabIndex]).toEqual([-1, 0]);
+    await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "inbox", tab: "Now" } })); });
+    expect(cardsTab.getAttribute("aria-selected")).toBe("true");
+    await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "canopy", tab: "Now" } })); });
+    expect([nowTab.tabIndex, cardsTab.tabIndex]).toEqual([0, -1]);
+    expect((await pressTab(nowTab, "ArrowRight", { shiftKey: true })).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(cardsTab);
+    expect(calls).toEqual(before);
+  });
+});
+
 describe("Canopy › Now", () => {
   it("draws each run with face, step, computer and model, and a real meter only", async () => {
     await mount();

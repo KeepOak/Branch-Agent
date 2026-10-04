@@ -41,6 +41,15 @@ const ledger = {
 };
 
 describe("historyToBlocks", () => {
+  it("projects the stored tool result time and leaves missing times unknown", () => {
+    const blocks = historyToBlocks(messages, [], "agent:dev:main", null);
+    expect(blocks.find((b) => b.key === "c1")).toMatchObject({ at: 3000 });
+    const missing = historyToBlocks([
+      { role: "assistant", content: [{ type: "toolCall", id: "missing", name: "read", arguments: {} }], stopReason: "toolUse" },
+      { role: "toolResult", toolCallId: "missing", content: [], timestamp: 0 },
+    ], [], "agent:dev:main", null);
+    expect(missing.find((b) => b.key === "missing")).not.toHaveProperty("at");
+  });
   it("brings back steps, both approval outcomes and every Done line", () => {
     const blocks = historyToBlocks(messages, readApprovalRecords(ledger), "agent:dev:main", null);
     expect(blocks.map((b) => b.kind)).toEqual(["user", "step", "approval", "text", "done", "user", "step", "approval", "text", "done"]);

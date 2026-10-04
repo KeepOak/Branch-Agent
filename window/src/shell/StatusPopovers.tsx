@@ -287,12 +287,12 @@ export function VersionPopover({ update, version, onWhatsNew, onInstall, onRemin
             </ul>
           ) : null}
           <Item icon="book" label="What’s new" testid="ver-whatsnew" onClick={onWhatsNew} />
-          <Item icon="check" label="Install when nothing is running" testid="ver-install" onClick={onInstall} off={update?.installing ? "Installing now." : undefined} />
+          <Item icon="check" label="Install when nothing is running" testid="ver-install" onClick={onInstall} off={update?.installing ? update.waiting ?? "Installing now." : undefined} />
           <Item icon="clock" label="Remind me tomorrow" testid="ver-remind" onClick={onRemind} />
         </>
       ) : (
         <>
-          <div className="pt">Branch is up to date.</div>
+          <div className="pt">{update?.statusMessage ?? "Branch is up to date."}</div>
           <p className="pp">Branch {version}</p>
           <Item icon="book" label="What’s new" testid="ver-whatsnew" onClick={onWhatsNew} />
         </>

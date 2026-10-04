@@ -9,6 +9,8 @@ import { Dialog } from "../../../shell/Dialog";
 import { sessions as readSessions } from "../../overview/engine";
 import { CallLine, CodeRow, Kv, Tile, day, lvOf, openPlace, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
+import { componentDesktop } from "../../../connect/desktop-component-updates";
+import { DesktopUpdatesPage } from "./desktop-updates";
 
 const UPDATE_EVENTS = ["update"];
 const OS: Record<string, string> = { win32: "Windows", darwin: "macOS", linux: "Linux" };
@@ -42,6 +44,10 @@ export const ROWS: RowEntry[] = [
 type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => void };
 
 export function UpdatesPage(props: SettingsPageProps) {
+  return componentDesktop(props.engine.gatewayUrl) ? <DesktopUpdatesPage {...props} /> : <GatewayUpdatesPage {...props} />;
+}
+
+function GatewayUpdatesPage(props: SettingsPageProps) {
   const status = useLive<RecordValue>(props.engine, "update.status", {}, UPDATE_EVENTS);
   const info = useLive<RecordValue>(props.engine, "status", {}, []);
   const sys = useLive<RecordValue>(props.engine, "system.info", {}, []);
