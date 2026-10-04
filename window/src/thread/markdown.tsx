@@ -4,6 +4,8 @@
 // block with stable keys, so what is already shown is not redrawn (rule 8).
 import type { ReactNode } from "react";
 import { CodeBlock } from "./CodeBlock";
+import { ArtifactPreview } from "./ArtifactPreview";
+import { artifactKind } from "./artifact-preview";
 import { useThread } from "./context";
 import { INLINE_MATH, MathTex, readInlineMath } from "./math";
 
@@ -214,7 +216,7 @@ function BlockView({ block }: { block: MdBlock }) {
     case "h":
       return <p className={`md-h md-h${Math.min(block.level, 3)}`} role="heading" aria-level={block.level}>{inline(block.text)}</p>;
     case "code":
-      return <CodeBlock lang={block.lang} text={block.text} />;
+      return artifactKind(block.lang) ? <ArtifactPreview kind={artifactKind(block.lang)!} text={block.text} /> : <CodeBlock lang={block.lang} text={block.text} />;
     case "list":
       return <ListView block={block} />;
     case "quote":
