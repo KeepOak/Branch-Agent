@@ -1,0 +1,141 @@
+name: GitHub component release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+    paths:
+      - 'engine/**'
+      - 'window/**'
+      - 'desktop/**'
+      - 'scripts/feature-batch-ci*'
+      - '.github/workflows/component-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-component-release
+  cancel-in-progress: false
+
+jobs:
+  identity:
+    if: github.repository == 'KeepOak/Branch-Agent'
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.identity.outputs.commit }}
+      version: ${{ steps.identity.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Freeze exact source and release identity
+        id: identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          commit="$(git rev-parse HEAD)"
+          test "$commit" = "$(gh api repos/KeepOak/Branch-Agent/git/ref/heads/main --jq .object.sha)"
+          base="$(node -p 'require("./desktop/package.json").version')"
+          version="$base-build-${commit:0:12}"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            test "$GITHUB_REF_NAME" = "v$base"
+            version="$base"
+          fi
+          printf 'commit=%s\nversion=%s\n' "$commit" "$version" >> "$GITHUB_OUTPUT"
+  window:
+    needs: identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BRANCH_RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
+      BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Build one shared renderer from frozen source
+        run: node desktop/scripts/release-build.mjs window "${{ runner.temp }}/shared-window"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-shared-window
+          path: ${{ runner.temp }}/shared-window/
+          if-no-files-found: error
+          retention-days: 3
+  native:
+    needs: [identity, window]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win32-x64
+          - os: macos-15
+            target: darwin-arm64
+          - os: ubuntu-latest
+            target: linux-x64
+    env:
+      BRANCH_RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
+      BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
+      BRANCH_RELEASE_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: release-shared-window
+          path: ${{ runner.temp }}/shared-window
+      - name: Check release inventory regressions
+        run: node --test desktop/scripts/release-inventory.test.mjs desktop/scripts/production-engine-smoke.test.mjs
+      - name: Verify source slices and package native production components
+        run: node desktop/scripts/release-build.mjs components "${{ runner.temp }}/release-assets" "${{ runner.temp }}/shared-window"
+      - name: Check compiled startup and update rollback
+        env:
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: node --max-old-space-size=96 --test desktop/scripts/component-update.test.mjs desktop/scripts/gateway-ready.test.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-native-${{ matrix.target }}
+          path: ${{ runner.temp }}/release-assets/
+          if-no-files-found: error
+          retention-days: 3
+  publish:
+    needs: [identity, native]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: release-native-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-assets
+      - name: Verify uploaded assets before exposing a stable update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"

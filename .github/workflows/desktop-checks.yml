@@ -6,12 +6,14 @@ on:
       - 'desktop/**'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
+      - '.github/workflows/component-release.yml'
   push:
     branches: [main]
     paths:
       - 'desktop/**'
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
+      - '.github/workflows/component-release.yml'
   workflow_dispatch:
 
 permissions:
@@ -63,3 +65,5 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=256'
         run: node --experimental-test-module-mocks --test desktop/scripts/component-release-large-subtree.test.mjs
+      - name: Check immutable release inventory and bootstrap targets
+        run: node --test scripts/release-inventory.test.mjs scripts/production-engine-smoke.test.mjs
