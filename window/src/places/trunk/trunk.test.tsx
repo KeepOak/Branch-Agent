@@ -33,10 +33,15 @@ async function type(el: HTMLInputElement, value: string) {
 const ROSTER = { defaultId: "oak", mainKey: "main", agents: [{ id: "oak", identity: { name: "Oak", theme: "Helps" } }, { id: "birch", identity: { name: "Birch", theme: "Reads", avatar: "branch:ember" }, model: { primary: "p/one" } }] };
 const CONFIG = { hash: "h1", valid: true, config: { agents: { entries: { oak: { default: true }, birch: { tools: { deny: ["exec"] } } } } } };
 function fake(extra: Record<string, unknown> = {}) {
-  return vi.fn((method: string, _params?: unknown) => Promise.resolve(method in extra ? extra[method] : method === "agents.list" ? ROSTER : method === "config.get" ? CONFIG
+  let created: string | undefined;
+  return vi.fn((method: string, _params?: unknown) => {
+    if (method === "agents.create") created = (extra[method] as { agentId?: string } | undefined)?.agentId;
+    const roster = created ? { ...ROSTER, agents: [...ROSTER.agents, { id: created }] } : ROSTER;
+    return Promise.resolve(method in extra ? extra[method] : method === "agents.list" ? roster : method === "config.get" ? CONFIG
     : method === "models.list" ? { models: [{ id: "one", provider: "p", name: "One", available: true }, { id: "two", provider: "p", name: "Two", available: true }] }
     : method === "node.list" ? { nodes: [{ nodeId: "n1", displayName: "Box", platform: "linux", paired: true, connected: true }] }
-    : method === "tools.github.status" ? { agentId: "oak", selectedScope: "agent", selected: { scope: "agent", configured: false, identity: null }, effective: null } : { ok: true }));
+    : method === "tools.github.status" ? { agentId: "oak", selectedScope: "agent", selected: { scope: "agent", configured: false, identity: null }, effective: null } : { ok: true });
+  });
 }
 
 describe("Trunk data", () => {

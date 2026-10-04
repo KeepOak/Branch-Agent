@@ -47,11 +47,25 @@ export function newTrunkName(roster: Roster): string {
   return name;
 }
 
-export async function createTrunk(engine: WindowEngine, name: string): Promise<string> {
+/** Creation is persisted before some engines adopt the new runtime roster. */
+export async function waitForTrunk(engine: WindowEngine, id: string, current: () => boolean = () => true): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  while (current()) {
+    const roster = readRoster(await engine.request("agents.list", {}));
+    if (!current()) break;
+    if (roster.agents.some((agent) => agent.id === id)) return;
+    if (Date.now() >= deadline) throw new Error(`The Trunk was created (${id}), but the gateway has not made it available yet. Refresh the Trunks list before trying again.`);
+    await new Promise<void>((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`The Trunk was created (${id}), but you left this screen before it was ready.`);
+}
+
+export async function createTrunk(engine: WindowEngine, name: string, current: () => boolean = () => true): Promise<string> {
   const result = rec(await engine.request("agents.create", { name }));
   refused(result, "The engine did not create the Trunk.");
   const id = str(result.agentId);
   if (!id) throw new Error("The engine did not confirm that the Trunk was created.");
+  await waitForTrunk(engine, id, current);
   return id;
 }
 

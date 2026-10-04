@@ -1,7 +1,7 @@
 // Customize › Trunks (preview 40-places trunks tab + 30-trunks/31-trunksp): A new Trunk and New group chat, one row
 // per Trunk (face and name open its profile; Edit; Pause), right-click for Make default / Remove, the job tiles and,
 // at Technical, the defaults for every Trunk. Customize only mounts it; the dialogs live in places/trunk.
-import { useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Jobs } from "./jobs";
 import { Icon } from "../../shell/icons";
 import { openNewGroupChat } from "../../rooms/NewGroupChat";
@@ -11,6 +11,7 @@ import { shows } from "../../places-nav/level";
 import type { PlaceProps } from "../../places-nav/PlaceFrame";
 import type { useResource, Trunks } from "../library/data";
 import { Status } from "../library/ui";
+import { RequestGeneration } from "../library/data";
 import { createTrunk, defaultBlock, makeDefault, newTrunkName } from "../trunk/api";
 import { canWrite, WRITE_WHY } from "../trunk/data";
 import { errorText, readRoster, type Roster, type TrunkRow } from "../trunk/model";
@@ -50,20 +51,32 @@ export function TrunksTab(props: Props) {
   const [menu, setMenu] = useState<{ at: MenuAnchor; row: TrunkRow } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pending = useRef(false);
+  const generation = useRef(new RequestGeneration());
+  useEffect(() => {
+    const guard = generation.current;
+    const current = guard.next();
+    pending.current = false;
+    queueMicrotask(() => { if (current()) { setBusy(false); setError(null); } });
+    return () => { guard.retire(); pending.current = false; };
+  }, [engine]);
   const write = canWrite(engine);
   const add = async () => {
-    if (!roster) return;
+    if (!roster || pending.current) return;
+    pending.current = true;
+    const current = generation.current.next();
     setBusy(true); setError(null);
     try {
-      const name = newTrunkName(roster), id = await createTrunk(engine, name);
+      const name = newTrunkName(roster), id = await createTrunk(engine, name, current);
+      if (!current()) return;
       trunks.reload();
       // Its first conversation opens through the shell, which knows the new conversation once its list has it.
       // Without that hand-over the new Trunk's profile opens here, so the person sees what was made.
       if (props.startConversation) props.startConversation(id);
       else { notify(`${name} is made.`); setOpen({ kind: "profile", id }); }
     }
-    catch (e) { setError(errorText(e)); }
-    finally { setBusy(false); }
+    catch (e) { if (current()) { setError(errorText(e)); trunks.reload(); } }
+    finally { if (current()) { pending.current = false; setBusy(false); } }
   };
   const showMenu = (e: ReactMouseEvent, row: TrunkRow) => {
     e.preventDefault();
