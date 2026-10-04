@@ -2,7 +2,7 @@
 // what, and the fallback lists; plus the Defaults-only Advanced and Technical sections. Saves at once.
 import { useState } from "react";
 import { record, text, visible } from "../adapter";
-import { useResource } from "../hooks";
+import { useAction, useResource } from "../hooks";
 import { Btn, Ctl, Empty, Hint, Pick, Sec, Seg, Switch, useSaveRunner, type Opt } from "../kit";
 import { Logo } from "./service";
 import { connectionsOf, fallbacksOf, modelOpts, refOf, type Connection, type ModelsCtx } from "./models-data";
@@ -153,11 +153,15 @@ function FallbackList({ m, title, keys, own, images }: { m: ModelsCtx; title: st
 
 /** Model nicknames (Technical): agents.defaults.models.<ref>.alias, usable anywhere a model is picked. */
 export function Nicknames({ m }: { m: ModelsCtx }) {
+  const action = useAction();
   const [nick, setNick] = useState("");
   const [ref, setRef] = useState("");
   const map = record(m.cfg.get(m.own("models")));
   const named = Object.entries(map).filter(([, v]) => typeof record(v).alias === "string");
   const target = ref || m.models[0]?.ref || "";
+  const add = () => action.run(async () => {
+    if (await m.cfg.set(m.own("models", target, "alias"), nick.trim())) setNick("");
+  });
   return (
     <Sec title="Model nicknames">
       <Hint>Use a nickname anywhere a model is picked, like /model opus.</Hint>
@@ -165,9 +169,9 @@ export function Nicknames({ m }: { m: ModelsCtx }) {
         <Ctl key={r} id={`nick-${r}`} title={text(record(v).alias)} sub={m.models.find((x) => x.ref === r)?.name ?? visible(r)}><Btn sm ghost onClick={() => void m.cfg.set(m.own("models", r, "alias"), null)}>Remove</Btn></Ctl>
       )) : <Hint>No nicknames yet.</Hint>}
       <Ctl title="Add a nickname">
-        <input className="inp" placeholder="Nickname" aria-label="Nickname" value={nick} onChange={(e) => setNick(e.target.value)} />
-        <Pick label="Model for the nickname" value={target} options={modelOpts(m.models)} onChange={setRef} />
-        <Btn sm disabled={!nick.trim() || !target} onClick={() => { void m.cfg.set(m.own("models", target, "alias"), nick.trim()); setNick(""); }}>Add</Btn>
+        <input className="inp" placeholder="Nickname" aria-label="Nickname" disabled={action.busy} value={nick} onChange={(e) => setNick(e.target.value)} />
+        <Pick label="Model for the nickname" disabled={action.busy} value={target} options={modelOpts(m.models)} onChange={setRef} />
+        <Btn sm disabled={!nick.trim() || !target || action.busy} onClick={() => void add()}>{action.busy ? "Adding…" : "Add"}</Btn>
       </Ctl>
     </Sec>
   );

@@ -133,6 +133,55 @@ describe("Settings › Models", () => {
     expect(patches(request)).toContainEqual({ agents: { defaults: { model: { fallbacks: [] } } } });
   });
 
+  it("keeps a nickname draft after failed save and clears it only after retry", async () => {
+    let fail = true;
+    const request = vi.fn(async (method: string) => {
+      if (method === "models.list") return MODELS;
+      if (method === "models.authStatus") return AUTH;
+      if (method === "config.get") return { hash: "h", valid: true, config: {} };
+      if (method === "config.patch" && fail) throw new Error("Settings unavailable");
+      if (method === "config.patch") return { ok: true, hash: "h2", config: {} };
+      return {};
+    });
+    const engine = { request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine;
+    await render(engine, 2);
+    await click("Defaults");
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="Nickname"]')!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "workhorse"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click("Add");
+    expect(input.value).toBe("workhorse");
+    expect(report.failed).toHaveBeenCalledWith("Settings unavailable");
+    fail = false;
+    await click("Add");
+    expect(input.value).toBe("");
+    expect(patches(request)).toContainEqual({ agents: { defaults: { models: { "openai/gpt-5.5": { alias: "workhorse" } } } } });
+  });
+
+  it("locks the nickname draft and model while a save is pending", async () => {
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const request = vi.fn(async (method: string) => {
+      if (method === "models.list") return MODELS;
+      if (method === "models.authStatus") return AUTH;
+      if (method === "config.get") return { hash: "h", valid: true, config: {} };
+      if (method === "config.patch") { await pending; return { ok: true, hash: "h2", config: {} }; }
+      return {};
+    });
+    const engine = { request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine;
+    await render(engine, 2);
+    await click("Defaults");
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="Nickname"]')!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "workhorse"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    const add = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Add")!;
+    await act(async () => { add.click(); add.click(); });
+    expect(input.disabled).toBe(true);
+    expect(host.querySelector<HTMLSelectElement>('select[aria-label="Model for the nickname"]')!.disabled).toBe(true);
+    expect(request.mock.calls.filter(([method]) => method === "config.patch")).toHaveLength(1);
+    await act(async () => finish());
+    expect(input.disabled).toBe(false);
+    expect(input.value).toBe("");
+  });
+
   it("thinking is saved per model under a key that holds dots", async () => {
     const { engine, request } = engineOf({ agents: { defaults: { model: { primary: "openai/gpt-5.5" } } } });
     await render(engine);
