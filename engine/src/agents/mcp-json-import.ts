@@ -3,13 +3,13 @@
 // packages/config-yaml/src/schemas/mcp/json.ts (accepted shapes),
 // packages/config-yaml/src/schemas/mcp/convertJson.ts (per-server conversion) and
 // core/context/mcp/json/loadJsonMcpConfigs.ts (folders, file walk, parsing, de-duplication).
-import fs from "node:fs";
 import path from "node:path";
 import JSON5 from "json5";
 import { z } from "zod";
 import { resolveStateDir } from "../config/state-dir.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import type { BundleMcpDiagnostic, BundleMcpServerConfig } from "../plugins/bundle-mcp.js";
+import { mcpWorkspaceFiles } from "./project-mcp-config.js";
 
 // This is the schema for an entry in e.g. Claude Desktop, Claude code mcp config
 const httpOrSseMcpJsonSchema = z.object({
@@ -164,7 +164,7 @@ const IGNORED_DIRS = new Set(["node_modules", ".git"]);
 
 function listJsonFiles(dir: string): string[] {
   const files: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+  for (const entry of mcpWorkspaceFiles.readDir(dir)) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       if (!IGNORED_DIRS.has(entry.name)) {
@@ -195,7 +195,7 @@ export function loadJsonMcpConfigs(params: {
   }
   const mcpServers: Record<string, BundleMcpServerConfig> = {};
   for (const dir of mcpDirs) {
-    if (!fs.existsSync(dir)) {
+    if (!mcpWorkspaceFiles.exists(dir)) {
       continue;
     }
     let files: string[];
@@ -208,7 +208,7 @@ export function loadJsonMcpConfigs(params: {
     for (const filePath of files) {
       let content: string;
       try {
-        content = fs.readFileSync(filePath, "utf8");
+        content = mcpWorkspaceFiles.readText(filePath);
       } catch (e) {
         report(`Failed to read MCP server JSON file at ${filePath}: ${formatErrorMessage(e)}`);
         continue;

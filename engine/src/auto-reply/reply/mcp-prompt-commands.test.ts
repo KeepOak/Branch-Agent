@@ -5,8 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionMcpRuntime } from "../../agents/agent-bundle-mcp-types.js";
 import type { HandleCommandsParams } from "./commands-types.js";
 
-const acquireSessionMcpRuntime = vi.hoisted(() => vi.fn());
-vi.mock("../../agents/agent-bundle-mcp-manager-api.js", () => ({ acquireSessionMcpRuntime }));
+const peekSessionMcpRuntime = vi.hoisted(() => vi.fn());
+vi.mock("../../agents/agent-bundle-mcp-manager-api.js", () => ({ peekSessionMcpRuntime }));
 
 const {
   buildMcpPromptCommands,
@@ -191,8 +191,9 @@ describe("invokeMcpPromptCommand", () => {
   });
 });
 
-function stubRuntime(getPrompt = vi.fn()): SessionMcpRuntime {
+function stubRuntime(getPrompt = vi.fn(), releaseLease = vi.fn()): SessionMcpRuntime {
   return {
+    acquireLease: vi.fn(() => releaseLease),
     getCatalog: vi.fn().mockResolvedValue({
       servers: {
         "test-server": { serverName: "test-server", prompts: {}, launchSummary: "", toolCount: 0 },
@@ -207,7 +208,7 @@ function stubRuntime(getPrompt = vi.fn()): SessionMcpRuntime {
 function commandParams(body: string, authorized = true): HandleCommandsParams {
   return {
     ctx: {},
-    cfg: { mcp: { servers: { "test-server": { command: "node" } } } },
+    cfg: {},
     command: {
       commandBodyNormalized: body,
       rawBodyNormalized: body,
@@ -217,18 +218,19 @@ function commandParams(body: string, authorized = true): HandleCommandsParams {
     sessionEntry: { sessionId: "session-1" },
     sessionKey: "agent:main:main",
     workspaceDir: "/workspace",
+    skillCommands: [],
   } as unknown as HandleCommandsParams;
 }
 
 describe("handleMcpPromptCommand", () => {
-  beforeEach(() => acquireSessionMcpRuntime.mockReset());
+  beforeEach(() => peekSessionMcpRuntime.mockReset());
 
-  it("rewrites the turn to the prompt text and releases the runtime lease", async () => {
+  it("rewrites the turn to the prompt text using the session runtime and releases its lease", async () => {
     const releaseLease = vi.fn();
     const getPrompt = vi.fn().mockResolvedValue({
       messages: [{ role: "user", content: { type: "text", text: "Feed Bill the cat." } }],
     });
-    acquireSessionMcpRuntime.mockResolvedValue({ runtime: stubRuntime(getPrompt), releaseLease });
+    peekSessionMcpRuntime.mockReturnValue(stubRuntime(getPrompt, releaseLease));
     const params = commandParams("/test-prompt Bill 1 cat");
     await expect(handleMcpPromptCommand(params, true)).resolves.toEqual({ shouldContinue: true });
     expect(getPrompt).toHaveBeenCalledWith("test-server", "test-prompt", {
@@ -238,14 +240,15 @@ describe("handleMcpPromptCommand", () => {
     });
     expect(params.command.commandBodyNormalized).toBe("Feed Bill the cat.");
     expect(params.ctx.BodyForAgent).toBe("Feed Bill the cat.");
-    expect(acquireSessionMcpRuntime).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: "session-1", workspaceDir: "/workspace" }),
-    );
+    expect(peekSessionMcpRuntime).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      sessionKey: "agent:main:main",
+    });
     expect(releaseLease).toHaveBeenCalledOnce();
   });
 
   it("replies with the argument error instead of starting a turn", async () => {
-    acquireSessionMcpRuntime.mockResolvedValue({ runtime: stubRuntime(), releaseLease: vi.fn() });
+    peekSessionMcpRuntime.mockReturnValue(stubRuntime());
     await expect(handleMcpPromptCommand(commandParams("/test-prompt Bill"), true)).resolves.toEqual(
       {
         shouldContinue: false,
@@ -255,7 +258,7 @@ describe("handleMcpPromptCommand", () => {
   });
 
   it("leaves unknown slash text and disabled text commands to the normal turn", async () => {
-    acquireSessionMcpRuntime.mockResolvedValue({ runtime: stubRuntime(), releaseLease: vi.fn() });
+    peekSessionMcpRuntime.mockReturnValue(stubRuntime());
     await expect(
       handleMcpPromptCommand(commandParams("/not-a-prompt hi"), true),
     ).resolves.toBeNull();
@@ -265,12 +268,27 @@ describe("handleMcpPromptCommand", () => {
     await expect(handleMcpPromptCommand(commandParams("plain text"), true)).resolves.toBeNull();
   });
 
+  it("does nothing before the session has an MCP runtime", async () => {
+    peekSessionMcpRuntime.mockReturnValue(undefined);
+    await expect(
+      handleMcpPromptCommand(commandParams("/test-prompt a b c"), true),
+    ).resolves.toBeNull();
+  });
+
+  it("never shadows a skill command with the same name", async () => {
+    const getPrompt = vi.fn();
+    peekSessionMcpRuntime.mockReturnValue(stubRuntime(getPrompt));
+    const params = commandParams("/test-prompt a b c");
+    params.skillCommands = [
+      { name: "test-prompt", skillName: "test-prompt", description: "skill" },
+    ] as HandleCommandsParams["skillCommands"];
+    await expect(handleMcpPromptCommand(params, true)).resolves.toBeNull();
+    expect(getPrompt).not.toHaveBeenCalled();
+  });
+
   it("does not run a prompt for an unauthorized sender", async () => {
     const getPrompt = vi.fn();
-    acquireSessionMcpRuntime.mockResolvedValue({
-      runtime: stubRuntime(getPrompt),
-      releaseLease: vi.fn(),
-    });
+    peekSessionMcpRuntime.mockReturnValue(stubRuntime(getPrompt));
     const result = await handleMcpPromptCommand(commandParams("/test-prompt a b c", false), true);
     expect(result?.shouldContinue).toBe(false);
     expect(getPrompt).not.toHaveBeenCalled();

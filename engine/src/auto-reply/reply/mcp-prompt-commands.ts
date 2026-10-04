@@ -4,7 +4,7 @@ import { isRecord } from "@branch/normalization-core/record-coerce";
 // packages/cli/src/services/McpPromptLoader.ts (command naming, help text, argument
 // parsing and invocation); serves prompts from the session's MCP runtime.
 import type { GetPromptResult, PromptArgument } from "@modelcontextprotocol/sdk/types.js";
-import { acquireSessionMcpRuntime } from "../../agents/agent-bundle-mcp-manager-api.js";
+import { peekSessionMcpRuntime } from "../../agents/agent-bundle-mcp-manager-api.js";
 import type { SessionMcpRuntime } from "../../agents/agent-bundle-mcp-types.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { applyCommandTextToParams } from "./command-context-rewrite.js";
@@ -231,37 +231,44 @@ export async function listMcpPromptCommands(
 
 const SLASH_COMMAND = /^\/([^\s/]+)(?:\s+([\s\S]*))?$/;
 
-async function acquireRuntimeForCommand(params: HandleCommandsParams) {
-  const sessionId = params.sessionEntry?.sessionId;
-  if (!sessionId) {
+/**
+ * The session's MCP runtime as the agent turn built it (same servers, session
+ * switches and tool policy). A prompt command never starts servers itself.
+ */
+function leaseSessionRuntime(params: HandleCommandsParams) {
+  const runtime = peekSessionMcpRuntime({
+    sessionId: params.sessionEntry?.sessionId,
+    sessionKey: params.sessionKey,
+  });
+  if (!runtime?.listPrompts) {
     return undefined;
   }
-  return await acquireSessionMcpRuntime({
-    sessionId,
-    sessionKey: params.sessionKey,
-    workspaceDir: params.workspaceDir,
-    ...(params.agentDir ? { agentDir: params.agentDir } : {}),
-    cfg: params.cfg,
-  });
+  return { runtime, releaseLease: runtime.acquireLease?.() ?? (() => {}) };
+}
+
+async function isSkillCommandName(params: HandleCommandsParams, name: string): Promise<boolean> {
+  const skills = params.skillCommands ?? (await params.loadSkillCommands?.().catch(() => [])) ?? [];
+  return skills.some((skill) => skill.name === name);
 }
 
 /** Chat handler: `/<prompt> [args]` invokes an MCP prompt and sends its text as the turn. */
 export const handleMcpPromptCommand: CommandHandler = async (params, allowTextCommands) => {
-  if (!allowTextCommands || Object.keys(params.cfg.mcp?.servers ?? {}).length === 0) {
+  if (!allowTextCommands) {
     return null;
   }
   const parsed = SLASH_COMMAND.exec(params.command.commandBodyNormalized.trim());
   if (!parsed) {
     return null;
   }
-  const lease = await acquireRuntimeForCommand(params).catch(() => undefined);
+  const lease = leaseSessionRuntime(params);
   if (!lease) {
     return null;
   }
   try {
-    const commands = await listMcpPromptCommands(lease.runtime);
+    const commands = await listMcpPromptCommands(lease.runtime).catch(() => []);
     const command = commands.find((entry) => entry.name === parsed[1]);
-    if (!command) {
+    // MCP prompts never shadow other commands, skills included.
+    if (!command || (await isSkillCommandName(params, command.name))) {
       return null;
     }
     const unauthorized = rejectUnauthorizedCommand(params, `/${command.name}`);

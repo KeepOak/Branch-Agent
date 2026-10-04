@@ -9,6 +9,40 @@ import { isRecord } from "@branch/normalization-core/record-coerce";
 import { canonicalizeConfiguredMcpServer } from "../config/mcp-config-normalize.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import type { BundleMcpDiagnostic, BundleMcpServerConfig } from "../plugins/bundle-mcp.js";
+import {
+  pluginCacheExistsSync,
+  readPluginCacheDirectory,
+  readPluginCacheRegularFile,
+} from "../plugins/plugin-cache-files.js";
+import { getScopedPluginCache } from "../plugins/plugin-cache.js";
+
+/**
+ * Workspace MCP files share one operation's plugin file facts (like plugin
+ * bundle `.mcp.json` files); outside an operation scope each load reads disk,
+ * so edits apply on the next turn.
+ */
+export const mcpWorkspaceFiles = {
+  exists(filePath: string): boolean {
+    return getScopedPluginCache() ? pluginCacheExistsSync(filePath) : fs.existsSync(filePath);
+  },
+  readText(filePath: string): string {
+    if (!getScopedPluginCache()) {
+      return fs.readFileSync(filePath, "utf8");
+    }
+    const entry = readPluginCacheRegularFile({ filePath });
+    if (!entry.ok) {
+      throw (
+        entry.failure.error ?? Object.assign(new Error(`ENOENT: ${filePath}`), { code: "ENOENT" })
+      );
+    }
+    return entry.contents.toString("utf8");
+  },
+  readDir(dir: string): fs.Dirent[] {
+    return getScopedPluginCache()
+      ? readPluginCacheDirectory(dir)
+      : fs.readdirSync(dir, { withFileTypes: true });
+  },
+};
 
 export const PROJECT_MCP_CONFIG_PATH = path.join(".branch", "mcp.json");
 const PROJECT_MCP_DIAGNOSTIC_OWNER = "project-mcp";
@@ -129,9 +163,12 @@ export function loadProjectMcpServers(workspaceDir: string): {
   diagnostics: BundleMcpDiagnostic[];
 } {
   const filePath = path.join(workspaceDir, PROJECT_MCP_CONFIG_PATH);
+  if (!mcpWorkspaceFiles.exists(filePath)) {
+    return { mcpServers: {}, diagnostics: [] };
+  }
   let content: string;
   try {
-    content = fs.readFileSync(filePath, "utf8");
+    content = mcpWorkspaceFiles.readText(filePath);
   } catch (error) {
     if (isRecord(error) && error.code === "ENOENT") {
       return { mcpServers: {}, diagnostics: [] };
