@@ -1,6 +1,6 @@
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { createInfoQuestSearchProvider } from "./search-provider.js";
+import { createInfoQuestWebSearchProvider } from "./search-provider.js";
 const offline = vi.hoisted(() => ({
   dns: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
 }));
@@ -65,7 +65,7 @@ afterEach(() => {
 });
 
 it("search contracts use real scoped credentials and enable only selected plugin", () => {
-  const provider = createInfoQuestSearchProvider();
+  const provider = createInfoQuestWebSearchProvider();
   const cfg: BranchConfig = {};
   provider.setConfiguredCredentialValue?.(cfg, " configured-key ");
   expect(provider.getConfiguredCredentialValue?.(cfg)).toBe(" configured-key ");
@@ -77,7 +77,7 @@ it("search contracts use real scoped credentials and enable only selected plugin
 });
 it("search callback invokes native client, has no fabricated count setting", async () => {
   empty();
-  const provider = createInfoQuestSearchProvider();
+  const provider = createInfoQuestWebSearchProvider();
   const tool = provider.createTool({ config: config() })!;
   expect((tool.parameters as { properties?: unknown }).properties).not.toHaveProperty("count");
   await expect(tool.execute({ query: "topic", site: "example.com" })).resolves.toMatchObject({
@@ -87,7 +87,7 @@ it("search callback invokes native client, has no fabricated count setting", asy
   expect(body()).toEqual({ format: "JSON", query: "topic", site: "example.com" });
 });
 it("search current-turn fence prevents dispatch and prevents stale completion", async () => {
-  const tool = createInfoQuestSearchProvider().createTool({ config: config() })!;
+  const tool = createInfoQuestWebSearchProvider().createTool({ config: config() })!;
   await expect(
     tool.execute(
       { query: "x" },

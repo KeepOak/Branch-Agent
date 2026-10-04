@@ -1,14 +1,14 @@
 import { definePluginEntry } from "branch/plugin-sdk/plugin-entry";
-import { createInfoQuestFetchProvider } from "./src/fetch-provider.js";
+import { createInfoQuestWebFetchProvider } from "./src/fetch-provider.js";
 import { createInfoQuestImageSearchTool } from "./src/image-search-tool.js";
-import { createInfoQuestSearchProvider } from "./src/search-provider.js";
+import { createInfoQuestWebSearchProvider } from "./src/search-provider.js";
 export default definePluginEntry({
   id: "infoquest",
   name: "InfoQuest",
   description: "BytePlus InfoQuest web search, crawl and image search",
   register(api) {
-    api.registerWebSearchProvider(createInfoQuestSearchProvider());
-    api.registerWebFetchProvider(createInfoQuestFetchProvider());
+    api.registerWebSearchProvider(createInfoQuestWebSearchProvider());
+    api.registerWebFetchProvider(createInfoQuestWebFetchProvider());
     api.registerTool(
       {
         contextVersion: 2,
@@ -18,3 +18,6 @@ export default definePluginEntry({
     );
   },
 });
+
+export { createInfoQuestWebSearchProvider } from "./src/search-provider.js";
+export { createInfoQuestWebFetchProvider } from "./src/fetch-provider.js";

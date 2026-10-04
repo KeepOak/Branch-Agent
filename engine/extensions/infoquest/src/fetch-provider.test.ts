@@ -1,6 +1,6 @@
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { createInfoQuestFetchProvider } from "./fetch-provider.js";
+import { createInfoQuestWebFetchProvider } from "./fetch-provider.js";
 const offline = vi.hoisted(() => ({
   dns: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
 }));
@@ -62,7 +62,7 @@ afterEach(() => {
 });
 
 it("fetch configured credential path and host credential contract remain real", () => {
-  const provider = createInfoQuestFetchProvider();
+  const provider = createInfoQuestWebFetchProvider();
   const cfg: BranchConfig = {};
   provider.setConfiguredCredentialValue?.(cfg, "fetch-key");
   expect(provider.getConfiguredCredentialValue?.(cfg)).toBe("fetch-key");
@@ -73,7 +73,7 @@ it("fetch configured credential path and host credential contract remain real", 
 });
 it("fetch callback honors actual URL and maxChars contract", async () => {
   answer({ reader_result: "<p>Long content that exceeds a short cap.</p>" });
-  const result = await createInfoQuestFetchProvider()
+  const result = await createInfoQuestWebFetchProvider()
     .createTool({ config: config() })!
     .execute({ url: "https://example.com", maxChars: 20 });
   expect(result).toMatchObject({ provider: "infoquest", truncated: true, extractMode: "markdown" });
@@ -83,7 +83,7 @@ it("fetch callback aborted caller fails before URL/DNS/HTTP", async () => {
   const controller = new AbortController();
   controller.abort(new Error("fetch superseded"));
   await expect(
-    createInfoQuestFetchProvider()
+    createInfoQuestWebFetchProvider()
       .createTool({ config: config() })!
       .execute({ url: "https://example.com" }, { signal: controller.signal }),
   ).rejects.toThrow("fetch superseded");

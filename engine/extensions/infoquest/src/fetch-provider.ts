@@ -12,7 +12,7 @@ import { asOptionalRecord } from "branch/plugin-sdk/string-coerce-runtime";
 const loadClient = createLazyRuntimeModule(() => import("./client.js"));
 const credentialPath = "plugins.entries.infoquest.config.webFetch.apiKey";
 
-export function createInfoQuestFetchProvider(): WebFetchProviderPlugin {
+export function createInfoQuestWebFetchProvider(): WebFetchProviderPlugin {
   return {
     id: "infoquest",
     label: "InfoQuest Fetch",

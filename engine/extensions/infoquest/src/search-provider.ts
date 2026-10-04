@@ -5,7 +5,7 @@ import {
 } from "branch/plugin-sdk/provider-web-search-contract";
 const loadClient = createLazyRuntimeModule(() => import("./client.js"));
 const credentialPath = "plugins.entries.infoquest.config.webSearch.apiKey";
-export function createInfoQuestSearchProvider(): WebSearchProviderPlugin {
+export function createInfoQuestWebSearchProvider(): WebSearchProviderPlugin {
   return {
     id: "infoquest",
     label: "InfoQuest Search",

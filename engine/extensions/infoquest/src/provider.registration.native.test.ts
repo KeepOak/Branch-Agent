@@ -2,11 +2,15 @@ import { readFileSync } from "node:fs";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createPluginRecord } from "../../../src/plugins/loader-records.js";
+import { collectPublicArtifactFactories } from "../../../src/plugins/public-artifact-factories.js";
 import { createPluginRegistry } from "../../../src/plugins/registry.js";
 import type { PluginRuntime } from "../../../src/plugins/runtime/types.js";
 import { resolveWebFetchDefinition } from "../../../src/web-fetch/runtime.js";
 import { executeWebSearchCandidates } from "../../../src/web-search/runtime-execution.js";
-import plugin from "../index.js";
+import plugin, {
+  createInfoQuestWebSearchProvider,
+  createInfoQuestWebFetchProvider,
+} from "../index.js";
 const fixture = vi.hoisted(() => ({
   fetches: [] as import("../../../src/plugins/types.js").PluginWebFetchProviderEntry[],
   dns: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
@@ -173,4 +177,17 @@ it("real host current-turn fence prevents dispatch and stale return", async () =
       allowFallback: false,
     }),
   ).rejects.toThrow("caller retired after");
+});
+
+it("actual public artifact collector recognizes exported search/fetch factories", () => {
+  const mod = { createInfoQuestWebSearchProvider, createInfoQuestWebFetchProvider };
+  for (const suffix of ["WebSearchProvider", "WebFetchProvider"]) {
+    const providers = collectPublicArtifactFactories({
+      mod,
+      suffix,
+      isArtifact: (value): value is { id: string } =>
+        typeof value === "object" && value !== null && "id" in value,
+    });
+    expect(providers.map((provider) => provider.id)).toEqual(["infoquest"]);
+  }
 });
