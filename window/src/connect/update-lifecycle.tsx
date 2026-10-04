@@ -8,12 +8,14 @@ export type RestartReceipt = { id: string; sessionKey: string; expectedSessionId
 export type IdleUpdateBinding = { status: "idle"; lifecycleGeneration: string; targetBuild: string };
 export type DeferredUpdateBinding = { status: "deferred"; lifecycleGeneration: string; targetBuild: string };
 export type RestartPreparation = RestartReceipt | IdleUpdateBinding | DeferredUpdateBinding;
-export type UpdateLifecycleEvent = { operationId: string; phase: "preparing" | "updating" | "reconnecting" | "complete" | "failed"; outcome?: "rolled-back" | "cancelled" | "session-changed" | "deferred" };
+export type UpdateLifecycleEvent = { operationId: string; phase: "preparing" | "updating" | "reconnecting" | "waiting" | "recovered" | "complete" | "failed"; outcome?: "rolled-back" | "cancelled" | "session-changed" | "deferred" | "done" | "failed" | "killed" | "timeout" | "interrupted" };
 export type UpdateBridge = {
   onUpdateLifecycle?: (handler: (event: UpdateLifecycleEvent) => void) => () => void;
   onVerifyUpdate?: (handler: (input: Record<string, never>) => Promise<unknown>) => () => void;
   onPrepareUpdate?: (handler: (input: { operationId: string; targetBuild: string }) => Promise<RestartPreparation>) => () => void;
-  onResumeUpdate?: (handler: (input: { receipt: RestartReceipt }) => Promise<string>) => () => void;
+  onObserveUpdate?: (handler: (input: { receipt: RestartReceipt }) => Promise<unknown>) => () => void;
+  requestUpdateReconciliation?: (operationId: string) => void | Promise<unknown>;
+  onResumeUpdate?: (handler: (input: { receipt: RestartReceipt }) => Promise<unknown>) => () => void;
   onCancelUpdate?: (handler: (input: { receipt: RestartReceipt | Pick<RestartReceipt, "lifecycleGeneration" | "targetBuild"> }) => Promise<string>) => () => void;
   onUpdatePolicy?: (handler: () => Promise<boolean>) => () => void;
 };
@@ -32,12 +34,30 @@ export function whenConnected(session: SaplingSession): Promise<void> {
 
 export function bindUpdateLifecycle(session: SaplingSession, bridge: UpdateBridge, show: (event: UpdateLifecycleEvent) => void): () => void {
   let operation: string | null = null;
+  let watching: { receipt: RestartReceipt; runId?: string } | null = null;
+  let phase = bridge.requestUpdateReconciliation ? session.getSnapshot().status.phase : "connecting";
+  const track = (receipt: RestartReceipt) => {
+    if (operation && operation !== receipt.lifecycleGeneration) return;
+    operation = receipt.lifecycleGeneration;
+    if (watching?.receipt.id !== receipt.id) watching = { receipt };
+  };
+  const hint = () => {
+    if (!watching || watching.receipt.lifecycleGeneration !== operation) return;
+    try {
+      const sent = bridge.requestUpdateReconciliation?.(watching.receipt.lifecycleGeneration);
+      if (sent) void Promise.resolve(sent).catch(() => {});
+    } catch { /* A later real producer/reconnect event can retry the read-only hint. */ }
+  };
   const subscriptions: Array<(() => void) | undefined> = [];
   subscriptions.push(bridge.onUpdateLifecycle?.((event) => {
-    if (event.phase === "preparing") operation = event.operationId;
+    if (event.phase === "preparing") {
+      if (operation !== event.operationId) watching = null;
+      operation = event.operationId;
+    }
     if (operation && event.operationId !== operation) return;
     operation = event.operationId;
-    setUpdateBarrier(event.phase !== "complete" && event.phase !== "failed");
+    if (event.phase === "complete" || event.phase === "failed") watching = null;
+    setUpdateBarrier(event.phase !== "complete" && event.phase !== "failed" && event.phase !== "recovered");
     show(event);
   }));
   subscriptions.push(bridge.onPrepareUpdate?.(async ({ operationId, targetBuild }) => {
@@ -83,11 +103,43 @@ export function bindUpdateLifecycle(session: SaplingSession, bridge: UpdateBridg
     return session.request("desktop.restart.identity", {});
   }));
   subscriptions.push(bridge.onResumeUpdate?.(async ({ receipt }) => {
+    track(receipt);
     setUpdateBarrier(true);
     await whenConnected(session);
-    const result = rec(await session.request("desktop.restart.resume", { ...receipt }));
-    return typeof result.status === "string" ? result.status : "uncertain";
+    const result = await session.request("desktop.restart.resume", { ...receipt });
+    const runId = rec(result).runId;
+    if (watching?.receipt.id === receipt.id && typeof runId === "string") watching.runId = runId;
+    return result;
   }));
+  subscriptions.push(bridge.onObserveUpdate?.(async ({ receipt }) => {
+    track(receipt);
+    await whenConnected(session);
+    const result = await session.request("desktop.restart.observe", { ...receipt });
+    const observed = rec(result);
+    if (watching?.receipt.id === receipt.id) {
+      if (typeof observed.runId === "string") watching.runId = observed.runId;
+      if (observed.status === "completed" || observed.status === "cancelled" || observed.status === "session-changed") watching = null;
+    }
+    // Only main's validated lifecycle event can change the delivery barrier.
+    return result;
+  }));
+  if (bridge.requestUpdateReconciliation) {
+    subscriptions.push(session.onGatewayEvent((event, payload) => {
+      if (!watching) return;
+      const p = rec(payload);
+      const keys = Array.isArray(p.sessions) ? p.sessions.map((row) => rec(row).key) : [];
+      const matches = p.sessionKey === watching.receipt.sessionKey || p.key === watching.receipt.sessionKey || keys.includes(watching.receipt.sessionKey) || (watching.runId !== undefined && p.runId === watching.runId);
+      if (!matches) return;
+      const chatTerminal = event === "chat" && (p.state === "final" || p.state === "error" || p.state === "aborted");
+      if ((event === "agent" && p.stream === "lifecycle") || chatTerminal || event === "session.message" || event === "sessions.changed") hint();
+    }));
+    subscriptions.push(session.subscribe(() => {
+      const next = session.getSnapshot().status.phase;
+      const reconnected = phase !== "connected" && next === "connected";
+      phase = next;
+      if (reconnected) hint();
+    }));
+  }
   subscriptions.push(bridge.onCancelUpdate?.(async ({ receipt }) => {
     await whenConnected(session);
     const params = "id" in receipt ? { ...receipt } : { lifecycleGeneration: receipt.lifecycleGeneration, targetBuild: receipt.targetBuild };
@@ -106,6 +158,11 @@ export function UpdateLifecycle({ session, bridge }: { session: SaplingSession; 
   const [event, setEvent] = useState<UpdateLifecycleEvent | null>(null);
   useEffect(() => bridge ? bindUpdateLifecycle(session, bridge, setEvent) : undefined, [session, bridge]);
   if (!event) return null;
-  const text = event.phase === "complete" ? "Back online. Right where you left off." : event.phase === "failed" ? event.outcome === "deferred" ? "Branch will update after the current work. Your messages are kept here." : event.outcome === "rolled-back" ? "The update couldn't finish. Branch kept the previous version and your messages." : "Branch is back online. Your messages are kept here." : event.phase === "reconnecting" ? "Coming back online. Your messages are kept here." : "Updating Branch. Your messages are kept here.";
+  const stopped = event.outcome === "failed" ? "Your task couldn't finish." : event.outcome === "killed" ? "Your task was stopped." : event.outcome === "timeout" ? "Your task ran out of time." : event.outcome === "interrupted" ? "Your task was interrupted." : null;
+  const text = event.phase === "waiting" ? "Branch is back online. Waiting to confirm your task. Your messages are kept here."
+    : event.phase === "recovered" ? "Back online. Your task is continuing."
+    : event.phase === "complete" ? stopped ? `Branch is back online. ${stopped} Your messages are kept here.` : event.outcome === "done" ? "Your task finished. Branch is up to date." : "Back online. Right where you left off."
+    : event.phase === "failed" ? event.outcome === "deferred" ? "Branch will update after the current work. Your messages are kept here." : event.outcome === "rolled-back" ? "The update couldn't finish. Branch kept the previous version and your messages." : "Branch is back online. Your messages are kept here."
+    : event.phase === "reconnecting" ? "Coming back online. Your messages are kept here." : "Updating Branch. Your messages are kept here.";
   return <div className="branch-update-status" role="status" aria-live="polite" data-update-phase={event.phase}>{text}</div>;
 }

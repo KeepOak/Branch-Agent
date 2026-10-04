@@ -19,17 +19,21 @@ function fixture() {
   let phase = "connected";
   let key = receipt.sessionKey;
   const listeners = new Set<() => void>();
+  const producers = new Set<(event: string, payload: unknown) => void>();
+  const reconciliation = vi.fn(async (_operationId: string) => {});
   const request = vi.fn(async (method: string): Promise<unknown> => {
     if (method === "sessions.describe") return { session: { sessionId: "original" } };
     if (method === "desktop.restart.prepare") return receipt;
     if (method === "desktop.restart.resume") return { status: "accepted" };
+    if (method === "desktop.restart.observe") return { status: "waiting" };
     if (method === "desktop.restart.cancel") return { status: "cancelled" };
     return { config: { update: { auto: { enabled: true } } } };
   });
-  const session = { getSnapshot: () => ({ sessionKey: key, status: { phase } }), subscribe: (fn: () => void) => { listeners.add(fn); return () => listeners.delete(fn); }, request } as unknown as SaplingSession;
+  const session = { getSnapshot: () => ({ sessionKey: key, status: { phase } }), subscribe: (fn: () => void) => { listeners.add(fn); return () => listeners.delete(fn); }, onGatewayEvent: (fn: (event: string, payload: unknown) => void) => { producers.add(fn); return () => producers.delete(fn); }, request } as unknown as SaplingSession;
   let lifecycle!: (event: UpdateLifecycleEvent) => void;
   let prepare!: Parameters<NonNullable<UpdateBridge["onPrepareUpdate"]>>[0];
   let resume!: Parameters<NonNullable<UpdateBridge["onResumeUpdate"]>>[0];
+  let observe!: Parameters<NonNullable<UpdateBridge["onObserveUpdate"]>>[0];
   let cancel!: Parameters<NonNullable<UpdateBridge["onCancelUpdate"]>>[0];
   let policy!: () => Promise<boolean>;
   let verify!: (input: Record<string, never>) => Promise<unknown>;
@@ -37,11 +41,13 @@ function fixture() {
     onUpdateLifecycle: (fn) => { lifecycle = fn; return () => {}; },
     onVerifyUpdate: (fn) => { verify = fn; return () => {}; },
     onPrepareUpdate: (fn) => { prepare = fn; return () => {}; },
+    onObserveUpdate: (fn) => { observe = fn; return () => {}; },
+    requestUpdateReconciliation: reconciliation,
     onResumeUpdate: (fn) => { resume = fn; return () => {}; },
     onCancelUpdate: (fn) => { cancel = fn; return () => {}; },
     onUpdatePolicy: (fn) => { policy = fn; return () => {}; },
   }, vi.fn());
-  return { request, lifecycle, verify, prepare, resume, cancel, policy, unbind, open: (next: string) => { key = next; }, connect: (next: string) => { phase = next; for (const fn of listeners) fn(); } };
+  return { request, lifecycle, verify, prepare, resume, observe, reconciliation, emit: (event: string, payload: unknown) => { for (const fn of producers) fn(event, payload); }, cancel, policy, unbind, open: (next: string) => { key = next; }, connect: (next: string) => { phase = next; for (const fn of listeners) fn(); } };
 }
 afterEach(() => { setUpdateBarrier(false); vi.restoreAllMocks(); });
 describe("desktop update lifecycle uses the actual authenticated session", () => {
@@ -61,7 +67,7 @@ describe("desktop update lifecycle uses the actual authenticated session", () =>
   it("waits for fresh connection before resume and holds delivery until final lifecycle ACK", async () => {
     const f = fixture(); f.connect("connecting");
     const resumed = f.resume({ receipt }); await Promise.resolve(); expect(f.request).not.toHaveBeenCalled();
-    f.connect("connected"); expect(await resumed).toBe("accepted");
+    f.connect("connected"); expect(await resumed).toEqual({ status: "accepted" });
     expect(f.request).toHaveBeenCalledWith("desktop.restart.resume", receipt);
     expect(updateBlocked()).toBe(true);
     f.lifecycle({ operationId: "operation", phase: "complete" }); expect(updateBlocked()).toBe(false); f.unbind();
@@ -189,4 +195,87 @@ it("defers for actual off-page private queue custody before all disk checkpoints
   expect(disk).not.toHaveBeenCalled(); expect(f.request).not.toHaveBeenCalled();
   expect(updateBlocked()).toBe(false);
   saveLine(localStorage, privateKey, []); unregister(); f.unbind();
+});
+
+
+it("observes through fresh actual authentication and preserves fast terminal evidence untouched", async () => {
+  const f = fixture(); f.connect("connecting"); setUpdateBarrier(true);
+  const completed = { status: "completed", runId: "actual-fast-run", outcome: "done" };
+  f.request.mockResolvedValue(completed);
+  const observed = f.observe({ receipt }); await Promise.resolve(); expect(f.request).not.toHaveBeenCalled();
+  f.connect("connected"); expect(await observed).toBe(completed);
+  expect(f.request).toHaveBeenCalledWith("desktop.restart.observe", receipt);
+  expect(f.request).not.toHaveBeenCalledWith("desktop.restart.resume", expect.anything());
+  expect(updateBlocked()).toBe(true);
+  f.lifecycle({ operationId: receipt.lifecycleGeneration, phase: "complete", outcome: "done" });
+  expect(updateBlocked()).toBe(false); f.unbind();
+});
+
+it("a lost observe ACK retains the barrier and the next bridge request remains read only", async () => {
+  const f = fixture(); setUpdateBarrier(true);
+  f.request.mockRejectedValueOnce(new Error("observe ACK lost")).mockResolvedValue({ status: "waiting", runId: "actual-run" });
+  await expect(f.observe({ receipt })).rejects.toThrow("observe ACK lost");
+  expect(updateBlocked()).toBe(true);
+  expect(await f.observe({ receipt })).toEqual({ status: "waiting", runId: "actual-run" });
+  expect(f.request.mock.calls.map(([method]) => method)).toEqual(["desktop.restart.observe", "desktop.restart.observe"]);
+  expect(updateBlocked()).toBe(true); f.unbind();
+});
+
+it("a real matching completion producer hint arriving before the resume ACK is generation bound", async () => {
+  const f = fixture(); let ack!: (value: unknown) => void;
+  f.request.mockImplementation(async () => new Promise((resolve) => { ack = resolve; }));
+  const resuming = f.resume({ receipt }); await Promise.resolve();
+  f.emit("agent", { sessionKey: receipt.sessionKey, stream: "lifecycle", runId: "fast", data: { phase: "end" } });
+  expect(f.reconciliation).toHaveBeenCalledWith(receipt.lifecycleGeneration);
+  const uncertain = { status: "uncertain", runId: "fast" }; ack(uncertain);
+  expect(await resuming).toBe(uncertain);
+  expect(f.request.mock.calls.map(([method]) => method)).toEqual(["desktop.restart.resume"]);
+  f.unbind();
+});
+
+it("uses actual producer and reconnect edges while ignoring unrelated events and retired generations", async () => {
+  const f = fixture(); f.request.mockResolvedValue({ status: "waiting", runId: "actual-run" });
+  await f.observe({ receipt });
+  f.emit("agent", { sessionKey: "agent:other:main", stream: "lifecycle", runId: "other" });
+  f.emit("config.changed", { sessionKey: receipt.sessionKey });
+  f.emit("agent", { sessionKey: receipt.sessionKey, stream: "assistant" });
+  f.emit("chat", { sessionKey: receipt.sessionKey, state: "delta" });
+  expect(f.reconciliation).not.toHaveBeenCalled();
+  f.emit("session.message", { sessionKey: receipt.sessionKey });
+  expect(f.reconciliation).toHaveBeenCalledTimes(1);
+  f.connect("connecting"); f.connect("connected"); f.connect("connected");
+  expect(f.reconciliation).toHaveBeenCalledTimes(2);
+  f.lifecycle({ operationId: "new-generation", phase: "preparing" });
+  f.emit("agent", { runId: "actual-run", stream: "lifecycle" });
+  expect(f.reconciliation).toHaveBeenCalledTimes(2);
+  f.unbind(); f.emit("session.message", { sessionKey: receipt.sessionKey });
+  expect(f.reconciliation).toHaveBeenCalledTimes(2);
+});
+
+it("waiting holds the barrier and recovered releases it only after main's verified lifecycle event", async () => {
+  const f = fixture();
+  f.lifecycle({ operationId: receipt.lifecycleGeneration, phase: "waiting" }); expect(updateBlocked()).toBe(true);
+  f.request.mockResolvedValue({ status: "recovered", runId: "actual-run" });
+  expect(await f.observe({ receipt })).toEqual({ status: "recovered", runId: "actual-run" });
+  expect(updateBlocked()).toBe(true);
+  f.lifecycle({ operationId: receipt.lifecycleGeneration, phase: "recovered" }); expect(updateBlocked()).toBe(false);
+  f.emit("agent", { runId: "actual-run", stream: "lifecycle", data: { phase: "end" } });
+  expect(f.reconciliation).toHaveBeenCalledWith(receipt.lifecycleGeneration);
+  f.lifecycle({ operationId: receipt.lifecycleGeneration, phase: "complete", outcome: "failed" });
+  f.emit("session.message", { sessionKey: receipt.sessionKey });
+  expect(f.reconciliation).toHaveBeenCalledTimes(1); f.unbind();
+});
+
+it.each(["failed", "killed", "timeout", "interrupted"] as const)("actual completed %s outcome is visible without success wording", async (outcome) => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  let notify!: (event: UpdateLifecycleEvent) => void;
+  const host = document.body.appendChild(document.createElement("div")); const root = createRoot(host);
+  await act(async () => root.render(<UpdateLifecycle session={{} as SaplingSession} bridge={{ onUpdateLifecycle: (fn) => { notify = fn; return () => {}; } }} />));
+  await act(async () => notify({ operationId: "op", phase: "waiting" }));
+  expect(host.textContent).toContain("Waiting to confirm");
+  await act(async () => notify({ operationId: "op", phase: "complete", outcome }));
+  expect(host.textContent).not.toContain("Your task finished");
+  expect(host.textContent).not.toContain("Your task is continuing");
+  expect(host.textContent).toContain("Your messages are kept here");
+  await act(async () => root.unmount()); host.remove();
 });
