@@ -101,6 +101,8 @@ export const slices = [
     strict: ['extensions/discord/src/monitor/staleness.ts'],
     gap: 'Leaf strict scope. The retained caller tests alone do not certify post-await delivery races; source follow-up is required.' },
   { id: 'continue-edits', pr: 24, anchor: 'src/coding/search-match.ts', profile: 'project',
+    followups: [{ pr: 33, native: ['src/coding/search-match.boundaries.node-test.ts'],
+      strict: ['src/coding/search-match.boundaries.node-test.ts'] }],
     productionAnchors: ['src/coding/search-match.ts', 'src/coding/stream-diff.ts', 'src/coding/continue-levenshtein.ts'],
     native: ['src/coding/search-match.node-test.ts', 'src/coding/search-matches.node-test.ts', 'src/coding/stream-diff.node-test.ts',
       'src/agents/sessions/tools/edit-diff.continue.test.ts', 'src/agents/file-mutation-args.stream.test.ts'],
@@ -111,10 +113,32 @@ export const slices = [
     gap: 'Private donor differential fixture is not shipped and is not counted by this public gate. SDK emission and installed acceptance are separate.' },
 ];
 
+export const windowSlices = [
+  { id: 'window-settings', pr: 39, anchor: 'src/places/settings/kit.tsx', profile: 'window',
+    productionAnchors: [
+      { file: 'src/places-nav/SettingsFrame.tsx', baselineSha256: '1a0758c6c6fde72ce5170f00ec7a07ecf8bc967efab81f945617887fb697a980' },
+      { file: 'src/places/settings/kit.tsx', baselineSha256: 'a5ad18a7e3371b6a3d0bb63fd3f92d61f37fd37e3f218aa1863fbddc256c88c0' },
+    ], native: [], markers: ['src/places/settings/kit.keyboard.test.tsx'],
+    vitest: ['src/places-nav/SettingsFrame.test.tsx', 'src/places/settings/kit.keyboard.test.tsx'],
+    strict: ['src/places-nav/SettingsFrame.tsx', 'src/places/settings/kit.tsx',
+      'src/places-nav/SettingsFrame.test.tsx', 'src/places/settings/kit.keyboard.test.tsx'],
+    gap: 'Real React/jsdom unit cases and the original renderer strict profile; installed visual and keyboard acceptance are separate.' },
+  { id: 'window-restart-input', pr: 43, anchor: 'src/connect/update-lifecycle.tsx', profile: 'window',
+    productionAnchors: ['src/connect/update-barrier.ts', 'src/connect/update-lifecycle.tsx'], native: [],
+    markers: ['src/composer/input-preservation.test.tsx', 'src/connect/update-lifecycle.test.tsx'],
+    vitest: ['src/composer/input-preservation.test.tsx', 'src/connect/update-lifecycle.test.tsx',
+      'src/composer/composer-logic.test.ts', 'src/connect/session-error-refresh.test.ts'],
+    strict: ['src/connect/update-barrier.ts', 'src/connect/update-lifecycle.tsx', 'src/composer/drafts.ts',
+      'src/composer/queue.ts', 'src/composer/useDraft.ts', 'src/composer/useWaitingLine.ts',
+      'src/composer/input-preservation.test.tsx', 'src/connect/update-lifecycle.test.tsx',
+      'src/composer/composer-logic.test.ts', 'src/connect/session-error-refresh.test.ts'],
+    gap: 'Renderer preservation/barrier fixtures only; coherent authenticated desktop-engine restart and installed data acceptance are separate.' },
+];
+
 export function validateInventory() {
   const ids = new Set(), tests = new Set();
-  for (const slice of slices) {
-    if (ids.has(slice.id) || !['core', 'project'].includes(slice.profile)) throw new Error('Duplicate slice or unknown strict profile');
+  for (const slice of [...slices, ...windowSlices]) {
+    if (ids.has(slice.id) || !['core', 'project', 'window'].includes(slice.profile)) throw new Error('Duplicate slice or unknown strict profile');
     ids.add(slice.id);
     if (!slice.productionAnchors.length) throw new Error(`Production anchors required: ${slice.id}`);
     for (const anchor of slice.productionAnchors) {
@@ -127,15 +151,15 @@ export function validateInventory() {
     for (const [runner, files] of [['native', slice.native], ['vitest', slice.vitest]]) {
       for (const file of files) {
         if (tests.has(file)) throw new Error(`Duplicate test target: ${file}`);
-        if (runner === 'vitest' ? !file.endsWith('.test.ts') : !/\.(?:ts|mts|mjs)$/.test(file)) throw new Error(`Invalid ${runner} target: ${file}`);
+        if (runner === 'vitest' ? !/\.test\.tsx?$/.test(file) : !/\.(?:ts|mts|mjs)$/.test(file)) throw new Error(`Invalid ${runner} target: ${file}`);
         tests.add(file);
       }
     }
     for (const followup of slice.followups ?? []) {
-      for (const file of [...followup.vitest, ...followup.strict]) {
-        if (!/^[a-zA-Z0-9/_-]+(?:\.[a-zA-Z0-9_-]+)*\.test\.ts$/.test(file)) throw new Error(`Unsafe follow-up target: ${file}`);
+      for (const file of [...(followup.native ?? []), ...(followup.vitest ?? []), ...followup.strict]) {
+        if (!/^[a-zA-Z0-9/_-]+(?:\.[a-zA-Z0-9_-]+)*\.(?:ts|mts|mjs)$/.test(file)) throw new Error(`Unsafe follow-up target: ${file}`);
       }
-      for (const file of followup.vitest) {
+      for (const file of [...(followup.native ?? []), ...(followup.vitest ?? [])]) {
         if (tests.has(file)) throw new Error(`Duplicate follow-up target: ${file}`);
         tests.add(file);
       }
@@ -143,6 +167,8 @@ export function validateInventory() {
   }
   return { slices: ids.size, nativeFiles: slices.reduce((n, s) => n + s.native.length, 0),
     vitestFiles: slices.reduce((n, s) => n + s.vitest.length, 0),
-    followupVitestFiles: slices.reduce((n, s) => n + (s.followups ?? []).reduce((m, f) => m + f.vitest.length, 0), 0),
+    windowSlices: windowSlices.length, windowVitestFiles: windowSlices.reduce((n, s) => n + s.vitest.length, 0),
+    followupNativeFiles: slices.reduce((n, s) => n + (s.followups ?? []).reduce((m, f) => m + (f.native ?? []).length, 0), 0),
+    followupVitestFiles: slices.reduce((n, s) => n + (s.followups ?? []).reduce((m, f) => m + (f.vitest ?? []).length, 0), 0),
     testFiles: tests.size };
 }

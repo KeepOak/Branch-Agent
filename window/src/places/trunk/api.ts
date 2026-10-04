@@ -47,11 +47,33 @@ export function newTrunkName(roster: Roster): string {
   return name;
 }
 
+/** Creation is persisted before some engines adopt the new runtime roster. */
+export async function waitForTrunk(engine: WindowEngine, id: string, current: () => boolean = () => true): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  while (current()) {
+    const roster = readRoster(await engine.request("agents.list", {}));
+    if (!current()) break;
+    if (roster.agents.some((agent) => agent.id === id)) return;
+    if (Date.now() >= deadline) throw new Error(`The Trunk was created (${id}), but the gateway has not made it available yet. Refresh the Trunks list before trying again.`);
+    await new Promise<void>((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`The Trunk was created (${id}), but you left this screen before it was ready.`);
+}
+
+/** Returns the persisted receipt; onboarding retains this ID across its own retryable setup steps. */
 export async function createTrunk(engine: WindowEngine, name: string): Promise<string> {
   const result = rec(await engine.request("agents.create", { name }));
   refused(result, "The engine did not create the Trunk.");
   const id = str(result.agentId);
   if (!id) throw new Error("The engine did not confirm that the Trunk was created.");
+  return id;
+}
+
+/** A new contact or job must also be available in the running gateway before it can be used. */
+export async function createReadyTrunk(engine: WindowEngine, name: string, current: () => boolean = () => true): Promise<string> {
+  if (!current()) throw new Error("You left this screen before the Trunk was created.");
+  const id = await createTrunk(engine, name);
+  await waitForTrunk(engine, id, current);
   return id;
 }
 

@@ -146,6 +146,7 @@ function readHelper(row: unknown): Helper {
 /** The helpers this conversation started, and theirs (the live tree, §4.4.10; DECISIONS.md items 49 and 50). */
 export function useHelpers(engine?: WindowEngine): { helpers: Helper[]; error: string | null; refresh: () => void } {
   const [helpers, setHelpers] = useState<Helper[]>([]);
+  const [loadedRoot, setLoadedRoot] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -160,7 +161,9 @@ export function useHelpers(engine?: WindowEngine): { helpers: Helper[]; error: s
       const nested = depth < 3 ? await Promise.all(mine.map((h) => load(h.key, depth + 1))) : [];
       return [...mine, ...nested.flat()];
     };
-    load(root, 0).then((list) => live && setHelpers(list)).catch((e: unknown) => live && setError(errorText(e)));
+    load(root, 0).then((list) => {
+      if (live) { setHelpers(list); setLoadedRoot(root); setError(null); }
+    }).catch((e: unknown) => { if (live) { setHelpers([]); setLoadedRoot(root); setError(errorText(e)); } });
     const off = engine.onEvent(({ event, payload }) => {
       const p = rec(payload);
       const s = rec(p.session);
@@ -170,7 +173,6 @@ export function useHelpers(engine?: WindowEngine): { helpers: Helper[]; error: s
       live = false;
       off();
     };
-  }, [engine, tick]);
-  return { helpers, error, refresh: () => setTick((t) => t + 1) };
+  }, [engine, engine?.sessionKey, tick]);
+  return { helpers: loadedRoot === engine?.sessionKey ? helpers : [], error: loadedRoot === engine?.sessionKey ? error : null, refresh: () => setTick((t) => t + 1) };
 }
-

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockLeft, formatDuration, modelName, phaseWords, shortReason, stepsSummary } from "./format";
+import { clockLeft, dayStamp, formatDuration, modelName, phaseWords, shortReason, stepsSummary } from "./format";
 import type { Block } from "./model";
 
 const step = (tool: string, status: "running" | "ok" = "ok"): Extract<Block, { kind: "step" }> => ({
@@ -14,9 +14,20 @@ const step = (tool: string, status: "running" | "ok" = "ok"): Extract<Block, { k
 describe("thread words", () => {
   it("sums up a run's steps in plain words", () => {
     expect(stepsSummary([step("exec")])).toBe("Ran a command");
-    expect(stepsSummary([step("exec"), step("exec"), step("read")])).toBe("Ran 2 commands and read a file");
-    expect(stepsSummary([step("read"), step("read"), step("web_search")])).toBe("Read 2 files and used web_search");
+    expect(stepsSummary([step("exec"), step("exec"), step("read")])).toBe("Ran 2 commands and read a file · 3 steps");
+    expect(stepsSummary([step("read"), step("read"), step("web_search")])).toBe("Read 2 files and used web_search · 3 steps");
+    expect(stepsSummary([{ ...step("exec"), at: 1_000 }, { ...step("read"), at: 42_000 }])).toBe("Ran a command and read a file · 2 steps · 41s");
     expect(stepsSummary([step("exec"), step("read", "running")])).toBe("Reading a file");
+  });
+
+  it("stamps the day over the first message of each day", () => {
+    const now = new Date(2026, 9, 4, 12, 20).getTime();
+    const time = (d: Date) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const today = new Date(2026, 9, 4, 12, 2);
+    const yesterday = new Date(2026, 9, 3, 16, 18);
+    expect(dayStamp(today.getTime(), now)).toBe(`Today ${time(today)}`);
+    expect(dayStamp(yesterday.getTime(), now)).toBe(`Yesterday ${time(yesterday)}`);
+    expect(dayStamp(new Date(2026, 8, 30, 9, 5).getTime(), now)).toMatch(/^Sep 30 /);
   });
 
   it("formats durations, clocks and model names", () => {

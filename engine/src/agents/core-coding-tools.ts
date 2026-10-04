@@ -37,6 +37,7 @@ import { resolveReadOnlyWorkspaceSkillMounts } from "./sandbox/workspace-mounts.
 import { createLsTool, type LsOperations } from "./sessions/tools/ls.js";
 import { createReadTool } from "./sessions/tools/read.js";
 import { resolveToolResultBudget } from "./tool-result-limits.js";
+import { createGlobTool } from "./tools/glob-tool.js";
 import { getAgentWorkspaceAccess, WorkspaceAccessUnavailableError } from "./workspace-access.js";
 
 const filesystemAction: AgentToolActionDescriptor = Object.freeze({
@@ -172,6 +173,26 @@ type CoreCodingToolsOptions = {
   recordToolPrepStage?: (name: string) => void;
 };
 
+function createWorkspaceGlobTool(
+  options: CoreCodingToolsOptions,
+  guard: (tool: AnyAgentTool) => AnyAgentTool,
+): AnyAgentTool {
+  const cwd = options.sandbox?.containerWorkdir ?? options.codingRoot;
+  const bridge = options.sandbox?.fsBridge;
+  const toolOptions = { root: options.workspaceOnly ? options.containmentRoot : undefined, bridge };
+  const validator = guard({
+    ...createGlobTool(cwd, toolOptions),
+    execute: async () => ({ content: [], details: undefined }),
+  });
+  const tool = createGlobTool(cwd, {
+    ...toolOptions,
+    validatePath: async (filePath, signal) => {
+      await validator.execute("glob-path-validation", { path: filePath }, signal);
+    },
+  });
+  return tool;
+}
+
 /** Materialize only the core file and shell families selected by the runtime owner. */
 export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgentTool[] {
   const sandbox = options.sandbox;
@@ -263,6 +284,7 @@ export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgent
           }
         : undefined;
     if (!sandbox || readDirectory) {
+      base.push(createWorkspaceGlobTool(options, guardWorkspaceTool));
       const ls = createLsTool(options.codingRoot, {
         operations: listingOperations,
         modelBudget: resolveToolResultBudget(options.modelContextWindowTokens),

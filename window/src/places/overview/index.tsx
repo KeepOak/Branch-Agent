@@ -64,7 +64,7 @@ function Spending({ resource, trunks }: { resource: Resource; trunks: Agent[] })
   const rows = records(record(value.aggregates).byAgent).map(row => ({ id: text(row.agentId), cost: number(record(row.totals).totalCost) ?? 0 })).filter(row => row.id && row.cost > 0);
   const highest = Math.max(0, ...rows.map(row => row.cost));
   return <>
-    <div className="ov-big">{amount === undefined ? "Not reported" : money(amount)}</div>
+    {amount === undefined ? <p className="ov-hint">Not reported</p> : <div className="ov-big">{money(amount)}</div>}
     {rows.length ? <div className="ov-bars">{rows.map(row => <div className="ov-brow" key={row.id}><span>{agentName(trunks, row.id)}</span><span className="ov-track"><u style={{ width: `${highest > 0 ? row.cost / highest * 100 : 0}%` }} /></span><span className="ov-v">{money(row.cost)}</span></div>)}</div> : null}
   </>;
 }
@@ -87,7 +87,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   const data = useMemo(() => new OverviewData(engine), [engine]);
   useEffect(() => { data.start(); return () => data.stop(); }, [data]);
   const { tiles } = useSyncExternalStore(data.subscribe, data.getSnapshot);
-  const rows = sessions(tiles.sessions.value), running = rows.filter(row => row.working);
+  const rows = sessions(tiles.sessions.value), running = rows.filter(row => row.working && !row.helper);
   const trunks = agents(tiles.agents.value), runList = runs(tiles.runs.value);
   const def = trunks.list.find(a => a.id === trunks.defaultId) ?? trunks.list[0];
   const mode = def && isEngineMode(def.mode) ? modeName(def.mode) : "";
@@ -96,12 +96,11 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   if (shared.length) lines.push({ ...personFrom("shared", "Shared owner", "", shared), shared: true });
   const status = (key: keyof typeof tiles, label: string) => <ResourceStatus resource={tiles[key]} label={label} retry={() => void data.refresh([key])} />;
   const recent = recentActivity(rows, runList);
-  return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />}>
-    <RecBar />
+  return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />} before={<RecBar />}>
     <div className="ov-grid">
       <Tile title="Now" action={<button type="button" className="ov-link" onClick={() => openPlace("canopy")}>Open Canopy</button>}>
         {status("sessions", "running conversations")}
-        {running.map(row => <button key={row.key} type="button" className="ov-now" onClick={() => openConversation(row.key)}><Face size={34} state="work" label={agentName(trunks.list, row.agentId)} /><span className="ov-grow"><b>{row.title}</b>{row.preview ? <small>{row.preview}</small> : null}</span></button>)}
+        {running.map(row => <button key={row.key} type="button" className="ov-now" onClick={() => openConversation(row.key)}><Face size={34} state="work" label={agentName(trunks.list, row.agentId)} /><span className="ov-grow"><b>{agentName(trunks.list, row.agentId)}</b><small>{row.preview || row.title}</small></span></button>)}
         {tiles.sessions.value !== undefined && !running.length ? <p>Nothing is running right now.</p> : null}
         <div className="ov-acts">{facts.waiting > 0 ? <button type="button" className="btn pri sm" onClick={() => openPlace("inbox")}>Answer {facts.waiting} waiting</button> : <span className="ov-pill"><i />Nothing waiting</span>}</div>
       </Tile>

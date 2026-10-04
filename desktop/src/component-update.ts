@@ -34,6 +34,11 @@ async function publication(cfg: DesktopConfig): Promise<Publication | undefined>
   return value ? JSON.parse(value) as Publication : undefined;
 }
 
+export async function componentReleaseRejected(cfg: DesktopConfig, release: ComponentRelease): Promise<boolean> {
+  const rejected = await readOrEmpty(rejectedFile(cfg));
+  return Boolean(rejected && sameIdentity(JSON.parse(rejected) as ReleaseIdentity, releaseIdentity(release)));
+}
+
 /** Call only after the selected new engine fails its readiness probe, never for staging/network recovery. */
 export async function rejectFailedComponentUpdate(cfg: DesktopConfig, engineDir: string): Promise<void> {
   const pending = await publication(cfg);
@@ -73,7 +78,7 @@ export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> 
   if ((await publication(cfg))?.phase === "prepared") await rollbackComponentUpdate(cfg);
 }
 
-async function manifest(request: typeof fetch): Promise<ComponentRelease> {
+export async function readComponentManifest(request: typeof fetch = fetch): Promise<ComponentRelease> {
   const response = await request(RELEASE_MANIFEST_URL, { signal: AbortSignal.timeout(30_000), cache: "no-store" });
   trustedDownloadResponse(response);
   let body = "";
@@ -121,16 +126,30 @@ async function publish(cfg: DesktopConfig, release: ComponentRelease, next: { en
 }
 
 /** Does not stop/restart the running engine. Its existing build watcher offers the explicit Restart action. */
-export async function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch = fetch, options: { retryRejected?: boolean } = {}): Promise<boolean> {
+async function refresh(cfg: DesktopConfig, request: typeof fetch, options: { retryRejected?: boolean }): Promise<boolean> {
   await recoverComponentUpdate(cfg);
   if (await publication(cfg)) return false;
-  const release = await manifest(request);
+  const release = await readComponentManifest(request);
   if (await readOrEmpty(versionFile(cfg)) === release.version) return false;
-  const rejected = await readOrEmpty(rejectedFile(cfg));
-  if (!options.retryRejected && rejected && sameIdentity(JSON.parse(rejected) as ReleaseIdentity, releaseIdentity(release))) return false;
+  if (!options.retryRejected && await componentReleaseRejected(cfg, release)) return false;
   const next = await stage(cfg, release, request);
   await publish(cfg, release, next);
   return true;
+}
+
+const refreshes = new WeakMap<DesktopConfig, Promise<boolean>>();
+/** Startup, hourly and manual staging share one publication owner. */
+export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch = fetch, options: { retryRejected?: boolean } = {}): Promise<boolean> {
+  const active = refreshes.get(cfg);
+  if (active) return active;
+  const next = refresh(cfg, request, options).finally(() => refreshes.delete(cfg));
+  refreshes.set(cfg, next);
+  return next;
+}
+
+export async function readComponentUpdateStatus(cfg: DesktopConfig): Promise<{ currentVersion: string | null; pendingVersion: string | null; publicationInProgress: boolean }> {
+  const pending = await publication(cfg);
+  return { currentVersion: await readOrEmpty(versionFile(cfg)) || null, pendingVersion: pending?.phase === "pending" ? pending.version : null, publicationInProgress: Boolean(pending) };
 }
 
 export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void): () => void {

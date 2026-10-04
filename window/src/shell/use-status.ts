@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { SaplingSession } from "../connect/session";
 import { readLimits, readUpdate, type Limits, type UpdateInfo } from "./status-data";
+import { componentDesktop, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus } from "../connect/desktop-component-updates";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 
@@ -63,8 +64,11 @@ export function useLimits(session: SaplingSession, ready: boolean): Limits | nul
 /** update.status on connect and on the engine's update events; hello's updateAvailable until it answers. */
 export function useUpdate(session: SaplingSession, ready: boolean, version: string): UpdateInfo | null {
   const [info, setInfo] = useState<UpdateInfo | null>(null);
+  const desktop = componentDesktop(session.gatewayUrl);
+  const native = useDesktopComponentStatus(session.gatewayUrl);
+  const isDesktop = Boolean(desktop);
   useEffect(() => {
-    if (!ready) {
+    if (!ready || isDesktop) {
       return;
     }
     const status = session.getSnapshot().status;
@@ -81,6 +85,14 @@ export function useUpdate(session: SaplingSession, ready: boolean, version: stri
         void load();
       }
     });
-  }, [session, ready, version]);
+  }, [session, ready, version, isDesktop]);
+  if (desktop) {
+    const status = native.status;
+    const available = status?.phase === "available" || status?.phase === "staged";
+    return { current: status?.currentVersion ?? version, latest: available ? status.latestVersion : null, notes: [],
+      installing: status?.phase === "staging" || status?.phase === "staged", waiting: status?.phase === "staged" ? "Downloaded. Restart Branch when your work is ready." : "Downloading and checking the update.",
+      statusMessage: !desktop.componentUpdates ? desktop.unavailableReason ?? MANUAL_UPDATE_UNSUPPORTED : native.error ??
+        (status?.phase === "current" ? undefined : "Check for updates in Updates & about.") };
+  }
   return info;
 }

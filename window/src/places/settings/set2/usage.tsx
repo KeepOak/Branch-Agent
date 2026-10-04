@@ -10,6 +10,7 @@ import { Dialog } from "../../../shell/Dialog";
 import { Menu, type MenuAnchor } from "../../../shell/Menu";
 import { CallLine, CodeRow, CopyBtn, Kv, Tile, bytes, lvOf, openPlace, rec, span, str, useCall, useLive, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
+import { readMeasuredPercent } from "../../../shell/limit-window-reading";
 import "./usage.css";
 
 /* ---------- figures ---------- */
@@ -150,11 +151,21 @@ function LimWindow({ label, left, words }: { label: string; left: number; words:
   );
 }
 
+const measuredNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+function billingMeasured(b: RecordValue): boolean {
+  return b.type === "budget"
+    ? measuredNumber(b.used) && measuredNumber(b.limit) && b.limit > 0
+    : measuredNumber(b.amount);
+}
+
 function Billing({ b }: { b: RecordValue }) {
   const unit = str(b.unit);
-  const amount = (v: unknown) => (unit === "USD" ? money(v) : `${num(v).toLocaleString()} ${unit}`);
-  if (b.type === "budget" && num(b.limit) > 0) {
-    return <LimWindow label={str(b.label) || "Budget"} left={100 - (num(b.used) / num(b.limit)) * 100} words={`${amount(b.used)} of ${amount(b.limit)}${b.resetAt ? ` · ${resetWords(b.resetAt)}` : ""}`} />;
+  const amount = (v: unknown) => measuredNumber(v) ? unit === "USD" ? USD.format(v) : `${v.toLocaleString()} ${unit}` : "Unknown";
+  if (b.type === "budget") {
+    const label = str(b.label) || "Budget";
+    return measuredNumber(b.used) && measuredNumber(b.limit) && b.limit > 0
+      ? <LimWindow label={label} left={100 - (b.used / b.limit) * 100} words={`${amount(b.used)} of ${amount(b.limit)}${b.resetAt ? ` · ${resetWords(b.resetAt)}` : ""}`} />
+      : <div className="s2usage-limw"><span>{label}</span><span>Unknown</span></div>;
   }
   const label = str(b.label) || (b.type === "balance" ? "Balance" : "Spent");
   return <div className="s2usage-limw"><span>{label}</span><span>{amount(b.amount)}{str(b.period) ? ` · ${str(b.period)}` : ""}</span></div>;
@@ -162,9 +173,12 @@ function Billing({ b }: { b: RecordValue }) {
 
 function Provider({ p, updatedAt }: { p: RecordValue; updatedAt: unknown }) {
   const name = str(p.displayName) || str(p.provider);
-  const windows = list(p.windows);
+  const windows = list(p.windows).flatMap((w) => {
+    const measured = readMeasuredPercent(w.usedPercent);
+    return measured ? [{ label: str(w.label), left: 100 - measured.used, words: resetWords(w.resetAt) }] : [];
+  });
   const billing = list(p.billing);
-  const told = windows.length > 0 || billing.length > 0;
+  const told = windows.length > 0 || billing.some(billingMeasured);
   const sub = [str(p.accountEmail), str(p.plan)].filter(Boolean).join(" · ");
   return (
     <div className="s2usage-lim" data-provider={str(p.provider)}>
@@ -175,7 +189,7 @@ function Provider({ p, updatedAt }: { p: RecordValue; updatedAt: unknown }) {
           {sub ? <span className="s2usage-muted">{sub}</span> : null}
           {p.error ? <Pill tone="bad">Couldn’t check</Pill> : told ? <Pill tone="ok">Measured</Pill> : <Pill>Not published</Pill>}
         </div>
-        {windows.map((w, i) => <LimWindow key={i} label={str(w.label)} left={100 - num(w.usedPercent)} words={resetWords(w.resetAt)} />)}
+        {windows.map((w, i) => <LimWindow key={i} {...w} />)}
         {billing.map((b, i) => <Billing key={`b${i}`} b={b} />)}
         {p.error ? <small className="s2-err">{str(p.error)}</small>
           : told ? <small>as of {ago(updatedAt)}, asked {name}</small>

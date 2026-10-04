@@ -117,7 +117,7 @@ function BringTile({ engine, agentId, trunkName }: { engine: WindowEngine; agent
   };
   const line = error ? error : !found ? "Looking for other assistants on this computer…" : done !== null ? `Brought in ${done} from ${names(found)}. ${trunkName} reads it from now on.` : found.length ? `Branch found memory from ${names(found)}. Bring it into ${trunkName}?` : "Branch found no other assistant's memory on this computer.";
   return (
-    <Tile icon="download" title="Bring your other assistant along" pill={done !== null ? "Brought in" : undefined} line={line} className="bringPF18">
+    <Tile icon="chat" title="Bring your other assistant along" pill={done !== null ? "Brought in" : undefined} line={line} className="bringPF18">
       {found?.length && done === null && !skipped ? (
         <>
           <ul className="bring-lPF18">
@@ -217,7 +217,7 @@ export function MoreBody({ engine, agentId, trunkName }: { engine: WindowEngine;
         </div>
       </Tile>
       {agentId ? <BringTile engine={engine} agentId={agentId} trunkName={trunkName} /> : null}
-      <Tile icon="box" title="Bring back your Branch" line="Moving from another computer? Restore Trunks, memory and automations from a backup.">
+      <Tile icon="clock" title="Bring back your Branch" line="Moving from another computer? Restore Trunks, memory and automations from a backup.">
         <div className="acts">{off("Choose a backup…", "Restoring a backup from the window isn't in the engine yet.", <Icon name="folder" small />)}</div>
       </Tile>
       {agentId ? <RoutineTile engine={engine} agentId={agentId} trunkName={trunkName} /> : null}

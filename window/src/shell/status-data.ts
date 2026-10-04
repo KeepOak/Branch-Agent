@@ -2,6 +2,7 @@
 // Sources: usage.status (infra/provider-usage.types.ts), usage.cost (infra/session-cost-usage.types.ts),
 // sessions.usage with includeContextWeight (config/sessions/session-system-prompt-report.ts, the way the Control UI's
 // usage/view-details.ts splits it), sessions.usage.timeseries, cron.list and update.status (gateway-protocol config.ts).
+import { readMeasuredPercent } from "./limit-window-reading";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -62,10 +63,11 @@ export type LimitRow = { id: string; name: string; account: string; pill: LimitP
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
 
 function limitRow(p: Record<string, unknown>, updatedAt: number, now: number): LimitRow {
-  const windows = list(p.windows).map((w) => {
-    const used = Math.min(100, Math.max(0, num(w.usedPercent)));
-    const left = Math.round(100 - used);
-    return { name: windowName(str(w.label)), left, reset: resetWords(num(w.resetAt) || undefined, used, now), low: left < LOW_LEFT };
+  const windows = list(p.windows).flatMap((w) => {
+    const measured = readMeasuredPercent(w.usedPercent);
+    if (!measured) return [];
+    const { used, left } = measured;
+    return [{ name: windowName(str(w.label)), left, reset: resetWords(num(w.resetAt) || undefined, used, now), low: left < LOW_LEFT }];
   });
   const account = [str(p.accountEmail), str(p.plan)].filter(Boolean).join(" · ");
   const measured = windows.length > 0;
@@ -201,7 +203,7 @@ export function comingUp(jobs: unknown[], now = Date.now()): { name: string; whe
     .map((j) => ({ name: str(j.displayName) || str(j.name) || str(j.id), when: dueWords(num(rec(j.state).nextRunAtMs), now) }));
 }
 
-export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null };
+export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null; statusMessage?: string };
 
 /** update.status (or hello's snapshot.updateAvailable): the version waiting and what it adds (§4.9.8). */
 export function readUpdate(result: unknown, current: string): UpdateInfo {

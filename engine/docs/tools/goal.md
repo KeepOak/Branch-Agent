@@ -146,7 +146,46 @@ Branch Agent exposes three goal tools to agent harnesses:
 | ------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `get_goal`    | Read the current session goal: status, objective, token usage, and token budget.                                         |
 | `create_goal` | Create a goal only when the user or system instructions explicitly request one. Fails if the session already has a goal. |
-| `update_goal` | Mark the goal `complete` or `blocked`.                                                                                   |
+| `update_goal` | Save a progress checkpoint, or mark the goal `complete` or `blocked`.                                                    |
+
+### Recoverable progress and completion evidence
+
+`create_goal` optionally accepts `acceptance_criteria`, an array of concrete outcomes.
+These criteria are stored with the goal and survive session reloads. They are optional;
+existing goals and operator `/goal complete` controls keep their behavior.
+
+Before an interruption or after a confirmed milestone, use `update_goal` with:
+
+```json
+{
+  "status": "checkpoint",
+  "goal_id": "the id returned by get_goal",
+  "note": "The report has been written and saved.",
+  "next_action": "Validate the report, then deliver it."
+}
+```
+
+A checkpoint preserves the current goal status. Its confirmed progress and next
+unfinished step appear in the next active goal turn, so completed actions need not
+be repeated. `get_goal` and `/goal` show the full checkpoint and criteria. A stale
+`goal_id` cannot update a goal that the operator cleared and replaced.
+
+While a goal is paused, agent `complete` and `blocked` status updates are rejected,
+including updates from a turn admitted before the pause. Confirmed progress can
+still be checkpointed, but the checkpoint does not authorize continued work:
+the agent must wait for the user to resume. Operator `/goal complete` remains
+available without first resuming the goal.
+
+For agent completion of a goal with criteria, `completion_evidence` must include an
+entry for every criterion, with its zero-based `criterion` index and non-empty
+`evidence` describing an observed result and its receipt or source. Missing or
+out-of-range evidence leaves the goal unfinished. Recorded evidence is a checklist,
+not an independent judgment that the described result is true; the agent must still
+verify the actual outcome. Repeated completion preserves the original evidence.
+
+Rewording an objective clears its old checkpoint, criteria and completion evidence
+because those records describe the previous target. Read the current goal before
+continuing against the changed objective.
 
 The model cannot silently pause, resume, clear, or replace a goal. Those stay
 operator/session controls through `/goal` and reset commands, so the agent

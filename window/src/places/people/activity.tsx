@@ -8,6 +8,8 @@ import { errorText, useResource } from "../library/data";
 import { num, rec, recs, rows, str, trunkNames, type Rec } from "./data";
 import { Empty, Glyph, Status } from "./ui";
 import { Reports } from "./reports";
+import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
+import { Icon } from "../../shell/icons";
 
 const STATUS: Record<string, string> = { started: "Started", succeeded: "Done", failed: "Failed", cancelled: "Stopped", timed_out: "Timed out", blocked: "Blocked", unknown: "Unknown" };
 const KINDS = [{ id: "agent_run", name: "Runs" }, { id: "tool_action", name: "Tool steps" }, { id: "message", name: "Messages" }];
@@ -23,6 +25,13 @@ export function activityParams(f: Filters, cursor?: string): Rec {
     limit: 100, cursor, agentId: f.agentId || undefined, kind: f.kind || undefined, status: f.status || undefined,
     channel: f.kind === "message" && f.channel ? f.channel : undefined, after: day(f.from, false), before: day(f.to, true),
   }).filter(([, v]) => v !== undefined));
+}
+
+/** The chat apps the engine knows (channels.status), in its order, for the Chat app filter. */
+export function chatApps(value: unknown): { id: string; name: string }[] {
+  const v = rec(value), labels = rec(v.channelLabels);
+  const ids = Array.isArray(v.channelOrder) ? v.channelOrder.map(x => str(x)).filter(Boolean) : Object.keys(labels);
+  return ids.map(id => ({ id, name: str(labels[id]) || id }));
 }
 
 export function when(ms: number, now = new Date()): string {
@@ -54,6 +63,8 @@ export function ActivityTab({ engine, level }: { engine: WindowEngine; level: Le
   const log = useActivity(engine, f);
   const agents = useResource<unknown>(engine, "agents.list");
   const titles = useResource<unknown>(engine, "sessions.list", { includeDerivedTitles: true });
+  const chats = useResource<unknown>(engine, "channels.status", { probe: false });
+  const apps = chatApps(chats.data);
   const [explain, setExplain] = useState<string | null>(null);
   const names = trunkNames(agents.data);
   const title = new Map(rows(titles.data).map(r => [r.key, r.title]));
@@ -65,7 +76,7 @@ export function ActivityTab({ engine, level }: { engine: WindowEngine; level: Le
       <Pick label="Trunk" value={f.agentId} onChange={set("agentId")} options={[...names].map(([id, name]) => ({ id, name }))} />
       <Pick label="Kind" value={f.kind} onChange={set("kind")} options={KINDS} />
       <Pick label="Status" value={f.status} onChange={set("status")} options={Object.entries(STATUS).map(([id, name]) => ({ id, name }))} />
-      <label title={f.kind === "message" ? undefined : CHAT_APP_OFF}>Chat app<input aria-label="Chat app" value={f.channel} disabled={f.kind !== "message"} placeholder="telegram" onChange={e => set("channel")(e.target.value.trim())} /></label>
+      <Pick label="Chat app" value={f.channel} onChange={set("channel")} options={apps} off={f.kind === "message" ? undefined : CHAT_APP_OFF} />
       <label>From<input type="date" aria-label="From" value={f.from} onChange={e => set("from")(e.target.value)} /></label>
       <label>To<input type="date" aria-label="To" value={f.to} onChange={e => set("to")(e.target.value)} /></label>
       {any && <button type="button" className="btn ghost sm" onClick={() => setF(NONE)}>Clear</button>}
@@ -79,8 +90,16 @@ export function ActivityTab({ engine, level }: { engine: WindowEngine; level: Le
   </>;
 }
 
-function Pick({ label, value, options, onChange }: { label: string; value: string; options: { id: string; name: string }[]; onChange: (v: string) => void }) {
-  return <select aria-label={label} value={value} onChange={e => onChange(e.target.value)}><option value="">{label}</option>{options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select>;
+/** A filter as the preview draws it: a small button that names its choice, opening a menu of Any and the options. */
+function Pick({ label, value, options, onChange, off }: { label: string; value: string; options: { id: string; name: string }[]; onChange: (v: string) => void; off?: string }) {
+  const [at, setAt] = useState<MenuAnchor | null>(null);
+  const chosen = options.find(o => o.id === value)?.name ?? value;
+  const items: MenuItem[] = [{ label: "Any", checked: !value, run: () => onChange("") }, ...options.map(o => ({ label: o.name, checked: value === o.id, run: () => onChange(o.id) }))];
+  return <>
+    <button type="button" className="btn sm pp-pick" aria-haspopup="menu" aria-expanded={Boolean(at)} disabled={Boolean(off)} title={off}
+      onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setAt({ x: r.left, y: r.bottom + 4 }); }}>{label}{chosen ? `: ${chosen}` : ""}<Icon name="down" small /></button>
+    {at && <Menu at={at} label={label} items={items} onClose={() => setAt(null)} />}
+  </>;
 }
 
 function Event({ e, names, title, explain }: { e: Rec; names: Map<string, string>; title: Map<string, string>; explain?: (runId: string) => void }) {
