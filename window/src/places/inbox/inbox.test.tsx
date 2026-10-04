@@ -98,6 +98,23 @@ describe("Inbox data", () => {
 });
 
 describe("Inbox › Needs you", () => {
+  it("lists a Trunk waiting for an answer under Recent notices, and opens its conversation", async () => {
+    const { host, openConversation, openSettings } = await render();
+    const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Recent notices"]');
+    await click(bell!);
+    const pop = document.querySelector('[data-testid="inbox-notices"]');
+    expect(pop?.textContent).toContain("Rowan is waiting for your answer.");
+    await click(btn(document, "Rowan is waiting for your answer.")[0]);
+    expect(openConversation).toHaveBeenCalledWith("agent:main:a");
+    await click(bell!);
+    await click(btn(document, "Notification settings")[0]);
+    expect(openSettings).toHaveBeenCalledWith("notifications");
+  });
+  it("says so when there are no notices", async () => {
+    const { host } = await render({ fx: { ...FX, "question.list": { questions: [] } } });
+    await click(host.querySelector<HTMLButtonElement>('button[aria-label="Recent notices"]')!);
+    expect(document.querySelector('[data-testid="inbox-notices"]')?.textContent).toContain("No notices right now.");
+  });
   it("counts approvals, requests and questions in the chip, and Allow all only the approvals", async () => {
     const { host } = await render();
     expect(host.querySelector(".ib-n")?.textContent).toBe("6");

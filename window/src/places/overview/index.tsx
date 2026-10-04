@@ -64,7 +64,7 @@ function Spending({ resource, trunks }: { resource: Resource; trunks: Agent[] })
   const rows = records(record(value.aggregates).byAgent).map(row => ({ id: text(row.agentId), cost: number(record(row.totals).totalCost) ?? 0 })).filter(row => row.id && row.cost > 0);
   const highest = Math.max(0, ...rows.map(row => row.cost));
   return <>
-    <div className="ov-big">{amount === undefined ? "Not reported" : money(amount)}</div>
+    {amount === undefined ? <p className="ov-hint">Not reported</p> : <div className="ov-big">{money(amount)}</div>}
     {rows.length ? <div className="ov-bars">{rows.map(row => <div className="ov-brow" key={row.id}><span>{agentName(trunks, row.id)}</span><span className="ov-track"><u style={{ width: `${highest > 0 ? row.cost / highest * 100 : 0}%` }} /></span><span className="ov-v">{money(row.cost)}</span></div>)}</div> : null}
   </>;
 }
@@ -96,8 +96,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   if (shared.length) lines.push({ ...personFrom("shared", "Shared owner", "", shared), shared: true });
   const status = (key: keyof typeof tiles, label: string) => <ResourceStatus resource={tiles[key]} label={label} retry={() => void data.refresh([key])} />;
   const recent = recentActivity(rows, runList);
-  return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />}>
-    <RecBar />
+  return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />} before={<RecBar />}>
     <div className="ov-grid">
       <Tile title="Now" action={<button type="button" className="ov-link" onClick={() => openPlace("canopy")}>Open Canopy</button>}>
         {status("sessions", "running conversations")}

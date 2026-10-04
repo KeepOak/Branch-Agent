@@ -45,11 +45,11 @@ export function UserMessage({ block, children }: { block: Of<"user">; children?:
 }
 
 /** A Trunk's reply. `face` is the gutter character, shown only on the first block of a run (§4.2.2 gutter rule). */
-export function Reply({ block, face, from, children }: { block: Of<"text">; face?: ReactNode; from?: string; children?: ReactNode }) {
+export function Reply({ block, face, from, working, children }: { block: Of<"text">; face?: ReactNode; from?: string; working?: boolean; children?: ReactNode }) {
   return (
     <div className="msg reply" data-entry={block.meta?.entryId}>
       {children}
-      <span className="gutter">{face}</span>
+      <span className="gutter">{face ? <span className={working ? "gutter-face working-ring" : "gutter-face"}>{face}</span> : null}</span>
       <div className="reply-text" data-testid="message" data-role="assistant">
         {from ? <div className="reply-from">{from}</div> : null}
         {block.text ? <Markdown text={block.text} /> : null}

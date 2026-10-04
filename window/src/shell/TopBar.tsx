@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Pebble } from "../face/Pebble";
+import { useTrunkAppearance } from "../face/appearance";
 import { Icon } from "./icons";
 
 export type FaceState = "here" | "working" | "waiting" | "done";
@@ -26,6 +27,8 @@ export type HeaderInfo = {
   onProfile?: () => void;
   /** A room (rooms/): two member characters stacked, and "<description> · <rule>" as the state line (§4.2.4). */
   room?: { faces: (size: number) => ReactNode; line: string } | null;
+  /** The conversation's own colour (sessions.patch color), drawn as the header's tint line (§4.2.1). */
+  colour?: string | null;
 };
 
 type Props = {
@@ -42,13 +45,15 @@ type Props = {
   conversationTools?: ReactNode;
   /** On a place or Settings page: "Ask <default Trunk>", which shows that Trunk beside the page (§3.3). */
   ask?: { name: string; open: boolean; onToggle: () => void } | null;
+  /** On a place page: the gear at the start of the header half, which opens Settings (the preview's placeHead). */
+  onSettings?: () => void;
 };
 
 /** The header's state line (the preview's statusLine): "<role> · ready", the working words, or Waiting / Done. */
 export function stateWords(h: Pick<HeaderInfo, "state" | "isDefaultTrunk" | "trunkName" | "role" | "workWords" | "room">): string {
   if (h.room) return h.room.line;
   if (h.state === "here") {
-    const role = h.role || (h.isDefaultTrunk ? `${h.trunkName} · on this computer` : h.trunkName);
+    const role = h.role || (h.isDefaultTrunk ? "The assistant on this computer" : h.trunkName);
     return `${role} · ${STATE_WORDS.here}`;
   }
   if (h.state === "working") {
@@ -104,7 +109,7 @@ function HeaderFace({ header, onCharacter, size = 32 }: { header: HeaderInfo; on
   const state = header.state === "working" ? "work" : header.state === "waiting" ? "wait" : header.state === "done" ? "yay" : "idle";
   if (header.room) return <span className="header-face">{header.room.faces(size)}</span>;
   return (
-    <button className="header-face" type="button" aria-label={header.onProfile ? `${header.trunkName}’s profile` : "Show or hide character"} title={header.onProfile ? `${header.trunkName}’s profile` : undefined} onClick={header.onProfile ?? onCharacter}>
+    <button className={header.state === "working" ? "header-face working-ring" : "header-face"} type="button" aria-label={header.onProfile ? `${header.trunkName}’s profile` : "Show or hide character"} title={header.onProfile ? `${header.trunkName}’s profile` : undefined} onClick={header.onProfile ?? onCharacter}>
       <Pebble size={size} label={header.trunkName} state={state} priority={300} />
     </button>
   );
@@ -113,8 +118,9 @@ function HeaderFace({ header, onCharacter, size = 32 }: { header: HeaderInfo; on
 /** The conversation header as its own row in the main column (narrow windows and focus mode, §3.2). */
 export function HeaderRow({ header, onCharacter, tools, onList }: { header: HeaderInfo; onCharacter?: () => void; tools?: ReactNode; onList?: () => void }) {
   const live = !header.room && (header.state === "working" || header.state === "waiting");
+  const tint = useHeaderTint(header);
   return (
-    <div className={live ? "head-row live" : "head-row"}>
+    <div className={`head-row${live ? " live" : ""}${tint ? " tinted" : ""}`} style={tint ? ({ "--tint": tint } as CSSProperties) : undefined}>
       {onList ? (
         <button type="button" className="ib" aria-label="Conversations" title="Conversations" data-testid="head-list" onClick={onList}>
           <Icon name="menu" />
@@ -147,11 +153,21 @@ export function PlaceHead({ onList, onSettings }: { onList: () => void; onSettin
   );
 }
 
+/** The tint line's colour (§4.2.1): the conversation's colour at 40%; the classic pebble's --ink-2 when the Trunk wears it;
+ *  none for a character without a colour (the tint is "drawn only when the conversation has a colour"). */
+export function useHeaderTint(header: Pick<HeaderInfo, "colour" | "trunkName" | "room"> | null): string | null {
+  const appearance = useTrunkAppearance(header?.trunkName);
+  if (!header || header.room) return null;
+  if (header.colour) return /^#[0-9a-f]{6}$/i.test(header.colour) ? `${header.colour}66` : `color-mix(in srgb, ${header.colour} 40%, transparent)`;
+  return appearance ? null : "color-mix(in srgb, var(--ink-2) 40%, transparent)";
+}
+
 /** The merged 52 px top bar (DESIGN-SPEC §3.2): the machine switcher over the sidebar, the conversation header, the global buttons. */
-export function TopBar({ compact, machine, header, dark, listHidden, onTheme, onToggleList, onCharacter, onGuide, conversationTools, ask }: Props) {
+export function TopBar({ compact, machine, header, dark, listHidden, onTheme, onToggleList, onCharacter, onGuide, conversationTools, ask, onSettings }: Props) {
   const live = header !== null && !header.room && (header.state === "working" || header.state === "waiting");
+  const tint = useHeaderTint(compact ? null : header);
   return (
-    <header className={live ? "topbar live" : "topbar"}>
+    <header className={tint ? "topbar tinted" : "topbar"} style={tint ? ({ "--tint": tint } as CSSProperties) : undefined}>
       <div className="topbar-left">{machine}</div>
       <div className="topbar-right">
         {compact ? (
@@ -168,7 +184,13 @@ export function TopBar({ compact, machine, header, dark, listHidden, onTheme, on
             </div>
           </div>
         ) : (
-          <div className="head" />
+          <div className="head">
+            {onSettings ? (
+              <button type="button" className="ib" aria-label="Settings" title="Settings" data-testid="place-settings" onClick={onSettings}>
+                <Icon name="gear" />
+              </button>
+            ) : null}
+          </div>
         )}
         <div className="global">
           {header && !compact ? <span className="conv-tools">{conversationTools}</span> : null}
@@ -178,14 +200,14 @@ export function TopBar({ compact, machine, header, dark, listHidden, onTheme, on
               <Icon name="ask" small />
             </button>
           ) : null}
-          <button type="button" className="ib" aria-label={dark ? "Light" : "Dark"} title={dark ? "Light" : "Dark"} data-testid="theme" onClick={onTheme}>
+          <button type="button" className="ib" aria-label={dark ? "Light" : "Dark"} title="Switch light or dark" data-testid="theme" onClick={onTheme}>
             <Icon name={dark ? "sun" : "moon"} small />
           </button>
           <button
             type="button"
             className="ib"
             aria-label={listHidden ? "Show the list · Ctrl+B" : "Hide the list · Ctrl+B"}
-            title={listHidden ? "Show the list · Ctrl+B" : "Hide the list · Ctrl+B"}
+            title={listHidden ? "Show the list (Ctrl+B)" : "Hide the list (Ctrl+B)"}
             aria-pressed={!listHidden}
             data-testid="list-toggle"
             onClick={(e: MouseEvent) => {

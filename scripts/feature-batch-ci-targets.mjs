@@ -79,9 +79,16 @@ export const windowTests = [
   'src/shell/resize-cancel.test.tsx',
   'src/shell/status-gateway.test.tsx',
   'src/places/inbox/inbox.test.tsx',
+  'src/places/overview/overview.test.tsx',
+  'src/places/people/people.test.tsx',
   'src/places/canopy/canopy.test.tsx',
   'src/places/library/documents.test.tsx',
   'src/places/library/create-document.test.ts',
+  // Shell and thread visual parity with the App Preview.
+  'src/shell/r2-shell.test.ts',
+  'src/thread/format.test.ts',
+  'src/thread/Rail.test.tsx',
+  'src/stage/pane/PreviewTab.test.tsx',
 ];
 
 // Capability regressions run in their own CI job beside the named batch, in parallel workers.
@@ -396,8 +403,17 @@ export const windowStrictFiles = [
   'src/shell/status-gateway.test.tsx',
   'src/places/inbox/History.tsx',
   'src/places/inbox/inbox.test.tsx',
+  'src/places/inbox/Bell.tsx',
+  'src/places/inbox/NeedsYou.tsx',
+  'src/places/inbox/index.tsx',
+  'src/places-nav/PlaceFrame.tsx',
+  'src/places/overview/index.tsx',
+  'src/places/overview/overview.test.tsx',
+  'src/places/people/ui.tsx',
+  'src/places/people/people.test.tsx',
   'src/places/canopy/index.tsx',
   'src/places/canopy/canopy.test.tsx',
+  'src/places/canopy/RunCard.tsx',
   'src/places/settings/set2/usage.test.tsx',
   'src/composer/composer-logic.test.ts',
   'src/shell/status-data.test.ts',
@@ -406,6 +422,17 @@ export const windowStrictFiles = [
   'src/places/library/index.tsx',
   'src/places/library/create-document.ts',
   'src/places/library/create-document.test.ts',
+  // Shell and thread visual parity with the App Preview.
+  'src/shell/TopBar.tsx',
+  'src/shell/r2-shell.test.ts',
+  'src/thread/format.ts',
+  'src/thread/format.test.ts',
+  'src/thread/blocks.tsx',
+  'src/thread/Rail.tsx',
+  'src/thread/Rail.test.tsx',
+  'src/stage/SidePane.tsx',
+  'src/stage/pane/PreviewTab.tsx',
+  'src/stage/pane/PreviewTab.test.tsx',
 ];
 
 export function namedTests(lane) {

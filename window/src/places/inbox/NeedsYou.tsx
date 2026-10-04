@@ -12,6 +12,7 @@ import { canApprove, has, num, rec, resolveApproval, rows, str, type Needs, type
 import { ChatRequest, DeviceRequest, NodeRequest } from "./Requests";
 import { InboxRow, StatusCard, Tile, minutesAgo, minutesLeft } from "./Rows";
 import { whenWord } from "../overview/format";
+import { ChatLogo } from "../settings/set1/chatapps-logo";
 
 type Act = (operation: () => Promise<unknown>, message: string) => Promise<boolean>;
 export type NeedsProps = { engine: WindowEngine; data: Needs; busy: boolean; act: Act; level: Level; loading: boolean; openConversation: (key: string) => void; openPlace: (place: PlaceId) => void; openSettings?: (page: string) => void };
@@ -34,14 +35,14 @@ export const approvalTitle = (item: Row) => { const r = rec(item.request); retur
 function Cards({ data, engine, busy, act, openConversation, openPlace, openSettings }: NeedsProps) {
   const [gone, setGone] = useState<string[]>([]);
   const ask = data.agents.list.find(a => a.id === data.agents.defaultId) ?? data.agents.list[0];
-  const askBtn = (text: string) => ask ? <button type="button" className="btn sm" onClick={() => draftTo(`agent:${ask.id}:${data.agents.mainKey}`, text, openConversation)}>Ask {ask.name}</button> : null;
+  const askBtn = (text: string, ghost = false) => ask ? <button type="button" className={ghost ? "btn ghost sm" : "btn sm"} onClick={() => draftTo(`agent:${ask.id}:${data.agents.mainKey}`, text, openConversation)}>Ask {ask.name}</button> : null;
   const stopped = data.sessions.filter(s => s.status === "failed" && s.lastRunError && !s.helper && !s.automation && Date.now() - (s.updatedAt ?? 0) < DAY);
   const failed = data.failed.filter(j => !gone.includes(`${str(j.id)}:${num(rec(j.state).lastRunAtMs) ?? ""}`));
   const one = failed[0], oneState = rec(one?.state);
   const names = data.expired.map(p => str(p.displayName) || str(p.provider));
   const expiredAt = data.expired.flatMap(p => num(rec(p.expiry).expiresAt) ?? [])[0];
   return <div className="ib-cards">
-    {data.channels.map(({ channel, label, account }) => <StatusCard key={`${channel}:${str(account.accountId)}`} tone="bad" icon="chat" title={`${label} stopped: ${str(account.lastError)}`} sub={`Messages sent to ${str(account.name) || label}${num(account.lastStopAt) !== undefined ? ` since ${whenWord(num(account.lastStopAt)!)}` : ""} haven’t reached Branch.`}>
+    {data.channels.map(({ channel, label, account }) => <StatusCard key={`${channel}:${str(account.accountId)}`} tone="bad" icon="chat" lead={<ChatLogo id={channel} name={label} size={34} />} title={`${label} stopped: ${str(account.lastError)}`} sub={`Messages sent to ${str(account.name) || label}${num(account.lastStopAt) !== undefined ? ` since ${whenWord(num(account.lastStopAt)!)}` : ""} haven’t reached Branch.`}>
       <button type="button" className="btn ghost sm" disabled={busy || !has(engine, "operator.admin")} onClick={() => void act(() => engine.request("channels.stop", { channel, accountId: str(account.accountId) }), `${label} is off.`)}>Turn {label} off</button>
       <button type="button" className="btn pri sm" onClick={() => openPlace("customize")}>Set it up again</button>
     </StatusCard>)}
@@ -51,7 +52,7 @@ function Cards({ data, engine, busy, act, openConversation, openPlace, openSetti
       <button type="button" className="ib-x" aria-label="Dismiss" title="Dismiss" onClick={() => setGone([...gone, ...failed.map(j => `${str(j.id)}:${num(rec(j.state).lastRunAtMs) ?? ""}`)])}><Icon name="x" /></button>
     </StatusCard> : null}
     {names.length ? <StatusCard tone="warn" icon="key" title={names.length > 1 ? `Sign-ins expired: ${names.join(", ")}` : `Your ${names[0]} sign-in expired`} sub={`${expiredAt !== undefined ? `Expired ${minutesAgo(expiredAt)}. ` : ""}Trunks that use it stop until you sign in again.`}>
-      {askBtn(`These sign-ins expired: ${names.join(", ")}. Explain what stops working and how to sign in again.`)}<button type="button" className="btn pri sm" disabled={!openSettings} onClick={() => openSettings?.("accounts")}>Sign in again</button>
+      {askBtn(`These sign-ins expired: ${names.join(", ")}. Explain what stops working and how to sign in again.`, true)}<button type="button" className="btn pri sm" disabled={!openSettings} onClick={() => openSettings?.("accounts")}>Sign in again</button>
     </StatusCard> : null}
     {!has(engine, "operator.admin") ? <StatusCard icon="lock" title="This device has limited access" sub="You can look around, but some changes need an owner’s yes."><button type="button" className="btn pri sm" disabled title={FULL_ACCESS_GAP}>Ask for full access</button></StatusCard> : null}
   </div>;
