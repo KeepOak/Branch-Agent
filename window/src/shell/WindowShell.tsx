@@ -33,6 +33,8 @@ import { notify } from "./notify";
 import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
 import { SidebarPet } from "./SidebarPet";
 import { GetAppsDialog } from "./GetApps";
+import { CanDoDialog } from "./CanDo";
+import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
@@ -134,6 +136,7 @@ type Overlay =
   | { kind: "palette" }
   | { kind: "shortcuts" }
   | { kind: "apps" }
+  | { kind: "cando" }
   | { kind: "pair" }
   | { kind: "status"; item: StatusItem; above: Above }
   | { kind: "ask" }
@@ -542,6 +545,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     { label: "Docs", run: () => undefined, disabled: "The docs address isn't configured." },
     { label: "Get help", run: () => undefined, disabled: "The help address isn't configured." },
     { label: "Community", run: () => undefined, disabled: "The community address isn't configured." },
+    { label: "What Branch can do", run: () => setOverlay({ kind: "cando" }), testid: "guide-cando" },
   ];
   const [, setReminded] = useState(0); // "Remind me tomorrow" redraws the person menu's update line
   const statusItem = (item: StatusItem, e: MouseEvent<HTMLElement>) => {
@@ -1143,6 +1147,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       ) : null}
       {overlay?.kind === "studio" ? <TrunkStudio engine={session.engine} onClose={() => setOverlay(null)} openTrunk={openTrunkProfile} /> : null}
       {overlay?.kind === "shortcuts" ? <ShortcutsDialog defaultName={defaultName} onClose={() => setOverlay(null)} /> : null}
+      {overlay?.kind === "cando" ? <CanDoDialog onClose={() => setOverlay(null)} onGo={(g) => {
+        setOverlay(g.kind === "pair" ? { kind: "pair" } : null);
+        if (g.kind === "place") openPlace(g.place);
+        else if (g.kind === "settings") openSettings(g.page);
+        else if (g.kind === "ask" && s.mainKey) { window.dispatchEvent(new CustomEvent(COMPOSE_EVENT, { detail: { sessionKey: s.mainKey, text: g.text } })); openConversation(s.mainKey); void session.open(s.mainKey); }
+      }} /> : null}
       {overlay?.kind === "apps" ? <GetAppsDialog onClose={() => setOverlay(null)} onPair={() => setOverlay({ kind: "pair" })} /> : null}
       {overlay?.kind === "pair" ? <PairDialog engine={session.engine} close={() => setOverlay(null)} /> : null}
       {newProject ? <NewProjectDialog session={session} onDone={projects.reload} onClose={() => setNewProject(false)} /> : null}
