@@ -42,3 +42,10 @@
 @media (min-width: 1001px) {
   .settings .set-nav > .set-level { align-self: flex-start; max-width: 100%; }
 }
+
+/* Section links share the page's plain link style and wrap in the tab-row layout. */
+.set-onpage { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 16px 0 0; }
+.set-onpage > span { font: 500 10.5px/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); }
+.set-onpage .link-k { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
+.set-col .sec { scroll-margin-block-start: 8px; }
+.set-col .sec > h2:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 5px; border-radius: 3px; }
