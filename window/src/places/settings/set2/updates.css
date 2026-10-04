@@ -1,0 +1,3 @@
+/* Updates & about: the Android row's APK line (Advanced). */
+.set-col .prow small.up-apk { margin-top: 3px; }
+.set-col .prow small.up-apk .link-k:disabled { color: var(--ink-3); text-decoration: none; cursor: default; }

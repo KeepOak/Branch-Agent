@@ -3,7 +3,7 @@
 // failure reports through update.report, and the parts that only the Branch app can do, greyed with why.
 import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { sessions as readSessions } from "../../overview/engine";
@@ -11,13 +11,16 @@ import { CallLine, CodeRow, Kv, Tile, day, lvOf, openPlace, rec, str, useCall, u
 import { Ico } from "./icons";
 import { componentDesktop } from "../../../connect/desktop-component-updates";
 import { DesktopUpdatesPage } from "./desktop-updates";
+import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
 const OS: Record<string, string> = { win32: "Windows", darwin: "macOS", linux: "Linux" };
 const APP_ONLY = "Runs in the Branch app on your computer.";
 const STORE_WHY = "Opens the store in your browser, from the Branch app.";
+const APK_WHY = "Downloads run in the Branch app on your computer.";
 const NO_SKIP = "Skipping a version needs the engine to keep a skip list.";
 const NO_UNDO = "Undoing an update needs the engine's roll back.";
+const NO_DEADLINE = "The engine’s wait is fixed at 15 minutes; changing it needs an engine setting.";
 const PHASE: Record<string, string> = {
   requested: "Getting ready", staging: "Downloading", validating: "Checking it", repairing: "Repairing",
   activating: "Installing", restarting: "Restarting", verifying: "Checking settings and data", finished: "Finished",
@@ -29,7 +32,7 @@ const TRIGGER: Record<string, string> = { chat: "From a chat", "control-ui": "Yo
 export const ROWS: RowEntry[] = [
   ["Keep Branch up to date by itself", "Updating", 0], ["Check for updates", "Updating", 0], ["Which updates", "Updating", 0],
   ["If tasks are still running after", "Updating", 1], ["Undo the last update", "Updating", 0],
-  ["Already have the app?", "Branch on your other devices", 0], ["Add more to Branch", "Branch on your other devices", 0],
+  ["Already have the app?", "Branch on your other devices", 0], ["Add more to Branch", "Branch on your other devices", 0], ["Open-source licences", "About", 0],
   ["Keep my conversations and settings", "Remove Branch", 0], ["Type Branch Agent to confirm", "Remove Branch", 0],
   ["Send crash and update reports to KeepOak", "Reports", 0], ["What was sent", "Reports", 0],
   ["See the plan", "Before you install", 0], ["Window fixes without reinstalling", "Before you install", 0], ["Window changes", "Before you install", 0],
@@ -51,7 +54,7 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
   const status = useLive<RecordValue>(props.engine, "update.status", {}, UPDATE_EVENTS);
   const info = useLive<RecordValue>(props.engine, "status", {}, []);
   const sys = useLive<RecordValue>(props.engine, "system.info", {}, []);
-  const version = str(rec(info.data).runtimeVersion);
+  const version = str(rec(info.data).runtimeVersion) || str(rec(rec(status.data).updateAvailable).currentVersion);
   const os = OS[str(rec(sys.data).platform)] ?? str(rec(sys.data).osLabel);
   const lede = version ? `Branch Agent ${version}${os ? ` on ${os}` : ""}.` : props.title;
   const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => void status.reload() };
@@ -61,11 +64,12 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
       {status.loading && !status.data ? <Hint>Checking for updates…</Hint> : null}
       {status.data ? <Waiting {...props} data={data} version={version} /> : null}
       {status.data ? <Updating {...props} data={data} /> : null}
-      <Devices />
-      {lvOf(props.level) >= 1 ? <Editors /> : null}
+      <Devices lv={lvOf(props.level)} />
+      <About />
       <RemoveBranch />
       <Reports />
       <BeforeInstall data={data} />
+      {lvOf(props.level) >= 1 ? <Editors gatewayUrl={props.engine.gatewayUrl} /> : null}
       <Privacy openSettings={props.openSettings} />
       {lvOf(props.level) >= 1 ? <HelpMore {...props} data={data} version={version} /> : null}
       {lvOf(props.level) >= 2 ? <Technical data={data} version={version} /> : null}
@@ -117,7 +121,7 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
       {latest ? (
         <div className="s2-rn">
           <Ico name="doc" />
-          <span className="grow">You have {version || str(available.currentVersion)}. See what it has, and what {latest} adds.</span>
+          <span className="grow">{`You have ${version || str(available.currentVersion)}. See what it has, and what ${latest} adds.`}</span>
           <Btn sm onClick={() => setDialog("notes")}>What’s new</Btn>
         </div>
       ) : null}
@@ -242,12 +246,12 @@ function Updating({ engine, level, data }: SettingsPageProps & { data: Data }) {
         <Seg label="Which updates" value={channel} options={[{ id: "stable", label: "Stable" }, { id: "beta", label: "Beta" }]} disabled={config.loading} onChange={(id) => void config.set("update.channel", id)} />
       </Ctl>
       {lvOf(level) >= 1 ? (
-        <Ctl title="If tasks are still running after" off="The engine's update deadline is 5 minutes; changing it needs an engine setting.">
-          <Seg label="If tasks are still running after" value="5" options={[{ id: "5", label: "5 minutes" }, { id: "never", label: "Never" }]} onChange={() => undefined} />
+        <Ctl title="If tasks are still running after" sub="After 15 minutes it updates anyway, and offers back what it stopped." off={NO_DEADLINE}>
+          <Seg label="If tasks are still running after" value="15" options={[{ id: "15", label: "15 minutes" }, { id: "never", label: "Never" }]} onChange={() => undefined} />
         </Ctl>
       ) : null}
       <Ctl title="Undo the last update" sub={lastRun.status === "succeeded" && str(rec(lastRun.after).version) ? `${str(rec(lastRun.after).version)} installed ${day(lastRun.updatedAtMs)}.` : undefined} off={NO_UNDO}>
-        <Btn sm>Undo</Btn>
+        <Btn sm disabled>Undo</Btn>
       </Ctl>
     </Sec>
   );
@@ -262,15 +266,30 @@ const DEVICES: [string, string, string, string][] = [
   ["globe", "Browser extension", "Send pages to a Trunk.", "Chrome Web Store"],
 ];
 
-function Devices() {
+/** One device row. At Advanced the Android row adds the APK line, greyed until the Branch app can download it. */
+function DeviceRow({ icon, title, sub, store, apk }: { icon: string; title: string; sub: string; store: string; apk: boolean }) {
+  return (
+    <div className="prow" data-row={title}>
+      <Tile><Ico name={icon} s /></Tile>
+      <span className="grow">
+        <b>{title}</b>
+        {sub ? <small>{sub}</small> : null}
+        {apk ? (
+          <small className="up-apk">
+            <button type="button" className="link-k" disabled title={APK_WHY}>Download the APK</button> · <button type="button" className="link-k" disabled title={APK_WHY}>Checksum</button> · Not every release includes the APK. Check the checksum before installing.
+          </small>
+        ) : null}
+      </span>
+      {store ? <Btn sm ghost disabled title={store === "Download" ? APP_ONLY : STORE_WHY}>{store}</Btn> : null}
+    </div>
+  );
+}
+
+function Devices({ lv }: { lv: number }) {
   return (
     <Sec title="Branch on your other devices">
       <Plist>
-        {DEVICES.map(([icon, title, sub, store]) => (
-          <Prow key={title} icon={<Tile><Ico name={icon} s /></Tile>} title={title} sub={sub || undefined}>
-            {store ? <Btn sm ghost disabled title={store === "Download" ? APP_ONLY : STORE_WHY}>{store}</Btn> : null}
-          </Prow>
-        ))}
+        {DEVICES.map(([icon, title, sub, store]) => <DeviceRow key={title} icon={icon} title={title} sub={sub} store={store} apk={title === "Android" && lv >= 1} />)}
       </Plist>
       <Ctl title="Already have the app?" off="Pairing a phone needs the Branch phone app."><Btn sm>Pair your phone</Btn></Ctl>
       <Ctl title="Add more to Branch"><Btn sm onClick={() => openPlace("customize", "Plugins")}>Open Plugins</Btn><Btn sm ghost onClick={() => openPlace("customize", "Skills")}>Browse the skill library</Btn></Ctl>
@@ -278,9 +297,18 @@ function Devices() {
   );
 }
 
+function About() {
+  return (
+    <Sec title="About">
+      <Ctl title="Open-source licences" sub="The software Branch is built on, with each licence." off="The list comes with the Branch app on your computer."><Btn sm disabled>Show</Btn></Ctl>
+    </Sec>
+  );
+}
+
 const NOT_PUBLISHED = "The Branch add-on for it isn’t published yet.";
 /** In your editors and notes (Advanced): add-ons that aren't published yet, greyed with why. */
-function Editors() {
+function Editors({ gatewayUrl }: { gatewayUrl?: string }) {
+  const origin = gatewayUrl ? gatewayUrl.replace(/^ws/, "http").replace(/\/+$/, "") : "";
   const rows: [string, string, string][] = [
     ["VS Code", "Marketplace", "Send the selection or files to a Trunk; Quick edit with Ctrl Shift I."],
     ["JetBrains", "Marketplace", "A Branch tool window with its own settings and editor tabs."],
@@ -289,9 +317,9 @@ function Editors() {
   ];
   return (
     <Sec title="In your editors and notes">
-      {rows.map(([title, store, sub]) => <Ctl key={title} title={title} sub={sub} off={NOT_PUBLISHED}><Btn sm>{store}</Btn></Ctl>)}
+      {rows.map(([title, store, sub]) => <Ctl key={title} title={title} sub={sub} off={NOT_PUBLISHED}><Btn sm disabled>{store}</Btn></Ctl>)}
       <Ctl title="Folders to keep in sync" sub="Obsidian folders the Trunks read, refreshed as they change." off="Needs the Obsidian add-on."><input className="inp" aria-label="Folders to keep in sync" disabled /></Ctl>
-      <Ctl title="Search with Branch from your browser" sub="Add it as a search engine; what you type opens a new conversation." off="Opening a conversation from a browser search needs the Branch app."><code className="s2-code">?q=%s</code></Ctl>
+      <Ctl title="Search with Branch from your browser" sub="Add it as a search engine; what you type opens a new conversation." off="Opening a conversation from a browser search needs the Branch app."><code className="s2-code">{`${origin}/?q=%s`}</code></Ctl>
       <Ctl title="Install from a terminal" off="The Branch installer isn’t published yet." />
     </Sec>
   );
@@ -315,7 +343,7 @@ function RemoveBranch() {
 function Reports() {
   return (
     <Sec title="Reports">
-      <Ctl title="Send crash and update reports to KeepOak" off="Needs your keepoak.com account connected."><Switch label="Send crash and update reports to KeepOak" checked={false} onChange={() => undefined} /></Ctl>
+      <Ctl title="Send crash and update reports to KeepOak" off="Needs your keepoak.com account connected."><Switch label="Send crash and update reports to KeepOak" checked={false} disabled onChange={() => undefined} /></Ctl>
       <Ctl title="What was sent"><span>Nothing yet</span></Ctl>
     </Sec>
   );
@@ -379,17 +407,15 @@ function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: 
     <Sec title="Help and updates, more">
       <Ctl title="The handbook" sub="Answers to “how do I…” questions, found by what you ask." off="Needs the handbook skill in the engine."><Btn sm>Ask it</Btn></Ctl>
       <Ctl title="If an update fails" sub="A Trunk reads what went wrong, tries the fix on a copy and tells you." off="Needs the Trunk that looks after updates, in the engine."><Btn sm>Show an example</Btn></Ctl>
+      <h3 className="s2-h3">Last update attempt</h3>
       {str(last.runId) ? (
-        <>
-          <h3 className="s2-h3">Last update attempt</h3>
-          <Kv rows={[
-            ["When", when(last.createdAtMs)], ["From", str(rec(last.before).version)],
-            ["To", last.status === "succeeded" ? str(rec(last.after).version) || str(rec(last.target).version) : "Didn’t change"],
-            ["Install type", INSTALL[kind] ?? ""], ["What failed", last.status === "failed" ? str(last.reason) : ""],
-            ...(lvOf(level) >= 2 ? [["Reason code", str(last.reason) || "none"] as [string, string]] : []),
-          ]} />
-        </>
-      ) : null}
+        <Kv rows={[
+          ["When", when(last.createdAtMs)], ["From", str(rec(last.before).version)],
+          ["To", last.status === "succeeded" ? str(rec(last.after).version) || str(rec(last.target).version) : "Didn’t change"],
+          ["Install type", INSTALL[kind] ?? ""], ["What failed", last.status === "failed" ? str(last.reason) : ""],
+          ...(lvOf(level) >= 2 ? [["Reason code", str(last.reason) || "none"] as [string, string]] : []),
+        ]} />
+      ) : <Empty>No update has been tried yet.</Empty>}
       <Ctl title="Update history" sub="Every update, who started it and how it went."><Btn sm onClick={() => setHistory(true)}>See all</Btn></Ctl>
       <Ctl title="The engine" sub={version ? "The engine is installed and answering." : undefined}>
         <span className="val-k">{version ? `Installed ${version}` : ""}</span>
