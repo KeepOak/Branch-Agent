@@ -115,7 +115,7 @@ export function HelpersChip(props: TreeProps & {onOpenActivity?: () => void}) {
   const words = chipWords(props.helpers.length, waiting, marks.every((m) => m === "done"));
   return (
     <div className="helpers-wrap">
-      <button type="button" className="helpers-chip" aria-expanded={open} data-testid="helpers-chip" onClick={() => props.onOpenActivity ? props.onOpenActivity() : setOpen((v) => !v)}>
+      <button type="button" className="helpers-chip" aria-expanded={props.onOpenActivity ? undefined : open} data-testid="helpers-chip" onClick={() => props.onOpenActivity ? props.onOpenActivity() : setOpen((v) => !v)}>
         <span className="hmarks">
           {marks.slice(0, 5).map((m, i) => <span key={i} className={`hmark ${m}`}><Icon d={MARK_ICON[m]} size={14} /></span>)}
           {marks.length > 5 ? <span className="hmore">+{marks.length - 5}</span> : null}
