@@ -27,6 +27,7 @@ import {
   type DesktopRestartRequester,
   type DesktopRestartRecord,
 } from "../desktop-restart-receipts.js";
+import { readDesktopSelectedWorkCoverage } from "../desktop-restart-selected-work.js";
 import {
   getGatewayLocalUserIngress,
   readGatewayLocalUserIngressFacts,
@@ -191,6 +192,31 @@ async function handle(
       );
       const hasSelected =
         target?.entry && hasActiveTask(options, target.canonicalKey, target.entry.sessionId);
+      const selectedEntries = [...context.chatAbortControllers].filter(
+        ([, entry]) =>
+          entry.sessionKey === target?.canonicalKey &&
+          entry.sessionId === target?.entry?.sessionId &&
+          !entry.controller.signal.aborted &&
+          entry.registrationCleanupRequested !== true,
+      );
+      const selected = selectedEntries.length === 1 ? selectedEntries[0] : undefined;
+      const covered = selected
+        ? readDesktopSelectedWorkCoverage(selected[0], selected[1])
+        : {
+            rootRequests: 0,
+            queueSize: 0,
+            pendingReplies: 0,
+            sessionAdmissions: 0,
+            chatRuns: 0,
+            agentRuns: 0,
+            embeddedRuns: 0,
+          };
+      const coverageValid = Object.entries(covered).every(
+        ([name, count]) =>
+          Number.isSafeInteger(count) &&
+          count >= 0 &&
+          count <= snapshot.counts[name as keyof typeof snapshot.counts],
+      );
       const uncheckpointed =
         snapshot.counts.acpRuns +
         snapshot.counts.backgroundExecSessions +
@@ -200,12 +226,16 @@ async function handle(
         snapshot.counts.terminalPersistence +
         snapshot.counts.lifecycleWrites +
         snapshot.counts.terminalSessions +
-        snapshot.counts.rootRequests +
-        snapshot.counts.queueSize +
-        snapshot.counts.pendingReplies +
-        snapshot.counts.sessionAdmissions +
-        snapshot.counts.queuedTurns;
+        snapshot.counts.queuedTurns +
+        (snapshot.counts.rootRequests - covered.rootRequests) +
+        (snapshot.counts.queueSize - covered.queueSize) +
+        (snapshot.counts.pendingReplies - covered.pendingReplies) +
+        (snapshot.counts.sessionAdmissions - covered.sessionAdmissions) +
+        (snapshot.counts.chatRuns - covered.chatRuns) +
+        (snapshot.counts.agentRuns - covered.agentRuns) +
+        (snapshot.counts.embeddedRuns - covered.embeddedRuns);
       if (
+        !coverageValid ||
         [...active].some((key) => key !== canonicalKey) ||
         (!hasSelected && !snapshot.idle) ||
         uncheckpointed > 0 ||

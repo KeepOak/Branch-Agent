@@ -525,3 +525,36 @@ test("actual observer reconciles canonical durable custody and fast terminal com
     });
     assert.equal(f.context.chatAbortControllers.size, 0);
   }));
+
+test("actual normal prepare covers only selected live root and reply reservation, while an unrelated root still defers", () =>
+  fixture(async (f) => {
+    const { tryBeginGatewayIndependentRootWorkAdmission } =
+      await import("../../process/gateway-work-admission.js");
+    const { createReplyDispatcher } = await import("../../auto-reply/reply/reply-dispatcher.js");
+    const source = tryBeginGatewayIndependentRootWorkAdmission("actual:selected-run");
+    assert.ok(source);
+    let live: any, dispatcher: any;
+    await source.run(async () => {
+      dispatcher = createReplyDispatcher({ deliver: async () => {} });
+      live = f.register();
+      live.markExecutionStarted();
+    });
+    try {
+      const first = await f.call("prepare", f.request);
+      assert.equal(first.ok, true);
+      assert.ok(first.payload.id);
+      assert.equal((await f.call("cancel", first.payload)).payload.status, "cancelled");
+      f.request.lifecycleGeneration = "fixture-second-attempt";
+      const other = tryBeginGatewayIndependentRootWorkAdmission("actual:unrelated-request");
+      assert.ok(other);
+      try {
+        assert.equal((await f.call("prepare", f.request)).payload.status, "deferred");
+      } finally {
+        other.release();
+      }
+    } finally {
+      live.cleanup();
+      dispatcher.markComplete();
+      source.release();
+    }
+  }));
