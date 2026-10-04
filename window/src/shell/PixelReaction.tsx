@@ -17,7 +17,7 @@ export function PixelReaction({ id, reaction, onRest }: { id: string; reaction: 
     show(0);
     return () => { alive = false; clearTimeout(timer); };
   }, [id, reaction]);
-  return <svg viewBox="0 0 24 20" width="22" height="22" aria-hidden="true" shapeRendering="crispEdges"
+  return <svg viewBox="0 0 24 20" width="24" height="20" aria-hidden="true" shapeRendering="crispEdges"
     style={{ transform: `translateY(${-frame.lift}px)` }}>
     {pixelCells(id, frame).map((cell, index) => <rect key={index} x={cell.x} y={cell.y} width="2" height="2" fill={cell.colour} />)}
   </svg>;

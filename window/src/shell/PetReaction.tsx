@@ -33,7 +33,7 @@ export function PetReactionArt({ id, still, children }: { id: string; still?: st
   }, [playing, reaction]);
   return <span ref={box} className="pet-reaction-art">
     <span style={{ visibility: playing || (reaction && pixel) ? "hidden" : "visible" }}>{children}</span>
-    {reaction && pixel ? <span className="pet-reaction-video"><PixelReaction id={id} reaction={reaction} onRest={rest} /></span> : null}
+    {reaction && pixel ? <span className="pet-reaction-video pet-reaction-pixel"><PixelReaction id={id} reaction={reaction} onRest={rest} /></span> : null}
     {reaction && still ? <video ref={video} className="pet-reaction-video" src={petReactionSource(still, reaction)}
       style={{ visibility: playing ? "visible" : "hidden", transform: `translate(-50%, -50%) scale(${petReactionScale(id)})` }} muted playsInline preload="none" disablePictureInPicture
       aria-hidden="true" onPlaying={() => setPlaying(true)} onEnded={rest} onError={rest} /> : null}

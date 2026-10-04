@@ -64,6 +64,8 @@ it("plays the pixel pose sequence once and returns to its original still", async
   await act(async () => host.querySelector("button")!.click());
   expect(host.querySelector("video")).toBeNull();
   expect(host.querySelector("svg")).not.toBeNull();
+  expect(host.querySelector("svg")?.getAttribute("width")).toBe("24");
+  expect(host.querySelector("svg")?.getAttribute("height")).toBe("20");
   for (const ms of [300,120,195,105,120,360]) await act(async () => vi.advanceTimersByTime(ms));
   expect(host.querySelector("svg")).toBeNull();
   expect(host.querySelector("img")?.parentElement?.style.visibility).toBe("visible");
