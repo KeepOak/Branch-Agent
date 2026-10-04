@@ -1,0 +1,14 @@
+{
+  "name": "@branch/stable-diffusion-webui",
+  "version": "2026.9.7",
+  "description": "Branch Agent Automatic1111 image generation provider.",
+  "type": "module",
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
