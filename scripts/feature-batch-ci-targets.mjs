@@ -59,6 +59,7 @@ export const windowTests = [
   'src/places/trunk/create-readiness.test.ts',
   'src/places/customize/customize.test.tsx',
   'src/places/customize/tools.test.tsx',
+  'src/places/library/places.test.tsx',
   'src/shell/conversation-actions.test.ts',
   'src/connect/conversations.test.ts',
   'src/transcript-export/replay-html.test.ts',
