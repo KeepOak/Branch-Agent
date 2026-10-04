@@ -56,7 +56,7 @@ function GeneralStatus({ engine }: { engine: SettingsPageProps["engine"] }) {
 
 function StartingUp() {
   const desk = useDesktopControls();
-  const why = desk.off ?? (desk.error ? visible(desk.error) : undefined);
+  const why = desk.off;
   return (
     <Sec title="Starting up">
       <Ctl title={`Start with ${OS}`} sub="Opens quietly in the tray." off={why}>
@@ -65,6 +65,7 @@ function StartingUp() {
       <Ctl title="Keep working when the window closes" sub="Trunks finish what they started." off={why}>
         <Switch checked={desk.state?.keepWorking ?? false} disabled={desk.busy !== null} label="Keep working when the window closes" onChange={(on) => void desk.set("keepWorking", on)} />
       </Ctl>
+      {desk.state && desk.error ? <small className="why-k" role="alert">{visible(desk.error)}</small> : null}
     </Sec>
   );
 }

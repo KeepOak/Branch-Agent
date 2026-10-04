@@ -208,7 +208,7 @@ const DESKTOP = "The desktop app owns this; the window can’t change it yet.";
 
 export function KeepBody({ autoUpdate, onAutoUpdate }: { autoUpdate: boolean; onAutoUpdate: (v: boolean) => void }) {
   const desk = useDesktopControls();
-  const why = desk.off ?? desk.error ?? undefined;
+  const why = desk.off;
   const sw = (title: string, sub: string, name: "startWithWindows" | "branchOnPath") => (
     <Ctl title={title} sub={sub}>
       <button type="button" role="switch" aria-checked={desk.state?.[name] ?? false} aria-label={title} className="switch" disabled={why !== undefined || desk.busy !== null} title={why} onClick={() => void desk.set(name, !(desk.state?.[name] ?? false))} />

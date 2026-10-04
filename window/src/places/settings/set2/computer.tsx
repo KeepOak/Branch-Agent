@@ -4,7 +4,7 @@
 // computer-more.tsx.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Hint, Page, Pill, Plist, Sec, Switch, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Hint, Page, Pill, Plist, Sec, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { Face } from "../../../face/Face";
@@ -13,6 +13,7 @@ import { bytes, CallLine, CopyBtn, Kv, lvOf, rec, str, Tile, useCall, useLive, w
 import { Ico } from "./icons";
 import { ComputerMore, NewCloud, ROWS as MORE_ROWS } from "./computer-more";
 import { Icon } from "../../../shell/icons";
+import { DesktopCtl } from "../desktop-ctl";
 
 const PAIR_EVENTS = ["device.pair", "node.pair", "node"];
 const ALLOW_DELAY_MS = 1500;
@@ -165,9 +166,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
       {other.length ? <><div className="s2-grp">Your other computers</div><div className="s2-comps">{other.map(card)}</div></> : null}
       {nodes.data && !all.length && !status.data ? <Hint>No computers are paired yet.</Hint> : null}
       <InTheCloud engine={engine} />
-      <Ctl title="Keep this computer awake" sub="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." off="Keeping this PC awake is done by the Branch app on it.">
-        <Switch label="Keep this computer awake" checked={false} onChange={() => undefined} />
-      </Ctl>
+      <DesktopCtl title="Keep this computer awake" sub="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." name="keepAwake" />
       <Acts><Btn pri onClick={() => window.dispatchEvent(new CustomEvent("branch:add-computer"))}><Icon name="plus" small />Add a computer</Btn></Acts>
     </Sec>
   );
