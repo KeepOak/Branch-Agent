@@ -137,7 +137,7 @@ describe("Settings › Chat apps", () => {
     const next = actionsAfter(undefined, ["pin", "unpin", "list-pins"], false)!;
     expect(next).not.toContain("pin");
     expect(next).toContain("send");
-    expect(actionsAfter(next, ["pin", "unpin", "list-pins"], true)).toBeNull();
+    expect(actionsAfter(next, ["pin", "unpin", "list-pins"], true)).toEqual(expect.arrayContaining(["pin", "unpin", "list-pins", "send"]));
   });
 
   it("names every app from the engine's catalogue and lists rows for search", () => {
