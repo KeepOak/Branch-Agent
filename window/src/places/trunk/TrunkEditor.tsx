@@ -1,5 +1,6 @@
 // The Trunk editor (preview editTrunk + 12/15/30-trunks/31-trunksp): a wide dialog, the face and Shuffle on the left,
 // Look / What it may do / Its computers on the right; Cancel and Save. Save sends agents.update then one config.patch.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";

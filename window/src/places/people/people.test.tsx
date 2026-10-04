@@ -123,7 +123,7 @@ describe("People › People", () => {
   it("greys the role when the engine defines no roles", async () => {
     const { engine } = fakeEngine(table({ "config.get": { hash: "h", config: {} } }));
     await mount(engine); await click("People2");
-    expect(button("No role")!.disabled).toBe(true); expect(button("No role")!.title).toContain("roles set up");
+    expect(button("No role")!.disabled).toBe(true); expect(button("No role")!.title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
   });
 
   it("makes a limited one-time code and says how long it works", async () => {

@@ -100,9 +100,9 @@ describe("Settings › Data & usage", () => {
   it("greys what the engine can't do, with the reason", async () => {
     const { engine } = engineWith(BASE);
     await show(engine, "advanced");
-    expect(row("Spend caps per service")?.textContent).toContain("Spend caps need the engine");
+    expect(row("Spend caps per service")?.getAttribute("aria-disabled")).toBe("true"); expect(row("Spend caps per service")?.textContent).not.toContain("Spend caps need the engine");
     expect(row("Keep conversations")?.getAttribute("aria-disabled")).toBe("true");
-    expect(row("Reset Branch")?.textContent).toContain("no reset method");
+    expect(row("Reset Branch")?.textContent).not.toContain("no reset method");
     expect(button("Run the test").disabled).toBe(true);
   });
 });

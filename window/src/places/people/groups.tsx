@@ -1,5 +1,6 @@
 // People › Groups (§4.6.5.3): permission groups that can only take things away. The engine keeps no such groups
 // yet (its roles give one role per person), so the screen shows its empty line and New group is greyed.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { Icon } from "../../shell/icons";
 import { shownWhy } from "../../shell/shown-why";
 import { Empty } from "./ui";

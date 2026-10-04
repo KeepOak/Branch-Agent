@@ -173,7 +173,7 @@ describe("Library › Memory", () => {
     const { engine } = engineOf(base((m, p) => m === "agents.files.get" ? { file: { name: String(p.name), missing: true } } : undefined));
     await mount(engine);
     for (const label of ["Clearing", "Translate a document…", "Make pictures…"]) expect(button(label)!.disabled).toBe(true);
-    expect(button("Clearing")!.title).toMatch(/^Needs an engine method/);
+    expect(button("Clearing")!.title).toBe("");
     for (const label of ["Translate a document…", "Make pictures…"]) expect(button(label)!.title).toBe("");
     expect(visibleDevNotes(host)).toEqual([]);
     expect(host.textContent).not.toContain("Canvas");

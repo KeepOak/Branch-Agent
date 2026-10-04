@@ -34,6 +34,18 @@ export function almostOut(limits: Limits | null, atMost = 5): Almost | null {
   return best;
 }
 
+/** Whether a connection reports a measured window, so Data & usage › "Show me" has a prompt to show (greyed otherwise). */
+let canShow = false;
+const showSubs = new Set<() => void>();
+function setCanShow(next: boolean) {
+  if (next === canShow) return;
+  canShow = next;
+  showSubs.forEach((fn) => fn());
+}
+export function useCkptCanShow(): boolean {
+  return useSyncExternalStore((fn) => { showSubs.add(fn); return () => { showSubs.delete(fn); }; }, () => canShow, () => canShow);
+}
+
 function asked(): string[] {
   try { return JSON.parse(sessionStorage.getItem(ASKED) ?? "[]") as string[]; } catch { return []; }
 }
@@ -55,7 +67,8 @@ export function SaveProgressOffer({ engine, limits, on, runningKeys }: { engine:
     if (on && near && !asked().includes(near.key)) { markAsked(near.key); setShown(near); }
   }, [on, near?.key]);
   useEffect(() => {
-    const show = () => { const n = almostOut(limits, 100); if (n) setShown(n); else notify("No connection reports a limit yet, so there is nothing to show."); };
+    setCanShow(almostOut(limits, 100) !== null);
+    const show = () => { const n = almostOut(limits, 100); if (n) setShown(n); };
     window.addEventListener(CKPT_SHOW, show);
     return () => window.removeEventListener(CKPT_SHOW, show);
   }, [limits]);

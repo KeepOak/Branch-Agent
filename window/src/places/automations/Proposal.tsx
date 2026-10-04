@@ -1,6 +1,7 @@
 // The proposal card (§4.6.3.1, preview 41-placesap p35-prop): Regular shows It does, Repeats, At, Who does it
 // and Sends to; Advanced adds name, note, how it runs, Every…, model, time zone, limits and switches; Technical
 // adds routing, the spread and an editable cron line. Every field maps to a cron.add / cron.update field.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import { Segmented, Switch } from "../../shell/Popover";
@@ -109,8 +110,8 @@ function Spread({ form, set }: { form: ScheduleForm; set: (f: Partial<ScheduleFo
 
 function Footer({ draft, busy, canWrite, onCancel, onConfirm }: Pick<Props, "draft" | "busy" | "canWrite" | "onCancel" | "onConfirm">) {
   const why = canWrite ? undefined : "Needs an owner";
-  if (draft.mode === "edit") return <div className="au-actions"><button type="button" className="btn ghost sm" onClick={onCancel}>Cancel</button><button type="button" className="btn pri sm" title={why} disabled={busy || !canWrite} onClick={() => onConfirm(false)}>{busy ? "Saving…" : "Save changes"}</button></div>;
-  return <div className="au-actions"><button type="button" className="btn ghost sm" onClick={onCancel}>Cancel</button><button type="button" className="btn sm" title={why} disabled={busy || !canWrite} onClick={() => onConfirm(true)}>Confirm and run now</button><button type="button" className="btn pri sm" title={why} disabled={busy || !canWrite} onClick={() => onConfirm(false)}>{busy ? "Saving…" : "Confirm the schedule"}</button></div>;
+  if (draft.mode === "edit") return <div className="au-actions"><button type="button" className="btn ghost sm" onClick={onCancel}>Cancel</button><button type="button" className="btn pri sm" title={shownWhy(why)} disabled={busy || !canWrite} onClick={() => onConfirm(false)}>{busy ? "Saving…" : "Save changes"}</button></div>;
+  return <div className="au-actions"><button type="button" className="btn ghost sm" onClick={onCancel}>Cancel</button><button type="button" className="btn sm" title={shownWhy(why)} disabled={busy || !canWrite} onClick={() => onConfirm(true)}>Confirm and run now</button><button type="button" className="btn pri sm" title={shownWhy(why)} disabled={busy || !canWrite} onClick={() => onConfirm(false)}>{busy ? "Saving…" : "Confirm the schedule"}</button></div>;
 }
 
 export function Proposal(props: Props) {

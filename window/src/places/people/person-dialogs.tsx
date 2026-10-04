@@ -1,4 +1,5 @@
 // People › People dialogs: role, one-time code (device.pair.setupCode), invite, link an email, merge two people.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import { Dialog } from "../../shell/Dialog";

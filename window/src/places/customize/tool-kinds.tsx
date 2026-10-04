@@ -2,6 +2,7 @@
 // Command-line tools: the programs the skills need (skills.status requirements), with the commands
 // exec.approvals allows. Agents: the coding agents the engine can hand work to (acpx.agents.list), switched
 // in config. Toolsets: the engine's tool groups (tools.catalog) and starting set (tools.profile).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Dialog } from "../../shell/Dialog";

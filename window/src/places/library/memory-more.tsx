@@ -1,5 +1,6 @@
 // Library › Memory, the sections under the list (preview 94-g4p secR418 + 42-placesbp "How it learns"):
 // How it learns [A], Memory health, What to remember, Pinned memories, About you, Waiting for your yes [T].
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";

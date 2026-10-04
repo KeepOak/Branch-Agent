@@ -1,3 +1,4 @@
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { SettingsPageProps } from "./index";

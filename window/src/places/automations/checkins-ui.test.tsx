@@ -57,7 +57,7 @@ describe("Check-ins", () => {
     await mount();
     expect(host.textContent).toContain("Nothing new.");
     const weekend = host.querySelector("[aria-label='Quiet on weekends']") as HTMLButtonElement;
-    expect(weekend.disabled).toBe(true); expect(weekend.closest("[title]")?.getAttribute("title")).toMatch(/^Needs/);
+    expect(weekend.disabled).toBe(true); expect(weekend.closest("[title]")?.getAttribute("title") ?? "").toBe("");
     const add = [...host.querySelectorAll(".au-sec button")].find(b => b.textContent === "Add") as HTMLButtonElement;
     expect(add.disabled).toBe(true); expect(add.title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
   });

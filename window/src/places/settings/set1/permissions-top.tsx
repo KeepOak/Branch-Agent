@@ -1,6 +1,7 @@
 // Permissions, the custom rows: This PC (the computer's own permissions, which only the desktop app can read), the
 // mode box and "Mode everywhere" (tools.exec.mode, the same engine key behind the composer's modes), Work style,
 // Lockdown, Pinned settings, who may run commands outside the sandbox (tools.elevated.allowFrom) and connectors.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import { Dialog } from "../../../shell/Dialog";
 import { Icon } from "../../../shell/icons";
@@ -8,6 +9,7 @@ import { MODE_ROWS, blockedReason, modeName, isEngineMode, type EngineMode } fro
 import { record, text, visible, type RecordValue } from "../adapter";
 import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg, Status } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
+import { shownWhy } from "../../../shell/shown-why";
 
 const svg = (d: ReactNode) => <svg className="i s" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
 const MIC = svg(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></>);
@@ -106,7 +108,7 @@ export const modeLabel = (exec: string) => modeName(MODE_OF[exec]);
 export function Lockdown() {
   return (
     <div className="pm-danger" data-row="Lockdown" aria-disabled="true">
-      <div><b>Lockdown</b><p>One switch that stops every Trunk from sending, changing or spending anything.</p><small className="why-k">{WHY.lock}</small></div>
+      <div><b>Lockdown</b><p>One switch that stops every Trunk from sending, changing or spending anything.</p>{shownWhy(WHY.lock) ? <small className="why-k">{shownWhy(WHY.lock)}</small> : null}</div>
       <Btn className="bad" disabled>Turn Lockdown on</Btn>
     </div>
   );

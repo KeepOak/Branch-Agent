@@ -1,6 +1,7 @@
 // Settings › Advanced, the row kit: most rows are one engine config path drawn as a switch, number, segment, pick,
 // text or list (saved at once through config.patch, empty = the engine's own default). A row the engine can't back
 // is drawn greyed with why. Plugin rows read plugins.list and save plugins.entries.<id>.enabled.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import { Btn, Ctl, Field, Num, Pick, Sec, Seg, Switch, useConfig, type Lv, type Opt, type RowEntry } from "../kit";

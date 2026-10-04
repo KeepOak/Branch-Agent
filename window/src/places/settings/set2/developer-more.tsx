@@ -3,6 +3,7 @@
 // summary from status/system.info, where each setting comes from out of config.get, diagnostics.stability warnings,
 // profiles from diagnostics.*, diagnostics.lanes, node.invoke) and the settings file editor (config.get raw + hash,
 // saved with config.apply against that hash; the engine validates and keeps hidden values hidden).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Pill, Sec, Seg, Switch, Tabs, Val, useAsk, useConfig } from "../kit";

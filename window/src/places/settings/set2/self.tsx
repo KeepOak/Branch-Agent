@@ -3,6 +3,7 @@
 // (branch.changes.list), who is connected (system-presence, users.list), conversation storage (sessions.storage.* and
 // session.maintenance.coldStorage.*) and the settings file. The rest needs engine settings that don't exist yet, so
 // those rows are greyed with the reason.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import { shownWhy } from "../../../shell/shown-why";
 import type { SettingsPageProps } from "../index";

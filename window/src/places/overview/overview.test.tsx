@@ -7,6 +7,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { OVERVIEW_READS, OverviewData, people, runs, sessions, sharedConnections } from "./engine";
 import { OverviewPlace, LOCKDOWN_GAP, PAUSE_ALL_GAP } from "./index";
 import { KEEP_RUNNING_GAP, resetRecommendation } from "./RecBar";
+const KEEP_RUNNING_IS_NOTE = KEEP_RUNNING_GAP.includes("doesn");
 import { takeInboxHandoff } from "../inbox/handoff";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -131,7 +132,8 @@ describe("Overview screen", () => {
     expect(button(host, "Pause all Trunks")).toMatchObject({ disabled: true, title: "" });
     expect([LOCKDOWN_GAP, PAUSE_ALL_GAP].every(gap => gap.startsWith("Needs the engine"))).toBe(true);
     expect(visibleDevNotes(host)).toEqual([]);
-    expect(button(host, "Yes")).toMatchObject({ disabled: true, title: KEEP_RUNNING_GAP });
+    expect(button(host, "Yes")).toMatchObject({ disabled: true, title: "" });
+    expect(host.querySelector(".ov-badges")).not.toBeNull(); expect(KEEP_RUNNING_IS_NOTE).toBe(true);
   });
 
   it("hides the recommendation on Not now, and keeps it hidden after Don't ask again", async () => {

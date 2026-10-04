@@ -2,6 +2,7 @@
 // trashR318): Work with documents, Write a new document, List / Map, the documents in every Trunk's project folder
 // (agents.workspace.*), Managing what it reads [A], Test what it finds [A] (memory.search), Places it reads from [A],
 // Recently deleted.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState, type FormEvent } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
@@ -101,7 +102,7 @@ export function DocumentsTab({ engine, level, trunks, defaultId, mainKey }: { en
     {shows(level, "advanced") && <Managing />}
     {shows(level, "advanced") && <TestWhatItFinds engine={engine} trunks={trunks} files={files} />}
     {shows(level, "advanced") && <PlacesItReads />}
-    <Section title="Recently deleted" testid="recently-deleted">{shownWhy(DOC_REASONS.trash) && <p className="lib-hint">{shownWhy(DOC_REASONS.trash)}</p>}</Section>
+    <Section title="Recently deleted" testid="recently-deleted">{shownWhy(DOC_REASONS.trash) && <p className="lib-hint">{shownWhy(DOC_REASONS.trash)}</p>}<div className="lib-acts"><Grey label="Restore" reason={DOC_REASONS.trash} /><Grey ghost label="Delete for good" reason={DOC_REASONS.trash} /></div></Section>
     {open && <FileDialog engine={engine} agentId={open.agentId} path={open.path} onClose={() => setOpen(null)} />}
   </div>;
 }
@@ -113,7 +114,7 @@ function DocumentTools({ trunks, creation }: { trunks: Trunk[]; creation: Return
       <ToolTile icon="diff" title="Compare or edit exactly" line="What changed between two versions, and edits that leave every other byte as it was." reason={DOC_REASONS.compare} />
     </div></Section>
     <div className="lib-docacts">
-      <button type="button" className="btn" disabled={creation.busy || !!creation.reason} title={creation.reason || undefined} onClick={() => void creation.create()}><LibIcon name="file" />Write a new document</button>
+      <button type="button" className="btn" disabled={creation.busy || !!creation.reason} title={shownWhy(creation.reason)} onClick={() => void creation.create()}><LibIcon name="file" />Write a new document</button>
       <select className="inp" aria-label="Trunk for new document" value={creation.selected} onChange={event => creation.choose(event.target.value)}>
         {!trunks.some(t => t.id === creation.selected) && <option value="">Choose a Trunk…</option>}
         {trunks.map(t => <option key={t.id} value={t.id}>{trunkName(t)}</option>)}

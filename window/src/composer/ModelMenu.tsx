@@ -1,5 +1,6 @@
 // The model menu (DESIGN-SPEC §4.3.4 and its Parity adds): which model answers here, how long it thinks, its speed,
 // its room to plan, and what is shown here. Every choice is a sessions.patch on this conversation, read back after.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { str, type Rec } from "./engine";
 import { accountLine, capitalize, groupModels, thinkingChoices, type ModelChoice } from "./model";

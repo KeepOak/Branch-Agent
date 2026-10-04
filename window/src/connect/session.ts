@@ -1,5 +1,6 @@
 // The open conversation on the engine: history, the live run, approvals and sending. It starts on the
 // default Trunk's main conversation and switches with open(key) (DESIGN-SPEC §4.1.1.1 row click).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { EventFrame, HelloOk } from "@branch/gateway-client/browser";
 import { BranchGateway, type GatewayStatus } from "./gateway";
 import type { SendExtras, WindowEngine } from "./engine";

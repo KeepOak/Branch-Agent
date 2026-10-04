@@ -4,6 +4,7 @@
 // (diagnostics.*, diagnostics.stability, profiles), discovery, widgets, working copies, the settings file
 // (config.get / config.apply) and copyable commands that exist in the branch command. Rows the engine has no
 // setting or method for are greyed with why; the dialogs are in developer-more.tsx.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState } from "react";
 import { shownWhy } from "../../../shell/shown-why";
 import type { SettingsPageProps } from "../index";
@@ -211,7 +212,7 @@ function BuildOnBranch({ config }: Ctx) {
     <Sec title="Build on Branch">
       <Plist>
         {KITS.map(([t, sub, code, off]) => (
-          <Prow key={t} icon={<Tile><Ico name="term" /></Tile>} title={t} sub={<>{sub}{code ? <small><code>{code}</code></small> : <small className="s2developer-why">{off}</small>}</>}>
+          <Prow key={t} icon={<Tile><Ico name="term" /></Tile>} title={t} sub={<>{sub}{code ? <small><code>{code}</code></small> : <small className="s2developer-why">{shownWhy(off)}</small>}</>}>
             {code ? <CopyBtn text={code} /> : null}
           </Prow>
         ))}
@@ -284,9 +285,9 @@ function RunWithout({ config, base }: Ctx) {
       <Ctl title="Change one setting for this run" sub="Any setting, for this run only." off="agent exec takes a whole settings file (--config), not one setting."><input className="inp" aria-label="Change one setting for this run" placeholder="key=value" /></Ctl>
       <div className="s2developer-chks">
         {CHKS.map(([k, t, sub, off]) => (
-          <label key={t} className="s2developer-chk" title={off} aria-disabled={off ? true : undefined}>
+          <label key={t} className="s2developer-chk" title={shownWhy(off)} aria-disabled={off ? true : undefined}>
             <input type="checkbox" disabled={Boolean(off)} checked={k ? Boolean(o[k]) : false} onChange={(e) => k && set({ [k]: e.target.checked })} />
-            <span><b>{t}</b><small>{sub}</small>{off ? <small className="s2developer-why">{off}</small> : null}</span>
+            <span><b>{t}</b><small>{sub}</small>{shownWhy(off) ? <small className="s2developer-why">{shownWhy(off)}</small> : null}</span>
           </label>
         ))}
       </div>

@@ -1,6 +1,7 @@
 // The recommendation bar above Overview and Inbox (preview recBar + 40-places §4.6.2.0): a line icon on a
 // --brand-tint tile, the question, "Recommended", and Yes / Not now / Don't ask again.
 import { useSyncExternalStore } from "react";
+import { shownWhy } from "../../shell/shown-why";
 
 const KEY = "branch.rec.keepRunning";
 // TODO(desktop-lane): "Yes" installs the gateway as a background service (the engine's branch gateway install). The
@@ -55,7 +56,7 @@ export function RecBar() {
         <b>Keep your Trunks running when Branch is closed?</b><span className="ov-rec-good">Recommended</span>
         <small>The gateway keeps Telegram, your phone and automations working, and restarts Branch if it ever stops.</small>
       </span>
-      <button type="button" className="btn pri sm" disabled title={KEEP_RUNNING_GAP}>Yes</button>
+      <button type="button" className="btn pri sm" disabled title={shownWhy(KEEP_RUNNING_GAP)}>Yes</button>
       <button type="button" className="btn sm" onClick={() => hideRecommendation(false)}>Not now</button>
       <button type="button" className="btn ghost sm" onClick={() => hideRecommendation(true)}>Don’t ask again</button>
     </div>

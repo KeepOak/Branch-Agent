@@ -10,6 +10,7 @@ import {
   readSkills, readWebSearchBase, setWebSearch, toggle, type Connector, type SkillRow, type ToolOverrides,
 } from "./tools";
 import { Switch } from "./ui";
+import { shownWhy } from "../shell/shown-why";
 
 type Props = {
   anchor: RefObject<HTMLElement | null>;
@@ -91,7 +92,7 @@ export function PlugMenu(p: Props) {
             type="button"
             className="btn sm"
             disabled={!p.isAdmin}
-            title={reason}
+            title={shownWhy(reason)}
             onClick={async () => {
               if ((await write({})) === null) p.onToast?.(`Tools here match ${p.trunkName}'s again.`);
             }}
@@ -300,9 +301,9 @@ function LibraryView({ skills, overrides, changed, isAdmin, reason, onBack, writ
         <span className="c-tool-t"><b>Skills for this conversation</b></span>
       </button>
       <div className="c-ph"><span>Chosen here</span></div>
-      {chosen.length ? chosen.map((s) => row(s, <button type="button" className="btn ghost sm" disabled={!isAdmin} title={reason} onClick={() => set(s, false)}>Remove</button>)) : <p className="c-pp">No library skills chosen here.</p>}
+      {chosen.length ? chosen.map((s) => row(s, <button type="button" className="btn ghost sm" disabled={!isAdmin} title={shownWhy(reason)} onClick={() => set(s, false)}>Remove</button>)) : <p className="c-pp">No library skills chosen here.</p>}
       <div className="c-ph"><span>Add from your libraries</span></div>
-      {rest.length ? rest.map((s) => row(s, <button type="button" className="btn sm" disabled={!isAdmin} title={reason} onClick={() => set(s, true)}>Add</button>)) : <p className="c-pp">Every library skill is chosen here.</p>}
+      {rest.length ? rest.map((s) => row(s, <button type="button" className="btn sm" disabled={!isAdmin} title={shownWhy(reason)} onClick={() => set(s, true)}>Add</button>)) : <p className="c-pp">Every library skill is chosen here.</p>}
       <p className="c-pp c-libhint">{changed ? "Skill changes apply from the next step. A step already running keeps its version." : "New conversations start with your default skills. This one keeps the ones chosen here."}</p>
     </div>
   );

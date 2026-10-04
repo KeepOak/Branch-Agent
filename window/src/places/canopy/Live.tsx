@@ -1,4 +1,5 @@
 // [A] sections at the foot of Canopy › Now (§4.6.7 parity adds): "Every step, live" and "Background tasks".
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import { shows } from "../../places-nav/level";

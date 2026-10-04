@@ -1,5 +1,6 @@
 // Trunk editor › What it may do (preview 30-trunks mayHTMLC18, 31-trunksp mayMorePC18 at Advanced).
 // Each row writes the Trunk's own config entry; rows the engine has no setting for are drawn greyed with the reason.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import type { ModelChoice } from "../../composer/model";

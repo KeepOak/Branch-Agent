@@ -2,6 +2,7 @@
 // Each row runs one engine method through `run`; rows the engine has no method for are drawn greyed with the
 // reason. Rows that only show for a state the engine can't have (pinned messages) are left out; a room shows
 // its own rows (rooms/room-menu.ts) in place of the Trunk rows.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Level } from "../places-nav/settings-nav";
 import type { Conversation } from "../connect/conversations";
 import { snoozeChoices, wakeWords } from "./conversation-actions";

@@ -14,7 +14,7 @@ import { Logo } from "../set1/service";
 import { readMeasuredPercent } from "../../../shell/limit-window-reading";
 import { ModelPrices } from "./usage-prices";
 import { useShown } from "../../../shell/shown";
-import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
+import { CKPT_PREF, CKPT_SHOW, useCkptCanShow, useCkptOn } from "../../../shell/SaveProgress";
 import { lookStore } from "../set1/appearance-store";
 import "./usage.css";
 import { DesktopCtl } from "../desktop-ctl";
@@ -798,10 +798,11 @@ const asNum = (v: string): number | undefined => (v.trim() === "" || !Number.isF
 function AllowanceRows({ engine }: { engine: WindowEngine }) {
   const shown = useShown(engine); // the same "show.usage" switch as Appearance › What's shown and the status bar's right-click
   const ckptOn = useCkptOn(engine);
+  const ckptCanShow = useCkptCanShow();
   return (
     <>
       <Ctl title="The ring bottom right" sub="The connection used next, how much of its window is left, and when it refills."><Switch label="Show the ring" checked={shown.usage} onChange={(on) => void lookStore(engine).set("show.usage", on)} /></Ctl>
-      <Ctl title="Offer to save progress at 95%" sub={<>It only asks, once per connection per window, and never for an estimate. <button type="button" className="link-k" onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
+      <Ctl title="Offer to save progress at 95%" sub={<>It only asks, once per connection per window, and never for an estimate. <button type="button" className="link-k" disabled={!ckptCanShow} onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
       <Ctl title="Asking a service what is left" off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
       <DesktopCtl title="Show usage in the tray" sub="A small ring by the clock opens the same list." name="trayUsage" />
     </>

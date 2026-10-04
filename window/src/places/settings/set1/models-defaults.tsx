@@ -1,5 +1,6 @@
 // Settings › Models › Defaults (§4.7.6): each connection's default model and thinking, which connection answers
 // what, and the fallback lists; plus the Defaults-only Advanced and Technical sections. Saves at once.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { shownWhy } from "../../../shell/shown-why";
 import { record, text, visible } from "../adapter";
