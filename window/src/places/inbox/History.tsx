@@ -55,11 +55,22 @@ export function items(data: HistoryData): Item[] {
 }
 const personName = (data: HistoryData, id: string) => id === "unmatched" ? "Someone we couldn’t match" : str(data.profiles.find(p => str(p.id) === id)?.displayName) || id;
 
+export function calendarBins(now: Date, count: number): [Date, Date, string][] {
+  return Array.from({ length: count }, (_, i) => {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - count + 1 + i);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return [start, end, dayWord(start, now)];
+  });
+}
+
 function Pulse({ list, win, now }: { list: Item[]; win: Win; now: Date }) {
   const bins: [Date, Date, string][] = win === "24h"
     ? Array.from({ length: 24 }, (_, i): [Date, Date, string] => { const s = new Date(now); s.setMinutes(0, 0, 0); s.setHours(s.getHours() - 23 + i); return [s, new Date(s.getTime() + 36e5), clock(s)]; })
     : win === "all" ? Array.from({ length: 12 }, (_, i): [Date, Date, string] => { const s = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1); return [s, new Date(s.getFullYear(), s.getMonth() + 1, 1), s.toLocaleString("en-US", { month: "short", year: "numeric" })]; })
-    : Array.from({ length: win === "7d" ? 7 : 30 }, (_, i): [Date, Date, string] => { const n = win === "7d" ? 7 : 30, s = new Date(now); s.setHours(0, 0, 0, 0); s.setDate(s.getDate() - n + 1 + i); return [s, new Date(s.getTime() + 864e5), dayWord(s, now)]; });
+    : calendarBins(now, win === "7d" ? 7 : 30);
   const counts = bins.map(([a, b]) => list.filter(i => i.at >= a && i.at < b).length), top = Math.max(1, ...counts);
   const started = list.filter(i => (i.s.createdAt ?? 0) >= now.getTime() - WINDOWS[win][1]).length;
   const people = new Set(list.map(i => i.who)).size, working = list.filter(i => i.s.working).length;
