@@ -16,8 +16,8 @@ import {
   buildBootstrapTruncationReportMeta,
 } from "../../bootstrap-budget.js";
 import { resolveBranchReferencePaths } from "../../docs-path.js";
-import { buildMcpServerGuidanceForRun } from "../../mcp-guidance.js";
 import { prepareExternalProjectRulesPrompt } from "../../external-project-rules.js";
+import { buildMcpServerGuidanceForRun } from "../../mcp-guidance.js";
 import { prepareAgentMemoryPrompt } from "../../memory-prompt-prepare.js";
 import { buildModelToolsUnavailablePrompt } from "../../model-tool-support.js";
 import {
