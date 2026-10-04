@@ -1,0 +1,26 @@
+{
+  "name": "@branch/groundroute-plugin",
+  "version": "2026.9.7",
+  "description": "Branch Agent GroundRoute meta-search and page extraction plugin.",
+  "type": "module",
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "install": {
+      "npmSpec": "@branch/groundroute-plugin",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.6.8"
+    },
+    "compat": {
+      "pluginApi": ">=2026.9.7"
+    },
+    "build": {
+      "branchVersion": "2026.9.7",
+      "bundledDist": false
+    }
+  }
+}
