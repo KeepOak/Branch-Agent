@@ -1,3 +1,4 @@
+@import "./fonts.css";
 /* Branch Slate tokens (DESIGN-SPEC §2): colour, type, spacing, radii, elevation, motion and layers.
    Light is the default. Dark follows prefers-color-scheme unless data-theme="light" is set on <html>;
    data-theme="dark" forces dark. Every other area uses these names. */

@@ -325,7 +325,9 @@
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
-  padding: 0 8px 8px;
+  scrollbar-gutter: stable;
+  /* The thin scrollbar takes the right-hand gutter, so rows keep the design's 275 px width. */
+  padding: 0 0 8px 8px;
 }
 .side-scroll:hover,
 .side-scroll:focus-within {
