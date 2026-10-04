@@ -50,13 +50,13 @@ export function CharacterPanel({
       <div className="character-panel-controls">
         <button
           className="ib sm"
-          aria-label={small ? "Expand character" : "Minimize character"}
-          title={small ? "Expand" : "Minimize"}
+          aria-label={small ? "Show the agent" : "Make the agent small"}
+          title={small ? "Show the agent" : "Make the agent small"}
           onClick={() => setSmall((v) => !v)}
         >
-          <Icon name="chev" small />
+          <Icon name={small ? "plus" : "chev"} small />
         </button>
-        <button className="ib sm" aria-label="Hide character" title="Hide" onClick={onClose}>
+        <button className="ib sm" aria-label="Hide the agent" title="Hide the agent" onClick={onClose}>
           <Icon name="x" small />
         </button>
       </div>

@@ -5,8 +5,8 @@ import type { ReactNode } from "react";
 const PATHS = {
   cols: <><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path d="M12 4.5v15" /></>,
   monitor: <><rect x="3" y="4.5" width="18" height="12" rx="2" /><path d="M9 20h6M12 16.5V20" /></>,
-  play: <path d="M8 5.5v13l10.5-6.5z" />,
-  chat: <path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8.5A1.5 1.5 0 0 1 19 17H10l-4.5 3.5V17H5a1.5 1.5 0 0 1-1.5-1.5V7A1.5 1.5 0 0 1 5 5.5z" />,
+  play: <path d="M7 5l12 7-12 7z" />,
+  chat: <path d="M4 5.5h16v10H9l-5 4z" />,
   box: <><rect x="3.5" y="4.5" width="17" height="4" rx="1" /><path d="M5 8.5v10a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-10M10 12.5h4" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   panel: <><rect x="3" y="4.5" width="18" height="15" rx="2" /><path d="M15 4.5v15" /></>,
@@ -25,14 +25,16 @@ const PATHS = {
   edit: <path d="M4 20h4L19 9l-4-4L4 16z" />,
   sliders: <><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>,
   teach: <><path d="M3 8.5L12 4l9 4.5-9 4.5z" /><path d="M7 10.5V15c0 1.5 2.2 3 5 3s5-1.5 5-3v-4.5" /></>,
+  quick: <path d="M13 3.5L5.5 13.5H12l-1 7 7.5-10H12z" />,
+  help: <><circle cx="12" cy="12" r="8.5" /><path d="M9.8 9.5a2.3 2.3 0 0 1 4.4.8c0 1.6-2.2 2-2.2 3.3M12 16.5v.1" /></>,
+  external: <path d="M13.5 5.5H18.5v5M18.5 5.5 11 13M16 14v4.5a1 1 0 0 1-1 1H6.5a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1H11" />,
   star: <path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z" />,
   wave: <path d="M4 12h2M8 8v8M12 5v14M16 8v8M20 12h-2" />,
   info: <><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5.5M12 7.5v.1" /></>,
   tree: <><circle cx="6" cy="6" r="2" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="12" r="2" /><path d="M6 8v8M8 6h3a5 5 0 0 1 5 5" /></>,
   lock: <><rect x="5" y="10.5" width="14" height="10" rx="2" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></>,
   link: <><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></>,
-  folder: <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z" />,
-} satisfies Record<string, ReactNode>;
+  folder: <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z" />,} satisfies Record<string, ReactNode>;
 
 export type MenuIconName = keyof typeof PATHS;
 

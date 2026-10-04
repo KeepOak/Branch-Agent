@@ -59,12 +59,12 @@ const LOOK: { id: ThemeChoice; name: string }[] = [
   { id: "system", name: "Auto" },
 ];
 
-function Row({ icon, label, hint, onClick, testid }: { icon: Parameters<typeof Icon>[0]["name"]; label: string; hint?: string; onClick: () => void; testid?: string }) {
+function Row({ icon, label, hint, keys, onClick, testid, off }: { icon: Parameters<typeof Icon>[0]["name"]; label: string; hint?: string; keys?: string; onClick: () => void; testid?: string; off?: string }) {
   return (
-    <button type="button" className="mi" data-testid={testid} onClick={onClick}>
+    <button type="button" className="mi" data-testid={testid} onClick={onClick} disabled={Boolean(off)} title={off}>
       <Icon name={icon} small />
       <span className="mi-label">{label}</span>
-      {hint ? <span className="mi-hint">{hint}</span> : null}
+      {keys ? <span className="mi-hint"><kbd>{keys}</kbd></span> : hint ? <span className="mi-hint">{hint}</span> : null}
     </button>
   );
 }
@@ -76,7 +76,7 @@ export function PersonMenu(p: Props) {
     f();
   };
   return (
-    <Popover at={p.at} above={p.above} onClose={p.onClose} label="Who is using Branch" testid="person-menu" width={280}>
+    <Popover at={p.at} above={p.above} onClose={p.onClose} label="Who is using Branch" testid="person-menu">
       <div className="ph">Who is using Branch</div>
       <div className="people-row">
         <span className="person current">
@@ -89,14 +89,15 @@ export function PersonMenu(p: Props) {
         </button>
       </div>
       <hr className="msep" />
-      <div className="fs-row">
+      <div className="fs-row pm-look">
         <span>Look</span>
         <Segmented label="Look" value={p.theme} options={LOOK} onChange={p.onTheme} testid="look" />
       </div>
       <hr className="msep" />
-      <Row icon="gear" label="Settings" hint="Ctrl ," onClick={run(p.onSettings)} testid="person-settings" />
-      <Row icon="check" label="Achievements" onClick={run(p.onAchievements)} />
-      <Row icon="menu" label="Keyboard shortcuts" hint="?" onClick={run(p.onShortcuts)} testid="person-shortcuts" />
+      <Row icon="gear" label="Settings" keys="Ctrl ," onClick={run(p.onSettings)} testid="person-settings" />
+      <Row icon="medal" label="Achievements" onClick={run(p.onAchievements)} />
+      <Row icon="keyboard" label="Keyboard shortcuts" keys="?" onClick={run(p.onShortcuts)} testid="person-shortcuts" />
+      <Row icon="phone" label="Get the apps" onClick={() => undefined} off="The app download pages aren’t set up for this Branch yet." />
       <Row icon="help" label="Guide" onClick={run(p.onGuide)} testid="person-guide" />
       {p.updateTo && p.onUpdate ? (
         <button type="button" className="mi" data-testid="person-update" onClick={run(p.onUpdate)}>
@@ -106,7 +107,7 @@ export function PersonMenu(p: Props) {
         </button>
       ) : null}
       <Row icon="spark" label="Replay the first run" onClick={run(p.onReplay)} testid="person-replay" />
-      <Row icon="monitor" label="About Branch" onClick={run(p.onAbout)} />
+      <Row icon="info" label="About Branch" onClick={run(p.onAbout)} />
       <hr className="msep" />
       <Row icon="lock" label="Lock Branch" onClick={run(p.onLock)} testid="person-lock" />
     </Popover>

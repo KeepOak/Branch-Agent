@@ -23,6 +23,7 @@ import { buildSections, clearFilters, emptyLineFor, filterRows, filterSummary, h
 import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./AppSections";
 import { batchMenuItems } from "./batch-menu";
 import { OpenTabs, useOpenTabs } from "./OpenTabs";
+import { menuIcon } from "./menu-icons";
 import { NewsTip, SidePet } from "./SidebarExtras";
 import { colourHue, iconColourItem } from "./row-look";
 import { RowCard } from "./RowCard";
@@ -520,24 +521,24 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const narrow = () => isNarrow;
   const compact = isNarrow || layout.focus;
   const toggleList = () => (narrow() ? setSlideOpen((o) => !o) : setLayout({ hidden: !(layout.hidden || layout.rail), rail: false }));
-  const showMenu = (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string, upward = false) => {
+  const showMenu = (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string, upward = false, alignRight = false) => {
     e.preventDefault();
     e.stopPropagation();
     const r = e.currentTarget.getBoundingClientRect();
-    const at = upward ? { x: r.left, y: r.top } : below(e);
+    const at = upward ? { x: r.left, y: r.top } : alignRight ? { ...below(e), right: r.right } : below(e);
     // A second click on the button that opened a menu closes it (§5.4 behaviour 1).
     setOverlay((cur) => (cur?.kind === "menu" && cur.id === id ? null : { kind: "menu", id, at, items, label, upward }));
   };
   const machineMenu = (e: MouseEvent<HTMLElement>, id: string, upward = false) =>
     showMenu(e, id, machineMenuItems({ machineName: machine?.name ?? "", online: ready, level: readLevel(), roundTripMs: gateway.health?.durationMs ?? null, openSettings }), "Which computer", upward);
   const guideItems = (): MenuItem[] => [
-    { label: "What’s new", hint: "this version", run: () => setGuide("news"), testid: "guide-news" },
-    { label: "Set up Branch", hint: "3 min", run: () => firstRun.open(0), testid: "guide-setup" },
-    { label: "Take the walkthrough", hint: "2 min", run: () => (setOverlay(null), setGuide("tour")), testid: "guide-tour" },
+    { label: "What’s new", icon: menuIcon("star"), hint: "this version", run: () => setGuide("news"), testid: "guide-news" },
+    { label: "Set up Branch", icon: menuIcon("spark"), hint: "3 min", run: () => firstRun.open(0), testid: "guide-setup" },
+    { label: "Take the walkthrough", icon: menuIcon("help"), hint: "2 min", run: () => (setOverlay(null), setGuide("tour")), testid: "guide-tour" },
     { kind: "sep" },
-    { label: "Docs", run: () => undefined, disabled: "The docs address isn't configured." },
-    { label: "Get help", run: () => undefined, disabled: "The help address isn't configured." },
-    { label: "Community", run: () => undefined, disabled: "The community address isn't configured." },
+    { label: "Docs", icon: menuIcon("external"), run: () => undefined, disabled: "The docs address isn't configured." },
+    { label: "Get help", icon: menuIcon("external"), run: () => undefined, disabled: "The help address isn't configured." },
+    { label: "Community", icon: menuIcon("external"), run: () => undefined, disabled: "The community address isn't configured." },
   ];
   const [, setReminded] = useState(0); // "Remind me tomorrow" redraws the person menu's update line
   const statusItem = (item: StatusItem, e: MouseEvent<HTMLElement>) => {
@@ -898,7 +899,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onTheme={() => setTheme(toggleTheme(theme))}
         onToggleList={toggleList}
         onCharacter={() => setCharacterShown((v) => !v)}
-        onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
+        onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide", false, true)}
         conversationTools={conversationTools}
         ask={talkEntry}
         onSettings={route.kind === "place" ? () => openSettings("general") : undefined}

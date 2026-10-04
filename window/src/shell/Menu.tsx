@@ -4,7 +4,7 @@ import "./menu.css";
 // Glass menus (DESIGN-SPEC §5.4): opened at a point, Up/Down move, a letter runs its row, Right opens a
 // submenu, Left or Escape closes; focus returns to what opened it.
 export type MenuItem =
-  | { kind?: "item"; label: string; run: () => void; letter?: string; hint?: string; danger?: boolean; disabled?: string; testid?: string; icon?: ReactNode; sub?: string; checked?: boolean }
+  | { kind?: "item"; label: string; run: () => void; letter?: string; hint?: string; keys?: string; danger?: boolean; disabled?: string; testid?: string; icon?: ReactNode; sub?: string; checked?: boolean }
   | { kind: "sub"; label: string; items: MenuItem[]; letter?: string; testid?: string; icon?: ReactNode }
   | { kind: "sep" }
   | { kind: "head"; label: string }
@@ -12,7 +12,8 @@ export type MenuItem =
   /** Controls drawn inside the menu (the Icon and colour grids); they keep the menu open. */
   | { kind: "custom"; node: ReactNode };
 
-export type MenuAnchor = { x: number; y: number };
+/** `right`: line the menu's right edge up with this x instead of its left edge with `x` (a menu opened from the top bar's right end). */
+export type MenuAnchor = { x: number; y: number; right?: number };
 
 /** `upward`: `at` is the top of what opened it (a status-bar item); the menu opens above that point. */
 type Props = { at: MenuAnchor; items: MenuItem[]; onClose: () => void; label: string; testid?: string; upward?: boolean };
@@ -20,15 +21,18 @@ type Props = { at: MenuAnchor; items: MenuItem[]; onClose: () => void; label: st
 const focusables = (el: HTMLElement | null) => Array.from(el?.querySelectorAll<HTMLButtonElement>(":scope > button.mi:not([disabled])") ?? []);
 
 function useFitInWindow(ref: React.RefObject<HTMLDivElement | null>, at: MenuAnchor, upward = false) {
-  const [pos, setPos] = useState(at);
+  // A right-aligned menu is first drawn at the left edge so its natural width can be measured.
+  const [pos, setPos] = useState<MenuAnchor>(() => (at.right === undefined ? at : { x: 0, y: at.y }));
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) {
       return;
     }
-    const r = el.getBoundingClientRect();
+    // Layout sizes, not the box: the opening animation scales the menu while this measures.
+    const r = { width: el.offsetWidth, height: el.offsetHeight };
     const y = upward ? at.y - r.height - 6 : at.y;
-    setPos({ x: Math.max(8, Math.min(at.x, innerWidth - r.width - 8)), y: Math.max(8, Math.min(y, innerHeight - r.height - 8)) });
+    const x = at.right === undefined ? at.x : at.right - r.width;
+    setPos({ x: Math.max(8, Math.min(x, innerWidth - r.width - 8)), y: Math.max(8, Math.min(y, innerHeight - r.height - 8)) });
   }, [ref, at, upward]);
   return pos;
 }
@@ -155,7 +159,7 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
       ) : (
         <span>{it.label}</span>
       )}
-      {it.hint ? <span className="mi-hint">{it.hint}</span> : it.letter ? <span className="mi-hint"><kbd className="mi-key">{it.letter}</kbd></span> : null}
+      {it.keys ? <span className="mi-hint"><kbd>{it.keys}</kbd></span> : it.hint ? <span className="mi-hint">{it.hint}</span> : it.letter ? <span className="mi-hint"><kbd className="mi-key">{it.letter}</kbd></span> : null}
     </button>
   );
 }

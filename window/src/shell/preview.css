@@ -49,6 +49,7 @@
 .character-panel-label i[data-state=wait] { background: var(--accent); }
 .character-panel-label i[data-state=yay] { background: var(--ok); }
 .character-panel-controls { display: grid; gap: 2px; align-self: flex-start; }
+.character-panel-controls .ib { color: var(--ink-2); border-radius: 10px; }
 .character-panel.small .character-panel-label b { display: none; }
 @media(max-width:760px) { .character-panel { right:10px; bottom:86px; } .character-panel-body > .character-face, .character-panel-body > .pebble { width:56px!important;height:56px!important; } .character-panel-label b { display:none; } }
 
