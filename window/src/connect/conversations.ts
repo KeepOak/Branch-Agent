@@ -257,7 +257,7 @@ export class ConversationList {
       if (row.key !== key || row.agentId !== agentId || !row.sessionId) throw new Error("The engine returned a different or incomplete contact conversation");
       return row;
     } catch (error) {
-      if (this.selectedContact?.key === key) this.set({ rows: this.snapshot.rows.filter((row) => row.key !== key), loaded: false });
+      this.set({ rows: this.snapshot.rows.filter((row) => row.key !== key), loaded: false });
       throw error;
     }
   }
@@ -266,10 +266,8 @@ export class ConversationList {
   async selectContact(key: string, agentId: string): Promise<Conversation | null> {
     const row = await this.describeContact(key, agentId);
     if (!row) {
-      if (this.selectedContact?.key === key) {
-        this.selectedContact = null;
-        this.set({ rows: this.snapshot.rows.filter((item) => item.key !== key), loaded: true, error: null });
-      }
+      if (this.selectedContact?.key === key) this.selectedContact = null;
+      this.set({ rows: this.snapshot.rows.filter((item) => item.key !== key), loaded: true, error: null });
       return null;
     }
     this.selectedContact = { key, agentId };

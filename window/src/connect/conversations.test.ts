@@ -156,6 +156,23 @@ describe("exact selected contacts", () => {
     expect(list.getSnapshot().rows.some((row) => row.key === CONTACT.key)).toBe(false);
     expect(list.getSnapshot()).toMatchObject({ loaded: true, error: null });
   });
+
+  it("removes a denied previously cached contact while preserving another selected authorized contact", async () => {
+    const other = { key: "agent:oak:home", sessionId: "other-session" };
+    let denied = false;
+    const request = requestFixture((_method: string, params?: unknown) => {
+      const key = (params as { key: string }).key;
+      if (denied && key === CONTACT.key) return Promise.reject(new Error("Contact access denied"));
+      return Promise.resolve({ session: key === CONTACT.key ? CONTACT : other });
+    });
+    const list = new ConversationList(request, null);
+    await list.selectContact(CONTACT.key, "fern");
+    await list.selectContact(other.key, "oak"); denied = true;
+    await expect(list.selectContact(CONTACT.key, "fern")).rejects.toThrow("Contact access denied");
+    expect(list.getSnapshot().rows.some((row) => row.key === CONTACT.key)).toBe(false);
+    expect(list.getSnapshot().rows.find((row) => row.key === other.key)?.sessionId).toBe(other.sessionId);
+    expect(request.mock.calls.some(([method]) => method === "sessions.create")).toBe(false);
+  });
 });
 
 describe("projectConversation", () => {
