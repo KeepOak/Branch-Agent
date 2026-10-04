@@ -57,7 +57,9 @@ export function parseQuestion(raw: unknown): Question | null {
 }
 
 function parseAnswers(raw: unknown): Record<string, string[]> | undefined {
-  const a = rec(rec(raw).answers);
+  const envelope = rec(raw).answers;
+  const nested = rec(envelope).answers;
+  const a = rec(nested && typeof nested === "object" && !Array.isArray(nested) ? nested : envelope);
   const out: Record<string, string[]> = {};
   for (const [id, list] of Object.entries(a)) if (Array.isArray(list)) out[id] = list.map(str);
   return Object.keys(out).length ? out : undefined;
@@ -118,13 +120,19 @@ export function useQuestions(engine: WindowEngine | undefined) {
     setList([]);
     setError(null);
     if (!engine || !key) return;
+    let active = true;
+    const resolved = new Map<string, { status: QuestionStatus; answers?: Record<string, string[]> }>();
     const mine = (r: QuestionRecord | null): r is QuestionRecord => Boolean(r && r.sessionKey === key);
     const upsert = (r: QuestionRecord) => setList((cur) => [...cur.filter((x) => x.id !== r.id), r].sort((a, b) => a.createdAtMs - b.createdAtMs));
     engine.request("question.list", {}).then(
-      (res) => setList((Array.isArray(rec(res).questions) ? (rec(res).questions as unknown[]) : []).map(parseRecord).filter(mine).sort((a, b) => a.createdAtMs - b.createdAtMs)),
-      (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
+      (res) => {
+        if (!active) return;
+        const snapshot = (Array.isArray(rec(res).questions) ? (rec(res).questions as unknown[]) : []).map(parseRecord).filter(mine);
+        setList((cur) => [...new Map([...snapshot, ...cur].map((r) => [r.id, { ...r, ...resolved.get(r.id) }])).values()].sort((a, b) => a.createdAtMs - b.createdAtMs));
+      },
+      (e: unknown) => { if (active) setError(e instanceof Error ? e.message : String(e)); },
     );
-    return engine.onEvent((e) => {
+    const unsubscribe = engine.onEvent((e) => {
       if (e.event === "question.requested") {
         const r = parseRecord(e.payload);
         if (mine(r)) upsert(r);
@@ -132,9 +140,11 @@ export function useQuestions(engine: WindowEngine | undefined) {
         const p = rec(e.payload);
         const status = STATUSES.find((s) => s === p.status);
         if (!status) return;
+        resolved.set(str(p.id), { status, ...(status === "answered" ? { answers: parseAnswers(p) } : {}) });
         setList((cur) => cur.map((x) => (x.id === str(p.id) ? { ...x, status, ...(status === "answered" ? { answers: parseAnswers(p) } : {}) } : x)));
       }
     });
+    return () => { active = false; unsubscribe(); };
   }, [engine, key]);
   const resolve = useCallback(
     async (id: string, resolution: { answers: Record<string, string[]> } | { cancel: true }) => {
@@ -145,7 +155,7 @@ export function useQuestions(engine: WindowEngine | undefined) {
     },
     [engine],
   );
-  return { list, error, resolve };
+  return { list: list.filter((r) => r.sessionKey === key), error, resolve };
 }
 
 /** Where each question goes in the thread: after the turn it was asked in (the last turn whose message was sent
