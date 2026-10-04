@@ -1,0 +1,14 @@
+{
+  "name": "@branch/tencent-wsa-plugin",
+  "version": "2026.9.7",
+  "description": "Branch Agent Tencent Cloud WSA web search plugin.",
+  "type": "module",
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
