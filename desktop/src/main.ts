@@ -1,5 +1,5 @@
 // Branch Agent desktop app: starts the engine gateway, serves the built window on 127.0.0.1 and shows it.
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, screen, session, shell } from "electron";
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
@@ -14,6 +14,7 @@ import { createComponentUpdateController, isOwnedComponentWindow, registerCompon
 import { createDesktopControls, registerDesktopControlsIpc } from "./desktop-controls";
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
 import { registerTitleBarIpc, titleBarOptions } from "./title-bar";
+import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import type { Tray } from "electron";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
@@ -69,10 +70,13 @@ const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(
 )}`;
 
 function createWindow(): BrowserWindow {
+  // First launch opens maximized; later launches restore the last state, size, position and display.
+  const place = placeWindow(readWindowState(cfg.dataDir), screen.getAllDisplays());
   const w = new BrowserWindow({
     title: "Branch Agent",
     width: 1280,
     height: 840,
+    ...place.bounds,
     show: false,
     icon: ICON,
     // Windows: no native title bar; the window's header carries the minimise, maximise and close buttons.
@@ -87,7 +91,9 @@ function createWindow(): BrowserWindow {
     },
   });
   w.setMenuBarVisibility(false);
-  if (!HIDDEN && !QUIET) w.once("ready-to-show", () => w.show());
+  if (place.maximized) w.once("show", () => w.maximize());
+  if (!HIDDEN && !QUIET) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
+  trackWindowState(w, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds);
   lockDown(w);
   tray = keepWindowsWindowResident(app, w, ICON, {
     hidden: HIDDEN,
