@@ -1,5 +1,6 @@
 // The model and thinking chip (DESIGN-SPEC §4.3.4): projections of models.list and the session row.
 import { list, rec, str, type Rec } from "./engine";
+import { readModelRuntimeMetadata, type ModelRuntimeMetadata } from "./model-capabilities";
 
 export type Level = { id: string; label: string };
 
@@ -19,6 +20,8 @@ export type ModelChoice = {
   contextWindowDefault: string;
   /** Account-scoped service tiers; "ultrafast" means the account offers Ultrafast. */
   serviceTiers: string[];
+  /** Read-only public capabilities for each advertised runtime; never merged across routes. */
+  runtimeMetadata?: ModelRuntimeMetadata;
 };
 
 function levels(v: unknown): Level[] {
@@ -47,6 +50,7 @@ export function readModel(r: Rec): ModelChoice | null {
     contextWindows: levels(r.contextWindows),
     contextWindowDefault: str(r.contextWindowDefault),
     serviceTiers: Array.isArray(r.serviceTiers) ? r.serviceTiers.map(str) : [],
+    runtimeMetadata: readModelRuntimeMetadata(r),
   };
 }
 

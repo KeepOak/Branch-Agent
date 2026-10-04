@@ -7,7 +7,7 @@ import { useApprovalDetails, useHelpers, type ApprovalDetails, type Helper } fro
 import { needsYou } from "../../thread/Helpers";
 import { Face } from "../../face/Face";
 import { SIcon } from "../stage-icons";
-import { activityState, money } from "./pane-model";
+import { activityRecordedAt, activityState, money } from "./pane-model";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -37,8 +37,8 @@ function useCanopyCard(engine: WindowEngine): { title: string; status: string } 
 
 /** Each helper's model and provider (sessions.list rows) and its spend so far (sessions.usage). */
 function useHelperFacts(engine: WindowEngine, helpers: Helper[]): Map<string, { line: string; cost?: number }> {
-  const [facts, setFacts] = useState(new Map<string, { line: string; cost?: number }>());
-  const keys = helpers.map((h) => h.key).join("|");
+  const [facts, setFacts] = useState<{ owner: WindowEngine; signature: string; rows: Map<string, { line: string; cost?: number }> } | null>(null);
+  const signature = JSON.stringify(helpers.map((h) => [h.key, h.parent, h.status, h.model]));
   useEffect(() => {
     let live = true;
     void Promise.all(
@@ -49,16 +49,16 @@ function useHelperFacts(engine: WindowEngine, helpers: Helper[]): Map<string, { 
         const row = (Array.isArray(rec(rows).sessions) ? (rec(rows).sessions as unknown[]) : []).map(rec).find((r) => r.key === h.key) ?? {};
         const provider = str(row.modelProvider);
         const line = [str(row.model) || h.model, PROVIDER[provider] ?? provider].filter(Boolean).join(" · ");
-        return [h.key, { line, ...(typeof cost === "number" ? { cost } : {}) }] as const;
+        return [h.key, { line, ...(typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? { cost } : {}) }] as const;
       }),
-    ).then((list) => live && setFacts(new Map(list)));
+    ).then((list) => live && setFacts({ owner: engine, signature, rows: new Map(list) }));
     return () => {
       live = false;
     };
-    // keys names the helpers; the list itself is a new array each render.
+    // Status/model changes under the same key must refresh measured facts too.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engine, keys]);
-  return facts;
+  }, [engine, signature]);
+  return facts?.owner === engine && facts.signature === signature ? facts.rows : new Map();
 }
 
 function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: ApprovalDetails[]; facts?: { line: string; cost?: number }; onStop: () => void; onAnswer: (id: string, d: "allow-once" | "deny") => void }) {
@@ -120,7 +120,7 @@ export function ActivityTab({ engine, name, blocks, running, level, onError }: {
   const mine = approvals.filter((a) => !a.decision && a.sessionKey === engine.sessionKey).length;
   const helperWaiting = approvals.filter((a) => !a.decision && helpers.some((h) => h.key === a.sessionKey)).length;
   const state = activityState(running, mine + helperWaiting);
-  const [asOf] = useState(() => new Date());
+  const asOf = activityRecordedAt(blocks);
   const steps = blocks.filter((b): b is Extract<Block, { kind: "step" }> => b.kind === "step");
   const shown = steps.slice(-8);
   const first = steps.length - shown.length;
@@ -129,7 +129,7 @@ export function ActivityTab({ engine, name, blocks, running, level, onError }: {
     <>
       <p className="hg-pn">
         <i className={`dot-pn ${state.tone}`} />
-        {state.text} · as of {asOf.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+        {state.text}{asOf === undefined ? "" : ` · as of ${new Date(asOf).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
       </p>
       {card ? (
         <div className="prow-pn">
@@ -151,7 +151,7 @@ export function ActivityTab({ engine, name, blocks, running, level, onError }: {
                 {b.title}
                 {b.detail || level === "technical" ? <small>{level === "technical" ? [b.tool, b.detail].filter(Boolean).join(" · ") : b.detail}</small> : null}
               </span>
-              <time>{b.status === "running" ? "now" : first + i + 1}</time>
+              <time>{b.at ? new Date(b.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : `Step ${first + i + 1}`}</time>
             </li>
           ))}
         </ol>
