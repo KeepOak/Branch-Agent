@@ -17,6 +17,7 @@ import { askBeforeDelete, ConfirmCatalogDelete, ConfirmDelete } from "./ConfirmD
 import { conversationActions } from "./conversation-actions";
 import { SessionUnreadPatchGuard } from "../connect/unread-guard";
 import { useConversations, useListPeople, useMachine, usePendingApprovals, useTrunks } from "./engine-data";
+import { usePetCompletion } from "./use-pet-completion";
 import { FilterButton, FilterSortPopover, readPrefs, savePrefs } from "./FilterSort";
 import { Icon } from "./icons";
 import { buildSections, clearFilters, emptyLineFor, filterRows, filterSummary, hasFolders, homeRow, owners, roomUsed, type ListPrefs } from "./list-model";
@@ -286,6 +287,7 @@ function useEngineReads(session: SaplingSession) {
 /** The whole window once connected (DESIGN-SPEC §3): top bar, sidebar, main, status bar, menus and toasts. */
 export function WindowShell({ session, url }: { session: SaplingSession; url: string }) {
   const { s, ready, lists, list, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  usePetCompletion(session);
   const people = useListPeople(session, ready);
   const update = useUpdate(session, ready, machine?.version ?? "");
   const projects = useProjects(session, ready);
