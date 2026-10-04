@@ -52,6 +52,13 @@ describe("Settings › Accounts", () => {
     expect(accountsOf([p]).map((acc) => accountName(acc))).toEqual(["Claude · Subscription 1", "Claude · Subscription 2"]);
   });
 
+  it("names a labelled Claude sign-in by its label, as a ChatGPT account by its email", () => {
+    const p: Provider = { provider: "anthropic", displayName: "Claude", status: "ok", profiles: [
+      { profileId: "anthropic:claude", type: "token", status: "ok" }, { profileId: "anthropic:work", type: "token", status: "ok" },
+      { profileId: "anthropic:default", type: "token", status: "ok" }] };
+    expect(accountsOf([p]).map((acc) => accountName(acc))).toEqual(["Claude · claude", "Claude · work", "Claude · Subscription 3"]);
+  });
+
   it("draws the designed rows from models.authStatus, never a credential", async () => {
     const { engine } = engineOf();
     await render(engine);

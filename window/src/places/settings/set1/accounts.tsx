@@ -39,12 +39,20 @@ export function accountsOf(providers: Provider[]): Account[] {
 }
 
 /** A pasted subscription token (Claude's `claude setup-token`): engine profile type "token". */
-const isToken = (a: Profile) => a.type === "token";
+const isToken = (a: Pick<Profile, "type">) => a.type === "token";
+
+/** A token account's own name, the label in its id ("anthropic:claude-2" is "claude-2"), as a ChatGPT account shows
+ *  its email. Setup's generated "setup-<id>" and the engine's "default" are not names. */
+export function tokenLabel(a: Pick<Profile, "profileId" | "type">): string | undefined {
+  if (!isToken(a)) return undefined;
+  const name = a.profileId.slice(a.profileId.indexOf(":") + 1);
+  return name && name !== "default" && !name.startsWith("setup-") ? name : undefined;
+}
 
 export function accountName({ p, a, n }: Pick<Account, "p" | "a" | "n">): string {
   const svc = serviceName(p.provider, p.displayName, a.type === "api_key");
   const fallback = a.type === "api_key" ? `Key ${n}` : isToken(a) ? `Subscription ${n}` : `Account ${n}`;
-  return `${svc} · ${a.displayName ?? a.email ?? fallback}`;
+  return `${svc} · ${a.displayName ?? a.email ?? tokenLabel(a) ?? fallback}`;
 }
 
 const STATUS_WORDS: Record<string, string> = { ok: "", expiring: "Signing in again soon", expired: "Signed out · sign in again", missing: "Sign-in missing", static: "" };

@@ -1,7 +1,9 @@
 // Gateway methods that need an owning Trunk once more than one Trunk exists. Without an agentId the engine
 // refuses them ("Multiple agents are configured, but … has no explicit owner") or, for model auth, answers for
 // no one. Sources: engine/src/gateway/server-methods/model-auth-agent-scope.ts (resolveModelAuthAgentScope),
-// skills-workspace-handler.ts (resolveSkillsAgentWorkspace), memory-search.ts and memory-provider.ts.
+// skills-workspace-handler.ts (resolveSkillsAgentWorkspace), memory-search.ts and memory-provider.ts, the agentId
+// fields of skills.status, tools.catalog and hooks.status (gateway-protocol schema) and every doctor.memory.* method
+// (doctor-memory-target.ts resolveDoctorMemoryAgent).
 const OWNED = new Set([
   "models.authStatus",
   "models.authSetApiKey",
@@ -16,6 +18,9 @@ const OWNED = new Set([
   "skills.install",
   "skills.update",
   "skills.securityVerdicts",
+  "skills.status",
+  "tools.catalog",
+  "hooks.status",
   "skills.skillCard",
   "memory.search",
   "memory.get",
@@ -23,7 +28,7 @@ const OWNED = new Set([
 ]);
 
 export function needsOwner(method: string): boolean {
-  return OWNED.has(method) || method.startsWith("skills.proposals.");
+  return OWNED.has(method) || method.startsWith("skills.proposals.") || method.startsWith("doctor.memory.");
 }
 
 /** Adds the default Trunk as owner when an owned call names none (an empty agentId counts as none). */

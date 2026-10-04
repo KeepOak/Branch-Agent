@@ -7,10 +7,10 @@ import { Dialog } from "../../../shell/Dialog";
 import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Footer, WizardBody } from "../AccountLogin";
-import { useWizard, type WizardStart } from "../use-wizard";
+import { useWizard, type WizardStart, type WizardStep } from "../use-wizard";
 import { useSaveRunner } from "../kit";
 import { Logo, serviceName } from "./service";
-import { providersOf, type Provider } from "./accounts";
+import { providersOf, tokenLabel, type Provider } from "./accounts";
 
 export type AddStart = { provider?: string };
 type Kind = "plan" | "key" | "local" | "custom";
@@ -155,7 +155,7 @@ function SignIn({ engine, svc, agent, onRun, onKey }: SignInProps) {
   if (svc.kind === "custom") return <Lead text={`Branch asks for the address and sign-in of ${svc.name}.`} action="Start" onGo={() => onRun({ method: "branch.setup.auth.start", params: { authChoice: svc.choice, ...agent } })} />;
   const [main, ...rest] = [...svc.logins].sort((a, b) => Number(b.featured === true) - Number(a.featured === true));
   const go = (o: RecordValue) => onRun({ method: "models.authLogin", params: { authChoice: text(o.id), ...agent } });
-  if (main?.kind === "setup-secret") return <SecretSignIn svc={svc} login={main} agent={agent} onRun={onRun} />;
+  if (main?.kind === "setup-secret") return <SecretSignIn engine={engine} svc={svc} login={main} agent={agent} onRun={onRun} />;
   return (
     <>
       <div className="aa-card">
@@ -168,15 +168,47 @@ function SignIn({ engine, svc, agent, onRun, onKey }: SignInProps) {
   );
 }
 
-/** A sign-in the service hands out as a token (Claude: `claude setup-token`), saved through the engine's setup
- *  activation as upstream's model setup does: branch.setup.activate.start {kind "api-key", authChoice "setup-token",
- *  apiKey} runs Anthropic's setup-token auth method, which stores a type "token" profile; setup saves each one under
- *  its own "anthropic:setup-<id>" (system-agent/setup-inference-credentials.ts saveSetupCredential). */
-function SecretSignIn({ svc, login, agent, onRun }: { svc: Service; login: RecordValue; agent: { agentId?: string }; onRun: (r: WizardStart) => void }) {
+/** The engine's name for a token account (engine/src/plugins/provider-auth-token.ts normalizeTokenProfileName). */
+export function tokenProfileName(raw: string): string {
+  const slug = raw.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+  return slug || "default";
+}
+
+/** The label a new token account is saved under (`<provider>:<label>`): what the owner typed, else "claude",
+ *  with "-2", "-3"… added until it names no existing account, so a sign-in never replaces another one. */
+export function freshTokenLabel(typed: string, taken: readonly string[], provider = "anthropic", fallback = "claude"): string {
+  const base = typed.trim() ? tokenProfileName(typed) : fallback;
+  const used = new Set(taken.map((id) => id.toLowerCase()));
+  for (let n = 1; ; n++) {
+    const name = n === 1 ? base : `${base}-${n}`;
+    if (!used.has(`${provider}:${name}`)) return name;
+  }
+}
+
+/** models.authLogin takes "<plugin>/<choice>" (formatProviderLoginChoiceRef); setup's detect lists the bare choice. */
+export const loginChoiceRef = (brand: string, id: string) => (id.includes("/") ? id : `${brand}/${id}`);
+
+/** A sign-in the service hands out as a token (Claude: `claude setup-token`). It is saved as its own account through
+ *  the same credential-only wizard as the ChatGPT sign-in: models.authLogin {authChoice "anthropic/setup-token",
+ *  profileLabel}, whose "Paste Anthropic setup-token" step is answered with the pasted token. That never changes the
+ *  Trunk's model. Only the Trunk's very first model account goes through setup's activation
+ *  (branch.setup.activate.start), which also makes it the Trunk's model. */
+function SecretSignIn({ engine, svc, login, agent, onRun }: { engine: WindowEngine; svc: Service; login: RecordValue; agent: { agentId?: string }; onRun: (r: WizardStart) => void }) {
   const [token, setToken] = useState("");
+  const [name, setName] = useState("");
+  const status = useResource<RecordValue>(engine, "models.authStatus", agent);
+  const all = providersOf(status.data?.providers);
+  const first = Boolean(status.data) && all.every((p) => !p.profiles.length);
+  const label = freshTokenLabel(name, all.flatMap((p) => p.profiles.map((a) => a.profileId)), svc.brand, svc.brand === "anthropic" ? "claude" : svc.brand);
   const claude = svc.brand === "anthropic";
   const command = claude ? "claude setup-token" : "";
-  const start = () => onRun({ method: "branch.setup.activate.start", params: { kind: "api-key", authChoice: text(login.id), apiKey: token.trim(), ...agent } });
+  const ready = Boolean(token.trim()) && !status.loading;
+  const start = () => {
+    if (!ready) return;
+    if (first) return onRun({ method: "branch.setup.activate.start", params: { kind: "api-key", authChoice: text(login.id), apiKey: token.trim(), ...agent } });
+    const secret = { value: token.trim(), match: (step: WizardStep) => !step.externalUrl && /setup-token|token/i.test(`${step.title ?? ""} ${step.message ?? ""}`) };
+    onRun({ method: "models.authLogin", params: { authChoice: loginChoiceRef(svc.brand, text(login.id)), profileLabel: label, ...agent }, secret });
+  };
   return (
     <>
       <div className="aa-card">
@@ -188,10 +220,11 @@ function SecretSignIn({ svc, login, agent, onRun }: { svc: Service; login: Recor
             <li>Paste the token it prints below. It starts with <code>sk-ant-oat01-</code>.</li>
           </ol>
         ) : login.hint ? <p>{visible(login.hint)}</p> : null}
-        <label className="fld"><span>Token</span><input className="inp" type="password" autoComplete="off" aria-label="Token" value={token} onChange={(e) => setToken(e.target.value)} onKeyDown={(e) => e.key === "Enter" && token.trim() && start()} /></label>
-        <div className="acts"><button type="button" className="btn pri sm" disabled={!token.trim()} onClick={start}>Sign in</button></div>
+        <label className="fld"><span>Token</span><input className="inp" type="password" autoComplete="off" aria-label="Token" value={token} onChange={(e) => setToken(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>
+        {first ? null : <label className="fld"><span>Call it</span><input className="inp" aria-label="Call it" placeholder={label} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>}
+        <div className="acts"><button type="button" className="btn pri sm" disabled={!ready} onClick={start}>Sign in</button></div>
       </div>
-      <p className="hint">Each sign-in is saved as its own account, so you can add more than one.</p>
+      <p className="hint">{first ? "This is the Trunk’s first account, so Branch also starts using it." : `Saved as its own account, “${label}”. The Trunk keeps its model.`}</p>
     </>
   );
 }
@@ -240,6 +273,7 @@ function Placed({ engine, svc, before, agent, onDone }: { engine: WindowEngine; 
   const providers = providersOf(status.data?.providers);
   const p = providers.find((x) => x.provider === svc.brand);
   const fresh = p?.profiles.find((a) => !before.includes(a.profileId));
+  const freshName = fresh ? fresh.displayName ?? fresh.email ?? tokenLabel(fresh) : undefined;
   const order = (where: "first" | "last") => {
     if (!p || !fresh) return null;
     const stored = (p.profileOrder ?? []).filter((id) => id !== fresh.profileId && p.profiles.some((a) => a.profileId === id));
@@ -260,10 +294,10 @@ function Placed({ engine, svc, before, agent, onDone }: { engine: WindowEngine; 
     <>
       <div className="prow aa-new">
         <Logo id={svc.brand} name={svc.name} size={36} />
-        <span className="grow"><b>{fresh ? `${svc.name} · ${fresh.displayName ?? fresh.email ?? "New account"}` : svc.name}</b><small>{status.loading ? "Reading the new account…" : fresh ? (fresh.type === "api_key" ? "Key" : fresh.type === "token" ? "Subscription" : "Signed in") : "Set up."}</small></span>
+        <span className="grow"><b>{fresh ? `${svc.name} · ${freshName ?? "New account"}` : svc.name}</b><small>{status.loading ? "Reading the new account…" : fresh ? (fresh.type === "api_key" ? "Key" : fresh.type === "token" ? "Subscription" : "Signed in") : "Set up."}</small></span>
         {fresh ? <span className={`pill ${fresh.status === "ok" || fresh.status === "static" ? "ok" : "warn"}`}><i />{FRESH_WORD[fresh.status] ?? visible(fresh.status)}</span> : null}
       </div>
-      <label className="fld"><span>Call it</span><input className="inp" disabled title="Branch can’t rename an account yet." value={fresh?.displayName ?? fresh?.email ?? svc.name} readOnly /></label>
+      <label className="fld"><span>Call it</span><input className="inp" disabled title="Branch can’t rename an account yet." value={freshName ?? svc.name} readOnly /></label>
       <div className="fld"><span>Where it goes in the order</span>
         <span className="acts"><button type="button" className="btn sm" disabled={!fresh} onClick={() => put("first")}>First</button><button type="button" className="btn sm" disabled={!fresh} onClick={() => put("last")}>Last</button></span>
         <small className="hint">Branch uses the first one with room left.</small>
