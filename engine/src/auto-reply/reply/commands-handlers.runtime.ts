@@ -20,6 +20,7 @@ import {
   handleStatusCommand,
   handleToolsCommand,
 } from "./commands-info.js";
+import { handleInitCommand } from "./commands-init.js";
 import { handleLearnCommand } from "./commands-learn.js";
 import { handleLoginCommand } from "./commands-login.js";
 import { handleLoopCommand } from "./commands-loop.js";
@@ -73,6 +74,7 @@ export function loadCommandHandlers(): CommandHandler[] {
     handleGoalCommand,
     handleDashboardCommand,
     handleLearnCommand,
+    handleInitCommand,
     handleRememberCommand,
     handleLoopCommand,
     handleNameCommand,

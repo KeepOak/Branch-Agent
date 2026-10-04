@@ -217,6 +217,19 @@ export function buildBuiltinChatCommands(
       },
     ),
     defineBuiltinCommand(
+      "init",
+      "Study the project and the user, then write instructions and memory files.",
+      "tools",
+      "standard",
+      {
+        args: [
+          defineCommandArgument("request", "Focus or requirements for initialization", {
+            captureRemaining: true,
+          }),
+        ],
+      },
+    ),
+    defineBuiltinCommand(
       "remember",
       "Save a durable memory to the memory files.",
       "tools",

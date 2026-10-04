@@ -50,6 +50,7 @@ export const engineTests = [
   'extensions/memory-core/src/memory-forget-text.test.ts',
   'extensions/memory-core/src/forget-command.test.ts',
   'extensions/memory-core/index.test.ts',
+  'src/auto-reply/reply/commands-init.test.ts',
 ];
 
 export const windowTests = [
@@ -151,6 +152,8 @@ export const engineStrictFiles = [
   'extensions/memory-core/src/forget-command.test.ts',
   'extensions/memory-core/src/rings-command.ts',
   'src/auto-reply/commands-registry-normalize.ts',
+  'src/auto-reply/reply/commands-init.ts',
+  'src/auto-reply/reply/commands-init.test.ts',
 ];
 
 export const windowStrictFiles = [

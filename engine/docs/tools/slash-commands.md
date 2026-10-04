@@ -318,6 +318,7 @@ user skill directly.
     | --- | --- |
     | `/skill <name> [input]` | Run a skill by name |
     | `/learn [request]` | Draft one reviewable skill from the current conversation or named sources through [Skill Workshop](/tools/skill-workshop) |
+    | `/init [request]` | Study the project and the user with the bundled `initializing-memory` skill, then write `AGENTS.md`, `SOUL.md`, `USER.md`, `MEMORY.md` and `memory/` notes |
     | `/remember <text>` | Save a durable memory: the agent adds it to `MEMORY.md` with its file tools |
     | `/loop [interval] <prompt>` | Owner-only. Repeat a prompt in this conversation; omit the interval for self-paced checks |
     | `/loop status` | Owner-only. List loops bound to this conversation |
