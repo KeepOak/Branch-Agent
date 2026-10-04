@@ -21,6 +21,7 @@ import { TrunkFiles } from "./TrunkFiles";
 import { Layer } from "./layer";
 import "./trunk.css";
 
+// TODO(engine-lane): pausing a Trunk (Customize › Trunks › Pause, Trunk profile) needs the engine's pause for a Trunk.
 export const PAUSE_WHY = "Needs the engine’s pause for a Trunk.";
 
 export type TrunkProfileProps = {

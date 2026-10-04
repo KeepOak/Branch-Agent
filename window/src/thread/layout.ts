@@ -7,7 +7,11 @@ type Step = Extract<Block, { kind: "step" }>;
 
 export type Item =
   | { type: "block"; block: Block; index: number; firstReply: boolean; face: boolean }
-  | { type: "steps"; key: string; steps: Step[]; face: boolean };
+  | { type: "steps"; key: string; steps: Step[]; face: boolean; run?: RunLine };
+
+/** What a finished turn's Steps fold names: the reply's first line and how long the run took (the design's
+ *  "Sorted 214 files · 5 steps · 1m 12s"). */
+export type RunLine = { title: string; durationMs?: number };
 
 /** Groups blocks for drawing. `index` is the block's place in the list the actions read. */
 export function layout(blocks: readonly Block[], offset = 0): Item[] {
@@ -24,7 +28,7 @@ export function layout(blocks: readonly Block[], offset = 0): Item[] {
       if (last?.type === "steps") {
         last.steps.push(block);
       } else {
-        items.push({ type: "steps", key: `steps:${block.key}`, steps: [block], face: !faced });
+        items.push({ type: "steps", key: `steps:${block.key}`, steps: [block], face: !faced, run: runLine(blocks, i) });
         faced = true;
       }
       return;
@@ -38,6 +42,24 @@ export function layout(blocks: readonly Block[], offset = 0): Item[] {
     items.push({ type: "block", block, index: offset + i, firstReply, face });
   });
   return items;
+}
+
+/** The first line of a reply, as plain words: no Markdown marks, no closing full stop, at most 80 characters. */
+export function titleOf(text: string): string {
+  const line = text.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+  const plain = line.replace(/^(#+|[-*+]|\d+[.)])\s+/, "").replace(/[*_`~]/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[.:]$/, "").trim();
+  return plain.length > 80 ? `${plain.slice(0, 79).trimEnd()}…` : plain;
+}
+
+/** The finished turn after the steps starting at `from`: its reply's first line and its run's length, if it has a reply. */
+function runLine(blocks: readonly Block[], from: number): RunLine | undefined {
+  let title = "";
+  for (let i = from + 1; i < blocks.length && blocks[i].kind !== "user"; i++) {
+    const b = blocks[i];
+    if (b.kind === "text" && !b.streaming && !title) title = titleOf(b.text);
+    if (b.kind === "done") return title ? { title, durationMs: b.durationMs } : undefined;
+  }
+  return undefined;
 }
 
 /** The blocks of the turn a block belongs to: from after the user message before it to the next user message. */

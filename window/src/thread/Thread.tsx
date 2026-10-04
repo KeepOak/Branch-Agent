@@ -286,11 +286,11 @@ function ItemView(props: { item: Item; view: View; live: boolean }) {
 
 function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean }) {
   if (item.type === "steps") {
-    if (!item.face) return <StepsFold steps={item.steps} live={live} />;
+    if (!item.face) return <StepsFold steps={item.steps} live={live} run={item.run} />;
     return (
       <div className="msg reply steps-turn">
         <span className="gutter"><span className={view.running && live ? "gutter-face working-ring" : "gutter-face"}>{faceFor(view, live)}</span></span>
-        <StepsFold steps={item.steps} live={live} />
+        <StepsFold steps={item.steps} live={live} run={item.run} />
       </div>
     );
   }
