@@ -71,6 +71,7 @@ function withLocalActTimeout(
   }
   switch (request.kind) {
     case "click":
+    case "humanClick":
     case "type":
     case "hover":
     case "scrollIntoView":

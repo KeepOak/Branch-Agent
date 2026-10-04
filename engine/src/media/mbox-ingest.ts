@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
-import { mboxParser } from "mbox-parser";
 import { htmlToText } from "html-to-text";
+import { mboxParser } from "mbox-parser";
 import slugifyPackage from "slugify";
 const slugify = slugifyPackage.default;
 
@@ -21,65 +21,90 @@ export type MboxDocument = {
   pageContent: string;
   token_count_estimate: number;
 };
-export type MboxMetadata = Partial<Pick<MboxDocument,
-  "title" | "docAuthor" | "description" | "docSource" | "chunkSource"
->>;
+export type MboxMetadata = Partial<
+  Pick<MboxDocument, "title" | "docAuthor" | "description" | "docSource" | "chunkSource">
+>;
 export type MboxIngestionResult = {
   success: boolean;
   reason: string | null;
   documents: MboxDocument[];
 };
 
-/** One document per readable message, suitable for the caller's document store. */
-export async function ingestMbox(params: {
+type IngestParams = {
   buffer: Buffer;
   filename: string;
   sourceUrl: string;
   published: string;
   metadata?: MboxMetadata;
-  /** Use the document store's tokenizer; do not silently invent token estimates. */
   tokenizeString: (text: string) => number;
-}): Promise<MboxIngestionResult> {
-  const empty = (): MboxIngestionResult => ({
-    success: false, reason: `No mail items found in ${params.filename}.`, documents: [],
+  signal?: AbortSignal;
+};
+type Mail = Awaited<ReturnType<typeof mboxParser>>[number];
+
+function messageText(mail: Mail): string {
+  if (mail.text?.trim()) return mail.text;
+  if (!mail.html) return "";
+  return htmlToText(mail.html, {
+    wordwrap: false,
+    preserveNewlines: true,
+    limits: { maxDepth: 100 },
+    selectors: [
+      { selector: "img", format: "skip" },
+      { selector: "script", format: "skip" },
+      { selector: "style", format: "skip" },
+      { selector: "noscript", format: "skip" },
+    ],
   });
-  // mbox-parser 1.0.1 never flushes an empty stream. Avoid a pending promise.
-  if (params.buffer.length === 0) return empty();
-  const mails = await mboxParser(Readable.from([params.buffer])).catch(() => []);
-  if (mails.length === 0) return empty();
+}
+
+function mailDocument(
+  mail: Mail,
+  content: string,
+  item: number,
+  params: IngestParams,
+): MboxDocument {
   const metadata = params.metadata ?? {};
+  const messageTitle = mail.subject
+    ? `${slugify(mail.subject.replace(".", ""))}.mbox`
+    : `msg_${item}-${params.filename}`;
+  return {
+    id: randomUUID(),
+    url: params.sourceUrl,
+    title: metadata.title ? `${metadata.title} - ${messageTitle}` : messageTitle,
+    docAuthor: metadata.docAuthor || mail.from?.text,
+    description: metadata.description || "No description found.",
+    docSource: metadata.docSource || "Mbox message file uploaded by the user.",
+    chunkSource: metadata.chunkSource || "",
+    published: params.published,
+    wordCount: content.split(" ").length,
+    pageContent: content,
+    token_count_estimate: params.tokenizeString(content),
+  };
+}
+
+function parserChunks(buffer: Buffer): Buffer[] {
+  // 1.0.1's flush omits its callback when an empty EOF delimiter remains.
+  // Its split filters empty segments, so a preceding message already flushes.
+  return buffer.equals(Buffer.from("From ")) ? [buffer, Buffer.from("\n")] : [buffer];
+}
+
+/** Source-equivalent records without storage or upload cleanup side effects. */
+export async function ingestMbox(params: IngestParams): Promise<MboxIngestionResult> {
+  params.signal?.throwIfAborted();
+  const empty = (): MboxIngestionResult => ({
+    success: false,
+    reason: `No mail items found in ${params.filename}.`,
+    documents: [],
+  });
+  if (params.buffer.length === 0) return empty();
+  const mails = await mboxParser(Readable.from(parserChunks(params.buffer))).catch(() => []);
+  params.signal?.throwIfAborted();
+  if (mails.length === 0) return empty();
   const documents: MboxDocument[] = [];
-  let item = 1;
   for (const mail of mails) {
-    const content = mail.text?.trim() ? mail.text : mail.html ? htmlToText(mail.html, {
-      wordwrap: false,
-      preserveNewlines: true,
-      limits: { maxDepth: 100 },
-      selectors: [
-        { selector: "img", format: "skip" },
-        { selector: "script", format: "skip" },
-        { selector: "style", format: "skip" },
-        { selector: "noscript", format: "skip" },
-      ],
-    }) : "";
-    if (!content) continue;
-    const messageTitle = mail.subject
-      ? `${slugify(mail.subject.replace(".", ""))}.mbox`
-      : `msg_${item}-${params.filename}`;
-    documents.push({
-      id: randomUUID(),
-      url: params.sourceUrl,
-      title: metadata.title ? `${metadata.title} - ${messageTitle}` : messageTitle,
-      docAuthor: metadata.docAuthor || mail.from?.text,
-      description: metadata.description || "No description found.",
-      docSource: metadata.docSource || "Mbox message file uploaded by the user.",
-      chunkSource: metadata.chunkSource || "",
-      published: params.published,
-      wordCount: content.split(" ").length,
-      pageContent: content,
-      token_count_estimate: params.tokenizeString(content),
-    });
-    item++;
+    params.signal?.throwIfAborted();
+    const content = messageText(mail);
+    if (content) documents.push(mailDocument(mail, content, documents.length + 1, params));
   }
   return { success: true, reason: null, documents };
 }

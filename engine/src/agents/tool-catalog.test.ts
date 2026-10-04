@@ -61,12 +61,8 @@ describe("tool-catalog", () => {
     "includes the helper in %s allows and denies",
     (group) => {
       expect(isToolAllowedByPolicyName("branch", { allow: [group] })).toBe(true);
-      expect(isToolAllowedByPolicyName("branch", { allow: [group], deny: ["branch"] })).toBe(
-        false,
-      );
-      expect(isToolAllowedByPolicyName("branch", { allow: ["branch"], deny: [group] })).toBe(
-        false,
-      );
+      expect(isToolAllowedByPolicyName("branch", { allow: [group], deny: ["branch"] })).toBe(false);
+      expect(isToolAllowedByPolicyName("branch", { allow: ["branch"], deny: [group] })).toBe(false);
       for (const profile of [undefined, "full"]) {
         const policy = resolveCoreToolProfilePolicy(profile);
         expect(isToolAllowedByPolicies("branch", [policy])).toBe(true);
@@ -113,8 +109,12 @@ describe("tool-catalog", () => {
   it("includes code execution, web tools, and progress_card in the coding profile policy", () => {
     const policy = requireCoreToolProfilePolicy("coding");
     expect(policy.allow).toEqual([
+      "calculate",
+      "get_weather",
+      "sequentialthinking",
       "decision_evaluate",
       "ls",
+      "glob",
       "read",
       "write",
       "edit",
@@ -174,6 +174,9 @@ describe("tool-catalog", () => {
   it("includes bundle MCP tools in coding and messaging profile policies", () => {
     expect(requirePolicyAllow("coding").at(-1)).toBe("bundle-mcp");
     expect(requirePolicyAllow("messaging")).toEqual([
+      "calculate",
+      "get_weather",
+      "sequentialthinking",
       "decision_evaluate",
       "secrets",
       "personal_instructions",

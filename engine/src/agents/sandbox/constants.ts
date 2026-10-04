@@ -22,6 +22,7 @@ export const DEFAULT_TOOL_ALLOW = [
   "process",
   "read",
   "ls",
+  "glob",
   "write",
   "edit",
   "apply_patch",

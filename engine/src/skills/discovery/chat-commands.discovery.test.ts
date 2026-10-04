@@ -6,6 +6,7 @@ import { registerAgentWorkspaceAccess } from "../../agents/workspace-access.js";
 import { createSkillCommandLoaders } from "../../auto-reply/reply/skill-command-loaders.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { withEnvAsync } from "../../test-utils/env.js";
+import { cleanupSessionStateForTest } from "../../test-utils/session-state-cleanup.js";
 import { readWorkspaceSkillSources } from "../loading/workspace-skill-loader.js";
 import { resolveWorkspaceSkillSourcePlan } from "../loading/workspace-skill-sources.js";
 import { writeSkill } from "../test-support/e2e-test-helpers.js";
@@ -17,7 +18,14 @@ import {
   prepareSkillCommandsForAgents,
 } from "./chat-commands.js";
 
-const tempDirs = useAutoCleanupTempDirTracker((cleanup) => afterEach(cleanup));
+const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
+  afterEach(async () => {
+    for (const root of tempDirs.dirs) {
+      await cleanupSessionStateForTest({ stateDir: root, rootPath: root });
+    }
+    cleanup();
+  }),
+);
 
 describe("skill command discovery through workspace loading", () => {
   it("includes a registered remote workspace absent from the Gateway filesystem", async () => {

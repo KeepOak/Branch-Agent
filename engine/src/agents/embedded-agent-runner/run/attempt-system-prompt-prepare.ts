@@ -10,11 +10,13 @@ import {
   readAdmittedRunOperatorAuthority,
   resolveAdmittedRunActiveAssertion,
 } from "../../admitted-run-context.js";
+import { resolveAgentDir } from "../../agent-scope.js";
 import {
   buildBootstrapPromptWarningNotice,
   buildBootstrapTruncationReportMeta,
 } from "../../bootstrap-budget.js";
 import { resolveBranchReferencePaths } from "../../docs-path.js";
+import { prepareExternalProjectRulesPrompt } from "../../external-project-rules.js";
 import { prepareAgentMemoryPrompt } from "../../memory-prompt-prepare.js";
 import { buildModelToolsUnavailablePrompt } from "../../model-tool-support.js";
 import {
@@ -235,6 +237,20 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
   );
   const extraSystemPrompt = joinPresentTextSegments([
     attempt.extraSystemPrompt,
+    params.isRawModelRun
+      ? undefined
+      : await prepareExternalProjectRulesPrompt({
+          agentDir:
+            attempt.agentDir ?? resolveAgentDir(attempt.config ?? {}, params.setup.sessionAgentId),
+          workspace: params.setup.resolvedWorkspace,
+          executionWorkspace: params.setup.effectiveWorkspace,
+          bridge: params.setup.sandbox?.fsBridge,
+          prompt: attempt.prompt,
+          assertCurrent: () => {
+            policyPreparation.signal?.throwIfAborted();
+            policyPreparation.assertCurrent?.();
+          },
+        }),
     projectMemoryWriteInstruction,
     buildModelToolsUnavailablePrompt(params.modelToolsEnabled),
   ]);
