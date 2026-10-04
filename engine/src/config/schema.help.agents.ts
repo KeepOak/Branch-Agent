@@ -179,6 +179,8 @@ export const AGENT_FIELD_HELP: Record<string, string> = {
     "Threshold distance to compaction (in tokens) that triggers pre-compaction memory flush execution. Use earlier thresholds for safer persistence, or tighter thresholds for lower flush frequency.",
   "agents.defaults.compaction.memoryFlush.forceFlushTranscriptBytes":
     'Forces pre-compaction memory flush when the model-visible transcript window reaches this threshold (bytes or strings like "2mb"). After compaction, this includes the retained tail and subsequent turns rather than discarded history. Use this to prevent long-session hangs even when token counters are stale; set to 0 to disable.',
+  "agents.defaults.emitToolUseSummaries":
+    "Labels each completed batch of successful tool calls with a short past-tense summary (for example \"Searched in auth/\") written by the utility model and emitted on the agent event stream. Skipped when no utility model resolves. Default: true.",
   "agents.defaults.embeddedAgent":
     "Embedded Branch Agent runner hardening controls for how workspace-local agent settings are trusted and applied in Branch Agent sessions.",
   "agents.defaults.embeddedAgent.projectSettingsPolicy":

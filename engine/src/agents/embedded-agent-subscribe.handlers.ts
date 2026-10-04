@@ -19,6 +19,7 @@ import {
   handleToolExecutionUpdate,
 } from "./embedded-agent-subscribe.handlers.tools.js";
 import type { EmbeddedAgentSubscribeContext } from "./embedded-agent-subscribe.handlers.types.js";
+import { maybeEmitToolUseSummary } from "./embedded-agent-subscribe.tool-use-summary.js";
 import { recordEmbeddedToolTrajectoryEvent } from "./embedded-agent-subscribe.trajectory.js";
 import type { AgentSessionEvent } from "./sessions/index.js";
 
@@ -77,6 +78,8 @@ export function createEmbeddedAgentSessionEventHandler(ctx: EmbeddedAgentSubscri
         return;
       case "turn_end":
         void scheduleEvent(evt, () => ctx.noteLastAssistant(evt.message));
+        // Fire-and-forget: the label call must not hold later events.
+        maybeEmitToolUseSummary(ctx, evt);
         return;
       case "tool_execution_start":
         void scheduleEvent(evt, () => handleToolExecutionStart(ctx, evt));

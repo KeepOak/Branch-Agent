@@ -229,6 +229,8 @@ export const AgentDefaultsBaseSchema = z.strictObject({
   fastModeDefault: z.union([z.boolean(), z.literal("auto"), z.literal("ultrafast")]).optional(),
   verboseDefault: z.union([z.literal("off"), z.literal("on"), z.literal("full")]).optional(),
   toolProgressDetail: z.union([z.literal("explain"), z.literal("raw")]).optional(),
+  /** Label each completed tool batch with a short utility-model summary. Default: true. */
+  emitToolUseSummaries: z.boolean().optional(),
   reasoningDefault: z.union([z.literal("off"), z.literal("on"), z.literal("stream")]).optional(),
   elevatedDefault: z
     .union([z.literal("off"), z.literal("on"), z.literal("ask"), z.literal("full")])

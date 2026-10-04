@@ -502,6 +502,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "agents.defaults.compaction.memoryFlush.forceFlushTranscriptBytes":
     "Compaction Memory Flush Transcript Size Threshold",
   "agents.defaults.embeddedAgent": "Embedded Branch Agent",
+  "agents.defaults.emitToolUseSummaries": "Tool Batch Labels",
   "agents.defaults.embeddedAgent.projectSettingsPolicy":
     "Embedded Branch Agent Project Settings Policy",
   "agents.defaults.embeddedAgent.executionContract": "Embedded Branch Agent Execution Contract",
