@@ -1,5 +1,8 @@
 // Find anything (DESIGN-SPEC §4.1.7): the grouped rows and how typing filters them. Pure, so it is tested.
-export type PaletteRow = { id: string; group: string; label: string; hint: string; run: () => void };
+import type { IconName } from "./icons";
+
+/** `icon`: the 15 px line icon before the label (the preview's .ico). */
+export type PaletteRow = { id: string; group: string; label: string; hint: string; run: () => void; icon?: IconName };
 
 /** The groups in order; while typing, Messages and Trunks follow Settings. */
 export const GROUPS = ["Actions", "Conversations", "Places", "Settings", "Messages", "Trunks"];

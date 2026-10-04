@@ -43,7 +43,7 @@ function useMessageRows(request: Request, query: string, rowName: (k: string) =>
       clearTimeout(timer);
     };
   }, [request, query]);
-  const rows: PaletteRow[] = hits.map((h, i) => ({ id: `msg:${i}`, group: "Messages", label: h.snippet, hint: rowName(h.key), run: () => open(h.key) }));
+  const rows: PaletteRow[] = hits.map((h, i) => ({ id: `msg:${i}`, group: "Messages", label: h.snippet, hint: rowName(h.key), icon: "chat" as const, run: () => open(h.key) }));
   return { rows, note };
 }
 
@@ -113,6 +113,7 @@ export function Palette({ rows, request, rowName, onOpenConversation, onClose }:
                   onMouseMove={() => setSel(i)}
                   onClick={() => run(row)}
                 >
+                  {row.icon ? <span className="pal-ico"><Icon name={row.icon} small /></span> : null}
                   <span className="pal-label">{row.label}</span>
                   <span className="pal-hint">{row.hint}</span>
                 </button>

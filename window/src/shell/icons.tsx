@@ -90,7 +90,8 @@ const PATHS = {
   link: <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />,
   medal: <><circle cx="12" cy="14" r="5.5" /><path d="M8.5 9.5L6 3h4l2 4 2-4h4l-2.5 6.5" /></>,
   keyboard: <><rect x="2.5" y="6" width="19" height="12" rx="2" /><path d="M6 10h.1M9.5 10h.1M13 10h.1M16.5 10h.1M7 14.5h10" /></>,
-  info: <><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5.5M12 7.5v.1" /></>,} satisfies Record<string, ReactNode>;
+  info: <><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5.5M12 7.5v.1" /></>,
+  quick: <path d="M13 3.5L5.5 13.5H12l-1 7 7.5-10H12z" />,} satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof PATHS;
 

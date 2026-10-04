@@ -23,28 +23,29 @@ type Ctx = {
 
 export function paletteRows(c: Ctx): PaletteRow[] {
   const actions: PaletteRow[] = [
-    { id: "a:new", group: "Actions", label: "New conversation", hint: "Ctrl N", run: c.newConversation },
-    { id: "a:trunk", group: "Actions", label: "New Trunk", hint: "", run: () => c.openPlace("customize") },
-    { id: "a:theme", group: "Actions", label: "Switch light or dark", hint: "", run: c.toggleTheme },
-    { id: "a:focus", group: "Actions", label: "Focus mode", hint: "Ctrl .", run: c.focusMode },
-    { id: "a:keys", group: "Actions", label: "Keyboard shortcuts", hint: "?", run: c.shortcuts },
-    { id: "a:ask", group: "Actions", label: "Quick ask", hint: "Ctrl Shift Space", run: c.quickAsk },
-    { id: "a:replay", group: "Actions", label: "Replay the first run", hint: "", run: c.setup },
-    { id: "a:help", group: "Actions", label: "Get help setting up", hint: "", run: c.setup },
-    { id: "a:tour", group: "Actions", label: "Take the tour", hint: "2 min", run: c.tour },
-    { id: "a:skins", group: "Actions", label: "Browse skins", hint: "", run: () => c.openSettings("appearance") },
+    { id: "a:new", group: "Actions", label: "New conversation", hint: "Ctrl N", icon: "chat", run: c.newConversation },
+    { id: "a:trunk", group: "Actions", label: "New Trunk", hint: "", icon: "plus", run: () => c.openPlace("customize") },
+    { id: "a:theme", group: "Actions", label: "Switch light or dark", hint: "", icon: "moon", run: c.toggleTheme },
+    { id: "a:focus", group: "Actions", label: "Focus mode", hint: "Ctrl .", icon: "eye", run: c.focusMode },
+    { id: "a:keys", group: "Actions", label: "Keyboard shortcuts", hint: "?", icon: "keyboard", run: c.shortcuts },
+    { id: "a:replay", group: "Actions", label: "Replay the first run", hint: "", icon: "spark", run: c.setup },
+    { id: "a:skins", group: "Actions", label: "Browse skins", hint: "", icon: "sun", run: () => c.openSettings("appearance") },
+    { id: "a:tour", group: "Actions", label: "Take the tour", hint: "", icon: "spark", run: c.tour },
+    { id: "a:help", group: "Actions", label: "Get help setting up", hint: c.trunkName(undefined), icon: "ask", run: c.setup },
+    { id: "a:ask", group: "Actions", label: "Quick ask", hint: "Ctrl Shift Space", icon: "quick", run: c.quickAsk },
   ];
   const conversations = c.conversations.map((r) => ({
     id: `c:${r.key}`,
     group: "Conversations",
     label: r.isMain ? c.trunkName(r.agentId) : r.title || "New conversation",
     hint: r.isMain ? "Default Trunk" : c.trunkName(r.agentId),
+    icon: "chat" as const,
     run: () => c.openConversation(r.key),
   }));
-  const places = PLACES.map((p) => ({ id: `p:${p.id}`, group: "Places", label: p.name, hint: "Place", run: () => c.openPlace(p.id) }));
+  const places = PLACES.map((p) => ({ id: `p:${p.id}`, group: "Places", label: p.name, hint: "Place", icon: p.icon, run: () => c.openPlace(p.id) }));
   const settings = settingsGroups("technical").flatMap((g) =>
-    g.pages.map((p) => ({ id: `s:${p.id}`, group: "Settings", label: p.name, hint: "Settings", run: () => c.openSettings(p.id) })),
+    g.pages.map((p) => ({ id: `s:${p.id}`, group: "Settings", label: p.name, hint: "Settings", icon: "gear" as const, run: () => c.openSettings(p.id) })),
   );
-  const trunks = c.trunks.map((t) => ({ id: `t:${t.id}`, group: "Trunks", label: t.name, hint: "Trunk", run: () => c.openPlace("customize") }));
+  const trunks = c.trunks.map((t) => ({ id: `t:${t.id}`, group: "Trunks", label: t.name, hint: "Trunk", icon: "users" as const, run: () => c.openPlace("customize") }));
   return [...actions, ...conversations, ...places, ...settings, ...trunks];
 }

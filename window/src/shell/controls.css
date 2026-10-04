@@ -447,6 +447,19 @@ mark {
 .pal-row.sel {
   background: var(--fill-2);
 }
+.pal-ico {
+  display: grid;
+  flex: none;
+  color: var(--ink-3);
+}
+/* Group headings in Find anything are sentence case (the preview's .pal-list .ph). */
+.pal-list .ph {
+  padding: 8px 10px 4px;
+  font: 500 11.5px var(--sans);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+}
 .pal-label {
   flex: 1;
   min-width: 0;
