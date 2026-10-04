@@ -4,7 +4,7 @@
 import type { WindowEngine } from "../../../connect/engine";
 import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
-import { Btn, Ctl, Pick, Pill, Sec, Seg, Switch, Val, useLevel, useSaveRunner } from "../kit";
+import { Btn, Ctl, Empty, Pick, Pill, Sec, Seg, Switch, Val, useLevel, useSaveRunner } from "../kit";
 import { accountName, providersOf, type Account, type Provider } from "./accounts";
 import { Logo, serviceName } from "./service";
 
@@ -19,9 +19,9 @@ export function AccountsMore(props: Props) {
       <Sec title="Terms">
         <Ctl title="Each service’s terms" sub="Branch only signs in to a plan the way its service allows, and says so." off="Each service’s terms are on its own site; Branch doesn’t list them yet."><Btn sm>Read the lines</Btn></Ctl>
       </Sec>
-      <WhichNext {...props} />
+      {lv >= 2 ? <><WhichNext {...props} /><Sources providers={props.providers} agent={props.agent} /></> : null}
       <AccountsAdvanced {...props} />
-      {lv >= 2 ? <><Sources providers={props.providers} agent={props.agent} /><AccountsTechnical /></> : null}
+      {lv >= 2 ? <AccountsTechnical engine={props.engine} /> : null}
     </>
   );
 }
@@ -35,9 +35,9 @@ function WhichNext({ engine, providers, reload, agent }: Props) {
     await engine.request("models.authOrderSet", { provider: p.authProvider ?? p.provider, ...(mode === "order" ? { profileIds: ids } : {}), ...agent });
     await reload();
   });
-  if (!many.length) return null;
   return (
     <Sec title="Which account goes next" hint="Whatever the order, an account that runs out, refuses payment or loses its sign-in is skipped until its window refills. Only accounts you own are used.">
+      {many.length ? null : <Empty>No account yet.</Empty>}
       {many.map((p) => {
         const mode = p.profileOrder?.length ? "order" : "turns";
         return (
@@ -92,7 +92,7 @@ function TrunkAccount({ engine, trunk }: { engine: WindowEngine; trunk: RecordVa
     }
     await status.reload();
   });
-  return <Ctl title={name}><Pick label={`Account ${name} uses`} value={value} options={[{ id: "", label: "Anyone’s" }, ...options]} disabled={status.loading} onChange={pick} /></Ctl>;
+  return <Ctl title={name}><Pick label={name} value={value} options={[{ id: "", label: "Anyone’s" }, ...options]} disabled={status.loading} onChange={pick} /></Ctl>;
 }
 
 function Sources({ providers, agent }: { providers: Provider[]; agent: { agentId?: string } }) {
@@ -103,22 +103,34 @@ function Sources({ providers, agent }: { providers: Provider[]; agent: { agentId
   };
   return (
     <Sec title="Where each sign-in comes from" hint={agent.agentId ? "This Trunk’s own sign-ins." : "Every Trunk."}>
+      {providers.length ? null : <Empty>No service set up yet.</Empty>}
       {providers.map((p) => <Ctl key={p.provider} id={serviceName(p.provider, p.displayName)} title={serviceName(p.provider, p.displayName)} icon={<Logo id={p.provider} size={22} />}><Val>{line(p)}</Val></Ctl>)}
     </Sec>
   );
 }
 
-function AccountsTechnical() {
+/** The engine's device id, shortened for the row; the whole id is in the tooltip. */
+function shortId(id: string): string {
+  return id.length > 22 ? `${id.slice(0, 16)}…${id.slice(-3)}` : id;
+}
+
+function AccountsTechnical({ engine }: { engine: WindowEngine }) {
+  const ident = useResource<RecordValue>(engine, "gateway.identity.get", {});
+  const id = typeof ident.data?.deviceId === "string" ? ident.data.deviceId : "";
   return (
     <Sec title="Accounts, technical">
-      <Ctl stack title="A command that makes a sign-in" sub="For a service whose key comes from a program of yours. Its output is used as the key." off={NO_KEY}><input className="inp" placeholder="vault read -field=token secret/llm" aria-label="A command that makes a sign-in" /></Ctl>
+      <Ctl stack title="A command that makes a sign-in" sub="For a service whose key comes from a program of yours. Its output is used as the key." off={NO_KEY} after={<input className="inp cmd-acc" placeholder="vault read -field=token secret/llm" aria-label="A command that makes a sign-in" disabled />} />
       <Ctl title="On a build server, sign in with" off={NO_KEY}><Seg label="On a build server, sign in with" value="token" options={[{ id: "token", label: "A personal token" }, { id: "identity", label: "The server’s own identity" }]} onChange={() => undefined} /></Ctl>
       <Ctl title="Accept sign-ins from your editor" sub="An editor or kit already signed in can lend that sign-in." off={NO_KEY}><Switch checked={false} label="Accept sign-ins from your editor" onChange={() => undefined} /></Ctl>
+      <Ctl title="This Branch’s identity" sub="Signs Branch’s calls to other services and computers.">{id ? <span title={id}><Val code>{shortId(id)}</Val></span> : <Val>{ident.loading ? "Reading…" : "Not reported"}</Val>}</Ctl>
       <Ctl title="Sign-ins through the Gateway" sub="A service that asks for it signs in through the Gateway, which keeps the refreshed sign-in."><span title="The Gateway always keeps refreshed sign-ins."><Switch checked disabled label="Sign-ins through the Gateway" onChange={() => undefined} /></span></Ctl>
-      <Ctl title="Settings from another Branch" sub="Bring in a saved model setup, keys and connectors from a Branch on another computer." off={NO_KEY}><Btn sm>Bring in</Btn></Ctl>
+      <Ctl title="Settings from another Branch" sub="Bring in a saved model setup, keys and connectors from a Branch on another computer." off={NO_KEY}><Btn sm disabled>Bring in</Btn></Ctl>
       <Ctl title="Keep service settings in step on my devices" sub="Not keys: those stay on each computer." off={NO_KEY}><Switch checked={false} label="Keep service settings in step on my devices" onChange={() => undefined} /></Ctl>
+      <Ctl title="Use a model from a hub for one run"><Val code>branch --model owner/package</Val></Ctl>
       <Ctl title="Region" sub="Changes which services and mirrors come first." off={NO_KEY}><Pick label="Region" value="auto" options={[{ id: "auto", label: "Automatic" }, { id: "world", label: "Worldwide" }, { id: "cn", label: "China" }]} onChange={() => undefined} /></Ctl>
-      <Ctl title="Each account keeps its own folder" sub="A coding app’s sign-in for one account never mixes with another’s."><Pill tone="ok">Always</Pill></Ctl>
+      <Ctl title="Install a service’s package when needed" sub="Otherwise it says which one to install." off={NO_KEY}><Switch checked label="Install a service’s package when needed" onChange={() => undefined} /></Ctl>
+      <Ctl title="Each account keeps its own folder" sub="A coding app’s sign-in for one account never mixes with another’s."><Pill tone="ok">Always on</Pill></Ctl>
+      <Ctl title="Point your coding apps at Branch" sub="Writes the service you pick into each coding app’s own settings, so they all use the same one." off={NO_KEY}><Btn sm>Choose…</Btn></Ctl>
     </Sec>
   );
 }

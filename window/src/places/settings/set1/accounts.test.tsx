@@ -75,6 +75,30 @@ describe("Settings › Accounts", () => {
     expect(patch[1].baseHash).toBe("h1");
   });
 
+  it("Select several signs out of the ticked accounts, one models.authLogout per service", async () => {
+    const { engine, request } = engineOf();
+    await render(engine, 1);
+    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Select several")!.click());
+    const boxes = [...host.querySelectorAll<HTMLInputElement>(".prow input.chk-acc")];
+    expect(boxes).toHaveLength(3);
+    await act(async () => boxes[0].click());
+    await act(async () => boxes[1].click());
+    expect(host.querySelector(".bulk-acc b")?.textContent).toBe("2 selected");
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".bulk-acc button")].find((b) => b.textContent === "Sign out")!.click());
+    expect(request).toHaveBeenCalledWith("models.authLogout", { provider: "openai", profileIds: ["openai:b", "openai:a"] });
+    expect(request.mock.calls.filter(([m]) => m === "models.authLogout")).toHaveLength(1);
+    expect(host.querySelector(".bulk-acc")).toBeNull();
+  });
+
+  it("Select several moves the ticked accounts to the top of their service's order", async () => {
+    const { engine, request } = engineOf();
+    await render(engine, 1);
+    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Select several")!.click());
+    await act(async () => host.querySelectorAll<HTMLInputElement>(".prow input.chk-acc")[1].click());
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".bulk-acc button")].find((b) => b.textContent === "Move to the top")!.click());
+    expect(request).toHaveBeenCalledWith("models.authOrderSet", { provider: "openai", profileIds: ["openai:a", "openai:b"] });
+  });
+
   it("the wizard lists every service the engine can sign in to, by kind", () => {
     const services = servicesOf(CAPS, PROVIDERS, { prepareOptions: [{ id: "ollama", label: "Ollama" }] });
     expect(services.map((s) => [s.kind, s.name, s.signedIn])).toEqual([["plan", "ChatGPT", 2], ["key", "OpenAI", 0], ["key", "Mistral", 0], ["local", "Ollama", 0]]);

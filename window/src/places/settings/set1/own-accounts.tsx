@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
+import { Icon } from "../../../shell/icons";
 import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Empty, Plist, Prow, Sec, useSaveRunner } from "../kit";
@@ -30,7 +31,7 @@ export function OwnAccounts({ engine }: { engine: WindowEngine }) {
           ))}
         </Plist>
       ) : !own.loading && !own.error ? <Empty>No account of your own yet. New conversations use the household’s.</Empty> : null}
-      <div className="acts"><Btn sm disabled={own.loading || Boolean(own.error) || !accounts.length} title={!accounts.length ? "Add an account above first." : undefined} onClick={() => setAdding(true)}>Add your own account</Btn></div>
+      <div className="acts"><Btn sm disabled={own.loading || Boolean(own.error) || !accounts.length} title={!accounts.length ? "Add an account above first." : undefined} onClick={() => setAdding(true)}><Icon name="plus" small />Add your own account</Btn></div>
       {adding ? <PickOwn engine={engine} accounts={accounts.filter((a) => a.selected !== true)} onClose={(picked) => { setAdding(false); if (picked) void own.reload(); }} /> : null}
     </Sec>
   );

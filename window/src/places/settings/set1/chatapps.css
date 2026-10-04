@@ -84,3 +84,11 @@
   .dlg .kvrow-ca { grid-template-columns: minmax(0, 1fr); }
 }
 .dlg .ready-ca .status { background: var(--ok-tint); border-color: transparent; }
+/* Code readouts, as the preview's code chips; "Messages, every setting" titles are the keys in mono. */
+.set-col .sec[data-sec="Chat apps, technical"] code.val-k,
+.set-col .sec[data-sec="Chat commands and rules"] code.val-k { background: var(--wash17, var(--fill)); border-radius: 6px; padding: 3px 7px; max-width: min(420px, 52vw); overflow-wrap: anywhere; user-select: all; }
+.set-col .sec[data-sec="Messages, every setting"] > .ctl > b { font: 500 12px var(--mono); }
+.set-col .sec[data-sec="Messages, every setting"] .val-k { color: var(--ink-3); }
+.set-col .sec[data-sec="Commands in chat apps"] .prow b code { font: 500 12px var(--mono); }
+.set-col .sec .ctl > b > small.when-ca { display: inline; font-size: 12.5px; line-height: 18.125px; font-weight: 500; color: var(--ink-3); }
+.set-col .ctl > b:has(> .when-ca) { gap: 4px; }
