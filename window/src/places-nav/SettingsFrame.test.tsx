@@ -78,3 +78,34 @@ describe("settings frame level", () => {
     expect(document.querySelector('.set-item[data-page="general"]')?.getAttribute("aria-current")).toBe("true");
   });
 });
+
+
+describe("settings keyboard navigation", () => {
+  it("moves focus through grouped page links without changing pages until activated", async () => {
+    const onPage = await open("general");
+    const pages = [...document.querySelectorAll<HTMLButtonElement>(".set-nav .set-item")];
+    pages[0].focus();
+    await act(async () => pages[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    expect(document.activeElement).toBe(pages[1]);
+    expect(onPage).not.toHaveBeenCalled();
+    await act(async () => pages[1].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    expect(document.activeElement).toBe(pages.at(-1));
+    await act(async () => pages.at(-1)!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
+    expect(document.activeElement).toBe(pages[0]);
+    await act(async () => pages[0].click());
+    expect(onPage).toHaveBeenCalledWith("general");
+  });
+
+  it("level radio arrows move focus as well as choice, including Home and End", async () => {
+    await open("general");
+    const regular = document.querySelector<HTMLButtonElement>('[data-level="regular"]')!;
+    regular.focus();
+    await act(async () => regular.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    expect(document.activeElement?.getAttribute("data-level")).toBe("advanced");
+    expect(document.activeElement?.getAttribute("aria-checked")).toBe("true");
+    await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    expect(document.activeElement?.getAttribute("data-level")).toBe("technical");
+    await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
+    expect(document.activeElement?.getAttribute("data-level")).toBe("regular");
+  });
+});

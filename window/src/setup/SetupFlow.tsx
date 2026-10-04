@@ -17,6 +17,7 @@ import { MoreBody } from "./more-step";
 import { type ChatApp, CheckBody, KeepBody, PeopleBody, ReachBody, reachLede, ToolsBody, TrunksBody, YoursBody } from "./steps-later";
 import { makeTrunks, recordSetup, runChecks, testModel, useChatApps, useDetected, useKnown } from "./use-setup-engine";
 import { readPreConnect } from "./pre-connect-state";
+import { FirstTrunk } from "./FirstTrunk";
 
 type Props = {
   engine: WindowEngine;
@@ -26,6 +27,8 @@ type Props = {
   /** The default Trunk's name, for the first routine's line. */
   defaultName: string;
   startAt?: number;
+  requireContact?: boolean;
+  onContactCreated?: () => void;
   onClose: (finished: boolean) => void;
   onLocalModel: () => void;
 };
@@ -62,6 +65,15 @@ function useChoices() {
 }
 
 export function SetupFlow(p: Props) {
+  const [contact, setContact] = useState<{ id: string; name: string } | null>(null);
+  const [needsContact] = useState(() => !!p.requireContact || !p.trunkNames.length);
+  if ((needsContact || p.requireContact) && !contact) {
+    return <FirstTrunk engine={p.engine} onCreated={(id, name) => { setContact({ id, name }); p.onContactCreated?.(); }} />;
+  }
+  return <SetupFlowBody {...p} defaultAgentId={contact?.id ?? p.defaultAgentId} defaultName={contact?.name ?? p.defaultName} trunkNames={contact ? [...p.trunkNames, contact.name] : p.trunkNames} />;
+}
+
+function SetupFlowBody(p: Props) {
   const [choices, setChoices] = useChoices();
   const [step, setStep] = useState(p.startAt ?? 0);
   const [test, setTest] = useState<TestResult | "testing" | null>(null);

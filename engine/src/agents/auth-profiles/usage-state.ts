@@ -92,10 +92,9 @@ export function resolveProfileUnusableUntil(
   const blockedUntil = isBlockScopedToDifferentModel(stats, forModel)
     ? undefined
     : stats.blockedUntil;
-  const cooldownUntil =
-    forModel === null && isModelScopedCooldownReason(stats.cooldownReason) && stats.cooldownModel
-      ? undefined
-      : stats.cooldownUntil;
+  const cooldownUntil = isCooldownScopedToDifferentModel(stats, forModel)
+    ? undefined
+    : stats.cooldownUntil;
   const values = [blockedUntil, cooldownUntil, stats.disabledUntil]
     .map((value) => asDateTimestampMs(value))
     .filter((value): value is number => value !== undefined && value > 0);
