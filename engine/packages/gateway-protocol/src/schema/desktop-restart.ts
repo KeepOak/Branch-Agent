@@ -38,6 +38,26 @@ export const DesktopRestartCancelParamsSchema = Type.Union([
   DesktopRestartReceiptSchema,
   DesktopRestartAttemptSchema,
 ]);
+export const DesktopRestartObserveParamsSchema = DesktopRestartReceiptSchema;
+export const DesktopRestartObserveResultSchema = closedObject({
+  status: Type.Union([
+    Type.Literal("waiting"),
+    Type.Literal("recovered"),
+    Type.Literal("completed"),
+    Type.Literal("cancelled"),
+    Type.Literal("session-changed"),
+  ]),
+  runId: Type.Optional(NonEmptyString),
+  outcome: Type.Optional(
+    Type.Union([
+      Type.Literal("done"),
+      Type.Literal("failed"),
+      Type.Literal("killed"),
+      Type.Literal("timeout"),
+      Type.Literal("interrupted"),
+    ]),
+  ),
+});
 export const DesktopRestartIdentityParamsSchema = closedObject({});
 export const DesktopRestartIdentityResultSchema = closedObject({
   targetBuild: binding.targetBuild,
@@ -61,6 +81,8 @@ export const validateDesktopRestartPrepareParams = lazyCompile(DesktopRestartPre
 export const validateDesktopRestartCancelParams = lazyCompile(DesktopRestartCancelParamsSchema);
 export const validateDesktopRestartReceipt = lazyCompile(DesktopRestartReceiptSchema);
 export const DesktopRestartProtocolSchemas = {
+  DesktopRestartObserveParams: DesktopRestartObserveParamsSchema,
+  DesktopRestartObserveResult: DesktopRestartObserveResultSchema,
   DesktopRestartIdentityParams: DesktopRestartIdentityParamsSchema,
   DesktopRestartIdentityResult: DesktopRestartIdentityResultSchema,
   DesktopRestartReceipt: DesktopRestartReceiptSchema,

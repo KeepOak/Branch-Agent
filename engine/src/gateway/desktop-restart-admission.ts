@@ -1,5 +1,9 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type { DesktopRestartReceipt } from "../../packages/gateway-protocol/src/schema/desktop-restart.js";
+import { resolveStateDir } from "../config/paths.js";
 import type { AgentTurnPrincipal } from "./agent-turn/types.js";
+import { DesktopRestartReceiptStore } from "./desktop-restart-receipts.js";
 import type { GatewayClient } from "./server-methods/types.js";
 
 type Binding = {
@@ -64,4 +68,24 @@ export function commitDesktopRestartAdmission(
   }
   binding.assertCurrent();
   binding.accept(target.runId);
+}
+
+/** Existing canonical recovery supplies admitted source lineage, never requester proof.
+ * The eventual read still reauthorizes the original UI subject. */
+export function recordDesktopCanonicalRecoveryAdmission(target: {
+  sessionKey: string;
+  sessionId: string;
+  lifecycleRevision: string | null;
+  sourceRunIds: readonly string[];
+  runId: string;
+}): void {
+  if (!target.sourceRunIds.length) return;
+  const file = path.join(resolveStateDir(), "desktop-restart-receipts.sqlite");
+  if (!existsSync(file)) return;
+  const store = new DesktopRestartReceiptStore(file);
+  try {
+    store.recordCanonicalAdmission(target);
+  } finally {
+    store.close();
+  }
 }

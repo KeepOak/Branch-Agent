@@ -11,7 +11,8 @@ import type { DeliveryContext } from "../utils/delivery-context.types.js";
 export type DesktopRestartRequester = {
   profileId: string | null;
   userId: string | null;
-  deviceId: string;
+  deviceId: string | null;
+  subject?: object;
   clientId: string;
 };
 export type DesktopRestartBinding = {
@@ -25,7 +26,8 @@ export type DesktopRestartRecord = {
   requester: DesktopRestartRequester;
   request: DesktopRestartCheckpointParams;
   binding: DesktopRestartBinding;
-  phase: "prepared" | "claimed" | "accepted" | "cancelled";
+  phase: "prepared" | "claimed" | "accepted" | "cancelled" | "canonical";
+  canonical?: { runId: string; admission: true };
   runId?: string;
 };
 function stable(value: unknown): unknown {
@@ -140,7 +142,12 @@ export class DesktopRestartReceiptStore {
           record.receipt.targetBuild !== attempt.targetBuild
         )
           throw new Error("Desktop restart requester or receipt binding mismatch");
-        if (record.phase === "claimed" || record.phase === "accepted") return record;
+        if (
+          record.phase === "claimed" ||
+          record.phase === "accepted" ||
+          record.phase === "canonical"
+        )
+          return record;
         record.phase = "cancelled";
         this.save(record);
       }
@@ -214,6 +221,32 @@ export class DesktopRestartReceiptStore {
       return record;
     });
   }
+  recordCanonicalAdmission(target: {
+    sessionKey: string;
+    sessionId: string;
+    lifecycleRevision: string | null;
+    sourceRunIds: readonly string[];
+    runId: string;
+  }) {
+    this.transaction(() => {
+      const rows = this.db.prepare("SELECT record FROM receipts").all();
+      for (const row of rows) {
+        const record = JSON.parse(row.record as string) as DesktopRestartRecord;
+        if (
+          (record.phase !== "prepared" && record.phase !== "claimed") ||
+          record.binding.canonicalKey !== target.sessionKey ||
+          record.receipt.expectedSessionId !== target.sessionId ||
+          record.binding.lifecycleRevision !== target.lifecycleRevision ||
+          !record.binding.sourceRunId ||
+          !target.sourceRunIds.includes(record.binding.sourceRunId)
+        )
+          continue;
+        record.phase = "canonical";
+        record.canonical = { runId: target.runId, admission: true };
+        this.save(record);
+      }
+    });
+  }
   settle(
     receipt: DesktopRestartReceipt,
     requester: DesktopRestartRequester,
@@ -222,7 +255,12 @@ export class DesktopRestartReceiptStore {
   ) {
     return this.transaction(() => {
       const record = this.get(receipt, requester);
-      if (record.phase === "accepted" || record.phase === "cancelled") return record;
+      if (
+        record.phase === "accepted" ||
+        record.phase === "cancelled" ||
+        record.phase === "canonical"
+      )
+        return record;
       // Cancellation of claimed dispatch cannot revoke already admitted work.
       if (phase === "cancelled" && record.phase === "claimed") return record;
       record.phase = phase;

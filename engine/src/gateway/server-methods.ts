@@ -98,6 +98,7 @@ export { coreGatewayHandlers };
 
 const SUSPEND_CONTROL_METHODS = new Set([
   "desktop.restart.identity",
+  "desktop.restart.observe",
   "desktop.restart.prepare",
   "desktop.restart.cancel",
   "gateway.suspend.prepare",

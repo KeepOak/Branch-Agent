@@ -37,28 +37,48 @@ import { loadGatewaySessionEntryReadOnly } from "../session-utils-store.js";
 import { readGatewayRequestMutationAuthority } from "./session-mutation-guards.js";
 import type { GatewayRequestHandlerOptions, GatewayRequestHandlers } from "./types.js";
 
-function requester(options: GatewayRequestHandlerOptions): DesktopRestartRequester {
-  const client = options.client;
-  // The authenticated attach owner, never wire metadata, supplies device proof.
-  const deviceId = client?.connect.device?.id;
+export function captureDesktopRestartRequester(
+  client: GatewayRequestHandlerOptions["client"],
+): DesktopRestartRequester {
+  // Use the canonical accepted ingress, preserving legacy owner auth factors.
+  // Structural hints and credentials never become a device or a person.
   const facts = readGatewayLocalUserIngressFacts(getGatewayLocalUserIngress(client));
+  const deviceProof = facts?.assurance?.find((proof) => proof.kind === "device-proof");
   if (
-    !client?.internal?.authenticatedControlUi ||
-    client.internal.syntheticClient ||
-    !deviceId ||
-    !facts?.assurance?.some(
-      (proof) =>
-        proof.kind === "device-proof" &&
-        proof.strength === "cryptographic" &&
-        proof.rawEvidenceRef === deviceId,
-    )
+    !client ||
+    client.internal?.syntheticClient ||
+    client.connect.client.id !== "branch-control-ui" ||
+    facts?.ingress.kind !== "gateway-client" ||
+    facts.ingress.boundary !== "gateway.ws.authenticated-connect" ||
+    facts.ingress.state !== "present" ||
+    (deviceProof && deviceProof.rawEvidenceRef !== client.connect.device?.id)
   ) {
-    throw new Error("Desktop restart requires an authenticated paired UI requester");
+    throw new Error("Desktop restart requires a canonically accepted UI requester");
   }
+  const deviceId = deviceProof?.rawEvidenceRef ?? null;
+  const subject = {
+    ingress: {
+      kind: facts.ingress.kind,
+      boundary: facts.ingress.boundary,
+      state: facts.ingress.state,
+      rawSourceRef: facts.ingress.rawSourceRef ?? null,
+    },
+    invoker:
+      facts.invoker?.state === "present"
+        ? {
+            state: facts.invoker.state,
+            kind: facts.invoker.kind,
+            rawPrincipalRef: facts.invoker.rawPrincipalRef,
+          }
+        : facts.invoker?.state === "unknown"
+          ? { state: "unknown" }
+          : null,
+  };
   return {
     profileId: client.authenticatedUserProfile?.profileId ?? null,
     userId: client.authenticatedUserId ?? null,
     deviceId,
+    subject,
     clientId: client.pairedClientId ?? client.connect.client.id,
   };
 }
@@ -97,13 +117,17 @@ function hasActiveTask(
 }
 function result(record: DesktopRestartRecord) {
   return {
-    status: record.phase === "claimed" ? "uncertain" : record.phase,
-    ...(record.runId ? { runId: record.runId } : {}),
+    status: record.phase === "claimed" || record.phase === "canonical" ? "uncertain" : record.phase,
+    ...(record.canonical?.runId
+      ? { runId: record.canonical.runId }
+      : record.runId
+        ? { runId: record.runId }
+        : {}),
   };
 }
 async function handle(
   options: GatewayRequestHandlerOptions,
-  operation: "prepare" | "resume" | "cancel",
+  operation: "prepare" | "resume" | "cancel" | "observe",
 ) {
   const { params, context, respond } = options;
   const validator =
@@ -125,7 +149,7 @@ async function handle(
   try {
     const assertCurrent = readGatewayRequestMutationAuthority(options).assertCurrent;
     assertCurrent();
-    const actor = requester(options);
+    const actor = captureDesktopRestartRequester(options.client);
     store = new DesktopRestartReceiptStore(
       path.join(resolveStateDir(), "desktop-restart-receipts.sqlite"),
     );
@@ -164,7 +188,6 @@ async function handle(
       const active = activeSessionKeys(options);
       const snapshot = createGatewayActiveWorkSnapshot(
         createGatewayServerActiveWorkInspectors(context),
-        { ignoreTerminalSessions: true },
       );
       const hasSelected =
         target?.entry && hasActiveTask(options, target.canonicalKey, target.entry.sessionId);
@@ -175,7 +198,13 @@ async function handle(
         snapshot.counts.cronRuns +
         snapshot.counts.sessionMutations +
         snapshot.counts.terminalPersistence +
-        snapshot.counts.lifecycleWrites;
+        snapshot.counts.lifecycleWrites +
+        snapshot.counts.terminalSessions +
+        snapshot.counts.rootRequests +
+        snapshot.counts.queueSize +
+        snapshot.counts.pendingReplies +
+        snapshot.counts.sessionAdmissions +
+        snapshot.counts.queuedTurns;
       if (
         [...active].some((key) => key !== canonicalKey) ||
         (!hasSelected && !snapshot.idle) ||
@@ -223,6 +252,63 @@ async function handle(
     }
     const receipt = params as DesktopRestartReceipt;
     let record = store.get(receipt, actor);
+    if (operation === "observe") {
+      if (process.env.BRANCH_DESKTOP_ENGINE_BUILD_SHA256 !== receipt.targetBuild)
+        throw new Error("Desktop restart candidate identity does not match the running engine");
+      if (record.phase === "cancelled") {
+        respond(true, { status: "cancelled" });
+        return;
+      }
+      const target = loadGatewaySessionEntryReadOnly(
+        record.binding.canonicalKey,
+        undefined,
+        context.getRuntimeConfig(),
+      );
+      if (
+        !target.entry ||
+        target.entry.sessionId !== receipt.expectedSessionId ||
+        (target.entry.lifecycleRevision ?? null) !== record.binding.lifecycleRevision
+      ) {
+        respond(true, { status: "session-changed" });
+        return;
+      }
+      const runId =
+        record.canonical?.runId ?? (record.phase === "accepted" ? record.runId : undefined);
+      if (runId) {
+        if (
+          target.entry.lastRunId === runId &&
+          target.entry.status &&
+          target.entry.status !== "running" &&
+          target.entry.status !== "queued"
+        ) {
+          respond(true, { status: "completed", runId, outcome: target.entry.status });
+          return;
+        }
+        // Admission witness is durable, matched to this exact original source.
+        // It establishes canonical custody, never a new completion claim.
+        respond(true, { status: "recovered", runId });
+        return;
+      }
+      if (
+        record.binding.sourceRunId &&
+        target.entry.lastRunId === record.binding.sourceRunId &&
+        target.entry.status &&
+        target.entry.status !== "running" &&
+        target.entry.status !== "queued"
+      ) {
+        respond(true, {
+          status: "completed",
+          runId: record.binding.sourceRunId,
+          outcome: target.entry.status,
+        });
+        return;
+      }
+      respond(true, {
+        status: "waiting",
+        ...(target.entry.lifecycleRunId ? { runId: target.entry.lifecycleRunId } : {}),
+      });
+      return;
+    }
     if (record.phase === "claimed") {
       const target = loadGatewaySessionEntryReadOnly(
         record.binding.canonicalKey,
@@ -394,7 +480,7 @@ export const desktopRestartHandlers: GatewayRequestHandlers = {
     }
     try {
       readGatewayRequestMutationAuthority(options).assertCurrent();
-      requester(options);
+      captureDesktopRestartRequester(options.client);
       const targetBuild = process.env.BRANCH_DESKTOP_ENGINE_BUILD_SHA256;
       if (!targetBuild || targetBuild.length !== 64 || !/^[a-f0-9]{64}$/.test(targetBuild)) {
         options.respond(
@@ -423,6 +509,7 @@ export const desktopRestartHandlers: GatewayRequestHandlers = {
     }
   },
   "desktop.restart.prepare": (options) => handle(options, "prepare"),
+  "desktop.restart.observe": (options) => handle(options, "observe"),
   "desktop.restart.resume": (options) => handle(options, "resume"),
   "desktop.restart.cancel": (options) => handle(options, "cancel"),
 };

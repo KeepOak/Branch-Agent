@@ -1,4 +1,3 @@
-import { commitDesktopRestartAdmission } from "../desktop-restart-admission.js";
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import {
   createOperationalRunInstanceRef,
@@ -30,6 +29,10 @@ import { assertAgentRunLifecycleGenerationCurrent } from "../../infra/agent-even
 import { claimAgentRunContext } from "../../infra/agent-run-registry.js";
 import { isSubagentCoordinationInputProvenance } from "../../sessions/input-provenance.js";
 import { registerChatAbortController, resolveAgentRunExpiresAtMs } from "../chat-abort.js";
+import {
+  commitDesktopRestartAdmission,
+  recordDesktopCanonicalRecoveryAdmission,
+} from "../desktop-restart-admission.js";
 import { readInProcessSubagentResume } from "../in-process-subagent-resume.js";
 import { retainGatewayOperatorRun } from "../operator-run-cancellation.js";
 import { resolveGatewayCronCreatorAuthorityAdmission } from "../server-methods/cron-creator-authority-admission.js";
@@ -582,9 +585,31 @@ export async function prepareAgentRunDispatch(
       }
     }
     commitDesktopRestartAdmission(params.request, params.client, {
-      runId: params.runId, sessionKey: params.resolvedSessionKey,
+      runId: params.runId,
+      sessionKey: params.resolvedSessionKey,
       sessionId: params.getAdmittedSessionId(),
     });
+    if (params.isRestartRecoveryResumeRun && params.resolvedSessionKey) {
+      // Optional observation must never rewrite or block existing recovery authority.
+      try {
+        recordDesktopCanonicalRecoveryAdmission({
+          sessionKey: params.resolvedSessionKey,
+          sessionId: params.getAdmittedSessionId(),
+          lifecycleRevision: params.sessionEntry?.lifecycleRevision ?? null,
+          sourceRunIds: [
+            ...new Set([
+              ...(params.sessionEntry?.restartRecoveryRuns?.map((run) => run.runId) ?? []),
+              ...(params.sessionEntry?.restartRecoveryDeliverySourceRunId
+                ? [params.sessionEntry.restartRecoveryDeliverySourceRunId]
+                : []),
+            ]),
+          ],
+          runId: params.runId,
+        });
+      } catch {
+        params.context.logGateway.warn("Desktop restart canonical custody observation unavailable");
+      }
+    }
     followupCompletion?.markAccepted(params.runId);
     params.markAgentRunAccepted(true);
     setGatewayDedupeEntries({

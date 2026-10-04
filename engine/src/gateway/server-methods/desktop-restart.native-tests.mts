@@ -103,12 +103,8 @@ async function fixture(run: (f: any) => Promise<void>) {
     checkpoint: "Exact fixture checkpoint",
   };
   let current = true;
-  const actor = {
-    profileId: null,
-    userId: null,
-    deviceId: "fixture-device",
-    clientId: "branch-control-ui",
-  };
+  const { captureDesktopRestartRequester } = await import("./desktop-restart.js");
+  const actor = captureDesktopRestartRequester(client);
   const options = (
     operation: string,
     params: Record<string, unknown>,
@@ -169,6 +165,7 @@ async function fixture(run: (f: any) => Promise<void>) {
       call,
       register,
       createReplyOperation,
+      actor,
       revoke: () => {
         current = false;
       },
@@ -281,7 +278,7 @@ test("actual source preserves wrong-candidate receipt and cancels completed task
     const { releaseDesktopRestartFence } = await import("../desktop-restart-fence.js");
     releaseDesktopRestartFence(
       { lifecycleGeneration: receipt.lifecycleGeneration, targetBuild: receipt.targetBuild },
-      { profileId: null, userId: null, deviceId: "fixture-device", clientId: "branch-control-ui" },
+      f.actor,
     );
     process.env.BRANCH_DESKTOP_ENGINE_BUILD_SHA256 = "b".repeat(64);
     assert.equal((await f.call("resume", receipt)).ok, false);
@@ -298,7 +295,7 @@ test("actual normal agent router enforces fresh command authorization on a host-
     const { releaseDesktopRestartFence } = await import("../desktop-restart-fence.js");
     releaseDesktopRestartFence(
       { lifecycleGeneration: receipt.lifecycleGeneration, targetBuild: receipt.targetBuild },
-      { profileId: null, userId: null, deviceId: "fixture-device", clientId: "branch-control-ui" },
+      f.actor,
     );
     f.client.connect.scopes = ["operator.write"];
     const response = await f.call("resume", receipt);
@@ -389,7 +386,7 @@ test("actual same-session canonical recovery retains its observed producer and c
     const { releaseDesktopRestartFence } = await import("../desktop-restart-fence.js");
     releaseDesktopRestartFence(
       { lifecycleGeneration: receipt.lifecycleGeneration, targetBuild: receipt.targetBuild },
-      { profileId: null, userId: null, deviceId: "fixture-device", clientId: "branch-control-ui" },
+      f.actor,
     );
     const { registerChatAbortController } = await import("../chat-abort.js");
     f.seed({ lifecycleRunId: "canonical-recovered-run" });
@@ -438,4 +435,93 @@ test("actual router rejects copied client fields without opaque handshake-attest
     const { isGatewayWorkAdmissionClosed } =
       await import("../../process/gateway-work-admission.js");
     assert.equal(isGatewayWorkAdmissionClosed(), false);
+  }));
+
+test("actual accepted legacy owner UI needs no new device factor, while opaque canonical subject remains required", () =>
+  fixture(async (f) => {
+    const { attachGatewayLocalUserIngress, prepareGatewayLocalUserIngress } =
+      await import("../local-user-ingress.js");
+    delete f.client.connect.device;
+    attachGatewayLocalUserIngress(
+      f.client,
+      prepareGatewayLocalUserIngress({
+        authMethod: "token",
+        authenticatedUserExpected: false,
+        isLocalClient: true,
+      }),
+    );
+    const prepared = await f.call("prepare", {
+      lifecycleGeneration: f.request.lifecycleGeneration,
+      targetBuild: f.request.targetBuild,
+    });
+    assert.equal(prepared.payload.status, "idle");
+    assert.equal(
+      (
+        await f.call("cancel", {
+          lifecycleGeneration: f.request.lifecycleGeneration,
+          targetBuild: f.request.targetBuild,
+        })
+      ).payload.status,
+      "cancelled",
+    );
+  }));
+test("actual open terminal sessions and unowned queued work defer without cancelling a terminal or stopping admission", () =>
+  fixture(async (f) => {
+    f.context.terminalSessions = { size: 1 };
+    const idle = {
+      lifecycleGeneration: f.request.lifecycleGeneration,
+      targetBuild: f.request.targetBuild,
+    };
+    assert.equal((await f.call("prepare", idle)).payload.status, "deferred");
+    const { isGatewayWorkAdmissionClosed, tryBeginGatewayIndependentRootWorkAdmission } =
+      await import("../../process/gateway-work-admission.js");
+    assert.equal(isGatewayWorkAdmissionClosed(), false);
+    f.context.terminalSessions = undefined;
+    const other = tryBeginGatewayIndependentRootWorkAdmission("unowned:request");
+    assert.ok(other);
+    const live = f.register();
+    assert.equal((await f.call("prepare", f.request)).payload.status, "deferred");
+    assert.equal(live.controller.signal.aborted, false);
+    other.release();
+    live.cleanup();
+  }));
+test("actual observer reconciles canonical durable custody and fast terminal completion without dispatching a second turn", () =>
+  fixture(async (f) => {
+    const live = f.register();
+    const { payload: receipt } = await f.call("prepare", f.request);
+    live.cleanup();
+    const { releaseDesktopRestartFence } = await import("../desktop-restart-fence.js");
+    releaseDesktopRestartFence(
+      { lifecycleGeneration: receipt.lifecycleGeneration, targetBuild: receipt.targetBuild },
+      f.actor,
+    );
+    const waiting = await f.call("observe", receipt);
+    assert.equal(waiting.payload.status, "waiting");
+    const { recordDesktopCanonicalRecoveryAdmission } =
+      await import("../desktop-restart-admission.js");
+    recordDesktopCanonicalRecoveryAdmission({
+      sessionKey: f.scope.sessionKey,
+      sessionId: f.scope.sessionId,
+      lifecycleRevision: "life-a",
+      sourceRunIds: ["different-original"],
+      runId: "unrelated-run",
+    });
+    assert.equal((await f.call("observe", receipt)).payload.status, "waiting");
+    recordDesktopCanonicalRecoveryAdmission({
+      sessionKey: f.scope.sessionKey,
+      sessionId: f.scope.sessionId,
+      lifecycleRevision: "life-a",
+      sourceRunIds: ["original-run"],
+      runId: "canonical-recovered-run",
+    });
+    const recovered = await f.call("observe", receipt);
+    assert.deepEqual(recovered.payload, { status: "recovered", runId: "canonical-recovered-run" });
+    assert.equal((await f.call("resume", receipt)).payload.status, "uncertain");
+    f.seed({ status: "done", lastRunId: "canonical-recovered-run", lifecycleRunId: undefined });
+    assert.deepEqual((await f.call("observe", receipt)).payload, {
+      status: "completed",
+      runId: "canonical-recovered-run",
+      outcome: "done",
+    });
+    assert.equal(f.context.chatAbortControllers.size, 0);
   }));
