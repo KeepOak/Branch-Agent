@@ -5,6 +5,7 @@ import path from "node:path";
 import { parseStrictNonNegativeInteger } from "@branch/normalization-core/number-coercion";
 import { findAgentRunTerminalOutcome } from "../agents/agent-run-terminal-error.js";
 import { createAgentToolExecutionBudget } from "../agents/agent-tool-source-execution-guard.js";
+import { mergeCliRulesIntoExtraSystemPrompt } from "../agents/cli-rules.js";
 import {
   recordAgentCleanupFailure,
   createAgentCleanupScope,
@@ -266,6 +267,8 @@ export async function agentExecCommand(
       opts.messageFile,
       deps.stdin ?? process.stdin,
     );
+    // Rule files resolve against the caller's directory before state and workspace move.
+    const extraSystemPrompt = mergeCliRulesIntoExtraSystemPrompt(undefined, opts.rule);
     const cwd = await requireDirectory(opts.cwd ?? process.cwd(), "Working directory");
     const stateDir = opts.stateDir
       ? await requireDirectory(opts.stateDir, "State directory")
@@ -406,6 +409,7 @@ export async function agentExecCommand(
           codeModeOverride,
           thinking: opts.thinking,
           timeout,
+          ...(extraSystemPrompt ? { extraSystemPrompt } : {}),
           modelFallbacksOverride:
             fallbacks.length > 0 || deps.modelFallbacksOverride !== undefined
               ? fallbacks

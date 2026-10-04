@@ -42,6 +42,10 @@ export const engineTests = [
   'src/agents/cli-output-stream.test.ts',
   'src/agents/cli-output-records.test.ts',
   'src/agents/cli-output-jsonl.test.ts',
+  // feat-memory batch 1: instructions, memory setup and chat memory commands.
+  'src/agents/cli-rules.test.ts',
+  'src/cli/program/register.agent.test.ts',
+  'src/commands/agent-via-gateway.test.ts',
 ];
 
 export const windowTests = [
@@ -128,6 +132,13 @@ export const engineStrictFiles = [
   'src/infra/host-env-security-policy.d.ts',
   'src/agents/cli-output-stream.ts',
   'src/agents/cli-output-stream.test.ts',
+  // feat-memory batch 1: instructions, memory setup and chat memory commands.
+  'src/agents/cli-rules.ts',
+  'src/agents/cli-rules.test.ts',
+  'src/cli/program/register.agent-turn.ts',
+  'src/commands/agent-exec-input.ts',
+  'src/commands/agent-via-gateway.ts',
+  'src/commands/agent-exec.ts',
 ];
 
 export const windowStrictFiles = [

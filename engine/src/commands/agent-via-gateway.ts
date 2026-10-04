@@ -23,6 +23,7 @@ import {
   tryResolveAgentOperationAgentId,
   tryResolveSoleAgentId,
 } from "../agents/agent-scope-config.js";
+import { mergeCliRulesIntoExtraSystemPrompt } from "../agents/cli-rules.js";
 import { measureAgentStartup } from "../agents/startup-timing.js";
 import { isExecutionIdentityCollectionEnabled } from "../audit/audit-config.js";
 import { readAgentRunTerminalOutcome } from "../channels/turn/agent-run-terminal-outcome.js";
@@ -120,6 +121,8 @@ type AgentCliOpts = {
   lane?: string;
   runId?: string;
   extraSystemPrompt?: string;
+  /** Repeatable `--rule` values: file paths are read, other values are literal rule text. */
+  rule?: string[];
   local?: boolean;
 };
 type RemoteGatewayRoster = {
@@ -130,7 +133,7 @@ type RemoteGatewayRoster = {
   mainKey: string;
   scope: AgentsListResult["scope"];
 };
-type AgentDispatchOpts = Omit<AgentCliOpts, "messageFile"> & {
+type AgentDispatchOpts = Omit<AgentCliOpts, "messageFile" | "rule"> & {
   message: string;
   gatewayDispatchConfig?: BranchConfig;
   remoteGatewayRoster?: RemoteGatewayRoster;
@@ -421,7 +424,12 @@ async function readAgentMessageFile(messageFile: string): Promise<string> {
 }
 
 async function resolveAgentMessageOpts(opts: AgentCliOpts): Promise<AgentDispatchOpts> {
-  const { messageFile: rawMessageFile, ...rest } = opts;
+  const { messageFile: rawMessageFile, rule, ...optsWithoutRule } = opts;
+  const extraSystemPrompt = mergeCliRulesIntoExtraSystemPrompt(
+    optsWithoutRule.extraSystemPrompt,
+    rule,
+  );
+  const rest = extraSystemPrompt ? { ...optsWithoutRule, extraSystemPrompt } : optsWithoutRule;
   const messageFile = rawMessageFile?.trim();
   const hasInlineMessage = opts.message !== undefined;
   if (hasInlineMessage && messageFile) {

@@ -517,6 +517,23 @@ describe("agent exec command composition", () => {
     });
   });
 
+  it("passes --rule files and text to the embedded turn as extra system prompt", async () => {
+    const ruleDir = tempDirs.make("branch-agent-exec-rule-");
+    const ruleFile = path.join(ruleDir, "rules.md");
+    await fs.writeFile(ruleFile, "Use pnpm, never npm.\n", "utf8");
+    const runtime = createTestRuntime();
+    const runAgent = vi.fn(async () => successResult());
+
+    await agentExecCommand("inspect", { rule: [ruleFile, "Be brief.", "Be brief."] }, runtime, {
+      runAgent,
+    });
+
+    expect(runAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ extraSystemPrompt: "Use pnpm, never npm.\n\nBe brief." }),
+      expect.any(Object),
+    );
+  });
+
   it("undoes environment mutations made by loading the config", async () => {
     const seedDir = tempDirs.make("branch-agent-exec-envseed-");
     const seedPath = path.join(seedDir, "branch.json");

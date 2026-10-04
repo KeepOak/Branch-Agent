@@ -42,6 +42,12 @@ export function registerAgentTurnCommand(
       false,
     )
     .option("--deliver", "Send the agent's reply back to the selected channel", false)
+    .option(
+      "--rule <rule>",
+      "Add a rule to the system prompt (file path or text; repeatable)",
+      collectOption,
+      [],
+    )
     .option("--json", "Output result as JSON", false)
     .option(
       "--timeout <seconds>",
@@ -69,6 +75,10 @@ ${formatHelpExamples([
     "Enable verbose logging and JSON output.",
   ],
   ['branch agent --to +15555550123 --message "Summon reply" --deliver', "Deliver reply."],
+  [
+    'branch agent --agent ops --rule ./RULES.md --rule "Answer in Spanish" --message "Status"',
+    "Add rules from a file and from text for this run.",
+  ],
   [
     'branch agent --agent ops --message "Generate report" --deliver --reply-channel slack --reply-to "#reports"',
     "Send reply to a different channel/target.",
@@ -126,6 +136,12 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
       collectOption,
       [],
     )
+    .option(
+      "--rule <rule>",
+      "Add a rule to the system prompt (file path or text; repeatable)",
+      collectOption,
+      [],
+    )
     .option("--auth-env-only", "Use provider credentials from environment variables only", false)
     .option("--no-auth-env-only", "Allow stored and external CLI credential discovery")
     .option("--timeout <seconds>", "Agent deadline in seconds", "600")
@@ -157,6 +173,7 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
             thinking?: string;
             timeout?: string;
             json?: boolean;
+            rule?: string[];
           }
         | undefined;
       const execOpts = {
@@ -168,6 +185,8 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
         // leaf source is default. An explicit nested --timeout must win.
         timeout: inheritOptionFromParent<string>(command, "timeout") ?? opts.timeout,
         json: opts.json === true || parentOpts?.json === true,
+        // Both levels default to []; parent rules apply first, duplicates are dropped later.
+        rule: [...(parentOpts?.rule ?? []), ...((opts.rule as string[] | undefined) ?? [])],
       };
       const [
         { defaultRuntime },

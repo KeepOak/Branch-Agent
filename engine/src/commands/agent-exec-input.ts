@@ -17,6 +17,8 @@ export type AgentExecCliOptions = {
   model?: string;
   thinking?: string;
   fallback?: string[];
+  /** Repeatable `--rule` values: file paths are read, other values are literal rule text. */
+  rule?: string[];
   codeMode?: "direct" | "auto" | "code";
   localModelLean?: boolean;
   authEnvOnly?: boolean;

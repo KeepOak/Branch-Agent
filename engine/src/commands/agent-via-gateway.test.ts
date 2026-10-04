@@ -459,6 +459,41 @@ describe("agentCliCommand", () => {
     },
   );
 
+  it("sends deduplicated --rule text and rule files as extra system prompt", async () => {
+    const ruleDir = fs.mkdtempSync(path.join(os.tmpdir(), "branch-agent-rule-"));
+    try {
+      const ruleFile = path.join(ruleDir, "RULES.md");
+      fs.writeFileSync(ruleFile, "Always answer in Spanish.\n", "utf8");
+      await withTempStore(async () => {
+        mockGatewaySuccessReply();
+
+        await agentCliCommand(
+          {
+            message: "hi",
+            to: "+1555",
+            rule: [ruleFile, "Be brief.", ruleFile, "Be brief."],
+          },
+          runtime,
+        );
+
+        const request = requireRecord(
+          requireFirstCallArg(callGateway, "gateway"),
+          "gateway request",
+        );
+        expect(request.params).toMatchObject({
+          extraSystemPrompt: "Always answer in Spanish.\n\nBe brief.",
+        });
+        expect(request.params).not.toHaveProperty("rule");
+        await expect(
+          agentCliCommand({ message: "hi", to: "+1555", rule: ["nate/spanish"] }, runtime),
+        ).rejects.toThrow('Cannot load "nate/spanish" from hub');
+        expect(callGateway).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      fs.rmSync(ruleDir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps an agent-scoped gateway turn off session and delivery runtimes", async () => {
     await withTempStore(
       async () => {

@@ -149,6 +149,21 @@ describe("agent command registration", () => {
     expect(agentCliCommandMock).not.toHaveBeenCalled();
   });
 
+  it("collects repeatable --rule values for agent turns and nested exec", async () => {
+    await runCli(["agent", "--message", "hi", "--rule", "./RULES.md", "--rule", "Be brief."]);
+    expect(agentCliCommandMock).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ message: "hi", rule: ["./RULES.md", "Be brief."] }),
+      runtime,
+    );
+
+    await runCli(["agent", "--rule", "parent rule", "exec", "fix", "--rule", "leaf rule"]);
+    expect(agentExecCommandMock).toHaveBeenCalledWith(
+      "fix",
+      expect.objectContaining({ rule: ["parent rule", "leaf rule"] }),
+      runtime,
+    );
+  });
+
   it.each([
     {
       args: ["alpha"],
