@@ -1,12 +1,12 @@
 // The plugin catalogue (plugins.catalog.browse / categories) as the preview's "Add a connector" and "Plugins"
 // dialogs (93-g3p.js, 42-placesbp.js czp-dlg). Installs go through plugins.install; when the engine asks for a
 // capability review first, the person confirms and the install is sent again with acknowledgeCapabilities.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
-import { errorText, useResource } from "../library/data";
+import { errorText, RequestGeneration, useResource } from "../library/data";
 import { Status } from "../library/ui";
 import { Grey, list, Logo, rec, str, type Rec } from "./common";
 
@@ -22,22 +22,32 @@ type Consent = { method: string; params: Rec; token: string; message: string };
 /** Runs a plugin mutation; a capability-consent refusal comes back as a review to confirm, not an error. */
 export function usePluginAction(engine: WindowEngine) {
   const pending = useRef(false);
+  const generation = useRef(new RequestGeneration());
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [consent, setConsent] = useState<Consent | null>(null);
+  useEffect(() => {
+    pending.current = false;
+    setBusy(null); setError(null); setConsent(null);
+    const guard = generation.current;
+    return () => { guard.retire(); pending.current = false; };
+  }, [engine]);
   async function run(key: string, method: string, params: Rec, done: () => void) {
     if (pending.current) return;
     pending.current = true;
+    const isCurrent = generation.current.next();
     setBusy(key); setError(null);
     try {
       const result = rec(await engine.request(method, params));
+      if (!isCurrent()) return;
       if (result.ok === false) throw new Error(str(result.error) || str(result.message) || "The engine did not apply this change.");
       setConsent(null); done();
     } catch (e) {
+      if (!isCurrent()) return;
       const details = rec(rec(e).details);
       if (str(details.capabilityConsentCode) && str(details.reviewToken)) setConsent({ method, params, token: str(details.reviewToken), message: errorText(e) });
       else setError(errorText(e));
-    } finally { pending.current = false; setBusy(null); }
+    } finally { if (isCurrent()) { pending.current = false; setBusy(null); } }
   }
   return { busy, error, consent, run, dismiss: () => setConsent(null) };
 }

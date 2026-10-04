@@ -39,3 +39,28 @@ it("keeps the first plugin mutation and its capability review when another actio
     expect(action.consent).toBeNull();
   } finally { await act(async () => { root.unmount(); }); }
 });
+
+it("ignores the former engine's plugin result while the replacement engine is working", async () => {
+  let finishOld!: (value: unknown) => void;
+  let finishNew!: (value: unknown) => void;
+  const oldEngine = { request: vi.fn(() => new Promise(done => { finishOld = done; })) } as unknown as WindowEngine;
+  const newEngine = { request: vi.fn(() => new Promise(done => { finishNew = done; })) } as unknown as WindowEngine;
+  const done = vi.fn();
+  let action!: PluginAction;
+  function Harness({ engine }: { engine: WindowEngine }) { action = usePluginAction(engine); return null; }
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => { root.render(<Harness engine={oldEngine} />); });
+    let oldRequest!: Promise<void>;
+    await act(async () => { oldRequest = action.run("old", "plugins.install", {}, done); });
+    await act(async () => { root.render(<Harness engine={newEngine} />); });
+    let newRequest!: Promise<void>;
+    await act(async () => { newRequest = action.run("new", "plugins.install", {}, done); });
+    await act(async () => { finishOld({ ok: true }); await oldRequest; });
+    expect(done).not.toHaveBeenCalled();
+    expect(action.busy).toBe("new");
+    await act(async () => { finishNew({ ok: true }); await newRequest; });
+    expect(done).toHaveBeenCalledOnce();
+    expect(action.busy).toBeNull();
+  } finally { await act(async () => { root.unmount(); }); }
+});
