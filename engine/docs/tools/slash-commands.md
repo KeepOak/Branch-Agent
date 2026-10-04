@@ -302,6 +302,7 @@ plugins, and installed skills.
     | `/goal [status\|start\|edit\|pause\|resume\|complete\|block\|clear] ...` | Manage the current session's durable [goal](/tools/goal) |
     | `/dashboard [request]` | Create or update the current session's dashboard using the Control UI dashboard workflow |
     | `/diagnostics [note]` | Owner-only support-report flow. Asks for exec approval every time |
+    | `/warnings` | Show retained runtime warnings and plugin errors |
     | `/branch <request>` | Run the Branch Agent setup and repair helper from an owner DM |
     | `/context [list\|detail\|map\|json]` | Explain how context is assembled |
     | `/whoami` | Show your sender id. Alias: `/id` |
@@ -317,6 +318,7 @@ user skill directly.
     | Command | Description |
     | --- | --- |
     | `/skill <name> [input]` | Run a skill by name |
+    | `/skills [list] [page]` | List available skills |
     | `/learn [request]` | Draft one reviewable skill from the current conversation or named sources through [Skill Workshop](/tools/skill-workshop) |
     | `/init [request]` | Study the project and the user with the bundled `initializing-memory` skill, then write `AGENTS.md`, `SOUL.md`, `USER.md`, `MEMORY.md` and `memory/` notes |
     | `/remember <text>` | Save a durable memory: the agent adds it to `MEMORY.md` with its file tools |

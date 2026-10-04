@@ -52,6 +52,7 @@ export const engineTests = [
   'extensions/memory-core/index.test.ts',
   'src/auto-reply/reply/commands-init.test.ts',
   'src/agents/personality-presets.test.ts',
+  'src/docs/slash-commands-doc.test.ts',
 ];
 
 export const windowTests = [
