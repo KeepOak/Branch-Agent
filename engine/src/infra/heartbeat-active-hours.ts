@@ -25,6 +25,7 @@ function resolveActiveHoursFormatter(
       timeZone,
       hour: "2-digit",
       minute: "2-digit",
+      weekday: "short",
       hourCycle: "h23",
     });
   } catch {
@@ -42,7 +43,10 @@ function parseActiveHoursTime(opts: { allow24: boolean }, raw?: string): number 
   return hour === 24 && !opts.allow24 ? null : hour * 60 + minute;
 }
 
-function resolveMinutesInTimeZone(nowMs: number, formatter: Intl.DateTimeFormat): number | null {
+function resolveTimeInTimeZone(
+  nowMs: number,
+  formatter: Intl.DateTimeFormat,
+): { minutes: number; day: number } | null {
   try {
     const parts = formatter.formatToParts(new Date(nowMs));
     const map: Record<string, string> = {};
@@ -56,10 +60,21 @@ function resolveMinutesInTimeZone(nowMs: number, formatter: Intl.DateTimeFormat)
     if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
       return null;
     }
-    return hour * 60 + minute;
+    const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(map.weekday ?? "");
+    return day < 0 ? null : { minutes: hour * 60 + minute, day };
   } catch {
     return null;
   }
+}
+
+/** Missing bounds permit all hours; malformed bounds retain the native fallback. */
+function resolveActiveHoursBounds(active: NonNullable<HeartbeatConfig>["activeHours"]) {
+  if (!active || (active.start === undefined && active.end === undefined)) {
+    return { start: 0, end: 1440 };
+  }
+  const start = parseActiveHoursTime({ allow24: false }, active.start);
+  const end = parseActiveHoursTime({ allow24: true }, active.end);
+  return start === null || end === null ? null : { start, end };
 }
 
 /** Return true when the current time is inside the configured heartbeat window. */
@@ -73,11 +88,11 @@ export function isWithinActiveHours(
     return true;
   }
 
-  const startMin = parseActiveHoursTime({ allow24: false }, active.start);
-  const endMin = parseActiveHoursTime({ allow24: true }, active.end);
-  if (startMin === null || endMin === null) {
+  const bounds = resolveActiveHoursBounds(active);
+  if (!bounds) {
     return true;
   }
+  const { start: startMin, end: endMin } = bounds;
   if (startMin === endMin) {
     return false;
   }
@@ -87,10 +102,14 @@ export function isWithinActiveHours(
     return true;
   }
 
-  const currentMin = resolveMinutesInTimeZone(nowMs ?? Date.now(), formatter);
-  if (currentMin === null) {
+  const current = resolveTimeInTimeZone(nowMs ?? Date.now(), formatter);
+  if (current === null) {
     return true;
   }
+  if (active.days !== undefined && !active.days.includes(current.day)) {
+    return false;
+  }
+  const currentMin = current.minutes;
   return endMin > startMin
     ? currentMin >= startMin && currentMin < endMin
     : currentMin >= startMin || currentMin < endMin;
