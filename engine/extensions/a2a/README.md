@@ -13,8 +13,12 @@ and outbound token when Branch Agent should initiate messages to it.
 Agent Card discovery is public. Limit `channels.a2a.exposeAgents` if only selected
 agents should be advertised.
 
-Peers can submit text tasks, not operator slash commands. Streaming, file
-transfer, and task cancellation are not supported.
+Peers can submit text tasks, not operator slash commands. Each peer can stream
+replies (`SendStreamingMessage`, `SubscribeToTask`), list and cancel its own
+tasks, and register push notification webhooks for task updates. Task records
+are kept in Branch Agent's state store, so they survive a gateway restart; a
+task that was still running when the gateway stopped is reported as failed.
+File transfer is not supported.
 
 See the [A2A guide](https://docs.openclaw.ai/channels/a2a) for configuration,
 authentication, and task polling.

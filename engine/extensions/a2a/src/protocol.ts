@@ -7,7 +7,7 @@ const A2A_TRUNCATION_MARKER = `\n[message truncated at ${A2A_MESSAGE_MAX_BYTES} 
 
 type A2aPartMetadata = { metadata?: Record<string, unknown> };
 
-type A2aMessagePart = A2aPartMetadata &
+export type A2aMessagePart = A2aPartMetadata &
   ({ text: string } | { data: unknown } | { url: string } | { raw: string });
 
 export type A2aMessageRecord = {
@@ -19,7 +19,7 @@ export type A2aMessageRecord = {
   metadata?: Record<string, unknown>;
 };
 
-type A2aTaskStatus =
+export type A2aTaskStatus =
   | { state: "TASK_STATE_SUBMITTED" | "TASK_STATE_WORKING"; timestamp: string }
   | {
       state:
@@ -31,7 +31,7 @@ type A2aTaskStatus =
       message?: A2aMessageRecord;
     };
 
-type A2aTaskArtifact = {
+export type A2aTaskArtifact = {
   artifactId: string;
   name?: string;
   parts: A2aMessagePart[];
@@ -72,6 +72,9 @@ export const A2aSendMessageParamsSchema = z.object({
       acceptedOutputModes: z.array(z.string()).optional(),
       historyLength: z.number().int().nonnegative().optional(),
       returnImmediately: z.boolean().optional(),
+      // 1.0 `taskPushNotificationConfig`; 0.3 peers send `pushNotificationConfig`.
+      taskPushNotificationConfig: z.unknown().optional(),
+      pushNotificationConfig: z.unknown().optional(),
     })
     .optional(),
   tenant: z.string().optional(),
@@ -82,35 +85,155 @@ export const A2aTaskRequestParamsSchema = z.object({
   id: z.string().min(1),
   historyLength: z.number().int().nonnegative().optional(),
   tenant: z.string().optional(),
+  metadata: A2aMetadataSchema.optional(),
 });
 
-type A2aCanonicalMethod = "SendMessage" | "GetTask";
+export const A2A_TASK_STATES = [
+  "TASK_STATE_SUBMITTED",
+  "TASK_STATE_WORKING",
+  "TASK_STATE_COMPLETED",
+  "TASK_STATE_FAILED",
+  "TASK_STATE_CANCELED",
+  "TASK_STATE_INPUT_REQUIRED",
+  "TASK_STATE_REJECTED",
+  "TASK_STATE_AUTH_REQUIRED",
+] as const;
 
-// Hermes-generation A2A 0.3 peers use dotted RPC names; only these three
-// explicitly supported interoperability aliases are accepted.
-const A2A_METHOD_ALIASES: Readonly<Record<string, A2aCanonicalMethod>> = {
-  SendMessage: "SendMessage",
-  GetTask: "GetTask",
-  "message/send": "SendMessage",
-  "tasks/get": "GetTask",
+// A2A 1.0 ListTasksRequest: "If unspecified, at most 50 tasks will be returned.
+// The minimum value is 1. The maximum value is 100."
+export const A2A_LIST_TASKS_DEFAULT_PAGE_SIZE = 50;
+export const A2A_LIST_TASKS_MAX_PAGE_SIZE = 100;
+
+export const A2aListTasksParamsSchema = z.object({
+  tenant: z.string().optional(),
+  contextId: z.string().optional(),
+  status: z.enum(A2A_TASK_STATES).optional(),
+  pageSize: z.number().int().min(1).max(A2A_LIST_TASKS_MAX_PAGE_SIZE).optional(),
+  pageToken: z.string().optional(),
+  historyLength: z.number().int().nonnegative().optional(),
+  statusTimestampAfter: z.string().datetime({ offset: true }).optional(),
+  includeArtifacts: z.boolean().optional(),
+});
+
+const A2aPushAuthenticationSchema = z.object({
+  scheme: z.string().min(1),
+  credentials: z.string().optional(),
+});
+
+const A2aHttpsOrHttpUrlSchema = z
+  .string()
+  .url()
+  .and(z.string().regex(/^https?:\/\//, "A2A push URLs must use HTTP or HTTPS"));
+
+/** A2A 1.0 TaskPushNotificationConfig (flattened) with the 0.3 nested form accepted. */
+export const A2aPushNotificationConfigSchema = z.preprocess(
+  (input) => {
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      return input;
+    }
+    const record = input as Record<string, unknown>;
+    const nested = record.pushNotificationConfig;
+    if (nested === null || typeof nested !== "object" || Array.isArray(nested)) {
+      return input;
+    }
+    // 0.3 `tasks/pushNotificationConfig/set` nests the config and uses
+    // `authentication.schemes[]`; fold it into the 1.0 flattened shape.
+    const { pushNotificationConfig: _nested, ...rest } = record;
+    const config = nested as Record<string, unknown>;
+    const authentication = config.authentication as Record<string, unknown> | undefined;
+    const schemes = Array.isArray(authentication?.schemes) ? authentication.schemes : undefined;
+    return {
+      ...rest,
+      ...config,
+      ...(authentication
+        ? {
+            authentication: {
+              scheme: typeof schemes?.[0] === "string" ? schemes[0] : authentication.scheme,
+              credentials: authentication.credentials,
+            },
+          }
+        : {}),
+    };
+  },
+  z.object({
+    tenant: z.string().optional(),
+    id: z.string().min(1).max(128).optional(),
+    taskId: z.string().min(1).optional(),
+    url: A2aHttpsOrHttpUrlSchema,
+    token: z.string().optional(),
+    authentication: A2aPushAuthenticationSchema.optional(),
+  }),
+);
+
+export type A2aPushNotificationConfig = {
+  id: string;
+  taskId: string;
+  url: string;
+  token?: string;
+  authentication?: { scheme: string; credentials?: string };
 };
 
-const A2A_UNSUPPORTED_METHODS = new Set([
-  // Cancellation is refused rather than faked: a dispatched agent run has no
-  // plugin-facing abort seam, so acknowledging it would report a terminal state
-  // while the run kept using tools.
-  "CancelTask",
-  "tasks/cancel",
-  "ListTasks",
+export const A2aPushConfigRequestParamsSchema = z.object({
+  tenant: z.string().optional(),
+  taskId: z.string().min(1),
+  id: z.string().min(1),
+});
+
+export const A2aListPushConfigsParamsSchema = z.object({
+  tenant: z.string().optional(),
+  taskId: z.string().min(1),
+  pageSize: z.number().int().min(0).optional(),
+  pageToken: z.string().optional(),
+});
+
+export type A2aCanonicalMethod =
+  | "SendMessage"
+  | "SendStreamingMessage"
+  | "GetTask"
+  | "ListTasks"
+  | "CancelTask"
+  | "SubscribeToTask"
+  | "CreateTaskPushNotificationConfig"
+  | "GetTaskPushNotificationConfig"
+  | "ListTaskPushNotificationConfigs"
+  | "DeleteTaskPushNotificationConfig";
+
+// A2A 1.0 method names plus the dotted names older peers still send: 0.3
+// (`message/send`, `message/stream`, `tasks/*`, `tasks/pushNotificationConfig/*`)
+// and 0.2 (`tasks/send`, `tasks/sendSubscribe`).
+const A2A_METHOD_ALIASES: Readonly<Record<string, A2aCanonicalMethod>> = {
+  SendMessage: "SendMessage",
+  SendStreamingMessage: "SendStreamingMessage",
+  GetTask: "GetTask",
+  ListTasks: "ListTasks",
+  CancelTask: "CancelTask",
+  SubscribeToTask: "SubscribeToTask",
+  CreateTaskPushNotificationConfig: "CreateTaskPushNotificationConfig",
+  SetTaskPushNotificationConfig: "CreateTaskPushNotificationConfig",
+  GetTaskPushNotificationConfig: "GetTaskPushNotificationConfig",
+  ListTaskPushNotificationConfig: "ListTaskPushNotificationConfigs",
+  ListTaskPushNotificationConfigs: "ListTaskPushNotificationConfigs",
+  DeleteTaskPushNotificationConfig: "DeleteTaskPushNotificationConfig",
+  "message/send": "SendMessage",
+  "message/stream": "SendStreamingMessage",
+  "tasks/send": "SendMessage",
+  "tasks/sendSubscribe": "SendStreamingMessage",
+  "tasks/get": "GetTask",
+  "tasks/list": "ListTasks",
+  "tasks/cancel": "CancelTask",
+  "tasks/resubscribe": "SubscribeToTask",
+  "tasks/pushNotificationConfig/set": "CreateTaskPushNotificationConfig",
+  "tasks/pushNotificationConfig/get": "GetTaskPushNotificationConfig",
+  "tasks/pushNotificationConfig/list": "ListTaskPushNotificationConfigs",
+  "tasks/pushNotificationConfig/delete": "DeleteTaskPushNotificationConfig",
+};
+
+// The extended card is not offered (`capabilities.extendedAgentCard` is unset).
+const A2A_UNSUPPORTED_METHODS = new Set(["GetExtendedAgentCard", "agent/getAuthenticatedExtendedCard"]);
+
+export const A2A_STREAMING_METHODS: ReadonlySet<A2aCanonicalMethod> = new Set([
   "SendStreamingMessage",
   "SubscribeToTask",
-  "CreateTaskPushNotificationConfig",
-  "SetTaskPushNotificationConfig",
-  "GetTaskPushNotificationConfig",
-  "ListTaskPushNotificationConfig",
-  "ListTaskPushNotificationConfigs",
-  "DeleteTaskPushNotificationConfig",
-  "GetExtendedAgentCard",
 ]);
 
 export function resolveA2aRpcMethod(
@@ -120,6 +243,20 @@ export function resolveA2aRpcMethod(
     return A2A_METHOD_ALIASES[method];
   }
   return A2A_UNSUPPORTED_METHODS.has(method) ? "unsupported" : undefined;
+}
+
+// A2A JSON-RPC error codes (spec section 9.5 mapping).
+export const A2A_ERROR_TASK_NOT_FOUND = -32001;
+export const A2A_ERROR_TASK_NOT_CANCELABLE = -32002;
+export const A2A_ERROR_UNSUPPORTED_OPERATION = -32004;
+
+export function isTerminalA2aTaskState(state: string): boolean {
+  return (
+    state === "TASK_STATE_COMPLETED" ||
+    state === "TASK_STATE_FAILED" ||
+    state === "TASK_STATE_CANCELED" ||
+    state === "TASK_STATE_REJECTED"
+  );
 }
 
 export function extractA2aMessageText(parts: unknown[]): string | undefined {

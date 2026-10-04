@@ -195,9 +195,10 @@ describe("A2A HTTP agent discovery", () => {
         ],
         version: VERSION,
         capabilities: {
-          streaming: false,
-          pushNotifications: false,
+          streaming: true,
+          pushNotifications: true,
         },
+        securitySchemes: { bearerAuth: { httpAuthSecurityScheme: { scheme: "Bearer" } } },
         defaultInputModes: ["text/plain"],
         defaultOutputModes: ["text/plain"],
         skills: [
@@ -493,8 +494,8 @@ describe("A2A JSON-RPC protocol boundary", () => {
 
   it.each([
     ["wrong protocol version", { jsonrpc: "1.0", id: "bad", method: "GetTask" }, -32600],
-    ["unknown method", { jsonrpc: "2.0", id: "bad", method: "tasks/send" }, -32601],
-    ["unsupported method", { jsonrpc: "2.0", id: "bad", method: "ListTasks" }, -32004],
+    ["unknown method", { jsonrpc: "2.0", id: "bad", method: "tasks/frobnicate" }, -32601],
+    ["unsupported method", { jsonrpc: "2.0", id: "bad", method: "GetExtendedAgentCard" }, -32004],
     [
       "missing message parts",
       { jsonrpc: "2.0", id: "bad", method: "SendMessage", params: { message: { role: "user" } } },
@@ -558,7 +559,7 @@ describe("A2A JSON-RPC protocol boundary", () => {
     await expect(response.text()).resolves.toBe("");
   });
 
-  it.each(["SendMessage", "message/send"])(
+  it.each(["SendMessage", "message/send", "tasks/send"])(
     "dispatches %s through the inbound channel boundary and returns its task artifact",
     async (method) => {
       const harness = await startHttpHarness();
@@ -618,11 +619,12 @@ describe("A2A JSON-RPC protocol boundary", () => {
   });
 
   it.each(["CancelTask", "tasks/cancel"])(
-    "refuses %s instead of reporting a terminal state it cannot enforce",
+    "cancels a working task with %s and aborts the run serving it",
     async (method) => {
       const harness = await startHttpHarness({ onDispatch: async () => {} });
       const createdResponse = await harness.post(sendRequest({ returnImmediately: true }));
       const created = (await createdResponse.json()) as { result: { task: { id: string } } };
+      const signal = harness.taskStore.abortSignal(created.result.task.id);
 
       const response = await harness.post({
         jsonrpc: "2.0",
@@ -631,20 +633,34 @@ describe("A2A JSON-RPC protocol boundary", () => {
         params: { id: created.result.task.id },
       });
 
-      // A dispatched agent run has no plugin-facing abort seam, so acknowledging
-      // cancellation would report a terminal state while the run kept going.
-      await expect(response.json()).resolves.toMatchObject({ error: { code: -32004 } });
-      const after = await harness.post({
+      await expect(response.json()).resolves.toMatchObject({
+        id: "cancel",
+        result: { id: created.result.task.id, status: { state: "TASK_STATE_CANCELED" } },
+      });
+      expect(signal?.aborted).toBe(true);
+      const again = await harness.post({
         jsonrpc: "2.0",
-        id: "after",
-        method: "GetTask",
+        id: "again",
+        method,
         params: { id: created.result.task.id },
       });
-      await expect(after.json()).resolves.toMatchObject({
-        result: { status: { state: "TASK_STATE_WORKING" } },
-      });
+      await expect(again.json()).resolves.toMatchObject({ error: { code: -32002 } });
     },
   );
+
+  it("refuses to cancel another peer's task", async () => {
+    const harness = await startHttpHarness({ onDispatch: async () => {} });
+    const createdResponse = await harness.post(sendRequest({ returnImmediately: true }));
+    const created = (await createdResponse.json()) as { result: { task: { id: string } } };
+
+    const response = await harness.post(
+      { jsonrpc: "2.0", id: "cancel", method: "CancelTask", params: { id: created.result.task.id } },
+      "beta-secret",
+    );
+
+    await expect(response.json()).resolves.toMatchObject({ error: { code: -32001 } });
+    expect(harness.taskStore.get(created.result.task.id)?.status.state).toBe("TASK_STATE_WORKING");
+  });
 
   it("transitions the task to FAILED when inbound dispatch throws", async () => {
     const harness = await startHttpHarness({
@@ -664,5 +680,329 @@ describe("A2A JSON-RPC protocol boundary", () => {
         },
       },
     });
+  });
+});
+
+function parseSseEvents(body: string): Array<{ id: unknown; result?: Record<string, unknown> }> {
+  return body
+    .split("\n\n")
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.startsWith("data: "))
+    .map((chunk) => JSON.parse(chunk.slice("data: ".length)) as { id: unknown });
+}
+
+async function postOverHttp(baseUrl: string, body: unknown, token = "alpha-secret") {
+  return await fetch(`${baseUrl}/a2a/v1`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+}
+
+async function readStreamText(response: Response): Promise<string> {
+  return await response.text();
+}
+
+describe("A2A streaming over server-sent events", () => {
+  it.each(["SendStreamingMessage", "message/stream"])(
+    "streams %s as task, partial artifact chunks, the final artifact and the terminal status",
+    async (method) => {
+      const harness = await startHttpHarness({
+        onDispatch: async (message) => {
+          harness.taskStore.publishPartial(message.taskId, "echo", true);
+          harness.taskStore.publishPartial(message.taskId, ": hi", true);
+          harness.taskStore.completeNext(message.contextId, "echo: hi", message.peerName);
+        },
+      });
+      await withServer(
+        (req, res) => {
+          void harness.handler(req, res);
+        },
+        async (baseUrl) => {
+          const response = await postOverHttp(
+            baseUrl,
+            sendRequest({ method, id: "stream-1", text: "hi" }),
+          );
+          expect(response.headers.get("content-type")).toContain("text/event-stream");
+          const events = parseSseEvents(await readStreamText(response));
+
+          expect(events.every((event) => event.id === "stream-1")).toBe(true);
+          expect(events.map((event) => Object.keys(event.result ?? {})[0])).toEqual([
+            "task",
+            "artifactUpdate",
+            "artifactUpdate",
+            "artifactUpdate",
+            "statusUpdate",
+          ]);
+          expect(events[0]?.result).toMatchObject({
+            task: { status: { state: "TASK_STATE_WORKING" } },
+          });
+          expect(events[1]?.result).toMatchObject({
+            artifactUpdate: {
+              artifact: { parts: [{ text: "echo" }] },
+              append: true,
+              lastChunk: false,
+            },
+          });
+          expect(events[3]?.result).toMatchObject({
+            artifactUpdate: {
+              artifact: { parts: [{ text: "echo: hi" }] },
+              append: false,
+              lastChunk: true,
+            },
+          });
+          const artifactIds = new Set(
+            events
+              .slice(1, 4)
+              .map(
+                (event) =>
+                  (event.result?.artifactUpdate as { artifact: { artifactId: string } }).artifact
+                    .artifactId,
+              ),
+          );
+          expect(artifactIds.size).toBe(1);
+          expect(events[4]?.result).toMatchObject({
+            statusUpdate: { status: { state: "TASK_STATE_COMPLETED" } },
+          });
+        },
+      );
+    },
+  );
+
+  it("resubscribes to a live task and ends the stream when the task is canceled", async () => {
+    const harness = await startHttpHarness({ onDispatch: async () => {} });
+    const created = (await (await harness.post(sendRequest({ returnImmediately: true }))).json()) as {
+      result: { task: { id: string } };
+    };
+    const taskId = created.result.task.id;
+    await withServer(
+      (req, res) => {
+        void harness.handler(req, res);
+      },
+      async (baseUrl) => {
+        const response = await postOverHttp(baseUrl, {
+          jsonrpc: "2.0",
+          id: "sub",
+          method: "tasks/resubscribe",
+          params: { id: taskId },
+        });
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+        const first = decoder.decode((await reader.read()).value);
+        expect(parseSseEvents(first)[0]?.result).toMatchObject({ task: { id: taskId } });
+
+        const cancel = await postOverHttp(baseUrl, {
+          jsonrpc: "2.0",
+          id: "cancel",
+          method: "CancelTask",
+          params: { id: taskId },
+        });
+        await expect(cancel.json()).resolves.toMatchObject({
+          result: { status: { state: "TASK_STATE_CANCELED" } },
+        });
+        let rest = "";
+        for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+          rest += decoder.decode(chunk.value);
+        }
+        expect(parseSseEvents(rest).at(-1)?.result).toMatchObject({
+          statusUpdate: { taskId, status: { state: "TASK_STATE_CANCELED" } },
+        });
+      },
+    );
+  });
+
+  it("refuses to subscribe to a finished task or another peer's task", async () => {
+    const harness = await startHttpHarness();
+    const done = (await (await harness.post(sendRequest())).json()) as {
+      result: { task: { id: string } };
+    };
+    const subscribe = {
+      jsonrpc: "2.0",
+      id: "sub",
+      method: "SubscribeToTask",
+      params: { id: done.result.task.id },
+    };
+
+    await expect((await harness.post(subscribe)).json()).resolves.toMatchObject({
+      id: "sub",
+      error: { code: -32004 },
+    });
+    await expect((await harness.post(subscribe, "beta-secret")).json()).resolves.toMatchObject({
+      error: { code: -32001 },
+    });
+  });
+
+  it("refuses streaming methods inside a JSON-RPC batch", async () => {
+    const harness = await startHttpHarness();
+    const response = await harness.post([
+      sendRequest({ id: "streamed", method: "SendStreamingMessage" }),
+      sendRequest({ id: "plain" }),
+    ]);
+
+    await expect(response.json()).resolves.toEqual([
+      expect.objectContaining({ id: "streamed", error: expect.objectContaining({ code: -32004 }) }),
+      expect.objectContaining({ id: "plain", result: expect.anything() }),
+    ]);
+  });
+});
+
+describe("A2A task listing and push notification configs", () => {
+  it("lists only the caller's tasks with filters, paging and artifacts on request", async () => {
+    const harness = await startHttpHarness();
+    for (const contextId of ["ctx-a", "ctx-a", "ctx-b"]) {
+      await harness.post(sendRequest({ contextId }));
+    }
+    await harness.post(sendRequest({ contextId: "ctx-a" }), "beta-secret");
+
+    const firstPage = await harness.post({
+      jsonrpc: "2.0",
+      id: "list",
+      method: "ListTasks",
+      params: { contextId: "ctx-a", pageSize: 1 },
+    });
+    const first = (await firstPage.json()) as {
+      result: {
+        tasks: Array<{ contextId: string; artifacts: unknown[] }>;
+        nextPageToken: string;
+        totalSize: number;
+        pageSize: number;
+      };
+    };
+    expect(first.result).toMatchObject({ totalSize: 2, pageSize: 1 });
+    expect(first.result.tasks).toHaveLength(1);
+    expect(first.result.tasks[0]?.artifacts).toEqual([]);
+    expect(first.result.nextPageToken).not.toBe("");
+
+    const secondPage = await harness.post({
+      jsonrpc: "2.0",
+      id: "list-2",
+      method: "tasks/list",
+      params: {
+        contextId: "ctx-a",
+        pageSize: 1,
+        pageToken: first.result.nextPageToken,
+        includeArtifacts: true,
+      },
+    });
+    await expect(secondPage.json()).resolves.toMatchObject({
+      result: {
+        tasks: [{ contextId: "ctx-a", artifacts: [{ parts: [{ text: "echo: hello" }] }] }],
+        nextPageToken: "",
+      },
+    });
+
+    const all = (await (
+      await harness.post({ jsonrpc: "2.0", id: "all", method: "ListTasks" })
+    ).json()) as { result: { totalSize: number } };
+    expect(all.result.totalSize).toBe(3);
+    const invalid = await harness.post({
+      jsonrpc: "2.0",
+      id: "bad",
+      method: "ListTasks",
+      params: { pageSize: 101 },
+    });
+    await expect(invalid.json()).resolves.toMatchObject({ error: { code: -32602 } });
+  });
+
+  it("creates, reads, lists and deletes push configs in the 1.0 and 0.3 shapes", async () => {
+    const harness = await startHttpHarness({ onDispatch: async () => {} });
+    const created = (await (await harness.post(sendRequest({ returnImmediately: true }))).json()) as {
+      result: { task: { id: string } };
+    };
+    const taskId = created.result.task.id;
+
+    const set = await harness.post({
+      jsonrpc: "2.0",
+      id: "set",
+      method: "CreateTaskPushNotificationConfig",
+      params: { taskId, id: "hook-1", url: "https://hooks.example.test/a2a", token: "tok" },
+    });
+    await expect(set.json()).resolves.toMatchObject({
+      result: { id: "hook-1", taskId, url: "https://hooks.example.test/a2a", token: "tok" },
+    });
+    const legacy = await harness.post({
+      jsonrpc: "2.0",
+      id: "legacy",
+      method: "tasks/pushNotificationConfig/set",
+      params: {
+        taskId,
+        pushNotificationConfig: {
+          id: "hook-2",
+          url: "https://hooks.example.test/legacy",
+          authentication: { schemes: ["Bearer"], credentials: "secret" },
+        },
+      },
+    });
+    await expect(legacy.json()).resolves.toMatchObject({
+      result: { id: "hook-2", authentication: { scheme: "Bearer", credentials: "secret" } },
+    });
+
+    const listed = await harness.post({
+      jsonrpc: "2.0",
+      id: "list",
+      method: "ListTaskPushNotificationConfigs",
+      params: { taskId },
+    });
+    const listedBody = (await listed.json()) as {
+      result: { configs: Array<{ id: string }>; nextPageToken: string };
+    };
+    expect(listedBody.result.configs.map((config) => config.id).toSorted()).toEqual([
+      "hook-1",
+      "hook-2",
+    ]);
+    expect(listedBody.result.nextPageToken).toBe("");
+
+    const otherPeer = await harness.post(
+      {
+        jsonrpc: "2.0",
+        id: "get",
+        method: "GetTaskPushNotificationConfig",
+        params: { taskId, id: "hook-1" },
+      },
+      "beta-secret",
+    );
+    await expect(otherPeer.json()).resolves.toMatchObject({ error: { code: -32001 } });
+
+    const deleted = await harness.post({
+      jsonrpc: "2.0",
+      id: "delete",
+      method: "DeleteTaskPushNotificationConfig",
+      params: { taskId, id: "hook-1" },
+    });
+    await expect(deleted.json()).resolves.toMatchObject({ result: {} });
+    const gone = await harness.post({
+      jsonrpc: "2.0",
+      id: "get",
+      method: "tasks/pushNotificationConfig/get",
+      params: { taskId, id: "hook-1" },
+    });
+    await expect(gone.json()).resolves.toMatchObject({ error: { code: -32001 } });
+  });
+
+  it("accepts an inline push config on SendMessage and rejects one without a URL", async () => {
+    const harness = await startHttpHarness({ onDispatch: async () => {} });
+    const request = sendRequest({ returnImmediately: true });
+    const withPush = {
+      ...request,
+      params: {
+        ...request.params,
+        configuration: {
+          returnImmediately: true,
+          taskPushNotificationConfig: { url: "https://hooks.example.test/inline" },
+        },
+      },
+    };
+    const created = (await (await harness.post(withPush)).json()) as {
+      result: { task: { id: string } };
+    };
+    expect(harness.taskStore.listPushConfigs(created.result.task.id, "alpha")).toEqual([
+      expect.objectContaining({ url: "https://hooks.example.test/inline" }),
+    ]);
+
+    const invalid = await harness.post({
+      ...withPush,
+      params: { ...withPush.params, configuration: { taskPushNotificationConfig: { token: "x" } } },
+    });
+    await expect(invalid.json()).resolves.toMatchObject({ error: { code: -32602 } });
   });
 });

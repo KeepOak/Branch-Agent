@@ -272,4 +272,66 @@ describe("A2A channel inbound dispatch", () => {
     expect(fixture.store.get(fixture.task.id)?.status.state).toBe("TASK_STATE_REJECTED");
     fixture.store.stop();
   });
+
+  it("hands the run its task's abort signal and drops a canceled run's late reply", async () => {
+    const fixture = createA2aInboundFixture();
+    const next = fixture.store.create(fixture.task.contextId, "hermes");
+    fixture.store.start(next.id);
+    vi.mocked(fixture.runtime.channel.inbound.dispatch).mockImplementation(async (turn) => {
+      const signal = turn.replyOptions?.abortSignal;
+      expect(signal).toBe(fixture.store.abortSignal(fixture.task.id));
+      fixture.store.cancel(fixture.task.id, "hermes");
+      expect(signal?.aborted).toBe(true);
+      await turn.delivery.deliver({ text: "aborted run output" }, { kind: "final" });
+      return {
+        admission: { kind: "dispatch" },
+        dispatched: true,
+        ctxPayload: turn.ctxPayload,
+        routeSessionKey: turn.route.sessionKey,
+        dispatchResult: createA2aDispatchResult(),
+      };
+    });
+
+    await dispatchA2aInbound(fixture.params);
+
+    expect(fixture.store.get(fixture.task.id)?.status.state).toBe("TASK_STATE_CANCELED");
+    expect(fixture.store.get(next.id)?.status.state).toBe("TASK_STATE_WORKING");
+    expect(fixture.store.get(next.id)?.artifacts).toEqual([]);
+    fixture.store.stop();
+  });
+
+  it("streams partial replies from the run to the task's subscribers", async () => {
+    const fixture = createA2aInboundFixture();
+    const events: unknown[] = [];
+    fixture.store.subscribe(fixture.task.id, (event) => events.push(event), () => {});
+    vi.mocked(fixture.runtime.channel.inbound.dispatch).mockImplementation(async (turn) => {
+      await turn.replyOptions?.onPartialReply?.({ text: "Hel", delta: "Hel" });
+      await turn.replyOptions?.onPartialReply?.({ text: "Hello", delta: "lo" });
+      await turn.replyOptions?.onPartialReply?.({ text: "Hi", replace: true });
+      await turn.delivery.deliver({ text: "Hi there" }, { kind: "final" });
+      return {
+        admission: { kind: "dispatch" },
+        dispatched: true,
+        ctxPayload: turn.ctxPayload,
+        routeSessionKey: turn.route.sessionKey,
+        dispatchResult: createA2aDispatchResult(),
+      };
+    });
+
+    await dispatchA2aInbound(fixture.params);
+
+    expect(
+      events
+        .filter((event): event is { artifactUpdate: { append: boolean; artifact: { parts: unknown[] } } } =>
+          Object.hasOwn(event as object, "artifactUpdate"),
+        )
+        .map(({ artifactUpdate }) => [artifactUpdate.append, artifactUpdate.artifact.parts]),
+    ).toEqual([
+      [true, [{ text: "Hel" }]],
+      [true, [{ text: "lo" }]],
+      [false, [{ text: "Hi" }]],
+      [false, [{ text: "Hi there" }]],
+    ]);
+    fixture.store.stop();
+  });
 });

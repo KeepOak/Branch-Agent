@@ -5,6 +5,8 @@ import type { PluginRuntime } from "branch/plugin-sdk/runtime-store";
 import { registerPluginHttpRoute } from "branch/plugin-sdk/webhook-ingress";
 import { createA2aHttpHandler } from "./http.js";
 import { dispatchA2aInbound } from "./inbound.js";
+import { A2A_TASK_BLOB_STORE_OPTIONS, A2aStateTaskPersistence } from "./persistence.js";
+import { A2aPushNotificationSender } from "./push.js";
 import { getA2aChannelRuntime } from "./runtime.js";
 import { A2aTaskStore } from "./task-store.js";
 import type { ResolvedA2aChannelAccount } from "./types.js";
@@ -34,14 +36,30 @@ export async function startA2aGatewayAccount(
   const runtime = getA2aChannelRuntime();
   // SAFETY: Gateway injects its full runtime despite the narrowed public contract.
   const channelRuntime = (ctx.channelRuntime ?? runtime.channel) as PluginRuntime["channel"];
-  const store = new A2aTaskStore();
+  const log = runtime.logging.getChildLogger({ plugin: "a2a", accountId: account.accountId });
+  const pushSender = new A2aPushNotificationSender({
+    onError: (error) => log.warn("A2A push notification failed", { error: String(error) }),
+  });
+  // Task records live in Branch's plugin state store so peers can still read
+  // and list their tasks after a gateway restart.
+  let store: A2aTaskStore | undefined;
   const unregisterRoutes: Array<() => void> = [];
   try {
+    store = new A2aTaskStore({
+      persistence: new A2aStateTaskPersistence(
+        runtime.state.openBlobStore(A2A_TASK_BLOB_STORE_OPTIONS),
+      ),
+      onPersistenceError: (error) =>
+        log.warn("A2A task persistence failed", { error: String(error) }),
+      onPushUpdate: (task, configs) => void pushSender.send(task, configs),
+    });
+    await store.restore();
+    const taskStore = store;
     const handler = createA2aHttpHandler({
       config: ctx.cfg,
       a2aConfig: account.config,
       version: runtime.version,
-      taskStore: store,
+      taskStore,
       dispatchInbound: async (message) => {
         await dispatchA2aInbound({
           ...message,
@@ -49,7 +67,7 @@ export async function startA2aGatewayAccount(
           config: ctx.cfg,
           channelRuntime,
           buildContext: channelRuntime.inbound.buildContext,
-          store,
+          store: taskStore,
         });
       },
     });
@@ -80,7 +98,8 @@ export async function startA2aGatewayAccount(
     for (const unregister of unregisterRoutes.toReversed()) {
       unregister();
     }
-    store.stop();
+    await store?.flush();
+    store?.stop();
     ctx.setStatus(channelStoppedPatch({ accountId: account.accountId }));
   }
 }

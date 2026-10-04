@@ -115,7 +115,12 @@ export async function dispatchA2aInbound(params: A2aInboundDispatchParams): Prom
           }
           // Conversation queues, rather than callback ownership, preserve FIFO
           // correlation across concurrent sends and canceled-task tombstones.
-          params.store.completeNext(params.contextId, payload.text, params.peerName);
+          params.store.completeNext(
+            params.contextId,
+            payload.text,
+            params.peerName,
+            params.taskId,
+          );
         },
         onError: (error) => {
           params.store.fail(params.taskId, error);
@@ -123,7 +128,20 @@ export async function dispatchA2aInbound(params: A2aInboundDispatchParams): Prom
       },
       // Source replies complete the correlated task; the generic message tool
       // starts a separate outbound message without that task correlation.
-      replyOptions: { sourceReplyDeliveryMode: "automatic" },
+      replyOptions: {
+        sourceReplyDeliveryMode: "automatic",
+        // CancelTask aborts the run serving this task.
+        abortSignal: params.store.abortSignal(params.taskId),
+        // SendStreamingMessage / SubscribeToTask peers see the reply as it is written.
+        onPartialReply: (partial) => {
+          // A delta extends the streamed artifact; otherwise the text is the full reply so far.
+          if (partial.delta) {
+            params.store.publishPartial(params.taskId, partial.delta, true);
+          } else if (partial.text) {
+            params.store.publishPartial(params.taskId, partial.text, false);
+          }
+        },
+      },
       replyPipeline: {},
     });
     if (dispatch.admission.kind !== "dispatch") {

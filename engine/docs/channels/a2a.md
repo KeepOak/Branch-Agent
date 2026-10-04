@@ -94,7 +94,7 @@ Include `message.contextId` on subsequent requests to continue the same conversa
 
 To return immediately while the agent continues working, add `"configuration": { "returnImmediately": true }` alongside `"message"` in `params`. The task initially reports `TASK_STATE_WORKING`. Requests that exceed `replyTimeoutMs` also return the current working task instead of canceling it.
 
-Older clients can use `message/send` as an alias for `SendMessage`.
+Older clients can use `message/send` or `tasks/send` as aliases for `SendMessage`.
 
 ## Poll a task
 
@@ -112,9 +112,19 @@ curl http://127.0.0.1:18789/a2a/v1 \
   }'
 ```
 
-The task transitions from `TASK_STATE_WORKING` to `TASK_STATE_COMPLETED`, `TASK_STATE_FAILED`, or `TASK_STATE_REJECTED`. Older clients can use `tasks/get` as a compatibility alias.
+The task transitions from `TASK_STATE_WORKING` to `TASK_STATE_COMPLETED`, `TASK_STATE_FAILED`, `TASK_STATE_CANCELED`, or `TASK_STATE_REJECTED`. Older clients can use `tasks/get` as a compatibility alias.
 
-`CancelTask` is refused with JSON-RPC error `-32004` rather than acknowledged. A dispatched agent run has no plugin-facing abort seam, so reporting `TASK_STATE_CANCELED` would tell the peer the work stopped while the run kept using tools. Refusing keeps the reported state honest.
+## Stream, list, and cancel tasks
+
+`SendStreamingMessage` (alias `message/stream`) takes the same params as `SendMessage` and answers with server-sent events. Each event is a JSON-RPC response whose `result` is an A2A 1.0 `StreamResponse`: first the `task`, then `artifactUpdate` chunks as the agent writes its reply (`append: true`), the final artifact (`lastChunk: true`), and the terminal `statusUpdate`, after which the stream closes. `SubscribeToTask` (alias `tasks/resubscribe`) opens the same stream on a task that is still working; a finished task returns error `-32004`. Streaming methods cannot be sent inside a JSON-RPC batch.
+
+`ListTasks` (alias `tasks/list`) returns the calling peer's tasks, newest first. It accepts `contextId`, `status`, `statusTimestampAfter`, `pageSize` (1 to 100, default 50), `pageToken`, and `includeArtifacts` (default `false`).
+
+`CancelTask` (alias `tasks/cancel`) aborts the agent run serving the task and reports `TASK_STATE_CANCELED`. Cancelling a finished task returns error `-32002`. A peer can only see, list, cancel, or subscribe to its own tasks.
+
+## Push notifications
+
+Register a webhook for a task with `CreateTaskPushNotificationConfig` (alias `tasks/pushNotificationConfig/set`), or inline with `configuration.taskPushNotificationConfig` on `SendMessage`. `GetTaskPushNotificationConfig`, `ListTaskPushNotificationConfigs`, and `DeleteTaskPushNotificationConfig` manage the registered webhooks. On every status change, Branch Agent sends `POST <url>` with body `{ "task": <task> }`, the config `token` in `X-A2A-Notification-Token`, and `authentication` as the `Authorization` header. Notifications for one task are delivered in order with a 5 second timeout each.
 
 ## Configure outbound peers
 
@@ -179,13 +189,13 @@ While an exec approval is pending, the original task stays working. After the op
 
 Requests are limited to 1 MiB, JSON-RPC batches to 30 entries, and serialized JSON-RPC responses to 1 MiB. Extracted message text is capped at 64 KiB and includes an explicit truncation marker when shortened. The default sliding-window limit is 30 requests per minute for each peer. Schema-invalid requests count toward that limit. Set `rateLimitPerMinute` to `0` only on a separately protected network. Rate-limited requests return a JSON-RPC error while keeping HTTP status 200.
 
-Outbound destinations come only from operator-configured peer URLs. Inbound callers cannot supply a proxy target or redirect Branch Agent to another destination.
+Outbound messages go only to operator-configured peer URLs. Push notification URLs come from peers, so they are sent through the shared SSRF guard with its default public-network policy and without following redirects.
 
 ## A2A 1.0 limitations
 
-The current plugin supports text messages and structured JSON data parts, which are appended as compact JSON text. File URL and raw binary parts are ignored. Streaming, server-sent events, push notifications, task cancellation, task listing, extended Agent Cards, and multi-tenant routing are not supported.
+The current plugin supports text messages and structured JSON data parts, which are appended as compact JSON text. File URL and raw binary parts are ignored. Extended Agent Cards and multi-tenant routing are not supported.
 
-Tasks remain in memory only. Completed and other terminal tasks are retained for up to 24 hours, with a maximum of 500 retained entries. Restarting the gateway discards all tasks and task history.
+Tasks are kept in Branch Agent's plugin state database, so they survive a gateway restart. A task that was still working when the gateway stopped is reported as `TASK_STATE_FAILED` after the restart, because no run is left to finish it. Completed and other terminal tasks are retained for up to 24 hours, with a maximum of 500 retained entries.
 
 ## Related
 

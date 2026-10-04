@@ -42,6 +42,13 @@ export const engineTests = [
   'src/agents/cli-output-stream.test.ts',
   'src/agents/cli-output-records.test.ts',
   'src/agents/cli-output-jsonl.test.ts',
+  'extensions/a2a/src/task-store.test.ts',
+  'extensions/a2a/src/protocol.test.ts',
+  'extensions/a2a/src/http.test.ts',
+  'extensions/a2a/src/inbound.test.ts',
+  'extensions/a2a/src/gateway.test.ts',
+  'extensions/a2a/src/persistence.test.ts',
+  'extensions/a2a/src/push.test.ts',
 ];
 
 export const windowTests = [
@@ -243,6 +250,21 @@ export const engineStrictFiles = [
   'src/skills/discovery/command-specs.skill-bundles.test.ts',
   'src/skills/loading/skill-bundles.test.ts',
   'src/skills/runtime/skill-bundle-invocation.test.ts',
+  'extensions/a2a/src/task-store.ts',
+  'extensions/a2a/src/protocol.ts',
+  'extensions/a2a/src/http.ts',
+  'extensions/a2a/src/inbound.ts',
+  'extensions/a2a/src/gateway.ts',
+  'extensions/a2a/src/persistence.ts',
+  'extensions/a2a/src/push.ts',
+  'extensions/a2a/src/memory-blob-store.test-support.ts',
+  'extensions/a2a/src/task-store.test.ts',
+  'extensions/a2a/src/protocol.test.ts',
+  'extensions/a2a/src/http.test.ts',
+  'extensions/a2a/src/inbound.test.ts',
+  'extensions/a2a/src/gateway.test.ts',
+  'extensions/a2a/src/persistence.test.ts',
+  'extensions/a2a/src/push.test.ts',
 ];
 
 export const windowStrictFiles = [
