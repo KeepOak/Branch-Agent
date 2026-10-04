@@ -22,12 +22,12 @@ async function fixture(body) {
     await writeFile(join(window, "index.html"), "<!doctype html><title>Branch</title>");
     for (const [platform, arch] of targets) {
       const output = join(root, platform); await mkdir(output);
-      await makeComponentRelease({ version, sourceCommit: commit, tag: `v${version}`, engine, window, output, platform, arch });
+      const manifest = await makeComponentRelease({ version, sourceCommit: commit, tag: `v${version}`, engine, window, output, platform, arch });
       const name = `branch-desktop-${version}-${platform}-${arch}.${platform === "win32" ? "zip" : "tar.gz"}`;
       await writeFile(join(output, name), `${platform}/${arch} offline fixture only`);
       const identity = { commit, version, platform, arch, electronVersion: "44.5.1", runtime: {
         electronVersion: "44.5.1", electron: { sha256: "b".repeat(64), bytes: 1 },
-        node: { version: "v24.19.0", platform, arch, sha256: "c".repeat(64) } }, smoke: { commit, ready: true, authenticatedHealth: true, exited: true, elapsedMs: 10, runtime: { version: "v24.19.0", platform, arch } } };
+        node: { version: "v24.19.0", platform, arch, sha256: "c".repeat(64) } }, smoke: { commit, ready: true, authenticatedHealth: true, exited: true, elapsedMs: 10, runtime: { version: "v24.19.0", platform, arch }, source: "verified-component-archive", archiveSha256: manifest.components.engine.sha256, archiveBytes: manifest.components.engine.bytes, expandedBytes: manifest.components.engine.expandedBytes } };
       await writeReleaseInventory(output, identity); await cp(output, assets, { recursive: true });
     }
     await body({ root, engine, window, assets });
@@ -65,6 +65,8 @@ for (const [label, edit, message] of [
   ["changed Electron receipt", proof => { proof.runtime.electronVersion = "1.0.0"; }, /Electron/],
   ["missing production smoke", proof => { delete proof.smoke; }, /smoke did not pass/],
   ["production smoke wrong source", proof => { proof.smoke.commit = "f".repeat(40); }, /smoke source/],
+  ["unextracted production smoke", proof => { proof.smoke.source = "original-deployment"; }, /extracted release/],
+  ["production smoke wrong archive", proof => { proof.smoke.archiveSha256 = "f".repeat(64); }, /smoke archive/],
 ]) test(`release inventory rejects ${label}`, () => fixture(async ({ assets }) => {
   await alterProof(assets, edit); await assert.rejects(verifyReleaseDirectory(assets, commit, version), message);
 }));

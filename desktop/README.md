@@ -42,6 +42,8 @@ Packages bundle a Node24.16+ executable with a SHA256/runtime receipt. The execu
 
 Production deployment uses pnpm's existing Windows virtual-directory encoding on all platforms (`PNPM_CONFIG_VIRTUAL_STORE_DIR_MAX_LENGTH=60` in the deployment child only). Linux/macOS default directory names can otherwise make materialized peer-dependency paths exceed the regular USTAR fields accepted by installed launchers. This changes directory hashing, not dependency versions, peer selection, file names, package contents or feature limits. Source configuration and locks stay unchanged; long layouts are never truncated or published with unsupported PAX/link entries. A pinned-pnpm fixture reproduces the long layout, then verifies module/peer/payload identity after portable deployment and extraction through the unchanged installed reader. Any still-unrepresentable member fails closed with its relative path and UTF-8 byte length.
 
+The native production smoke runs the engine extracted from the actual generated release archive, with its bundled Node executable. Before extraction, compressed bytes and SHA256 must match the manifest; the unchanged compiled launcher reader checks every archive member and expanded byte count, and extracted build metadata must identify the frozen source commit. The safe inventory records that archive identity and requires it to match the shipped asset. Booting the original deployment folder is insufficient evidence for archive delivery.
+
 ## Scoped checks
 
 Compile strict TypeScript with `node node_modules/typescript/bin/tsc -p desktop/tsconfig.json`, then set `BRANCH_DESKTOP_TEST_DIST` to the emitted directory and run only these explicit files:

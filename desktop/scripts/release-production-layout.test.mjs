@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { makeComponentRelease } from "./make-component-release.mjs";
-import { productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
+import { extractProductionArchive, productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
 import { preparePnpm, run } from "../../scripts/feature-batch-ci-runtime.mjs";
 
 const library = "@fixture/library-with-a-long-production-dependency-name";
@@ -79,9 +79,11 @@ test("real pinned pnpm long peer topology overflows at120 but archives/extracts/
     const output = join(root, "portable-assets");
     const manifest = await makeComponentRelease({ ...options, engine: portable, output });
     const reader = await import(pathToFileURL(join(resolve(process.env.BRANCH_DESKTOP_TEST_DIST), "component-update-archive.js")));
-    const extracted = join(root, "extracted"); await mkdir(extracted);
-    await reader.extractComponentArchive(join(output, `branch-engine-1.0.0-${process.platform}-${process.arch}.tar.gz`), extracted, manifest.components.engine.expandedBytes);
+    const archive = join(output, `branch-engine-1.0.0-${process.platform}-${process.arch}.tar.gz`);
+    const extracted = await extractProductionArchive(archive, manifest.components.engine, commit, join(root, "extracted"), reader.extractComponentArchive);
     assert.deepEqual(resolutionProof(extracted), resolutionProof(portable));
     assert.deepEqual(await readFile(join(extracted, "dist/build-info.json")), await readFile(join(portable, "dist/build-info.json")));
+    await assert.rejects(extractProductionArchive(archive, { ...manifest.components.engine, sha256: "f".repeat(64) }, commit, join(root, "corrupt"), reader.extractComponentArchive), /differs from its manifest/);
+    await assert.rejects(extractProductionArchive(archive, manifest.components.engine, "b".repeat(40), join(root, "wrong-source"), reader.extractComponentArchive), /different source identity/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
