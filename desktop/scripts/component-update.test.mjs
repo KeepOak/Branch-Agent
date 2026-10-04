@@ -55,7 +55,7 @@ async function fixture(run, modify = () => {}) {
     return new Response(response.body, { status: response.status, headers: response.headers });
   };
   try { await run({ root, engine, window, output, cfg, release, request, requests }); }
-  finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true }); }
+  finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
 }
 
 async function unchanged(cfg) {

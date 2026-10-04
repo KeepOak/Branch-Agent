@@ -28,24 +28,29 @@ export async function releaseIdentity() {
   return { ...identity, electronVersion: desktop.devDependencies.electron };
 }
 
-async function prepareWindow(pnpm) {
+async function prepareEngine(pnpm) {
   const engineFlags = await verifiedExceptionFlags("engine");
   await run(pnpm, ["install", "--frozen-lockfile", "--ignore-scripts", ...engineFlags], engineRoot);
-  const windowFlags = await verifiedExceptionFlags("window");
-  await run(pnpm, ["install", "--frozen-lockfile", "--ignore-scripts", ...windowFlags,
-    `--modules-dir=${join(windowRoot, "node_modules")}`, `--virtual-store-dir=${join(windowRoot, "node_modules/.pnpm")}`], toolingRoot);
-  await publishWindowDependencies();
   await run(process.execPath, ["--import", "./scripts/tsx.mjs", "--input-type=module", "--eval",
     'const { withDistArtifactOwnership } = await import("./scripts/lib/dist-artifact-ownership.mts"); const { ensureKyselyTypes } = await import("./scripts/generate-kysely-types.mts"); await withDistArtifactOwnership(process.cwd(), () => ensureKyselyTypes(process.cwd()));'], engineRoot);
   for (const name of ["gateway-protocol", "gateway-client"]) {
     await run(process.execPath, ["--import", "./scripts/tsx.mjs", "scripts/build-workspace-package.mts", name], engineRoot);
   }
+}
+
+async function prepareWindow(pnpm) {
+  await prepareEngine(pnpm);
+  const windowFlags = await verifiedExceptionFlags("window");
+  await run(pnpm, ["install", "--frozen-lockfile", "--ignore-scripts", ...windowFlags,
+    `--modules-dir=${join(windowRoot, "node_modules")}`, `--virtual-store-dir=${join(windowRoot, "node_modules/.pnpm")}`], toolingRoot);
+  await publishWindowDependencies();
   await run(process.execPath, [join(windowRoot, "node_modules/typescript/bin/tsc"), "-b"], windowRoot);
   await run(process.execPath, [join(windowRoot, "node_modules/vite/bin/vite.js"), "build"], windowRoot);
 }
 
 async function deployEngine(pnpm, scratch, identity) {
-  await run(pnpm, ["build:package"], engineRoot);
+  // Runtime-only package build: the engine component never loads declarations, which were ~75% of build time.
+  await run(pnpm, ["build:package"], engineRoot, { ...process.env, BRANCH_RUN_NODE_SKIP_DTS_BUILD: "1" });
   const metadata = JSON.parse(await readFile(join(engineRoot, "dist/build-info.json"), "utf8"));
   assert.equal(metadata.commit, identity.commit, "Engine build metadata differs from source freeze");
   const deployment = join(scratch, "production-engine");
@@ -94,7 +99,8 @@ export async function buildRelease(mode, output, windowDirectory) {
     await run(process.execPath, ["--input-type=module", "-e", 'import { cp } from "node:fs/promises"; await cp(process.argv[1], process.argv[2], { recursive: true });', join(windowRoot, "dist"), output]);
   } else {
     assert(windowDirectory, "Components require the shared tested renderer build");
-    await run(process.execPath, [join(repoRoot, "scripts/feature-batch-ci.mjs"), "all"]);
+    // The named feature suites already gate every pull request and main push (feature-batch-checks.yml).
+    await prepareEngine(pnpm);
     const engine = await deployEngine(pnpm, scratch, identity);
     const manifest = await makeComponentRelease({ ...identity, sourceCommit: identity.commit, tag: `v${identity.version}`, engine, window: windowDirectory, output });
     const { nodePath, ...runtime } = await packageDesktop(scratch, output, identity);
