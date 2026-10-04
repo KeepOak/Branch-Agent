@@ -91,6 +91,7 @@ export const windowTests = [
   'src/stage/pane/PreviewTab.test.tsx',
   'src/shell/SidebarExtras.test.tsx',
   'src/shell/OpenTabs.test.tsx',
+  'src/shell/PartBoundary.test.tsx',
 ];
 
 export const engineStrictFiles = [
@@ -238,6 +239,8 @@ export const windowStrictFiles = [
   'src/shell/OpenTabs.tsx',
   'src/shell/OpenTabs.test.tsx',
   'src/composer/Composer.tsx',
+  'src/shell/PartBoundary.tsx',
+  'src/shell/PartBoundary.test.tsx',
 ];
 
 export function namedTests(lane) {

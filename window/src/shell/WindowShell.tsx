@@ -23,6 +23,7 @@ import { buildSections, clearFilters, emptyLineFor, filterRows, filterSummary, h
 import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./AppSections";
 import { batchMenuItems } from "./batch-menu";
 import { OpenTabs, useOpenTabs } from "./OpenTabs";
+import { PartBoundary } from "./PartBoundary";
 import { menuIcon } from "./menu-icons";
 import { NewsTip, SidePet } from "./SidebarExtras";
 import { colourHue, iconColourItem } from "./row-look";
@@ -843,7 +844,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         />
         </div>
         {pane && ready ? (
+          <PartBoundary label="Side panel" resetKey={`${s.sessionKey}:${pane}`}>
           <SidePane key={s.sessionKey} engine={session.engine} name={trunkName(openRow?.agentId)} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} cardError={progress.error} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={notify} title={name} onReload={() => void session.reload()} />
+          </PartBoundary>
         ) : null}
       </>
     );
@@ -851,11 +854,17 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     main = (
       <>
         {isNarrow ? <PlaceHead onList={toggleList} onSettings={() => openSettings("general")} /> : null}
-        <PlaceView place={route.place} engine={session.engine} facts={{ running, waiting: waitingTotal }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={(agentId) => void startNew(agentId)} />
+        <PartBoundary label={`Place ${route.place}`} resetKey={route.place}>
+          <PlaceView place={route.place} engine={session.engine} facts={{ running, waiting: waitingTotal }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={(agentId) => void startNew(agentId)} />
+        </PartBoundary>
       </>
     );
   } else {
-    main = <SettingsFrame page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} />;
+    main = (
+      <PartBoundary label={`Settings ${route.page}`} resetKey={route.page}>
+        <SettingsFrame page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} />
+      </PartBoundary>
+    );
   }
   const talkEntry: TalkEntry | null =
     route.kind === "chat" ? null : { name: defaultName, keys: currentKeys(keyActions(defaultName), readCustomKeys()).talkBeside, open: talk.open, onToggle: () => setTalk({ open: !talk.open }) };
@@ -1011,7 +1020,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         {main}
       </main>
       {route.kind === "chat" && stage ? (
+        <PartBoundary label="Stage" resetKey={`${openKey}:${stage}`}>
         <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
+        </PartBoundary>
       ) : null}
       {addingComputer && ready ? <AddComputer engine={session.engine} onClose={() => setAddingComputer(false)} onAdded={computersChanged} /> : null}
       {route.kind === "chat" && pip && !stage ? (
