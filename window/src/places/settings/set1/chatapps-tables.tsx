@@ -4,8 +4,8 @@
 import type { Opt, Row, Section } from "./chatapps-kit";
 import { NO_KEY } from "./chatapps-kit";
 
-const CMD_WHO: Opt[] = [["Everyone allowed", 0], ["Owners only", 1], ["In direct messages only", 2], ["Nobody", 3]];
-const CMD_OFF = "Branch can’t limit one command yet; use “Who may use commands”.";
+export const CMD_WHO = ["Everyone allowed", "Owners only", "In direct messages only", "Nobody"];
+export const CMD_OFF = "Branch can’t limit one command yet; use “Who may use commands”.";
 const sw = (t: string, path: string, def: boolean, sub?: string, lv?: 0 | 1 | 2): Row => ({ t, sub, path, kind: "sw", def, lv });
 const offSw = (t: string, def: boolean, sub?: string, off = NO_KEY): Row => ({ t, sub, kind: "sw", def, off });
 const offSeg = (t: string, labels: string[], sub?: string, off = NO_KEY): Row => ({ t, sub, kind: "seg", opts: labels.map((l, i) => [l, i]), def: 0, off });
@@ -15,7 +15,7 @@ const CONFIG_CMD = "Commands that change how Branch is set up. Owners only. Off 
 
 export const ADVANCED: Section[] = [
   { title: "Commands in chat apps", lv: 1, hint: "Who may use which commands, in each chat app.", rows: [
-    ...["/new and /stop", "/model", "/config", "/approve"].map((t): Row => ({ t, kind: "pick", opts: CMD_WHO, def: t === "/config" ? 1 : 0, off: CMD_OFF })),
+    { t: "Who may use each command", kind: "custom", id: "cmdRows" },
     { t: "Slack app file", sub: "Every Branch command becomes a Slack command.", kind: "custom", id: "slackFile" },
   ] },
   { title: "What the Trunk sees", lv: 1, rows: [

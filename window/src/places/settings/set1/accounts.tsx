@@ -7,13 +7,14 @@ import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
 import { Icon } from "../../../shell/icons";
-import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Status, Switch, useConfig, useSaveRunner, useScope } from "../kit";
+import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Status, Switch, useConfig, useLevel, useSaveRunner, useScope } from "../kit";
 import { Logo, serviceName } from "./service";
 import { AddAccountDialog, type AddStart } from "./add-account";
 import { CodingApps } from "./coding-apps";
 import { OwnAccounts } from "./own-accounts";
 import { GitHubSettings } from "../GitHubSettings";
 import { AccountsMore } from "./accounts-more";
+import { BulkBar, SelectBox, SelectLink } from "./accounts-select";
 import "./set1.css";
 
 export type Profile = { profileId: string; type: string; status: string; displayName?: string; email?: string; logoutSupported?: boolean; source?: string; reasonCode?: string; externallyManaged?: boolean; expiry?: { label?: string } };
@@ -92,18 +93,23 @@ function AccountsStatus({ loading, error, count, unavailable }: { loading: boole
 type OrderProps = SettingsPageProps & { all: Account[]; reload: () => Promise<void>; onAdd: (s: AddStart) => void; agent: { agentId?: string } };
 function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
   const save = useSaveRunner();
+  const lv = useLevel();
   const [menu, setMenu] = useState<{ at: MenuAnchor; acc: Account } | null>(null);
+  const [picked, setPicked] = useState<string[] | null>(null);
   const setOrder = (acc: Account, ids: string[]) => save(async () => {
     await engine.request("models.authOrderSet", { provider: acc.p.authProvider ?? acc.p.provider, profileIds: ids, ...agent });
     await reload();
   });
   const brands = [...new Map(all.map((x) => [x.p.provider, x.p])).values()].slice(0, 2);
+  const selecting = lv >= 1 && picked !== null;
+  const right = lv >= 1 && all.length ? <SelectLink on={selecting} onToggle={() => setPicked(selecting ? null : [])} /> : undefined;
   return (
-    <Sec title="Order Branch uses them in">
+    <Sec title="Order Branch uses them in" right={right}>
+      {selecting ? <BulkBar engine={engine} all={all} picked={picked ?? []} agent={agent} reload={reload} done={() => setPicked(null)} /> : null}
       {all.length ? (
         <Plist>
           {all.map((acc) => (
-            <Prow key={`${acc.p.provider}/${acc.a.profileId}`} icon={<Logo id={acc.p.provider} size={32} />} title={accountName(acc)} sub={accountSub(acc)}>
+            <Prow key={`${acc.p.provider}/${acc.a.profileId}`} icon={<>{selecting ? <SelectBox acc={acc} name={accountName(acc)} picked={picked ?? []} onPick={setPicked} /> : null}<Logo id={acc.p.provider} size={32} /></>} title={accountName(acc)} sub={accountSub(acc)}>
               {acc.ordered && acc.first ? <Pill tone="ok">used next</Pill> : null}
               {acc.a.status === "expired" || acc.a.status === "missing" ? <Pill tone="warn">Sign in again</Pill> : null}
               <button type="button" className="icon-btn" aria-label="Move up" title={acc.first ? `First for ${serviceName(acc.p.provider, acc.p.displayName)} already` : acc.p.profileOrderLocked ? "The order is set in the settings file" : "Move up"} disabled={acc.first || Boolean(acc.p.profileOrderLocked)} onClick={() => void setOrder(acc, movedUp(acc, all))}>{UP}</button>
@@ -158,18 +164,21 @@ function WhenOneRunsOut({ engine }: { engine: SettingsPageProps["engine"] }) {
   );
 }
 
+const KO_LINES = [
+  "Your KeepOak computer joins the computer switcher, with its agents.",
+  "Your theme, saved colours and season follow you between computers and keepoak.com.",
+  "Your team workspace: members, shared Trunks and what they’re running.",
+  "Conversations, memory and keys stay on each computer. Nothing else is shared.",
+];
 function KeepOak() {
   return (
     <Sec personal title="keepoak.com">
-      <div className="keepoak-k">
-        <Logo id="keepoak" size={32} />
+      <div className="ko-card-acc">
+        <span className="ko-acc" aria-hidden="true" />
         <span className="grow"><b>Your keepoak.com account</b><small>Have a KeepOak computer or a team on keepoak.com? Connect it once.</small></span>
       </div>
-      <ul className="ticks-k">
-        <li>Your KeepOak computer joins the computer switcher, with its agents.</li>
-        <li>Your theme, saved colours and season follow you between computers and keepoak.com.</li>
-        <li>Your team workspace: members, shared Trunks and what they’re running.</li>
-        <li>Conversations, memory and keys stay on each computer. Nothing else is shared.</li>
+      <ul className="ticks-acc">
+        {KO_LINES.map((line) => <li key={line}><Icon name="check" small />{line}</li>)}
       </ul>
       <Acts><Btn pri disabled title="keepoak.com has no sign-in Branch can use yet.">Connect your keepoak.com account</Btn><Hint>keepoak.com has no sign-in Branch can use yet.</Hint></Acts>
     </Sec>

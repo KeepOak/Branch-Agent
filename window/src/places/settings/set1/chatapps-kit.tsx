@@ -36,12 +36,11 @@ export function KeyRow({ row, cfg }: { row: Row; cfg: Cfg }) {
   const v = current(row, cfg);
   const save = (next: unknown) => { if (row.path && !row.off) void cfg.set(row.path, next); };
   const wideSeg = row.kind === "seg" && (row.opts ?? []).reduce((n, [l]) => n + l.length, 0) > 44;
-  const lineAbove = row.kind === "lines" || (row.kind === "text" && !row.unit) || wideSeg;
-  return (
-    <Ctl title={row.t} sub={row.sub} off={row.off} stack={lineAbove}>
-      <RowControl row={row} value={v} save={save} disabled={cfg.loading || Boolean(row.off)} />
-    </Ctl>
-  );
+  const field = row.kind === "lines" || (row.kind === "text" && !row.unit);
+  const control = <RowControl row={row} value={v} save={save} disabled={cfg.loading || Boolean(row.off)} />;
+  // A field sits under its sub-line, as in the preview; a wide segment sits above it.
+  if (field) return <Ctl title={row.t} sub={row.sub} off={row.off} stack after={<span className="right">{control}</span>} />;
+  return <Ctl title={row.t} sub={row.sub} off={row.off} stack={wideSeg}>{control}</Ctl>;
 }
 
 function RowControl({ row, value, save, disabled }: { row: Row; value: unknown; save: (v: unknown) => void; disabled: boolean }) {

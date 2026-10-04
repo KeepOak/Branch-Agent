@@ -19,7 +19,7 @@ import { AllAppsDialog, ConnectDialog } from "./chatapps-connect";
 import { partFor } from "./chatapps-parts";
 import { peoplePart } from "./chatapps-people";
 import { Lists } from "./chatapps-lists";
-import { Depth, DEPTH_TITLES, MsgKeys } from "./chatapps-depth";
+import { Depth, DEPTH_TITLES, MSG_KEY_TITLES, MsgKeys } from "./chatapps-depth";
 import "./set1.css";
 import "./chatapps.css";
 
@@ -99,7 +99,7 @@ function More({ level, cfg, apps, all, trunks }: MoreProps) {
     if (id === "lists") return <Lists apps={apps} cfg={cfg} />;
     if (id === "msgKeys") return <MsgKeys cfg={cfg} />;
     if (id === "depth") return <Depth catalogue={all} connected={new Set(apps.map((a) => a.id))} cfg={cfg} />;
-    return peoplePart(id, { apps, cfg, trunks }) ?? partFor(id, { apps, cfg }, row as never);
+    return peoplePart(id, { apps, cfg, trunks }) ?? partFor(id, { apps, cfg, all }, row as never);
   };
   const secs = [...ADVANCED, ...(level >= 2 ? TECH_A : []), DEPTH, ...LATER];
   return <>{secs.filter((s) => s.lv <= level).map((s) => <TableSec key={s.title} sec={s} cfg={cfg} level={level} custom={custom} />)}</>;
@@ -110,6 +110,8 @@ export const CHATAPPS_ROWS: RowEntry[] = [
   { page: "chatapps", title: "Asking to message", sec: "Asking to message", lv: 0, words: "pairing approve dismiss requests" },
   { page: "chatapps", title: "Approve by code", sec: "Asking to message", lv: 0 },
   { page: "chatapps", title: "Who answers", sec: "Who answers", lv: 0, words: "routing trunk per chat" },
-  ...rowsOf("chatapps", [...ADVANCED, ...TECH_A, ...LATER].map((s) => ({ ...s, rows: s.rows.filter((r) => r.kind !== "custom" || !["watchdog", "formatting", "queueByApp", "lists", "actions", "msgKeys", "delayMin", "delayMax", "apprWhere"].includes(r.id ?? "")) }))),
+  ...rowsOf("chatapps", [...ADVANCED, ...TECH_A, ...LATER].map((s) => ({ ...s, rows: s.rows.filter((r) => r.kind !== "custom" || !["cmdRows", "watchdog", "formatting", "queueByApp", "lists", "actions", "msgKeys", "delayMin", "delayMax", "apprWhere"].includes(r.id ?? "")) }))),
+  ...["/new and /stop", "/model", "/config", "/approve"].map((t) => ({ page: "chatapps", title: t, sec: "Commands in chat apps", lv: 1 as Lv, words: "who may use command" })),
   ...DEPTH_TITLES.map((t) => ({ page: "chatapps", title: t, sec: DEPTH.title, lv: 1 as Lv })),
+  ...MSG_KEY_TITLES.map((t) => ({ page: "chatapps", title: t, sec: "Messages, every setting", lv: 2 as Lv })),
 ];
