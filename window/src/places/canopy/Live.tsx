@@ -19,9 +19,11 @@ function useSteps(ctx: Ctx) {
   useEffect(() => ctx.engine.onEvent(({ event, payload }) => {
     const p = rec(payload), d = rec(p.data);
     if ((event !== "agent" && event !== "session.tool") || p.stream !== "tool" || ["tool_call", "tool_search", "tool_describe"].includes(str(d.name))) return;
-    const key = str(d.toolCallId) || `${str(p.runId)}:${String(p.seq)}`;
+    const key = JSON.stringify([str(p.sessionKey), str(p.runId), str(d.toolCallId) || String(p.seq)]);
     setSteps(list => {
-      if (d.phase === "start") return [{ key, session: str(p.sessionKey), tool: str(d.name) || "step", hidden: Object.keys(rec(d.args)).length, st: "Running" as const, out: "", at: Date.now() }, ...list.filter(s => s.key !== key)].slice(0, KEEP);
+      // Mirrored agent/session.tool starts refer to the same step. A replay must
+      // not erase its result or move it ahead of newer work.
+      if (d.phase === "start") return list.some(s => s.key === key) ? list : [{ key, session: str(p.sessionKey), tool: str(d.name) || "step", hidden: Object.keys(rec(d.args)).length, st: "Running" as const, out: "", at: Date.now() }, ...list].slice(0, KEEP);
       if (d.phase !== "result" || !list.some(x => x.key === key)) return list;
       return list.map(s => s.key === key ? { ...s, st: d.isError ? "Error" as const : "Done" as const, out: resultText(d.result).slice(0, 120) } : s);
     });

@@ -271,6 +271,44 @@ describe("Canopy states", () => {
     await act(async () => emit("session.tool", { runId: "r9", seq: 2, stream: "tool", sessionKey: "agent:b:main", data: { phase: "result", name: "read_file", toolCallId: "t1", result: { content: "ok" } } }));
     expect(steps.textContent).toContain("Done");
   });
+  it("keeps reused tool IDs separate across runs and conversations", async () => {
+    await mount(fx(), "advanced");
+    const step = (sessionKey: string, runId: string, phase: string) => ({
+      sessionKey, runId, stream: "tool", data: { toolCallId: "shared", name: "read_file", phase, result: { content: "ok" } },
+    });
+    await act(async () => {
+      emit("session.tool", step("agent:a:main", "r1", "start"));
+      emit("session.tool", step("agent:b:main", "r1", "start"));
+      emit("session.tool", step("agent:a:main", "r2", "start"));
+      emit("session.tool", step("agent:a:main", "r1", "result"));
+    });
+    const live = host.querySelector("[aria-label='Every step, live']")!;
+    const entries = [...live.querySelectorAll(".cn-prow")];
+    expect(entries).toHaveLength(3);
+    expect(entries.filter(e => e.textContent?.includes("Running"))).toHaveLength(2);
+    expect(entries.filter(e => e.textContent?.includes("Done"))).toHaveLength(1);
+    await act(async () => emit("agent", step("agent:a:main", "r1", "start")));
+    expect(live.querySelectorAll(".cn-prow")).toHaveLength(3);
+    expect(live.querySelectorAll(".cn-prow")[2].textContent).toContain("Done");
+  });
+  it("uses the remaining run or session identity when an event omits the other", async () => {
+    await mount(fx(), "advanced");
+    const step = (identity: Record<string, string>, phase: string) => ({
+      ...identity, stream: "tool", data: { toolCallId: "shared", name: "read_file", phase },
+    });
+    await act(async () => {
+      emit("agent", step({ runId: "r1" }, "start"));
+      emit("agent", step({ runId: "r2" }, "start"));
+      emit("session.tool", step({ sessionKey: "agent:a:main" }, "start"));
+      emit("session.tool", step({ sessionKey: "agent:b:main" }, "start"));
+      emit("agent", step({ runId: "r1" }, "result"));
+      emit("session.tool", step({ sessionKey: "agent:b:main" }, "result"));
+    });
+    const entries = [...host.querySelectorAll("[aria-label='Every step, live'] .cn-prow")];
+    expect(entries).toHaveLength(4);
+    expect(entries.filter(e => e.textContent?.includes("Running"))).toHaveLength(2);
+    expect(entries.filter(e => e.textContent?.includes("Done"))).toHaveLength(2);
+  });
 });
 
 describe("Canopy › Cards [A]", () => {
