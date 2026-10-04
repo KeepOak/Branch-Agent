@@ -12,7 +12,9 @@ export type ComponentUpdates = {
   stage(): Promise<ComponentUpdateStatus>;
 };
 type Desktop = { gatewayUrl?: string; componentUpdates?: ComponentUpdates; unavailableReason?: string };
-export const MANUAL_UPDATE_UNSUPPORTED = "This version of the Branch Agent app can’t check for updates by hand. Install the newest Branch Agent app.";
+/** An older Branch Agent app has no Check now bridge, but it still checks every hour and stages updates itself. */
+export const MANUAL_UPDATE_UNSUPPORTED = "Checking by hand needs a newer Branch Agent app.";
+export const DESKTOP_CHECKS_HOURLY = "Branch checks for updates every hour and lets you know when one is ready to restart into.";
 const TARGET_UNVERIFIED = "Branch is connected to a different computer’s engine. Reconnect to this computer to check for updates.";
 export function componentDesktop(gatewayUrl?: string): Desktop | undefined {
   const desktop = (window as unknown as { branchDesktop?: Desktop }).branchDesktop;
