@@ -351,6 +351,17 @@ export default definePluginEntry({
       },
     });
 
+    api.registerCommand({
+      name: "forget",
+      description: "Remove matching entries from memory files.",
+      acceptsArgs: true,
+      exposeSenderIsOwner: true,
+      handler: async (ctx) => {
+        const { handleForgetCommand } = await import("./src/forget-command.js");
+        return await handleForgetCommand(ctx);
+      },
+    });
+
     api.registerCli(
       async ({ program }) => {
         const { registerMemoryCli } = await import("./cli.js");

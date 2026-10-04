@@ -318,6 +318,7 @@ user skill directly.
     | --- | --- |
     | `/skill <name> [input]` | Run a skill by name |
     | `/learn [request]` | Draft one reviewable skill from the current conversation or named sources through [Skill Workshop](/tools/skill-workshop) |
+    | `/remember <text>` | Save a durable memory: the agent adds it to `MEMORY.md` with its file tools |
     | `/loop [interval] <prompt>` | Owner-only. Repeat a prompt in this conversation; omit the interval for self-paced checks |
     | `/loop status` | Owner-only. List loops bound to this conversation |
     | `/loop stop [name]` | Owner-only. Stop matching loops bound to this conversation |
@@ -370,7 +371,8 @@ user skill directly.
 
 | Command                                                                             | Description                                                                                                                                                                                    |
 | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/rings [on\|off\|status\|help]`                                                 | Toggle memory rings (owner or Gateway admin). See [Rings](/concepts/rings)                                                                                                            |
+| `/rings [on\|off\|status\|help]`                                                    | Toggle memory rings (owner or Gateway admin). See [Rings](/concepts/rings)                                                                                                                     |
+| `/forget <text>`                                                                    | Remove matching entries from `MEMORY.md`, `USER.md` and `memory/` notes (owner or Gateway admin)                                                                                               |
 | `/pair [qr\|status\|pending\|approve\|cleanup\|notify]`                             | Manage device pairing. See [Pairing](/channels/pairing)                                                                                                                                        |
 | [`/voice`](/nodes/talk#choose-a-talk-voice-from-chat) `status\|list\|set <voiceId>` | Manage Talk voice config. Discord native name: `/talkvoice`                                                                                                                                    |
 | `/codex <action> ...`                                                               | Bind, steer, and inspect the Codex app-server harness (status, threads, resume, model, fast, permissions, compact, review, mcp, skills, and more). See [Codex harness](/plugins/codex-harness) |

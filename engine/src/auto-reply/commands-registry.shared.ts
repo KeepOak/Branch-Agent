@@ -217,6 +217,20 @@ export function buildBuiltinChatCommands(
       },
     ),
     defineBuiltinCommand(
+      "remember",
+      "Save a durable memory to the memory files.",
+      "tools",
+      "standard",
+      {
+        args: [
+          defineCommandArgument("text", "What to remember", {
+            required: true,
+            captureRemaining: true,
+          }),
+        ],
+      },
+    ),
+    defineBuiltinCommand(
       "loop",
       "Loop a prompt: /loop [interval] <prompt> | /loop status | /loop stop [name]",
       "tools",

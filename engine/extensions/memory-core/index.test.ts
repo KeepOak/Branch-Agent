@@ -297,21 +297,25 @@ describe("memory-core plugin runtime registration", () => {
     expect(current).not.toHaveBeenCalled();
   });
 
-  it("registers the rings runtime slash command", () => {
-    let command: BranchPluginCommandDefinition | undefined;
+  it("registers the rings and forget runtime slash commands", () => {
+    const commands: BranchPluginCommandDefinition[] = [];
     plugin.register(
       createTestPluginApi({
         runtime: hostRuntime,
         registerCommand(definition) {
-          command = definition;
+          commands.push(definition);
         },
       }),
     );
 
-    expect(command?.name).toBe("rings");
+    const command = commands.find((entry) => entry.name === "rings");
     expect(command?.acceptsArgs).toBe(true);
     expect(command?.exposeSenderIsOwner).toBe(true);
     expect(command?.description).toContain("Enable or disable");
+    const forget = commands.find((entry) => entry.name === "forget");
+    expect(forget?.acceptsArgs).toBe(true);
+    expect(forget?.exposeSenderIsOwner).toBe(true);
+    expect(forget?.description).toContain("Remove matching entries");
   });
 
   it("registers the standing-intent tool and deterministic prompt hook", () => {

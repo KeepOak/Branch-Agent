@@ -46,6 +46,10 @@ export const engineTests = [
   'src/agents/cli-rules.test.ts',
   'src/cli/program/register.agent.test.ts',
   'src/commands/agent-via-gateway.test.ts',
+  'src/auto-reply/reply/commands-remember.test.ts',
+  'extensions/memory-core/src/memory-forget-text.test.ts',
+  'extensions/memory-core/src/forget-command.test.ts',
+  'extensions/memory-core/index.test.ts',
 ];
 
 export const windowTests = [
@@ -139,6 +143,14 @@ export const engineStrictFiles = [
   'src/commands/agent-exec-input.ts',
   'src/commands/agent-via-gateway.ts',
   'src/commands/agent-exec.ts',
+  'src/auto-reply/reply/commands-remember.ts',
+  'src/auto-reply/reply/commands-remember.test.ts',
+  'extensions/memory-core/src/memory-forget-text.ts',
+  'extensions/memory-core/src/memory-forget-text.test.ts',
+  'extensions/memory-core/src/forget-command.ts',
+  'extensions/memory-core/src/forget-command.test.ts',
+  'extensions/memory-core/src/rings-command.ts',
+  'src/auto-reply/commands-registry-normalize.ts',
 ];
 
 export const windowStrictFiles = [

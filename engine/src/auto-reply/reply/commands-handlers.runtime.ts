@@ -28,6 +28,7 @@ import { handleModelsCommand } from "./commands-models.js";
 import { handleNameCommand } from "./commands-name.js";
 import { handlePluginCommand } from "./commands-plugin.js";
 import { handlePluginsCommand } from "./commands-plugins.js";
+import { handleRememberCommand } from "./commands-remember.js";
 import {
   handleAbortTrigger,
   handleActivationCommand,
@@ -72,6 +73,7 @@ export function loadCommandHandlers(): CommandHandler[] {
     handleGoalCommand,
     handleDashboardCommand,
     handleLearnCommand,
+    handleRememberCommand,
     handleLoopCommand,
     handleNameCommand,
     handleDiagnosticsCommand,

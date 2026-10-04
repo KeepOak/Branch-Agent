@@ -39,6 +39,11 @@
       "name": "rings",
       "kind": "runtime-slash",
       "cliCommand": "memory"
+    },
+    {
+      "name": "forget",
+      "kind": "runtime-slash",
+      "cliCommand": "memory"
     }
   ],
   "uiHints": {

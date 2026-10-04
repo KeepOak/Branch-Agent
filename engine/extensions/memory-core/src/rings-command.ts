@@ -52,7 +52,8 @@ function formatUsage(includeStatus: string): string {
   ].join("\n");
 }
 
-function lacksAdminOrOwnerForRingsMutation(params: {
+/** Memory mutations from chat need owner status, or operator.admin for gateway clients. */
+export function lacksAdminOrOwnerForRingsMutation(params: {
   gatewayClientScopes?: readonly string[];
   senderIsOwner?: boolean;
 }): boolean {
