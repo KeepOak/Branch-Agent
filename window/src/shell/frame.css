@@ -1272,3 +1272,13 @@ button.mi:focus-visible {
     display: none;
   }
 }
+
+/* Scrollbars as the design draws them (its #app.r618-sbauto rules): thin and hidden until the pointer is over
+   the scrolling part. :where keeps these below every part's own scrollbar rule. */
+:where(.frame, .frame *) {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+:where(.frame *):hover {
+  scrollbar-color: var(--line-2) transparent;
+}
