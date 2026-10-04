@@ -100,19 +100,48 @@ test("renderer TAR mode is deterministic while engine executable modes remain na
   assert.equal(parseInt(engineTar.subarray(100, 108).toString(), 8), (await stat(join(engine, "branch.mjs"))).mode & 0o777);
 }));
 
+test("shared renderer archive bytes do not depend on the native build host", () => fixture(async ({ root, engine, window }) => {
+  const output = join(root, "host-check");
+  await makeComponentRelease({ version, tag: `v${version}`, engine, window, output, platform: "linux", arch: "x64" });
+  const archive = await readFile(join(output, `branch-window-${version}.tar.gz`));
+  // Header byte 9 is the gzip OS field; zlib fills in 3/10/19 for Linux/Windows/macOS hosts.
+  assert.equal(archive[9], 0xff, "Renderer archive must not record the build host OS");
+  assert.deepEqual(archive.subarray(4, 8), Buffer.alloc(4), "Renderer archive must not record a build time");
+  assert(gunzipSync(archive).length > 0);
+}));
+
 test("identity rejects abbreviated commits and non-semver source versions", () => {
   const valid = { commit, version, platform: "win32", arch: "x64" };
   assert.throws(() => validateReleaseIdentity({ ...valid, commit: "aaaaaaa" }), /exact source/);
   assert.throws(() => validateReleaseIdentity({ ...valid, version: "latest" }), /Invalid release/);
 });
 
+const older = "c".repeat(40), newer = "e".repeat(40);
+/** Simulated main history: older -> commit -> newer; `branch` is a commit that never reached main. */
+function compare(base, head) {
+  const order = [older, commit, newer, "main"];
+  if (!order.includes(base) || !order.includes(head)) return "diverged";
+  const delta = order.indexOf(head) - order.indexOf(base);
+  return delta === 0 ? "identical" : delta > 0 ? "ahead" : "behind";
+}
+
 function simulatedGitHub(options = {}) {
-  const calls = []; let uploaded = [], mainReads = 0;
+  const calls = []; let uploaded = [], published = false, compares = 0;
+  const notFound = () => Object.assign(new Error("gh: Not Found (HTTP 404)"), { stderr: "gh: Not Found (HTTP 404)" });
   const request = async args => {
     calls.push(args);
-    if (args[0] === "api" && args[1].endsWith("heads/main")) return ++mainReads === 2 && options.advance ? "f".repeat(40) : commit;
+    if (args[0] === "api" && args[1].includes("/compare/")) {
+      const [base, head] = args[1].split("/compare/")[1].split("...");
+      compares++;
+      return options.leftMain && head === "main" && compares > 1 ? "diverged" : compare(options.source ?? base, head);
+    }
     if (args[0] === "api" && args[1].endsWith("/releases")) return JSON.stringify([options.existing ? [{ tag_name: `v${version}` }] : []]);
-    if (args[0] === "api" && args[1].endsWith("/releases/latest")) return JSON.stringify({ draft: false, prerelease: false, target_commitish: commit, tag_name: `v${version}` });
+    if (args[0] === "api" && args[1].endsWith("/releases/latest")) {
+      if (published) return JSON.stringify({ draft: false, prerelease: false, target_commitish: commit, tag_name: `v${version}` });
+      if (!options.latest) throw notFound();
+      return JSON.stringify({ draft: false, prerelease: false, target_commitish: options.latest, tag_name: "v0.0.1" });
+    }
+    if (args[0] === "release" && args[1] === "edit") published = true;
     if (args[0] === "api" && args[1].includes("/releases/tags/")) return JSON.stringify({ draft: false, prerelease: false, target_commitish: commit, tag_name: `v${version}` });
     if (args[0] === "api" && args[1].includes("/git/ref/tags/")) return JSON.stringify({ object: { type: "commit", sha: options.tagSha ?? commit } });
     if (args[0] === "release" && args[1] === "create") uploaded = args.slice(3, args.indexOf("--repo"));
@@ -135,11 +164,20 @@ test("publication exposes latest only after authenticated uploaded-byte readback
   assert(remote.calls.find(args => args[1] === "edit").includes("--latest"));
 }));
 
+test("publication of a main commit proceeds while main advances, replacing an older latest", () => fixture(async ({ assets }) => {
+  const remote = simulatedGitHub({ latest: older });
+  await publishRelease(assets, commit, version, remote.request, async url => new Response(await readFile(join(assets, new URL(url).pathname.split("/").at(-1)))));
+  assert(remote.calls.find(args => args[1] === "edit").includes("--latest"));
+}));
+
 for (const [label, options, expected] of [
   ["existing immutable release", { existing: true }, /immutable/],
   ["wrong immutable tag", { tagSha: "d".repeat(40) }, /different source/],
   ["corrupted uploaded bytes", { corrupt: true }, /readback differs/],
-  ["main advancing during upload", { advance: true }, /newer main/],
+  ["a source that is not on main", { source: "b".repeat(40) }, /not a commit on main/],
+  ["a source that left main during upload", { leftMain: true }, /not a commit on main/],
+  ["a newer main commit already latest", { latest: newer }, /stale automatic update/],
+  ["the same commit already latest", { latest: commit }, /stale automatic update/],
 ]) test(`publication refuses ${label} without changing latest`, () => fixture(async ({ assets }) => {
   const remote = simulatedGitHub(options);
   await assert.rejects(publishRelease(assets, commit, version, remote.request), expected);

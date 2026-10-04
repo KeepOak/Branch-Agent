@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { constants, createReadStream, createWriteStream } from "node:fs";
 import { copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { createGzip } from "node:zlib";
@@ -49,6 +49,18 @@ async function files(root, folder = root, ancestors = new Set()) {
   return result;
 }
 
+/**
+ * zlib writes the build host into gzip header byte 9 (Linux 3, Windows 10, macOS 19), so the shared
+ * renderer archive built on each native runner differed by that byte alone. RFC 1952 OS 255 = unknown.
+ */
+function portableGzipHeader() {
+  let offset = 0;
+  return new Transform({ transform(chunk, _encoding, done) {
+    if (offset <= 9 && offset + chunk.length > 9) { chunk = Buffer.from(chunk); chunk[9 - offset] = 0xff; }
+    offset += chunk.length; done(null, chunk);
+  } });
+}
+
 async function archive(root, destination, fileMode) {
   const entries = await files(await realpath(root));
   async function* bytes() {
@@ -60,7 +72,7 @@ async function archive(root, destination, fileMode) {
     }
     yield Buffer.alloc(1024);
   }
-  await pipeline(Readable.from(bytes()), createGzip(), createWriteStream(destination, { flags: "wx" }));
+  await pipeline(Readable.from(bytes()), createGzip(), portableGzipHeader(), createWriteStream(destination, { flags: "wx" }));
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(destination)) hash.update(chunk);
   return { sha256: hash.digest("hex"), bytes: (await stat(destination)).size,
