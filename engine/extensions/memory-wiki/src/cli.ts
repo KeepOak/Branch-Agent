@@ -17,6 +17,7 @@ import {
   type ChatGptImportResult,
   type ChatGptRollbackResult,
 } from "./chatgpt-import.js";
+import { registerWikiKnowledgeCommands } from "./cli-knowledge.js";
 import { compileMemoryWikiVault } from "./compile.js";
 import {
   resolveMemoryWikiAgentConfig,
@@ -809,6 +810,8 @@ export function registerWikiCli(program: Command, registration: MemoryWikiCliReg
         formatChatGptRollbackSummary,
       );
     });
+
+  registerWikiKnowledgeCommands(wiki, { requireCommandContext, printWikiResult });
 
   const obsidian = wiki.command("obsidian").description("Run official Obsidian CLI helpers");
   obsidian

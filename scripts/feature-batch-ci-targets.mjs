@@ -47,6 +47,10 @@ export const engineTests = [
   'extensions/vercel-ai-gateway/embedding-adapter.test.ts',
   'extensions/memory-core/src/file-context-tracker.test.ts',
   'extensions/memory-core/index.test.ts',
+  'extensions/memory-wiki/src/pinning.test.ts',
+  'extensions/memory-wiki/src/prompt-section.test.ts',
+  'extensions/memory-wiki/src/cli.test.ts',
+  'extensions/memory-wiki/index.test.ts',
 ];
 
 export const windowTests = [
@@ -148,6 +152,11 @@ export const engineStrictFiles = [
   'extensions/memory-core/src/file-context-hooks.ts',
   'extensions/memory-core/src/file-context-tracker.test.ts',
   'extensions/memory-core/index.ts',
+  'extensions/memory-wiki/src/pinning.ts',
+  'extensions/memory-wiki/src/pinning.test.ts',
+  'extensions/memory-wiki/src/cli-knowledge.ts',
+  'extensions/memory-wiki/src/prompt-section.ts',
+  'extensions/memory-wiki/src/cli.ts',
 ];
 
 export const windowStrictFiles = [

@@ -7,6 +7,7 @@ import {
   type MemoryWikiCompiledDigestPage,
 } from "./compiled-cache.js";
 import type { MemoryWikiConfigResolver, ResolvedMemoryWikiConfig } from "./config.js";
+import { buildPinnedWikiPromptLines } from "./pinning.js";
 
 const DIGEST_MAX_PAGES = 4;
 const DIGEST_MAX_CLAIMS_PER_PAGE = 2;
@@ -191,16 +192,17 @@ export function createWikiPromptSectionPreparer(params: {
   config: ResolvedMemoryWikiConfig;
   resolveConfig: MemoryWikiConfigResolver;
 }) {
-  return async ({ agentId }: Parameters<MemoryPromptSectionBuilder>[0]) => {
+  return async ({ agentId, agentSessionKey }: Parameters<MemoryPromptSectionBuilder>[0]) => {
     // Context-free preparation must not choose or disclose another agent's vault.
     if (params.config.vault.scope === "agent" && !agentId) {
       return [];
     }
     const config = params.resolveConfig(agentId);
+    const pinnedLines = await buildPinnedWikiPromptLines(config, agentSessionKey);
     if (!config.context.includeCompiledDigestPrompt) {
-      return [];
+      return pinnedLines;
     }
     const snapshot = await loadMemoryWikiCompiledCache(config);
-    return buildDigestPromptSection(snapshot?.digest);
+    return [...buildDigestPromptSection(snapshot?.digest), ...pinnedLines];
   };
 }
