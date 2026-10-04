@@ -65,7 +65,8 @@ export function ChannelsTab({ engine, openSettings }: { engine: WindowEngine; op
     <div className="cz-top"><label className="cz-search"><Icon name="search" small /><input type="search" aria-label="Search chat apps" placeholder={`Search ${apps.length} chat apps`} value={query} onChange={e => setQuery(e.target.value)} /></label>
       <Seg label="Which chat apps" value={group} change={setGroup} options={[{ id: "all", name: "All" }, { id: "popular", name: "Popular" }, { id: "work", name: "Work chat" }, { id: "more", name: "More" }]} /></div>
     <Status {...status} />
-    {status.data != null && !shown.length && <EmptyLine icon={<Icon name="search" />}>{q ? "No chat app by that name." : "No chat apps yet."}</EmptyLine>}
+    <Status {...plugins} />
+    {status.data != null && plugins.data != null && !shown.length && <EmptyLine icon={<Icon name="search" />}>{q ? "No chat app by that name." : "No chat apps yet."}</EmptyLine>}
     <div className="cz-chgrid">{shown.map(a => { const st = stateOf(a); return <button key={a.id} type="button" className={st.dot === "on" ? "cz-ch on" : "cz-ch"} onClick={() => setOpen(a.id)}>
       <ChatLogo id={a.id} name={a.name} size={32} /><span className="grow"><b>{a.name}</b><small>{st.line}</small></span>{st.dot && <span className={"cz-dot cz-ch-dot " + st.dot} aria-hidden="true" />}</button>; })}</div>
     <div className="cz-tile-card cz-phone"><span className="cz-tile"><Glyph name="phone" size={16} /></span><span className="grow"><b>Your phone</b><small>Answer approvals and talk to Trunks from the Branch app.</small></span><button type="button" className="btn pri sm" onClick={() => setPairing(true)}>Pair a phone</button></div>
