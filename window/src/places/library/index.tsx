@@ -69,7 +69,7 @@ export function LibraryPlace({ engine, level, openSettings, openConversation }: 
       <LibraryTabs value={tab} onChange={setTab} counts={{ memory: facts }} />
       <Status {...trunks} />
       {list && (tab === "memory" ? <MemoryTab engine={engine} level={level} trunks={list} files={memory.files} reloadFiles={memory.reload} defaultId={defaultId} openSettings={openSettings} />
-        : tab === "documents" ? <DocumentsTab engine={engine} level={level} trunks={list} />
+        : tab === "documents" ? <DocumentsTab engine={engine} level={level} trunks={list} defaultId={rec(trunks.data).selectionRequired === true ? undefined : optStr(rec(trunks.data).defaultId)} mainKey={optStr(rec(trunks.data).mainKey)} />
         : tab === "made" ? <MadeTab engine={engine} trunks={list} openConversation={openConversation} />
         : tab === "meetings" ? <MeetingsTab engine={engine} level={level} trunks={list} openSettings={openSettings} />
         : <LogbookTab engine={engine} openSettings={openSettings} />)}

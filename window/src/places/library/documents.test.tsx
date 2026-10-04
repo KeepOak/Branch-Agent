@@ -5,11 +5,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import type { Level } from "../../places-nav/level";
 import { DocumentsTab } from "./documents";
+import { LibraryPlace } from "./index";
+import { loadDraft, safeStorage } from "../../composer/drafts";
+import { loadLine, saveLine } from "../../composer/queue";
+import type { DraftFile } from "../../composer/attachments";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let root: Root | null = null;
 let host: HTMLDivElement;
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = null; document.body.innerHTML = ""; });
+afterEach(async () => { if (root) await act(async () => root!.unmount()); root = null; document.body.innerHTML = ""; localStorage.clear(); vi.restoreAllMocks(); });
 const settle = () => act(async () => { await new Promise(r => setTimeout(r, 0)); });
 type Handler = (method: string, params: Record<string, unknown>) => unknown;
 function engineOf(handler: Handler) {
@@ -21,6 +25,23 @@ async function mount(engine: WindowEngine, level: Level = "regular") {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => { root!.render(<DocumentsTab engine={engine} level={level} trunks={TRUNKS} />); });
   await settle(); await settle();
+}
+async function writable(engine: WindowEngine) {
+  engine.scopes = ["operator.admin"];
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await renderWritable(engine);
+}
+async function renderWritable(engine: WindowEngine) {
+  await act(async () => root!.render(<DocumentsTab engine={engine} level="regular" trunks={TRUNKS} defaultId="a" mainKey="desk" />));
+  await settle(); await settle();
+}
+function created(name = "Untitled document.md", agentId = "a") {
+  return { agentId, file: { name, path: `Documents/${name}`, size: 0, hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" } };
+}
+function deferred() {
+  let resolve!: (value: unknown) => void;
+  const promise = new Promise<unknown>(done => { resolve = done; });
+  return { promise, resolve };
 }
 const button = (label: string, scope: ParentNode = host) => [...scope.querySelectorAll("button")].find(b => b.textContent === label);
 async function click(b: HTMLButtonElement | undefined) { expect(b).toBeTruthy(); await act(async () => { b!.click(); }); await settle(); await settle(); }
@@ -39,6 +60,170 @@ function workspace(extra: Handler = () => undefined): Handler {
 }
 
 describe("Library › Documents", () => {
+  it("creates a blank document and rereads its real folder, leaving help unsent", async () => {
+    let saved = false;
+    const { engine, request } = engineOf((method, params) => {
+      if (method === "agents.list") return { agents: TRUNKS, defaultId: "a", mainKey: "desk", selectionRequired: false };
+      if (method === "agents.documents.create") {
+        expect(params).toEqual({ agentId: "a", name: "Untitled document.md", content: "" });
+        saved = true;
+        return created();
+      }
+      if (method === "agents.workspace.list") return { entries: saved && params.path === "Documents" ? [{ name: "Untitled document.md", path: "Documents/Untitled document.md", kind: "file" }] : [], totalEntries: saved ? 1 : 0, offset: 0 };
+      return {};
+    });
+    engine.scopes = ["operator.admin"];
+    host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    await act(async () => root!.render(<LibraryPlace engine={engine} level="regular" facts={{ running: 0, waiting: 0 }} openConversation={() => { throw new Error("must remain unsent"); }} openPlace={() => {}} />));
+    await settle(); await settle();
+    await click(button("Documents"));
+    expect(button("Write a new document")!.disabled).toBe(false);
+    await click(button("Write a new document"));
+    expect(host.querySelector('[data-testid="document-list"]')?.textContent).toContain("Untitled document.md");
+    expect(loadDraft(safeStorage(), "agent:a:desk")).toBe('Help me write “Untitled document.md”: ');
+    expect(request.mock.calls.some(([method]) => method === "chat.send" || method === "sessions.create")).toBe(false);
+  });
+  it("retries only an exact exclusive-name conflict and keeps the earlier document", async () => {
+    const kept = new Map([["Untitled document.md", "keep this content"]]);
+    const { engine } = engineOf(workspace((method, params) => {
+      if (method === "agents.documents.create") {
+        const name = String(params.name);
+        if (kept.has(name)) throw Object.assign(new Error("Already exists"), { details: { type: "document_conflict", path: `Documents/${name}` } });
+        kept.set(name, String(params.content));
+        return created(name);
+      }
+      if (method === "agents.workspace.list" && params.path === "Documents") return { entries: [...kept.keys()].map(name => ({ name, path: `Documents/${name}`, kind: "file" })), offset: 0, totalEntries: kept.size };
+      return undefined;
+    }));
+    await writable(engine); await click(button("Write a new document"));
+    expect(host.querySelector('[data-testid="document-list"]')?.textContent).toContain("Untitled document 2.md");
+    expect(kept.get("Untitled document.md")).toBe("keep this content");
+    expect(loadDraft(safeStorage(), "agent:a:desk")).toBe('Help me write “Untitled document 2.md”: ');
+  });
+  it("preserves an existing user draft and queue when creation succeeds", async () => {
+    localStorage.setItem("branch.composer.draft:agent:a:desk", "my draft");
+    const attachment: DraftFile = { id: "attachment", kind: "text", fileName: "pasted.txt", mimeType: "text/plain", sizeBytes: 4, text: "keep", origin: "paste" };
+    saveLine(safeStorage(), "agent:a:desk", [{ id: "kept", text: "queued work", files: [attachment], state: "waiting" }]);
+    const { engine } = engineOf(workspace((method) => method === "agents.documents.create" ? created() : undefined));
+    await writable(engine); await click(button("Write a new document"));
+    expect(loadDraft(safeStorage(), "agent:a:desk")).toBe("my draft");
+    expect(loadLine(safeStorage(), "agent:a:desk")).toEqual([{ id: "kept", text: "queued work", files: [{ id: "attachment", kind: "text", fileName: "pasted.txt", mimeType: "text/plain", sizeBytes: 4, text: "keep", origin: "paste" }], state: "waiting" }]);
+    expect(host.textContent).toContain("Your existing draft was kept");
+  });
+  it.each(["switched engine", "revoked access", "left Library"])("retires a pending creation after %s", async change => {
+    const held = deferred();
+    const { engine, request } = engineOf(workspace(method => method === "agents.documents.create" ? held.promise : undefined));
+    await writable(engine); await click(button("Write a new document"));
+    expect(request).toHaveBeenCalledWith("agents.documents.create", { agentId: "a", name: "Untitled document.md", content: "" });
+    if (change === "switched engine") await renderWritable(engineOf(workspace()).engine);
+    if (change === "revoked access") { engine.scopes = []; await renderWritable(engine); }
+    if (change === "left Library") await act(async () => root!.render(<p>People</p>));
+    request.mockClear();
+    await act(async () => held.resolve(created())); await settle();
+    expect(localStorage.length).toBe(0);
+    expect(request.mock.calls.some(([method]) => method === "agents.workspace.list")).toBe(false);
+    expect(host.textContent).not.toContain("Created “");
+  });
+  it("does not overwrite a draft edited while creation was pending", async () => {
+    const held = deferred();
+    const { engine } = engineOf(workspace(method => method === "agents.documents.create" ? held.promise : undefined));
+    await writable(engine); await click(button("Write a new document"));
+    localStorage.setItem("branch.composer.draft:agent:a:desk", "edited during save");
+    await act(async () => held.resolve(created())); await settle();
+    expect(loadDraft(safeStorage(), "agent:a:desk")).toBe("edited during save");
+    expect(host.textContent).toContain("Your existing draft was kept");
+  });
+  it("reports the saved document separately when draft storage fails", async () => {
+    const { engine } = engineOf(workspace(method => method === "agents.documents.create" ? created() : undefined));
+    await writable(engine);
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("Storage blocked", "SecurityError"); });
+    await click(button("Write a new document"));
+    expect(host.textContent).toContain("Created “Untitled document.md”");
+    expect(host.textContent).toContain("could not be saved");
+    expect(host.textContent).not.toContain("help draft is ready");
+  });
+  it("rejects a mismatched creation acknowledgement without inventing a document or draft", async () => {
+    const { engine } = engineOf(workspace(method => method === "agents.documents.create" ? created("other.md", "b") : undefined));
+    await writable(engine); await click(button("Write a new document"));
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("did not confirm");
+    expect(localStorage.length).toBe(0);
+    expect(host.textContent).not.toContain("Created “");
+  });
+  it("ignores an old target's completion after selecting another Trunk", async () => {
+    const held = deferred();
+    const { engine, request } = engineOf(workspace(method => method === "agents.documents.create" ? held.promise : undefined));
+    await writable(engine); await click(button("Write a new document"));
+    expect(request).toHaveBeenCalledWith("agents.documents.create", { agentId: "a", name: "Untitled document.md", content: "" });
+    const target = host.querySelector<HTMLSelectElement>('[aria-label="Trunk for new document"]');
+    expect(target).toBeTruthy();
+    await act(async () => { target!.value = "b"; target!.dispatchEvent(new Event("change", { bubbles: true })); });
+    request.mockClear();
+    await act(async () => held.resolve(created())); await settle();
+    expect(localStorage.length).toBe(0);
+    expect(host.textContent).not.toContain("Created “");
+    expect(request.mock.calls.some(([method]) => method === "agents.workspace.list")).toBe(false);
+  });
+  it("does not revive a retired save when the selection moves away and back", async () => {
+    const held = deferred();
+    const { engine } = engineOf(workspace(method => method === "agents.documents.create" ? held.promise : undefined));
+    await writable(engine); await click(button("Write a new document"));
+    const target = host.querySelector<HTMLSelectElement>('[aria-label="Trunk for new document"]')!;
+    for (const id of ["b", "a"]) await act(async () => { target.value = id; target.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(button("Write a new document")!.disabled).toBe(false);
+    await act(async () => held.resolve(created())); await settle();
+    expect(localStorage.length).toBe(0);
+    expect(host.textContent).not.toContain("Created “");
+    await click(button("Write a new document"));
+    expect(host.textContent).toContain("Created “Untitled document.md”");
+  });
+  it("leaves temporary-conversation selection private without staging durable help", async () => {
+    const { engine } = engineOf(workspace(method => method === "agents.documents.create" ? created() : undefined));
+    engine.sessionKey = "agent:a:dashboard:incognito-private";
+    engine.agentId = "a";
+    await writable(engine); await click(button("Write a new document"));
+    expect(localStorage.length).toBe(0);
+    expect(host.textContent).toContain("temporary conversation");
+    expect(host.textContent).not.toContain("help draft is ready");
+  });
+  it("keeps a failed create visible and does not retry unrelated errors", async () => {
+    let attempts = 0;
+    const { engine } = engineOf(workspace(method => {
+      if (method !== "agents.documents.create") return undefined;
+      attempts++; throw new Error("Remote access expired");
+    }));
+    await writable(engine); await click(button("Write a new document"));
+    expect(attempts).toBe(1);
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Remote access expired");
+    expect(localStorage.length).toBe(0);
+  });
+  it("creates for the active real Trunk rather than the default owner", async () => {
+    const { engine, request } = engineOf(workspace((method, params) => method === "agents.documents.create" ? created("Untitled document.md", String(params.agentId)) : undefined));
+    engine.agentId = "b"; engine.sessionKey = "agent:b:open";
+    await writable(engine); await click(button("Write a new document"));
+    expect(request).toHaveBeenCalledWith("agents.documents.create", { agentId: "b", name: "Untitled document.md", content: "" });
+    expect(loadDraft(safeStorage(), "agent:b:desk")).toBe('Help me write “Untitled document.md”: ');
+    expect(loadDraft(safeStorage(), "agent:a:desk")).toBe("");
+  });
+  it("does not guess a Trunk from a sentinel or first row when contact authority is absent", async () => {
+    const { engine, request } = engineOf(workspace()); engine.agentId = "new-trunk"; engine.scopes = ["operator.admin"];
+    await mount(engine);
+    expect(button("Write a new document")!.disabled).toBe(true);
+    await click(button("Write a new document"));
+    expect(request.mock.calls.some(([method]) => method === "agents.documents.create")).toBe(false);
+  });
+  it("keeps duplicate clicks to one exclusive create while it is pending", async () => {
+    const held = deferred(); let attempts = 0;
+    const { engine } = engineOf(workspace(method => {
+      if (method !== "agents.documents.create") return undefined;
+      attempts++; return held.promise;
+    }));
+    await writable(engine);
+    const write = button("Write a new document")!;
+    await act(async () => { write.click(); write.click(); });
+    expect(attempts).toBe(1);
+    await act(async () => held.resolve(created())); await settle();
+    expect(host.textContent).toContain("Created “Untitled document.md”");
+  });
   it("lists every Trunk's project folder without the core files, and opens a document read only", async () => {
     const { engine, request } = engineOf(workspace());
     await mount(engine);
