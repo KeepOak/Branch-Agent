@@ -1,9 +1,10 @@
 // Settings › Computer & browser: the browser sections (The browser … Cloud browsers). Wired rows read and save
 // browser.* config; launch flags live in browser.extraArgs; the profile list, status and check come from the
 // browser control service through browser.request. Rows the engine can't back are greyed with why.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Btn, Ctl, Empty, Field, Pill, useConfig } from "../kit";
 import { list } from "../adapter";
+import { useAction } from "../hooks";
 import { Dialog } from "../../../shell/Dialog";
 import { CallLine, rec, str, useCall, useLive, type RecordValue } from "./common";
 import type { Ctx, SecSpec, Spec } from "./computer-more";
@@ -200,19 +201,28 @@ const CHECK_WORD: Record<string, string> = { pass: "Passed", warn: "Look at it",
 /** The browser service's own end-to-end check (/doctor), run when asked. */
 function Doctor({ c }: { c: Ctx }) {
   const call = useCall();
+  const action = useAction();
   const [report, setReport] = useState<RecordValue | null>(null);
-  const run = () => void call.run(async () => setReport(rec(await c.engine.request("browser.request", { method: "GET", path: "/doctor" }))));
+  const generation = useRef(0);
+  const close = () => { generation.current++; setReport(null); };
+  const run = () => void action.run(() => call.run(async () => {
+    const current = ++generation.current;
+    const next = rec(await c.engine.request("browser.request", { method: "GET", path: "/doctor" }));
+    if (current === generation.current) setReport(next);
+  }));
   return (
     <Ctl title="Check the browser end to end" sub="Start, open, read, close, a signed-in flow and a form that stops before your yes." after={<CallLine call={call} />}>
-      <Btn sm disabled={call.busy} onClick={run}>{call.busy ? "Checking…" : "Open the check"}</Btn>
+      <Btn sm disabled={action.busy} onClick={run}>{action.busy ? "Checking…" : "Open the check"}</Btn>
       {report ? (
-        <Dialog title="Browser check" wide onClose={() => setReport(null)} footer={<><Btn ghost onClick={run}>Check again</Btn><Btn onClick={() => setReport(null)}>Close</Btn></>}>
-          <p>{report.ok === true ? "Every check passed." : "Some checks need attention."}</p>
+        <Dialog title="Browser check" wide onClose={close} footer={<><Btn ghost disabled={action.busy} onClick={run}>{action.busy ? "Checking…" : "Check again"}</Btn><Btn onClick={close}>Close</Btn></>}>
+          <CallLine call={call} />
+          {action.busy ? <p role="status">Checking…</p> : null}
+          {!action.busy && !call.error ? <><p>{report.ok === true ? "Every check passed." : "Some checks need attention."}</p>
           <div className="rows">
             {list(report.checks).map((k) => (
               <div key={str(k.id)} className="prow"><span className="grow"><b>{str(k.label)}</b><small>{str(k.summary)}{str(k.fixHint) ? ` ${str(k.fixHint)}` : ""}</small></span><Pill tone={CHECK_TONE[str(k.status)] ?? "idle"}>{CHECK_WORD[str(k.status)] ?? str(k.status)}</Pill></div>
             ))}
-          </div>
+          </div></> : null}
         </Dialog>
       ) : null}
     </Ctl>
