@@ -187,7 +187,10 @@ async function freePort() {
   const port = probe.address().port; await new Promise(resolve => probe.close(resolve)); return port;
 }
 
-async function restartDesktopCaller({ automatic, failed }) { return fixture(async ({ cfg, request, release }) => {
+async function restartDesktopCaller({ automatic, failed, identityMode = "normal", idle = false }) {
+  const rollback = failed || identityMode === "mismatch" || identityMode === "wrong-pid";
+  const unconfirmed = identityMode === "unavailable" || identityMode === "lost-ack";
+  return fixture(async ({ cfg, request, release }) => {
   const require = createRequire(import.meta.url); const Module = require("node:module");
   const load = Module._load; const previousFetch = globalThis.fetch;
   const previousData = process.env.BRANCH_DESKTOP_DATA; const previousHidden = process.env.BRANCH_DESKTOP_HIDDEN;
@@ -199,7 +202,7 @@ async function restartDesktopCaller({ automatic, failed }) { return fixture(asyn
   const app = new EventEmitter(); Object.assign(app, { getVersion: () => "fixture", setPath: () => {}, setAppUserModelId: () => {},
     requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(), quit: () => app.emit("will-quit") });
   const ipcMain = new EventEmitter();
-  let servedAt; let callerWindow; let oldPid; const requestsSeen = []; const launchedAt = Date.now();
+  let servedAt; let callerWindow; let oldPid; let foreignGateway; let identityAckLost = identityMode === "lost-ack"; const requestsSeen = []; const launchedAt = Date.now();
   class BrowserWindow extends EventEmitter {
     constructor() { super(); callerWindow = this; this.url = ""; this.webContents = new EventEmitter(); Object.assign(this.webContents, {
       getURL: () => this.url, setWindowOpenHandler: () => {}, send: (channel, payload) => {
@@ -209,8 +212,34 @@ async function restartDesktopCaller({ automatic, failed }) { return fixture(asyn
           oldPid = Number(require("node:fs").readFileSync(join(cfg.dataDir, "gateway.pid"), "utf8"));
           assert.doesNotThrow(() => process.kill(oldPid, 0), "old owned gateway remains alive during durable engine preparation");
         }
+        if (payload.method === "identity") {
+          // Forward child-produced facts, including negative cases. Never synthesize an identity from expected request data.
+          void (async () => {
+            try {
+              assert.equal(require("node:fs").existsSync(join(cfg.dataDir, "component-update-version.txt")), false, "identity precedes component confirmation");
+              let identityPort = desktop.gatewayPort;
+              if (identityMode === "wrong-pid") {
+                const childCfg = { ...desktop, dataDir: join(cfg.dataDir, "foreign-child"), gatewayPort: await freePort() };
+                await mkdir(childCfg.dataDir);
+                const gatewayModule = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js"));
+                const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+                foreignGateway = gatewayModule.startGateway(childCfg, selected, "opaque-fixture-token", release.components.engine.sha256);
+                await gatewayModule.waitForReady(childCfg, foreignGateway, 8000);
+                identityPort = childCfg.gatewayPort;
+              }
+              const response = await previousFetch(`http://127.0.0.1:${identityPort}/identity`);
+              if (!response.ok) throw new Error("Old engine identity method unavailable");
+              const result = await response.json();
+              if (identityAckLost) { identityAckLost = false; throw new Error("Lost authenticated identity ACK"); }
+              ipcMain.emit("branch-desktop:update-reply", { sender: this.webContents }, { id: payload.id, result });
+            } catch (error) {
+              ipcMain.emit("branch-desktop:update-reply", { sender: this.webContents }, { id: payload.id, error: error.message });
+            }
+          })();
+          return;
+        }
         const result = payload.method === "policy" ? automatic : payload.method === "prepare"
-          ? { id: "fixture-receipt", sessionKey: "agent:fixture:main", expectedSessionId: "fixture-session", targetBuild: payload.input.targetBuild, lifecycleGeneration: payload.input.operationId }
+          ? idle ? { status: "idle", lifecycleGeneration: payload.input.operationId, targetBuild: payload.input.targetBuild } : { id: "fixture-receipt", sessionKey: "agent:fixture:main", expectedSessionId: "fixture-session", targetBuild: payload.input.targetBuild, lifecycleGeneration: payload.input.operationId }
           : payload.method === "cancel" ? "cancelled" : "accepted";
         queueMicrotask(() => ipcMain.emit("branch-desktop:update-reply", { sender: this.webContents }, { id: payload.id, result }));
       }, reload: () => this.webContents.emit("did-finish-load") }); }
@@ -243,33 +272,68 @@ async function restartDesktopCaller({ automatic, failed }) { return fixture(asyn
     await eventually(async () => {
       const pointer = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
       const pid = Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8"));
-      if ((failed ? pointer !== cfg.engineDir : pointer === cfg.engineDir) || pid === oldPid) return false;
+      if ((rollback ? pointer !== cfg.engineDir : pointer === cfg.engineDir) || pid === oldPid) return false;
       try { const response = await previousFetch(`http://127.0.0.1:${desktop.gatewayPort}/readyz`); await response.body?.cancel(); return response.status === 200; } catch { return false; }
     });
     await eventually(async () => {
-      try { const journal = JSON.parse(await readFile(join(cfg.dataDir, "desktop-update-continuation.json"), "utf8")); return journal.phase === (failed ? "cancelled" : "completed") && (!failed || journal.cancellationAcknowledged); } catch { return false; }
+      try {
+        const journal = JSON.parse(await readFile(join(cfg.dataDir, "desktop-update-continuation.json"), "utf8"));
+        if (unconfirmed) return requestsSeen.includes("identity") && journal.phase === (idle ? "idle" : "prepared") && (await readFile(join(cfg.dataDir, "desktop.log"), "utf8")).includes("Candidate identity remains unconfirmed");
+        return journal.phase === (rollback ? (idle ? "idle-cancelled" : "cancelled") : "completed") && (!rollback || journal.cancellationAcknowledged);
+      } catch { return false; }
     });
     assert.ok(requestsSeen.indexOf("prepare") >= 0);
-    if (failed) { await unchanged(cfg); assert.ok(requestsSeen.includes("cancel")); assert.equal(requestsSeen.includes("resume"),false); }
-    else {
-      assert.ok(requestsSeen.includes("resume"));
-      const response = await previousFetch(`http://127.0.0.1:${desktop.gatewayPort}/identity`);
-      assert.equal(await response.text(), release.components.engine.sha256, "actual owned candidate inherited the validated archive identity");
+    if (rollback) { if (!failed) assert.ok(requestsSeen.includes("identity"), "negative identity case reached actual child attestation"); await unchanged(cfg); if (!idle) assert.ok(requestsSeen.includes("cancel")); assert.equal(requestsSeen.includes("resume"),false); }
+    else if (unconfirmed) {
+      const publication = JSON.parse(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8"));
+      assert.equal(publication.phase, "pending");
+      await assert.rejects(readFile(join(cfg.dataDir, "component-update-version.txt")), { code: "ENOENT" });
+      assert.equal(requestsSeen.includes("resume"), false);
+      if (identityMode === "lost-ack") {
+        const before = JSON.parse(await readFile(join(cfg.dataDir, "desktop-update-continuation.json"), "utf8"));
+        const candidatePid = Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8"));
+        ipcMain.emit("branch-desktop:restart-engine", { sender: callerWindow.webContents });
+        await eventually(async () => JSON.parse(await readFile(join(cfg.dataDir, "desktop-update-continuation.json"), "utf8")).phase === "completed");
+        const after = JSON.parse(await readFile(join(cfg.dataDir, "desktop-update-continuation.json"), "utf8"));
+        assert.equal(after.operationId, before.operationId);
+        assert.equal(after.receipt?.id, before.receipt?.id);
+        assert.equal(Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8")), candidatePid, "identity ACK retry does not restart the accepted candidate");
+        assert.equal(requestsSeen.filter(method => method === "prepare").length, 1);
+        assert.equal(requestsSeen.includes("resume"), !idle);
+        assert.equal((await readFile(join(cfg.dataDir, "component-update-version.txt"), "utf8")).trim(), release.version);
+      }
+    } else {
+      assert.equal(requestsSeen.includes("resume"), !idle);
+      assert.ok(requestsSeen.indexOf("identity") < (idle ? requestsSeen.length : requestsSeen.indexOf("resume")), "authenticated candidate attestation precedes any resume");
+      const response = await previousFetch(`http://127.0.0.1:${desktop.gatewayPort}/identity`); const actual = await response.json();
+      assert.equal(actual.targetBuild, release.components.engine.sha256, "actual owned candidate inherited the validated archive identity");
+      assert.equal(actual.pid, Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8")));
     }
   } finally {
-    app.emit("will-quit"); Module._load = load; globalThis.fetch = previousFetch;
+    app.emit("will-quit");
+    if (foreignGateway) {
+      require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")).stopGateway(foreignGateway);
+      await eventually(() => foreignGateway.exitCode !== null || foreignGateway.signalCode !== null);
+    }
+    Module._load = load; globalThis.fetch = previousFetch;
     if (previousData === undefined) delete process.env.BRANCH_DESKTOP_DATA; else process.env.BRANCH_DESKTOP_DATA = previousData;
     if (previousHidden === undefined) delete process.env.BRANCH_DESKTOP_HIDDEN; else process.env.BRANCH_DESKTOP_HIDDEN = previousHidden;
     await eventually(async () => { try { process.kill(Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8")), 0); return false; } catch { return true; } });
   }
 }, async ({ engine, output, release }) => {
-  await writeFile(join(engine, "branch.mjs"), failed ? "process.exit(31);\n" : 'import http from "node:http"; http.createServer((req,res)=>res.writeHead(200).end(req.url === "/identity" ? process.env.BRANCH_DESKTOP_ENGINE_BUILD_SHA256 : "ready")).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1");');
+  await writeFile(join(engine, "branch.mjs"), failed ? "process.exit(31);\n" : `import http from "node:http"; import {randomUUID} from "node:crypto"; const processInstanceId=randomUUID(); ${identityMode === "mismatch" ? `process.env.BRANCH_DESKTOP_ENGINE_BUILD_SHA256=${JSON.stringify("b".repeat(64))};` : ""} http.createServer((req,res)=>{if(req.url === "/identity"){res.writeHead(${identityMode === "unavailable" ? 404 : 200}).end(JSON.stringify({targetBuild:process.env.BRANCH_DESKTOP_ENGINE_BUILD_SHA256,processInstanceId,pid:process.pid}));}else res.writeHead(200).end("ready");}).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1");`);
   for (const file of await readdir(output)) await rm(join(output, file));
   Object.assign(release, await makeComponentRelease({ version: "0.4.3", tag: "v0.4.3", engine, window: join(engine, "..", "source-window"), output }));
 }); }
 
 test("actual desktop caller retains running engine until trusted restart and rolls back a failed new build", async () => restartDesktopCaller({ automatic: false, failed: true }));
 test("actual desktop caller autonomously checkpoints, restarts immutable candidate and resumes with fresh renderer ACK", async () => restartDesktopCaller({ automatic: true, failed: false }));
+test("actual idle update attests the owned process before confirmation without creating a turn", async () => restartDesktopCaller({ automatic: true, failed: false, idle: true }));
+test("actual owned candidate with wrong attested archive is cancelled before rollback", async () => restartDesktopCaller({ automatic: true, failed: false, identityMode: "mismatch" }));
+test("another real process reporting the correct archive cannot confirm the owned candidate", async () => restartDesktopCaller({ automatic: true, failed: false, identityMode: "wrong-pid" }));
+test("old engine without identity RPC leaves publication unconfirmed and never resumes", async () => restartDesktopCaller({ automatic: true, failed: false, identityMode: "unavailable" }));
+test("lost authenticated identity ACK retries the same owned candidate and receipt before replay", async () => restartDesktopCaller({ automatic: true, failed: false, identityMode: "lost-ack" }));
+test("lost idle identity ACK retries attestation without inventing a continuation turn", async () => restartDesktopCaller({ automatic: true, failed: false, idle: true, identityMode: "lost-ack" }));
 
 test("release maker assembles distinct Windows/macOS descriptors sharing only an identical renderer", async () => fixture(async ({ root, engine, window }) => {
   const output = join(root, "assembly");

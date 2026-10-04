@@ -10,7 +10,7 @@ import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { DesktopRendererRpc } from "./desktop-renderer-rpc";
 import { DesktopUpdateLifecycle } from "./desktop-update-lifecycle";
-import { confirmComponentUpdate, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
+import { pendingComponentBuild, confirmComponentUpdate, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 const READY_TIMEOUT_MS = 180_000;
@@ -38,6 +38,36 @@ let win: BrowserWindow | undefined;
 let token = "";
 let engineUpdateReady = false;
 let runningBuild = "";
+let attestedChild: ChildProcess | undefined;
+let attestedInstanceId = "";
+class IdentityAcknowledgmentUnavailable extends Error {}
+class EngineIdentityMismatch extends Error {}
+/** Fresh paired-UI RPC reads facts from the engine process, never from desktop markers. */
+async function attestAndConfirmEngine(): Promise<void> {
+  if (runningBuild) {
+    const child = gateway;
+    if (!child?.pid || child.exitCode !== null || child.signalCode !== null) throw new EngineIdentityMismatch("The candidate child is no longer running");
+    if (attestedChild === child) { await confirmComponentUpdate(cfg); return; }
+    let response: unknown;
+    try { response = await rendererRpc.request("identity", {}); }
+    catch (error) { throw new IdentityAcknowledgmentUnavailable(`Candidate identity remains unconfirmed: ${error instanceof Error ? error.message : String(error)}`); }
+    const identity = response as { targetBuild?: unknown; processInstanceId?: unknown; pid?: unknown } | null;
+    if (!identity || identity.targetBuild !== runningBuild || identity.pid !== child.pid
+      || typeof identity.processInstanceId !== "string" || !identity.processInstanceId.trim()
+      || child !== gateway || child.exitCode !== null || child.signalCode !== null
+      || attestedChild && attestedChild !== child && identity.processInstanceId === attestedInstanceId) {
+      throw new EngineIdentityMismatch("Authenticated identity does not match the owned candidate process and archive");
+    }
+    attestedChild = child;
+    attestedInstanceId = identity.processInstanceId;
+  }
+  await confirmComponentUpdate(cfg);
+}
+async function recoverContinuation(): Promise<void> {
+  const pending = lifecycle.pending;
+  if (pending && !["cancelled", "idle-cancelled"].includes(pending.phase)) await attestAndConfirmEngine();
+  await lifecycle.recover(runningBuild);
+}
 let updateState: { phase: string; operationId: string; outcome?: string } | undefined;
 const trustedWindow = (sender: Electron.WebContents): boolean => sender === win?.webContents && sender.getURL().startsWith(windowUrl());
 const rendererRpc = new DesktopRendererRpc({
@@ -130,7 +160,7 @@ async function start(): Promise<void> {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");
   }
-  await lifecycle.recover(runningBuild).catch(error => log(`Continuation recovery retained: ${String(error)}`));
+  await recoverContinuation().catch(error => log(`Continuation recovery retained: ${String(error)}`));
   watchUpdates(win);
 }
 
@@ -138,7 +168,7 @@ function startComponentUpdates(): void {
   stopComponentWatch = watchComponentUpdates(cfg, log, async check => {
     await lifecycle.exclusive(async () => {
       if (lifecycle.pending) {
-        if (["cancelled", "idle-cancelled"].includes(lifecycle.pending.phase) || lifecycle.pending.targetBuild === runningBuild) await lifecycle.recover(runningBuild);
+        if (["cancelled", "idle-cancelled"].includes(lifecycle.pending.phase) || lifecycle.pending.targetBuild === runningBuild) await recoverContinuation();
         else if (await rendererRpc.request("policy", {}) === true) await performRestart();
         return;
       }
@@ -155,6 +185,8 @@ async function bootEngine(): Promise<void> {
   const started = Date.now();
   const engineDir = resolveEngineDir(cfg);
   runningBuild = selectedBuildIdentity(engineDir);
+  const expectedBuild = await pendingComponentBuild(cfg, engineDir);
+  if (expectedBuild && expectedBuild !== runningBuild) throw new EngineIdentityMismatch("Selected candidate marker does not match the validated component publication");
   gateway = startGateway(cfg, engineDir, token, runningBuild);
   log(`gateway started from ${engineDir}, pid ${gateway.pid}`);
   // publish-engine.sh never removes the folder named here.
@@ -164,7 +196,7 @@ async function bootEngine(): Promise<void> {
     await rejectFailedComponentUpdate(cfg, engineDir);
     throw error;
   }
-  await confirmComponentUpdate(cfg);
+  await attestAndConfirmEngine();
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
   engineUpdateReady = false;
   stopEngineWatch?.();
@@ -178,6 +210,9 @@ async function bootEngine(): Promise<void> {
 /** A failed newly published build restores the prior pointer/window before booting the retained engine. */
 async function bootSelectedEngine(): Promise<boolean> {
   try { await bootEngine(); return false; } catch (error) {
+    // An absent/lost authenticated ACK is recoverable; do not confirm, replay, or misclassify a healthy candidate.
+    if (error instanceof IdentityAcknowledgmentUnavailable) throw error;
+    if (error instanceof EngineIdentityMismatch) await rejectFailedComponentUpdate(cfg, resolveEngineDir(cfg));
     if (gateway) stopGateway(gateway);
     lifecycle.cancelBeforeRollback();
     if (!await rollbackComponentUpdate(cfg)) throw error;
@@ -214,10 +249,10 @@ async function performRestart(): Promise<void> {
   // Both engine persistence and local journal fsync finish while the old child is alive.
   const pending = lifecycle.pending;
   if (!pending && targetBuild === runningBuild) throw new Error("No different verified engine candidate is selected");
-  if (pending && ["cancelled", "idle-cancelled"].includes(pending.phase)) { await lifecycle.recover(runningBuild); return; }
+  if (pending && ["cancelled", "idle-cancelled"].includes(pending.phase)) { await recoverContinuation(); return; }
   if (pending && pending.targetBuild !== targetBuild) throw new Error("Selected engine changed while continuation was pending");
   if (pending && pending.targetBuild === runningBuild && pending.phase !== "intent") {
-    await lifecycle.recover(runningBuild); return;
+    await recoverContinuation(); return;
   }
   try {
     if ((!pending || pending.phase === "intent") && !await lifecycle.prepare(targetBuild)) return;
@@ -238,7 +273,7 @@ async function performRestart(): Promise<void> {
   if (!await portIsFree(cfg.gatewayPort)) throw new Error("The gateway port is occupied; retained the update checkpoint without starting another engine");
   await bootSelectedEngine();
   await win.loadURL(windowUrl());
-  await lifecycle.recover(runningBuild);
+  await recoverContinuation();
 }
 
 function shutdown(): void {

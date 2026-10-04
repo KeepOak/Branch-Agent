@@ -40,6 +40,7 @@ if (info) {
     onPrepareUpdate: (handler: (input: unknown) => Promise<unknown>) => register("prepare", handler),
     onResumeUpdate: (handler: (input: unknown) => Promise<unknown>) => register("resume", handler),
     onCancelUpdate: (handler: (input: unknown) => Promise<unknown>) => register("cancel", handler),
+    onVerifyUpdate: (handler: (input: unknown) => Promise<unknown>) => register("identity", handler),
     onUpdatePolicy: (handler: (input: unknown) => Promise<unknown>) => register("policy", handler),
   });
   window.addEventListener("DOMContentLoaded", () => {

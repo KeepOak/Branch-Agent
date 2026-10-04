@@ -34,6 +34,16 @@ async function publication(cfg: DesktopConfig): Promise<Publication | undefined>
   return value ? JSON.parse(value) as Publication : undefined;
 }
 
+/** The selected publication's identity originated in the validated immutable archive descriptor. */
+export async function pendingComponentBuild(cfg: DesktopConfig, engineDir: string): Promise<string | undefined> {
+  const pending = await publication(cfg);
+  if (!pending || pending.phase !== "pending") return undefined;
+  if (pending.engineNext !== engineDir || !pending.identity || !/^[a-f0-9]{64}$/.test(pending.identity.engineSha256)) {
+    throw new Error("Pending component publication has no matching verified engine identity");
+  }
+  return pending.identity.engineSha256;
+}
+
 /** Call only after the selected new engine fails its readiness probe, never for staging/network recovery. */
 export async function rejectFailedComponentUpdate(cfg: DesktopConfig, engineDir: string): Promise<void> {
   const pending = await publication(cfg);
