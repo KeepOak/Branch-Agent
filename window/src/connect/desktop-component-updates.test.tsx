@@ -39,12 +39,16 @@ it("actual native Check now and Install buttons use component bridge and never g
   expect(localStorage.getItem("branch-draft")).toBe("unfinished input");
 });
 
-it("legacy native bootstrap reports unsupported and never falls back to update.run or update.status", async () => {
+it("legacy native bootstrap says it checks every hour, greys Check now, and never falls back to update.run or update.status", async () => {
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1" };
-  await show(); expect(host.textContent).toContain("can’t check for updates by hand");
-  expect(request).not.toHaveBeenCalled();
-  await expect(stageWindowUpdate(engine)).rejects.toThrow("can’t check for updates by hand");
-  expect(request).not.toHaveBeenCalled();
+  const updateCalls = () => request.mock.calls.filter((call: unknown[]) => String(call[0]).startsWith("update."));
+  await show(); expect(host.textContent).toContain("Branch checks for updates every hour and lets you know when one is ready to restart into.");
+  expect(host.textContent).not.toContain("aren’t available");
+  const check = [...host.querySelectorAll("button")].find(row => row.textContent === "Check now");
+  expect(check?.disabled).toBe(true); expect(host.textContent).toContain("Checking by hand needs a newer Branch Agent app.");
+  expect(updateCalls()).toEqual([]);
+  await expect(stageWindowUpdate(engine)).rejects.toThrow("Checking by hand needs a newer Branch Agent app.");
+  expect(updateCalls()).toEqual([]);
 });
 
 it("browser install keeps existing engine behavior", async () => {
@@ -100,7 +104,7 @@ it("native shell status uses component status and legacy shell reports unsupport
   await act(async () => root.unmount()); root = createRoot(host);
   desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl };
   await act(async () => root.render(<UpdateProbe gatewayUrl="ws://127.0.0.1:1" />));
-  expect(document.body.textContent).toContain("can’t check for updates by hand");
+  expect(document.body.textContent).toContain("Checking by hand needs a newer Branch Agent app.");
   expect(document.body.textContent).not.toContain("Branch is up to date."); expect(request).not.toHaveBeenCalled();
 });
 
