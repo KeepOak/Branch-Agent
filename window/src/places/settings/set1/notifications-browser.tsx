@@ -7,6 +7,7 @@ import type { WindowEngine } from "../../../connect/engine";
 import { errorText, list, record, visible } from "../adapter";
 import { Btn, Ctl, Field, Hint, Pick, Sec, useSaveRunner, type Opt } from "../kit";
 import { CATEGORY_KEYS, agentIdsOf, detailOf, normalizeQuiet, type CategoryKey, type Detail, type Quiet } from "./notifications-prefs";
+import { shownWhy } from "../../../shell/shown-why";
 
 export type DevicePrefs = { enabled: boolean; label: string; categories?: Partial<Record<CategoryKey, boolean>>; detailLevel?: Detail; quietHours?: Quiet; agentIds?: string[] };
 type Perm = NotificationPermission | "unsupported";
@@ -136,7 +137,7 @@ export function ThisBrowser({ engine, push }: { engine: WindowEngine; push: WebP
         <dt>Status</dt><dd>{push.loading ? "Checking…" : on ? "On" : "Off"}</dd>
       </dl>
       <div className="acts nt-acts">
-        <Btn sm disabled={Boolean(why) || on} title={why} onClick={() => void push.turnOn()}>Turn on notifications</Btn>
+        <Btn sm disabled={Boolean(why) || on} title={shownWhy(why)} onClick={() => void push.turnOn()}>Turn on notifications</Btn>
         <Btn sm ghost disabled={!push.sub} title={push.sub ? undefined : "This browser isn’t registered."} onClick={() => void push.turnOff()}>Turn off here</Btn>
         <Btn sm ghost disabled={!on || test.busy} title={on ? undefined : "Turn on notifications here first."} onClick={() => void test.send()}>Send test</Btn>
       </div>

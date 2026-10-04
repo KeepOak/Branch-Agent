@@ -1,5 +1,6 @@
 // Inbox › History (DESIGN-SPEC §4.6.2.3; preview 41-placesap p25-history): everyone's conversations by day,
 // time and person filters, search, Pulse, folded automation runs, recaps, and [T] "Look inside this run".
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
@@ -130,7 +131,7 @@ export function History({ engine, data, level, people: initialPeople, open, chil
       <div className="ib-acts"><button type="button" className="btn sm" disabled title={shownWhy(REPLAY_GAP)}><G name="play" size={14} />{list[0] ? `Watch “${list[0].s.title}”` : "Watch a task"}</button></div></section>
     <Pulse list={inWindow} win={win} now={now} />
     <div className="ib-nl"><input className="ib-inp" value={q} placeholder="Search what ran" aria-label="Search history" onChange={e => { setQ(e.target.value); setShown(10); }} />
-      <button type="button" className="ib-rec" disabled title={VERIFY_GAP} style={{ color: "var(--ink-3)" }}><G name="shield" size={15} /><span>Unverified</span><u>Verify</u></button></div>
+      <button type="button" className="ib-rec" disabled title={shownWhy(VERIFY_GAP)} style={{ color: "var(--ink-3)" }}><G name="shield" size={15} /><span>Unverified</span><u>Verify</u></button></div>
     <div className="ib-filt"><button type="button" className="btn sm" aria-haspopup="menu" onClick={e => setMenu({ kind: "win", at: anchor(e) })}>{WINDOWS[win][0]}<Icon name="down" small /></button>
       {persons.length > 1 || who.length ? <button type="button" className="btn sm" aria-haspopup="menu" onClick={e => setMenu({ kind: "who", at: anchor(e) })}>{label}<Icon name="down" small /></button> : null}
       {who.length ? <button type="button" className="btn ghost sm" onClick={() => setWho([])}>Clear</button> : null}</div>

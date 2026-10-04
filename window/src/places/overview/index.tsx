@@ -1,4 +1,5 @@
 // Overview (DESIGN-SPEC §4.6.1; preview renderOverview + 40-places + 41-placesap p10-overview).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
@@ -123,7 +124,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
         {tiles.people.value !== undefined && !lines.length ? <p>No one has signed in yet.</p> : null}
         <div className="ov-acts"><button type="button" className="btn sm" onClick={() => openPlace("people")}>Invite someone</button></div>
       </Tile>
-      <Tile title="Milestones">{shownWhy(MILESTONES_GAP) && <p className="ov-hint">{shownWhy(MILESTONES_GAP)}</p>}</Tile>
+      <Tile title="Milestones"><div className="ov-badges" data-reason={MILESTONES_GAP} />{shownWhy(MILESTONES_GAP) && <p className="ov-hint">{shownWhy(MILESTONES_GAP)}</p>}</Tile>
     </div>
   </PlaceFrame>;
 }

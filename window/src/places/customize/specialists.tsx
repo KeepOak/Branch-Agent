@@ -1,6 +1,7 @@
 // Customize › Specialists (preview 40-places.js, 94-g4p.js fleet15/pat15): defined specialists with Edit, the
 // fleet line (agents.list, node.list and the shell's running count), and how Trunks work together. The engine
 // has no specialist definitions or teamwork setting yet, so those parts are drawn greyed with the reason.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { Face } from "../../face/Face";
 import { shownWhy } from "../../shell/shown-why";
 import { EmptyLine, type PlaceProps } from "../../places-nav/PlaceFrame";

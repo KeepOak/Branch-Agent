@@ -4,6 +4,7 @@
 // (environments.*, cloudWorkers.*), Everything connected (device.pair.*, node.*, device.token.*) and Who is
 // connected now (system-presence). The browser rows are in computer-browser.tsx, the code and git rows in
 // computer-code.tsx.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { Fragment, useRef, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Pick, Pill, Sec, Seg, Switch, Tabs, useConfig, type RowEntry } from "../kit";
@@ -17,6 +18,7 @@ import { Menu, type MenuItem } from "../../../shell/Menu";
 import { Icon } from "../../../shell/icons";
 import { Ico } from "./icons";
 import "./computer-more.css";
+import { shownWhy } from "../../../shell/shown-why";
 
 export type Lv = 0 | 1 | 2;
 export type Ctx = { engine: WindowEngine; lv: Lv; props: SettingsPageProps };
@@ -431,7 +433,7 @@ function CheckDialog({ engine, onClose }: { engine: WindowEngine; onClose: () =>
       {st.loading && !st.data ? <p>Checking…</p> : null}
       {st.data ? (
         <>
-          <p>{d.available === true ? `Computer control works through ${str(rec(use.provider).label) || "this computer’s screen driver"}.` : d.configured === true ? str(d.error) || "Computer control is set up but can’t be used right now." : "Computer control isn’t set up in this engine."}</p>
+          <p>{d.available === true ? `Computer control works through ${str(rec(use.provider).label) || "this computer’s screen driver"}.` : d.configured === true ? str(d.error) || "Computer control is set up but can’t be used right now." : shownWhy("Computer control isn’t set up in this engine.")}</p>
           <Kv rows={caps} />
         </>
       ) : null}

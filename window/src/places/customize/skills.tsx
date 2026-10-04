@@ -1,6 +1,7 @@
 // Tools › Skills (preview 42-placesbp.js czs*, 93-g3p.js): skills.status rows with filters, the Gardener
 // (skills.gardener.status), Suggested and Drafts (skills.proposals.*), the detail with skills.update and
 // skills.install, kept versions (skills.library.*), and "Add a skill" (skills.search / skills.install).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
@@ -94,9 +95,9 @@ function Suggested({ ctx, p, reload }: { ctx: ToolsCtx; p: Proposal; reload: () 
   const reason = p.revisionHash ? undefined : "The engine did not supply a revision for a safe change.";
   return <div className="cz-card" data-testid="suggested"><div className="cz-card-h"><b>{p.kind === "update" ? `A better version of “${p.skillName}”` : p.title || `A new skill: “${p.skillName}”`}</b><Pill tone="work">Suggested</Pill></div>
     <p>{p.description}</p>{op.error && <p role="alert" className="cz-error">{op.error}</p>}
-    <div className="cz-acts"><button type="button" className="btn sm" disabled={op.busy || !!reason} title={reason} onClick={() => void op.run("skills.proposals.evaluate", base, () => { setTried(true); reload(); })}>{tried ? "Try again" : "Practice run on recent tasks"}</button>
-      <button type="button" className="btn pri sm" disabled={op.busy || !!reason} title={reason} onClick={() => void op.run("skills.proposals.apply", base, reload)}>Keep it</button>
-      <button type="button" className="btn ghost sm" disabled={op.busy || !!reason} title={reason} onClick={() => void op.run("skills.proposals.reject", base, reload)}>Throw it away</button></div>
+    <div className="cz-acts"><button type="button" className="btn sm" disabled={op.busy || !!reason} title={shownWhy(reason)} onClick={() => void op.run("skills.proposals.evaluate", base, () => { setTried(true); reload(); })}>{tried ? "Try again" : "Practice run on recent tasks"}</button>
+      <button type="button" className="btn pri sm" disabled={op.busy || !!reason} title={shownWhy(reason)} onClick={() => void op.run("skills.proposals.apply", base, reload)}>Keep it</button>
+      <button type="button" className="btn ghost sm" disabled={op.busy || !!reason} title={shownWhy(reason)} onClick={() => void op.run("skills.proposals.reject", base, reload)}>Throw it away</button></div>
   </div>;
 }
 

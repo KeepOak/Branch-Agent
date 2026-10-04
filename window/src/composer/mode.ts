@@ -1,5 +1,6 @@
 // The permission mode for one conversation (DESIGN-SPEC §4.3.4; DECISIONS.md items 41, 42, 128).
 // Engine modes are sessions.patch permissionMode: read-only, guarded, workspace, full; null is "As set".
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 export type EngineMode = "read-only" | "guarded" | "workspace" | "full";
 
 export type ModeRow = {

@@ -3,11 +3,13 @@
 // sessions.create { agentId, label } for the chosen Trunk, then session.members.add for each person picked, and the
 // new conversation opens. The engine gives a conversation one Trunk and takes people only as members, so a second
 // Trunk, an outside agent, "Who answers" and Trunks talking in here are drawn greyed with the reason.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Dialog } from "../shell/Dialog";
 import { A2A_CHANNEL } from "./sender";
 import "./rooms.css";
+import { shownWhy } from "../shell/shown-why";
 
 /** Both entry points (the + new menu and Customize › Trunks) open the dialog with this window event. */
 export const NEW_GROUP_EVENT = "branch:new-group-chat";
@@ -57,7 +59,7 @@ export async function startGroupChat(engine: WindowEngine, p: { name: string; tr
 
 function Chip({ label, on, disabled, onClick }: { label: string; on: boolean; disabled?: string; onClick: () => void }) {
   return (
-    <button type="button" className="rm-chip" aria-pressed={on} disabled={Boolean(disabled)} title={disabled} onClick={onClick}>
+    <button type="button" className="rm-chip" aria-pressed={on} disabled={Boolean(disabled)} title={shownWhy(disabled)} onClick={onClick}>
       {label}
     </button>
   );

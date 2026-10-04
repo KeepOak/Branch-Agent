@@ -1,5 +1,6 @@
 // A card's detail sheet (§4.6.7 "Card detail tabs"): Overview · Activity · Conversation · Details [T], read live
 // from the card the engine returns (canopy.cards.list) and changed with canopy.cards.* methods.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState, type ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import { shows } from "../../places-nav/level";

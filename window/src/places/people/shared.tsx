@@ -1,5 +1,6 @@
 // People › Shared (§4.6.5.4): what you share and with whom (session.visibility.set, session.members.*), public
 // links you can stop (session.publicShare.set), and what others share with you.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState } from "react";
 import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";

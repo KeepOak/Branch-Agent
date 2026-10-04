@@ -1,6 +1,7 @@
 // Settings › Chat apps › Manage <app> (§4.7.10.1): who answers there, who may message it (channels.<id>.dmPolicy and
 // allowFrom), who is asking, its live state with Pause/Start (channels.stop/start, kept with channels.<id>.enabled),
 // its token (the engine's setup steps again) and Disconnect. Advanced and Technical parts are in chatapps-manage-more.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";

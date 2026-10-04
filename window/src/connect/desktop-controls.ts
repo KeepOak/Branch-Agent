@@ -1,5 +1,6 @@
 // The desktop app's controls (desktop/src/desktop-controls.ts through the preload's branchDesktop.controls).
 // In a plain browser there is no bridge, so the controls stay greyed with why.
+// TODO(desktop-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useState } from "react";
 
 export type DesktopControlsState = {

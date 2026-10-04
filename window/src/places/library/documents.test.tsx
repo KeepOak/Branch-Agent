@@ -267,11 +267,13 @@ describe("Library › Documents", () => {
   it("greys Write a new document, Map, the tool tiles and Recently deleted with their reasons", async () => {
     const { engine } = engineOf(workspace());
     await mount(engine);
-    for (const b of [button("Write a new document"), button("Map")]) { expect(b!.disabled).toBe(true); expect(b!.title).toMatch(/^Needs /); }
+    for (const b of [button("Write a new document"), button("Map")]) expect(b!.disabled).toBe(true);
+    expect(button("Map")!.title).toBe("");
     const tiles = [...host.querySelectorAll<HTMLButtonElement>(".lib-tool")];
     expect(tiles.length).toBeGreaterThan(0);
     for (const b of tiles) { expect(b.disabled).toBe(true); expect(b.title).toBe(""); expect(b.dataset.reason).toMatch(/^Needs the engine/); }
-    expect(host.querySelector('[data-testid="recently-deleted"]')!.textContent).toBe("Recently deleted");
+    expect(host.querySelector('[data-testid="recently-deleted"]')!.textContent).toBe("Recently deletedRestoreDelete for good");
+    expect([...host.querySelectorAll<HTMLButtonElement>('[data-testid="recently-deleted"] button')].every(b => b.disabled && b.title === "")).toBe(true);
     expect(visibleDevNotes(host)).toEqual([]);
   });
   it("keeps Managing, Test what it finds and Places it reads from for Advanced", async () => {

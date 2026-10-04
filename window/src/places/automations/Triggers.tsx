@@ -1,6 +1,7 @@
 // Automations › Triggers (§4.6.3.3, preview p40-auto-other + 94-g4p). Rows are the engine's automations with
 // a check first (cron trigger script) or a process event schedule (on-exit / stream), with the check readout
 // from their state. [A] Hooks lists hooks.status and switches hooks.internal.entries.<key>.enabled.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";

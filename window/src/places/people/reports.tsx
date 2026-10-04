@@ -1,5 +1,6 @@
 // People › Activity › Reports (§4.6.5.6 line 59): the Team Reports plugin's reports when it is on (team-reports.*),
 // otherwise its off row. Turning it on needs its GitHub and Discord sources set up in the engine.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";

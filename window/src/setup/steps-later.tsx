@@ -139,7 +139,7 @@ function Ctl({ title, sub, children }: { title: string; sub?: string; children: 
 function SegOf({ label, options, value, off }: { label: string; options: string[]; value: string; off: string }) {
   return (
     <span className="right">
-      <span className="ob-seg" role="group" aria-label={label} aria-disabled="true" title={off}>
+      <span className="ob-seg" role="group" aria-label={label} aria-disabled="true" title={shownWhy(off)}>
         {options.map((o) => (
           <button key={o} type="button" aria-pressed={o === value} disabled>
             {o}
@@ -158,7 +158,7 @@ function OffSwitchRow({ title, line, on, reason, logo, label }: { title: string;
         <b>{title}</b>
         <small>{line}</small>
       </span>
-      <button type="button" role="switch" aria-checked={on} aria-label={label ?? title} className="switch" disabled title={reason} />
+      <button type="button" role="switch" aria-checked={on} aria-label={label ?? title} className="switch" disabled title={shownWhy(reason)} />
     </div>
   );
 }

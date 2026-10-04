@@ -1,5 +1,6 @@
 // Trunk editor › Look (preview 12-look picker, 15 emoji face, 30-trunks §4.4.3): the looks with real art, an emoji face,
 // Name, What it's for. Colour, Shape and Eyes are the pebble's and the engine keeps none of them, so they are greyed.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import { Face } from "../../face/Face";

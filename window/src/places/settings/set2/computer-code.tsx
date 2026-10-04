@@ -1,6 +1,7 @@
 // Settings › Computer & browser: the code sections (Code … Code, technical). Separate copies and branches come
 // from worktrees.*, commit credit from the person's users.prefs, the shell and copy settings from config; the
 // rest are greyed with why until the engine has them.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { Acts, Btn, Ctl, Switch } from "../kit";
 import { list } from "../adapter";

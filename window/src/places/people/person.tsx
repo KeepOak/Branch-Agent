@@ -1,4 +1,5 @@
 // People › People (§4.6.5.2): the list of everyone (grouped by how they reach Branch) and the selected person's card.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import { Icon } from "../../shell/icons";

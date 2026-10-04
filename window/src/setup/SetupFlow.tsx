@@ -1,5 +1,6 @@
 // The 11-step setup once the window is connected (DESIGN-SPEC §4.8.1). Steps 1–2 may already have been answered on
 // the pre-connect screens; then it opens at Models.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { PairDialog } from "../places/customize/pairing";

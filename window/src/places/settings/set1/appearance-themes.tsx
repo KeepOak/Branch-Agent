@@ -1,6 +1,7 @@
 // Settings › Appearance › Themes (§4.7.3.1): every theme the engine has (themes.list: built in, from plugins, yours),
 // shown in Daylight or Moonlight; pick one (themes.set), make, edit, copy, share, paste or delete your own
 // (themes.import; a deletion clears its users.prefs entry, "ui.themeDefinition.<id>").
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";

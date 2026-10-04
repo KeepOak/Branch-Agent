@@ -1,6 +1,7 @@
 // Shared pieces for Customize's Tools, Specialists, Channels and Everywhere tabs (preview .t9, .sec, .chip6, .seg).
 // Config writes follow the engine's config.patch contract: a minimal merge-patch, the file's hash as baseHash, and
 // replacePaths for any array that shrinks (engine/src/gateway/server-methods/config.ts).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
