@@ -79,7 +79,8 @@ describe("the question card", () => {
     await act(async () => host.querySelector(".card")!.dispatchEvent(new KeyboardEvent("keydown", { key: "b", bubbles: true })));
     expect(resolve).toHaveBeenCalledWith("q1", { answers: { format: ["Report"] } });
     await act(async () => host.querySelector<HTMLButtonElement>("[aria-label='Collapse question']")!.click());
-    expect(host.querySelector(".dock-q.col")?.textContent).toBe("Which format?");
+    expect(host.querySelector(".dock-q.col .dock-q-t")?.textContent).toBe("Which format?");
+    expect(host.querySelector(".card")?.parentElement?.hidden).toBe(true);
   });
 
   it("steps through several questions with Back, Skip and Submit", async () => {
@@ -91,6 +92,60 @@ describe("the question card", () => {
     expect(host.textContent).toContain("Question 2 of 2");
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".opt")][1].click());
     expect(resolve).toHaveBeenCalledWith("q1", { answers: { format: ["Brief"], when: ["Friday"] } });
+  });
+
+  it("preserves picks and the current step while the dock is collapsed", async () => {
+    const resolve = vi.fn().mockResolvedValue(undefined);
+    const two = record({ questions: [raw().questions[0], { questionId: "when", header: "When", question: "When is it due?", options: [{ label: "Today" }] }] });
+    await act(async () => root.render(<DockQuestion record={two} trunkName="Research" onResolve={resolve} />));
+    await act(async () => host.querySelector<HTMLButtonElement>(".opt")!.click());
+    await act(async () => host.querySelector<HTMLButtonElement>("[aria-label='Collapse question']")!.click());
+    await act(async () => host.querySelector<HTMLButtonElement>("[aria-label='Expand question']")!.click());
+    expect(host.querySelector(".q-step")?.textContent).toBe("Question 2 of 2");
+    await act(async () => host.querySelector<HTMLButtonElement>(".opt")!.click());
+    expect(resolve).toHaveBeenCalledWith("q1", { answers: { format: ["Brief"], when: ["Today"] } });
+  });
+
+  it("submits only once while a request is pending and allows retry after failure", async () => {
+    let reject: (error: Error) => void = () => {};
+    const resolve = vi.fn().mockImplementationOnce(() => new Promise<void>((_, fail) => { reject = fail; })).mockResolvedValue(undefined);
+    await act(async () => root.render(<DockQuestion record={record()} trunkName="Research" onResolve={resolve} />));
+    const card = host.querySelector(".card")!;
+    await act(async () => {
+      card.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+      card.dispatchEvent(new KeyboardEvent("keydown", { key: "b", bubbles: true }));
+    });
+    expect(resolve).toHaveBeenCalledTimes(1);
+    await act(async () => reject(new Error("Connection lost")));
+    expect(host.querySelector("[role='alert']")?.textContent).toBe("Connection lost");
+    await act(async () => card.dispatchEvent(new KeyboardEvent("keydown", { key: "b", bubbles: true })));
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(resolve).toHaveBeenLastCalledWith("q1", { answers: { format: ["Report"] } });
+  });
+
+  it("does not advance multiple questions on a held shortcut key", async () => {
+    const resolve = vi.fn().mockResolvedValue(undefined);
+    const two = record({ questions: [raw().questions[0], { questionId: "when", header: "When", question: "When is it due?", options: [{ label: "Today" }] }] });
+    await act(async () => root.render(<DockQuestion record={two} trunkName="Research" onResolve={resolve} />));
+    await act(async () => host.querySelector(".card")!.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true })));
+    await act(async () => host.querySelector(".card")!.dispatchEvent(new KeyboardEvent("keydown", { key: "a", repeat: true, bubbles: true })));
+    expect(resolve).not.toHaveBeenCalled();
+    expect(host.querySelector(".q-step")?.textContent).toBe("Question 2 of 2");
+  });
+
+  it("reveals a secret only on request and masks a new question", async () => {
+    const resolve = vi.fn().mockResolvedValue(undefined);
+    const secret = record({ questions: [{ questionId: "key", header: "Key", question: "API key?", options: [], isSecret: true }] });
+    await act(async () => root.render(<DockQuestion record={secret} trunkName="Research" onResolve={resolve} />));
+    expect(host.querySelector("input")?.type).toBe("password");
+    await act(async () => host.querySelector<HTMLButtonElement>("[aria-label='Show']")!.click());
+    expect(host.querySelector("input")?.type).toBe("text");
+    expect(resolve).not.toHaveBeenCalled();
+    await act(async () => host.querySelector<HTMLButtonElement>("[aria-label='Hide']")!.click());
+    expect(host.querySelector("input")?.type).toBe("password");
+    await act(async () => host.querySelector<HTMLButtonElement>("[aria-label='Show']")!.click());
+    await act(async () => root.render(<DockQuestion record={{ ...secret, id: "q2" }} trunkName="Research" onResolve={resolve} />));
+    expect(host.querySelector("input")?.type).toBe("password");
   });
 
   it("draws the decided line once the question is over", async () => {
