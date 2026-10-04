@@ -4,10 +4,14 @@
  * normalized session-store contract.
  */
 import crypto from "node:crypto";
+import path from "node:path";
 import { normalizeProviderId } from "@branch/model-catalog-core/provider-id";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
 import type { CliSessionBinding, SessionEntry } from "../config/sessions.js";
-import { normalizeCliSessionReseedReceipt } from "../config/sessions/cli-session-binding.js";
+import {
+  getCliSessionBinding,
+  normalizeCliSessionReseedReceipt,
+} from "../config/sessions/cli-session-binding.js";
 import { readErrorName } from "../infra/errors.js";
 import { isFailoverError } from "./failover-error.js";
 import type { FailoverReason } from "./failover/signal.js";
@@ -44,6 +48,11 @@ export function applyCliSessionBindingResult(
   },
 ): boolean {
   if (meta?.clearCliSessionBinding === true) {
+    // Failed/unflushed native turns cannot erase ownership and select a different default next time.
+    // Explicit user reset/migration uses clearCliSession directly.
+    if (getCliSessionBinding(entry, provider)?.nativeConfigDir) {
+      return false;
+    }
     clearCliSession(entry, provider);
   } else if (meta?.cliSessionBinding?.sessionId.trim()) {
     setCliSessionBinding(entry, provider, meta.cliSessionBinding);
@@ -87,7 +96,20 @@ export function setCliSessionBinding(
   const resumeCheckpointId = normalizeOptionalString(binding.resumeCheckpointId);
   const authProfileId = normalizeOptionalString(binding.authProfileId);
   const authEpoch = normalizeOptionalString(binding.authEpoch);
+  const nativeConfigDir = normalizeOptionalString(binding.nativeConfigDir);
+  if (
+    previousBinding?.nativeConfigDir &&
+    previousBinding.sessionId === trimmed &&
+    (!nativeConfigDir ||
+      (process.platform === "win32"
+        ? path.normalize(previousBinding.nativeConfigDir).toLowerCase() !==
+          path.normalize(nativeConfigDir).toLowerCase()
+        : path.normalize(previousBinding.nativeConfigDir) !== path.normalize(nativeConfigDir)))
+  ) {
+    throw new Error("Cannot change the native account owner of an existing CLI session");
+  }
   const nextBinding: CliSessionBinding = {
+    ...(nativeConfigDir ? { nativeConfigDir } : {}),
     sessionId: trimmed,
     ...(resumeCheckpointId ? { resumeCheckpointId } : {}),
     ...(binding.forceReuse === true ? { forceReuse: true } : {}),
@@ -154,7 +176,7 @@ export function shouldClearFailedCliSessionBinding(params: {
   bindingReplacedDuringRun?: boolean;
   hasNewGeneratedMediaTask?: boolean;
 }): boolean {
-  if (!normalizeOptionalString(params.binding?.sessionId)) {
+  if (params.binding?.nativeConfigDir || !normalizeOptionalString(params.binding?.sessionId)) {
     return false;
   }
   // Detached media delivers back into this run later and still needs the binding.

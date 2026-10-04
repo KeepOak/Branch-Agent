@@ -20,6 +20,7 @@ type ClaudeCliAuthStatus =
       status: "available";
       authMethod?: (typeof CLAUDE_CLI_AUTH_METHODS)[number];
       email?: string;
+      configDirectory?: string;
     }
   | { status: "missing" | "unreadable" };
 
@@ -61,10 +62,12 @@ export async function probeClaudeCliAuthStatus(params?: {
       return { status: "missing" };
     }
     const authMethod = CLAUDE_CLI_AUTH_METHODS.find((method) => method === parsed.authMethod);
+    const configDirectory = normalizeOptionalString(parsed.configDirectory);
     const email = authMethod === "claude.ai" ? normalizeOptionalString(parsed.email) : undefined;
     return {
       status: "available",
       ...(authMethod ? { authMethod } : {}),
+      ...(configDirectory ? { configDirectory } : {}),
       ...(email && email.length <= 320 && !/[\r\n]/u.test(email) ? { email } : {}),
     };
   } catch {

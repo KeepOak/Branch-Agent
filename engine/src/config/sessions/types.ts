@@ -128,6 +128,8 @@ export type SessionDiffBaseline = {
 };
 
 export type CliSessionBinding = {
+  /** Native Claude login/config directory owning this session; not a Branch auth profile. */
+  nativeConfigDir?: string;
   sessionId: string;
   /** Last successful assistant boundary accepted by the backend's resume contract. */
   resumeCheckpointId?: string;

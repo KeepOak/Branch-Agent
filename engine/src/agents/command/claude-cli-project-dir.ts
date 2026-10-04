@@ -42,12 +42,14 @@ function canonicalizeWorkspaceDir(workspaceDir: string): string {
 export function resolveClaudeCliProjectDirForWorkspace(params: {
   workspaceDir: string;
   homeDir?: string;
+  nativeConfigDir?: string;
 }): string {
   const homeDir = normalizeOptionalString(params.homeDir) || process.env.HOME || os.homedir();
   const canonicalWorkspaceDir = canonicalizeWorkspaceDir(params.workspaceDir);
   return path.join(
-    homeDir,
-    CLAUDE_PROJECTS_DIRNAME,
+    ...(params.nativeConfigDir
+      ? [params.nativeConfigDir, "projects"]
+      : [homeDir, CLAUDE_PROJECTS_DIRNAME]),
     sanitizeClaudeCliProjectKey(canonicalWorkspaceDir),
   );
 }

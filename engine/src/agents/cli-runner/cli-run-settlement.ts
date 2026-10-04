@@ -610,6 +610,7 @@ export function buildCliRunResult(params: {
           ? {
               cliSessionBinding: {
                 sessionId: persistedCliSessionId,
+                ...(context.nativeConfigDir ? { nativeConfigDir: context.nativeConfigDir } : {}),
                 ...(context.effectiveAuthProfileId
                   ? { authProfileId: context.effectiveAuthProfileId }
                   : {}),

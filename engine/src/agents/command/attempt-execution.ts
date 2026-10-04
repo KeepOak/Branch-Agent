@@ -560,6 +560,15 @@ export function runAgentAttempt(
               }
             : undefined;
         const prepareCliSessionBinding = async () => {
+          // Owned/ambiguous registry bindings must reach normal admission intact.
+          // Clearing here would attach the old conversation to the current default account.
+          if (
+            isClaudeCliProvider(cliExecutionProvider) &&
+            (cliSessionBinding?.nativeConfigDir ||
+              params.cfg.plugins?.entries?.anthropic?.config?.nativeAccounts !== undefined)
+          ) {
+            return;
+          }
           const hasManagedClaudeLiveSession = Boolean(
             isClaudeCliProvider(cliExecutionProvider) &&
             cliSessionBinding?.sessionId &&

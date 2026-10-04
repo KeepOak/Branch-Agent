@@ -1,7 +1,7 @@
 import { formatErrorMessageForDisplay } from "../../infra/error-diagnostics.js";
 import { isCliSessionInvalidatingFailoverReason } from "../cli-session.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent-runner.js";
-import { type FailoverError, isFailoverError } from "../failover-error.js";
+import { type FailoverError, isFailoverError, recordModelFallbackStop } from "../failover-error.js";
 import { cliBackendLog } from "./log.js";
 import type { CliReusableSession, PreparedCliRunContext } from "./types.js";
 
@@ -99,6 +99,23 @@ export async function runCliRecovery<TAttempt>(params: {
       reusableCliSessionId,
     );
   } catch (err) {
+    // A started native-account turn has an uncertain side-effect boundary. Never replay it.
+    if (context.nativeConfigDir) {
+      try {
+        const deliveredFailure = await params.finishDeliveredFailure(err);
+        if (deliveredFailure) return deliveredFailure;
+        runParams.assertCurrent?.();
+        return await failTerminal(err);
+      } catch (terminalFailure) {
+        // The outer model chain must not replay this turn either, even if delivery/cleanup failed.
+        const error =
+          terminalFailure instanceof Error
+            ? terminalFailure
+            : new Error(formatErrorMessageForDisplay(terminalFailure));
+        recordModelFallbackStop(error);
+        throw error;
+      }
+    }
     const deliveredFailure = await params.finishDeliveredFailure(err);
     if (deliveredFailure) {
       return deliveredFailure;

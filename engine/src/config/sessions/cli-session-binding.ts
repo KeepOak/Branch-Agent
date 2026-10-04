@@ -75,6 +75,7 @@ export function getCliSessionBinding(
   if (bindingSessionId) {
     return {
       sessionId: bindingSessionId,
+      nativeConfigDir: normalizeOptionalString(fromBindings?.nativeConfigDir),
       resumeCheckpointId: normalizeOptionalString(fromBindings?.resumeCheckpointId),
       ...(fromBindings?.forceReuse === true ? { forceReuse: true } : {}),
       ...(fromBindings?.forkNextResume === true ? { forkNextResume: true } : {}),

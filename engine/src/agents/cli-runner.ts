@@ -94,7 +94,7 @@ export async function isCliBindingFlushed(
   sessionId: string | undefined,
   provider: string | undefined,
   workspaceDir?: string,
-  options?: { skipTranscriptProbe?: boolean },
+  options?: { skipTranscriptProbe?: boolean; nativeConfigDir?: string },
 ): Promise<boolean> {
   if (!provider || !isClaudeCliBackend(provider)) {
     return true;
@@ -111,7 +111,13 @@ export async function isCliBindingFlushed(
     if (delayMs > 0) {
       await cliRunnerDeps.delay(delayMs);
     }
-    if (await cliRunnerDeps.claudeCliSessionTranscriptHasContent({ sessionId, workspaceDir })) {
+    if (
+      await cliRunnerDeps.claudeCliSessionTranscriptHasContent({
+        sessionId,
+        workspaceDir,
+        ...(options?.nativeConfigDir ? { nativeConfigDir: options.nativeConfigDir } : {}),
+      })
+    ) {
       return true;
     }
   }
@@ -546,7 +552,10 @@ async function runPreparedCliAgentOwned(
               effectiveCliSessionId,
               params.provider,
               context.cwd ?? context.workspaceDir,
-              { skipTranscriptProbe: acceptsCliLiveSession(context) },
+              {
+                skipTranscriptProbe: acceptsCliLiveSession(context),
+                nativeConfigDir: context.nativeConfigDir,
+              },
             );
         const interruptionError = terminalInterruption
           ? formatCliTerminalInterruption(terminalInterruption)

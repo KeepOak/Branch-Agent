@@ -1314,6 +1314,9 @@ describe("prepareCliRunContext", () => {
   );
 
   it("does not revive a selected managed credential when auth resolution returns null", async () => {
+    // This fixture asserts the unscoped login command, not the invoking host's CLI profile.
+    vi.stubEnv("BRANCH_PROFILE", "");
+    vi.stubEnv("BRANCH_CONTAINER_HINT", "");
     const { dir } = fixture.session;
     const agentDir = path.join(dir, "agents", "main", "agent");
     const authProfileId = "anthropic:branch-managed";
@@ -3451,7 +3454,7 @@ describe("prepareCliRunContext", () => {
       resolveExecutionArgs: ({ baseArgs }) => [...baseArgs],
       prepareExecution: async () => ({ execute }),
       config: {
-        command: "/bin/sh",
+        command: process.execPath,
         args: [],
         input: "stdin",
         output: "jsonl",
@@ -3531,7 +3534,7 @@ describe("prepareCliRunContext", () => {
         const processRun = executePluginOwnedProcess({
           context,
           execute: target.execute,
-          executionCommand: "/bin/sh",
+          executionCommand: process.execPath,
           executionArgs: [],
           env: { PATH: "/bin:/usr/bin" },
           prompt: context.params.prompt,
@@ -4353,7 +4356,7 @@ describe("prepareCliRunContext", () => {
           : null;
       },
       config: {
-        command: "/bin/sh",
+        command: process.execPath,
         args: [],
         resumeArgs: ["--resume", "{sessionId}"],
         input: "stdin",
@@ -4504,9 +4507,7 @@ describe("prepareCliRunContext", () => {
         mode: "invalidate",
         invalidatedReason: "missing-transcript",
       });
-      expect(context.branchHistoryPrompt).toContain(
-        `[${recoveredAt}] User: prior claude-cli ask`,
-      );
+      expect(context.branchHistoryPrompt).toContain(`[${recoveredAt}] User: prior claude-cli ask`);
       expect(context.branchHistoryPrompt).toContain(
         "Tool result (exec): Archive created at /tmp/example-backup.tar",
       );
@@ -4836,9 +4837,7 @@ describe("prepareCliRunContext", () => {
       workspaceDir: dir,
       skillsSnapshot,
     });
-    expect(context.systemPrompt).toContain(
-      "/workspace/.branch/sandbox-skills/skills/gog/SKILL.md",
-    );
+    expect(context.systemPrompt).toContain("/workspace/.branch/sandbox-skills/skills/gog/SKILL.md");
     expect(context.systemPrompt).not.toContain(hostSkillPath);
     expect(context.systemPromptReport.skills.promptChars).toBeGreaterThan(0);
     expect(context.systemPromptReport.skills.entries).toEqual([
@@ -4879,8 +4878,8 @@ describe("prepareCliRunContext", () => {
       },
     });
 
-    expect(context.systemPrompt).not.toContain("cold-skill/SKILL.md");
-    expect(context.systemPrompt).toContain("healthy-skill/SKILL.md");
+    expect(context.systemPrompt.replaceAll("\\", "/")).not.toContain("cold-skill/SKILL.md");
+    expect(context.systemPrompt.replaceAll("\\", "/")).toContain("healthy-skill/SKILL.md");
   });
 
   it("keeps prompt skills when native plugin materialization returns no args", async () => {
@@ -5004,7 +5003,7 @@ describe("prepareCliRunContext", () => {
           resolveExecutionArgs: ({ baseArgs }) => [...baseArgs],
           autoSelectAuthProfile: false,
           config: {
-            command: "/bin/echo",
+            command: process.execPath,
             args: [],
             resumeArgs: ["--resume", "{sessionId}"],
             output: "jsonl",

@@ -25,6 +25,7 @@ it("asks Claude CLI for its active account and returns only safe display fields"
       loggedIn: true,
       authMethod: "claude.ai",
       email: " account@example.test ",
+      configDirectory: path.resolve("native-account-a"),
       orgId: "private-organization",
       accessToken: "synthetic-access-token",
     }),
@@ -34,6 +35,7 @@ it("asks Claude CLI for its active account and returns only safe display fields"
     status: "available",
     authMethod: "claude.ai",
     email: "account@example.test",
+    configDirectory: path.resolve("native-account-a"),
   });
 
   expect(runUtf8CommandWithTimeout).toHaveBeenCalledWith(

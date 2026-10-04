@@ -737,8 +737,14 @@ describe("resolveCliAuthEpoch", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "branch-cli-owner-path-"));
     const firstBin = path.join(dir, "first");
     const secondBin = path.join(dir, "second");
-    copyNativeExecutable(path.join(firstBin, "claude"), nativeUtility("true"));
-    copyNativeExecutable(path.join(secondBin, "claude"), nativeUtility("false"));
+    copyNativeExecutable(
+      path.join(firstBin, process.platform === "win32" ? "claude.exe" : "claude"),
+      nativeUtility("true"),
+    );
+    copyNativeExecutable(
+      path.join(secondBin, process.platform === "win32" ? "claude.exe" : "claude"),
+      nativeUtility("false"),
+    );
     try {
       const config = cliConfig("claude");
       const first = await resolveCliRuntimeOwnerFingerprint({

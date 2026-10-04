@@ -132,6 +132,10 @@ import {
   CLAUDE_MANAGED_MCP_TIMEOUT_MS,
 } from "./bundle-mcp-claude.js";
 import { prepareCliBundleMcpConfig, resolveCliNativeWebSearchEnabled } from "./bundle-mcp.js";
+import {
+  selectClaudeNativeConfigDir,
+  assertClaudeNativeConfigDirectory,
+} from "./claude-native-ownership.js";
 import { prepareClaudeCliSkillsPlugin } from "./claude-skills-plugin.js";
 import { runCliCleanup } from "./cleanup.js";
 import {
@@ -382,6 +386,18 @@ async function prepareCliRunContextWithinReadFence(
   if (!backendResolved) {
     throw new Error(`Unknown CLI backend: ${params.provider}`);
   }
+  const nativeConfigDir =
+    backendResolved.id === "claude-cli"
+      ? selectClaudeNativeConfigDir({
+          config: params.config,
+          binding: params.cliSessionBinding,
+          cliSessionId: params.cliSessionId,
+          execHost: params.sessionEntry?.execHost,
+          authProfileId: params.authProfileId,
+          backendAuthProfileId: backendResolved.defaultAuthProfileId,
+          backendEnv: backendResolved.config.env,
+        })
+      : undefined;
   params = prepareCliRunModelAuthority(params);
   const backendAuthPolicy = resolveBundledCliBackendAuthPolicy(backendResolved.id);
   const canEnforceExactToolAvailability =
@@ -403,9 +419,7 @@ async function prepareCliRunContextWithinReadFence(
         workspaceDir,
         cwd,
       });
-  const rootedToolsAllow = params.rootedExecution
-    ? params.cliToolAvailability?.branch
-    : undefined;
+  const rootedToolsAllow = params.rootedExecution ? params.cliToolAvailability?.branch : undefined;
   const toolPolicy = resolveCliRuntimeToolPolicy({
     params,
     backendId: backendResolved.id,
@@ -1393,7 +1407,14 @@ async function prepareCliRunContextWithinReadFence(
       params.assertCurrent?.();
       // Only bundled backends receive this private credential bridge.
       const backendPrepareContext = backendAuthPolicy
-        ? { ...privatePrepareExecutionContext, authCredential }
+        ? {
+            ...privatePrepareExecutionContext,
+            authCredential,
+            nativeConfigDir,
+            nativeCommand: backendResolved.config.command,
+            nativeBackendEnv: backendResolved.config.env,
+            nativeAbortSignal: params.abortSignal,
+          }
         : privatePrepareExecutionContext;
       preparedExecution =
         (await backendResolved.prepareExecution?.(backendPrepareContext)) ?? undefined;
@@ -1444,10 +1465,11 @@ async function prepareCliRunContextWithinReadFence(
       );
     }
     const skipLocalCredentialEpoch = Boolean(
-      backendResolved.authEpochMode === "profile-only" &&
-      effectiveAuthProfileId &&
-      authCredential &&
-      preparedExecution,
+      nativeConfigDir ||
+      (backendResolved.authEpochMode === "profile-only" &&
+        effectiveAuthProfileId &&
+        authCredential &&
+        preparedExecution),
     );
     const authEpoch = await resolveCliAuthEpoch({
       provider: params.provider,
@@ -1470,8 +1492,12 @@ async function prepareCliRunContextWithinReadFence(
         ? { ...preparedBackend.env, ...preparedExecution.env }
         : preparedBackend.env;
     const preparedBackendBeforeExecution =
-      preparedBackend.beforeExecution || preparedExecution?.beforeExecution
+      nativeConfigDir || preparedBackend.beforeExecution || preparedExecution?.beforeExecution
         ? async () => {
+            if (nativeConfigDir) {
+              params.assertCurrent?.();
+              assertClaudeNativeConfigDirectory(nativeConfigDir);
+            }
             await preparedBackend.beforeExecution?.();
             await preparedExecution?.beforeExecution?.();
           }
@@ -1593,6 +1619,7 @@ async function prepareCliRunContextWithinReadFence(
       !(await prepareDeps.claudeCliSessionTranscriptHasContent({
         sessionId: candidateClaudeCliSessionId,
         workspaceDir: cwd,
+        ...(nativeConfigDir ? { nativeConfigDir } : {}),
       }));
     const managedClaudeLiveSessionGeneration =
       claudeCliTranscriptMissing &&
@@ -1616,6 +1643,7 @@ async function prepareCliRunContextWithinReadFence(
       (await prepareDeps.claudeCliSessionTranscriptHasOrphanedToolUse({
         sessionId: candidateClaudeCliSessionId,
         workspaceDir: cwd,
+        ...(nativeConfigDir ? { nativeConfigDir } : {}),
       }));
     const claudeCliInvalidatedReason: "missing-transcript" | "orphaned-tool-use" | undefined =
       claudeCliTranscriptMissing && !hasManagedClaudeLiveSession
@@ -1931,6 +1959,7 @@ async function prepareCliRunContextWithinReadFence(
       systemPromptReport,
       claudeSkillsPluginArgs: claudeSkillsPlugin.args,
       ...(cliHistoryWriter ? { cliHistoryWriter } : {}),
+      ...(nativeConfigDir ? { nativeConfigDir } : {}),
       authEpoch,
       authBindingFingerprint,
       ...(skipLocalCredentialEpoch ? { authBindingSkipsLocalCredential: true as const } : {}),

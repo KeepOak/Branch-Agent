@@ -125,6 +125,7 @@ function claudeCliSessionTranscriptPath(params: {
   sessionId: string | undefined;
   workspaceDir: string | undefined;
   homeDir?: string;
+  nativeConfigDir?: string;
 }): string | null {
   const sessionId = normalizeClaudeCliSessionId(params.sessionId);
   if (!sessionId) {
@@ -138,6 +139,7 @@ function claudeCliSessionTranscriptPath(params: {
     resolveClaudeCliProjectDirForWorkspace({
       workspaceDir,
       homeDir: params.homeDir,
+      nativeConfigDir: params.nativeConfigDir,
     }),
     `${sessionId}.jsonl`,
   );
@@ -390,6 +392,7 @@ function formatClaudeCliFallbackPrelude(
 export function buildClaudeCliFallbackContextPrelude(params: {
   cliSessionId: string | undefined;
   homeDir?: string;
+  nativeConfigDir?: string;
   charBudget?: number;
 }): string {
   const sessionId = params.cliSessionId?.trim();

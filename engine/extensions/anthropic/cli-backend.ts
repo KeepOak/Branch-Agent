@@ -1,9 +1,11 @@
 import { createHmac, randomBytes } from "node:crypto";
+import path from "node:path";
 import type {
   CliBackendExecuteContext,
   CliBackendPlugin,
   CliBackendPreparedExecution,
 } from "branch/plugin-sdk/cli-backend";
+import { probeClaudeCliAuthStatus } from "./cli-auth-seam.js";
 import {
   CLAUDE_CLI_BACKEND_ID,
   CLAUDE_CLI_DEFAULT_MODEL_REF,
@@ -251,6 +253,57 @@ export function buildAnthropicCliBackend(
     authEpochMode: "profile-only",
     autoSelectAuthProfile: false,
     prepareExecution: (context) => {
+      const nativeContext = context as typeof context & {
+        nativeConfigDir?: string;
+        nativeCommand?: string;
+        nativeBackendEnv?: Record<string, string>;
+        nativeAbortSignal?: AbortSignal;
+        authCredential?: ClaudeCliAuthCredential;
+      };
+      const nativeConfigDir = nativeContext.nativeConfigDir;
+      const admitNativeAccount = async () => {
+        if (!nativeConfigDir) return;
+        if (nativeContext.authCredential || context.authProfileId) {
+          throw new Error("Native Claude accounts cannot use Branch credentials");
+        }
+        // Check the exact launch environment too; ignored overrides must not silently change auth authority.
+        const env = {
+          ...process.env,
+          ...nativeContext.nativeBackendEnv,
+          ...context.env,
+          CLAUDE_CONFIG_DIR: nativeConfigDir,
+        };
+        for (const [name, value] of Object.entries(env)) {
+          if (
+            value &&
+            (/^ANTHROPIC_/u.test(name) ||
+              /^CLAUDE_CODE_(?:API_KEY|OAUTH|USE_BEDROCK|USE_VERTEX|USE_FOUNDRY)/u.test(name))
+          ) {
+            throw new Error(
+              "Native Claude accounts cannot use provider/auth environment overrides",
+            );
+          }
+        }
+        nativeContext.nativeAbortSignal?.throwIfAborted();
+        const status = await probeClaudeCliAuthStatus({
+          command: nativeContext.nativeCommand,
+          env,
+          signal: nativeContext.nativeAbortSignal,
+        });
+        if (status.status !== "available" || status.authMethod !== "claude.ai") {
+          throw new Error("Native Claude account requires its own claude.ai subscription login");
+        }
+        const normalize = (directory: string) =>
+          process.platform === "win32"
+            ? path.normalize(directory).toLowerCase()
+            : path.normalize(directory);
+        if (
+          !status.configDirectory ||
+          normalize(status.configDirectory) !== normalize(nativeConfigDir)
+        ) {
+          throw new Error("Claude native auth status did not attest the selected config directory");
+        }
+      };
       const prepare = () => {
         const credentialContext = context as typeof context & {
           authCredential?: ClaudeCliAuthCredential;
@@ -278,6 +331,7 @@ export function buildAnthropicCliBackend(
           ...(context.contextWindow === "200k" ? { CLAUDE_CODE_DISABLE_1M_CONTEXT: "1" } : {}),
           ...resolveClaudeCliThinkingEnv(context.thinkingLevel, context.modelId),
           ...authInput?.env,
+          ...(nativeConfigDir ? { CLAUDE_CONFIG_DIR: nativeConfigDir } : {}),
         };
         return {
           env,
@@ -291,7 +345,11 @@ export function buildAnthropicCliBackend(
         };
       };
       const supportProbe = options.ensureDynamicSystemPromptSectionsSupport?.();
-      return supportProbe ? supportProbe.then(prepare) : prepare();
+      return nativeConfigDir
+        ? admitNativeAccount().then(() => (supportProbe ? supportProbe.then(prepare) : prepare()))
+        : supportProbe
+          ? supportProbe.then(prepare)
+          : prepare();
     },
     parseJsonlEvent: parseClaudeCliJsonlEvent,
     parseJsonlLifecycleEvent: parseClaudeCliJsonlLifecycleEvent,

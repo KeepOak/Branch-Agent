@@ -270,6 +270,7 @@ export type PreparedCliRunContext = {
   branchHistoryPrompt?: string;
   /** Live owner of the transcript account-coverage checkpoint, independent of native continuity. */
   cliHistoryWriter?: import("../../config/sessions/cli-history-boundary.js").CliHistoryWriter;
+  nativeConfigDir?: string;
   authEpoch?: string;
   /** Strict owner fingerprint captured for live inference verification only. */
   authBindingFingerprint?: string;
