@@ -51,6 +51,7 @@ export const engineTests = [
   'extensions/memory-core/src/link-capture.test.ts',
   'extensions/memory-core/src/memory-inbox.test.ts',
   'extensions/memory-core/index.test.ts',
+  'extensions/memory-core/src/user-persona.test.ts',
 ];
 
 export const windowTests = [
@@ -159,6 +160,8 @@ export const engineStrictFiles = [
   'extensions/memory-core/src/link-capture.test.ts',
   'extensions/memory-core/src/memory-inbox.ts',
   'extensions/memory-core/src/memory-inbox.test.ts',
+  'extensions/memory-core/src/user-persona.ts',
+  'extensions/memory-core/src/user-persona.test.ts',
 ];
 
 export const windowStrictFiles = [

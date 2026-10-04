@@ -31,6 +31,7 @@ const loadResolveReferent = createLazyRuntimeModule(() => import("./resolve-refe
 const loadTemporalMarkers = createLazyRuntimeModule(() => import("./temporal-markers.js"));
 const loadLinkCapture = createLazyRuntimeModule(() => import("./link-capture.js"));
 const loadMemoryInbox = createLazyRuntimeModule(() => import("./memory-inbox.js"));
+const loadUserPersona = createLazyRuntimeModule(() => import("./user-persona.js"));
 
 export const MEMORY_CAPTURE_TOOL_NAMES = [
   "memory_write",
@@ -454,6 +455,48 @@ async function handleMemoryInboxCommand(api: BranchPluginApi, ctx: PluginCommand
   }
 }
 
+async function handlePersonaCommand(api: BranchPluginApi, ctx: PluginCommandContext) {
+  const allowed = Array.isArray(ctx.gatewayClientScopes)
+    ? ctx.gatewayClientScopes.includes("operator.admin")
+    : ctx.senderIsOwner === true;
+  if (!allowed) {
+    return {
+      text: "⚠️ /persona requires owner status for channel callers or operator.admin for gateway clients.",
+    };
+  }
+  const { workspaceDir } = resolveAgentScope(api, ctx.sessionKey, ctx.agentId);
+  const complete = ctx.runtimeContext?.llm?.complete ?? api.runtime.llm.complete;
+  const { refreshUserPersona } = await loadUserPersona();
+  try {
+    const notes = ctx.args?.trim();
+    const result = await refreshUserPersona({
+      workspaceDir,
+      ...(notes ? { personaNotes: notes } : {}),
+      model: async ({ systemPrompt, userPrompt }) =>
+        (
+          await complete({
+            systemPrompt,
+            messages: [{ role: "user", content: userPrompt }],
+            purpose: "memory-core user persona",
+          })
+        ).text,
+    });
+    return {
+      text: [
+        "USER.md persona updated.",
+        result.tagline ? `\n${result.tagline}` : "",
+        result.diff ? `\nChanges:\n${result.diff}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    };
+  } catch (error) {
+    return {
+      text: `Persona refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
 function registerMemoryInboxGatewayMethods(api: BranchPluginApi): void {
   for (const operation of ["list", "accept", "reject"] as const) {
     api.registerGatewayMethod(
@@ -500,6 +543,13 @@ export function registerMemoryCaptureFeatures(api: BranchPluginApi, host: Memory
     acceptsArgs: true,
     exposeSenderIsOwner: true,
     handler: async (ctx) => await handleMemoryInboxCommand(api, ctx),
+  });
+  api.registerCommand({
+    name: "persona",
+    description: "Refresh the persona summary in USER.md from your memories.",
+    acceptsArgs: true,
+    exposeSenderIsOwner: true,
+    handler: async (ctx) => await handlePersonaCommand(api, ctx),
   });
 
   api.on("before_prompt_build", async (event, ctx) => {

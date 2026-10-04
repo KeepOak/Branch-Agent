@@ -64,6 +64,11 @@
       "name": "memory-inbox",
       "kind": "runtime-slash",
       "cliCommand": "memory"
+    },
+    {
+      "name": "persona",
+      "kind": "runtime-slash",
+      "cliCommand": "memory"
     }
   ],
   "uiHints": {
