@@ -5,7 +5,7 @@
 .usage-window meter { width: 90px; height: 10px; accent-color: var(--accent, #d98642); }
 .usage-window small, .usage-unavailable { opacity: .65; }
 .helpers-inline { margin: 20px 0; padding: 18px; border: 1px solid var(--line, #8883); border-radius: 16px; background: var(--surface, #8881); }
-.helpers-inline > .helpers-tree { width: auto; max-width: none; }
+.thread .helpers-inline > .helpers-tree { width: auto; max-width: none; }
 .helpers-inline .helpers-tree ul { padding: 0; list-style: none; }
 .helpers-inline .helper { padding: 12px; margin-top: 8px; border: 1px solid var(--line, #8883); border-radius: 10px; }
 .helpers-inline .helper-job { white-space: pre-wrap; overflow-wrap: anywhere; }
