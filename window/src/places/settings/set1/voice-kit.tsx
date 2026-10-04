@@ -23,27 +23,33 @@ export const isMac = (): boolean => typeof navigator !== "undefined" && /Mac/i.t
 
 /** One greyed control, drawn the way the preview draws it. */
 export type GreyCtl =
-  | { sw: boolean } | { btn: string; ghost?: boolean } | { seg: string[]; v?: string } | { pick: string[]; extra?: string }
-  | { field: string; unit?: string; ph?: string } | { area: string } | { pill: string };
+  | { sw: boolean } | { btn: string; ghost?: boolean } | { seg: string[]; v?: string; extra?: string } | { pick: string[]; extra?: string; label?: string }
+  | { field: string; unit?: string; ph?: string } | { area: string; v?: string } | { pill: string } | { key: string; btn: string } | { meter: string };
 export type GreyRow = { t: string; sub?: string; c?: GreyCtl; why?: string; stack?: boolean };
 
 function GreyControl({ c, t }: { c: GreyCtl; t: string }) {
   if ("sw" in c) return <Switch checked={c.sw} label={t} onChange={noop} />;
+  if ("meter" in c) return <><span className="meter-k" aria-hidden="true">{Array.from({ length: 8 }, (_, i) => <i key={i} />)}</span><Btn sm>{c.meter}</Btn></>;
+  if ("key" in c) return <><kbd className="key-k">{c.key}</kbd><Btn sm>{c.btn}</Btn></>;
   if ("btn" in c) return <Btn sm ghost={c.ghost}>{c.btn}</Btn>;
-  if ("seg" in c) return <Seg label={t} value={c.v ?? ""} options={c.seg.map((s) => ({ id: s, label: s }))} onChange={noop} />;
-  if ("pick" in c) return <><Pick label={t} value={c.pick[0]} options={c.pick.map((s) => ({ id: s, label: s }))} onChange={noop} />{c.extra ? <Btn sm ghost>{c.extra}</Btn> : null}</>;
+  if ("seg" in c) return <><Seg label={t} value={c.v ?? ""} options={c.seg.map((s) => ({ id: s, label: s }))} onChange={noop} />{c.extra ? <Btn sm>{c.extra}</Btn> : null}</>;
+  if ("pick" in c) return <><Pick label={c.label ?? t} value={c.pick[0]} options={c.pick.map((s) => ({ id: s, label: s }))} onChange={noop} />{c.extra ? <Btn sm ghost>{c.extra}</Btn> : null}</>;
   if ("field" in c) return <><input className="inp num-k" aria-label={t} value={c.field} placeholder={c.ph} readOnly />{c.unit ? <small className="unit-k">{c.unit}</small> : null}</>;
-  if ("area" in c) return <textarea className="inp" rows={3} aria-label={t} placeholder={c.area} readOnly />;
+  if ("area" in c) return null;
   return <Pill tone="idle">{c.pill}</Pill>;
 }
+
+/** A text box under its row's lines, as the preview stacks them (the sub-line comes first). */
+export const AreaAfter = ({ t, c }: { t: string; c?: GreyCtl }) =>
+  c && "area" in c ? <textarea className="inp area-k" rows={3} aria-label={t} placeholder={c.area} value={c.v ?? ""} readOnly disabled /> : null;
 
 /** Rows the engine can't change yet (or that only the desktop app runs): greyed, each with why. */
 export function Greyed({ rows, why }: { rows: GreyRow[]; why: string }) {
   return (
     <>
       {rows.map((r) => (
-        <Ctl key={r.t} title={r.t} sub={r.sub} off={r.why ?? why} stack={r.stack || (r.c && "area" in r.c)}>
-          {r.c ? <GreyControl c={r.c} t={r.t} /> : null}
+        <Ctl key={r.t} title={r.t} sub={r.sub} off={r.why ?? why} stack={r.stack || (r.c && "area" in r.c)} after={<AreaAfter t={r.t} c={r.c} />}>
+          {r.c && !("area" in r.c) ? <GreyControl c={r.c} t={r.t} /> : null}
         </Ctl>
       ))}
     </>

@@ -37,7 +37,9 @@ export function LiveMore({ cfg, catalog, agents }: Shared & { agents: Kept<Recor
   const set = (path: string) => (v: string) => void cfg.set(path, v || null);
   return (
     <Sec title="Live voice, more">
-      <Ctl title={<>Live voice{catalog.data ? <Pill tone={tone}>{word}</Pill> : null}</>} id="Live voice" sub={catalog.error ? visible(catalog.error) : ready ? `Using ${live.active?.label}.` : "No live-voice service is set up yet."} />
+      <Ctl title="Live voice" sub={catalog.error ? visible(catalog.error) : ready ? `Using ${live.active?.label}.` : "No live-voice service is set up yet."}>
+        {catalog.data ? <Pill tone={tone}>{word}</Pill> : null}
+      </Ctl>
       <Ctl title="Live voice through" sub={live.providers.some((p) => p.configured) ? "On because a live-voice service is connected." : "Turns on when a live-voice service is connected."}>
         <Pick label="Live voice through" value={live.chosen} options={through} disabled={cfg.loading} onChange={(id) => void chooseLive(cfg, id)} />
       </Ctl>
@@ -89,10 +91,9 @@ export function TextRow({ cfg, path, title, sub, ph }: { cfg: Cfg; path: string;
   const [draft, setDraft] = useState(saved);
   useEffect(() => setDraft(saved), [saved]);
   return (
-    <Ctl stack title={title} sub={sub}>
-      <textarea className="inp" rows={3} aria-label={title} placeholder={ph} value={draft} disabled={cfg.loading} onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => { if (draft !== saved) void cfg.set(path, draft.trim() || null); }} />
-    </Ctl>
+    <Ctl stack title={title} sub={sub} after={
+      <textarea className="inp area-k" rows={3} aria-label={title} placeholder={ph} value={draft} disabled={cfg.loading} onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => { if (draft !== saved) void cfg.set(path, draft.trim() || null); }} />} />
   );
 }
 

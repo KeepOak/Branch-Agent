@@ -2,7 +2,9 @@
 // level-0 sections; Advanced and Technical add theirs in place. Config keys and their engine defaults:
 // tools.exec.* and tools.* (schema.help.runtime.ts), agents.defaults.sandbox.* (agents/sandbox/config.ts),
 // gateway.terminal.* and gateway.controlUi.automaticallyFetchFavicons; the command rules live in the exec approvals file.
+import { Icon } from "../../../shell/icons";
 import { record } from "../adapter";
+import { Btn } from "../kit";
 import { CommandDefaults, RulesFor, RulesList } from "./permissions-commands";
 import { WHY, type Cfg, type Dead, type Row, type Section } from "./permissions-rows";
 import { ApprovalsRow, Connectors, Lockdown, Pinned, WhoMay, WorkStyle } from "./permissions-top";
@@ -155,7 +157,7 @@ const FOLDER = { seg: ["Blocked", "Read only", "Read and write"] };
 const SB_FOLDERS = "The sandbox reaches only its project folder; other folders can’t be chosen here yet.";
 export const FOLDERS: Section = { title: "Folders the sandbox may reach", lv: 1, hint: "Commands in the sandbox see only these folders.", rows: [
   off("Documents", undefined, FOLDER, SB_FOLDERS), off("Downloads", undefined, FOLDER, SB_FOLDERS), off("Desktop", undefined, FOLDER, SB_FOLDERS),
-  off("Add a folder", undefined, { btn: "Add a folder" }, SB_FOLDERS),
+  { k: "el", t: "Add a folder", el: () => <div className="acts" data-row="Add a folder"><Btn sm disabled title={SB_FOLDERS}><Icon name="plus" small />Add a folder</Btn></div> },
 ] };
 
 export const POLICY: Section = { title: "Company policy", lv: 2, rows: [
@@ -223,7 +225,7 @@ export const MORE_GUARDS: Section = { title: "Guards, more", lv: 1, rows: [
   offSw("Face, finger or PIN for sensitive actions", "Your device’s own check before money or a big delete. Off until you choose: you set it up on the device first.", false),
   offSw("One task at a time", "A new task waits while one runs.", false),
   offSw("Skills may run their own shell lines", "Only skills you trust, after one yes. Off until you choose: a skill could run commands.", false),
-  off("Block distracting sites and apps", "Trunks and the browser won’t open them.", { field: "site.example", btn: "Block" }),
+  off("Block distracting sites and apps", "Trunks and the browser won’t open them.", { field: "site.example", btn: "Block", label: "Site to block" }),
   off("Trust in each contact", "Worked out from what each person has asked before.", { btn: "See" }),
   off("Check installed packages", "Every package Branch and your skills installed, against known flaws.", { btn: "Check now" }),
 ] };

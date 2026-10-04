@@ -31,7 +31,7 @@ export function VoiceAdvanced(props: MoreProps) {
       <TrunksMayUse />
       {lv >= 2 ? <><LiveTechnical {...shared} /><VoiceTechnical {...shared} /></> : null}
       <ListeningServices {...shared} />
-      <SpokenTurn />
+      <SpokenTurn cfg={cfg} />
       <CallsMore />
       {lv >= 2 ? <LiveServices {...shared} /> : null}
     </>

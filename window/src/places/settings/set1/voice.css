@@ -33,3 +33,14 @@
   .set-col .kit-page[data-page-title="Voice"] .ctl:has(> .right > select) > .right { grid-row: auto; grid-column: 1; margin-top: 6px; }
   .set-col .kit-page[data-page-title="Voice"] .ctl > .rows .prow .grow { min-width: 140px; }
 }
+/* the push-to-talk key chip, the microphone list sized for device names, and text boxes under their row's lines */
+.set-col .kit-page[data-page-title="Voice"] .ctl kbd.key-k { padding: 4px 8px; border-radius: 6px; background: var(--wash17); font: 12px var(--mono); color: var(--ink-3); white-space: nowrap; }
+.set-col .kit-page[data-page-title="Voice"] .ctl[data-row="Microphone"] select.inp { min-width: 236px; }
+.set-col .kit-page[data-page-title="Voice"] .ctl > .area-k { grid-column: 1 / -1; width: 100%; margin-top: 8px; }
+.set-col .kit-page[data-page-title="Voice"] .ctl > textarea.area-k { height: 38px; min-height: 38px; padding: 8px 10px; font: inherit; font-size: 13px; resize: vertical; }
+.set-col .kit-page[data-page-title="Voice"] .ctl > span.area-k > .inp { width: 100%; }
+@media (max-width: 640px) {
+  .set-col .kit-page[data-page-title="Voice"] .ctl[data-row="Microphone"] select.inp { min-width: 0; flex: 1; }
+}
+.set-col .kit-page[data-page-title="Voice"] .meter-k { display: inline-flex; gap: 2px; align-items: flex-end; height: 16px; margin-right: 6px; }
+.set-col .kit-page[data-page-title="Voice"] .meter-k i { width: 4px; height: 6px; border-radius: 2px; background: var(--fill-2); }

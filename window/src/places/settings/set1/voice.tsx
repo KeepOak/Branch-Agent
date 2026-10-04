@@ -7,7 +7,11 @@ import { list, text, visible, type RecordValue } from "../adapter";
 import { Ctl, Page, Sec, useLevel, useSaveRunner, type Opt, type RowEntry } from "../kit";
 import { APP, Choice, Greyed, isMac, providersOf, useKept, type Kept } from "./voice-kit";
 import { VoiceAdvanced } from "./voice-more";
+import { useVoiceCatalog } from "../../../composer/VoiceParts";
 import "./voice.css";
+
+/** Dictation follows talk.catalog: the message box dictates whenever a listening engine is ready. */
+const DICTATION = "On by itself when a listening engine is ready; Branch has no switch for it yet.";
 
 /** The first wake word, quoted, for the sub-lines (the engine's own list; never a made-up phrase). */
 export function wakeWordOf(wake: RecordValue | undefined): string {
@@ -21,19 +25,20 @@ export function VoicePage(props: SettingsPageProps) {
   const voices = useKept<RecordValue>(props.engine, "tts.providers", {});
   const wake = useKept<RecordValue>(props.engine, "voicewake.get", {});
   const word = wakeWordOf(wake.data);
+  const dictation = useVoiceCatalog(props.engine).dictation;
   return (
     <Page title={props.title} lede="Talking to Branch. Voice stays on this computer unless a voice service is connected.">
       <Sec title="Talking">
         <Greyed why={APP} rows={[
-          { t: "Listening", sub: `Push to talk holds the key; wake word listens for ${word}.`, c: { seg: ["Off", "Push to talk", "Wake word"], v: "Off" } },
-          { t: "Push-to-talk key", sub: isMac() ? "Hold it anywhere on this Mac." : "Hold it anywhere in Windows.", c: { btn: "Change" } },
+          { t: "Listening", sub: `Push to talk holds the key; wake word listens for ${word}.`, c: { seg: ["Off", "Push to talk", "Wake word"], v: isMac() ? "Off" : "Push to talk" } },
+          { t: "Push-to-talk key", sub: isMac() ? "Hold it anywhere on this Mac." : "Hold it anywhere in Windows.", c: { key: isMac() ? "Right Option" : "Ctrl+Alt+Shift+V", btn: "Change" } },
           { t: "Microphone", sub: "Used for dictation, push to talk, the wake word and live voice. A change applies to the next dictation or call.", c: { pick: ["System default"], extra: "Refresh" } },
           { t: "Test the microphone", sub: "Watch the level as you speak, and try the wake word.", c: { btn: "Test" } },
         ]} />
       </Sec>
       <Sec title="Speaking back">
         <VoiceRow engine={props.engine} tts={tts} voices={voices} />
-        <Greyed why={APP} rows={[{ t: "Dictation in the message box", sub: "The microphone button turns speech into text.", c: { sw: false } }]} />
+        <Greyed why={DICTATION} rows={[{ t: "Dictation in the message box", sub: "The microphone button turns speech into text.", c: { sw: dictation } }]} />
       </Sec>
       {lv >= 1 ? <VoiceAdvanced {...props} tts={tts} voices={voices} wake={wake} word={word} /> : null}
     </Page>

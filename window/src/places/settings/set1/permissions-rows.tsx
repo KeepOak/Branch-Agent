@@ -20,7 +20,7 @@ export type Ctx = {
 };
 
 /** A greyed control: what to draw, disabled, beside the reason. */
-export type Dead = { sw: boolean } | { btn: string } | { seg: string[]; v?: string } | { num: string; unit?: string } | { text: string } | { pick: string[] } | { field: string; btn: string } | { none: true };
+export type Dead = { sw: boolean } | { btn: string } | { seg: string[]; v?: string } | { num: string; unit?: string } | { text: string } | { pick: string[] } | { field: string; btn: string; label?: string } | { none: true };
 type Base = { t: string; sub?: string; lv?: Lv; words?: string; when?: (c: Cfg) => boolean };
 export type Row =
   | (Base & { k: "sw"; path: string; def: boolean; subOff?: string; read?: (c: Cfg) => boolean; save?: (c: Cfg, on: boolean) => unknown })
@@ -84,7 +84,7 @@ const NOOP = () => undefined;
 /** The greyed control itself (the row's `off` line says why). */
 export function deadControl(d: Dead, label: string): ReactNode {
   if ("none" in d) return null;
-  if ("field" in d) return <><input className="inp" aria-label={label} placeholder={d.field} disabled /><Btn sm disabled>{d.btn}</Btn></>;
+  if ("field" in d) return <><input className="inp" aria-label={d.label ?? label} placeholder={d.field} disabled /><Btn sm disabled>{d.btn}</Btn></>;
   if ("sw" in d) return <Switch checked={d.sw} label={label} disabled onChange={NOOP} />;
   if ("btn" in d) return <Btn sm disabled>{d.btn}</Btn>;
   if ("seg" in d) return <Seg label={label} value={d.v ?? d.seg[0]} options={d.seg.map((s) => ({ id: s, label: s }))} disabled onChange={NOOP} />;
@@ -101,7 +101,9 @@ export function RowView({ r, x }: { r: Row; x: Ctx }) {
     case "sw": return <SwRow r={r} c={c} />;
     case "seg": case "pick": return <ChoiceRow r={r} c={c} />;
     case "num": return <NumRow r={r} c={c} />;
-    case "off": return <Ctl title={r.t} sub={r.sub} off={r.why} stack={r.stack}>{deadControl(r.c, r.t)}</Ctl>;
+    case "off": return "text" in r.c
+      ? <Ctl title={r.t} sub={r.sub} off={r.why} stack after={<span className="pm-area">{deadControl(r.c, r.t)}</span>} />
+      : <Ctl title={r.t} sub={r.sub} off={r.why} stack={r.stack}>{deadControl(r.c, r.t)}</Ctl>;
     case "code": return <Ctl title={r.t} sub={r.sub}><Val code>{typeof r.code === "string" ? r.code : r.code(c)}</Val></Ctl>;
     case "pill": return <Ctl title={r.t} sub={r.sub}><Pill tone="ok">{r.word}</Pill></Ctl>;
     case "el": return <>{r.el(x)}</>;

@@ -1,6 +1,8 @@
 // Voice › Calls and meetings (Advanced). Phone calls are the voice-call plugin (plugins.entries.voice-call: enabled,
 // config.fromNumber; a test call is voicecall.initiate); meeting notes are the meeting plugins plus transcripts.*
 // (enabled, autoStart). Everything the engine has no setting for is greyed with why.
+import { useState } from "react";
+import { Dialog } from "../../../shell/Dialog";
 import { list, text, visible } from "../adapter";
 import { Btn, Ctl, Field, Sec, Switch, useSaveRunner } from "../kit";
 import { APP, Greyed, NO_KEY } from "./voice-kit";
@@ -17,9 +19,7 @@ export function CallsAndMeetings(props: Shared) {
       <Ctl title="Phone calls" sub="Call you, or call someone for you. Off until you choose: calls cost money by the minute and reach people outside Branch.">
         <Switch checked={calls} label="Phone calls" disabled={cfg.loading} onChange={(on) => void cfg.set(`${CALL}.enabled`, on)} />
       </Ctl>
-      <Ctl title="Calling from" sub="Your Twilio number. Its key is in the locker.">
-        <Field label="Calling from" value={text(cfg.get(`${CALL}.config.fromNumber`) ?? "")} placeholder="Your number" disabled={cfg.loading} onCommit={(v) => void cfg.set(`${CALL}.config.fromNumber`, v.trim() || null)} />
-      </Ctl>
+      <CallingFrom cfg={cfg} />
       <Greyed why={NO_KEY} rows={[
         { t: "Who it may call", sub: "Numbers you approve once, or anyone you name in a message.", c: { seg: ["People I approve", "Anyone I name"], v: "Anyone I name" } },
         { t: "Recording", sub: "It always says first that it’s an AI assistant calling for you.", c: { seg: ["Only if they agree", "Never"], v: "Only if they agree" } },
@@ -28,6 +28,24 @@ export function CallsAndMeetings(props: Shared) {
       <Greyed why="Branch lists only calls in progress yet." rows={[{ t: "Calls", sub: "Every call: who, when, how long and how it ended.", c: { btn: "See" } }]} />
       <Meetings {...props} />
     </Sec>
+  );
+}
+
+/** Calling from: plugins.entries.voice-call.config.fromNumber, set in a small dialog behind Set up. */
+function CallingFrom({ cfg }: { cfg: Shared["cfg"] }) {
+  const [open, setOpen] = useState(false);
+  const path = `${CALL}.config.fromNumber`;
+  const number = text(cfg.get(path) ?? "");
+  return (
+    <Ctl title="Calling from" sub={number ? `${visible(number)}. Its key is in the locker.` : "Your Twilio number. Its key is in the locker."}>
+      <Btn sm disabled={cfg.loading} onClick={() => setOpen(true)}>{number ? "Change" : "Set up"}</Btn>
+      {open ? (
+        <Dialog title="Calling from" onClose={() => setOpen(false)} footer={<button type="button" className="btn pri" onClick={() => setOpen(false)}>Done</button>}>
+          <p className="hint">The Twilio number calls come from. Its key is in the locker.</p>
+          <Field wide label="Calling from" value={number} placeholder="Your number" onCommit={(v) => void cfg.set(path, v.trim() || null)} />
+        </Dialog>
+      ) : null}
+    </Ctl>
   );
 }
 

@@ -26,7 +26,7 @@ export function SpeakingMore(props: Shared) {
       <Ctl title="Voice services" sub={ready.length ? `On because ${ready.join(" and ")} ${ready.length > 1 ? "are" : "is"} connected.` : "Turns on when a voice service is connected."}
         after={<KeyList providers={providers} openSettings={props.openSettings} />} />
       <NamedVoices {...props} />
-      <Greyed why="Change it with /tts limit in a conversation for now." rows={[{ t: "Read in full up to", sub: "Longer replies are shortened before they are read. /tts limit changes it for one conversation.", c: { field: "", ph: "1500", unit: "characters" } }]} />
+      <Greyed why="Change it with /tts limit in a conversation for now." rows={[{ t: "Read in full up to", sub: "Longer replies are shortened before they are read. /tts limit changes it for one conversation.", c: { field: "1500", unit: "characters" } }]} />
       <Greyed why="Change it with /tts summary in a conversation for now." rows={[{ t: "Shorten longer replies first", sub: "A longer reply is summarised before it is read out. /tts summary changes it for one conversation.", c: { sw: true } }]} />
     </Sec>
   );
@@ -107,9 +107,8 @@ export function ListeningServices({ cfg, catalog, openSettings }: Shared) {
       <Ctl title="Listening engine" sub="What turns your voice into words. A service needs its key and hears the recording.">
         <Pick label="Listening engine" value={value} options={providers.map((p) => ({ id: p.id, label: p.label }))} disabled={cfg.loading || !providers.length} onChange={(id) => void cfg.set(STREAM, id)} />
       </Ctl>
-      <Ctl stack title="A program of yours as an engine" sub="{{Text}} and {{OutputPath}} are filled in for you.">
-        <Field wide label="A program of yours as an engine" value={cli} placeholder="piper --output_file {{OutputPath}}" disabled={cfg.loading} onCommit={(v) => void cfg.set("tts.providers.tts-local-cli.command", v.trim() || null)} />
-      </Ctl>
+      <Ctl stack title="A program of yours as an engine" sub="{{Text}} and {{OutputPath}} are filled in for you." after={
+        <span className="area-k"><Field wide label="A program of yours as an engine" value={cli} placeholder="piper --output_file {{OutputPath}}" disabled={cfg.loading} onCommit={(v) => void cfg.set("tts.providers.tts-local-cli.command", v.trim() || null)} /></span>} />
       <Greyed why={NO_KEY} rows={[
         { t: "Try again when a service hiccups", sub: "A wrong key stops at once instead of using up your allowance.", c: { sw: true } },
         { t: "Use the chat app’s own transcript first", sub: "Where an app sends its own words with a voice note.", c: { sw: true } },
@@ -126,7 +125,6 @@ const TURN: GreyRow[] = [
   { t: "Keep voice ready", sub: "While voice is on somewhere, the engines stay loaded so the first word is quick.", c: { sw: true } },
   { t: "Speak while the answer is written", sub: "Each sentence is spoken as soon as it’s done.", c: { sw: true } },
   { t: "Remember spoken lines", sub: "A line said before plays at once; a new voice never replays an old one.", c: { sw: true } },
-  { t: "Trunks may change their voice in a reply", sub: "A reply can ask for another voice or engine for a line.", c: { sw: false } },
   { t: "Send dictation by itself", sub: "When you stop, the words go after a short countdown you can cancel.", c: { sw: false }, why: APP },
   { t: "Countdown", c: { field: "3", unit: "s" }, why: APP },
   { t: "Wait while I’m mid-thought", sub: "A pause that sounds unfinished doesn’t end your turn.", c: { sw: true } },
@@ -149,6 +147,16 @@ const TURN: GreyRow[] = [
   { t: "Dictate-anywhere key", c: { field: "Right Ctrl" }, why: APP, stack: true },
 ];
 
-export function SpokenTurn() {
-  return <Sec title="A spoken turn"><Greyed why={NO_KEY} rows={TURN} /></Sec>;
+const OVERRIDES = "tts.modelOverrides.enabled";
+/** A spoken turn: the voice-change row is tts.modelOverrides.enabled (on unless set false); the rest are greyed. */
+export function SpokenTurn({ cfg }: { cfg: Shared["cfg"] }) {
+  return (
+    <Sec title="A spoken turn">
+      <Greyed why={NO_KEY} rows={TURN.slice(0, 4)} />
+      <Ctl title="Trunks may change their voice in a reply" sub="A reply can ask for another voice or engine for a line.">
+        <Switch checked={cfg.get(OVERRIDES) !== false} label="Trunks may change their voice in a reply" disabled={cfg.loading} onChange={(on) => void cfg.set(OVERRIDES, on ? null : false)} />
+      </Ctl>
+      <Greyed why={NO_KEY} rows={TURN.slice(4)} />
+    </Sec>
+  );
 }

@@ -10,7 +10,7 @@ import type { Cfg, Shared } from "./voice-more";
 export function HearingMore() {
   return (
     <Sec title="Hearing, more">
-      <Greyed why={APP} rows={[{ t: "Microphone level", sub: "Level, the point where it starts listening, and the pitch it hears.", c: { btn: "Test" } }]} />
+      <Greyed why={APP} rows={[{ t: "Microphone level", sub: "Level, the point where it starts listening, and the pitch it hears.", c: { meter: "Test" } }]} />
     </Sec>
   );
 }
@@ -27,9 +27,9 @@ export function ListeningMore(props: Shared) {
       <AnswerAloud {...props} />
       <Greyed why={NO_KEY} rows={[{ t: "Spoken morning brief", sub: "The written brief, read out at 7:30 on the speaker you choose.", c: { sw: true } }]} />
       <SpeechLanguage cfg={props.cfg} />
-      <Greyed why={NO_KEY} rows={[{ t: "Also understand", sub: "None added.", c: { pick: ["Add a language…"] } }]} />
+      <Greyed why={NO_KEY} rows={[{ t: "Also understand", sub: "None added.", c: { pick: ["Add a language…"], label: "Add a language" } }]} />
       <Greyed why={APP} rows={[
-        { t: "Speech model", sub: "Turns your voice into text on this computer. Bigger understands more and takes more disk and memory.", c: { seg: ["Tiny", "Base", "Small"], v: "Base" } },
+        { t: "Speech model", sub: "Turns your voice into text on this computer. Bigger understands more and takes more disk and memory.", c: { seg: ["Tiny", "Base", "Small"], v: "Base", extra: "Download" } },
         { t: "Test voice input", sub: "Say something, and see the words it heard.", c: { btn: "Try it" } },
         { t: "Chime when listening starts and stops", sub: "A short sound when push to talk, the wake word or dictation starts and stops listening.", c: { sw: true } },
       ]} />
@@ -59,9 +59,10 @@ function WakeWords({ engine, wake }: Shared) {
   };
   return (
     <Ctl stack title="Wake words" sub="Saying one of these starts listening. One per line, up to 32, each up to 64 characters. Shared by every computer and phone on this Branch. Clear the list to go back to the standard words."
-      after={err ? <small className="bad-k" role="alert">{err}</small> : wake.error ? <small className="bad-k">{visible(wake.error)}</small> : null}>
-      <textarea className="inp" rows={4} aria-label="Wake words" value={draft} disabled={!wake.data} onChange={(e) => setDraft(e.target.value)} onBlur={commit} />
-    </Ctl>
+      after={<>
+        <textarea className="inp area-k" rows={4} aria-label="Wake words" value={draft} disabled={!wake.data} onChange={(e) => setDraft(e.target.value)} onBlur={commit} />
+        {err ? <small className="bad-k" role="alert">{err}</small> : wake.error ? <small className="bad-k">{visible(wake.error)}</small> : null}
+      </>} />
   );
 }
 

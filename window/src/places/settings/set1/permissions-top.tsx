@@ -6,34 +6,36 @@ import { Dialog } from "../../../shell/Dialog";
 import { Icon } from "../../../shell/icons";
 import { MODE_ROWS, blockedReason, modeName, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { record, text, visible, type RecordValue } from "../adapter";
-import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg, Status } from "../kit";
+import { Btn, Ctl, Empty, Hint, Pick, Pill, Plist, Prow, Sec, Seg, Status } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
 
 const svg = (d: ReactNode) => <svg className="i s" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
 const MIC = svg(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></>);
 const CAM = svg(<><path d="M4 7.5h3l1.5-2h7l1.5 2h3v11H4z" /><circle cx="12" cy="13" r="3.2" /></>);
-const TOOL = svg(<path d="M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.4 2.4-2.6-.6-.6-2.6z" />);
 
-/** The computer's own permissions: only the Branch app on the computer can read or open them. */
-export const THIS_PC_ROWS: [string, ReactNode, string, boolean][] = [
-  ["Microphone", MIC, "Talking to Branch and the wake word", true],
-  ["Camera", CAM, "Photos and scanning a code", true],
-  ["Location", <Icon key="pin" name="pin" small />, "Where this computer is, when a Trunk asks.", true],
-  ["Notifications", <Icon key="bell" name="bell" small />, "Telling you when a Trunk needs you", true],
-  ["Installing tools", TOOL, "Windows asks for an administrator yes each time. Branch asks you first.", false],
+/** No node or desktop app reports this PC's own permissions, so their state is never guessed. */
+const NOT_REPORTED = "Branch can’t read this Windows permission yet, so it doesn’t guess.";
+
+/** The computer's own permissions. `fact` is a fixed answer (Windows asks for an administrator yes each time);
+ *  the rest show a neutral pill because nothing on this PC reports them. */
+export const THIS_PC_ROWS: [string, ReactNode, string, string?][] = [
+  ["Microphone", MIC, "Talking to Branch and the wake word"],
+  ["Camera", CAM, "Photos and scanning a code"],
+  ["Location", <Icon key="pin" name="pin" small />, "Where this computer is, when a Trunk asks."],
+  ["Notifications", <Icon key="bell" name="bell" small />, "Telling you when a Trunk needs you"],
+  ["Installing tools", <Icon key="shield" name="shield" small />, "Windows asks for an administrator yes each time. Branch asks you first.", "Each time"],
 ];
 
 export function ThisPc() {
   return (
     <Sec title="This PC" hint="Windows asks for very little. Seeing the screen and using the mouse need nothing here; Branch still asks you before it takes over.">
       <Plist>
-        {THIS_PC_ROWS.map(([t, icon, sub, open]) => (
+        {THIS_PC_ROWS.map(([t, icon, sub, fact]) => (
           <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={sub}>
-            {open ? <Btn sm disabled title={WHY.os}>Open Windows Settings</Btn> : null}
+            {fact ? <Pill tone="idle">{fact}</Pill> : <span className="pm-state" title={NOT_REPORTED} role="note" aria-label={`Not reported. ${NOT_REPORTED}`}><Pill tone="idle">Not reported</Pill></span>}
           </Prow>
         ))}
       </Plist>
-      <Hint>{WHY.os}</Hint>
       <div className="sec pm-loc">
         <Ctl title="Location access" sub="Lets a Trunk ask where this computer is when a tool needs it. On Windows it asks the first time a Trunk needs it." off={WHY.os}>{deadControl({ seg: ["Off", "While using", "Always"], v: "While using" }, "Location access")}</Ctl>
         <Ctl title="Precise location" sub="The exact spot, not just the area." off={WHY.os}>{deadControl({ sw: true }, "Precise location")}</Ctl>

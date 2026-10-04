@@ -38,3 +38,8 @@
 .set-col .pm-anchor { margin: 0; height: 0; }
 /* Permissions shows commands and paths as chips (preview .code-ps18) */
 .set-col .kit-page[data-page-title="Permissions"] code.val-k { padding: 3px 7px; border-radius: 6px; background: var(--wash17, var(--fill)); color: var(--ink); overflow-wrap: anywhere; }
+/* a text box under its row's lines (the preview's stacked rows), and This PC's state pills */
+.set-col .ctl > .pm-area { grid-column: 1 / -1; display: flex; margin-top: 8px; }
+.set-col .ctl > .pm-area > textarea.inp { flex: 1; width: 100%; height: 38px; min-height: 38px; padding: 8px 10px; resize: vertical; }
+.set-col .prow .pm-state { display: inline-flex; flex: none; }
+.set-col .kit-page[data-page-title="Permissions"] .prow:has(> .pm-tile) .grow { min-width: 0; }
