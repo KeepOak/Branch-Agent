@@ -228,7 +228,9 @@ export function createUpdateGoalTool(options: GoalToolOptions): AnyAgentTool {
           goal,
           nextAction:
             requestedStatus === "checkpoint"
-              ? "Progress is saved. Continue from the next unfinished step; do not repeat confirmed work."
+              ? goal.status === "paused"
+                ? "Progress is saved. The goal remains paused; wait until the user resumes before continuing the unfinished work."
+                : "Progress is saved. Continue from the next unfinished step; do not repeat confirmed work."
               : "Goal status was updated, but no reply was sent to the user. Continue this turn and provide the requested visible final response.",
         });
       } catch (err) {
@@ -237,7 +239,9 @@ export function createUpdateGoalTool(options: GoalToolOptions): AnyAgentTool {
             status: "error",
             error: err.message,
             nextAction:
-              err.message === "goal not found" || err.message.startsWith("goal is already")
+              err.message.startsWith("Goal is paused;")
+                ? "Do not retry this status update or continue goal work until the user resumes. Confirmed progress may be saved as a checkpoint without changing the paused status."
+                : err.message === "goal not found" || err.message.startsWith("goal is already")
                 ? "Do not retry update_goal. No active goal requires a status change — continue this turn and provide your response to the user."
                 : "Do not repeat this unchanged update_goal request. Read get_goal, resolve the missing evidence or changed goal, and continue the unfinished work.",
           });

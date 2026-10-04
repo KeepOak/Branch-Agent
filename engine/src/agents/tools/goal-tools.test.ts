@@ -44,6 +44,64 @@ async function upsertSessionEntry(params: {
 }
 
 describe("goal tools", () => {
+  it("preserves user pause against in-flight completion or blocking and recovers after resume", async () => {
+    const { updateSessionGoalStatus } = await import("../../config/sessions/goals.js");
+    const { config, template } = await createStoreConfig();
+    const storePath = resolveSessionStorePathCore(template, { agentId: "research" });
+    const options = { agentSessionKey: "global", sessionAgentId: "research", config };
+    const scope = { storePath, sessionKey: "global", agentId: "research" };
+    await upsertSessionEntry({
+      ...scope,
+      entry: { sessionId: "pause-race", updatedAt: 1 },
+    });
+    const created = await createCreateGoalTool(options).execute("create", {
+      objective: "Deliver the verified report",
+      acceptance_criteria: ["Report verified"],
+    });
+    const goalId = (created.details as { goal: { id: string } }).goal.id;
+    // An admitted agent still holds the same goal ID when the user pauses it.
+    await updateSessionGoalStatus({ ...scope, status: "paused", actor: { type: "human" } });
+    for (const status of ["complete", "blocked"] as const) {
+      const result = await createUpdateGoalTool(options).execute("late-update", {
+        status,
+        goal_id: goalId,
+        note: "Old turn finished",
+        completion_evidence: [{ criterion: 0, evidence: "verification receipt" }],
+      });
+      expect(result.details).toMatchObject({
+        status: "error",
+        error: expect.stringContaining("paused"),
+        nextAction: expect.stringContaining("user resumes"),
+      });
+      const persisted = getSessionEntry({ storePath, sessionKey: "global" });
+      expect(persisted?.goal).toMatchObject({ id: goalId, status: "paused" });
+      expect(persisted?.goal?.completionEvidence).toBeUndefined();
+    }
+    // A receipt for already confirmed work remains saveable without resuming execution.
+    const saved = await createUpdateGoalTool(options).execute("save", {
+      status: "checkpoint",
+      goal_id: goalId,
+      note: "Report verification passed",
+      next_action: "Deliver report when resumed",
+    });
+    expect(saved.details).toMatchObject({
+      status: "updated",
+      goal: { status: "paused" },
+      nextAction: expect.stringContaining("user resumes"),
+    });
+    await updateSessionGoalStatus({ ...scope, status: "active", actor: { type: "human" } });
+    const recovered = await createGetGoalTool(options).execute("read-after-resume", {});
+    expect(recovered.details).toMatchObject({
+      goal: { status: "active", checkpoint: { nextAction: "Deliver report when resumed" } },
+    });
+    const completed = await createUpdateGoalTool(options).execute("finish-after-resume", {
+      status: "complete",
+      goal_id: goalId,
+      completion_evidence: [{ criterion: 0, evidence: "verification receipt" }],
+    });
+    expect(completed.details).toMatchObject({ status: "updated", goal: { status: "complete" } });
+  });
+
   it("recovers saved progress and requires evidence for every declared criterion", async () => {
     const { config, template } = await createStoreConfig();
     const storePath = resolveSessionStorePathCore(template, { agentId: "research" });
