@@ -317,7 +317,7 @@ export function readPluginCacheFile(params: {
 }
 
 /** Catalog files retain the regular-file policy, which rejects final symlinks but allows hardlinks. */
-function readPluginCacheRegularFile(params: {
+export function readPluginCacheRegularFile(params: {
   filePath: string;
   maxBytes?: number;
 }): PluginFileCacheEntry {

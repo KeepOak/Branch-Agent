@@ -184,7 +184,12 @@ describe("materializeStaticMcpToolsForHarnessRunCore", () => {
 
     await expect(tool.execute("allowed", { folder: "team" })).resolves.toBeDefined();
     expect(callTool).toHaveBeenCalledOnce();
-    expect(callTool).toHaveBeenCalledWith("user-mail", "inbox", { folder: "team" });
+    expect(callTool).toHaveBeenCalledWith(
+      "user-mail",
+      "inbox",
+      { folder: "team" },
+      { onProgress: expect.any(Function) },
+    );
     expect(requestInteractiveCodexApproval).toHaveBeenLastCalledWith(
       expect.objectContaining({
         safeToolName: "user-mail__inbox",
@@ -547,9 +552,7 @@ describe("materializeStaticMcpToolsForHarnessRunCore", () => {
 
     expect(result.tools).toEqual([]);
     expect(result.diagnosticNotice).toContain("user-mail/inbox");
-    expect(result.diagnosticNotice).toContain(
-      "branch mcp configure user-mail --approval approve",
-    );
+    expect(result.diagnosticNotice).toContain("branch mcp configure user-mail --approval approve");
     expect(callTool).not.toHaveBeenCalled();
     await result?.dispose();
   });
@@ -617,9 +620,7 @@ describe("materializeStaticMcpToolsForHarnessRunCore", () => {
 
     expect(result.tools).toEqual([]);
     expect(result.diagnosticNotice).toContain("user-mail/inbox");
-    expect(result.diagnosticNotice).toContain(
-      "branch mcp configure user-mail --approval approve",
-    );
+    expect(result.diagnosticNotice).toContain("branch mcp configure user-mail --approval approve");
     expect(callTool).not.toHaveBeenCalled();
     await result?.dispose();
   });
@@ -1008,7 +1009,14 @@ describe("materializeRequesterScopedMcpToolsForHarnessRunCore", () => {
     await expect(realConnect!.execute("allowed-connect", {})).resolves.toMatchObject({
       content: [{ type: "text", text: "live:connect:authed" }],
     });
-    expect(callTool).toHaveBeenCalledWith("drive", "connect", {});
+    expect(callTool).toHaveBeenCalledWith(
+      "drive",
+      "connect",
+      {},
+      {
+        onProgress: expect.any(Function),
+      },
+    );
     expect(requestInteractiveCodexApproval).toHaveBeenLastCalledWith(
       expect.objectContaining({ serverName: "drive", toolName: "connect", mode: "prompt" }),
     );

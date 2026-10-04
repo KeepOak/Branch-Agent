@@ -5,8 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { setTimeout as waitForRuntimeTick } from "node:timers/promises";
-import type { CallToolResult, ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
 import { expectDefined } from "@branch/normalization-core";
+import type { CallToolResult, ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
 import { materializeRequesterScopedMcpToolsForHarnessRun } from "branch/plugin-sdk/agent-harness-runtime";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -22,6 +22,7 @@ import {
 } from "../../test/helpers/temp-dir.js";
 import { hasErrnoCode } from "../infra/errno.js";
 import { withPluginRuntimeRegistryScope } from "../plugins/runtime/gateway-request-scope.js";
+import { getPluginToolMeta } from "../plugins/tool-metadata.js";
 import { AsyncWorkScope } from "../shared/async-work-scope.js";
 import {
   createGatewaySchedulerClock,
@@ -37,6 +38,10 @@ import {
   makeRequesterParams,
   unopenedMcpConfig,
 } from "./agent-bundle-mcp-manager.test-support.js";
+import {
+  buildBundleMcpToolsFromCatalog,
+  formatMcpProgress,
+} from "./agent-bundle-mcp-materialize.js";
 import { createMcpProbeFixture } from "./agent-bundle-mcp-probe.test-support.js";
 import { runWithSessionMcpRequestSignal } from "./agent-bundle-mcp-request-context.js";
 import { startRequesterScopedMcpProofServer } from "./agent-bundle-mcp-requester.test-support.js";
@@ -57,6 +62,7 @@ import type { SessionMcpRuntime } from "./agent-bundle-mcp-types.js";
 import { writeExecutable } from "./bundle-mcp-shared.test-harness.js";
 import { updateMcpAppModelContext } from "./mcp-app-model-context.js";
 import { createMcpProofPluginRegistry } from "./mcp-connection-resolver.test-fixtures.js";
+import { buildMcpServerGuidanceForRun } from "./mcp-guidance.js";
 import { fetchMcpAppView, getMcpAppViewLease } from "./mcp-ui-resource.js";
 import { testing as mcpUiResourceTesting } from "./mcp-ui-resource.test-support.js";
 import { createAgentCleanupScope } from "./run-cleanup-timeout.js";
@@ -163,6 +169,10 @@ async function writeListToolsMcpServer(params: {
     }>
   >;
   capabilities?: Record<string, unknown>;
+  /** `instructions` returned in the initialize result. */
+  instructions?: string;
+  /** Sends progress notifications for a progress token, then answers tools/call. */
+  callToolProgress?: { steps: number; intervalMs: number; total?: number };
   databasePath?: string;
   pidPath?: string;
   hangToolCallsUntilRestartMarkerPath?: string;
@@ -199,7 +209,7 @@ const {
   toolsByList, listToolsJsonRpcErrorMessage, toolPageCursors, callToolResult,
   callToolReleasePath, notifyListChangedReleasePath, resourcePageCursors,
   resourceReadResult, promptPageCursors, utilityListReleasePath, ignoreShutdown,
-  hangFirstInitializeMarkerPath,
+  hangFirstInitializeMarkerPath, instructions, callToolProgress,
   delayMs = 0, initializeDelayMs = 0, hang = false, capabilities = { tools: {} },
   inputSchema = { type: "object", properties: {} },
   tools = [{ name: "slow_tool", description: "Returned after a slow catalog response.", inputSchema }],
@@ -279,6 +289,7 @@ function handle(message) {
         protocolVersion: message.params?.protocolVersion ?? "2025-03-26",
         capabilities,
         serverInfo: { name: "test-list-tools", version: "1.0.0" },
+        ...(instructions ? { instructions } : {}),
       },
     };
     if (initializeDelayMs > 0) {
@@ -380,6 +391,25 @@ function handle(message) {
     }
     void (async () => {
       await waitForPath(callToolReleasePath);
+      if (callToolProgress) {
+        const progressToken = message.params?._meta?.progressToken;
+        log("tools/call progressToken " + JSON.stringify(progressToken));
+        for (let step = 1; step <= callToolProgress.steps; step += 1) {
+          await new Promise((resolve) => setTimeout(resolve, callToolProgress.intervalMs));
+          if (progressToken !== undefined) {
+            send({
+              jsonrpc: "2.0",
+              method: "notifications/progress",
+              params: {
+                progressToken,
+                progress: step,
+                ...(callToolProgress.total ? { total: callToolProgress.total } : {}),
+                message: "Indexing files",
+              },
+            });
+          }
+        }
+      }
       send({
         jsonrpc: "2.0",
         id: message.id,
@@ -1250,6 +1280,108 @@ describe("session MCP runtime", () => {
       await runtime.dispose();
       await fs.rm(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it("forwards opted-in server initialize instructions to materialized tools and the prompt guidance", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "bundle-mcp-instructions-"));
+    const serverPath = path.join(tempDir, "instructions.mjs");
+    const logPath = path.join(tempDir, "server.log");
+    await writeListToolsMcpServer({
+      filePath: serverPath,
+      logPath,
+      instructions: "Always call validate_schema before migrate_schema.",
+      tools: [{ name: "migrate_schema", inputSchema: { type: "object", properties: {} } }],
+    });
+    const optedIn = await makeStdioRuntime("session-mcp-instructions", "db", serverPath, {
+      server: { forwardInstructions: true, instructionsMaxLength: 21 },
+    });
+    const silent = await makeStdioRuntime("session-mcp-instructions-off", "quiet", serverPath);
+
+    try {
+      const catalog = await optedIn.getCatalog();
+      expect(catalog.servers.db).toMatchObject({
+        instructions: "Always call validate_schema before migrate_schema.",
+        forwardInstructions: true,
+        instructionsMaxLength: 21,
+      });
+      const tools = buildBundleMcpToolsFromCatalog({ catalog });
+      expect(getPluginToolMeta(tools[0]!)?.mcp).toMatchObject({
+        serverName: "db",
+        serverInstructions: "Always call validate_schema before migrate_schema.",
+        forwardInstructions: true,
+        instructionsMaxLength: 21,
+      });
+      expect(buildMcpServerGuidanceForRun({ tools })).toBe(
+        '## Guidance from MCP server "db"\n\nAlways call validate_',
+      );
+
+      const silentCatalog = await silent.getCatalog();
+      expect(silentCatalog.servers.quiet?.forwardInstructions).toBeUndefined();
+      expect(
+        buildMcpServerGuidanceForRun({
+          tools: buildBundleMcpToolsFromCatalog({ catalog: silentCatalog }),
+        }),
+      ).toBeUndefined();
+    } finally {
+      await optedIn.dispose();
+      await silent.dispose();
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("sends a progress token, restarts the deadline on progress and reports it as tool progress", async () => {
+    const tempDir = tempDirTracker.make("bundle-mcp-progress-");
+    const serverPath = path.join(tempDir, "progress.mjs");
+    const logPath = path.join(tempDir, "server.log");
+    await writeListToolsMcpServer({
+      filePath: serverPath,
+      logPath,
+      tools: [{ name: "index_repo", inputSchema: { type: "object", properties: {} } }],
+      callToolProgress: { steps: 4, intervalMs: 600, total: 4 },
+    });
+    const materialized = await createBundleMcpToolRuntime({
+      workspaceDir: tempDir,
+      cfg: {
+        mcp: {
+          servers: {
+            indexer: {
+              command: process.execPath,
+              args: [serverPath],
+              connectionTimeoutMs: 30_000,
+              requestTimeoutMs: 1500,
+            },
+          },
+        },
+      },
+    });
+    try {
+      const tool = materialized.tools.find((entry) => entry.name === "indexer__index_repo");
+      const updates: unknown[] = [];
+      const result = await tool!.execute("call-progress", {}, undefined, (update) => {
+        updates.push(update);
+      });
+      expect(JSON.stringify(result.content)).toContain("tool ok");
+      expect(await fs.readFile(logPath, "utf8")).not.toContain(
+        "tools/call progressToken undefined",
+      );
+      expect(updates).toContainEqual(
+        expect.objectContaining({
+          progress: expect.objectContaining({
+            id: "mcp-progress:call-progress",
+            text: "Indexing files (4/4)",
+          }),
+        }),
+      );
+    } finally {
+      await materialized.dispose();
+    }
+  });
+
+  it("formats MCP progress with and without a total", () => {
+    expect(formatMcpProgress({ progress: 2, total: 5, message: " Copying " })).toBe(
+      "Copying (2/5)",
+    );
+    expect(formatMcpProgress({ progress: 7 })).toBe("7");
   });
 
   it("applies session tool denials to listed and synthetic MCP tools", async () => {

@@ -506,7 +506,8 @@ export const FIELD_LABELS: Record<string, string> = {
     "Embedded Branch Agent Project Settings Policy",
   "agents.defaults.embeddedAgent.executionContract": "Embedded Branch Agent Execution Contract",
   "agents.entries.*.embeddedAgent": "Agent Embedded Branch Agent",
-  "agents.entries.*.embeddedAgent.executionContract": "Agent Embedded Branch Agent Execution Contract",
+  "agents.entries.*.embeddedAgent.executionContract":
+    "Agent Embedded Branch Agent Execution Contract",
   "agents.defaults.heartbeat.directPolicy": "Heartbeat Direct Policy",
   "agents.defaults.heartbeat.agentId": "Heartbeat Agent",
   "agents.entries.*.heartbeat.directPolicy": "Heartbeat Direct Policy",
@@ -550,6 +551,8 @@ export const FIELD_LABELS: Record<string, string> = {
   "mcp.servers.*.requestTimeoutMs": "MCP Request Timeout (ms)",
   "mcp.servers.*.connectionTimeoutMs": "MCP Connect Timeout (ms)",
   "mcp.servers.*.supportsParallelToolCalls": "MCP Parallel Tool Calls",
+  "mcp.servers.*.forwardInstructions": "MCP Forward Server Instructions",
+  "mcp.servers.*.instructionsMaxLength": "MCP Instructions Max Length",
   "mcp.servers.*.supports_parallel_tool_calls": "MCP Parallel Tool Calls",
   "mcp.servers.*.sslVerify": "MCP TLS Verification",
   "mcp.servers.*.ssl_verify": "MCP TLS Verification",

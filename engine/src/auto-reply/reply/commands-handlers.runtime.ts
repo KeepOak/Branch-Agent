@@ -47,6 +47,7 @@ import type { CommandHandler } from "./commands-types.js";
 import { handleUpdateCommand } from "./commands-update.js";
 import { handleWarningsCommand } from "./commands-warnings.js";
 import { handleWhoamiCommand } from "./commands-whoami.js";
+import { handleMcpPromptCommand } from "./mcp-prompt-commands.js";
 
 export function loadCommandHandlers(): CommandHandler[] {
   return [
@@ -96,5 +97,7 @@ export function loadCommandHandlers(): CommandHandler[] {
     handleStopCommand,
     handleCompactCommand,
     handleAbortTrigger,
+    // Last: MCP prompt names never shadow built-in commands.
+    handleMcpPromptCommand,
   ];
 }

@@ -4,11 +4,12 @@ import type {
   GetPromptResult,
   ListResourceTemplatesResult,
   ListToolsResult,
+  Progress,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { TSchema } from "typebox";
 import type { SessionToolOverrides } from "../config/sessions/types.js";
-import type { McpCodexToolApprovalMode, McpServerToolFilterConfig } from "../config/types.mcp.js";
 import type { BranchConfig } from "../config/types.branch.js";
+import type { McpCodexToolApprovalMode, McpServerToolFilterConfig } from "../config/types.mcp.js";
 import type { PluginManifestRegistry } from "../plugins/manifest-registry.types.js";
 import type { McpCodexToolAnnotations } from "./mcp-codex-tool-approval.js";
 import type { AnyAgentTool } from "./tools/common.js";
@@ -17,6 +18,12 @@ export type SessionMcpConfigReload = {
   cfg: BranchConfig;
   manifestRegistry?: Pick<PluginManifestRegistry, "plugins">;
   reloadPlugins?: boolean;
+};
+
+/** Per-call options for MCP `tools/call`. */
+export type McpCallToolOptions = {
+  /** Receives `notifications/progress` for this call. */
+  onProgress?: (progress: Progress) => void;
 };
 
 /** Materialized MCP tools plus diagnostics and cleanup handle for one run. */
@@ -47,6 +54,12 @@ export type McpServerCatalog = {
   };
   requestTimeoutMs?: number;
   supportsParallelToolCalls?: boolean;
+  /** Instructions returned by the server's `initialize` response. */
+  instructions?: string;
+  /** Opt-in to add `instructions` to the agent prompt (default off). */
+  forwardInstructions?: boolean;
+  /** Per-server cap on forwarded instructions (default 512 characters). */
+  instructionsMaxLength?: number;
   toolFilter?: McpServerToolFilterConfig;
   deniedToolNames?: string[];
   codexApprovalMode?: McpCodexToolApprovalMode;
@@ -156,7 +169,12 @@ export type SessionMcpRuntime = {
   /** Returns the configured request timeout for a server from the connected session, without touching the catalog. */
   getServerRequestTimeoutMs?: (serverName: string) => number | undefined;
   markUsed: () => void;
-  callTool: (serverName: string, toolName: string, input: unknown) => Promise<CallToolResult>;
+  callTool: (
+    serverName: string,
+    toolName: string,
+    input: unknown,
+    options?: McpCallToolOptions,
+  ) => Promise<CallToolResult>;
   listTools?: (serverName: string, params?: { cursor?: string }) => Promise<ListToolsResult>;
   listResources?: (serverName: string, options?: McpRequestOptions) => Promise<unknown>;
   readResource?: (serverName: string, uri: string, options?: McpRequestOptions) => Promise<unknown>;

@@ -1,3 +1,5 @@
+import { asPositiveFiniteNumber } from "@branch/normalization-core/number-coercion";
+import { asOptionalObjectRecord, isRecord } from "@branch/normalization-core/record-coerce";
 /** Session-scoped MCP runtime catalog loader and transport lifecycle. */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -8,8 +10,6 @@ import {
   type CallToolResult,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { asPositiveFiniteNumber } from "@branch/normalization-core/number-coercion";
-import { asOptionalObjectRecord, isRecord } from "@branch/normalization-core/record-coerce";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { logWarn } from "../logger.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
@@ -120,6 +120,22 @@ function hasConfiguredMcpRequestTimeout(rawServer: unknown): boolean {
   return ["requestTimeoutMs", "timeout"].some(
     (key) => asPositiveFiniteNumber(record?.[key]) !== undefined,
   );
+}
+
+/** Instructions plus the per-server forwarding opt-in for one catalog entry. */
+function resolveMcpServerInstructionsEntry(
+  rawServer: unknown,
+  instructions: string | undefined,
+): Pick<McpServerCatalog, "instructions" | "forwardInstructions" | "instructionsMaxLength"> {
+  const forwardInstructions = isRecord(rawServer) && rawServer.forwardInstructions === true;
+  const maxLength = isRecord(rawServer) ? rawServer.instructionsMaxLength : undefined;
+  return {
+    ...(instructions?.trim() ? { instructions } : {}),
+    ...(forwardInstructions ? { forwardInstructions } : {}),
+    ...(typeof maxLength === "number" && Number.isFinite(maxLength)
+      ? { instructionsMaxLength: maxLength }
+      : {}),
+  };
 }
 
 function getCatalogListTimeoutMs(rawServer: unknown, requestTimeoutMs: number): number {
@@ -547,7 +563,7 @@ function createServerMcpRuntime(
   const localRequestTimeouts = new WeakSet<object>();
   const runMcpRequest = async <T>(
     session: BundleMcpSession,
-    request: (signal: AbortSignal) => Promise<T>,
+    request: (signal: AbortSignal, resetTimeout: () => void) => Promise<T>,
     parentSignal?: AbortSignal,
   ): Promise<T> => {
     const requestSignal = parentSignal ?? getSessionMcpRequestSignal();
@@ -561,15 +577,27 @@ function createServerMcpRuntime(
     const timeoutError = new McpError(ErrorCode.RequestTimeout, "Request timed out", {
       timeout: session.requestTimeoutMs,
     });
-    const timeout = setTimeout(() => {
-      localRequestTimeouts.add(timeoutError);
-      abortController.abort(timeoutError);
-    }, session.requestTimeoutMs);
-    timeout.unref?.();
+    const armTimeout = () => {
+      const timer = setTimeout(() => {
+        localRequestTimeouts.add(timeoutError);
+        abortController.abort(timeoutError);
+      }, session.requestTimeoutMs);
+      timer.unref?.();
+      return timer;
+    };
+    let timeout = armTimeout();
+    // Progress notifications restart the deadline (MCP resetTimeoutOnProgress).
+    const resetTimeout = () => {
+      if (abortController.signal.aborted) {
+        return;
+      }
+      clearTimeout(timeout);
+      timeout = armTimeout();
+    };
     try {
       const signal = abortController.signal;
       signal.throwIfAborted();
-      const result = await request(signal);
+      const result = await request(signal, resetTimeout);
       requestSignal?.throwIfAborted();
       return result;
     } catch (error) {
@@ -641,7 +669,7 @@ function createServerMcpRuntime(
   };
   const runGuardedMcpRequest = <T>(
     session: BundleMcpSession,
-    request: (signal: AbortSignal) => Promise<T>,
+    request: (signal: AbortSignal, resetTimeout: () => void) => Promise<T>,
     options?: McpRequestOptions,
   ) => runGuardedServerRequest(session, () => runMcpRequest(session, request), options);
   const collectServerItems = (session: BundleMcpSession, kind: "prompts" | "resources") => {
@@ -830,6 +858,7 @@ function createServerMcpRuntime(
           toolCount: exposedTools.length,
           requestTimeoutMs: resolved.requestTimeoutMs,
           supportsParallelToolCalls: resolved.supportsParallelToolCalls,
+          ...resolveMcpServerInstructionsEntry(rawServer, session.client.getInstructions()),
           ...(capabilities.resources ? { resources: capabilities.resources } : {}),
           ...(capabilities.prompts ? { prompts: capabilities.prompts } : {}),
           ...(capabilities.tools
@@ -1038,14 +1067,24 @@ function createServerMcpRuntime(
     markUsed() {
       lastUsedAt = Date.now();
     },
-    async callTool(requestedServer, toolName, input) {
+    async callTool(requestedServer, toolName, input, callOptions) {
       const session = await getActiveSession(requestedServer);
       const validateResult = session.toolMetadata?.validatorForCall(toolName);
-      const result = (await runGuardedMcpRequest(session, (signal) =>
+      const result = (await runGuardedMcpRequest(session, (signal, resetTimeout) =>
         session.client.callTool(
           { name: toolName, arguments: isRecord(input) ? input : {} },
           undefined,
-          { timeout: session.requestTimeoutMs, signal },
+          {
+            timeout: session.requestTimeoutMs,
+            signal,
+            // Supplying onprogress sends a progress token; each notification
+            // restarts the per-server deadline so long tools are not cut off.
+            resetTimeoutOnProgress: true,
+            onprogress: (progress) => {
+              resetTimeout();
+              callOptions?.onProgress?.(progress);
+            },
+          },
         ),
       )) as CallToolResult;
       validateResult?.(result);

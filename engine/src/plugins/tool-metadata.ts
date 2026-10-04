@@ -15,6 +15,10 @@ export type PluginToolMcpMeta = {
   deniedBySession?: true;
   /** Trusted requester OAuth sign-in bootstrap; exempt from per-call MCP approval. */
   oauthConnectBootstrap?: true;
+  /** Server `initialize` instructions, forwarded to the prompt only when opted in. */
+  serverInstructions?: string;
+  forwardInstructions?: boolean;
+  instructionsMaxLength?: number;
   codexApproval?: {
     mode?: McpCodexToolApprovalMode;
     annotations?: McpCodexToolAnnotations;

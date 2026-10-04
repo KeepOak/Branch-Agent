@@ -347,7 +347,7 @@ type PublicToolProgress = Pick<AgentToolProgress, "text" | "id">;
 
 // Tool progress is a UI side channel. The model-facing tool result remains in
 // `content`; progress text must already be safe to show in channel previews.
-function emitToolProgress(
+export function emitToolProgress(
   onUpdate: AgentToolUpdateCallback | undefined,
   progress: PublicToolProgress,
 ): void {

@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { normalizeToolParameterSchema } from "@branch/ai/internal/tool-schema";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { normalizeLowercaseStringOrEmpty } from "@branch/normalization-core/string-coerce";
+import type { Progress } from "@modelcontextprotocol/sdk/types.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { logWarn } from "../logger.js";
 import {
@@ -25,6 +26,7 @@ import { mergeMcpConnectCatalog } from "./agent-bundle-mcp-requester-connect.js"
 import type {
   BundleMcpToolRuntime,
   McpCatalogTool,
+  McpServerCatalog,
   McpToolCatalog,
   SessionMcpRuntime,
 } from "./agent-bundle-mcp-types.js";
@@ -37,9 +39,9 @@ import {
 import { isMcpToolAllowed } from "./mcp-tool-filter.js";
 import { buildMcpAppCanvasPayload, fetchMcpAppView } from "./mcp-ui-resource.js";
 import { recordAgentCleanupFailure } from "./run-cleanup-timeout.js";
-import type { AgentToolResult } from "./runtime/index.js";
+import type { AgentToolResult, AgentToolUpdateCallback } from "./runtime/index.js";
 import { toToolSearchJsonSafe } from "./tool-search-json.js";
-import type { AnyAgentTool } from "./tools/common.js";
+import { emitToolProgress, type AnyAgentTool } from "./tools/common.js";
 function isAppOnlyTool(tool: McpCatalogTool): boolean {
   return tool.uiVisibility !== undefined && !tool.uiVisibility.includes("model");
 }
@@ -85,6 +87,7 @@ function buildAppToolPolicyProjections(params: {
         safeServerName: tool.safeServerName,
         toolName: tool.toolName,
         operation: "tool",
+        ...mcpServerInstructionsMeta(server),
         codexApproval: {
           mode: server?.codexApprovalMode,
           ...(tool.codexAnnotations ? { annotations: tool.codexAnnotations } : {}),
@@ -94,6 +97,31 @@ function buildAppToolPolicyProjections(params: {
     tools.push(projection);
   }
   return tools.toSorted((a, b) => a.name.localeCompare(b.name));
+}
+
+function mcpServerInstructionsMeta(
+  server: McpServerCatalog | undefined,
+): Pick<PluginToolMcpMeta, "serverInstructions" | "forwardInstructions" | "instructionsMaxLength"> {
+  if (!server?.instructions) {
+    return {};
+  }
+  return {
+    serverInstructions: server.instructions,
+    ...(server.forwardInstructions ? { forwardInstructions: true } : {}),
+    ...(server.instructionsMaxLength !== undefined
+      ? { instructionsMaxLength: server.instructionsMaxLength }
+      : {}),
+  };
+}
+
+/** Renders an MCP `notifications/progress` payload as a one-line status. */
+export function formatMcpProgress(progress: Progress): string {
+  const count =
+    typeof progress.total === "number" && progress.total > 0
+      ? `${progress.progress}/${progress.total}`
+      : String(progress.progress);
+  const message = progress.message?.trim();
+  return message ? `${message} (${count})` : count;
 }
 
 function toJsonAgentToolResult(params: {
@@ -251,10 +279,9 @@ export function buildBundleMcpToolsFromCatalog(params: {
         safeServerName: tool.safeServerName,
         toolName: tool.toolName,
         operation: "tool",
+        ...mcpServerInstructionsMeta(server),
         ...(tool.oauthConnectBootstrap ? { oauthConnectBootstrap: true } : {}),
-        ...(tool.excludedFromBranchCatalog || appOnly
-          ? { excludedFromBranchCatalog: true }
-          : {}),
+        ...(tool.excludedFromBranchCatalog || appOnly ? { excludedFromBranchCatalog: true } : {}),
         ...(tool.deniedBySession ? { deniedBySession: true } : {}),
         codexApproval: {
           mode: server?.codexApprovalMode,
@@ -320,6 +347,7 @@ export function buildBundleMcpToolsFromCatalog(params: {
           safeServerName,
           toolName: operation,
           operation,
+          ...mcpServerInstructionsMeta(server),
           ...(sessionDeniedOnly ? { deniedBySession: true } : {}),
         },
       });
@@ -426,51 +454,64 @@ export async function materializeBundleMcpToolsForRun(params: {
     const tools = buildBundleMcpToolsFromCatalog({
       catalog: materializedCatalog,
       reservedToolNames,
-      createExecute: (tool) => (toolCallId: string, input: unknown, signal?: AbortSignal) =>
-        runWithSessionMcpRequestSignal(signal, async () => {
-          if (!Object.hasOwn(catalog.servers, tool.serverName)) {
-            const connect = runtime.requesterConnect?.createExecute(tool.serverName);
-            if (connect) {
-              return setMcpCodeModeGuestResultFromAgentResult(await connect(toolCallId, input));
+      createExecute:
+        (tool) =>
+        (
+          toolCallId: string,
+          input: unknown,
+          signal?: AbortSignal,
+          onUpdate?: AgentToolUpdateCallback,
+        ) =>
+          runWithSessionMcpRequestSignal(signal, async () => {
+            if (!Object.hasOwn(catalog.servers, tool.serverName)) {
+              const connect = runtime.requesterConnect?.createExecute(tool.serverName);
+              if (connect) {
+                return setMcpCodeModeGuestResultFromAgentResult(await connect(toolCallId, input));
+              }
             }
-          }
-          runtime.markUsed();
-          const { serverName, toolName } = tool;
-          const result = await runtime.callTool(serverName, toolName, input);
-          const agentResult = projectMcpCallToolResult(result, {
-            mcpServer: serverName,
-            mcpTool: toolName,
-          });
-          // Requester-scoped servers never mint app views (outlive run; no requester id on view boundary).
-          const scopedServer = runtime.isRequesterScopedServer?.(serverName) === true;
-          if (runtime.mcpAppsEnabled && tool.uiResourceUri && !scopedServer) {
-            const allowedAppToolNames = allowedAppToolsByServer
-              ? (allowedAppToolsByServer.get(serverName) ?? new Set<string>())
-              : undefined;
-            const view = await fetchMcpAppView({
-              runtime,
-              agentId: params.agentId,
-              serverName,
-              toolName,
-              uiResourceUri: tool.uiResourceUri,
-              toolCallId,
-              toolInput: input,
-              toolResult: result,
-              ...(allowedAppToolNames ? { allowedAppToolNames } : {}),
+            runtime.markUsed();
+            const { serverName, toolName } = tool;
+            const result = await runtime.callTool(serverName, toolName, input, {
+              onProgress: (progress) =>
+                emitToolProgress(onUpdate, {
+                  id: `mcp-progress:${toolCallId}`,
+                  text: formatMcpProgress(progress),
+                }),
             });
-            if (view) {
-              (agentResult.details as Record<string, unknown>).mcpAppPreview =
-                buildMcpAppCanvasPayload({
-                  ...view,
-                  ...(runtime.sessionKey ? { originSessionKey: runtime.sessionKey } : {}),
-                  ...(result["_meta"] !== undefined
-                    ? { resultMetaState: "unavailable" as const }
-                    : {}),
-                });
+            const agentResult = projectMcpCallToolResult(result, {
+              mcpServer: serverName,
+              mcpTool: toolName,
+            });
+            // Requester-scoped servers never mint app views (outlive run; no requester id on view boundary).
+            const scopedServer = runtime.isRequesterScopedServer?.(serverName) === true;
+            if (runtime.mcpAppsEnabled && tool.uiResourceUri && !scopedServer) {
+              const allowedAppToolNames = allowedAppToolsByServer
+                ? (allowedAppToolsByServer.get(serverName) ?? new Set<string>())
+                : undefined;
+              const view = await fetchMcpAppView({
+                runtime,
+                agentId: params.agentId,
+                serverName,
+                toolName,
+                uiResourceUri: tool.uiResourceUri,
+                toolCallId,
+                toolInput: input,
+                toolResult: result,
+                ...(allowedAppToolNames ? { allowedAppToolNames } : {}),
+              });
+              if (view) {
+                (agentResult.details as Record<string, unknown>).mcpAppPreview =
+                  buildMcpAppCanvasPayload({
+                    ...view,
+                    ...(runtime.sessionKey ? { originSessionKey: runtime.sessionKey } : {}),
+                    ...(result["_meta"] !== undefined
+                      ? { resultMetaState: "unavailable" as const }
+                      : {}),
+                  });
+              }
             }
-          }
-          return agentResult;
-        }),
+            return agentResult;
+          }),
       createResourceListExecute: runtime.listResources
         ? (serverName) => (_toolCallId, _input, signal) =>
             runWithSessionMcpRequestSignal(signal, async () => {
