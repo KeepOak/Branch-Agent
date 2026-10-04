@@ -3,8 +3,10 @@
 import { useSyncExternalStore } from "react";
 
 const KEY = "branch.rec.keepRunning";
-// TODO(desktop-lane): "Yes" installs the gateway as a background service through the desktop app's method.
-export const KEEP_RUNNING_GAP = "Needs the engine's keep-running service method (install the Gateway as a background service).";
+// TODO(desktop-lane): "Yes" installs the gateway as a background service (the engine's branch gateway install). The
+// desktop app can't use it yet: it starts its own gateway child, refuses a busy port, and its updates and rollback
+// swap engine folders and stop the gateway by PID, which an installed service pinned to one folder would not follow.
+export const KEEP_RUNNING_GAP = "The engine can install the Gateway as a background service (branch gateway install); the Branch app doesn't use it yet.";
 
 let dismissed = false;
 const listeners = new Set<() => void>();
