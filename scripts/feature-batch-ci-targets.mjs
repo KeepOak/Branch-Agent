@@ -42,6 +42,13 @@ export const engineTests = [
   'src/agents/cli-output-stream.test.ts',
   'src/agents/cli-output-records.test.ts',
   'src/agents/cli-output-jsonl.test.ts',
+  // feat-self-improvement batch 1: evals and scorers.
+  'extensions/qa-lab/src/evals/scorer.test.ts',
+  'extensions/qa-lab/src/evals/checks.test.ts',
+  'extensions/qa-lab/src/evals/tool-call-accuracy.test.ts',
+  'extensions/qa-lab/src/evals/thresholds.test.ts',
+  'extensions/qa-lab/src/evals/score-command.test.ts',
+  'extensions/qa-lab/src/cli.test.ts',
 ];
 
 export const windowTests = [
@@ -130,6 +137,25 @@ export const engineStrictFiles = [
   'src/infra/host-env-security-policy.d.ts',
   'src/agents/cli-output-stream.ts',
   'src/agents/cli-output-stream.test.ts',
+  // feat-self-improvement batch 1: evals and scorers.
+  'extensions/qa-lab/src/evals/scorer.ts',
+  'extensions/qa-lab/src/evals/scorer-utils.ts',
+  'extensions/qa-lab/src/evals/string-similarity.ts',
+  'extensions/qa-lab/src/evals/checks.ts',
+  'extensions/qa-lab/src/evals/code-scorers.ts',
+  'extensions/qa-lab/src/evals/tool-call-accuracy.ts',
+  'extensions/qa-lab/src/evals/thresholds.ts',
+  'extensions/qa-lab/src/evals/trajectory-run.ts',
+  'extensions/qa-lab/src/evals/score-traces.ts',
+  'extensions/qa-lab/src/evals/judge.ts',
+  'extensions/qa-lab/src/evals/scorer-registry.ts',
+  'extensions/qa-lab/src/evals/score-command.runtime.ts',
+  'extensions/qa-lab/src/evals/scorer.test.ts',
+  'extensions/qa-lab/src/evals/checks.test.ts',
+  'extensions/qa-lab/src/evals/tool-call-accuracy.test.ts',
+  'extensions/qa-lab/src/evals/thresholds.test.ts',
+  'extensions/qa-lab/src/evals/score-command.test.ts',
+  'extensions/qa-lab/src/cli.ts',
 ];
 
 export const windowStrictFiles = [

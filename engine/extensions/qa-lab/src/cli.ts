@@ -85,6 +85,9 @@ type QaSuiteCliOptions = QaScenarioRunCliOptions & {
 };
 
 const loadQaLabCliRuntime = createLazyRuntimeModule(() => import("./cli.runtime.js"));
+const loadQaScoreRuntime = createLazyRuntimeModule(
+  () => import("./evals/score-command.runtime.js"),
+);
 
 function parseQaCliTcpPortOption(value: string, flag: string): number {
   const parsed = parseQaCliPositiveIntegerOption(value, flag);
@@ -449,6 +452,64 @@ export function registerQaLabCli(program: Command) {
       parseQaCliPositiveIntegerOption(value, "--judge-concurrency"),
     )
     .action(async (opts) => (await loadQaLabCliRuntime()).runQaCharacterEvalCommand(opts));
+
+  qa.command("score")
+    .description("Score stored runs (trajectory bundles or session transcripts) with eval scorers")
+    .option("--repo-root <path>", "Repository root to target when running from a neutral cwd")
+    .option(
+      "--trajectory <path>",
+      "Trajectory bundle (events.jsonl or its folder), a folder of bundles, or a session transcript (repeatable)",
+      collectString,
+      [],
+    )
+    .option(
+      "--scorer <name[=value]>",
+      "Scorer to run, e.g. no-tool-errors, called-tool=read, tool-order=read,write (repeatable)",
+      collectString,
+      [],
+    )
+    .option(
+      "--threshold <[scorer=]min|min..max>",
+      "Pass threshold for one scorer or, without a scorer, for all (repeatable)",
+      collectString,
+      [],
+    )
+    .option("--judge-model <ref>", "Judge provider/model ref for LLM-judged scorers")
+    .option(
+      "--judge-provider-mode <mode>",
+      `Judge provider mode (${formatQaProviderModeHelp()})`,
+    )
+    .option("--judge-timeout-ms <ms>", "Override judge wait timeout", (value: string) =>
+      parseQaCliPositiveIntegerOption(value, "--judge-timeout-ms"),
+    )
+    .option("--concurrency <count>", "Stored runs scored at once per scorer", (value: string) =>
+      parseQaCliPositiveIntegerOption(value, "--concurrency"),
+    )
+    .option("--output <path>", "Write the report to this path")
+    .option("--json", "Print JSON instead of Markdown", false)
+    .option(
+      "--allow-failures",
+      "Write the report without setting a failing exit code when a threshold fails",
+      false,
+    )
+    .action(
+      async (opts: {
+        repoRoot?: string;
+        trajectory?: string[];
+        scorer?: string[];
+        threshold?: string[];
+        judgeModel?: string;
+        judgeProviderMode?: QaProviderModeInput;
+        judgeTimeoutMs?: number;
+        concurrency?: number;
+        output?: string;
+        json?: boolean;
+        allowFailures?: boolean;
+      }) => {
+        const runtime = await loadQaScoreRuntime();
+        await runtime.runQaScoreCommand(opts);
+      },
+    );
 
   qa.command("manual")
     .description("Run a one-off QA agent prompt against the selected provider/model lane")
