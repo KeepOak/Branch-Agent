@@ -10,6 +10,7 @@ import { Icon } from "../../../shell/icons";
 import { ShortcutsDialog } from "../../../shell/ShortcutsDialog";
 import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Status, Switch, useConfig, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
 import { PinnedSection } from "../pins";
+import { useDesktopControls } from "../../../connect/desktop-controls";
 import { ClipboardHistory, Controllers, CoverScreen, ThisComputer, Writing, OS } from "./general-more";
 import { Conversation } from "./general-conversation";
 import { OlderTurns, SummariesMore, SummariesTechnical, WaitingLine } from "./general-summaries";
@@ -42,27 +43,27 @@ export function staysInTray(): boolean {
   return Boolean(w.branchDesktop) && typeof navigator !== "undefined" && /^Win/.test(navigator.platform);
 }
 
-/** The window can't see how Branch was started, so the box says only what this window can and can't change. */
+/** What starting up and closing the window do, as the Branch app on this computer has them. */
 function GeneralStatus({ engine }: { engine: SettingsPageProps["engine"] }) {
   const cfg = useConfig(engine);
+  const desk = useDesktopControls();
   if (cfg.loading) return <Status tone="idle" title="Reading Branch’s settings…" />;
   if (cfg.error) return <Status tone="bad" title="Branch couldn’t read its settings">{visible(cfg.error)}</Status>;
+  if (desk.state && !desk.state.keepWorking) return <Status tone="idle" title="Branch runs while it’s open">Closing the window quits Branch and stops its engine.</Status>;
   if (staysInTray()) return <Status title="Branch waits in the tray">Closing the window keeps it running, so scheduled work goes on.</Status>;
-  return <Status tone="idle" title="Branch runs while it’s open">Starting with {OS} and working on after the window closes are up to the Branch app; this window can’t change them yet.</Status>;
+  return <Status tone="idle" title="Branch runs while it’s open">Starting with {OS} and working on after the window closes are set in the Branch app on your computer.</Status>;
 }
 
-const STARTUP_OFF = `The window can’t change what starts with ${OS} yet.`;
-const RESIDENT_ON = "Always on in the Branch app on Windows: closing the window hides it in the tray. There’s no setting to turn it off.";
-const RESIDENT_OFF = "Closing the Branch app’s window stops its engine; the window can’t change that yet.";
 function StartingUp() {
-  const tray = staysInTray();
+  const desk = useDesktopControls();
+  const why = desk.off ?? (desk.error ? visible(desk.error) : undefined);
   return (
     <Sec title="Starting up">
-      <Ctl title={`Start with ${OS}`} sub="Opens quietly in the tray." off={STARTUP_OFF}>
-        <Switch checked={false} label={`Start with ${OS}`} onChange={() => undefined} />
+      <Ctl title={`Start with ${OS}`} sub="Opens quietly in the tray." off={why}>
+        <Switch checked={desk.state?.startWithWindows ?? false} disabled={desk.busy !== null} label={`Start with ${OS}`} onChange={(on) => void desk.set("startWithWindows", on)} />
       </Ctl>
-      <Ctl title="Keep working when the window closes" sub="Trunks finish what they started." off={tray ? RESIDENT_ON : RESIDENT_OFF}>
-        <Switch checked={tray} label="Keep working when the window closes" onChange={() => undefined} />
+      <Ctl title="Keep working when the window closes" sub="Trunks finish what they started." off={why}>
+        <Switch checked={desk.state?.keepWorking ?? false} disabled={desk.busy !== null} label="Keep working when the window closes" onChange={(on) => void desk.set("keepWorking", on)} />
       </Ctl>
     </Sec>
   );
