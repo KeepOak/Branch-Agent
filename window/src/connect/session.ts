@@ -5,6 +5,7 @@ import type { EventFrame, HelloOk } from "@branch/gateway-client/browser";
 import { BranchGateway, type GatewayStatus } from "./gateway";
 import type { SendExtras, WindowEngine } from "./engine";
 import { RunStreams, readRunEvent } from "./stream-order";
+import { withOwner } from "./agent-owner";
 import { projectRun, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, readApprovalRecords } from "../thread/history";
 
@@ -379,7 +380,8 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
   const agentId = sessionKey ? agentIdOf(sessionKey) : undefined;
   return {
     gatewayUrl: session.gatewayUrl,
-    request: (method, params) => session.request(method, params),
+    // With several Trunks, owned calls that name none go to the open conversation's Trunk (the default one).
+    request: (method, params) => session.request(method, withOwner(method, params, agentId)),
     onEvent: (listener) => session.onGatewayEvent((event, payload) => listener({ event, payload })),
     sessionKey,
     ...(agentId ? { agentId } : {}),
