@@ -31,7 +31,7 @@
 .t9-item .grow > small { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .t9-item .pill { flex: none; }
 .t9-detail { border: 1px solid var(--line); border-radius: 16px; padding: 16px; background: var(--raise); position: sticky; top: 0; min-width: 0; }
-.cz-empty-detail { min-height: 120px; border-style: dashed; background: none; }
+.cz-empty-detail { min-height: 120px; border-color: transparent; background: none; }
 .t9-dh { display: flex; align-items: center; gap: 12px; }
 .t9-dh .grow { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .t9-dh b { font-size: 16px; font-weight: 600; }
