@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import type { SaplingSession } from "../connect/session";
 import { readPreConnect } from "./pre-connect-state";
-import { setupDone } from "./setup-model";
+import { needsFirstContact, setupDone } from "./setup-model";
 
 /** The step setup is open at, or null; `open(step)` reopens it by hand (Guide › Set up Branch, Replay the first run). */
 export function useFirstRun(session: SaplingSession, ready: boolean, busy: () => boolean) {
   const [step, setStep] = useState<number | null>(null);
+  const [requiresContact, setRequiresContact] = useState(true);
   useEffect(() => {
     if (!ready) {
       return;
@@ -16,6 +17,7 @@ export function useFirstRun(session: SaplingSession, ready: boolean, busy: () =>
     let timer: ReturnType<typeof setTimeout> | undefined;
     session.request("config.get", {}).then(
       (config) => {
+        if (live) setRequiresContact(needsFirstContact(config));
         if (live && !setupDone(config)) {
           // Welcome and Where already answered before connecting: carry on at Models.
           timer = setTimeout(() => live && !busy() && setStep(readPreConnect()?.promise ? 2 : 0), 700);
@@ -30,5 +32,5 @@ export function useFirstRun(session: SaplingSession, ready: boolean, busy: () =>
     // Once per connection; `busy` is read when the timer fires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, ready]);
-  return { step, open: (at = 0) => setStep(at), close: () => setStep(null) };
+  return { step, requiresContact, contactCreated: () => setRequiresContact(false), open: (at = 0) => setStep(at), close: () => setStep(null) };
 }

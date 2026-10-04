@@ -4,7 +4,7 @@ import path from 'node:path';
 import { namedTests } from './feature-batch-ci-targets.mjs';
 import { runTargetedStrictChecks } from './feature-batch-ci-typecheck.mjs';
 import {
-  assertLocalModules, engineRoot, gitHead, hostedChrome, preparePnpm, repoRoot, run,
+  assertLocalModules, engineRoot, gitHead, hostedChrome, preparePnpm, publishWindowDependencies, repoRoot, run,
   scratchRoot, sourceHashes, toolingRoot, verifiedExceptionFlags, windowRoot,
 } from './feature-batch-ci-runtime.mjs';
 
@@ -36,11 +36,16 @@ async function installDependencies(pnpm) {
   await run(pnpm, ['install', '--frozen-lockfile', '--ignore-scripts', ...windowFlags,
     `--modules-dir=${path.join(windowRoot, 'node_modules')}`,
     `--virtual-store-dir=${path.join(windowRoot, 'node_modules/.pnpm')}`], toolingRoot);
+  await publishWindowDependencies();
   await assertLocalModules(engineRoot, ['vitest', 'mammoth', 'xlsx', '@google/genai']);
   await assertLocalModules(windowRoot, ['vitest', 'react', 'react-dom', 'jsdom']);
 }
 
-async function buildGatewayPackages() {
+async function prepareBuildArtifacts() {
+  await run(process.execPath, ['--import', './scripts/tsx.mjs', '--input-type=module', '--eval',
+    'const { withDistArtifactOwnership } = await import("./scripts/lib/dist-artifact-ownership.mts");\n' +
+    'const { ensureKyselyTypes } = await import("./scripts/generate-kysely-types.mts");\n' +
+    'await withDistArtifactOwnership(process.cwd(), () => ensureKyselyTypes(process.cwd()));'], engineRoot);
   for (const name of ['gateway-protocol', 'gateway-client']) {
     await run(process.execPath, ['--import', './scripts/tsx.mjs',
       'scripts/build-workspace-package.mts', name], engineRoot);
@@ -70,7 +75,7 @@ async function checkAll() {
   try {
     const pnpm = await preparePnpm(scratch);
     await installDependencies(pnpm);
-    await buildGatewayPackages();
+    await prepareBuildArtifacts();
     await runTargetedStrictChecks(scratch);
     await runFeatureTests(scratch);
     receipt.passed = true;

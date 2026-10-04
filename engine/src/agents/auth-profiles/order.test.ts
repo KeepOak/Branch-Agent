@@ -61,6 +61,34 @@ import {
 import { markAuthProfileSuccess } from "./profiles.js";
 
 describe("resolveAuthProfileOrder", () => {
+  it("orders blocked accounts by the requested model's actual next usable time", () => {
+    const now = Date.now();
+    const store: AuthProfileStore = {
+      version: 1,
+      profiles: {
+        "openai:primary": createApiKeyCredential("openai", "primary-fixture"),
+        "openai:backup": createApiKeyCredential("openai", "backup-fixture"),
+      },
+      usageStats: {
+        "openai:primary": {
+          blockedUntil: now + 30_000,
+          cooldownUntil: now + 120_000,
+          cooldownReason: "rate_limit",
+          cooldownModel: "model-a",
+        },
+        "openai:backup": { blockedUntil: now + 60_000 },
+      },
+    };
+    expect(resolveAuthProfileOrder({ store, provider: "openai", forModel: "model-b" })).toEqual([
+      "openai:primary",
+      "openai:backup",
+    ]);
+    expect(resolveAuthProfileOrder({ store, provider: "openai", forModel: "model-a" })).toEqual([
+      "openai:backup",
+      "openai:primary",
+    ]);
+  });
+
   beforeEach(() => {
     clearPluginMetadataLifecycleCaches();
     pluginMetadataMocks.getCurrentPluginMetadataSnapshot.mockClear();
