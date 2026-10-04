@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { SIcon } from "../stage-icons";
 
@@ -75,6 +75,8 @@ function Entry({ engine, entry, depth, onOpen }: { engine: WindowEngine; entry: 
 function FileView({ engine, path, onClose }: { engine: WindowEngine; path: string; onClose: () => void }) {
   const [file, setFile] = useState<FileEntry | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const [state, setState] = useState<{ error?: string; saved?: boolean; busy?: boolean }>({});
   useEffect(() => {
     let live = true;
@@ -89,12 +91,13 @@ function FileView({ engine, path, onClose }: { engine: WindowEngine; path: strin
   const text = file && file.contentEncoding !== "base64" && file.previewKind !== "image" && file.previewKind !== "unsupported" ? file.content ?? null : null;
   const save = () => {
     if (draft === null || !file?.hash) return;
+    const sent = draft;
     setState({ busy: true });
     engine.request<{ file: FileEntry }>("sessions.files.set", { sessionKey: engine.sessionKey, path, content: draft, expectedHash: file.hash }).then(
       (r) => {
         setFile(r.file);
-        setDraft(null);
-        setState({ saved: true });
+        setDraft((current) => current === sent ? null : current);
+        setState({ saved: draftRef.current === sent });
       },
       (e: unknown) => setState({ error: errorText(e) }),
     );

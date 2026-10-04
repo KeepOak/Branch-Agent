@@ -20,6 +20,23 @@ async function mount(request: ReturnType<typeof vi.fn>) {
 async function toggle(container: HTMLElement) {
   await act(async () => container.querySelector<HTMLButtonElement>('[role="treeitem"][aria-expanded]')!.click());
 }
+async function button(container: HTMLElement, label: string) {
+  await act(async () => [...container.querySelectorAll("button")].find((item) => item.textContent === label)!.click());
+}
+async function edit(container: HTMLElement, value: string) {
+  await act(async () => {
+    const textarea = container.querySelector("textarea")!;
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, value);
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+const file = { path: "/work/readme.md", name: "readme.md", content: "original", hash: "first-hash" };
+async function openFile(request: ReturnType<typeof vi.fn>) {
+  const container = await mount(request);
+  await act(async () => container.querySelector<HTMLButtonElement>(".file-card-pn")!.click());
+  await button(container, "Edit");
+  return container;
+}
 
 it("recovers a failed directory read when the folder is reopened", async () => {
   const request = vi.fn().mockResolvedValueOnce(rootListing).mockRejectedValueOnce(new Error("Computer offline")).mockResolvedValueOnce({ browser: { entries: [entry("ready.ts")] } });
@@ -50,4 +67,27 @@ it("explains an expanded empty folder and refreshes it on reopen", async () => {
   await toggle(container); await toggle(container);
   expect(container.textContent).toContain("created.ts");
   expect(container.textContent).not.toContain("This folder is empty.");
+});
+
+it("preserves edits typed during a save and uses the returned hash for the next save", async () => {
+  let finish!: (value: unknown) => void;
+  const request = vi.fn().mockResolvedValue({}).mockResolvedValueOnce({ files: [file] }).mockResolvedValueOnce({ file }).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; })).mockResolvedValueOnce({ file: { ...file, content: "newer", hash: "third-hash" } });
+  const container = await openFile(request);
+  await edit(container, "saved version"); await button(container, "Keep");
+  await edit(container, "newer");
+  await act(async () => finish({ file: { ...file, content: "saved version", hash: "second-hash" } }));
+  expect(container.querySelector("textarea")?.value).toBe("newer");
+  expect(container.textContent).not.toContain("Saved.");
+  await button(container, "Keep");
+  expect(request).toHaveBeenLastCalledWith("sessions.files.set", { sessionKey: "agent:scout:main", path: file.path, content: "newer", expectedHash: "second-hash" });
+  expect(container.querySelector("pre")?.textContent).toBe("newer");
+});
+
+it("keeps the edit and reports a backend hash conflict instead of claiming it saved", async () => {
+  const request = vi.fn().mockResolvedValueOnce({ files: [file] }).mockResolvedValueOnce({ file }).mockRejectedValueOnce(new Error("File changed elsewhere"));
+  const container = await openFile(request);
+  await edit(container, "my edit"); await button(container, "Keep");
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe("File changed elsewhere");
+  expect(container.querySelector("textarea")?.value).toBe("my edit");
+  expect(container.textContent).not.toContain("Saved.");
 });
