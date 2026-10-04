@@ -690,4 +690,7 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["storage.locations.list", "storage", "operator.read", "2026.9"],
   ["storage.locations.probe", "storage", "operator.read", "2026.9"],
   ["agents.documents.create", "agents-workspace", "operator.admin", "2026.9"],
+  ["system.pause.get", "system", "operator.read", "2026.9"],
+  ["system.pause.set", "system", "operator.admin", "2026.9"],
+  ["system.pause.clear", "system", "operator.admin", "2026.9"],
 ] as const satisfies readonly CoreGatewayMethodSpecRow[];

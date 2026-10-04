@@ -105,6 +105,26 @@ export function registerSystemCli(program: Command) {
     );
   });
 
+  addGatewayClientOptions(
+    system
+      .command("pause")
+      .description("Pause all scheduled and proactive work (schedules and check-ins)")
+      .option("--until <iso>", "End of the pause (ISO time); omit to pause until resumed")
+      .option("--reason <text>", "Why the work is paused")
+      .option("--json", "Output JSON", false),
+  ).action(async (opts: SystemGatewayOpts & { until?: string; reason?: string }) => {
+    await runSystemGatewayCommand(opts, () => {
+      const endIso = normalizeOptionalString(opts.until);
+      const reason = normalizeOptionalString(opts.reason);
+      return callGatewayFromCli(
+        "system.pause.set",
+        opts,
+        { ...(endIso ? { endIso } : {}), ...(reason ? { reason } : {}) },
+        { expectFinal: false },
+      );
+    });
+  });
+
   const heartbeat = system.command("heartbeat").description("Heartbeat controls");
 
   for (const [parent, name, description, method, params] of [
@@ -112,6 +132,8 @@ export function registerSystemCli(program: Command) {
     [heartbeat, "enable", "Enable heartbeats", "set-heartbeats", { enabled: true }],
     [heartbeat, "disable", "Disable heartbeats", "set-heartbeats", { enabled: false }],
     [system, "presence", "List system presence entries", "system-presence", undefined],
+    [system, "resume", "End the global pause of scheduled work", "system.pause.clear", undefined],
+    [system, "pause-status", "Show the global pause of scheduled work", "system.pause.get", undefined],
   ] as const) {
     addGatewayClientOptions(
       parent.command(name).description(description).option("--json", "Output JSON", false),

@@ -37,6 +37,7 @@ const CRON_OUTPUT_COMMANDS = {
   run: { aliases: [], alwaysJson: true },
   edit: { aliases: [], alwaysJson: true },
   scratch: { aliases: [], alwaysJson: false },
+  import: { aliases: [], alwaysJson: true },
 } as const satisfies Record<string, CronOutputCommandDefinition>;
 
 type CronOutputCommandName = keyof typeof CRON_OUTPUT_COMMANDS;

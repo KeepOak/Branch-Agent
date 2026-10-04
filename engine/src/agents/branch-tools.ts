@@ -58,6 +58,7 @@ import {
   createGetGoalTool,
   createUpdateGoalTool,
 } from "./tools/goal-tools.js";
+import { createCronLearningTools } from "./tools/cron-learning-tools.js";
 import { createHeartbeatResponseTool } from "./tools/heartbeat-response-tool.js";
 import { createImageGenerateTool } from "./tools/image-generate-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
@@ -391,6 +392,8 @@ export function createBranchTools(options?: BranchToolsOptions): AnyAgentTool[] 
           presenterContext: widgetPresentation.context,
         }),
     heartbeatTool,
+    // Only isolated scheduled runs (`...:cron:<job>:run:<run>`) receive these.
+    ...createCronLearningTools({ runSessionKey: options?.runSessionKey }),
     createDecisionTool(sessionAgentId, options),
     createTtsTool({ ...options, agentId: sessionAgentId }),
     options?.githubPublicationAvailable !== undefined ? createGitHubIdentityStatusTool() : null,

@@ -42,6 +42,12 @@ export const engineTests = [
   'src/agents/cli-output-stream.test.ts',
   'src/agents/cli-output-records.test.ts',
   'src/agents/cli-output-jsonl.test.ts',
+  'src/cron/cron-learnings.test.ts',
+  'src/agents/branch-tools.cron-learnings.test.ts',
+  'src/infra/global-pause.test.ts',
+  'src/cli/cron-cli/register.cron-transfer.test.ts',
+  'src/gateway/server-methods-list.test.ts',
+  'src/cli/cron-cli/register.cron-simple.test.ts',
 ];
 
 export const windowTests = [
@@ -241,6 +247,13 @@ export const engineStrictFiles = [
   'src/skills/discovery/command-specs.skill-bundles.test.ts',
   'src/skills/loading/skill-bundles.test.ts',
   'src/skills/runtime/skill-bundle-invocation.test.ts',
+  'src/cron/cron-learnings.ts',
+  'src/agents/tools/cron-learning-tools.ts',
+  'src/cron/cron-learnings.test.ts',
+  'src/infra/global-pause.ts',
+  'src/infra/global-pause.test.ts',
+  'src/cli/cron-cli/register.cron-transfer.ts',
+  'src/cli/cron-cli/register.cron-transfer.test.ts',
 ];
 
 export const windowStrictFiles = [
