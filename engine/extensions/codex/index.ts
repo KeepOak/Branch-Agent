@@ -20,6 +20,7 @@ import {
 } from "./harness.js";
 import { buildCodexMediaUnderstandingProvider } from "./media-understanding-provider.js";
 import codexProviderDiscovery from "./provider-discovery.js";
+import { registerCodexAccountModels } from "./src/account-models.js";
 import { registerCodexAccountUsage } from "./src/account-usage.js";
 import { createCodexAuthProfileSelection } from "./src/app-server/auth-profile-selection.js";
 import { createCodexAppServerConfig } from "./src/app-server/config-options.js";
@@ -89,6 +90,7 @@ export default definePluginEntry({
   },
   register(api) {
     registerCodexAccountUsage(api);
+    registerCodexAccountModels(api);
     api.registerService(codexNativeProfileRecoveryService);
     // Bundled modules may execute from a shared dist chunk, so import.meta.url
     // cannot identify the owning plugin package or its pinned dependencies.
