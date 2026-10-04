@@ -52,6 +52,8 @@ type Props = {
   plan?: { done: number; total: number; steps: { step: string; status: string }[] } | null;
   /** In a room: "Message the room · @ to call a Trunk" (rooms/, §4.3.1); else "Message <Trunk>". */
   placeholder?: string;
+  /** Drawn under the message box: the strip of open conversations (shell/OpenTabs). */
+  below?: ReactNode;
 };
 
 type Menu = "plus" | "plug" | "model" | "mode" | null;
@@ -600,6 +602,7 @@ export function Composer(props: Props) {
       </form>
       {picture ? <PictureDialog onClose={() => setPicture(false)} onMake={(words) => deliver(`Make a picture: ${words}`, [], [])} /> : null}
       {photo ? <PhotoDialog onClose={() => setPhoto(false)} onUse={(f) => void draft.addFiles([f], "file")} onUpload={() => fileInput.current?.click()} /> : null}
+      {props.below}
     </div>
   );
 }

@@ -1355,3 +1355,46 @@ button.mi:focus-visible {
     display: none;
   }
 }
+
+/* Open conversations under the message box (the preview's .tabsR118). */
+.open-tabs {
+  display: flex;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px 0 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.open-tab {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  max-width: 180px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raise);
+  font-size: 12px;
+}
+.open-tab > button {
+  max-width: 150px;
+  overflow: hidden;
+  padding: 3px 4px 3px 8px;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.open-tab > .open-tab-x {
+  display: inline-flex;
+  padding: 3px 6px;
+}
+.open-tab.on {
+  border-color: var(--line-2);
+  background: var(--accent-tint);
+}
+.open-tab.on > button {
+  color: var(--ink);
+}

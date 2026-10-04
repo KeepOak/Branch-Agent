@@ -90,6 +90,7 @@ export const windowTests = [
   'src/thread/Rail.test.tsx',
   'src/stage/pane/PreviewTab.test.tsx',
   'src/shell/SidebarExtras.test.tsx',
+  'src/shell/OpenTabs.test.tsx',
 ];
 
 export const engineStrictFiles = [
@@ -234,6 +235,9 @@ export const windowStrictFiles = [
   'src/stage/pane/PreviewTab.test.tsx',
   'src/shell/SidebarExtras.tsx',
   'src/shell/SidebarExtras.test.tsx',
+  'src/shell/OpenTabs.tsx',
+  'src/shell/OpenTabs.test.tsx',
+  'src/composer/Composer.tsx',
 ];
 
 export function namedTests(lane) {

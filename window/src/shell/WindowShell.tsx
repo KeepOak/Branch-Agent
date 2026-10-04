@@ -22,6 +22,7 @@ import { Icon } from "./icons";
 import { buildSections, clearFilters, emptyLineFor, filterRows, filterSummary, hasFolders, homeRow, owners, roomUsed, type ListPrefs } from "./list-model";
 import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./AppSections";
 import { batchMenuItems } from "./batch-menu";
+import { OpenTabs, useOpenTabs } from "./OpenTabs";
 import { NewsTip, SidePet } from "./SidebarExtras";
 import { colourHue, iconColourItem } from "./row-look";
 import { RowCard } from "./RowCard";
@@ -361,6 +362,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     }
   }, [session]);
   const openConversation = useCallback((key: string) => go({ kind: "chat", key }), [go]);
+  const openTabs = useOpenTabs(route.kind === "chat" ? s.sessionKey : null);
   const openPlace = useCallback((place: PlaceId) => go({ kind: "place", place }), [go]);
   const openSettings = useCallback((page: string) => go({ kind: "settings", page }), [go]);
   /** The Trunk's profile, drawn by People's TrunkHost on `branch:open-trunk` (claude/win-places). */
@@ -823,6 +825,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           {...composerProps}
           name={trunkName(openRow?.agentId)}
           placeholder={room.placeholder}
+          below={<OpenTabs keys={openTabs.keys} openKey={openKey} name={rowName} onOpen={openConversation} onClose={(key) => { const next = openTabs.close(key); if (next) openConversation(next); }} />}
           working={Boolean(s.liveRunId)}
           disabled={!s.sessionKey || !ready || !trunks.loaded || !trunks.list.length || firstRun.requiresContact}
           plan={progress.card?.steps?.length && !planDismiss.dismissed ? { done: progress.card.steps.filter((x) => x.status === "completed").length, total: progress.card.steps.length, steps: progress.card.steps } : null}
