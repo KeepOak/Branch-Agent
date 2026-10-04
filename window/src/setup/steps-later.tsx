@@ -7,6 +7,7 @@ import { ChatLogo } from "../places/settings/set1/chatapps-logo";
 import { ChoiceCards } from "./steps-early";
 import { ToolLogo, type ToolMark } from "./tool-logos";
 import { JOBS, type Check, type Look } from "./setup-model";
+import { useDesktopControls } from "../connect/desktop-controls";
 
 const LOOKS: { id: Look; name: string }[] = [
   { id: "system", name: "Match Windows" },
@@ -202,13 +203,15 @@ export function ToolsBody() {
   );
 }
 
-// TODO(desktop-lane): gateway mode, Start with Windows and the branch command come from the desktop app's methods.
-const DESKTOP = "The desktop app owns this; the window can't change it yet.";
+// TODO(desktop-lane): gateway mode needs the desktop app to run the engine's background service (branch gateway install).
+const DESKTOP = "The desktop app owns this; the window can’t change it yet.";
 
 export function KeepBody({ autoUpdate, onAutoUpdate }: { autoUpdate: boolean; onAutoUpdate: (v: boolean) => void }) {
-  const off = (title: string, sub: string) => (
+  const desk = useDesktopControls();
+  const why = desk.off ?? desk.error ?? undefined;
+  const sw = (title: string, sub: string, name: "startWithWindows" | "branchOnPath") => (
     <Ctl title={title} sub={sub}>
-      <button type="button" role="switch" aria-checked={false} aria-label={title} className="switch" disabled title={DESKTOP} />
+      <button type="button" role="switch" aria-checked={desk.state?.[name] ?? false} aria-label={title} className="switch" disabled={why !== undefined || desk.busy !== null} title={why} onClick={() => void desk.set(name, !(desk.state?.[name] ?? false))} />
     </Ctl>
   );
   return (
@@ -216,8 +219,8 @@ export function KeepBody({ autoUpdate, onAutoUpdate }: { autoUpdate: boolean; on
       <Ctl title="The gateway" sub="Keeps Telegram, your phone and automations working when the window is closed, and starts Branch again if it ever stops.">
         <SegOf label="The gateway" options={["Off", "When needed", "On"]} value="On" off={DESKTOP} />
       </Ctl>
-      {off("Start with Windows", "Quietly, in the tray.")}
-      {off("Type branch in any terminal", "Adds the branch command, so the terminal view and scripts work anywhere.")}
+      {sw("Start with Windows", "Quietly, in the tray.", "startWithWindows")}
+      {sw("Type branch in any terminal", "Adds the branch command, so the terminal view and scripts work anywhere.", "branchOnPath")}
       <Ctl title="Keep Branch up to date by itself" sub="It waits until no task is working and keeps a safety copy.">
         <button type="button" role="switch" aria-checked={autoUpdate} aria-label="Keep Branch up to date by itself" className="switch" data-testid="setup-autoupdate" onClick={() => onAutoUpdate(!autoUpdate)} />
       </Ctl>
