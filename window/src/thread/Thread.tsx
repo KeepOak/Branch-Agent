@@ -12,7 +12,6 @@ import { DoneCheer } from "./DoneCheer";
 import { EmptyState } from "./EmptyState";
 import { FindBar, useFindKey } from "./FindBar";
 import { HelpersChip } from "./Helpers";
-import { UsageBar } from "./UsageBar";
 import { HoverBar } from "./HoverBar";
 import { Icon, ICONS } from "./icons";
 import { layout, shownApprovalIds, type Item } from "./layout";
@@ -25,6 +24,7 @@ import { approvalKeyFor } from "./approval-keys";
 import { useApprovalDetails, useHelpers, useReactions, type ApprovalDetails } from "./useEngineData";
 import { useMessageActions, type ReplyTarget } from "./useMessageActions";
 import "./thread.css";
+import "./activity-strip.css";
 import { foldTalks, type RoomItem } from "../rooms/fold";
 import { RoomMessage } from "../rooms/RoomMessage";
 import { TalkedFold } from "../rooms/TalkedFold";
@@ -150,7 +150,6 @@ export function Thread(props: Props) {
   return (
     <ThreadContext.Provider value={ctx}>
       <div className="thread-wrap" data-times={prefs.messageTimes} data-look={prefs.msgLook} data-scrollbars={prefs.scroll} dir={prefs.dir}>
-      <UsageBar engine={engine} />
       {finding ? <FindBar root={threadRef} name={name} signature={signature} onClose={() => setFinding(false)} /> : null}
       <div className="scroll" ref={follow.scroller} onScroll={follow.onScroll} data-testid="thread-scroll">
         <div className="thread" ref={threadRef}>
