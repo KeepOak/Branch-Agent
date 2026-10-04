@@ -9,6 +9,9 @@ export default {
     ...sharedVitestConfig.test,
     include: [...priorityTests, priorityMemoryIntegration],
     projects: undefined,
+    // The real headless exec fixture owns host shared-state admission. Threads
+    // classify it as an application worker without the required host broker.
+    pool: "forks",
     maxWorkers: 1,
     fileParallelism: false,
     isolate: true,
