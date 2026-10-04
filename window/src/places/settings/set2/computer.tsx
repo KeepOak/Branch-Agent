@@ -11,7 +11,7 @@ import { Face } from "../../../face/Face";
 import { Menu, type MenuItem } from "../../../shell/Menu";
 import { bytes, CallLine, CopyBtn, Kv, lvOf, rec, str, Tile, useCall, useLive, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
-import { ComputerMore, ROWS as MORE_ROWS } from "./computer-more";
+import { ComputerMore, NewCloud, ROWS as MORE_ROWS } from "./computer-more";
 import { Icon } from "../../../shell/icons";
 
 const PAIR_EVENTS = ["device.pair", "node.pair", "node"];
@@ -38,7 +38,7 @@ export const ROWS: RowEntry[] = [
   { page: "computer", title: "Keep this computer awake", sec: "Computers they may use", lv: 0 }, { page: "computer", title: "Which Trunk uses which", lv: 0 },
 ];
 
-type Req = { id: string; kind: "device" | "node"; name: string; plat: string; access: string[]; more: boolean; ts: number; deviceId: string; ip: string; version: string };
+type Req = { id: string; kind: "device" | "node"; name: string; plat: string; access: string[]; more: boolean; ts: number; deviceId: string; ip: string; version: string; engine: string };
 
 function accessOf(words: unknown): string[] {
   return [...new Set((Array.isArray(words) ? words : []).map((w) => ACCESS[String(w)] ?? "").filter(Boolean))];
@@ -52,12 +52,12 @@ function requests(devices: RecordValue, nodes: RecordValue): Req[] {
   const fromDevices = list(devices.pending).map((r): Req => ({
     id: str(r.requestId), kind: "device", name: str(r.displayName) || str(r.clientId) || "A device", plat: osOf(r.platform),
     access: accessOf(r.scopes), more: pairedDevices.has(str(r.deviceId)) || r.isRepair === true, ts: Number(r.ts) || 0,
-    deviceId: str(r.deviceId), ip: str(r.remoteIp), version: "",
+    deviceId: str(r.deviceId), ip: str(r.remoteIp), version: "", engine: "",
   }));
   const fromNodes = list(nodes.pending).map((r): Req => ({
     id: str(r.requestId), kind: "node", name: str(r.displayName) || "A computer", plat: osOf(r.platform),
     access: accessOf(r.commands), more: pairedNodes.has(str(r.nodeId)), ts: Number(r.ts) || 0,
-    deviceId: str(r.nodeId), ip: str(r.remoteIp), version: str(r.version),
+    deviceId: str(r.nodeId), ip: str(r.remoteIp), version: str(r.uiVersion) || str(r.version), engine: str(r.coreVersion),
   }));
   return [...fromDevices, ...fromNodes].filter((r) => r.id).sort((a, b) => b.ts - a.ts);
 }
@@ -72,7 +72,7 @@ export function ComputerPage(props: SettingsPageProps) {
     <Page title={props.title} lede={LEDE}>
       <Waiting {...props} lv={lv} />
       <Computers {...props} lv={lv} nodes={nodes} agents={rec(agents.data)} />
-      <WhichTrunk {...props} nodes={list(rec(nodes.data).nodes)} agents={list(rec(agents.data).agents)} />
+      <WhichTrunk {...props} nodes={list(rec(nodes.data).nodes)} agents={list(rec(agents.data).agents)} defaultId={rec(agents.data).defaultId} />
       <ComputerMore {...props} />
     </Page>
   );
@@ -123,7 +123,7 @@ function RequestRow({ r, lv, busy, onAllow, onRefuse }: { r: Req; lv: number; bu
           {r.access.length ? <> · {r.access.map((a, i) => <span key={a} className={RISKY.has(a) ? "s2-warn" : undefined}>{i ? ", " : ""}{a}</span>)}</> : null}
         </small>
         {r.more ? <small className="s2-note">Asks for more access than before</small> : null}
-        {lv >= 2 ? <details className="s2-det"><summary>Details</summary><Kv rows={[["Device ID", r.deviceId], ["Address it came from", r.ip], ["App", r.version]]} /></details> : null}
+        {lv >= 2 ? <details className="s2-det"><summary>Details</summary><Kv rows={[["Device ID", r.deviceId], ["Address it came from", r.ip], ["App", r.version], ["Engine", r.engine]]} /></details> : null}
       </span>
       <Btn sm ghost disabled={busy} onClick={onRefuse}>Don’t allow</Btn>
       <Btn sm pri disabled={busy || !ready} title={ready ? undefined : "Allow is ready in a moment"} onClick={onAllow}>Allow</Btn>
@@ -164,13 +164,46 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
       </div>
       {other.length ? <><div className="s2-grp">Your other computers</div><div className="s2-comps">{other.map(card)}</div></> : null}
       {nodes.data && !all.length && !status.data ? <Hint>No computers are paired yet.</Hint> : null}
-      <Ctl title="Keep this computer awake" off="Keeping this PC awake is done by the Branch app on it.">
+      <InTheCloud engine={engine} />
+      <Ctl title="Keep this computer awake" sub="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." off="Keeping this PC awake is done by the Branch app on it.">
         <Switch label="Keep this computer awake" checked={false} onChange={() => undefined} />
       </Ctl>
-      <Acts><Btn onClick={() => window.dispatchEvent(new CustomEvent("branch:add-computer"))}><Icon name="plus" small />Add a computer</Btn></Acts>
+      <Acts><Btn pri onClick={() => window.dispatchEvent(new CustomEvent("branch:add-computer"))}><Icon name="plus" small />Add a computer</Btn></Acts>
     </Sec>
   );
 }
+
+/** In the cloud: KeepOak's own card (greyed until keepoak.com has a sign-in) and a cloud computer from a profile the
+ *  engine has (environments.list, environments.create). */
+function InTheCloud({ engine }: Pick<SettingsPageProps, "engine">) {
+  const envs = useLive<RecordValue>(engine, "environments.list", {}, ["node", "environments", "worker"]);
+  const [open, setOpen] = useState(false);
+  const profiles = list(rec(envs.data).profiles);
+  return (
+    <>
+      <div className="s2-grp">In the cloud</div>
+      <div className="s2-comps">
+        <div className="s2-comp s2cm-offc" data-row="KeepOak computer">
+          <Tile><Ico name="cloud" s /></Tile>
+          <span className="grow">
+            <b>KeepOak computer</b>
+            <small>Cloud · KeepOak</small>
+            <span className="s2-reach">A cloud computer whose machines run on your keepoak.com plan.</span>
+          </span>
+          <Btn sm disabled title={KEEPOAK_OFF}>Connect keepoak.com</Btn>
+        </div>
+      </div>
+      <div className="s2cm-offer" role="note">
+        <Tile><Ico name="cloud" s /></Tile>
+        <span className="grow"><b>A cloud computer</b><small>A fresh machine for each conversation on your own cloud account or KeepOak, thrown away when its work stops. Off until you choose: the provider bills while machines run.</small></span>
+        <Btn sm disabled={!profiles.length} title={profiles.length ? undefined : NO_PROFILE} onClick={() => setOpen(true)}>Set one up</Btn>
+        {open ? <NewCloud engine={engine} profiles={profiles} onClose={(made) => { setOpen(false); if (made) void envs.reload(); }} /> : null}
+      </div>
+    </>
+  );
+}
+const KEEPOAK_OFF = "keepoak.com has no sign-in Branch can use yet.";
+const NO_PROFILE = "Needs a cloud computer provider set up in this engine.";
 
 type Find = { q: string; sort: string; show: string };
 /** Advanced: find, sort and filter the computers. */
@@ -321,11 +354,13 @@ function RemoveDialog({ engine, node, onClose }: Pick<SettingsPageProps, "engine
 }
 
 /** Which Trunk uses which: a Trunk pinned to a computer runs its commands there (agents.list[].tools.exec.node). */
-function WhichTrunk({ engine, nodes, agents }: SettingsPageProps & { nodes: Node[]; agents: RecordValue[] }) {
+function WhichTrunk({ engine, nodes, agents, defaultId }: SettingsPageProps & { nodes: Node[]; agents: RecordValue[]; defaultId: unknown }) {
   const config = useConfig(engine);
   const entries = list(config.get("agents.list"));
   const usable = nodes.filter((n) => n.approvalState !== "pending-approval" && n.approvalState !== "unapproved");
-  if (!agents.length || !usable.length) return null;
+  if (!agents.length) return null;
+  const main = str(defaultId);
+  const ordered = [...agents.filter((a) => str(a.id) !== main), ...agents.filter((a) => str(a.id) === main)];
   const pin = (agentId: string, nodeId: string | null) => {
     const next = entries.map((a) => {
       if (str(a.id) !== agentId) return a;
@@ -336,15 +371,15 @@ function WhichTrunk({ engine, nodes, agents }: SettingsPageProps & { nodes: Node
     void config.set("agents.list", next);
   };
   return (
-    <Sec title="Which Trunk uses which" hint="A Trunk can use several computers side by side. Pin one to send its commands to that computer.">
+    <Sec title="Which Trunk uses which" hint="A Trunk can use several computers side by side.">
       <Plist>
-        {agents.map((a) => {
+        {ordered.map((a) => {
           const id = str(a.id); const name = str(rec(a.identity).name) || str(a.name) || id;
           const entry = entries.find((e) => str(e.id) === id);
           const pinned = str(rec(rec(entry?.tools).exec).node);
           return (
             <div key={id} className="prow s2-percomp" data-row={name}>
-              <Face size={28} label={name} />
+              <Face size={32} label={name} />
               <span className="grow">
                 <b>{name}</b>
                 <span className="s2-chips" role="group" aria-label={`Computers ${name} uses`}>
@@ -353,7 +388,6 @@ function WhichTrunk({ engine, nodes, agents }: SettingsPageProps & { nodes: Node
                     return <button key={nid} type="button" className="chip6" aria-pressed={on} disabled={!entry || config.loading} title={entry ? undefined : "This Trunk follows the default settings; give it its own settings first."} onClick={() => pin(id, on ? null : nid)}>{str(n.displayName) || nid}</button>;
                   })}
                 </span>
-                {!pinned ? <small>Uses whichever computer a task needs.</small> : null}
               </span>
             </div>
           );

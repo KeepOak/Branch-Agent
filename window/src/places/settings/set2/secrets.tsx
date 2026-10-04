@@ -39,7 +39,7 @@ export function SecretsPage(props: SettingsPageProps) {
         <Empty>{onePassword ? "Filling website sign-ins needs the engine’s list of sign-ins Branch may fill." : "Nothing to fill until a password manager is connected. Pick one at Advanced: How much to show › Advanced, then “Where passwords come from”."}</Empty>
       </Sec>
       <Sec title="Narrow keys">
-        <Ctl title="Make narrow keys for services" sub="Vercel, Supabase and others: a key that can do only what a Trunk needs, replaced on a schedule." off="Needs the engine to make keys with each service."><Btn sm>Choose a service</Btn></Ctl>
+        <Ctl title="Make narrow keys for services" sub="Vercel, Supabase and others: a key that can do only what a Trunk needs, replaced on a schedule." off="Needs the engine to make keys with each service."><Btn sm disabled>Choose a service</Btn></Ctl>
       </Sec>
       {lv >= 1 ? <Where engine={props.engine} onePassword={onePassword} config={config} /> : null}
       {lv >= 1 ? <Keys engine={props.engine} lv={lv} store={store} /> : null}

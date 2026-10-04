@@ -122,4 +122,64 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     const removed = request.mock.calls.filter(([m]) => m === "device.pair.remove").map(([, p]) => p);
     expect(removed).toEqual([{ deviceId: "old" }]);
   });
+  it("Waiting for your yes lists the engine's pending requests and answers them with *.pair.approve / *.pair.reject", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { engine, request } = engineWith({ ...CONFIG,
+        "device.pair.list": { pending: [{ requestId: "d-req", deviceId: "dev-9", publicKey: "k", displayName: "Studio laptop", platform: "win32", scopes: ["operator.read"], ts: Date.now() }], paired: [] },
+        "node.pair.list": { pending: [{ requestId: "n-req", nodeId: "node-7", displayName: "Garage box", platform: "linux", commands: ["system.run"], coreVersion: "0.19.4", ts: Date.now() - 1000 }], paired: [] },
+        "device.pair.approve": { ok: true }, "node.pair.reject": { ok: true } });
+      await show(engine, "technical");
+      const waiting = sec("Waiting for your yes");
+      expect(waiting?.textContent).toContain("Studio laptop wants to connect");
+      expect(waiting?.textContent).toContain("Garage box wants to connect");
+      expect(waiting?.textContent).toContain("Run commands");
+      expect(waiting?.textContent).toContain("0.19.4");
+      const allow = row("Studio laptop")!.querySelector("button.pri, button:last-of-type") as HTMLButtonElement;
+      expect(allow.disabled).toBe(true);
+      await act(async () => { vi.advanceTimersByTime(1600); });
+      expect(allow.disabled).toBe(false);
+      await click(allow);
+      expect(request).toHaveBeenCalledWith("device.pair.approve", { requestId: "d-req" });
+      await click([...row("Garage box")!.querySelectorAll("button")].find((b) => b.textContent === "Don’t allow")!);
+      await click(buttons("Turn it down")[0]);
+      expect(request).toHaveBeenCalledWith("node.pair.reject", { requestId: "n-req" });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("hides Waiting for your yes when nothing is pending", async () => {
+    const { engine } = engineWith({ ...CONFIG, "device.pair.list": { pending: [], paired: [] }, "node.pair.list": { pending: [], paired: [] } });
+    await show(engine, "regular");
+    expect(sec("Waiting for your yes")).toBeNull();
+  });
+
+  it("Which Trunk uses which shows every Trunk, the main one last, and pins one to a computer", async () => {
+    window.matchMedia ??= ((q: string) => ({ matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia;
+    const agents = { defaultId: "main", agents: [{ id: "main", identity: { name: "Sapling" } }, { id: "scout", identity: { name: "Scout" } }] };
+    const { engine: bare } = engineWith({ ...CONFIG, "agents.list": agents });
+    await show(bare, "regular");
+    const which = sec("Which Trunk uses which");
+    expect(which?.querySelector(".hint")?.textContent).toBe("A Trunk can use several computers side by side.");
+    expect([...which!.querySelectorAll(".prow b")].map((b) => b.textContent)).toEqual(["Scout", "Sapling"]);
+    const { engine, request } = engineWith({ ...CONFIG, "agents.list": agents, "config.get": { hash: "h", valid: true, config: { agents: { list: [{ id: "scout" }] } } }, "node.list": { nodes: [{ nodeId: "n1", displayName: "Desk", connected: true }] } });
+    await show(engine, "regular");
+    const chip = [...sec("Which Trunk uses which")!.querySelectorAll<HTMLButtonElement>("[aria-label='Computers Scout uses'] button")].find((b) => b.textContent === "Desk")!;
+    await click(chip);
+    expect(patches(request)).toContainEqual({ agents: { list: [{ id: "scout", tools: { exec: { node: "n1" } } }] } });
+  });
+
+  it("saves Most spares at once with Save and adds an extra folder from its dialog", async () => {
+    const { engine, request } = engineWith(CONFIG);
+    await show(engine, "advanced");
+    const input = row("Most spares at once")!.querySelector("input") as HTMLInputElement;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "2"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click([...row("Most spares at once")!.querySelectorAll("button")].find((b) => b.textContent === "Save")!);
+    expect(patches(request)).toContainEqual({ cloudWorkers: { preparedPool: { maxTotal: 2 } } });
+    expect(row("Extra folders")?.textContent).toContain("No extra folders.");
+    await click(buttons("Add a folder")[0]);
+    const field = document.querySelector("[role=dialog] input, .dlg input") as HTMLInputElement;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "C:\data:/data:ro"); field.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click(buttons("Add").at(-1)!);
+    expect(patches(request)).toContainEqual({ agents: { defaults: { sandbox: { docker: { binds: ["C:\data:/data:ro"] } } } } });
+  });
 });

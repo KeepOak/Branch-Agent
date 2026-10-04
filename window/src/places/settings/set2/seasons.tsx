@@ -13,6 +13,7 @@ const RINGS = "plugins.entries.memory-core.config.rings";
 const LEDE = "How Branch gets better by itself: tidying memory overnight, keeping skills in shape and learning what a Trunk couldn’t do. Every change is shown and can be undone.";
 const NO_GARDENER = "The Gardener’s skill care is retired in this engine.";
 const NO_UNDO = "Undoing a change needs the engine’s roll back.";
+const TERMINAL = "Runs from a terminal; Technical shows the command.";
 const NIGHT: Record<string, string> = { "0 1 * * *": "1", "0 3 * * *": "3", "0 5 * * *": "5" };
 const ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "Europe/London", "Europe/Berlin", "Africa/Lagos", "Asia/Kolkata", "Asia/Tokyo", "Australia/Sydney"];
 
@@ -24,7 +25,7 @@ export const ROWS: RowEntry[] = [
   ["Rest a skill after", "Seasons, more", 1], ["Set it aside after", "Seasons, more", 1], ["What each night costs", "Seasons, more", 1],
   ["Clear replayed notes", "Seasons, more", 1], ["What Rings is weighing", "Seasons, more", 1], ["Time zone for the night window", "Seasons, more", 1],
   ["Model that writes the diary", "Seasons, more", 1], ["Where Rings writes what it keeps", "Seasons, more", 1], ["Keep reports out of memory", "Seasons, more", 1],
-  ["Keep notes for good now", "Rings, by hand", 2], ["Try a night without keeping anything", "Rings, by hand", 2], ["Fill in from past conversations", "Rings, by hand", 2],
+  ["Keep notes for good now", "Rings, by hand", 1], ["Try a night without keeping anything", "Rings, by hand", 1], ["Fill in from past conversations", "Rings, by hand", 1],
   ["Exact schedule", "Rings, in depth", 2], ["Log each pass in detail", "Rings, in depth", 2],
   ["Fill the diary from past notes", "Rings, maintenance", 2], ["Remove filled-in entries", "Rings, maintenance", 2],
   ["Remove repeated diary entries", "Rings, maintenance", 2], ["Repair Rings’ files", "Rings, maintenance", 2],
@@ -56,7 +57,7 @@ export function SeasonsPage(props: SettingsPageProps) {
       </Sec>
       <ThisSeason rings={ctx.status} proposals={list(rec(proposals.data).proposals)} />
       {lv >= 1 ? <More {...ctx} /> : null}
-      {lv >= 2 ? <ByHand {...ctx} /> : null}
+      {lv >= 1 ? <ByHand {...ctx} lv={lv} /> : null}
       {lv >= 2 ? <InDepth {...ctx} /> : null}
       {lv >= 2 ? <Maintenance {...ctx} /> : null}
     </Page>
@@ -196,18 +197,23 @@ function WeighDialog({ status, onClose }: { status: RecordValue; onClose: () => 
   );
 }
 
-function ByHand({ engine, agent }: Ctx) {
+/** Rings, by hand (Advanced); the terminal commands behind it are Technical. */
+function ByHand({ engine, agent, lv }: Ctx & { lv: number }) {
   const [fill, setFill] = useState(false);
   return (
     <Sec title="Rings, by hand">
-      <Ctl title="Keep notes for good now" sub="The notes the deep pass would keep, with why." off="Runs from a terminal: Keep notes now, below."><Btn sm>Preview</Btn></Ctl>
-      <Ctl title="Try a night without keeping anything" sub="Shows what the pattern and deep passes would find. It writes nothing." off="Runs from a terminal: A night that keeps nothing, below."><Btn sm>Try it</Btn></Ctl>
+      <Ctl title="Keep notes for good now" sub="The notes the deep pass would keep, with why." off={lv >= 2 ? "Runs from a terminal: Keep notes now, below." : TERMINAL}><Btn sm>Preview</Btn></Ctl>
+      <Ctl title="Try a night without keeping anything" sub="Shows what the pattern and deep passes would find. It writes nothing." off={lv >= 2 ? "Runs from a terminal: A night that keeps nothing, below." : TERMINAL}><Btn sm>Try it</Btn></Ctl>
       <Ctl title="Fill in from past conversations" sub="Writes diary entries from conversations you pick; you can remove them all."><Btn sm disabled={!agent} onClick={() => setFill(true)}>Choose…</Btn></Ctl>
-      <CodeRow title="Keep notes now" code="branch memory promote" />
-      <CodeRow title="Why a note scores as it does" code="branch memory promote-explain <note>" />
-      <CodeRow title="A night that keeps nothing" code="branch memory rem-harness" />
-      <CodeRow title="Fill the diary from a folder" code="branch memory rem-backfill --path <folder>" />
-      <CodeRow title="Fill the diary from conversations" code="branch memory session-backfill --agent <id>" />
+      {lv >= 2 ? (
+        <>
+          <CodeRow title="Keep notes now" code="branch memory promote" />
+          <CodeRow title="Why a note scores as it does" code="branch memory promote-explain <note>" />
+          <CodeRow title="A night that keeps nothing" code="branch memory rem-harness" />
+          <CodeRow title="Fill the diary from a folder" code="branch memory rem-backfill --path <folder>" />
+          <CodeRow title="Fill the diary from conversations" code="branch memory session-backfill --agent <id>" />
+        </>
+      ) : null}
       {fill ? <BackfillDialog engine={engine} agent={agent} onClose={() => setFill(false)} /> : null}
     </Sec>
   );
