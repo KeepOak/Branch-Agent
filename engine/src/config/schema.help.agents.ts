@@ -184,7 +184,7 @@ export const AGENT_FIELD_HELP: Record<string, string> = {
   "agents.defaults.skipNextSpeakerCheck":
     'Skips the next-speaker check. When set to false, a reply that ends without tool calls is shown to the utility model, and if the reply stated a next step it never took (or stopped mid-thought) the agent is sent "Please continue." and keeps working. Default: true.',
   "agents.defaults.contextManagement":
-    "Utility-model context management: distills oversized tool outputs and oversized parts of each new request so long sessions keep their facts in less context. Default: disabled.",
+    "Utility-model context management: distills oversized tool outputs and oversized parts of each new request, and past 150,000 tokens folds history older than the newest 65,000 tokens into one rolling summary, so long sessions keep their facts in less context. Default: disabled.",
   "agents.defaults.contextManagement.enabled":
     "Turns on context management for embedded agent runs. Default: false.",
   "agents.defaults.contextManagement.tools":

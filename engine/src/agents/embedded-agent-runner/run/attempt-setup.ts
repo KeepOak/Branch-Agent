@@ -345,6 +345,7 @@ export function installEmbeddedAttemptContextGuards(input: {
     agent: activeSession.agent,
     cfg: attempt.config,
     agentId: input.sessionAgentId,
+    sessionId: attempt.sessionId,
     liveToolResultMaxChars: toolResultMaxChars,
   });
   const removeToolResultGuard = installToolResultContextGuard({
