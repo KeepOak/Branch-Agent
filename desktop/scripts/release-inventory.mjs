@@ -73,6 +73,7 @@ async function verifyTarget(directory, proof, inventory) {
   assert.equal(manifest.version, proof.version);
   assert.equal(manifest.sourceCommit, proof.commit, "Manifest source identity mismatch");
   for (const component of ["engine", "window"]) verifyComponent(manifest.components?.[component], proof, inventory, component);
+  assert.equal(manifest.components.engine.expandedBytes, proof.smoke.expandedBytes, "Extracted archive receipt byte count mismatch");
 }
 
 function verifyRuntime(proof) {
@@ -91,6 +92,10 @@ function verifyRuntime(proof) {
   assert.equal(proof.smoke.commit, proof.commit, "Production smoke source identity mismatch");
   assert(Number.isSafeInteger(proof.smoke.elapsedMs) && proof.smoke.elapsedMs > 0 && proof.smoke.elapsedMs < 180_000, "Production smoke exceeded its total deadline");
   assert.deepEqual(proof.smoke.runtime, { version: runtime.node.version, platform: proof.platform, arch: proof.arch }, "Production smoke must use the native bundled runtime");
+  assert.equal(proof.smoke.source, "verified-component-archive", "Production smoke must exercise the extracted release archive");
+  const archive = proof.assets[`branch-engine-${proof.version}-${proof.platform}-${proof.arch}.tar.gz`];
+  assert.deepEqual(archive, { sha256: proof.smoke.archiveSha256, bytes: proof.smoke.archiveBytes }, "Production smoke archive differs from the release inventory");
+  assert(Number.isSafeInteger(proof.smoke.expandedBytes) && proof.smoke.expandedBytes > 0, "Missing extracted archive byte receipt");
 }
 
 function verifyComponent(asset, proof, inventory, component) {

@@ -8,16 +8,17 @@ import { fileURLToPath } from "node:url";
 import { createGzip } from "node:zlib";
 
 function header(name, size, mode) {
+  const originalName = name;
   let prefix = "";
   if (Buffer.byteLength(name) > 100) {
     let cut = name.lastIndexOf("/");
     while (cut >= 0 && (Buffer.byteLength(name.slice(0, cut)) > 155 || Buffer.byteLength(name.slice(cut + 1)) > 100)) {
       cut = name.lastIndexOf("/", cut - 1);
     }
-    if (cut < 0) throw new Error("Path exceeds ustar format");
+    if (cut < 0) throw new Error(`Path exceeds ustar format: ${originalName} (${Buffer.byteLength(originalName)} UTF-8 bytes)`);
     prefix = name.slice(0, cut); name = name.slice(cut + 1);
   }
-  if (Buffer.byteLength(name) > 100 || Buffer.byteLength(prefix) > 155) throw new Error("Path exceeds ustar format");
+  if (Buffer.byteLength(name) > 100 || Buffer.byteLength(prefix) > 155) throw new Error(`Path exceeds ustar format: ${originalName} (${Buffer.byteLength(originalName)} UTF-8 bytes)`);
   const block = Buffer.alloc(512);
   const field = (value, offset, width) => block.write(value, offset, width, "utf8");
   const number = (value, offset, width) => field(value.toString(8).padStart(width - 1, "0") + "\0", offset, width);

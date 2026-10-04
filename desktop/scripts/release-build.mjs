@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { bundleNode } from "./bundle-node.mjs";
 import { smokeProductionEngine } from "./production-engine-smoke.mjs";
 import { assertTrackedSourceClean } from "./release-source-freeze.mjs";
+import { extractProductionArchive, productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
 import { makeComponentRelease } from "./make-component-release.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { engineRoot, windowRoot, toolingRoot, repoRoot, gitHead, run, preparePnpm,
@@ -49,7 +50,7 @@ async function deployEngine(pnpm, scratch, identity) {
   assert.equal(metadata.commit, identity.commit, "Engine build metadata differs from source freeze");
   const deployment = join(scratch, "production-engine");
   const flags = await verifiedExceptionFlags("engine");
-  await run(pnpm, ["--filter", "branch", "deploy", "--prod", "--legacy", "--config.allow-unused-patches=true", ...flags, deployment], engineRoot);
+  await run(pnpm, productionDeployArguments(deployment, flags), engineRoot, productionDeployEnvironment(process.env));
   assert.equal(JSON.parse(await readFile(join(deployment, "dist/build-info.json"), "utf8")).commit, identity.commit);
   assert(!(await readdir(deployment)).includes("src"), "Production deployment must not be an unbuilt source checkout");
   return deployment;
@@ -95,12 +96,16 @@ export async function buildRelease(mode, output, windowDirectory) {
     assert(windowDirectory, "Components require the shared tested renderer build");
     await run(process.execPath, [join(repoRoot, "scripts/feature-batch-ci.mjs"), "all"]);
     const engine = await deployEngine(pnpm, scratch, identity);
-    await makeComponentRelease({ ...identity, sourceCommit: identity.commit, tag: `v${identity.version}`, engine, window: windowDirectory, output });
+    const manifest = await makeComponentRelease({ ...identity, sourceCommit: identity.commit, tag: `v${identity.version}`, engine, window: windowDirectory, output });
     const { nodePath, ...runtime } = await packageDesktop(scratch, output, identity);
     const source = await readFile(join(engineRoot, "packages/gateway-protocol/src/version.ts"), "utf8");
     const protocol = { min: Number(source.match(/MIN_CLIENT_PROTOCOL_VERSION = (\d+)/)?.[1]), max: Number(source.match(/PROTOCOL_VERSION = (\d+)/)?.[1]) };
     assert(Number.isInteger(protocol.min) && Number.isInteger(protocol.max), "Missing source gateway protocol levels");
-    const smoke = await smokeProductionEngine(engine, nodePath, identity.commit, protocol);
+    const { extractComponentArchive } = await import(pathToFileURL(join(desktopRoot, "dist/component-update-archive.js")));
+    const archive = join(output, `branch-engine-${identity.version}-${identity.platform}-${identity.arch}.tar.gz`);
+    const extracted = await extractProductionArchive(archive, manifest.components.engine, identity.commit, join(scratch, "archive-smoke-engine"), extractComponentArchive);
+    const smoke = { ...await smokeProductionEngine(extracted, nodePath, identity.commit, protocol), source: "verified-component-archive",
+      archiveSha256: manifest.components.engine.sha256, archiveBytes: manifest.components.engine.bytes, expandedBytes: manifest.components.engine.expandedBytes };
     await writeReleaseInventory(output, { ...identity, runtime, smoke });
   }
   assert.deepEqual(await releaseIdentity(), identity, "Source or release identity changed during the build");
