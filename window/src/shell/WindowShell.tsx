@@ -36,6 +36,9 @@ import { GetAppsDialog } from "./GetApps";
 import { CanDoDialog } from "./CanDo";
 import { Face } from "../face/Face";
 import { TalkSetup, type TalkHandle } from "../setup/TalkSetup";
+import { NewTrunkCard, type NewTrunk } from "./NewTrunkFlow";
+import { createReadyTrunk, newTrunkName } from "../places/trunk/api";
+import { readRoster } from "../places/trunk/model";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
 import { Palette } from "./Palette";
@@ -472,6 +475,20 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     }
   }, [actions, trunks.defaultId, openConversation]);
 
+  // + new › New Trunk (the artifact's newTrunkC18): make the Trunk, open a conversation with it, ask its two questions.
+  const [newTrunkFlow, setNewTrunkFlow] = useState<NewTrunk | null>(null);
+  const newTrunk = useCallback(async () => {
+    try {
+      const agentId = await createReadyTrunk(session.engine, newTrunkName(readRoster(await session.request("agents.list", {}))));
+      const key = await actions.create(agentId);
+      if (!key) return;
+      setNewTrunkFlow({ agentId, sessionKey: key });
+      openConversation(key);
+    } catch (e) {
+      notify(`Couldn't make the Trunk: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" });
+    }
+  }, [session, actions, openConversation]);
+
   // A saved conversation that no longer exists reopens the default Trunk's main conversation (§3.3 Parity adds).
   useEffect(() => {
     if (lists.loaded && openKey && s.mainKey && openKey !== s.mainKey && !lists.rows.some((r) => r.key === openKey)) {
@@ -844,6 +861,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
               <DockQuestion record={waitingQuestion} trunkName={trunkName(openRow?.agentId)} onResolve={questions.resolve} />
             ) : setupTalk ? (
               <TalkSetup handle={setupTalk} />
+            ) : newTrunkFlow && newTrunkFlow.sessionKey === openKey ? (
+              <NewTrunkCard engine={session.engine} flow={newTrunkFlow} onDone={(name) => { setNewTrunkFlow(null); notify(`All set. I’m “${name}” for now; change my name, colour and face from the ⋯ menu. What’s the first job?`); }} />
             ) : ready && !s.history.length && !s.pendingUser && !s.liveRunId ? (
               <WhereChips key={s.sessionKey} engine={session.engine} row={openRow} trunkName={trunkName(openRow?.agentId)} advanced={level !== "regular"}
                 projectName={projects.projects.find((x) => x.id === openRow?.projectId)?.name ?? null} onOpenConversation={openConversation} />
@@ -970,7 +989,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           openConversation(key);
         }}
         onPlace={openPlace}
-        onNew={(e) => showMenu(e, "new", newMenuItems({ newConversation: () => void startNew(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
+        onNew={(e) => showMenu(e, "new", newMenuItems({ newConversation: () => void startNew(), newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
         onMenu={rowMenu}
         onPin={(r) => void actions.pin(r)}
         onArchive={(r) => void (r.archived ? actions.restore(r) : actions.archive(r))}
@@ -1126,6 +1145,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             trunks: trunks.list,
             trunkName,
             newConversation: () => void startNew(),
+            newTrunk: () => void newTrunk(),
             toggleTheme: () => setTheme(toggleTheme(theme)),
             focusMode: () => setLayout({ focus: true }),
             shortcuts: () => setOverlay({ kind: "shortcuts" }),
