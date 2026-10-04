@@ -1,9 +1,9 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { engineRoot, run, windowRoot } from './feature-batch-ci-runtime.mjs';
-import { engineStrictFiles, windowStrictFiles } from './feature-batch-ci-targets.mjs';
+import { engineRoot, run } from './feature-batch-ci-runtime.mjs';
+import { engineStrictFiles } from './feature-batch-ci-targets.mjs';
 
-// Preserve engine project strict options while bounding roots to owned sources and authored ambient declarations.
+// Throwaway probe: measure engine strict tsgo peak RSS and wall per checker setting on hosted runners.
 export async function runTargetedStrictChecks(scratch) {
   const engineConfig = path.join(scratch, 'engine-owned-strict.json');
   await fs.writeFile(engineConfig, JSON.stringify({
@@ -12,12 +12,23 @@ export async function runTargetedStrictChecks(scratch) {
       typeRoots: [path.join(engineRoot, 'node_modules/@types')], rootDir: engineRoot },
     files: engineStrictFiles.map(file => path.join(engineRoot, file)), include: [], exclude: [],
   }, null, 2) + '\n');
-  await run(process.execPath, [path.join(engineRoot, 'node_modules/typescript/bin/tsc'),
-    '--project', engineConfig, '--extendedDiagnostics'], engineRoot);
-  const common = ['--noEmit', '--strict', '--skipLibCheck', '--target', 'es2023', '--esModuleInterop'];
-  await run(process.execPath, [path.join(windowRoot, 'node_modules/typescript/bin/tsc'),
-    '--ignoreConfig', ...common, '--module', 'esnext', '--moduleResolution', 'bundler', '--jsx', 'react-jsx',
-    '--allowImportingTsExtensions', '--allowSyntheticDefaultImports', '--types', 'vite/client',
-    '--lib', 'ES2023,DOM',
-    ...windowStrictFiles], windowRoot);
+  const tsc = path.join(engineRoot, 'node_modules/typescript/bin/tsc');
+  const time = process.platform === 'darwin' ? ['-l'] : ['-v'];
+  const swap = process.platform === 'darwin' ? ['sysctl', ['vm.swapusage', 'hw.memsize', 'hw.ncpu']] : ['free', ['-m']];
+  const probes = [
+    ['upstream-throttle', ['--singleThreaded', '--checkers', '1'], { GOMAXPROCS: '2', GOGC: '30', GOMEMLIMIT: '3GiB' }],
+    ['checkers-1', ['--checkers', '1'], {}],
+    ['checkers-2', ['--checkers', '2'], {}],
+  ];
+  for (const [name, flags, extra] of probes) {
+    console.log(`::group::probe ${name}`);
+    await run(swap[0], swap[1]);
+    const started = Date.now();
+    await run('/usr/bin/time', [...time, process.execPath, tsc, '--project', engineConfig, '--extendedDiagnostics', ...flags],
+      engineRoot, { ...process.env, ...extra });
+    console.log(`PROBE ${name} wall=${((Date.now() - started) / 1000).toFixed(1)}s`);
+    await run(swap[0], swap[1]);
+    console.log('::endgroup::');
+  }
+  throw new Error('probe complete');
 }

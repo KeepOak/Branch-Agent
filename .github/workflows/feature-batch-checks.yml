@@ -27,14 +27,15 @@ concurrency:
 
 jobs:
   feature-batch:
-    name: Named feature tests on ${{ matrix.os }}
+    name: Probe ${{ matrix.sample }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       max-parallel: 3
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [macos-latest]
+        sample: [1, 2]
     env:
       CI: 'true'
     steps:
