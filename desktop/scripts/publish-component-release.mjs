@@ -53,8 +53,8 @@ export async function publishRelease(directory, commit, version, request = gh) {
   for (const name of names) assert.deepEqual(await fileDigest(join(downloaded, name)), await fileDigest(join(directory, name)), `GitHub upload readback differs: ${name}`);
   await assertCurrentMain(commit, request);
   await request(["release", "edit", tag, "--repo", repository, "--draft=false", "--latest"]);
-  const release = JSON.parse(await request(["release", "view", tag, "--repo", repository, "--json", "isDraft,isPrerelease,tagName,targetCommitish,url"]));
-  assert.equal(release.isDraft, false); assert.equal(release.isPrerelease, false); assert.equal(release.targetCommitish, commit);
+  const release = JSON.parse(await request(["api", `repos/${repository}/releases/tags/${tag}`]));
+  assert.equal(release.draft, false); assert.equal(release.prerelease, false); assert.equal(release.target_commitish, commit);
   return release;
 }
 

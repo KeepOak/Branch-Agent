@@ -108,14 +108,14 @@ function simulatedGitHub(options = {}) {
     calls.push(args);
     if (args[0] === "api" && args[1].endsWith("heads/main")) return ++mainReads === 2 && options.advance ? "f".repeat(40) : commit;
     if (args[0] === "api" && args[1].endsWith("/releases")) return JSON.stringify([options.existing ? [{ tag_name: `v${version}` }] : []]);
-    if (args[0] === "api" && args[1].includes("/tags/")) return JSON.stringify({ object: { type: "commit", sha: options.tagSha ?? commit } });
+    if (args[0] === "api" && args[1].includes("/releases/tags/")) return JSON.stringify({ draft: false, prerelease: false, target_commitish: commit, tag_name: `v${version}` });
+    if (args[0] === "api" && args[1].includes("/git/ref/tags/")) return JSON.stringify({ object: { type: "commit", sha: options.tagSha ?? commit } });
     if (args[0] === "release" && args[1] === "create") uploaded = args.slice(3, args.indexOf("--repo"));
     if (args[0] === "release" && args[1] === "download") {
       const directory = args[args.indexOf("--dir") + 1];
       for (const file of uploaded) await cp(file, join(directory, basename(file)));
       if (options.corrupt) await writeFile(join(directory, basename(uploaded[0])), "changed by remote");
     }
-    if (args[0] === "release" && args[1] === "view") return JSON.stringify({ isDraft: false, isPrerelease: false, targetCommitish: commit, tagName: `v${version}` });
     return "";
   };
   return { calls, request };
