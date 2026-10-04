@@ -58,6 +58,7 @@ export async function finalizeCodexAttempt(
   const { runtime, attemptTools, activeTranscriptTarget, hookContext } = context;
   const { hookRunner } = context;
   const { connection, preparedAuthBinding } = runtime;
+  const admittedNativeAccountHome = connection.options.nativeAccountHome;
   const { effectiveRuntimeProviderId, effectiveRuntimeModelId } = runtime;
   const {
     params,
@@ -478,7 +479,7 @@ export async function finalizeCodexAttempt(
               model: resourceState.thread.model,
               modelProvider: resourceState.thread.modelProvider,
               authProfileId: startupAuthProfileId,
-              nativeAccountHome: bindingStore.read(bindingIdentity)?.nativeAccountHome,
+              nativeAccountHome: admittedNativeAccountHome,
               mirroredMessages: mirrorOutcome.mirroredMessages,
               settledMessages: result.messagesSnapshot,
               turnId: activeTurnId,

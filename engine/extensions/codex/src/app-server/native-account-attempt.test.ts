@@ -102,6 +102,22 @@ describe("native account attempt integration", () => {
     });
     expect(store.read(identity)?.nativeAccountHome).toBe(two);
   });
+  it("retains admitted account authority after recovery clears its persisted binding", async () => {
+    const bindingStore = createCodexTestBindingStore();
+    const identity = sessionBindingIdentity(params);
+    await bindingStore.mutate(identity, {
+      kind: "set",
+      binding: { threadId: "owned-thread", cwd: "fixture", nativeAccountHome: two },
+    });
+    await runWithCodexNativeAccount(params, { pluginConfig, bindingStore }, async (options) => {
+      await options.bindingStore.mutate(identity, { kind: "clear", threadId: "owned-thread" });
+      expect(options.bindingStore.read(identity)).toBeUndefined();
+      expect(options.nativeAccountHome).toBe(two);
+      expect(options.pluginConfig).toMatchObject({ appServer: { codexHome: two } });
+    });
+    expect(probe).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+  });
   it("refuses a thread acquired concurrently by another account", async () => {
     const store = createCodexTestBindingStore();
     const identity = sessionBindingIdentity(params);

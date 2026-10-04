@@ -10,6 +10,8 @@ export type CodexRunAttemptOptions = {
   bindingStore: CodexAppServerBindingStore;
   runtime?: PluginRuntime;
   pluginConfig?: unknown;
+  /** Captured at native account admission; survives recovery clearing persisted bindings. */
+  readonly nativeAccountHome?: string;
   /** Private app-server request identity; public attempt identity remains params.modelId. */
   runtimeModelId?: string;
   startupTimeoutFloorMs?: number;

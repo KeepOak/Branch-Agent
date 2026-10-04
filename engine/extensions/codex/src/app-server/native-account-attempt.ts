@@ -113,6 +113,7 @@ export async function runWithCodexNativeAccount<T>(
       return run({
         ...options,
         pluginConfig,
+        nativeAccountHome: home,
         bindingStore: nativeAccountBindingStore(options.bindingStore, home),
       });
     },
