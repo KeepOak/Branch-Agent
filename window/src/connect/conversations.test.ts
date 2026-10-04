@@ -1,5 +1,70 @@
-import { describe, expect, it } from "vitest";
-import { projectConversation } from "./conversations";
+import { describe, expect, it, vi } from "vitest";
+import { ConversationList, projectConversation } from "./conversations";
+import { conversationActions } from "../shell/conversation-actions";
+
+function requestFixture(impl: (method: string, params?: unknown) => Promise<unknown>) {
+  const request = vi.fn(impl);
+  return request as typeof request & Parameters<typeof conversationActions>[0];
+}
+
+const CONTACT = { key: "agent:fern:home", sessionId: "existing-session", execCwd: "/owned/project", model: "p/kept", hasActiveRun: true };
+
+describe("exact selected contacts", () => {
+  it("uses the keyed read while another page read is pending, without mutating the existing contact", async () => {
+    let finish!: (value: unknown) => void;
+    const request = requestFixture((method: string) => method === "sessions.list"
+      ? new Promise((resolve) => { finish = resolve; }) : Promise.resolve(method === "agents.list"
+        ? { defaultId: "fern", mainKey: "home" } : { session: CONTACT }));
+    const list = new ConversationList(request, null), pending = list.refresh();
+    const actions = conversationActions(request, list, () => null);
+    expect(await actions.create()).toBe(CONTACT.key);
+    expect(request.mock.calls.some(([method]) => method === "sessions.create")).toBe(false);
+    finish({ sessions: [] }); await pending;
+    expect(list.getSnapshot().rows.find((row) => row.key === CONTACT.key)).toMatchObject({ sessionId: "existing-session", folder: "/owned/project", working: true });
+  });
+
+  it("retains an exact described contact outside the 200-row sidebar page through subsequent refreshes", async () => {
+    const page = Array.from({ length: 200 }, (_, i) => ({ key: `agent:fern:item-${i}`, sessionId: `s${i}` }));
+    const request = requestFixture((method: string) => Promise.resolve(method === "sessions.list" ? { sessions: page }
+      : method === "agents.list" ? { defaultId: "fern", mainKey: "home" } : { session: CONTACT }));
+    const list = new ConversationList(request, null);
+    await list.refresh();
+    expect(await conversationActions(request, list, () => null).create()).toBe(CONTACT.key);
+    await list.refresh();
+    expect(list.getSnapshot().rows).toHaveLength(201);
+    expect(list.getSnapshot().rows.find((row) => row.key === CONTACT.key)?.sessionId).toBe(CONTACT.sessionId);
+    expect(request.mock.calls.some(([method]) => method === "sessions.create")).toBe(false);
+    expect(request.mock.calls.filter(([method]) => method === "sessions.list").every(([, params]) => (params as { limit: number }).limit === 200)).toBe(true);
+  });
+
+  it("awaits both the in-flight page and its coalesced trailing refresh", async () => {
+    const completions: Array<(value: unknown) => void> = [];
+    const request = requestFixture(() => new Promise((resolve) => { completions.push(resolve); }));
+    const list = new ConversationList(request, null);
+    let firstDone = false, secondDone = false;
+    const first = list.refresh().then(() => { firstDone = true; });
+    await Promise.resolve();
+    const second = list.refresh().then(() => { secondDone = true; });
+    completions[0]({ sessions: [] });
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    expect(firstDone).toBe(false); expect(secondDone).toBe(false);
+    expect(completions).toHaveLength(2);
+    completions[1]({ sessions: [CONTACT] });
+    await Promise.all([first, second]);
+    expect(firstDone).toBe(true); expect(secondDone).toBe(true);
+    expect(list.getSnapshot().rows[0].sessionId).toBe(CONTACT.sessionId);
+  });
+
+  it("removes the retained projection when a subsequent exact read reports the contact missing", async () => {
+    let exists = true;
+    const request = requestFixture((method: string) => Promise.resolve(method === "sessions.list"
+      ? { sessions: [] } : { session: exists ? CONTACT : null }));
+    const list = new ConversationList(request, null);
+    await list.selectContact(CONTACT.key, "fern"); exists = false;
+    await list.refresh();
+    expect(list.getSnapshot().rows.some((row) => row.key === CONTACT.key)).toBe(false);
+  });
+});
 
 describe("projectConversation", () => {
   it("reads a sessions.list row", () => {

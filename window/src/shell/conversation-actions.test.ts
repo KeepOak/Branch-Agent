@@ -12,6 +12,7 @@ describe("contact navigation", () => {
     const contacts = new Map<string, { key: string; sessionId: string }>();
     const request = fakeRequest((method: string, params?: unknown) => {
       if (method === "agents.list") return Promise.resolve({ defaultId: "fern", mainKey: "home" });
+      if (method === "sessions.describe") return Promise.resolve({ session: contacts.get((params as { key: string }).key) ?? null });
       if (method === "sessions.create") {
         const { key } = params as { key: string };
         if (!contacts.has(key)) contacts.set(key, { key, sessionId: `session-${key}` });
@@ -27,31 +28,32 @@ describe("contact navigation", () => {
     expect(request.mock.calls.filter(([method]) => method === "sessions.create").map(([, params]) => params)).toEqual([
       { key: "agent:fern:home", agentId: "fern" }, { key: "agent:oak:home", agentId: "oak" },
     ]);
-    expect(request.mock.calls.filter(([method]) => method === "sessions.list")).toHaveLength(5);
+    expect(request.mock.calls.filter(([method]) => method === "sessions.list")).toHaveLength(2);
   });
 
   it("does not open an agent before the gateway roster has adopted it", async () => {
     const request = fakeRequest((method: string) => method === "agents.list"
       ? Promise.resolve({ defaultId: "fern", mainKey: "home", agents: [{ id: "fern" }] })
-      : method === "sessions.list" ? Promise.resolve({ sessions: [] })
+      : method === "sessions.describe" ? Promise.resolve({ session: null })
       : Promise.reject(new Error('Unknown agent id "new-trunk"')));
     const actions = conversationActions(request, new ConversationList(request, null), () => null);
     expect(await actions.create("new-trunk")).toBeNull();
-    expect(request.mock.calls.map(([method]) => method)).toEqual(["agents.list", "sessions.list", "sessions.create"]);
+    expect(request.mock.calls.map(([method]) => method)).toEqual(["agents.list", "sessions.describe", "sessions.create"]);
   });
 
   it("does not navigate to a different key returned by the engine", async () => {
     const request = fakeRequest((method: string) => Promise.resolve(method === "agents.list"
-      ? { defaultId: "fern", mainKey: "home" } : method === "sessions.list" ? { sessions: [] } : { key: "agent:fern:random" }));
+      ? { defaultId: "fern", mainKey: "home" } : method === "sessions.describe" ? { session: null } : { key: "agent:fern:random" }));
     const actions = conversationActions(request, new ConversationList(request, null), () => null);
     expect(await actions.create()).toBeNull();
-    expect(request.mock.calls.filter(([method]) => method === "sessions.list")).toHaveLength(1);
+    expect(request.mock.calls.filter(([method]) => method === "sessions.list")).toHaveLength(0);
   });
 
-  it("does not hand over a contact missing from the refreshed list and retries the same saved key", async () => {
+  it("does not hand over a contact missing from the exact read and retries the same saved key", async () => {
     let visible = false;
     const request = fakeRequest((method: string) => Promise.resolve(method === "agents.list"
-      ? { defaultId: "fern", mainKey: "home" } : method === "sessions.create"
+      ? { defaultId: "fern", mainKey: "home" } : method === "sessions.describe"
+        ? { session: visible ? { key: "agent:fern:home", sessionId: "saved-contact" } : null } : method === "sessions.create"
         ? { key: "agent:fern:home" } : { sessions: visible ? [{ key: "agent:fern:home" }] : [] }));
     const actions = conversationActions(request, new ConversationList(request, null), () => null);
     expect(await actions.create()).toBeNull(); visible = true;
@@ -64,20 +66,20 @@ describe("contact navigation", () => {
   it("reopens an existing active contact without resubmitting creation or clearing its binding", async () => {
     const contact = { key: "agent:fern:home", sessionId: "live-session", execCwd: "/owned/project", model: "p/live", status: "running" };
     const request = fakeRequest((method: string) => Promise.resolve(method === "agents.list"
-      ? { defaultId: "fern", mainKey: "home" } : { sessions: [contact] }));
+      ? { defaultId: "fern", mainKey: "home" } : { session: contact }));
     const actions = conversationActions(request, new ConversationList(request, null), () => contact.key);
     expect(await actions.create()).toBe(contact.key);
     expect(await actions.create("fern")).toBe(contact.key);
-    expect(request.mock.calls.every(([method]) => method === "agents.list" || method === "sessions.list")).toBe(true);
+    expect(request.mock.calls.every(([method]) => method === "agents.list" || method === "sessions.describe")).toBe(true);
     expect(contact).toEqual({ key: "agent:fern:home", sessionId: "live-session", execCwd: "/owned/project", model: "p/live", status: "running" });
   });
 
-  it("does not adopt or mutate a contact when its authoritative list read fails", async () => {
+  it("does not adopt or mutate a contact when its authoritative keyed read fails", async () => {
     const request = fakeRequest((method: string) => method === "agents.list"
       ? Promise.resolve({ defaultId: "fern", mainKey: "home" }) : Promise.reject(new Error("List unavailable")));
     const actions = conversationActions(request, new ConversationList(request, null), () => null);
     expect(await actions.create()).toBeNull();
-    expect(request.mock.calls.map(([method]) => method)).toEqual(["agents.list", "sessions.list"]);
+    expect(request.mock.calls.map(([method]) => method)).toEqual(["agents.list", "sessions.describe"]);
   });
 });
 

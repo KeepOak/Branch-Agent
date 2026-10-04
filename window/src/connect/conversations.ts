@@ -166,8 +166,9 @@ export class ConversationList {
   private snapshot: ConversationsSnapshot = { rows: [], loaded: false, error: null };
   private readonly listeners = new Set<() => void>();
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private inFlight = false;
+  private inFlight: Promise<void> | null = null;
   private again = false;
+  private selectedContact: { key: string; agentId: string } | null = null;
 
   private readonly request: Request;
   private mainKey: string | null;
@@ -195,7 +196,7 @@ export class ConversationList {
   async start(): Promise<void> {
     try {
       const result = rec(await this.request("sessions.subscribe", LIST_PARAMS));
-      this.apply(result.list);
+      await this.apply(result.list);
     } catch (error) {
       this.set({ loaded: true, error: error instanceof Error ? error.message : String(error) });
     }
@@ -227,25 +228,52 @@ export class ConversationList {
   async refresh(): Promise<void> {
     if (this.inFlight) {
       this.again = true;
-      return;
+      return this.inFlight;
     }
-    this.inFlight = true;
-    try {
-      this.apply(await this.request("sessions.list", LIST_PARAMS));
-    } catch (error) {
-      this.set({ error: error instanceof Error ? error.message : String(error) });
-    } finally {
-      this.inFlight = false;
-      if (this.again) {
-        this.again = false;
-        void this.refresh();
-      }
-    }
+    const read = async () => {
+      // Assign the shared promise before even a synchronously refused request can settle it.
+      await Promise.resolve();
+      try {
+        do {
+          this.again = false;
+          try { await this.apply(await this.request("sessions.list", LIST_PARAMS)); }
+          catch (error) { this.set({ error: error instanceof Error ? error.message : String(error) }); }
+        } while (this.again);
+      } finally { this.inFlight = null; }
+    };
+    this.inFlight = read();
+    return this.inFlight;
   }
 
-  private apply(list: unknown): void {
+  /** An exact authorized read is the absence authority; the paged sidebar is only a projection. */
+  private async describeContact(key: string, agentId: string): Promise<Conversation | null> {
+    const result = rec(await this.request("sessions.describe", { key, agentId, includeDerivedTitles: true, includeLastMessage: true }));
+    if (!Object.hasOwn(result, "session")) throw new Error("The engine did not describe the contact conversation");
+    if (result.session === null) return null;
+    const row = projectConversation(result.session, this.mainKey);
+    if (row.key !== key || row.agentId !== agentId || !row.sessionId) throw new Error("The engine returned a different or incomplete contact conversation");
+    return row;
+  }
+
+  /** Retains one actual described contact, including one outside the first sidebar page. */
+  async selectContact(key: string, agentId: string): Promise<Conversation | null> {
+    const row = await this.describeContact(key, agentId);
+    if (!row) return null;
+    this.selectedContact = { key, agentId };
+    this.set({ rows: [...this.snapshot.rows.filter((item) => item.key !== key), row], loaded: true, error: null });
+    return row;
+  }
+
+  private async apply(list: unknown): Promise<void> {
     const sessions = rec(list).sessions;
     const rows = Array.isArray(sessions) ? sessions.map((s) => projectConversation(s, this.mainKey)) : [];
+    const contact = this.selectedContact;
+    if (contact && !rows.some((row) => row.key === contact.key)) {
+      const selected = await this.describeContact(contact.key, contact.agentId);
+      if (this.selectedContact !== contact) { this.again = true; return; }
+      if (selected) rows.push(selected);
+      else this.selectedContact = null;
+    }
     this.set({ rows: rows.filter((r) => r.key), loaded: true, error: null });
   }
 

@@ -153,16 +153,13 @@ export function conversationActions(request: Request, list: ConversationList, op
         if (!id) throw new Error("Create a Trunk before starting a conversation");
         const main = typeof roster.mainKey === "string" && roster.mainKey ? roster.mainKey : "main";
         const key = `agent:${id}:${main}`;
-        await list.refresh();
-        const refreshed = list.getSnapshot();
-        if (refreshed.error) throw new Error(refreshed.error);
         // Reopening an existing contact must not reset its model, computer binding or active work.
-        if (refreshed.rows.some((row) => row.key === key)) return key;
+        if (await list.selectContact(key, id)) return key;
         const adopted = await request<{ key?: unknown }>("sessions.create", { key, agentId: id });
         if (adopted.key !== key) throw new Error("The engine did not confirm this Trunk's contact conversation");
         await list.refresh();
-        if (!list.getSnapshot().rows.some((row) => row.key === key)) {
-          throw new Error("The contact conversation is saved, but its list could not be refreshed. Try opening it again");
+        if (!await list.selectContact(key, id)) {
+          throw new Error("The contact conversation is saved, but the engine has not made it available. Try opening it again");
         }
         return key;
       } catch (e) {
