@@ -9,7 +9,8 @@ import { portIsFree, readToken, startGateway, stopGateway, waitForReady } from "
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowsWindowResident } from "./resident-window";
-import { confirmComponentUpdate, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
+import { confirmComponentUpdate, readComponentUpdateStatus, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
+import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 const READY_TIMEOUT_MS = 180_000;
@@ -39,6 +40,19 @@ let engineUpdateReady = false;
 let stopEngineWatch: (() => void) | undefined;
 let stopComponentWatch: (() => void) | undefined;
 let stopWindowWatch: (() => void) | undefined;
+let componentsReady = false;
+const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
+
+/** Staging never invokes the restart IPC or the gateway's generic updater. */
+async function stageComponentUpdate(): Promise<boolean> {
+  if (!componentsReady) throw new Error("The desktop is still starting; check again when the engine is ready");
+  const staged = await refreshComponentUpdate(cfg);
+  if ((await readComponentUpdateStatus(cfg)).pendingVersion) {
+    engineUpdateReady = true;
+    win?.webContents.send("branch-desktop:engine-update", "ready");
+  }
+  return staged;
+}
 
 const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(
   "<!doctype html><title>Branch Agent</title><body style=\"font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f8;color:#333\">Starting Branch Agent…</body>",
@@ -90,7 +104,8 @@ async function start(): Promise<void> {
     const served = e.sender.getURL().startsWith(windowUrl());
     e.returnValue = served ? { gatewayUrl: `ws://127.0.0.1:${cfg.gatewayPort}`, gatewayToken: token } : null;
   });
-  ipcMain.on("branch-desktop:restart-engine", () => void restartEngine());
+  ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, win?.webContents, windowUrl())) void restartEngine(); });
+  registerComponentUpdateIpc(ipcMain, () => win?.webContents, windowUrl(), componentUpdates);
   win = createWindow();
   await win.loadURL(STARTING);
   log(`starting page shown after ${Date.now() - launchStarted} ms`);
@@ -110,6 +125,7 @@ async function start(): Promise<void> {
     log("Reloaded retained window after component rollback");
   }
   watchUpdates(win);
+  componentsReady = true;
   stopComponentWatch = watchComponentUpdates(cfg, log);
 }
 
@@ -151,8 +167,12 @@ async function bootSelectedEngine(): Promise<boolean> {
 
 function watchUpdates(w: BrowserWindow): void {
   stopWindowWatch = watchWindowBuild(cfg.windowDir, () => {
-    log("new window build found; reloading the window");
-    if (w.webContents.getURL().startsWith(windowUrl())) w.webContents.reload();
+    void readComponentUpdateStatus(cfg).then(({ publicationInProgress }) => {
+      // A staged engine/window pair activates together through the owned restart flow.
+      if (publicationInProgress) return;
+      log("new window build found; reloading the window");
+      if (w.webContents.getURL().startsWith(windowUrl())) w.webContents.reload();
+    }).catch(error => log(`Window update status: ${String(error)}`));
   });
   // A reload re-runs the preload; show the bar again if an engine update is still waiting.
   w.webContents.on("did-finish-load", () => {

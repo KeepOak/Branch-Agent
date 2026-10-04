@@ -11,6 +11,7 @@ import type { StatusItem } from "./StatusBar";
 import { GatewayPopover, RoomPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
 import type { Limits, UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
+import { stageWindowUpdate } from "../connect/desktop-component-updates";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -111,7 +112,7 @@ export async function tidy(ctx: Pick<StatusContext, "session" | "list">, row: Co
 
 async function install(ctx: StatusContext): Promise<void> {
   try {
-    const result = rec(await ctx.session.request("update.run", {}));
+    const result = rec(await stageWindowUpdate(ctx.session.engine));
     if (result.ok === false) {
       notify(`Couldn't install the update: ${String(rec(result.result).reason ?? result.reason ?? "the engine refused")}`, { tone: "bad" });
     }
