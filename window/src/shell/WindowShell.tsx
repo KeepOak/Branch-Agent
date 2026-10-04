@@ -51,6 +51,7 @@ import { copyMarkdown, copyText } from "./row-actions";
 import { readLevel } from "../places-nav/SettingsFrame";
 import type { Above } from "./Popover";
 import { ringReading } from "./status-data";
+import { desktopControls } from "../connect/desktop-controls";
 import { useGatewayFacts, useLimits, useUpdate } from "./use-status";
 import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
@@ -382,6 +383,16 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     };
     window.addEventListener("branch:navigate-settings", navigate);
     return () => window.removeEventListener("branch:navigate-settings", navigate);
+  }, [openSettings]);
+  // The Branch app's tray: its usage ring shows the same reading as the ring bottom right, and a click opens Usage.
+  const trayLeft = ringReading(limits)?.left ?? null;
+  useEffect(() => {
+    const found = desktopControls();
+    if ("bridge" in found) found.bridge.setTrayUsage(trayLeft);
+  }, [trayLeft]);
+  useEffect(() => {
+    const found = desktopControls();
+    return "bridge" in found ? found.bridge.onOpenUsage(() => openSettings("usage")) : undefined;
   }, [openSettings]);
   useEffect(() => {
     // "Watch its screen" from anywhere (Settings › Computer & browser): the open conversation's stage on that computer.

@@ -24,7 +24,7 @@ describe("Get the apps", () => {
   });
 
   it("asks the Branch app to open each app's download page", async () => {
-    const openDownload = vi.fn(async () => undefined);
+    const openDownload = vi.fn(async (_id: string) => undefined);
     (window as { branchDesktop?: unknown }).branchDesktop = { controls: { openDownload } };
     await render();
     for (const b of getIt()) { expect(b.disabled).toBe(false); await act(async () => b.click()); }

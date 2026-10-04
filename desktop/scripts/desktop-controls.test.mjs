@@ -136,3 +136,27 @@ test("user Path edits add once and remove case-insensitively", () => {
   assert.equal(pathHas("C:\\A;C:\\BIN\\", "C:\\Bin"), true);
   assert.equal(pathHas("C:\\A", "C:\\Bin"), false);
 });
+
+test("close policy and tray click follow the controls (mocked Electron, no window or tray)", async () => {
+  const { createRequire } = await import("node:module");
+  const { EventEmitter } = await import("node:events");
+  const require = createRequire(import.meta.url), Module = require("node:module"), originalLoad = Module._load;
+  let tray;
+  class Tray extends EventEmitter { constructor() { super(); tray = this; } setToolTip() {} setContextMenu() {} destroy() {} }
+  Module._load = function (request, ...rest) {
+    return request === "electron" ? { Tray, Menu: { buildFromTemplate: v => v } } : originalLoad.call(this, request, ...rest);
+  };
+  try {
+    const { keepWindowsWindowResident } = require(join(dist, "resident-window.js"));
+    const app = new EventEmitter(), win = new EventEmitter();
+    Object.assign(win, { hidden: false, hide() { this.hidden = true; }, show() { this.hidden = false; }, focus() {}, isMinimized: () => false, restore() {} });
+    let keep = true, clicks = 0;
+    keepWindowsWindowResident(app, win, "icon.ico", { platform: "win32", keepRunning: () => keep, onTrayClick: () => clicks++ });
+    const close = () => { const e = { prevented: false, preventDefault() { this.prevented = true; } }; win.emit("close", e); return e.prevented; };
+    assert.equal(close(), true, "on: closing hides to the tray");
+    keep = false;
+    assert.equal(close(), false, "off: closing ends Branch");
+    tray.emit("click");
+    assert.equal(clicks, 1);
+  } finally { Module._load = originalLoad; }
+});
