@@ -13,6 +13,30 @@ export { AVATAR_MAX_BYTES } from "./avatar-limits.js";
 // the smaller browser-safe extension set below.
 const LOCAL_AVATAR_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
 
+// Product artwork identifiers used by the Branch window's character picker.
+// These are not URLs or file paths and must never enter file/network resolvers.
+const BRANCH_CHARACTER_AVATARS = new Set(
+  [
+    "bolt",
+    "ember",
+    "juniper",
+    "kite",
+    "lumen",
+    "morel",
+    "pebble",
+    "tide",
+    "tock",
+    "wisp",
+    "nib",
+    "skein",
+    "sorrel",
+  ].map((character) => `branch:${character}`),
+);
+
+export function isBranchCharacterAvatar(value: string): boolean {
+  return BRANCH_CHARACTER_AVATARS.has(value);
+}
+
 /** MIME hints for known image extensions, including formats not accepted for local serving. */
 const AVATAR_MIME_BY_EXT: Record<string, string> = {
   ".png": "image/png",

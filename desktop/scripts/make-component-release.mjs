@@ -39,7 +39,9 @@ async function files(root, folder = root, ancestors = new Set()) {
     const target = await realpath(file);
     if (!target.startsWith(root + sep)) throw new Error("Component symlink leaves deployment root");
     const info = await stat(file);
-    if (info.isDirectory()) result.push(...await files(root, file, seen));
+    if (info.isDirectory()) {
+      for (const entry of await files(root, file, seen)) result.push(entry);
+    }
     else if (info.isFile()) result.push({ file, name: relative(root, file).split(sep).join("/"), size: info.size, mode: info.mode });
     else throw new Error("Unsupported component file type");
   }
