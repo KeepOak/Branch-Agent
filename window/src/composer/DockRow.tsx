@@ -108,7 +108,7 @@ export function DockRow(p: Props) {
       ) : null}
       {open === "queue" ? <QueuePop {...p} anchor={refs.queue} onClose={close} /> : null}
       {open === "bg" ? <JobsPop {...p} anchor={refs.bg} onClose={close} /> : null}
-      {open === "goal" && p.goal ? <GoalPop goal={p.goal} onGoal={p.onGoal} anchor={refs.goal} onClose={close} /> : null}
+      {open === "goal" && p.goal ? <GoalPop goal={p.goal} offline={p.offline} onGoal={p.onGoal} anchor={refs.goal} onClose={close} /> : null}
       {open === "steer" ? <SteerPop trunkName={p.trunkName} onSteer={p.onSteer} anchor={refs.steer} onClose={close} /> : null}
     </div>
   );
@@ -218,7 +218,7 @@ function JobsPop(p: Props & PopBase) {
   );
 }
 
-function GoalPop({ goal, onGoal, anchor, onClose }: { goal: Goal; onGoal: Props["onGoal"] } & PopBase) {
+function GoalPop({ goal, offline, onGoal, anchor, onClose }: { goal: Goal; offline: boolean; onGoal: Props["onGoal"] } & PopBase) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(goal.objective);
   return (
@@ -228,7 +228,7 @@ function GoalPop({ goal, onGoal, anchor, onClose }: { goal: Goal; onGoal: Props[
           <textarea className="c-field" aria-label="Goal" value={text} onChange={(e) => setText(e.target.value)} />
           <div className="c-btns">
             <button type="button" className="btn sm ghost" onClick={() => setEditing(false)}>Cancel</button>
-            <button type="button" className="btn sm pri" onClick={() => { onGoal("edit", text); setEditing(false); }}>Save goal</button>
+            <button type="button" className="btn sm pri" disabled={offline || !text.trim()} onClick={() => { onGoal("edit", text.trim()); setEditing(false); }}>Save goal</button>
           </div>
         </>
       ) : (
@@ -236,16 +236,17 @@ function GoalPop({ goal, onGoal, anchor, onClose }: { goal: Goal; onGoal: Props[
           <p className="c-goal-t">{goal.objective}</p>
           <p className="c-pp">{GOAL_STATE[goal.status] ?? goal.status}{goal.status === "blocked" && goal.note ? `: ${goal.note}` : ""}</p>
           <div className="c-btns">
-            <button type="button" className="btn sm" onClick={() => setEditing(true)}>Edit</button>
+            <button type="button" className="btn sm" disabled={offline} onClick={() => setEditing(true)}>Edit</button>
             {goal.status === "paused" ? (
-              <button type="button" className="btn sm" onClick={() => onGoal("resume")}>Resume</button>
+              <button type="button" className="btn sm" disabled={offline} onClick={() => onGoal("resume")}>Resume</button>
             ) : (
-              <button type="button" className="btn sm" onClick={() => onGoal("pause")}>Pause</button>
+              <button type="button" className="btn sm" disabled={offline} onClick={() => onGoal("pause")}>Pause</button>
             )}
-            <button type="button" className="btn sm bad" onClick={() => onGoal("clear")}>Clear</button>
+            <button type="button" className="btn sm bad" disabled={offline} onClick={() => onGoal("clear")}>Clear</button>
           </div>
         </>
       )}
+      {offline ? <p className="c-pp" role="status">Offline. Goal changes wait until Branch is back.</p> : null}
     </Popover>
   );
 }

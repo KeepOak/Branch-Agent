@@ -325,7 +325,7 @@ export function Composer(props: Props) {
 
   const goal = readGoal(row);
   const goalAction = async (action: "pause" | "resume" | "clear" | "edit", text?: string) => {
-    if (!engine?.sessionKey || !goal) return;
+    if (!engine?.sessionKey || !goal || props.offline) return;
     const base = { sessionKey: engine.sessionKey, goalId: goal.id, operationId: crypto.randomUUID(), issuedAtMs: Date.now() };
     try {
       if (action === "clear") await engine.request("sessions.goal.clear", base);
