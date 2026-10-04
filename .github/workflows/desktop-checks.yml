@@ -66,4 +66,4 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=256'
         run: node --experimental-test-module-mocks --test desktop/scripts/component-release-large-subtree.test.mjs
       - name: Check immutable release inventory and bootstrap targets
-        run: node --test scripts/release-inventory.test.mjs scripts/production-engine-smoke.test.mjs scripts/release-source-freeze.test.mjs
+        run: node --test scripts/release-inventory.test.mjs scripts/production-engine-smoke.test.mjs scripts/release-source-freeze.test.mjs scripts/release-production-layout.test.mjs
