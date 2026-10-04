@@ -12,6 +12,7 @@ let intersection: (entries: { isIntersecting: boolean }[]) => void;
 beforeEach(async () => {
   vi.useFakeTimers();
   vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+  vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(0);
   vi.stubGlobal("IntersectionObserver", class {
     constructor(callback: typeof intersection) { intersection = callback; }
     observe() { intersection([{ isIntersecting: true }]); }
@@ -34,6 +35,7 @@ it("loads one reaction on keyboard-compatible button activation and returns to a
   const video = host.querySelector("video")!;
   expect(video.getAttribute("src")).toBe("/assets/art17/pets/redpanda-pat.webm");
   expect(video.style.visibility).toBe("hidden");
+  vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(2);
   await act(async () => video.dispatchEvent(new Event("playing")));
   expect(video.style.visibility).toBe("visible");
   await act(async () => vi.advanceTimersByTime(3000));

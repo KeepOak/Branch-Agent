@@ -4,6 +4,7 @@ import { PET_REACTION_MS, petReactionScale, petReactionSource, type PetReaction 
 import "./pet-reaction.css";
 import { PixelReaction } from "./PixelReaction";
 import { PIXEL_POSES } from "./pet-pixel";
+import { watchPetFrame } from "./pet-first-frame";
 
 export function PetReactionArt({ id, still, children }: { id: string; still?: string; children: ReactNode }) {
   const box = useRef<HTMLSpanElement>(null);
@@ -12,8 +13,9 @@ export function PetReactionArt({ id, still, children }: { id: string; still?: st
   const visible = useRef(false);
   const [reaction, setReaction] = useState<PetReaction | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [framed, setFramed] = useState(false);
   const pixel = Boolean(PIXEL_POSES[id.replace(/^px-/, "")]) && id.startsWith("px-");
-  const rest = () => { busy.current = false; setReaction(null); setPlaying(false); };
+  const rest = () => { busy.current = false; setReaction(null); setPlaying(false); setFramed(false); };
   const react = (name: PetReaction) => {
     if ((!still && !pixel) || busy.current || !visible.current || document.hidden || !motionAllowed()) return;
     busy.current = true; setReaction(name);
@@ -23,8 +25,9 @@ export function PetReactionArt({ id, still, children }: { id: string; still?: st
     const v = video.current;
     if (!reaction || !v) return;
     let alive = true;
+    const stopFrame = watchPetFrame(v, () => setFramed(true));
     void v.play().catch(() => { if (alive) rest(); });
-    return () => { alive = false; v.pause(); v.removeAttribute("src"); v.load(); };
+    return () => { alive = false; stopFrame(); v.pause(); v.removeAttribute("src"); v.load(); };
   }, [reaction]);
   useEffect(() => {
     if (!playing) return;
@@ -32,10 +35,10 @@ export function PetReactionArt({ id, still, children }: { id: string; still?: st
     return () => clearTimeout(timer);
   }, [playing, reaction]);
   return <span ref={box} className="pet-reaction-art">
-    <span style={{ visibility: playing || (reaction && pixel) ? "hidden" : "visible" }}>{children}</span>
+    <span style={{ visibility: framed || (reaction && pixel) ? "hidden" : "visible" }}>{children}</span>
     {reaction && pixel ? <span className="pet-reaction-video pet-reaction-pixel"><PixelReaction id={id} reaction={reaction} onRest={rest} /></span> : null}
     {reaction && still ? <video ref={video} className="pet-reaction-video" src={petReactionSource(still, reaction)}
-      style={{ visibility: playing ? "visible" : "hidden", transform: `translate(-50%, -50%) scale(${petReactionScale(id)})` }} muted playsInline preload="none" disablePictureInPicture
+      style={{ visibility: framed ? "visible" : "hidden", transform: `translate(-50%, -50%) scale(${petReactionScale(id)})` }} muted playsInline preload="none" disablePictureInPicture
       aria-hidden="true" onPlaying={() => setPlaying(true)} onEnded={rest} onError={rest} /> : null}
   </span>;
 }
