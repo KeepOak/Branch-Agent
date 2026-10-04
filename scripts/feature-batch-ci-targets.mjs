@@ -45,6 +45,16 @@ export const engineTests = [
   // Agent loop and sessions (pack1).
   'packages/agent-core/src/mistake-tracker.test.ts',
   'packages/agent-core/src/agent-loop.mistake-limit.test.ts',
+  'packages/agent-core/src/agent-loop.continuation.test.ts',
+  'src/agents/embedded-agent-runner/run/attempt-setup.context-management.test.ts',
+  'src/agents/embedded-agent-runner/run/attempt-setup.next-speaker.test.ts',
+  'src/agents/embedded-agent-runner/run/attempt-setup.rolling-summary.test.ts',
+  'src/agents/embedded-agent-subscribe.tool-use-summary.test.ts',
+  'src/agents/next-speaker-check.test.ts',
+  'src/agents/node-distillation.test.ts',
+  'src/agents/rolling-summary.test.ts',
+  'src/agents/tool-output-distillation.test.ts',
+  'src/agents/tool-use-summary.test.ts',
 ];
 
 export const windowTests = [
@@ -253,6 +263,26 @@ export const engineStrictFiles = [
   'packages/agent-core/src/mistake-tracker.ts',
   'packages/agent-core/src/mistake-tracker.test.ts',
   'packages/agent-core/src/agent-loop.mistake-limit.test.ts',
+  'src/agents/agent-loop-side-query.ts',
+  'src/agents/embedded-agent-runner/context-management.ts',
+  'src/agents/embedded-agent-runner/next-speaker-continuation.ts',
+  'src/agents/embedded-agent-subscribe.tool-use-summary.ts',
+  'src/agents/format-messages-for-llm.ts',
+  'src/agents/next-speaker-check.ts',
+  'src/agents/node-distillation.ts',
+  'src/agents/rolling-summary.ts',
+  'src/agents/tool-output-distillation.ts',
+  'src/agents/tool-use-summary.ts',
+  'packages/agent-core/src/agent-loop.continuation.test.ts',
+  'src/agents/embedded-agent-runner/run/attempt-setup.context-management.test.ts',
+  'src/agents/embedded-agent-runner/run/attempt-setup.next-speaker.test.ts',
+  'src/agents/embedded-agent-runner/run/attempt-setup.rolling-summary.test.ts',
+  'src/agents/embedded-agent-subscribe.tool-use-summary.test.ts',
+  'src/agents/next-speaker-check.test.ts',
+  'src/agents/node-distillation.test.ts',
+  'src/agents/rolling-summary.test.ts',
+  'src/agents/tool-output-distillation.test.ts',
+  'src/agents/tool-use-summary.test.ts',
 ];
 
 export const windowStrictFiles = [
