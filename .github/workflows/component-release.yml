@@ -102,7 +102,7 @@ jobs:
           name: release-shared-window
           path: ${{ runner.temp }}/shared-window
       - name: Check release inventory regressions
-        run: node --test desktop/scripts/release-inventory.test.mjs desktop/scripts/production-engine-smoke.test.mjs
+        run: node --test desktop/scripts/release-inventory.test.mjs desktop/scripts/production-engine-smoke.test.mjs desktop/scripts/release-source-freeze.test.mjs
       - name: Verify source slices and package native production components
         run: node desktop/scripts/release-build.mjs components "${{ runner.temp }}/release-assets" "${{ runner.temp }}/shared-window"
       - name: Check compiled startup and update rollback
