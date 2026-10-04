@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { resolve } from "node:path";
 import { test } from "node:test";
 import { updateLiveEditDiffProgress } from "./embedded-agent-live-edit-diff.js";
 import {
@@ -38,7 +39,7 @@ test("completed task delta retains existing file mutation semantics", () => {
       oldText: "same\nold",
       newText: "same\nnew",
     }),
-    { files: ["/fixture.txt"], added: 2, removed: 2 },
+    { files: [resolve("/fixture.txt")], added: 2, removed: 2 },
   );
 });
 test("real live diff caller corrects provisional removals as context arrives", () => {
