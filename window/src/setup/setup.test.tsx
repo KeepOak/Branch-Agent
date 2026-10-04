@@ -8,6 +8,7 @@ import { PreConnect } from "./PreConnect";
 import { freshChoices, readDetected, readTest, setupDone, setupRecord, STEPS } from "./setup-model";
 import { SetupFlow } from "./SetupFlow";
 import { SetupShell } from "./SetupShell";
+import { RemoteForm } from "./steps-early";
 import { readChatApps } from "./use-setup-engine";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -70,6 +71,18 @@ function engine(answers: Record<string, unknown>) {
 const params = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter((c) => c[0] === method).map((c) => c[1] as Record<string, unknown>);
 
 describe("setup flow", () => {
+  it("starts only one persistence request for duplicate finish clicks", async () => {
+    let release!: (value: unknown) => void;
+    const { engine: e, request } = engine({ "branch.setup.verify": { ok: true, modelRef: "m" }, "health": { ok: true }, "system.info": { diskAvailableBytes: 1 } });
+    const original = request.getMockImplementation()!;
+    request.mockImplementation((method: string) => method === "config.get"
+      ? new Promise((resolve) => { release = resolve; }) : original(method));
+    const host = await show(<SetupFlow engine={e} version="1" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={10} onClose={() => {}} onLocalModel={() => {}} />);
+    const before = request.mock.calls.filter(([method]) => method === "config.get").length;
+    await act(async () => { tid(host, "setup-finish").click(); tid(host, "setup-finish").click(); });
+    expect(request.mock.calls.filter(([method]) => method === "config.get")).toHaveLength(before + 1);
+    await act(async () => release({ config: {}, hash: "h" }));
+  });
   it("keeps the active numbered step visible as the narrow rail advances", async () => {
     const scrolled: HTMLElement[] = [];
     const previous = HTMLElement.prototype.scrollIntoView;
@@ -258,6 +271,16 @@ describe("setup on an already set-up Branch", () => {
 });
 
 describe("pre-connect screens", () => {
+  it("does not submit another connection while its native attempt is busy", async () => {
+    const connect = vi.fn();
+    const host = await show(<RemoteForm address="ws://localhost:18789" busy problem={null} onConnect={connect} />);
+    await act(async () => host.querySelector("form")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(connect).not.toHaveBeenCalled();
+    expect(host.querySelector("form")?.getAttribute("aria-busy")).toBe("true");
+    await act(async () => root?.render(<RemoteForm address="ws://localhost:18789" busy={false} problem={null} onConnect={connect} />));
+    await act(async () => host.querySelector("form")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(connect).toHaveBeenCalledExactlyOnceWith("ws://localhost:18789", "");
+  });
   it("say what went wrong in plain words, with the raw error folded", async () => {
     sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
     const host = await show(<PreConnect local="ws://127.0.0.1:18789" address="ws://127.0.0.1:18789" state={{ kind: "failed", code: "AUTH_TOKEN_MISSING", message: "token missing" }} busy={false} onConnect={() => {}} onRetry={() => {}} />);

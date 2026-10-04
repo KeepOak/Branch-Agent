@@ -1,6 +1,6 @@
 // The 11-step setup once the window is connected (DESIGN-SPEC §4.8.1). Steps 1–2 may already have been answered on
 // the pre-connect screens; then it opens at Models.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { PairDialog } from "../places/customize/pairing";
 import { AccountLoginDialog } from "../places/settings/AccountLogin";
@@ -83,6 +83,7 @@ function SetupFlowBody(p: Props) {
   const [login, setLogin] = useState<LoginStart | null>(null);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
+  const closing = useRef(false);
   const models = useDetected(p.engine);
   const chat = useChatApps(p.engine);
   const apps = chat.apps;
@@ -116,6 +117,8 @@ function SetupFlowBody(p: Props) {
     return () => { active = false; };
   }, [step, p.engine, apps]);
   const close = async (finished: boolean) => {
+    if (closing.current) return;
+    closing.current = true;
     setBusy(true);
     try {
       await recordSetup(p.engine, choices, p.version, finished ? autoUpdate : null);
@@ -126,6 +129,7 @@ function SetupFlowBody(p: Props) {
       p.onClose(finished);
     } catch (e) {
       notify(`Couldn't save setup: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" });
+      closing.current = false;
       setBusy(false);
     }
   };
