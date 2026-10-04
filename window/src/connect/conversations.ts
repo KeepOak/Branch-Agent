@@ -200,7 +200,7 @@ export class ConversationList {
       const result = rec(await this.request("sessions.subscribe", LIST_PARAMS));
       await this.apply(result.list);
     } catch (error) {
-      this.set({ loaded: true, error: error instanceof Error ? error.message : String(error) });
+      this.set({ loaded: false, error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -271,7 +271,14 @@ export class ConversationList {
     const rows = Array.isArray(sessions) ? sessions.map((s) => projectConversation(s, this.mainKey)) : [];
     const contact = this.selectedContact;
     if (contact && !rows.some((row) => row.key === contact.key)) {
-      const selected = await this.describeContact(contact.key, contact.agentId);
+      let selected: Conversation | null;
+      try { selected = await this.describeContact(contact.key, contact.agentId); }
+      catch (error) {
+        // Hide stale retained data immediately, but retain the key for an authorized retry.
+        // A failed read is not an authoritative deletion and must not trigger saved-route fallback.
+        if (this.selectedContact === contact) this.set({ rows: rows.filter((row) => row.key && row.key !== contact.key), loaded: false });
+        throw error;
+      }
       if (this.selectedContact !== contact) { this.again = true; return; }
       if (selected) rows.push(selected);
       else this.selectedContact = null;

@@ -96,7 +96,33 @@ describe("exact selected contacts", () => {
       ? Promise.resolve({ list: { sessions: [] } }) : Promise.reject(new Error("Contact access denied")));
     const list = new ConversationList(request, null, key);
     await list.start();
-    expect(list.getSnapshot()).toMatchObject({ loaded: true, rows: [], error: "Contact access denied" });
+    expect(list.getSnapshot()).toMatchObject({ loaded: false, rows: [], error: "Contact access denied" });
+    expect(request.mock.calls.some(([method]) => method === "sessions.create")).toBe(false);
+  });
+
+  it("hides a previously retained private row when a subsequent exact read is denied", async () => {
+    let denied = false;
+    const request = requestFixture((method: string) => method === "sessions.list" ? Promise.resolve({ sessions: [] })
+      : denied ? Promise.reject(new Error("Contact access denied")) : Promise.resolve({ session: CONTACT }));
+    const list = new ConversationList(request, null);
+    await list.selectContact(CONTACT.key, "fern"); denied = true;
+    await list.refresh();
+    expect(list.getSnapshot()).toMatchObject({ loaded: false, rows: [], error: "Contact access denied" });
+    expect(request.mock.calls.some(([method]) => method === "sessions.create")).toBe(false);
+  });
+
+  it("keeps a failed read retryable without treating a network failure as deletion", async () => {
+    let disconnected = false;
+    const request = requestFixture((method: string) => method === "sessions.list" ? Promise.resolve({ sessions: [] })
+      : disconnected ? Promise.reject(new Error("Network unavailable")) : Promise.resolve({ session: CONTACT }));
+    const list = new ConversationList(request, null);
+    await list.selectContact(CONTACT.key, "fern"); disconnected = true;
+    await list.refresh();
+    expect(list.getSnapshot()).toMatchObject({ loaded: false, rows: [], error: "Network unavailable" });
+    disconnected = false;
+    await list.refresh();
+    expect(list.getSnapshot()).toMatchObject({ loaded: true, error: null });
+    expect(list.getSnapshot().rows.find((row) => row.key === CONTACT.key)?.sessionId).toBe(CONTACT.sessionId);
     expect(request.mock.calls.some(([method]) => method === "sessions.create")).toBe(false);
   });
 });
