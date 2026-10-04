@@ -23,18 +23,18 @@ export function readAllowances(value: unknown): Allowance[] {
 }
 
 export function UsageBar({ engine }: { engine?: WindowEngine }) {
-  const [state, setState] = useState<{ rows: Allowance[]; loading: boolean; error: boolean }>({ rows: [], loading: true, error: false });
+  const [result, setResult] = useState<{ engine?: WindowEngine; rows: Allowance[]; error: boolean }>({ rows: [], error: false });
+  const state = result.engine === engine ? { ...result, loading: false } : { rows: [], loading: true, error: false };
   useEffect(() => {
-    setState({ rows: [], loading: true, error: false });
     if (!engine) return;
     let live = true, revision = 0;
     const refresh = async () => {
       const current = ++revision;
       try {
         const data = await engine.request("usage.status", {});
-        if (live && current === revision) setState({ rows: readAllowances(data), loading: false, error: false });
+        if (live && current === revision) setResult({ engine, rows: readAllowances(data), error: false });
       } catch {
-        if (live && current === revision) setState({ rows: [], loading: false, error: true });
+        if (live && current === revision) setResult({ engine, rows: [], error: true });
       }
     };
     void refresh();
