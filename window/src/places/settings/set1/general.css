@@ -5,7 +5,7 @@
 .set-col .ctl > b .changed-k { white-space: nowrap; margin-left: 0; font-size: 12px; font-weight: 500; color: var(--ink-3); }
 .set-col .ctl > b .changed-k .link-k { font-size: 12px; }
 .set-col [data-page-title="General"] .ctl > small .link-k { font-size: 12.5px; }
-.set-col .ctl textarea.gen-area-k { height: auto; min-height: 72px; padding: 8px 10px; resize: vertical; font: inherit; font-size: 13px; line-height: 1.5; }
+.set-col .ctl > .right textarea.gen-area-k.inp { box-sizing: border-box; height: 34px; min-height: 34px; padding: 6px 10px; resize: vertical; font: inherit; font-size: 13px; line-height: 1.5; }
 /* voice.css sizes every .num-k; General keeps the kit's own number box */
 .set-col [data-page-title="General"] .ctl > .right .num-k { width: auto; }
 .set-col [data-page-title="General"] .ctl > .right .num-k .inp { width: 72px; }
@@ -14,3 +14,15 @@
   .set-col [data-page-title="General"] .ctl:has(> .right > input.inp, > .right > select.inp, > .right > kbd.key-k, > .right > .num-k) { grid-template-columns: minmax(0, 1fr); }
   .set-col [data-page-title="General"] .ctl:has(> .right > input.inp, > .right > select.inp, > .right > kbd.key-k, > .right > .num-k) > .right { grid-row: auto; grid-column: 1; justify-content: flex-start; margin-top: 6px; }
 }
+/* a stacked row, as the preview draws it: the pin beside its title, then the sub-line, then the control */
+.set-col [data-page-title="General"] .ctl.stack-k { grid-template-columns: auto minmax(0, 1fr); }
+.set-col [data-page-title="General"] .ctl.stack-k > .pin-k { justify-self: start; }
+.set-col [data-page-title="General"] .ctl.stack-k > :not(b, .pin-k) { grid-column: 1 / -1; }
+.set-col [data-page-title="General"] .ctl.stack-k > small:not(.why-k) { order: 1; }
+.set-col [data-page-title="General"] .ctl.stack-k > .right { order: 2; }
+.set-col [data-page-title="General"] .ctl.stack-k > .why-k { order: 3; }
+/* the summary-instructions row runs as one line of words, title then sub-line, with the box under it */
+.set-col [data-page-title="General"] .ctl.stack-k:has(> .right > textarea) { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 0; }
+.set-col [data-page-title="General"] .ctl.stack-k:has(> .right > textarea) > small:not(.why-k) { order: 1; margin-left: 0; }
+.set-col [data-page-title="General"] .ctl.stack-k:has(> .right > textarea) > .right { order: 2; flex: 1 0 100%; margin-top: 6px; }
+.set-col [data-page-title="General"] .ctl.stack-k:has(> .right > textarea) > .why-k { order: 3; flex: 1 0 100%; margin-top: 4px; }

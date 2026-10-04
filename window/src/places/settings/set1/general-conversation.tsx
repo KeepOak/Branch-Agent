@@ -92,7 +92,8 @@ function QueueMode({ engine }: { engine: WindowEngine }) {
   const path = "messages.queue.mode";
   const raw = cfg.get(path);
   const mode = typeof raw === "string" ? raw : "steer";
-  const title: ReactNode = <>When you send while it works{mode !== "steer" ? <span className="changed-k">Changed here <LinkBtn onClick={() => void cfg.set(path, null)}>Put back</LinkBtn></span> : null}</>;
+  // A plain title keeps the row's pin; the "Changed here" note only shows once the engine's default is changed.
+  const title: ReactNode = mode === "steer" ? "When you send while it works" : <>When you send while it works<span className="changed-k">Changed here <LinkBtn onClick={() => void cfg.set(path, null)}>Put back</LinkBtn></span></>;
   return (
     <Ctl title={title} id="When you send while it works" sub={<Own text="What a message you send during a task does. Ctrl Enter does the other one for that message." />}>
       <Seg label="When you send while it works" value={mode} options={FOLLOW} disabled={cfg.loading} onChange={(v) => void cfg.set(path, v)} />

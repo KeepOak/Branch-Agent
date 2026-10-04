@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
+import type { Pins } from "../pins";
 import { configStore } from "../config-store";
 import { GENERAL_ROWS, GeneralPage } from "./general";
 import { GENERAL_PREFS } from "./general-conversation";
@@ -127,5 +128,35 @@ describe("Settings › General", () => {
       expect(row(t).getAttribute("aria-disabled")).toBe("true");
       expect(row(t).querySelector(".why-k")?.textContent).toMatch(/window can’t/);
     }
+    expect(row("Keep working when the window closes").querySelector<HTMLInputElement>("input")!.checked).toBe(false);
+    expect(host.querySelector(".status")?.textContent ?? host.textContent).toContain("Branch runs while it’s open");
+  });
+
+  it("in the Branch app on Windows, closing the window keeps it working in the tray", async () => {
+    const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+    Object.defineProperty(navigator, "platform", { value: "Win32", configurable: true });
+    (window as { branchDesktop?: unknown }).branchDesktop = {};
+    try {
+      const { engine } = engineOf();
+      await render(engine, 0);
+      const keep = row("Keep working when the window closes");
+      expect(keep.querySelector<HTMLInputElement>("input")!.checked).toBe(true);
+      expect(keep.getAttribute("aria-disabled")).toBe("true");
+      expect(keep.querySelector(".why-k")?.textContent).toContain("Always on in the Branch app on Windows");
+      expect(host.textContent).toContain("Branch waits in the tray");
+      expect(row("Start with Windows").querySelector<HTMLInputElement>("input")!.checked).toBe(false);
+    } finally {
+      delete (window as { branchDesktop?: unknown }).branchDesktop;
+      delete (navigator as { platform?: string }).platform;
+      if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
+    }
+  });
+
+  it("When you send while it works has its pin while it follows the engine's default", async () => {
+    const { engine } = engineOf();
+    const pins: Pins = { page: "general", list: [], has: () => false, toggle: vi.fn(), go: vi.fn(), unpin: vi.fn() };
+    await act(async () => root.render(<KitProvider level={1} report={report} scope={null} pins={pins}><GeneralPage page="general" title="General" level="advanced" engine={engine} /></KitProvider>));
+    await act(async () => { await configStore(engine).load(); });
+    expect(row("When you send while it works").querySelector('[aria-label="Pin When you send while it works"]')).not.toBeNull();
   });
 });

@@ -138,7 +138,7 @@ export function SummariesMore() {
   return (
     <Sec title="Summaries, more">
       <Ctl stack title="How to write the summary" sub="Your own instructions for summaries. Empty uses Branch’s." off={NO_KEY}>
-        <textarea className="inp gen-area-k" rows={3} placeholder="Keep every decision, number and file name. List what’s still open." aria-label="How to write the summary" />
+        <textarea className="inp gen-area-k" rows={2} placeholder="Keep every decision, number and file name. List what’s still open." aria-label="How to write the summary" />
       </Ctl>
       <Ctl title="If a summary can’t be made" sub="The oldest messages are hidden behind a marker until there’s room." off={NO_KEY}>
         <Pick label="If a summary can’t be made" value="hide" options={[{ id: "hide", label: "Hide the oldest messages" }, { id: "ask", label: "Stop and ask me" }]} onChange={() => undefined} />
