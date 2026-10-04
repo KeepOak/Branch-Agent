@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { Value } from "typebox/value";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ReportFindingsOutputSchema } from "../coding/report-findings.js";
+import { createSuiteTempRootTracker } from "../test-helpers/temp-dir.js";
 import { getAgentToolActionDescriptor } from "./agent-tool-metadata.js";
 import { createBranchCodingTools } from "./agent-tools.js";
 import type { BranchCodingToolsOptions } from "./agent-tools.options.js";
@@ -9,8 +13,14 @@ import { createCoreCodingTools } from "./core-coding-tools.js";
 import { resolveCoreToolFactoryFamily } from "./core-tool-factory-descriptors.js";
 import { isKnownCoreToolId, resolveCoreToolProfilePolicy } from "./tool-catalog.js";
 
-const root =
-  "C:/Users/bishi/AppData/Local/Temp/Codex-session-files/branch-feature-next-20261003/coding";
+const parentDir = path.join(os.tmpdir(), "Codex-session-files");
+const tempDirs = createSuiteTempRootTracker({ prefix: "report-findings-native-", parentDir });
+let root: string;
+beforeAll(async () => {
+  await fs.mkdir(parentDir, { recursive: true });
+  root = await tempDirs.setup();
+});
+afterAll(() => tempDirs.cleanup());
 const finding = {
   id: "R1-1",
   severity: "Critical",
