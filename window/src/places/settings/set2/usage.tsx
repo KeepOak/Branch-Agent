@@ -1023,6 +1023,9 @@ export function MoveInDialog({ engine, onClose }: { engine: WindowEngine; onClos
 }
 
 /** Money and keeping, more (Advanced). */
+// TODO(engine-lane): metering export (the old app's usage/metering and usage/metering/now: write the usage figures to
+// a workspace folder on a schedule, or now). The artifact has no row for it; add one here, styled like "Backups",
+// once the engine has the method.
 function MoneyMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
   const [backups, setBackups] = useState(false);
   const usage = useLive<RecordValue>(engine, "usage.status", {}, []);
