@@ -34,6 +34,7 @@ import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
 import { SidebarPet } from "./SidebarPet";
 import { GetAppsDialog } from "./GetApps";
 import { CanDoDialog } from "./CanDo";
+import { Face } from "../face/Face";
 import { TalkSetup, type TalkHandle } from "../setup/TalkSetup";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
@@ -694,6 +695,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     ...lists.rows.filter((r) => r.key !== openKey && !r.archived).map((r): MenuItem => ({
       label: rowName(r.key),
       sub: r.preview.slice(0, 44) || undefined,
+      icon: <Face size={22} label={trunkName(r.agentId)} />,
       run: () => {
         setPanes((cur) => (cur.length ? cur.map((x, i) => (i === 0 ? { ...x, key: r.key } : x)) : [{ key: r.key, dir: "right" }]));
         if (innerWidth < 1000) notify(TOO_NARROW);
@@ -730,7 +732,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     talkOff: voiceReady.live ? null : VOICE_OFF,
     onTalk: () => window.dispatchEvent(new Event(TALK_EVENT)),
     besideOpen: panes.length > 0,
-    onBeside: (at) => setOverlay({ kind: "menu", id: "beside", at, label: "Open beside this one", items: besideItems() }),
+    // The first time, the pane opens straight away with its own chooser (the artifact's pane); after that the menu
+    // changes which conversation sits beside this one.
+    onBeside: (at) => (panes.length ? setOverlay({ kind: "menu", id: "beside", at, label: "Open beside this one", items: besideItems() }) : split("right")),
     onSplit: split,
     onAddComputer: () => setAddingComputer(true),
     onManageComputers: () => openSettings("computer"),
