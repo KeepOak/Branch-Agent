@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { selectChangedTests } from './feature-batch-ci-selection.mjs';
+
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
   'src/agents/agent-create.test.ts',
@@ -419,7 +423,19 @@ export function namedTests(lane) {
     || targets.some(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'))) {
     throw new Error('Explicit unique repository-relative test files are required');
   }
-  return targets;
+  return [...new Set([...targets, ...changedTests()[lane]])];
+}
+
+let selectedChanges;
+function changedTests() {
+  if (selectedChanges) return selectedChanges;
+  const base = process.env.BRANCH_FEATURE_BASE_SHA;
+  if (!base) return { engine: [], window: [] };
+  if (!/^[a-f0-9]{40}$/.test(base)) throw new Error('Invalid feature base SHA');
+  const cwd = fileURLToPath(new URL('../', import.meta.url));
+  const files = execFileSync('git', ['diff', '--name-only', '-z', '--diff-filter=ACMR', base, 'HEAD'], { cwd, encoding: 'utf8' });
+  selectedChanges = selectChangedTests(files.split('\0').filter(Boolean));
+  return selectedChanges;
 }
 
 export function capabilityTests() {

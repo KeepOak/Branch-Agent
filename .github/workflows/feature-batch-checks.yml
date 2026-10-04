@@ -37,6 +37,7 @@ jobs:
         os: [windows-latest, macos-latest, ubuntu-latest]
     env:
       CI: 'true'
+      BRANCH_FEATURE_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
     steps:
       - name: Check out the feature commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -49,4 +50,12 @@ jobs:
           node-version: '24.19.0'
           package-manager-cache: false
       - name: Verify pins, install frozen dependencies, and run explicit feature checks
-        run: node scripts/feature-batch-ci.mjs all
+        shell: bash
+        run: |
+          if [[ -n "$BRANCH_FEATURE_BASE_SHA" && "$BRANCH_FEATURE_BASE_SHA" != "0000000000000000000000000000000000000000" ]]; then
+            git fetch --no-tags --depth=1 origin "$BRANCH_FEATURE_BASE_SHA"
+          else
+            unset BRANCH_FEATURE_BASE_SHA
+          fi
+          node --test scripts/feature-batch-ci-selection.test.mjs
+          node scripts/feature-batch-ci.mjs all
