@@ -11,7 +11,7 @@ import { FsSafeError, root as fsRoot } from "branch/plugin-sdk/security-runtime"
 import { asNullableRecord } from "branch/plugin-sdk/string-coerce-runtime";
 import { createWikiPageFilename, extractHumanNotesBlock } from "./markdown.js";
 
-export type MemoryWikiImportedSourceGroup = "bridge" | "unsafe-local";
+export type MemoryWikiImportedSourceGroup = "bridge" | "unsafe-local" | "connector";
 
 type MemoryWikiImportedSourceStateEntry = {
   group: MemoryWikiImportedSourceGroup;
@@ -86,7 +86,7 @@ function normalizeSourceSyncEntry(value: unknown): MemoryWikiImportedSourceState
   const entry = asNullableRecord(value);
   if (
     !entry ||
-    (entry.group !== "bridge" && entry.group !== "unsafe-local") ||
+    (entry.group !== "bridge" && entry.group !== "unsafe-local" && entry.group !== "connector") ||
     typeof entry.pagePath !== "string" ||
     typeof entry.sourcePath !== "string" ||
     typeof entry.sourceUpdatedAtMs !== "number" ||

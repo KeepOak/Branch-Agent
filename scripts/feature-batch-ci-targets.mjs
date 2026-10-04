@@ -51,6 +51,8 @@ export const engineTests = [
   'extensions/memory-wiki/src/prompt-section.test.ts',
   'extensions/memory-wiki/src/cli.test.ts',
   'extensions/memory-wiki/index.test.ts',
+  'extensions/memory-wiki/src/connectors/repo-loaders.test.ts',
+  'extensions/memory-wiki/src/connectors/connector-cli.test.ts',
 ];
 
 export const windowTests = [
@@ -157,6 +159,22 @@ export const engineStrictFiles = [
   'extensions/memory-wiki/src/cli-knowledge.ts',
   'extensions/memory-wiki/src/prompt-section.ts',
   'extensions/memory-wiki/src/cli.ts',
+  'extensions/memory-wiki/src/connectors/import.ts',
+  'extensions/memory-wiki/src/connectors/fetch.ts',
+  'extensions/memory-wiki/src/connectors/repo-types.ts',
+  'extensions/memory-wiki/src/connectors/repo-gitea.ts',
+  'extensions/memory-wiki/src/connectors/repo-gitlab.ts',
+  'extensions/memory-wiki/src/connectors/repo-github.ts',
+  'extensions/memory-wiki/src/connectors/repo.ts',
+  'extensions/memory-wiki/src/connectors/confluence.ts',
+  'extensions/memory-wiki/src/connectors/paperless.ts',
+  'extensions/memory-wiki/src/connectors/drupalwiki.ts',
+  'extensions/memory-wiki/src/connectors/link.ts',
+  'extensions/memory-wiki/src/connectors/obsidian.ts',
+  'extensions/memory-wiki/src/connectors/sources.ts',
+  'extensions/memory-wiki/src/source-sync-state.ts',
+  'extensions/memory-wiki/src/connectors/repo-loaders.test.ts',
+  'extensions/memory-wiki/src/connectors/connector-cli.test.ts',
 ];
 
 export const windowStrictFiles = [
