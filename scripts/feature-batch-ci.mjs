@@ -4,7 +4,7 @@ import path from 'node:path';
 import { namedTests } from './feature-batch-ci-targets.mjs';
 import { runTargetedStrictChecks } from './feature-batch-ci-typecheck.mjs';
 import {
-  assertLocalModules, engineRoot, gitHead, hostedChrome, preparePnpm, publishWindowDependencies, repoRoot, run,
+  assertLocalModules, engineRoot, featureTestInvocations, gitHead, hostedChrome, preparePnpm, publishWindowDependencies, repoRoot, run,
   scratchRoot, sourceHashes, toolingRoot, verifiedExceptionFlags, windowRoot,
 } from './feature-batch-ci-runtime.mjs';
 
@@ -53,14 +53,14 @@ async function prepareBuildArtifacts() {
 }
 
 async function runFeatureTests(scratch) {
+  await run(process.execPath, ['--import', './engine/scripts/tsx.mjs', '--test', 'scripts/feature-batch-ci-runtime.test.mjs']);
   const env = { ...process.env, BRANCH_TEST_ARTIFACT_DIR: path.join(scratch, 'fixtures'),
     BRANCH_BROWSER_SNAPSHOT_E2E: process.platform === 'linux' ? '1' : '0' };
   if (process.platform === 'linux') env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = await hostedChrome();
   for (const lane of ['engine', 'window']) {
-    const root = lane === 'engine' ? engineRoot : windowRoot;
-    const config = path.join(repoRoot, 'scripts', `feature-batch-ci-${lane}.config.mjs`);
-    await run(process.execPath, [path.join(root, 'node_modules/vitest/vitest.mjs'),
-      'run', '--config', config, ...namedTests(lane)], root, env);
+    for (const { root, args, env: partitionEnv } of featureTestInvocations(lane)) {
+      await run(process.execPath, args, root, { ...env, ...partitionEnv });
+    }
   }
 }
 

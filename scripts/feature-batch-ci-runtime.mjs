@@ -14,6 +14,27 @@ export const toolingRoot = path.join(repoRoot, 'scripts', 'feature-batch-ci-wind
 export const sha256 = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const registry = 'https://registry.npmjs.org';
 
+// Codex's attempt hooks require the canonical extension runtime setup, not just
+// shared test-home setup. Keep explicit targets partitioned without discovering
+// additional tests or changing the inventory shared by the strict checks.
+export function featureTestInvocations(lane, files = namedTests(lane)) {
+  assert(['engine', 'window'].includes(lane), 'Unknown feature test lane');
+  const root = lane === 'engine' ? engineRoot : windowRoot;
+  const codex = lane === 'engine' ? files.filter(file => file.startsWith('extensions/codex/')) : [];
+  const ordinary = files.filter(file => !codex.includes(file));
+  const batches = [
+    { config: path.join(repoRoot, 'scripts', `feature-batch-ci-${lane}.config.mjs`), files: ordinary, scoped: false },
+    { config: path.join(repoRoot, 'scripts', 'feature-batch-ci-engine.config.mjs'), files: codex, scoped: true },
+  ];
+  return batches.filter(batch => batch.files.length).map(({ config, files: targets, scoped }) => ({
+    root,
+    args: [path.join(root, 'node_modules/vitest/vitest.mjs'), 'run', '--config', config,
+      '--maxWorkers=1', '--no-file-parallelism', '--isolate', '--passWithNoTests=false', ...targets],
+    files: targets,
+    env: lane === 'engine' ? { BRANCH_FEATURE_BATCH_ENGINE_PARTITION: scoped ? 'codex' : 'ordinary' } : {},
+  }));
+}
+
 export async function gitHead() {
   const result = await promisify(execFile)('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, windowsHide: true });
   return result.stdout.trim();
@@ -121,7 +142,11 @@ export async function sourceHashes() {
     'scripts/feature-batch-ci-window-tooling/pnpm-lock.yaml', 'scripts/feature-batch-ci-window-tooling/pnpm-workspace.yaml',
     ...engineStrictFiles.map(file => `engine/${file}`), ...namedTests('engine').map(file => `engine/${file}`),
     ...windowStrictFiles.map(file => `window/${file}`), ...namedTests('window').map(file => `window/${file}`),
-    '.github/workflows/feature-batch-checks.yml', ...['', '-runtime', '-targets', '-typecheck', '-engine.config', '-window.config']
+    '.github/workflows/feature-batch-checks.yml', 'scripts/feature-batch-ci-runtime.test.mjs',
+    'engine/test/vitest/vitest.extension-codex.config.ts', 'engine/test/vitest/vitest.extension-config.ts',
+    'engine/test/vitest/vitest.scoped-config.ts', 'engine/test/vitest/vitest.shared.config.ts',
+    'engine/test/setup.extensions.ts', 'engine/test/setup-branch-runtime.ts',
+    ...['', '-runtime', '-targets', '-typecheck', '-engine.config', '-window.config']
       .map(suffix => `scripts/feature-batch-ci${suffix}.mjs`)];
   return Object.fromEntries(await Promise.all(files.map(async file => [file, sha256(await fs.readFile(path.join(repoRoot, file)))])));
 }
