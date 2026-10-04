@@ -12,6 +12,7 @@ import { Logo, serviceName } from "./service";
 import { AddAccountDialog, type AddStart } from "./add-account";
 import { CodingApps } from "./coding-apps";
 import { OwnAccounts } from "./own-accounts";
+import { GitHubSettings } from "../GitHubSettings";
 import { AccountsMore } from "./accounts-more";
 import "./set1.css";
 
@@ -72,6 +73,7 @@ export function AccountsPage(props: SettingsPageProps) {
       <CodingApps engine={props.engine} />
       <WhenOneRunsOut engine={props.engine} />
       <OwnAccounts engine={props.engine} />
+      <GitHubSettings engine={props.engine} />
       <KeepOak />
       <AccountsMore engine={props.engine} providers={providers} all={all} reload={status.reload} agent={agent} openSettings={props.openSettings} />
       {add ? <AddAccountDialog engine={props.engine} start={add} caps={caps} providers={providers} agent={agent} onClose={(added) => { setAdd(null); if (added) void status.reload(); }} /> : null}
@@ -173,4 +175,3 @@ function KeepOak() {
     </Sec>
   );
 }
-
