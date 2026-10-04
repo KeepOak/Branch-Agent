@@ -15,6 +15,7 @@ import {
 import type { OpenKeyedStoreOptions } from "branch/plugin-sdk/plugin-state-runtime";
 import { configureMemoryCoreRingsState } from "./src/rings-state.js";
 import { registerShortTermPromotionRings } from "./src/rings.js";
+import { registerFileContextTracking } from "./src/file-context-hooks.js";
 import { buildMemoryFlushPlan } from "./src/flush-plan.js";
 import "./src/memory/background-context.js";
 import {
@@ -216,6 +217,7 @@ export default definePluginEntry({
     const memoryRuntime = createLazyMemoryRuntime(host);
     registerShortTermPromotionRings(api);
     registerSessionBackfillGatewayMethods(api);
+    registerFileContextTracking(api);
     api.registerMemoryCapability({
       deterministicRecallToolName: "memory_search",
       supportsPrivateTranscriptRecall: true,

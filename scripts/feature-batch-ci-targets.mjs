@@ -45,6 +45,8 @@ export const engineTests = [
   // feat-memory batch 3: knowledge and retrieval.
   'extensions/openrouter/embedding-adapter.test.ts',
   'extensions/vercel-ai-gateway/embedding-adapter.test.ts',
+  'extensions/memory-core/src/file-context-tracker.test.ts',
+  'extensions/memory-core/index.test.ts',
 ];
 
 export const windowTests = [
@@ -142,6 +144,10 @@ export const engineStrictFiles = [
   'extensions/vercel-ai-gateway/embedding-adapter.test.ts',
   'extensions/openrouter/index.ts',
   'extensions/vercel-ai-gateway/index.ts',
+  'extensions/memory-core/src/file-context-tracker.ts',
+  'extensions/memory-core/src/file-context-hooks.ts',
+  'extensions/memory-core/src/file-context-tracker.test.ts',
+  'extensions/memory-core/index.ts',
 ];
 
 export const windowStrictFiles = [
