@@ -18,7 +18,8 @@ const scratch = path.join(
 let root: string;
 beforeEach(async () => {
   await fs.mkdir(scratch, { recursive: true });
-  root = await fs.mkdtemp(path.join(scratch, "assembled-glob-"));
+  // Canonical roots keep expectations stable where temp paths are aliases (macOS /var, Windows 8.3).
+  root = await fs.realpath(await fs.mkdtemp(path.join(scratch, "assembled-glob-")));
   await fs.writeFile(path.join(root, "native.ts"), "synthetic");
 });
 afterEach(async () => {
