@@ -7,6 +7,7 @@ import { connectProblem } from "./connect-problems";
 import { PreConnect } from "./PreConnect";
 import { freshChoices, readDetected, readTest, setupDone, setupRecord, STEPS } from "./setup-model";
 import { SetupFlow } from "./SetupFlow";
+import { SetupShell } from "./SetupShell";
 import { readChatApps } from "./use-setup-engine";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -69,6 +70,23 @@ function engine(answers: Record<string, unknown>) {
 const params = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter((c) => c[0] === method).map((c) => c[1] as Record<string, unknown>);
 
 describe("setup flow", () => {
+  it("keeps the active numbered step visible as the narrow rail advances", async () => {
+    const scrolled: HTMLElement[] = [];
+    const previous = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function (options) {
+      expect(options).toEqual({ block: "nearest", inline: "nearest" });
+      scrolled.push(this);
+    };
+    try {
+      const props = { reach: 10, done: () => false, onStep: () => {}, onSkip: null, title: "Setup", footer: null, children: null };
+      await show(<SetupShell {...props} step={0} />);
+      await act(async () => root?.render(<SetupShell {...props} step={10} />));
+      expect(scrolled.map((button) => button.textContent)).toEqual(["1Welcome", "11Health check"]);
+      expect(scrolled[1].getAttribute("aria-current")).toBe("step");
+    } finally {
+      HTMLElement.prototype.scrollIntoView = previous;
+    }
+  });
   it("ignores health replies from before leaving All set to fix setup", async () => {
     const pending: Array<(result: unknown) => void> = [];
     const { engine: e, request } = engine({

@@ -24,13 +24,17 @@ type Props = {
 };
 
 function Rail({ step, reach, reachReason, done, onStep, onSkip }: Pick<Props, "step" | "reach" | "reachReason" | "done" | "onStep" | "onSkip">) {
+  const current = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    current.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [step]);
   return (
     <aside className="ob-rail">
       <SetupBrand />
       <ol>
         {STEPS.map((name, i) => (
           <li key={name} className={i === step ? "now" : done(i) ? "done" : ""}>
-            <button type="button" disabled={i > reach} title={i > reach ? reachReason : undefined} aria-current={i === step ? "step" : undefined} onClick={() => onStep(i)}>
+            <button ref={i === step ? current : undefined} type="button" disabled={i > reach} title={i > reach ? reachReason : undefined} aria-current={i === step ? "step" : undefined} onClick={() => onStep(i)}>
               <em>{done(i) && i !== step ? <Icon name="check" size={12} /> : i + 1}</em>
               {name}
             </button>
