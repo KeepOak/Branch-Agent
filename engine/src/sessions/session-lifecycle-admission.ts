@@ -10,9 +10,17 @@ import {
   withPluginRuntimeGatewayContextResolver,
 } from "../plugins/runtime/gateway-request-scope.js";
 import {
+  captureGatewayWorkOwnershipScope,
   GatewayDrainingError,
   isGatewaySubordinateWorkAdmissionClosed,
 } from "../process/gateway-work-admission.js";
+import {
+  createSessionGatewayWorkOwnershipScope,
+  withGatewayWorkOwnershipScope,
+  isGatewayWorkOwnedBy,
+  type GatewayWorkOwnershipScope,
+  type SelectedRunWorkIdentity,
+} from "../process/gateway-work-ownership.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import type { StoreWriterQueue } from "../shared/store-writer-queue.js";
@@ -46,6 +54,7 @@ export {
 export const SESSION_WORK_ADMISSION_DRAIN_TIMEOUT_MS = 15_000;
 type SessionWorkAdmission = HandoffSessionWorkAdmission & {
   lifecycleGeneration: string;
+  workOwnership?: GatewayWorkOwnershipScope;
   phase: "pending" | "acquired";
   owner?: symbol;
   released: Promise<void>;
@@ -504,6 +513,17 @@ export function getActiveSessionWorkAdmissionCount(): number {
   ).size;
 }
 
+/** Counts the same unique acquired admissions as the global drain inspector. */
+export function countSessionWorkAdmissionsOwnedBy(selected: SelectedRunWorkIdentity): number {
+  return collectSessionWorkAdmissions(
+    ACTIVE_SESSION_WORK_ADMISSIONS.keys(),
+    (admission) =>
+      admission.phase === "acquired" &&
+      admission.lifecycleGeneration === getAgentRunLifecycleGeneration() &&
+      isGatewayWorkOwnedBy(admission.workOwnership, selected),
+  ).size;
+}
+
 /** Unique active lifecycle mutations; one run can be indexed under several identities. */
 export function getActiveSessionLifecycleMutationCount(): number {
   if (ACTIVE_SESSION_LIFECYCLE_MUTATION_RUNS.size > 0) {
@@ -552,6 +572,10 @@ export async function beginSessionWorkAdmission(params: {
   const { promise: releasedPromise, resolve: resolveReleased } = createDeferredCore();
   const admission: SessionWorkAdmission = {
     lifecycleGeneration: getAgentRunLifecycleGeneration(),
+    workOwnership: createSessionGatewayWorkOwnershipScope(
+      captureGatewayWorkOwnershipScope(),
+      rawIdentities,
+    ),
     phase: "pending",
     ...(params.owner ? { owner: params.owner } : {}),
     handoffIds: new Set(),
@@ -606,7 +630,9 @@ export async function beginSessionWorkAdmission(params: {
       const current = new Set(CURRENT_SESSION_WORK_ADMISSIONS.getStore());
       current.add(admission);
       return await CURRENT_SESSION_WORK_ADMISSIONS.run(current, () =>
-        withPluginRuntimeGatewayContextResolver(resolveGatewayContext, run),
+        withGatewayWorkOwnershipScope(admission.workOwnership!, () =>
+          withPluginRuntimeGatewayContextResolver(resolveGatewayContext, run),
+        ),
       );
     },
   };

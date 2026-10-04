@@ -34,11 +34,13 @@ import type {
   CommandQueueTaskDeadline,
 } from "./command-queue.types.js";
 import {
+  captureGatewayWorkOwnershipScope,
   GatewayDrainingError,
   isGatewaySubordinateWorkAdmissionClosed,
   resetGatewayWorkAdmission,
   runWithGatewayRootWorkReadmission,
 } from "./gateway-work-admission.js";
+import { isGatewayWorkOwnedBy, type SelectedRunWorkIdentity } from "./gateway-work-ownership.js";
 import { CommandLane, SUBAGENT_LANE_PREFIX, SWARM_LANE_PREFIX } from "./lanes.js";
 export {
   GatewayDrainingError,
@@ -147,6 +149,7 @@ function completeTask(state: LaneState, taskId: number, taskGeneration: number):
     return false;
   }
   state.activeTaskIds.delete(taskId);
+  state.activeWorkOwnership?.delete(taskId);
   return true;
 }
 
@@ -366,6 +369,7 @@ function drainLane(
       // synchronously re-enter the queue, and the shared budget must already
       // account for this task when that nested admission is evaluated.
       state.activeTaskIds.add(taskId);
+      (state.activeWorkOwnership ??= new Map()).set(taskId, entry.workOwnership);
       started += 1;
       if (waitedMs >= entry.warnAfterMs) {
         try {
@@ -544,6 +548,7 @@ export function enqueueCommandInLane<T>(
   }
   return new Promise<T>((resolve, reject) => {
     const entry: QueueEntry = {
+      workOwnership: captureGatewayWorkOwnershipScope(),
       task: (marker) => runInAsyncContext(runWithGatewayRootWorkReadmission, () => task(marker)),
       resolve: (value) => resolve(value as T),
       reject,
@@ -589,6 +594,26 @@ export function enqueueCommandInLane<T>(
       }
     }
   });
+}
+
+/** Public taskIdentity/sessionTarget are diagnostics and never ownership proof. */
+export function countCommandQueueWorkOwnedBy(selected: SelectedRunWorkIdentity): number {
+  let count = 0;
+  for (const state of getQueueState().lanes.values()) {
+    for (const taskId of state.activeTaskIds) {
+      if (isGatewayWorkOwnedBy(state.activeWorkOwnership?.get(taskId), selected)) {
+        count += 1;
+      }
+    }
+    for (const priority of [state.queue.foreground, state.queue.normal, state.queue.background]) {
+      for (let entry = priority.head; entry; entry = entry.next) {
+        if (isGatewayWorkOwnedBy(entry.workOwnership, selected)) {
+          count += 1;
+        }
+      }
+    }
+  }
+  return count;
 }
 
 export function getQueueSize(lane: string = CommandLane.Main) {
@@ -717,6 +742,7 @@ export function resetCommandLane(lane: string = CommandLane.Main): number {
   const released = state.activeTaskIds.size;
   state.generation += 1;
   state.activeTaskIds.clear();
+  state.activeWorkOwnership?.clear();
   state.draining = false;
   // Clearing activeTaskIds may release multiple shared slots. Re-arbitrate the
   // whole group so the reset lane cannot reclaim them ahead of older siblings.
@@ -735,6 +761,7 @@ export function resetAllLanes(): void {
   for (const state of queueState.lanes.values()) {
     state.generation += 1;
     state.activeTaskIds.clear();
+    state.activeWorkOwnership?.clear();
     state.draining = false;
     if (state.queue.length > 0) {
       lanesToDrain.push(state.lane);
