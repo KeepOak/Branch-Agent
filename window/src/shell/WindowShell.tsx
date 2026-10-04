@@ -30,6 +30,7 @@ import { machineMenuItems, MachineSwitcher } from "./MachineMenu";
 import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import { newMenuItems } from "./new-menu";
 import { notify } from "./notify";
+import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
 import { PersonMenu, usePersonName } from "./PersonMenu";
@@ -487,6 +488,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const waitingTotal = [...pending.values()].reduce((a, b) => a + b, 0);
   const needsYou = useNeedsCount(session.engine, ready); // what Inbox › Needs you counts: the badge and the title
   const running = lists.rows.filter((r) => r.working).length;
+  const ckptOn = useCkptOn(session.engine);
   const name = openRow?.isMain || !openRow ? defaultName : openRow.title || "New conversation";
   const room = useShellRoom({ engine: session.engine, rowKind: openRow?.kind, agentId: openRow?.agentId, title: name, ownTrunk: trunkName(openRow?.agentId), history: s.history, trunks: trunks.list });
   const rowName = (key: string) => {
@@ -1006,6 +1008,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       {route.kind === "chat" && pip && !stage ? (
         <StagePip key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} computer={pip} onOpen={() => { setPip(null); setStage("Computer"); }} onClose={() => setPip(null)} />
       ) : null}
+      {ready ? <SaveProgressOffer engine={session.engine} limits={limits} on={ckptOn} runningKeys={lists.rows.filter((r) => r.working).map((r) => r.key)} /> : null}
       {shown.statusBar ? (
         <StatusBar
           connection={ready ? "connected" : s.status.phase === "connecting" ? "connecting" : "offline"}

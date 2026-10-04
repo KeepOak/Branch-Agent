@@ -387,3 +387,9 @@
     animation: none;
   }
 }
+
+/* "Offer to save progress at 95%" (the preview's .ckpt-q) */
+.ckpt-q { position: fixed; left: 50%; top: 44px; translate: -50% 0; z-index: 97; width: min(560px, calc(100% - 24px)); background: var(--raise); border-radius: 16px; box-shadow: var(--pop); padding: 12px 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; animation: rise 0.25s ease-out; }
+.ckpt-q .grow { flex: 1; min-width: 200px; }
+.ckpt-q b { display: block; font-weight: 600; font-size: 13.5px; }
+.ckpt-q small { color: var(--ink-3); font-size: 12px; }
