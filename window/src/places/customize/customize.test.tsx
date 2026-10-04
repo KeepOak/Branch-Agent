@@ -65,7 +65,7 @@ describe("Customize › Channels", () => {
   it("lists chat apps from the channel plugins and channels.status, without starting a probe", async () => {
     const request = await open("Channels");
     expect(request).toHaveBeenCalledWith("channels.status", { probe: false });
-    const cards = [...host.querySelectorAll(".cz-ch")].map(c => c.querySelector("b")?.textContent);
+    const cards = [...host.querySelectorAll(".cz-ch")].map(c => c.querySelector(".grow > b")?.textContent);
     expect(cards).toEqual(["Telegram", "Discord", "Slack", "IRC"]);
     expect(host.textContent).toContain("Configured · not running");
     expect(host.textContent).toContain("Connected · reaches Branch");
