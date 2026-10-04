@@ -10,6 +10,52 @@ function nestedStructuredContent(depth: number): Record<string, unknown> {
 }
 
 describe("projectMcpCallToolResult", () => {
+  it("passes embedded image resources to vision and preserves the guest resource", () => {
+    const resource = { uri: "asset://chart", mimeType: "image/png", blob: "iVBORw0KGgo=" };
+    const result = projectMcpCallToolResult({ content: [{ type: "resource", resource }] });
+
+    expect(result.content).toEqual([{ type: "image", data: resource.blob, mimeType: "image/png" }]);
+    expect(consumeMcpCodeModeGuestResult(result)).toEqual({
+      content: [{ type: "resource", resource }],
+    });
+  });
+
+  it("identifies non-image blobs without putting binary bytes into model text", () => {
+    const result = projectMcpCallToolResult({
+      content: [
+        {
+          type: "resource",
+          resource: {
+            uri: "asset://document",
+            mimeType: "application/pdf",
+            blob: "JVBERi0=",
+          },
+        },
+      ],
+    });
+
+    expect(result.content).toEqual([
+      { type: "text", text: "[Binary Data (application/pdf)] asset://document" },
+    ]);
+  });
+
+  it("retains empty text resources and falls back to URI for untyped blobs", () => {
+    const result = projectMcpCallToolResult({
+      content: [
+        {
+          type: "resource",
+          resource: { uri: "asset://empty", text: "", mimeType: "image/png", blob: "ignored" },
+        },
+        { type: "resource", resource: { uri: "asset://unknown", blob: "opaque" } },
+      ],
+    });
+
+    expect(result.content).toEqual([
+      { type: "text", text: "" },
+      { type: "text", text: "asset://unknown" },
+    ]);
+  });
+
   it("mirrors an ordinary structuredContent for the model", () => {
     const result = projectMcpCallToolResult({
       content: [],

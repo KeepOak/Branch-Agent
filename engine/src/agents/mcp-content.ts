@@ -1,6 +1,6 @@
-import type { GetPromptResult } from "@modelcontextprotocol/sdk/types.js";
 import { stableStringify } from "@branch/normalization-core";
 import { isRecord } from "@branch/normalization-core/record-coerce";
+import type { GetPromptResult } from "@modelcontextprotocol/sdk/types.js";
 import type { AgentToolResult } from "./runtime/index.js";
 import { isToolResultError } from "./tool-result-error.js";
 import { toToolSearchJsonSafe } from "./tool-search-json.js";
@@ -58,6 +58,20 @@ function stringifyMcpContent(value: unknown): string {
   }
 }
 
+function projectMcpEmbeddedResource(resource: Record<string, unknown>): McpAgentContentBlock {
+  if (typeof resource.text === "string") {
+    return { type: "text", text: resource.text };
+  }
+  const { blob, mimeType } = resource;
+  if (typeof blob === "string" && typeof mimeType === "string") {
+    if (mimeType.startsWith("image/")) {
+      return { type: "image", data: blob, mimeType };
+    }
+    return { type: "text", text: `[Binary Data (${mimeType})] ${resource.uri}` };
+  }
+  return { type: "text", text: String(resource.uri) };
+}
+
 /** Converts untrusted MCP content into the agent text/image contract. */
 function mcpContentBlockToAgentContent(block: unknown): McpAgentContentBlock {
   if (!isRecord(block)) {
@@ -95,8 +109,7 @@ function mcpContentBlockToAgentContent(block: unknown): McpAgentContentBlock {
       if (!isRecord(block.resource) || typeof block.resource.uri !== "string") {
         break;
       }
-      const text = typeof block.resource.text === "string" ? block.resource.text : undefined;
-      return { type: "text", text: text ?? block.resource.uri };
+      return projectMcpEmbeddedResource(block.resource);
     }
   }
   return { type: "text", text: stringifyMcpContent(block) };
