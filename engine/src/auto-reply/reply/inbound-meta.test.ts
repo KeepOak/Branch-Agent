@@ -223,6 +223,25 @@ describe("buildInboundMetaSystemPrompt", () => {
 });
 
 describe("buildInboundUserContextPrefix", () => {
+  it("restores saved goal progress and reminds the next turn about completion criteria", () => {
+    const entry = createGoalSessionEntry("active");
+    entry.goal = {
+      ...entry.goal!,
+      acceptanceCriteria: ["Written", "Checked"],
+      checkpoint: {
+        summary: "Report\n written",
+        nextAction: "Validate the report",
+        updatedAt: 2,
+      },
+    };
+    const text = buildInboundUserContextPrefix({} as TemplateContext, undefined, entry);
+    expect(text).toContain(
+      "Confirmed progress: Report written; next unfinished step: Validate the report",
+    );
+    expect(text).toContain("Do not replay confirmed actions");
+    expect(text).toContain("2 acceptance criteria require evidence; call get_goal");
+  });
+
   it("injects an active goal into the current user-role context", () => {
     const text = buildInboundUserContextPrefix(
       {} as TemplateContext,

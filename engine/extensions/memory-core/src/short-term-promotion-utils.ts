@@ -218,6 +218,15 @@ export function isContaminatedRingsSnippet(
     return false;
   }
   if (
+    // Echo/smoke-test turns are task-local instructions, not durable memories.
+    // Limit this to raw transcript command prefixes, preserving curated facts
+    // about exact-output APIs and genuine standing preferences.
+    (/^(?:[-*+]\s*)?user:\s*(?:reply|respond|return|output)\s+(?:exactly|only)\s+\S+/iu.test(
+      snippet,
+    ) &&
+      !/\b(?:from now on|going forward|for future|every time|always|whenever|remember)\b/iu.test(
+        snippet,
+      )) ||
     /<!--\s*branch-memory-promotion:/i.test(snippet) ||
     RINGS_TRANSCRIPT_PROMPT_LINE_RE.test(snippet) ||
     RAW_SESSION_METADATA_RE.test(snippet) ||

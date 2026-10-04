@@ -15,10 +15,7 @@ import {
   rewrapToolWithBeforeToolCallHook,
   type HookContext,
 } from "../agents/agent-tools.before-tool-call.js";
-import {
-  createBranchCodingTools,
-  resolveToolLoopDetectionConfig,
-} from "../agents/agent-tools.js";
+import { createBranchCodingTools, resolveToolLoopDetectionConfig } from "../agents/agent-tools.js";
 import { createHeadlessDeadlineScope } from "../agents/code-mode-headless.js";
 import type {
   CodeModeNamespaceDescriptor,
@@ -657,7 +654,9 @@ export function createCronScriptRuntime(deps: CronTriggerEvaluatorDeps) {
           maxToolCalls: HEADLESS_TRIGGER_TOOL_BUDGET,
           label: "cron trigger evaluation",
         });
-        return outcome.kind === "completed" ? parseTriggerResult(outcome.result) : outcome;
+        return outcome.kind === "completed"
+          ? parseTriggerResult(outcome.result, params.state)
+          : outcome;
       } finally {
         activeTriggerEvaluations -= 1;
       }
