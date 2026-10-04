@@ -5,6 +5,8 @@ import {
   decodeListSessionsCursor,
   encodeListSessionsCursor,
   resolveListSessionsPageSize,
+  readAcpSessionListTypes,
+  assertListSessionsTypeFilter,
 } from "./translator.session-list.js";
 
 describe("ACP translator session list helpers", () => {
@@ -41,4 +43,30 @@ describe("ACP translator session list helpers", () => {
     expect(resolveListSessionsPageSize({ pageSize: 1_000 })).toBe(100);
     expect(resolveListSessionsPageSize({ limit: -1 })).toBe(1);
   });
+});
+
+it("uses source ACP discovery defaults and accepts only its visible type selection", () => {
+  for (const meta of [undefined, null, {}, { types: null }, { types: [] }]) {
+    expect(readAcpSessionListTypes(meta)).toEqual(["user", "scheduled", "acp"]);
+  }
+  expect(readAcpSessionListTypes({ types: ["user", "acp", "user"] })).toEqual(["acp", "user"]);
+  for (const types of ["acp", ["hidden"], ["terminal"], ["wrong"], [3]]) {
+    expect(() => readAcpSessionListTypes({ types })).toThrow(
+      "types may only include user, scheduled, or acp",
+    );
+  }
+});
+it("binds emitted cursors to normalized type filters and keeps legacy default cursors", () => {
+  const typed = decodeListSessionsCursor(encodeListSessionsCursor({ offset: 2, types: ["acp"] }));
+  expect(() => assertListSessionsTypeFilter(typed, ["user"])).toThrow(
+    "does not match the type filter",
+  );
+  expect(() => assertListSessionsTypeFilter(typed, ["acp"])).not.toThrow();
+  const legacy = decodeListSessionsCursor(encodeListSessionsCursor({ offset: 2 }));
+  expect(() =>
+    assertListSessionsTypeFilter(legacy, readAcpSessionListTypes(undefined)),
+  ).not.toThrow();
+  expect(() => assertListSessionsTypeFilter(legacy, ["acp"])).toThrow(
+    "does not match the type filter",
+  );
 });

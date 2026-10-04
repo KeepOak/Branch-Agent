@@ -26,6 +26,7 @@ import { createApplyPatchTool } from "./apply-patch.js";
 import type { ExecToolDefaults } from "./bash-tools.exec-types.js";
 import type { ProcessToolDefaults } from "./bash-tools.process.js";
 import type { ImageSanitizationLimits } from "./image-sanitization.js";
+import type { InstructionImportFormat } from "./instruction-imports.js";
 import { createLazyExecTool } from "./lazy-exec-tool.js";
 import { createLazyProcessTool } from "./lazy-process-tool.js";
 import type { MemoryWriteProvenanceObserver } from "./memory-write-provenance.js";
@@ -37,6 +38,8 @@ import { resolveReadOnlyWorkspaceSkillMounts } from "./sandbox/workspace-mounts.
 import { createLsTool, type LsOperations } from "./sessions/tools/ls.js";
 import { createReadTool } from "./sessions/tools/read.js";
 import { resolveToolResultBudget } from "./tool-result-limits.js";
+import { createGlobTool } from "./tools/glob-tool.js";
+import { createReportFindingsTool } from "./tools/report-findings-tool.js";
 import { getAgentWorkspaceAccess, WorkspaceAccessUnavailableError } from "./workspace-access.js";
 
 const filesystemAction: AgentToolActionDescriptor = Object.freeze({
@@ -147,6 +150,8 @@ function wrapWorkspaceSkillRead(
 }
 
 type CoreCodingToolsOptions = {
+  agentId?: string;
+  sessionKey?: string;
   abortSignal?: AbortSignal;
   attachmentReadRoot?: string;
   codingRoot: string;
@@ -160,6 +165,7 @@ type CoreCodingToolsOptions = {
   skillReadResources?: SkillSnapshot["resolvedSkills"];
   skillInstructionPaths?: readonly string[];
   skillInstructionDeliveryCache?: SkillInstructionDeliveryCache;
+  projectInstructionImportFormat?: InstructionImportFormat;
   modelContextWindowTokens?: number;
   imageSanitization?: ImageSanitizationLimits;
   modelHasVision?: boolean;
@@ -171,6 +177,26 @@ type CoreCodingToolsOptions = {
   processDefaults: ProcessToolDefaults;
   recordToolPrepStage?: (name: string) => void;
 };
+
+function createWorkspaceGlobTool(
+  options: CoreCodingToolsOptions,
+  guard: (tool: AnyAgentTool) => AnyAgentTool,
+): AnyAgentTool {
+  const cwd = options.sandbox?.containerWorkdir ?? options.codingRoot;
+  const bridge = options.sandbox?.fsBridge;
+  const toolOptions = { root: options.workspaceOnly ? options.containmentRoot : undefined, bridge };
+  const validator = guard({
+    ...createGlobTool(cwd, toolOptions),
+    execute: async () => ({ content: [], details: undefined }),
+  });
+  const tool = createGlobTool(cwd, {
+    ...toolOptions,
+    validatePath: async (filePath, signal) => {
+      await validator.execute("glob-path-validation", { path: filePath }, signal);
+    },
+  });
+  return tool;
+}
 
 /** Materialize only the core file and shell families selected by the runtime owner. */
 export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgentTool[] {
@@ -263,6 +289,7 @@ export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgent
           }
         : undefined;
     if (!sandbox || readDirectory) {
+      base.push(createWorkspaceGlobTool(options, guardWorkspaceTool));
       const ls = createLsTool(options.codingRoot, {
         operations: listingOperations,
         modelBudget: resolveToolResultBudget(options.modelContextWindowTokens),
@@ -413,11 +440,15 @@ export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgent
 
   base.forEach((tool) => bindAgentToolActionDescriptor(tool, filesystemAction));
   shell.forEach((tool) => bindAgentToolActionDescriptor(tool, processAction));
-  return wrapToolsWithProjectInstructions([...base, ...shell], {
+  const reports = options.includeBaseCodingTools
+    ? [createReportFindingsTool({ agentId: options.agentId, sessionKey: options.sessionKey })]
+    : [];
+  return wrapToolsWithProjectInstructions([...base, ...shell, ...reports], {
     root: sandbox?.containerWorkdir ?? options.containmentRoot,
     cwd: sandbox?.containerWorkdir ?? options.codingRoot,
     normalizationCwd: sandboxRoot ?? options.codingRoot,
     bridge: sandboxFsBridge,
     deliveryCache: options.skillInstructionDeliveryCache,
+    importFormat: options.projectInstructionImportFormat,
   });
 }

@@ -12,6 +12,12 @@ import { formatErrorMessage } from "../infra/errors.js";
 import { retryAsync } from "../infra/retry.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
+  collectGhostedSkillNames,
+  extractPrunedSkillNames,
+  reinjectPrunedSkillMarkers,
+  MAX_PRUNED_SKILL_MARKERS,
+} from "../skills/runtime/pruned-skill-markers.js";
+import {
   buildOversizedFallbackPlanWithWorker,
   buildStageSplitPlanWithWorker,
   buildSummaryChunksWithWorker,
@@ -283,6 +289,19 @@ function extractChunkTimeRange(chunk: AgentMessage[]): string {
 
 /** Summarizes history in multiple stages when a single pass would be too large. */
 export async function summarizeInStages(
+  params: CompactionSummaryParams & { parts?: number; minMessagesForSplit?: number },
+): Promise<string> {
+  const names = [
+    ...new Set([
+      ...collectGhostedSkillNames(params.messages),
+      ...extractPrunedSkillNames(params.previousSummary ?? ""),
+    ]),
+  ].slice(0, MAX_PRUNED_SKILL_MARKERS);
+  const summary = await summarizeStagesCore(params);
+  return reinjectPrunedSkillMarkers(summary, names);
+}
+
+async function summarizeStagesCore(
   params: CompactionSummaryParams & {
     parts?: number;
     minMessagesForSplit?: number;

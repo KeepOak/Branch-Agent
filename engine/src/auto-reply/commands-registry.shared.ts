@@ -284,6 +284,31 @@ export function buildBuiltinChatCommands(
         modelIndependent: "always",
       },
     ),
+    defineBuiltinCommand(
+      "doctor",
+      "Investigate conversation and context problems.",
+      "status",
+      "standard",
+      {
+        args: [
+          defineCommandArgument("symptom", "Problem to investigate", { captureRemaining: true }),
+        ],
+      },
+    ),
+    defineBuiltinCommand(
+      "rules",
+      "List or enable project instructions from Cursor and Windsurf.",
+      "management",
+      "standard",
+      {
+        modelIndependent: "always",
+        args: [
+          defineCommandArgument("action", "cursor|windsurf on|off <relative rule path>", {
+            captureRemaining: true,
+          }),
+        ],
+      },
+    ),
     defineBuiltinCommand("login", "Connect a model provider.", "management", "standard", {
       modelIndependent: "always",
       nativeProviders: ["discord", "slack", "telegram"],

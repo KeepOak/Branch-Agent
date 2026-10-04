@@ -38,6 +38,7 @@ import {
   executeScreenshotAction,
   type BrowserScreenshotOptions,
 } from "./browser-tool.screenshot.js";
+import { executePageInspectionAction } from "./browser-tool.search.js";
 import { appendNavigatedPageState, executeSnapshotAction } from "./browser-tool.snapshot.js";
 import { parseBrowserNavigationUrl } from "./browser/navigation-guard.js";
 
@@ -200,6 +201,15 @@ export async function executeBrowserTabAction(context: {
       const targetId = readStringParam(params, "targetId");
       const canonicalTargetId = readStringValue(asNullableRecord(result.details)?.targetId);
       await touchTab(canonicalTargetId ?? targetId);
+      return result;
+    }
+    case "search":
+    case "find": {
+      const result = await executePageInspectionAction(action, actionOptions);
+      await touchTab(
+        readStringValue(asNullableRecord(result.details)?.targetId) ??
+          readStringValue(params.targetId),
+      );
       return result;
     }
     case "requests":

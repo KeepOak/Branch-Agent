@@ -1,11 +1,14 @@
 import { Type, type Static } from "typebox";
 import { closedObject } from "./closed-object.js";
 import { NonEmptyString, SessionLabelString } from "./primitives.js";
+import { SessionTypeSchema } from "./sessions-row.js";
 
 export const SessionsListParamsSchema = closedObject({
   /** Maximum rows to return; omitted Gateway RPC calls use a bounded default. */
   limit: Type.Optional(Type.Integer({ minimum: 1 })),
   offset: Type.Optional(Type.Integer({ minimum: 0 })),
+  /** Explicit discovery types; omission lists User/Scheduled, empty selects no rows. */
+  sessionTypes: Type.Optional(Type.Array(SessionTypeSchema)),
   /** Activity age for sortBy: "activity"; otherwise metadata update age. */
   activeMinutes: Type.Optional(Type.Integer({ minimum: 1 })),
   /** Strictly ascending epoch-ms bucket boundaries in the caller's local time zone. */

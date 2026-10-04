@@ -98,7 +98,17 @@ export function projectSessionListCandidateOptions(opts: SessionsListParams) {
     workspaceDir: opts.workspaceDir,
     group: opts.group,
     pinned: opts.pinned,
+    sessionTypes: opts.sessionTypes,
   };
+}
+
+/** Source default discovery is User/Scheduled; type never changes sharing authority. */
+function matchesSessionTypes(
+  entry: SessionEntry,
+  types: SessionsListParams["sessionTypes"],
+): boolean {
+  const type = entry.sessionType ?? "user";
+  return types ? types.includes(type) : type === "user" || type === "scheduled";
 }
 
 export function* filterSessionCandidateEntries(
@@ -116,6 +126,9 @@ export function* filterSessionCandidateEntries(
   const boardFace = opts.boardFace;
   const agentId = typeof opts.agentId === "string" ? normalizeAgentId(opts.agentId) : "";
   const keepCandidate = ([key, entry]: SessionEntryPair) => {
+    if (!matchesSessionTypes(entry, opts.sessionTypes)) {
+      return false;
+    }
     const target = expectDefined(params.getTarget(key), "selection row owner");
     const { selection } = target;
     const storeKey = target.storeKey ?? key;
@@ -276,7 +289,10 @@ export function* filterSessionEntries(
   const visibleEntries: SessionEntryPair[] = [];
   if (!filterCandidates) {
     for (const pair of params.entries) {
-      if (params.entryFilter?.(pair[0], pair[1]) ?? true) {
+      if (
+        matchesSessionTypes(pair[1], opts.sessionTypes) &&
+        (params.entryFilter?.(pair[0], pair[1]) ?? true)
+      ) {
         visibleEntries.push(pair);
       }
       if (shouldYield?.()) {

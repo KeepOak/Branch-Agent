@@ -39,8 +39,19 @@ export function paginatePageMarkdown(
   validatePageNumber(pageSize, "maxChars");
   validatePageNumber(pageNumber, "pageNumber");
   const body = htmlToMarkdown(html).text;
+  return {
+    ...paginateBrowserText(title ? `# ${title}\n\n${body}` : body, pageSize, pageNumber),
+    format: "markdown",
+    title,
+  };
+}
+
+/** Paginate browser output after sanitization without creating active page-start directives. */
+export function paginateBrowserText(value: string, pageSize: number, pageNumber: number) {
+  validatePageNumber(pageSize, "maxChars");
+  validatePageNumber(pageNumber, "pageNumber");
   const markdown = truncateSanitizedExternalContent(
-    neutralizeMediaDirectives(title ? `# ${title}\n\n${body}` : body),
+    neutralizeMediaDirectives(value),
     Number.MAX_SAFE_INTEGER,
   ).text;
   const { text, totalPages, currentPage } = sliceMarkdownPage(markdown, pageSize, pageNumber);
@@ -48,8 +59,6 @@ export function paginatePageMarkdown(
   return {
     text,
     truncated: hasMorePages,
-    format: "markdown",
-    title,
     totalPages,
     currentPage,
     hasMorePages,

@@ -102,10 +102,20 @@ function describeBrowserTool(opts: {
     "Repeated compatible snapshots with stable document identity mark newly appeared ref-bearing elements with [new].",
     `navigate returns the loaded page's compact snapshot inline (efficient interactive tier; use action=snapshot for a full snapshot); do not call snapshot after navigate.${opts.capabilities.actKinds.includes("batch") ? " Batch act results that report a cross-document navigation also include fresh page state;" : ""} After a single act that triggers navigation, snapshot before using refs.`,
     "Use snapshot+act for UI automation. Avoid act:wait by default; use only in exceptional cases when no reliable UI state exists.",
+    ...(opts.capabilities.actKinds.includes("humanClick")
+      ? [
+          "Use act:humanClick with ref for a native click preceded by a seeded minimum-jerk pointer path.",
+        ]
+      : []),
     actions.has("text")
       ? "For page prose, use action=text with optional selector and maxChars; it reads the first selector match, else article, main, or body. Set format=markdown for Readability main content and pageNumber (1-based) to continue a long page; preserve maxChars between pages and inspect currentPage/totalPages/hasMorePages. Use efficient snapshots for controls; they omit most prose."
       : `For page text, use snapshot${evaluateEnabled ? " or a bounded act:evaluate" : ""}; efficient snapshots omit most prose.`,
     "Use snapshot query to keep lines matching all whitespace-separated tokens, case-insensitively; matching lines retain element refs.",
+    ...(actions.has("search") || actions.has("find")
+      ? [
+          "Use search with pattern (literal by default), regex, caseSensitive, contextChars (150), cssScope, maxResults (25); find with selector, attributes, includeText (true), maxResults (50). Both count all matches without LLM extraction. For long output, keep arguments/maxChars unchanged and continue with pageNumber using currentPage/totalPages/hasMorePages.",
+        ]
+      : []),
     ...(actions.has("requests")
       ? [
           "Use requests for the recent network log; filter matches URL/type, limit defaults to 50, and clear=true clears the collected log after reading.",

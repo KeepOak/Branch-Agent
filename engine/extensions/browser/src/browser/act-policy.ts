@@ -166,6 +166,7 @@ function resolveLeafExecutionBudgetMs(
     case "scrollIntoView":
       return addNavigationGraceMs(resolveActWaitTimeoutMs(parseTimerInteger(request.timeoutMs)));
     case "hover":
+    case "humanClick":
     case "drag":
     case "select":
       return addNavigationGraceMs(resolveInteractionTimeoutMs(request));

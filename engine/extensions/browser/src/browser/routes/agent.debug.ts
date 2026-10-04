@@ -4,6 +4,7 @@ import { normalizeOptionalString } from "branch/plugin-sdk/string-coerce-runtime
 import { DEFAULT_TRACE_DIR } from "../paths.js";
 import { getBrowserProfileCapabilities } from "../profile-capabilities.js";
 import type { PwAiModule } from "../pw-ai-module.js";
+import { readSearchPageOptions, readFindElementsOptions } from "../pw-page-search.js";
 import type { BrowserRouteContext } from "../server-context.js";
 import { readBody, resolveProfileContext, withPlaywrightRouteContext } from "./agent.shared.js";
 import { EXISTING_SESSION_LIMITS } from "./existing-session-limits.js";
@@ -116,6 +117,28 @@ export function registerBrowserAgentDebugRoutes(
       }
       return (pw, target) =>
         pw.getPageTextViaPlaywright({ ...target, selector, maxChars, format, pageNumber });
+    },
+    EXISTING_SESSION_LIMITS.text,
+  );
+
+  register(
+    "post",
+    "/search",
+    "page search",
+    (input) => {
+      const options = readSearchPageOptions(input);
+      return (pw, target) => pw.searchPageViaPlaywright({ ...target, ...options });
+    },
+    EXISTING_SESSION_LIMITS.text,
+  );
+
+  register(
+    "post",
+    "/find",
+    "element query",
+    (input) => {
+      const options = readFindElementsOptions(input);
+      return (pw, target) => pw.findElementsViaPlaywright({ ...target, ...options });
     },
     EXISTING_SESSION_LIMITS.text,
   );

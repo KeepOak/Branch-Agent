@@ -12,6 +12,7 @@ import {
   assertBrowserNavigationResultAllowed,
   type BrowserNavigationPolicyOptions,
 } from "./navigation-guard.js";
+import { humanClickViaPlaywright } from "./pw-pointer-humanized.js";
 import { pageTargetInfo } from "./pw-session-connection.js";
 import {
   beginActionDownloadCaptureOnPage,
@@ -75,6 +76,9 @@ async function executeSingleAction(
     }
   }
   switch (action.kind) {
+    case "humanClick":
+      await humanClickViaPlaywright({ ...action, ...interaction });
+      break;
     case "click":
       await clickViaPlaywright({
         ...action,

@@ -9,6 +9,8 @@ import {
   browserRequests,
   browserErrors,
   browserPageText,
+  browserSearchPage,
+  browserFindElements,
   browserEmulateSetting,
   browserNavigate,
   browserPdfSave,
@@ -24,6 +26,57 @@ import {
 } from "./client.js";
 
 describe("browser client", () => {
+  it("sends search/find JSON through the selected profile and abort signal", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, init });
+        return new Response(
+          JSON.stringify({ ok: true, targetId: "t1", total: 0, matches: [], elements: [] }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }),
+    );
+    const controller = new AbortController();
+    await browserSearchPage("http://127.0.0.1:18791", {
+      targetId: "t1",
+      profile: "test profile",
+      pattern: 'price "quoted"',
+      cssScope: "#footer",
+      regex: false,
+      contextChars: 0,
+      maxResults: 100_000,
+      signal: controller.signal,
+    });
+    await browserFindElements("http://127.0.0.1:18791", {
+      targetId: "t1",
+      profile: "test profile",
+      selector: "a[href]",
+      attributes: ["href"],
+      includeText: false,
+      maxResults: 50,
+      signal: controller.signal,
+    });
+    expect(calls.map((call) => new URL(call.url).pathname)).toEqual(["/search", "/find"]);
+    for (const call of calls) {
+      expect(new URL(call.url).searchParams.get("profile")).toBe("test profile");
+      expect(call.init?.method).toBe("POST");
+      expect(call.init?.signal).toBeInstanceOf(AbortSignal);
+      expect(JSON.parse(String(call.init?.body))).not.toHaveProperty("profile");
+    }
+    expect(JSON.parse(String(calls[0]!.init?.body))).toMatchObject({
+      pattern: 'price "quoted"',
+      cssScope: "#footer",
+      contextChars: 0,
+      maxResults: 100_000,
+    });
+    expect(JSON.parse(String(calls[1]!.init?.body))).toMatchObject({
+      selector: "a[href]",
+      attributes: ["href"],
+      includeText: false,
+    });
+  });
   function jsonResponse(body: unknown): Response {
     return new Response(JSON.stringify(body), {
       headers: { "content-type": "application/json" },

@@ -1,3 +1,4 @@
+import { searchPageViaPlaywright, findElementsViaPlaywright } from "./pw-page-search.js";
 /** Playwright-backed browser helpers loaded as one optional runtime object. */
 import {
   closePageByTargetIdViaPlaywright,
@@ -68,6 +69,8 @@ import {
 import { traceStartViaPlaywright, traceStopViaPlaywright } from "./pw-tools-core.trace.js";
 
 export const pwAi = {
+  searchPageViaPlaywright,
+  findElementsViaPlaywright,
   downloadCurrentDocumentViaPlaywright,
   closePageByTargetIdViaPlaywright,
   closePlaywrightBrowserConnection,

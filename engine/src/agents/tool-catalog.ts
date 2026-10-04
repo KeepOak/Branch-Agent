@@ -103,6 +103,12 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
     profiles: ["coding"],
   },
   {
+    id: "glob",
+    description: "Find workspace files by glob pattern",
+    sectionId: "fs",
+    profiles: ["coding"],
+  },
+  {
     id: "read",
     description: "Read file contents",
     sectionId: "fs",
@@ -125,6 +131,13 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
     description: "Patch files",
     sectionId: "fs",
     profiles: ["coding"],
+  },
+  {
+    id: "report_findings",
+    description: "Report structured review findings and their resolution outcomes",
+    sectionId: "agents",
+    profiles: ["coding"],
+    includeInBranchGroup: true,
   },
   {
     id: "exec",

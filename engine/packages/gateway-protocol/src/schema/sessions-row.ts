@@ -13,6 +13,27 @@ import { SessionActivitySummarySchema } from "./sessions-activity-summary.js";
 import { SessionProviderReviewProjectionSchema } from "./sessions-provider-review.js";
 import { SessionSharingRoleSchema, SessionVisibilitySchema } from "./sessions-sharing-values.js";
 
+// aaif-goose/goose@bab8ff641039c9cd3331121cd84a5c6045f365ca SessionType.
+export const SESSION_TYPE_VALUES = [
+  "user",
+  "scheduled",
+  "sub_agent",
+  "hidden",
+  "terminal",
+  "gateway",
+  "acp",
+] as const;
+export const SessionTypeSchema = Type.Union([
+  Type.Literal("user"),
+  Type.Literal("scheduled"),
+  Type.Literal("sub_agent"),
+  Type.Literal("hidden"),
+  Type.Literal("terminal"),
+  Type.Literal("gateway"),
+  Type.Literal("acp"),
+]);
+export type SessionType = Static<typeof SessionTypeSchema>;
+
 export const SessionPermissionModeSchema = Type.Union([
   Type.Literal("read-only"),
   Type.Literal("guarded"),
@@ -104,6 +125,8 @@ export const SessionRowSchema = Type.Object(
   {
     key: Type.String(),
     sessionId: Type.Optional(Type.String()),
+    /** Durable discovery type, independent of sharing visibility and transport kind. */
+    sessionType: Type.Optional(SessionTypeSchema),
     incognito: Type.Optional(Type.Literal(true)),
     kind: Type.Union([
       Type.Literal("direct"),

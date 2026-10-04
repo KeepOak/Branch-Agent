@@ -1,3 +1,8 @@
+import {
+  findNormalizedProviderValue,
+  parseModelRef,
+} from "../../agents/model-selection-normalize.js";
+import { formatModelSuitabilityWarning } from "../../agents/model-suitability.js";
 import { logConfigUpdated } from "../../config/logging.js";
 import { resolveAgentModelPrimaryValue } from "../../config/model-input.js";
 import type { RuntimeEnv } from "../../runtime.js";
@@ -14,6 +19,17 @@ export async function modelsSetCommand(modelRaw: string, runtime: RuntimeEnv) {
     runtime.error?.(catalogWarning);
   }
   const selectedModel = resolveAgentModelPrimaryValue(updated.agents?.defaults?.model) ?? modelRaw;
+  const selectedRef = parseModelRef(selectedModel, "");
+  if (selectedRef) {
+    const name = findNormalizedProviderValue(
+      updated.models?.providers,
+      selectedRef.provider,
+    )?.models?.find((entry) => entry.id === selectedRef.model)?.name;
+    const warning = formatModelSuitabilityWarning({ ...selectedRef, name });
+    if (warning) {
+      runtime.error?.(warning);
+    }
+  }
   const repaired = await repairCodexRuntimePluginInstallForModelSelection({
     cfg: updated,
     model: selectedModel,

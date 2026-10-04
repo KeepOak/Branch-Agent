@@ -270,6 +270,8 @@ type SessionEntryCore = SessionRestartRecoveryState &
   Pick<SessionRow, "permissionMode" | "sandboxMode" | "nativeRuntimeConsent" | "sessionRoot"> & {
     /** Collaboration mode. Missing legacy values are equivalent to "shared". */
     visibility?: NonNullable<SessionRow["visibility"]>;
+    /** Creation-owned discovery type; legacy absence has the source User default. */
+    sessionType?: NonNullable<SessionRow["sessionType"]>;
     /**
      * Last delivered heartbeat payload (used to suppress duplicate heartbeat notifications).
      * Stored on the main session entry.
@@ -773,6 +775,9 @@ function mergeSessionEntryWithPolicy(
   // Node creation and exact fork ancestry are write-once; sandbox policy cannot be added later.
   if (existing.createdVia !== undefined) {
     next.createdVia = existing.createdVia;
+  }
+  if (existing.sessionType !== undefined) {
+    next.sessionType = existing.sessionType;
   }
   if (existing.createdActor !== undefined) {
     next.createdActor = existing.createdActor;

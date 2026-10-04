@@ -5,6 +5,7 @@ import {
   normalizeFastMode,
   normalizeOptionalString,
 } from "@branch/normalization-core/string-coerce";
+import { SESSION_TYPE_VALUES } from "../../packages/gateway-protocol/src/schema/sessions-row.js";
 import type { GatewayClient } from "../gateway/client.js";
 import type { GatewaySessionRow, SessionsListResult } from "../gateway/session-utils.js";
 import {
@@ -183,6 +184,8 @@ export class AcpTranslatorSessionState {
     const result = await this.gateway.request<SessionsListResult>("sessions.list", {
       limit: 200,
       search: sessionKey,
+      // Known-key runtime access is independent of ordinary discovery lists.
+      sessionTypes: [...SESSION_TYPE_VALUES],
       includeDerivedTitles: true,
     });
     return result.sessions.find((entry) => entry.key === sessionKey);

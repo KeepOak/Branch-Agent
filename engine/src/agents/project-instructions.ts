@@ -10,6 +10,13 @@ import { getToolParamsRecord, normalizeFileToolPathParam } from "./agent-tools.p
 import type { SkillInstructionDeliveryCache } from "./agent-tools.read.js";
 import type { AnyAgentTool } from "./agent-tools.types.js";
 import { extractApplyPatchPaths } from "./apply-patch.js";
+import {
+  processImports,
+  validateImportPath,
+  type InstructionImportFormat,
+  type InstructionImportFileSystem,
+} from "./instruction-imports.js";
+import { importPathIsWithin } from "./instruction-imports.scan.js";
 import { relativePathInsideSandboxRoot, resolvePathFromInput } from "./path-policy.js";
 import type { SandboxFsBridge } from "./sandbox/fs-bridge.types.js";
 import { parsePromptFrontmatter } from "./utils/frontmatter.js";
@@ -26,6 +33,7 @@ export type ProjectRule = {
 type RuleFiles = {
   read(filePath: string, signal?: AbortSignal): Promise<string | undefined>;
   list(directory: string, signal?: AbortSignal): Promise<string[]>;
+  validateImport?: InstructionImportFileSystem["validatePath"];
 };
 type ToolResult = Awaited<ReturnType<AnyAgentTool["execute"]>>;
 type ProjectInstructionOptions = {
@@ -34,6 +42,7 @@ type ProjectInstructionOptions = {
   normalizationCwd?: string;
   bridge?: SandboxFsBridge;
   deliveryCache?: SkillInstructionDeliveryCache;
+  importFormat?: InstructionImportFormat;
 };
 
 function patterns(value: unknown): Patterns | undefined {
@@ -202,6 +211,7 @@ function createRuleFiles(root: string, bridge?: SandboxFsBridge): RuleFiles {
   return {
     read: (filePath, signal) => readRuleFile(access, filePath, signal),
     list: (directory, signal) => listRuleFiles(access, directory, signal),
+    validateImport: bridge ? undefined : validateImportPath,
   };
 }
 
@@ -209,11 +219,77 @@ function rulePaths(filePath: string, directory: boolean): string[] {
   const folders = (directory ? filePath : path.posix.dirname(filePath))
     .split("/")
     .filter((folder) => folder && folder !== ".");
-  const paths = ["rules.md"];
+  const paths = ["rules.md", "GEMINI.md"];
   for (let index = 1; index <= folders.length; index++) {
     paths.push(`${folders.slice(0, index).join("/")}/rules.md`);
+    paths.push(`${folders.slice(0, index).join("/")}/GEMINI.md`);
   }
   return paths;
+}
+
+function importFileSystem(
+  root: string,
+  files: RuleFiles,
+  signal?: AbortSignal,
+): InstructionImportFileSystem {
+  const syntax = root.startsWith("/") ? path.posix : path.win32;
+  return {
+    syntax,
+    signal,
+    validatePath:
+      files.validateImport ??
+      ((input, base, allowed) =>
+        !input.includes("\0") &&
+        !/^(file|https?):\/\//.test(input) &&
+        allowed.some((directory) =>
+          importPathIsWithin(directory, syntax.resolve(base, input), syntax),
+        )),
+    readFile: async (filePath) => {
+      const relative = syntax.relative(root, filePath);
+      if (!importPathIsWithin(root, filePath, syntax)) {
+        throw new Error("Path traversal attempt");
+      }
+      const content = await files.read(
+        root.startsWith("/") ? relative : relative.replaceAll("\\", "/"),
+        signal,
+      );
+      if (content === undefined) {
+        throw new Error(`File not found: ${filePath}`);
+      }
+      return content;
+    },
+  };
+}
+
+async function parseInstructionFile(
+  sourceFile: string,
+  content: string,
+  params: {
+    files: RuleFiles;
+    root?: string;
+    importFormat?: InstructionImportFormat;
+    signal?: AbortSignal;
+  },
+): Promise<ProjectRule | undefined> {
+  if (path.posix.basename(sourceFile) !== "GEMINI.md") {
+    return sourceFile === ".continuerules"
+      ? { sourceFile, rule: content }
+      : parseProjectRule(sourceFile, content);
+  }
+  const root = params.root ?? path.resolve(".");
+  const filesystem = importFileSystem(root, params.files, params.signal);
+  const currentFile = (filesystem.syntax ?? path).resolve(root, sourceFile);
+  const imported = await processImports(
+    content,
+    (filesystem.syntax ?? path).dirname(currentFile),
+    false,
+    { processedFiles: new Set(), maxDepth: 5, currentDepth: 0, currentFile },
+    root,
+    params.importFormat ?? "tree",
+    [],
+    filesystem,
+  );
+  return { sourceFile, rule: imported.content };
 }
 
 /** Loads only ancestors of the touched file; sibling instructions stay out. */
@@ -221,6 +297,8 @@ export async function loadTouchedProjectRules(params: {
   filePath: string;
   directory?: boolean;
   files: RuleFiles;
+  root?: string;
+  importFormat?: InstructionImportFormat;
   signal?: AbortSignal;
   warn?: (message: string) => void;
 }): Promise<ProjectRule[]> {
@@ -241,10 +319,7 @@ export async function loadTouchedProjectRules(params: {
     try {
       const content = await params.files.read(sourceFile, params.signal);
       if (content !== undefined) {
-        const rule =
-          sourceFile === ".continuerules"
-            ? { sourceFile, rule: content }
-            : parseProjectRule(sourceFile, content);
+        const rule = await parseInstructionFile(sourceFile, content, params);
         if (rule?.rule.trim()) {
           rules.push(rule);
         }
@@ -316,6 +391,8 @@ async function appendTouchedInstructions(
     files: RuleFiles;
     delivered: SkillInstructionDeliveryCache;
     deliveryPrefix: string;
+    root: string;
+    importFormat?: InstructionImportFormat;
     signal?: AbortSignal;
   },
 ): Promise<ToolResult> {
@@ -377,6 +454,8 @@ export function wrapToolsWithProjectInstructions(
               directory: tool.name === "ls",
               content,
               files,
+              root: options.root,
+              importFormat: options.importFormat,
               delivered,
               signal,
               deliveryPrefix: `project-instructions:${options.root}`,

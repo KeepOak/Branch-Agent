@@ -25,10 +25,16 @@ import type { GatewayClient } from "../gateway/client.js";
 import type { SessionsListResult } from "../gateway/session-utils.js";
 import type { FixedWindowRateLimiter } from "../infra/fixed-window-rate-limit.js";
 import type { AcpEventLedgerReplay } from "./event-ledger.js";
+import {
+  persistAcpSessionCreationMeta,
+  readAcpSessionCreationMeta,
+} from "./session-creation-meta.js";
 import { parseSessionMeta, resetSessionIfNeeded, resolveAcpSessionKey } from "./session-mapper.js";
 import { extractReplayChunks, type GatewayTranscriptMessage } from "./translator.replay.js";
 import {
   ACP_LIST_SESSIONS_MAX_FETCH_LIMIT,
+  assertListSessionsTypeFilter,
+  readAcpSessionListTypes,
   assertAbsoluteCwd,
   decodeListSessionsCursor,
   encodeListSessionsCursor,
@@ -66,19 +72,26 @@ export class AcpTranslatorSessionLifecycle {
 
   async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
     this.assertSupportedSessionSetup(params.mcpServers);
+    const creationMeta = readAcpSessionCreationMeta(params["_meta"]);
     this.enforceSessionCreateRateLimit("newSession");
 
     const sessionId = randomUUID();
     const meta = parseSessionMeta(params["_meta"]);
-    const sessionKey = await this.resolveSessionKeyFromMeta({
+    const selectedKey = await this.resolveSessionKeyFromMeta({
       meta,
       fallbackKey: `acp-bridge:${sessionId}`,
     });
+    const createdSession = await persistAcpSessionCreationMeta(
+      this.gateway,
+      selectedKey,
+      params.cwd,
+      creationMeta,
+    );
 
     const session = this.sessionStore.createSession({
       sessionId,
-      sessionKey,
-      cwd: params.cwd,
+      sessionKey: createdSession.sessionKey,
+      cwd: createdSession.cwd,
     });
     await this.sessionUpdates.startLedgerSession(session, { complete: true, reset: true });
     this.log(`newSession: ${session.sessionId} -> ${session.sessionKey}`);
@@ -162,9 +175,12 @@ export class AcpTranslatorSessionLifecycle {
     if (requestedCwd) {
       assertAbsoluteCwd(requestedCwd, "session/list");
     }
-    const fallbackCwd = requestedCwd ?? process.cwd();
     const rawCursor = params.cursor;
     const cursor = decodeListSessionsCursor(rawCursor);
+    const sessionTypes = readAcpSessionListTypes(params["_meta"]);
+    if (rawCursor) {
+      assertListSessionsTypeFilter(cursor, sessionTypes);
+    }
     if (rawCursor && cursor.cwd !== requestedCwd) {
       throw new Error("ACP session list cursor does not match the cwd filter.");
     }
@@ -172,34 +188,7 @@ export class AcpTranslatorSessionLifecycle {
     const pageSize = resolveListSessionsPageSize(params["_meta"]);
     const start = cursor.offset;
     const end = start + pageSize;
-    let fetchLimit = end + 1;
-    let rows: SessionInfo[] = [];
-
-    while (true) {
-      const result = await this.gateway.request<SessionsListResult>("sessions.list", {
-        limit: fetchLimit,
-        includeDerivedTitles: true,
-      });
-      rows = result.sessions
-        .filter((session) => {
-          if (!requestedCwd) {
-            return true;
-          }
-          return (
-            (normalizeOptionalString(session.spawnedCwd) ??
-              normalizeOptionalString(session.spawnedWorkspaceDir)) === requestedCwd
-          );
-        })
-        .map((session) => this.sessionState.mapGatewaySession(session, fallbackCwd));
-      if (
-        rows.length > end ||
-        result.hasMore !== true ||
-        fetchLimit >= ACP_LIST_SESSIONS_MAX_FETCH_LIMIT
-      ) {
-        break;
-      }
-      fetchLimit = Math.min(fetchLimit * 2, ACP_LIST_SESSIONS_MAX_FETCH_LIMIT);
-    }
+    const rows = await this.fetchListedSessions(end, sessionTypes, requestedCwd);
 
     const page = rows.slice(start, end);
     const hasMore = rows.length > end;
@@ -209,9 +198,42 @@ export class AcpTranslatorSessionLifecycle {
         ? encodeListSessionsCursor({
             offset: end,
             ...(requestedCwd ? { cwd: requestedCwd } : {}),
+            types: sessionTypes,
           })
         : null,
     };
+  }
+
+  private async fetchListedSessions(
+    end: number,
+    sessionTypes: ReturnType<typeof readAcpSessionListTypes>,
+    requestedCwd?: string,
+  ): Promise<SessionInfo[]> {
+    let fetchLimit = end + 1;
+    const fallbackCwd = requestedCwd ?? process.cwd();
+    while (true) {
+      const result = await this.gateway.request<SessionsListResult>("sessions.list", {
+        limit: fetchLimit,
+        includeDerivedTitles: true,
+        sessionTypes,
+      });
+      const rows = result.sessions
+        .filter(
+          (session) =>
+            !requestedCwd ||
+            (normalizeOptionalString(session.spawnedCwd) ??
+              normalizeOptionalString(session.spawnedWorkspaceDir)) === requestedCwd,
+        )
+        .map((session) => this.sessionState.mapGatewaySession(session, fallbackCwd));
+      if (
+        rows.length > end ||
+        result.hasMore !== true ||
+        fetchLimit >= ACP_LIST_SESSIONS_MAX_FETCH_LIMIT
+      ) {
+        return rows;
+      }
+      fetchLimit = Math.min(fetchLimit * 2, ACP_LIST_SESSIONS_MAX_FETCH_LIMIT);
+    }
   }
 
   async resumeSession(params: ResumeSessionRequest): Promise<ResumeSessionResponse> {

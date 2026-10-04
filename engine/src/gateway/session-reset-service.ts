@@ -1119,6 +1119,7 @@ export async function performGatewaySessionReset(params: {
               : {};
           const nextEntry: InternalSessionEntry = {
             sessionId: nextSessionId,
+            sessionType: currentEntry?.sessionType,
             lifecycleRevision: randomUUID(),
             updatedAt: now,
             sessionStartedAt: now,

@@ -53,6 +53,8 @@ export const BROWSER_TAB_BOUND_ACTIONS = [
   "requests",
   "errors",
   "text",
+  "search",
+  "find",
   "emulate",
   "dialog",
   "download",

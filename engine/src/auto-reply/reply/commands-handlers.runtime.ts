@@ -9,6 +9,7 @@ import { handleConfigCommand, handleDebugCommand } from "./commands-config.js";
 import { handleContextCommand } from "./commands-context-command.js";
 import { handleDashboardCommand } from "./commands-dashboard.js";
 import { handleDiagnosticsCommand } from "./commands-diagnostics.js";
+import { handleDoctorCommand } from "./commands-doctor.js";
 import { handleGoalCommand } from "./commands-goal.js";
 import {
   handleCommandsListCommand,
@@ -28,6 +29,7 @@ import { handleModelsCommand } from "./commands-models.js";
 import { handleNameCommand } from "./commands-name.js";
 import { handlePluginCommand } from "./commands-plugin.js";
 import { handlePluginsCommand } from "./commands-plugins.js";
+import { handleRulesCommand } from "./commands-rules.js";
 import {
   handleAbortTrigger,
   handleActivationCommand,
@@ -71,11 +73,13 @@ export function loadCommandHandlers(): CommandHandler[] {
     handleStatusCommand,
     handleGoalCommand,
     handleDashboardCommand,
+    handleDoctorCommand,
     handleLearnCommand,
     handleLoopCommand,
     handleNameCommand,
     handleDiagnosticsCommand,
     handleWarningsCommand,
+    handleRulesCommand,
     handleSteerCommand,
     handleAllowlistCommand,
     handleApproveCommand,

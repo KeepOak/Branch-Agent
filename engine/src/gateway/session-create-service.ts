@@ -1,7 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { stableStringify } from "@branch/normalization-core";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
-import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
 import {
   ErrorCodes,
   type ErrorShape,
@@ -168,7 +167,7 @@ export async function createGatewaySession(
         })
       : params.commitGuard;
   commitGuard?.();
-  const displayName = truncateUtf16Safe(params.displayName?.trim() ?? "", 500).trimEnd();
+  const displayName = params.displayName?.trim() ?? "";
   const label = normalizeOptionalString(params.label);
   const requestedKey = normalizeOptionalString(params.key);
   const parentSessionKey = normalizeOptionalString(params.parentSessionKey);
@@ -898,6 +897,7 @@ export async function createGatewaySession(
             : {}),
           ...(createdNewEntry && inheritedSpawnOwner ? { owner: inheritedSpawnOwner } : {}),
           ...(visibility.value && createdNewEntry ? { visibility: visibility.value } : {}),
+          ...(params.sessionType && createdNewEntry ? { sessionType: params.sessionType } : {}),
           ...projectPreparedSessionWorkspace(existingEntry, {
             projectId,
             pendingProjectGitUrl,
