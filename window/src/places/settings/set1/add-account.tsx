@@ -169,7 +169,9 @@ function SignIn({ engine, svc, agent, onRun, onKey }: SignInProps) {
 }
 
 /** A sign-in the service hands out as a token (Claude: `claude setup-token`), saved through the engine's setup
- *  activation as upstream's model setup does (kind "api-key" with the manual choice; a new auth profile each time). */
+ *  activation as upstream's model setup does: branch.setup.activate.start {kind "api-key", authChoice "setup-token",
+ *  apiKey} runs Anthropic's setup-token auth method, which stores a type "token" profile; setup saves each one under
+ *  its own "anthropic:setup-<id>" (system-agent/setup-inference-credentials.ts saveSetupCredential). */
 function SecretSignIn({ svc, login, agent, onRun }: { svc: Service; login: RecordValue; agent: { agentId?: string }; onRun: (r: WizardStart) => void }) {
   const [token, setToken] = useState("");
   const claude = svc.brand === "anthropic";
@@ -238,17 +240,27 @@ function Placed({ engine, svc, before, agent, onDone }: { engine: WindowEngine; 
   const providers = providersOf(status.data?.providers);
   const p = providers.find((x) => x.provider === svc.brand);
   const fresh = p?.profiles.find((a) => !before.includes(a.profileId));
+  const order = (where: "first" | "last") => {
+    if (!p || !fresh) return null;
+    const stored = (p.profileOrder ?? []).filter((id) => id !== fresh.profileId && p.profiles.some((a) => a.profileId === id));
+    const rest = [...stored, ...p.profiles.map((a) => a.profileId).filter((id) => id !== fresh.profileId && !stored.includes(id))];
+    return where === "first" ? [fresh.profileId, ...rest] : [...rest, fresh.profileId];
+  };
+  const setOrder = (ids: string[]) => engine.request("models.authOrderSet", { provider: p?.authProvider ?? p?.provider, profileIds: ids, ...agent });
+  // A stored order that leaves the new account out would skip it, so it joins the end until the owner moves it.
+  const missing = Boolean(fresh && p?.profileOrder?.length && !p.profileOrder.includes(fresh.profileId));
+  useEffect(() => { const ids = missing ? order("last") : null; if (ids) void setOrder(ids).catch(() => undefined); }, [missing]); // eslint-disable-line react-hooks/exhaustive-deps
   const put = (where: "first" | "last") => void save(async () => {
-    if (!p || !fresh) return;
-    const rest = p.profiles.map((a) => a.profileId).filter((id) => id !== fresh.profileId);
-    await engine.request("models.authOrderSet", { provider: p.authProvider ?? p.provider, profileIds: where === "first" ? [fresh.profileId, ...rest] : [...rest, fresh.profileId], ...agent });
+    const ids = order(where);
+    if (!ids) return;
+    await setOrder(ids);
     onDone();
   });
   return (
     <>
       <div className="prow aa-new">
         <Logo id={svc.brand} name={svc.name} size={36} />
-        <span className="grow"><b>{fresh ? `${svc.name} · ${fresh.displayName ?? fresh.email ?? "New account"}` : svc.name}</b><small>{status.loading ? "Reading the new account…" : fresh ? (fresh.type === "api_key" ? "Key" : "Signed in") : "Set up."}</small></span>
+        <span className="grow"><b>{fresh ? `${svc.name} · ${fresh.displayName ?? fresh.email ?? "New account"}` : svc.name}</b><small>{status.loading ? "Reading the new account…" : fresh ? (fresh.type === "api_key" ? "Key" : fresh.type === "token" ? "Subscription" : "Signed in") : "Set up."}</small></span>
         {fresh ? <span className={`pill ${fresh.status === "ok" || fresh.status === "static" ? "ok" : "warn"}`}><i />{FRESH_WORD[fresh.status] ?? visible(fresh.status)}</span> : null}
       </div>
       <label className="fld"><span>Call it</span><input className="inp" disabled title="Branch can’t rename an account yet." value={fresh?.displayName ?? fresh?.email ?? svc.name} readOnly /></label>

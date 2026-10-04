@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
-import { AccountsPage, accountsOf, movedUp, type Provider } from "./accounts";
+import { AccountsPage, accountName, accountsOf, movedUp, type Provider } from "./accounts";
 import { servicesOf } from "./add-account";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -44,6 +44,12 @@ describe("Settings › Accounts", () => {
     const all = accountsOf(PROVIDERS);
     expect(all.map((a) => a.a.profileId)).toEqual(["openai:b", "openai:a", "anthropic:c"]);
     expect(movedUp(all[1], all)).toEqual(["openai:a", "openai:b"]);
+  });
+
+  it("names each Claude subscription token as its own Claude account", () => {
+    const p: Provider = { provider: "anthropic", displayName: "Claude", status: "ok", profileOrder: ["anthropic:setup-1"], profiles: [
+      { profileId: "anthropic:setup-1", type: "token", status: "ok" }, { profileId: "anthropic:setup-2", type: "token", status: "ok" }] };
+    expect(accountsOf([p]).map((acc) => accountName(acc))).toEqual(["Claude · Subscription 1", "Claude · Subscription 2"]);
   });
 
   it("draws the designed rows from models.authStatus, never a credential", async () => {
