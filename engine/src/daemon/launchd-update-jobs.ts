@@ -85,14 +85,6 @@ function resolveCurrentBranchUpdateLaunchdJobLabel(
   return null;
 }
 
-export function parseLaunchctlListBranchUpdateJobs(
-  output: string,
-): StaleBranchUpdateLaunchdJob[] {
-  return parseLaunchctlListBranchUpdateJobCandidates(output)
-    .filter((job) => !job.requiresMetadata)
-    .map(({ requiresMetadata: _requiresMetadata, ...job }) => job);
-}
-
 function parseLaunchctlListBranchUpdateJobCandidates(
   output: string,
 ): Array<StaleBranchUpdateLaunchdJob & BranchUpdateLaunchdLabelCandidate> {
@@ -193,58 +185,26 @@ export async function findStaleBranchUpdateLaunchdJobs(
   return jobs;
 }
 
-async function disableBranchUpdateLaunchdJobCandidate(params: {
-  candidate: BranchUpdateLaunchdLabelCandidate;
-  env: NodeJS.ProcessEnv;
-  trustCurrentEnvMarker: boolean;
-}): Promise<boolean> {
-  if (process.platform !== "darwin") {
-    return false;
-  }
-  if (
-    params.candidate.requiresMetadata &&
-    !(
-      (params.trustCurrentEnvMarker && hasBranchUpdateLaunchdMarker(params.env)) ||
-      (await isLaunchdJobConfirmedBranchUpdater({
-        label: params.candidate.label,
-        env: params.env,
-      }))
-    )
-  ) {
-    return false;
-  }
-  const serviceTarget = `${resolveLaunchAgentGuiDomain()}/${assertValidLaunchAgentLabel(params.candidate.label)}`;
-  const result = await execLaunchctl(["disable", serviceTarget]);
-  return result.code === 0;
-}
-
-export async function disableBranchUpdateLaunchdJob(
-  label: string,
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<boolean> {
-  const candidate = normalizeBranchUpdateLaunchdLabelCandidate(label);
-  if (!candidate) {
-    return false;
-  }
-  return await disableBranchUpdateLaunchdJobCandidate({
-    candidate,
-    env,
-    trustCurrentEnvMarker: false,
-  });
-}
-
 export async function disableCurrentBranchUpdateLaunchdJob(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<boolean> {
   const candidate = resolveCurrentBranchUpdateLaunchdJobLabel(env);
-  if (!candidate) {
+  if (!candidate || process.platform !== "darwin") {
     return false;
   }
-  return await disableBranchUpdateLaunchdJobCandidate({
-    candidate,
-    env,
-    // Detached handoffs preserve the configured label, so only launchd-backed
-    // current-process identity may turn the ambient marker into proof.
-    trustCurrentEnvMarker: isCurrentProcessLaunchdServiceLabel(candidate.label, env),
-  });
+  // Detached handoffs preserve the configured label, so only launchd-backed
+  // current-process identity may turn the ambient marker into proof.
+  const trustCurrentEnvMarker = isCurrentProcessLaunchdServiceLabel(candidate.label, env);
+  if (
+    candidate.requiresMetadata &&
+    !(
+      (trustCurrentEnvMarker && hasBranchUpdateLaunchdMarker(env)) ||
+      (await isLaunchdJobConfirmedBranchUpdater({ label: candidate.label, env }))
+    )
+  ) {
+    return false;
+  }
+  const serviceTarget = `${resolveLaunchAgentGuiDomain()}/${assertValidLaunchAgentLabel(candidate.label)}`;
+  const result = await execLaunchctl(["disable", serviceTarget]);
+  return result.code === 0;
 }

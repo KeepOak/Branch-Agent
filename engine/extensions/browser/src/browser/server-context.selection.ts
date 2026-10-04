@@ -1,6 +1,3 @@
-/**
- * Browser tab selection operations for default tab choice, focus, and close.
- */
 import { sleepWithAbort } from "branch/plugin-sdk/runtime-env";
 import { formatErrorMessage, type SsrFPolicy } from "branch/plugin-sdk/security-runtime";
 import { normalizeOptionalString } from "branch/plugin-sdk/string-coerce-runtime";
@@ -61,7 +58,6 @@ function mergeOpenedTabSnapshot(
   return merged;
 }
 
-/** Builds tab selection/focus/close operations for one resolved browser profile. */
 export function createProfileSelectionOps({
   profile,
   runtime,

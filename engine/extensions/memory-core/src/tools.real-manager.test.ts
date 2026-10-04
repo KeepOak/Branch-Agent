@@ -11,7 +11,10 @@ import {
   registerMemoryCorpusSupplement,
 } from "branch/plugin-sdk/memory-host-core";
 import { openBranchAgentDatabase } from "branch/plugin-sdk/sqlite-runtime";
-import { closeBranchAgentDatabasesForTest } from "branch/plugin-sdk/sqlite-runtime-testing";
+import {
+  closeBranchAgentDatabasesAsync,
+  closeBranchAgentDatabasesForTest,
+} from "branch/plugin-sdk/sqlite-runtime-testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readMemoryDatabaseRevision } from "./memory/manager-db-kernel.js";
 import * as generationLease from "./memory/manager-index-generation-lease.js";
@@ -569,6 +572,7 @@ describe("memory_search real manager", () => {
         JSON.stringify({ sessionId: "legacy-session", updatedAt: 1 }),
         1,
       );
+    await closeBranchAgentDatabasesAsync();
     closeBranchAgentDatabasesForTest();
 
     const tool = searchTool(cfg, { agentSessionKey: "agent:main:main" });
@@ -577,6 +581,7 @@ describe("memory_search real manager", () => {
     openBranchAgentDatabase({ agentId: "main" })
       .db.prepare("DELETE FROM session_nodes WHERE session_key = ?")
       .run("Agent:Main:Main");
+    await closeBranchAgentDatabasesAsync();
     closeBranchAgentDatabasesForTest();
     const replay = await tool.execute("migration-replay", {
       query: "different anti-cheat query",

@@ -1,4 +1,4 @@
-import type { RetainedOperation } from "./retained-operation.js";
+import type { RetainedOperation } from "@branch/worker-runtime/lifecycle";
 
 export type PreparedSqliteReadOnlyLocation = {
   cleanup: () => boolean;

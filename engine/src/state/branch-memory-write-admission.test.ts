@@ -57,7 +57,7 @@ describe("memory manager state owner capture", () => {
     vi.stubEnv("BRANCH_STATE_DIR", originalEnv.BRANCH_STATE_DIR);
     config = {
       plugins: { enabled: false },
-      agents: { defaults: { workspace }, list: [{ id: "main" }] },
+      agents: { defaults: { workspace }, entries: { main: {} } },
       memory: { search: { provider: "none", store: { vector: { enabled: false } } } },
     };
     openBranchAgentDatabase({ agentId: "main", env: originalEnv });

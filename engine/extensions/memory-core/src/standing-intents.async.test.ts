@@ -50,19 +50,26 @@ const releases: Array<() => void> = [];
 const writerDrains: Array<() => Promise<unknown>> = [];
 const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
   afterEach(async () => {
-    for (const release of releases.splice(0)) {
-      release();
+    try {
+      try {
+        for (const release of releases.splice(0)) {
+          release();
+        }
+        await Promise.allSettled(pending.splice(0));
+        await Promise.allSettled(writerDrains.splice(0).map((drain) => drain()));
+      } finally {
+        resetGlobalHookRunner();
+        resetPluginRuntimeStateForTest();
+      }
+      // Worker lease retirement still needs its original shared-state file.
+      await closeBranchAgentDatabasesAsync();
+      closeBranchAgentDatabasesForTest();
+      await closeBranchStateDatabaseAsync();
+      closeBranchStateDatabaseForTest();
+      cleanup();
+    } finally {
+      vi.unstubAllEnvs();
     }
-    await Promise.allSettled(pending.splice(0));
-    await Promise.allSettled(writerDrains.splice(0).map((drain) => drain()));
-    resetGlobalHookRunner();
-    resetPluginRuntimeStateForTest();
-    await closeBranchAgentDatabasesAsync();
-    closeBranchAgentDatabasesForTest();
-    await closeBranchStateDatabaseAsync();
-    closeBranchStateDatabaseForTest();
-    vi.unstubAllEnvs();
-    cleanup();
   }),
 );
 

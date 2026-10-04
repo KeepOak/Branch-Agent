@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
+import { createTestPluginServiceScheduler } from "branch/plugin-sdk/plugin-test-api";
 import { resolveRuntimeWorkerUrl } from "branch/plugin-sdk/process-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseTeamReportsConfig, type TeamReportsConfig } from "./config.js";
@@ -170,6 +171,7 @@ async function setup(
   const runSettled = () => completionAt(published++).resolve();
   const nextRun = () => completionAt(consumed++).promise;
   const context = {
+    scheduler: createTestPluginServiceScheduler(),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     serviceHealth: { reportFailure: vi.fn(runSettled), clearFailure: vi.fn(runSettled) },
   };

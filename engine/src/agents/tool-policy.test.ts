@@ -21,7 +21,6 @@ import {
   hasRestrictiveAllowPolicy,
   normalizeToolPolicyName,
   resolveToolProfilePolicy,
-  TOOL_GROUPS,
 } from "./tool-policy.js";
 
 describe("tool-policy", () => {
@@ -68,7 +67,7 @@ describe("tool-policy", () => {
   });
 
   it("includes core tool groups in group:branch", () => {
-    const group = TOOL_GROUPS["group:branch"];
+    const group = expandToolGroups(["group:branch"]);
     expect(group).toContain("browser");
     expect(group).toContain("message");
     expect(group).toContain("subagents");

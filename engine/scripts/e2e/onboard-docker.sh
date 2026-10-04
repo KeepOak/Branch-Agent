@@ -8,8 +8,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT_DIR/scripts/lib/branch-e2e-instance.sh"
 source "$ROOT_DIR/scripts/lib/docker-e2e-image.sh"
-source "$ROOT_DIR/scripts/lib/frozen-target-compat.sh"
-branch_resolve_frozen_onboard_contract "${BRANCH_DOCKER_E2E_REPO_ROOT:-$ROOT_DIR}"
 IMAGE_NAME="$(docker_e2e_resolve_image "branch-onboard-e2e" BRANCH_ONBOARD_E2E_IMAGE)"
 BRANCH_TEST_STATE_FUNCTION_B64="$(docker_e2e_test_state_function_b64)"
 MAX_MEMORY_MIB="$(docker_e2e_read_nonnegative_decimal_env BRANCH_ONBOARD_MAX_MEMORY_MIB 2048)"
@@ -19,9 +17,6 @@ COMMAND_TIMEOUT="${BRANCH_ONBOARD_COMMAND_TIMEOUT:-${BRANCH_E2E_COMMAND_TIMEOUT:
 GATEWAY_WAIT_ATTEMPTS="$(branch_e2e_read_positive_int_env BRANCH_ONBOARD_GATEWAY_WAIT_ATTEMPTS 20)"
 GATEWAY_WAIT_INTERVAL_S="$(docker_e2e_read_nonnegative_decimal_env BRANCH_ONBOARD_GATEWAY_WAIT_INTERVAL_S 1)"
 ONBOARD_CASES="${BRANCH_ONBOARD_E2E_CASES:-}"
-if [ -z "$ONBOARD_CASES" ]; then
-  ONBOARD_CASES="$BRANCH_FROZEN_TARGET_ONBOARD_CASES"
-fi
 CONTAINER_NAME="branch-onboard-e2e-$$"
 RUN_LOG="$(mktemp "${TMPDIR:-/tmp}/branch-onboard.XXXXXX")"
 STATS_LOG="$(mktemp "${TMPDIR:-/tmp}/branch-onboard-stats.XXXXXX")"

@@ -132,7 +132,6 @@ function createBrowserToolOptions(ctx: BranchPluginToolContext): BrowserToolOpti
   };
 }
 
-/** Browser plugin reload policy. */
 export const browserPluginReload = {
   restartPrefixes: ["browser"],
   hotPrefixes: [
@@ -150,7 +149,6 @@ export const browserPluginReload = {
   ],
 };
 
-/** Node-host command descriptors exposed by the Browser plugin. */
 function createBrowserProxyNodeHostCommand(command: string): BranchPluginNodeHostCommand {
   return {
     command,
@@ -185,7 +183,6 @@ export const browserPluginNodeHostCommands: BranchPluginNodeHostCommand[] = [
   createBrowserProxyNodeHostCommand(BROWSER_PROXY_UPLOAD_COMMAND),
 ];
 
-/** Security audit collectors contributed by the Browser plugin. */
 export const browserSecurityAuditCollectors: BranchPluginSecurityAuditCollector[] = [
   async (ctx) => {
     const { collectBrowserSecurityAuditFindings } = await loadBrowserRegistrationRuntimeModule();
@@ -258,7 +255,6 @@ function createLazyBrowserPluginService(
   };
 }
 
-/** Register Browser tool factories, CLI, gateway methods, services, and audits. */
 export function registerBrowserPlugin(api: BranchPluginApi) {
   const runtime = initializeBrowserSessionTabStore(api.runtime);
   api.session.controls.registerControlUiDescriptor({

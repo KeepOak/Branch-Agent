@@ -15,6 +15,7 @@ import {
   deleteAgentConfigEntry,
 } from "../gateway/server-methods/agents-config-mutations.js";
 import { withAgentExecApprovalsRemoved } from "../infra/exec-approvals.js";
+import { runSqliteDeferredTransactionSync } from "../infra/sqlite-transaction.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { readAgentDeletionJournalInDatabase } from "../state/agent-deletion-journal.js";
 import type {
@@ -27,11 +28,8 @@ import {
 } from "../state/branch-state-db.js";
 import { digestGroveValue } from "./digest.js";
 import { deletionEffects, type GroveCleanupTargets } from "./lifecycle-delete-support.js";
-import {
-  readGroveInstallRecordFromDatabase,
-  updateGroveInstallRecordStatus,
-  type PersistedGroveInstall,
-} from "./provenance.js";
+import { readGroveInstallRecordFromDatabase } from "./provenance-read.kernel.js";
+import { updateGroveInstallRecordStatus, type PersistedGroveInstall } from "./provenance.js";
 
 type GroveAgentConfigRemovalParams = {
   agentId: string;
@@ -163,7 +161,7 @@ export async function withGroveAgentConfigRemoval<T>(
   };
   return await withAgentDeletion(
     params.agentId,
-    async (begin) => {
+    async (_begin, transact) => {
       const config = params.config ?? getRuntimeConfig();
       assertAgentSessionStoreDeletionSafe(config, params.agentId, stateOptions);
       const effects = deletionEffects(
@@ -179,7 +177,7 @@ export async function withGroveAgentConfigRemoval<T>(
           expectedInstall,
         );
       // Validate and claim together: a stale install snapshot must never fence a replacement.
-      const { existingJournal, deletion } = runBranchStateWriteTransaction((database) => {
+      const { existingJournal, deletion } = await transact((database, begin) => {
         if (!matchesInstall(database)) {
           throw params.onModified();
         }
@@ -193,7 +191,7 @@ export async function withGroveAgentConfigRemoval<T>(
           deleteFiles: previousJournal?.deleteFiles ?? false,
         });
         return { existingJournal: previousJournal, deletion: claimedDeletion };
-      }, stateOptions);
+      });
       let committed = false;
       let monitorEffectsStarted = false;
       const assertCurrent = (database?: BranchStateDatabase) => {
@@ -206,7 +204,9 @@ export async function withGroveAgentConfigRemoval<T>(
         if (database) {
           check(database);
         } else {
-          runBranchStateWriteTransaction(check, stateOptions);
+          const current = openBranchStateDatabase(stateOptions);
+          // Worker admission can hold the writer lock while waiting for this read-only authority check.
+          runSqliteDeferredTransactionSync(current.db, () => check(current));
         }
       };
       try {
@@ -249,7 +249,7 @@ export async function withGroveAgentConfigRemoval<T>(
       } finally {
         // Pre-config partial results release only this attempt's fence; committed cleanup retains it.
         if (!committed && !monitorEffectsStarted && !existingJournal) {
-          deletion.rollback();
+          await deletion.rollback();
         }
         if (expectedInstall) {
           // Result construction is pure; only the live operation may publish retry status.
@@ -262,6 +262,7 @@ export async function withGroveAgentConfigRemoval<T>(
             updateGroveInstallRecordStatus(params.agentId, "partial", {
               ...stateOptions,
               database,
+              deletionOperation: deletion,
             });
           }, stateOptions);
         }

@@ -31,32 +31,11 @@ describe("shared/frontmatter", () => {
     expect(
       resolveBranchManifestBlock({
         frontmatter: {
-          pluginMeta: "{ branch: { foo: 2 } }",
+          pluginMeta: "{ anotherTool: { foo: 99 }, branch: { foo: 2 } }",
         },
         key: "pluginMeta",
       }),
     ).toEqual({ foo: 2 });
-  });
-
-  test("resolveBranchManifestBlock reads legacy manifest keys", () => {
-    expect(
-      resolveBranchManifestBlock({
-        frontmatter: {
-          metadata: "{ clawdbot: { requires: { bins: ['op'] }, install: [] } }",
-        },
-      }),
-    ).toEqual({ requires: { bins: ["op"] }, install: [] });
-  });
-
-  test("resolveBranchManifestBlock prefers current manifest keys over legacy keys", () => {
-    expect(
-      resolveBranchManifestBlock({
-        frontmatter: {
-          metadata:
-            "{ branch: { requires: { bins: ['current'] } }, clawdbot: { requires: { bins: ['legacy'] } } }",
-        },
-      }),
-    ).toEqual({ requires: { bins: ["current"] } });
   });
 
   test("resolveBranchManifestBlock returns undefined for invalid input", () => {

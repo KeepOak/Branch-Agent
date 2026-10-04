@@ -343,7 +343,7 @@ suite.define(() => {
               for (const [index, page] of pages.entries()) {
                 await page.addInitScript(() =>
                   localStorage.setItem(
-                    "branch:control-ui:community-invite",
+                    "branch:control-ui:community-invite:v2",
                     JSON.stringify({ dismissedAtMs: 1770000000000 }),
                   ),
                 );

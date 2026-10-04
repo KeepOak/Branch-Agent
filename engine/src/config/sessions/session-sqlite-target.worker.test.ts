@@ -19,18 +19,20 @@ import { prepareSqliteTranscriptReadScope } from "./session-accessor.sqlite-scop
 import * as targetWorker from "./session-transcript-read-worker-runtime.js";
 
 it.each([
-  { locator: "shared.sqlite", file: "shared.sqlite", logicalAgent: "worker", physicalAgent: "ops" },
-  { locator: "shared.json", file: "shared.sqlite", logicalAgent: "ops", physicalAgent: "ops" },
-  { locator: "shared.json", file: "shared.ops.sqlite", logicalAgent: "ops", physicalAgent: "ops" },
+  { locator: "shared.sqlite", file: "shared.sqlite", logicalAgent: "worker", registry: true },
+  { locator: "shared.json", file: "shared.sqlite", logicalAgent: "ops", registry: true },
+  { locator: "shared.json", file: "shared.ops.sqlite", logicalAgent: "ops", registry: true },
+  { locator: "external.sqlite", file: "external.sqlite", logicalAgent: "worker", registry: false },
 ])("prepares $locator at $file without host SQL or logical-owner substitution", async (fixture) => {
   await withBranchTestState({ label: "session-physical-target" }, async (state) => {
     const databasePath = path.join(state.root, fixture.file);
     const database = openBranchAgentDatabase({
-      agentId: fixture.physicalAgent,
+      agentId: "ops",
       path: databasePath,
     });
     const statement = Object.getPrototypeOf(database.db.prepare("SELECT 1")) as StatementSync;
     await closeBranchAgentDatabaseByPathAsync(databasePath);
+    const stateDir = path.join(state.root, "empty-state");
     const probes = [
       vi.spyOn(statement, "all"),
       vi.spyOn(statement, "get"),
@@ -42,56 +44,21 @@ it.each([
     try {
       const resolved = await prepareSqliteTranscriptReadScope({
         agentId: fixture.logicalAgent,
+        ...(fixture.registry ? {} : { env: { ...process.env, BRANCH_STATE_DIR: stateDir } }),
         sessionKey: `agent:${fixture.logicalAgent}:main`,
         sessionId: "physical-target",
         storePath: path.join(state.root, fixture.locator),
       });
       expect(resolved).toMatchObject({ agentId: fixture.logicalAgent, path: databasePath });
-      expect(resolved.databaseAgentId ?? resolved.agentId).toBe(fixture.physicalAgent);
+      expect(resolved.databaseAgentId ?? resolved.agentId).toBe("ops");
       expect(probes.flatMap((probe) => probe.mock.calls)).toEqual([]);
+      if (!fixture.registry) {
+        expect(resolved.databaseAgentId).toBe("ops");
+        expect(fs.existsSync(path.join(stateDir, "state", "branch.sqlite"))).toBe(false);
+      }
     } finally {
       probes.forEach((probe) => probe.mockRestore());
     }
-  });
-});
-
-it("discovers a durable exact-store owner without creating an absent registry", async () => {
-  await withBranchTestState({ label: "session-target-without-registry" }, async (state) => {
-    const databasePath = path.join(state.root, "external.sqlite");
-    openBranchAgentDatabase({ agentId: "ops", path: databasePath });
-    await closeBranchAgentDatabaseByPathAsync(databasePath);
-    const stateDir = path.join(state.root, "empty-state");
-    const resolved = await prepareSqliteTranscriptReadScope({
-      agentId: "worker",
-      env: { ...process.env, BRANCH_STATE_DIR: stateDir },
-      sessionKey: "agent:worker:main",
-      sessionId: "unregistered",
-      storePath: databasePath,
-    });
-    expect(resolved).toMatchObject({
-      agentId: "worker",
-      databaseAgentId: "ops",
-      path: databasePath,
-    });
-    expect(fs.existsSync(path.join(stateDir, "state", "branch.sqlite"))).toBe(false);
-  });
-});
-
-it("observes registration changes across repeated preparations on the same worker", async () => {
-  await withBranchTestState({ label: "session-target-registry-refresh" }, async (state) => {
-    const databasePath = path.join(state.root, "shared.sqlite");
-    openBranchAgentDatabase({ agentId: "ops", path: databasePath });
-    await closeBranchAgentDatabaseByPathAsync(databasePath);
-    const target = {
-      agentId: "worker",
-      sessionKey: "agent:worker:main",
-      sessionId: "registry-refresh",
-      storePath: databasePath,
-    };
-    expect((await prepareSqliteTranscriptReadScope(target)).databaseAgentId).toBe("ops");
-    unregisterBranchAgentDatabase({ agentId: "ops", path: databasePath });
-    registerBranchAgentDatabase({ agentId: "main", path: databasePath });
-    expect((await prepareSqliteTranscriptReadScope(target)).databaseAgentId).toBe("main");
   });
 });
 
