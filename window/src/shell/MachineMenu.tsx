@@ -34,7 +34,7 @@ export function machineMenuItems(c: Ctx): MenuItem[] {
     { label: "Your team · Connect keepoak.com to see your team", run: () => undefined, disabled: "Connecting keepoak.com isn't in the engine yet." },
     { kind: "sep" },
     { kind: "head", label: "Talk to the assistant on…" },
-    { kind: "info", label: c.machineName || "This computer", sub: `${status}${trip}`, checked: true },
+    { kind: "info", label: c.machineName || "This computer", sub: `${status}${trip}`, checked: true, dot: c.online ? "ok" : "off" },
     { kind: "sep" },
     { label: "Add a computer or phone…", run: () => c.openSettings("computer"), testid: "machine-add" },
     { label: "Connect to a Branch elsewhere…", run: () => window.dispatchEvent(new CustomEvent("branch:connect-elsewhere")), testid: "machine-elsewhere" },

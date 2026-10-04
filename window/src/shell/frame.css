@@ -1399,3 +1399,23 @@ button.mi:focus-visible {
 .open-tab.on > button {
   color: var(--ink);
 }
+
+/* A computer's status dot before its words in the machine menu (the preview's .dot in .mi-s). */
+.mi-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 5px 1px 0;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: var(--line-2);
+}
+.mi-dot.ok {
+  background: var(--ok);
+}
+.mi-dot.warn {
+  background: var(--warn);
+}
+.mi-tick svg {
+  display: block;
+}

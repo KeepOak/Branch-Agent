@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { menuIcon } from "./menu-icons";
 import "./menu.css";
 
 // Glass menus (DESIGN-SPEC §5.4): opened at a point, Up/Down move, a letter runs its row, Right opens a
@@ -8,7 +9,7 @@ export type MenuItem =
   | { kind: "sub"; label: string; items: MenuItem[]; letter?: string; testid?: string; icon?: ReactNode }
   | { kind: "sep" }
   | { kind: "head"; label: string }
-  | { kind: "info"; label: string; sub?: string; checked?: boolean }
+  | { kind: "info"; label: string; sub?: string; checked?: boolean; dot?: "ok" | "warn" | "off" }
   /** Controls drawn inside the menu (the Icon and colour grids); they keep the menu open. */
   | { kind: "custom"; node: ReactNode };
 
@@ -107,6 +108,8 @@ function SubMenu({ parent, at, onClose, onDone }: { parent: MenuItem; at: MenuAn
   return <Menu at={at} items={wrap} onClose={onClose} label={parent.label} />;
 }
 
+const TICK = menuIcon("check");
+
 function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: number, el: HTMLElement) => void, subOpen: boolean): ReactNode {
   if (it.kind === "sep") {
     return <hr key={i} className="msep" />;
@@ -114,10 +117,10 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
   if (it.kind === "info") {
     return (
       <div key={i} className="mi info" role="presentation">
-        <span className="mi-tick">{it.checked ? "✓" : ""}</span>
+        <span className="mi-tick">{it.checked ? TICK : null}</span>
         <span className="mi-text">
           <span>{it.label}</span>
-          {it.sub ? <small className="mi-s">{it.sub}</small> : null}
+          {it.sub ? <small className="mi-s">{it.dot ? <i className={`mi-dot ${it.dot}`} aria-hidden="true" /> : null}{it.sub}</small> : null}
         </span>
       </div>
     );
@@ -150,7 +153,7 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
         it.run();
       }}>
       {it.icon ? <i className="mi-ico" aria-hidden="true">{it.icon}</i> : null}
-      {it.checked !== undefined ? <span className="mi-tick" aria-hidden="true">{it.checked ? "✓" : ""}</span> : null}
+      {it.checked !== undefined ? <span className="mi-tick" aria-hidden="true">{it.checked ? TICK : null}</span> : null}
       {it.sub ? (
         <span className="mi-text">
           <span>{it.label}</span>
