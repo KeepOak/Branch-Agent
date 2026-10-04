@@ -146,7 +146,8 @@ export function ringBitmap(left: number, size = 32): Buffer {
       const turn = ((Math.atan2(dx, -dy) / (2 * Math.PI)) + 1) % 1;
       const on = turn < share;
       const i = (y * size + x) * 4;
-      out[i] = on ? b : 160; out[i + 1] = on ? g : 160; out[i + 2] = on ? r : 160; out[i + 3] = on ? 255 : 110;
+      // Premultiplied, as Skia bitmaps are: the 110-alpha track is grey 160 scaled by 110/255.
+      out[i] = on ? b : 69; out[i + 1] = on ? g : 69; out[i + 2] = on ? r : 69; out[i + 3] = on ? 255 : 110;
     }
   }
   return out;
@@ -169,7 +170,25 @@ export function branchShim(o: { dataDir: string; engineDir: string; nodePath: st
   ].join("\r\n");
 }
 
-const samePath = (a: string, b: string): boolean => a.trim().replace(/[\\/]+$/, "").toLowerCase() === b.replace(/[\\/]+$/, "").toLowerCase();
+/** The same shim for Git Bash, which runs an extensionless sh script rather than branch.cmd. Node takes the
+ *  Windows paths as they are; CR is dropped from the files it reads. */
+export function branchShShim(o: { dataDir: string; engineDir: string; nodePath: string; gatewayPort: number }): string {
+  const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+  const slash = (s: string) => s.replace(/\\/g, "/");
+  return [
+    "#!/bin/sh",
+    `data=${q(slash(o.dataDir))}`,
+    `engine=${q(o.engineDir)}`,
+    `if [ -f "$data/engine-current.txt" ]; then engine=$(head -n 1 "$data/engine-current.txt" | tr -d '\\r'); fi`,
+    `if [ -f "$data/gateway-token" ]; then BRANCH_GATEWAY_TOKEN=$(head -n 1 "$data/gateway-token" | tr -d '\\r'); export BRANCH_GATEWAY_TOKEN; fi`,
+    `BRANCH_PROFILE=dev; BRANCH_HOME=${q(`${o.dataDir}\\home`)}; BRANCH_GATEWAY_PORT=${o.gatewayPort}`,
+    "export BRANCH_PROFILE BRANCH_HOME BRANCH_GATEWAY_PORT",
+    `exec ${q(slash(o.nodePath))} "$engine/branch.mjs" "$@"`,
+    "",
+  ].join("\n");
+}
+
+const samePath =(a: string, b: string): boolean => a.trim().replace(/[\\/]+$/, "").toLowerCase() === b.replace(/[\\/]+$/, "").toLowerCase();
 /** Whether the user Path already names `dir`. */
 export function pathHas(current: string, dir: string): boolean {
   return current.split(";").some((p) => samePath(p, dir));

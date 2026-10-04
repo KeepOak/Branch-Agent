@@ -8,7 +8,7 @@ import test from "node:test";
 
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 if (!dist) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to current strict-compiled source");
-const { createDesktopControls, registerDesktopControlsIpc, ringBitmap, branchShim, editUserPath, pathHas, DOWNLOAD_PAGES } =
+const { createDesktopControls, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, DOWNLOAD_PAGES } =
   await import(pathToFileURL(join(dist, "desktop-controls.js")));
 
 async function fixture(run) {
@@ -129,6 +129,14 @@ test("branch shim reads the published engine and token at run time", () => {
   assert.doesNotMatch(shim, /[0-9a-f]{64}/);
 });
 
+test("Git Bash shim reads the same files, drops CR and passes arguments through", () => {
+  const shim = branchShShim({ dataDir: "C:\\Data's", engineDir: "C:\\App\\engine", nodePath: "C:\\App\\node.exe", gatewayPort: 19031 });
+  assert.ok(shim.startsWith("#!/bin/sh\n"));
+  assert.ok(shim.includes("data='C:/Data'\\''s'"));
+  assert.ok(shim.includes("tr -d '\\r'"));
+  assert.ok(shim.includes(`exec 'C:/App/node.exe' "$engine/branch.mjs" "$@"`));
+  assert.doesNotMatch(shim, /\r/);
+});
 test("user Path edits add once and remove case-insensitively", () => {
   assert.equal(editUserPath("C:\\A;;C:\\B", "C:\\Bin", true), "C:\\A;C:\\B;C:\\Bin");
   assert.equal(editUserPath("C:\\A;c:\\bin\\;C:\\B", "C:\\Bin", true), "C:\\A;C:\\B;C:\\Bin");
