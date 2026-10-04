@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getTotalPendingReplies } from "../auto-reply/reply/dispatcher-registry.js";
+import { createReplyDispatcher } from "../auto-reply/reply/reply-dispatcher.js";
 import {
   registerChatAbortController,
   type ChatAbortControllerEntry,
@@ -47,7 +49,7 @@ function register(id = runId, key = sessionKey, physicalId = sessionId) {
 function selected(controller: AbortController): SelectedRunWorkIdentity {
   return { runId, sessionKey, sessionId, controller };
 }
-const zero = { rootRequests: 0, queueSize: 0, sessionAdmissions: 0 };
+const zero = { pendingReplies: 0, rootRequests: 0, queueSize: 0, sessionAdmissions: 0 };
 function coverage(identity: SelectedRunWorkIdentity) {
   return readSelectedRunWorkCoverage(identity).coveredCounts;
 }
@@ -108,7 +110,12 @@ describe("host-owned selected work provenance", () => {
       await finish.promise;
     });
     const identity = await started.promise;
-    expect(coverage(identity)).toEqual({ rootRequests: 2, queueSize: 2, sessionAdmissions: 1 });
+    expect(coverage(identity)).toEqual({
+      ...zero,
+      rootRequests: 2,
+      queueSize: 2,
+      sessionAdmissions: 1,
+    });
     expect(getTotalQueueSize()).toBe(2);
     expect(getActiveGatewayRootWorkCount()).toBe(2);
     expect(await lease.run(async () => coverage(identity).rootRequests)).toBe(1);
@@ -247,6 +254,74 @@ describe("host-owned selected work provenance", () => {
     ).toEqual(zero);
   });
 
+  it("covers actual selected reply reservations and pending sends while unrelated/private-other dispatchers stay unproven", async () => {
+    const lease = await root();
+    const finish = createDeferredCore();
+    const deliveries: string[] = [];
+    const admission = await lease.run(async () => await session());
+    // Real dispatcher reserves its root/session ownership before registration.
+    const dispatcher = await lease.run(
+      async () =>
+        await admission.run(async () =>
+          createReplyDispatcher({
+            deliver: async (payload) => {
+              await finish.promise;
+              deliveries.push(payload.text ?? "");
+            },
+          }),
+        ),
+    );
+    const registration = await lease.run(async () => register());
+    registration.markExecutionStarted();
+    const identity = selected(registration.controller);
+    const otherRoot = await root();
+    const unrelated = await otherRoot.run(async () =>
+      createReplyDispatcher({ deliver: async () => {} }),
+    );
+    const otherAdmission = await lease.run(
+      async () => await session("private-other-key", "private-other-session"),
+    );
+    const privateOther = await lease.run(
+      async () =>
+        await otherAdmission.run(async () => createReplyDispatcher({ deliver: async () => {} })),
+    );
+    expect(getTotalPendingReplies()).toBe(3);
+    expect(coverage(identity).pendingReplies).toBe(1);
+    expect(dispatcher.sendFinalReply({ text: "selected-reply" })).toBe(true);
+    expect(getTotalPendingReplies()).toBe(4);
+    expect(coverage(identity).pendingReplies).toBe(2);
+    dispatcher.markComplete();
+    unrelated.markComplete();
+    privateOther.markComplete();
+    finish.resolve();
+    await Promise.all([
+      dispatcher.waitForIdle(),
+      unrelated.waitForIdle(),
+      privateOther.waitForIdle(),
+    ]);
+    expect(deliveries).toEqual(["selected-reply"]);
+    expect(getTotalPendingReplies()).toBe(0);
+    expect(coverage(identity).pendingReplies).toBe(0);
+  });
+
+  it("keeps real reply reservations in global totals after controller retirement while removing selected coverage", async () => {
+    const lease = await root();
+    const dispatcher = await lease.run(async () =>
+      createReplyDispatcher({ deliver: async () => {} }),
+    );
+    const registration = await lease.run(async () => register());
+    registration.markExecutionStarted();
+    const identity = selected(registration.controller);
+    expect(getTotalPendingReplies()).toBe(1);
+    expect(coverage(identity).pendingReplies).toBe(1);
+    registration.cleanup();
+    expect(coverage(identity).pendingReplies).toBe(0);
+    expect(getTotalPendingReplies()).toBe(1);
+    dispatcher.markComplete();
+    await dispatcher.waitForIdle();
+    expect(getTotalPendingReplies()).toBe(0);
+  });
+
   it("retires old admitted queue and session provenance on an in-process admission reset", async () => {
     const lease = await root();
     const finish = createDeferredCore();
@@ -263,7 +338,12 @@ describe("host-owned selected work provenance", () => {
       );
       return selected(registration.controller);
     });
-    expect(coverage(identity)).toEqual({ rootRequests: 1, queueSize: 1, sessionAdmissions: 1 });
+    expect(coverage(identity)).toEqual({
+      ...zero,
+      rootRequests: 1,
+      queueSize: 1,
+      sessionAdmissions: 1,
+    });
     resetGatewayWorkAdmission();
     expect(coverage(identity)).toEqual(zero);
     finish.resolve();
