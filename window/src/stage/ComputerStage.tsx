@@ -6,6 +6,7 @@ import type { Block } from "../thread/model";
 import type { WindowEngine } from "../connect/engine";
 import type { ProgressCard } from "../thread/PlanCard";
 import { Face } from "../face/Face";
+import { Markdown } from "../thread/markdown";
 import { Menu, type MenuAnchor, type MenuItem } from "../shell/Menu";
 import { SIcon } from "./stage-icons";
 import { useDesktopView, type DesktopView } from "./use-desktop";
@@ -107,8 +108,8 @@ function Dock({ engine, name, steps, blocks, running, browser, reach, onChooseCo
       <div className="dk7-msgs">
         {messages.length ? (
           messages.map((b) => (
-            <div key={b.key} className={b.kind === "user" ? "dk7-m me7" : "dk7-m"}>
-              {b.text}
+            <div key={b.key} className={b.kind === "user" ? "dk7-m me7" : "dk7-m dk7-md"}>
+              {b.kind === "user" ? b.text : <Markdown text={b.text} />}
             </div>
           ))
         ) : (
