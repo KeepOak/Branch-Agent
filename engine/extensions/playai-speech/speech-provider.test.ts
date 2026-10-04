@@ -9,6 +9,9 @@ const plugin = (await import("./index.js")).default;
 let provider: SpeechProviderPlugin;
 await plugin.register({
   registerSpeechProvider: (value) => {
+    if (typeof value === "function") {
+      throw new Error("PlayAI entry must register its concrete speech provider");
+    }
     provider = value;
   },
 } as BranchPluginApi);
@@ -31,6 +34,12 @@ process.on("exit", () => {
   }
 });
 const cfg = { apiKey: "fixture-key", userId: "fixture-user" };
+function fixtureFetch(implementation: typeof fetch) {
+  const fetchMock = vi.fn(implementation);
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 test("readiness requires both explicit credentials, including environment fallback", () => {
   for (const providerConfig of [
     {},
@@ -76,7 +85,7 @@ test("config preserves donor defaults, aliases and secret resolution paths", () 
 });
 test("registered provider uses exact overrides and truthful MP3 result through actual host boundary", async () => {
   let body: unknown;
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (_url: unknown, init?: RequestInit) => {
+  fixtureFetch(async (_url: unknown, init?: RequestInit) => {
     body = JSON.parse(String(init?.body));
     return new Response(new Uint8Array([1, 2, 3]), { headers: { "Content-Type": "audio/mpeg" } });
   });
@@ -111,7 +120,7 @@ test("registered provider uses exact overrides and truthful MP3 result through a
   await streamed.release!();
 });
 test("registered synthesis enforces host configured byte cap", async () => {
-  vi.spyOn(globalThis, "fetch").mockImplementation(
+  fixtureFetch(
     async () => new Response(new Uint8Array(2000), { headers: { "Content-Type": "audio/mpeg" } }),
   );
   await assert.rejects(
@@ -126,7 +135,7 @@ test("registered synthesis enforces host configured byte cap", async () => {
   );
 });
 test("missing userId fails before any HTTP request", async () => {
-  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+  const fetch = fixtureFetch(async () => {
     throw new Error("unexpected transport");
   });
   await assert.rejects(
@@ -158,7 +167,7 @@ test("static voices preserve catalog and inherited Talk voice/model controls", a
 });
 
 test("registered provider forwards supplied parent signal to actual stalled HTTP body", async () => {
-  vi.spyOn(globalThis, "fetch").mockImplementation(
+  fixtureFetch(
     async () =>
       new Response(new ReadableStream<Uint8Array>(), { headers: { "Content-Type": "audio/mpeg" } }),
   );

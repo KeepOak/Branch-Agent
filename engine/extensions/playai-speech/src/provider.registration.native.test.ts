@@ -12,10 +12,10 @@ import plugin from "../index.js";
 test("actual manifest and entry register through production loader and registrar", () => {
   const root = path.dirname(fileURLToPath(new URL("../index.ts", import.meta.url)));
   const loaded = loadPluginManifest(root);
-  assert.equal(loaded.ok, true);
   if (!loaded.ok) {
     throw new Error(loaded.error);
   }
+  assert.equal(loaded.ok, true);
   const builder = createTestPluginRegistry();
   const record = createPluginRecord({
     id: plugin.id,
