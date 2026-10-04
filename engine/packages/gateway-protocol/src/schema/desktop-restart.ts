@@ -9,7 +9,7 @@ const binding = {
   expectedSessionId: NonEmptyString,
   lifecycleGeneration: NonEmptyString,
   // SHA256 of the verified immutable engine archive, never a mutable label.
-  targetBuild: Type.String({ pattern: "^[a-f0-9]{64}$" }),
+  targetBuild: Type.String({ minLength: 64, maxLength: 64, pattern: "^[a-f0-9]{64}$" }),
 };
 export const DesktopRestartReceiptSchema = closedObject({ id: NonEmptyString, ...binding });
 export const DesktopRestartCheckpointParamsSchema = closedObject({

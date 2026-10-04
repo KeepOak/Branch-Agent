@@ -396,7 +396,7 @@ export const desktopRestartHandlers: GatewayRequestHandlers = {
       readGatewayRequestMutationAuthority(options).assertCurrent();
       requester(options);
       const targetBuild = process.env.BRANCH_DESKTOP_ENGINE_BUILD_SHA256;
-      if (!targetBuild || !/^[a-f0-9]{64}$/.test(targetBuild)) {
+      if (!targetBuild || targetBuild.length !== 64 || !/^[a-f0-9]{64}$/.test(targetBuild)) {
         options.respond(
           false,
           undefined,
