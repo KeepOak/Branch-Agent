@@ -48,11 +48,11 @@ async function files(root, folder = root, ancestors = new Set()) {
   return result;
 }
 
-async function archive(root, destination) {
+async function archive(root, destination, fileMode) {
   const entries = await files(await realpath(root));
   async function* bytes() {
     for (const entry of entries) {
-      yield header(entry.name, entry.size, entry.mode);
+      yield header(entry.name, entry.size, fileMode ?? entry.mode);
       for await (const chunk of createReadStream(entry.file)) yield chunk;
       const padding = (512 - entry.size % 512) % 512;
       if (padding) yield Buffer.alloc(padding);
@@ -103,7 +103,7 @@ export async function makeComponentRelease({ version, tag = version, engine, win
   try {
     for (const name of ["engine", "window"]) {
       const filename = name === "engine" ? `branch-engine-${version}-${platform}-${arch}.tar.gz` : `branch-window-${version}.tar.gz`;
-      const info = await archive(name === "engine" ? engine : window, join(stage, filename));
+      const info = await archive(name === "engine" ? engine : window, join(stage, filename), name === "window" ? 0o644 : undefined);
       const existing = await existingDigest(join(output, filename));
       if (existing && (name !== "window" || existing !== info.sha256)) throw new Error(`Release asset collision: ${filename}`);
       components[name] = { url: `https://github.com/KeepOak/Branch-Agent/releases/download/${tag}/${filename}`, ...info,
