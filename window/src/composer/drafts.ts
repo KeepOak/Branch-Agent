@@ -1,6 +1,6 @@
 // Drafts kept per conversation (DESIGN-SPEC §4.3.1 rule 4) and earlier messages with Up and Down
 // (§4.3.1 Parity adds, row composer-input-history; OpenClaw ui/src/pages/chat/input-history.ts).
-import { registerInputCheckpoint } from "../connect/update-barrier";
+import { registerInputCheckpoint, registerVolatileInput } from "../connect/update-barrier";
 import type { DraftFile } from "./attachments";
 import type { Person } from "./DockRow";
 
@@ -8,8 +8,27 @@ export type DraftSnapshot = { text: string; files: DraftFile[]; people: Person[]
 const SNAPSHOT_KEY = "branch.composer.input:";
 const DRAFT_KEY = "branch.composer.draft:";
 const unsaved = new Map<string, DraftSnapshot>();
+export type InputPrivacy = "ordinary" | "private" | "unknown";
+const privacy = new Map<string, InputPrivacy>();
+export const inputPrivacy = (key: string) => privacy.get(key) ?? "unknown";
+export const hasDraftInput = (draft: DraftSnapshot) => Boolean(draft.text || draft.files.length || draft.people.length);
+registerVolatileInput(() => [...unsaved].some(([key, draft]) => inputPrivacy(key) !== "ordinary" && hasDraftInput(draft)));
+/** Only an actual described session may opt a draft into persistent storage. */
+export function setInputPrivacy(key: string, value: InputPrivacy): void {
+  if (value === "unknown") { privacy.set(key, value); return; }
+  if (value === "private" && inputPrivacy(key) !== "private") {
+    const storage = safeStorage();
+    const draft = loadDraftSnapshot(storage, key);
+    if (hasDraftInput(draft)) unsaved.set(key, draft);
+    storage?.removeItem(SNAPSHOT_KEY + key);
+    storage?.removeItem(DRAFT_KEY + key);
+  }
+  privacy.set(key, value);
+}
 registerInputCheckpoint(() => {
-  for (const [key, draft] of unsaved) saveDraftSnapshot(safeStorage(), key, draft);
+  for (const [key, draft] of unsaved) {
+    if (inputPrivacy(key) === "ordinary") saveDraftSnapshot(safeStorage(), key, draft);
+  }
 });
 
 /** The browser's storage for this window, or undefined where the browser refuses it (private mode, blocked data). */
@@ -41,6 +60,7 @@ export function loadDraftSnapshot(storage: Storage | undefined, sessionKey: stri
 
 export function saveDraftSnapshot(storage: Storage | undefined, sessionKey: string, draft: DraftSnapshot): void {
   unsaved.set(sessionKey, draft);
+  if (inputPrivacy(sessionKey) !== "ordinary") return;
   if (!storage) throw new Error("This computer cannot save the draft yet.");
   if (draft.text || draft.files.length || draft.people.length) storage.setItem(SNAPSHOT_KEY + sessionKey, JSON.stringify(draft));
   else storage.removeItem(SNAPSHOT_KEY + sessionKey);
@@ -51,7 +71,6 @@ export function saveDraftSnapshot(storage: Storage | undefined, sessionKey: stri
 }
 
 export function saveDraft(storage: Storage | undefined, sessionKey: string, text: string): void {
-  if (!storage) return;
   saveDraftSnapshot(storage, sessionKey, { ...loadDraftSnapshot(storage, sessionKey), text });
 }
 

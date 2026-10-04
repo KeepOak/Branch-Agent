@@ -91,7 +91,8 @@ export function Composer(props: Props) {
   const submitting = useRef<Promise<void> | null>(null);
   useEffect(() => registerInputCheckpoint(async () => { await submitting.current; }), []);
   const conv = useConversation(engine);
-  const draft = useDraft(engine?.sessionKey ?? null, engine?.attachmentPolicy);
+  const inputPrivacy = conv.loaded && !conv.error ? conv.row.incognito === true ? "private" : "ordinary" : "unknown";
+  const draft = useDraft(engine?.sessionKey ?? null, engine?.attachmentPolicy, inputPrivacy);
   const [menu, setMenu] = useState<Menu>(null);
   const [photo, setPhoto] = useState(false);
   const [picture, setPicture] = useState(false);
@@ -142,7 +143,7 @@ export function Composer(props: Props) {
     return onSend(item.text, { ...buildExtras(item.text, item.files, item.people ?? [], steer ? "steer" : undefined, item.reply), idempotencyKey: item.id, sessionId: item.sessionId, sessionKey: engine?.sessionKey ?? undefined }).then(() => {
       if (steer) toast(`Steered ${trunkName}. It picks this up at its next step.`);
     });
-  }, { sessionId: str(row.sessionId), read: (inputRunIds) => engine!.request("chat.history", { sessionKey: engine!.sessionKey, inputRunIds, limit: 1 }) });
+  }, { sessionId: str(row.sessionId), privacy: inputPrivacy, read: (inputRunIds) => engine!.request("chat.history", { sessionKey: engine!.sessionKey, inputRunIds, limit: 1 }) });
   const reconcileQueued = line.reconcile;
   useEffect(() => engine?.onEvent(({ event }) => { if (event === "chat" || event === "session.message" || event === "sessions.changed") void reconcileQueued(); }), [engine, reconcileQueued]);
   const bg = useBackground(engine, conv.trunkId);

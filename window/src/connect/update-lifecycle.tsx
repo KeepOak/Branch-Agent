@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { SaplingSession } from "./session";
-import { checkpointInputs, setUpdateBarrier } from "./update-barrier";
+import { checkpointInputs, hasVolatileInputs, setUpdateBarrier } from "./update-barrier";
+import { setInputPrivacy } from "../composer/drafts";
 import "./update-lifecycle.css";
 
 export type RestartReceipt = { id: string; sessionKey: string; expectedSessionId: string; lifecycleGeneration: string; targetBuild: string };
@@ -10,6 +11,7 @@ export type RestartPreparation = RestartReceipt | IdleUpdateBinding | DeferredUp
 export type UpdateLifecycleEvent = { operationId: string; phase: "preparing" | "updating" | "reconnecting" | "complete" | "failed"; outcome?: "rolled-back" | "cancelled" | "session-changed" | "deferred" };
 export type UpdateBridge = {
   onUpdateLifecycle?: (handler: (event: UpdateLifecycleEvent) => void) => () => void;
+  onVerifyUpdate?: (handler: (input: Record<string, never>) => Promise<unknown>) => () => void;
   onPrepareUpdate?: (handler: (input: { operationId: string; targetBuild: string }) => Promise<RestartPreparation>) => () => void;
   onResumeUpdate?: (handler: (input: { receipt: RestartReceipt }) => Promise<string>) => () => void;
   onCancelUpdate?: (handler: (input: { receipt: RestartReceipt | Pick<RestartReceipt, "lifecycleGeneration" | "targetBuild"> }) => Promise<string>) => () => void;
@@ -41,7 +43,6 @@ export function bindUpdateLifecycle(session: SaplingSession, bridge: UpdateBridg
   subscriptions.push(bridge.onPrepareUpdate?.(async ({ operationId, targetBuild }) => {
     operation = operationId;
     setUpdateBarrier(true);
-    await checkpointInputs();
     await whenConnected(session);
     const sessionKey = session.getSnapshot().sessionKey;
     const described = sessionKey ? rec(await session.request("sessions.describe", { key: sessionKey })) : {};
@@ -49,6 +50,19 @@ export function bindUpdateLifecycle(session: SaplingSession, bridge: UpdateBridg
     const expectedSessionId = row.sessionId;
     if (session.getSnapshot().sessionKey !== sessionKey) throw new Error("The conversation changed. Branch will wait before updating.");
     const binding = { lifecycleGeneration: operationId, targetBuild };
+    if (sessionKey) setInputPrivacy(sessionKey, row.incognito === true ? "private" : "ordinary");
+    // Check privacy before any disk checkpoint. Private and unclassified input stays in this window.
+    if (row.incognito === true || hasVolatileInputs()) {
+      setUpdateBarrier(false);
+      show({ operationId, phase: "failed", outcome: "deferred" });
+      return { status: "deferred", ...binding };
+    }
+    await checkpointInputs();
+    if (session.getSnapshot().sessionKey !== sessionKey || hasVolatileInputs()) {
+      setUpdateBarrier(false);
+      show({ operationId, phase: "failed", outcome: "deferred" });
+      return { status: "deferred", ...binding };
+    }
     // Only the engine may admit an idle update. A missing local row never grants permission to stop.
     if (!sessionKey || typeof expectedSessionId !== "string" || !expectedSessionId) {
       const result = await session.request<RestartPreparation>("desktop.restart.prepare", binding);
@@ -63,6 +77,10 @@ export function bindUpdateLifecycle(session: SaplingSession, bridge: UpdateBridg
     });
     if ("status" in result && result.status === "deferred") { setUpdateBarrier(false); show({ operationId, phase: "failed", outcome: "deferred" }); }
     return result;
+  }));
+  subscriptions.push(bridge.onVerifyUpdate?.(async () => {
+    await whenConnected(session);
+    return session.request("desktop.restart.identity", {});
   }));
   subscriptions.push(bridge.onResumeUpdate?.(async ({ receipt }) => {
     setUpdateBarrier(true);

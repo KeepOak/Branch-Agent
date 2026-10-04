@@ -8,6 +8,8 @@ vi.mock("./gateway", () => ({ BranchGateway: class {
   constructor(options: { onStatus: (status: GatewayStatus) => void }) { gateway.onStatus = options.onStatus; }
   start() {} stop() {} request(method: string, params?: unknown) { return gateway.request(method, params); }
 } }));
+import { setInputPrivacy } from "../composer/drafts";
+import { saveLine } from "../composer/queue";
 import { SaplingSession } from "./session";
 import { UpdateLifecycle, bindUpdateLifecycle, type RestartReceipt, type UpdateBridge, type UpdateLifecycleEvent } from "./update-lifecycle";
 import { registerInputCheckpoint, setUpdateBarrier, updateBlocked } from "./update-barrier";
@@ -30,14 +32,16 @@ function fixture() {
   let resume!: Parameters<NonNullable<UpdateBridge["onResumeUpdate"]>>[0];
   let cancel!: Parameters<NonNullable<UpdateBridge["onCancelUpdate"]>>[0];
   let policy!: () => Promise<boolean>;
+  let verify!: (input: Record<string, never>) => Promise<unknown>;
   const unbind = bindUpdateLifecycle(session, {
     onUpdateLifecycle: (fn) => { lifecycle = fn; return () => {}; },
+    onVerifyUpdate: (fn) => { verify = fn; return () => {}; },
     onPrepareUpdate: (fn) => { prepare = fn; return () => {}; },
     onResumeUpdate: (fn) => { resume = fn; return () => {}; },
     onCancelUpdate: (fn) => { cancel = fn; return () => {}; },
     onUpdatePolicy: (fn) => { policy = fn; return () => {}; },
   }, vi.fn());
-  return { request, lifecycle, prepare, resume, cancel, policy, unbind, open: (next: string) => { key = next; }, connect: (next: string) => { phase = next; for (const fn of listeners) fn(); } };
+  return { request, lifecycle, verify, prepare, resume, cancel, policy, unbind, open: (next: string) => { key = next; }, connect: (next: string) => { phase = next; for (const fn of listeners) fn(); } };
 }
 afterEach(() => { setUpdateBarrier(false); vi.restoreAllMocks(); });
 describe("desktop update lifecycle uses the actual authenticated session", () => {
@@ -51,7 +55,8 @@ describe("desktop update lifecycle uses the actual authenticated session", () =>
   it("aborts preparation on failed input persistence before the engine is asked to restart", async () => {
     const f = fixture(); const unregister = registerInputCheckpoint(() => { throw new Error("full"); });
     await expect(f.prepare({ operationId: "operation", targetBuild: "candidate" })).rejects.toThrow("full");
-    expect(f.request).not.toHaveBeenCalled(); expect(updateBlocked()).toBe(true); unregister(); f.unbind();
+    expect(f.request).toHaveBeenCalledWith("sessions.describe", { key: receipt.sessionKey });
+    expect(f.request).not.toHaveBeenCalledWith("desktop.restart.prepare", expect.anything()); expect(updateBlocked()).toBe(true); unregister(); f.unbind();
   });
   it("waits for fresh connection before resume and holds delivery until final lifecycle ACK", async () => {
     const f = fixture(); f.connect("connecting");
@@ -141,4 +146,47 @@ it("does not checkpoint a different contact when the user switches during the ac
   const f = fixture(); f.request.mockImplementation(async () => { f.open("agent:other:main"); return { session: { sessionId: "original" } }; });
   await expect(f.prepare({ operationId: "operation", targetBuild: "candidate" })).rejects.toThrow("conversation changed");
   expect(f.request).toHaveBeenCalledTimes(1); expect(updateBlocked()).toBe(true); f.unbind();
+});
+
+
+it("registers the real identity bridge and returns the fresh authenticated engine response untouched", async () => {
+  const f = fixture(); f.connect("connecting");
+  const actual = { targetBuild: "a".repeat(64), processInstanceId: "actual-boot-instance", pid: 4242 };
+  f.request.mockResolvedValue(actual);
+  const checking = f.verify({}); await Promise.resolve(); expect(f.request).not.toHaveBeenCalled();
+  f.connect("connected"); expect(await checking).toBe(actual);
+  expect(f.request).toHaveBeenCalledWith("desktop.restart.identity", {});
+  f.unbind();
+});
+
+it("retains the update barrier when the actual identity ACK is lost", async () => {
+  const f = fixture(); setUpdateBarrier(true);
+  f.request.mockRejectedValue(new Error("identity ACK lost"));
+  await expect(f.verify({})).rejects.toThrow("identity ACK lost");
+  expect(updateBlocked()).toBe(true); f.unbind();
+});
+
+it("describes canonical incognito privacy before any disk checkpoint and defers without engine preparation", async () => {
+  const f = fixture(); const order: string[] = [];
+  const disk = vi.fn(() => { order.push("disk checkpoint"); }); const unregister = registerInputCheckpoint(disk);
+  f.request.mockImplementation(async (method) => { order.push(method); return { session: { sessionId: "private-physical", incognito: true } }; });
+  const result = await f.prepare({ operationId: "operation", targetBuild: "candidate" });
+  expect(order).toEqual(["sessions.describe"]);
+  expect(result).toEqual({ status: "deferred", lifecycleGeneration: "operation", targetBuild: "candidate" });
+  expect(f.request).toHaveBeenCalledTimes(1);
+  expect(f.request).toHaveBeenCalledWith("sessions.describe", { key: receipt.sessionKey });
+  expect(disk).not.toHaveBeenCalled(); expect(updateBlocked()).toBe(false);
+  unregister(); f.unbind();
+});
+
+it("defers for actual off-page private queue custody before all disk checkpoints", async () => {
+  const f = fixture(); f.open("");
+  const disk = vi.fn(); const unregister = registerInputCheckpoint(disk);
+  const privateKey = "agent:offpage-private:main";
+  setInputPrivacy(privateKey, "private");
+  saveLine(localStorage, privateKey, [{ id: "private-queued", text: "private words", files: [], state: "waiting" }]);
+  expect(await f.prepare({ operationId: "operation", targetBuild: "candidate" })).toEqual({ status: "deferred", lifecycleGeneration: "operation", targetBuild: "candidate" });
+  expect(disk).not.toHaveBeenCalled(); expect(f.request).not.toHaveBeenCalled();
+  expect(updateBlocked()).toBe(false);
+  saveLine(localStorage, privateKey, []); unregister(); f.unbind();
 });

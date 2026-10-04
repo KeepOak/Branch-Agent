@@ -1,9 +1,9 @@
 // The waiting line's state: kept per conversation on this computer, and drained one message at a time when the
 // Trunk is free (DESIGN-SPEC §4.3.7). Sending goes through the window's own send (chat.send).
 import { useCallback, useEffect, useRef, useState } from "react";
-import { registerInputCheckpoint, updateBlocked, useUpdateBarrier } from "../connect/update-barrier";
+import { registerInputCheckpoint, registerVolatileInput, updateBlocked, useUpdateBarrier } from "../connect/update-barrier";
 import type { DraftFile } from "./attachments";
-import { safeStorage } from "./drafts";
+import { safeStorage, setInputPrivacy, type InputPrivacy } from "./drafts";
 import { enqueue, loadLine, moveUp, nextToSend, remove, reword, saveLine, mark, reconcileLine, type QueueItem } from "./queue";
 
 export type Deliver = (item: QueueItem, steer: boolean) => Promise<void>;
@@ -17,7 +17,7 @@ function readStored(sessionKey: string | null): { line: QueueItem[]; error: stri
   }
 }
 
-export function useWaitingLine(sessionKey: string | null, working: boolean, offline: boolean, deliver: Deliver, custody?: { sessionId: string; read: (ids: string[]) => Promise<unknown> }) {
+export function useWaitingLine(sessionKey: string | null, working: boolean, offline: boolean, deliver: Deliver, custody?: { sessionId: string; privacy?: InputPrivacy; read: (ids: string[]) => Promise<unknown> }) {
   const [line, setLine] = useState<QueueItem[]>(() => readStored(sessionKey).line);
   const [error, setError] = useState<string | null>(() => readStored(sessionKey).error);
   const blocked = useUpdateBarrier();
@@ -39,6 +39,12 @@ export function useWaitingLine(sessionKey: string | null, working: boolean, offl
     setError(stored.error);
   }, [sessionKey]);
 
+  useEffect(() => {
+    if (!sessionKey) return;
+    if (custody?.privacy) setInputPrivacy(sessionKey, custody.privacy);
+    saveLine(safeStorage(), sessionKey, lineRef.current);
+  }, [sessionKey, custody?.privacy]);
+
   const update = useCallback(
     (fn: (line: QueueItem[]) => QueueItem[]) => {
       const next = fn(lineRef.current);
@@ -51,6 +57,7 @@ export function useWaitingLine(sessionKey: string | null, working: boolean, offl
     [sessionKey],
   );
 
+  useEffect(() => registerVolatileInput(() => !currentKey.current && lineRef.current.length > 0), []);
   useEffect(() => registerInputCheckpoint(async () => {
     await Promise.all([...pending.current]);
     if (currentKey.current) saveLine(safeStorage(), currentKey.current, lineRef.current);

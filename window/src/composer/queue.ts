@@ -1,5 +1,7 @@
 // The waiting line (DESIGN-SPEC §4.3.7): messages sent while the Trunk works, held on this computer and sent
 // one at a time once the run ends, the way OpenClaw's browser UI keeps its outbox (ui/src/pages/chat/chat-queue.ts).
+import { inputPrivacy } from "./drafts";
+import { registerVolatileInput } from "../connect/update-barrier";
 import type { Person } from "./DockRow";
 import type { Reply } from "./sending";
 import type { DraftFile } from "./attachments";
@@ -59,9 +61,13 @@ export function chipWords(count: number, offline: boolean): string {
 }
 
 const KEY = "branch.composer.queue:";
+const volatileLines = new Map<string, QueueItem[]>();
+registerVolatileInput(() => [...volatileLines].some(([key, line]) => inputPrivacy(key) !== "ordinary" && line.length > 0));
 
 /** The line kept on this computer, so it survives closing Branch (§4.3.7 "Messages written while offline"). */
 export function loadLine(storage: Storage | undefined, sessionKey: string): QueueItem[] {
+  const retained = volatileLines.get(sessionKey);
+  if (retained) return retained;
   const raw = storage?.getItem(KEY + sessionKey);
   if (!raw) {
     return [];
@@ -75,7 +81,13 @@ export function loadLine(storage: Storage | undefined, sessionKey: string): Queu
 }
 
 export function saveLine(storage: Storage | undefined, sessionKey: string, line: readonly QueueItem[]): void {
+  if (inputPrivacy(sessionKey) !== "ordinary") {
+    volatileLines.set(sessionKey, [...line]);
+    if (inputPrivacy(sessionKey) === "private") storage?.removeItem(KEY + sessionKey);
+    return;
+  }
   if (!storage) throw new Error("This computer cannot save waiting messages yet.");
+  volatileLines.delete(sessionKey);
   if (line.length === 0) {
     storage.removeItem(KEY + sessionKey);
     return;

@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { bindUpdateLifecycle, type UpdateBridge } from "../connect/update-lifecycle";
+import type { SaplingSession } from "../connect/session";
 import { DockRow } from "./DockRow";
 import { useDraft } from "./useDraft";
 import { useWaitingLine, type Deliver } from "./useWaitingLine";
-import { loadDraftSnapshot, saveDraft } from "./drafts";
+import { loadDraftSnapshot, saveDraft, saveDraftSnapshot, setInputPrivacy, type InputPrivacy } from "./drafts";
 import { enqueue, loadLine, saveLine } from "./queue";
 import { checkpointInputs, setUpdateBarrier } from "../connect/update-barrier";
 
@@ -14,13 +16,19 @@ let root: Root | undefined;
 let draft: ReturnType<typeof useDraft>;
 let line: ReturnType<typeof useWaitingLine>;
 const KEY = "agent:contact:main";
-async function mount(key = KEY, deliver: Deliver = async () => {}, working = true, custody?: Parameters<typeof useWaitingLine>[4]) {
-  function Harness() { draft = useDraft(key, undefined); line = useWaitingLine(key, working, false, deliver, custody); return <div>{draft.text}:{line.line.length}</div>; }
+async function mount(key: string | null = KEY, deliver: Deliver = async () => {}, working = true, custody?: Parameters<typeof useWaitingLine>[4], privacy: InputPrivacy = "ordinary") {
+  function Harness() { draft = useDraft(key, undefined, privacy); line = useWaitingLine(key, working, false, deliver, custody ?? { sessionId: "physical", privacy, read: async () => ({}) }); return <div>{draft.text}:{line.line.length}</div>; }
   root = createRoot(document.body.appendChild(document.createElement("div")));
   await act(async () => root?.render(<Harness />));
 }
 async function unmount() { await act(async () => root?.unmount()); root = undefined; }
-afterEach(async () => { await unmount(); document.body.innerHTML = ""; setUpdateBarrier(false); vi.restoreAllMocks(); await checkpointInputs(); localStorage.clear(); });
+const PRIVATE = "agent:private:main";
+const UNKNOWN = "agent:unclassified:main";
+beforeEach(() => { setInputPrivacy(KEY, "ordinary"); setInputPrivacy("agent:other:main", "ordinary"); });
+afterEach(async () => {
+  vi.restoreAllMocks();
+  for (const key of [KEY, PRIVATE, UNKNOWN]) { setInputPrivacy(key, "ordinary"); saveDraftSnapshot(localStorage, key, { text: "", files: [], people: [] }); saveLine(localStorage, key, []); }
+  await unmount(); document.body.innerHTML = ""; setUpdateBarrier(false); vi.restoreAllMocks(); await checkpointInputs(); localStorage.clear(); });
 
 describe("inputs survive a renderer reload without crossing contact conversations", () => {
   it("retains text, attachment bytes and identity, mentions, and compose updates", async () => {
@@ -145,4 +153,45 @@ it("the real waiting-line controls identify and protect unresolved delivery", as
   const check = [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === "Check delivery")!;
   await act(async () => check.click()); expect(retry).toHaveBeenCalledWith("stable");
   expect(document.body.textContent).toContain("Delivery not confirmed");
+});
+
+
+it("keeps actual temporary draft attachments, mentions and queued text entirely in memory", async () => {
+  const writes = vi.spyOn(Storage.prototype, "setItem");
+  await mount(PRIVATE, async () => {}, true, undefined, "private");
+  await act(async () => { draft.setText("@Alex private words"); draft.addPerson({ profileId: "alex", name: "Alex" }); draft.addPastedText("private attachment bytes"); line.add("private queued words", draft.files); });
+  const kept = draft.snapshot();
+  expect(writes).not.toHaveBeenCalled();
+  expect(localStorage.length).toBe(0);
+  await expect(checkpointInputs()).rejects.toThrow("Temporary messages");
+  expect(writes).not.toHaveBeenCalled();
+  await unmount(); await mount(PRIVATE, async () => {}, true, undefined, "private");
+  expect(draft.snapshot()).toEqual(kept);
+  expect(line.line[0].text).toBe("private queued words");
+});
+
+it("does not persist unclassified input before the actual conversation privacy arrives", async () => {
+  const writes = vi.spyOn(Storage.prototype, "setItem");
+  await mount(UNKNOWN, async () => {}, true, undefined, "unknown");
+  await act(async () => { draft.setText("unclassified text"); draft.addPastedText("unclassified bytes"); });
+  expect(writes).not.toHaveBeenCalled();
+  await expect(checkpointInputs()).rejects.toThrow("Temporary messages");
+  expect(writes).not.toHaveBeenCalled();
+  setInputPrivacy(UNKNOWN, "ordinary");
+  await checkpointInputs();
+  expect(localStorage.getItem("branch.composer.input:" + UNKNOWN)).toContain("unclassified bytes");
+});
+
+it("an unsent no-session draft also blocks disk checkpoints and automatic reload", async () => {
+  const writes = vi.spyOn(Storage.prototype, "setItem");
+  await mount(null, async () => {}, true, undefined, "private");
+  await act(async () => { draft.setText("no-session private words"); draft.addPastedText("no-session bytes"); });
+  await expect(checkpointInputs()).rejects.toThrow("Temporary messages");
+  let prepare!: Parameters<NonNullable<UpdateBridge["onPrepareUpdate"]>>[0];
+  const request = vi.fn(async () => ({}));
+  const session = { getSnapshot: () => ({ sessionKey: null, status: { phase: "connected" } }), request } as unknown as SaplingSession;
+  const unbind = bindUpdateLifecycle(session, { onPrepareUpdate: (fn) => { prepare = fn; return () => {}; } }, vi.fn());
+  expect(await prepare({ operationId: "op", targetBuild: "build" })).toEqual({ status: "deferred", lifecycleGeneration: "op", targetBuild: "build" });
+  expect(request).not.toHaveBeenCalled();
+  expect(writes).not.toHaveBeenCalled(); unbind();
 });

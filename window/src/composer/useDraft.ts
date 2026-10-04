@@ -1,15 +1,15 @@
 // The complete draft is saved per conversation before an update can restart Branch.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pastedTextFile, readDraftFile, type AttachmentPolicy, type DraftFile } from "./attachments";
-import { loadDraftSnapshot, safeStorage, saveDraftSnapshot, type DraftSnapshot } from "./drafts";
-import { registerInputCheckpoint, updateBlocked } from "../connect/update-barrier";
+import { loadDraftSnapshot, safeStorage, saveDraftSnapshot, setInputPrivacy, inputPrivacy, hasDraftInput, type InputPrivacy, type DraftSnapshot } from "./drafts";
+import { registerInputCheckpoint, registerVolatileInput, updateBlocked } from "../connect/update-barrier";
 import { MENTION_PEOPLE_MAX } from "./mention";
 import type { Person } from "./DockRow";
 
 const empty = (): DraftSnapshot => ({ text: "", files: [], people: [] });
 function read(key: string | null): DraftSnapshot { return key ? loadDraftSnapshot(safeStorage(), key) : empty(); }
 
-export function useDraft(sessionKey: string | null, policy: AttachmentPolicy | undefined) {
+export function useDraft(sessionKey: string | null, policy: AttachmentPolicy | undefined, privacy: InputPrivacy = "unknown") {
   const [draft, setDraft] = useState(() => read(sessionKey));
   const [preparing, setPreparing] = useState(0);
   const [note, setNote] = useState("");
@@ -30,6 +30,12 @@ export function useDraft(sessionKey: string | null, policy: AttachmentPolicy | u
     current.current = { key: sessionKey, draft: next };
     setDraft(next);
   }, [sessionKey]);
+  useEffect(() => {
+    if (!sessionKey) return;
+    setInputPrivacy(sessionKey, privacy);
+    save(sessionKey, current.current.draft);
+  }, [sessionKey, privacy, save]);
+  useEffect(() => registerVolatileInput(() => !current.current.key && (hasDraftInput(current.current.draft) || pending.current.size > 0)), []);
   useEffect(() => registerInputCheckpoint(async () => {
     await Promise.all([...pending.current]);
     if (current.current.key) saveDraftSnapshot(safeStorage(), current.current.key, current.current.draft);
@@ -44,11 +50,12 @@ export function useDraft(sessionKey: string | null, policy: AttachmentPolicy | u
       change((d) => ({ ...d, files: [...d.files, ...files] }), key);
     }).finally(() => { setPreparing((n) => n - list.length); });
     pending.current.add(job);
+    const unregisterVolatile = registerVolatileInput(() => !key || inputPrivacy(key) !== "ordinary");
     const unregister = registerInputCheckpoint(async () => {
       await job;
       if (key) saveDraftSnapshot(safeStorage(), key, read(key));
     });
-    try { await job; } finally { pending.current.delete(job); unregister(); }
+    try { await job; } finally { pending.current.delete(job); unregister(); unregisterVolatile(); }
   }, [change, policy]);
   const addPastedText = useCallback((text: string) => change((d) => ({ ...d, files: [...d.files, pastedTextFile(crypto.randomUUID(), text)] })), [change]);
   const addPerson = useCallback((person: Person) => change((d) => {
