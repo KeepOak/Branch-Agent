@@ -35,7 +35,8 @@ const CONFIG = { hash: "h1", valid: true, config: { agents: { entries: { oak: { 
 function fake(extra: Record<string, unknown> = {}) {
   return vi.fn((method: string, _params?: unknown) => Promise.resolve(method in extra ? extra[method] : method === "agents.list" ? ROSTER : method === "config.get" ? CONFIG
     : method === "models.list" ? { models: [{ id: "one", provider: "p", name: "One", available: true }, { id: "two", provider: "p", name: "Two", available: true }] }
-    : method === "node.list" ? { nodes: [{ nodeId: "n1", displayName: "Box", platform: "linux", paired: true, connected: true }] } : { ok: true }));
+    : method === "node.list" ? { nodes: [{ nodeId: "n1", displayName: "Box", platform: "linux", paired: true, connected: true }] }
+    : method === "tools.github.status" ? { agentId: "oak", selectedScope: "agent", selected: { scope: "agent", configured: false, identity: null }, effective: null } : { ok: true }));
 }
 
 describe("Trunk data", () => {
