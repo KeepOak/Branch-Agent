@@ -48,6 +48,7 @@ export const engineTests = [
   'extensions/qa-lab/src/evals/tool-call-accuracy.test.ts',
   'extensions/qa-lab/src/evals/thresholds.test.ts',
   'extensions/qa-lab/src/evals/score-command.test.ts',
+  'extensions/qa-lab/src/evals/llm-scorers.test.ts',
   'extensions/qa-lab/src/cli.test.ts',
 ];
 
@@ -150,6 +151,13 @@ export const engineStrictFiles = [
   'extensions/qa-lab/src/evals/judge.ts',
   'extensions/qa-lab/src/evals/scorer-registry.ts',
   'extensions/qa-lab/src/evals/score-command.runtime.ts',
+  'extensions/qa-lab/src/evals/llm-scorers.ts',
+  'extensions/qa-lab/src/evals/llm/faithfulness-prompts.ts',
+  'extensions/qa-lab/src/evals/llm/hallucination-prompts.ts',
+  'extensions/qa-lab/src/evals/llm/answer-relevancy-prompts.ts',
+  'extensions/qa-lab/src/evals/llm/toxicity-prompts.ts',
+  'extensions/qa-lab/src/evals/llm/tool-call-accuracy-prompts.ts',
+  'extensions/qa-lab/src/evals/llm-scorers.test.ts',
   'extensions/qa-lab/src/evals/scorer.test.ts',
   'extensions/qa-lab/src/evals/checks.test.ts',
   'extensions/qa-lab/src/evals/tool-call-accuracy.test.ts',

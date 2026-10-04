@@ -41,6 +41,7 @@ export async function scoreStoredRun(params: {
     input: target.run.input,
     output: target.run.output,
     ...(target.run.groundTruth !== undefined ? { groundTruth: target.run.groundTruth } : {}),
+    ...(target.run.requestContext ? { requestContext: target.run.requestContext } : {}),
   });
   if (result.notScorable) {
     return { notScorable: result.notScorable };

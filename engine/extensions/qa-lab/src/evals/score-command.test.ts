@@ -228,6 +228,55 @@ describe("qa score", () => {
     ]);
   });
 
+  it("routes LLM-judged scorers through the QA judge lane", async () => {
+    const sessionFile = path.join(tmpDir, "session-1.jsonl");
+    await writeSession(sessionFile, readThenFailedWriteSession());
+    runQaManualLane
+      .mockResolvedValueOnce({ reply: '{"claims": ["The README describes Branch."]}' })
+      .mockResolvedValueOnce({
+        reply: ["```json", '{"verdicts": [{"verdict": "yes", "reason": "in README"}]}', "```"].join(
+          String.fromCharCode(10),
+        ),
+      })
+      .mockResolvedValueOnce({ reply: "Supported by the README tool result." });
+
+    await parseQa([
+      "score",
+      "--trajectory",
+      sessionFile,
+      "--scorer",
+      "faithfulness",
+      "--judge-model",
+      "openai/gpt-5.4",
+      "--json",
+    ]);
+
+    const report = JSON.parse(stdout.join("")) as {
+      scorers: Array<{ results: Array<{ score: { score: number; reason: string } }> }>;
+    };
+    expect(report.scorers[0]?.results[0]?.score).toMatchObject({
+      score: 1,
+      reason: "Supported by the README tool result.",
+    });
+    expect(runQaManualLane).toHaveBeenCalledTimes(3);
+    expect(runQaManualLane.mock.calls[0]?.[0]).toMatchObject({
+      providerMode: "live-frontier",
+      primaryModel: "openai/gpt-5.4",
+      alternateModel: "openai/gpt-5.4",
+    });
+    // The analyze prompt carries the run's tool result as context.
+    expect(String(runQaManualLane.mock.calls[1]?.[0]?.message)).toContain("README contents");
+  });
+
+  it("requires a judge model for LLM-judged scorers", async () => {
+    const sessionFile = path.join(tmpDir, "s.jsonl");
+    await writeSession(sessionFile, readThenFailedWriteSession());
+    await expect(parseQa(["score", "--trajectory", sessionFile, "--scorer", "toxicity"])).rejects.toThrow(
+      "--scorer toxicity uses an LLM judge; pass --judge-model <provider/model>.",
+    );
+    expect(runQaManualLane).not.toHaveBeenCalled();
+  });
+
   it("rejects unknown scorers and invalid thresholds", async () => {
     const sessionFile = path.join(tmpDir, "s.jsonl");
     await writeSession(sessionFile, readThenFailedWriteSession());

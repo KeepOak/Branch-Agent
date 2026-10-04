@@ -222,17 +222,29 @@ function messagesFromSessionEntries(rows: readonly unknown[]) {
   return { messages, sessionId };
 }
 
+/** Tool definitions the bundle recorded (tools.json beside events.jsonl), when present. */
+async function readBundleTools(toolsFile: string): Promise<unknown[] | undefined> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(toolsFile, "utf8")) as unknown;
+    return Array.isArray(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function readStoredRunFile(filePath: string): Promise<StoredScorerRun | undefined> {
   const rows = parseJsonLines(await fs.readFile(filePath, "utf8"));
   const isTrajectory = rows.some((row) => isRecord(row) && row.traceSchema === "branch-trajectory");
   if (isTrajectory) {
     const { messages, sessionId, traceId } = messagesFromTrajectoryEvents(rows);
+    const run = buildScorerRunFromMessages(messages, traceId);
+    const availableTools = await readBundleTools(path.join(path.dirname(filePath), "tools.json"));
     return {
       sourcePath: filePath,
       source: "trajectory-bundle",
       ...(sessionId ? { sessionId } : {}),
       ...(traceId ? { traceId } : {}),
-      run: buildScorerRunFromMessages(messages, traceId),
+      run: availableTools ? { ...run, requestContext: { availableTools } } : run,
     };
   }
   const isSession = rows.some((row) => isRecord(row) && row.type === "message");

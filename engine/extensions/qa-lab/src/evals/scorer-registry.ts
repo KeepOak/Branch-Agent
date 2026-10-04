@@ -1,8 +1,19 @@
 // Registry of the scorers `branch qa score` can run, keyed by `--scorer <name>[=<arg>]`.
 import { checks } from "./checks.js";
 import { createCompletenessScorer, createContentSimilarityScorer } from "./code-scorers.js";
+import {
+  createAnswerRelevancyScorer,
+  createFaithfulnessScorer,
+  createHallucinationScorer,
+  createToolCallAccuracyScorerLLM,
+  createToxicityScorer,
+} from "./llm-scorers.js";
 import type { AnyBranchScorer, ScorerJudgeModel } from "./scorer.js";
-import type { AgentScorerRun, ScorerRunOutputForAgent } from "./scorer-utils.js";
+import {
+  extractToolResults,
+  type AgentScorerRun,
+  type ScorerRunOutputForAgent,
+} from "./scorer-utils.js";
 import { createToolCallAccuracyScorerCode } from "./tool-call-accuracy.js";
 
 export type QaAgentScorer = AnyBranchScorer<AgentScorerRun["input"], ScorerRunOutputForAgent>;
@@ -167,6 +178,52 @@ const DEFINITIONS: QaScorerDefinition[] = [
     description: "Only the expected tool was called, or exactly this tool sequence",
     argument: "required",
     create: (arg) => toolCallAccuracy(requireArg("tool-call-accuracy-strict", arg), true),
+  },
+  {
+    name: "faithfulness",
+    description: "LLM judge: share of output claims supported by the run's tool results",
+    argument: "none",
+    needsJudge: true,
+    create: (_arg, context) => createFaithfulnessScorer({ model: requireJudge("faithfulness", context) }),
+  },
+  {
+    name: "hallucination",
+    description: "LLM judge: share of output claims that contradict the run's tool results",
+    argument: "none",
+    needsJudge: true,
+    create: (_arg, context) =>
+      createHallucinationScorer({
+        model: requireJudge("hallucination", context),
+        options: {
+          getContext: ({ run }) =>
+            extractToolResults(run.output).map((tool) =>
+              JSON.stringify({ tool: tool.toolName, result: tool.result }),
+            ),
+        },
+      }),
+  },
+  {
+    name: "answer-relevancy",
+    description: "LLM judge: how relevant the answer is to the user's request",
+    argument: "none",
+    needsJudge: true,
+    create: (_arg, context) =>
+      createAnswerRelevancyScorer({ model: requireJudge("answer-relevancy", context) }),
+  },
+  {
+    name: "toxicity",
+    description: "LLM judge: share of toxic verdicts in the answer",
+    argument: "none",
+    needsJudge: true,
+    create: (_arg, context) => createToxicityScorer({ model: requireJudge("toxicity", context) }),
+  },
+  {
+    name: "llm-tool-call-accuracy",
+    description: "LLM judge: were the tool choices appropriate for the request",
+    argument: "none",
+    needsJudge: true,
+    create: (_arg, context) =>
+      createToolCallAccuracyScorerLLM({ model: requireJudge("llm-tool-call-accuracy", context) }),
   },
 ];
 
