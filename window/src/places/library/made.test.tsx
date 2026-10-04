@@ -66,6 +66,22 @@ describe("Library › Made for you", () => {
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "zzz"); input.dispatchEvent(new Event("input", { bubbles: true })); });
     expect(host.textContent).toContain("No matching dashboards. Try another search or Trunk.");
   });
+  it("starts dashboard pagination afresh when the engine changes", async () => {
+    const first = engineOf(base());
+    await mount(first.engine);
+    const dash = host.querySelector('[data-testid="dashboards"]')!;
+    await act(async () => { button("Load more", dash)!.click(); });
+    for (let i = 0; i < 4; i++) await settle();
+    expect(dash.textContent).toContain("Garden");
+    const second = engineOf(base((method, params) => method === "sessions.list" && params.hasBoard
+      ? { sessions: [{ key: "agent:b:new", agentId: "b", label: "New connection" }], totalCount: 1, hasMore: false } : undefined));
+    await act(async () => { root!.render(<MadeTab engine={second.engine} trunks={TRUNKS} openConversation={vi.fn()} />); });
+    for (let i = 0; i < 4; i++) await settle();
+    expect(second.request).toHaveBeenCalledWith("sessions.list", { hasBoard: true, excludeSubagents: true, includeDerivedTitles: true, limit: 24, offset: 0 });
+    expect(dash.textContent).toContain("New connection");
+    expect(dash.textContent).not.toContain("Garden");
+    expect(dash.textContent).not.toContain("Quotes");
+  });
   it("lists made files from every conversation and opens a URL result safely; unsupported downloads stay greyed", async () => {
     const { engine, request } = engineOf(base());
     await mount(engine);
