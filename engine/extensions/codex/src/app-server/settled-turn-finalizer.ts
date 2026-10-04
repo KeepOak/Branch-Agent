@@ -8,7 +8,7 @@ import { resolveCodexBoundedTurnIsolation } from "./bounded-turn-isolation.js";
 import { runBoundedCodexAppServerTurn, type CodexBoundedTurnOptions } from "./bounded-turn.js";
 import { createAttributedCodexAssistantMessage } from "./event-projector-assistant-message.js";
 import { resolveCodexLocalRuntimeAttribution } from "./local-runtime-attribution.js";
-import { projectBoundCodexNativeAccount } from "./native-account-attempt.js";
+import { selectCodexNativeSummaryAccount } from "./native-summary-account.js";
 import { assertCodexPassiveTurnItems } from "./protocol-validators.js";
 import { CodexSettledTurnContext } from "./settled-turn-context.js";
 import {
@@ -46,7 +46,13 @@ export async function runCodexSettledTurnFinalization(
   const nativeAccountHome = selection.nativeAccountHome;
   options = {
     ...options,
-    pluginConfig: projectBoundCodexNativeAccount(options.pluginConfig, nativeAccountHome),
+    pluginConfig: await selectCodexNativeSummaryAccount({
+      pluginConfig: options.pluginConfig,
+      capturedHome: nativeAccountHome,
+      timeoutMs: attempt.runTimeoutOverrideMs ?? attempt.timeoutMs,
+      signal: attempt.abortSignal,
+      assertActive,
+    }),
   };
   const authRequirement = nativeAccountHome
     ? "subscription"

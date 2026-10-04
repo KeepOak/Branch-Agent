@@ -15,7 +15,12 @@ import {
 const mocks = vi.hoisted(() => ({
   runBounded: vi.fn(),
   mirror: vi.fn(),
+  nativeAuth: vi.fn(),
+  quota: vi.fn(),
 }));
+
+vi.mock("./native-auth.js", () => ({ probeCodexNativeAuth: mocks.nativeAuth }));
+vi.mock("./request.js", () => ({ requestCodexAppServerJson: mocks.quota }));
 
 vi.mock("./bounded-turn.js", () => ({
   runBoundedCodexAppServerTurn: mocks.runBounded,
@@ -141,8 +146,41 @@ function boundedResult() {
   };
 }
 
+function nativeSummaryFixture(failover = true) {
+  const owner = path.resolve("fixture-summary-owner");
+  const alternate = path.resolve("fixture-summary-alternate");
+  const operation = {
+    attempt: { ...createAttempt("api-key"), resolvedApiKey: "synthetic-outer-key" },
+    settledAttempt: createSettledAttempt({
+      model: "gpt-5.6-luna",
+      modelProvider: "openai",
+      nativeAccountHome: owner,
+    }),
+  };
+  const options = {
+    pluginConfig: {
+      appServer: {
+        homeScope: "user",
+        nativeAccounts: [
+          { id: "owner", home: owner },
+          { id: "alternate", home: alternate },
+        ],
+        nativeAccountId: "alternate",
+        nativeAccountQuotaFailover: failover,
+      },
+    },
+  };
+  return { owner, alternate, operation, options };
+}
+
 describe("runCodexSettledTurnFinalization", () => {
   beforeEach(() => {
+    mocks.nativeAuth
+      .mockReset()
+      .mockResolvedValue({ nativeAuth: { runtime: "codex", mode: "oauth" } });
+    mocks.quota.mockReset().mockResolvedValue({
+      rateLimits: { limitId: "codex", primary: { usedPercent: 10 } },
+    });
     vi.spyOn(authBridge, "resolveCodexAppServerPreparedAuthHandoff");
     mocks.runBounded.mockReset().mockResolvedValue(boundedResult());
     mocks.mirror.mockReset();
@@ -170,6 +208,202 @@ describe("runCodexSettledTurnFinalization", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("preflights captured owner before changed default and summarizes once on the alternate", async () => {
+    const { owner, alternate, operation, options } = nativeSummaryFixture();
+    const source = structuredClone(operation.settledAttempt);
+    mocks.quota.mockResolvedValueOnce({
+      rateLimits: { limitId: "codex", primary: { usedPercent: 100 } },
+    });
+    const result = await runCodexSettledTurnFinalization(operation, options);
+    expect(mocks.quota.mock.calls.map(([request]) => request.startOptions.codexHome)).toEqual([
+      owner,
+      alternate,
+    ]);
+    for (const [request] of mocks.quota.mock.calls) {
+      expect(request).toMatchObject({
+        method: "account/rateLimits/read",
+        isolated: true,
+        authProfileId: null,
+      });
+      expect(request.startOptions.clearEnv).toEqual(
+        expect.arrayContaining(["CODEX_API_KEY", "OPENAI_API_KEY", "CODEX_ACCESS_TOKEN"]),
+      );
+    }
+    expect(mocks.runBounded).toHaveBeenCalledOnce();
+    expect(mocks.runBounded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: { mode: "required", id: "gpt-5.6-luna" },
+        modelProvider: "openai",
+        profile: undefined,
+        authRequirement: "subscription",
+        requireNoExternalCapabilities: true,
+        historyItems: (
+          operation.settledAttempt.settledTurnFinalizationContext as CodexSettledTurnContext
+        ).data,
+        options: expect.objectContaining({
+          pluginConfig: expect.objectContaining({
+            appServer: expect.objectContaining({ codexHome: alternate }),
+          }),
+        }),
+      }),
+    );
+    expect(authBridge.resolveCodexAppServerPreparedAuthHandoff).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authProfileId: undefined,
+        resolvedApiKey: undefined,
+        homeScope: "user",
+      }),
+    );
+    expect(mocks.mirror).toHaveBeenCalledOnce();
+    expect(mocks.mirror).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        idempotencyScope: "codex-settled-finalizer:run-1",
+        terminalAssistantOwner: { mirrorIdentity: "settled-finalizer:run-1", runId: "run-1" },
+      }),
+    );
+    expect(result.assistantTranscriptOwned).toBe(true);
+    expect(structuredClone(operation.settledAttempt)).toEqual(source);
+    expect(options.pluginConfig.appServer.nativeAccountId).toBe("alternate");
+  });
+
+  it("does not inspect an alternate when captured owner's quota is available", async () => {
+    const { owner, operation, options } = nativeSummaryFixture();
+    await runCodexSettledTurnFinalization(operation, options);
+    expect(mocks.quota.mock.calls.map(([request]) => request.startOptions.codexHome)).toEqual([
+      owner,
+    ]);
+    expect(mocks.runBounded.mock.calls[0]![0].options.pluginConfig.appServer.codexHome).toBe(owner);
+  });
+
+  it.each([true, false])(
+    "starts no summary when eligible accounts are exhausted (failover=%s)",
+    async (failover) => {
+      const { operation, options } = nativeSummaryFixture(failover);
+      mocks.quota.mockResolvedValue({
+        rateLimits: { limitId: "codex", primary: { usedPercent: 100 } },
+      });
+      await expect(runCodexSettledTurnFinalization(operation, options)).rejects.toThrow(
+        "exhausted quota",
+      );
+      expect(mocks.quota).toHaveBeenCalledTimes(failover ? 2 : 1);
+      expect(mocks.runBounded).not.toHaveBeenCalled();
+      expect(mocks.mirror).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([undefined, "api-key", "token"])(
+    "never rotates on native auth failure/mode %s",
+    async (mode) => {
+      const { operation, options } = nativeSummaryFixture();
+      mocks.nativeAuth.mockResolvedValue(
+        mode ? { nativeAuth: { runtime: "codex", mode } } : undefined,
+      );
+      await expect(runCodexSettledTurnFinalization(operation, options)).rejects.toThrow(
+        "subscription login",
+      );
+      expect(mocks.nativeAuth).toHaveBeenCalledOnce();
+      expect(mocks.quota).not.toHaveBeenCalled();
+      expect(mocks.runBounded).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([{}, { rateLimits: { limitId: "codex" } }, { ordinaryUsageAllowed: null }])(
+    "never rotates on unknown quota %j",
+    async (quota) => {
+      const { operation, options } = nativeSummaryFixture();
+      mocks.quota.mockResolvedValue(quota);
+      await expect(runCodexSettledTurnFinalization(operation, options)).rejects.toThrow(
+        "quota is unavailable",
+      );
+      expect(mocks.quota).toHaveBeenCalledOnce();
+      expect(mocks.runBounded).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["transport unavailable", "quota timeout"])("never rotates on %s", async (reason) => {
+    const { operation, options } = nativeSummaryFixture();
+    const error = new Error(reason);
+    mocks.quota.mockRejectedValue(error);
+    await expect(runCodexSettledTurnFinalization(operation, options)).rejects.toBe(error);
+    expect(mocks.quota).toHaveBeenCalledOnce();
+    expect(mocks.runBounded).not.toHaveBeenCalled();
+  });
+
+  it("honors cancellation between exhausted-owner quota and alternate admission", async () => {
+    const { operation, options } = nativeSummaryFixture();
+    const controller = new AbortController();
+    operation.attempt.abortSignal = controller.signal;
+    mocks.quota.mockImplementationOnce(async () => {
+      controller.abort(new Error("fixture cancellation"));
+      return { rateLimits: { limitId: "codex", primary: { usedPercent: 100 } } };
+    });
+    await expect(runCodexSettledTurnFinalization(operation, options)).rejects.toThrow(
+      "fixture cancellation",
+    );
+    expect(mocks.nativeAuth).toHaveBeenCalledOnce();
+    expect(mocks.runBounded).not.toHaveBeenCalled();
+  });
+
+  it("never retries a summary after model handoff fails", async () => {
+    const { operation, options } = nativeSummaryFixture();
+    const quotaFailure = new Error("usageLimitExceeded after turn start");
+    mocks.runBounded.mockRejectedValue(quotaFailure);
+    await expect(runCodexSettledTurnFinalization(operation, options)).rejects.toBe(quotaFailure);
+    expect(mocks.quota).toHaveBeenCalledOnce();
+    expect(mocks.runBounded).toHaveBeenCalledOnce();
+    expect(mocks.mirror).not.toHaveBeenCalled();
+  });
+
+  it("starts no account inspection or summary after the selection budget expires", async () => {
+    const { operation, options } = nativeSummaryFixture();
+    operation.attempt.timeoutMs = 0;
+    await expect(runCodexSettledTurnFinalization(operation, options)).rejects.toThrow(
+      "inspection timed out",
+    );
+    expect(mocks.nativeAuth).not.toHaveBeenCalled();
+    expect(mocks.quota).not.toHaveBeenCalled();
+    expect(mocks.runBounded).not.toHaveBeenCalled();
+  });
+
+  it("does not bypass passive capability validation on an alternate account", async () => {
+    const { operation, options } = nativeSummaryFixture();
+    mocks.quota.mockResolvedValueOnce({
+      rateLimits: { limitId: "codex", primary: { usedPercent: 100 } },
+    });
+    mocks.runBounded.mockResolvedValue({
+      ...boundedResult(),
+      items: [{ type: "commandExecution", id: "forbidden-summary-command" }],
+    });
+    await expect(runCodexSettledTurnFinalization(operation, options)).rejects.toThrow();
+    expect(mocks.runBounded).toHaveBeenCalledOnce();
+    expect(mocks.mirror).not.toHaveBeenCalled();
+  });
+
+  it("does not skip mirror attestation on an alternate account", async () => {
+    const { operation, options } = nativeSummaryFixture();
+    mocks.quota.mockResolvedValueOnce({
+      rateLimits: { limitId: "codex", primary: { usedPercent: 100 } },
+    });
+    mocks.mirror.mockResolvedValue({ assistantMirrorIdentitiesOwned: [], messagesPresent: [] });
+    await expect(runCodexSettledTurnFinalization(operation, options)).rejects.toThrow(
+      "transcript attestation mismatch",
+    );
+    expect(mocks.runBounded).toHaveBeenCalledOnce();
+    expect(mocks.mirror).toHaveBeenCalledOnce();
+  });
+
+  it("rejects native registry finalization without a captured owner before account inspection", async () => {
+    const { operation, options } = nativeSummaryFixture();
+    operation.settledAttempt = createSettledAttempt();
+    await expect(runCodexSettledTurnFinalization(operation, options)).rejects.toThrow(
+      "no captured native account owner",
+    );
+    expect(mocks.nativeAuth).not.toHaveBeenCalled();
+    expect(mocks.quota).not.toHaveBeenCalled();
+    expect(mocks.runBounded).not.toHaveBeenCalled();
   });
 
   it("keeps the captured native home for finalization after the default changes", async () => {
