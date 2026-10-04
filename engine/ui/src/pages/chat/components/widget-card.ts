@@ -399,7 +399,7 @@ function renderWidgetContent(
     connectionGeneration: promptCapable ? getCanvasWidgetFrameConnectionGeneration() : undefined,
     height: preview.preferredHeight,
     sandbox,
-    // Only hosted Canvas documents may drive the chat; externally
+    // Only hosted Clearing documents may drive the chat; externally
     // allowed embed URLs render but never get prompt authority.
     promptCapable,
   });

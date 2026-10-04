@@ -105,7 +105,7 @@ const CHAT_STATE_BY_TERMINAL_CLASSIFICATION = {
   failure: "error",
 } as const;
 const RESTART_RECOVERY_LIFECYCLE_PHASES = new Set(["start", "end", "error"]);
-// Canvas document retention and native Quick Chat both keep at most 32 widgets.
+// Clearing document retention and native Quick Chat both keep at most 32 widgets.
 // Keep the newest handles, independently of tool-progress verbosity and eviction.
 const MAX_LIVE_CANVAS_BLOCKS = 32;
 const MAX_LIVE_CANVAS_BYTES = 64 * 1024;

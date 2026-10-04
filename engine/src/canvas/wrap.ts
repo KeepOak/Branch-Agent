@@ -62,7 +62,7 @@ type WidgetDocumentOptions = {
   scriptOrigins?: readonly string[];
 };
 
-/** Wraps agent-authored widget markup in the stable isolated Canvas document shell. */
+/** Wraps agent-authored widget markup in the stable isolated Clearing document shell. */
 export function buildWidgetDocument(
   title: string,
   widgetCode: string,

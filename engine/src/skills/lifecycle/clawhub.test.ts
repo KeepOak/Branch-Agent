@@ -642,7 +642,7 @@ describe("skills-clawhub", () => {
     const result = await installTestSkill(testWorkspaceDir, "weather");
 
     expectFailure(result);
-    expect(result.error).toContain('Skill "weather" is ambiguous on ClawHub.');
+    expect(result.error).toContain('Skill "weather" is ambiguous on Seedbank.');
     expect(result.error).toContain("branch skills install @owner/weather");
     expect(result.error).toContain("Multiple Seedbank publishers provide weather.");
   });

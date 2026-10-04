@@ -1638,7 +1638,7 @@ function assertExpectedMissingCodexOutcomes(result, expectedVersion) {
     `Failed to install missing configured plugin "codex" from @branch/codex: ` +
     `Package not found on npm: @branch/codex@${expectedVersion}.`;
   const missingClawHubPackage =
-    'Failed to install missing configured plugin "codex" from clawhub:@branch/codex: Package not found on ClawHub.';
+    'Failed to install missing configured plugin "codex" from clawhub:@branch/codex: Package not found on Seedbank.';
   assert(
     failure.pluginId === "codex" &&
       failure.code === undefined &&

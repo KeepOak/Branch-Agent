@@ -340,7 +340,7 @@ export const SkillsInstallParamsSchema = Type.Union([
   }),
 ]);
 
-/** Updates installed skill settings or refreshes ClawHub-installed skills. */
+/** Updates installed skill settings or refreshes Seedbank-installed skills. */
 export const SkillsUpdateParamsSchema = Type.Union([
   closedObject({
     skillKey: NonEmptyString,

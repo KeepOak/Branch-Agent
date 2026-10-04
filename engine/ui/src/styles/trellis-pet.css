@@ -9,28 +9,28 @@ branch-trellis-pet {
   pointer-events: none;
 }
 
-branch-trellis-pet .lobster-pet {
+branch-trellis-pet .trellis-pet {
   top: var(--lob-y, 0px);
   bottom: auto;
   transform: translate(-50%, -100%);
   transition: none;
 }
 
-.lobster-pet__motion {
+.trellis-pet__motion {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 
-.lobster-pet__motion--walk {
+.trellis-pet__motion--walk {
   animation: trellis-pet-travel-walk var(--lob-travel-ms) ease-in-out both;
 }
 
-.lobster-pet__motion--hop {
+.trellis-pet__motion--hop {
   animation: trellis-pet-travel-hop var(--lob-travel-ms) linear both;
 }
 
-.lobster-pet__motion--hop .lobster-pet .lobster-pet__body {
+.trellis-pet__motion--hop .trellis-pet .trellis-pet__body {
   transform-origin: 50% 100%;
   animation: trellis-pet-landing var(--lob-travel-ms) ease-in-out both;
   animation-delay: var(--lob-act-delay, 0s);
@@ -87,7 +87,7 @@ branch-trellis-pet .lobster-pet {
 }
 
 /* Departure/dismissal: duck down behind the ledge and fade. */
-branch-trellis-pet .lobster-pet--away {
+branch-trellis-pet .trellis-pet--away {
   opacity: 0;
   visibility: hidden;
   transform: translate(-50%, -45%);
@@ -97,7 +97,7 @@ branch-trellis-pet .lobster-pet--away {
     visibility 0s linear 0.3s;
 }
 
-.lobster-pet {
+.trellis-pet {
   position: absolute;
   bottom: 0;
   left: var(--lob-x, 80%);
@@ -116,18 +116,18 @@ branch-trellis-pet .lobster-pet--away {
   --lob-glint: var(--lob-glint-seed, #00e5cc);
 }
 
-branch-trellis-pet .lobster-bottle {
+branch-trellis-pet .trellis-bottle {
   top: -20px;
   bottom: auto;
 }
 
 /* Restore hit testing beneath the pointer-inert decorative pet host. */
-wa-dropdown.lobster-pet-dismiss-menu {
+wa-dropdown.trellis-pet-dismiss-menu {
   pointer-events: auto;
 }
 
 /* The Elder does everything at Elder speed. */
-.lobster-pet--elder {
+.trellis-pet--elder {
   transition: left 2.6s ease-in-out;
 }
 
@@ -155,92 +155,92 @@ branch-trellis-pet[data-dex-complete]::after {
 /* ---- Rare palette variants (trellis-pet-palettes.ts + trellis-pet-lore.ts) ---- */
 
 /* Ghost/albino: pale translucent shell, icy glints. */
-.lobster-pet--palette-ghost {
+.trellis-pet--palette-ghost {
   --lob-glint: #a8dcff;
 }
 
-.lobster-pet--palette-ghost .lobster-pet__svg {
+.trellis-pet--palette-ghost .trellis-pet__svg {
   opacity: 0.62;
 }
 
 /* Lumen: photophore running lights. They pulse and glow in the dark theme;
    daylight (light theme) washes them down to faint speckles. */
-.lobster-pet--palette-lumen {
+.trellis-pet--palette-lumen {
   --lob-glint: #7ef5dd;
 }
 
-.lobster-pet--palette-magma {
+.trellis-pet--palette-magma {
   --lob-glint: #ff8a5c;
 }
 
-.lobster-pet--palette-oilslick {
+.trellis-pet--palette-oilslick {
   --lob-glint: #c084fc;
 }
 
-.lobster-pet--palette-aurora {
+.trellis-pet--palette-aurora {
   --lob-glint: #3ec9a0;
 }
 
-.lobster-pet--palette-nebula {
+.trellis-pet--palette-nebula {
   --lob-glint: #ff9de2;
 }
 
-.lobster-pet--palette-glass {
+.trellis-pet--palette-glass {
   --lob-glint: #bfeaff;
 }
 
-.lobster-pet--palette-geode {
+.trellis-pet--palette-geode {
   --lob-glint: #c9a6ff;
   --lob-shell2: #241b38;
 }
 
-.lobster-pet--palette-phosphor {
+.trellis-pet--palette-phosphor {
   --lob-glint: #3fff7d;
 }
 
-.lobster-pet--palette-heisenbug {
+.trellis-pet--palette-heisenbug {
   --lob-glint: #8be9fd;
 }
 
-.lobster-pet--palette-blueprint {
+.trellis-pet--palette-blueprint {
   --lob-glint: #cfe3ff;
 }
 
-.lobster-pet--palette-grovetron {
+.trellis-pet--palette-grovetron {
   --lob-glint: #ffb020;
 }
 
-.lobster-pet--palette-selene {
+.trellis-pet--palette-selene {
   --lob-glint: #8fa8ff;
 }
 
-.lobster-pet--palette-eclipse {
+.trellis-pet--palette-eclipse {
   --lob-glint: #ffd166;
 }
 
-.lobster-pet--palette-sourdough {
+.trellis-pet--palette-sourdough {
   --lob-glint: #e6bc82;
 }
 
-.lobster-pet--palette-zombie {
+.trellis-pet--palette-zombie {
   --lob-glint: #b8d49a;
 }
 
-.lobster-pet--palette-plush {
+.trellis-pet--palette-plush {
   --lob-glint: #ffb59e;
 }
 
-.lobster-pet--palette-disco {
+.trellis-pet--palette-disco {
   --lob-glint: #cbd5e6;
 }
 
-.lobster-pet--palette-eclipse .lobster-pet__svg {
+.trellis-pet--palette-eclipse .trellis-pet__svg {
   filter: drop-shadow(0 0 3px rgba(255, 209, 102, 0.72));
 }
 
 /* The cryptid is always photographed slightly out of focus. Its inner frame
    drifts independently so the outer breathe/facing transform stays intact. */
-.lobster-pet--palette-cryptid .lobster-pet__svg {
+.trellis-pet--palette-cryptid .trellis-pet__svg {
   filter: blur(1.1px) sepia(0.35) contrast(0.92);
 }
 
@@ -260,11 +260,11 @@ branch-trellis-pet[data-dex-complete]::after {
 
 /* Figlet's glyph art is terminal-light by default; light cards need real
    ink or the text washes out (mood-style var passthrough carries it). */
-.lobster-pet--palette-ascii {
+.trellis-pet--palette-ascii {
   --lob-ascii-ink: #d8dee6;
 }
 
-:root[data-theme-mode="light"] .lobster-pet--palette-ascii {
+:root[data-theme-mode="light"] .trellis-pet--palette-ascii {
   --lob-ascii-ink: #46525e;
 }
 
@@ -319,7 +319,7 @@ branch-trellis-pet[data-dex-complete]::after {
   }
 }
 
-.lobster-pet--palette-blueprint .lob-antennae path {
+.trellis-pet--palette-blueprint .lob-antennae path {
   stroke: #cfe3ff;
   stroke-dasharray: 4 3;
 }
@@ -375,21 +375,21 @@ branch-trellis-pet[data-dex-complete]::after {
   }
 }
 
-.lobster-pet--palette-nebula .lob-twinkle,
-.lobster-pet--palette-geode .lob-twinkle,
-.lobster-pet--palette-glass .lob-glass-glints {
+.trellis-pet--palette-nebula .lob-twinkle,
+.trellis-pet--palette-geode .lob-twinkle,
+.trellis-pet--palette-glass .lob-glass-glints {
   transform-box: fill-box;
   transform-origin: center;
   animation: trellis-pet-twinkle 2s ease-in-out infinite;
 }
 
-.lobster-pet--palette-glass .lobster-pet__svg {
+.trellis-pet--palette-glass .trellis-pet__svg {
   opacity: 0.38;
 }
 
 /* Flicker owns opacity only. Breathe remains in the list because setting
    animation here replaces the base svg animation rather than adding to it. */
-.lobster-pet--palette-phosphor .lobster-pet__svg {
+.trellis-pet--palette-phosphor .trellis-pet__svg {
   animation:
     trellis-pet-breathe 3.4s ease-in-out infinite,
     trellis-pet-phosphor 3.2s linear infinite;
@@ -525,11 +525,11 @@ branch-trellis-pet[data-dex-complete]::after {
 
 /* Cotton candy: pastel two-tone with a slow iridescent drift. The breathe
    animation must ride along - a lone animation list would replace it. */
-.lobster-pet--palette-cottoncandy {
+.trellis-pet--palette-cottoncandy {
   --lob-glint: #ff9fd6;
 }
 
-.lobster-pet--palette-cottoncandy .lobster-pet__svg {
+.trellis-pet--palette-cottoncandy .trellis-pet__svg {
   animation:
     trellis-pet-breathe 3.4s ease-in-out infinite,
     trellis-pet-iridesce 8s linear infinite;
@@ -548,14 +548,14 @@ branch-trellis-pet[data-dex-complete]::after {
 
 /* Shiny: saturated sheen plus twinkling sparks. The filter skips both retro
    palettes so their sticker-outline halos survive; sparkle spans carry the show. */
-.lobster-pet--shiny:not(.lobster-pet--palette-retro):not(.lobster-pet--palette-goldenretro):not(
-    .lobster-pet--palette-cryptid
+.trellis-pet--shiny:not(.trellis-pet--palette-retro):not(.trellis-pet--palette-goldenretro):not(
+    .trellis-pet--palette-cryptid
   )
-  .lobster-pet__svg {
+  .trellis-pet__svg {
   filter: saturate(1.3) brightness(1.07);
 }
 
-.lobster-pet__sparkle {
+.trellis-pet__sparkle {
   position: absolute;
   color: #ffe27a;
   font-size: calc(4px * var(--lob-scale, 2));
@@ -564,7 +564,7 @@ branch-trellis-pet[data-dex-complete]::after {
   pointer-events: none;
 }
 
-.lobster-pet--shiny .lobster-pet__sparkle {
+.trellis-pet--shiny .trellis-pet__sparkle {
   animation: trellis-pet-twinkle 2.2s ease-in-out infinite;
   animation-delay: calc(var(--i, 0) * 1.1s);
 }
@@ -583,20 +583,20 @@ branch-trellis-pet[data-dex-complete]::after {
 
 /* Retro: homage to the classic Branch Agent logo — white sticker outline around
    the whole sprite (the halo is two stacked 1px drop-shadows). */
-.lobster-pet--palette-retro .lobster-pet__svg,
-.lobster-pet--palette-goldenretro .lobster-pet__svg {
+.trellis-pet--palette-retro .trellis-pet__svg,
+.trellis-pet--palette-goldenretro .trellis-pet__svg {
   filter: drop-shadow(0 0 1.2px #f5f7fa) drop-shadow(0 0 1.2px #f5f7fa)
     drop-shadow(0 0 1.2px #f5f7fa);
 }
 
-.lobster-pet--palette-goldenretro .lobster-pet__svg {
+.trellis-pet--palette-goldenretro .trellis-pet__svg {
   animation:
     trellis-pet-breathe 3.4s ease-in-out infinite,
     trellis-pet-goldenretro-shimmer 4s ease-in-out infinite;
   animation-delay: var(--lob-breathe-delay, 0s), 0s;
 }
 
-.lobster-pet--palette-goldenretro .lob-retro-grove-line {
+.trellis-pet--palette-goldenretro .lob-retro-grove-line {
   stroke: #b8860b;
 }
 
@@ -615,95 +615,95 @@ branch-trellis-pet[data-dex-complete]::after {
 
 /* Split two-tone: the right body half (drawn in trellis-pet-look.ts) plus the
    right grove and antenna wear the second shell color. */
-.lobster-pet--palette-split {
+.trellis-pet--palette-split {
   --lob-shell2: #46536b;
 }
 
-.lobster-pet--palette-split .lob-grove--r path {
+.trellis-pet--palette-split .lob-grove--r path {
   fill: var(--lob-shell2);
 }
 
-.lobster-pet--palette-split .lob-antennae path:last-of-type {
+.trellis-pet--palette-split .lob-antennae path:last-of-type {
   stroke: var(--lob-shell2);
 }
 
-.lobster-pet--palette-notexture .lob-grove--l path {
+.trellis-pet--palette-notexture .lob-grove--l path {
   fill: #ff00dc;
 }
 
-.lobster-pet--palette-notexture .lob-grove--r path {
+.trellis-pet--palette-notexture .lob-grove--r path {
   fill: #111111;
 }
 
-.lobster-pet--palette-notexture .lob-antennae path:first-of-type {
+.trellis-pet--palette-notexture .lob-antennae path:first-of-type {
   stroke: #ff00dc;
 }
 
-.lobster-pet--palette-notexture .lob-antennae path:last-of-type {
+.trellis-pet--palette-notexture .lob-antennae path:last-of-type {
   stroke: #111111;
 }
 
-.lobster-pet--palette-chimera .lob-grove--l path {
+.trellis-pet--palette-chimera .lob-grove--l path {
   fill: var(--lob-chimera-l);
 }
 
-.lobster-pet--palette-chimera .lob-grove--r path {
+.trellis-pet--palette-chimera .lob-grove--r path {
   fill: var(--lob-chimera-r);
 }
 
-.lobster-pet--palette-chimera .lob-antennae path {
+.trellis-pet--palette-chimera .lob-antennae path {
   stroke: var(--lob-antennae-color);
 }
 
 /* Disconnected pets lose their eye glow; declared after the palette glints so
    offline wins the cascade at equal specificity. */
-.lobster-pet--offline {
+.trellis-pet--offline {
   --lob-glint: #8a949d;
 }
 
-.lobster-pet--offline .lob-eye-open circle:nth-of-type(3),
-.lobster-pet--offline .lob-eye-open circle:nth-of-type(4) {
+.trellis-pet--offline .lob-eye-open circle:nth-of-type(3),
+.trellis-pet--offline .lob-eye-open circle:nth-of-type(4) {
   filter: none;
 }
 
 /* Offline also dims the lumen running lights - no power, no glow. */
-.lobster-pet--offline .lob-lumen {
+.trellis-pet--offline .lob-lumen {
   filter: none;
   animation: none;
   opacity: 0.4;
 }
 
-.lobster-pet--offline .lob-magma {
+.trellis-pet--offline .lob-magma {
   filter: none;
   animation: none;
   opacity: 0.35;
 }
 
-.lobster-pet--offline.lobster-pet--palette-phosphor .lobster-pet__svg {
+.trellis-pet--offline.trellis-pet--palette-phosphor .trellis-pet__svg {
   animation: trellis-pet-breathe 3.4s ease-in-out infinite;
   animation-delay: var(--lob-breathe-delay, 0s);
 }
 
-.lobster-pet--offline .lob-scanlines {
+.trellis-pet--offline .lob-scanlines {
   opacity: 0.05;
 }
 
-.lobster-pet--offline .lob-led {
+.trellis-pet--offline .lob-led {
   animation: none;
   opacity: 0.2;
 }
 
-.lobster-pet--offline.lobster-pet--palette-eclipse .lobster-pet__svg {
+.trellis-pet--offline.trellis-pet--palette-eclipse .trellis-pet__svg {
   filter: none;
 }
 
-.lobster-pet__body {
+.trellis-pet__body {
   position: relative;
   width: 100%;
   height: 100%;
 }
 
-.lobster-pet__svg {
+.trellis-pet__svg {
   display: block;
   width: 100%;
   height: 100%;
@@ -714,7 +714,7 @@ branch-trellis-pet[data-dex-complete]::after {
   transform-origin: 50% 100%;
 }
 
-:where(.lobster-pet) .lobster-pet__svg {
+:where(.trellis-pet) .trellis-pet__svg {
   animation: trellis-pet-breathe 3.4s ease-in-out infinite;
   animation-delay: var(--lob-breathe-delay, 0s);
 }
@@ -754,18 +754,18 @@ branch-trellis-pet[data-dex-complete]::after {
 
 /* ---- Idle blinking: crossfade open pupils and closed-lid curves ---- */
 
-.lobster-pet .lob-eye-closed {
+.trellis-pet .lob-eye-closed {
   opacity: 0;
 }
 
 /* Exclude the nap act: a running blink animation would out-cascade the nap
    opacity rules below and keep the eyes open mid-nap. */
-.lobster-pet:not(.lobster-pet--act-nap, .lobster-pet--act-pet) .lob-eye-open {
+.trellis-pet:not(.trellis-pet--act-nap, .trellis-pet--act-pet) .lob-eye-open {
   animation: trellis-pet-blink-open 5.2s linear infinite;
   animation-delay: var(--lob-blink-delay, 0s);
 }
 
-.lobster-pet:not(.lobster-pet--act-nap, .lobster-pet--act-pet) .lob-eye-closed {
+.trellis-pet:not(.trellis-pet--act-nap, .trellis-pet--act-pet) .lob-eye-closed {
   animation: trellis-pet-blink-closed 5.2s linear infinite;
   animation-delay: var(--lob-blink-delay, 0s);
 }
@@ -775,15 +775,15 @@ branch-trellis-pet[data-dex-complete]::after {
    balloon or pop out of a bubble. Durations mirror LOBSTER_PET_ENTRANCE_MS
    in trellis-pet-plans.ts. */
 
-.lobster-pet--entering .lobster-pet__body {
+.trellis-pet--entering .trellis-pet__body {
   animation: trellis-pet-enter 0.45s ease-out;
 }
 
-.lobster-pet--enter-balloon .lobster-pet__body {
+.trellis-pet--enter-balloon .trellis-pet__body {
   animation: trellis-pet-descend 1.25s ease-out;
 }
 
-.lobster-pet__balloon {
+.trellis-pet__balloon {
   position: absolute;
   left: 24%;
   bottom: 92%;
@@ -793,11 +793,11 @@ branch-trellis-pet[data-dex-complete]::after {
   animation: trellis-pet-balloon 1.25s ease-out forwards;
 }
 
-.lobster-pet--enter-bubble .lobster-pet__body {
+.trellis-pet--enter-bubble .trellis-pet__body {
   animation: trellis-pet-bubble-rise 0.7s ease-out;
 }
 
-.lobster-pet__entry-bubble {
+.trellis-pet__entry-bubble {
   position: absolute;
   inset: -12% -8%;
   border: 1.5px solid var(--lob-glint, #00e5cc);
@@ -864,69 +864,69 @@ branch-trellis-pet[data-dex-complete]::after {
   }
 }
 
-.lobster-pet--act-wave .lob-grove--r {
+.trellis-pet--act-wave .lob-grove--r {
   animation: trellis-pet-wave 1.4s ease-in-out;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
-.lobster-pet--act-snip .lob-grove {
+.trellis-pet--act-snip .lob-grove {
   animation: trellis-pet-snip 0.5s ease-in-out 2;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
-.lobster-pet--act-hop .lobster-pet__body {
+.trellis-pet--act-hop .trellis-pet__body {
   animation: trellis-pet-hop 0.75s ease-in-out;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
-.lobster-pet--act-spin .lobster-pet__body {
+.trellis-pet--act-spin .trellis-pet__body {
   animation: trellis-pet-spin 0.95s ease-in-out;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
-.lobster-pet--act-peek .lobster-pet__body {
+.trellis-pet--act-peek .trellis-pet__body {
   animation: trellis-pet-peek 1.7s ease-in-out;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
-.lobster-pet--act-scuttle .lobster-pet__body {
+.trellis-pet--act-scuttle .trellis-pet__body {
   animation: trellis-pet-waddle 0.3s ease-in-out infinite;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
-.lobster-pet--act-startle .lobster-pet__body {
+.trellis-pet--act-startle .trellis-pet__body {
   animation: trellis-pet-startle 0.75s ease-out;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
-.lobster-pet--act-startle .lob-grove {
+.trellis-pet--act-startle .lob-grove {
   animation: trellis-pet-snip 0.38s ease-in-out 2;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
 /* Cheer: a finished run earns a double hop with a mid-air twirl, groves up. */
-.lobster-pet--act-cheer .lobster-pet__body {
+.trellis-pet--act-cheer .trellis-pet__body {
   animation: trellis-pet-cheer 1.3s ease-in-out;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
-.lobster-pet--act-cheer .lob-grove {
+.trellis-pet--act-cheer .lob-grove {
   animation: trellis-pet-cheer-groves 1.3s ease-in-out;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
 /* Petting: content closed eyes and a floating heart. */
-.lobster-pet--act-pet .lob-eye-open,
-.lobster-pet--act-nap .lob-eye-open {
+.trellis-pet--act-pet .lob-eye-open,
+.trellis-pet--act-nap .lob-eye-open {
   opacity: 0;
 }
 
-.lobster-pet--act-pet .lob-eye-closed,
-.lobster-pet--act-nap .lob-eye-closed {
+.trellis-pet--act-pet .lob-eye-closed,
+.trellis-pet--act-nap .lob-eye-closed {
   opacity: 1;
 }
 
-.lobster-pet__heart {
+.trellis-pet__heart {
   position: absolute;
   left: 46%;
   bottom: 78%;
@@ -937,17 +937,17 @@ branch-trellis-pet[data-dex-complete]::after {
   pointer-events: none;
 }
 
-.lobster-pet--act-pet .lobster-pet__heart {
+.trellis-pet--act-pet .trellis-pet__heart {
   animation: trellis-pet-heart 1.4s ease-out;
 }
 
 /* Sweep: after the droop, a quick tidy-up of the ledge with a broom. */
-.lobster-pet--act-sweep .lobster-pet__body {
+.trellis-pet--act-sweep .trellis-pet__body {
   animation: trellis-pet-sweep-body 1.8s ease-in-out;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
-.lobster-pet__broom {
+.trellis-pet__broom {
   position: absolute;
   left: 74%;
   bottom: 4%;
@@ -958,18 +958,18 @@ branch-trellis-pet[data-dex-complete]::after {
   transform-origin: 50% 92%;
 }
 
-.lobster-pet--act-sweep .lobster-pet__broom {
+.trellis-pet--act-sweep .trellis-pet__broom {
   animation: trellis-pet-broom 1.8s ease-in-out;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
 /* Droop: a failed run earns sagging antennae and a slow, sad head shake. */
-.lobster-pet--act-droop .lobster-pet__body {
+.trellis-pet--act-droop .trellis-pet__body {
   animation: trellis-pet-droop 1.6s ease-in-out;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
-.lobster-pet--act-droop .lob-antennae {
+.trellis-pet--act-droop .lob-antennae {
   animation: trellis-pet-droop-antennae 1.6s ease-in-out;
   transform-box: view-box;
   transform-origin: 60px 14px;
@@ -977,36 +977,36 @@ branch-trellis-pet[data-dex-complete]::after {
 
 /* Vigil: long runs earn a settled, patient waiting pose. Acts pause, so a
    plain transform cannot fight the act animations. */
-.lobster-pet--vigil .lobster-pet__body {
+.trellis-pet--vigil .trellis-pet__body {
   transform: translateY(6%) scaleY(0.94);
 }
 
 /* Shed: shiver, squash, pop. */
-.lobster-pet--act-shed .lobster-pet__body {
+.trellis-pet--act-shed .trellis-pet__body {
   animation: trellis-pet-shed 2.6s ease-in-out;
   animation-delay: var(--lob-act-delay, 0s);
 }
 
 /* The abandoned shell: frozen, washed out, fading over a minute. */
-.lobster-pet--shell {
+.trellis-pet--shell {
   pointer-events: none;
   cursor: default;
   filter: saturate(0.45) brightness(0.75);
   animation: trellis-pet-shell-fade 60s linear forwards;
 }
 
-.lobster-pet--shell .lobster-pet__svg,
-.lobster-pet--shell .lob-eye-closed {
+.trellis-pet--shell .trellis-pet__svg,
+.trellis-pet--shell .lob-eye-closed {
   animation: none;
 }
 
-.lobster-pet--shell .lob-eye-closed {
+.trellis-pet--shell .lob-eye-closed {
   opacity: 1;
 }
 
 /* ---- Nap: eyes shut, z's drift up ---- */
 
-.lobster-pet__z {
+.trellis-pet__z {
   position: absolute;
   left: 58%;
   bottom: 72%;
@@ -1019,25 +1019,25 @@ branch-trellis-pet[data-dex-complete]::after {
   pointer-events: none;
 }
 
-.lobster-pet--act-nap .lobster-pet__z {
+.trellis-pet--act-nap .trellis-pet__z {
   animation: trellis-pet-z 2s ease-out infinite;
   animation-delay: calc(var(--i, 0) * 0.7s);
 }
 
 /* Party days: confetti-colored z's. */
-.lobster-pet--party .lobster-pet__z:nth-of-type(1) {
+.trellis-pet--party .trellis-pet__z:nth-of-type(1) {
   color: #ffd166;
 }
 
-.lobster-pet--party .lobster-pet__z:nth-of-type(2) {
+.trellis-pet--party .trellis-pet__z:nth-of-type(2) {
   color: #5cd9c4;
 }
 
-.lobster-pet--party .lobster-pet__z:nth-of-type(3) {
+.trellis-pet--party .trellis-pet__z:nth-of-type(3) {
   color: #ff5c8a;
 }
 
-.lobster-pet__bubble {
+.trellis-pet__bubble {
   position: absolute;
   left: 30%;
   bottom: 55%;
@@ -1049,7 +1049,7 @@ branch-trellis-pet[data-dex-complete]::after {
   pointer-events: none;
 }
 
-.lobster-pet--act-bubble .lobster-pet__bubble {
+.trellis-pet--act-bubble .trellis-pet__bubble {
   animation: trellis-pet-bubble 1.6s ease-out;
   animation-delay: calc(var(--i, 0) * 0.42s);
 }
@@ -1375,11 +1375,11 @@ branch-trellis-pet[data-dex-complete]::after {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  branch-trellis-pet .lobster-pet__motion,
-  branch-trellis-pet .lobster-pet,
-  branch-trellis-pet .lobster-pet *,
-  branch-trellis-pet .lobster-bottle,
-  branch-trellis-pet .lobster-bottle * {
+  branch-trellis-pet .trellis-pet__motion,
+  branch-trellis-pet .trellis-pet,
+  branch-trellis-pet .trellis-pet *,
+  branch-trellis-pet .trellis-bottle,
+  branch-trellis-pet .trellis-bottle * {
     animation: none !important;
     transition: none !important;
   }
@@ -1400,8 +1400,8 @@ branch-trellis-pet[data-dex-complete]::after {
   .lob-bee-wings ellipse,
   .lob-disco,
   .lob-disco rect,
-  .lobster-pet--palette-goldenretro .lobster-pet__svg,
-  .lobster-pet--palette-phosphor .lobster-pet__svg {
+  .trellis-pet--palette-goldenretro .trellis-pet__svg,
+  .trellis-pet--palette-phosphor .trellis-pet__svg {
     animation: none !important;
   }
 }
@@ -1409,37 +1409,37 @@ branch-trellis-pet[data-dex-complete]::after {
 /* ---- Pass-through visitors ---- */
 
 /* All species cross the measured free lane, not the whole composer width. */
-.lobster-pet--passer {
+.trellis-pet--passer {
   pointer-events: none;
   cursor: default;
   animation: trellis-pet-cross var(--lob-cross, 11s) linear forwards;
 }
 
-.lobster-pet--passer .lobster-pet__body {
+.trellis-pet--passer .trellis-pet__body {
   animation: trellis-pet-waddle 0.32s ease-in-out infinite;
 }
 
-.lobster-pet--passer-hop {
+.trellis-pet--passer-hop {
   animation-name: trellis-pet-cross, trellis-pet-cross-hop;
 }
 
-/* The crab walks sideways by definition: it crosses while facing you and
+/* The beetle scuttles across in a hurry: it crosses while facing you and
    feels no need to explain itself. */
-.lobster-pet--crab .lobster-pet__body {
-  animation: trellis-pet-crab-scuttle 0.24s ease-in-out infinite;
+.trellis-pet--beetle .trellis-pet__body {
+  animation: trellis-pet-beetle-scuttle 0.24s ease-in-out infinite;
 }
 
 /* The snail neither waddles nor hurries. */
-.lobster-pet--snail .lobster-pet__body {
+.trellis-pet--snail .trellis-pet__body {
   animation: none;
 }
 
 /* The duck bobs like the bath toy it is. */
-.lobster-pet--duck .lobster-pet__body {
+.trellis-pet--duck .trellis-pet__body {
   animation: trellis-pet-duck-bob 1.6s ease-in-out infinite;
 }
 
-.lobster-pet--fedora .lobster-pet__body {
+.trellis-pet--fedora .trellis-pet__body {
   animation: trellis-pet-fedora-tumble 1.4s ease-in-out infinite;
 }
 
@@ -1454,11 +1454,11 @@ branch-trellis-pet[data-dex-complete]::after {
 }
 
 /* The jellyfish drifts above the ledge, pulsing softly. */
-.lobster-pet--jellyfish {
+.trellis-pet--jellyfish {
   margin-top: -8px;
 }
 
-.lobster-pet--jellyfish .lobster-pet__body {
+.trellis-pet--jellyfish .trellis-pet__body {
   animation: trellis-pet-jelly-pulse 2.4s ease-in-out infinite;
 }
 
@@ -1496,7 +1496,7 @@ branch-trellis-pet[data-dex-complete]::after {
   }
 }
 
-@keyframes trellis-pet-crab-scuttle {
+@keyframes trellis-pet-beetle-scuttle {
   0%,
   100% {
     transform: translateY(0);
@@ -1530,7 +1530,7 @@ branch-trellis-pet[data-dex-complete]::after {
    Washes up on its own schedule, bobs until opened, and ebbs away. The
    fortune travels in the title tooltip. */
 
-.lobster-bottle {
+.trellis-bottle {
   position: absolute;
   bottom: 0;
   left: var(--lob-x, 50%);
@@ -1544,7 +1544,7 @@ branch-trellis-pet[data-dex-complete]::after {
   -webkit-tap-highlight-color: transparent;
 }
 
-.lobster-bottle__svg {
+.trellis-bottle__svg {
   display: block;
   width: 100%;
   height: 100%;
@@ -1552,7 +1552,7 @@ branch-trellis-pet[data-dex-complete]::after {
   animation: trellis-bottle-bob 3.6s ease-in-out infinite;
 }
 
-.lobster-bottle--open .lobster-bottle__svg {
+.trellis-bottle--open .trellis-bottle__svg {
   animation: none;
 }
 
@@ -1580,7 +1580,7 @@ branch-trellis-pet[data-dex-complete]::after {
   aspect-ratio: 120 / 105;
 }
 
-.trellisIndex__mini .lobster-pet__svg {
+.trellisIndex__mini .trellis-pet__svg {
   animation: none;
 }
 

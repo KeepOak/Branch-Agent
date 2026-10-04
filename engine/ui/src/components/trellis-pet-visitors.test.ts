@@ -36,7 +36,7 @@ describe("theme visitors and resident presence", () => {
       await arrive(element);
 
       expect(element.querySelector(".lob-bindle")).not.toBeNull();
-      expect(element.querySelector(".lobster-pet")?.getAttribute("title")).toContain(
+      expect(element.querySelector(".trellis-pet")?.getAttribute("title")).toContain(
         "just moved in",
       );
       expect(localStorage.getItem("branch.control.trellispet.gatewayVersion.v1")).toBe(
@@ -46,8 +46,8 @@ describe("theme visitors and resident presence", () => {
   );
 
   it.each([
-    [9, ".lobster-pet--duck"],
-    [104, ".lobster-bottle"],
+    [9, ".trellis-pet--duck"],
+    [104, ".trellis-bottle"],
   ] as const)(
     "keeps independent visitor %s while the resident stays home",
     async (seed, selector) => {
@@ -59,11 +59,11 @@ describe("theme visitors and resident presence", () => {
       await vi.advanceTimersByTimeAsync(9000);
       await element.updateComplete;
       expect(element.querySelector(selector)).not.toBeNull();
-      expect(element.querySelector(".lobster-pet:not(.lobster-pet--passer)")).toBeNull();
+      expect(element.querySelector(".trellis-pet:not(.trellis-pet--passer)")).toBeNull();
       expect(getTrellisIndex().size).toBe(0);
       element.visitsEnabled = false;
       await element.updateComplete;
-      expect(element.querySelector(".lobster-pet, .lobster-bottle")).toBeNull();
+      expect(element.querySelector(".trellis-pet, .trellis-bottle")).toBeNull();
       expect(vi.getTimerCount()).toBe(0);
     },
   );
@@ -101,38 +101,38 @@ describe("theme visitors and resident presence", () => {
       await element.updateComplete;
       await vi.advanceTimersByTimeAsync(9000);
       await element.updateComplete;
-      const crossing = element.querySelector(".lobster-pet--penguin");
+      const crossing = element.querySelector(".trellis-pet--penguin");
       expect(crossing).not.toBeNull();
 
       element.critters = ["penguin", "fedora"];
       await element.updateComplete;
-      expect(element.querySelector(".lobster-pet--penguin")).toBe(crossing);
+      expect(element.querySelector(".trellis-pet--penguin")).toBe(crossing);
 
       element.critters = [kind];
       await element.updateComplete;
-      expect(element.querySelector(".lobster-pet--passer")).toBe(
+      expect(element.querySelector(".trellis-pet--passer")).toBe(
         kind === "penguin" ? crossing : null,
       );
       await vi.advanceTimersByTimeAsync(13_000);
       await element.updateComplete;
-      expect(element.querySelector(".lobster-pet--passer")).toBeNull();
+      expect(element.querySelector(".trellis-pet--passer")).toBeNull();
 
       element.critters = ["penguin", "fedora"];
       await element.updateComplete;
       await vi.advanceTimersByTimeAsync(10_000);
       await element.updateComplete;
-      expect(element.querySelector(".lobster-pet--passer")).toBeNull();
+      expect(element.querySelector(".trellis-pet--passer")).toBeNull();
       element.critters = ["penguin", "fedora"];
       await element.updateComplete;
       await vi.advanceTimersByTimeAsync(10_000);
       await element.updateComplete;
-      expect(element.querySelector(".lobster-pet--passer")).toBeNull();
+      expect(element.querySelector(".trellis-pet--passer")).toBeNull();
 
       element.seed = 55;
       await element.updateComplete;
       await vi.advanceTimersByTimeAsync(9000);
       await element.updateComplete;
-      expect(element.querySelector(".lobster-pet--fedora")).not.toBeNull();
+      expect(element.querySelector(".trellis-pet--fedora")).not.toBeNull();
     },
   );
 
@@ -176,7 +176,7 @@ describe("theme visitors and resident presence", () => {
   });
 
   it.each([
-    ["crab", "a plugin visitor", 11000],
+    ["beetle", "a plugin visitor", 11000],
     ["stranger", "a plugin visitor", 11000],
     ["ferris", "a crab, allegedly", 5000],
   ] as const)(
@@ -197,17 +197,17 @@ describe("theme visitors and resident presence", () => {
       await vi.advanceTimersByTimeAsync(9000);
       await element.updateComplete;
       await vi.dynamicImportSettled();
-      const passer = element.querySelector<HTMLElement>(`.lobster-pet--${kind}`)!;
+      const passer = element.querySelector<HTMLElement>(`.trellis-pet--${kind}`)!;
       expect(passer.title).toBe(title);
       expect(passer.style.getPropertyValue("--lob-scale")).toBe("1.8");
       expect(passer.style.getPropertyValue("--lob-cross")).toBe(`${crossMs}ms`);
-      expect(passer.querySelector(".lobster-pet__body img")?.getAttribute("src")).toBe(
+      expect(passer.querySelector(".trellis-pet__body img")?.getAttribute("src")).toBe(
         `blob:/${kind}?v=1`,
       );
       expect(passer.querySelector("svg")).toBeNull();
       element.critters = [...element.critters];
       await element.updateComplete;
-      expect(element.querySelector(".lobster-pet--passer")).toBe(passer);
+      expect(element.querySelector(".trellis-pet--passer")).toBe(passer);
 
       if (kind === "ferris") {
         element.critterArtwork = { ferris: { url: "/ferris?v=2", crossMs: 90000 } };
@@ -218,7 +218,7 @@ describe("theme visitors and resident presence", () => {
         expect(passer.style.getPropertyValue("--lob-cross")).toBe("5000ms");
         element.critters = [];
         await element.updateComplete;
-        expect(element.querySelector(".lobster-pet--passer")).toBeNull();
+        expect(element.querySelector(".trellis-pet--passer")).toBeNull();
       }
     },
   );

@@ -1669,7 +1669,7 @@ describe("config view", () => {
         onOpenTrellisIndex,
       });
 
-      const seen = container.querySelector(".lobster-pet--palette-crimson");
+      const seen = container.querySelector(".trellis-pet--palette-crimson");
       const seenTooltip = seen?.closest("branch-tooltip");
       expect(seen?.hasAttribute("title")).toBe(false);
       expect(seen?.getAttribute("aria-label")).toContain("Ruby ✦");
@@ -1680,7 +1680,7 @@ describe("config view", () => {
         new Date(firstSeenAt).toLocaleDateString(),
       );
 
-      const unseen = container.querySelector(".lobster-pet--palette-watermelon");
+      const unseen = container.querySelector(".trellis-pet--palette-watermelon");
       expect(unseen?.getAttribute("aria-label")).toContain("Ripe when thumped.");
       expect(
         unseen?.closest("branch-tooltip")?.querySelector('[slot="content"]')?.textContent,

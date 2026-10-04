@@ -352,7 +352,7 @@ export function createBoardHandlers(
             ? {
                 kind: "html",
                 // Authority-bearing bridge code must precede every admitted
-                // byte, including complete HTML and managed Canvas documents.
+                // byte, including complete HTML and managed Clearing documents.
                 // The wrapper is idempotent so an already-wrapped Canvas view
                 // keeps one effective bridge owner.
                 html: buildWidgetDocument(requestParams.title ?? requestParams.name, content.html, {

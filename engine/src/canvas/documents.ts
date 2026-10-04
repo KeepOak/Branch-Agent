@@ -1,4 +1,4 @@
-/** Core Canvas document materialization and hosted-path resolution. */
+/** Core Clearing document materialization and hosted-path resolution. */
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -68,12 +68,12 @@ function normalizeCanvasDocumentId(value: string): string {
   return normalized;
 }
 
-/** Stable root for existing and newly created Canvas documents. */
+/** Stable root for existing and newly created Clearing documents. */
 export function resolveCanvasDocumentsDir(stateDir = resolveStateDir()): string {
   return path.resolve(stateDir, "canvas", "documents");
 }
 
-/** Reads the managed HTML entrypoint for a core Canvas document. */
+/** Reads the managed HTML entrypoint for a core Clearing document. */
 export async function readCanvasDocumentHtmlSource(
   documentId: string,
   options?: { stateDir?: string; maxBytes?: number },

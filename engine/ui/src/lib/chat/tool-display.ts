@@ -98,9 +98,9 @@ function sanitizeCanvasEntryUrl(
 }
 
 /**
- * True when the preview entry URL points at a hosted Canvas document rather
+ * True when the preview entry URL points at a hosted Clearing document rather
  * than an externally allowed embed URL. Prompt authority (widget sendPrompt)
- * is granted only to internal Canvas documents.
+ * is granted only to internal Clearing documents.
  */
 export function isInternalCanvasEntryUrl(entryUrl: string | undefined): boolean {
   const rawEntryUrl = entryUrl?.trim();

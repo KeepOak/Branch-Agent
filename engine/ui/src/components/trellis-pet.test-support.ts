@@ -50,7 +50,7 @@ export function createPet(seed: number, mode: TrellisPetMode = "idle"): TrellisP
 }
 
 export function spritePresent(element: TrellisPetElement): boolean {
-  return element.querySelector(".lobster-pet") !== null;
+  return element.querySelector(".trellis-pet") !== null;
 }
 
 export async function advanceUntil(

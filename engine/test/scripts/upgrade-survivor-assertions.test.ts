@@ -214,7 +214,7 @@ function missingCodexUpdateResult(source: "npm" | "clawhub" | "fallback") {
   const finalMessage =
     source === "npm"
       ? 'Failed to install missing configured plugin "codex" from @branch/codex: Package not found on npm: @branch/codex@2026.9.4. See https://docs.openclaw.ai/tools/plugin for installable plugins.'
-      : 'Failed to install missing configured plugin "codex" from clawhub:@branch/codex: Package not found on ClawHub.';
+      : 'Failed to install missing configured plugin "codex" from clawhub:@branch/codex: Package not found on Seedbank.';
   const messages =
     source === "fallback"
       ? ["@branch/codex unavailable; using clawhub:@branch/codex instead.", finalMessage]
@@ -653,7 +653,7 @@ describe("upgrade recovery result assertions", () => {
   });
 
   it.each([
-    'Failed to install missing configured plugin "codex" from clawhub:@branch/other: Package not found on ClawHub.',
+    'Failed to install missing configured plugin "codex" from clawhub:@branch/other: Package not found on Seedbank.',
     'Failed to install missing configured plugin "codex" from clawhub:@branch/codex: Request timed out.',
     'Failed to install missing configured plugin "codex" from clawhub:@branch/codex: Version not found on Seedbank: @branch/codex@2026.9.4.',
     'Failed to install missing configured plugin "codex" from clawhub:@branch/codex: Package not found on Seedbank. Another install failed.',
