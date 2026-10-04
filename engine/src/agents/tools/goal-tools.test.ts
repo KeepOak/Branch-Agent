@@ -44,6 +44,142 @@ async function upsertSessionEntry(params: {
 }
 
 describe("goal tools", () => {
+  it("recovers saved progress and requires evidence for every declared criterion", async () => {
+    const { config, template } = await createStoreConfig();
+    const storePath = resolveSessionStorePathCore(template, { agentId: "research" });
+    const options = { agentSessionKey: "global", sessionAgentId: "research", config };
+    await upsertSessionEntry({
+      storePath,
+      sessionKey: "global",
+      entry: { sessionId: "recovery", updatedAt: 1 },
+    });
+    const created = await createCreateGoalTool(options).execute("create", {
+      objective: "Write and verify the report",
+      acceptance_criteria: ["Report written", "Report checked"],
+    });
+    const goalId = (created.details as { goal: { id: string } }).goal.id;
+    await createUpdateGoalTool(options).execute("checkpoint", {
+      status: "checkpoint",
+      goal_id: goalId,
+      note: "Report written at report.md",
+      next_action: "Check its contents, then deliver it",
+    });
+    // Reconstruct all tools and read from the actual SQLite session boundary.
+    const recovered = await createGetGoalTool({ ...options }).execute("read-after-restart", {});
+    expect(recovered.details).toMatchObject({
+      goal: {
+        id: goalId,
+        status: "active",
+        acceptanceCriteria: ["Report written", "Report checked"],
+        checkpoint: {
+          summary: "Report written at report.md",
+          nextAction: "Check its contents, then deliver it",
+        },
+      },
+    });
+    const premature = await createUpdateGoalTool(options).execute("premature", {
+      status: "complete",
+      goal_id: goalId,
+      completion_evidence: [{ criterion: 0, evidence: "write receipt" }],
+    });
+    expect(premature.details).toMatchObject({
+      status: "error",
+      error: expect.stringContaining("every acceptance criterion"),
+    });
+    expect(getSessionEntry({ storePath, sessionKey: "global" })?.goal?.status).toBe("active");
+    const completed = await createUpdateGoalTool(options).execute("complete", {
+      status: "complete",
+      goal_id: goalId,
+      completion_evidence: [
+        { criterion: 0, evidence: "write receipt: report.md" },
+        { criterion: 1, evidence: "validation receipt: passed" },
+      ],
+    });
+    expect(completed.details).toMatchObject({
+      status: "updated",
+      goal: {
+        status: "complete",
+        completionEvidence: expect.arrayContaining([
+          { criterion: 1, evidence: "validation receipt: passed" },
+        ]),
+      },
+    });
+    await createUpdateGoalTool(options).execute("completion-retry", {
+      status: "complete",
+      goal_id: goalId,
+      completion_evidence: [
+        { criterion: 0, evidence: "replacement claim" },
+        { criterion: 1, evidence: "replacement claim" },
+      ],
+    });
+    expect(getSessionEntry({ storePath, sessionKey: "global" })?.goal?.completionEvidence).toEqual([
+      { criterion: 0, evidence: "write receipt: report.md" },
+      { criterion: 1, evidence: "validation receipt: passed" },
+    ]);
+  });
+
+  it("refuses a stale checkpoint or completion after the goal is replaced", async () => {
+    const { clearSessionGoal } = await import("../../config/sessions/goals.js");
+    const { config, template } = await createStoreConfig();
+    const storePath = resolveSessionStorePathCore(template, { agentId: "research" });
+    const options = { agentSessionKey: "global", sessionAgentId: "research", config };
+    await upsertSessionEntry({
+      storePath,
+      sessionKey: "global",
+      entry: { sessionId: "replacement", updatedAt: 1 },
+    });
+    const old = await createCreateGoalTool(options).execute("old", { objective: "Old task" });
+    const oldId = (old.details as { goal: { id: string } }).goal.id;
+    await clearSessionGoal({ storePath, sessionKey: "global", agentId: "research" });
+    await createCreateGoalTool(options).execute("new", { objective: "New task" });
+    for (const status of ["checkpoint", "complete"] as const) {
+      const result = await createUpdateGoalTool(options).execute("stale", {
+        status,
+        goal_id: oldId,
+        note: "Old work",
+        next_action: "Finish old work",
+      });
+      expect(result.details).toMatchObject({
+        status: "error",
+        error: expect.stringContaining("Goal changed"),
+      });
+    }
+    expect(getSessionEntry({ storePath, sessionKey: "global" })?.goal).toMatchObject({
+      objective: "New task",
+      status: "active",
+    });
+    expect(getSessionEntry({ storePath, sessionKey: "global" })?.goal?.checkpoint).toBeUndefined();
+  });
+
+  it("rejects whitespace criteria and malformed evidence before modifying the goal", async () => {
+    const { config, template } = await createStoreConfig();
+    const storePath = resolveSessionStorePathCore(template, { agentId: "research" });
+    const options = { agentSessionKey: "global", sessionAgentId: "research", config };
+    await upsertSessionEntry({
+      storePath,
+      sessionKey: "global",
+      entry: { sessionId: "validation", updatedAt: 1 },
+    });
+    await expect(
+      createCreateGoalTool(options).execute("invalid", {
+        objective: "Ship",
+        acceptance_criteria: [" "],
+      }),
+    ).rejects.toThrow("non-empty");
+    expect(getSessionEntry({ storePath, sessionKey: "global" })?.goal).toBeUndefined();
+    await createCreateGoalTool(options).execute("valid", {
+      objective: "Ship",
+      acceptance_criteria: ["Verified"],
+    });
+    await expect(
+      createUpdateGoalTool(options).execute("invalid", {
+        status: "complete",
+        completion_evidence: [{ criterion: 0.5, evidence: "claim" }],
+      }),
+    ).rejects.toThrow("criterion indexes");
+    expect(getSessionEntry({ storePath, sessionKey: "global" })?.goal?.status).toBe("active");
+  });
+
   it("keeps get_goal read-only when accounting changes are projected", async () => {
     // Budget-limited status can be derived for display without mutating the
     // stored active goal record.

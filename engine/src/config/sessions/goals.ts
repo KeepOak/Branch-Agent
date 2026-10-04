@@ -4,6 +4,7 @@ import {
 } from "../../sessions/session-state-events.js";
 import { formatTokenCount } from "../../utils/token-format.js";
 import {
+  SessionGoalTransitionError,
   accountSessionGoalUsage,
   buildCreatedSessionGoal,
   buildUpdatedSessionGoalObjective,
@@ -25,16 +26,19 @@ type SessionGoalStoreOptions = {
   persist?: boolean;
   actor?: { type: SessionStateActorType; id?: string };
   agentId?: string;
+  expectedGoalId?: string;
 };
 
 type CreateSessionGoalOptions = SessionGoalStoreOptions & {
   objective: string;
   tokenBudget?: number;
+  acceptanceCriteria?: string[];
 };
 
 type UpdateSessionGoalStatusOptions = SessionGoalStoreOptions & {
   status: Extract<SessionGoalStatus, "active" | "paused" | "blocked" | "complete">;
   note?: string;
+  completionEvidence?: SessionGoal["completionEvidence"];
 };
 
 export const MODEL_UPDATABLE_SESSION_GOAL_STATUSES = ["complete", "blocked"] as const;
@@ -82,6 +86,18 @@ export function formatSessionGoalStatus(goal: SessionGoal | undefined): string {
     `Tokens used: ${formatTokenCount(goal.tokensUsed)}`,
     ...(budget ? [budget] : []),
     ...(note ? [note] : []),
+    ...(goal.acceptanceCriteria?.length
+      ? [
+          "Acceptance criteria:",
+          ...goal.acceptanceCriteria.map((criterion, index) => `${index + 1}. ${criterion}`),
+        ]
+      : []),
+    ...(goal.checkpoint
+      ? [
+          `Confirmed progress: ${goal.checkpoint.summary}`,
+          `Next unfinished step: ${goal.checkpoint.nextAction}`,
+        ]
+      : []),
     "",
     `Commands: ${commands}`,
   ].join("\n");
@@ -147,7 +163,11 @@ export async function createSessionGoal(options: CreateSessionGoalOptions): Prom
     (entry) => {
       created = buildCreatedSessionGoal(
         entry,
-        { objective, tokenBudget: options.tokenBudget },
+        {
+          objective,
+          tokenBudget: options.tokenBudget,
+          acceptanceCriteria: options.acceptanceCriteria,
+        },
         now,
       );
       return { goal: created };
@@ -166,7 +186,15 @@ export async function updateSessionGoalStatus(
 ): Promise<SessionGoal> {
   return updateSessionGoal(
     options,
-    (entry, now) => buildUpdatedSessionGoalStatus(entry, options, now),
+    (entry, now) =>
+      buildUpdatedSessionGoalStatus(
+        entry,
+        {
+          ...options,
+          requireCompletionEvidence: options.actor?.type === "agent",
+        },
+        now,
+      ),
     (goal) => `goal status changed to ${goal.status}`,
   );
 }
@@ -197,6 +225,11 @@ async function updateSessionGoal(
     { sessionKey: options.sessionKey, storePath: options.storePath },
     (entry) => {
       foundSession = true;
+      if (options.expectedGoalId && entry.goal?.id !== options.expectedGoalId) {
+        throw new SessionGoalTransitionError(
+          "Goal changed; read the current goal before updating it.",
+        );
+      }
       updated = update(entry, now);
       return { goal: updated };
     },
@@ -206,6 +239,30 @@ async function updateSessionGoal(
   }
   await recordGoalChange(options, result, summarize(updated));
   return { ...updated };
+}
+
+export async function checkpointSessionGoal(
+  options: SessionGoalStoreOptions & { summary: string; nextAction: string },
+): Promise<SessionGoal> {
+  const summary = options.summary.trim();
+  const nextAction = options.nextAction.trim();
+  if (!summary || !nextAction) {
+    throw new SessionGoalTransitionError("checkpoint summary and next action required");
+  }
+  return updateSessionGoal(
+    options,
+    (entry, now) => {
+      const goal = accountSessionGoalUsage(entry, now);
+      if (!goal) {
+        throw new SessionGoalTransitionError("goal not found");
+      }
+      if (goal.status === "complete") {
+        throw new SessionGoalTransitionError("goal is already complete");
+      }
+      return { ...goal, updatedAt: now, checkpoint: { summary, nextAction, updatedAt: now } };
+    },
+    () => "goal progress checkpoint saved",
+  );
 }
 
 export async function clearSessionGoal(options: SessionGoalStoreOptions): Promise<boolean> {
