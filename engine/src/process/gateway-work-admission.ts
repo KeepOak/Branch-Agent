@@ -10,6 +10,21 @@ import { notifyListeners } from "../shared/listeners.js";
 
 type GatewaySuspendAdmissionPhase = GatewaySuspension["phase"];
 
+import {
+  createGatewayWorkOwnershipScope,
+  getCurrentGatewayWorkOwnershipScope,
+  withGatewayWorkOwnershipScope,
+  isGatewayWorkOwnedBy,
+  retireGatewayWorkOwnership,
+  type GatewayWorkOwnershipScope,
+  type SelectedRunWorkIdentity,
+} from "./gateway-work-ownership.js";
+
+const rootWorkOwnership = resolveGlobalSingleton(
+  Symbol.for("branch.gatewayRootWorkOwnership"),
+  () => new WeakMap<object, GatewayWorkOwnershipScope>(),
+);
+
 export type GatewayShutdownTrigger =
   | "SIGTERM"
   | "SIGINT"
@@ -108,6 +123,7 @@ const GATEWAY_ROOT_WORK_ORIGIN_MAX_CHARS = 80;
 function createGatewayRootWorkAdmission(
   origin: string,
   detachedWork = false,
+  ownership = createGatewayWorkOwnershipScope(),
 ): GatewayRootWorkAdmissionLease {
   const normalizedOrigin = origin
     .trim()
@@ -118,6 +134,7 @@ function createGatewayRootWorkAdmission(
     references: 1,
     released: false,
   };
+  rootWorkOwnership.set(admission, ownership);
   GATEWAY_WORK_ADMISSION_STATE.activeRootWork.add(admission);
   const release = createGatewayRootWorkRelease(admission);
   return {
@@ -125,7 +142,9 @@ function createGatewayRootWorkAdmission(
     release,
     run: async <T>(run: () => Promise<T>) =>
       await GATEWAY_WORK_ADMISSION_STATE.currentRootWork.run(admission, () =>
-        detachedWork ? runWithDetachedAsyncWork(admission, run) : run(),
+        withGatewayWorkOwnershipScope(ownership, () =>
+          detachedWork ? runWithDetachedAsyncWork(admission, run) : run(),
+        ),
       ),
   };
 }
@@ -510,7 +529,11 @@ function runWithGatewayRootWorkContinuation<T>(
       ? runWithGatewayDetachedWorkAdmission(run, origin)
       : runWithGatewayIndependentRootWorkAdmission(run, origin, getAsyncWorkSignal());
   }
-  const admission = createGatewayRootWorkAdmission(origin, detachedWork);
+  const admission = createGatewayRootWorkAdmission(
+    origin,
+    detachedWork,
+    captureGatewayWorkOwnershipScope(),
+  );
   return admission.run(run).finally(admission.release);
 }
 
@@ -607,6 +630,30 @@ export function getActiveGatewayRootWorkCount(opts?: { excludeCurrent?: boolean 
   return Math.max(0, count);
 }
 
+/** Captures host provenance without exposing mutable root/admission state. */
+export function captureGatewayWorkOwnershipScope(): GatewayWorkOwnershipScope | undefined {
+  const root = GATEWAY_WORK_ADMISSION_STATE.currentRootWork.getStore();
+  return root && !root.released
+    ? (getCurrentGatewayWorkOwnershipScope() ?? rootWorkOwnership.get(root))
+    : undefined;
+}
+
+/** Canonical registration binds the root, including admissions reserved before registration. */
+export function captureGatewayRootWorkOwnershipScope(): GatewayWorkOwnershipScope | undefined {
+  const root = GATEWAY_WORK_ADMISSION_STATE.currentRootWork.getStore();
+  return root && !root.released ? rootWorkOwnership.get(root) : undefined;
+}
+
+export function countGatewayRootWorkOwnedBy(selected: SelectedRunWorkIdentity): number {
+  const current = GATEWAY_WORK_ADMISSION_STATE.currentRootWork.getStore();
+  return [...GATEWAY_WORK_ADMISSION_STATE.activeRootWork].filter(
+    (root) =>
+      root !== current &&
+      !root.released &&
+      isGatewayWorkOwnedBy(rootWorkOwnership.get(root), selected),
+  ).length;
+}
+
 /** Bounded, deterministic root-owner inventory for shutdown diagnostics. */
 export function getActiveGatewayRootWorkHolders(opts?: { excludeCurrent?: boolean }): string[] {
   const current = GATEWAY_WORK_ADMISSION_STATE.currentRootWork.getStore();
@@ -665,6 +712,7 @@ export function tryBeginGatewaySuspendAdmission(
 
 /** Clears restart/suspend admission during SIGUSR2 and isolated tests. */
 export function resetGatewayWorkAdmission(): void {
+  retireGatewayWorkOwnership();
   // SIGUSR2 can abandon old async chains before their finally blocks run.
   // Retire their ALS records so surviving chains must re-enter admission.
   GATEWAY_WORK_ADMISSION_STATE.restartDrainController.abort(

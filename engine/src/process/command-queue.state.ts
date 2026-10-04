@@ -2,6 +2,7 @@
 // capacity-group policy can read lane state without importing the queue itself.
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import type { CommandQueueEnqueueOptions } from "./command-queue.types.js";
+import type { GatewayWorkOwnershipScope } from "./gateway-work-ownership.js";
 import { CommandLane } from "./lanes.js";
 
 export type CommandLaneTaskMarker = Readonly<{
@@ -13,6 +14,7 @@ export type CommandLaneTaskMarker = Readonly<{
 export type QueuePriority = -1 | 0 | 1;
 
 export type QueueEntry = {
+  workOwnership?: GatewayWorkOwnershipScope;
   queued?: true;
   previous?: QueueEntry;
   next?: QueueEntry;
@@ -55,6 +57,7 @@ export type LaneState = {
   lane: string;
   queue: LaneQueue;
   activeTaskIds: Set<number>;
+  activeWorkOwnership?: Map<number, GatewayWorkOwnershipScope | undefined>;
   maxConcurrent: number;
   draining: boolean;
   generation: number;

@@ -21,6 +21,8 @@ import {
   releaseAgentRunDelegatedAuthority,
   type AgentRunDelegatedAuthority,
 } from "../infra/agent-run-registry.js";
+import { captureGatewayRootWorkOwnershipScope } from "../process/gateway-work-admission.js";
+import { bindGatewayWorkOwnershipScope } from "../process/gateway-work-ownership.js";
 import type { ChatAbortDiagnosticReason } from "./chat-abort-diagnostics.js";
 import { notifyChatAbortControllerRemoved } from "./chat-abort-lifecycle-internal.js";
 import type { ChatAbortControllerEntry } from "./chat-abort.types.js";
@@ -309,6 +311,27 @@ export function registerChatAbortController(params: {
     turnKind: params.turnKind,
   };
   params.chatAbortControllers.set(params.runId, entry);
+  const workOwnership = captureGatewayRootWorkOwnershipScope();
+  if (workOwnership && entry.lifecycleGeneration) {
+    const bindingRunId = params.runId;
+    const bindingSessionKey = params.sessionKey;
+    const bindingSessionId = params.sessionId;
+    const bindingGeneration = entry.lifecycleGeneration;
+    bindGatewayWorkOwnershipScope(workOwnership, {
+      runId: params.runId,
+      sessionKey: params.sessionKey,
+      sessionId: params.sessionId,
+      controller,
+      lifecycleGeneration: entry.lifecycleGeneration,
+      isCurrent: () =>
+        params.chatAbortControllers.get(bindingRunId) === entry &&
+        entry.sessionKey === bindingSessionKey &&
+        entry.sessionId === bindingSessionId &&
+        entry.lifecycleGeneration === bindingGeneration &&
+        entry.executionStarted === true &&
+        entry.registrationCleanupRequested !== true,
+    });
+  }
   return {
     controller,
     registered: true,
