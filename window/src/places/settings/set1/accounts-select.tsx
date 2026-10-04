@@ -2,6 +2,7 @@
 // service, since each service keeps its own order) or sign out of them (models.authLogout per service).
 import type { WindowEngine } from "../../../connect/engine";
 import { Btn, useSaveRunner } from "../kit";
+import { useAction } from "../hooks";
 import type { Account } from "./accounts";
 import "./accounts.css";
 
@@ -20,10 +21,11 @@ export function SelectBox({ acc, name, picked, onPick }: { acc: Account; name: s
 type BulkProps = { engine: WindowEngine; all: Account[]; picked: string[]; agent: { agentId?: string }; reload: () => Promise<void>; done: () => void };
 export function BulkBar({ engine, all, picked, agent, reload, done }: BulkProps) {
   const save = useSaveRunner();
+  const action = useAction();
   const chosen = all.filter((acc) => picked.includes(key(acc)));
   const providers = [...new Set(chosen.map((acc) => acc.p))];
   const leaving = chosen.filter((acc) => acc.a.logoutSupported);
-  const run = (work: () => Promise<void>) => void save(async () => { await work(); await reload(); }).then((ok) => { if (ok) done(); });
+  const run = (work: () => Promise<void>) => void action.run(async () => { if (await save(async () => { await work(); await reload(); })) done(); });
   const toTop = () => run(async () => {
     for (const p of providers) {
       const ids = all.filter((x) => x.p === p).map((x) => x.a.profileId);
@@ -42,9 +44,9 @@ export function BulkBar({ engine, all, picked, agent, reload, done }: BulkProps)
     <div className="bulk-acc" role="toolbar" aria-label="With the selected accounts">
       <b>{n ? `${n} selected` : "Tick the accounts"}</b>
       <span className="grow" />
-      <Btn ghost sm disabled={!n || locked} title={locked ? "The order is set in the settings file." : undefined} onClick={toTop}>Move to the top</Btn>
+      <Btn ghost sm disabled={!n || locked || action.busy} title={locked ? "The order is set in the settings file." : undefined} onClick={toTop}>Move to the top</Btn>
       <Btn ghost sm disabled title={PAUSE_OFF}>Pause</Btn>
-      <Btn ghost sm className="danger-acc" disabled={!leaving.length} title={n && !leaving.length ? "These sign-ins can’t be removed from here." : undefined} onClick={signOut}>Sign out</Btn>
+      <Btn ghost sm className="danger-acc" disabled={!leaving.length || action.busy} title={n && !leaving.length ? "These sign-ins can’t be removed from here." : undefined} onClick={signOut}>Sign out</Btn>
     </div>
   );
 }
