@@ -187,7 +187,7 @@ function MayChange({ config }: Ctx) {
       <Ctl title="Updating itself" sub="With a safety copy. Running work gets until the update deadline (15 minutes).">
         <Seg label="Updating itself" value={updating.value} disabled={config.loading} onChange={updating.choose} options={[{ id: "allowed", label: "Allowed" }, { id: "ask", label: "Ask me first" }, { id: "never", label: "Never" }]} />
       </Ctl>
-      <Ctl title="Its own program and your saved work" sub="Its program changes only through an update, never by editing its files. This one can’t be switched on."><span className="pill idle"><i />Never, by itself</span></Ctl>
+      <Ctl title="Its own program and your saved work" sub="Its program changes only through an update, never by editing its files. This one can’t be switched on."><span className="pill idle">Never, by itself</span></Ctl>
       <Ctl title="Work on its own code in a separate copy" sub="A private copy of Branch’s source. The installed app is never touched. Every change asks you first." off={NO_SELF}><Switch label="Work on its own code in a separate copy" checked={false} onChange={() => undefined} /></Ctl>
     </Sec>
   );

@@ -10,6 +10,7 @@ import { Dialog } from "../../../shell/Dialog";
 import { Menu, type MenuAnchor } from "../../../shell/Menu";
 import { CallLine, CodeRow, CopyBtn, Kv, Tile, bytes, lvOf, openPlace, rec, span, str, useCall, useLive, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
+import { Logo } from "../set1/service";
 import { readMeasuredPercent } from "../../../shell/limit-window-reading";
 import "./usage.css";
 
@@ -85,8 +86,7 @@ export function UsagePage(props: SettingsPageProps) {
       {lv >= 1 ? <MoneyMore engine={props.engine} lv={lv} /> : null}
       {lv >= 1 ? <KeepingMore engine={props.engine} lv={lv} /> : null}
       {lv >= 2 ? <EverySetting engine={props.engine} /> : null}
-      <Flagged />
-      {lv >= 1 ? <Ctl title="Reset Branch" sub="Start over on this computer." off={NO_RESET}><Btn sm className="bad">Reset…</Btn></Ctl> : null}
+      <Flagged lv={lv} />
       <YourData engine={props.engine} />
       {report ? <ReportDialog engine={props.engine} lv={lv} days={days} names={names} onClose={() => setReport(false)} /> : null}
     </Page>
@@ -146,7 +146,7 @@ function LimWindow({ label, left, words }: { label: string; left: number; words:
     <div className="s2usage-limw">
       <span>{label}</span>
       <span className="s2usage-limbar" role="meter" aria-label={`${label} left`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(l)}><i style={{ width: `${l}%` }} /></span>
-      <span>{Math.round(l)}% left · {l >= 100 && !words ? "full" : words}</span>
+      <span>{`${Math.round(l)}% left · ${l >= 100 && !words ? "full" : words}`}</span>
     </div>
   );
 }
@@ -171,28 +171,32 @@ function Billing({ b }: { b: RecordValue }) {
   return <div className="s2usage-limw"><span>{label}</span><span>{amount(b.amount)}{str(b.period) ? ` · ${str(b.period)}` : ""}</span></div>;
 }
 
+/** The engine's short window names ("5h", "Week") in words. */
+const WINDOW_WORDS: Record<string, string> = { "5h": "This 5-hour window", week: "This week", day: "Today", month: "This month" };
+const windowWords = (label: string) => WINDOW_WORDS[label.toLowerCase()] ?? WINDOW_WORDS[label] ?? label;
+
 function Provider({ p, updatedAt }: { p: RecordValue; updatedAt: unknown }) {
   const name = str(p.displayName) || str(p.provider);
   const windows = list(p.windows).flatMap((w) => {
     const measured = readMeasuredPercent(w.usedPercent);
-    return measured ? [{ label: str(w.label), left: 100 - measured.used, words: resetWords(w.resetAt) }] : [];
+    return measured ? [{ label: windowWords(str(w.label)), left: 100 - measured.used, words: resetWords(w.resetAt) }] : [];
   });
   const billing = list(p.billing);
   const told = windows.length > 0 || billing.some(billingMeasured);
   const sub = [str(p.accountEmail), str(p.plan)].filter(Boolean).join(" · ");
   return (
     <div className="s2usage-lim" data-provider={str(p.provider)}>
-      <span className="s2usage-logo" aria-hidden="true">{name.slice(0, 2).toUpperCase().replace(/[^A-Z0-9]/g, "")}</span>
+      <Logo id={str(p.provider)} name={name} />
       <div>
         <div className="s2usage-limh">
           <b>{name}</b>
           {sub ? <span className="s2usage-muted">{sub}</span> : null}
-          {p.error ? <Pill tone="bad">Couldn’t check</Pill> : told ? <Pill tone="ok">Measured</Pill> : <Pill>Not published</Pill>}
+          <span className={`pill ${p.error ? "bad" : told ? "ok" : "idle"}`}>{p.error ? "Couldn’t check" : told ? "Measured" : "Not published"}</span>
         </div>
         {windows.map((w, i) => <LimWindow key={i} {...w} />)}
         {billing.map((b, i) => <Billing key={`b${i}`} b={b} />)}
         {p.error ? <small className="s2-err">{str(p.error)}</small>
-          : told ? <small>as of {ago(updatedAt)}, asked {name}</small>
+          : told ? <small>{`as of ${ago(updatedAt)}, asked ${name}`}</small>
           : <small>{str(p.summary) || "This service does not say what it allows."}</small>}
       </div>
     </div>
@@ -237,7 +241,7 @@ function TrunkSpend({ engine, names }: { engine: WindowEngine; names: Map<string
           ))}
         </div>
       ) : null}
-      {month.data ? <Hint>This month: {money(rec(month.data.totals).totalCost)}. Plans are billed by their own sites; work on this computer is free.</Hint> : null}
+      {month.data ? <Hint>{`This month: ${money(rec(month.data.totals).totalCost)}. Plans are billed by their own sites; work on this computer is free.`}</Hint> : null}
       {month.error ? <p className="hint s2-err" role="alert">{month.error}</p> : null}
     </Sec>
   );
@@ -789,8 +793,8 @@ const asNum = (v: string): number | undefined => (v.trim() === "" || !Number.isF
 function AllowanceRows() {
   return (
     <>
-      <Ctl title="The ring bottom right" sub="The connection used next, how much of its window is left, and when it refills." off={NO_RING}><Switch label="The ring bottom right" checked={false} onChange={() => undefined} /></Ctl>
-      <Ctl title="Offer to save progress at 95%" sub="It only asks, once per connection per window, and never for an estimate." off={NO_OFFER}><Switch label="Offer to save progress at 95%" checked={false} onChange={() => undefined} /></Ctl>
+      <Ctl title="The ring bottom right" sub="The connection used next, how much of its window is left, and when it refills." off={NO_RING}><Switch label="Show the ring" checked={false} onChange={() => undefined} /></Ctl>
+      <Ctl title="Offer to save progress at 95%" sub={<>It only asks, once per connection per window, and never for an estimate. <button type="button" className="link-k" disabled title={NO_OFFER}>Show me</button></>} off={NO_OFFER}><Switch label="Offer to save progress at 95%" checked={false} onChange={() => undefined} /></Ctl>
       <Ctl title="Asking a service what is left" off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
       <Ctl title="Show usage in the tray" sub="A small ring by the clock opens the same list." off={TRAY}><Switch label="Show usage in the tray" checked={false} onChange={() => undefined} /></Ctl>
     </>
@@ -802,7 +806,7 @@ function Keeping({ engine, lv }: { engine: WindowEngine; lv: number }) {
   return (
     <Sec title="Keeping things">
       <Ctl title="Keep conversations" sub="Older ones are deleted for good." off={NO_KEEP}>
-        <Seg label="Keep conversations" value="" options={[{ id: "30", label: "30 days" }, { id: "365", label: "1 year" }, { id: "forever", label: "Forever" }]} onChange={() => undefined} />
+        <Seg label="Keep conversations" value="forever" options={[{ id: "30", label: "30 days" }, { id: "365", label: "1 year" }, { id: "forever", label: "Forever" }]} onChange={() => undefined} />
       </Ctl>
       <Ctl title="Checkpoints" sub="Kept before a Trunk changes files. Put any of them back." off={NO_CKPT}><Btn sm>See all</Btn></Ctl>
       {lv >= 1 ? <Ctl title="Conversations" sub="Pick several to delete, or clear the archive."><Btn sm onClick={() => setManage(true)}>Manage</Btn></Ctl> : null}
@@ -893,7 +897,7 @@ function Evals({ lv }: { lv: number }) {
     <Sec title="Evals" hint="Test sets you can run against your own model. Nothing runs by itself.">
       <Plist>{SUITES.map(([t, s]) => <Prow key={t} icon={<Tile><Ico name="check" s /></Tile>} title={t} sub={s}>{run}</Prow>)}</Plist>
       <Ctl title="Run each suite" sub="Several runs show which cases flip, and whether the Trunk or the judge is to blame." off={NO_EVAL}>
-        <select className="inp" aria-label="Run each suite" disabled><option>Once</option><option>3 times</option><option>5 times</option></select>
+        <select className="inp" aria-label="Run each suite"><option>Once</option><option>3 times</option><option>5 times</option></select>
       </Ctl>
       <Ctl title="Replay recorded tool calls" sub="Tools aren’t run again; a call that doesn’t match stops the case." off={NO_EVAL}><Switch label="Replay recorded tool calls" checked={false} onChange={() => undefined} /></Ctl>
       <Ctl title="Rehearse without running tools" sub="A model writes what each tool would have returned." off={NO_EVAL}><Switch label="Rehearse without running tools" checked={false} onChange={() => undefined} /></Ctl>
@@ -901,7 +905,7 @@ function Evals({ lv }: { lv: number }) {
         <>
           <Hint>Graders</Hint>
           <ul className="s2usage-cmds">{GRADERS.map((g) => <li key={g}>{g}</li>)}</ul>
-          {EVAL_ROWS.map(([t, b, sub]) => <Ctl key={t} title={t} sub={sub || undefined} off={NO_EVAL}><Btn sm>{b}</Btn></Ctl>)}
+          {EVAL_ROWS.map(([t, b, sub]) => <Ctl key={t} title={t} sub={sub || undefined} off={NO_EVAL}><Btn sm disabled>{b}</Btn></Ctl>)}
           <Hint>Benchmarks</Hint>
           <Plist>{BENCH.map(([t, s]) => <Prow key={t} title={t} sub={s}>{run}</Prow>)}</Plist>
           <Hint>Results over time and the hardest tasks show here after a run.</Hint>
@@ -911,7 +915,7 @@ function Evals({ lv }: { lv: number }) {
   );
 }
 
-const CATALOGS: [string, string, string][] = [["anthropic", "Show Claude Code conversations", "Claude Code"], ["codex", "Show Codex conversations", "Codex"], ["opencode", "Show OpenCode conversations", "OpenCode"]];
+const CATALOGS: [string, string][] = [["anthropic", "Show Claude Code conversations"], ["codex", "Show Codex conversations"], ["opencode", "Show OpenCode conversations"]];
 const catalogPath = (id: string) => `plugins.entries.${id}.config.sessionCatalog.enabled`;
 
 function MovingInOut({ engine, lv }: { engine: WindowEngine; lv: number }) {
@@ -927,7 +931,7 @@ function MovingInOut({ engine, lv }: { engine: WindowEngine; lv: number }) {
   return (
     <Sec title="Moving in and out">
       <Ctl title="Move in from another assistant" sub="Memory and instructions from Claude Code or Hermes Agent, as the engine finds them on this computer."><Btn sm onClick={() => setMove(true)}>Move in…</Btn></Ctl>
-      <Ctl title="Show other assistants’ conversations" sub="Claude Code, Codex, OpenCode and other assistants on this computer and your paired computers, in their own group in the list. Shown, not copied.">
+      <Ctl title="Show other assistants’ conversations" sub="Claude Code, Codex, OpenCode and other assistants on this computer and your paired computers, in their own group in the list. Shown, not copied. Off until you choose: it reads other assistants’ conversation history on this computer.">
         <Switch label="Show other assistants’ conversations" checked={all} disabled={busy || !present.length} onChange={(v) => void setAll(v)} />
       </Ctl>
       {plugins.error ? <p className="hint s2-err" role="alert">{plugins.error}</p> : null}
@@ -935,8 +939,8 @@ function MovingInOut({ engine, lv }: { engine: WindowEngine; lv: number }) {
       {lv >= 1 ? (
         <>
           <Hint>Show the conversations other coding apps keep, from this computer and your paired computers, in the sidebar. Applies to everyone on this Gateway.</Hint>
-          {CATALOGS.map(([id, t, app]) => (
-            <Ctl key={id} title={t} sub={`Lists ${app}’s conversations in the sidebar.${id === "codex" ? " Takes effect after the Gateway restarts." : ""}`} off={plugins.data && !installed.has(id) ? NOT_INSTALLED : undefined}>
+          {CATALOGS.map(([id, t]) => (
+            <Ctl key={id} title={t} sub={`Lists that app’s conversations in the sidebar.${id === "opencode" ? "" : " Off until you choose: it reads another app’s conversations."}${id === "codex" ? " Takes effect after the Gateway restarts." : ""}`} off={plugins.data && !installed.has(id) ? NOT_INSTALLED : undefined}>
               <Switch label={t} checked={installed.has(id) && on(id)} disabled={busy} onChange={(v) => void config.set(catalogPath(id), v)} />
             </Ctl>
           ))}
@@ -966,7 +970,7 @@ function CodexFolders({ config }: { config: Cfg }) {
     <Ctl title="More Codex folders" sub="Folders Branch also reads Codex conversations from. Takes effect after the Gateway restarts." after={
       <div className="s2usage-x">
         <div className="s2usage-list">{homes.length ? homes.map((h) => <span className="chip6" key={name(h)}>{name(h)}<button type="button" className="ib" aria-label={`Remove ${name(h)}`} onClick={() => void config.set(path, homes.filter((x) => x !== h))}><Ico name="x" s /></button></span>) : <small>None.</small>}</div>
-        <div className="acts"><input className="inp" aria-label="Codex folder" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm onClick={add}>Add</Btn></div>
+        <div className="acts"><input className="inp" aria-label="More Codex folders: add" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm onClick={add}>Add</Btn></div>
         {err ? <small className="s2-err" role="alert">{err}</small> : null}
       </div>
     } />
@@ -1018,7 +1022,7 @@ function MoneyMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
   return (
     <Sec title="Money and keeping, more">
       <Ctl title="Spend caps per service" sub="A monthly limit for each service that bills per use; work pauses and asks when one is reached." off={NO_CAPS}><Btn sm>Set caps</Btn></Ctl>
-      <Ctl title="Prepaid balances" sub={usage.data ? (balances.length ? balances.join(" · ") : "No connected service reports a balance.") : "For services that sell credit, how much is left, checked when you open this page."}>
+      <Ctl title="Prepaid balances" sub={balances.length ? balances.join(" · ") : "For services that sell credit, how much is left, checked when you open this page."}>
         <Btn sm disabled={usage.loading} onClick={() => void usage.reload()}>Check now</Btn>
       </Ctl>
       <Ctl title="What each project cost" sub="Spend by project and by conversation, for the period you pick." off={NO_PROJECT}><Btn sm>See projects</Btn></Ctl>
@@ -1187,7 +1191,7 @@ function KeyRow({ k, config }: { k: Key; config: Cfg }) {
     : kind === "bool" ? <Switch label={path} checked={shown !== "false"} onChange={(on) => save(String(on))} />
     : <span className="s2usage-txt"><Field label={path} value={shown} placeholder={def} type={kind === "num" ? "number" : "text"} wide onCommit={save} /></span>;
   return (
-    <Ctl id={path} title={<code>{path}</code>} sub={err || `${sub} Default: ${def}.`}>
+    <Ctl id={path} title={path} sub={err || `${sub} Default: ${def}.`}>
       {control}
       {config.get(path) !== undefined ? <Btn ghost sm onClick={() => void config.set(path, null)}>Back to default</Btn> : null}
     </Ctl>
@@ -1198,16 +1202,17 @@ function EverySetting({ engine }: { engine: WindowEngine }) {
   const config = useConfig(engine);
   return (
     <Sec title="Conversations, every setting" hint="Every conversation setting the engine has, by its key. Archive conversations idle for (above) sets when they leave the list.">
-      <div className="s2usage-schema">{SESSKEYS.map((k) => <KeyRow key={k[0]} k={k} config={config} />)}</div>
+      {SESSKEYS.map((k) => <KeyRow key={k[0]} k={k} config={config} />)}
     </Sec>
   );
 }
 
 /* ---------- flagged replies, reset, your data ---------- */
-function Flagged() {
+function Flagged({ lv }: { lv: number }) {
   return (
     <Sec title="Flagged replies">
       <Ctl title="Let me send a flagged reply to the Branch team" sub="Even then each flag asks, and only that reply and your note go. Off until you choose: it sends them outside Branch, to the Branch team." off={NO_FLAG}><Switch label="Let me send a flagged reply to the Branch team" checked={false} onChange={() => undefined} /></Ctl>
+      {lv >= 1 ? <Ctl title="Reset Branch" sub="Start over on this computer." off={NO_RESET}><Btn sm className="bad">Reset…</Btn></Ctl> : null}
     </Sec>
   );
 }
@@ -1232,20 +1237,20 @@ function YourData({ engine }: { engine: WindowEngine }) {
         <li><span>Files you attached, kept as originals (CSV too)</span><span className="hint" /></li>
         <li><span>Library documents and what Trunks made</span><span className="hint" /></li>
         <li><span>Settings, Trunks and personality files</span><span className="hint" /></li>
-        <li><span>Backups</span><span className="hint">{backup.data ? `${copies} ${copies === 1 ? "place" : "places"}` : ""}</span></li>
+        <li><span>Backups</span><span className="hint">{backup.data ? `${copies} ${copies === 1 ? "copy" : "copies"}` : ""}</span></li>
       </ul>} />
       <Ctl title="What leaves this computer" stack after={<ul className="s2usage-data">
         <li><span>Each message, to the model service you picked</span><span className="hint">{providers.join(", ")}</span></li>
         <li><span>Web searches</span><span className="hint">{search}</span></li>
         <li><span>Nothing else, unless you connect it</span><span className="hint" /></li>
       </ul>} />
-      <Ctl title="Export everything" sub="Conversations, memory, Library, attached originals, personality files and household defaults, in one .zip." off={NO_EXPORT}><Btn sm>Export (.zip)</Btn></Ctl>
-      <Ctl title="Move to another computer" sub="A locked copy without keys or passwords. Paste it into setup on the other computer and Branch rebuilds itself." off={CLI_BACKUP}><Btn sm>Make a secure snapshot…</Btn></Ctl>
+      <Ctl title="Export everything" sub="Conversations, memory, Library, attached originals, personality files and household defaults, in one .zip." off={NO_EXPORT}><Btn sm disabled>Export (.zip)</Btn></Ctl>
+      <Ctl title="Move to another computer" sub="A locked copy without keys or passwords. Paste it into setup on the other computer and Branch rebuilds itself." off={CLI_BACKUP}><Btn sm disabled>Make a secure snapshot…</Btn></Ctl>
       <BackupsGo data={rec(backup.data)} />
       <Ctl title="Back up to GitHub" sub="A private repository of yours, on a schedule or just before each update." off={CLI_BACKUP}>
         <Seg label="Back up to GitHub" value={git ? "daily" : "off"} options={[{ id: "off", label: "Off" }, { id: "daily", label: "Every day" }, { id: "update", label: "Before each update" }]} onChange={() => undefined} />
       </Ctl>
-      <Ctl title="Restore from a backup" sub="A restore keeps this computer’s Trunks and any newer files, and lists exactly what it left out." off={CLI_BACKUP}><Btn sm>Restore…</Btn></Ctl>
+      <Ctl title="Restore from a backup" sub="A restore keeps this computer’s Trunks and any newer files, and lists exactly what it left out." off={CLI_BACKUP}><Btn sm disabled>Restore…</Btn></Ctl>
       <Ctl title="Pictures and video this month" sub="Counted in the month’s cost with everything else." off={NO_MEDIA} />
       <Ctl title="Delete everything" sub="Every conversation, memory, file and backup, and what outside memory services hold for you." off={NO_WIPE}><Btn sm className="bad">Delete everything…</Btn></Ctl>
     </Sec>
@@ -1255,11 +1260,9 @@ function YourData({ engine }: { engine: WindowEngine }) {
 function BackupsGo({ data }: { data: RecordValue }) {
   const places = list(data.locations).map((l) => str(l.name));
   return (
-    <div className="s2usage-sel">
-      <Ctl title="Backups go to" sub="Where scheduled backups are written." off={CLI_BACKUP}>
-        <select className="inp" aria-label="Backups go to" disabled>{["This computer", ...places].map((p) => <option key={p}>{p}</option>)}</select>
-      </Ctl>
-    </div>
+    <Ctl title="Backups go to" sub="Where scheduled backups are written." off={CLI_BACKUP}>
+      <select className="inp" aria-label="Backups go to">{["This computer", ...places].map((p) => <option key={p}>{p}</option>)}</select>
+    </Ctl>
   );
 }
 
@@ -1281,7 +1284,7 @@ export const ROWS: RowEntry[] = ([
   ["From a terminal", "Keeping things, more", 2], ["Conversation storage", "Keeping things, more", 1], ["Compress older transcripts", "Keeping things, more", 1],
   ["After", "Keeping things, more", 1], ["Run now", "Keeping things, more", 1], ["Delete uploaded files after", "Keeping things, more", 1],
   ...SESSKEYS.map(([p]): [string, string, number] => [p, "Conversations, every setting", 2]),
-  ["Let me send a flagged reply to the Branch team", "Flagged replies", 0], ["Reset Branch", "", 1],
+  ["Let me send a flagged reply to the Branch team", "Flagged replies", 0], ["Reset Branch", "Flagged replies", 1],
   ["What’s kept on this computer", "Your data", 0], ["What leaves this computer", "Your data", 0], ["Export everything", "Your data", 0],
   ["Move to another computer", "Your data", 0], ["Backups go to", "Your data", 0], ["Back up to GitHub", "Your data", 0], ["Restore from a backup", "Your data", 0],
   ["Pictures and video this month", "Your data", 0], ["Delete everything", "Your data", 0],

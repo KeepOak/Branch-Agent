@@ -27,19 +27,12 @@
 .set-col .s2usage-track u { display: block; height: 100%; background: var(--ink-2); border-radius: 4px; }
 .set-col .s2usage-v { font: 12px var(--mono); text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 
-.set-col .s2usage-num { display: inline-flex; align-items: center; gap: 6px; }
-.set-col .s2usage-num .inp { width: 72px; height: 32px; text-align: right; font-variant-numeric: tabular-nums; }
-.set-col .s2usage-num small { font-size: 12px; color: var(--ink-3); min-width: 0; }
 .set-col .s2usage-txt { width: min(240px, 46vw); }
-.set-col .s2usage-schema b code { font: 12px var(--mono); }
+.set-col [data-sec="Conversations, every setting"] > .ctl > b { font: 12px var(--mono); }
 .set-col .s2usage-wide { display: block; }
 .set-col .s2usage-data { list-style: none; padding: 0; margin: 6px 0 0; font-size: 13px; }
 .set-col .s2usage-data li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-top: 1px solid var(--line); }
 .set-col .s2usage-data li .hint { margin: 0; }
-.set-col .s2usage-sel { display: block; }
-.set-col .s2usage-sel > .right { display: block; margin: 6px 0; }
-.set-col .s2usage-sel select { width: 100%; max-width: 100%; }
-.set-col .s2usage-sel > small { display: block; }
 .set-col .s2usage-cmds { margin: 4px 0 6px; padding-left: 18px; display: grid; gap: 2px; font-size: 13px; }
 .set-col .s2usage-x { grid-column: 1 / -1; display: grid; gap: 6px; margin-top: 6px; min-width: 0; }
 .set-col .s2usage-x .acts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 0; }
@@ -113,3 +106,5 @@
   .dlg .s2usage-r { grid-template-columns: 100px 1fr 52px; }
   .dlg .s2usage-two { grid-template-columns: 1fr; }
 }
+.set-col [data-sec="What each connection has left"] > p.hint, .set-col [data-sec="Test the model you use"] > p.hint { margin: 0 0 6px; }
+.set-col [data-sec="Keeping things, more"] .num-k .inp { width: 72px; height: 32px; }

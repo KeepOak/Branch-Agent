@@ -212,7 +212,7 @@ describe("keeping things", () => {
   it("More Codex folders adds and removes paths in sessionCatalog.homes", async () => {
     const { engine, request } = engineWith({ ...BASE, ...CFG({ plugins: { entries: { codex: { config: { sessionCatalog: { homes: ["D:/old"] } } } } } }) });
     await show(engine, "technical");
-    const input = document.querySelector<HTMLInputElement>('input[aria-label="Codex folder"]')!;
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="More Codex folders: add"]')!;
     await act(async () => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!; set.call(input, "D:/new"); input.dispatchEvent(new Event("input", { bubbles: true })); }); await flush();
     await click("Add", row("More Codex folders")!);
     expect(patched(request)).toContainEqual({ plugins: { entries: { codex: { config: { sessionCatalog: { homes: ["D:/old", "D:/new"] } } } } } });
