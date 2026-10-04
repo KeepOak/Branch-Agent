@@ -14,8 +14,8 @@ import { G } from "./glyphs";
 import { Inspect } from "./Inspect";
 
 export const REPLAY_GAP = "Needs the engine's run replay method.";
-export const VERIFY_GAP = "Needs the engine's record check method.";
-export const RECEIPTS_GAP = "Needs the engine's signed receipt chain method.";
+export const VERIFY_GAP = "Integrity verification is unavailable from this connection.";
+export const RECEIPTS_GAP = "Signed receipt chains are unavailable from this connection.";
 
 export type HistoryData = { sessions: Session[]; runs: Run[]; profiles: Row[]; self: string; agents: { defaultId: string; list: Agent[] }; errors: string[] };
 
@@ -29,7 +29,7 @@ async function readRuns(engine: WindowEngine): Promise<unknown> {
 }
 export async function loadHistory(engine: WindowEngine): Promise<HistoryData> {
   const [list, audit, users, self, trunks] = await Promise.allSettled([
-    paged(engine, "sessions.list", "sessions", { includeGlobal: true, includeUnknown: true, includeLastMessage: true, includeDerivedTitles: true, archived: "all" }),
+    paged(engine, "sessions.list", "sessions", { includeGlobal: true, includeUnknown: true, includeLastMessage: true, includeDerivedTitles: true, includeActivitySummary: true, archived: "all" }),
     readRuns(engine), engine.request("users.list", {}), engine.request("users.self", {}), engine.request("agents.list", {}),
   ]);
   const errors = [list.status === "rejected" ? `Conversations: ${errorText(list.reason)}` : "", audit.status === "rejected" ? `Run record: ${errorText(audit.reason)}` : ""].filter(Boolean);
@@ -129,14 +129,14 @@ export function History({ engine, data, level, people: initialPeople, open, chil
       <div className="ib-acts"><button type="button" className="btn sm" disabled title={REPLAY_GAP}><G name="play" size={14} />{list[0] ? `Watch “${list[0].s.title}”` : "Watch a task"}</button></div></section>
     <Pulse list={inWindow} win={win} now={now} />
     <div className="ib-nl"><input className="ib-inp" value={q} placeholder="Search what ran" aria-label="Search history" onChange={e => { setQ(e.target.value); setShown(10); }} />
-      <button type="button" className="ib-rec" disabled title={VERIFY_GAP}><G name="check" size={15} /><span>Record intact</span><u>Verify</u></button></div>
+      <button type="button" className="ib-rec" disabled title={VERIFY_GAP} style={{ color: "var(--ink-3)" }}><G name="shield" size={15} /><span>Unverified</span><u>Verify</u></button></div>
     <div className="ib-filt"><button type="button" className="btn sm" aria-haspopup="menu" onClick={e => setMenu({ kind: "win", at: anchor(e) })}>{WINDOWS[win][0]}<Icon name="down" small /></button>
       {persons.length > 1 || who.length ? <button type="button" className="btn sm" aria-haspopup="menu" onClick={e => setMenu({ kind: "who", at: anchor(e) })}>{label}<Icon name="down" small /></button> : null}
       {who.length ? <button type="button" className="btn ghost sm" onClick={() => setWho([])}>Clear</button> : null}</div>
     {list.length ? <Days list={list.slice(0, shown)} data={data} level={level} folds={folds} toggle={k => setFolds(folds.includes(k) ? folds.filter(x => x !== k) : [...folds, k])} inspect={(item, at) => setInspectAt({ item, at })} open={open} />
       : <p className="ib-empty">{all.length ? "Nothing matches." : "Nothing has run yet."}</p>}
     {list.length ? <div className="ib-show"><small>Showing {Math.min(shown, list.length)} of {list.length}</small>{list.length > shown ? <button type="button" className="btn ghost sm" onClick={() => setShown(shown + 10)}>Show more</button> : null}</div> : null}
-    <section className="ib-sec"><div className="ib-sec-h"><h2>Signed receipts</h2></div><div className="ib-list"><div className="ib-row"><span className="ib-tile"><G name="shield" /></span><span className="ib-grow"><b>Every tool call leaves a signed receipt</b><small>Each run’s receipts link to the one before, so nothing can be cut or rewritten quietly.</small></span><span className="ib-acts"><button type="button" className="btn sm" disabled title={RECEIPTS_GAP}>See the chain</button></span></div></div></section>
+    <section className="ib-sec"><div className="ib-sec-h"><h2>Recorded activity</h2></div><div className="ib-list"><div className="ib-row"><span className="ib-tile"><G name="shield" /></span><span className="ib-grow"><b>Activity records are not verified receipts</b><small>Integrity has not been checked. Signed receipt chains are unavailable from this connection.</small></span><span className="ib-acts"><button type="button" className="btn sm" disabled title={RECEIPTS_GAP}>See the chain</button></span></div></div></section>
     {shows(level, "advanced") ? <Every engine={engine} data={data} level={level} open={open} /> : null}
     {children}
     <PickMenu at={menu?.kind === "win" ? menu.at : null} label="When" close={() => setMenu(null)} items={(Object.keys(WINDOWS) as Win[]).map(w => ({ label: `${w === win ? "✓ " : ""}${WINDOWS[w][0]}`, run: () => { setWin(w); setShown(10); } }))} />
