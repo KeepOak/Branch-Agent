@@ -42,6 +42,7 @@ type TreeProps = {
   root: string;
   onStop: (h: Helper) => void;
   onAnswer: (id: string, decision: ApprovalDecision) => void;
+  onOpenSession?: (key: string) => void;
 };
 
 function Row({ h, depth, props }: { h: Helper; depth: number; props: TreeProps }) {
@@ -52,8 +53,8 @@ function Row({ h, depth, props }: { h: Helper; depth: number; props: TreeProps }
       <div className="helper-top">
         <span className={`hmark ${mark}`} aria-hidden="true"><Icon d={MARK_ICON[mark]} /></span>
         <span className="helper-name">
-          <b>{h.name}</b>
-          <small>{h.model ? `${h.model} · on this computer` : "on this computer"}</small>
+          {props.onOpenSession ? <button type="button" className="btn sm ghost" onClick={() => props.onOpenSession?.(h.key)}>{h.name}</button> : <b>{h.name}</b>}
+          {h.model ? <small>{h.model}</small> : null}
         </span>
         <span className={`pill ${mark === "done" ? "ok" : mark === "stopped" ? "bad" : "wait"}`}>{pillWords(h, mark)}</span>
         {mark === "working" || mark === "waiting" ? (
@@ -61,6 +62,7 @@ function Row({ h, depth, props }: { h: Helper; depth: number; props: TreeProps }
         ) : null}
       </div>
       {h.task ? <p className="helper-job">{h.task}</p> : null}
+      {h.error ? <p className="helper-error">{h.error}</p> : null}
       {asks.map((a) => (
         <div key={a.id} className="helper-ask">
           <b>{a.command}</b>
@@ -73,14 +75,16 @@ function Row({ h, depth, props }: { h: Helper; depth: number; props: TreeProps }
   );
 }
 
-function Branch({ parent, depth, props }: { parent: string; depth: number; props: TreeProps }) {
+function Branch({ parent, depth, props, visited = new Set<string>() }: { parent: string; depth: number; props: TreeProps; visited?: Set<string> }) {
   return (
     <>
-      {props.helpers.filter((h) => h.parent === parent).map((h) => (
-        <div key={h.key}>
+      {props.helpers.filter((h) => h.parent === parent && !visited.has(h.key)).map((h) => (
+        <li key={h.key} className="helper-branch">
+        <ul className="helper-children">
           <Row h={h} depth={depth} props={props} />
-          <Branch parent={h.key} depth={depth + 1} props={props} />
-        </div>
+          <Branch parent={h.key} depth={depth + 1} props={props} visited={new Set([...visited, h.key])} />
+        </ul>
+        </li>
       ))}
     </>
   );

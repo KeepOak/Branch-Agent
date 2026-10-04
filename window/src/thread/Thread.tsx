@@ -11,7 +11,8 @@ import { ReactionChips } from "./dialogs";
 import { DoneCheer } from "./DoneCheer";
 import { EmptyState } from "./EmptyState";
 import { FindBar, useFindKey } from "./FindBar";
-import { HelpersChip } from "./Helpers";
+import { HelpersTree } from "./Helpers";
+import { UsageBar } from "./UsageBar";
 import { HoverBar } from "./HoverBar";
 import { Icon, ICONS } from "./icons";
 import { layout, shownApprovalIds, type Item } from "./layout";
@@ -149,6 +150,7 @@ export function Thread(props: Props) {
   return (
     <ThreadContext.Provider value={ctx}>
       <div className="thread-wrap" data-times={prefs.messageTimes} data-look={prefs.msgLook} data-scrollbars={prefs.scroll} dir={prefs.dir}>
+      <UsageBar engine={engine} />
       {finding ? <FindBar root={threadRef} name={name} signature={signature} onClose={() => setFinding(false)} /> : null}
       <div className="scroll" ref={follow.scroller} onScroll={follow.onScroll} data-testid="thread-scroll">
         <div className="thread" ref={threadRef}>
@@ -169,8 +171,11 @@ export function Thread(props: Props) {
           {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} />)}
           {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} /> : null}
           {helpers.length && engine?.sessionKey ? (
-            <HelpersChip onOpenActivity={props.onOpenActivity} helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer}
+            <div className="helpers-inline">
+            <HelpersTree helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession}
               onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
+            {props.onOpenActivity ? <button type="button" className="btn sm ghost" onClick={props.onOpenActivity}>Open full activity</button> : null}
+            </div>
           ) : null}
           {props.supplement}
           {planAt < 0 ? props.plan : null}
