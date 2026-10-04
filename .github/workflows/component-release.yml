@@ -27,10 +27,12 @@ on:
 permissions:
   contents: read
 
-# A newer main commit makes an in-flight release unpublishable (it must equal main), so replace it.
+# Main: an in-flight release always finishes; queued pushes collapse to the newest pending run, so
+# releases keep landing while lanes merge (publish refuses anything older than GitHub latest).
+# Pull requests: a new push replaces the previous check.
 concurrency:
   group: github-component-release-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   identity:
@@ -53,7 +55,8 @@ jobs:
           set -euo pipefail
           commit="$(git rev-parse HEAD)"
           if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
-            test "$commit" = "$(gh api repos/KeepOak/Branch-Agent/git/ref/heads/main --jq .object.sha)"
+            status="$(gh api "repos/KeepOak/Branch-Agent/compare/$commit...main" --jq .status)"
+            [[ "$status" == "identical" || "$status" == "ahead" ]]
           fi
           base="$(node -p 'require("./desktop/package.json").version')"
           version="$base-build-${commit:0:12}"
@@ -137,7 +140,6 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   publish:
-    if: github.event_name != 'pull_request'
     needs: [identity, native]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -157,7 +159,15 @@ jobs:
           pattern: release-native-*
           merge-multiple: true
           path: ${{ runner.temp }}/release-assets
+      - name: Verify the merged cross-target release directory without publishing
+        if: github.event_name == 'pull_request'
+        run: >-
+          node --input-type=module -e 'const { verifyReleaseDirectory } = await import("./desktop/scripts/release-inventory.mjs");
+          const proof = await verifyReleaseDirectory(process.argv[1], process.argv[2], process.argv[3]);
+          console.log(JSON.stringify(proof.targets));'
+          "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"
       - name: Verify uploaded assets before exposing a stable update
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"

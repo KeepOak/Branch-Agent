@@ -14,9 +14,24 @@ async function gh(args) {
   const result = await execute("gh", args, { encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
   return result.stdout.trim();
 }
-async function assertCurrentMain(commit, request) {
-  assert.equal(await request(["api", `repos/${repository}/git/ref/heads/main`, "--jq", ".object.sha"]), commit,
-    "A newer main commit exists; do not publish a stale automatic update");
+async function compareStatus(base, head, request) {
+  return request(["api", `repos/${repository}/compare/${base}...${head}`, "--jq", ".status"]);
+}
+
+/**
+ * A release must be built from a commit on main and must be newer than GitHub latest. Main may advance
+ * while a release builds (many lanes merge), so an older in-flight build still publishes unless a build
+ * of a later main commit already did: newest wins and latest never moves backwards.
+ */
+async function assertPublishableMainCommit(commit, request) {
+  assert(["identical", "ahead"].includes(await compareStatus(commit, "main", request)), "Release source is not a commit on main");
+  let latest;
+  try { latest = JSON.parse(await request(["api", `repos/${repository}/releases/latest`])); }
+  catch (error) { if (!error.stderr?.includes("HTTP 404")) throw error; }
+  if (!latest) return;
+  assert.match(latest.target_commitish, /^[a-f0-9]{40}$/, "GitHub latest does not name an exact source commit");
+  assert.equal(await compareStatus(latest.target_commitish, commit, request), "ahead",
+    "GitHub latest is the same or a newer main commit; do not publish a stale automatic update");
 }
 
 async function ensureImmutableTag(tag, commit, request) {
@@ -58,7 +73,7 @@ export async function verifyPublicLatest(directory, commit, version, proof, requ
 export async function publishRelease(directory, commit, version, request = gh, download = fetch) {
   const proof = await verifyReleaseDirectory(directory, commit, version);
   assert.deepEqual(proof.targets, ["darwin-arm64", "linux-x64", "win32-x64"], "All native release targets must pass");
-  await assertCurrentMain(commit, request);
+  await assertPublishableMainCommit(commit, request);
   const tag = `v${version}`;
   const existing = JSON.parse(await request(["api", `repos/${repository}/releases`, "--paginate", "--slurp"])).flat();
   assert(!existing.some(item => item.tag_name === tag), "Release tags/assets are immutable; choose a new source version");
@@ -74,7 +89,7 @@ export async function publishRelease(directory, commit, version, request = gh, d
   await request(["release", "download", tag, "--repo", repository, "--dir", downloaded]);
   assert.deepEqual((await readdir(downloaded)).sort(), names, "Uploaded release has missing/extra assets");
   for (const name of names) assert.deepEqual(await fileDigest(join(downloaded, name)), await fileDigest(join(directory, name)), `GitHub upload readback differs: ${name}`);
-  await assertCurrentMain(commit, request);
+  await assertPublishableMainCommit(commit, request);
   await request(["release", "edit", tag, "--repo", repository, "--draft=false", "--latest"]);
   const release = JSON.parse(await request(["api", `repos/${repository}/releases/tags/${tag}`]));
   assert.equal(release.draft, false); assert.equal(release.prerelease, false); assert.equal(release.target_commitish, commit);
