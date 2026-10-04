@@ -1,7 +1,7 @@
 // The Settings row kit (DESIGN-SPEC §4.7, §5.3): the preview's designed rows (.sec, .ctl, .sw, segments, .prow lists,
 // status boxes) and the save-as-you-change plumbing every page shares. Copied from the App Preview's 00-core,
 // 50-settings and 51-set1p styles; each change saves at once and reports to the frame's "Saved" line.
-import { createContext, useCallback, useContext, useEffect, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { errorText, record, type RecordValue } from "./adapter";
@@ -73,13 +73,51 @@ export function useConfig(engine: WindowEngine) {
  *  `top` comes before the title (General's Pinned list, as the preview draws it). */
 export function Page({ title, lede, children, top }: { title: string; lede: ReactNode; children?: ReactNode; top?: ReactNode }) {
   const { ask } = useContext(KitContext);
+  const page = useRef<HTMLDivElement>(null);
   return (
-    <div className="kit-page" data-page-title={title}>
+    <div ref={page} className="kit-page" data-page-title={title}>
       {top}
       <h1>{title}</h1>
       <p className="lede">{lede}{ask ? <> <LinkBtn onClick={() => ask(`Tell me about Settings › ${title}.`)}>Learn more</LinkBtn></> : null}</p>
+      <PageSections page={page} />
       {children}
     </div>
+  );
+}
+
+/** Section links follow the mounted page, so async content and level changes cannot leave dead targets. */
+function PageSections({ page }: { page: { current: HTMLDivElement | null } }) {
+  const [sections, setSections] = useState<{ element: HTMLElement; title: string }[]>([]);
+  useEffect(() => {
+    const node = page.current;
+    if (!node) return;
+    const refresh = () => {
+      const next = [...node.querySelectorAll<HTMLElement>(".sec[data-sec]")].filter((section) => {
+        if (section.closest(".kit-page") !== node || section.closest('[role="dialog"]')) return false;
+        for (let el: HTMLElement | null = section; el && el !== node; el = el.parentElement) {
+          const style = getComputedStyle(el);
+          if ((el instanceof HTMLDetailsElement && !el.open) || el.hidden || el.getAttribute("aria-hidden") === "true" || style.display === "none" || style.visibility === "hidden") return false;
+        }
+        return Boolean(section.querySelector(":scope > h2"));
+      }).map((element) => ({ element, title: element.dataset.sec ?? "" }));
+      setSections((old) => old.length === next.length && old.every((section, i) => section.element === next[i].element && section.title === next[i].title) ? old : next);
+    };
+    refresh();
+    const observer = new MutationObserver(refresh);
+    observer.observe(node, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "style", "class", "aria-hidden", "data-sec", "open"] });
+    window.addEventListener("resize", refresh);
+    return () => { observer.disconnect(); window.removeEventListener("resize", refresh); };
+  }, [page]);
+  if (sections.length < 2) return null;
+  return (
+    <nav className="set-onpage" aria-label="On this page">
+      <span>On this page</span>
+      {sections.map((section, index) => <button key={index} type="button" className="link-k" onClick={() => {
+        if (!section.element.isConnected) return;
+        section.element.scrollIntoView({ block: "start" });
+        section.element.querySelector<HTMLElement>(":scope > h2")?.focus({ preventScroll: true });
+      }}>{section.title}</button>)}
+    </nav>
   );
 }
 
@@ -89,7 +127,7 @@ export function Sec({ title, hint, right, children, id, personal }: { title: str
   if (personal && locked) return <SetupLock locked={false}><Sec title={title} hint={hint} right={right} id={id}>{children}</Sec></SetupLock>;
   return (
     <div className="sec" data-sec={title || undefined} id={id}>
-      {title || right ? <h2>{title}{right}</h2> : null}
+      {title || right ? <h2 tabIndex={-1}>{title}{right}</h2> : null}
       {hint ? <p className="hint">{hint}</p> : null}
       {children}
     </div>
@@ -143,10 +181,22 @@ export type Opt = { id: string; label: string; off?: string };
 
 /** A segmented choice (pressed-style, like the preview's settings rows). */
 export function Seg({ value, options, onChange, label, disabled }: { value: string; options: Opt[]; onChange: (id: string) => void; label: string; disabled?: boolean }) {
+  const active = options.find((option) => option.id === value && !option.off)?.id ?? options.find((option) => !option.off)?.id;
   return (
-    <span className="sseg" role="group" aria-label={label}>
+    <span className="sseg" role="group" aria-label={label} onKeyDown={(e) => {
+      if (disabled || e.altKey || e.ctrlKey || e.metaKey) return;
+      const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+      const index = buttons.indexOf(e.target as HTMLButtonElement);
+      if (index < 0) return;
+      const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+      const next = e.key === "Home" ? 0 : e.key === "End" ? buttons.length - 1 : step ? (index + step + buttons.length) % buttons.length : -1;
+      if (next < 0) return;
+      e.preventDefault();
+      buttons[next].focus();
+      buttons[next].click();
+    }}>
       {options.map((o) => (
-        <button key={o.id} type="button" aria-pressed={o.id === value} disabled={disabled || Boolean(o.off)} title={o.off} onClick={() => o.id !== value && onChange(o.id)}>
+        <button key={o.id} type="button" aria-pressed={o.id === value} disabled={disabled || Boolean(o.off)} tabIndex={o.id === active ? 0 : -1} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" title={o.off} onClick={() => o.id !== value && onChange(o.id)}>
           {o.label}
         </button>
       ))}
