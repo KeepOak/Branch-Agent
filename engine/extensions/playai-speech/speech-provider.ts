@@ -43,7 +43,7 @@ function credentials(config: Config) {
     userId: trim(config.userId) ?? trim(process.env.PLAYAI_USER_ID),
   };
 }
-async function request(req: SpeechSynthesisRequest) {
+async function request(req: SpeechSynthesisRequest & { signal?: AbortSignal }) {
   const config = readConfig(req.providerConfig);
   const auth = credentials(config);
   if (!auth.apiKey) {
@@ -66,6 +66,7 @@ async function request(req: SpeechSynthesisRequest) {
           req.providerOverrides?.speaker,
       ) ?? config.voice,
     timeoutMs: req.timeoutMs,
+    signal: req.signal,
     maxBytes: resolveGeneratedMediaMaxBytes(req.cfg, "audio"),
   };
 }

@@ -156,3 +156,22 @@ test("static voices preserve catalog and inherited Talk voice/model controls", a
   assert.equal(config.apiKey, "fixture-key");
   assert.equal(config.userId, "talk-user");
 });
+
+test("registered provider forwards supplied parent signal to actual stalled HTTP body", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    async () =>
+      new Response(new ReadableStream<Uint8Array>(), { headers: { "Content-Type": "audio/mpeg" } }),
+  );
+  const controller = new AbortController();
+  const request = {
+    cfg: {},
+    providerConfig: cfg,
+    target: "audio-file" as const,
+    text: "hello",
+    timeoutMs: 1000,
+    signal: controller.signal,
+  };
+  const pending = provider.synthesize(request);
+  setTimeout(() => controller.abort(new Error("parent canceled")), 20);
+  await assert.rejects(pending, /parent canceled/);
+});
