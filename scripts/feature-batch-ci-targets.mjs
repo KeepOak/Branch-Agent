@@ -42,6 +42,15 @@ export const engineTests = [
   'src/agents/cli-output-stream.test.ts',
   'src/agents/cli-output-records.test.ts',
   'src/agents/cli-output-jsonl.test.ts',
+  'src/agents/mcp-guidance.test.ts',
+  'src/agents/embedded-agent-runner/run/attempt-mcp-guidance-prompt.test.ts',
+  'src/agents/agent-bundle-mcp-runtime.test.ts',
+  'src/auto-reply/reply/mcp-prompt-commands.test.ts',
+  'src/agents/project-mcp-config.test.ts',
+  'src/agents/bundle-mcp-config.test.ts',
+  'src/agents/mcp-json-import.test.ts',
+  'src/agents/mcp-registry-search.test.ts',
+  'src/cli/mcp-cli.registry-search.test.ts',
 ];
 
 export const windowTests = [
@@ -130,6 +139,21 @@ export const engineStrictFiles = [
   'src/infra/host-env-security-policy.d.ts',
   'src/agents/cli-output-stream.ts',
   'src/agents/cli-output-stream.test.ts',
+  'src/agents/mcp-guidance.ts',
+  'src/agents/mcp-guidance.test.ts',
+  'src/auto-reply/reply/mcp-prompt-commands.ts',
+  'src/auto-reply/reply/mcp-prompt-commands.test.ts',
+  'src/agents/project-mcp-config.ts',
+  'src/agents/project-mcp-config.test.ts',
+  'src/agents/mcp-json-import.ts',
+  'src/agents/mcp-json-import.test.ts',
+  'src/agents/mcp-registry-search.ts',
+  'src/agents/mcp-registry-search.test.ts',
+  'src/cli/mcp-cli.registry-search.test.ts',
+  'src/agents/embedded-agent-runner/run/attempt-mcp-guidance-prompt.test.ts',
+  'src/agents/agent-bundle-mcp-materialize.ts',
+  'src/agents/agent-bundle-mcp-runtime.ts',
+  'src/agents/bundle-mcp-config.ts',
 ];
 
 export const windowStrictFiles = [

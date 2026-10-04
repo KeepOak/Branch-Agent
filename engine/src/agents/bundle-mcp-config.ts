@@ -16,6 +16,8 @@ import {
 } from "../plugins/bundle-mcp.js";
 import type { PluginManifestRegistry } from "../plugins/manifest-registry.js";
 import { partitionMcpServersByConnectionScope } from "./mcp-connection-resolver.js";
+import { loadJsonMcpConfigs } from "./mcp-json-import.js";
+import { loadProjectMcpServers } from "./project-mcp-config.js";
 
 type MergedBundleMcpConfig = {
   config: BundleMcpConfig;
@@ -126,10 +128,26 @@ export function loadMergedBundleMcpConfig(params: {
       ([name]) => readServerOverride(name) !== false && !disabledConfiguredNames.has(name),
     ),
   );
+  // Claude-style JSON files dropped into .branch/mcpServers folders sit between
+  // plugin bundle defaults and owner config.
+  const jsonMcp = loadJsonMcpConfigs({ workspaceDir: params.workspaceDir, includeGlobal: true });
+  const enabledJsonMcp = Object.fromEntries(
+    Object.entries(jsonMcp.mcpServers).filter(
+      ([name]) => readServerOverride(name) !== false && !disabledConfiguredNames.has(name),
+    ),
+  );
+  // Project servers from <workspace>/.branch/mcp.json win over global ones by name.
+  const projectMcp = loadProjectMcpServers(params.workspaceDir);
+  const enabledProjectMcp = Object.fromEntries(
+    Object.entries(projectMcp.mcpServers).filter(([name]) => readServerOverride(name) !== false),
+  );
   const prepareDataDirsByServer = Object.fromEntries(
     Object.entries(bundleMcp.prepareDataDirsByServer ?? {}).filter(
       ([name]) =>
-        Object.hasOwn(enabledBundleMcp, name) && !Object.hasOwn(enabledConfiguredMcp, name),
+        Object.hasOwn(enabledBundleMcp, name) &&
+        !Object.hasOwn(enabledJsonMcp, name) &&
+        !Object.hasOwn(enabledConfiguredMcp, name) &&
+        !Object.hasOwn(enabledProjectMcp, name),
     ),
   );
 
@@ -138,10 +156,12 @@ export function loadMergedBundleMcpConfig(params: {
       // Branch Agent config is the owner-managed layer, so it overrides bundle defaults.
       mcpServers: {
         ...enabledBundleMcp,
+        ...enabledJsonMcp,
         ...enabledConfiguredMcp,
+        ...enabledProjectMcp,
       } satisfies BundleMcpConfig["mcpServers"],
     },
-    diagnostics: bundleMcp.diagnostics,
+    diagnostics: [...bundleMcp.diagnostics, ...jsonMcp.diagnostics, ...projectMcp.diagnostics],
     prepareDataDirsByServer,
   };
 }

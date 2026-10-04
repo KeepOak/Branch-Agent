@@ -15,6 +15,7 @@ import {
   buildBootstrapTruncationReportMeta,
 } from "../../bootstrap-budget.js";
 import { resolveBranchReferencePaths } from "../../docs-path.js";
+import { buildMcpServerGuidanceForRun } from "../../mcp-guidance.js";
 import { prepareAgentMemoryPrompt } from "../../memory-prompt-prepare.js";
 import { buildModelToolsUnavailablePrompt } from "../../model-tool-support.js";
 import {
@@ -237,6 +238,12 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
     attempt.extraSystemPrompt,
     projectMemoryWriteInstruction,
     buildModelToolsUnavailablePrompt(params.modelToolsEnabled),
+    params.modelToolsEnabled
+      ? buildMcpServerGuidanceForRun({
+          tools: params.effectiveTools,
+          catalogEntries: params.toolSearchCatalogRef?.current?.entries,
+        })
+      : undefined,
   ]);
 
   const promptInputs: Parameters<typeof buildAttemptSystemPrompt>[0] = {

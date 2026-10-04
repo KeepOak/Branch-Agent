@@ -30,8 +30,8 @@ import {
 import { resolveMcpTransportConfig } from "../agents/mcp-transport-config.js";
 import { parseConfigValue } from "../auto-reply/reply/config-value.js";
 import { listConfiguredMcpServers } from "../config/mcp-config.js";
-import type { McpCodexToolApprovalMode } from "../config/types.mcp.js";
 import type { BranchConfig } from "../config/types.branch.js";
+import type { McpCodexToolApprovalMode } from "../config/types.mcp.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import {
   startOAuthLoopbackCallbackServer,
@@ -677,11 +677,7 @@ async function probeMcpServersOrFail(params: {
       applyMcpProbeInitializeTimeout(server),
     ]),
   );
-  const runtime = await createMcpProbeRuntime(
-    "branch-cli-mcp-probe",
-    params.config,
-    probeServers,
-  );
+  const runtime = await createMcpProbeRuntime("branch-cli-mcp-probe", params.config, probeServers);
   try {
     const result = await readMcpProbeResult(runtime);
     const probeIssue = resolveMcpProbeIssue({ result, servers: params.servers, path: params.path });
@@ -775,6 +771,58 @@ export function registerMcpCli(program: Command) {
       defaultRuntime.log("");
       defaultRuntime.log(BRANCH_MCP_REGISTRY_SCOPE_NOTE);
     });
+
+  mcp
+    .command("search")
+    .description("Search the public MCP Registry for servers to add")
+    .argument("[query]", "Text matched against server name, title and description")
+    .option("--limit <n>", "Maximum results (1-50)", "30")
+    .option("--details <name>", "Show the latest Registry record for one server")
+    .option("--json", "Print JSON")
+    .action(
+      async (
+        query: string | undefined,
+        opts: { limit: string; details?: string; json?: boolean },
+      ) => {
+        const registry = await import("../agents/mcp-registry-search.js");
+        try {
+          if (opts.details) {
+            const server = await registry.getMcpServerDetails(opts.details);
+            if (!server) {
+              defaultRuntime.error(`MCP Registry has no server named "${opts.details}".`);
+              defaultRuntime.exit(1);
+              return;
+            }
+            defaultRuntime.writeJson(server);
+            return;
+          }
+          const { results } = await registry.searchMcpMarketplace(query, Number(opts.limit));
+          if (opts.json) {
+            defaultRuntime.writeJson(results);
+            return;
+          }
+          if (results.length === 0) {
+            defaultRuntime.log(
+              query
+                ? `No MCP Registry servers match "${query}".`
+                : "No MCP Registry servers found.",
+            );
+            return;
+          }
+          for (const item of results) {
+            const source =
+              item.connectionUrl ?? item.npmPackage ?? item.dockerImage ?? item.repositoryUrl;
+            defaultRuntime.log(
+              `- ${item.title} (${item.name}@${item.version}, ${item.connectionType})${source ? ` ${source}` : ""}`,
+            );
+            defaultRuntime.log(`  ${item.description}`);
+          }
+        } catch (error) {
+          defaultRuntime.error(`MCP Registry search failed: ${formatErrorMessage(error)}`);
+          defaultRuntime.exit(1);
+        }
+      },
+    );
 
   mcp
     .command("show")

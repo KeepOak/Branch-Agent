@@ -37,6 +37,8 @@ export const McpServerSchema = z
     connectionTimeoutMs: z.number().finite().positive().optional(),
     requestTimeoutMs: z.number().finite().positive().optional(),
     supportsParallelToolCalls: z.boolean().optional(),
+    forwardInstructions: z.boolean().optional(),
+    instructionsMaxLength: z.number().int().nonnegative().optional(),
     auth: z.literal("oauth").optional(),
     oauth: z
       .strictObject({
