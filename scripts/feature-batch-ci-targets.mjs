@@ -42,6 +42,7 @@ export const engineTests = [
 ];
 
 export const windowTests = [
+  'src/places/trunk/github-entry.test.tsx',
   'src/places/settings/github-connection.test.ts',
   'src/places/settings/GitHubSettings.test.tsx',
   'src/setup/FirstTrunk.test.tsx',
@@ -99,6 +100,7 @@ export const engineStrictFiles = [
 ];
 
 export const windowStrictFiles = [
+  'src/places/trunk/github-entry.test.tsx',
   'src/places/settings/set1/accounts.tsx',
   'src/places/settings/github-connection.ts',
   'src/places/settings/github-connection.test.ts',
