@@ -124,6 +124,15 @@ describe("Settings › Models", () => {
     expect(patches(request)).toContainEqual({ agents: { defaults: { model: { primary: "ollama/qwen3:8b" } } } });
   });
 
+  it("Don’t switch clears every fallback rather than promoting the next one", async () => {
+    const { engine, request } = engineOf({ agents: { defaults: { model: { primary: "openai/gpt-5.5", fallbacks: ["anthropic/claude-opus-5", "ollama/qwen3:8b"] } } } });
+    await render(engine);
+    await click("Defaults");
+    const select = host.querySelector<HTMLSelectElement>('select[aria-label="If the model fails"]')!;
+    await act(async () => { select.value = ""; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(patches(request)).toContainEqual({ agents: { defaults: { model: { fallbacks: [] } } } });
+  });
+
   it("thinking is saved per model under a key that holds dots", async () => {
     const { engine, request } = engineOf({ agents: { defaults: { model: { primary: "openai/gpt-5.5" } } } });
     await render(engine);

@@ -69,7 +69,7 @@ function WhoAnswers({ m, conns, defaultOf }: { m: ModelsCtx; conns: Connection[]
       <Ctl title="Quick and cheap jobs" sub="Sorting, tagging, short replies."><Seg label="Quick and cheap jobs" value={connOf(refOf(m.ownOrShared("utilityModel")))} options={segs} onChange={(id) => setConn(["utilityModel"], id)} /></Ctl>
       <Ctl title="Summaries" sub="Keeping long conversations short."><Seg label="Summaries" value={connOf(text(m.cfg.get(m.shared("compaction", "model")) ?? ""))} options={segs} onChange={(id) => { const c = conns.find((x) => x.id === id); if (c) void m.cfg.set(m.shared("compaction", "model"), defaultOf(c)); }} /></Ctl>
       <Ctl title="If the model fails" sub="When the default model can’t answer, try this one. Your next account is tried first.">
-        <Pick label="If the model fails" value={fallbacks[0] ?? ""} options={[{ id: "", label: "Don’t switch" }, ...others]} onChange={(v) => void m.cfg.set(m.own("model", "fallbacks"), v ? [v, ...fallbacks.filter((f) => f !== v)] : fallbacks.slice(1))} />
+        <Pick label="If the model fails" value={fallbacks[0] ?? ""} options={[{ id: "", label: "Don’t switch" }, ...others]} onChange={(v) => void m.cfg.set(m.own("model", "fallbacks"), v ? [v, ...fallbacks.filter((f) => f !== v)] : [])} />
       </Ctl>
     </Sec>
   );
