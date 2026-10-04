@@ -1,6 +1,8 @@
 // The one engine handle the window's areas share (thread, composer, places). SaplingSession builds it
 // from the live connection; `sessionKey` is the open conversation.
 export type WindowEngine = {
+  /** Actual connection address, used to distinguish the owned desktop gateway from Connect elsewhere. */
+  gatewayUrl?: string;
   request<T = unknown>(method: string, params?: unknown): Promise<T>;
   onEvent(listener: (e: { event: string; payload?: unknown }) => void): () => void;
   sessionKey: string | null;

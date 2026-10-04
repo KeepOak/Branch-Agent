@@ -1,7 +1,7 @@
 {
   "name": "branch-agent-desktop",
   "productName": "Branch Agent",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "private": true,
   "author": "Branch Agent",
   "description": "Branch Agent desktop app: starts the Branch engine and opens the Branch window.",

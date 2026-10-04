@@ -5,6 +5,7 @@ import {
   describeToolCall,
   isDeniedResultText,
   resultText,
+  recordedAt,
   type Approval,
   type Attachment,
   type Block,
@@ -150,7 +151,7 @@ function onAssistantPart(b: Builder, part: unknown, key: string, m: Message): vo
   } else if (p.type === "toolCall") {
     const id = str(p.id) || key;
     const title = describeToolCall(str(p.name), p.arguments);
-    b.blocks.push({ kind: "step", key: id, tool: str(p.name), title, detail: "", status: "ok" });
+    b.blocks.push({ kind: "step", key: id, tool: str(p.name), title, detail: "", status: "ok", ...recordedAt(m.timestamp) });
     b.steps.set(id, { at: b.blocks.length - 1, command: str(rec(p.arguments).command), ts: num(m.timestamp) });
   } else if (typeof part === "string" && part.trim()) {
     b.blocks.push({ kind: "text", key, text: part, streaming: false, meta: readMeta(m) });
@@ -199,7 +200,7 @@ function onToolResult(b: Builder, m: Message, records: readonly ApprovalRecord[]
   const text = resultText(m);
   const status: StepStatus = isDeniedResultText(text) ? "denied" : m.isError ? "failed" : "ok";
   const block = b.blocks[step.at] as Extract<Block, { kind: "step" }>;
-  b.blocks[step.at] = { ...block, status, detail: text.slice(0, 400), output: text, browser: status === "ok" ? readBrowserPresentation(m, block.tool, block.key) : undefined };
+  b.blocks[step.at] = { ...block, status, detail: text.slice(0, 400), output: text, browser: status === "ok" ? readBrowserPresentation(m, block.tool, block.key) : undefined, ...recordedAt(m.timestamp) };
   const deniedId = /gateway id=([0-9a-f-]{8,})/i.exec(text)?.[1];
   const found = findApproval(records, sessionKey, step, num(m.timestamp));
   const id = deniedId ?? found?.id;

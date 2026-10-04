@@ -89,7 +89,7 @@ export function Sec({ title, hint, right, children, id, personal }: { title: str
   if (personal && locked) return <SetupLock locked={false}><Sec title={title} hint={hint} right={right} id={id}>{children}</Sec></SetupLock>;
   return (
     <div className="sec" data-sec={title || undefined} id={id}>
-      {title || right ? <h2>{title}{right}</h2> : null}
+      {title || right ? <h2 tabIndex={-1}>{title}{right}</h2> : null}
       {hint ? <p className="hint">{hint}</p> : null}
       {children}
     </div>
@@ -143,10 +143,22 @@ export type Opt = { id: string; label: string; off?: string };
 
 /** A segmented choice (pressed-style, like the preview's settings rows). */
 export function Seg({ value, options, onChange, label, disabled }: { value: string; options: Opt[]; onChange: (id: string) => void; label: string; disabled?: boolean }) {
+  const active = options.find((option) => option.id === value && !option.off)?.id ?? options.find((option) => !option.off)?.id;
   return (
-    <span className="sseg" role="group" aria-label={label}>
+    <span className="sseg" role="group" aria-label={label} onKeyDown={(e) => {
+      if (disabled || e.altKey || e.ctrlKey || e.metaKey) return;
+      const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+      const index = buttons.indexOf(e.target as HTMLButtonElement);
+      if (index < 0) return;
+      const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+      const next = e.key === "Home" ? 0 : e.key === "End" ? buttons.length - 1 : step ? (index + step + buttons.length) % buttons.length : -1;
+      if (next < 0) return;
+      e.preventDefault();
+      buttons[next].focus();
+      buttons[next].click();
+    }}>
       {options.map((o) => (
-        <button key={o.id} type="button" aria-pressed={o.id === value} disabled={disabled || Boolean(o.off)} title={o.off} onClick={() => o.id !== value && onChange(o.id)}>
+        <button key={o.id} type="button" aria-pressed={o.id === value} disabled={disabled || Boolean(o.off)} tabIndex={o.id === active ? 0 : -1} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" title={o.off} onClick={() => o.id !== value && onChange(o.id)}>
           {o.label}
         </button>
       ))}

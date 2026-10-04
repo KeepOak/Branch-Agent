@@ -91,3 +91,15 @@ describe("Settings › Accounts", () => {
     expect(request).toHaveBeenCalledWith("models.authSetApiKey", { provider: "mistral", apiKey: "sk-test" });
   });
 });
+
+describe("Settings › Accounts on a partial engine reply", () => {
+  it("renders every level, without crashing, when every reply is empty, GitHub's status included", async () => {
+    const request = vi.fn(async () => ({}));
+    const engine = { request, onEvent: () => () => undefined, sessionKey: "s", agentId: "main", scopes: ["operator.admin"] } as unknown as WindowEngine;
+    for (const level of [0, 1, 2] as const) {
+      await render(engine, level);
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+      expect(document.querySelector("h1")?.textContent).toBe("Accounts");
+    }
+  });
+});

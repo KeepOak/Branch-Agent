@@ -4,6 +4,21 @@ import { resolveBrowserActRequestTimeoutMs } from "./act-policy.js";
 import type { BrowserActRequest } from "./client-actions.types.js";
 
 describe("browser action request deadlines", () => {
+  it("budgets humanClick native motion as an interaction, including nested batches", () => {
+    expect(resolveBrowserActRequestTimeoutMs({ kind: "humanClick", ref: "e1" })).toBe(
+      resolveBrowserActRequestTimeoutMs({ kind: "hover", ref: "e1" }),
+    );
+    expect(
+      resolveBrowserActRequestTimeoutMs({
+        kind: "batch",
+        actions: [
+          { kind: "humanClick", ref: "e1", timeoutMs: 20_000 },
+          { kind: "humanClick", ref: "e2", timeoutMs: 20_000 },
+          { kind: "humanClick", ref: "e3", timeoutMs: 20_000 },
+        ],
+      }),
+    ).toBe(65_750);
+  });
   it("sums the delay and every sequential wait condition", () => {
     expect(
       resolveBrowserActRequestTimeoutMs({

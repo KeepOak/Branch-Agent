@@ -138,15 +138,31 @@
   min-width: 0;
   position: relative;
 }
-.topbar.live .topbar-right::after {
+/* The tint line (§4.2.1): 2 px in the conversation's colour at 40%, transparent from 62% of the width. */
+.topbar.tinted .topbar-right::after,
+.head-row.tinted::after {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
   bottom: -1px;
   height: 2px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 40%, transparent), transparent 62%);
+  background: linear-gradient(90deg, var(--tint), transparent 62%);
   pointer-events: none;
+}
+/* The computer button's live dot while the Trunk is using a computer (§4.2.1 rule 6). */
+.ib[data-live] {
+  position: relative;
+}
+.ib .live-dot {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
 }
 .head {
   display: flex;

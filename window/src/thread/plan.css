@@ -10,6 +10,10 @@
   font-size: 13.5px;
   gap: 10px;
 }
+/* The thread's base card pads 16; the plan keeps the preview's 12 14. */
+.thread .card.plan-card {
+  padding: 12px 14px;
+}
 .card.plan-card .plan-h {
   display: flex;
   align-items: center;

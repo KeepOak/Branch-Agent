@@ -52,7 +52,196 @@ function claudeSyntheticNoResponse(text = "No response requested.") {
   };
 }
 
+const parentUsage = { input: 12, output: 3, cacheRead: 4, cacheWrite: 7, total: undefined };
+const parentUsageFrame = {
+  type: "assistant",
+  message: {
+    id: "parent-message",
+    role: "assistant",
+    usage: {
+      input_tokens: 12,
+      output_tokens: 3,
+      cache_read_input_tokens: 4,
+      cache_creation_input_tokens: 7,
+    },
+  },
+};
+const childUsageFrames = [
+  {
+    type: "assistant",
+    parent_tool_use_id: "child-call",
+    message: {
+      id: "child-message",
+      role: "assistant",
+      content: [{ type: "text", text: "Child work" }],
+      usage: { input_tokens: 900, output_tokens: 80, cache_read_input_tokens: 700 },
+    },
+  },
+  {
+    type: "result",
+    parent_tool_use_id: "child-call",
+    result: "Child done",
+    usage: { input_tokens: 1000, output_tokens: 90, cache_read_input_tokens: 800 },
+  },
+];
+
 describe("createCliJsonlStreamingParser", () => {
+  it("keeps Claude child usage out of the parent's reply and diagnostic accounting", () => {
+    const observed: unknown[] = [];
+    const progress: string[] = [];
+    const parser = createParser({
+      providerId: "claude-cli",
+      backend: claudeBackend,
+      onUsage: (usage, terminal) => observed.push({ ...usage, terminal }),
+      onAttributedSubagentProgress: (id) => progress.push(id),
+    });
+    parser.push(
+      joinJsonlFrames(
+        parentUsageFrame,
+        ...childUsageFrames,
+        { type: "result", subtype: "success", result: "Parent done" },
+        "",
+      ),
+    );
+    parser.finish();
+    expect(parser.getOutput()?.usage).toEqual(parentUsage);
+    expect(parser.getOutput()?.diagnosticUsage).toBeUndefined();
+    expect(observed).toEqual([{ ...parentUsage, terminal: false }]);
+    expect(progress).toContain("child-call");
+    expect(parser.getOutput()?.text).toBe("Parent done");
+  });
+
+  it("does not invent parent usage from child-only Claude usage records", () => {
+    const observed: unknown[] = [];
+    const parser = createParser({
+      providerId: "claude-cli",
+      backend: claudeBackend,
+      onUsage: (usage) => observed.push(usage),
+    });
+    parser.push(
+      joinJsonlFrames(
+        ...childUsageFrames,
+        { type: "result", subtype: "success", result: "Parent done" },
+        "",
+      ),
+    );
+    parser.finish();
+    expect(parser.getOutput()?.usage).toBeUndefined();
+    expect(parser.getOutput()?.diagnosticUsage).toBeUndefined();
+    expect(observed).toEqual([]);
+  });
+
+  it("keeps parent cumulative diagnostics when a later Claude child reports usage", () => {
+    const observed: unknown[] = [];
+    const parser = createParser({
+      providerId: "claude-cli",
+      backend: claudeBackend,
+      onUsage: (usage, terminal) => observed.push({ ...usage, terminal }),
+    });
+    parser.push(
+      joinJsonlFrames(
+        { ...parentUsageFrame, parent_tool_use_id: null },
+        {
+          type: "result",
+          parent_tool_use_id: null,
+          subtype: "success",
+          result: "Parent done",
+          usage: { input_tokens: 50, output_tokens: 20, cache_read_input_tokens: 30 },
+        },
+        childUsageFrames[1],
+        "",
+      ),
+    );
+    parser.finish();
+    expect(parser.getOutput()?.usage).toEqual(parentUsage);
+    expect(parser.getOutput()?.diagnosticUsage?.input).toBe(50);
+    expect(observed).toHaveLength(2);
+    expect(observed[1]).toMatchObject({ input: 50, cacheRead: 30, terminal: true });
+    expect(parser.getOutput()?.text).toBe("Parent done");
+  });
+
+  it("refuses to treat a Claude child's result as the parent's completion", () => {
+    const completed: string[] = [];
+    const parser = createParser({
+      providerId: "claude-cli",
+      backend: claudeBackend,
+      onCompletedReply: (text) => completed.push(text),
+    });
+    parser.push(joinJsonlFrames(...childUsageFrames, ""));
+    parser.finish();
+    expect(parser.getOutput()?.text).toBe("");
+    expect(parser.getOutput()?.errorText).toMatch(/without a result event/);
+    expect(completed).toEqual([]);
+  });
+
+  it("preserves usage on non-Claude JSONL records with an incidental parent field", () => {
+    const observed: unknown[] = [];
+    const parser = createParser({
+      backend: { command: "local-cli", output: "jsonl" },
+      providerId: "local-cli",
+      onUsage: (usage) => observed.push(usage),
+    });
+    parser.push(
+      joinJsonlFrames(
+        {
+          type: "result",
+          parent_tool_use_id: "external-parent",
+          result: "Generic done",
+          usage: { input_tokens: 12, output_tokens: 3 },
+        },
+        "",
+      ),
+    );
+    parser.finish();
+    expect(observed).toMatchObject([{ input: 12, output: 3 }]);
+  });
+
+  it("does not project a Claude child's custom terminal result into the parent reply", () => {
+    const projected: unknown[] = [];
+    const parser = createParser({
+      providerId: "claude-cli",
+      backend: claudeBackend,
+      parseJsonlEvent: (line) => {
+        const row = JSON.parse(line) as {
+          type?: string;
+          result?: string;
+          parent_tool_use_id?: string;
+        };
+        projected.push(row.parent_tool_use_id ?? "parent");
+        return row.type === "result" ? { kind: "result", text: row.result } : null;
+      },
+    });
+    parser.push(
+      joinJsonlFrames(childUsageFrames[1], { type: "result", result: "Parent done" }, ""),
+    );
+    parser.finish();
+    expect(parser.getOutput()?.text).toBe("Parent done");
+    expect(projected).toEqual(["parent"]);
+  });
+
+  it("does not project a Claude child's compaction status into the parent lifecycle", () => {
+    const phases: string[] = [];
+    const parser = createParser({
+      providerId: "claude-cli",
+      backend: claudeBackend,
+      onCompaction: (event) => phases.push(event.phase),
+      parseJsonlLifecycleEvent: (line) => {
+        const row = JSON.parse(line) as { status?: string };
+        return row.status === "compacting" ? { kind: "compaction", phase: "start" } : null;
+      },
+    });
+    parser.push(
+      joinJsonlFrames(
+        { type: "system", status: "compacting", parent_tool_use_id: "child-call" },
+        { type: "system", status: "compacting", parent_tool_use_id: null },
+        { type: "result", result: "Parent done" },
+        "",
+      ),
+    );
+    parser.finish();
+    expect(phases).toEqual(["start"]);
+  });
+
   it("observes exact parent native tools across chunked fresh and warm initialization", () => {
     const snapshots: unknown[] = [];
     const parser = createCliJsonlStreamingParser({

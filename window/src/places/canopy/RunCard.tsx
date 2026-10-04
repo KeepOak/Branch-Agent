@@ -1,4 +1,5 @@
 // One run on Canopy › Now (§4.6.7 run card): face, Trunk, task, step · time · computer · model, meter, and its actions.
+import { Icon } from "../../shell/icons";
 import { useState } from "react";
 import { Dialog } from "../../shell/Dialog";
 import { rec, resolveApproval, str } from "../automations/runtime";
@@ -73,7 +74,7 @@ function Helpers({ r, ctx }: { r: Run; ctx: Ctx }) {
   return (
     <div className="cn-hp">
       <button type="button" className="cn-hpt" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className={open ? "cn-chev open" : "cn-chev"} aria-hidden="true">›</span>{list.length} {list.length === 1 ? "helper" : "helpers"}
+        <Icon name={open ? "down" : "chev"} small />{list.length} {list.length === 1 ? "helper" : "helpers"}
       </button>
       {open ? <ul className="cn-hpl">{list.map(h => (
         <li key={h.key}>

@@ -95,8 +95,6 @@
 .c-chipb:hover, .c-chipb[aria-expanded="true"] { background: var(--wash17); color: var(--ink); }
 .c-chipb.bad { color: var(--bad); }
 /* The provider logo tile (the preview's logo(k, 18) on the chip, 22 in the menu): the shared Logo component. */
-.c-wrap .logo { display: inline-grid; place-items: center; flex: none; overflow: hidden; border-radius: 28%; }
-.c-wrap .logo svg { display: block; }
 .c-flags { display: flex; gap: 6px; align-items: center; align-self: center; }
 .c-flag { font: 500 11px var(--mono); color: var(--ink-3); background: var(--wash17); border-radius: 999px; padding: 4px 7px; }
 .c-cost { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; padding: 0 4px; }

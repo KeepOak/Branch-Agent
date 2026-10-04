@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { namedTests } from './feature-batch-ci-targets.mjs';
+import { capabilityTests, namedTests } from './feature-batch-ci-targets.mjs';
 import { runTargetedStrictChecks } from './feature-batch-ci-typecheck.mjs';
 import {
-  assertLocalModules, engineRoot, gitHead, hostedChrome, preparePnpm, repoRoot, run,
+  assertLocalModules, engineRoot, gitHead, hostedChrome, preparePnpm, publishWindowDependencies, repoRoot, run,
   scratchRoot, sourceHashes, toolingRoot, verifiedExceptionFlags, windowRoot,
 } from './feature-batch-ci-runtime.mjs';
 
@@ -13,6 +13,7 @@ export async function validateScope() {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     for (const file of namedTests(lane)) await fs.access(path.join(root, file));
   }
+  for (const file of capabilityTests()) await fs.access(path.join(engineRoot, file));
   const source = JSON.parse(await fs.readFile(path.join(windowRoot, 'package.json'), 'utf8'));
   const tooling = JSON.parse(await fs.readFile(path.join(toolingRoot, 'package.json'), 'utf8'));
   const expected = { ...source.dependencies, ...source.devDependencies };
@@ -36,21 +37,37 @@ async function installDependencies(pnpm) {
   await run(pnpm, ['install', '--frozen-lockfile', '--ignore-scripts', ...windowFlags,
     `--modules-dir=${path.join(windowRoot, 'node_modules')}`,
     `--virtual-store-dir=${path.join(windowRoot, 'node_modules/.pnpm')}`], toolingRoot);
+  await publishWindowDependencies();
   await assertLocalModules(engineRoot, ['vitest', 'mammoth', 'xlsx', '@google/genai']);
   await assertLocalModules(windowRoot, ['vitest', 'react', 'react-dom', 'jsdom']);
 }
 
-async function buildGatewayPackages() {
+async function prepareBuildArtifacts() {
+  await run(process.execPath, ['--import', './scripts/tsx.mjs', '--input-type=module', '--eval',
+    'const { withDistArtifactOwnership } = await import("./scripts/lib/dist-artifact-ownership.mts");\n' +
+    'const { ensureKyselyTypes } = await import("./scripts/generate-kysely-types.mts");\n' +
+    'await withDistArtifactOwnership(process.cwd(), () => ensureKyselyTypes(process.cwd()));'], engineRoot);
   for (const name of ['gateway-protocol', 'gateway-client']) {
     await run(process.execPath, ['--import', './scripts/tsx.mjs',
       'scripts/build-workspace-package.mts', name], engineRoot);
   }
 }
 
-async function runFeatureTests(scratch) {
+async function featureTestEnv(scratch) {
   const env = { ...process.env, BRANCH_TEST_ARTIFACT_DIR: path.join(scratch, 'fixtures'),
     BRANCH_BROWSER_SNAPSHOT_E2E: process.platform === 'linux' ? '1' : '0' };
   if (process.platform === 'linux') env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = await hostedChrome();
+  return env;
+}
+
+async function runCapabilityTests(scratch) {
+  const config = path.join(repoRoot, 'scripts', 'feature-batch-ci-capabilities.config.mjs');
+  await run(process.execPath, [path.join(engineRoot, 'node_modules/vitest/vitest.mjs'),
+    'run', '--config', config, ...capabilityTests()], engineRoot, await featureTestEnv(scratch));
+}
+
+async function runFeatureTests(scratch) {
+  const env = await featureTestEnv(scratch);
   for (const lane of ['engine', 'window']) {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     const config = path.join(repoRoot, 'scripts', `feature-batch-ci-${lane}.config.mjs`);
@@ -59,7 +76,7 @@ async function runFeatureTests(scratch) {
   }
 }
 
-async function checkAll() {
+async function checkAll(suite = 'named') {
   const started = Date.now();
   await validateScope();
   const headBefore = await gitHead();
@@ -70,9 +87,12 @@ async function checkAll() {
   try {
     const pnpm = await preparePnpm(scratch);
     await installDependencies(pnpm);
-    await buildGatewayPackages();
-    await runTargetedStrictChecks(scratch);
-    await runFeatureTests(scratch);
+    await prepareBuildArtifacts();
+    if (suite === 'capabilities') await runCapabilityTests(scratch);
+    else {
+      await runTargetedStrictChecks(scratch);
+      await runFeatureTests(scratch);
+    }
     receipt.passed = true;
   } finally {
     receipt.after = await sourceHashes();
@@ -87,4 +107,5 @@ async function checkAll() {
 const mode = process.argv[2];
 if (mode === 'validate') await validateScope();
 else if (mode === 'all') await checkAll();
-else throw new Error('Usage: node scripts/feature-batch-ci.mjs validate|all');
+else if (mode === 'capabilities') await checkAll('capabilities');
+else throw new Error('Usage: node scripts/feature-batch-ci.mjs validate|all|capabilities');

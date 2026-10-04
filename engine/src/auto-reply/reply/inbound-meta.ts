@@ -42,7 +42,15 @@ export function formatActiveGoalContext(sessionEntry?: SessionEntry): string | u
     objective.length <= MAX_ACTIVE_GOAL_OBJECTIVE_CHARS
       ? objective
       : `${truncateUtf16Safe(objective, MAX_ACTIVE_GOAL_OBJECTIVE_CHARS - 1).trimEnd()}…`;
-  return `${ACTIVE_GOAL_CONTEXT_PREFIX}${boundedObjective}${ACTIVE_GOAL_CONTEXT_SUFFIX}`;
+  const bounded = (value: string) =>
+    truncateUtf16Safe(value.replace(/\s+/gu, " ").trim(), MAX_ACTIVE_GOAL_OBJECTIVE_CHARS);
+  const recovery = goal.checkpoint
+    ? ` Confirmed progress: ${bounded(goal.checkpoint.summary)}; next unfinished step: ${bounded(goal.checkpoint.nextAction)}. Do not replay confirmed actions.`
+    : "";
+  const acceptance = goal.acceptanceCriteria?.length
+    ? ` ${goal.acceptanceCriteria.length} acceptance criteria require evidence; call get_goal for the full checklist.`
+    : "";
+  return `${ACTIVE_GOAL_CONTEXT_PREFIX}${boundedObjective}${ACTIVE_GOAL_CONTEXT_SUFFIX}${recovery}${acceptance}`;
 }
 
 function isQueuedGoalOnlyBlock(block: string, injectedGoals: ReadonlySet<string>): boolean {
