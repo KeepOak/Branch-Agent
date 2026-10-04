@@ -55,10 +55,13 @@ type Props = {
 function LevelControl({ level, onLevel }: { level: Level; onLevel: (l: Level) => void }) {
   const index = LEVELS.findIndex((l) => l.id === level);
   const onKey = (e: KeyboardEvent) => {
-    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-    if (step) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+    const next = e.key === "Home" ? 0 : e.key === "End" ? LEVELS.length - 1 : step ? (index + step + LEVELS.length) % LEVELS.length : -1;
+    if (next >= 0) {
       e.preventDefault();
-      onLevel(LEVELS[(index + step + LEVELS.length) % LEVELS.length].id);
+      e.currentTarget.querySelectorAll<HTMLButtonElement>("button")[next]?.focus();
+      onLevel(LEVELS[next].id);
     }
   };
   return (
@@ -66,7 +69,7 @@ function LevelControl({ level, onLevel }: { level: Level; onLevel: (l: Level) =>
       <span className="set-level-label">How much to show</span>
       <div className="seg" role="radiogroup" aria-label="How much to show" style={{ ["--i" as string]: index }} onKeyDown={onKey}>
         {LEVELS.map((l) => (
-          <button key={l.id} type="button" role="radio" aria-checked={l.id === level} tabIndex={l.id === level ? 0 : -1} title={LEVEL_LINES[l.id]} data-level={l.id} onClick={() => onLevel(l.id)}>
+          <button key={l.id} type="button" role="radio" aria-checked={l.id === level} tabIndex={l.id === level ? 0 : -1} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" title={LEVEL_LINES[l.id]} data-level={l.id} onClick={() => onLevel(l.id)}>
             {l.name}
           </button>
         ))}
@@ -137,9 +140,9 @@ function SearchResults({ query, level, shown, onGo }: { query: string; level: Le
           <div className="grp">{g.name}</div>
           {g.hits.map(({ page, rows }) => (
             <div key={page.id} className="set-hit">
-              <button type="button" className="set-item" data-page={page.id} aria-current={page.id === shown ? "true" : undefined} onClick={() => onGo(page.id)}>{page.name}{tag(page.lv)}</button>
+              <button type="button" className="set-item" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" data-page={page.id} aria-current={page.id === shown ? "true" : undefined} onClick={() => onGo(page.id)}>{page.name}{tag(page.lv)}</button>
               {rows.map((r) => (
-                <button key={r.title} type="button" className="set-item set-row" data-row-hit={r.title} onClick={() => onGo(page.id, r)}>
+                <button key={r.title} type="button" className="set-item set-row" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" data-row-hit={r.title} onClick={() => onGo(page.id, r)}>
                   <span className="grow"><span>{r.title}</span>{r.sec ? <small>{r.sec}</small> : null}</span>{tag(r.lv)}
                 </button>
               ))}
@@ -234,7 +237,16 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk }:
   const first = () => { const g = searchSettings(query, SETTINGS_ROWS)[0]?.hits[0]; if (g) go(g.page.id, g.rows[0]); };
   return (
     <div className="settings" data-testid="settings">
-      <nav className="set-nav" aria-label="Settings pages">
+      <nav className="set-nav" aria-label="Settings pages" onKeyDown={(e) => {
+        if (e.altKey || e.ctrlKey || e.metaKey || !(e.target instanceof HTMLButtonElement) || !e.target.matches(".set-item")) return;
+        const items = [...e.currentTarget.querySelectorAll<HTMLButtonElement>(".set-item:not(:disabled)")];
+        const index = items.indexOf(e.target);
+        const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+        const next = e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : step ? (index + step + items.length) % items.length : -1;
+        if (index < 0 || next < 0) return;
+        e.preventDefault();
+        items[next]?.focus();
+      }}>
         <button type="button" className="set-back" onClick={onBack}>
           <Icon name="chev" size={16} />
           <span>Back to {backName}</span>
@@ -249,7 +261,7 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk }:
           <div key={g.name} className="set-group">
             <div className="grp">{g.name}</div>
             {g.pages.map((p) => (
-              <button key={p.id} type="button" className="set-item" data-page={p.id} aria-current={p.id === shown ? "true" : undefined} onClick={() => onPage(p.id)}>{p.name}</button>
+              <button key={p.id} type="button" className="set-item" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" data-page={p.id} aria-current={p.id === shown ? "true" : undefined} onClick={() => onPage(p.id)}>{p.name}</button>
             ))}
           </div>
         ))}
