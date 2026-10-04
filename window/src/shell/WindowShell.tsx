@@ -34,6 +34,7 @@ import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
 import { SidebarPet } from "./SidebarPet";
 import { GetAppsDialog } from "./GetApps";
 import { CanDoDialog } from "./CanDo";
+import { TalkSetup, type TalkHandle } from "../setup/TalkSetup";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
 import { Palette } from "./Palette";
@@ -497,6 +498,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const needsYou = useNeedsCount(session.engine, ready); // what Inbox › Needs you counts: the badge and the title
   const running = lists.rows.filter((r) => r.working).length;
   const ckptOn = useCkptOn(session.engine);
+  const [setupTalk, setSetupTalk] = useState<TalkHandle | null>(null);
   const name = openRow?.isMain || !openRow ? defaultName : openRow.title || "New conversation";
   const room = useShellRoom({ engine: session.engine, rowKind: openRow?.kind, agentId: openRow?.agentId, title: name, ownTrunk: trunkName(openRow?.agentId), history: s.history, trunks: trunks.list });
   const rowName = (key: string) => {
@@ -836,6 +838,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           above={
             waitingQuestion ? (
               <DockQuestion record={waitingQuestion} trunkName={trunkName(openRow?.agentId)} onResolve={questions.resolve} />
+            ) : setupTalk ? (
+              <TalkSetup handle={setupTalk} />
             ) : ready && !s.history.length && !s.pendingUser && !s.liveRunId ? (
               <WhereChips key={s.sessionKey} engine={session.engine} row={openRow} trunkName={trunkName(openRow?.agentId)} advanced={level !== "regular"}
                 projectName={projects.projects.find((x) => x.id === openRow?.projectId)?.name ?? null} onOpenConversation={openConversation} />
@@ -1230,7 +1234,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           startAt={firstRun.step ?? 0}
           requireContact={firstRun.requiresContact}
           onContactCreated={firstRun.contactCreated}
+          onTalk={(handle) => {
+            setSetupTalk(handle);
+            if (handle && s.mainKey) { openConversation(s.mainKey); void session.open(s.mainKey); }
+          }}
           onClose={(finished) => {
+            setSetupTalk(null);
             firstRun.close();
             if (finished) {
               setTimeout(() => setGuide("tour"), 700); // the walkthrough starts 700 ms after setup (§4.8.1.11 rule 3)

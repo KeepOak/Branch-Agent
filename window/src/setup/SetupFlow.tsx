@@ -1,6 +1,6 @@
 // The 11-step setup once the window is connected (DESIGN-SPEC §4.8.1). Steps 1–2 may already have been answered on
 // the pre-connect screens; then it opens at Models.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { PairDialog } from "../places/customize/pairing";
 import { AccountLoginDialog } from "../places/settings/AccountLogin";
@@ -18,6 +18,8 @@ import { type ChatApp, CheckBody, KeepBody, PeopleBody, ReachBody, reachLede, To
 import { makeTrunks, recordSetup, runChecks, testModel, useChatApps, useDetected, useKnown } from "./use-setup-engine";
 import { readPreConnect } from "./pre-connect-state";
 import { FirstTrunk } from "./FirstTrunk";
+import type { TalkHandle } from "./TalkSetup";
+import type { TalkOption, TalkQuestion } from "./talk-setup";
 
 type Props = {
   engine: WindowEngine;
@@ -31,6 +33,8 @@ type Props = {
   onContactCreated?: () => void;
   onClose: (finished: boolean) => void;
   onLocalModel: () => void;
+  /** Finish by talking: the setup card to show above the default Trunk's message box, or null to take it away. */
+  onTalk?: (handle: TalkHandle | null) => void;
 };
 
 const TITLES: Record<number, [string, string?]> = {
@@ -46,8 +50,6 @@ const TITLES: Record<number, [string, string?]> = {
   9: ["Two more things", "All optional. Skip them and Branch works the same."],
   10: ["All set?", "Branch checks everything before you start."],
 };
-// TODO(window): "Finish by talking" (artifact talkStartF18): Sapling asks the steps left in a chat and applies each answer.
-const TALK_OFF = "Setting up by talking needs Sapling's setup conversation, which the engine doesn't run yet.";
 const PROPOSE_OFF = "Proposing Trunks from a sentence needs a setup call the engine doesn't have yet.";
 
 /** Start goes past the steps an already set-up Branch has done, to the first one left. */
@@ -81,6 +83,7 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
   const [test, setTest] = useState<TestResult | "testing" | null>(null);
   // null until the person changes it: setup writes update.auto.enabled only then (defaults stay the engine's).
   const [autoUpdate, setAutoUpdate] = useState<boolean | null>(null);
+  const [talking, setTalking] = useState(false);
   const [checks, setChecks] = useState<Check[]>([]);
   const [login, setLogin] = useState<LoginStart | null>(null);
   const [adding, setAdding] = useState(false);
@@ -113,8 +116,11 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
     // Leaving the step and coming back starts the checks again (§4.8.1.11).
     setChecks(runChecks(p.engine, apps ?? [], (i, row) => setChecks((rows) => rows.map((r, j) => (j === i ? row : r)))));
   }, [step, p.engine, apps]);
+  const latest = useRef({ choices, autoUpdate });
+  latest.current = { choices, autoUpdate };
   const close = async (finished: boolean) => {
     setBusy(true);
+    const { choices, autoUpdate } = latest.current;
     try {
       await recordSetup(p.engine, choices, p.version, finished ? autoUpdate : null);
       if (finished) {
@@ -127,6 +133,27 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
       setBusy(false);
     }
   };
+  const answer = (q: TalkQuestion, o: TalkOption) => {
+    if (q.step === 3) { const look = o.value as SetupChoices["look"]; set({ look }); setThemeChoice(look); }
+    else if (q.step === 4 && o.value !== "enough") setChoices((c) => ({ ...c, jobs: [...c.jobs, Number(o.value)] }));
+    else if (q.step === 5 && o.value === "phone") setPairing(true);
+    else if (q.step === 5 && o.value.startsWith("app:")) { const app = apps?.find((a) => a.id === o.value.slice(4)); if (app) setConnecting(app); }
+    else if (q.step === 7) setAutoUpdate(o.value === "yes");
+    else if (q.step === 8) set({ people: o.value === "none" ? null : Number(o.value) });
+  };
+  useEffect(() => {
+    if (!talking) return;
+    p.onTalk?.({
+      start: firstUndone(done, Math.max(3, step)),
+      state: { look: choices.look, jobs: choices.jobs, apps: (apps ?? []).map((a) => ({ id: a.id, label: a.label, connected: Boolean(a.connected) })), autoUpdate: autoUpdate ?? known?.autoUpdate ?? false },
+      done: (i) => done.has(i),
+      answer,
+      steps: (i) => { setTalking(false); setStep(i); p.onTalk?.(null); },
+      finish: () => { p.onTalk?.(null); void close(true); },
+    });
+    // Published once when talking starts; the card keeps its own place from there.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [talking]);
   const doneChecks = checks.filter((c) => c.state !== "checking").length;
   const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, adding, setAdding, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, checks, setStep });
   const [title, lede] = step === 5 ? [TITLES[5][0], reachLede(apps)] : TITLES[step];
@@ -139,7 +166,7 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
       ) : null}
       <span className="grow" />
       {step >= 3 && step < LAST ? (
-        <button type="button" className="btn ghost" disabled title={TALK_OFF}>
+        <button type="button" className="btn ghost" data-testid="setup-talk" onClick={() => setTalking(true)}>
           Finish by talking
         </button>
       ) : null}
@@ -157,6 +184,14 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
   if (p.gate && step > 0) {
     return <>{p.gate}</>;
   }
+  const dialogs = (
+    <>
+      {login ? <AccountLoginDialog engine={p.engine} start={login} onClose={(signedIn) => { setLogin(null); if (signedIn) models.reload(); }} /> : null}
+      {connecting ? <ConnectDialog engine={p.engine} app={{ id: connecting.id, name: connecting.label, detail: "" }} onClose={(changed) => { setConnecting(null); if (changed) chat.reload(); }} /> : null}
+      {pairing ? <PairDialog engine={p.engine} close={() => setPairing(false)} /> : null}
+    </>
+  );
+  if (talking) return dialogs;
   return (
     <>
       <SetupShell
@@ -173,31 +208,7 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
       >
         {body}
       </SetupShell>
-      {login ? (
-        <AccountLoginDialog
-          engine={p.engine}
-          start={login}
-          onClose={(signedIn) => {
-            setLogin(null);
-            if (signedIn) {
-              models.reload();
-            }
-          }}
-        />
-      ) : null}
-      {connecting ? (
-        <ConnectDialog
-          engine={p.engine}
-          app={{ id: connecting.id, name: connecting.label, detail: "" }}
-          onClose={(changed) => {
-            setConnecting(null);
-            if (changed) {
-              chat.reload();
-            }
-          }}
-        />
-      ) : null}
-      {pairing ? <PairDialog engine={p.engine} close={() => setPairing(false)} /> : null}
+      {dialogs}
     </>
   );
 }
