@@ -87,6 +87,11 @@ test('actual desktop close hides the window and retains its owned running gatewa
   assert.equal(window.close().prevented, true); assert.equal(window.hidden, true); assert.equal(window.destroyed, false);
   assert.doesNotThrow(() => process.kill(pid, 0));
 }));
+test('the window title follows the page title', () => fixture(async ({ window }) => {
+  const event = { prevented: false, preventDefault() { this.prevented = true; } };
+  window.emit('page-title-updated', event, 'Library · Branch Agent', true);
+  assert.equal(event.prevented, false);
+}));
 test('actual second instance and tray Open reuse the same window, gateway and in-memory draft', () => fixture(async ({ app, window, tray, root, pid }) => {
   window.draft = { text: 'private draft', attachment: new Uint8Array([1, 2, 3]) }; const draft = window.draft;
   const loads = window.loads.length; window.close(); window.minimized = true; app.emit('second-instance');
