@@ -1,7 +1,7 @@
 // The plugin catalogue (plugins.catalog.browse / categories) as the preview's "Add a connector" and "Plugins"
 // dialogs (93-g3p.js, 42-placesbp.js czp-dlg). Installs go through plugins.install; when the engine asks for a
 // capability review first, the person confirms and the install is sent again with acknowledgeCapabilities.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Dialog } from "../../shell/Dialog";
@@ -21,10 +21,13 @@ export function readItems(result: unknown): Item[] {
 type Consent = { method: string; params: Rec; token: string; message: string };
 /** Runs a plugin mutation; a capability-consent refusal comes back as a review to confirm, not an error. */
 export function usePluginAction(engine: WindowEngine) {
+  const pending = useRef(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [consent, setConsent] = useState<Consent | null>(null);
   async function run(key: string, method: string, params: Rec, done: () => void) {
+    if (pending.current) return;
+    pending.current = true;
     setBusy(key); setError(null);
     try {
       const result = rec(await engine.request(method, params));
@@ -34,7 +37,7 @@ export function usePluginAction(engine: WindowEngine) {
       const details = rec(rec(e).details);
       if (str(details.capabilityConsentCode) && str(details.reviewToken)) setConsent({ method, params, token: str(details.reviewToken), message: errorText(e) });
       else setError(errorText(e));
-    } finally { setBusy(null); }
+    } finally { pending.current = false; setBusy(null); }
   }
   return { busy, error, consent, run, dismiss: () => setConsent(null) };
 }
@@ -72,7 +75,7 @@ export function CatalogDialog({ mode, engine, close, ownServer, done }: { mode: 
     {action.error && <p role="alert" className="cz-error">{action.error}</p>}
     {browse.data != null && !items.length && <EmptyLine icon={<Icon name="search" />}>{mode === "connector" ? "Nothing matches. Add your own server below." : "No plugins found. Try another search or filter."}</EmptyLine>}
     {groupItems(items, filter === "all" ? cats : []).map(g => <section key={g.id} className="cz-grp-sec">{g.name && <h3 className="cz-grp">{g.name} <span>{g.items.length}</span></h3>}
-      <div className="cz-provs">{g.items.map(i => <CatalogCard key={i.id} item={i} busy={action.busy === i.id} install={() => install(i)} />)}</div></section>)}
+      <div className="cz-provs">{g.items.map(i => <CatalogCard key={i.id} item={i} busy={action.busy === i.id} blocked={!!action.busy} install={() => install(i)} />)}</div></section>)}
     <ConsentDialog action={action} done={() => { browse.reload(); done(); }} />
   </Dialog>;
 }
@@ -85,13 +88,13 @@ function groupItems(items: Item[], cats: { id: string; name: string }[]): { id: 
   return [...groups, { id: "other", name: "Other", items: rest }].filter(g => g.items.length);
 }
 
-function CatalogCard({ item, busy, install }: { item: Item; busy: boolean; install: () => void }) {
+function CatalogCard({ item, busy, blocked, install }: { item: Item; busy: boolean; blocked: boolean; install: () => void }) {
   const state = item.installed ? (item.enabled ? "On" : "Off") : null;
   const reason = item.action === "unavailable" ? "This one can't be installed on this computer." : !item.install ? "The catalogue gives no way to install it." : undefined;
   return <div className="cz-prov">
     <div className="cz-prov-h"><Logo name={item.name} /><span className="grow"><b>{item.name}</b>{item.author && <small>@{item.author}</small>}</span></div>
     <small>{item.summary}</small>
     {state ? <span className="cz-state">{state}</span>
-      : <button type="button" className="btn sm" disabled={busy || !!reason} title={reason} onClick={install}>{busy ? "Installing" : "Install"}</button>}
+      : <button type="button" className="btn sm" disabled={blocked || !!reason} title={reason} onClick={install}>{busy ? "Installing" : "Install"}</button>}
   </div>;
 }
