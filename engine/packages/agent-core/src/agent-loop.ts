@@ -151,6 +151,7 @@ async function runLoop(
   let turnOpen = true;
   let lastTurnMessage: AssistantMessage | undefined;
   let lastTurnToolResults: ToolResultMessage[] = [];
+  const continuationMessages = new WeakSet<AgentMessage>();
   let turnTainted = isActiveTurnTainted(state.context.messages);
   const toolLoopRecoveryState = initialConfig.toolLoopRecoveryState ?? {
     criticalToolLoopSeen: false,
@@ -226,7 +227,8 @@ async function runLoop(
       if (config.consumeQueuedMessageCancellation?.(message)) {
         continue;
       }
-      if (message.role === "user") {
+      // A host continuation is not a new user turn, so it keeps the turn's taint.
+      if (message.role === "user" && !continuationMessages.has(message)) {
         turnTainted = false;
       }
       await emit({ type: "message_end", message });
@@ -465,6 +467,12 @@ async function runLoop(
           context: state.context,
           newMessages,
         })) || [];
+      for (const message of pendingMessages) {
+        continuationMessages.add(message);
+        if (turnTainted) {
+          markContinuationTurnTaint(message);
+        }
+      }
       if (await stopIfAborted()) {
         return newMessages;
       }
@@ -1535,7 +1543,8 @@ function toolResultTaintsTurn(message: ToolResultMessage): boolean {
 function isActiveTurnTainted(messages: readonly AgentMessage[]): boolean {
   for (const message of messages.toReversed()) {
     if (message.role === "user") {
-      return false;
+      // Only a host continuation of a tainted turn carries the marker.
+      return readTurnTaintMetadata(message)?.turnTainted === true;
     }
     const metadata = readTurnTaintMetadata(message);
     if (metadata?.turnTainted === true || metadata?.resultContentSource === "network") {
@@ -1543,6 +1552,11 @@ function isActiveTurnTainted(messages: readonly AgentMessage[]): boolean {
     }
   }
   return false;
+}
+
+/** Host-created continuation messages are marked in place so their identity is kept. */
+function markContinuationTurnTaint(message: AgentMessage): void {
+  Reflect.set(message, "__branch", { ...readTurnTaintMetadata(message), turnTainted: true });
 }
 
 function withAssistantTurnTaint(message: AssistantMessage, tainted: boolean): AssistantMessage {

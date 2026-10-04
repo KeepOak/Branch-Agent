@@ -10,9 +10,10 @@ import { prepareUtilityCompletionForAgent } from "./utility-completion.js";
 
 /**
  * Upstream sets no deadline on these calls (only the turn's abort signal ends
- * them). The isolated runtime requires one, so use the largest timer value.
+ * them). The isolated runtime requires one, so use a day: effectively none,
+ * with headroom for runtimes that add grace periods to timer values.
  */
-export const SIDE_QUERY_NO_DEADLINE_MS = 2_147_483_647;
+export const SIDE_QUERY_NO_DEADLINE_MS = 86_400_000;
 
 export type SideQueryRequest = {
   systemPrompt: string;
