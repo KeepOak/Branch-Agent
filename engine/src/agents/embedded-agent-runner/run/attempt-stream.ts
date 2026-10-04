@@ -53,6 +53,7 @@ import {
   streamWithIdleTimeout,
 } from "./llm-idle-timeout.js";
 import { wrapStreamFnWithMessageTransform } from "./message-transform-stream-wrapper.js";
+import { wrapStreamFnWithProviderResponseMetadata } from "./provider-response-metadata.js";
 import { wrapStreamObjectSettlement } from "./stream-wrapper.js";
 
 type CompactionReplayStreamOptions = NonNullable<Parameters<StreamFn>[2]> & {
@@ -398,6 +399,7 @@ export function installEmbeddedAttemptStreamGuards(
   }
   let diagnosticModelCallSeq = 0;
   let modelResponseTerminal = false;
+  session.agent.streamFn = wrapStreamFnWithProviderResponseMetadata(session.agent.streamFn);
   session.agent.streamFn = wrapStreamFnWithDiagnosticModelCallEvents(session.agent.streamFn, {
     config: attempt.config,
     runId: attempt.runId,

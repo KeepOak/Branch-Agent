@@ -66,6 +66,15 @@ export type ExplicitSkillSelection = {
   path: string;
 };
 
+export type SkillBundle = Readonly<{
+  name: string;
+  slug: string;
+  sourceFilePath: string;
+  skills: readonly string[];
+  description: string;
+  instruction: string;
+}>;
+
 export type SkillCommandSpec = {
   name: string;
   /** Human-readable skill title for display surfaces. */
@@ -86,6 +95,8 @@ export type SkillCommandSpec = {
   promptTemplate?: string;
   /** Source markdown path for bundle-backed commands. */
   sourceFilePath?: string;
+  /** Metadata only; member permission and instruction bytes are acquired per invocation. */
+  skillBundle?: SkillBundle;
 };
 
 export type SkillsInstallPreferences = {

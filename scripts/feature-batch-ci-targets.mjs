@@ -97,6 +97,37 @@ export const windowTests = [
   'src/stage/pane/PreviewTab.test.tsx',
 ];
 
+// Capability regressions run in their own CI job beside the named batch, in parallel workers.
+export const capabilityEngineTests = [
+  // Native browser, workspace glob, media and provider metadata capabilities.
+  'extensions/browser/src/browser/act-policy.test.ts',
+  'extensions/browser/src/browser/pw-pointer-humanized.native.test.ts',
+  'extensions/browser/src/browser/pw-pointer-mocap.test.ts',
+  'extensions/browser/src/browser/routes/agent.act.normalize.test.ts',
+  'extensions/browser/src/browser/routes/profile-capabilities.test.ts',
+  'scripts/model-metadata-dedupe.test.ts',
+  'src/agents/core-coding-tools.glob.test.ts',
+  'src/agents/embedded-agent-runner/run/attempt-stream.provider-response-metadata.test.ts',
+  'src/agents/embedded-agent-runner/run/attempt-system-prompt.external-rules.test.ts',
+  'src/agents/embedded-agent-runner/run/provider-response-metadata.test.ts',
+  'src/agents/external-project-rules.state.test.ts',
+  'src/agents/external-project-rules.test.ts',
+  'src/agents/sandbox/fs-bridge.glob-stat.test.ts',
+  'src/agents/sessions/tools/read.mbox.test.ts',
+  'src/agents/tool-catalog.test.ts',
+  'src/agents/tools/glob-tool.test.ts',
+  'src/auto-reply/reply/commands-rules.test.ts',
+  'src/auto-reply/reply/get-reply-inline-actions.skill-bundles.test.ts',
+  'src/auto-reply/reply/get-reply-inline-actions.skip-when-config-empty.test.ts',
+  'src/auto-reply/reply/get-reply.rules.test.ts',
+  'src/coding/glob-search.test.ts',
+  'src/media/mbox-ingest.test.ts',
+  'src/skills/discovery/chat-commands.discovery.test.ts',
+  'src/skills/discovery/command-specs.skill-bundles.test.ts',
+  'src/skills/loading/skill-bundles.test.ts',
+  'src/skills/runtime/skill-bundle-invocation.test.ts',
+];
+
 export const engineStrictFiles = [
   'src/agents/agent-create.test.ts',
   'src/agents/auth-profiles/usage-state.test.ts',
@@ -141,6 +172,74 @@ export const engineStrictFiles = [
   'src/infra/host-env-security-policy.d.ts',
   'src/agents/cli-output-stream.ts',
   'src/agents/cli-output-stream.test.ts',
+  // Native browser, workspace glob, media and provider metadata capabilities.
+  'extensions/browser/src/browser/act-policy.ts',
+  'extensions/browser/src/browser/client-actions.types.ts',
+  'extensions/browser/src/browser/pw-pointer-humanized.ts',
+  'extensions/browser/src/browser/pw-pointer-mocap.ts',
+  'extensions/browser/src/browser/pw-pointer-mocap.types.ts',
+  'extensions/browser/src/browser/pw-tools-core.interactions.execution.ts',
+  'extensions/browser/src/browser/routes/agent.act.normalize.ts',
+  'extensions/browser/src/browser/routes/agent.act.shared.ts',
+  'extensions/browser/src/browser/routes/agent.act.ts',
+  'extensions/browser/src/browser/routes/existing-session-limits.ts',
+  'packages/llm-core/src/types.ts',
+  'src/agents/core-tool-factory-descriptors.ts',
+  'src/agents/embedded-agent-runner/run/attempt-stream.ts',
+  'src/agents/embedded-agent-runner/run/attempt-system-prompt-prepare.ts',
+  'src/agents/embedded-agent-runner/run/provider-response-metadata.ts',
+  'src/agents/external-project-rules.conditions.ts',
+  'src/agents/external-project-rules.files.ts',
+  'src/agents/external-project-rules.state.ts',
+  'src/agents/external-project-rules.ts',
+  'src/agents/sandbox/constants.ts',
+  'src/agents/sandbox/fs-bridge-shell-command-plans.ts',
+  'src/agents/sandbox/fs-bridge.ts',
+  'src/agents/sandbox/fs-bridge.types.ts',
+  'src/agents/tool-catalog.ts',
+  'src/agents/tools/glob-tool.ts',
+  'src/auto-reply/reply/commands-rules.parse.ts',
+  'src/auto-reply/reply/commands-rules.ts',
+  'src/auto-reply/reply/get-reply-inline-actions.ts',
+  'src/auto-reply/reply/get-reply-native-slash-fast-path.ts',
+  'src/coding/glob-search.ts',
+  'src/config/sessions/session-prompt-types.ts',
+  'src/media/mbox-ingest.ts',
+  'src/media/mbox-read.ts',
+  'src/media/mbox-tokenizer.ts',
+  'src/skills/discovery/chat-command-invocation.ts',
+  'src/skills/discovery/chat-commands.runtime.ts',
+  'src/skills/discovery/chat-commands.ts',
+  'src/skills/discovery/command-specs.ts',
+  'src/skills/loading/skill-bundles.ts',
+  'src/skills/runtime/skill-bundle-invocation.ts',
+  'src/skills/types.ts',
+  'extensions/browser/src/browser-tool.schema.test.ts',
+  'extensions/browser/src/browser/act-policy.test.ts',
+  'extensions/browser/src/browser/pw-pointer-humanized.native.test.ts',
+  'extensions/browser/src/browser/pw-pointer-mocap.test.ts',
+  'extensions/browser/src/browser/routes/agent.act.normalize.test.ts',
+  'extensions/browser/src/browser/routes/profile-capabilities.test.ts',
+  'src/agents/core-coding-tools.glob.test.ts',
+  'src/agents/embedded-agent-runner/run/attempt-stream.provider-response-metadata.test.ts',
+  'src/agents/embedded-agent-runner/run/attempt-system-prompt.external-rules.test.ts',
+  'src/agents/embedded-agent-runner/run/provider-response-metadata.test.ts',
+  'src/agents/external-project-rules.state.test.ts',
+  'src/agents/external-project-rules.test.ts',
+  'src/agents/sandbox/fs-bridge.glob-stat.test.ts',
+  'src/agents/sessions/tools/read.mbox.test.ts',
+  'src/agents/tool-catalog.test.ts',
+  'src/agents/tools/glob-tool.test.ts',
+  'src/auto-reply/reply/commands-rules.test.ts',
+  'src/auto-reply/reply/get-reply-inline-actions.skill-bundles.test.ts',
+  'src/auto-reply/reply/get-reply-inline-actions.skip-when-config-empty.test.ts',
+  'src/auto-reply/reply/get-reply.rules.test.ts',
+  'src/coding/glob-search.test.ts',
+  'src/media/mbox-ingest.test.ts',
+  'src/skills/discovery/chat-commands.discovery.test.ts',
+  'src/skills/discovery/command-specs.skill-bundles.test.ts',
+  'src/skills/loading/skill-bundles.test.ts',
+  'src/skills/runtime/skill-bundle-invocation.test.ts',
 ];
 
 export const windowStrictFiles = [
@@ -256,6 +355,15 @@ export function namedTests(lane) {
   if (!targets.length || new Set(targets).size !== targets.length
     || targets.some(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'))) {
     throw new Error('Explicit unique repository-relative test files are required');
+  }
+  return targets;
+}
+
+export function capabilityTests() {
+  const targets = capabilityEngineTests;
+  if (!targets.length || new Set(targets).size !== targets.length || targets.some(file => engineTests.includes(file))
+    || targets.some(file => !/^.+.test.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'))) {
+    throw new Error('Explicit unique repository-relative capability test files are required');
   }
   return targets;
 }

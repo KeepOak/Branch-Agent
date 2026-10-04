@@ -14,6 +14,13 @@ export type BrowserFormField = {
 /** Normalized browser action request sent to the control server. */
 export type BrowserActRequest =
   | {
+      kind: "humanClick";
+      ref?: string;
+      selector?: string;
+      targetId?: string;
+      timeoutMs?: number;
+    }
+  | {
       kind: "click";
       ref?: string;
       selector?: string;
