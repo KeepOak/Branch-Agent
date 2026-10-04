@@ -117,6 +117,13 @@ describe("Overview screen", () => {
     expect(text).toContain("Mode: Ask first");
   });
 
+  it("lists each working run under Now by its Trunk and step, never its helpers", async () => {
+    const helper = { key: "agent:main:h", agentId: "main", label: "Read the folder", spawnedBy: "agent:main:a", hasActiveRun: true, updatedAt: NOW };
+    const sessions = (FX["sessions.list"] as { sessions: unknown[] }).sessions;
+    const { host } = await render(vi.fn(async (method: string) => method === "sessions.list" ? { sessions: [...sessions, helper] } : FX[method] ?? {}));
+    const now = [...host.querySelectorAll(".ov-now")].map(b => b.textContent);
+    expect(now).toEqual(["RowanReading the folder"]);
+  });
   it("greys controls the engine cannot back, with their reasons", async () => {
     const { host } = await render();
     expect(button(host, "Lockdown")).toMatchObject({ disabled: true, title: LOCKDOWN_GAP });
