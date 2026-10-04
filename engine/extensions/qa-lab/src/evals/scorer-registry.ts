@@ -1,6 +1,7 @@
 // Registry of the scorers `branch qa score` can run, keyed by `--scorer <name>[=<arg>]`.
 import { checks } from "./checks.js";
 import { createCompletenessScorer, createContentSimilarityScorer } from "./code-scorers.js";
+import { createCodingEfficiencyScorer, createCodingOutcomeScorer } from "./coding-scorers.js";
 import {
   createAnswerRelevancyScorer,
   createFaithfulnessScorer,
@@ -178,6 +179,18 @@ const DEFINITIONS: QaScorerDefinition[] = [
     description: "Only the expected tool was called, or exactly this tool sequence",
     argument: "required",
     create: (arg) => toolCallAccuracy(requireArg("tool-call-accuracy-strict", arg), true),
+  },
+  {
+    name: "coding-outcome",
+    description: "Coding session outcome: build/tests, tool errors, loops, regressions, autonomy",
+    argument: "none",
+    create: () => createCodingOutcomeScorer(),
+  },
+  {
+    name: "coding-efficiency",
+    description: "Coding session efficiency: redundancy, turns, retries, read-before-edit",
+    argument: "none",
+    create: () => createCodingEfficiencyScorer(),
   },
   {
     name: "faithfulness",

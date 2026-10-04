@@ -2,7 +2,13 @@
 // and packages/core/src/evals/types.ts (scorer message model and helpers, without Mastra's message list).
 import { randomUUID } from "node:crypto";
 
-export type ToolInvocationState = "call" | "partial-call" | "result" | "output-error";
+export type ToolInvocationState =
+  | "call"
+  | "partial-call"
+  | "result"
+  | "output-error"
+  | "error"
+  | "output-denied";
 
 export type EvalToolInvocation = {
   toolCallId: string;
@@ -12,6 +18,8 @@ export type EvalToolInvocation = {
   state: ToolInvocationState;
   errorText?: string;
   isError?: boolean;
+  /** Structured tool result details Branch records beside the text (e.g. exec exitCode). */
+  details?: unknown;
 };
 
 export type EvalMessagePart =

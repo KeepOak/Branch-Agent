@@ -49,6 +49,9 @@ export const engineTests = [
   'extensions/qa-lab/src/evals/thresholds.test.ts',
   'extensions/qa-lab/src/evals/score-command.test.ts',
   'extensions/qa-lab/src/evals/llm-scorers.test.ts',
+  'extensions/qa-lab/src/evals/coding-scorers.outcome.test.ts',
+  'extensions/qa-lab/src/evals/coding-scorers.efficiency.test.ts',
+  'extensions/qa-lab/src/evals/coding-scorers.classify.test.ts',
   'extensions/qa-lab/src/cli.test.ts',
 ];
 
@@ -158,6 +161,10 @@ export const engineStrictFiles = [
   'extensions/qa-lab/src/evals/llm/toxicity-prompts.ts',
   'extensions/qa-lab/src/evals/llm/tool-call-accuracy-prompts.ts',
   'extensions/qa-lab/src/evals/llm-scorers.test.ts',
+  'extensions/qa-lab/src/evals/coding-scorers.ts',
+  'extensions/qa-lab/src/evals/coding-scorers.outcome.test.ts',
+  'extensions/qa-lab/src/evals/coding-scorers.efficiency.test.ts',
+  'extensions/qa-lab/src/evals/coding-scorers.classify.test.ts',
   'extensions/qa-lab/src/evals/scorer.test.ts',
   'extensions/qa-lab/src/evals/checks.test.ts',
   'extensions/qa-lab/src/evals/tool-call-accuracy.test.ts',

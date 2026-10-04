@@ -114,6 +114,9 @@ function applyToolResult(message: JsonRecord, invocations: Map<string, EvalToolI
     return;
   }
   const text = textOfBlocks(message.content);
+  if (message.details !== undefined) {
+    invocation.details = message.details;
+  }
   if (message.isError === true) {
     invocation.state = "output-error";
     invocation.isError = true;

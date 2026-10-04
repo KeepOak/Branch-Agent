@@ -228,6 +228,55 @@ describe("qa score", () => {
     ]);
   });
 
+  it("grades a coding session from exec exit codes recorded in tool result details", async () => {
+    const sessionFile = path.join(tmpDir, "coding.jsonl");
+    const execResult = (id: string, text: string, exitCode: number): Entry => ({
+      ...toolResult(id, "exec", text),
+      details: { status: "completed", exitCode },
+    });
+    await writeSession(sessionFile, [
+      message("u1", null, { role: "user", content: "Fix the build", timestamp: 1 }),
+      message(
+        "a1",
+        "u1",
+        assistant([
+          { type: "toolCall", id: "r1", name: "read", arguments: { path: "src/a.ts" } },
+          { type: "toolCall", id: "e1", name: "edit", arguments: { path: "src/a.ts", oldText: "x" } },
+          { type: "toolCall", id: "b1", name: "exec", arguments: { command: "pnpm tsc --noEmit" } },
+          { type: "toolCall", id: "t1", name: "exec", arguments: { command: "pnpm vitest run" } },
+        ]),
+      ),
+      message("x1", "a1", toolResult("r1", "read", "const x = 1;")),
+      message("x2", "x1", toolResult("e1", "edit", "Edited src/a.ts")),
+      message("x3", "x2", execResult("b1", "", 0)),
+      message("x4", "x3", execResult("t1", "1 failed (Command exited with code 1)", 1)),
+      message("a2", "x4", assistant([{ type: "text", text: "Build passes; one test still fails." }])),
+    ]);
+
+    await parseQa([
+      "score",
+      "--trajectory",
+      sessionFile,
+      "--scorer",
+      "coding-outcome",
+      "--scorer",
+      "coding-efficiency",
+      "--json",
+    ]);
+
+    const report = JSON.parse(stdout.join("")) as {
+      scorers: Array<{ results: Array<{ score: { score: number; reason: string } }> }>;
+    };
+    const outcome = report.scorers[0]?.results[0]?.score;
+    // build 1 (0.3), tests 0 (0.25), tool errors 1 (0.2), loops 1, regression 1, autonomy 1 (0.25)
+    expect(outcome?.score).toBe(0.75);
+    expect(outcome?.reason).toContain("Build (30%): Build/typecheck passed [1]");
+    expect(outcome?.reason).toContain("Tests (25%): Tests failed (exit 1) [0]");
+    const efficiency = report.scorers[1]?.results[0]?.score;
+    expect(efficiency?.score).toBe(1);
+    expect(efficiency?.reason).toContain("All 1 edits had prior reads");
+  });
+
   it("routes LLM-judged scorers through the QA judge lane", async () => {
     const sessionFile = path.join(tmpDir, "session-1.jsonl");
     await writeSession(sessionFile, readThenFailedWriteSession());
