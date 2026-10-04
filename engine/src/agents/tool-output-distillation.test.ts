@@ -87,12 +87,16 @@ describe("ToolOutputDistillationService", () => {
     expect(saveOutput).not.toHaveBeenCalled();
   });
 
-  it("distills no later than the engine's own live cap", async () => {
+  it("keeps the upstream trigger and sizes the output to the engine's live cap", async () => {
     service = new ToolOutputDistillationService(
-      { maxOutputTokens: 10_000, summarizationThresholdTokens: 20_000, engineMaxChars: 1_000 },
+      { maxOutputTokens: 1_000, summarizationThresholdTokens: 20_000, engineMaxChars: 1_000 },
       { sideQuery, saveOutput },
     );
-    const result = await service.distill("exec", "c", [{ type: "text", text: "x".repeat(2_000) }]);
+    // Over the engine cap but under the 4000-char trigger: left to the engine.
+    const medium = [{ type: "text" as const, text: "x".repeat(3_000) }];
+    expect((await service.distill("exec", "c", medium)).truncatedContent).toBe(medium);
+
+    const result = await service.distill("exec", "c", [{ type: "text", text: "x".repeat(5_000) }]);
     expect(textOf(result.truncatedContent)).toContain("Full output saved to: mocked-path");
     expect(textOf(result.truncatedContent).length).toBeLessThan(1_000);
     expect(sideQuery).not.toHaveBeenCalled();

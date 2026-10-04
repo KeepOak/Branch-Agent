@@ -34,9 +34,9 @@ export interface ToolOutputDistillationConfig {
   maxOutputTokens: number;
   summarizationThresholdTokens: number;
   /**
-   * The engine's own live tool-result cap. Distillation runs no later than the
-   * point where that cap would truncate the output, so the saved-file pointer
-   * and intent summary survive persistence.
+   * The engine's own live tool-result cap. It does not change when
+   * distillation triggers; it only sizes the truncated output so the
+   * saved-file pointer and intent summary survive persistence.
    */
   engineMaxChars?: number;
 }
@@ -115,10 +115,7 @@ export class ToolOutputDistillationService {
       return { truncatedContent: content };
     }
 
-    const thresholdChars = Math.min(
-      this.config.maxOutputTokens * 4,
-      this.config.engineMaxChars ?? Number.POSITIVE_INFINITY,
-    );
+    const thresholdChars = this.config.maxOutputTokens * 4;
     if (thresholdChars <= 0) {
       return { truncatedContent: content };
     }
@@ -131,7 +128,7 @@ export class ToolOutputDistillationService {
         callId,
         content,
         originalContentLength,
-        thresholdChars,
+        Math.min(thresholdChars, this.config.engineMaxChars ?? Number.POSITIVE_INFINITY),
       );
     }
 
