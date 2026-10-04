@@ -86,8 +86,9 @@ it("does not load a skill for disabled, unauthorized, or unrelated commands", as
 });
 
 it("ships the investigation and memory references without broken local links", () => {
-  const root = path.dirname(bundledSkill.skillFile);
-  const text = fs.readFileSync(bundledSkill.skillFile, "utf8");
+  const skillFile = bundledSkill.skillFile!;
+  const root = path.dirname(skillFile);
+  const text = fs.readFileSync(skillFile, "utf8");
   const links = [...text.matchAll(/\]\((references\/[^)]+)\)/gu)].map((match) => match[1]!);
   expect(links).toHaveLength(2);
   for (const reference of links) {

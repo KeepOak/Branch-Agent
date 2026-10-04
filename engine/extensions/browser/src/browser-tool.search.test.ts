@@ -46,7 +46,7 @@ describe("search/find native browser tool caller", () => {
       createBrowserToolDefinition({ runToolBinding: binding }, () => undefined),
     ]) {
       expect(definition.capabilities.actions).toEqual(expect.arrayContaining(["search", "find"]));
-      expect(definition.metadata.parameters.properties.action.enum).toEqual(
+      expect((definition.metadata.parameters.properties.action as { enum?: unknown }).enum).toEqual(
         expect.arrayContaining(["search", "find"]),
       );
       expect(definition.metadata.description).toContain("contextChars (150)");

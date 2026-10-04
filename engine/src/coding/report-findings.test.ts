@@ -55,7 +55,7 @@ const summariesOf = (result: { returnDisplay: unknown }) =>
 describe("ReportFindingsTool", () => {
   it("does not constrain finding summaries in its tool schema", () => {
     const tool = new ReportFindingsTool();
-    const schema = tool.schema.parametersJsonSchema as {
+    const schema = tool.schema.parametersJsonSchema as unknown as {
       properties: {
         findings: {
           items: { properties: { summary: Record<string, unknown> } };
@@ -181,11 +181,11 @@ describe("ReportFindingsTool", () => {
       }),
     );
     const byFile = Object.fromEntries(displayOf(result).findings.map((f) => [f.file, f]));
-    expect(byFile["src/foo.ts"].shortSummary).toBe(
+    expect(byFile["src/foo.ts"]!.shortSummary).toBe(
       "the retry guard drops the final attempt when the backoff…",
     );
-    expect(byFile["src/other.ts"].shortSummary).toBe("supplied label");
-    const compressedSupplied = byFile["src/third.ts"].shortSummary;
+    expect(byFile["src/other.ts"]!.shortSummary).toBe("supplied label");
+    const compressedSupplied = byFile["src/third.ts"]!.shortSummary;
     expect(compressedSupplied.length).toBeLessThanOrEqual(60);
     expect(compressedSupplied.startsWith("supplied x")).toBe(true);
     expect(compressedSupplied.endsWith("…")).toBe(true);
@@ -286,7 +286,7 @@ describe("ReportFindingsTool", () => {
         category: "",
       }),
     );
-    const [item] = displayOf(result).findings;
+    const item = displayOf(result).findings[0]!;
     expect(item.id).toBeUndefined();
     expect(item.file).toBe("src/foo.ts");
     expect(item.summary).toBe("padded summary");
@@ -295,7 +295,7 @@ describe("ReportFindingsTool", () => {
 
   it("passes id and line through to the display item", async () => {
     const result = await run(finding({ id: "R2-7", line: 314 }));
-    const [item] = displayOf(result).findings;
+    const item = displayOf(result).findings[0]!;
     expect(item.id).toBe("R2-7");
     expect(item.line).toBe(314);
   });
@@ -306,7 +306,7 @@ describe("ReportFindingsTool", () => {
     const file = `src/${"a".repeat(506)}.ts`;
     expect(file).toHaveLength(513);
     const result = await run(finding({ file }));
-    expect(displayOf(result).findings[0].file).toBe(file);
+    expect(displayOf(result).findings[0]!.file).toBe(file);
     const max = REPORT_FINDINGS_FILE_MAX;
     expect(tryOne({ file: "a".repeat(max) })).not.toThrow();
     expect(tryOne({ file: "a".repeat(max + 1) })).toThrow();
@@ -314,7 +314,7 @@ describe("ReportFindingsTool", () => {
 
   it("accepts MAX_SAFE_INTEGER line numbers and refuses unsafe ones", async () => {
     const result = await run(finding({ line: Number.MAX_SAFE_INTEGER }));
-    expect(displayOf(result).findings[0].line).toBe(Number.MAX_SAFE_INTEGER);
+    expect(displayOf(result).findings[0]!.line).toBe(Number.MAX_SAFE_INTEGER);
     // MAX_SAFE_INTEGER + 1 is representable — JSON keeps it, and the
     // rounding that produced it is invisible — so the schema alone cannot
     // catch it.
@@ -380,7 +380,7 @@ describe("ReportFindingsTool", () => {
     tool.build({ findings: [finding({ id: "R2-1", file: "src/new.ts" })] });
 
     const outcome = await exec(tool, finding({ id: "R1-1", outcome: "fixed" }));
-    expect(displayOf(outcome).findings[0].outcome).toBe("fixed");
+    expect(displayOf(outcome).findings[0]!.outcome).toBe("fixed");
   });
 
   it("clears the identity when a later report has none", async () => {

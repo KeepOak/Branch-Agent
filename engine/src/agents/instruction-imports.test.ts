@@ -455,8 +455,8 @@ describe("memoryImportProcessor", () => {
       expect(result.importTree.imports![0]!.imports).toHaveLength(1);
 
       const expectedInnerPath = testPath(projectRoot, "src", "inner.md");
-      expect(result.importTree.imports![0]!.imports![0].path).toContain(expectedInnerPath);
-      expect(result.importTree.imports![0]!.imports![0].imports).toBeUndefined();
+      expect(result.importTree.imports![0]!.imports![0]!.path).toContain(expectedInnerPath);
+      expect(result.importTree.imports![0]!.imports![0]!.imports).toBeUndefined();
 
       // Second import: simple.md
       const expectedSimplePath = testPath(projectRoot, "src", "simple.md");
@@ -495,14 +495,14 @@ describe("memoryImportProcessor", () => {
             const match = t.raw.match(/--- File: (.+?) ---/);
             if (match) {
               // Normalize the path before adding to fileMarkers
-              fileMarkers.push(path.normalize(match[1]));
+              fileMarkers.push(path.normalize(match[1]!));
             }
           }
           if (t.type === "paragraph" && t.raw.includes("--- End of File:")) {
             const match = t.raw.match(/--- End of File: (.+?) ---/);
             if (match) {
               // Normalize the path before adding to endMarkers
-              endMarkers.push(path.normalize(match[1]));
+              endMarkers.push(path.normalize(match[1]!));
             }
           }
           if (t.tokens) {

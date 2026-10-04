@@ -140,7 +140,7 @@ describe("EPUB conversion through the authorized production file reader", () => 
     expect(result.details).toMatchObject({ kind: "truncated", continuation: { offset: 1 } });
     const continuation =
       result.details.kind === "truncated" ? result.details.continuation : undefined;
-    expect(continuation?.cursor).toBeGreaterThan(0);
+    expect(continuation?.kind === "cursor" ? continuation.cursor : undefined).toBeGreaterThan(0);
     expect(text(await readFixture(bytes, continuation, 256))).toContain("abcdefghij");
   });
 
