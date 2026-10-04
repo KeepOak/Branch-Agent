@@ -26,13 +26,19 @@ function Folder({ engine, entry, depth, onOpen }: { engine: WindowEngine; entry:
   const [open, setOpen] = useState(false);
   const [kids, setKids] = useState<BrowseEntry[] | null>(null);
   const [error, setError] = useState("");
-  const toggle = () => {
-    setOpen((v) => !v);
-    if (!kids) list(engine, { path: entry.path }).then((l) => setKids(l.entries), (e: unknown) => setError(errorText(e)));
-  };
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    setKids(null); setError("");
+    list(engine, { path: entry.path }).then(
+      (l) => { if (live) setKids(l.entries); },
+      (e: unknown) => { if (live) setError(errorText(e)); },
+    );
+    return () => { live = false; };
+  }, [engine, entry.path, open]);
   return (
     <>
-      <button type="button" className="ft-row-pn" role="treeitem" aria-level={depth + 1} aria-expanded={open} style={{ "--lv": depth } as React.CSSProperties} onClick={toggle}>
+      <button type="button" className="ft-row-pn" role="treeitem" aria-level={depth + 1} aria-expanded={open} style={{ "--lv": depth } as React.CSSProperties} onClick={() => setOpen((v) => !v)}>
         <SIcon name="chev" small className="ft-chev-pn" />
         <SIcon name="folder" small />
         <span className="grow">{entry.name}</span>
@@ -40,11 +46,13 @@ function Folder({ engine, entry, depth, onOpen }: { engine: WindowEngine; entry:
       </button>
       {open ? (
         error ? (
-          <p className="err-st">{error}</p>
+          <p className="err-st" role="alert">{error}</p>
         ) : !kids ? (
-          <p className="hint-st" style={{ paddingLeft: 8 + (depth + 1) * 21 }}>Reading…</p>
+          <p className="hint-st" role="status" style={{ paddingLeft: 8 + (depth + 1) * 21 }}>Reading…</p>
+        ) : kids.length ? (
+          <div role="group" aria-label={entry.name}>{kids.map((k) => <Entry key={k.path} engine={engine} entry={k} depth={depth + 1} onOpen={onOpen} />)}</div>
         ) : (
-          kids.map((k) => <Entry key={k.path} engine={engine} entry={k} depth={depth + 1} onOpen={onOpen} />)
+          <p className="hint-st" style={{ paddingLeft: 8 + (depth + 1) * 21 }}>This folder is empty.</p>
         )
       ) : null}
     </>
