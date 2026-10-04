@@ -32,6 +32,8 @@ import { newMenuItems } from "./new-menu";
 import { notify } from "./notify";
 import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
 import { SidebarPet } from "./SidebarPet";
+import { GetAppsDialog } from "./GetApps";
+import { PairDialog } from "../places/customize/pairing";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
 import { PersonMenu, usePersonName } from "./PersonMenu";
@@ -131,6 +133,8 @@ type Overlay =
   | { kind: "person"; at: MenuAnchor; from: Above }
   | { kind: "palette" }
   | { kind: "shortcuts" }
+  | { kind: "apps" }
+  | { kind: "pair" }
   | { kind: "status"; item: StatusItem; above: Above }
   | { kind: "ask" }
   | { kind: "studio" }
@@ -1082,6 +1086,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onSettings={() => openSettings("general")}
           onAchievements={() => openSettings("achievements")}
           onShortcuts={() => setOverlay({ kind: "shortcuts" })}
+          onApps={() => setOverlay({ kind: "apps" })}
           onAbout={() => openSettings("updates")}
           onGuide={() => {
             const r = document.querySelector("[data-testid=guide]")?.getBoundingClientRect();
@@ -1138,6 +1143,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       ) : null}
       {overlay?.kind === "studio" ? <TrunkStudio engine={session.engine} onClose={() => setOverlay(null)} openTrunk={openTrunkProfile} /> : null}
       {overlay?.kind === "shortcuts" ? <ShortcutsDialog defaultName={defaultName} onClose={() => setOverlay(null)} /> : null}
+      {overlay?.kind === "apps" ? <GetAppsDialog onClose={() => setOverlay(null)} onPair={() => setOverlay({ kind: "pair" })} /> : null}
+      {overlay?.kind === "pair" ? <PairDialog engine={session.engine} close={() => setOverlay(null)} /> : null}
       {newProject ? <NewProjectDialog session={session} onDone={projects.reload} onClose={() => setNewProject(false)} /> : null}
       {keeping ? <KeepLastDialog onCancel={() => setKeeping(null)} onKeep={() => (setKeeping(null), void tidy({ session, list }, keeping, true))} /> : null}
       {deletingMany && deletingMany.length ? (
