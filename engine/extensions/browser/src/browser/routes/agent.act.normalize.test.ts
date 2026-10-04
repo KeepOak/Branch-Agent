@@ -4,6 +4,39 @@ import { canonicalizeActTargetIds, normalizeActRequest } from "./agent.act.norma
 
 const MAX_SAFE_TIMEOUT_DELAY_MS = 2_147_483_647;
 
+describe("humanClick requests", () => {
+  it("projects a guarded native action and strips caller control fields", () => {
+    expect(
+      normalizeActRequest({
+        kind: "humanClick",
+        ref: " e1 ",
+        targetId: "tab-1",
+        timeoutMs: 12_000,
+        signal: "external",
+        resolvedPage: "external",
+        assertCurrent: "external",
+      }),
+    ).toEqual({ kind: "humanClick", ref: "e1", targetId: "tab-1", timeoutMs: 12_000 });
+    expect(normalizeActRequest({ kind: "humanClick", selector: " #target " })).toEqual({
+      kind: "humanClick",
+      selector: "#target",
+    });
+  });
+
+  it("validates targets and timeout and supports canonicalized nested batches", () => {
+    expect(() => normalizeActRequest({ kind: "humanClick" })).toThrow("ref or selector");
+    expect(() => normalizeActRequest({ kind: "humanClick", ref: "e1", timeoutMs: -1 })).toThrow(
+      "timeoutMs",
+    );
+    const action = normalizeActRequest({
+      kind: "batch",
+      actions: [{ kind: "humanClick", ref: "e1", targetId: "Fixture" }],
+    });
+    expect(canonicalizeActTargetIds(action, { targetId: "full-id", label: "Fixture" })).toBeNull();
+    expect(action).toMatchObject({ actions: [{ kind: "humanClick", targetId: "full-id" }] });
+  });
+});
+
 it("projects nested actions without leaking caller control fields or dropping false and empty values", () => {
   expect(
     normalizeActRequest({

@@ -8,6 +8,7 @@ const MARKS: Record<string, [string, string]> = {
   google: ["#1E1F24", '<path d="M12 3c.8 4.6 4.4 8.2 9 9-4.6.8-8.2 4.4-9 9-.8-4.6-4.4-8.2-9-9 4.6-.8 8.2-4.4 9-9z" fill="#8AB4F8"/>'],
   "github-copilot": ["#181717", '<path d="M12 4a8 8 0 0 0-2.5 15.6c.4 0 .5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.2 1.9.9 2.3.7.1-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-3.9 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.6 7.6 0 0 1 4 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.7-3.6 3.9.3.3.5.8.5 1.5v2.2c0 .2.1.5.6.4A8 8 0 0 0 12 4z" fill="#fff"/>'],
   openrouter: ["#6566F1", "OR"],
+  qwen: ["#615CED", "Q"],
   local: ["transparent", '<rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'],
   keepoak: ["#1B1A18", '<path d="M12 3v2" stroke="#fff" stroke-width="1.8"/><path d="M4 10.5C4 7 7.6 5 12 5s8 2 8 5.5z" fill="#fff"/><path d="M5.7 11.5h12.6c0 5-2.7 9.5-6.3 9.5s-6.3-4.5-6.3-9.5z" fill="#E7753F"/>'],
 };

@@ -33,6 +33,30 @@ describe("walkthrough (§4.8.2)", () => {
     expect(closed).toHaveBeenCalled();
     expect(tourCards("Sapling").some((c) => /example data|design notes|surface switcher/i.test(c.text))).toBe(false);
   });
+
+  it("opens what each card shows, as the preview does, and ends on its own last card", async () => {
+    const cards = tourCards("Sapling");
+    const seen: { type: string; detail: unknown }[] = [];
+    const listen = (e: Event) => seen.push({ type: e.type, detail: (e as CustomEvent).detail });
+    addEventListener("branch:navigate-settings", listen);
+    addEventListener("branch:navigate-place", listen);
+    const host = await show(<Walkthrough defaultName="Sapling" onClose={() => {}} />);
+    const layer = host.querySelector('[data-testid="walkthrough"]') as HTMLElement;
+    for (let i = 1; i < cards.length; i++) await act(async () => layer.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    removeEventListener("branch:navigate-settings", listen);
+    removeEventListener("branch:navigate-place", listen);
+    expect(seen).toEqual([
+      { type: "branch:navigate-settings", detail: { page: "local" } },
+      { type: "branch:navigate-place", detail: { place: "customize", tab: "Channels" } },
+      { type: "branch:navigate-settings", detail: { page: "appearance" } },
+      { type: "branch:navigate-place", detail: { place: "people" } },
+      { type: "branch:navigate-place", detail: { place: "automations", tab: "board" } },
+      { type: "branch:navigate-place", detail: { place: "library", tab: "memory" } },
+    ]);
+    expect(host.querySelector(".tour-card b")?.textContent).toBe("That’s Branch");
+    expect(host.querySelector(".tour-card p")?.textContent).toBe("That’s the walkthrough. Take it again any time from the Guide.");
+    expect(host.querySelector('[data-testid="tour-end"]')?.textContent).toBe("Close");
+  });
 });
 
 describe("What's new (§4.8.3)", () => {

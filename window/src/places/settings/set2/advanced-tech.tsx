@@ -4,7 +4,8 @@
 // (webSearch.status / webSearch.test), hooks (hooks.status) and bringing other agents' memory in (migrations.memory.*).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
-import { Btn, Ctl, Hint, Pill, Prow, Sec, type Lv } from "../kit";
+import { Btn, Ctl, Hint, Pill, Prow, Sec, usePinsKit, type Lv } from "../kit";
+import { Icon } from "../../../shell/icons";
 import { errorText, list } from "../adapter";
 import { configStore, type ConfigPath } from "../config-store";
 import { Dialog } from "../../../shell/Dialog";
@@ -228,6 +229,18 @@ function FieldList({ fields, config }: { fields: Field[]; config: Ctx["config"] 
 }
 
 const OTHER: [string, string][] = [["Text to speech", "tts"], ["Attachments", "attachments"], ["Messages", "messages"], ["Talk", "talk"], ["Web", "tools.web"], ["Media", "tools.media"]];
+/** A row whose title carries its config key: drawn like the kit's row, pin included. */
+function KeyRow({ t, k, onEdit }: { t: string; k: string; onEdit: () => void }) {
+  const pins = usePinsKit();
+  const on = pins?.has(t) ?? false;
+  return (
+    <div className="ctl" data-row={t}>
+      <b>{t} <code className="s2advanced-key">{k}</code></b>
+      {pins ? <button type="button" className="pin-k" aria-pressed={on} aria-label={`${on ? "Unpin" : "Pin"} ${t}`} title={on ? "Unpin" : "Pin to the top of General"} onClick={() => pins.toggle(t)}><Icon name="pin" small /></button> : null}
+      <span className="right"><Btn sm onClick={onEdit}>Edit</Btn></span>
+    </div>
+  );
+}
 /** Everything else (Technical): the sections with no page of their own, and a search over every setting. */
 export function EverythingElse({ c }: { c: Ctx }) {
   const [open, setOpen] = useState<[string, string] | null>(null);
@@ -236,7 +249,7 @@ export function EverythingElse({ c }: { c: Ctx }) {
   const hits = q.trim().length > 1 ? fields.filter((f) => `${f.path} ${f.label}`.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 40) : [];
   return (
     <Sec title="Everything else" hint="Settings that have no page of their own. Every field shows, including the fine ones.">
-      {OTHER.map(([t, k]) => <Ctl key={k} title={<>{t} <code className="s2advanced-key">{k}</code></>} id={t}><Btn sm onClick={() => setOpen([t, k])}>Edit</Btn></Ctl>)}
+      {OTHER.map(([t, k]) => <KeyRow key={k} t={t} k={k} onEdit={() => setOpen([t, k])} />)}
       <Ctl title="Find any setting" sub={error ?? (loading ? "Reading the engine’s settings list…" : `${fields.length} settings. Read only here; edit one in its section.`)} stack after={
         <div className="s2advanced-find">
           <input className="inp" placeholder="A setting’s name or path" aria-label="Find any setting" value={q} onChange={(e) => setQ(e.target.value)} />

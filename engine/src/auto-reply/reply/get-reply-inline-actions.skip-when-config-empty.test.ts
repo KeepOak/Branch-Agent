@@ -1429,9 +1429,9 @@ describe("handleInlineActions", () => {
     });
 
     expect(result).toEqual({ kind: "reply", reply: { text: "✅ Done." } });
-    expect(
-      mockObjectArg(createBranchToolsMock, "createBranchTools").requesterAgentIdOverride,
-    ).toBe("named-worker");
+    expect(mockObjectArg(createBranchToolsMock, "createBranchTools").requesterAgentIdOverride).toBe(
+      "named-worker",
+    );
     expect(toolExecute).toHaveBeenCalledTimes(1);
   });
 
@@ -2169,7 +2169,7 @@ describe("sender command dispatch ownership", () => {
       commandName: "/help",
       commandText: "/help@Branch:",
       normalized: "/help",
-      botUsername: "Branch Agent",
+      botUsername: "Branch",
       expectedPrompt: "",
     },
     {
