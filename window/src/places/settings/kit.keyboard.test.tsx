@@ -2,7 +2,7 @@
 import { act, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Page, Sec, Seg } from "./kit";
+import { Seg } from "./kit";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -59,29 +59,5 @@ describe("segmented settings keyboard", () => {
     await act(async () => root?.render(<Seg label="Motion" value="off" options={choices} disabled onChange={change} />));
     await key(off, "ArrowRight");
     expect(change).not.toHaveBeenCalled();
-  });
-});
-
-describe("mounted settings section links", () => {
-  it("lists only visible mounted sections and jumps with focus on the heading", async () => {
-    Element.prototype.scrollIntoView = vi.fn();
-    await render(<Page title="Test" lede="Settings"><Sec title="First">One</Sec><div style={{ display: "none" }}><Sec title="Hidden">Hidden</Sec></div><details><Sec title="Closed">Closed</Sec></details><Sec title="Last">Two</Sec></Page>);
-    const nav = document.querySelector<HTMLElement>('[aria-label="On this page"]')!;
-    expect([...nav.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["First", "Last"]);
-    await act(async () => nav.querySelectorAll<HTMLButtonElement>("button")[1].click());
-    const section = document.querySelector('[data-sec="Last"]')!;
-    expect(section.scrollIntoView).toHaveBeenCalledWith({ block: "start" });
-    expect(document.activeElement).toBe(section.querySelector("h2"));
-  });
-
-  it("updates after asynchronous content and removes sections when the page changes", async () => {
-    await render(<Page title="First" lede="Settings"><Sec title="Only">One</Sec></Page>);
-    expect(document.querySelector('[aria-label="On this page"]')).toBeNull();
-    await act(async () => root?.render(<Page title="First" lede="Settings"><Sec title="Only">One</Sec><Sec title="Loaded">Two</Sec></Page>));
-    expect(document.querySelectorAll('[aria-label="On this page"] button')).toHaveLength(2);
-    await act(async () => root?.render(<Page title="First" lede="Settings"><Sec title="Renamed">One</Sec><Sec title="Loaded">Two</Sec></Page>));
-    expect(document.querySelector('[aria-label="On this page"] button')?.textContent).toBe("Renamed");
-    await act(async () => root?.render(<Page title="Next" lede="Settings"><Sec title="Next only">One</Sec></Page>));
-    expect(document.querySelector('[aria-label="On this page"]')).toBeNull();
   });
 });

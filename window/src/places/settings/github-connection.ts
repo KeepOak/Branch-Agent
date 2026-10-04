@@ -4,6 +4,8 @@ import type { WindowEngine } from "../../connect/engine";
 import type { ToolsGitHubStatusResult, ToolsGitHubAuthorizeStartResult, ToolsGitHubAuthorizePollResult } from "@branch/gateway-protocol";
 
 export type GitHubView = { status: ToolsGitHubStatusResult | null; device: ToolsGitHubAuthorizeStartResult | null; phase: string; error: string | null; busy: boolean; expiresAt: number | null };
+/** A status without a selected scope is unreadable; treat it as not yet known. */
+const readable = (status: ToolsGitHubStatusResult | null | undefined): ToolsGitHubStatusResult | null => (status && typeof status === "object" && status.selected ? status : null);
 const initial = (): GitHubView => ({ status: null, device: null, phase: "loading", error: null, busy: false, expiresAt: null });
 export class GitHubConnection {
   view = initial();
@@ -27,7 +29,7 @@ export class GitHubConnection {
     this.update({ phase: "loading", error: null });
     try {
       const status = await this.engine.request<ToolsGitHubStatusResult>("tools.github.status", { agentId: this.agentId, selectedScope: this.scope });
-      if (revision === this.reading) this.update({ status, phase: "ready" });
+      if (revision === this.reading) this.update({ status: readable(status), phase: "ready" });
     } catch (error) { if (revision === this.reading) { this.fail(error); this.update({ phase: "ready" }); } }
   }
   async start() {
@@ -83,7 +85,7 @@ export class GitHubConnection {
     this.update({ busy: true, phase: "saving", error: null });
     try {
       const status = await this.engine.request<ToolsGitHubStatusResult>("tools.github.configure", { scope: this.scope, agentId: this.agentId, mode: "inherit" });
-      this.update({ status, phase: "ready" });
+      this.update({ status: readable(status), phase: "ready" });
     } catch (error) { this.fail(error); }
     finally { this.update({ busy: false, phase: "ready" }); }
   }

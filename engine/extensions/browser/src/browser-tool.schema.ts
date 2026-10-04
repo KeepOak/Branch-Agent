@@ -19,6 +19,7 @@ import type { BrowserProfileCapabilities } from "./browser/profile-capabilities.
 const BROWSER_ACT_KINDS = [
   "batch",
   "click",
+  "humanClick",
   "clickCoords",
   "type",
   "press",
@@ -68,7 +69,7 @@ const BROWSER_SNAPSHOT_REFS = ["role", "aria"] as const;
 
 const BROWSER_IMAGE_TYPES = ["png", "jpeg"] as const;
 
-const TAB_REFERENCE_DESCRIPTION = "Tab label/id or CDP targetId.";
+const TAB_REFERENCE_DESCRIPTION = "Tab label/id or targetId.";
 
 // NOTE: Using a flattened object schema instead of Type.Union([Type.Object(...), ...])
 // because Claude API on Vertex AI rejects nested anyOf schemas as invalid JSON Schema.
@@ -100,6 +101,7 @@ export function resolveBrowserToolCapabilities(params?: {
         | "supportsDialogs"
         | "supportsConsole"
         | "supportsNativeSnapshots"
+        | "usesChromeMcp"
       >
     >;
 }): BrowserToolCapabilities {
@@ -125,8 +127,10 @@ export function resolveBrowserToolCapabilities(params?: {
       (kind) =>
         (evaluateEnabled || kind !== "evaluate") &&
         (profileCapabilities?.supportsBatchActions !== false || kind !== "batch") &&
+        (profileCapabilities?.usesChromeMcp !== true || kind !== "humanClick") &&
         (profileCapabilities?.supportsVisualActions !== false ||
-          (kind !== "clickCoords" &&
+          (kind !== "humanClick" &&
+            kind !== "clickCoords" &&
             kind !== "drag" &&
             kind !== "resize" &&
             kind !== "hover" &&

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Face } from "../face/Face";
 import { agentState } from "../face/agentState";
@@ -13,6 +13,7 @@ import { EmptyState } from "./EmptyState";
 import { FindBar, useFindKey } from "./FindBar";
 import { HelpersChip } from "./Helpers";
 import { HoverBar } from "./HoverBar";
+import { Rail } from "./Rail";
 import { Icon, ICONS } from "./icons";
 import { layout, shownApprovalIds, type Item } from "./layout";
 import { planAnchor } from "./PlanCard";
@@ -24,13 +25,14 @@ import { approvalKeyFor } from "./approval-keys";
 import { useApprovalDetails, useHelpers, useReactions, type ApprovalDetails } from "./useEngineData";
 import { useMessageActions, type ReplyTarget } from "./useMessageActions";
 import "./thread.css";
+import "./activity-strip.css";
 import { foldTalks, type RoomItem } from "../rooms/fold";
 import { RoomMessage } from "../rooms/RoomMessage";
 import { TalkedFold } from "../rooms/TalkedFold";
 import { RoomLine } from "../rooms/RoomLine";
 import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
-import { fullTime, messageTime, modelName } from "./format";
+import { dayStamp, fullTime, messageTime, modelName } from "./format";
 
 type Props = {
   supplement?: ReactNode;
@@ -145,7 +147,9 @@ export function Thread(props: Props) {
   const items: RoomItem[] = props.room ? foldTalks(layout(history), props.room.ownAgentId) : layout(history);
   const planWanted = props.plan ? planAnchor(history) : -1;
   const planAt = items.some((i) => i.type === "block" && i.index === planWanted) ? planWanted : -1;
-  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room };
+  const lastUser = history.map((b) => b.kind).lastIndexOf("user");
+  const stamps = useMemo(() => dayStamps(history), [history]);
+  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser };
   return (
     <ThreadContext.Provider value={ctx}>
       <div className="thread-wrap" data-times={prefs.messageTimes} data-look={prefs.msgLook} data-scrollbars={prefs.scroll} dir={prefs.dir}>
@@ -159,7 +163,10 @@ export function Thread(props: Props) {
                 <TalkedFold talk={item} ownName={name} trunkName={props.room?.trunkName ?? ((id: string) => id)} />
               </div>
             ) : (
-              <ItemWithQuestions key={keyOf(item)} item={item} view={view} asked={item.type === "block" ? anchors.get(item.index) : undefined} plan={item.type === "block" && item.index === planAt ? props.plan : null} />
+              <Fragment key={keyOf(item)}>
+                {item.type === "block" && stamps.has(item.index) ? <div className="stamp" data-testid="day-stamp">{stamps.get(item.index)}</div> : null}
+                <ItemWithQuestions item={item} view={view} asked={item.type === "block" ? anchors.get(item.index) : undefined} plan={item.type === "block" && item.index === planAt ? props.plan : null} />
+              </Fragment>
             ),
           )}
           {props.room ? <RoomLine history={history} room={props.room} ownName={name} /> : null}
@@ -169,7 +176,7 @@ export function Thread(props: Props) {
           {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} />)}
           {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} /> : null}
           {helpers.length && engine?.sessionKey ? (
-            <HelpersChip onOpenActivity={props.onOpenActivity} helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer}
+            <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenActivity}
               onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
           ) : null}
           {props.supplement}
@@ -177,6 +184,7 @@ export function Thread(props: Props) {
           <div ref={follow.end} className="thread-end" />
         </div>
       </div>
+      <Rail scroller={follow.scroller} blocks={all} />
       {follow.showLatest ? (
         <button type="button" className="to-latest" aria-label="Scroll to latest" title="Scroll to latest" onClick={follow.toEnd}>
           <Icon d={ICONS.down} size={16} />
@@ -205,7 +213,23 @@ type View = {
   /** Approvals shown together in the "Two things need you" card instead of on their own. */
   grouped: Set<string>;
   room?: ThreadRoom;
+  /** The last message you sent in the history; the replies after it belong to the turn that is running. */
+  lastUser: number;
 };
+
+/** A day stamp over the first message of each day that has a recorded time (§4.2.2 Stamp). */
+function dayStamps(history: readonly Block[]): Map<number, string> {
+  const out = new Map<number, string>();
+  let day = "";
+  history.forEach((b, i) => {
+    const at = b.kind === "user" || b.kind === "text" ? b.meta?.timestamp : undefined;
+    if (!at) return;
+    const d = new Date(at).toDateString();
+    if (d !== day) out.set(i, dayStamp(at));
+    day = d;
+  });
+  return out;
+}
 
 /** "Message times: Always" (§4.7.1): the time (and, on a reply, the model) under each message. */
 function TimeLine({ block, view }: { block: Extract<Block, { kind: "user" | "text" }>; view: View }) {
@@ -313,7 +337,7 @@ function MessageView({ block, index, firstReply, view, live }: { block: Extract<
   }
   return (
     <>
-      <Reply block={block} face={firstReply ? faceFor(view, live) : undefined} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
+      <Reply block={block} face={firstReply ? faceFor(view, live) : undefined} working={firstReply && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
       {live ? null : <TimeLine block={block} view={view} />}
       <ReactionChips list={chips} onToggle={toggle} />
     </>

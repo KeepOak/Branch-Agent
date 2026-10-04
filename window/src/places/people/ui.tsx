@@ -52,7 +52,7 @@ export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs:
   };
   return <div className="pp-tabs" role="tablist" aria-label={label}>
     {tabs.map((t, i) => <button key={t.id} type="button" role="tab" className="pp-tab" aria-selected={t.id === value} tabIndex={t.id === value ? 0 : -1} onKeyDown={e => move(e, i)} onClick={() => onChange(t.id)}>
-      {t.name}{t.count !== undefined && <span className="n">{t.count}</span>}
+      {t.name}{t.count ? <span className="n">{t.count}</span> : null}
     </button>)}
   </div>;
 }

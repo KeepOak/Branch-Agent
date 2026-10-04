@@ -22,7 +22,7 @@ import { Icon } from "./icons";
 import { buildSections, clearFilters, emptyLineFor, filterRows, filterSummary, hasFolders, homeRow, owners, roomUsed, type ListPrefs } from "./list-model";
 import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./AppSections";
 import { batchMenuItems } from "./batch-menu";
-import { iconColourItem } from "./row-look";
+import { colourHue, iconColourItem } from "./row-look";
 import { RowCard } from "./RowCard";
 import { MIN_PANE, NO_ROOM, PaneDivider, SplitPanes, TOO_NARROW, type Pane } from "./SplitPanes";
 import { useRowCard, useRowExtras, useSelection } from "./sidebar-state";
@@ -48,6 +48,7 @@ import { readLevel } from "../places-nav/SettingsFrame";
 import type { Above } from "./Popover";
 import { ringReading } from "./status-data";
 import { useGatewayFacts, useLimits, useUpdate } from "./use-status";
+import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
 import { HeaderRow, PlaceHead, TopBar, type FaceState } from "./TopBar";
 import { useLayout } from "./use-layout";
@@ -651,6 +652,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           renaming: renaming !== null && renaming === openKey,
           onProfile: room.header ? undefined : () => openTrunkProfile(openRow?.agentId ?? trunks.defaultId ?? undefined),
           room: room.header,
+          colour: colourHue(openRow?.color),
           onRename: (value: string | null) => {
             setRenaming(null);
             if (value !== null && openRow && value.trim() !== openRow.title) {
@@ -734,16 +736,21 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const dark = theme === "system" ? systemDark : effectiveDark(theme);
   const filterOpen = overlay?.kind === "filter";
 
+  const usingComputer = workWords(s, now) === "Working · using the computer";
+  const who = trunkName(openRow?.agentId);
   const conversationTools = (
     <>
-      <button type="button" className="ib" aria-label="Computer" title="Computer" onClick={() => setStage("Computer")}><Icon name="monitor" /></button>
-      <button type="button" className="ib" aria-label="Browser" title="Browser" onClick={() => setStage("Browser")}><Icon name="globe" /></button>
-      <button type="button" className="ib" aria-label="Side panel" title="Side panel · Ctrl Shift K" aria-pressed={pane !== null} onClick={() => setPane((v) => (v ? null : "Activity"))}><Icon name="panel" /></button>
+      <button type="button" className="ib" aria-label="Computer" title={`Its computer · ${machine?.name ?? "This computer"}`} data-live={usingComputer || undefined} onClick={() => setStage("Computer")}>
+        <Icon name="monitor" />
+        {usingComputer ? <i className="live-dot" aria-hidden="true" /> : null}
+      </button>
+      <button type="button" className="ib" aria-label="Browser" title="Open the browser full size" onClick={() => setStage("Browser")}><Icon name="globe" /></button>
+      <button type="button" className="ib" aria-label="Side panel" title="Side panel: Activity, Dashboard, Timeline, Plan, Files, Memory, Terminal (Ctrl+Shift+K)" aria-pressed={pane !== null} onClick={() => setPane((v) => (v ? null : "Activity"))}><Icon name="panel" /></button>
       {openRow?.kind === "group" || openRow?.kind === "channel" ? null : (
-        <button type="button" className="ib" aria-label={`Who ${trunkName(openRow?.agentId)} knows and may talk to`} title="Who it knows" data-testid="who-it-knows-button" onClick={conversationMenu.whoItKnows}><Icon name="users" /></button>
+        <button type="button" className="ib" aria-label={`Who ${who} knows and may talk to`} title={`Who ${who} knows and may talk to`} data-testid="who-it-knows-button" onClick={conversationMenu.whoItKnows}><Icon name="users" /></button>
       )}
       <button type="button" className="ib" aria-label="Find in this conversation" title="Find in this conversation (Ctrl+F)" onClick={() => window.dispatchEvent(new Event(FIND_EVENT))}><Icon name="search" /></button>
-      <button type="button" className="ib" aria-label="Conversation menu" title="Conversation menu" data-testid="conversation-menu-button" onClick={conversationMenu.open}>
+      <button type="button" className="ib" aria-label="Conversation menu" title={`More for ${openRow?.kind === "group" ? name : who}`} data-testid="conversation-menu-button" onClick={conversationMenu.open}>
         <Icon name="more" />
       </button>
     </>
@@ -886,6 +893,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
         conversationTools={conversationTools}
         ask={talkEntry}
+        onSettings={route.kind === "place" ? () => openSettings("general") : undefined}
       />
       <Sidebar
         home={home}
@@ -1185,7 +1193,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           startOnReady={guide === "news-ready"}
           installed={installedRows({ setup: () => firstRun.open(0), shortcuts: () => setOverlay({ kind: "shortcuts" }), palette: () => setOverlay({ kind: "palette" }), settings: openSettings })}
           onOpenUpdates={() => openSettings("updates")}
-          onInstall={() => void session.request("update.run", {}).catch((e: unknown) => notify(`Couldn't install the update: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" }))}
+          onInstall={() => void stageWindowUpdate(session.engine).catch((e: unknown) => notify(`Couldn't install the update: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" }))}
           onClose={() => setGuide(null)}
         />
       ) : null}

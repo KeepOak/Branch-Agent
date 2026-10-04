@@ -192,8 +192,8 @@
 @media (max-width:760px) {.tb-br span {display:none;} .drw-br {max-height:46vh;}}
 
 /* The computer card in the conversation: live (picture, Watch full size, Take over) and "Used … · N actions" */
-.card-st {margin:12px 0;border:1px solid var(--line);border-radius:14px;background:var(--raise);overflow:hidden;font-size:13px;}
-.comp-card-st {display:grid;gap:8px;padding:12px 14px;}
+.card-st {max-width:520px;margin:0 0 0 38px;border:1px solid var(--hair17);border-radius:var(--r3-17,16px);background:var(--raise);overflow:hidden;font-size:13px;}
+.comp-card-st {display:grid;gap:10px;padding:16px;}
 .card-h-st {display:flex;align-items:center;gap:8px;}
 .card-h-st b {display:inline-flex;align-items:center;gap:6px;font-size:13.5px;}
 .card-h-st .pill {margin-left:auto;}

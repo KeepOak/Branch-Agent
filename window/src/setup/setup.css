@@ -130,6 +130,10 @@
   border-top: 1px solid var(--line);
   background: var(--bg);
 }
+.ob-foot .btn.pri:disabled {
+  /* Start (until the promise is ticked) and the health check's wait keep their full colour, as in the preview */
+  opacity: 1;
+}
 .ob-foot .grow {
   flex: 1;
 }

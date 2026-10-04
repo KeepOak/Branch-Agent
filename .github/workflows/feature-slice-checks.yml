@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'engine/**'
+      - 'window/**'
       - 'scripts/feature-slice-ci*.mjs'
       - 'scripts/feature-batch-ci-runtime.mjs'
       - '.github/workflows/feature-slice-checks.yml'
@@ -11,6 +12,7 @@ on:
     branches: [main]
     paths:
       - 'engine/**'
+      - 'window/**'
       - 'scripts/feature-slice-ci*.mjs'
       - 'scripts/feature-batch-ci-runtime.mjs'
       - '.github/workflows/feature-slice-checks.yml'

@@ -18,6 +18,8 @@ export type SandboxFsStat = {
   type: "file" | "directory" | "other";
   size: number;
   mtimeMs: number;
+  /** Guarded canonical runtime path, available with followSymlinks metadata. */
+  canonicalPath?: string;
 };
 
 /** Filesystem operations exposed across the sandbox boundary. */
@@ -132,5 +134,7 @@ export type SandboxFsBridge = {
     filePath: string;
     cwd?: string;
     signal?: AbortSignal;
+    /** Read metadata from the guarded canonical target instead of the final link itself. */
+    followSymlinks?: boolean;
   }): Promise<SandboxFsStat | null>;
 };

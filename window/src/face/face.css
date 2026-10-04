@@ -45,3 +45,26 @@
 .flat-pebble.asleep i {
   height: 6%;
 }
+
+/* The working ring (§2.7 status marks): an Iris arc that turns round a face while its Trunk works (the preview's
+   .av.working). Reduced motion and "Keep things still" stop the turn and leave the arc. */
+.working-ring {
+  position: relative;
+}
+.working-ring::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  z-index: 1;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) 0 28%, transparent 28% 100%);
+  -webkit-mask: radial-gradient(circle, transparent 62%, #000 63%);
+  mask: radial-gradient(circle, transparent 62%, #000 63%);
+  animation: working-ring 1.3s linear infinite;
+  pointer-events: none;
+}
+@keyframes working-ring {
+  to {
+    transform: rotate(360deg);
+  }
+}

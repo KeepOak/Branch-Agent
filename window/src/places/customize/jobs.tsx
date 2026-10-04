@@ -10,7 +10,12 @@ export function Jobs({ engine, reload }: { engine: WindowEngine; reload: () => v
   const [receipt, setReceipt] = useState<string | null>(null);
   const pending = useRef(false);
   const generation = useRef(new RequestGeneration());
-  useEffect(() => { const guard = generation.current; return () => guard.retire(); }, [engine]);
+  useEffect(() => {
+    const guard = generation.current, current = guard.next();
+    pending.current = false;
+    queueMicrotask(() => { if (current()) { setBusy(null); setError(null); setReceipt(null); } });
+    return () => { guard.retire(); pending.current = false; };
+  }, [engine]);
   async function createFromJob(job: typeof JOBS[number]) {
     if (pending.current) return;
     pending.current = true; setBusy(job.name); setError(null); setReceipt(null);

@@ -5,14 +5,15 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
-import { ambientRoots, slices, validateInventory } from './feature-slice-ci-targets.mjs';
-import { assertLocalModules, engineRoot, gitHead, preparePnpm, repoRoot, verifiedExceptionFlags } from './feature-batch-ci-runtime.mjs';
+import { ambientRoots, slices, windowSlices, validateInventory } from './feature-slice-ci-targets.mjs';
+import { assertLocalModules, engineRoot, gitHead, preparePnpm, publishWindowDependencies, repoRoot,
+  toolingRoot, verifiedExceptionFlags, windowRoot } from './feature-batch-ci-runtime.mjs';
 
 const nodeHeap = '--max-old-space-size=1024';
 const baseEnv = { ...process.env, NODE_OPTIONS: nodeHeap, TSX_DISABLE_CACHE: '1',
   TSX_TSCONFIG_PATH: path.join(engineRoot, 'tsconfig.json'), GOMEMLIMIT: '2GiB', GOMAXPROCS: '2',
-  // The compiler owner joins its process group before the outer command's 180s deadline.
-  BRANCH_TSGO_TIMEOUT_MS: '150000' };
+  // Cold hosted Mac source graphs can exceed 150s; the owner still joins before the outer 330s deadline.
+  BRANCH_TSGO_TIMEOUT_MS: '300000' };
 const present = async file => fs.access(path.join(engineRoot, file)).then(() => true, error => {
   if (error.code !== 'ENOENT') throw error;
   return false;
@@ -42,10 +43,10 @@ async function restoreKnownLauncherMode(file, before, installAttempted) {
 }
 
 // An absent branch is explicit coverage debt. A partial slice is a broken registration and fails.
-export async function inventory(exists = present, digest = sourceHash) {
+export async function inventory(exists = present, digest = sourceHash, items = slices) {
   validateInventory();
   const result = [];
-  for (const slice of slices) {
+  for (const slice of items) {
     const productionFiles = slice.productionAnchors.map(anchor => typeof anchor === 'string' ? anchor : anchor.file);
     const files = [...new Set([slice.anchor, ...productionFiles, ...slice.native, ...slice.vitest, ...slice.strict])];
     const found = await Promise.all(files.map(exists));
@@ -61,20 +62,27 @@ export async function inventory(exists = present, digest = sourceHash) {
     const active = primaryFound.some(Boolean) || sourceActivation.some(anchor => anchor.activates);
     const missing = files.filter((_, index) => !found[index]);
     const followupCoverage = [];
-    const extraVitest = [], extraStrict = [];
+    const extraNative = [], extraVitest = [], extraStrict = [];
     for (const followup of slice.followups ?? []) {
-      const files = [...new Set([...followup.vitest, ...followup.strict])];
+      const files = [...new Set([...(followup.native ?? []), ...(followup.vitest ?? []), ...followup.strict])];
       const found = await Promise.all(files.map(exists));
       const state = found.every(Boolean) ? 'ready' : found.some(Boolean) ? 'incomplete' : 'absent';
       followupCoverage.push({ pr: followup.pr, state, files });
-      if (state === 'ready') { extraVitest.push(...followup.vitest); extraStrict.push(...followup.strict); }
+      if (state === 'ready') { extraNative.push(...(followup.native ?? [])); extraVitest.push(...(followup.vitest ?? [])); extraStrict.push(...followup.strict); }
       if (state === 'incomplete') missing.push(...files.filter((_, index) => !found[index]));
     }
     const registered = active || followupCoverage.some(followup => followup.state !== 'absent');
-    result.push({ ...slice, vitest: [...slice.vitest, ...extraVitest], strict: [...slice.strict, ...extraStrict],
+    result.push({ ...slice, native: [...slice.native, ...extraNative], vitest: [...slice.vitest, ...extraVitest], strict: [...slice.strict, ...extraStrict],
       sourceActivation, followupCoverage, state: !registered ? 'absent' : missing.length ? 'incomplete' : 'ready', missing });
   }
   return result;
+}
+
+export async function windowInventory() {
+  return inventory(file => fs.access(path.join(windowRoot, file)).then(() => true, error => {
+    if (error.code !== 'ENOENT') throw error;
+    return false;
+  }), async file => crypto.createHash('sha256').update(await fs.readFile(path.join(windowRoot, file))).digest('hex'), windowSlices);
 }
 
 function execute(command, args, cwd, env, scratch, receipt, label, timeoutMs = 180_000) {
@@ -106,13 +114,18 @@ function execute(command, args, cwd, env, scratch, receipt, label, timeoutMs = 1
   });
 }
 
-async function hashes(selected) {
+async function hashes(selected, selectedWindow = []) {
   const files = [...new Set(['engine/branch.mjs', 'engine/package.json', 'engine/pnpm-lock.yaml', 'engine/pnpm-workspace.yaml',
     'engine/tsconfig.json', 'engine/tsconfig.core.json', 'scripts/feature-slice-ci.mjs',
     'scripts/feature-slice-ci-targets.mjs', '.github/workflows/feature-slice-checks.yml',
     ...ambientRoots.map(file => `engine/${file}`),
     ...selected.flatMap(slice => [slice.anchor, ...slice.productionAnchors.map(anchor => typeof anchor === 'string' ? anchor : anchor.file),
-      ...slice.native, ...slice.vitest, ...slice.strict].map(file => `engine/${file}`))])];
+      ...slice.native, ...slice.vitest, ...slice.strict].map(file => `engine/${file}`)),
+    'window/package.json', 'window/pnpm-lock.yaml', 'window/tsconfig.json', 'window/tsconfig.app.json', 'window/tsconfig.node.json',
+    'window/vite.config.ts', 'scripts/feature-batch-ci-window-tooling/package.json',
+    'scripts/feature-batch-ci-window-tooling/pnpm-lock.yaml', 'scripts/feature-batch-ci-window-tooling/pnpm-workspace.yaml',
+    ...selectedWindow.flatMap(slice => [slice.anchor, ...slice.productionAnchors.map(anchor => typeof anchor === 'string' ? anchor : anchor.file),
+      ...slice.vitest, ...slice.strict].map(file => `window/${file}`))])];
   return Object.fromEntries(await Promise.all(files.map(async file => [file,
     crypto.createHash('sha256').update(await fs.readFile(path.join(repoRoot, file))).digest('hex')])));
 }
@@ -128,7 +141,7 @@ async function strictChecks(selected, scratch, receipt, env) {
       files: [...roots, ...ambientRoots].map(file => path.join(engineRoot, file)), include: [], exclude: [],
     }, null, 2) + '\n');
     await execute(process.execPath, [nodeHeap, path.join(engineRoot, 'scripts/run-tsgo.mjs'),
-      '--project', config, '--extendedDiagnostics'], engineRoot, env, scratch, receipt, `strict-${profile}`);
+      '--project', config, '--extendedDiagnostics'], engineRoot, env, scratch, receipt, `strict-${profile}`, 330_000);
   }
 }
 
@@ -141,6 +154,7 @@ async function vitestConfig(selected, scratch, env, receipt) {
     await fs.writeFile(buildScript, `import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 const require = createRequire(${JSON.stringify(path.join(engineRoot, 'package.json'))});
 const engine = ${JSON.stringify(engineRoot)};
 const { paths } = JSON.parse(fs.readFileSync(path.join(engine, 'tsconfig.json'), 'utf8')).compilerOptions;
@@ -156,7 +170,7 @@ const candidate = path.resolve(engine, targets[0].replace('*', suffix));
 if (fs.existsSync(candidate)) return { path: candidate };
 if (fs.existsSync(candidate + '.ts')) return { path: candidate + '.ts' };
 } }
-return { path: require.resolve(args.path), external: true };
+return { path: pathToFileURL(require.resolve(args.path)).href, external: true };
 }); } }] });\n`);
     await execute(process.execPath, [nodeHeap, buildScript], engineRoot, env, scratch, receipt, 'build-real-worker');
     // External package imports resolve from engine, so keep the generated bundle in an owned artifact directory.
@@ -180,27 +194,66 @@ execArgv: [...sharedVitestConfig.test.execArgv, '${nodeHeap}'] } };\n`);
   return config;
 }
 
+async function windowChecks(selected, pnpm, scratch, receipt, env) {
+  const source = JSON.parse(await fs.readFile(path.join(windowRoot, 'package.json'), 'utf8'));
+  const tooling = JSON.parse(await fs.readFile(path.join(toolingRoot, 'package.json'), 'utf8'));
+  const expected = { ...source.dependencies, ...source.devDependencies };
+  for (const [name, pin] of Object.entries(expected)) expected[name] = pin.startsWith('link:')
+    ? `link:../../engine/packages/${name.slice('@branch/'.length)}` : pin.replace(/^[~^]/, '');
+  assert.deepEqual(tooling.dependencies, expected, 'Changed window tooling requires review of its canonical lock');
+  const policy = await fs.readFile(path.join(toolingRoot, 'pnpm-workspace.yaml'), 'utf8');
+  assert.match(policy, /^minimumReleaseAge: 10080$/m);
+  assert.match(policy, /^minimumReleaseAgeStrict: true$/m);
+  const flags = await verifiedExceptionFlags('window');
+  await execute(pnpm, ['install', '--frozen-lockfile', '--ignore-scripts', ...flags,
+    `--store-dir=${path.join(scratch, 'window-pnpm-store')}`,
+    `--modules-dir=${path.join(windowRoot, 'node_modules')}`,
+    `--virtual-store-dir=${path.join(windowRoot, 'node_modules/.pnpm')}`], toolingRoot, env, scratch, receipt, 'frozen-window-install', 240_000);
+  await publishWindowDependencies();
+  await assertLocalModules(windowRoot, ['vitest', 'typescript', 'react', 'react-dom', 'jsdom']);
+  for (const name of ['gateway-protocol', 'gateway-client']) await execute(process.execPath,
+    [nodeHeap, '--import', './scripts/tsx.mjs', 'scripts/build-workspace-package.mts', name],
+    engineRoot, env, scratch, receipt, `canonical-${name}-build`);
+  // Use both original renderer project profiles. Build-info caches live in owned node_modules.
+  await execute(process.execPath, [nodeHeap, path.join(windowRoot, 'node_modules/typescript/bin/tsc'),
+    '--build', path.join(windowRoot, 'tsconfig.json'), '--verbose'], windowRoot, env, scratch, receipt, 'strict-window');
+  const files = selected.flatMap(slice => slice.vitest);
+  const config = path.join(scratch, 'window-vitest.config.mjs');
+  await fs.writeFile(config, `import config from ${JSON.stringify(pathToFileURL(path.join(windowRoot, 'vite.config.ts')).href)};
+export default { ...config, root: ${JSON.stringify(windowRoot)},
+test: { ...config.test, include: ${JSON.stringify(files)}, projects: undefined, maxWorkers: 1,
+fileParallelism: false, isolate: true, passWithNoTests: false, pool: 'forks', execArgv: ['${nodeHeap}'] } };\n`);
+  await execute(process.execPath, [nodeHeap, path.join(windowRoot, 'node_modules/vitest/vitest.mjs'),
+    'run', '--config', config, ...files], windowRoot, env, scratch, receipt, 'named-window-vitest');
+}
+
 async function all() {
   const scope = await inventory();
   const selected = scope.filter(slice => slice.state === 'ready');
+  const windowScope = await windowInventory();
+  const selectedWindow = windowScope.filter(slice => slice.state === 'ready');
   const base = process.env.RUNNER_TEMP ?? process.env.BRANCH_FEATURE_SLICE_TEMP;
   assert(base, 'RUNNER_TEMP or explicit BRANCH_FEATURE_SLICE_TEMP is required');
   await fs.mkdir(base, { recursive: true });
   const scratch = await fs.mkdtemp(path.join(base, 'branch-feature-slice-'));
-  const receipt = { head: await gitHead(), platform: process.platform, node: process.version, scope,
+  const receipt = { head: await gitHead(), platform: process.platform, node: process.version, scope, windowScope,
     nativeFiles: selected.flatMap(slice => slice.native), vitestFiles: selected.flatMap(slice => slice.vitest),
-    steps: [], status: selected.length ? 'started' : 'inventory-only', coverageClaim: 'Named offline source tests only; no installed or complete feature acceptance.' };
-  const before = await hashes(selected);
+    windowVitestFiles: selectedWindow.flatMap(slice => slice.vitest),
+    steps: [], status: selected.length || selectedWindow.length ? 'started' : 'inventory-only', coverageClaim: 'Named offline source tests only; no installed or complete feature acceptance.' };
+  const before = await hashes(selected, selectedWindow);
   const launcherBefore = await launcherState(launcherFile);
   const env = { ...baseEnv, BRANCH_TEST_ARTIFACT_DIR: path.join(scratch, 'fixtures'),
     BRANCH_HOME: path.join(scratch, 'home'), BRANCH_STATE_DIR: path.join(scratch, 'state'),
     BRANCH_CONFIG_PATH: path.join(scratch, 'config.json'), BRANCH_TEST_FAST: '1' };
   console.log(`Feature slices: ${selected.length} ready, ${scope.length - selected.length} absent. ${receipt.nativeFiles.length} native, ${receipt.vitestFiles.length} Vitest files.`);
   console.log(`Receipt directory: ${scratch}`);
+  console.log(`Window slices: ${selectedWindow.length} ready. ${receipt.windowVitestFiles.length} exact React/jsdom files.`);
   try {
     assert(!scope.some(slice => slice.state === 'incomplete'),
       `Incomplete feature slices: ${JSON.stringify(scope.filter(slice => slice.state === 'incomplete').map(slice => ({ id: slice.id, missing: slice.missing })))}`);
-    if (selected.length) {
+    assert(!windowScope.some(slice => slice.state === 'incomplete'),
+      `Incomplete window slices: ${JSON.stringify(windowScope.filter(slice => slice.state === 'incomplete').map(slice => ({ id: slice.id, missing: slice.missing })))}`);
+    if (selected.length || selectedWindow.length) {
       const pnpm = await preparePnpm(scratch);
       const exceptions = await verifiedExceptionFlags('engine');
       receipt.installAttempted = true;
@@ -223,6 +276,7 @@ async function all() {
         await execute(process.execPath, [nodeHeap, path.join(engineRoot, 'node_modules/vitest/vitest.mjs'),
           'run', '--config', config, ...receipt.vitestFiles], engineRoot, env, scratch, receipt, 'named-vitest');
       }
+      if (selectedWindow.length) await windowChecks(selectedWindow, pnpm, scratch, receipt, env);
       receipt.status = 'passed';
     }
   } catch (error) {
@@ -233,17 +287,17 @@ async function all() {
       // pnpm bin linking can chmod the unchanged launcher 0644 -> 0755. Preserve that exact
       // observation and restore the original mode; never ignore bytes or other tracked diffs.
       receipt.launcher = await restoreKnownLauncherMode(launcherFile, launcherBefore, receipt.installAttempted === true);
-      receipt.sourceHashesBefore = before; receipt.sourceHashesAfter = await hashes(selected);
+      receipt.sourceHashesBefore = before; receipt.sourceHashesAfter = await hashes(selected, selectedWindow);
       assert.deepEqual(receipt.sourceHashesAfter, before, 'CI changed source, manifests, policies or frozen locks');
       assert.equal(await gitHead(), receipt.head, 'Checked source HEAD changed');
-      await execute('git', ['diff', '--exit-code', 'HEAD', '--', 'engine', 'scripts', '.github'],
+      await execute('git', ['diff', '--exit-code', 'HEAD', '--', 'engine', 'window', 'scripts', '.github'],
         repoRoot, env, scratch, receipt, 'tracked-source-integrity');
     } catch (error) { receipt.status = 'failed'; receipt.integrityError = String(error); throw error; }
     finally {
       await fs.writeFile(path.join(scratch, 'feature-slice-receipt.json'), JSON.stringify(receipt, null, 2) + '\n');
       if (process.env.GITHUB_STEP_SUMMARY) await fs.appendFile(process.env.GITHUB_STEP_SUMMARY,
-        `Feature slice result: **${receipt.status}**. Native files: ${receipt.nativeFiles.length}. Vitest files: ${receipt.vitestFiles.length}.\n\n` +
-        scope.map(slice => `- ${slice.id}: ${slice.state}. ` + slice.followupCoverage.map(f => `PR${f.pr}: ${f.state}. `).join('') + slice.gap).join('\n') + '\n');
+        `Feature slice result: **${receipt.status}**. Native files: ${receipt.nativeFiles.length}. Engine Vitest files: ${receipt.vitestFiles.length}. Window Vitest files: ${receipt.windowVitestFiles.length}.\n\n` +
+        [...scope, ...windowScope].map(slice => `- ${slice.id}: ${slice.state}. ` + slice.followupCoverage.map(f => `PR${f.pr}: ${f.state}. `).join('') + slice.gap).join('\n') + '\n');
     }
   }
 }
@@ -271,6 +325,9 @@ async function selfTest() {
   const followupOnly = await inventory(async file => file === 'extensions/cloudflare/audio-transcription.http-errors.test.ts');
   assert.equal(followupOnly.find(slice => slice.id === 'cloudflare-voice').state, 'incomplete');
   controls++;
+  const nativeFollowupOnly = await inventory(async file => file === 'src/coding/search-match.boundaries.node-test.ts');
+  assert.equal(nativeFollowupOnly.find(slice => slice.id === 'continue-edits').state, 'incomplete');
+  controls++;
   for (const slice of slices) {
     for (const anchor of slice.productionAnchors) {
       const file = typeof anchor === 'string' ? anchor : anchor.file;
@@ -291,6 +348,32 @@ async function selfTest() {
   }
   assert(slices.find(slice => slice.id === 'continue-edits').native.includes('src/agents/sessions/tools/edit-diff.continue.test.ts'));
   controls++;
+  assert((await inventory(async () => false, async () => 'changed', windowSlices)).every(slice => slice.state === 'absent'));
+  controls++;
+  assert((await inventory(async () => true, async () => 'changed', windowSlices)).every(slice => slice.state === 'ready'));
+  controls++;
+  const inheritedWindow = new Set(['src/places-nav/SettingsFrame.test.tsx', 'src/composer/composer-logic.test.ts',
+    'src/connect/session-error-refresh.test.ts']);
+  assert((await inventory(async file => inheritedWindow.has(file), async () => 'changed', windowSlices)).every(slice => slice.state === 'absent'));
+  controls++;
+  for (const slice of windowSlices) {
+    for (const anchor of slice.productionAnchors) {
+      const file = typeof anchor === 'string' ? anchor : anchor.file;
+      const sourceOnly = await inventory(async candidate => candidate === file, async () => 'changed', windowSlices);
+      assert.equal(sourceOnly.find(candidate => candidate.id === slice.id).state, 'incomplete');
+      controls++;
+      if (typeof anchor !== 'string') {
+        const unchanged = await inventory(async candidate => candidate === file, async () => anchor.baselineSha256, windowSlices);
+        assert.equal(unchanged.find(candidate => candidate.id === slice.id).state, 'absent');
+        controls++;
+      }
+    }
+    for (const marker of slice.markers) {
+      const testOnly = await inventory(async file => file === marker, async () => 'changed', windowSlices);
+      assert.equal(testOnly.find(candidate => candidate.id === slice.id).state, 'incomplete');
+      controls++;
+    }
+  }
   const fixture = await fs.mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'feature-launcher-control-'));
   let launcherControls = 0;
   try {
@@ -320,7 +403,7 @@ async function selfTest() {
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
   const mode = process.argv[2];
-  if (mode === 'validate') { await selfTest(); console.log(JSON.stringify(await inventory(), null, 2)); }
+  if (mode === 'validate') { await selfTest(); console.log(JSON.stringify({ engine: await inventory(), window: await windowInventory() }, null, 2)); }
   else if (mode === 'all') await all();
   else throw new Error('Usage: node scripts/feature-slice-ci.mjs validate|all');
 }
