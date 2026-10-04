@@ -133,8 +133,10 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
         <Status tone={campaign.state === "applying" ? "warn" : "ok"} title={`${latest || "An update"} is installing by itself`}>{campaignLine(campaign, now)}.</Status>
       ) : latest ? (
         <Status title={`${latest} is ready to install`}>It waits for running tasks, up to the update deadline, and keeps a safety copy first.</Status>
-      ) : (
+      ) : data.status.updateAvailable === null ? (
         <Status title="Branch is up to date.">{`You have ${version || str(available.currentVersion) || "the newest version"}.`}</Status>
+      ) : (
+        <Status tone="idle" title="Update availability not reported">The engine hasn’t reported whether an update is available.</Status>
       )}
       {latest && !str(active.runId) ? (
         <Acts>
