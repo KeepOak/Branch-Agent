@@ -10,6 +10,8 @@ export default {
     ...sharedVitestConfig.test,
     include: capabilityTests(),
     projects: undefined,
+    // Native gateway and agent-admission tests need a main thread; POSIX defaults to worker threads.
+    pool: 'forks',
     maxWorkers: 2,
     fileParallelism: true,
     isolate: true,

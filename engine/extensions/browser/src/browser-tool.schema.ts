@@ -150,10 +150,7 @@ function createBrowserActProperties(capabilities: BrowserToolCapabilities) {
     ref: Type.Optional(Type.String()),
     // batch - permissive children keep the provider schema flat; runtime validates each action.
     actions: Type.Optional(
-      Type.Array(
-        Type.Object({}, { additionalProperties: true }),
-        supportsBatch ? { description: "batch actions." } : {},
-      ),
+      Type.Array(Type.Object({}, { additionalProperties: true })),
     ),
     stopOnError: Type.Optional(
       Type.Boolean(supportsBatch ? { description: "Stop on error; default true." } : {}),
