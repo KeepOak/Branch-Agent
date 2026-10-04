@@ -1,7 +1,7 @@
 // Library › Made for you (preview 40-places made + 42-placesbp libDashHtmlPQ18 / libImgHtmlPQ18 + 94-g4p apps):
 // Dashboards (sessions.list hasBoard + board.get), every Trunk's made files (artifacts.list per conversation),
 // Images (artifacts.list type image, four at a time), Apps with Publish.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Face } from "../../face/Face";
@@ -167,21 +167,33 @@ function openArtifact(op: ReturnType<typeof useOperation>, row: SessionRow, a: A
 function ImageGroup({ engine, group, open }: { engine: WindowEngine; group: Group; open: () => void }) {
   const [pages, setPages] = useState<{ images: Artifact[]; cursor?: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const lifetime = useRef<{ active: boolean } | null>(null);
   const cursor = pages.length ? pages[pages.length - 1].cursor : undefined;
   const params = (from?: string) => ({ sessionKey: group.row.key, ...(agentOf(group.row) ? { agentId: agentOf(group.row) } : {}), type: "image", limit: 4, ...(from ? { cursor: from } : {}) });
-  const older = (from: string) => engine.request<unknown>("artifacts.list", params(from))
-    .then(r => setPages(p => [...p, { images: artifactsOf(r), cursor: optStr(rec(r).nextCursor) }]), e => setError(errorText(e)));
+  async function older(from: string) {
+    const ticket = lifetime.current;
+    if (pending.current || !ticket?.active) return;
+    pending.current = true; setBusy(true); setError(null);
+    try {
+      const result = await engine.request<unknown>("artifacts.list", params(from));
+      if (ticket.active) setPages(p => [...p, { images: artifactsOf(result), cursor: optStr(rec(result).nextCursor) }]);
+    } catch (e) { if (ticket.active) setError(errorText(e)); }
+    finally { if (ticket.active) { pending.current = false; setBusy(false); } }
+  }
   useEffect(() => {
-    let current = true;
+    const ticket = { active: true }; lifetime.current = ticket;
+    pending.current = false; setBusy(false); setPages([]); setError(null);
     void engine.request<unknown>("artifacts.list", params())
-      .then(r => { if (current) setPages([{ images: artifactsOf(r), cursor: optStr(rec(r).nextCursor) }]); }, e => { if (current) setError(errorText(e)); });
-    return () => { current = false; };
+      .then(r => { if (ticket.active) setPages([{ images: artifactsOf(r), cursor: optStr(rec(r).nextCursor) }]); }, e => { if (ticket.active) setError(errorText(e)); });
+    return () => { ticket.active = false; };
   }, [engine, group.row.key]); // the first four images, once per conversation
   const images = pages.flatMap(p => p.images).filter(a => a.type === "image");
   return <div className="lib-ig">
     <button type="button" className="link" onClick={open}>{sessionTitle(group.row)}</button>
     {error && <p className="lib-bad" role="alert">{error}</p>}
     <div className="lib-ithumbs">{images.map(img => img.image?.url ? <img key={img.id} className="lib-ithumb" src={img.image.url} alt={img.title} /> : <span key={img.id} className="lib-ibig" role="img" aria-label={img.title}>Too large to preview here.</span>)}</div>
-    {cursor && <button type="button" className="btn ghost sm" onClick={() => void older(cursor)}>Older images</button>}
+    {cursor && <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void older(cursor)}>Older images</button>}
   </div>;
 }

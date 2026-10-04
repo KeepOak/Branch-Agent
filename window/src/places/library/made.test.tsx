@@ -105,4 +105,28 @@ describe("Library › Made for you", () => {
     expect(button("Publish")!.disabled).toBe(true);
     expect(button("Publish")!.title).toMatch(/^Needs /);
   });
+  it("requests an older image page once while pending and permits retry after failure", async () => {
+    let reject!: (error: Error) => void;
+    let attempts = 0;
+    const held = new Promise((_, fail) => { reject = fail; });
+    const { engine, request } = engineOf(base((method, params) => {
+      if (method !== "artifacts.list" || params.type !== "image" || !params.cursor) return undefined;
+      attempts++;
+      return attempts === 1 ? held : { artifacts: [{ id: "older", title: "older.png", type: "image", image: { url: "data:image/png;base64,AA==" } }] };
+    }));
+    await mount(engine);
+    const images = host.querySelector('[data-testid="images"]')!;
+    const older = button("Older images", images)!;
+    await act(async () => { older.click(); older.click(); });
+    expect(older.disabled).toBe(true);
+    expect(request.mock.calls.filter(([method, params]) => method === "artifacts.list" && params?.cursor === "c2")).toHaveLength(1);
+    await act(async () => { reject(new Error("Image page unavailable")); }); await settle();
+    expect(images.textContent).toContain("Image page unavailable");
+    expect(older.disabled).toBe(false);
+    await act(async () => { older.click(); }); await settle();
+    expect(images.textContent).not.toContain("Image page unavailable");
+    expect(images.querySelectorAll("img")).toHaveLength(2);
+    expect(button("Older images", images)).toBeUndefined();
+    expect(attempts).toBe(2);
+  });
 });
