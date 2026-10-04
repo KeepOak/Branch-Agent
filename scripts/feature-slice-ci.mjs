@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { ambientRoots, slices, validateInventory } from './feature-slice-ci-targets.mjs';
 import { assertLocalModules, engineRoot, gitHead, preparePnpm, repoRoot, verifiedExceptionFlags } from './feature-batch-ci-runtime.mjs';
@@ -11,12 +12,34 @@ const nodeHeap = '--max-old-space-size=1024';
 const baseEnv = { ...process.env, NODE_OPTIONS: nodeHeap, TSX_DISABLE_CACHE: '1',
   TSX_TSCONFIG_PATH: path.join(engineRoot, 'tsconfig.json'), GOMEMLIMIT: '2GiB', GOMAXPROCS: '2',
   // The compiler owner joins its process group before the outer command's 180s deadline.
-  BRANCH_TSGO_TIMEOUT_MS: '120000' };
+  BRANCH_TSGO_TIMEOUT_MS: '150000' };
 const present = async file => fs.access(path.join(engineRoot, file)).then(() => true, error => {
   if (error.code !== 'ENOENT') throw error;
   return false;
 });
 const sourceHash = async file => crypto.createHash('sha256').update(await fs.readFile(path.join(engineRoot, file))).digest('hex');
+const launcherFile = path.join(engineRoot, 'branch.mjs');
+
+async function launcherState(file) {
+  const stat = await fs.lstat(file);
+  assert(stat.isFile() && !stat.isSymbolicLink(), 'The tracked launcher must remain a regular file');
+  return { mode: stat.mode & 0o777, sha256: crypto.createHash('sha256').update(await fs.readFile(file)).digest('hex') };
+}
+
+async function restoreKnownLauncherMode(file, before, installAttempted) {
+  const observed = await launcherState(file);
+  assert.equal(observed.sha256, before.sha256, 'Package-manager launcher bytes changed');
+  let restored = false;
+  if (observed.mode !== before.mode) {
+    assert(process.platform !== 'win32' && installAttempted && before.mode === 0o644 && observed.mode === 0o755,
+      'Unexpected tracked launcher permission change');
+    await fs.chmod(file, before.mode);
+    restored = true;
+  }
+  const after = await launcherState(file);
+  assert.deepEqual(after, before, 'Tracked launcher identity must be restored before the complete Git integrity check');
+  return { before, observed, after, restored };
+}
 
 // An absent branch is explicit coverage debt. A partial slice is a broken registration and fails.
 export async function inventory(exists = present, digest = sourceHash) {
@@ -84,7 +107,7 @@ function execute(command, args, cwd, env, scratch, receipt, label, timeoutMs = 1
 }
 
 async function hashes(selected) {
-  const files = [...new Set(['engine/package.json', 'engine/pnpm-lock.yaml', 'engine/pnpm-workspace.yaml',
+  const files = [...new Set(['engine/branch.mjs', 'engine/package.json', 'engine/pnpm-lock.yaml', 'engine/pnpm-workspace.yaml',
     'engine/tsconfig.json', 'engine/tsconfig.core.json', 'scripts/feature-slice-ci.mjs',
     'scripts/feature-slice-ci-targets.mjs', '.github/workflows/feature-slice-checks.yml',
     ...ambientRoots.map(file => `engine/${file}`),
@@ -125,7 +148,7 @@ await require('esbuild').build({ entryPoints: [${JSON.stringify(path.join(engine
 outfile: ${JSON.stringify(worker)}, bundle: true, platform: 'node', format: 'esm', target: 'node24',
 tsconfig: ${JSON.stringify(path.join(engineRoot, 'tsconfig.json'))},
 plugins: [{ name: 'actual-checkout-source', setup(build) { build.onResolve({ filter: /^[^./]/ }, args => {
-if (args.path.startsWith('node:')) return;
+if (args.kind === 'entry-point' || path.isAbsolute(args.path) || args.path.startsWith('node:')) return;
 for (const [key, targets] of Object.entries(paths)) {
 if (key === args.path || (key.endsWith('*') && args.path.startsWith(key.slice(0, -1)))) {
 const suffix = key.endsWith('*') ? args.path.slice(key.length - 1) : '';
@@ -168,6 +191,7 @@ async function all() {
     nativeFiles: selected.flatMap(slice => slice.native), vitestFiles: selected.flatMap(slice => slice.vitest),
     steps: [], status: selected.length ? 'started' : 'inventory-only', coverageClaim: 'Named offline source tests only; no installed or complete feature acceptance.' };
   const before = await hashes(selected);
+  const launcherBefore = await launcherState(launcherFile);
   const env = { ...baseEnv, BRANCH_TEST_ARTIFACT_DIR: path.join(scratch, 'fixtures'),
     BRANCH_HOME: path.join(scratch, 'home'), BRANCH_STATE_DIR: path.join(scratch, 'state'),
     BRANCH_CONFIG_PATH: path.join(scratch, 'config.json'), BRANCH_TEST_FAST: '1' };
@@ -179,8 +203,11 @@ async function all() {
     if (selected.length) {
       const pnpm = await preparePnpm(scratch);
       const exceptions = await verifiedExceptionFlags('engine');
+      receipt.installAttempted = true;
       await execute(pnpm, ['install', '--frozen-lockfile', '--ignore-scripts', ...exceptions,
         `--store-dir=${path.join(scratch, 'pnpm-store')}`], engineRoot, env, scratch, receipt, 'frozen-engine-install', 480_000);
+      receipt.launcherAfterInstall = await launcherState(launcherFile);
+      assert.equal(receipt.launcherAfterInstall.sha256, launcherBefore.sha256, 'Frozen installation changed tracked launcher bytes');
       await assertLocalModules(engineRoot, ['vitest', 'tsx', 'typescript', 'esbuild']);
       await execute(process.execPath, [nodeHeap, '--import', './scripts/tsx.mjs', '--input-type=module', '--eval',
         'const { withDistArtifactOwnership } = await import("./scripts/lib/dist-artifact-ownership.mts");\n' +
@@ -203,6 +230,9 @@ async function all() {
     throw error;
   } finally {
     try {
+      // pnpm bin linking can chmod the unchanged launcher 0644 -> 0755. Preserve that exact
+      // observation and restore the original mode; never ignore bytes or other tracked diffs.
+      receipt.launcher = await restoreKnownLauncherMode(launcherFile, launcherBefore, receipt.installAttempted === true);
       receipt.sourceHashesBefore = before; receipt.sourceHashesAfter = await hashes(selected);
       assert.deepEqual(receipt.sourceHashesAfter, before, 'CI changed source, manifests, policies or frozen locks');
       assert.equal(await gitHead(), receipt.head, 'Checked source HEAD changed');
@@ -261,7 +291,31 @@ async function selfTest() {
   }
   assert(slices.find(slice => slice.id === 'continue-edits').native.includes('src/agents/sessions/tools/edit-diff.continue.test.ts'));
   controls++;
-  console.log(JSON.stringify({ ...validateInventory(), selectionControls: controls, passed: true }));
+  const fixture = await fs.mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'feature-launcher-control-'));
+  let launcherControls = 0;
+  try {
+    const file = path.join(fixture, 'branch.mjs');
+    await fs.writeFile(file, 'export const fixture = true;\n');
+    await fs.chmod(file, 0o644);
+    const before = await launcherState(file);
+    const unchanged = await restoreKnownLauncherMode(file, before, false);
+    assert.equal(unchanged.restored, false);
+    launcherControls++;
+    if (process.platform !== 'win32') {
+      await fs.chmod(file, 0o755);
+      await assert.rejects(restoreKnownLauncherMode(file, before, false), /Unexpected tracked launcher permission change/);
+      launcherControls++;
+      assert.equal((await restoreKnownLauncherMode(file, before, true)).restored, true);
+      launcherControls++;
+      await fs.chmod(file, 0o600);
+      await assert.rejects(restoreKnownLauncherMode(file, before, true), /Unexpected tracked launcher permission change/);
+      launcherControls++;
+    }
+    await fs.writeFile(file, 'changed bytes\n');
+    await assert.rejects(restoreKnownLauncherMode(file, before, true), /launcher bytes changed/);
+    launcherControls++;
+  } finally { await fs.rm(fixture, { recursive: true, force: true }); }
+  console.log(JSON.stringify({ ...validateInventory(), selectionControls: controls, launcherControls, passed: true }));
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {

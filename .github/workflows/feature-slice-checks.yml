@@ -27,7 +27,7 @@ jobs:
   feature-slices:
     name: Exact feature slices on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       max-parallel: 2
