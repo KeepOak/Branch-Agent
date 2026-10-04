@@ -264,7 +264,10 @@ async function selfTest() {
     'extensions/github/src/detail.test.ts', 'extensions/github/src/detail-checks.test.ts',
     'src/agents/sessions/tools/write.test.ts', 'src/agents/bash-tools.exec-host-gateway.test.ts',
     'src/plugin-sdk/pair-loop-guard-runtime.test.ts', 'src/agents/sessions/tools/edit-diff.test.ts',
-    'src/agents/embedded-agent-live-edit-diff.test.ts']);
+    'src/agents/embedded-agent-live-edit-diff.test.ts',
+    'extensions/discord/src/monitor/message-handler.process.draft-final.test.ts',
+    'extensions/discord/src/monitor/message-handler.process.draft-progress.test.ts',
+    'extensions/discord/src/monitor/message-handler.draft-preview.rest.test.ts']);
   const baseline = await inventory(async file => inherited.has(file));
   assert(baseline.every(slice => slice.state === 'absent'));
   controls++;
