@@ -71,10 +71,13 @@
 .set-col .s2-percomp .grow { display: grid; gap: 6px; }
 .dlg .s2-field { display: grid; gap: 6px; font-size: 13px; }
 .dlg .s2-field .inp { height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r1-17); background: var(--bg); color: var(--ink); }
-.set-col .s2-comp { flex-wrap: nowrap; }
-.set-col .s2-comp > .grow { flex: 1 1 auto; }
-.set-col .s2-comp > .pill { margin-left: 0; margin-top: 2px; }
-.set-col .s2-comp > .icon-btn { margin-left: 0; margin-top: -4px; }
+/* under 560 px the pill and ⋯ wrap onto their own line, as the preview's computer cards do */
+@media (min-width: 561px) {
+  .set-col .s2-comp { flex-wrap: nowrap; }
+  .set-col .s2-comp > .grow { flex: 1 1 auto; }
+  .set-col .s2-comp > .pill { margin-left: 0; margin-top: 2px; }
+  .set-col .s2-comp > .icon-btn { margin-left: 0; margin-top: -4px; }
+}
 .set-col .s2-find { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; }
 .set-col .s2-find .inp { flex: 1; min-width: 0; }
 .set-col .icon-btn { border: 0; background: none; padding: 0; cursor: pointer; }
