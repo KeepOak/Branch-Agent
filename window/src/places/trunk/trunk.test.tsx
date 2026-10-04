@@ -68,7 +68,8 @@ describe("Trunk data", () => {
     const was = { name: "Birch", theme: "", look: "ember", emoji: "", model: "p/one", may };
     expect(updateParams("birch", was, was)).toBeNull();
     expect(updateParams("birch", was, { ...was, look: "classic", emoji: "🦉" })).toEqual({ agentId: "birch", avatar: "classic", emoji: "🦉" });
-    expect(scheduleText({ kind: "cron", expr: "0 8 * * *" })).toBe("Every day at 08:00");
+    expect(scheduleText({ kind: "cron", expr: "0 8 * * *" })).toBe("Every day at 8:00 AM");
+    expect(scheduleText({ kind: "cron", expr: "*/30 * * * *" })).toBe("Every 30 minutes");
     expect(readFacts({ file: { name: "MEMORY.md", content: ["# Notes", "- Pays rent on the 1st", "  from the joint account", "- Prefers aisle seats", ""].join("\n") } }, "scout")).toBe(2);
     expect(readFacts({ file: { name: "MEMORY.md", missing: true } }, "scout")).toBe(0);
     expect(readFacts({}, "scout")).toBeNull();

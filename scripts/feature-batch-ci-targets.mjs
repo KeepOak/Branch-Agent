@@ -329,6 +329,7 @@ export const windowStrictFiles = [
   'src/places/settings/set2/achievements.test.tsx',
   'src/shell/engine-data.ts',
   'src/places/trunk/api.ts',
+  'src/places/trunk/profile-data.ts',
   'src/places/trunk/trunk.test.tsx',
   'src/places/trunk/create-readiness.test.ts',
   'src/places/customize/channels.tsx',

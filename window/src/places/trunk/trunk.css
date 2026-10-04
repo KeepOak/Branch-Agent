@@ -113,6 +113,8 @@ button.tk-prow:hover { background: var(--wash17); }
 .tk-pf-val { flex: 1 1 auto; min-width: 0; text-align: right; font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tk-pf-val.mono { font-family: var(--mono); font-size: 11.5px; }
 .tk-prow > .tk-grow { flex: none; }
+/* an automation row: its switch sits at the right edge, as in the preview */
+div.tk-prow > .tk-grow { flex: 1; min-width: 0; }
 .tk-prow .chev { color: var(--ink-3); display: inline-flex; }
 button.tk-prow:disabled { cursor: default; }
 button.tk-prow:disabled:hover { background: none; }
