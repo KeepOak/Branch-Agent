@@ -347,6 +347,17 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
    */
   getFollowUpMessages?: () => Promise<AgentMessage[]>;
 
+  /**
+   * Called when the run would otherwise end: the last turn's reply had no tool
+   * calls and no steering or follow-up messages are queued. Returned messages
+   * are added to context and the agent continues with another turn.
+   *
+   * Use this to continue a reply that stopped mid-task (next-speaker check).
+   *
+   * Contract: must not throw or reject. Return [] to let the run end.
+   */
+  getContinuationMessages?: (context: ShouldStopAfterTurnContext) => Promise<AgentMessage[]>;
+
   /** Consumes the cancellation fact for a previously drained queue message. */
   consumeQueuedMessageCancellation?: (message: AgentMessage) => boolean;
 

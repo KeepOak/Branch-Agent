@@ -149,6 +149,8 @@ async function runLoop(
   let config = initialConfig;
   let firstTurn = true;
   let turnOpen = true;
+  let lastTurnMessage: AssistantMessage | undefined;
+  let lastTurnToolResults: ToolResultMessage[] = [];
   let turnTainted = isActiveTurnTainted(state.context.messages);
   const toolLoopRecoveryState = initialConfig.toolLoopRecoveryState ?? {
     criticalToolLoopSeen: false,
@@ -355,6 +357,8 @@ async function runLoop(
 
       await emit({ type: "turn_end", message, toolResults });
       turnOpen = false;
+      lastTurnMessage = message;
+      lastTurnToolResults = toolResults;
       if (executedToolBatch?.fatal) {
         throw executedToolBatch.fatal.error;
       }
@@ -451,6 +455,19 @@ async function runLoop(
       // Recheck after the awaited follow-up drain so agent_end cannot strand an accepted steer.
       const finalSteering = getSteeringAtCheckpoint(config);
       pendingMessages = Array.isArray(finalSteering) ? finalSteering : await finalSteering;
+    }
+    if (pendingMessages.length === 0 && lastTurnMessage && config.getContinuationMessages) {
+      // A reply without tool calls ended the turn; let the host continue it.
+      pendingMessages =
+        (await config.getContinuationMessages({
+          message: lastTurnMessage,
+          toolResults: lastTurnToolResults,
+          context: state.context,
+          newMessages,
+        })) || [];
+      if (await stopIfAborted()) {
+        return newMessages;
+      }
     }
     if (pendingMessages.length === 0) {
       break;

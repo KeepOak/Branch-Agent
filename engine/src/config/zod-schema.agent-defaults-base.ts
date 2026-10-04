@@ -231,6 +231,8 @@ export const AgentDefaultsBaseSchema = z.strictObject({
   toolProgressDetail: z.union([z.literal("explain"), z.literal("raw")]).optional(),
   /** Label each completed tool batch with a short utility-model summary. Default: true. */
   emitToolUseSummaries: z.boolean().optional(),
+  /** Skip the utility-model check that continues a reply which stopped mid-task. Default: true. */
+  skipNextSpeakerCheck: z.boolean().optional(),
   reasoningDefault: z.union([z.literal("off"), z.literal("on"), z.literal("stream")]).optional(),
   elevatedDefault: z
     .union([z.literal("off"), z.literal("on"), z.literal("ask"), z.literal("full")])

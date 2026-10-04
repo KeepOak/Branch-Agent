@@ -38,6 +38,7 @@ import { invalidateComputerFrameIfMissing } from "../../tools/computer-tool.js";
 import { resolveAttemptWorkspaceSandbox } from "../../workspace-sandbox.js";
 import { isCacheTtlEligibleProvider, readLastCacheTtlTimestamp } from "../cache-ttl.js";
 import { log } from "../logger.js";
+import { installNextSpeakerContinuation } from "../next-speaker-continuation.js";
 import type { ToolResultPromptProjectionState } from "../session-prompt-state.js";
 import {
   installContextEngineLoopHook,
@@ -343,6 +344,11 @@ export function installEmbeddedAttemptContextGuards(input: {
     contextWindowTokens: contextTokenBudget,
     ...midTurnPrecheckOptions,
   });
+  const removeNextSpeakerContinuation = installNextSpeakerContinuation({
+    agent: activeSession.agent,
+    cfg: attempt.config,
+    agentId: input.sessionAgentId,
+  });
 
   const removeHistoryImagePruneContextTransform = installHistoryImagePruneContextTransform(
     activeSession.agent,
@@ -384,6 +390,7 @@ export function installEmbeddedAttemptContextGuards(input: {
     remove: () => {
       activeSession.agent.transformContext = previousComputerFrameTransform;
       removeHistoryImagePruneContextTransform();
+      removeNextSpeakerContinuation();
       removeToolResultGuard();
       removeContextEngineLoopHook?.();
       activeSession.agent.transformContext = previousCacheTtlTransform;

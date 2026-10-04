@@ -127,6 +127,8 @@ export interface AgentOptions {
     context: PrepareNextTurnContext,
     signal?: AbortSignal,
   ) => Promise<AgentLoopTurnUpdate | undefined> | AgentLoopTurnUpdate | undefined;
+  /** Hook that may continue a run whose last reply ended without tool calls. */
+  getContinuationMessages?: AgentLoopConfig["getContinuationMessages"];
   /** Queue drain mode for steering messages applied before the next unstarted tool or model turn. */
   steeringMode?: QueueMode;
   /** Queue drain mode for follow-up messages injected after the agent would otherwise stop. */
@@ -289,6 +291,7 @@ export class Agent {
   public afterToolOutcome?: NonNullable<AgentOptions["afterToolOutcome"]>;
   public prepareNextTurn?: NonNullable<AgentOptions["prepareNextTurn"]>;
   public prepareNextTurnWithContext?: NonNullable<AgentOptions["prepareNextTurnWithContext"]>;
+  public getContinuationMessages?: AgentOptions["getContinuationMessages"];
   private activeRun?: ActiveRun;
   /** Session identifier forwarded to providers for cache-aware backends. */
   public sessionId?: string;
@@ -316,6 +319,7 @@ export class Agent {
     this.afterToolOutcome = options.afterToolOutcome;
     this.prepareNextTurn = options.prepareNextTurn;
     this.prepareNextTurnWithContext = options.prepareNextTurnWithContext;
+    this.getContinuationMessages = options.getContinuationMessages;
     this.steeringQueue = new PendingMessageQueue(options.steeringMode ?? "one-at-a-time");
     this.followUpQueue = new PendingMessageQueue(options.followUpMode ?? "one-at-a-time");
     this.sessionId = options.sessionId;
@@ -594,6 +598,7 @@ export class Agent {
       getApiKey: this.getApiKey,
       getSteeringMessages,
       getFollowUpMessages: async () => this.followUpQueue.drain(),
+      getContinuationMessages: this.getContinuationMessages,
       consumeQueuedMessageCancellation: (message) =>
         this.steeringQueue.consumeCancellation(message) ||
         this.followUpQueue.consumeCancellation(message),

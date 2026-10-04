@@ -181,6 +181,8 @@ export const AGENT_FIELD_HELP: Record<string, string> = {
     'Forces pre-compaction memory flush when the model-visible transcript window reaches this threshold (bytes or strings like "2mb"). After compaction, this includes the retained tail and subsequent turns rather than discarded history. Use this to prevent long-session hangs even when token counters are stale; set to 0 to disable.',
   "agents.defaults.emitToolUseSummaries":
     "Labels each completed batch of successful tool calls with a short past-tense summary (for example \"Searched in auth/\") written by the utility model and emitted on the agent event stream. Skipped when no utility model resolves. Default: true.",
+  "agents.defaults.skipNextSpeakerCheck":
+    'Skips the next-speaker check. When set to false, a reply that ends without tool calls is shown to the utility model, and if the reply stated a next step it never took (or stopped mid-thought) the agent is sent "Please continue." and keeps working. Default: true.',
   "agents.defaults.embeddedAgent":
     "Embedded Branch Agent runner hardening controls for how workspace-local agent settings are trusted and applied in Branch Agent sessions.",
   "agents.defaults.embeddedAgent.projectSettingsPolicy":
