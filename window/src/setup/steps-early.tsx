@@ -65,7 +65,7 @@ export function RemoteForm({ address, onConnect, busy, problem }: { address: str
   const [key, setKey] = useState("");
   const valid = /^wss?:\/\/\S+$/.test(url.trim());
   return (
-    <form className="ob-remote" onSubmit={(e) => (e.preventDefault(), valid && onConnect(url.trim(), key))}>
+    <form className="ob-remote" aria-busy={busy} onSubmit={(e) => (e.preventDefault(), valid && !busy && onConnect(url.trim(), key))}>
       <label className="fld">
         <span>Its address</span>
         <input className="inp" data-testid="setup-address" value={url} placeholder="wss://desk-pc.tailnet.ts.net" onChange={(e) => setUrl(e.target.value)} />

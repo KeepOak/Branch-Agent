@@ -20,7 +20,15 @@ export function useFirstRun(session: SaplingSession, ready: boolean, busy: () =>
         if (live) setRequiresContact(needsFirstContact(config));
         if (live && !setupDone(config)) {
           // Welcome and Where already answered before connecting: carry on at Models.
-          timer = setTimeout(() => live && !busy() && setStep(readPreConnect()?.promise ? 2 : 0), 700);
+          const openWhenFree = () => {
+            if (!live) return;
+            if (busy()) {
+              timer = setTimeout(openWhenFree, 700);
+              return;
+            }
+            setStep(readPreConnect()?.promise ? 2 : 0);
+          };
+          timer = setTimeout(openWhenFree, 700);
         }
       },
       (error: unknown) => console.warn("config.get failed", error),
