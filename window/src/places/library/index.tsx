@@ -14,7 +14,7 @@ import { Status } from "./ui";
 import "./library.css";
 
 export const HEAD_REASONS = {
-  canvas: "Needs an engine method that lists canvases: canvas.document.view opens one only by its id.",
+  canvas: "Needs an engine method that lists Clearings: canvas.document.view opens one only by its id.",
   translate: "Needs the engine’s document translation method.",
   pictures: "Needs the engine’s picture-making method.",
 };
@@ -62,7 +62,7 @@ export function LibraryPlace({ engine, level, openSettings, openConversation }: 
   const facts = memory.files?.reduce((n, f) => n + f.facts.length, 0);
   return <div className="place-scroll" data-testid="place"><div className="place lib">
     <h1>Library</h1>
-    <Grey label="Canvas" reason={HEAD_REASONS.canvas} className="lib-canvas" />
+    <Grey label="Clearing" reason={HEAD_REASONS.canvas} className="lib-canvas" />
     <p className="lede">What your Trunks remember, the documents they read, your meetings, and everything they made.</p>
     <div className="lib-head-acts"><Grey label="Translate a document…" reason={HEAD_REASONS.translate} /><Grey label="Make pictures…" reason={HEAD_REASONS.pictures} /></div>
     <div className="lib-body">
