@@ -87,9 +87,9 @@ export function ScheduledTab({ engine, level, openConversation }: Props) {
   return <div className="au-tab">
     <p className="au-hint">Work a Trunk does on a schedule.</p>
     {paused && <PausedBanner canWrite={write} busy={busy} resume={() => setPaused(false)} />}
-    <form className="au-describe" onSubmit={e => { e.preventDefault(); if (words.trim()) { setError(""); setDraft(draftFromWords(words, agentFor())); setWords(""); } }}>
+    <form className="au-describe" onSubmit={e => { e.preventDefault(); if (words.trim()) { setError(""); setDraft(draftFromWords(words, agentFor())); setWords(""); } else e.currentTarget.querySelector("input")?.focus(); }}>
       <input className="inp" aria-label="Describe a new automation" placeholder={"Describe it: “every weekday at 8, check my inbox for invoices”"} value={words} disabled={!write} title={write ? undefined : "Needs an owner"} onChange={e => setWords(e.target.value)} />
-      <button type="submit" className="btn pri" disabled={!write || !words.trim()}>Add</button>
+      <button type="submit" className="btn pri" disabled={!write}>Add</button>
     </form>
     {draft && <Proposal draft={draft} change={p => setDraft(d => d && { ...d, ...p })} level={level} trunks={data?.trunks ?? []} models={models} busy={busy} canWrite={write} error={error} onCancel={() => (draft && editChanged(draft) ? setLeaving(true) : setDraft(null))} onConfirm={runNow => void confirm(runNow)} />}
     {leaving && <LeaveDialog onKeep={() => setLeaving(false)} onLeave={() => {
