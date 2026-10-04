@@ -93,6 +93,28 @@ describe("Settings › Models", () => {
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Test and use");
   });
 
+  it("keeps local catalogue failure distinct from an empty computer and retries", async () => {
+    let failed = true;
+    const request = vi.fn(async (method: string) => {
+      if (method === "models.list") {
+        if (failed) throw new Error("Local catalogue unavailable");
+        return MODELS;
+      }
+      if (method === "models.authStatus") return AUTH;
+      if (method === "config.get") return { hash: "h", valid: true, config: {} };
+      return {};
+    });
+    const engine = { request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine;
+    await render(engine);
+    await click("On this computer");
+    expect(host.textContent).toContain("Branch couldn’t read models on this computer");
+    expect(host.textContent).not.toContain("No model on this computer yet");
+    failed = false;
+    await click("Try again");
+    expect(host.textContent).toContain("Qwen3 8B is ready on this computer");
+    expect(host.textContent).not.toContain("Local catalogue unavailable");
+  });
+
   it("Everyday answers sets the default model to that connection's default", async () => {
     const { engine, request } = engineOf({ agents: { defaults: { model: { primary: "openai/gpt-5.5" } } } });
     await render(engine);

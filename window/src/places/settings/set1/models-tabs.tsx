@@ -12,6 +12,8 @@ export function LocalTab({ m, openSettings }: { m: ModelsCtx; openSettings?: (pa
   const ready = local.find((x) => x.ref === primary) ?? local[0];
   const raw = m.catalog.data?.models as { id?: string; provider?: string; contextWindow?: number }[] | undefined;
   const ctx = ready ? raw?.find((x) => `${x.provider}/${x.id}` === ready.ref)?.contextWindow : undefined;
+  if (m.catalog.loading) return <Status tone="idle" title="Reading models on this computer…" />;
+  if (m.catalog.error) return <Status tone="bad" title="Branch couldn’t read models on this computer" action={<Btn sm onClick={() => void m.catalog.reload()}>Try again</Btn>}>{visible(m.catalog.error)}</Status>;
   return (
     <>
       {ready
