@@ -89,7 +89,7 @@ jobs:
   native:
     needs: [identity, window]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
