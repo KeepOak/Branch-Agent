@@ -1,6 +1,6 @@
 // [T] "Who ran this, and with what right" (preview 41-placesap inspectPD18), read from audit.run.inspect:
 // the run's identity facts, what is missing, and each recorded decision. A record only: nothing here acts.
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { clock, dayWord } from "../overview/format";
@@ -71,14 +71,14 @@ export function Inspect({ engine, title, at, runId, close }: { engine: WindowEng
   const [result, setResult] = useState<Row | null>(null);
   const [error, setError] = useState("");
   const [pick, setPick] = useState<number | null>(null);
-  const load = useCallback(() => {
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
     let live = true;
     setResult(null); setError(""); setPick(null);
     engine.request("audit.run.inspect", { runId }).then(r => { if (live) setResult(rec(r)); }, e => { if (live) setError(errorText(e)); });
     return () => { live = false; };
-  }, [engine, runId]);
-  useEffect(load, [load]);
-  return <Dialog wide title="Who ran this, and with what right" onClose={close} footer={<><button type="button" className="btn ghost" onClick={() => load()}>Start again</button><button type="button" className="btn" onClick={close}>Close</button></>}>
+  }, [engine, runId, attempt]);
+  return <Dialog wide title="Who ran this, and with what right" onClose={close} footer={<><button type="button" className="btn ghost" onClick={() => setAttempt(value => value + 1)}>Start again</button><button type="button" className="btn" onClick={close}>Close</button></>}>
     <p className="ib-p"><b>{title}</b> · {dayWord(at)}</p>
     <p className="ib-hint">Kept by the Gateway for 30 days. A missing record doesn’t prove the run didn’t happen.</p>
     {error ? <p className="ib-err" role="alert">{error}</p> : !result ? <p className="ib-hint" role="status">Reading the record…</p> : <Body result={result} pick={pick} setPick={setPick} />}
