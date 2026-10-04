@@ -33,6 +33,7 @@ describe("a new Claude sign-in's label", () => {
     expect(tokenProfileName("***")).toBe("default");
     expect(freshTokenLabel("Work Account", [])).toBe("work-account");
     expect(freshTokenLabel("Manual", ["anthropic:manual"])).toBe("manual-2");
+    expect(freshTokenLabel("x".repeat(80), []).length).toBe(56);
   });
 
   it("starts the engine's sign-in by its plugin/choice ref", () => {

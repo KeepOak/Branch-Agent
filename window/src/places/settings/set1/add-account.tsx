@@ -177,7 +177,8 @@ export function tokenProfileName(raw: string): string {
 /** The label a new token account is saved under (`<provider>:<label>`): what the owner typed, else "claude",
  *  with "-2", "-3"… added until it names no existing account, so a sign-in never replaces another one. */
 export function freshTokenLabel(typed: string, taken: readonly string[], provider = "anthropic", fallback = "claude"): string {
-  const base = typed.trim() ? tokenProfileName(typed) : fallback;
+  // The engine takes a label of at most 64 characters, so a long name is cut, leaving room for "-<n>".
+  const base = typed.trim() ? tokenProfileName(typed).slice(0, 56).replace(/-+$/, "") || "default" : fallback;
   const used = new Set(taken.map((id) => id.toLowerCase()));
   for (let n = 1; ; n++) {
     const name = n === 1 ? base : `${base}-${n}`;
