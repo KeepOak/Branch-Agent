@@ -77,7 +77,23 @@ export function stepsSummary(steps: readonly Step[]): string {
     ...others.map((tool) => `used ${tool}`),
   ];
   const text = joinWords(parts);
-  return text.charAt(0).toUpperCase() + text.slice(1);
+  const times = steps.map((s) => s.at).filter((at): at is number => typeof at === "number");
+  const took = times.length >= 2 ? formatDuration(Math.max(...times) - Math.min(...times)) : "";
+  const tail = [steps.length > 1 ? `${steps.length} steps` : "", took].filter(Boolean).join(" · ");
+  return text.charAt(0).toUpperCase() + text.slice(1) + (tail ? ` · ${tail}` : "");
+}
+
+/** The thread's day stamp (§4.2.2 Stamp): "Today 10:05", "Yesterday 4:18 PM", else "Sep 30 4:18 PM". */
+export function dayStamp(ms: number, now = Date.now()): string {
+  const d = new Date(ms);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const today = new Date(now);
+  if (d.toDateString() === today.toDateString()) return `Today ${time}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
+  const sameYear = d.getFullYear() === today.getFullYear();
+  return `${d.toLocaleDateString([], sameYear ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" })} ${time}`;
 }
 
 /** "Getting started words" (§4.2.5 Parity adds) for the engine's run_status phases. */
