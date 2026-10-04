@@ -45,6 +45,7 @@ export const engineTests = [
 ];
 
 export const windowTests = [
+  'src/connect/desktop-component-updates.test.tsx',
   'src/thread/PlanCard.test.ts',
   'src/thread/PlanCard.note-only.test.tsx',
   'src/thread/activity-strip.test.tsx',
@@ -130,6 +131,9 @@ export const engineStrictFiles = [
 ];
 
 export const windowStrictFiles = [
+  'src/connect/desktop-component-updates.ts',
+  'src/connect/desktop-component-updates.test.tsx',
+  'src/places/settings/set2/desktop-updates.tsx',
   'src/thread/PlanCard.tsx',
   'src/thread/PlanCard.test.ts',
   'src/thread/PlanCard.note-only.test.tsx',

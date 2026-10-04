@@ -16,6 +16,7 @@ import { bundleNode, validateRuntime } from "./bundle-node.mjs";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
 const source = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js")));
+const { createComponentUpdateController } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-ipc.js")));
 const { parseComponentRelease } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-manifest.js")));
 const { defaultDataDirectory } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "config.js")));
 const { readToken } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
@@ -83,6 +84,21 @@ test("real HTTP manifest/archive download stages complete components without res
   assert.equal(await source.refreshComponentUpdate(cfg, request), false, "pending engine update prevents another publication");
   assert.equal(await source.rollbackComponentUpdate(cfg), true);
   await unchanged(cfg);
+}));
+
+test("manual component bridge checks configured release then stages actual HTTP archives while retaining the running engine", async () => fixture(async ({ cfg, request, requests }) => {
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const controller = createComponentUpdateController(cfg, { request });
+  const checked = await controller.check();
+  assert.equal(checked.phase, "available"); await unchanged(cfg);
+  assert.equal(requests.length, 1);
+  const [staged, automatic] = await Promise.all([controller.stage(), source.refreshComponentUpdate(cfg, request)]);
+  assert.equal(staged.phase, "staged"); assert.equal(staged.pendingVersion, "0.4.3");
+  assert.equal(automatic, true, "manual and startup/hourly staging share one component publication");
+  assert.equal(await readFile(join(cfg.dataDir, "engine-running.txt"), "utf8"), cfg.engineDir + "\n");
+  assert.equal(requests.length, 4);
+  assert.ok(requests.every(url => url.startsWith("https://github.com/KeepOak/Branch-Agent/releases/")));
+  assert.equal(await source.rollbackComponentUpdate(cfg), true); await unchanged(cfg);
 }));
 
 test("readiness confirmation records version and repeated poll avoids assets", async () => fixture(async ({ cfg, request, requests }) => {
@@ -198,11 +214,11 @@ test("actual desktop caller retains running engine until explicit restart and ro
   await writeFile(join(cfg.dataDir, "desktop.json"), JSON.stringify(desktop));
   const app = new EventEmitter(); Object.assign(app, { getVersion: () => "fixture", setPath: () => {}, setAppUserModelId: () => {},
     requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(), quit: () => app.emit("will-quit") });
-  const ipcMain = new EventEmitter();
-  let servedAt; const launchedAt = Date.now();
+  const ipcMain = Object.assign(new EventEmitter(), { handle() {} });
+  let servedAt, ownerWindow, reloads = 0; const launchedAt = Date.now();
   class BrowserWindow extends EventEmitter {
-    constructor() { super(); this.url = ""; this.webContents = new EventEmitter(); Object.assign(this.webContents, {
-      getURL: () => this.url, setWindowOpenHandler: () => {}, send: () => {}, reload: () => this.webContents.emit("did-finish-load") }); }
+    constructor() { super(); ownerWindow = this; this.url = ""; this.webContents = new EventEmitter(); Object.assign(this.webContents, {
+      getURL: () => this.url, setWindowOpenHandler: () => {}, send: () => {}, reload: () => { reloads++; this.webContents.emit("did-finish-load"); } }); }
     async loadURL(url) { if (url.startsWith("http://")) servedAt = Date.now(); this.url = url; this.webContents.emit("did-finish-load"); }
     setMenuBarVisibility() {} show() {} isMinimized() { return false; } focus() {}
   }
@@ -221,7 +237,14 @@ test("actual desktop caller retains running engine until explicit restart and ro
     const oldPid = Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8"));
     assert.doesNotThrow(() => process.kill(oldPid, 0));
     assert.equal((await readFile(join(cfg.dataDir, "engine-running.txt"), "utf8")).trim(), cfg.engineDir);
-    ipcMain.emit("branch-desktop:restart-engine");
+    ownerWindow.draft = "unfinished component-update draft";
+    await new Promise(resolve => setTimeout(resolve, 3200));
+    assert.equal(reloads, 0, "component staging must not reload the renderer before owned engine activation");
+    assert.equal(ownerWindow.draft, "unfinished component-update draft");
+    ownerWindow.webContents.mainFrame = { url: ownerWindow.url };
+    ipcMain.emit("branch-desktop:restart-engine", { sender: { ...ownerWindow.webContents }, senderFrame: ownerWindow.webContents.mainFrame });
+    assert.doesNotThrow(() => process.kill(oldPid, 0), "foreign restart sender cannot stop the owned child");
+    ipcMain.emit("branch-desktop:restart-engine", { sender: ownerWindow.webContents, senderFrame: ownerWindow.webContents.mainFrame });
     await eventually(async () => {
       const pointer = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
       const pid = Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8"));
@@ -343,7 +366,7 @@ function coldCallerElectron(state) {
     }
     setMenuBarVisibility() {} show() {} isMinimized() { return false; } focus() {}
   }
-  return { app, BrowserWindow, ipcMain: new EventEmitter(), dialog: { showErrorBox: () => assert.fail("Unexpected native caller error") },
+  return { app, BrowserWindow, ipcMain: Object.assign(new EventEmitter(), { handle() {} }), dialog: { showErrorBox: () => assert.fail("Unexpected native caller error") },
     session: { defaultSession: { setPermissionRequestHandler: () => {} } }, shell: { openExternal: () => {} } };
 }
 

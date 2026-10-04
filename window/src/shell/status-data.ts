@@ -203,7 +203,7 @@ export function comingUp(jobs: unknown[], now = Date.now()): { name: string; whe
     .map((j) => ({ name: str(j.displayName) || str(j.name) || str(j.id), when: dueWords(num(rec(j.state).nextRunAtMs), now) }));
 }
 
-export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null };
+export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null; statusMessage?: string };
 
 /** update.status (or hello's snapshot.updateAvailable): the version waiting and what it adds (§4.9.8). */
 export function readUpdate(result: unknown, current: string): UpdateInfo {
