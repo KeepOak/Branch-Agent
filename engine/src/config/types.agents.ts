@@ -50,6 +50,8 @@ export type AgentEntryConfig = Omit<AgentConfig, "id">;
 
 export type AgentsConfig = {
   ownership?: "explicit";
+  /** Contact Trunk used by unrouted conversations; explicit bindings take precedence. */
+  defaultId?: string;
   defaults?: AgentDefaultsConfig;
   entries?: Record<string, AgentEntryConfig>;
   /** Internal non-serialized projection materialized by validation for ID-based runtime code. */
