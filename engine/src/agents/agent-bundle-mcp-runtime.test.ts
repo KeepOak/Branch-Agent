@@ -1337,7 +1337,7 @@ describe("session MCP runtime", () => {
       filePath: serverPath,
       logPath,
       tools: [{ name: "index_repo", inputSchema: { type: "object", properties: {} } }],
-      callToolProgress: { steps: 4, intervalMs: 250, total: 4 },
+      callToolProgress: { steps: 4, intervalMs: 600, total: 4 },
     });
     const materialized = await createBundleMcpToolRuntime({
       workspaceDir: tempDir,
@@ -1348,7 +1348,7 @@ describe("session MCP runtime", () => {
               command: process.execPath,
               args: [serverPath],
               connectionTimeoutMs: 30_000,
-              requestTimeoutMs: 600,
+              requestTimeoutMs: 1500,
             },
           },
         },

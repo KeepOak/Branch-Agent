@@ -111,7 +111,13 @@ async function preparePrompt(params: {
       toolSearchRuntimeConfig: runtime.config,
       toolSearchCatalogRef: runtime.toolSearchCatalogRef,
     });
-    return prepared.systemPromptText;
+    return {
+      prompt: prepared.systemPromptText,
+      directToolNames: surface.tools.map((tool) => tool.name),
+      catalogToolNames: (runtime.toolSearchCatalogRef?.current?.entries ?? []).map(
+        (entry) => entry.name,
+      ),
+    };
   } finally {
     admission.close();
     runtime.cleanup();
@@ -120,7 +126,7 @@ async function preparePrompt(params: {
 
 describe("MCP server instructions in the embedded system prompt", () => {
   it("adds MCP instructions for opted-in servers in stable server-name order", async () => {
-    const prompt = await preparePrompt({
+    const { prompt } = await preparePrompt({
       toolSearch: false,
       tools: [
         mcpTool("zeta__run", {
@@ -142,7 +148,7 @@ describe("MCP server instructions in the embedded system prompt", () => {
   });
 
   it("does not add MCP guidance when the server did not opt in", async () => {
-    const prompt = await preparePrompt({
+    const { prompt } = await preparePrompt({
       toolSearch: false,
       tools: [mcpTool("db__query", { serverName: "db", serverInstructions: "Validate first." })],
     });
@@ -151,7 +157,7 @@ describe("MCP server instructions in the embedded system prompt", () => {
   });
 
   it("keeps guidance for MCP tools held behind tool search", async () => {
-    const prompt = await preparePrompt({
+    const { prompt, directToolNames, catalogToolNames } = await preparePrompt({
       toolSearch: true,
       tools: [
         mcpTool("db__migrate_schema", {
@@ -161,6 +167,8 @@ describe("MCP server instructions in the embedded system prompt", () => {
         }),
       ],
     });
+    expect(directToolNames).not.toContain("db__migrate_schema");
+    expect(catalogToolNames).toContain("db__migrate_schema");
     expect(prompt).toContain(
       '## Guidance from MCP server "db-tools"\n\nAlways call validate_schema before migrate_schema.',
     );
