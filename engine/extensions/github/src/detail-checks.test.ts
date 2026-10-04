@@ -65,6 +65,11 @@ function statuses(items: unknown[] = [], commit = sha) {
 function publicFetch(checks = runs(), legacy = statuses(), headSha: unknown = sha) {
   return vi
     .fn<typeof fetch>()
+    .mockImplementation(async (url) => {
+      const path = new URL(url instanceof Request ? url.url : url).pathname;
+      if (path.endsWith("/reviews")) return json([]);
+      throw new Error("Unexpected fixture request " + path);
+    })
     .mockResolvedValueOnce(json({ private: false, visibility: "public" }))
     .mockResolvedValueOnce(json(pull(headSha)))
     .mockResolvedValueOnce(checks)
@@ -114,6 +119,7 @@ describe("GitHub PR checks through the document loader", () => {
       root + "/pulls/1",
       root + "/commits/" + sha + "/check-runs?filter=latest&per_page=100",
       root + "/commits/" + sha + "/status?per_page=100",
+      root + "/pulls/1/reviews?per_page=100&page=1",
     ]);
     for (const [, options] of fetchMock.mock.calls) {
       expect(options?.headers).not.toHaveProperty("Authorization");
@@ -297,7 +303,8 @@ describe("GitHub PR checks through the document loader", () => {
       fetchMock
         .mockReset()
         .mockResolvedValueOnce(json({ private: false, visibility: "public" }))
-        .mockResolvedValueOnce(json({ ...pull(), head: { sha: headSha, ref: "feature/checks" } }));
+        .mockResolvedValueOnce(json({ ...pull(), head: { sha: headSha, ref: "feature/checks" } }))
+        .mockResolvedValueOnce(json([]));
       const detail = await loadGitHubDetail(target(), undefined, fetchMock);
       expect(detail).toMatchObject({
         body: "Keep the PR body",
@@ -305,7 +312,7 @@ describe("GitHub PR checks through the document loader", () => {
         checks: { state: "unavailable", items: [] },
       });
       expect(detail.checks?.commit).toBeUndefined();
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
     },
   );
 
@@ -359,7 +366,7 @@ describe("GitHub PR checks through the document loader", () => {
     });
     expect(result.checks?.items).toHaveLength(100);
     expect(result.checks?.items.every((item) => item.name.length <= 256)).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
   it.each([
@@ -392,9 +399,10 @@ describe("GitHub PR checks through the document loader", () => {
       items: [{ state: "pending", detail: "Queued" }],
     });
     expect(await loadGitHubDetail(input, undefined, fetchMock)).toBe(refreshed);
-    expect(fetchMock.mock.calls.slice(6).map(([url]) => url)).toEqual([
+    expect(fetchMock.mock.calls.slice(7).map(([url]) => url)).toEqual([
       expect.stringContaining("/commits/" + nextSha + "/check-runs?"),
       expect.stringContaining("/commits/" + nextSha + "/status?"),
+      expect.stringContaining("/pulls/1/reviews?"),
     ]);
     fetchMock
       .mockResolvedValueOnce(json({ private: false, visibility: "public" }))
@@ -413,6 +421,7 @@ describe("GitHub PR checks through the document loader", () => {
     const requested = createDeferred<void>();
     const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (url) => {
       const path = new URL(url instanceof Request ? url.url : url).pathname;
+      if (path.endsWith("/reviews")) return json([]);
       if (path.endsWith("/pulls/1")) {
         return json(pull());
       }
@@ -437,7 +446,7 @@ describe("GitHub PR checks through the document loader", () => {
     expect((await older).checks).toMatchObject({ state: "success", commit: sha });
     expect(fresh.checks).toMatchObject({ state: "failure", commit: nextSha });
     expect(await loadGitHubDetail(input, undefined, fetchMock)).toBe(fresh);
-    expect(freshFetch).toHaveBeenCalledTimes(4);
+    expect(freshFetch).toHaveBeenCalledTimes(5);
   });
 
   it("expires complete PR snapshots after 30 seconds rather than keeping checks for five minutes", async () => {
@@ -454,6 +463,6 @@ describe("GitHub PR checks through the document loader", () => {
       .mockResolvedValueOnce(statuses());
     now.mockReturnValue(31_001);
     expect((await loadGitHubDetail(input, undefined, fetchMock)).checks?.state).toBe("success");
-    expect(fetchMock).toHaveBeenCalledTimes(8);
+    expect(fetchMock).toHaveBeenCalledTimes(10);
   });
 });

@@ -2,6 +2,7 @@ import { pruneMapToMaxSize } from "branch/plugin-sdk/collection-runtime";
 import type { ControlUiLinkReaderDocument } from "branch/plugin-sdk/control-ui-link-reader";
 import { truncateUtf16Safe } from "branch/plugin-sdk/string-coerce-runtime";
 import { fetchPullChecks } from "./detail-checks.js";
+import { fetchPullReviewMetadata, pullMergeMetadata } from "./detail-reviews.js";
 import {
   ControlUiGitHubError,
   fetchGitHubApi,
@@ -361,6 +362,20 @@ async function fetchDetail(
     target.kind === "pull"
       ? await fetchPullChecks(repositoryUrl, head.sha, url + "/checks", readPage)
       : undefined;
+  let reviewMetadata: { label: string; value: string }[] = [];
+  let reviewsUnavailable = false;
+  if (target.kind === "pull") {
+    try {
+      reviewMetadata = await fetchPullReviewMetadata(itemUrl, value.requested_reviewers, readPage);
+    } catch (error) {
+      if (error instanceof GitHubDetailAccessError) {
+        throw error;
+      }
+      // An incomplete history must not display an older approval as the current verdict.
+      reviewsUnavailable = true;
+      reviewMetadata = [{ label: "Reviews", value: "Unavailable" }];
+    }
+  }
   const view = githubPreviewView(preview);
   const metadata = githubChangeMetadata(
     preview.additions,
@@ -368,6 +383,9 @@ async function fetchDetail(
     preview.changedFiles,
     preview.comments,
   );
+  if (target.kind === "pull") {
+    metadata.push(...pullMergeMetadata(value), ...reviewMetadata);
+  }
   const headRef = readOptionalGitHubString(head, "ref")?.slice(0, 256);
   const baseRef = readOptionalGitHubString(base, "ref")?.slice(0, 256);
   return {
@@ -391,6 +409,7 @@ async function fetchDetail(
       filesTruncated ||
       checks?.truncated === true ||
       checks?.state === "unavailable" ||
+      reviewsUnavailable ||
       comments.some((comment) => comment.bodyTruncated || comment.context?.diffTruncated) ||
       files.some((file) => file.patchTruncated),
   };
