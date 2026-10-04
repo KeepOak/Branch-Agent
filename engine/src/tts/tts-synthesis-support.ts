@@ -269,10 +269,7 @@ export async function acquireTtsRequest(
         !overrideProvider && !preferredProvider ? config.provider : undefined,
         ...catalog.map((provider) => provider.id),
       ];
-      const prepareView = async (
-        queryConfig: BranchConfig,
-        providers: SpeechProviderPlugin[],
-      ) => {
+      const prepareView = async (queryConfig: BranchConfig, providers: SpeechProviderPlugin[]) => {
         const lookups = new Map<string, SpeechProviderPlugin | undefined>();
         const requested = new Set(
           [...requestedInputs, ...providers.map((provider) => provider.id)].flatMap((id) => {
