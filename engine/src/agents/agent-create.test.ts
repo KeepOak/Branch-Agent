@@ -1,3 +1,4 @@
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestConfigSnapshot } from "../commands/test-runtime-config-helpers.js";
 import { FsSafeError } from "../infra/fs-safe.js";
@@ -84,6 +85,9 @@ vi.mock("../infra/fs-safe.js", async (importOriginal) => {
 });
 
 import { createAgent } from "./agent-create.js";
+import type { BranchConfig } from "../config/types.js";
+import { listGatewayAgentsBasic } from "../gateway/agent-list.js";
+import { tryResolveAmbientOwnerAgentId } from "./agent-scope-config.js";
 
 describe("createAgent", () => {
   beforeEach(() => {
@@ -150,7 +154,7 @@ describe("createAgent", () => {
       status: "error",
       reason: "invalid-name",
     });
-    for (const name of ["Branch Agent", "crestodian"]) {
+    for (const name of ["Branch", "crestodian"]) {
       await expect(createAgent({ name })).resolves.toMatchObject({
         status: "error",
         reason: "reserved-id",
@@ -294,6 +298,31 @@ describe("createAgent", () => {
     });
   });
 
+  it("saves a first contact without replacing the bootstrap inference owner", async () => {
+    mocks.config = {
+      agents: {
+        entries: { bootstrap: { model: "ollama/local" } },
+        defaults: { model: "ollama/local" },
+      },
+    };
+    expect(await createAgent({ name: "Fern" })).toMatchObject({ status: "created", agentId: "fern" });
+    // This is the production creation transform's persisted payload, reloaded
+    // through the gateway roster projection, not a synthetic UI roster.
+    const saved = structuredClone(mocks.persisted) as BranchConfig;
+    expect(saved.agents?.entries?.bootstrap?.model).toBe("ollama/local");
+    expect(saved.agents?.defaults?.model).toBe("ollama/local");
+    expect(tryResolveAmbientOwnerAgentId(saved)).toBe("bootstrap");
+    const selected: BranchConfig = { ...saved, agents: { ...saved.agents, defaultId: "fern" } };
+    const roster = await listGatewayAgentsBasic(selected);
+    expect(roster.defaultId).toBe("fern");
+    expect(roster.agents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "bootstrap", kind: "agent" }),
+      expect.objectContaining({ id: "fern", kind: "agent" }),
+    ]));
+    expect(tryResolveAmbientOwnerAgentId(selected)).toBe("bootstrap");
+    expect(selected.agents?.entries?.bootstrap?.model).toBe("ollama/local");
+  });
+
   it("accepts a complete staged entry", async () => {
     const result = await createAgent({
       entry: {
@@ -309,8 +338,8 @@ describe("createAgent", () => {
     expect(result).toMatchObject({
       status: "created",
       agentId: "researcher",
-      workspace: "/tmp/staged-work",
-      agentDir: "/tmp/staged-agent",
+      workspace: path.resolve("/tmp/staged-work"),
+      agentDir: path.resolve("/tmp/staged-agent"),
     });
     expect(mocks.persisted).toMatchObject({
       agents: {
@@ -384,7 +413,7 @@ describe("createAgent", () => {
       }),
     );
     expect(mocks.persisted).toMatchObject({
-      agents: { entries: { robby: expect.objectContaining({ workspace: "/tmp/robby" }) } },
+      agents: { entries: { robby: expect.objectContaining({ workspace: path.resolve("/tmp/robby") }) } },
     });
     expect(
       (mocks.persisted.agents as { entries?: Record<string, unknown> }).entries,
@@ -503,7 +532,7 @@ describe("createAgent", () => {
     ).resolves.toMatchObject({ status: "existing", agentId: "main" });
     expect(mocks.ensureAgentWorkspace).toHaveBeenCalledOnce();
     expect(mocks.persisted).toMatchObject({
-      agents: { entries: { main: expect.objectContaining({ workspace: "/tmp/main-work" }) } },
+      agents: { entries: { main: expect.objectContaining({ workspace: path.resolve("/tmp/main-work") }) } },
     });
   });
 
@@ -626,7 +655,7 @@ describe("createAgent", () => {
         entries: {
           researcher: {
             name: "Researcher",
-            workspace: "/tmp/work",
+            workspace: path.resolve("/tmp/work"),
             agentDir: "/tmp/agent-researcher",
             model: "openai/gpt-5.5",
             identity: { name: "Researcher", emoji: "🔎" },

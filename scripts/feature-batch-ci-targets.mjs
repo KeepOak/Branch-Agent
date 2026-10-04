@@ -1,5 +1,12 @@
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
+  'src/agents/agent-create.test.ts',
+  'src/agents/auth-profiles/usage-state.test.ts',
+  'src/agents/auth-profiles/order.test.ts',
+  'src/agents/contact-trunk.test.ts',
+  'src/config/config.identity-avatar.test.ts',
+  'src/gateway/assistant-avatar.test.ts',
+  'src/gateway/assistant-identity.test.ts',
   'src/coding/unified-diff.test.ts',
   'src/agents/apply-patch.unified-diff.test.ts',
   'src/agents/apply-patch.test.ts',
@@ -35,6 +42,13 @@ export const engineTests = [
 ];
 
 export const windowTests = [
+  'src/places/trunk/github-entry.test.tsx',
+  'src/places/settings/github-connection.test.ts',
+  'src/places/settings/GitHubSettings.test.tsx',
+  'src/setup/FirstTrunk.test.tsx',
+  'src/setup/setup.test.tsx',
+  'src/places/trunk/trunk.test.tsx',
+  'src/shell/conversation-actions.test.ts',
   'src/transcript-export/replay-html.test.ts',
   'src/transcript-export/ExportDialog.test.tsx',
   'src/transcript-export/render.test.ts',
@@ -42,6 +56,13 @@ export const windowTests = [
 ];
 
 export const engineStrictFiles = [
+  'src/agents/agent-create.test.ts',
+  'src/agents/auth-profiles/usage-state.test.ts',
+  'src/agents/auth-profiles/order.test.ts',
+  'src/agents/contact-trunk.test.ts',
+  'src/config/config.identity-avatar.test.ts',
+  'src/gateway/assistant-avatar.test.ts',
+  'src/gateway/assistant-identity.test.ts',
   'extensions/browser/src/browser-tool-description.ts',
   'extensions/browser/src/browser-tool.actions.ts',
   'extensions/browser/src/browser-tool.schema.ts',
@@ -79,6 +100,23 @@ export const engineStrictFiles = [
 ];
 
 export const windowStrictFiles = [
+  'src/places/trunk/github-entry.test.tsx',
+  'src/places/settings/set1/accounts.tsx',
+  'src/places/settings/github-connection.ts',
+  'src/places/settings/github-connection.test.ts',
+  'src/places/settings/GitHubSettings.tsx',
+  'src/places/settings/GitHubSettings.test.tsx',
+  'src/shell/WindowShell.tsx',
+  'src/stage/novnc.d.ts',
+  'src/setup/FirstTrunk.tsx',
+  'src/setup/FirstTrunk.test.tsx',
+  'src/setup/SetupFlow.tsx',
+  'src/setup/setup.test.tsx',
+  'src/shell/engine-data.ts',
+  'src/places/trunk/api.ts',
+  'src/places/trunk/trunk.test.tsx',
+  'src/shell/conversation-actions.ts',
+  'src/shell/conversation-actions.test.ts',
   'src/transcript-export/replay-runtime.ts',
   'src/transcript-export/replay-html.ts',
   'src/transcript-export/render.ts',
