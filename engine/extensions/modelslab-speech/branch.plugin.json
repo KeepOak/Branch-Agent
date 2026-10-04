@@ -1,0 +1,107 @@
+{
+  "id": "modelslab-speech",
+  "name": "ModelsLab Speech",
+  "description": "ModelsLab text-to-speech with six voices and asynchronous job polling. Source: VOICE-0033, mastra-ai/mastra 486d3b7f35edfeaeab47b1230b56880e672cc421.",
+  "categories": ["voice"],
+  "enabledByDefault": true,
+  "activation": {
+    "onStartup": false
+  },
+  "capabilityCatalogEntry": "./capability-catalog.ts",
+  "setup": {
+    "providers": [
+      {
+        "id": "modelslab",
+        "envVars": ["MODELSLAB_API_KEY"]
+      }
+    ]
+  },
+  "contracts": {
+    "speechProviders": ["modelslab", "modelslab-speech"]
+  },
+  "configContracts": {
+    "secretInputs": {
+      "paths": [
+        {
+          "path": "apiKey",
+          "expected": "string",
+          "ownerKind": "capability"
+        }
+      ]
+    }
+  },
+  "configGroups": [
+    {
+      "id": "connection",
+      "title": "ModelsLab connection",
+      "order": 10,
+      "properties": ["apiKey", "timeoutMs"]
+    },
+    {
+      "id": "voice",
+      "title": "Voice",
+      "order": 20,
+      "properties": ["voice", "language", "speed"]
+    }
+  ],
+  "uiHints": {
+    "apiKey": {
+      "label": "ModelsLab API key",
+      "sensitive": true,
+      "help": "Select a SecretRef or use MODELSLAB_API_KEY."
+    },
+    "voice": {
+      "label": "Voice",
+      "help": "Numeric ModelsLab voice or alloy, echo, fable, onyx, nova, shimmer."
+    },
+    "timeoutMs": {
+      "advanced": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiKey": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "required": ["source", "provider", "id"],
+            "properties": {
+              "source": {
+                "type": "string",
+                "enum": ["env", "store", "file", "exec"]
+              },
+              "provider": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "voice": {
+        "type": "string",
+        "default": "1"
+      },
+      "language": {
+        "type": "string",
+        "default": "english"
+      },
+      "speed": {
+        "type": "number",
+        "default": 1
+      },
+      "timeoutMs": {
+        "type": "number",
+        "description": "Total synthesis budget, capped by the caller deadline and the donor 300-second ceiling."
+      }
+    }
+  }
+}
