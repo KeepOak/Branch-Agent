@@ -1,0 +1,83 @@
+{
+  "id": "serply",
+  "categories": [
+    "web"
+  ],
+  "activation": {
+    "onStartup": false
+  },
+  "setup": {
+    "providers": [
+      {
+        "id": "serply",
+        "envVars": [
+          "SERPLY_API_KEY"
+        ]
+      }
+    ]
+  },
+  "contracts": {
+    "webSearchProviders": [
+      "serply"
+    ]
+  },
+  "uiHints": {
+    "webSearch.apiKey": {
+      "label": "Serply API key",
+      "sensitive": true,
+      "help": "Fallback: SERPLY_API_KEY environment variable."
+    },
+    "webSearch.vertical": {
+      "label": "Search vertical",
+      "help": "Google web search, News or Scholar."
+    },
+    "webSearch.maxResults": {
+      "label": "Maximum results",
+      "help": "Overrides the requested count. Default 5, capped at 100."
+    },
+    "webSearch.gl": {
+      "label": "Country code"
+    },
+    "webSearch.hl": {
+      "label": "Language code"
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "webSearch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiKey": {
+            "type": [
+              "string",
+              "object"
+            ]
+          },
+          "vertical": {
+            "type": "string",
+            "enum": [
+              "search",
+              "news",
+              "scholar"
+            ]
+          },
+          "maxResults": {
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "gl": {
+            "type": "string"
+          },
+          "hl": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

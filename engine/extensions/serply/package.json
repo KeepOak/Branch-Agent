@@ -1,0 +1,17 @@
+{
+  "name": "@branch/serply-plugin",
+  "version": "2026.9.7",
+  "description": "Branch Agent Serply search plugin.",
+  "type": "module",
+  "devDependencies": {
+    "@branch/plugin-sdk": "workspace:*"
+  },
+  "branch": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "entities": "8.1.0"
+  }
+}
