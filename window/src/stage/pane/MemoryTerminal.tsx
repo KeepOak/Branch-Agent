@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import type { Block } from "../../thread/model";
 import { SIcon } from "../stage-icons";
-import { appendTerminal } from "./terminal-text";
+import { useShells } from "./use-shells";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -48,59 +48,40 @@ export function MemoryTab({ engine, blocks, name }: { engine: WindowEngine; bloc
   );
 }
 
-type Shell = { id: string; label: string; cwd: string; text: string; ended?: string };
-
-/** The live shells this pane opened (terminal.open / input / close), drawn as text. */
-function useShells(engine: WindowEngine) {
-  const [shells, setShells] = useState<Shell[]>([]);
-  const ids = useRef(new Set<string>());
-  useEffect(() => {
-    const off = engine.onEvent(({ event, payload }) => {
-      const p = rec(payload);
-      const id = str(p.sessionId);
-      if (!ids.current.has(id)) return;
-      if (event === "terminal.data" && typeof p.data === "string") setShells((list) => list.map((s) => (s.id === id ? { ...s, text: appendTerminal(s.text, p.data as string) } : s)));
-      if (event === "terminal.exit") setShells((list) => list.map((s) => (s.id === id ? { ...s, ended: p.reason === "process_exit" ? "The shell ended." : str(p.error) || "The shell closed." } : s)));
-    });
-    const open = ids.current;
-    return () => {
-      off();
-      // Shells opened here end with the pane: nothing keeps running unseen.
-      for (const id of open) void engine.request("terminal.close", { sessionId: id }).catch(() => undefined);
-      open.clear();
-    };
-  }, [engine]);
-  const start = async () => {
-    const r = rec(await engine.request("terminal.open", { sessionKey: engine.sessionKey, cols: 100, rows: 30 }));
-    const id = str(r.sessionId);
-    ids.current.add(id);
-    setShells((list) => [...list, { id, label: `shell ${list.length + 1}`, cwd: str(r.cwd), text: "" }]);
-    return id;
-  };
-  const input = (id: string, data: string) => engine.request("terminal.input", { sessionId: id, data });
-  const close = (id: string) => {
-    ids.current.delete(id);
-    setShells((list) => list.filter((s) => s.id !== id));
-    return engine.request("terminal.close", { sessionId: id });
-  };
-  return { shells, start, input, close };
-}
-
 const STEP_PILL: Record<string, [string, string]> = { ok: ["ok", "Done"], running: ["work", "Running"], failed: ["bad", "Failed"], denied: ["bad", "You said no"] };
+
+function TerminalInput({ engine, id, cwd, ended, input, onError }: { engine: WindowEngine; id: string; cwd: string; ended?: string; input: (id: string, data: string) => Promise<unknown>; onError: (message: string) => void }) {
+  const [line, setLine] = useState("");
+  const draft = useRef(line);
+  const owner = useRef({ live: false });
+  draft.current = line;
+  useEffect(() => { const current = { live: true }; owner.current = current; setLine(""); return () => { current.live = false; }; }, [engine]);
+  return <form onSubmit={(e) => {
+    e.preventDefault();
+    const sent = line;
+    const current = owner.current;
+    void input(id, `${sent}\r`).then(
+      () => { if (current.live && draft.current === sent) setLine(""); },
+      (error: unknown) => { if (current.live) onError(errorText(error)); },
+    );
+  }}>
+    <span>{cwd.split(/[\\/]/).filter(Boolean).pop() ?? ""} %</span>
+    <input value={line} onChange={(e) => setLine(e.target.value)} autoComplete="off" spellCheck={false} aria-label="Type a command" disabled={Boolean(ended)} />
+  </form>;
+}
 
 /** Terminal: the commands it ran and what came back, and a live shell of your own in its folder. */
 export function TerminalTab({ engine, blocks, name, onError }: { engine: WindowEngine; blocks: Block[]; name: string; onError: (m: string) => void }) {
   const commands = blocks.filter((b): b is Extract<Block, { kind: "step" }> => b.kind === "step" && /(^|[_.])exec$|shell|terminal|process|bash/.test(b.tool));
   const { shells, start, input, close } = useShells(engine);
   const [front, setFront] = useState<string | null>(null);
-  const [line, setLine] = useState("");
   const out = useRef<HTMLDivElement>(null);
   const admin = engine.scopes.includes("operator.admin");
   const shell = shells.find((s) => s.id === front) ?? shells.at(-1);
   useEffect(() => {
     if (out.current) out.current.scrollTop = out.current.scrollHeight;
   }, [shell?.text]);
-  const open = () => start().then(setFront, (e: unknown) => onError(errorText(e)));
+  const open = () => start().then((id) => { if (id !== null) setFront(id); }, (e: unknown) => onError(errorText(e)));
   return (
     <>
       {commands.length ? (
@@ -162,15 +143,7 @@ export function TerminalTab({ engine, blocks, name, onError }: { engine: WindowE
               {shell.text}
               {shell.ended ? <div className="term-dim-pn">{shell.ended}</div> : null}
             </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void input(shell.id, `${line}\r`).then(() => setLine(""), (err: unknown) => onError(errorText(err)));
-              }}
-            >
-              <span>{shell.cwd.split(/[\\/]/).filter(Boolean).pop() ?? ""} %</span>
-              <input value={line} onChange={(e) => setLine(e.target.value)} autoComplete="off" spellCheck={false} aria-label="Type a command" disabled={Boolean(shell.ended)} />
-            </form>
+            <TerminalInput key={`${engine.sessionKey}:${shell.id}`} engine={engine} id={shell.id} cwd={shell.cwd} ended={shell.ended} input={input} onError={onError} />
           </div>
         </div>
       ) : null}
