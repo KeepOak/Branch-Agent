@@ -16,15 +16,16 @@ export async function runTargetedStrictChecks(scratch) {
   const time = process.platform === 'darwin' ? ['-l'] : ['-v'];
   const swap = process.platform === 'darwin' ? ['sysctl', ['vm.swapusage', 'hw.memsize', 'hw.ncpu']] : ['free', ['-m']];
   const probes = [
-    ['upstream-throttle', ['--singleThreaded', '--checkers', '1'], { GOMAXPROCS: '2', GOGC: '30', GOMEMLIMIT: '3GiB' }],
-    ['checkers-1', ['--checkers', '1'], {}],
-    ['checkers-2', ['--checkers', '2'], {}],
+    ['checkers-1-nodiag', ['--checkers', '1'], {}],
+    ['checkers-2-nodiag', ['--checkers', '2'], {}],
+    ['checkers-1-diag', ['--checkers', '1', '--extendedDiagnostics'], {}],
+    ['default-nodiag', [], {}],
   ];
   for (const [name, flags, extra] of probes) {
     console.log(`::group::probe ${name}`);
     await run(swap[0], swap[1]);
     const started = Date.now();
-    await run('/usr/bin/time', [...time, process.execPath, tsc, '--project', engineConfig, '--extendedDiagnostics', ...flags],
+    await run('/usr/bin/time', [...time, process.execPath, tsc, '--project', engineConfig, ...flags],
       engineRoot, { ...process.env, ...extra });
     console.log(`PROBE ${name} wall=${((Date.now() - started) / 1000).toFixed(1)}s`);
     await run(swap[0], swap[1]);
