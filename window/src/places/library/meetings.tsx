@@ -1,7 +1,7 @@
 // Library › Meetings (preview 42-placesbp libMeetListPQ18 / libMeetReaderPQ18) on transcripts.list / get / export:
 // search, Filters [A], In progress and day groups, pages; the reader with Notes, Transcript, Save, and
 // Where it came from [A].
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
@@ -123,6 +123,7 @@ function Reader({ engine, level, trunks, selector, back }: Props & { selector: s
   const [tab, setTab] = useState<"notes" | "transcript">("notes");
   const [cursor, setCursor] = useState<string | null>(null);
   const [earlier, setEarlier] = useState<Utterance[]>([]);
+  const appended = useRef<string | null | undefined>(undefined);
   const rawDetail = useResource<unknown>(engine, "transcripts.get", { selector, includeUtterances: true, ...(cursor ? { cursor } : {}) });
   const parsed = rawDetail.data === null ? null : detailOf(rawDetail.data);
   const detail = { ...rawDetail, error: rawDetail.error ?? (rawDetail.data !== null && !parsed ? "The engine did not return this meeting." : null), data: parsed };
@@ -150,7 +151,11 @@ function Reader({ engine, level, trunks, selector, back }: Props & { selector: s
       <div className="lib-acts"><button type="button" className="btn sm" disabled={op.busy} onClick={() => save("markdown")}><LibIcon name="download" />Save as Markdown</button><button type="button" className="btn sm" disabled={op.busy} onClick={() => save("jsonl")}><LibIcon name="download" />Save as JSON Lines</button></div>
       {op.error && <p className="lib-bad" role="alert">{op.error}</p>}
       <div className="lib-seg lib-rtabs" role="tablist" aria-label="Meeting">{(["notes", "transcript"] as const).map(k => <button key={k} type="button" role="tab" aria-selected={tab === k} aria-checked={tab === k} onClick={() => setTab(k)}>{k === "notes" ? "Notes" : "Transcript"}</button>)}</div>
-      <div role="tabpanel">{tab === "notes" ? <Notes m={m} summary={detail.data!.summary} /> : <Transcript m={m} lines={[...earlier, ...(detail.data!.utterances ?? [])]} more={detail.data!.nextCursor} loadMore={() => { setEarlier(e => [...e, ...(detail.data!.utterances ?? [])]); setCursor(detail.data!.nextCursor); }} />}</div>
+      <div role="tabpanel">{tab === "notes" ? <Notes m={m} summary={detail.data!.summary} /> : <Transcript m={m} lines={[...earlier, ...(detail.data!.utterances ?? [])]} more={detail.data!.nextCursor} loadMore={() => {
+        if (detail.loading || !detail.data?.nextCursor || appended.current === cursor) return;
+        appended.current = cursor;
+        setEarlier(e => [...e, ...(detail.data!.utterances ?? [])]); setCursor(detail.data.nextCursor);
+      }} />}</div>
     </>}
   </div>;
 }

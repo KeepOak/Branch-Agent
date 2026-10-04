@@ -110,4 +110,19 @@ describe("Library › Meetings", () => {
     await mount(engineOf(base((m) => m === "transcripts.list" ? new Error("Transcripts are off") : undefined)).engine);
     expect(host.textContent).toContain("Transcripts are off");
   });
+  it("keeps transcript lines unique when Load more lines is clicked twice", async () => {
+    let resolve!: (value: unknown) => void;
+    const held = new Promise(done => { resolve = done; });
+    const { engine, request } = engineOf(base((method, params) => method === "transcripts.get"
+      ? params.cursor ? held : { ...DETAIL, nextCursor: "next" } : undefined));
+    await mount(engine);
+    const row = [...host.querySelectorAll(".lib-row")].find(r => r.textContent?.includes("Lease call"))!;
+    await click(button("Open", row)); await click(button("Transcript"));
+    const more = button("Load more lines")!;
+    await act(async () => { more.click(); more.click(); });
+    await act(async () => { resolve({ ...DETAIL, utterances: [{ sequence: 3, text: "A later line." }] }); });
+    await settle();
+    expect(request.mock.calls.filter(([method, params]) => method === "transcripts.get" && params.cursor === "next")).toHaveLength(1);
+    expect([...host.querySelectorAll(".lib-lines .lib-row small")].map(line => line.textContent)).toEqual(["The lease renews in March.", "Sixty days, in writing.", "A later line."]);
+  });
 });
