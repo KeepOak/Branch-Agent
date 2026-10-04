@@ -39,6 +39,9 @@ export const engineTests = [
   'extensions/browser/src/browser/routes/agent.text.test.ts',
   'extensions/browser/src/browser-tool.schema.test.ts',
   'extensions/browser/src/browser-tool.test.ts',
+  'src/agents/cli-output-stream.test.ts',
+  'src/agents/cli-output-records.test.ts',
+  'src/agents/cli-output-jsonl.test.ts',
 ];
 
 export const windowTests = [
@@ -99,6 +102,8 @@ export const engineStrictFiles = [
   'src/types/qrcode.d.ts',
   'src/types/agent-sessions.d.ts',
   'src/infra/host-env-security-policy.d.ts',
+  'src/agents/cli-output-stream.ts',
+  'src/agents/cli-output-stream.test.ts',
 ];
 
 export const windowStrictFiles = [
