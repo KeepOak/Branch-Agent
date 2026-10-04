@@ -12,6 +12,7 @@ import { CallLine, CodeRow, CopyBtn, Kv, Tile, bytes, lvOf, openPlace, rec, span
 import { Ico } from "./icons";
 import { Logo } from "../set1/service";
 import { readMeasuredPercent } from "../../../shell/limit-window-reading";
+import { ModelPrices } from "./usage-prices";
 import "./usage.css";
 
 /* ---------- figures ---------- */
@@ -84,6 +85,7 @@ export function UsagePage(props: SettingsPageProps) {
       <Evals lv={lv} />
       <MovingInOut engine={props.engine} lv={lv} />
       {lv >= 1 ? <MoneyMore engine={props.engine} lv={lv} /> : null}
+      {lv >= 1 ? <ModelPrices engine={props.engine} /> : null}
       {lv >= 1 ? <KeepingMore engine={props.engine} lv={lv} /> : null}
       {lv >= 2 ? <EverySetting engine={props.engine} /> : null}
       <Flagged lv={lv} />
