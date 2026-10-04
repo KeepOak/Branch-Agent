@@ -9,9 +9,12 @@ type Props = { at: MenuAnchor; onClose: () => void; label: string; children: Rea
 
 export function Popover({ at, onClose, label, children, testid, width, above, className }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState(at);
+  // Drawn at the left edge first so its natural size is measured, then placed before the first paint; layout sizes,
+  // not the box, because the opening animation scales it while this measures.
+  const [pos, setPos] = useState<MenuAnchor>(() => ({ x: 0, y: at.y }));
   useLayoutEffect(() => {
-    const r = ref.current?.getBoundingClientRect();
+    const el = ref.current;
+    const r = el ? { width: el.offsetWidth, height: el.offsetHeight } : null;
     if (r) {
       const x = above ? (above.align === "right" ? above.right - r.width : above.left) : at.x;
       const y = above ? above.top - r.height - 6 : at.y;

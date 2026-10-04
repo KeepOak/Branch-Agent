@@ -22,8 +22,9 @@ type Props = { at: MenuAnchor; items: MenuItem[]; onClose: () => void; label: st
 const focusables = (el: HTMLElement | null) => Array.from(el?.querySelectorAll<HTMLButtonElement>(":scope > button.mi:not([disabled])") ?? []);
 
 function useFitInWindow(ref: React.RefObject<HTMLDivElement | null>, at: MenuAnchor, upward = false) {
-  // A right-aligned menu is first drawn at the left edge so its natural width can be measured.
-  const [pos, setPos] = useState<MenuAnchor>(() => (at.right === undefined ? at : { x: 0, y: at.y }));
+  // First drawn at the left edge so its natural width is measured (near the right edge it would shrink to fit),
+  // then placed before the first paint.
+  const [pos, setPos] = useState<MenuAnchor>(() => ({ x: 0, y: at.y }));
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) {
