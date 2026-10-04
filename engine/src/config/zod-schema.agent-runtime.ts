@@ -46,6 +46,7 @@ export const HeartbeatSchema = z
         start: z.string().optional(),
         end: z.string().optional(),
         timezone: z.string().optional(),
+        days: z.array(z.number().int().min(0).max(6)).optional(),
       })
       .optional(),
     model: z.string().optional(),
