@@ -49,9 +49,10 @@ async function health(port, token, protocol, deadline) {
       ws.addEventListener("error", () => { clearTimeout(timer); reject(new Error("Packaged engine websocket failed")); }, { once: true });
     });
     const connected = await request("connect", { minProtocol: protocol.min, maxProtocol: protocol.max,
-      client: { id: "branch-ios", displayName: "isolated production release smoke", version: "dev", platform: "dev", mode: "ui", instanceId: "release-smoke" },
-      role: "operator", scopes: [], caps: [], auth: { token } });
-    assert(connected.ok && connected.payload?.type === "hello-ok", "Packaged engine refused authenticated connection");
+      client: { id: "cli", displayName: "isolated production release smoke", version: "dev", platform: process.platform, mode: "cli", instanceId: "release-smoke" },
+      role: "operator", scopes: ["operator.read"], caps: [], auth: { token } });
+    assert(connected.ok && connected.payload?.type === "hello-ok" && connected.payload.auth?.role === "operator"
+      && connected.payload.auth.scopes?.includes("operator.read"), "Packaged engine refused authenticated read-scope connection");
     const response = await request("health", { probe: false });
     assert(response.ok && response.payload?.ok === true && typeof response.payload.ts === "number", "Packaged engine failed authenticated non-model health");
   } finally { ws.close(); }

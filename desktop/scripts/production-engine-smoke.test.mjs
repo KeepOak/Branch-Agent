@@ -23,7 +23,7 @@ const server = createServer((req, res) => { res.writeHead(mode === "stall" ? 503
 server.on("upgrade", (req, socket) => {
   const accept = createHash("sha1").update(req.headers["sec-websocket-key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
   socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n\r\n");
-  let buffer = Buffer.alloc(0);
+  let buffer = Buffer.alloc(0), authorizedRead = false;
   socket.on("data", chunk => {
     buffer = Buffer.concat([buffer, chunk]);
     while (buffer.length >= 6) {
@@ -35,8 +35,9 @@ server.on("upgrade", (req, socket) => {
       if (opcode === 8) { socket.end(); return; }
       const payload = Buffer.from(masked); for (let i = 0; i < payload.length; i++) payload[i] ^= key[i % 4];
       const request = JSON.parse(payload.toString());
-      const ok = request.method === "connect" ? mode !== "auth-fail" && request.params.auth.token === process.env.BRANCH_GATEWAY_TOKEN : mode !== "health-fail";
-      const result = { type: "res", id: request.id, ok, payload: request.method === "connect" ? { type: "hello-ok" } : { ok, ts: Date.now() } };
+      const ok = request.method === "connect" ? mode !== "auth-fail" && request.params.auth.token === process.env.BRANCH_GATEWAY_TOKEN : mode !== "health-fail" && authorizedRead;
+      if (request.method === "connect") authorizedRead = ok && request.params.client.id === "cli" && request.params.client.mode === "cli" && request.params.role === "operator" && JSON.stringify(request.params.scopes) === '["operator.read"]' && !request.params.device;
+      const result = { type: "res", id: request.id, ok, payload: request.method === "connect" ? { type: "hello-ok", auth: { role: "operator", scopes: authorizedRead ? ["operator.read"] : [] } } : { ok, ts: Date.now() } };
       const bytes = Buffer.from(JSON.stringify(result));
       const header = bytes.length < 126 ? Buffer.from([129, bytes.length]) : Buffer.from([129, 126, bytes.length >> 8, bytes.length & 255]);
       socket.write(Buffer.concat([header, bytes]));
