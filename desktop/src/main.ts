@@ -77,6 +77,7 @@ const rendererRpc = new DesktopRendererRpc({
 const lifecycle = new DesktopUpdateLifecycle(join(cfg.dataDir, "desktop-update-continuation.json"), {
   prepare: input => rendererRpc.request("prepare", input),
   resume: receipt => rendererRpc.request("resume", { receipt }),
+  observe: receipt => rendererRpc.request("observe", { receipt }),
   cancel: receipt => rendererRpc.request("cancel", { receipt }),
   phase: (phase, operationId, outcome) => { updateState = { phase, operationId, ...(outcome ? { outcome } : {}) }; win?.webContents.send("branch-desktop:update-lifecycle", updateState); },
 });
@@ -84,6 +85,19 @@ function selectedBuildIdentity(engineDir: string): string {
   try { const identity = readFileSync(join(engineDir, ".branch-component-sha256"), "utf8").trim();
     return /^[a-f0-9]{64}$/.test(identity) ? identity : "";
   } catch { return ""; }
+}
+let recoveryHint = false;
+async function reconcileHintedRecovery(): Promise<void> {
+  if (lifecycle.active) return;
+  if (lifecycle.pending?.phase !== "waiting") { recoveryHint = false; return; }
+  try {
+    await lifecycle.exclusive(async () => {
+      while (recoveryHint && lifecycle.pending?.phase === "waiting") {
+        recoveryHint = false;
+        await recoverContinuation();
+      }
+    });
+  } catch (error) { log(`Recovery observation retained: ${String(error)}`); }
 }
 let stopEngineWatch: (() => void) | undefined;
 let stopComponentWatch: (() => void) | undefined;
@@ -141,6 +155,11 @@ async function start(): Promise<void> {
     e.returnValue = served ? { gatewayUrl: `ws://127.0.0.1:${cfg.gatewayPort}`, gatewayToken: token, updateState } : null;
   });
   ipcMain.on("branch-desktop:restart-engine", e => { if (trustedWindow(e.sender)) void restartEngine(); });
+  ipcMain.on("branch-desktop:recovery-ready", (e, value) => {
+    if (!trustedWindow(e.sender) || !value || value.operationId !== lifecycle.pending?.operationId) return;
+    recoveryHint = true;
+    void reconcileHintedRecovery();
+  });
   ipcMain.on("branch-desktop:update-reply", (e, value) => rendererRpc.reply(value, trustedWindow(e.sender)));
   win = createWindow();
   await win.loadURL(STARTING);
@@ -166,7 +185,7 @@ async function start(): Promise<void> {
 
 function startComponentUpdates(): void {
   stopComponentWatch = watchComponentUpdates(cfg, log, async check => {
-    await lifecycle.exclusive(async () => {
+    try { await lifecycle.exclusive(async () => {
       if (lifecycle.pending) {
         if (["cancelled", "idle-cancelled"].includes(lifecycle.pending.phase) || lifecycle.pending.targetBuild === runningBuild) await recoverContinuation();
         else if (await rendererRpc.request("policy", {}) === true) await performRestart();
@@ -176,7 +195,7 @@ function startComponentUpdates(): void {
       if (!engineUpdateReady) return;
       win?.webContents.send("branch-desktop:engine-update", "ready");
       if (await rendererRpc.request("policy", {}) === true) await performRestart();
-    });
+    }); } finally { await reconcileHintedRecovery(); }
   });
 }
 
@@ -237,6 +256,7 @@ function watchUpdates(w: BrowserWindow): void {
 /** Manual and authorized automatic activation share the same complete lifecycle lock. */
 async function restartEngine(): Promise<void> {
   try { await lifecycle.exclusive(performRestart); } catch (error) { reportRestartFailure(error); }
+  finally { await reconcileHintedRecovery(); }
 }
 function reportRestartFailure(error: unknown): void {
   const msg = error instanceof Error ? error.message : String(error);
@@ -299,7 +319,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.on("window-all-closed", () => app.quit());
   app.on("will-quit", shutdown);
-  app.whenReady().then(async () => { await lifecycle.exclusive(start); startComponentUpdates(); }).catch((err: unknown) => {
+  app.whenReady().then(async () => { await lifecycle.exclusive(start); startComponentUpdates(); await reconcileHintedRecovery(); }).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);
     log(`could not start: ${msg}`);
     if (!HIDDEN) dialog.showErrorBox("Branch Agent could not start", msg);

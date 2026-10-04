@@ -187,7 +187,7 @@ async function freePort() {
   const port = probe.address().port; await new Promise(resolve => probe.close(resolve)); return port;
 }
 
-async function restartDesktopCaller({ automatic, failed, identityMode = "normal", idle = false }) {
+async function restartDesktopCaller({ automatic, failed, identityMode = "normal", idle = false, canonicalRecovery = "none" }) {
   const rollback = failed || identityMode === "mismatch" || identityMode === "wrong-pid";
   const unconfirmed = identityMode === "unavailable" || identityMode === "lost-ack";
   return fixture(async ({ cfg, request, release }) => {
@@ -238,7 +238,20 @@ async function restartDesktopCaller({ automatic, failed, identityMode = "normal"
           })();
           return;
         }
-        const result = payload.method === "policy" ? automatic : payload.method === "prepare"
+        if (payload.method === "observe") {
+          void (async () => {
+            const response = await previousFetch(`http://127.0.0.1:${desktop.gatewayPort}/custody`);
+            const result = await response.json();
+            if (canonicalRecovery === "event-completed" && result.status === "waiting") {
+              await (await previousFetch(`http://127.0.0.1:${desktop.gatewayPort}/finish`)).body?.cancel();
+              // The producer signal arrives before this READ's reply, while the complete lifecycle mutex is held.
+              ipcMain.emit("branch-desktop:recovery-ready", { sender: this.webContents }, { operationId: payload.input.receipt.lifecycleGeneration });
+            }
+            ipcMain.emit("branch-desktop:update-reply", { sender: this.webContents }, { id: payload.id, result });
+          })().catch(error => ipcMain.emit("branch-desktop:update-reply", { sender: this.webContents }, { id: payload.id, error: error.message }));
+          return;
+        }
+        const result = payload.method === "resume" && canonicalRecovery !== "none" ? { status: "uncertain", runId: "canonical-fixture" } : payload.method === "policy" ? automatic : payload.method === "prepare"
           ? idle ? { status: "idle", lifecycleGeneration: payload.input.operationId, targetBuild: payload.input.targetBuild } : { id: "fixture-receipt", sessionKey: "agent:fixture:main", expectedSessionId: "fixture-session", targetBuild: payload.input.targetBuild, lifecycleGeneration: payload.input.operationId }
           : payload.method === "cancel" ? "cancelled" : "accepted";
         queueMicrotask(() => ipcMain.emit("branch-desktop:update-reply", { sender: this.webContents }, { id: payload.id, result }));
@@ -308,6 +321,15 @@ async function restartDesktopCaller({ automatic, failed, identityMode = "normal"
       const response = await previousFetch(`http://127.0.0.1:${desktop.gatewayPort}/identity`); const actual = await response.json();
       assert.equal(actual.targetBuild, release.components.engine.sha256, "actual owned candidate inherited the validated archive identity");
       assert.equal(actual.pid, Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8")));
+      if (canonicalRecovery !== "none") {
+        const journal = JSON.parse(await readFile(join(cfg.dataDir, "desktop-update-continuation.json"), "utf8"));
+        assert.equal(journal.recoveryStatus, canonicalRecovery === "recovered" ? "recovered" : "completed");
+        assert.equal(requestsSeen.filter(method => method === "resume").length, 1, "observing canonical custody never creates a second continuation");
+        assert.equal(requestsSeen.filter(method => method === "prepare").length, 1);
+        assert.equal(requestsSeen.filter(method => method === "observe").length, canonicalRecovery === "event-completed" ? 2 : 1);
+        const facts = await (await previousFetch(`http://127.0.0.1:${desktop.gatewayPort}/custody`)).json();
+        assert.equal(facts.producerCount, 1, "the original producer owns the task throughout observation");
+      }
     }
   } finally {
     app.emit("will-quit");
@@ -321,7 +343,7 @@ async function restartDesktopCaller({ automatic, failed, identityMode = "normal"
     await eventually(async () => { try { process.kill(Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8")), 0); return false; } catch { return true; } });
   }
 }, async ({ engine, output, release }) => {
-  await writeFile(join(engine, "branch.mjs"), failed ? "process.exit(31);\n" : `import http from "node:http"; import {randomUUID} from "node:crypto"; const processInstanceId=randomUUID(); ${identityMode === "mismatch" ? `process.env.BRANCH_DESKTOP_ENGINE_BUILD_SHA256=${JSON.stringify("b".repeat(64))};` : ""} http.createServer((req,res)=>{if(req.url === "/identity"){res.writeHead(${identityMode === "unavailable" ? 404 : 200}).end(JSON.stringify({targetBuild:process.env.BRANCH_DESKTOP_ENGINE_BUILD_SHA256,processInstanceId,pid:process.pid}));}else res.writeHead(200).end("ready");}).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1");`);
+  await writeFile(join(engine, "branch.mjs"), failed ? "process.exit(31);\n" : `import http from "node:http"; import {randomUUID} from "node:crypto"; const processInstanceId=randomUUID(); const custody={status:${JSON.stringify(canonicalRecovery === "event-completed" ? "waiting" : canonicalRecovery)},runId:"canonical-fixture",outcome:"done",producerCount:1}; ${identityMode === "mismatch" ? `process.env.BRANCH_DESKTOP_ENGINE_BUILD_SHA256=${JSON.stringify("b".repeat(64))};` : ""} http.createServer((req,res)=>{if(req.url === "/finish"){custody.status="completed";res.end("finished");}else if(req.url === "/custody"){res.end(JSON.stringify(custody));}else if(req.url === "/identity"){res.writeHead(${identityMode === "unavailable" ? 404 : 200}).end(JSON.stringify({targetBuild:process.env.BRANCH_DESKTOP_ENGINE_BUILD_SHA256,processInstanceId,pid:process.pid}));}else res.writeHead(200).end("ready");}).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1");`);
   for (const file of await readdir(output)) await rm(join(output, file));
   Object.assign(release, await makeComponentRelease({ version: "0.4.3", tag: "v0.4.3", engine, window: join(engine, "..", "source-window"), output }));
 }); }
@@ -334,6 +356,9 @@ test("another real process reporting the correct archive cannot confirm the owne
 test("old engine without identity RPC leaves publication unconfirmed and never resumes", async () => restartDesktopCaller({ automatic: true, failed: false, identityMode: "unavailable" }));
 test("lost authenticated identity ACK retries the same owned candidate and receipt before replay", async () => restartDesktopCaller({ automatic: true, failed: false, identityMode: "lost-ack" }));
 test("lost idle identity ACK retries attestation without inventing a continuation turn", async () => restartDesktopCaller({ automatic: true, failed: false, idle: true, identityMode: "lost-ack" }));
+test("compiled main observes already-recovered producer custody without a second turn", async () => restartDesktopCaller({ automatic: true, failed: false, canonicalRecovery: "recovered" }));
+test("compiled main observes quick producer completion before the first custody read", async () => restartDesktopCaller({ automatic: true, failed: false, canonicalRecovery: "completed" }));
+test("compiled main latches producer completion during its mutex and reconciles by read only", async () => restartDesktopCaller({ automatic: true, failed: false, canonicalRecovery: "event-completed" }));
 
 test("release maker assembles distinct Windows/macOS descriptors sharing only an identical renderer", async () => fixture(async ({ root, engine, window }) => {
   const output = join(root, "assembly");

@@ -11,7 +11,7 @@ async function fixture(run, override = {}) {
   const root = await mkdtemp(join(tmpdir(), "branch-desktop-lifecycle-")); const file = join(root, "journal.json");
   const calls = []; const phases = [];
   const hooks = { prepare: async input => { calls.push(["prepare", input]); return { id:"receipt-1",sessionKey:"agent:trunk:main",expectedSessionId:"session-1",targetBuild:input.targetBuild,lifecycleGeneration:input.operationId, secret:"excluded" }; },
-    resume: async receipt => { calls.push(["resume", receipt]); return "accepted"; }, cancel: async receipt => { calls.push(["cancel",receipt]); return "cancelled"; },
+    resume: async receipt => { calls.push(["resume", receipt]); return {status:"accepted",runId:"new-continuation"}; }, observe: async receipt => { calls.push(["observe",receipt]); return {status:"waiting",runId:"canonical-source"}; }, cancel: async receipt => { calls.push(["cancel",receipt]); return "cancelled"; },
     phase: (phase,id) => phases.push([phase,id]), ...override };
   try { await run({ file,calls,phases,hooks,owner:new DesktopUpdateLifecycle(file,hooks), read:async()=>JSON.parse(await readFile(file,"utf8")) }); }
   finally { await rm(root,{recursive:true,force:true}); }
@@ -48,10 +48,32 @@ test("fresh requester authorization failure retains receipt and barrier without 
 test("immutable candidate mismatch never invokes resume",async()=>fixture(async({owner,calls,read})=>{
   await owner.prepare(build);await assert.rejects(owner.recover("b".repeat(64)),/does not match/);assert.equal((await read()).phase,"prepared");assert.equal(calls.filter(c=>c[0]==="resume").length,0);
 }));
-test("uncertain dispatch remains durable and blocked; session replacement cancels terminal",async()=>fixture(async({owner,hooks,read,phases})=>{
-  await owner.prepare(build);hooks.resume=async()=>"uncertain";await assert.rejects(owner.recover(build),/acknowledgement/);assert.equal((await read()).phase,"ready");assert.equal(phases.at(-1)[0],"reconnecting");
-  hooks.resume=async()=>"session-changed";await owner.recover(build);assert.equal((await read()).phase,"cancelled");assert.equal(phases.at(-1)[0],"failed");
+test("uncertain custody waits for explicit canonical observation without another resume",async()=>fixture(async({owner,hooks,read,phases,calls})=>{
+  await owner.prepare(build);hooks.resume=async value=>{calls.push(["resume",value]);return {status:"uncertain",runId:"canonical-source"}};
+  await owner.recover(build);assert.equal((await read()).phase,"waiting");assert.equal((await read()).runId,"canonical-source");assert.equal(phases.at(-1)[0],"waiting");
+  hooks.observe=async value=>{calls.push(["observe",value]);return {status:"recovered",runId:"canonical-source"}};
+  await owner.recover(build);assert.equal((await read()).recoveryStatus,"recovered");assert.equal(phases.at(-1)[0],"recovered");assert.equal(calls.filter(c=>c[0]==="resume").length,1);
 }));
+test("launcher recovery observes the original completed producer and never dispatches a second turn",async()=>fixture(async({owner,hooks,read,file,calls,phases})=>{
+  await owner.prepare(build);hooks.resume=async value=>{calls.push(["resume",value]);return {status:"uncertain",runId:"canonical-source"}};
+  await owner.recover(build);const restored=new DesktopUpdateLifecycle(file,hooks);assert.equal(restored.initialState.phase,"waiting");
+  hooks.observe=async value=>{calls.push(["observe",value]);return {status:"completed",runId:"canonical-source"}};
+  await restored.recover(build);assert.equal((await read()).recoveryStatus,"completed");assert.equal(phases.at(-1)[0],"complete");assert.equal(calls.filter(c=>c[0]==="resume").length,1);
+}));
+test("lost canonical observation ACK preserves waiting and the same receipt for read-only retry",async()=>fixture(async({owner,hooks,read,calls})=>{
+  await owner.prepare(build);hooks.resume=async value=>{calls.push(["resume",value]);return {status:"uncertain",runId:"canonical-source"}};
+  hooks.observe=async()=>{throw new Error("lost status ACK")};await assert.rejects(owner.recover(build),/lost status/);assert.equal((await read()).phase,"waiting");
+  const before=(await read()).receipt;hooks.observe=async value=>{assert.deepEqual(value,before);return {status:"completed",runId:"canonical-source"}};
+  await owner.recover(build);assert.equal((await read()).phase,"completed");assert.equal(calls.filter(c=>c[0]==="resume").length,1);
+}));
+test("ordinary durable admission reports recovered rather than claiming task completion",async()=>fixture(async({owner,read,phases})=>{
+  await owner.prepare(build);await owner.recover(build);assert.equal((await read()).recoveryStatus,"recovered");assert.equal(phases.at(-1)[0],"recovered");
+}));
+test("invalid canonical observation cannot release the waiting input barrier",async()=>fixture(async({owner,hooks,read})=>{
+  await owner.prepare(build);hooks.resume=async()=>({status:"uncertain",runId:"canonical-source"});hooks.observe=async()=>({status:"guess"});
+  await assert.rejects(owner.recover(build),/Invalid engine recovery/);assert.equal((await read()).phase,"waiting");
+}));
+
 test("invalid or mismatched prepare receipt leaves engine running and durable intent recoverable",async()=>fixture(async({owner,read})=>{
   await assert.rejects(owner.prepare(build),/binding mismatch/);assert.equal((await read()).phase,"intent");
 },{prepare:async input=>({id:"x",sessionKey:"key",expectedSessionId:"session",targetBuild:"b".repeat(64),lifecycleGeneration:input.operationId})}));
@@ -77,3 +99,8 @@ test("aborted idle stop cancels exact admitted generation through real caller ho
 test("lost generation cancellation ACK retains idle lease journal and input barrier",async()=>fixture(async({owner,hooks,read})=>{
   await owner.prepare(build);hooks.cancel=async()=>{throw new Error("lost cancel ACK")};await assert.rejects(owner.abortBeforeStop(),/lost cancel/);assert.equal((await read()).phase,"idle");assert.equal(owner.pending.phase,"idle");
 },{prepare:async input=>({status:"idle",lifecycleGeneration:input.operationId,targetBuild:input.targetBuild})}));
+
+test("observed failed completion releases custody with its actual outcome instead of success wording",async()=>fixture(async({owner,hooks,read,phases})=>{
+  await owner.prepare(build);hooks.resume=async()=>({status:"uncertain",runId:"canonical-source"});hooks.observe=async()=>({status:"completed",runId:"canonical-source",outcome:"failed"});
+  await owner.recover(build);assert.equal((await read()).recoveryStatus,"completed");assert.equal((await read()).recoveryOutcome,"failed");assert.equal(phases.at(-1)[0],"complete");
+}));

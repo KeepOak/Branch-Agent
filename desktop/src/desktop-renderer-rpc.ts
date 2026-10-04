@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-export type UpdatePhase = "preparing" | "updating" | "reconnecting" | "complete" | "failed";
-export type RendererMethod = "prepare" | "resume" | "cancel" | "policy" | "identity";
+export type UpdatePhase = "preparing" | "updating" | "reconnecting" | "waiting" | "recovered" | "complete" | "failed";
+export type RendererMethod = "prepare" | "resume" | "cancel" | "policy" | "identity" | "observe";
 export interface RendererTarget {
   isTrusted(): boolean;
   send(channel: string, payload: unknown): void;

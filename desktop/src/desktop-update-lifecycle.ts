@@ -3,13 +3,14 @@ import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, re
 import { dirname } from "node:path";
 
 export interface DesktopReceipt { id: string; sessionKey: string; expectedSessionId: string; targetBuild: string; lifecycleGeneration: string }
-interface Journal { version: 1; phase: "intent" | "idle" | "idle-cancelled" | "prepared" | "ready" | "completed" | "cancelled"; operationId: string; targetBuild: string; receipt?: DesktopReceipt; cancellationAcknowledged?: boolean }
+interface Journal { version: 1; phase: "intent" | "idle" | "idle-cancelled" | "prepared" | "ready" | "waiting" | "completed" | "cancelled"; operationId: string; targetBuild: string; receipt?: DesktopReceipt; cancellationAcknowledged?: boolean; runId?: string; recoveryStatus?: "recovered" | "completed"; recoveryOutcome?: "done" | "failed" | "killed" | "timeout" | "interrupted" }
 export interface DesktopAttempt { lifecycleGeneration: string; targetBuild: string }
 export interface LifecycleHooks {
   prepare(input: { operationId: string; targetBuild: string }): Promise<unknown>;
   resume(receipt: DesktopReceipt): Promise<unknown>;
+  observe(receipt: DesktopReceipt): Promise<unknown>;
   cancel(receipt: DesktopReceipt | DesktopAttempt): Promise<unknown>;
-  phase(phase: "preparing" | "updating" | "reconnecting" | "complete" | "failed", operationId: string, outcome?: "rolled-back" | "cancelled" | "session-changed" | "deferred"): void;
+  phase(phase: "preparing" | "updating" | "reconnecting" | "waiting" | "recovered" | "complete" | "failed", operationId: string, outcome?: "rolled-back" | "cancelled" | "session-changed" | "deferred" | "done" | "failed" | "killed" | "timeout" | "interrupted"): void;
 }
 function receipt(value: unknown): DesktopReceipt {
   if (!value || typeof value !== "object") throw new Error("Invalid engine restart receipt");
@@ -26,15 +27,15 @@ export class DesktopUpdateLifecycle {
   private busy = false;
   constructor(private readonly path: string, private readonly hooks: LifecycleHooks) {}
   get active(): boolean { return this.busy; }
-  get initialState(): { phase: "preparing" | "reconnecting"; operationId: string } | undefined {
+  get initialState(): { phase: "preparing" | "reconnecting" | "waiting"; operationId: string } | undefined {
     const journal = this.read();
     if (!this.pending || !journal) return undefined;
-    return { phase: journal.phase === "intent" ? "preparing" : "reconnecting", operationId: journal.operationId };
+    return { phase: journal.phase === "intent" ? "preparing" : journal.phase === "waiting" ? "waiting" : "reconnecting", operationId: journal.operationId };
   }
-  get pending(): { phase: "intent" | "idle" | "idle-cancelled" | "prepared" | "ready" | "cancelled"; targetBuild: string } | undefined {
+  get pending(): { phase: "intent" | "idle" | "idle-cancelled" | "prepared" | "ready" | "waiting" | "cancelled"; targetBuild: string; operationId: string } | undefined {
     const journal = this.read();
     if (!journal || journal.phase === "completed" || ["cancelled", "idle-cancelled"].includes(journal.phase) && journal.cancellationAcknowledged) return undefined;
-    return { phase: journal.phase, targetBuild: journal.targetBuild };
+    return { phase: journal.phase, targetBuild: journal.targetBuild, operationId: journal.operationId };
   }
   async exclusive<T>(run: () => Promise<T>): Promise<T | undefined> {
     if (this.busy) return undefined;
@@ -44,9 +45,9 @@ export class DesktopUpdateLifecycle {
   private read(): Journal | undefined {
     if (!existsSync(this.path)) return undefined;
     const value = JSON.parse(readFileSync(this.path, "utf8")) as Journal;
-    if (value.version !== 1 || !["intent", "idle", "idle-cancelled", "prepared", "ready", "completed", "cancelled"].includes(value.phase)) throw new Error("Invalid desktop update journal");
+    if (value.version !== 1 || !["intent", "idle", "idle-cancelled", "prepared", "ready", "waiting", "completed", "cancelled"].includes(value.phase)) throw new Error("Invalid desktop update journal");
     if (typeof value.operationId !== "string" || !value.operationId || !/^[a-f0-9]{64}$/.test(value.targetBuild)) throw new Error("Invalid desktop update intent");
-    if (["prepared", "ready", "cancelled"].includes(value.phase) || value.receipt) return { ...value, receipt: receipt(value.receipt) };
+    if (["prepared", "ready", "waiting", "cancelled"].includes(value.phase) || value.receipt) return { ...value, receipt: receipt(value.receipt) };
     return { version: 1, phase: value.phase, operationId: value.operationId, targetBuild: value.targetBuild, ...(value.cancellationAcknowledged ? { cancellationAcknowledged: true } : {}) };
   }
   private save(value: Journal): void {
@@ -58,7 +59,7 @@ export class DesktopUpdateLifecycle {
   }
   async prepare(targetBuild: string): Promise<boolean> {
     const existing = this.read();
-    if (existing && (["idle", "prepared", "ready"].includes(existing.phase) || ["cancelled", "idle-cancelled"].includes(existing.phase) && !existing.cancellationAcknowledged)) throw new Error("A durable update continuation is pending");
+    if (existing && (["idle", "prepared", "ready", "waiting"].includes(existing.phase) || ["cancelled", "idle-cancelled"].includes(existing.phase) && !existing.cancellationAcknowledged)) throw new Error("A durable update continuation is pending");
     if (!/^[a-f0-9]{64}$/.test(targetBuild)) throw new Error("An immutable verified engine identity is required");
     if (existing?.phase === "intent" && existing.targetBuild !== targetBuild) throw new Error("A different durable update intent is pending");
     const operationId = existing?.phase === "intent" ? existing.operationId : randomUUID();
@@ -93,7 +94,7 @@ export class DesktopUpdateLifecycle {
   cancelBeforeRollback(): void {
     const journal = this.read();
     if (journal?.phase === "idle") { this.save({ ...journal, phase: "idle-cancelled", cancellationAcknowledged: false }); return; }
-    if (journal && ["prepared", "ready"].includes(journal.phase)) this.save({ ...journal, phase: "cancelled", cancellationAcknowledged: false });
+    if (journal && ["prepared", "ready", "waiting"].includes(journal.phase)) this.save({ ...journal, phase: "cancelled", cancellationAcknowledged: false });
   }
   async recover(runningBuild: string): Promise<void> {
     const journal = this.read();
@@ -117,12 +118,43 @@ export class DesktopUpdateLifecycle {
       this.save({ ...journal, cancellationAcknowledged: true });
       this.hooks.phase("failed", operationId, "rolled-back"); return;
     }
-    this.hooks.phase("reconnecting", operationId);
     if (runningBuild !== prepared.targetBuild) throw new Error("Running engine does not match the continuation candidate");
-    this.save({ ...journal, phase: "ready" });
-    const result = await this.hooks.resume(prepared);
-    if (result !== "accepted" && result !== "session-changed" && result !== "cancelled") throw new Error("Invalid engine resume acknowledgement");
-    this.save({ ...journal, phase: result === "accepted" ? "completed" : "cancelled", cancellationAcknowledged: result !== "accepted" });
-    this.hooks.phase(result === "accepted" ? "complete" : "failed", operationId, result === "accepted" ? undefined : result);
+    if (journal.phase === "waiting") {
+      await this.reconcile(journal, await this.hooks.observe(prepared));
+      return;
+    }
+    this.hooks.phase("reconnecting", operationId);
+    const ready: Journal = { ...journal, phase: "ready" };
+    this.save(ready);
+    const response = await this.hooks.resume(prepared);
+    const status = this.reconcile(ready, response);
+    if (status === "waiting") await this.reconcile(this.read()!, await this.hooks.observe(prepared));
+  }
+  /** Reconciliation is read-only: an uncertain producer never causes another resume dispatch. */
+  private reconcile(journal: Journal, response: unknown): "waiting" | "terminal" {
+    const value = typeof response === "string" ? { status: response } : response as { status?: unknown; runId?: unknown; outcome?: unknown } | null;
+    const status = value?.status;
+    const runId = typeof value?.runId === "string" && value.runId ? value.runId : journal.runId;
+    const operationId = journal.operationId;
+    if (status === "uncertain" || status === "waiting") {
+      this.save({ ...journal, phase: "waiting", ...(runId ? { runId } : {}) });
+      this.hooks.phase("waiting", operationId);
+      return "waiting";
+    }
+    if (status === "accepted" || status === "recovered" || status === "completed") {
+      const recoveryStatus = status === "completed" ? "completed" : "recovered";
+      const outcome = value?.outcome;
+      if (outcome !== undefined && !["done", "failed", "killed", "timeout", "interrupted"].includes(outcome as string)) throw new Error("Invalid canonical completion outcome");
+      const recoveryOutcome = outcome as Journal["recoveryOutcome"];
+      this.save({ ...journal, phase: "completed", recoveryStatus, ...(runId ? { runId } : {}), ...(recoveryOutcome ? { recoveryOutcome } : {}) });
+      this.hooks.phase(recoveryStatus === "completed" ? "complete" : "recovered", operationId, recoveryOutcome);
+      return "terminal";
+    }
+    if (status === "cancelled" || status === "session-changed") {
+      this.save({ ...journal, phase: "cancelled", cancellationAcknowledged: true });
+      this.hooks.phase("failed", operationId, status);
+      return "terminal";
+    }
+    throw new Error("Invalid engine recovery observation");
   }
 }

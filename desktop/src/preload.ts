@@ -40,6 +40,8 @@ if (info) {
     onPrepareUpdate: (handler: (input: unknown) => Promise<unknown>) => register("prepare", handler),
     onResumeUpdate: (handler: (input: unknown) => Promise<unknown>) => register("resume", handler),
     onCancelUpdate: (handler: (input: unknown) => Promise<unknown>) => register("cancel", handler),
+    onObserveUpdate: (handler: (input: unknown) => Promise<unknown>) => register("observe", handler),
+    requestUpdateReconciliation: (operationId: string) => ipcRenderer.send("branch-desktop:recovery-ready", { operationId }),
     onVerifyUpdate: (handler: (input: unknown) => Promise<unknown>) => register("identity", handler),
     onUpdatePolicy: (handler: (input: unknown) => Promise<unknown>) => register("policy", handler),
   });
