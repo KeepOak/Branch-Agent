@@ -58,6 +58,10 @@ export type SidebarProps = {
   onClearFilters?: () => void;
   /** Other apps' conversations, after the list (§4.1.1 other apps' sections). */
   appSections?: ReactNode;
+  /** The "New:" tip under the Places (SidebarExtras). */
+  tip?: ReactNode;
+  /** The pet strip above the person's row (SidebarExtras). */
+  pet?: ReactNode;
   /** The machine switcher, shown at the top of the list only when it slides over (760 px and below). */
   machine?: ReactNode;
 };
@@ -252,6 +256,7 @@ export function Sidebar(p: SidebarProps) {
       {p.searchResults && !p.rail ? p.searchResults : (
         <div className="side-scroll">
           <Places current={p.currentPlace} inbox={p.inboxCount} running={p.runningCount} rail={p.rail} onPlace={p.onPlace} />
+          {p.rail ? null : p.tip}
           <div className="list" data-testid="conversation-list">
             {p.home ? <Rows p={p} rows={[p.home]} kids={kids} /> : null}
             {p.projects && p.onNewProject ? <ProjectsSection projects={p.projects} rows={p.allRows ?? []} renderRows={(rows) => <Rows p={p} rows={rows} kids={kids} />} onNew={p.onNewProject} /> : null}
@@ -285,6 +290,7 @@ export function Sidebar(p: SidebarProps) {
         </div>
       )}
       <CommunityInvite />
+      {p.rail ? null : p.pet}
       <div className="owner">
         <button type="button" className="me" title="Who is using Branch, look, lock" aria-label={p.personName} data-testid="person" onClick={p.onPerson}>
           <span className="initial" aria-hidden="true">

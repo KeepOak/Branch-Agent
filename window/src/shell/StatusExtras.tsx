@@ -179,8 +179,8 @@ export function StatusPet({ pet }: { pet: Props["pet"] }) {
 }
 
 /** The pet's still: a painted picture, or a pixel pet drawn from its map. */
-function PetStill({ id }: { id: string }) {
+export function PetStill({ id, size = 22 }: { id: string; size?: number }) {
   const still = PETS.find((x) => x.id === id)?.still;
-  if (still) return <img src={still} alt="" width={22} height={22} draggable={false} />;
+  if (still) return <img src={still} alt="" width={size} height={size} draggable={false} />;
   return PIXEL[id] ? <span className="pet-px"><PixelPet p={PIXEL[id]} /></span> : null;
 }

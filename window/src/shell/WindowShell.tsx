@@ -22,6 +22,7 @@ import { Icon } from "./icons";
 import { buildSections, clearFilters, emptyLineFor, filterRows, filterSummary, hasFolders, homeRow, owners, roomUsed, type ListPrefs } from "./list-model";
 import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./AppSections";
 import { batchMenuItems } from "./batch-menu";
+import { NewsTip, SidePet } from "./SidebarExtras";
 import { colourHue, iconColourItem } from "./row-look";
 import { RowCard } from "./RowCard";
 import { MIN_PANE, NO_ROOM, PaneDivider, SplitPanes, TOO_NARROW, type Pane } from "./SplitPanes";
@@ -663,6 +664,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       : null;
   const voiceReady = useVoiceCatalog(ready ? session.engine : undefined);
   const pet = usePetLook(session.engine);
+  const petWaitingRow = lists.rows.find((r) => (pending.get(r.key) ?? 0) > 0);
+  const petWaiting = petWaitingRow ? trunkName(petWaitingRow.agentId) : null;
+  const petWorkingRow = lists.rows.find((r) => r.working);
+  const petWorking = petWorkingRow ? trunkName(petWorkingRow.agentId) : null;
   const pausedTrunks = trunks.list.filter((t) => t.paused);
   const statusExtras = {
     session,
@@ -967,6 +972,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onCard={rowCard.onCard}
         showOnly={prefs.groupBy === "person" ? { current: prefs.people, name: personName, onShow: (id) => changePrefs({ ...prefs, people: id ? `p:${id}` : "everyone" }) } : undefined}
         onClearFilters={() => changePrefs(clearFilters(prefs))}
+        tip={<NewsTip version={machine?.version ?? ""} row={installedRows({ setup: () => firstRun.open(0), shortcuts: () => setOverlay({ kind: "shortcuts" }), palette: () => setOverlay({ kind: "palette" }), settings: openSettings }).New[0]} />}
+        pet={<SidePet pet={pet} waiting={petWaiting} working={petWorking} />}
         appSections={
           <AppSections
             data={catalogs}
