@@ -4,9 +4,10 @@
 // (diagnostics.*, diagnostics.stability, profiles), discovery, widgets, working copies, the settings file
 // (config.get / config.apply) and copyable commands that exist in the branch command. Rows the engine has no
 // setting or method for are greyed with why; the dialogs are in developer-more.tsx.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Field, Num, Page, Pick, Plist, Prow, Sec, Seg, Switch, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Field, Num, Page, Pick, Pill, Plist, Prow, Sec, Seg, Switch, useConfig, type RowEntry } from "../kit";
+import { Dialog } from "../../../shell/Dialog";
 import { CodeRow, CopyBtn, Tile, rec, str, useLive, type RecordValue } from "./common";
 import { Ico } from "./icons";
 import {
@@ -25,19 +26,18 @@ const BUILD_OFF: OffRow[] = [
   ["Start a new plugin or connector", "Templates for a connector, commands, hooks, skills and themes; then check it and link it for testing.", "From a terminal: Start a plugin, below.", "btn:Choose a template"],
 ];
 const EDITORS: OffRow[] = [
-  ["Editor extension", "Shares your open files, cursor and selection; shows edits as diffs to accept or reject. /ide checks it.", ne("editor extension")],
+  ["Editor extension", "Shares your open files, cursor and selection; shows edits as diffs to accept or reject. /ide checks it.", ne("editor extension"), "chips:VS Code|JetBrains|On its own"],
   ["Install it", "From the extension you can also install the branch command.", ne("editor extension"), "btn:Open in VS Code"],
   ["Show edits as diffs to accept", "Off: edits apply and show in the thread.", ne("editor extension"), "sw"],
   ["Read the file open in the editor", "", ne("editor extension"), "sw"],
   ["Share the editor’s git branch and changes", "", ne("editor extension"), "sw"],
   ["Share the debugger’s variables and stack", "While you’re stopped at a breakpoint.", ne("editor extension"), "sw"],
   ["Let other extensions start tasks", "Through the extension’s public interface.", ne("editor extension"), "sw"],
-  ["Fix a terminal command: prompt", "Used by the editor’s terminal menu. Explain uses its own.", ne("editor extension")],
+  ["Fix a terminal command: prompt", "Used by the editor’s terminal menu. Explain uses its own.", ne("editor extension"), "in"],
 ];
 const EDITORS_MORE: OffRow[] = [
   ["Rich tool steps for editors", "Kinds, file places, groups and diffs.", ne("agent protocol tool-step setting"), "sw"],
   ["Tidy each turn’s messages for the editor", "", ne("agent protocol message setting"), "sw"],
-  ["Browser extension", "Sends pages from your browser into Branch, and lends Branch’s browser tools to it.", ne("browser extension keys"), "btn:Make a key"],
 ];
 const ASSISTANTS: OffRow[] = [
   ["Branch as a connector", "Other assistants see your conversations, Trunks and folders as tools.", "Other assistants start it themselves with branch mcp serve.", "sw"],
@@ -51,7 +51,7 @@ const ASSISTANTS: OffRow[] = [
   ["Drive Branch from another coding assistant", "A skill that lets it use a running Branch over its local address.", ne("skill for other assistants"), "btn:Add the skill"],
   ["Your Trunk reacts to coding assistant events", "Its face reacts as another coding assistant works.", APP, "sw"],
   ["Remote control for the terminal", "Other tools can fill in and send the terminal’s message, open its dialogs and run commands.", APP, "sw"],
-  ["Sign in to other apps with Branch", "Branch acts as a sign-in provider for your own apps.", ne("sign-in provider"), "val:Off"],
+  ["Sign in to other apps with Branch", "Branch acts as a sign-in provider for your own apps.", ne("sign-in provider"), "pill:Off"],
   ["Sign in through your identity provider", "For assistants that expect to register themselves: GitHub, Google, Azure, Auth0.", ne("client registration"), "btn:Set up"],
   ["Sign in from GitHub Actions without a stored key", "GitHub’s own token is swapped for a short-lived one.", ne("token exchange"), "btn:Set up"],
   ["Example connectors", "A starting point to copy, and Branch’s docs as a connector for coding assistants.", ne("connector template"), "btn:Copy"],
@@ -61,7 +61,7 @@ const CODE_MORE: OffRow[] = [
   ["Ask before indexing a folder", "A new folder waits for your yes.", ne("code index"), "sw"],
   ["Warn when too many tools are on", "", ne("tool count warning"), "sw"],
 ];
-const MORE_LINKS: OffRow[] = [["Open a video in a new chat", "Starts a conversation with that video’s page and captions loaded.", "branch:// links are opened by the Branch app.", "code:branch://watch?v=<video id>"]];
+const MORE_LINKS: OffRow[] = [["Open a video in a new chat", "Starts a conversation with that video’s page and captions loaded.", "branch:// links are opened by the Branch app.", "codecopy:branch://watch?v=<video id>"]];
 const AUTO_TECH: OffRow[] = [
   ["Flow search", "Tries four versions of a flow on examples and keeps the best. Off until you choose: it runs four versions, four times the cost.", ne("flow search"), "sw"],
   ["Loop a prompt", "Or /heartbeat for the check-in list.", ne("/loop command"), "code:/loop 10m check the build"],
@@ -77,7 +77,7 @@ rowsOf("Local address", ["Local address", "Session key", "Sign-in", "Sign in wit
 rowsOf("Help with code", ["Use language servers", "Use a debugger", "Where working copies go", "Faster working copies"]);
 rowsOf("branch:// links", titles(LINKS));
 rowsOf("Build on Branch", ["TypeScript", "Python", "Java", "Gateway client", "KeepOak cloud", "Tools lent by apps", ...titles(BUILD_OFF)]);
-rowsOf("Editors and other apps", [...titles(EDITORS), "Agent Client Protocol", ...titles(EDITORS_MORE)]);
+rowsOf("Editors and other apps", [...titles(EDITORS), "Agent Client Protocol", ...titles(EDITORS_MORE), "Browser extension"]);
 rowsOf("Let other assistants use Branch", titles(ASSISTANTS));
 rowsOf("Help with code, more", titles(CODE_MORE));
 rowsOf("More branch:// links", titles(MORE_LINKS));
@@ -132,6 +132,18 @@ function reachLine(config: Ctx["config"]): string {
   return `${who} ${mode === "none" ? "Requests need no sign-in." : "Requests need your sign-in."}`;
 }
 
+/** Copy for the address row: a plain button, as the preview draws it. */
+function AddrCopy({ text }: { text: string }) {
+  const [done, setDone] = useState("");
+  useEffect(() => { if (!done) return; const t = setTimeout(() => setDone(""), 1600); return () => clearTimeout(t); }, [done]);
+  return <Btn sm onClick={() => void navigator.clipboard.writeText(text).then(() => setDone("Copied"), () => setDone("Couldn’t copy"))}>{done || "Copy"}</Btn>;
+}
+const PAIR = "How other computers and phones know this one when they pair.";
+/** The device's identity: the value with Copy once the engine answers. */
+function IdRow({ title, code }: { title: string; code: string }) {
+  return code ? <CodeRow title={title} code={code} sub={PAIR} /> : <Ctl title={title} sub={PAIR} />;
+}
+
 function LocalAddress({ engine, config, port, base }: Ctx) {
   const id = useLive<RecordValue>(engine, "gateway.identity.get", {}, []);
   const ident = rec(id.data);
@@ -143,7 +155,7 @@ function LocalAddress({ engine, config, port, base }: Ctx) {
   const addr = `127.0.0.1:${port}`;
   return (
     <Sec title="Local address">
-      <Ctl title={<>{addr}</>} id="Local address" sub={reachLine(config)}><CopyBtn text={addr} /></Ctl>
+      <Ctl title={<>{addr}</>} id="Local address" sub={reachLine(config)}><AddrCopy text={addr} /></Ctl>
       <Ctl title="Session key" sub="Never shown in full here." off="Making a new key needs the engine’s key rotation.">
         {mode === "token" && config.get("gateway.auth.token") ? <span className="s2developer-dots">••••••••••••</span> : null}<Btn sm>Make a new one</Btn>
       </Ctl>
@@ -155,8 +167,8 @@ function LocalAddress({ engine, config, port, base }: Ctx) {
       </Ctl>
       <Ctl title="Failed sign-ins" sub={failedLine(config)} />
       <CodeRow title="Point the page at another Gateway" code={`${base}${pagePath(config)}/?gatewayUrl=wss://‹host›:‹port›#token=‹key›`} sub="For building the browser page. It asks before switching." />
-      {id.error ? <Ctl title="Device ID" off={id.error} /> : <CodeRow title="Device ID" code={str(ident.deviceId)} sub="How other computers and phones know this one when they pair." />}
-      {id.error ? null : <CodeRow title="Public key" code={str(ident.publicKey)} sub="How other computers and phones know this one when they pair." />}
+      {id.error ? <Ctl title="Device ID" off={id.error} /> : <IdRow title="Device ID" code={str(ident.deviceId)} />}
+      {id.error ? null : <IdRow title="Public key" code={str(ident.publicKey)} />}
       <Ctl title="Settings over HTTP" sub={`Selected gateway actions over HTTP at ${base}/api/v1/admin/rpc, for scripts. Same sign-in as the local address. Off until you choose: anything holding the key could change Branch this way.`}>
         <Switch label="Settings over HTTP" checked={rpc} disabled={config.loading} onChange={(on) => void config.set("plugins.entries.admin-http-rpc.enabled", on)} />
       </Ctl>
@@ -218,9 +230,11 @@ function Editors({ config }: Ctx) {
     <Sec title="Editors and other apps">
       <Greyed rows={EDITORS} />
       <Ctl title="Agent Client Protocol" sub="Editors such as Zed start Branch as their agent with branch acp. Branch’s own requests (models, schedules, skills, Trunks) come along.">
-        <Switch label="Agent Client Protocol" checked={acp} disabled={config.loading} onChange={(on) => void config.set("acp.enabled", on)} />
+        <Pill tone={acp ? "ok" : "idle"}>{acp ? "On" : "Off"}</Pill>
       </Ctl>
       <Greyed rows={EDITORS_MORE} />
+      <Ctl title="Browser extension" sub="Sends pages from your browser into Branch, and lends Branch’s browser tools to it." off={ne("browser extension keys")} />
+      <Acts><Btn sm disabled title={ne("browser extension keys")}>Make a key</Btn></Acts>
     </Sec>
   );
 }
@@ -252,7 +266,7 @@ const RUN_OFF: OffRow[] = [
   ["Settings file schema for your editor", "Point your editor at it for checks and completion.", "No schema address; branch config schema prints it."],
   ["A simple web page for it", "A Gradio page on this computer to try a Trunk.", "The branch command has no web page server yet."],
 ];
-rowsOf("Run without the window", ["Message", "Carry on", "Model", "Mode", "Folder", "Change one setting for this run", ...CHKS.map((c) => c[1]), ...titles(RUN_OFF), "Use Branch from an editor that speaks ACP", "Answer like the OpenAI Responses API", "Read other coding tools’ settings files", "Other agent programs on this computer"]);
+rowsOf("Run without the window", ["Message", "Carry on", "Model", "Mode", "Folder", "Change one setting for this run", ...CHKS.map((c) => c[1]), ...titles(RUN_OFF), "Use Branch from an editor that speaks ACP", "Answer like the OpenAI Responses API", "Read other coding tools’ settings files"]);
 
 function RunWithout({ config, base }: Ctx) {
   const [o, setO] = useState<RunOpts>({ msg: "", model: "", cwd: "", stdin: false });
@@ -263,15 +277,15 @@ function RunWithout({ config, base }: Ctx) {
     <Sec title="Run without the window" hint="One message, start to finish, from a script or CI. Pick what you need; the line below follows.">
       <Ctl title="Message"><input className="inp" aria-label="Message" value={o.msg} placeholder="Summarise today’s inbox" disabled={o.stdin} onChange={(e) => set({ msg: e.target.value })} /></Ctl>
       <Ctl title="Carry on"><Seg label="Carry on" value="new" onChange={() => undefined} options={[{ id: "new", label: "New" }, { id: "last", label: "Last conversation", off: "agent exec always starts fresh." }, { id: "copy", label: "A copy of the last", off: "agent exec always starts fresh." }]} /></Ctl>
-      <Ctl title="Model"><input className="inp" aria-label="Model" value={o.model} placeholder="provider/model" onChange={(e) => set({ model: e.target.value })} /></Ctl>
+      <Ctl title="Model"><input className="inp" aria-label="Model" value={o.model} placeholder="As set" onChange={(e) => set({ model: e.target.value })} /></Ctl>
       <Ctl title="Mode" off="agent exec has no mode flag; it runs with your settings."><Seg label="Mode" value="As set" onChange={() => undefined} options={["As set", "Read only", "Ask first", "Full access"].map((l) => ({ id: l, label: l }))} /></Ctl>
-      <Ctl title="Folder"><input className="inp" aria-label="Folder" value={o.cwd} placeholder="./repo" onChange={(e) => set({ cwd: e.target.value })} /></Ctl>
-      <Ctl title="Change one setting for this run" sub="Any setting, for this run only." off="agent exec takes a whole settings file (--config), not one setting."><input className="inp" aria-label="Change one setting for this run" /></Ctl>
+      <Ctl title="Folder"><input className="inp" aria-label="Folder" value={o.cwd} placeholder="This folder" onChange={(e) => set({ cwd: e.target.value })} /></Ctl>
+      <Ctl title="Change one setting for this run" sub="Any setting, for this run only." off="agent exec takes a whole settings file (--config), not one setting."><input className="inp" aria-label="Change one setting for this run" placeholder="key=value" /></Ctl>
       <div className="s2developer-chks">
         {CHKS.map(([k, t, sub, off]) => (
           <label key={t} className="s2developer-chk" title={off} aria-disabled={off ? true : undefined}>
             <input type="checkbox" disabled={Boolean(off)} checked={k ? Boolean(o[k]) : false} onChange={(e) => k && set({ [k]: e.target.checked })} />
-            <span><b>{t}</b><small>{off ?? sub}</small></span>
+            <span><b>{t}</b><small>{sub}</small>{off ? <small className="s2developer-why">{off}</small> : null}</span>
           </label>
         ))}
       </div>
@@ -286,7 +300,9 @@ function RunWithout({ config, base }: Ctx) {
       <Ctl title="Read other coding tools’ settings files" sub="Uses their instruction and command files in a project, as well as Branch’s own." off={ne("project file import setting")}><Switch label="Read other coding tools’ settings files" checked={false} onChange={() => undefined} /></Ctl>
       <h3 className="s2-h3">Kits</h3>
       <p className="hint">TypeScript, Python, Go, React, C and inside your own server: none of these kits is published yet. The gateway client is in Build on Branch, above.</p>
-      <Ctl title="Other agent programs on this computer" sub="Branch checks the usual places (programs, npm, pip, Homebrew) and can hand work to them as helpers." off={ne("agent program finder")} />
+      <h3 className="s2-h3">Other agent programs on this computer</h3>
+      <p className="hint">Branch checks the usual places (programs, npm, pip, Homebrew) and can hand work to them as helpers.</p>
+      <p className="hint s2developer-why">{ne("agent program finder")}</p>
     </Sec>
   );
 }
@@ -296,7 +312,7 @@ const TERM: [string, string, string?][] = [
   ["Call any gateway action", "branch gateway call <action> --params {} --json", "The same actions as Call the gateway, for scripts."],
   ["Read a setting", "branch config get <key>"], ["Change a setting", "branch config set <key> <value>"], ["Remove a setting", "branch config unset <key>"],
   ["Apply a patch", "branch config patch --file changes.json5"],
-  ["Where the file is", "branch config file", "Add --dry-run to see the change first. Add --expect-current-json <value> to change a setting only if it still holds that value."],
+  ["Where the file is", "branch config file", "Add --dry-run to see the change first. Add --expect-current-json to change a setting only if it still holds that value."],
   ["Follow a conversation’s steps", "branch sessions tail --follow", "Short progress lines, newest at the bottom; message text and tool contents are left out. Add --session-key to pick one, --tail to show more. Starts with the last 80 steps, then new ones."],
   ["What each Connector is doing", "branch mcp status --verbose"], ["Check each one answers", "branch mcp doctor --probe"], ["Sign in to one", "branch mcp login <name>"], ["Load changes", "branch mcp reload"],
   ["Set up without questions", "branch onboard --non-interactive --accept-risk", "For scripts and new machines: pass keys, the gateway sign-in and the plugins it needs as flags. --accept-risk says you know Trunks can act on this computer; it does not approve plugins."],
@@ -386,10 +402,10 @@ function Flags({ config }: Ctx) {
   const add = () => { const v = draft.trim(); if (v && !flags.includes(v)) void config.set("diagnostics.flags", [...flags, v]); setDraft(""); };
   const remove = (f: string) => { const rest = flags.filter((x) => x !== f); void config.set("diagnostics.flags", rest.length ? rest : null); };
   return (
-    <Ctl title="Detailed logs for" sub="Flags such as telegram.*" stack after={
-      <div className="s2-list">
+    <Ctl title="Detailed logs for" sub="Flags such as telegram.*" after={
+      <div className="s2developer-lst">
         {flags.length ? flags.map((f) => <span key={f} className="chip6">{f}<button type="button" className="s2-x" aria-label={`Remove ${f}`} onClick={() => remove(f)}>×</button></span>) : <span className="hint">Nothing here yet.</span>}
-        <Acts><input className="inp s2developer-mono" aria-label="Add a log flag" placeholder="telegram.*" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm disabled={!draft.trim()} onClick={add}>Add</Btn></Acts>
+        <span className="s2developer-add"><input className="inp s2developer-mono" aria-label="Detailed logs for: new item" placeholder="telegram.*" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm disabled={config.loading} onClick={add}>Add</Btn></span>
       </div>
     } />
   );
@@ -415,7 +431,7 @@ function SystemSec(ctx: Ctx) {
         <Seg label="What it tells the network" value={mdns === "full" ? "full" : "minimal"} disabled={config.loading || mdns === "off"} onChange={(v) => void config.set("discovery.mdns.mode", v === "minimal" ? null : v)} options={[{ id: "minimal", label: "Name only" }, { id: "full", label: "Name, command path and SSH port" }]} />
       </Ctl>
       <Ctl title="Find it across networks" sub="Lets your other computers find this Branch over Tailscale. Empty for nearby only.">
-        <Field label="Find it across networks" value={domain} placeholder="branch.internal" onCommit={(v) => void config.set("discovery.wideArea.domain", v.trim() || null)} />
+        <span className="s2developer-txt"><Field label="Find it across networks" value={domain} placeholder="branch.internal" onCommit={(v) => void config.set("discovery.wideArea.domain", v.trim() || null)} /></span>
       </Ctl>
       <CodeRow title="Plan finding it across networks" code={`branch dns setup --domain ${domain || "branch.internal"}`} sub="Shows the plan." />
       <CodeRow title="Set up finding it across networks" code="branch dns setup --apply" sub="Applies it. Mac only, with Homebrew CoreDNS; asks for your password." />
@@ -426,19 +442,25 @@ function SystemSec(ctx: Ctx) {
 
 /* ───────────── Build on Branch (second) ───────────── */
 
-const BUILD2_OFF: OffRow[] = [
-  ["Build on Branch", "Kits for JavaScript and Python, an OpenAPI description, and a mode without the window.", "The kits are listed in Build on Branch, above.", "btn:See them"],
-  ["The branch command", "Everything in the window from a terminal, with JSON output for scripts.", "Examples are in From a terminal, below.", "btn:See examples"],
+/** Scrolls to a section or row of this page. */
+function jump(sel: string): void {
+  document.querySelector(sel)?.scrollIntoView({ block: "start", behavior: "smooth" });
+}
+/** [title, sub, button, where it jumps] */
+const BUILD2_JUMP: [string, string, string, string][] = [
+  ["Build on Branch", "Kits for JavaScript and Python, an OpenAPI description, and a mode without the window.", "See them", '[data-sec="Build on Branch"]'],
+  ["The branch command", "Everything in the window from a terminal, with JSON output for scripts.", "See examples", '[data-sec="From a terminal"]'],
 ];
 const BUILD2_OFF2: OffRow[] = [
   ["Keys for scripts and phones", "Short-lived keys that can only do what you tick.", ne("scoped keys"), "btn:Make a key"],
-  ["Send traces elsewhere", "Every round and tool as a trace, sent to OpenTelemetry, Langfuse, LangSmith or Prometheus.", "Choose in Runs and traces › Where traces go.", "btn:Choose"],
+];
+const BUILD2_OFF2B: OffRow[] = [
   ["Studies", "Run the same tasks again later and compare, with a journal of what changed.", ne("studies"), "btn:See the last"],
   ["What went with the last request", "What travelled with the last message to the model, and how much room each part took.", ne("request breakdown"), "btn:Show it"],
 ];
 const BUILD2_OFF3: OffRow[] = [
   ["Live panels and app blocks", "Tools can show a live panel in a conversation, and other runtimes can plug in.", ne("live panel list"), "btn:See them"],
-  ["Test live panel", "A test page in the live panel, to check panels draw.", ne("test panel"), "btn:Show it"],
+  ["Test live panel", "A test page in the live panel, to check panels draw.", ne("test panel"), "btns:Show it|Hide it|Copy its address"],
   ["Procedures as text", "Any procedure can be read and edited as YAML, and checked before it runs.", ne("procedure files"), "btn:Show one"],
   ["Wake word for scripts", "A small helper that listens for a wake word on a Mac and runs your own command, and turns audio files into subtitles. It never uses the network.", ne("wake word helper"), "btn:See how"],
 ];
@@ -447,23 +469,42 @@ const PLUGIN_CMDS: [string, string, string?][] = [
   ["Describe it from the code", "branch plugins build", "Writes its description from the built code; --check fails when it is out of date."],
   ["Check it", "branch plugins validate"], ["Pack it", "branch plugins pack"],
 ];
-rowsOf("Build on Branch", [...titles(BUILD2_OFF), "Events for your programs", ...titles(BUILD2_OFF2), "Watch model traffic", "Pages from plugins", ...titles(BUILD2_OFF3), ...PLUGIN_CMDS.map((c) => c[0])]);
+rowsOf("Build on Branch", [...BUILD2_JUMP.map((r) => r[0]), "Events for your programs", ...titles(BUILD2_OFF2), "Send traces elsewhere", ...titles(BUILD2_OFF2B), "Watch model traffic", "Pages from plugins", ...titles(BUILD2_OFF3), ...PLUGIN_CMDS.map((c) => c[0])]);
 
 function BuildMore({ engine, config }: Ctx) {
   const [events, setEvents] = useState(false);
+  const [traffic, setTraffic] = useState(false);
   return (
     <Sec title="Build on Branch" id="build-more">
-      <Greyed rows={BUILD2_OFF} />
+      {BUILD2_JUMP.map(([t, sub, btn, sel]) => <Ctl key={t} title={t} sub={sub}><Btn sm onClick={() => jump(sel)}>{btn}</Btn></Ctl>)}
       <Ctl title="Events for your programs" sub="A stream of what happens in Branch that your own programs can follow."><Btn sm onClick={() => setEvents(true)}>Show the stream</Btn></Ctl>
       <Greyed rows={BUILD2_OFF2} />
-      <CodeRow title="Watch model traffic" code="branch proxy start" sub="A proxy on this computer that records what Branch sends and gets back, to find doubled or failing requests." />
+      <Ctl title="Send traces elsewhere" sub="Every round and tool as a trace, sent to OpenTelemetry, Langfuse, LangSmith or Prometheus."><Btn sm onClick={() => jump('[data-row="Where traces go"]')}>Choose</Btn></Ctl>
+      <Greyed rows={BUILD2_OFF2B} />
+      <Ctl title="Watch model traffic" sub="A proxy on this computer that records what Branch sends and gets back, to find doubled or failing requests."><Btn sm onClick={() => setTraffic(true)}>See how</Btn></Ctl>
       <Ctl title="Pages from plugins" sub="Plugins you installed can add pages, widgets and views. Off until you choose: their code runs with your permissions, so use it only for plugins you trust. Plugins that come with Branch keep their views either way.">
         <Switch label="Pages from plugins" checked={config.get("gateway.controlUi.experimental.customPlugins") === true} disabled={config.loading} onChange={(on) => void config.set("gateway.controlUi.experimental.customPlugins", on)} />
       </Ctl>
       <Greyed rows={BUILD2_OFF3} />
       {PLUGIN_CMDS.map(([t, code, sub]) => <CodeRow key={t} title={t} code={code} sub={sub} />)}
       {events ? <EventsDialog engine={engine} onClose={() => setEvents(false)} /> : null}
+      {traffic ? <TrafficDialog onClose={() => setTraffic(false)} /> : null}
     </Sec>
+  );
+}
+
+/** Watch model traffic: the branch proxy commands. */
+const PROXY_CMDS: [string, string, string?][] = [
+  ["Start it", "branch proxy start"], ["Run one command through it", "branch proxy run -- <command>"], ["Recordings", "branch proxy sessions"],
+  ["Look for a problem", "branch proxy query --preset <check>", "Checks: double-sends, retry-storms, cache-busting, ws-duplicate-frames, missing-ack, error-bursts."],
+  ["One recorded body", "branch proxy blob --id <id>"], ["Delete recordings", "branch proxy purge", "Deletes every recording."],
+];
+function TrafficDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <Dialog title="Watch model traffic" onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+      <p className="hint">A proxy on this computer that records what Branch sends and gets back.</p>
+      {PROXY_CMDS.map(([t, code, sub]) => <CodeRow key={t} title={t} code={code} sub={sub} />)}
+    </Dialog>
   );
 }
 

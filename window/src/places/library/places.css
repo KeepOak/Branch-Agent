@@ -2,8 +2,8 @@
 .kp{color:var(--ink);font-size:13.5px}
 .kp-tabs{display:flex;gap:4px;margin:18px 0 8px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
 .kp-tabs button{white-space:nowrap;height:32px;padding:0 14px;border-radius:999px;font-size:13px;background:none;color:var(--ink-2);font-family:inherit;border:1px solid transparent;cursor:pointer}
+.kp-tabs button:hover{background:var(--wash17);color:var(--ink)}
 .kp-tabs button[aria-selected=true]{background:var(--fill-2);color:var(--ink);font-weight:600}
-.kp-tabs button:hover{background:var(--wash17)}
 .kp-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0 18px}
 .kp button:not([role=tab]){font:inherit;border:1px solid var(--line);background:var(--raise);color:var(--ink);border-radius:var(--r-pill,999px);height:32px;padding:0 14px;cursor:pointer}
 .kp button:disabled{opacity:.5;cursor:default}

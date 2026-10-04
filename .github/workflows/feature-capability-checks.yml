@@ -1,0 +1,52 @@
+name: Capability feature checks
+
+on:
+  pull_request:
+    paths:
+      - 'engine/**'
+      - 'window/**'
+      - 'scripts/feature-batch-ci*'
+      - 'scripts/feature-batch-ci-window-tooling/**'
+      - '.github/workflows/feature-capability-checks.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'engine/**'
+      - 'window/**'
+      - 'scripts/feature-batch-ci*'
+      - 'scripts/feature-batch-ci-window-tooling/**'
+      - '.github/workflows/feature-capability-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: feature-capabilities-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  feature-capabilities:
+    name: Capability tests on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    env:
+      CI: 'true'
+    steps:
+      - name: Check out the feature commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Verify pins, install frozen dependencies, and run capability tests
+        run: node scripts/feature-batch-ci.mjs capabilities

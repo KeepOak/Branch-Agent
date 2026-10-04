@@ -1,6 +1,6 @@
 // Canopy (DESIGN-SPEC §4.6.7; preview patches 40-places, 41-placesap, 96-appopsp): every run, helper, computer and
 // card, seen from above and steered. Data: engine sessions, approvals, cron, node/computer status and the canopy add-on.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import type { PlaceProps } from "../../places-nav/PlaceFrame";
 import { canApprove, canWrite, usePlaceData } from "../automations/runtime";
 import { computers, loadCanopy } from "./data";
@@ -16,10 +16,23 @@ import type { Row } from "../automations/runtime";
 import "./canopy.css";
 
 const TABS = [["now", "Now"], ["cards", "Cards"]] as const;
+type Tab = (typeof TABS)[number][0];
+
+function moveTab(event: KeyboardEvent<HTMLButtonElement>, index: number, select: (tab: Tab) => void) {
+  if (event.ctrlKey || event.altKey || event.metaKey) return;
+  const next = event.key === "ArrowRight" ? (index + 1) % TABS.length
+    : event.key === "ArrowLeft" ? (index + TABS.length - 1) % TABS.length
+    : event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : -1;
+  const target = TABS[next];
+  if (!target) return;
+  event.preventDefault();
+  select(target[0]);
+  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
+}
 
 export function CanopyPlace({ engine, openConversation, openPlace, level }: PlaceProps) {
   const state = usePlaceData(engine, loadCanopy);
-  const [tab, setTab] = useState<"now" | "cards">("now"), [f, setF] = useState<Filters>(NO_FILTERS);
+  const [tab, setTab] = useState<Tab>("now"), [f, setF] = useState<Filters>(NO_FILTERS);
   const [office, setOffice] = useState(false), [sheet, setSheet] = useState(""), [editing, setEditing] = useState<Row | null>(null);
   // The frame asks for a tab after routing here (window "branch:place-tab" {place, tab}).
   useEffect(() => {
@@ -46,8 +59,8 @@ export function CanopyPlace({ engine, openConversation, openPlace, level }: Plac
         <h1>Canopy</h1>
         <button className="btn sm cn-office-btn" type="button" disabled={!ctx} onClick={() => setOffice(true)}>Office view</button>
         <p className="lede">Everything your Trunks and their helpers are doing, on every computer, seen from above.</p>
-        <div className="cn-tabs" role="tablist" aria-label="Canopy">{TABS.map(([id, name]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{name}{id === "now" && n ? <span className="cn-tabn">{n}</span> : null}</button>))}</div>
+        <div className="cn-tabs" role="tablist" aria-label="Canopy">{TABS.map(([id, name], index) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} onKeyDown={event => moveTab(event, index, setTab)} onClick={() => setTab(id)}>{name}{id === "now" && n ? <span className="cn-tabn">{n}</span> : null}</button>))}</div>
         {state.loading && !d ? <p role="status" className="cn-hint">Reading live work…</p> : null}
         {state.error ? <p role="alert" className="cn-err">{state.error}</p> : null}
         {d?.errors.map(e => <p role="alert" className="cn-err" key={e}>{e}</p>)}

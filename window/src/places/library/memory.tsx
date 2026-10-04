@@ -129,7 +129,7 @@ function MemorySearch(props: SearchProps) {
   return <div className="lib-search">
     <form className="lib-search-row" role="search" onSubmit={search}>
       <label className="lib-field"><LibIcon name="search" /><input aria-label="Search memory" type="search" placeholder={`Search what ${scopeName ?? "every Trunk"} remembers`} value={query} onChange={e => setQuery(e.target.value)} /></label>
-      <button type="button" className="btn sm" aria-haspopup="menu" onClick={e => menu.open(e, "Whose memory", scopeItems)}>{scopeName ?? "Every Trunk"}</button>
+      <button type="button" className="lib-chip" aria-haspopup="menu" aria-label="Whose memory" onClick={e => menu.open(e, "Whose memory", scopeItems)}>{scopeName ?? "Every Trunk"}</button>
     </form>
     {menu.element}
     {busy && <p className="lib-hint" role="status">Searching…</p>}

@@ -162,3 +162,15 @@ describe("Settings › Chat apps", () => {
     expect(request).toHaveBeenCalledWith("channels.stop", { channel: "discord", accountId: "second" });
   });
 });
+
+describe("Settings › Chat apps on a partial engine reply", () => {
+  it("renders every level, without crashing, when pairing and other replies are empty", async () => {
+    const request = vi.fn(async (method: string) => (method === "channels.status" ? STATUS : {}));
+    const engine = { request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine;
+    for (const level of [0, 1, 2] as const) {
+      await render(engine, level);
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+      expect(host.querySelector("h1")?.textContent).toBe("Chat apps");
+    }
+  });
+});

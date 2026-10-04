@@ -19,6 +19,10 @@ vi.mock("branch/plugin-sdk/memory-host-events", () => ({
 vi.mock("branch/plugin-sdk/memory-core-host-runtime-core", { spy: true });
 
 import {
+  deleteShortTermLockEntryIfCurrent,
+  withMemoryWorkspaceLock,
+} from "./memory-workspace-lock.js";
+import {
   configureMemoryCoreRingsState,
   memoryCoreWorkspaceStateKey,
   openMemoryCoreStateStore,
@@ -27,10 +31,6 @@ import {
   SHORT_TERM_PHASE_SIGNAL_NAMESPACE,
   SHORT_TERM_RECALL_NAMESPACE,
 } from "./rings-state.js";
-import {
-  deleteShortTermLockEntryIfCurrent,
-  withMemoryWorkspaceLock,
-} from "./memory-workspace-lock.js";
 import {
   applyShortTermPromotions,
   auditShortTermPromotionArtifacts,
@@ -1575,6 +1575,37 @@ describe("short-term promotion", () => {
     expect(applied.applied).toBe(0);
     expect(applied.rejectedCandidates[0]?.reason).toBe("query threshold (0 < 3)");
     expect(applied.rejectedCandidates[0]?.category).toBe("query threshold");
+  });
+
+  it("removes echo probes from persisted session recall while retaining durable preferences", async (workspaceDir) => {
+    await testing.writeRawRecallStore(workspaceDir, {
+      version: 1,
+      updatedAt: "2026-04-04T00:00:00.000Z",
+      entries: {
+        probe: recallStoreEntryFixture({
+          key: "probe",
+          path: "memory/.dreams/session-corpus/2026-04-03.txt",
+          snippet: "User: Reply exactly CODEX_SUBSCRIPTION_OK. Do not call tools.",
+          provenance: {
+            originClass: "owner",
+            sessionKind: "interactive",
+            observedAt: Date.parse("2026-04-03T00:00:00Z"),
+          },
+        }),
+        preference: recallStoreEntryFixture({
+          key: "preference",
+          path: "memory/.dreams/session-corpus/2026-04-03.txt",
+          snippet: "User: I prefer concise answers for code reviews.",
+          provenance: {
+            originClass: "owner",
+            sessionKind: "interactive",
+            observedAt: Date.parse("2026-04-03T00:00:00Z"),
+          },
+        }),
+      },
+    });
+    const ranked = await rankAllCandidates(workspaceDir);
+    expect(ranked.map((candidate) => candidate.key)).toEqual(["preference"]);
   });
 
   it("does not rank contaminated rings snippets from an existing short-term store", async (workspaceDir) => {

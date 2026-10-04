@@ -2,6 +2,7 @@ import { isRecord } from "@branch/normalization-core/record-coerce";
 import type { CodeModeHeadlessResult } from "../agents/code-mode.js";
 import { parseDurationMs } from "../cli/parse-duration.js";
 import { formatErrorMessageWithCode } from "../infra/errors.js";
+import { buildChangeMonitorDecision } from "./change-monitor.js";
 import type { CronTriggerEvaluationResult, CronTriggerFailureCode } from "./types.js";
 
 const MAX_TRIGGER_STATE_BYTES = 16 * 1024;
@@ -11,7 +12,10 @@ function scriptResultCandidate(
   condition = false,
 ) {
   // An explicit decision is authoritative, including malformed decisions.
-  if (isRecord(result.value) && (!condition || Object.hasOwn(result.value, "fire"))) {
+  if (
+    isRecord(result.value) &&
+    (!condition || Object.hasOwn(result.value, "fire") || Object.hasOwn(result.value, "observe"))
+  ) {
     return result.value;
   }
   // Structured diagnostics after json({ fire, ... }) must not hide the decision.
@@ -20,7 +24,9 @@ function scriptResultCandidate(
     if (
       isRecord(entry) &&
       entry.type === "json" &&
-      (!condition || (isRecord(entry.value) && Object.hasOwn(entry.value, "fire")))
+      (!condition ||
+        (isRecord(entry.value) &&
+          (Object.hasOwn(entry.value, "fire") || Object.hasOwn(entry.value, "observe"))))
     ) {
       return entry.value;
     }
@@ -37,8 +43,30 @@ export function scriptFailure(
 
 export function parseTriggerResult(
   result: Extract<CodeModeHeadlessResult, { status: "completed" }>,
+  previousState?: unknown,
 ): CronTriggerEvaluationResult {
-  const candidate = scriptResultCandidate(result, true);
+  let candidate = scriptResultCandidate(result, true);
+  if (isRecord(candidate) && Object.hasOwn(candidate, "observe")) {
+    if (Object.hasOwn(candidate, "fire")) {
+      return scriptFailure("cron trigger must return either observe or fire, not both");
+    }
+    if (candidate.notifyOnFirst !== undefined && typeof candidate.notifyOnFirst !== "boolean") {
+      return scriptFailure("cron monitor notifyOnFirst must be a boolean");
+    }
+    try {
+      candidate = {
+        ...candidate,
+        ...buildChangeMonitorDecision({
+          observe: candidate.observe,
+          previousState,
+          notifyOnFirst: candidate.notifyOnFirst,
+          data: candidate.state,
+        }),
+      };
+    } catch (error) {
+      return scriptFailure(formatErrorMessageWithCode(error));
+    }
+  }
   if (!isRecord(candidate) || typeof candidate.fire !== "boolean") {
     return scriptFailure("cron trigger script must return an object with boolean fire");
   }

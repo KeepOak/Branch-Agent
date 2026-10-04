@@ -41,7 +41,7 @@ export function PeoplePlace({ engine, openConversation, openSettings, level }: P
   }, []);
   const me = str(rec(rec(self.data).profile).id) || null;
   const people = activeProfiles(profiles(users.data));
-  const running = rows(runs.data).filter(r => r.working).length;
+  const running = rows(runs.data).filter(r => r.working && !r.helper).length;
   const seePerson = (id: string) => { setPerson(id); setTab("people"); };
   const tabs = TAB_NAMES.map(([id, name]) => ({ id, name, count: id === "live" && runs.data ? running : id === "people" && users.data ? people.length : undefined }));
   return <PlaceFrame title="People" lede="Everyone who uses Branch: on this computer, on their own devices, and your keepoak.com team.">

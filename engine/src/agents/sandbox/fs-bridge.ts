@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { GUEST_FILESYSTEM_CREATE_EXISTS_EXIT_CODE } from "@openclaw/fs-safe/guest";
 import { normalizeOptionalLowercaseString } from "@branch/normalization-core/string-coerce";
+import { GUEST_FILESYSTEM_CREATE_EXISTS_EXIT_CODE } from "@openclaw/fs-safe/guest";
 import { readFileDescriptorBounded } from "../../infra/boundary-file-read.js";
 import { parseDirectoryEntries, type DirectoryEntry } from "../../infra/directory-entries.js";
 import type {
@@ -301,11 +301,14 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
       "stat files",
       params.signal,
     );
-    const anchoredTarget = await this.pathGuard.resolveAnchoredSandboxEntry(target, "stat files");
+    const anchoredTarget = await this.resolveStatAnchor(
+      params.followSymlinks ? resolved.target : target,
+      params.followSymlinks,
+    );
     const result = await this.runCheckedCommand({
-      // Keep stat's original parent/basename metadata semantics, while its
-      // boundary check validates the container-visible backing rather than a hidden host alias.
-      ...buildStatPlan(resolved.target, anchoredTarget),
+      // Default metadata describes the lexical entry; opt-in metadata uses the
+      // canonical endpoint already validated against container-visible mounts.
+      ...buildStatPlan(resolved.target, anchoredTarget, params.followSymlinks),
       signal: params.signal,
     });
     if (result.code !== 0) {
@@ -322,7 +325,20 @@ class SandboxFsBridgeImpl implements SandboxFsBridge {
       type: coerceStatType(typeRaw),
       size: parseSandboxStatSize(sizeRaw),
       mtimeMs: parseSandboxStatMtimeMs(mtimeRaw),
+      ...(params.followSymlinks ? { canonicalPath: resolved.target.containerPath } : {}),
     };
+  }
+
+  private async resolveStatAnchor(target: SandboxResolvedFsPath, followSymlinks?: boolean) {
+    if (
+      followSymlinks &&
+      this.mounts.some((mount) => mount.containerRoot === target.containerPath)
+    ) {
+      // Mount roots have no permitted parent. The canonical root itself anchors
+      // a read of '.', with the same checked-command boundary revalidation.
+      return { canonicalParentPath: target.containerPath, basename: "." };
+    }
+    return this.pathGuard.resolveAnchoredSandboxEntry(target, "stat files");
   }
 
   private async runCommand(

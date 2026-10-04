@@ -19,9 +19,18 @@ export type SandboxFsCommandPlan = {
 export function buildStatPlan(
   target: SandboxResolvedFsPath,
   anchoredTarget: AnchoredSandboxEntry,
+  allowDirectories = false,
 ): SandboxFsCommandPlan {
   return {
-    checks: [{ target, options: { action: "stat files" } }],
+    checks: [
+      {
+        target,
+        options: {
+          action: "stat files",
+          allowedType: allowDirectories ? "file-or-directory" : undefined,
+        },
+      },
+    ],
     script: 'set -eu\ncd -- "$1"\nLC_ALL=C stat -c "%F|%s|%y" -- "$2"',
     args: [anchoredTarget.canonicalParentPath, anchoredTarget.basename],
     allowFailure: true,

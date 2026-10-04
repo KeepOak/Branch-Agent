@@ -98,8 +98,10 @@ type ModelsProps = {
 };
 
 /** The service a found connection belongs to: its kind when the logos know it, else its model's provider. */
+/** A model on this computer shows its model family's logo (Qwen), as the preview does; an account shows its service's. */
 function logoId(c: Candidate): string {
-  const provider = c.modelRef.split("/")[0] ?? "";
+  const [provider = "", model = ""] = c.modelRef.split("/");
+  if (c.kind === "existing-model") return model.toLowerCase().match(/^[a-z]+/)?.[0] ?? provider;
   return brandOf(c.kind) !== c.kind.toLowerCase() ? c.kind : provider || c.kind;
 }
 

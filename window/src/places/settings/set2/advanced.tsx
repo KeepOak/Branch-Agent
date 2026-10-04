@@ -31,13 +31,23 @@ function GatewayLogRow({ c }: { c: Ctx }) {
   const file = str(rec(tail.data).file) || str(c.config.get("logging.file"));
   return <DialogRow t="Gateway log" s={tail.error ?? (file ? <code>{file}</code> : undefined)} btn="Open" open={(close) => <LogsDialog engine={c.engine} onClose={close} />} />;
 }
+/** Kept by the desktop app, not the engine: greyed, with the app's folder buttons. */
+function DiagLogRow() {
+  const t = "Detailed diagnostics log";
+  return (
+    <Ctl title={t} sub="A rolling, more detailed log kept only on this computer. Off until you choose: it writes a lot to disk, so turn it on while you chase a problem." off={APP}
+      after={<span className="acts s2advanced-acts"><Btn sm ghost disabled>Open folder</Btn><Btn sm ghost disabled>Clear</Btn></span>}>
+      <Switch label={t} checked={false} onChange={() => undefined} />
+    </Ctl>
+  );
+}
 function LogFileRow({ c }: { c: Ctx }) {
   const [edit, setEdit] = useState(false);
   const tail = useLive<RecordValue>(c.engine, "logs.tail", { limit: 1 }, []);
   const file = str(c.config.get("logging.file"));
   const shown = file || str(rec(tail.data).file);
   return (
-    <Ctl title="Log file" sub="One file per day. Empty uses the engine’s own place.">
+    <Ctl title="Log file" sub="One file per day.">
       {edit ? <input className="inp s2advanced-mono" autoFocus aria-label="Log file" defaultValue={file} onBlur={(e) => { setEdit(false); if (e.target.value.trim() !== file) void c.config.set("logging.file", e.target.value.trim() || null); }} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") setEdit(false); }} />
         : <><code className="s2-code" title={shown}>{shown || "The engine’s own place"}</code><Btn sm ghost onClick={() => setEdit(true)}>Change</Btn></>}
     </Ctl>
@@ -45,7 +55,7 @@ function LogFileRow({ c }: { c: Ctx }) {
 }
 const LOGS: SecSpec = { title: "Logs", lv: 2, rows: [
   { t: "This app’s own log", s: "How much the desktop app writes about itself.", kind: "pick", off: APP, def: "Info", opts: ["Trace", "Debug", "Info", "Notice", "Warning", "Error", "Critical"].map((x) => ({ id: x, label: x })) },
-  { t: "Detailed diagnostics log", s: "A rolling, more detailed log kept only on this computer. Off until you choose: it writes a lot to disk, so turn it on while you chase a problem.", kind: "sw", off: APP },
+  { t: "Detailed diagnostics log", draw: () => <DiagLogRow /> },
   { t: "Gateway log", draw: (c) => <GatewayLogRow c={c} /> },
   { t: "Clear the log", kind: "btn", btn: "Clear", off: "The engine can’t clear its log." },
   LOG_ROWS.level, LOG_ROWS.console,
@@ -64,8 +74,8 @@ function SetupSec({ c }: { c: Ctx }) {
       <Ctl title="Suggest tools during setup" sub="Setup’s Tools step recommends connectors for the Trunks you pick.">
         <Switch label="Suggest tools during setup" checked={g("appRecommendations") !== false} disabled={c.config.loading} onChange={(on) => void c.config.set("wizard.appRecommendations", on)} />
       </Ctl>
-      <Kv rows={[["Last run", Number.isFinite(at) ? when(at) : "Not finished yet"], ["Started from", str(g("lastRunCommand"))], ["Where Branch runs", mode === "remote" ? "another computer" : mode === "local" ? "this computer" : ""],
-        ["How much it asks", access === "full" ? "Full access" : access === "guarded" ? "Asks first" : ""], ["Safety promise ticked", Number.isFinite(ack) ? when(ack) : "Not yet"]]} />
+      {c.lv >= 2 ? <Kv rows={[["Last run", Number.isFinite(at) ? when(at) : "Not finished yet"], ["Started from", str(g("lastRunCommand"))], ["Where Branch runs", mode === "remote" ? "another computer" : mode === "local" ? "this computer" : ""],
+        ["How much it asks", access === "full" ? "Full access" : access === "guarded" ? "Asks first" : ""], ["Safety promise ticked", Number.isFinite(ack) ? when(ack) : "Not yet"]]} /> : null}
     </>
   );
 }
@@ -283,7 +293,7 @@ const WHAT: SecSpec = { title: "What it can do", lv: 1, hint: "Model tools. Each
 ] };
 const CONVERSATIONS: SecSpec = { title: "Conversations", lv: 1, rows: [{ t: "All conversations", draw: (c) => <DialogRow t="All conversations" s="Every conversation, with its room used and status." btn="Open the table" open={(close) => <ConvDialog engine={c.engine} lv={c.lv} onClose={close} />} /> }] };
 const MEMORY_MORE: SecSpec = { title: "Memory, more", lv: 1, rows: [
-  { t: "Tidy by meaning each night", draw: (c) => <Ctl title="Tidy by meaning each night" sub="Rings merges facts that say the same thing in different words each night. Every merge is in its diary."><Btn sm disabled={!c.openSettings} onClick={() => c.openSettings?.("seasons")}>Last night</Btn></Ctl> },
+  { t: "Tidy by meaning each night", draw: (c) => <Ctl title="Tidy by meaning each night" sub="At 3 AM it merges facts that say the same thing in different words. Every merge is listed."><Btn sm disabled={!c.openSettings} onClick={() => c.openSettings?.("seasons")}>Last night</Btn></Ctl> },
   btnOff("Project notes as files", "Each project keeps its memory as Markdown in its own folder, so you can read and edit it.", "Open"),
   btnOff("Follow-ups made whole", "A short follow-up like “and July?” becomes a full question before it searches.", "Show one"),
   btnOff("Scratch space for pasted text", "Long text you paste is used for that job, then let go. It never becomes memory.", "Show it"),
@@ -324,7 +334,7 @@ function UseProxy({ c }: { c: Ctx }) {
   );
 }
 const NETWORK: SecSpec = { title: "Network", lv: 2, rows: [
-  { t: "Proxy address", s: "Send Branch’s outside traffic through your company proxy. Only used once you add an address.", k: "proxy.proxyUrl", kind: "text", ph: "http:// or https://, empty for none" },
+  { t: "Proxy address", s: "Send Branch’s outside traffic through your company proxy. Only used once you add an address.", k: "proxy.proxyUrl", kind: "text", mono: true, ph: "http:// or https://, empty for none" },
   { t: "Use the proxy", draw: (c) => <UseProxy c={c} /> },
   { t: "Proxy certificate", s: "For a private certificate authority: the path of its .pem file.", k: "proxy.tls.caFile", kind: "text", ph: "C:\\certs\\company-ca.pem" },
   { t: "Traffic to this computer", k: "proxy.loopbackMode", kind: "seg", def: "gateway-only", opts: [{ id: "gateway-only", label: "Skip the proxy" }, { id: "proxy", label: "Through the proxy" }, { id: "block", label: "Block" }] },
@@ -347,7 +357,7 @@ function LearnRow({ c }: { c: Ctx }) {
 }
 const RECALL: SecSpec = { title: "Recall and memory files", lv: 1, rows: [
   no("Bring up what it remembers, mid-task", "When something it knows matters to the step it’s on, it says so. Off until you choose: it can add a model call while it works."),
-  no("Helpers and side conversations may", "What a helper or a /btw side question can do with memory.", "seg", { opts: [{ id: "read", label: "Read memory only" }, { id: "rw", label: "Read and write" }] }),
+  no("Helpers and side conversations may", "What a helper or a /btw side question can do with memory.", "seg", { def: "rw", opts: [{ id: "read", label: "Read memory only" }, { id: "rw", label: "Read and write" }] }),
   sw("Save notes before tidying a conversation", "Before older messages fold away, the Trunk writes down what is worth keeping.", "agents.defaults.compaction.memoryFlush.enabled", true),
   btnOff("Notes about this computer", "Short files kept up to date in the background: this computer, its disks, the devices on your network and what you use most. Off until you choose.", "Read them"),
   no("Keep notes about this computer", "Off until you choose: it looks at your network, disks and recent activity."),
@@ -357,7 +367,7 @@ const RECALL: SecSpec = { title: "Recall and memory files", lv: 1, rows: [
   { t: "Vary the results", s: "Leaves out near-repeats so a search brings back different things.", lv: 2, kind: "sw", def: true, off: ALWAYS },
   no("Pick up edits to memory files", "Your own edits to the Markdown files are read back in; a file it can’t read is set aside, never deleted.", "sw", { lv: 2 }),
   no("Score memories by whether they helped", "After each answer, the memories it used are marked helped or not, and rank that way. Off until you choose: it adds a model call.", "sw", { lv: 2 }),
-  no("Also copy the history to", "A second Git address, such as a private repository. Empty: only on this computer. Needs Keep a history in Git.", "text", { lv: 2 }),
+  no("Also copy the history to", "A second Git address, such as a private repository. Empty: only on this computer. Needs Keep a history in Git.", "text", { lv: 2, ph: "git@github.com:you/memory.git" }),
 ] };
 const seg2 = (...labels: string[]): Opt[] => labels.map((l) => ({ id: l, label: l }));
 const DOCS: SecSpec = { title: "Documents it reads", lv: 1, rows: [
@@ -374,7 +384,7 @@ const DOCS: SecSpec = { title: "Documents it reads", lv: 1, rows: [
   no("Describe each passage before indexing", "A sentence on where each passage sits in its document. Off until you choose: one model call per passage.", "sw", { lv: 2 }),
   no("Follow links between passages", "Finds passages that connect to the best ones.", "sw", { lv: 2 }),
   no("Where the index lives", "This computer needs no server. A database server is for big or shared indexes.", "seg", { lv: 2, opts: seg2("This computer", "A database server") }),
-  no("Database server address", "Vector or storage databases such as Postgres, Qdrant or Redis.", "text", { lv: 2 }),
+  no("Database server address", "Vector or storage databases such as Postgres, Qdrant or Redis.", "text", { lv: 2, ph: "postgres://… or https://…" }),
 ] };
 const HELPERS_AGENTS: SecSpec = { title: "Helpers and other agents", lv: 1, rows: [
   no("New helpers start with", "A copy of the conversation gives a helper everything said so far.", "seg", { off: "Only helpers tied to a chat thread have this choice in this engine.", opts: seg2("The task only", "A copy of the conversation") }),

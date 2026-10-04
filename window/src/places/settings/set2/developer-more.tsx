@@ -5,7 +5,7 @@
 // saved with config.apply against that hash; the engine validates and keeps hidden values hidden).
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Sec, Seg, Switch, Tabs, Val, useConfig } from "../kit";
+import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Pill, Sec, Seg, Switch, Tabs, Val, useAsk, useConfig } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { CallLine, CopyBtn, Kv, bytes, rec, str, useCall, useLive, when, type RecordValue } from "./common";
@@ -18,14 +18,23 @@ export type Config = ReturnType<typeof useConfig>;
 export type Ctx = SettingsPageProps & { config: Config; sys: RecordValue; port: number; base: string };
 const HIDDEN = "__BRANCH_REDACTED__";
 
-/** A greyed row: [title, sub, why, control]. Control: "sw", "on", "btn:Label", "seg:A|B", "val:Text", "code:text". */
+/** A greyed row: [title, sub, why, control]. Control: "sw", "on", "in", "btn:Label", "btns:A|B", "seg:A|B", "val:Text",
+ *  "pill:Text", "chips:A|B", "code:text", "codecopy:text", "add:Shown|Placeholder|Label". */
 export type OffRow = [string, string, string, string?];
 function offCtl(kind: string | undefined, title: string): ReactNode {
   if (!kind) return null;
+  if (kind === "in") return <input className="inp" aria-label={title} />;
   if (kind === "sw" || kind === "on") return <Switch label={title} checked={kind === "on"} onChange={() => undefined} />;
   const at = kind.indexOf(":");
   const [k, rest] = [kind.slice(0, at), kind.slice(at + 1)];
+  const parts = rest.split("|");
   if (k === "btn") return <Btn sm>{rest}</Btn>;
+  if (k === "btns") return <>{parts.map((l, i) => <Btn key={l} sm ghost={i > 0}>{l}</Btn>)}</>;
+  if (k === "in") return <input className="inp" aria-label={title} />;
+  if (k === "pill") return <Pill>{rest}</Pill>;
+  if (k === "chips") return <span className="s2developer-chips">{parts.map((l) => <span key={l} className="chip6">{l}</span>)}</span>;
+  if (k === "codecopy") return <><code className="s2-code">{rest}</code><Btn sm ghost>Copy</Btn></>;
+  if (k === "add") return <><Val>{parts[0]}</Val><input className="inp" placeholder={parts[1]} aria-label={parts[2]} /><Btn sm>Add</Btn></>;
   if (k === "seg") return <Seg label={title} value={rest.split("|")[0]} onChange={() => undefined} options={rest.split("|").map((l) => ({ id: l, label: l }))} />;
   if (k === "code") return <code className="s2-code">{rest}</code>;
   return <Val>{rest}</Val>;
@@ -75,9 +84,9 @@ function parseJson(text: string): { ok: true; value: unknown } | { ok: false; er
 /* ───────────── Runs and traces ───────────── */
 
 const TRACE_OFF: OffRow[] = [
-  ["Programs that see every model call", "Each sees the request, the answer and its words, for logging or accounting.", ne("model-call hooks"), "btn:Add"],
+  ["Programs that see every model call", "Each sees the request, the answer and its words, for logging or accounting.", ne("model-call hooks"), "add:None|A script path|Script path"],
   ["Send logs to", "In batches. Off until you choose: logs leave this computer.", ne("log shipping"), "seg:Off|A web address|Redis"],
-  ["Record requests to the local address", "Who called the local address and when.", ne("request log"), "seg:Off|Who and when|Requests|Requests and answers"],
+  ["Record requests to the local address", "Written to logs\\http-audit.log.", ne("request log"), "seg:Off|Who and when|Requests|Requests and answers"],
   ["Keep a copy of every prompt", "For audits. Off until you choose: it keeps every word sent.", ne("prompt archive"), "seg:Off|A folder|Cloud storage"],
   ["Record the browser as video", "A clip per run, in the run’s files. Off until you choose: video takes disk space.", ne("browser recording"), "sw"],
   ["Stamp files Trunks make", "Writes who made it, from what, and whether it was checked into the file itself. Off until you choose: it changes the files.", ne("file stamping"), "sw"],
@@ -269,14 +278,27 @@ function SentDialog({ config, onClose }: { config: Config; onClose: () => void }
 const MORE_OFF: OffRow[] = [
   ["Tell the Trunk about recent errors", "So it can work around them instead of trying the same thing.", ne("error hints for Trunks"), "sw"],
   ["Tell me when one repeats", "When the same error keeps coming back, it shows in Inbox.", ne("repeated-error alerts"), "sw"],
-  ["Look into a problem", "Sapling looks into it in your conversation.", "Ask Sapling in a conversation.", "btn:Look into it"],
   ["How the last start went", "Each start phase and its time, and how Branch is doing at rest.", ne("start-up timeline"), "btn:Show"],
   ["Show frame rate", "A small meter in the corner of this window while you look for slow screens.", APP, "sw"],
   ["Database shell", "A SQL prompt on the conversation store. Stop the Gateway first for anything that writes.", "The branch command has no database shell yet."],
   ["Developer tools", "Network, console and the window’s state.", APP, "btn:Open"],
   ["Repair the branch command", "For when typing branch in a terminal stopped working.", "The Branch app’s installer repairs it.", "btn:Repair"],
 ];
-rowsOf("Troubleshooting, more", ["A summary for a bug report", "Where each setting comes from", "Warnings since the start", ...titles(MORE_OFF)]);
+rowsOf("Troubleshooting, more", ["A summary for a bug report", "Where each setting comes from", "Warnings since the start", ...titles(MORE_OFF.slice(0, 2)), "Look into a problem", ...titles(MORE_OFF.slice(2))]);
+
+/** Look into a problem: starts a conversation with the default Trunk about what went wrong. */
+function LookInto() {
+  const ask = useAsk();
+  const [text, setText] = useState("");
+  const t = "Look into a problem";
+  const go = () => { if (ask && text.trim()) { ask(`Something went wrong in Branch: ${text.trim()}. Please look into it.`); setText(""); } };
+  return (
+    <Ctl title={t} sub="Sapling looks into it in your conversation." off={ask ? undefined : "Needs a model set up first."}>
+      <input className="inp" aria-label="What went wrong" placeholder="Replies stopped after lunch" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") go(); }} />
+      <Btn sm onClick={go}>Look into it</Btn>
+    </Ctl>
+  );
+}
 
 /** The bug-report summary: version, machine, gateway and the settings file path, no keys. */
 async function summary(engine: SettingsPageProps["engine"]): Promise<string> {
@@ -298,7 +320,9 @@ export function TroubleMore(ctx: Ctx) {
       <Ctl title="A summary for a bug report" sub={copy.error ?? copy.note ?? "Version, model, gateway, paths and settings file, on one paste."}><Btn sm disabled={copy.busy} onClick={go}>Copy</Btn></Ctl>
       <Ctl title="Where each setting comes from" sub="Every setting with its value and the layer it came from."><Btn sm onClick={() => setDlg("cfgsrc")}>Show</Btn></Ctl>
       <Ctl title="Warnings since the start" sub={warn.error ?? (warn.data ? `${count} kept, each with its kind and error id.` : "Each with its kind and error id.")}><Btn sm onClick={() => setDlg("warnings")}>See them</Btn></Ctl>
-      <Greyed rows={MORE_OFF} />
+      <Greyed rows={MORE_OFF.slice(0, 2)} />
+      <LookInto />
+      <Greyed rows={MORE_OFF.slice(2)} />
       {dlg === "cfgsrc" ? <SourceDialog engine={ctx.engine} onClose={() => setDlg("")} /> : null}
       {dlg === "warnings" ? <WarningsDialog events={list(rec(warn.data).events)} error={warn.error} onReload={() => void warn.reload()} onClose={() => setDlg("")} /> : null}
     </Sec>
@@ -364,11 +388,11 @@ const TROUBLE_OFF: OffRow[] = [
   ["Copy for support", "Plain text with keys left out.", "", ""],
   ["Ports", "Which programs hold the gateway and tunnel ports.", APP, "btn:Check ports"],
   ["App process", "", APP], ["Program file", "", APP],
-  ["Engine folder", "Used to find Node and fill PATH when starting the gateway.", APP],
-  ["Conversation store", "The Branch service tile’s “Process” on Advanced is the gateway’s; these are the window’s own.", APP],
+  ["Engine folder", "Used to find Node and fill PATH when starting the gateway.", APP, "btns:Change|Reset"],
+  ["Conversation store", "The Branch service tile’s “Process” on Advanced is the gateway’s; these are the window’s own.", APP, "btn:Change"],
 ];
 rowsOf("Troubleshooting", [...titles(TROUBLE_OFF), "Processor profile", "Memory profile", "Full memory snapshot", "System busyness", "Try a computer command"]);
-const APP_BTNS = ["Restart the app", "Run setup again", "Open the conversation store", "Show Branch in Explorer", "Send a test notification", "Send a test check-in", "Send a test voice message", "Show the pairing panel"];
+const APP_BTNS = ["Open the conversation store", "Show Branch in Explorer", "Send a test notification", "Send a test check-in", "Send a test voice message", "Show the pairing panel"];
 
 export function Troubleshooting(ctx: Ctx) {
   const { engine } = ctx;
@@ -381,11 +405,12 @@ export function Troubleshooting(ctx: Ctx) {
       <Greyed rows={TROUBLE_OFF.slice(0, 1)} />
       <Ctl title="Copy for support" sub={support.error ?? support.note ?? "Plain text with keys left out."}><Btn sm disabled={support.busy} onClick={copySupport}>Copy…</Btn></Ctl>
       <Greyed rows={TROUBLE_OFF.slice(2)} />
-      <Acts><Btn sm ghost onClick={openFile} disabled={open.busy}>Open the settings file</Btn>{APP_BTNS.slice(0, 4).map((b) => <Btn key={b} sm ghost disabled title={APP}>{b}</Btn>)}</Acts>
+      <div className="acts s2developer-acts"><Btn sm disabled title={APP}>Restart the app</Btn><Btn sm disabled title={APP}>Run setup again</Btn></div>
+      <div className="acts s2developer-acts"><Btn sm ghost onClick={openFile} disabled={open.busy}>Open the settings file</Btn>{APP_BTNS.slice(0, 2).map((b) => <Btn key={b} sm ghost disabled title={APP}>{b}</Btn>)}</div>
       <CallLine call={open} />
-      <Acts>{APP_BTNS.slice(4).map((b) => <Btn key={b} sm ghost disabled title={APP}>{b}</Btn>)}</Acts>
+      <div className="acts s2developer-acts">{APP_BTNS.slice(2).map((b) => <Btn key={b} sm ghost disabled title={APP}>{b}</Btn>)}</div>
       <Ctl title="Processor profile" sub={cpu.error ?? cpu.note ?? "Owner and Admins only. Saves a file on this computer."}>
-        <Btn sm disabled={cpu.busy} onClick={() => void cpu.run(() => engine.request("diagnostics.cpuProfile", {}), (r) => { download("branch.cpuprofile", r); return "Saved branch.cpuprofile."; })}>{cpu.busy ? "Recording…" : "Record"}</Btn>
+        <Btn sm disabled={cpu.busy} onClick={() => void cpu.run(() => engine.request("diagnostics.cpuProfile", {}), (r) => { download("branch.cpuprofile", r); return "Saved branch.cpuprofile."; })}>{cpu.busy ? "Recording…" : "Record 5 s"}</Btn>
       </Ctl>
       <Ctl title="Memory profile" sub={heap.error ?? heap.note}>
         <Btn sm disabled={heap.busy} onClick={() => void heap.run(() => engine.request("diagnostics.heapProfile", {}), (r) => { download("branch.heapprofile", r); return "Saved branch.heapprofile."; })}>{heap.busy ? "Recording…" : "Record"}</Btn>

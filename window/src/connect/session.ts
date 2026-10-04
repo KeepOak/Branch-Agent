@@ -30,6 +30,7 @@ export type GatewayEventListener = (event: string, payload: unknown) => void;
 
 
 export class SaplingSession {
+  readonly gatewayUrl: string;
   private readonly eventListeners = new Set<GatewayEventListener>();
   private wanted: string | null;
   private snapshot: SessionSnapshot;
@@ -43,6 +44,7 @@ export class SaplingSession {
 
   /** `initialKey` reopens the conversation the window last showed (§3.3 "Reopen where you were"). */
   constructor(url: string, sharedToken: string | undefined, initialKey: string | null = null) {
+    this.gatewayUrl = url;
     this.wanted = initialKey;
     this.snapshot = {
       status: { phase: "connecting" },
@@ -375,6 +377,7 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
   const attachments = hello?.policy.attachments;
   const agentId = sessionKey ? agentIdOf(sessionKey) : undefined;
   return {
+    gatewayUrl: session.gatewayUrl,
     request: (method, params) => session.request(method, params),
     onEvent: (listener) => session.onGatewayEvent((event, payload) => listener({ event, payload })),
     sessionKey,
