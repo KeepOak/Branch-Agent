@@ -101,7 +101,7 @@ export function SigningIn() {
       {sw("One-time sign-in links for other systems", "Short-lived, for a system that opens Branch for someone.", false)}
       {sw("Pass company sign-in on to tools", "A tool can act as the person who signed in.", false)}
       {sw("Let someone start as a guest", "Their work stays when they make an account.", false)}
-      <Ctl title="Recovery key" sub="Resets the owner’s password if every other way is lost. Keep it somewhere safe." off="Shown once, in the Branch app."><Btn sm>Show it</Btn></Ctl>
+      <Ctl title="Recovery key" sub="Resets the owner’s password if every other way is lost. Keep it somewhere safe." off="Shown once, in the Branch app."><Btn sm disabled>Show it</Btn></Ctl>
     </Sec>
   );
 }

@@ -35,23 +35,34 @@ export function GeneralPage(props: SettingsPageProps) {
   );
 }
 
+/** The Branch app on Windows hides its window to the tray on close and keeps the engine running
+ *  (desktop/src/resident-window.ts); elsewhere closing the window ends it. */
+export function staysInTray(): boolean {
+  const w = window as { branchDesktop?: unknown };
+  return Boolean(w.branchDesktop) && typeof navigator !== "undefined" && /^Win/.test(navigator.platform);
+}
+
 /** The window can't see how Branch was started, so the box says only what this window can and can't change. */
 function GeneralStatus({ engine }: { engine: SettingsPageProps["engine"] }) {
   const cfg = useConfig(engine);
   if (cfg.loading) return <Status tone="idle" title="Reading Branch’s settings…" />;
   if (cfg.error) return <Status tone="bad" title="Branch couldn’t read its settings">{visible(cfg.error)}</Status>;
+  if (staysInTray()) return <Status title="Branch waits in the tray">Closing the window keeps it running, so scheduled work goes on.</Status>;
   return <Status tone="idle" title="Branch runs while it’s open">Starting with {OS} and working on after the window closes are up to the Branch app; this window can’t change them yet.</Status>;
 }
 
 const STARTUP_OFF = `The window can’t change what starts with ${OS} yet.`;
+const RESIDENT_ON = "Always on in the Branch app on Windows: closing the window hides it in the tray. There’s no setting to turn it off.";
+const RESIDENT_OFF = "Closing the Branch app’s window stops its engine; the window can’t change that yet.";
 function StartingUp() {
+  const tray = staysInTray();
   return (
     <Sec title="Starting up">
       <Ctl title={`Start with ${OS}`} sub="Opens quietly in the tray." off={STARTUP_OFF}>
         <Switch checked={false} label={`Start with ${OS}`} onChange={() => undefined} />
       </Ctl>
-      <Ctl title="Keep working when the window closes" sub="Trunks finish what they started." off="Closing the Branch app’s window stops its engine; the window can’t change that yet.">
-        <Switch checked={false} label="Keep working when the window closes" onChange={() => undefined} />
+      <Ctl title="Keep working when the window closes" sub="Trunks finish what they started." off={tray ? RESIDENT_ON : RESIDENT_OFF}>
+        <Switch checked={tray} label="Keep working when the window closes" onChange={() => undefined} />
       </Ctl>
     </Sec>
   );
