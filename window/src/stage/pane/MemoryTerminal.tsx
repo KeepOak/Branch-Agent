@@ -12,22 +12,23 @@ const NO_FORGET = "The engine can't forget one memory yet.";
 /** Memory: what it remembers that fits this conversation (memory.search with the latest thing you asked). */
 export function MemoryTab({ engine, blocks, name }: { engine: WindowEngine; blocks: Block[]; name: string }) {
   const asked = [...blocks].reverse().find((b): b is Extract<Block, { kind: "user" }> => b.kind === "user")?.text.trim().slice(0, 300) ?? "";
-  const [state, setState] = useState<{ key: string; rows?: { path: string; snippet: string; startLine?: number }[]; error?: string }>({ key: "" });
+  const [state, setState] = useState<{ owner: WindowEngine; key: string; rows?: { path: string; snippet: string; startLine?: number }[]; error?: string }>({ owner: engine, key: "" });
+  const [attempt, setAttempt] = useState(0);
   const key = `${engine.sessionKey}|${asked}`;
   useEffect(() => {
     if (!asked) return;
     let live = true;
     engine.request("memory.search", { query: asked, maxResults: 8, ...(engine.agentId ? { agentId: engine.agentId } : {}) }).then(
-      (r) => live && setState({ key, rows: (Array.isArray(rec(r).results) ? (rec(r).results as unknown[]) : []).map(rec).map((x) => ({ path: str(x.path), snippet: str(x.snippet), startLine: typeof x.startLine === "number" ? x.startLine : undefined })) }),
-      (e: unknown) => live && setState({ key, error: errorText(e) }),
+      (r) => live && setState({ owner: engine, key, rows: (Array.isArray(rec(r).results) ? (rec(r).results as unknown[]) : []).map(rec).map((x) => ({ path: str(x.path), snippet: str(x.snippet), startLine: typeof x.startLine === "number" ? x.startLine : undefined })) }),
+      (e: unknown) => live && setState({ owner: engine, key, error: errorText(e) }),
     );
     return () => {
       live = false;
     };
-  }, [engine, asked, key]);
+  }, [engine, asked, key, attempt]);
   if (!asked) return <p className="pane-empty">Nothing to look up yet. What {name} remembers about this conversation shows here once you ask something.</p>;
-  const cur = state.key === key ? state : { key };
-  if (cur.error) return <p className="err-st" role="alert">{cur.error}</p>;
+  const cur = state.owner === engine && state.key === key ? state : { key };
+  if (cur.error) return <div><p className="err-st" role="alert">{cur.error}</p><button type="button" className="btn sm" onClick={() => { setState({ owner: engine, key }); setAttempt((value) => value + 1); }}>Try again</button></div>;
   if (!cur.rows) return <p className="pane-empty">Looking through what {name} remembers…</p>;
   if (!cur.rows.length) return <p className="pane-empty">{name} doesn't remember anything that fits this conversation.</p>;
   return (
