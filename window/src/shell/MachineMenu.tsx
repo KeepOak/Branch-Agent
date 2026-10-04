@@ -5,9 +5,9 @@ import type { Level } from "../places-nav/settings-nav";
 
 /** The machine switcher in the top bar's left half (DESIGN-SPEC §3.2, §4.1.1 Machine switcher): name and dot, no words. */
 export function MachineSwitcher({ online, connecting, onOpen }: { online: boolean; connecting: boolean; onOpen: (e: MouseEvent<HTMLElement>) => void }) {
-  const status = online ? "Online" : connecting ? "Connecting" : "Offline";
+  const status = online ? "Online · you are here" : connecting ? "Connecting" : "Offline";
   return (
-    <button type="button" className="machine" title="Which computer you're talking to" data-testid="machine" onClick={onOpen}>
+    <button type="button" className="machine" title="Which computer you’re talking to" data-testid="machine" onClick={onOpen}>
       <span className="machine-tile">
         <Icon name="monitor" small />
       </span>
