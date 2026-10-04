@@ -105,7 +105,7 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
           <TabRow tab={tab} setTab={setTab} />
           <div role="tabpanel" aria-label={TABS.find(([t]) => t === tab)?.[1]}>
             {tab === "look" && <LookTab draft={draft} set={set} fresh={fresh} />}
-            {tab === "may" && <MayTab name={initial.name} draft={draft} models={data.models} level={level} set={set} openSettings={openSettings} />}
+            {tab === "may" && <MayTab engine={engine} agentId={agentId} name={initial.name} draft={draft} models={data.models} level={level} set={set} openSettings={openSettings} />}
             {tab === "computers" && <ComputersTab name={initial.name} draft={draft} computers={data.computers} set={set} openSettings={openSettings} />}
           </div>
           {data.partial.map((p) => <p key={p} className="tk-hint" role="status">{p}</p>)}
