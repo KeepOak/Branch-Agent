@@ -166,8 +166,11 @@ const CONNECTORS: { id: ToolMark; name: string; line: string }[] = [
   { id: "drive", name: "Google Drive", line: "Documents · sign in on their site" },
   { id: "github", name: "GitHub", line: "Code and issues · sign in on their site" },
 ];
+// TODO(engine-lane): connector sign-in from setup (Outlook, Google Drive, GitHub) hooks in here once the engine has it.
 const CONNECT_OFF = "Signing in to connectors from setup isn't in the engine yet; Customize › Tools has them.";
+// TODO(engine-lane): the engine reports the command-line tools it found; draw them as the artifact's on switch.
 const CLI_OFF = "Listing the command-line tools found needs the engine to report them.";
+// TODO(engine-lane): "What Trunks may use on this computer" (Read only / Standard / Everything) as an engine setting.
 const LEND_OFF = "What this computer lends to Trunks isn't an engine setting yet; Settings › Permissions has the rules.";
 
 export function ToolsBody() {
@@ -199,6 +202,7 @@ export function ToolsBody() {
   );
 }
 
+// TODO(desktop-lane): gateway mode, Start with Windows and the branch command come from the desktop app's methods.
 const DESKTOP = "The desktop app owns this; the window can't change it yet.";
 
 export function KeepBody({ autoUpdate, onAutoUpdate }: { autoUpdate: boolean; onAutoUpdate: (v: boolean) => void }) {

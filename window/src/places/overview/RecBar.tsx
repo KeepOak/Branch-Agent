@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 
 const KEY = "branch.rec.keepRunning";
+// TODO(desktop-lane): "Yes" installs the gateway as a background service through the desktop app's method.
 export const KEEP_RUNNING_GAP = "Needs the engine's keep-running service method (install the Gateway as a background service).";
 
 let dismissed = false;

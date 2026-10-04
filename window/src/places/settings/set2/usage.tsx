@@ -753,13 +753,16 @@ function exportItems(data: RecordValue, all: Day[], names: Map<string, string>) 
    ====================================================================================================== */
 type Cfg = ReturnType<typeof useConfig>;
 const flag = (v: unknown, def: boolean) => (typeof v === "boolean" ? v : def);
+// TODO(engine-lane): turning off "Asking a service what is left" needs a usage setting (old usage/limits/settings).
 const NO_ASK = "The engine asks each connected service when this page opens; turning that off needs an engine setting.";
+// TODO(desktop-lane): the tray ring is the desktop app's.
 const TRAY = "The tray is part of the Branch app on your computer.";
 const NO_KEEP = "The engine archives old conversations and keeps them; deleting them by age needs an engine setting.";
 const NO_CKPT = "Listing checkpoints needs a checkpoint method in the engine.";
 const NO_EVAL = "Test sets and graders need evals in the engine.";
 const NO_EXPORT = "Exporting everything needs an export method in the engine; today it runs as branch backup create in a terminal.";
 const CLI_BACKUP = "This runs from a terminal (branch backup) or the Branch app; the engine has no method for it.";
+// TODO(engine-lane): spend caps per service need the engine to pause at a limit (old usage/budget).
 const NO_CAPS = "Spend caps need the engine to pause work at a limit.";
 const NO_PROJECT = "Cost by project needs the engine to count usage by project.";
 const NO_SAVE_FIRST = "Saving conversations before they are removed needs an engine setting.";

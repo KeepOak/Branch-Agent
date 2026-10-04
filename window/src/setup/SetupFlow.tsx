@@ -46,6 +46,7 @@ const TITLES: Record<number, [string, string?]> = {
   9: ["Two more things", "All optional. Skip them and Branch works the same."],
   10: ["All set?", "Branch checks everything before you start."],
 };
+// TODO(window): "Finish by talking" (artifact talkStartF18): Sapling asks the steps left in a chat and applies each answer.
 const TALK_OFF = "Setting up by talking needs Sapling's setup conversation, which the engine doesn't run yet.";
 const PROPOSE_OFF = "Proposing Trunks from a sentence needs a setup call the engine doesn't have yet.";
 
@@ -67,13 +68,14 @@ function useChoices() {
 export function SetupFlow(p: Props) {
   const [contact, setContact] = useState<{ id: string; name: string } | null>(null);
   const [needsContact] = useState(() => !!p.requireContact || !p.trunkNames.length);
-  if ((needsContact || p.requireContact) && !contact) {
-    return <FirstTrunk engine={p.engine} onCreated={(id, name) => { setContact({ id, name }); p.onContactCreated?.(); }} />;
-  }
-  return <SetupFlowBody {...p} defaultAgentId={contact?.id ?? p.defaultAgentId} defaultName={contact?.name ?? p.defaultName} trunkNames={contact ? [...p.trunkNames, contact.name] : p.trunkNames} />;
+  // The design opens on Welcome; a Branch with no contact Trunk names its first one right after Start.
+  const gate = (needsContact || p.requireContact) && !contact
+    ? <FirstTrunk engine={p.engine} onCreated={(id, name) => { setContact({ id, name }); p.onContactCreated?.(); }} />
+    : null;
+  return <SetupFlowBody {...p} gate={gate} defaultAgentId={contact?.id ?? p.defaultAgentId} defaultName={contact?.name ?? p.defaultName} trunkNames={contact ? [...p.trunkNames, contact.name] : p.trunkNames} />;
 }
 
-function SetupFlowBody(p: Props) {
+function SetupFlowBody(p: Props & { gate: ReactNode }) {
   const [choices, setChoices] = useChoices();
   const [step, setStep] = useState(p.startAt ?? 0);
   const [test, setTest] = useState<TestResult | "testing" | null>(null);
@@ -152,6 +154,9 @@ function SetupFlowBody(p: Props) {
       )}
     </>
   );
+  if (p.gate && step > 0) {
+    return <>{p.gate}</>;
+  }
   return (
     <>
       <SetupShell

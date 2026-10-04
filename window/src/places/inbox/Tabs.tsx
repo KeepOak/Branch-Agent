@@ -7,6 +7,7 @@ import { agentName, type Agent, type Session } from "../overview/engine";
 import { InboxRow } from "./Rows";
 
 export const DEFERRED_GAP = "Needs the engine's deferred-work queue (callbacks, steps you do by hand, work handed over to later).";
+// TODO(engine-lane): Messages (Important / Everything else / All) needs the engine's message triage method.
 export const MESSAGES_GAP = "Needs the engine's message triage method.";
 
 /** Conversations whose work has finished, newest first. */
