@@ -100,7 +100,8 @@ let outsideRoot: string;
 
 beforeEach(async () => {
   await fs.mkdir(scratch, { recursive: true });
-  testContainer = await fs.mkdtemp(path.join(scratch, "ct-glob-"));
+  // Canonical roots keep expectations stable where temp paths are aliases (macOS /var, Windows 8.3).
+  testContainer = await fs.realpath(await fs.mkdtemp(path.join(scratch, "ct-glob-")));
   tmpRoot = path.join(testContainer, "root");
   outsideRoot = path.join(testContainer, "outside");
   await fs.mkdir(tmpRoot);
