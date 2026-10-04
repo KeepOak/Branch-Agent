@@ -126,3 +126,13 @@ describe("Settings › Permissions", () => {
     expect(find("Sandbox")?.sec).toBe("Isolation");
   });
 });
+
+describe("Settings › Permissions on a partial engine reply", () => {
+  it("renders every level, without crashing, when the approvals file and other replies are empty", async () => {
+    const { engine } = engineOf({ "exec.approvals.get": {}, "agents.list": {} });
+    for (const level of [0, 1, 2] as const) {
+      await render(engine, level);
+      expect(host.querySelector("h1")?.textContent).toBe("Permissions");
+    }
+  });
+});
