@@ -13,6 +13,9 @@ type SessionTargetPolicy = {
 
 const SESSION_TARGET_POLICY_BY_METHOD = new Map<string, SessionTargetPolicy>([
   ["skills.library.activate", { fields: ["sessionKey"], required: true }],
+  ["desktop.restart.prepare", { fields: ["sessionKey"], runStart: true }],
+  ["desktop.restart.resume", { fields: ["sessionKey"], required: true, runStart: true }],
+  ["desktop.restart.cancel", { fields: ["sessionKey"] }],
   ["agent", { fields: ["sessionKey"], runStart: true }],
   ["board.event", { fields: ["sessionKey"], required: true }],
   ["board.update", { fields: ["sessionKey"], required: true }],

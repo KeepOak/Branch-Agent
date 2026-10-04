@@ -1,3 +1,4 @@
+import { commitDesktopRestartAdmission } from "../desktop-restart-admission.js";
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import {
   createOperationalRunInstanceRef,
@@ -580,6 +581,10 @@ export async function prepareAgentRunDispatch(
         return rejectPreaccept(resolveAgentRunAdmissionError(ErrorCodes.UNAVAILABLE, failure));
       }
     }
+    commitDesktopRestartAdmission(params.request, params.client, {
+      runId: params.runId, sessionKey: params.resolvedSessionKey,
+      sessionId: params.getAdmittedSessionId(),
+    });
     followupCompletion?.markAccepted(params.runId);
     params.markAgentRunAccepted(true);
     setGatewayDedupeEntries({

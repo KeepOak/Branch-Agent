@@ -360,6 +360,10 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["send", "send", "operator.write", "<=2026.7"],
   // Params-aware: ordinary turns need write; /new and /reset mutate lifecycle state as admin.
   ["agent", "agent", "dynamic", "<=2026.7", { startup: true }],
+  ["desktop.restart.identity", "desktop-restart", "operator.read", "2026.10", { lifetime: "observation" }],
+  ["desktop.restart.prepare", "desktop-restart", "operator.admin", "2026.10", { startup: true }],
+  ["desktop.restart.resume", "desktop-restart", "operator.write", "2026.10", { startup: true }],
+  ["desktop.restart.cancel", "desktop-restart", "operator.admin", "2026.10", { startup: true }],
   ["agent.identity.get", "agent-identity", "operator.read", "<=2026.7"],
   ["agent.wait", "agent", "operator.write", "<=2026.7", { startup: true, lifetime: "observation" }],
   ["chat.history", "chat", "operator.read", "<=2026.7", { startup: true }],

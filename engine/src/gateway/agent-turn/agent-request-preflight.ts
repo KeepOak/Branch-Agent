@@ -1,3 +1,4 @@
+import { hasDesktopRestartExpectedSession } from "../desktop-restart-admission.js";
 import path from "node:path";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
 import { GATEWAY_CLIENT_MODES } from "../../../packages/gateway-protocol/src/client-info.js";
@@ -180,7 +181,7 @@ export function prepareAgentRequestPreflight(params: {
     clientHasAdminScope(params.client) || params.client?.internal?.allowModelOverride === true;
   const canUseCronRunContinuation = params.client?.internal?.cronRunContinuation === true;
   const expectedSessionResult = resolveExpectedExistingSessionConstraint({
-    canUseInternalRuntimeHandoff,
+    canUseInternalRuntimeHandoff: canUseInternalRuntimeHandoff || hasDesktopRestartExpectedSession(request, params.client),
     expectedExistingSessionId: request.expectedExistingSessionId,
     expectedExistingSessionLifecycleRevision: request.expectedExistingSessionLifecycleRevision,
     internalRuntimeHandoffId: request.internalRuntimeHandoffId,

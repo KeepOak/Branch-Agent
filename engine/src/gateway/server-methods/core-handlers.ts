@@ -12,6 +12,7 @@ import type { GatewayRequestHandlers } from "./types.js";
 type CoreGatewayHandlerModuleLoader = () => Promise<GatewayRequestHandlers>;
 
 const CORE_GATEWAY_HANDLER_MODULES = {
+  "desktop-restart": () => import("./desktop-restart.js").then((module) => module.desktopRestartHandlers),
   agent: () => import("./agent.js").then((module) => module.agentHandlers),
   "agent-identity": () =>
     import("./agent-identity.js").then((module) => module.agentIdentityHandlers),
