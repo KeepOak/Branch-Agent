@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { TrunksTab } from "../customize/trunks";
+import { Jobs } from "../customize/jobs";
 import { TrunkEditor } from "./TrunkEditor";
 import { TrunkProfile } from "./TrunkProfile";
 import { TrunkStudio } from "./TrunkStudio";
@@ -163,6 +164,30 @@ describe("Customize › Trunks", () => {
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "30000"); input.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { defaults: { bootstrapMaxChars: 30000 } } }) });
+  });
+});
+
+describe("job creation across gateway replacement", () => {
+  it("enables creation on the new engine and cannot let the retired request clear its busy state", async () => {
+    let finishOld!: (value: unknown) => void, finishNew!: (value: unknown) => void;
+    const oldRequest = vi.fn(() => new Promise((resolve) => { finishOld = resolve; }));
+    const newRequest = vi.fn((method: string) => method === "agents.create"
+      ? new Promise((resolve) => { finishNew = resolve; })
+      : Promise.resolve(method === "agents.list" ? { agents: [{ id: "expense-manager" }] }
+        : method === "agents.files.get" ? { file: { missing: true } } : { ok: true }));
+    await mount(<Jobs engine={engine(oldRequest)} reload={() => {}} />);
+    await click(document.querySelector('[aria-label="Use this job: Inbox Manager"]'));
+    const replacement = engine(newRequest);
+    await act(async () => { root!.render(<Jobs engine={replacement} reload={() => {}} />); });
+    expect(document.querySelector<HTMLButtonElement>('[aria-label="Use this job: Expense Manager"]')!.disabled).toBe(false);
+    await click(document.querySelector('[aria-label="Use this job: Expense Manager"]'));
+    await act(async () => { finishOld({ ok: true, agentId: "inbox-manager" }); });
+    expect(document.querySelector<HTMLButtonElement>('[aria-label="Use this job: Expense Manager"]')!.disabled).toBe(true);
+    expect(document.body.textContent).not.toContain("Inbox Manager is ready.");
+    await act(async () => { finishNew({ ok: true, agentId: "expense-manager" }); });
+    expect(document.body.textContent).toContain("Expense Manager is ready.");
+    expect(oldRequest).toHaveBeenCalledTimes(1);
+    expect(newRequest).toHaveBeenCalledWith("agents.files.set", expect.objectContaining({ agentId: "expense-manager", expectedMissing: true }));
   });
 });
 
