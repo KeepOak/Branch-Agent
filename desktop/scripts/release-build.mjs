@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { bundleNode } from "./bundle-node.mjs";
 import { smokeProductionEngine } from "./production-engine-smoke.mjs";
 import { assertTrackedSourceClean } from "./release-source-freeze.mjs";
-import { extractProductionArchive, productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
+import { assertHoistedDeployment, extractProductionArchive, productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
 import { makeComponentRelease } from "./make-component-release.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { engineRoot, windowRoot, toolingRoot, repoRoot, gitHead, run, preparePnpm,
@@ -56,6 +56,7 @@ async function deployEngine(pnpm, scratch, identity) {
   const deployment = join(scratch, "production-engine");
   const flags = await verifiedExceptionFlags("engine");
   await run(pnpm, productionDeployArguments(deployment, flags), engineRoot, productionDeployEnvironment(process.env));
+  await assertHoistedDeployment(deployment);
   assert.equal(JSON.parse(await readFile(join(deployment, "dist/build-info.json"), "utf8")).commit, identity.commit);
   assert(!(await readdir(deployment)).includes("src"), "Production deployment must not be an unbuilt source checkout");
   return deployment;

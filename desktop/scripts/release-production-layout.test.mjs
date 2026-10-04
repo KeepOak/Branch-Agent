@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { makeComponentRelease } from "./make-component-release.mjs";
-import { extractProductionArchive, productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
+import { assertHoistedDeployment, extractProductionArchive, productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
 import { preparePnpm, run } from "../../scripts/feature-batch-ci-runtime.mjs";
 
 const library = "@fixture/library-with-a-long-production-dependency-name";
@@ -72,6 +72,7 @@ test("production deploy installs a hoisted real-file tree from the frozen lock w
   assert.equal(parent.PNPM_CONFIG_VIRTUAL_STORE_DIR_MAX_LENGTH, "120", "Parent environment must remain unchanged");
   assert(args.includes(flags[0])); assert(args.includes("--prod"));
   assert(args.includes("--config.node-linker=hoisted")); assert(args.includes("--config.inject-workspace-packages=true"));
+  assert(args.includes("--config.enable-global-virtual-store=false"));
   assert(!args.includes("--legacy"), "The legacy deploy hoists into the source workspace instead of the deployment");
   assert.equal(args.at(-1), "deployment"); assert(!args.some(value => /ignore-scripts|no-frozen/.test(value)));
 });
@@ -98,6 +99,8 @@ test("extracted release archive resolves non-root dependencies only with the hoi
 
     const portable = join(root, "portable-deployment");
     await run(pnpm, productionDeployArguments(portable, []), project, productionDeployEnvironment(process.env));
+    await assertHoistedDeployment(portable);
+    await assert.rejects(assertHoistedDeployment(isolated), /not hoisted/);
     assert.deepEqual(await links(join(portable, "node_modules")).then(found => found.filter(path => !path.includes(".bin"))), [], "Hoisted deployment must contain real files only");
     assert.deepEqual(resolutionProof(portable), expected);
     assert.equal(digest(await readFile(join(project, "pnpm-lock.yaml"))), sourceLock, "Production layout must not rewrite the source lock");

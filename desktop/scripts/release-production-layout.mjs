@@ -10,14 +10,24 @@ export const PRODUCTION_VIRTUAL_STORE_NAME_LENGTH = 60;
  */
 export function productionDeployArguments(destination, verifiedExceptions) {
   return ["--filter", "branch", "deploy", "--prod", "--config.allow-unused-patches=true",
-    "--config.inject-workspace-packages=true", "--config.node-linker=hoisted", ...verifiedExceptions, destination];
+    "--config.inject-workspace-packages=true", "--config.node-linker=hoisted", "--config.enable-global-virtual-store=false",
+    ...verifiedExceptions, destination];
+}
+
+/** Hoisted deployments keep only pnpm's lock metadata in .pnpm; package directories there mean another layout won. */
+export async function assertHoistedDeployment(deployment) {
+  let entries = [];
+  try { entries = await readdir(join(deployment, "node_modules/.pnpm"), { withFileTypes: true }); }
+  catch (error) { if (error.code !== "ENOENT") throw error; }
+  const packages = entries.filter(entry => !entry.isFile()).map(entry => entry.name);
+  assert.deepEqual(packages, [], `Production deployment is not hoisted; .pnpm holds ${packages.length} package entries: ${packages.slice(0, 5).join(", ")}`);
 }
 
 export function productionDeployEnvironment(environment) {
   return { ...environment, PNPM_CONFIG_VIRTUAL_STORE_DIR_MAX_LENGTH: String(PRODUCTION_VIRTUAL_STORE_NAME_LENGTH) };
 }
 import assert from "node:assert/strict";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileDigest } from "./release-inventory.mjs";
 
