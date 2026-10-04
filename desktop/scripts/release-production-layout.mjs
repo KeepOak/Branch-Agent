@@ -11,6 +11,8 @@ export const PRODUCTION_VIRTUAL_STORE_NAME_LENGTH = 60;
 export function productionDeployArguments(destination, verifiedExceptions) {
   return ["--filter", "branch", "deploy", "--prod", "--config.allow-unused-patches=true",
     "--config.inject-workspace-packages=true", "--config.node-linker=hoisted", "--config.enable-global-virtual-store=false",
+    // The engine's clone-or-copy import stages whole-package APFS clones under .pnpm on macOS; copy writes the tree once.
+    "--config.package-import-method=copy",
     ...verifiedExceptions, destination];
 }
 

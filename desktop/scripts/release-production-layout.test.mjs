@@ -33,7 +33,8 @@ async function createProject(root, libraryTar) {
   const project = join(root, "project"); await mkdir(join(project, "dist"), { recursive: true });
   await writeFile(join(project, "package.json"), JSON.stringify({ name: "branch", version: "1.0.0", bin: { branch: "branch.mjs" },
     files: ["branch.mjs", "dist"], dependencies: { [library]: `file:${libraryTar}` } }));
-  await writeFile(join(project, "pnpm-workspace.yaml"), "packages:\n  - .\n");
+  // Same import policy as engine/pnpm-workspace.yaml, which staged whole-package clones under .pnpm on macOS.
+  await writeFile(join(project, "pnpm-workspace.yaml"), "packages:\n  - .\npackageImportMethod: clone-or-copy\n");
   await writeFile(join(project, "branch.mjs"), "#!/usr/bin/env node\nexport {};\n"); await chmod(join(project, "branch.mjs"), 0o755);
   await writeFile(join(project, "dist/entry.js"), "export {};\n");
   await writeFile(join(project, "dist/build-info.json"), JSON.stringify({ commit }));
@@ -72,7 +73,7 @@ test("production deploy installs a hoisted real-file tree from the frozen lock w
   assert.equal(parent.PNPM_CONFIG_VIRTUAL_STORE_DIR_MAX_LENGTH, "120", "Parent environment must remain unchanged");
   assert(args.includes(flags[0])); assert(args.includes("--prod"));
   assert(args.includes("--config.node-linker=hoisted")); assert(args.includes("--config.inject-workspace-packages=true"));
-  assert(args.includes("--config.enable-global-virtual-store=false"));
+  assert(args.includes("--config.enable-global-virtual-store=false")); assert(args.includes("--config.package-import-method=copy"));
   assert(!args.includes("--legacy"), "The legacy deploy hoists into the source workspace instead of the deployment");
   assert.equal(args.at(-1), "deployment"); assert(!args.some(value => /ignore-scripts|no-frozen/.test(value)));
 });
