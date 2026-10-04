@@ -30,7 +30,7 @@ test("actual manifest and entry register through production loader and registrar
   const api = builder.createApi(record, { config: {} });
   runPluginRegisterSyncInRegistry(plugin.register, api, builder.registry, plugin.id);
   assert.deepEqual(builder.registry.diagnostics, []);
-  assert.deepEqual(record.speechProviderIds, ["playai-speech"]);
+  assert.deepEqual(record.speechProviderIds, ["playai-speech", "playai"]);
   assert.equal(builder.registry.speechProviders.length, 1);
   const provider = builder.registry.speechProviders[0]!.provider;
   assert.equal(provider.id, "playai-speech");
