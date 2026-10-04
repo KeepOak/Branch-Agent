@@ -7,6 +7,7 @@ import { OVERVIEW_READS, OverviewData, people, runs, sessions, sharedConnections
 import { OverviewPlace, LOCKDOWN_GAP, PAUSE_ALL_GAP } from "./index";
 import { KEEP_RUNNING_GAP, resetRecommendation } from "./RecBar";
 import { takeInboxHandoff } from "../inbox/handoff";
+import { InboxPlace } from "../inbox";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 vi.mock("../../face/Face", () => ({ Face: ({ label, size }: { label?: string; size: number }) => <span role="img" aria-label={label} data-face-size={size} /> }));
@@ -47,7 +48,7 @@ const FX: Record<string, unknown> = {
 };
 
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; resetRecommendation(); localStorage.clear(); });
+afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; resetRecommendation(); localStorage.clear(); takeInboxHandoff(); });
 
 async function render(request = vi.fn(async (method: string) => FX[method] ?? {})) {
   const openPlace = vi.fn(), openSettings = vi.fn(), openConversation = vi.fn();
@@ -162,13 +163,13 @@ describe("Overview screen", () => {
     expect(takeInboxHandoff()).toEqual({ tab: "history", people: ["p1"] });
   });
 
-  it("opens the Inbox on History from All history", async () => {
-    const { host, openPlace } = await render();
-    const heard = vi.fn();
-    window.addEventListener("branch:place-tab", e => heard((e as CustomEvent).detail));
+  it("opens History even when the Inbox mounts after navigation has yielded", async () => {
+    const { host, request, openPlace, openConversation, openSettings } = await render();
     await act(async () => { button(host, "All history")!.click(); await new Promise(r => setTimeout(r, 0)); });
     expect(openPlace).toHaveBeenCalledWith("inbox");
-    expect(heard).toHaveBeenCalledWith({ place: "inbox", tab: "History" });
+    await act(async () => root!.render(<InboxPlace engine={fixture(request).engine} facts={{ running: 0, waiting: 0 }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} level="regular" />));
+    expect(host.querySelector("[role=tab][aria-selected=true]")?.textContent).toBe("History");
+    expect(takeInboxHandoff()).toBeNull();
   });
 
   it("opens the permission settings from Mode · change", async () => {
