@@ -275,6 +275,9 @@ importers:
       '@mozilla/readability':
         specifier: 0.6.0
         version: 0.6.0
+      '@openai/codex':
+        specifier: 0.160.0
+        version: 0.160.0
       '@openclaw/fs-safe':
         specifier: 0.23.0
         version: 0.23.0
@@ -416,6 +419,9 @@ importers:
       slugify:
         specifier: 1.6.6
         version: 1.6.6
+      smol-toml:
+        specifier: 1.8.0
+        version: 1.8.0
       tar:
         specifier: 7.5.22
         version: 7.5.22
