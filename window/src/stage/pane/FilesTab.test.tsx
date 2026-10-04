@@ -91,3 +91,19 @@ it("keeps the edit and reports a backend hash conflict instead of claiming it sa
   expect(container.querySelector("textarea")?.value).toBe("my edit");
   expect(container.textContent).not.toContain("Saved.");
 });
+
+it.each(["resolve", "reject"])("ignores a previous engine save that later %ss", async (outcome) => {
+  let finish!: (value: unknown) => void;
+  let fail!: (reason: unknown) => void;
+  const request = vi.fn().mockResolvedValueOnce({ files: [file] }).mockResolvedValueOnce({ file }).mockImplementationOnce(() => new Promise((resolve, reject) => { finish = resolve; fail = reject; }));
+  const container = await openFile(request);
+  await edit(container, "previous engine draft"); await button(container, "Keep");
+  const replacement = { ...file, content: "replacement engine content", hash: "replacement-hash" };
+  const engine = { sessionKey: "agent:scout:main", request: vi.fn(async (method: string) => method === "sessions.files.get" ? { file: replacement } : { files: [replacement] }) } as unknown as WindowEngine;
+  await act(async () => root!.render(<FilesTab engine={engine} />));
+  expect(container.querySelector("pre")?.textContent).toBe("replacement engine content");
+  await act(async () => outcome === "resolve" ? finish({ file: { ...file, content: "previous engine draft", hash: "old-save-hash" } }) : fail(new Error("Old connection failed")));
+  expect(container.querySelector("pre")?.textContent).toBe("replacement engine content");
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.textContent).not.toContain("Saved.");
+});

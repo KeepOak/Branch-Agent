@@ -73,33 +73,40 @@ function Entry({ engine, entry, depth, onOpen }: { engine: WindowEngine; entry: 
 
 /** One file: its text, editable and saved back with sessions.files.set (only if nobody changed it meanwhile). */
 function FileView({ engine, path, onClose }: { engine: WindowEngine; path: string; onClose: () => void }) {
-  const [file, setFile] = useState<FileEntry | null>(null);
+  const [loadedFile, setFile] = useState<FileEntry | null>(null);
+  const owner = useRef({ engine, path, sessionKey: engine.sessionKey, live: false });
+  const file = owner.current.engine === engine && owner.current.path === path && owner.current.sessionKey === engine.sessionKey ? loadedFile : null;
   const [draft, setDraft] = useState<string | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const [state, setState] = useState<{ error?: string; saved?: boolean; busy?: boolean }>({});
   useEffect(() => {
-    let live = true;
+    const current = { engine, path, sessionKey: engine.sessionKey, live: true };
+    owner.current = current;
+    setFile(null); setDraft(null); setState({});
     engine.request<{ file: FileEntry }>("sessions.files.get", { sessionKey: engine.sessionKey, path }).then(
-      (r) => live && setFile(r.file),
-      (e: unknown) => live && setState({ error: errorText(e) }),
+      (r) => current.live && setFile(r.file),
+      (e: unknown) => current.live && setState({ error: errorText(e) }),
     );
     return () => {
-      live = false;
+      current.live = false;
     };
-  }, [engine, path]);
+  }, [engine, engine.sessionKey, path]);
   const text = file && file.contentEncoding !== "base64" && file.previewKind !== "image" && file.previewKind !== "unsupported" ? file.content ?? null : null;
   const save = () => {
     if (draft === null || !file?.hash) return;
+    const current = owner.current;
+    if (!current.live || current.engine !== engine || current.path !== path || current.sessionKey !== engine.sessionKey) return;
     const sent = draft;
     setState({ busy: true });
     engine.request<{ file: FileEntry }>("sessions.files.set", { sessionKey: engine.sessionKey, path, content: draft, expectedHash: file.hash }).then(
       (r) => {
+        if (!current.live) return;
         setFile(r.file);
         setDraft((current) => current === sent ? null : current);
         setState({ saved: draftRef.current === sent });
       },
-      (e: unknown) => setState({ error: errorText(e) }),
+      (e: unknown) => { if (current.live) setState({ error: errorText(e) }); },
     );
   };
   return (
