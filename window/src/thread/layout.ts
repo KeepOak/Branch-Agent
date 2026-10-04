@@ -1,35 +1,41 @@
 // How the thread lays its blocks out: consecutive steps share one Steps fold, and each Trunk turn's first
-// reply carries the gutter face (DESIGN-SPEC §4.2.2 gutter rule).
+// item carries the gutter face, as the approved design draws it: the Steps fold when the turn starts with steps,
+// else the first reply.
 import type { Block } from "./model";
 
 type Step = Extract<Block, { kind: "step" }>;
 
 export type Item =
-  | { type: "block"; block: Block; index: number; firstReply: boolean }
-  | { type: "steps"; key: string; steps: Step[] };
+  | { type: "block"; block: Block; index: number; firstReply: boolean; face: boolean }
+  | { type: "steps"; key: string; steps: Step[]; face: boolean };
 
 /** Groups blocks for drawing. `index` is the block's place in the list the actions read. */
 export function layout(blocks: readonly Block[], offset = 0): Item[] {
   const items: Item[] = [];
   let replied = false;
+  let faced = false;
   blocks.forEach((block, i) => {
     if (block.kind === "user") {
       replied = false;
+      faced = false;
     }
     if (block.kind === "step") {
       const last = items[items.length - 1];
       if (last?.type === "steps") {
         last.steps.push(block);
       } else {
-        items.push({ type: "steps", key: `steps:${block.key}`, steps: [block] });
+        items.push({ type: "steps", key: `steps:${block.key}`, steps: [block], face: !faced });
+        faced = true;
       }
       return;
     }
     const firstReply = block.kind === "text" && !replied;
+    const face = firstReply && !faced;
     if (block.kind === "text") {
       replied = true;
+      faced = true;
     }
-    items.push({ type: "block", block, index: offset + i, firstReply });
+    items.push({ type: "block", block, index: offset + i, firstReply, face });
   });
   return items;
 }

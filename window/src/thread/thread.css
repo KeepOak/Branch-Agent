@@ -1677,3 +1677,6 @@
     display: none;
   }
 }
+
+/* A turn that starts with steps: the face sits beside the Steps fold, as in the approved design. */
+.thread .steps-turn > .steps-fold.indent { margin-left: 0; }

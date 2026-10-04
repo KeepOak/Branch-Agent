@@ -19,6 +19,11 @@ describe("layout", () => {
     expect(names).toEqual(["u1", "steps:2", "t1*", "t2", "u2", "t3*"]);
   });
 
+  it("puts the face on each turn's first item: the Steps fold when the turn starts with steps", () => {
+    const faces = layout(blocks).map((i) => (i.type === "steps" ? `steps:${i.face}` : `${i.block.key}:${i.type === "block" && i.face}`));
+    expect(faces).toEqual(["u1:false", "steps:true", "t1:false", "t2:false", "u2:false", "t3:true"]);
+  });
+
   it("finds a block's turn", () => {
     expect(turnOf(blocks, 3).map((b) => b.key)).toEqual(["s1", "s2", "t1", "t2"]);
   });

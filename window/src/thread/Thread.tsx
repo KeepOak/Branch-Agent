@@ -286,13 +286,19 @@ function ItemView(props: { item: Item; view: View; live: boolean }) {
 
 function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean }) {
   if (item.type === "steps") {
-    return <StepsFold steps={item.steps} live={live} />;
+    if (!item.face) return <StepsFold steps={item.steps} live={live} />;
+    return (
+      <div className="msg reply steps-turn">
+        <span className="gutter"><span className={view.running && live ? "gutter-face working-ring" : "gutter-face"}>{faceFor(view, live)}</span></span>
+        <StepsFold steps={item.steps} live={live} />
+      </div>
+    );
   }
-  const { block, index, firstReply } = item;
+  const { block, index, firstReply, face } = item;
   switch (block.kind) {
     case "user":
     case "text":
-      return <MessageView block={block} index={index} firstReply={firstReply} view={view} live={live} />;
+      return <MessageView block={block} index={index} firstReply={firstReply} face={face} view={view} live={live} />;
     case "thinking":
       return <Thinking block={block} />;
     case "approval":
@@ -313,7 +319,7 @@ function faceFor(view: View, live: boolean): ReactNode {
   return <Face size={28} label={view.name} state={state} priority={live ? PRIORITY.open : PRIORITY.row} />;
 }
 
-function MessageView({ block, index, firstReply, view, live }: { block: Extract<Block, { kind: "user" | "text" }>; index: number; firstReply: boolean; view: View; live: boolean }) {
+function MessageView({ block, index, firstReply, face, view, live }: { block: Extract<Block, { kind: "user" | "text" }>; index: number; firstReply: boolean; face: boolean; view: View; live: boolean }) {
   const actions = live ? null : view.actionsFor(view.all, index);
   const entryId = block.meta?.entryId;
   const chips = entryId ? view.reactions.get(entryId) ?? [] : [];
@@ -337,7 +343,7 @@ function MessageView({ block, index, firstReply, view, live }: { block: Extract<
   }
   return (
     <>
-      <Reply block={block} face={firstReply ? faceFor(view, live) : undefined} working={firstReply && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
+      <Reply block={block} face={face ? faceFor(view, live) : undefined} working={face && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
       {live ? null : <TimeLine block={block} view={view} />}
       <ReactionChips list={chips} onToggle={toggle} />
     </>
