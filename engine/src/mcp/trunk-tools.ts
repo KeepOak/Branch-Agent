@@ -25,7 +25,7 @@ export type OutsideAgentIdentity = {
 export type TrunkToolsOptions = {
   /** Who is speaking, once the gateway accepted contacts.outside.hello; undefined = plain owner messages. */
   outsideAgent: () => OutsideAgentIdentity | undefined | Promise<OutsideAgentIdentity | undefined>;
-  /** What this agent is doing now, for Settings › Connected agents. */
+  /** What this agent is doing now, for Settings › Grafts. */
   activity?: (text: string) => void;
   now?: () => number;
 };

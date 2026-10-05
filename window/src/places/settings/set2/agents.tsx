@@ -1,5 +1,5 @@
-// Settings › Connected agents: coding agents (Claude Code, Codex, Gemini CLI, Hermes, any MCP client) that work with
-// Branch through `branch mcp serve`. The master switch and per-agent disconnect / window rights are the engine's
+// Settings › Grafts (Graft is the bridge's name): coding agents (Claude Code, Codex, Gemini CLI, Hermes, any MCP client) that work with
+// Branch through `branch graft` (alias `branch mcp serve`). The master switch and per-agent disconnect / window rights are the engine's
 // contacts.outside.list / contacts.outside.set; "may message" is each Trunk's agentToAgent deny list for a2a:<id>,
 // the same rule Who it knows writes (shell/who-it-knows-menu.tsx) and the gateway enforces on every send.
 import type { SettingsPageProps } from "../index";
@@ -9,7 +9,7 @@ import { DesktopCtl } from "../desktop-ctl";
 import { CodeRow, rec, str, useCall, useLive, when } from "./common";
 import "./agents.css";
 
-const LEDE = "Coding agents on your computers that work with your Trunks: who is connected, what each may do, and how to connect another.";
+const LEDE = "Agents grafted onto Branch: coding agents on your computers that work with your Trunks, what each may do, and how to graft another.";
 
 export type OutsideAgentRow = {
   id: string; name: string; version?: string; where?: string; project?: string; activity?: string; activityAt?: number;
@@ -28,16 +28,16 @@ export function readAgents(result: unknown): { enabled: boolean; agents: Outside
 
 /** The lines an agent's owner pastes once. `branch` is the desktop's shim: it always runs the current engine. */
 export const CONNECT_LINES: [string, string][] = [
-  ["Claude Code", "claude mcp add --scope user branch -- branch mcp serve"],
-  ["Codex", "codex mcp add branch -- branch mcp serve"],
-  ["Gemini CLI", "gemini mcp add branch branch mcp serve"],
-  ["Hermes Agent (~/.hermes/config.yaml)", "mcp_servers:\n  branch:\n    command: branch\n    args: [mcp, serve]"],
-  ["Any MCP client (stdio)", '{"mcpServers":{"branch":{"command":"branch","args":["mcp","serve"]}}}'],
+  ["Claude Code", "claude mcp add --scope user branch -- branch graft"],
+  ["Codex", "codex mcp add branch -- branch graft"],
+  ["Gemini CLI", "gemini mcp add branch branch graft"],
+  ["Hermes Agent (~/.hermes/config.yaml)", "mcp_servers:\n  branch:\n    command: branch\n    args: [graft]"],
+  ["Any MCP client (stdio)", '{"mcpServers":{"branch":{"command":"branch","args":["graft"]}}}'],
 ];
 
 export const ROWS: RowEntry[] = [
   { page: "agents", title: "Let other agents work with Branch", lv: 0 },
-  ...CONNECT_LINES.map(([title]) => ({ page: "agents", title, sec: "Connect an agent", lv: 0 as const })),
+  ...CONNECT_LINES.map(([title]) => ({ page: "agents", title, sec: "Graft an agent", lv: 0 as const })),
 ];
 
 type Trunk = { id: string; name: string };
@@ -122,14 +122,14 @@ export function AgentsPage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede={LEDE}>
       <Sec title="">
-        <Ctl title="Let other agents work with Branch" sub="Claude Code, Codex, Hermes and other agents connected with branch mcp serve may see your Trunks, message them and join group chats. Off turns every one of them away." off={live.error ? String(live.error) : undefined}>
+        <Ctl title="Let other agents work with Branch" sub="Claude Code, Codex, Hermes and other agents grafted with branch graft may see your Trunks, message them and join group chats. Off turns every one of them away." off={live.error ? String(live.error) : undefined}>
           <Switch label="Let other agents work with Branch" checked={enabled} disabled={live.loading || call.busy} onChange={(on) => void call.run(async () => { await props.engine.request("contacts.outside.set", { enabled: on }); reload(); })} />
         </Ctl>
       </Sec>
       {agents.length ? agents.map((a) => <AgentRow key={a.id} agent={a} trunks={trunks} props={props} reload={reload} sessions={agents.map((x) => x.id)} />) : (
-        <Sec title="Connected agents"><Empty>No agent has connected yet. Paste one of the lines below into it.</Empty></Sec>
+        <Sec title="Grafts"><Empty>No agent is grafted yet. Paste one of the lines below into it.</Empty></Sec>
       )}
-      <Sec title="Connect an agent" hint="Each line is pasted once. It runs the branch command, which always uses the Branch on this computer, so it keeps working after updates.">
+      <Sec title="Graft an agent" hint="Each line is pasted once. It runs the branch command, which always uses the Branch on this computer, so it keeps working after updates.">
         <DesktopCtl title="Type branch in any terminal" sub="Needed for these lines: adds the branch command." name="branchOnPath" />
         {CONNECT_LINES.map(([title, code]) => <CodeRow key={title} title={title} code={code} />)}
       </Sec>
