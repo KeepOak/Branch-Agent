@@ -151,7 +151,7 @@ function useKids() {
 type Kids = ReturnType<typeof useKids>;
 
 function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row: Conversation; kids: Kids; depth?: number; child?: boolean }) {
-  const mine = child || row.isMain ? [] : childrenOf(p.allRows ?? [], row.key);
+  const mine = child || row.isMain || ["trunk", "chatGroup", "outside"].includes(row.kind) ? [] : childrenOf(p.allRows ?? [], row.key);
   const isOpen = kids.open.has(row.key);
   const shown = isOpen ? shownChildren(mine, kids.all.has(row.key), (c) => p.rowState(c).waiting) : [];
   return (
@@ -176,7 +176,7 @@ function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row:
         }}
         onMenu={(e) => p.onMenu(row, e)}
         onPin={row.isMain ? undefined : () => p.onPin(row)}
-        onArchive={row.isMain ? undefined : () => p.onArchive(row)}
+        onArchive={row.isMain || row.kind === "trunk" ? undefined : () => p.onArchive(row)}
         onCard={p.onCard ? (el) => p.onCard?.(row, el) : undefined}
       />
       {shown.length ? (

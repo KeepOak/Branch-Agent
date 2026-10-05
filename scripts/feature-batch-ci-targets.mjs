@@ -52,6 +52,8 @@ export const engineTests = [
 ];
 
 export const windowTests = [
+  'src/shell/contacts-model.test.ts',
+  'src/shell/row-menu.test.ts',
   'src/connect/desktop-component-updates.test.tsx',
   'src/thread/PlanCard.test.ts',
   'src/thread/PlanCard.note-only.test.tsx',
