@@ -288,6 +288,39 @@ it connected in the last few minutes.
 - **Group chats:** `room_join` adds the agent as a member. It can only post in
   group chats it belongs to. The lead Trunk is told who wrote each message.
 
+#### Another Branch grafted in (Branch-to-Branch)
+
+A second Branch, on this computer or another one, can graft into this one as a
+scoped device. It uses the same setup-code pairing a phone uses.
+
+1. On the host Branch, `branch graft invite` prints a one-time setup code. While
+   the gateway is bound to loopback (the default), the code carries
+   `ws://127.0.0.1:<port>`, so only a Branch on the same computer can use it.
+   When the owner opens the gateway to the network (`gateway.bind` other than
+   `loopback`), the code carries the LAN, tailnet or public address instead, and
+   `branch gateway discover` finds the host over Bonjour.
+2. On the joining Branch, run `branch graft join <setup-code> --name "Studio Laptop"`.
+   It connects with the joining Branch's own device identity and asks for
+   `operator.read` and `operator.write` only. It never asks for admin, approvals
+   or pairing.
+3. The host approves it like any device. A Branch on the same computer is
+   approved silently, unless `gateway.nodes.pairing.autoApproveLocal` is
+   `false`. Otherwise run `branch devices approve <requestId>`; `join` prints
+   the command and waits until it's approved.
+4. Settings › Grafts on the host lists the joining Branch under its own name.
+   Each of its Trunks is a contact (`a2a:branch-studio-laptop--<trunk>`).
+5. On the joining Branch, `branch graft --host <url>` is Graft working with the
+   host as that device. Use it to register Graft with an agent. Messages it
+   sends to the host's Trunks are attributed to the joining Branch.
+
+The host binds everything to the device:
+- A grafted Branch can only say hello as itself and its own Trunks.
+- It can only send messages as one of those.
+- Another device or client can't take its rows.
+
+Disconnect in Settings › Grafts removes the device's pairing through
+`device.pair.remove` and disconnects every row it said hello as.
+
 ### Event model
 
 The bridge keeps an in-memory event queue while it is connected.
