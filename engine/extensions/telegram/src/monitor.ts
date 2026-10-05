@@ -2,7 +2,6 @@ import { CHANNEL_APPROVAL_NATIVE_RUNTIME_CONTEXT_CAPABILITY } from "branch/plugi
 import type { PluginRuntime } from "branch/plugin-sdk/channel-core";
 import { registerChannelRuntimeContext } from "branch/plugin-sdk/channel-runtime-context";
 import { makeProxyFetch } from "branch/plugin-sdk/fetch-runtime";
-import { createLazyRuntimeModule } from "branch/plugin-sdk/lazy-runtime";
 import { getRuntimeConfig } from "branch/plugin-sdk/runtime-config-snapshot";
 import { waitForAbortSignal } from "branch/plugin-sdk/runtime-env";
 import { formatErrorMessage } from "branch/plugin-sdk/ssrf-runtime";
@@ -37,12 +36,6 @@ function formatTelegramOffsetRotationMessage(
   const reasonLabel = TELEGRAM_OFFSET_ROTATION_LABELS[info.reason];
   return `[telegram] Detected ${reasonLabel} for account "${accountId}" (was ${previousLabel}, now ${info.currentBotId}); discarding stale update offset ${info.staleLastUpdateId ?? "(none)"} and starting fresh.`;
 }
-
-const loadTelegramMonitorPollingRuntime = createLazyRuntimeModule(
-  () => import("./polling-session.js"),
-);
-
-const loadTelegramMonitorWebhookRuntime = createLazyRuntimeModule(() => import("./webhook.js"));
 
 export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
   const logInfo = (line: string) => (opts.runtime?.log ?? console.log)(line);
@@ -115,7 +108,7 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
             log(formatTelegramOffsetRotationMessage(account.accountId, info)),
         });
     if (opts.useWebhook) {
-      const { startTelegramWebhook } = await loadTelegramMonitorWebhookRuntime();
+      const { startTelegramWebhook } = await import("./webhook.js");
       const webhook = await startTelegramWebhook({
         token,
         accountId: account.accountId,
@@ -142,7 +135,7 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
       return;
     }
 
-    const { TelegramPollingSession } = await loadTelegramMonitorPollingRuntime();
+    const { TelegramPollingSession } = await import("./polling-session.js");
     const lastUpdateId = normalizeTelegramUpdateId(persistedOffsetRaw);
     if (persistedOffsetRaw !== null && lastUpdateId === null) {
       log(

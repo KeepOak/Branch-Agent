@@ -14,10 +14,33 @@ describe("Gateway core reload policy", () => {
   beforeEach(() => setActivePluginRegistry(createEmptyPluginRegistry()));
   afterEach(() => resetPluginRuntimeStateForTest());
 
+  it("hot-applies an added agent entry without a gateway restart", () => {
+    const previous: BranchConfig = { agents: { entries: { main: {} } } };
+    const candidate: BranchConfig = {
+      agents: { entries: { main: {}, newcomer: { name: "Newcomer" } } },
+    };
+    const changedPaths = diffGatewayReloadPaths(
+      previous,
+      candidate,
+      listConfigReloadRefinementPrefixes(),
+    );
+    const plan = buildGatewayReloadPlan(changedPaths, {
+      previousConfig: previous,
+      candidateConfig: candidate,
+    });
+    expect(changedPaths).toContain("agents.entries.newcomer");
+    expect(plan.restartGateway).toBe(false);
+    expect(plan.restartReasons).toEqual([]);
+    expect(plan.hotReasons).toContain("agents.entries.newcomer");
+    expect(plan.restartHeartbeat).toBe(true);
+    expect(plan.reconcileSystemJobs).toBe(true);
+  });
+
   it.each([
     { change: "allow", mode: "noop" },
     { change: "remove-policy", mode: "noop" },
     { change: "default", mode: "hot" },
+    { change: "github-assignment", mode: "hot" },
     { change: "remove-role", mode: "hot" },
     { change: "mixed-role", mode: "hot" },
     { change: "mixed-gateway", mode: "restart" },
@@ -55,6 +78,9 @@ describe("Gateway core reload policy", () => {
         break;
       case "default":
         roles.default = "staff";
+        break;
+      case "github-assignment":
+        roles.assignments = { byGithubLogin: { "release-operator": "staff" } };
         break;
       case "remove-role":
         delete roles.definitions.staff;

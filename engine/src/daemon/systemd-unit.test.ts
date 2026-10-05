@@ -1,5 +1,4 @@
-// Systemd unit tests cover generated systemd unit files.
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { splitArgsPreservingQuotes } from "./arg-split.js";
 import {
   buildSystemdUnit,
@@ -9,204 +8,153 @@ import {
   splitSystemdLogicalLines,
 } from "./systemd-unit.js";
 
-// Values that need quoting, including the backslash and quote shapes the
-// renderer has to escape for the module's own parsers to read them back.
-const ROUND_TRIP_VALUES = ["plain", 'mix \\ and " here', "trailing\\", "apostrophe's", "'quoted'"];
+const values = ["plain", 'mix \\ and " here', "trailing\\", "apostrophe's", "'quoted'"];
+const execStart = (unit: string) =>
+  unit
+    .split("\n")
+    .find((line) => line.startsWith("ExecStart="))
+    ?.slice("ExecStart=".length) ?? "";
 
-describe("systemd logical lines", () => {
-  it.each([
-    {
-      name: "standalone comment backslashes",
-      input: ["# note \\", "; note \\", "ExecStart=/usr/bin/branch gateway run"],
-      expected: ["# note \\", "; note \\", "ExecStart=/usr/bin/branch gateway run"],
-    },
-    {
-      name: "comments inside a continued quoted value",
-      input: ['Environment="SETTING=one\\', " # note \\", " ; note", '  two"'],
-      expected: ['Environment="SETTING=one   two"'],
-    },
-    {
-      name: "escaped trailing backslash pairs",
-      input: ["Environment=SETTING=one\\\\", "ExecStart=/usr/bin/branch gateway run"],
-      expected: ["Environment=SETTING=one\\\\", "ExecStart=/usr/bin/branch gateway run"],
-    },
-    {
-      name: "blank line ending a continuation",
-      input: ["Environment=SETTING=one\\", "", "ExecStart=/usr/bin/branch gateway run"],
-      expected: ["Environment=SETTING=one ", "ExecStart=/usr/bin/branch gateway run"],
-    },
-    {
-      name: "continued value at EOF",
-      input: ["Environment=SETTING=one\\", " # note"],
-      expected: ["Environment=SETTING=one "],
-    },
-  ])("preserves $name for LF and CRLF", ({ input, expected }) => {
+it("preserves comments, escaped backslashes, and continuation boundaries for LF and CRLF", () => {
+  const command = "ExecStart=/usr/bin/branch gateway run";
+  const cases = [
+    [
+      ["# note \\", "; note \\", command],
+      ["# note \\", "; note \\", command],
+    ],
+    [
+      ['Environment="SETTING=one\\', " # note \\", " ; note", '  two"'],
+      ['Environment="SETTING=one   two"'],
+    ],
+    [
+      ["Environment=SETTING=one\\\\", command],
+      ["Environment=SETTING=one\\\\", command],
+    ],
+    [
+      ["Environment=SETTING=one\\", "", command],
+      ["Environment=SETTING=one ", command],
+    ],
+    [["Environment=SETTING=one\\", " # note"], ["Environment=SETTING=one "]],
+  ] as const;
+  for (const [input, expected] of cases) {
     for (const separator of ["\n", "\r\n"]) {
       expect(splitSystemdLogicalLines(input.join(separator))).toEqual(expected);
     }
-  });
+  }
 });
 
-describe("systemd unit value round-trips", () => {
-  it.each(ROUND_TRIP_VALUES)("round-trips %p through Environment=", (value) => {
-    const rendered = renderSystemdEnvAssignment("BRANCH_TOKEN", value);
-    expect(parseSystemdEnvAssignments(rendered)).toEqual([{ key: "BRANCH_TOKEN", value }]);
-  });
-
-  it.each(ROUND_TRIP_VALUES)("round-trips %p through ExecStart=", (value) => {
-    const unit = buildSystemdUnit({
-      description: "Branch Agent Gateway",
-      programArguments: ["/usr/bin/branch", "gateway", value],
-      environment: {},
-    });
-    const execStart = unit.split("\n").find((line) => line.startsWith("ExecStart="));
-    expect(parseSystemdExecStart(execStart?.slice("ExecStart=".length) ?? "")).toEqual([
-      "/usr/bin/branch",
-      "gateway",
-      value,
-    ]);
-  });
-});
-
-describe("buildSystemdUnit", () => {
-  it.each(["", "--max-old-space-size=24576"])(
-    "preserves explicit NODE_OPTIONS=%j while omitting other empty values",
-    (nodeOptions) => {
-      const programArguments = ["/usr/bin/node", "--max-old-space-size=16384", "gateway.js"];
-      const unit = buildSystemdUnit({
-        programArguments,
-        environment: { NODE_OPTIONS: nodeOptions, UNUSED: "", MISSING: undefined },
-      });
-      const lines = unit.split("\n");
-      expect(
-        lines
-          .filter((line) => line.startsWith("Environment="))
-          .flatMap((line) => parseSystemdEnvAssignments(line.slice("Environment=".length))),
-      ).toEqual([{ key: "NODE_OPTIONS", value: nodeOptions }]);
-      const execStart = lines.find((line) => line.startsWith("ExecStart="));
-      expect(parseSystemdExecStart(execStart?.slice("ExecStart=".length) ?? "")).toEqual(
-        programArguments,
-      );
-    },
-  );
-
-  it("quotes arguments with whitespace", () => {
-    const unit = buildSystemdUnit({
-      description: "Branch Agent Gateway",
-      programArguments: ["/usr/bin/branch", "gateway", "--name", "My Bot"],
-      environment: {},
-    });
-    const execStart = unit.split("\n").find((line) => line.startsWith("ExecStart="));
-    expect(execStart).toBe('ExecStart=/usr/bin/branch gateway --name "My Bot"');
-  });
-
-  it("drains through the main process while retaining final child-process cleanup", () => {
-    const unit = buildSystemdUnit({
-      description: "Branch Agent Gateway",
-      programArguments: ["/usr/bin/branch", "gateway", "run"],
-      environment: {},
-    });
-    expect(unit).toContain("KillMode=mixed");
-    expect(unit).toContain("TimeoutStopSec=330");
-    expect(unit).toContain("TimeoutStartSec=30");
-    expect(unit).toContain("SuccessExitStatus=0 143");
-    expect(unit).toContain("OOMPolicy=continue");
-    expect(unit).toContain("StartLimitBurst=10");
-    expect(unit).toContain("StartLimitIntervalSec=300");
-    expect(unit).toContain("RestartSec=5");
-    expect(unit).toContain("RestartPreventExitStatus=78");
-  });
-
-  it("rejects environment values with line breaks", () => {
-    expect(() =>
-      buildSystemdUnit({
-        description: "Branch Agent Gateway",
-        programArguments: ["/usr/bin/branch", "gateway", "start"],
-        environment: {
-          INJECT: "ok\nExecStartPre=/bin/touch /tmp/oc15789_rce",
-        },
-      }),
-    ).toThrow(/CR or LF/);
-  });
-
-  it("renders EnvironmentFile entries before inline Environment values", () => {
-    const unit = buildSystemdUnit({
-      description: "Branch Agent Gateway",
-      programArguments: ["/usr/bin/branch", "gateway", "run"],
-      environmentFiles: ["/home/test/.branch/.env"],
-      environment: {
-        BRANCH_GATEWAY_PORT: "18789",
-      },
-    });
-    expect(unit).toContain("EnvironmentFile=-/home/test/.branch/.env");
-    expect(unit).toContain("Environment=BRANCH_GATEWAY_PORT=18789");
-    expect(unit.indexOf("EnvironmentFile=-/home/test/.branch/.env")).toBeLessThan(
-      unit.indexOf("Environment=BRANCH_GATEWAY_PORT=18789"),
+it("round-trips escaped and quoted Environment values", () => {
+  for (const value of values) {
+    expect(parseSystemdEnvAssignments(renderSystemdEnvAssignment("BRANCH_TOKEN", value))).toEqual(
+      [{ key: "BRANCH_TOKEN", value }],
     );
-  });
+  }
 });
 
-describe("splitArgsPreservingQuotes", () => {
-  it("splits on whitespace outside quotes", () => {
-    expect(splitArgsPreservingQuotes('/usr/bin/branch gateway start --name "My Bot"')).toEqual([
-      "/usr/bin/branch",
-      "gateway",
-      "start",
-      "--name",
-      "My Bot",
-    ]);
+it("round-trips escaped and quoted ExecStart arguments", () => {
+  const programArguments = ["/usr/bin/branch", "gateway", ...values];
+  const unit = buildSystemdUnit({
+    description: "Branch Agent Gateway",
+    programArguments,
+    environment: {},
   });
-
-  it("supports systemd-style backslash escaping", () => {
-    expect(
-      splitArgsPreservingQuotes('branch --name "My \\"Bot\\"" --foo bar', {
-        escapeMode: "backslash",
-      }),
-    ).toEqual(["branch", "--name", 'My "Bot"', "--foo", "bar"]);
-  });
-
-  it("supports schtasks-style escaped quotes while preserving other backslashes", () => {
-    expect(
-      splitArgsPreservingQuotes('branch --path "C:\\\\Program Files\\\\Branch Agent"', {
-        escapeMode: "backslash-quote-only",
-      }),
-    ).toEqual(["branch", "--path", "C:\\\\Program Files\\\\Branch Agent"]);
-
-    expect(
-      splitArgsPreservingQuotes('branch --label "My \\"Quoted\\" Name"', {
-        escapeMode: "backslash-quote-only",
-      }),
-    ).toEqual(["branch", "--label", 'My "Quoted" Name']);
-  });
+  expect(parseSystemdExecStart(execStart(unit))).toEqual(programArguments);
 });
 
-describe("parseSystemdEnvAssignments", () => {
-  it("parses single-quoted whole assignments", () => {
+it("preserves explicit NODE_OPTIONS while omitting other empty values", () => {
+  for (const nodeOptions of ["", "--max-old-space-size=24576"]) {
+    const programArguments = ["/usr/bin/node", "--max-old-space-size=16384", "gateway.js"];
+    const unit = buildSystemdUnit({
+      programArguments,
+      environment: { NODE_OPTIONS: nodeOptions, UNUSED: "", MISSING: undefined },
+    });
     expect(
-      parseSystemdEnvAssignments("'BRANCH_GATEWAY_TOKEN=single quoted token' FOO=bar"),
-    ).toEqual([
-      { key: "BRANCH_GATEWAY_TOKEN", value: "single quoted token" },
-      { key: "FOO", value: "bar" },
-    ]);
-  });
-
-  it("keeps apostrophes inside unquoted assignment values literal", () => {
-    expect(parseSystemdEnvAssignments("FOO=can't BRANCH_GATEWAY_TOKEN=token")).toEqual([
-      { key: "FOO", value: "can't" },
-      { key: "BRANCH_GATEWAY_TOKEN", value: "token" },
-    ]);
-  });
+      unit
+        .split("\n")
+        .filter((line) => line.startsWith("Environment="))
+        .flatMap((line) => parseSystemdEnvAssignments(line.slice("Environment=".length))),
+    ).toEqual([{ key: "NODE_OPTIONS", value: nodeOptions }]);
+    expect(parseSystemdExecStart(execStart(unit))).toEqual(programArguments);
+  }
 });
 
-describe("parseSystemdExecStart", () => {
-  it("preserves quoted arguments", () => {
-    const execStart = '/usr/bin/branch gateway start --name "My Bot"';
-    expect(parseSystemdExecStart(execStart)).toEqual([
-      "/usr/bin/branch",
-      "gateway",
-      "start",
-      "--name",
-      "My Bot",
-    ]);
+it("renders the gateway unit with safe lifecycle policy and ordered environment directives", () => {
+  const unit = buildSystemdUnit({
+    description: "Branch Agent Gateway",
+    programArguments: ["/usr/bin/branch", "gateway", "--name", "My Bot"],
+    environmentFiles: ["/home/test/.branch/.env"],
+    environment: { BRANCH_GATEWAY_PORT: "18789" },
   });
+  for (const directive of [
+    'ExecStart=/usr/bin/branch gateway --name "My Bot"',
+    "KillMode=mixed",
+    "TimeoutStopSec=330",
+    "TimeoutStartSec=30",
+    "SuccessExitStatus=0 143",
+    "OOMPolicy=continue",
+    "StartLimitBurst=10",
+    "StartLimitIntervalSec=300",
+    "RestartSec=5",
+    "RestartPreventExitStatus=78",
+    "EnvironmentFile=-/home/test/.branch/.env",
+    "Environment=BRANCH_GATEWAY_PORT=18789",
+  ]) {
+    expect(unit.split("\n")).toContain(directive);
+  }
+  expect(unit.indexOf("EnvironmentFile=-/home/test/.branch/.env")).toBeLessThan(
+    unit.indexOf("Environment=BRANCH_GATEWAY_PORT=18789"),
+  );
+});
+
+it("rejects environment values with line breaks", () => {
+  expect(() =>
+    buildSystemdUnit({
+      description: "Branch Agent Gateway",
+      programArguments: ["/usr/bin/branch", "gateway", "start"],
+      environment: { INJECT: "ok\nExecStartPre=/bin/touch /tmp/oc15789_rce" },
+    }),
+  ).toThrow(/CR or LF/);
+});
+
+it("splits command arguments using the platform's escaping rules", () => {
+  const cases = [
+    [
+      '/usr/bin/branch gateway start --name "My Bot"',
+      "none",
+      ["/usr/bin/branch", "gateway", "start", "--name", "My Bot"],
+    ],
+    [
+      'branch --name "My \\"Bot\\"" --foo bar',
+      "backslash",
+      ["branch", "--name", 'My "Bot"', "--foo", "bar"],
+    ],
+    [
+      'branch --path "C:\\\\Program Files\\\\Branch Agent"',
+      "backslash-quote-only",
+      ["branch", "--path", "C:\\\\Program Files\\\\Branch Agent"],
+    ],
+    [
+      'branch --label "My \\"Quoted\\" Name"',
+      "backslash-quote-only",
+      ["branch", "--label", 'My "Quoted" Name'],
+    ],
+  ] as const;
+  for (const [input, escapeMode, expected] of cases) {
+    expect(
+      splitArgsPreservingQuotes(input, escapeMode === "none" ? undefined : { escapeMode }),
+    ).toEqual(expected);
+  }
+});
+
+it("parses quoted assignments while preserving unquoted apostrophes", () => {
+  expect(
+    parseSystemdEnvAssignments("'BRANCH_GATEWAY_TOKEN=single quoted token' FOO=bar"),
+  ).toEqual([
+    { key: "BRANCH_GATEWAY_TOKEN", value: "single quoted token" },
+    { key: "FOO", value: "bar" },
+  ]);
+  expect(parseSystemdEnvAssignments("FOO=can't BRANCH_GATEWAY_TOKEN=token")).toEqual([
+    { key: "FOO", value: "can't" },
+    { key: "BRANCH_GATEWAY_TOKEN", value: "token" },
+  ]);
 });

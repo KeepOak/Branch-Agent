@@ -16,6 +16,7 @@ import { clearNodeSqliteKyselyCacheForDatabase } from "../../infra/kysely-sync.j
 import { withBranchAgentDatabaseReadOnly } from "../../state/branch-agent-db-readonly.js";
 import {
   closeBranchAgentDatabaseByPathAsync,
+  closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
   getBranchAgentDatabaseIfOpen,
   isBranchAgentDatabaseOpen,
@@ -23,12 +24,9 @@ import {
   resolveBranchAgentSqlitePath,
   runBranchAgentWriteTransaction,
 } from "../../state/branch-agent-db.js";
+import { openBranchStateDatabase } from "../../state/branch-state-db.js";
+import { closeStateDatabaseForTest } from "../../test-utils/database-cleanup.js";
 import {
-  closeBranchStateDatabaseForTest,
-  openBranchStateDatabase,
-} from "../../state/branch-state-db.js";
-import {
-  hasSessionEntriesByStatusReadOnly,
   listSessionEntriesCore,
   listSessionEntriesReadOnly,
   loadExactSessionEntryCandidatesReadOnlyBatch,
@@ -60,9 +58,10 @@ function clearRegisteredAgentDatabases(env: NodeJS.ProcessEnv): void {
   openBranchStateDatabase({ env }).db.prepare("DELETE FROM agent_databases").run();
 }
 
-afterEach(() => {
+afterEach(async () => {
+  await closeBranchAgentDatabasesAsync();
   closeBranchAgentDatabasesForTest();
-  closeBranchStateDatabaseForTest();
+  await closeStateDatabaseForTest();
   cleanupTempDirs(tempDirs);
   vi.useRealTimers();
 });
@@ -239,6 +238,7 @@ describe("session accessor readonly listing", () => {
     expect(database.db).toBe(handle);
     expect(handle.isOpen).toBe(true);
     expect(handle.isTransaction).toBe(false);
+    await closeBranchAgentDatabasesAsync();
     closeBranchAgentDatabasesForTest();
     clearRegisteredAgentDatabases(env);
 
@@ -568,68 +568,6 @@ describe("session accessor readonly listing", () => {
     );
   });
 
-  it("probes lifecycle status without creating or registering a missing database", () => {
-    const stateDir = makeTempDir(tempDirs, "branch-session-readonly-status-missing-");
-    const env = { BRANCH_STATE_DIR: stateDir };
-    const agentId = "worker-1";
-    const databasePath = resolveBranchAgentSqlitePath({ agentId, env });
-    clearRegisteredAgentDatabases(env);
-
-    expect(hasSessionEntriesByStatusReadOnly({ agentId, env }, ["running"])).toBe(false);
-    expect(fs.existsSync(databasePath)).toBe(false);
-    expect(countRegisteredAgentDatabases(env)).toBe(0);
-  });
-
-  it("distinguishes non-session agent state from a running session row", async () => {
-    const stateDir = makeTempDir(tempDirs, "branch-session-readonly-status-existing-");
-    const env = { BRANCH_STATE_DIR: stateDir };
-    const agentId = "worker-1";
-    const databasePath = resolveBranchAgentSqlitePath({ agentId, env });
-    openBranchAgentDatabase({ agentId, env, path: databasePath });
-    closeBranchAgentDatabasesForTest();
-    clearRegisteredAgentDatabases(env);
-
-    expect(hasSessionEntriesByStatusReadOnly({ agentId, env }, ["running"])).toBe(false);
-    expect(countRegisteredAgentDatabases(env)).toBe(0);
-
-    await upsertSessionEntryCore(
-      { agentId, env, sessionKey: "agent:worker-1:main" },
-      { sessionId: "session-1", status: "running", updatedAt: 10 },
-    );
-    closeBranchAgentDatabasesForTest();
-    clearRegisteredAgentDatabases(env);
-
-    expect(hasSessionEntriesByStatusReadOnly({ agentId, env }, ["running"])).toBe(true);
-    expect(hasSessionEntriesByStatusReadOnly({ agentId, env }, ["done"])).toBe(false);
-    expect(countRegisteredAgentDatabases(env)).toBe(0);
-  });
-
-  it.each(["interrupted", "failed"] as const)(
-    "probes canonical %s without conflating its shared derived status",
-    async (status) => {
-      const env = { BRANCH_STATE_DIR: autoTempDirs.make("branch-readonly-canonical-status-") };
-      const scope = { agentId: "worker-1", env };
-      await upsertSessionEntryCore(
-        { ...scope, sessionKey: "agent:worker-1:main" },
-        { sessionId: "session-1", status, updatedAt: 10 },
-      );
-      closeBranchAgentDatabasesForTest();
-      clearRegisteredAgentDatabases(env);
-
-      expect(hasSessionEntriesByStatusReadOnly(scope, [status])).toBe(true);
-      expect(
-        hasSessionEntriesByStatusReadOnly(scope, [
-          status === "interrupted" ? "failed" : "interrupted",
-        ]),
-      ).toBe(false);
-      expect(hasSessionEntriesByStatusReadOnly(scope, ["interrupted", "failed"])).toBe(true);
-      expect(hasSessionEntriesByStatusReadOnly(scope, ["running", "done"])).toBe(false);
-      expect(hasSessionEntriesByStatusReadOnly(scope, [])).toBe(false);
-      expect(countRegisteredAgentDatabases(env)).toBe(0);
-      expect(isBranchAgentDatabaseOpen(resolveBranchAgentSqlitePath(scope))).toBe(false);
-    },
-  );
-
   it("resolves a missing session identity without creating or registering a database", () => {
     const stateDir = makeTempDir(tempDirs, "branch-session-readonly-missing-identity-");
     const env = { BRANCH_STATE_DIR: stateDir };
@@ -653,6 +591,7 @@ describe("session accessor readonly listing", () => {
       { agentId, env, sessionKey },
       { sessionId: "session-1", updatedAt: 1 },
     );
+    await closeBranchAgentDatabasesAsync();
     closeBranchAgentDatabasesForTest();
     clearRegisteredAgentDatabases(env);
 
@@ -675,8 +614,18 @@ describe("session accessor readonly listing", () => {
       { agentId, env, sessionKey: invalidSessionKey },
       { sessionId: "invalid-session", updatedAt: 1 },
     );
-    openBranchAgentDatabase({ agentId, env })
-      .db.prepare("UPDATE session_nodes SET entry_valid = 0 WHERE session_key = ?")
+    const database = openBranchAgentDatabase({ agentId, env });
+    expect(
+      readSessionIdentityEvidenceBatch([
+        { agentId, env, sessionId, sessionKey, storePath },
+        { agentId, env, sessionId: "invalid-session", sessionKey: invalidSessionKey, storePath },
+      ]),
+    ).toEqual([
+      { status: "current", sessionKey },
+      { status: "current", sessionKey: invalidSessionKey },
+    ]);
+    database.db
+      .prepare("UPDATE session_nodes SET entry_valid = 0 WHERE session_key = ?")
       .run(invalidSessionKey);
     const migrationInvalidAgentId = "migration-invalid";
     const migrationInvalidSessionKey = "agent:migration-invalid:main";
@@ -698,34 +647,39 @@ describe("session accessor readonly listing", () => {
 
     expect(
       readSessionIdentityEvidenceBatch([
-        { agentId, sessionId, sessionKey, storePath },
+        { agentId, env, sessionId, sessionKey, storePath },
         {
           agentId,
+          env,
           sessionId,
           sessionKey: "agent:worker-1:old-key",
           storePath,
         },
-        { agentId, sessionId: "missing-session", sessionKey, storePath },
+        { agentId, env, sessionId: "missing-session", sessionKey, storePath },
         {
           agentId,
+          env,
           sessionId: "invalid-session",
           sessionKey: invalidSessionKey,
           storePath,
         },
         {
           agentId: missingAgentId,
+          env,
           sessionId: "missing-session",
           sessionKey: "agent:missing:main",
           storePath: missingStorePath,
         },
         {
           agentId: migrationInvalidAgentId,
+          env,
           sessionId: "migration-invalid-session",
           sessionKey: migrationInvalidSessionKey,
           storePath: invalidStorePath,
         },
         {
           agentId: unreadableAgentId,
+          env,
           sessionId: "unreadable-session",
           sessionKey: "agent:unreadable:main",
           storePath: unreadableStorePath,
@@ -784,6 +738,11 @@ describe("session accessor readonly listing", () => {
         { sessionId: readableSessionId, updatedAt: 1 },
       );
       const database = openBranchAgentDatabase({ agentId, env });
+      expect(
+        readSessionIdentityEvidenceBatch([
+          { agentId, env, sessionId, sessionKey, storePath: database.path },
+        ]),
+      ).toEqual([{ status: "current", sessionKey }]);
       if (corruption === "participant" || corruption === "participant-integer") {
         recordSessionParticipant(
           { agentId, env, sessionKey },
@@ -822,15 +781,17 @@ describe("session accessor readonly listing", () => {
 
       expect(
         readSessionIdentityEvidenceBatch([
-          { agentId, sessionId, sessionKey, storePath: database.path },
+          { agentId, env, sessionId, sessionKey, storePath: database.path },
           {
             agentId,
+            env,
             sessionId,
             sessionKey: "agent:worker-1:old-key",
             storePath: database.path,
           },
           {
             agentId,
+            env,
             sessionId: readableSessionId,
             sessionKey: readableSessionKey,
             storePath: database.path,

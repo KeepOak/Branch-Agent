@@ -81,6 +81,7 @@ export function buildChildCompletionFindings(
     if (
       child.execution.outcome?.status === "ok" &&
       !resultText &&
+      child.completion?.required !== true &&
       child.completion?.terminalReply?.disposition !== "empty" &&
       (child.completion?.terminalReply ||
         child.completion?.resultText?.trim() ||

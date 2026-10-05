@@ -52,7 +52,6 @@ import {
 import {
   cleanupBranchOwnedAcpxPendingLease,
   isBranchLeaseAwareAcpxProcessCommand,
-  type AcpxProcessCleanupDeps,
 } from "./process-reaper.js";
 import { AcpxGenerationRegistry } from "./runtime-generations.js";
 import { AcpxRuntimeProbe } from "./runtime-probe.js";
@@ -89,9 +88,6 @@ type BranchAcpxRuntimeOptions = AcpRuntimeOptions & {
   branchProcessLeaseStore?: AcpxProcessLeaseStore;
   pluginToolsMcpBridgeEnabled?: boolean;
   branchToolsMcpBridgeEnabled?: boolean;
-};
-type AcpxRuntimeTestOptions = Record<string, unknown> & {
-  branchProcessCleanup?: AcpxProcessCleanupDeps;
 };
 type BranchRuntimeTurnInput = Parameters<NonNullable<AcpRuntime["startTurn"]>>[0] &
   Pick<Parameters<BaseAcpxRuntime["startTurn"]>[0], "onPermissionRequest" | "assertActive">;
@@ -398,17 +394,14 @@ export class AcpxRuntime implements CompleteAcpRuntime {
   private readonly pluginToolsMcpBridgeEnabled: boolean;
   private readonly branchToolsMcpBridgeEnabled: boolean;
   private readonly managedToolsMcpBridgeEnabled: boolean;
-  private readonly processCleanupDeps: AcpxProcessCleanupDeps | undefined;
   private readonly wrapperRoot: string | undefined;
   private readonly gatewayInstanceId: string | undefined;
   private readonly processLeaseStore: AcpxProcessLeaseStore | undefined;
   private readonly launchLeaseScope = new AsyncLocalStorage<AcpxLaunchLeaseContext | undefined>();
   private readonly cwd: string;
 
-  constructor(options: BranchAcpxRuntimeOptions, testOptions?: AcpxRuntimeTestOptions) {
+  constructor(options: BranchAcpxRuntimeOptions, testOptions?: Record<string, unknown>) {
     this.legacyBareSessionKeys = new Set(options.branchLegacyBareSessionKeys);
-    const { branchProcessCleanup, ...delegateTestOptions } = testOptions ?? {};
-    this.processCleanupDeps = branchProcessCleanup;
     this.wrapperRoot = options.branchWrapperRoot;
     this.gatewayInstanceId = options.branchGatewayInstanceId;
     this.processLeaseStore = options.branchProcessLeaseStore;
@@ -494,7 +487,7 @@ export class AcpxRuntime implements CompleteAcpRuntime {
             onExit: options.processLifecycle?.onExit,
           },
         },
-        delegateTestOptions as BaseAcpxRuntimeTestOptions,
+        testOptions as BaseAcpxRuntimeTestOptions,
       );
     this.delegate = createDelegate();
     this.generationRegistry = new AcpxGenerationRegistry(
@@ -766,7 +759,6 @@ export class AcpxRuntime implements CompleteAcpRuntime {
         gatewayInstanceId: launch.gatewayInstanceId,
         wrapperRoot: launch.wrapperRoot,
         wrapperPath: extractGeneratedWrapperPath(leasedCommand),
-        deps: this.processCleanupDeps,
       });
     }
     return result;
@@ -1293,7 +1285,6 @@ export class AcpxRuntime implements CompleteAcpRuntime {
           gatewayInstanceId: this.gatewayInstanceId,
           wrapperRoot: this.wrapperRoot,
           leaseStore: this.processLeaseStore,
-          deps: this.processCleanupDeps,
         }).catch((error: unknown) => async () => {
           throw error;
         });

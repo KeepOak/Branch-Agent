@@ -136,10 +136,10 @@ describe("the menu's engine reads", () => {
 
   it("follows tools.agentToAgent the way the engine does", () => {
     const trunks = [{ id: "main" }, { id: "research" }, { id: "money" }];
-    expect(knownTrunks(undefined, "research", trunks).map((t) => t.id)).toEqual(["main", "money"]);
-    expect(knownTrunks({ enabled: false }, "research", trunks)).toEqual([]);
-    expect(knownTrunks({ allow: ["res*", "main"] }, "research", trunks).map((t) => t.id)).toEqual(["main"]);
-    expect(mayTalk({ allow: [""] }, "a", "b")).toBe(false);
-    expect(mayTalk({ allow: ["*"] }, "a", "b")).toBe(true);
+    expect(knownTrunks(undefined, undefined, "research", trunks).map((t) => t.id)).toEqual(["main", "money"]);
+    expect(knownTrunks({ enabled: false }, undefined, "research", trunks)).toEqual([]);
+    expect(knownTrunks({ allow: ["res*", "main"] }, undefined, "research", trunks).map((t) => t.id)).toEqual(["main"]);
+    expect(mayTalk({ allow: [""] }, undefined, "a", "b")).toBe(false);
+    expect(mayTalk({ allow: ["*"] }, undefined, "a", "b")).toBe(true);
   });
 });

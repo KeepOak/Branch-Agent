@@ -50,8 +50,8 @@ export function freshChoices(look: Look): SetupChoices {
 }
 
 export type Candidate = { key: string; kind: string; modelRef: string; label: string; detail: string; recommended: boolean; signedOut: boolean };
-export type AuthOption = { id: string; label: string; hint: string };
-export type Detected = { candidates: Candidate[]; configuredModel: string | null; setupComplete: boolean; unavailable: { label: string; reason: string }[]; authOptions: AuthOption[] };
+export type AuthOption = { id: string; label: string; hint: string; brand?: string };
+export type Detected = { candidates: Candidate[]; configuredModel: string | null; setupComplete: boolean; unavailable: { label: string; reason: string }[]; authOptions: AuthOption[]; secretLogins: AuthOption[] };
 
 /** branch.setup.detect: the connections Branch really found (§4.8.1.3 rule 1). */
 export function readDetected(result: unknown): Detected {
@@ -73,6 +73,10 @@ export function readDetected(result: unknown): Detected {
     authOptions: list(r.authOptions)
       .sort((a, b) => Number(b.featured === true) - Number(a.featured === true))
       .map((o) => ({ id: str(o.id), label: [str(o.groupLabel), str(o.label)].filter(Boolean).join(" · "), hint: str(o.hint) })),
+    // Pasted sign-ins (Anthropic's setup-token for a Claude subscription); keys are added in Settings.
+    secretLogins: list(r.manualProviders)
+      .filter((o) => !/api-?key/i.test(str(o.id)))
+      .map((o) => ({ id: str(o.id), label: [str(o.groupLabel), str(o.label)].filter(Boolean).join(" · "), hint: str(o.hint), brand: str(o.brandId) || str(o.id) })),
   };
 }
 

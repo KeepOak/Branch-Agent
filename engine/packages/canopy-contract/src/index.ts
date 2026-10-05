@@ -242,6 +242,7 @@ export const CANOPY_CHANGED_EVENT = "plugin.canopy.changed";
 export type CanopyChange = {
   epoch: string;
   revision: number;
+  cardsRevision?: number;
 };
 
 export type CanopyWorkspace = {
@@ -310,23 +311,12 @@ export type CanopyBoardMetadata = {
   archivedAt?: number;
 };
 
-export type CanopyBoardSummary = {
-  id: string;
-  kind?: "cards" | "sessions";
-  sessions?: CanopySessionsBoardSpec;
-  name?: string;
-  description?: string;
-  icon?: string;
-  color?: string;
-  automationJobId?: string;
-  defaultWorkspace?: CanopyWorkspace;
-  orchestration?: CanopyOrchestrationSettings;
+export type CanopyBoardSummary = Omit<CanopyBoardMetadata, "createdAt" | "updatedAt"> & {
   total: number;
   active: number;
   archived: number;
   byStatus: Partial<Record<CanopyStatus, number>>;
   updatedAt?: number;
-  archivedAt?: number;
 };
 
 export type CanopyOrchestrationSettings = {

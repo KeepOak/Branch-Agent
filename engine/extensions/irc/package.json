@@ -1,6 +1,6 @@
 {
   "name": "@branch/irc",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "description": "Branch Agent IRC channel plugin",
   "type": "module",
   "devDependencies": {
@@ -127,7 +127,7 @@
       "pluginApi": ">=2026.9.8"
     },
     "build": {
-      "branchVersion": "2026.9.7",
+      "branchVersion": "2026.9.8",
       "bundledDist": false
     },
     "release": {

@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { brandOf, Logo } from "../places/settings/set1/service";
 import { Icon, type IconName } from "../shell/icons";
 import type { Candidate, Detected, TestResult, Where } from "./setup-model";
+import { shownWhy } from "../shell/shown-why";
 
 export function WelcomeBody({ promise, onPromise }: { promise: boolean; onPromise: (v: boolean) => void }) {
   return (
@@ -38,7 +39,7 @@ export function ChoiceCards<T extends string | number>({ items, value, onPick }:
   return (
     <div className="provs">
       {items.map((c) => (
-        <button key={String(c.id)} type="button" className="prov" aria-pressed={c.id === value} aria-disabled={c.off ? true : undefined} title={c.off} data-testid={`setup-pick-${String(c.id)}`} onClick={() => !c.off && onPick(c.id)}>
+        <button key={String(c.id)} type="button" className="prov" aria-pressed={c.id === value} aria-disabled={c.off ? true : undefined} title={shownWhy(c.off)} data-testid={`setup-pick-${String(c.id)}`} onClick={() => !c.off && onPick(c.id)}>
           <span className="ico-tile">
             <Icon name={c.icon} small />
           </span>

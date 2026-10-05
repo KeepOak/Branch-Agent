@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -103,6 +104,6 @@ describe("Library › Made for you", () => {
     expect(host.textContent).toContain("Books: Transcript locked");
     expect(host.textContent).toContain("Nothing made yet. Files your Trunks make show up here.");
     expect(button("Publish")!.disabled).toBe(true);
-    expect(button("Publish")!.title).toMatch(/^Needs /);
+    expect(button("Publish")!.title).toBe(""); expect(button("Roll back")!.disabled).toBe(true); expect(visibleDevNotes(host)).toEqual([]);
   });
 });

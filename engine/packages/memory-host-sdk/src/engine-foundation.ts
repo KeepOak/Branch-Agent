@@ -14,7 +14,6 @@ export {
   type ResolvedMemorySearchSyncConfig,
 } from "./host/branch-runtime-agent.js";
 export { parseDurationMs } from "./host/branch-runtime-config.js";
-export { loadConfig } from "./host/branch-runtime-session.js";
 export { resolveStateDir } from "./host/branch-runtime-config.js";
 export { resolveSessionTranscriptsDirForAgent } from "./host/branch-runtime-config.js";
 export {

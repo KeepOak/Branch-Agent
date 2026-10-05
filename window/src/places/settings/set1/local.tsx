@@ -13,6 +13,7 @@ import { LocalMore, MORE_TITLES } from "./local-more";
 import { SetupDialog } from "./local-setup";
 import "./set1.css";
 import "./local.css";
+import { shownWhy } from "../../../shell/shown-why";
 
 const GIB = 1024 ** 3;
 export const NO_GPU = "Branch can’t read the graphics card yet.";
@@ -97,7 +98,7 @@ function Hardware({ loading, error, hw, runtimes }: HwProps) {
   return (
     <div className="hw-k">
       {tiles.map(([icon, label, value, off]) => (
-        <div key={label} className={`hw-c-k${off ? " off-k" : ""}`} title={off}>
+        <div key={label} className={`hw-c-k${off ? " off-k" : ""}`} title={shownWhy(off)}>
           <span className="ico-tile-k">{icon}</span>
           <span><small>{label}</small><b>{value ?? (off ? "Not read yet" : "Not reported")}</b></span>
         </div>

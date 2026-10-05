@@ -137,7 +137,7 @@ describe("removed Workspaces state doctor check", () => {
       const cfg =
         kind === "defaults"
           ? { agents: { defaults: { workspace: resolvedAlias } } }
-          : { agents: { list: [{ id: "ops", workspace: resolvedAlias }] } };
+          : { agents: { entries: { ops: { workspace: resolvedAlias } } } };
 
       await withEnvAsync({ BRANCH_STATE_DIR: root }, async () => {
         const findings = await removedWorkspacesStateCheck.detect({
@@ -171,7 +171,7 @@ describe("removed Workspaces state doctor check", () => {
     const staleDir = await createStateDir();
     const nestedWorkspace = join(staleDir, "active-agent");
     await fs.mkdir(nestedWorkspace);
-    const cfg = { agents: { list: [{ id: "active", workspace: nestedWorkspace }] } };
+    const cfg = { agents: { entries: { active: { workspace: nestedWorkspace } } } };
 
     await withEnvAsync({ BRANCH_STATE_DIR: root }, async () => {
       const findings = await removedWorkspacesStateCheck.detect({ mode: "lint", runtime, cfg });

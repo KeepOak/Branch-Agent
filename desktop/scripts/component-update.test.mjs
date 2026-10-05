@@ -221,8 +221,9 @@ test("actual desktop caller retains running engine until explicit restart and ro
       getURL: () => this.url, setWindowOpenHandler: () => {}, send: () => {}, reload: () => { reloads++; this.webContents.emit("did-finish-load"); } }); }
     async loadURL(url) { if (url.startsWith("http://")) servedAt = Date.now(); this.url = url; this.webContents.emit("did-finish-load"); }
     setMenuBarVisibility() {} show() {} isMinimized() { return false; } focus() {}
+    maximize() {} isMaximized() { return false; } isDestroyed() { return false; } getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; }
   }
-  const electron = { app, BrowserWindow, ipcMain, dialog: { showErrorBox: () => assert.fail("Unexpected native caller error") },
+  const electron = { app, BrowserWindow, ipcMain, screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) }, dialog: { showErrorBox: () => assert.fail("Unexpected native caller error") },
     session: { defaultSession: { setPermissionRequestHandler: () => {} } }, shell: { openExternal: () => {} } };
   process.env.BRANCH_DESKTOP_DATA = cfg.dataDir; process.env.BRANCH_DESKTOP_HIDDEN = "1";
   Module._load = function(name, ...args) { return name === "electron" ? electron : load.call(this, name, ...args); };
@@ -365,8 +366,9 @@ function coldCallerElectron(state) {
       this.webContents.emit("did-finish-load");
     }
     setMenuBarVisibility() {} show() {} isMinimized() { return false; } focus() {}
+    maximize() {} isMaximized() { return false; } isDestroyed() { return false; } getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; }
   }
-  return { app, BrowserWindow, ipcMain: Object.assign(new EventEmitter(), { handle() {} }), dialog: { showErrorBox: () => assert.fail("Unexpected native caller error") },
+  return { app, BrowserWindow, ipcMain: Object.assign(new EventEmitter(), { handle() {} }), screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) }, dialog: { showErrorBox: () => assert.fail("Unexpected native caller error") },
     session: { defaultSession: { setPermissionRequestHandler: () => {} } }, shell: { openExternal: () => {} } };
 }
 

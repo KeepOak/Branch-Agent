@@ -1,6 +1,7 @@
 // Settings › Appearance at Advanced and Technical (§4.7.3): Characters (how faces are drawn, each Trunk's look, model
 // and stage background, what faces do), Pictures around Branch, Window, technical, and The list. A Trunk's model
 // saves through agents.update; the small model line reads agents.defaults.utilityModel.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../../connect/engine";
 import { trunkAppearance } from "../../../face/appearance";
 import { askBeforeDelete } from "../../../shell/ConfirmDelete";

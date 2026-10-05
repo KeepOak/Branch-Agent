@@ -1,5 +1,6 @@
 // A Canopy card on the board (§4.6.7 card face): title, conversation state, block pill, priority, labels,
 // badges and its Trunk; its ⋯ menu moves, edits, starts, stops, archives and deletes it.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type DragEvent } from "react";
 import { shows } from "../../places-nav/level";
 import { Icon } from "../../shell/icons";

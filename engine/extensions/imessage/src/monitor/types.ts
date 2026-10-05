@@ -4,6 +4,7 @@ import type {
   ChannelRuntimeSurface,
 } from "branch/plugin-sdk/channel-contract";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
+import type { PluginServiceSchedulerV1 } from "branch/plugin-sdk/plugin-entry";
 import type { RuntimeEnv } from "branch/plugin-sdk/runtime-env";
 
 export type IMessageAttachment = {
@@ -70,6 +71,7 @@ export type IMessagePayload = {
 };
 
 export type MonitorIMessageOpts = {
+  scheduler: PluginServiceSchedulerV1;
   runtime?: RuntimeEnv;
   abortSignal?: AbortSignal;
   cliPath?: string;

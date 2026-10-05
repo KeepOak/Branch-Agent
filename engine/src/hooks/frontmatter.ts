@@ -2,9 +2,7 @@ import { readStringValue } from "@branch/normalization-core/string-coerce";
 import { normalizeCsvOrLooseStringList } from "@branch/normalization-core/string-normalization";
 import {
   applyBranchManifestInstallCommonFields,
-  getFrontmatterString,
   parseBranchManifestInstallBase,
-  parseFrontmatterBool,
   resolveBranchManifestBlock,
   resolveBranchManifestInstall,
   resolveBranchManifestOs,
@@ -14,7 +12,6 @@ import type {
   BranchHookMetadata,
   HookEntry,
   HookInstallSpec,
-  HookInvocationPolicy,
   ParsedHookFrontmatter,
 } from "./types.js";
 
@@ -63,15 +60,6 @@ export function resolveHookManifestMetadata(
     events: normalizeCsvOrLooseStringList(metadataObj.events),
     requires,
     install: install.length > 0 ? install : undefined,
-  };
-}
-
-/** Resolve invocation policy from top-level hook frontmatter flags. */
-export function resolveHookInvocationPolicy(
-  frontmatter: ParsedHookFrontmatter,
-): HookInvocationPolicy {
-  return {
-    enabled: parseFrontmatterBool(getFrontmatterString(frontmatter, "enabled"), true),
   };
 }
 

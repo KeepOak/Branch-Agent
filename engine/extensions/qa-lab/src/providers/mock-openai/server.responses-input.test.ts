@@ -24,15 +24,15 @@ describe("mock Responses input text", () => {
     {
       name: "ignores a runtime carrier before continuation",
       laterInput: [
-        makeUserInput(
-          [
-            "Branch Agent runtime event.",
-            "This context is runtime-generated, not user-authored. Keep internal details private.",
-            "<<<BEGIN_BRANCH_INTERNAL_CONTEXT>>>",
-            "Runtime: synthetic metadata.",
-            "<<<END_BRANCH_INTERNAL_CONTEXT>>>",
-          ].join("\n"),
-        ),
+        {
+          role: "developer",
+          content: [
+            {
+              type: "input_text",
+              text: "Branch Agent runtime context:\nRuntime: synthetic metadata.",
+            },
+          ],
+        },
         makeUserInput("Continue."),
       ],
       requestKind: "tool-continuation",

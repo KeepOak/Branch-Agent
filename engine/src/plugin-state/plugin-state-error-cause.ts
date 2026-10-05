@@ -1,23 +1,21 @@
-import type { BranchStateWorkerErrorPayload } from "../state/branch-state-worker-error.js";
-
-export type PluginStateErrorCause =
-  | { canonical: BranchStateWorkerErrorPayload }
+export type PluginStateErrorCause<Canonical = never> =
+  | { canonical: Canonical }
   | {
       name: string;
       message: string;
       errorCode?: string | number;
       errcode?: number;
       errno?: number;
-      cause?: PluginStateErrorCause;
-      errors?: Array<PluginStateErrorCause | undefined>;
+      cause?: PluginStateErrorCause<Canonical>;
+      errors?: Array<PluginStateErrorCause<Canonical> | undefined>;
     };
 
 // The wire and log share one bounded field policy; only the worker retains canonical identity.
-export function capturePluginStateErrorCause(
+export function capturePluginStateErrorCause<Canonical = never>(
   value: unknown,
-  encodeCanonical?: (value: unknown) => BranchStateWorkerErrorPayload | undefined,
+  encodeCanonical?: (value: unknown) => Canonical | undefined,
   seen = new Set<object>(),
-): PluginStateErrorCause | undefined {
+): PluginStateErrorCause<Canonical> | undefined {
   if (value === undefined) {
     return undefined;
   }

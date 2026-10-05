@@ -4,9 +4,12 @@ import { routePageSpec } from "../../app-route-paths.ts";
 
 export const page = definePage({
   ...routePageSpec("apps"),
+  loaderDeps: (_context, location) => location.search,
+  loader: (_context, { location }) => location.search,
   component: () =>
     import("./apps-page.ts").then(() => ({
       header: true,
-      render: () => html`<branch-apps-page></branch-apps-page>`,
+      render: (search: string | undefined) =>
+        html`<branch-apps-page .appSearch=${search ?? ""}></branch-apps-page>`,
     })),
 });

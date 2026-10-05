@@ -100,9 +100,9 @@ describe("Settings › Data & usage", () => {
   it("greys what the engine can't do, with the reason", async () => {
     const { engine } = engineWith(BASE);
     await show(engine, "advanced");
-    expect(row("Spend caps per service")?.textContent).toContain("Spend caps need the engine");
-    expect(row("Keep conversations")?.getAttribute("aria-disabled")).toBe("true");
-    expect(row("Reset Branch")?.textContent).toContain("no reset method");
+    expect(row("Spend caps per service")?.getAttribute("aria-disabled")).toBe("true"); expect(row("Spend caps per service")?.textContent).not.toContain("Spend caps need the engine");
+    expect(row("Keep conversations")?.getAttribute("aria-disabled")).toBeNull();
+    expect(row("Reset Branch")?.textContent).not.toContain("no reset method");
     expect(button("Run the test").disabled).toBe(true);
   });
 });
@@ -169,6 +169,30 @@ describe("the usage report", () => {
 });
 
 describe("keeping things", () => {
+  it("Keep conversations saves 30 days as enforced pruning", async () => {
+    const { engine, request } = engineWith({ ...BASE, ...CFG({ session: { maintenance: { mode: "enforce", pruneAfter: "365d" } } }) });
+    await show(engine);
+    await click("30 days", row("Keep conversations")!);
+    expect(patched(request)).toContainEqual({ session: { maintenance: { mode: "enforce", pruneAfter: "30d" } } });
+  });
+  it("Keep conversations saves Forever as warn mode", async () => {
+    const { engine, request } = engineWith({ ...BASE, ...CFG() });
+    await show(engine);
+    await click("Forever", row("Keep conversations")!);
+    expect(patched(request)).toContainEqual({ session: { maintenance: { mode: "warn" } } });
+  });
+  it("Keep conversations selects 1 year from enforced 365-day config", async () => {
+    const { engine } = engineWith({ ...BASE, ...CFG({ session: { maintenance: { mode: "enforce", pruneAfter: "365d" } } }) });
+    await show(engine);
+    expect(button("1 year", row("Keep conversations")!).getAttribute("aria-pressed")).toBe("true");
+  });
+  it("Keep conversations shows a custom 90-day retention without selecting a preset", async () => {
+    const { engine } = engineWith({ ...BASE, ...CFG({ session: { maintenance: { mode: "enforce", pruneAfter: "90d" } } }) });
+    await show(engine);
+    const keep = row("Keep conversations")!;
+    expect(keep.textContent).toContain("Now: 90 days.");
+    expect([...keep.querySelectorAll('button[aria-pressed="true"]')]).toHaveLength(0);
+  });
   it("saves the tidy rules and the upload clean-up through config.patch", async () => {
     const { engine, request } = engineWith({ ...BASE, ...CFG() });
     await show(engine, "advanced");

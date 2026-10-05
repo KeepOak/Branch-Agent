@@ -18,8 +18,8 @@ import {
 import { createPluginRuntimeCapabilityLease } from "../../plugins/capability-lease.js";
 import { createPluginServiceGatewayEvents } from "../../plugins/gateway-events.js";
 import { sessionChanges } from "../../sessions/session-row-changes.js";
-import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import { withBranchTestState } from "../../test-utils/branch-test-state.js";
+import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import type { ChatAbortControllerEntry } from "../chat-abort.js";
 import { readGatewayAccessRevision } from "../gateway-access-revision.js";
 import { createGatewayBroadcaster } from "../server-broadcast.js";
@@ -78,6 +78,19 @@ function createContext(
   config: BranchConfig = {},
   chatAbortControllers: GatewayRequestContext["chatAbortControllers"] = new Map(),
 ) {
+  const sessionBroadcast = vi.fn();
+  const contactsBroadcast = vi.fn();
+  // Existing coalescing assertions inspect only sessions.changed calls. Keep
+  // the contact invalidation observable without shifting those call indices.
+  const broadcastToConnIds = new Proxy(sessionBroadcast, {
+    apply(target, thisArg, args) {
+      return Reflect.apply(
+        args[0] === "contacts.changed" ? contactsBroadcast : target,
+        thisArg,
+        args,
+      );
+    },
+  });
   const projection = {
     get state() {
       return { rowContext: { projectedAgentRuns: buildProjectedAgentRunIndex() } };
@@ -91,13 +104,14 @@ function createContext(
     snapshot: ({ key }: { key: string }) => ({ row: mocks.loadRow(key) }),
   };
   return {
-    broadcastToConnIds: vi.fn(),
+    broadcastToConnIds,
+    contactsBroadcast,
     chatAbortControllers,
     getRuntimeConfig: () => config,
     ...bindSessionRowProjection({}, () => projection as unknown as SessionRowProjection),
     getSessionEventSubscriberConnIds: () => receivers,
-    mentionInbox: { invalidate: vi.fn() },
-  } as unknown as GatewayRequestContext;
+    mentionInbox: { invalidateAsync: vi.fn() },
+  } as unknown as GatewayRequestContext & { contactsBroadcast: typeof contactsBroadcast };
 }
 
 function activePlacement(
@@ -187,6 +201,17 @@ afterEach(async () => {
 });
 
 describe("sessions.changed coalescing", () => {
+  it("emits contacts.changed from the same debounced session publication", async () => {
+    const context = createContext();
+    await emitAndSettleLeading(context, { sessionKey: "agent:main:main", reason: "update" });
+    await flushPendingSessionsChangedEvents(context);
+    expect(context.contactsBroadcast).toHaveBeenCalledWith(
+      "contacts.changed",
+      expect.objectContaining({ agentId: "main", ts: expect.any(Number) }),
+      expect.any(Set),
+      expect.objectContaining({ dropIfSlow: true }),
+    );
+  });
   it("publishes catalog-only changes without invalidating session projections or access", async () => {
     const context = createContext();
     const changed = vi.fn();
@@ -198,7 +223,7 @@ describe("sessions.changed coalescing", () => {
 
     expect(changed).not.toHaveBeenCalled();
     expect(mocks.invalidate).not.toHaveBeenCalled();
-    expect(context.mentionInbox?.invalidate).not.toHaveBeenCalled();
+    expect(context.mentionInbox?.invalidateAsync).not.toHaveBeenCalled();
     expect(readGatewayAccessRevision()).toBe(initialAccessRevision);
     expect(context.broadcastToConnIds).toHaveBeenCalledWith(
       "sessions.changed",
@@ -211,7 +236,7 @@ describe("sessions.changed coalescing", () => {
     await emitAndSettleLeading(context, { reason: "groups" });
     expect(changed).toHaveBeenCalledWith({ all: true, scope: "sessions" });
     expect(mocks.invalidate).toHaveBeenCalledOnce();
-    expect(context.mentionInbox?.invalidate).toHaveBeenCalledOnce();
+    expect(context.mentionInbox?.invalidateAsync).toHaveBeenCalledOnce();
     expect(readGatewayAccessRevision()).toBe(initialAccessRevision + 1);
   });
 
@@ -633,7 +658,14 @@ describe("sessions.changed coalescing", () => {
         },
       });
       const detach = connection.attachSessionRowProjection(projection);
-      context.broadcastToConnIds = vi.fn(connection.broadcastToConnIds);
+      context.broadcastToConnIds = new Proxy(vi.fn(connection.broadcastToConnIds), {
+        apply(target, thisArg, args) {
+          if (args[0] === "contacts.changed") {
+            return Reflect.apply(connection.broadcastToConnIds, connection, args);
+          }
+          return Reflect.apply(target, thisArg, args);
+        },
+      });
       const prepared = createDeferred();
       try {
         await projection.ensureMaterialized();
@@ -662,7 +694,10 @@ describe("sessions.changed coalescing", () => {
         expect(payloads[0]).not.toHaveProperty("session");
         expect(payloads[1]).not.toHaveProperty("session");
         expect(
-          send.mock.calls.map(([frame]) => JSON.parse(frame.toString()).payload),
+          send.mock.calls
+            .map(([frame]) => JSON.parse(frame.toString()))
+            .filter((frame) => frame.event === "sessions.changed")
+            .map((frame) => frame.payload),
         ).toMatchObject([
           { reason: "delete", sessionId: "original" },
           { reason: "create", sessionId: "replacement", session: { sessionId: "replacement" } },
@@ -714,7 +749,7 @@ describe("sessions.changed coalescing", () => {
         prepared.resolve();
         await flushPendingSessionsChangedEvents(context);
         detach();
-        connection.mentionInbox.dispose();
+        await connection.mentionInbox.dispose();
         projection.dispose();
       }
     });
@@ -791,7 +826,7 @@ describe("sessions.changed coalescing", () => {
       );
 
       expect(readGatewayAccessRevision()).toBe(initialAccessRevision);
-      expect(context.mentionInbox?.invalidate).toHaveBeenCalledOnce();
+      expect(context.mentionInbox?.invalidateAsync).toHaveBeenCalledOnce();
       loadCachedSessionSharingSnapshot({ sessionKey, resolve });
       expect(resolve).toHaveBeenCalledTimes(2);
       if (receivesEvents) {
@@ -865,7 +900,7 @@ describe("sessions.changed coalescing", () => {
     const config = retainLegacyDefaultAgentId(
       {
         agents: { ownership: "explicit", entries: { ops: {}, research: {} } },
-      },
+      } satisfies BranchConfig,
       "ops",
     );
     const sessionId = "agent:research:shared-session-id";
@@ -1032,9 +1067,9 @@ describe("sessions.changed coalescing", () => {
     await emitAndSettleLeading(context, { reason: "update", sessionKey: "agent:main:chat" });
 
     expect(mocks.invalidate).toHaveBeenCalledOnce();
-    expect(context.mentionInbox?.invalidate).toHaveBeenCalledOnce();
+    expect(context.mentionInbox?.invalidateAsync).toHaveBeenCalledOnce();
     expect(mocks.invalidate.mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(context.mentionInbox!.invalidate).mock.invocationCallOrder[0]!,
+      vi.mocked(context.mentionInbox!.invalidateAsync).mock.invocationCallOrder[0]!,
     );
     expect(mocks.loadRow).not.toHaveBeenCalled();
     expect(context.broadcastToConnIds).not.toHaveBeenCalled();
