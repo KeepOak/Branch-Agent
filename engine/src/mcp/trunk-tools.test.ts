@@ -327,7 +327,7 @@ describe("branch mcp serve identity and gateway", () => {
     expect(outsideAgentFromClient(undefined)).toBeUndefined();
   });
 
-  it("stops acting for the agent once Settings › Connected agents turns it away", async () => {
+  it("stops acting for the agent once Settings › Grafts turns it away", async () => {
     let refuse = false;
     const presence = new OutsidePresence(async () => {
       if (refuse) throw new Error("Claude Code was disconnected in Settings › Connected agents.");
@@ -389,11 +389,11 @@ describe("run progress lines", () => {
   });
 });
 
-describe("Settings › Connected agents applies to every tool", () => {
+describe("Settings › Grafts applies to every tool", () => {
   it("a disconnected agent can no longer read Trunks or answer approvals, and takes the id Branch assigns", async () => {
     let refuse = false;
     const presence = new OutsidePresence(async (agent) => {
-      if (refuse) throw new Error("Claude Code was disconnected in Settings › Connected agents.");
+      if (refuse) throw new Error("Claude Code was disconnected in Settings › Grafts.");
       return { contact: { id: `a2a:${agent.id}-2` } };
     });
     presence.start(claude);

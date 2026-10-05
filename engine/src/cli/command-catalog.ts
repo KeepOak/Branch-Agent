@@ -368,6 +368,12 @@ export const cliCommandCatalog: readonly CliCommandCatalogEntry[] = [
     exact: true,
     policy: { ownsProtocolStdout: true },
   },
+  { commandPath: ["graft"], policy: { networkProxy: "bypass" } },
+  {
+    commandPath: ["graft"],
+    exact: true,
+    policy: { ownsProtocolStdout: true },
+  },
   {
     commandPath: ["browser", "extension"],
     // Desktop browser helpers validate config without Gateway Doctor or state migrations.
