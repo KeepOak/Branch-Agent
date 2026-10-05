@@ -205,7 +205,7 @@ async function freePort() {
   const port = probe.address().port; await new Promise(resolve => probe.close(resolve)); return port;
 }
 
-test("actual desktop caller retains running engine, then swaps in place and rolls a failing engine back without restarting the app", async () => fixture(async ({ cfg, request }) => {
+test("actual desktop caller retains running engine and checks a failing engine beside it, keeping the running one without restarting the app", async () => fixture(async ({ cfg, request }) => {
   const require = createRequire(import.meta.url); const Module = require("node:module");
   const load = Module._load; const previousFetch = globalThis.fetch;
   const previousData = process.env.BRANCH_DESKTOP_DATA; const previousHidden = process.env.BRANCH_DESKTOP_HIDDEN;
@@ -251,14 +251,15 @@ test("actual desktop caller retains running engine, then swaps in place and roll
     ipcMain.emit("branch-desktop:restart-engine", { sender: { ...ownerWindow.webContents }, senderFrame: ownerWindow.webContents.mainFrame });
     assert.doesNotThrow(() => process.kill(oldPid, 0), "foreign restart sender cannot stop the owned child");
     ipcMain.emit("branch-desktop:restart-engine", { sender: ownerWindow.webContents, senderFrame: ownerWindow.webContents.mainFrame });
-    await eventually(async () => (await readFile(join(cfg.dataDir, "desktop.log"), "utf8")).includes("engine rolled back in place"));
+    await eventually(async () => (await readFile(join(cfg.dataDir, "desktop.log"), "utf8")).includes("kept the running engine; nothing was stopped"));
+    assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /candidate check beside the running engine exited/);
     assert.equal(relaunches, 0, "an update never relaunches the app");
-    assert.equal(reloads, 0, "the retained window build stays loaded after a rollback");
-    assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), cfg.engineDir, "rollback restores the prior engine");
-    assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /old engine drained/);
-    await eventually(async () => { try { process.kill(oldPid, 0); return false; } catch { return true; } });
-    const retained = Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8"));
-    assert.notEqual(retained, oldPid); assert.doesNotThrow(() => process.kill(retained, 0), "the prior engine runs again");
+    assert.equal(reloads, 0, "the retained window build stays loaded");
+    assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), cfg.engineDir, "the failed publication is rolled back");
+    assert.equal(await readFile(join(cfg.windowDir, "index.html"), "utf8"), "old window");
+    assert.match(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"), /"reason":"exit"/);
+    assert.doesNotThrow(() => process.kill(oldPid, 0), "the running engine was never stopped");
+    assert.equal(Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8")), oldPid);
   } finally {
     app.emit("will-quit"); Module._load = load; globalThis.fetch = previousFetch;
     if (previousData === undefined) delete process.env.BRANCH_DESKTOP_DATA; else process.env.BRANCH_DESKTOP_DATA = previousData;

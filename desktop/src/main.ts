@@ -18,6 +18,7 @@ import { registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate } from "./auto-apply-update";
+import { checkCandidateBeside } from "./candidate-check";
 import type { Tray } from "electron";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
@@ -115,6 +116,7 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
   const started = Date.now();
   const windowBefore = windowBuild(servedWindowDir);
   try {
+    if (!await candidatePassed(label)) return;
     win.webContents.send("branch-desktop:engine-update", "updating");
     if (explicit) log(`update ${label}: old engine ${await drainStopGateway(gateway)}`);
     else await stopGatewayCleanly(gateway);
@@ -132,6 +134,27 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     if (engineRunning()) win.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
     throw error;
   } finally { engineRestartInProgress = false; }
+}
+
+/**
+ * A staged engine first starts beside the running one (spare port, scratch state). One that exits is rejected and its
+ * publication rolled back with nothing stopped; a slow one still gets the normal swap and its readiness rollback.
+ */
+async function candidatePassed(label: string): Promise<boolean> {
+  if (!(await readComponentUpdateStatus(cfg)).componentsPendingVersion) return true;
+  const candidate = resolveEngineDir(cfg);
+  win?.webContents.send("branch-desktop:engine-update", "preparing");
+  const started = Date.now();
+  const result = await checkCandidateBeside(cfg, candidate, token, READY_TIMEOUT_MS);
+  log(`update ${label}: candidate check beside the running engine ${result} after ${Date.now() - started} ms`);
+  if (result !== "exited") return true;
+  await rejectFailedComponentUpdate(cfg, candidate);
+  await rollbackComponentUpdate(cfg);
+  servedWindowDir = cfg.windowDir;
+  engineUpdateReady = false;
+  log(`update ${label}: kept the running engine; nothing was stopped`);
+  win?.webContents.send("branch-desktop:engine-update", "kept");
+  return false;
 }
 
 const autoApply = createAutoApplyUpdate({

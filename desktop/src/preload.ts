@@ -55,7 +55,7 @@ if (info) {
   });
 }
 
-type UpdateState = "ready" | "restarting" | "auto-wait" | "updating" | "updated" | "kept";
+type UpdateState = "ready" | "restarting" | "auto-wait" | "preparing" | "updating" | "updated" | "kept";
 const SWAP_KEY = "branch-desktop:window-swap";
 
 /** Before the window swaps in its new build: the scroll position of every scrolled area (route and drafts are the window's own). */
@@ -149,7 +149,7 @@ function showUpdateBar(state: UpdateState): void {
   bar.replaceChildren();
   const text = document.createElement("span");
   text.textContent = state === "ready" ? "An update is ready" : state === "auto-wait"
-    ? "Update ready, applying when your Trunks finish" : "Updating Branch…";
+    ? "Update ready, applying when your Trunks finish" : state === "preparing" ? "Getting the update ready…" : "Updating Branch…";
   bar.appendChild(text);
   if (state === "ready" || state === "auto-wait") {
     const button = document.createElement("button");
