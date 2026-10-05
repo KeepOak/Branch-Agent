@@ -70,7 +70,25 @@ export function describeRunEvent(payload: Rec): string | undefined {
   }
   if (stream === "lifecycle") return `run ${str(data.phase) ?? "update"}`;
   const text = str(data.text) ?? str(data.delta);
-  return text ? `${stream}: ${text.slice(0, 200)}` : stream;
+  if (text) return `${stream}: ${text.slice(0, 200)}`;
+  // Item, status and usage events carry no text; name what they are so the stream reads as progress.
+  const item = rec(data.item);
+  const what = [
+    data.phase,
+    data.status,
+    data.type,
+    item.type,
+    data.kind,
+    data.name,
+    item.name,
+    data.title,
+  ]
+    .map(str)
+    .filter((part, i, all): part is string => Boolean(part) && all.indexOf(part) === i)
+    .slice(0, 3);
+  const usage =
+    typeof data.outputTokens === "number" ? `${data.outputTokens} output tokens` : undefined;
+  return [stream, ...what, ...(usage ? [usage] : [])].join(" ");
 }
 
 async function chatSend(gw: TrunkGateway, opts: TrunkToolsOptions, params: Rec) {

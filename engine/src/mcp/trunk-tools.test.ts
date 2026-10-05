@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
 import { resolveDesktopGateway } from "./desktop-gateway.js";
 import { displayName, outsideAgentFromClient, OutsidePresence } from "./outside-presence.js";
-import { registerTrunkMcpTools, type TrunkGateway } from "./trunk-tools.js";
+import { describeRunEvent, registerTrunkMcpTools, type TrunkGateway } from "./trunk-tools.js";
 
 type Call = { method: string; params: Record<string, unknown> };
 
@@ -367,5 +367,23 @@ describe("branch mcp serve identity and gateway", () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("run progress lines", () => {
+  it("names text-less events by what they are", () => {
+    expect(describeRunEvent({ stream: "run_status", data: { status: "running" } })).toBe(
+      "run_status running",
+    );
+    expect(
+      describeRunEvent({
+        stream: "codex_app_server.item",
+        data: { item: { type: "commandExecution" } },
+      }),
+    ).toBe("codex_app_server.item commandExecution");
+    expect(describeRunEvent({ stream: "usage", data: { outputTokens: 12 } })).toBe(
+      "usage 12 output tokens",
+    );
+    expect(describeRunEvent({ stream: "assistant", data: { text: "x" } })).toBeUndefined();
   });
 });
