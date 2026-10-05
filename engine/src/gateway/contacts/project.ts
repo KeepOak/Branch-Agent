@@ -25,6 +25,7 @@ export function isContactUnread(entry: SessionEntrySummary["entry"]): boolean {
 
 /** Classify by the persisted key, never by a mutable session-id pointer. */
 export function contactIdForSession(row: SessionEntrySummary): string | undefined {
+  if (row.entry.movedToSessionKey) return undefined;
   const parsed = parseAgentSessionKey(row.sessionKey);
   if (
     !parsed ||
@@ -62,13 +63,14 @@ export function projectContacts(input: ContactProjectionInput): {
   topics: Topic[];
   defaultId: string;
 } {
-  const byKey = new Map(input.sessions.map((row) => [row.sessionKey, row]));
+  const visibleSessions = input.sessions.filter((row) => !row.entry.movedToSessionKey);
+  const byKey = new Map(visibleSessions.map((row) => [row.sessionKey, row]));
   const agentById = new Map(input.agents.map((agent) => [agent.id, agent]));
   const ids = new Set([
     ...agentById.keys(),
     ...(input.includeDefault === false ? [] : [input.defaultAgentId]),
   ]);
-  for (const row of input.sessions) {
+  for (const row of visibleSessions) {
     const id = contactIdForSession(row);
     if (id?.startsWith("trunk:")) ids.add(id.slice(6));
   }
@@ -82,7 +84,7 @@ export function projectContacts(input: ContactProjectionInput): {
     });
     const thread = byKey.get(threadKey);
     const contactId = `trunk:${agentId}`;
-    const children = input.sessions.filter(
+    const children = visibleSessions.filter(
       (row) => row.sessionKey !== threadKey && contactIdForSession(row) === contactId,
     );
     const projectedTopics = children.map((row): Topic => {
@@ -171,14 +173,14 @@ export function projectContacts(input: ContactProjectionInput): {
     });
   }
   const groupIds = new Set(
-    input.sessions
+    visibleSessions
       .map(contactIdForSession)
       .filter((id): id is string => Boolean(id?.startsWith("chat:"))),
   );
   for (const id of groupIds) {
     const threadKey = id.slice(5);
     const row = byKey.get(threadKey);
-    const children = input.sessions.filter(
+    const children = visibleSessions.filter(
       (candidate) => candidate.sessionKey !== threadKey && contactIdForSession(candidate) === id,
     );
     const groupTopics = children.map((child): Topic => ({

@@ -28,6 +28,7 @@ import {
 import { runTasksWithConcurrency } from "../../utils/run-with-concurrency.js";
 import { cloneEnvWithPlatformSemantics } from "../config-env-vars.js";
 import type { BranchConfig } from "../types.branch.js";
+import { migrateContacts } from "./contacts-migration.js";
 import { migrateLegacyMainSessionKeys } from "./legacy-main-session-migration.js";
 import {
   isLegacySessionRecordOwnedByTarget,
@@ -234,12 +235,23 @@ export async function runSessionStartupMigration(params: {
   }
   const migrateLegacyMain =
     params.deps?.migrateLegacyMainSessionKeys ?? migrateLegacyMainSessionKeys;
-  const result = await migrateLegacyMain({ cfg: params.cfg, env, mode: "detect" });
-  params.assertCurrent?.();
-  if (result.warnings.length > 0) {
+  let contactMigrationFailed = false;
+  try {
+    migrateContacts({ cfg: params.cfg, env, apply: true });
+  } catch (error) {
+    contactMigrationFailed = true;
     params.log.warn(
-      `session: retired main-agent session migration warnings:\n${result.warnings.map((warning) => `- ${warning}`).join("\n")}`,
+      `session: contact migration deferred; run branch doctor --fix: ${String(error)}`,
     );
+  }
+  if (!contactMigrationFailed) {
+    const result = await migrateLegacyMain({ cfg: params.cfg, env, mode: "detect" });
+    params.assertCurrent?.();
+    if (result.warnings.length > 0) {
+      params.log.warn(
+        `session: retired main-agent session migration warnings:\n${result.warnings.map((warning) => `- ${warning}`).join("\n")}`,
+      );
+    }
   }
 
   const databases = new Set<string>();
