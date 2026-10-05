@@ -51,6 +51,8 @@ export const engineTests = [
   'src/gateway/assistant-identity.test.ts',
   'src/gateway/config-reload-plan.test.ts',
   'src/gateway/contacts/project.test.ts',
+  'src/gateway/rooms/methods.test.ts',
+  'src/gateway/rooms/store.test.ts',
   'src/gateway/server-methods-list.test.ts',
   'src/gateway/server-methods/agents-create-ready.test.ts',
   'src/gateway/server-methods/agents-delete-identity.test.ts',
@@ -66,6 +68,7 @@ export const engineTests = [
   'src/skills/review/resource-graph.test.ts',
   'src/skills/review/skill-markdown-review.test.ts',
   'src/state/agent-deletion-journal.identity.test.ts',
+  'src/state/rooms-v20-migration.test.ts',
 ];
 
 // Kept sorted (namedTests() checks it) so parallel PRs insert in different places instead of all

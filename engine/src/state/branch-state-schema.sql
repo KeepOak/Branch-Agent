@@ -2747,3 +2747,36 @@ CREATE TABLE IF NOT EXISTS secret_store_entries (
 ) STRICT;
 CREATE INDEX IF NOT EXISTS secret_store_entries_live_idx
   ON secret_store_entries (scope_kind, scope_id, name) WHERE deleted_at_ms IS NULL;
+
+CREATE TABLE IF NOT EXISTS rooms (
+  room_id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  lead TEXT,
+  rule TEXT NOT NULL CHECK (rule IN ('lead', 'everyone', 'mentions')),
+  trunks_talk INTEGER NOT NULL CHECK (trunks_talk IN (0, 1)),
+  memory_scope TEXT NOT NULL CHECK (memory_scope = 'room'),
+  pinned_at INTEGER,
+  archived_at INTEGER
+) STRICT;
+CREATE TABLE IF NOT EXISTS room_members (
+  room_id TEXT NOT NULL REFERENCES rooms(room_id),
+  kind TEXT NOT NULL CHECK (kind IN ('trunk', 'person', 'a2a')),
+  id TEXT NOT NULL,
+  member_order INTEGER NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('lead', 'member')),
+  enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+  PRIMARY KEY (room_id, kind, id)
+) STRICT;
+CREATE TABLE IF NOT EXISTS room_events (
+  room_id TEXT NOT NULL REFERENCES rooms(room_id),
+  seq INTEGER NOT NULL,
+  event_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  actor_id TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, seq),
+  UNIQUE (room_id, event_id)
+) STRICT;
+CREATE INDEX IF NOT EXISTS idx_room_events_cursor ON room_events(room_id, seq);

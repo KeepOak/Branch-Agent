@@ -27,6 +27,15 @@ export {
 export const validateContactsListParams = compile(S.ContactsListParamsSchema);
 export const validateContactsTopicsParams = compile(S.ContactsTopicsParamsSchema);
 export const validateContactsMarkReadParams = compile(S.ContactsMarkReadParamsSchema);
+export const validateRoomsCreateParams = compile(S.RoomsCreateParamsSchema);
+export const validateRoomsGetParams = compile(S.RoomsGetParamsSchema);
+export const validateRoomsListParams = compile(S.RoomsListParamsSchema);
+export const validateRoomsSendParams = compile(S.RoomsSendParamsSchema);
+export const validateRoomsLogParams = compile(S.RoomsLogParamsSchema);
+export const validateRoomsMembersAddParams = compile(S.RoomsMembersAddParamsSchema);
+export const validateRoomsMembersRemoveParams = compile(S.RoomsMembersRemoveParamsSchema);
+export const validateRoomsRuleSetParams = compile(S.RoomsRuleSetParamsSchema);
+export const validateRoomsArchiveParams = compile(S.RoomsArchiveParamsSchema);
 export const validateCommandsListParams = compile(S.CommandsListParamsSchema);
 export const validateBackupStatusParams = compile(S.BackupStatusParamsSchema);
 export const validateStorageLocationsListParams = compile(S.StorageLocationsListParamsSchema);
