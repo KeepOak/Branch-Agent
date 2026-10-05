@@ -1,7 +1,7 @@
 // Add an account (DESIGN-SPEC §4.8.4): 1 which service (found on this computer, then every service the engine can
 // sign in to, by kind), 2 sign in (the service's own page through the engine's wizard, or a key), 3 where it goes in
 // the order. Every service and found item comes from the engine (models.authStatus capabilities, branch.setup.detect).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
 import { list, text, visible, type RecordValue } from "../adapter";
@@ -12,7 +12,7 @@ import { useSaveRunner } from "../kit";
 import { Logo, serviceName } from "./service";
 import { providersOf, tokenLabel, type Provider } from "./accounts";
 
-export type AddStart = { provider?: string };
+export type AddStart = { provider?: string; find?: boolean };
 type Kind = "plan" | "key" | "local" | "custom";
 /** One service tile: a provider with plan sign-ins or a key, or an engine setup option (local or your own). */
 export type Service = { id: string; brand: string; name: string; kind: Kind; signedIn: number; logins: RecordValue[]; choice?: string };
@@ -69,7 +69,7 @@ export function AddAccountDialog({ engine, start, caps, providers, agent, onClos
   return (
     <Dialog title={title} wide={step.n === 1} onClose={() => onClose(added)} testid="add-account" footer={<StepFoot step={step} onBack={() => setStep({ n: 1 })} onClose={() => onClose(added)} />}>
       <div className="wiz-dots" aria-hidden="true">{[1, 2, 3].map((i) => <i key={i} className={i <= step.n ? "wz" : ""} />)}</div>
-      {step.n === 1 ? <PickService services={services} detect={detect} engine={engine} agent={agent} onPick={(svc) => setStep({ n: 2, svc })} onUsed={() => { setAdded(true); onClose(true); }} /> : null}
+      {step.n === 1 ? <PickService find={start.find} services={services} detect={detect} engine={engine} agent={agent} onPick={(svc) => setStep({ n: 2, svc })} onUsed={() => { setAdded(true); onClose(true); }} /> : null}
       {step.n === 2 && !("run" in step) ? <SignIn engine={engine} svc={step.svc} agent={agent} onRun={(run) => setStep({ n: 2, svc: step.svc, run })} onKey={signedIn} /> : null}
       {step.n === 2 && "run" in step ? <RunWizard engine={engine} run={step.run} onDone={signedIn} onBack={() => setStep({ n: 1 })} /> : null}
       {step.n === 3 ? <Placed engine={engine} svc={step.svc} before={step.before} agent={agent} onDone={() => onClose(true)} /> : null}
@@ -83,8 +83,16 @@ function StepFoot({ step, onBack, onClose }: { step: Step; onBack: () => void; o
   return <button type="button" className="btn ghost" onClick={onBack}>Back</button>;
 }
 
-type PickProps = { services: Service[]; detect: ReturnType<typeof useResource<RecordValue>>; engine: WindowEngine; agent: { agentId?: string }; onPick: (s: Service) => void; onUsed: () => void };
-function PickService({ services, detect, engine, agent, onPick, onUsed }: PickProps) {
+type PickProps = { find?: boolean; services: Service[]; detect: ReturnType<typeof useResource<RecordValue>>; engine: WindowEngine; agent: { agentId?: string }; onPick: (s: Service) => void; onUsed: () => void };
+function PickService({ find, services, detect, engine, agent, onPick, onUsed }: PickProps) {
+  const foundRef = useRef<HTMLDivElement>(null);
+  const interacted = useRef(false);
+  useEffect(() => {
+    if (!find || detect.loading || interacted.current) return;
+    const button = foundRef.current?.querySelector<HTMLButtonElement>("button");
+    button?.scrollIntoView?.({ block: "nearest" });
+    button?.focus({ preventScroll: true });
+  }, [find, detect.loading]);
   const [q, setQ] = useState("");
   const [tab, setTab] = useState<Kind | "all">("all");
   const [using, setUsing] = useState<RecordValue | null>(null);
@@ -92,9 +100,9 @@ function PickService({ services, detect, engine, agent, onPick, onUsed }: PickPr
   const kinds = (["plan", "key", "local", "custom"] as Kind[]).filter((k) => services.some((s) => s.kind === k));
   const shown = services.filter((s) => (tab === "all" || s.kind === tab) && (!q.trim() || s.name.toLowerCase().includes(q.trim().toLowerCase())));
   return (
-    <>
-      <p className="aa-lede">Which service is the new account with? {services.length} {services.length === 1 ? "service" : "services"}, and you can have several accounts with each.</p>
-      <Found detect={detect} onUse={setUsing} />
+    <div onPointerDown={() => { interacted.current = true; }} onKeyDown={() => { interacted.current = true; }}>
+      <p className="aa-lede">{find ? "Branch looks for accounts, coding apps and local models on this computer. Nothing is chosen, tested, installed or saved until you pick one." : <>Which service is the new account with? {services.length} {services.length === 1 ? "service" : "services"}, and you can have several accounts with each.</>}</p>
+      <div ref={foundRef}><Found detect={detect} onUse={setUsing} /></div>
       <label className="aa-search"><input className="inp" type="search" placeholder="Search services" aria-label="Search services" value={q} onChange={(e) => setQ(e.target.value)} /></label>
       <div className="tabs" role="tablist" aria-label="Kinds of service">
         {(["all", ...kinds] as const).map((k) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{k === "all" ? "All" : KIND_LABEL[k]}</button>)}
@@ -102,7 +110,7 @@ function PickService({ services, detect, engine, agent, onPick, onUsed }: PickPr
       {detect.loading && !services.length ? <p className="hint">Looking for services…</p> : null}
       {kinds.map((k) => <Group key={k} kind={k} services={shown.filter((s) => s.kind === k)} onPick={onPick} />)}
       {!shown.length && !detect.loading ? <p className="empty">No service matches.</p> : null}
-    </>
+    </div>
   );
 }
 

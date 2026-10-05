@@ -92,7 +92,7 @@ function ConnectionsTab({ engine, m, onAdd }: ConnProps) {
         ))}
       </div>
       <div className="acts"><Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn></div>
-      <div className="ctl find-k" data-row="Find models on this computer"><b>Find models on this computer</b><span className="right"><Btn sm onClick={() => onAdd({})}>Look</Btn></span></div>
+      <div className="ctl find-k" data-row="Find models on this computer"><b>Find models on this computer</b><span className="right"><Btn sm onClick={() => onAdd({ find: true })}>Look</Btn></span></div>
       {menu ? <AccountMenu engine={engine} acc={menu.acc} all={all} at={menu.at} agent={m.agent} reload={m.auth.reload} setOrder={setOrder} onClose={() => setMenu(null)} /> : null}
     </>
   );

@@ -54,6 +54,45 @@ describe("Settings › Models", () => {
     expect(host.querySelector(".acct-r .pill.ok")?.textContent).toBe("Answers first");
   });
 
+  it("Look discovers candidates without activating one and focuses Test and use", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "models.list") return MODELS;
+      if (method === "models.authStatus") return AUTH;
+      if (method === "config.get") return { hash: "h", valid: true, config: {} };
+      if (method === "branch.setup.detect") return { candidates: [{ kind: "ollama", modelRef: "ollama/qwen3:8b", label: "Qwen3 8B", credentials: true }] };
+      return {};
+    });
+    const engine = { request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine;
+    await render(engine);
+    await click("Look");
+    const dialog = document.querySelector('[data-testid="add-account"]')!;
+    expect(dialog.textContent).toContain("Branch looks for accounts, coding apps and local models");
+    expect(dialog.textContent).toContain("Qwen3 8B");
+    expect(document.activeElement?.textContent).toBe("Test and use");
+    expect(request).toHaveBeenCalledWith("branch.setup.detect", {});
+    expect(request.mock.calls.some(([method]) => method === "branch.setup.activate.start")).toBe(false);
+  });
+
+  it("keeps focus in search when discovery arrives after interaction", async () => {
+    let resolveDetect!: (value: unknown) => void;
+    const detected = new Promise((resolve) => { resolveDetect = resolve; });
+    const request = vi.fn(async (method: string) => {
+      if (method === "models.list") return MODELS;
+      if (method === "models.authStatus") return AUTH;
+      if (method === "config.get") return { hash: "h", valid: true, config: {} };
+      if (method === "branch.setup.detect") return detected;
+      return {};
+    });
+    const engine = { request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine;
+    await render(engine);
+    await click("Look");
+    const search = document.querySelector<HTMLInputElement>('input[aria-label="Search services"]')!;
+    await act(async () => { search.focus(); search.dispatchEvent(new KeyboardEvent("keydown", { key: "q", bubbles: true })); });
+    await act(async () => resolveDetect({ candidates: [{ kind: "ollama", modelRef: "ollama/qwen3:8b", label: "Qwen3 8B" }] }));
+    expect(document.activeElement).toBe(search);
+    expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Test and use");
+  });
+
   it("Everyday answers sets the default model to that connection's default", async () => {
     const { engine, request } = engineOf({ agents: { defaults: { model: { primary: "openai/gpt-5.5" } } } });
     await render(engine);
