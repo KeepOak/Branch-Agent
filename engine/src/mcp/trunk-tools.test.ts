@@ -179,7 +179,16 @@ describe("branch mcp serve Trunk tools", () => {
       "chat.history": () => ({
         messages: [
           { role: "user", content: "Reply with exactly OK" },
-          { role: "assistant", content: [{ type: "text", text: "OK" }] },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "earlier answer" }],
+            __branch: { runId: "run-0" },
+          },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "OK" }],
+            __branch: { runId: "run-1" },
+          },
         ],
       }),
     });
@@ -317,6 +326,8 @@ describe("branch mcp serve identity and gateway", () => {
         "ws://127.0.0.1:19555",
       );
       expect(resolveDesktopGateway({ token: "explicit" }, {}, dir)).toBeUndefined();
+      expect(resolveDesktopGateway({ url: "wss://remote.example" }, {}, dir)).toBeUndefined();
+      expect(resolveDesktopGateway({ url: "wss://remote.example" }, {}, dir)).toBeUndefined();
       expect(resolveDesktopGateway({}, { BRANCH_GATEWAY_TOKEN: "env" }, dir)).toBeUndefined();
       expect(resolveDesktopGateway({}, {}, path.join(dir, "missing"))).toBeUndefined();
     } finally {

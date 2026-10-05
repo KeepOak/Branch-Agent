@@ -41,7 +41,15 @@ export function resolveDesktopGateway(
   env: NodeJS.ProcessEnv = process.env,
   dataDir: string = desktopDataDirectory(env),
 ): { url: string; token: string } | undefined {
-  if (opts.token || opts.password || env.BRANCH_GATEWAY_TOKEN || env.BRANCH_GATEWAY_PASSWORD) {
+  // The desktop token only ever goes to the desktop's own loopback port: an explicit --url keeps upstream's
+  // rules (it needs its own token), and so do configured gateways when no desktop app exists.
+  if (
+    opts.url ||
+    opts.token ||
+    opts.password ||
+    env.BRANCH_GATEWAY_TOKEN ||
+    env.BRANCH_GATEWAY_PASSWORD
+  ) {
     return undefined;
   }
   let token = "";
@@ -52,5 +60,5 @@ export function resolveDesktopGateway(
   }
   if (!token) return undefined;
   const port = Number(env.BRANCH_GATEWAY_PORT) || DESKTOP_GATEWAY_PORT;
-  return { url: opts.url ?? `ws://127.0.0.1:${port}`, token };
+  return { url: `ws://127.0.0.1:${port}`, token };
 }

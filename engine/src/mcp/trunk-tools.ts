@@ -17,7 +17,7 @@ export type TrunkGateway = {
 export type OutsideAgentIdentity = { id: string; name: string; version?: string; where?: string };
 export type TrunkToolsOptions = {
   /** Who is speaking, once the gateway accepted contacts.outside.hello; undefined = plain owner messages. */
-  outsideAgent: () => OutsideAgentIdentity | undefined;
+  outsideAgent: () => OutsideAgentIdentity | undefined | Promise<OutsideAgentIdentity | undefined>;
   now?: () => number;
 };
 
@@ -65,8 +65,8 @@ export function describeRunEvent(payload: Rec): string | undefined {
   return text ? `${stream}: ${text.slice(0, 200)}` : stream;
 }
 
-function chatSend(gw: TrunkGateway, opts: TrunkToolsOptions, params: Rec) {
-  const agent = opts.outsideAgent();
+async function chatSend(gw: TrunkGateway, opts: TrunkToolsOptions, params: Rec) {
+  const agent = await opts.outsideAgent();
   return gw.request<Rec>("chat.send", {
     ...params,
     deliver: false,
@@ -266,7 +266,7 @@ function registerTrunkWriteTools(
     async ({ agent_id, text, thread_key, title }) => {
       let key = thread_key;
       if (!key) {
-        const who = opts.outsideAgent()?.id ?? "mcp";
+        const who = (await opts.outsideAgent())?.id ?? "mcp";
         key = `agent:${agent_id}:${who}-${(opts.now ?? Date.now)()}`;
         await gw.request("sessions.create", {
           key,
@@ -353,8 +353,9 @@ function registerRunTools(server: McpServer, gw: TrunkGateway): void {
         const history = rec(
           await gw.request("chat.history", { sessionKey: thread_key, limit: 20 }),
         );
+        // This run's answer, never an earlier turn's in the same thread.
         const last = list(history.messages)
-          .filter((m) => m.role === "assistant")
+          .filter((m) => m.role === "assistant" && rec(m.__branch).runId === run_id)
           .at(-1);
         const reply = last ? String(readMessage(last).text) : "";
         return ok(`run ${String(status.status)}`, {
@@ -404,7 +405,7 @@ function registerRoomTools(server: McpServer, gw: TrunkGateway, opts: TrunkTools
     "Add this agent to a group chat as an outside-agent member, so it can post there.",
     { room_id: z.string().min(1) },
     async ({ room_id }) => {
-      const agent = opts.outsideAgent();
+      const agent = await opts.outsideAgent();
       if (!agent)
         throw new Error("This Branch gateway does not know outside agents yet; update Branch.");
       const result = await gw.request("rooms.members.add", {
@@ -421,7 +422,7 @@ function registerRoomTools(server: McpServer, gw: TrunkGateway, opts: TrunkTools
     "Post a message to a group chat; its lead Trunk answers. The message is shown as this agent's.",
     { room_id: z.string().min(1), text: z.string().min(1) },
     async ({ room_id, text }) => {
-      const agent = opts.outsideAgent();
+      const agent = await opts.outsideAgent();
       const result = await gw.request("rooms.send", {
         roomId: room_id,
         message: text,

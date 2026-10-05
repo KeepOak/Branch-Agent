@@ -66,10 +66,7 @@ async function connectMcpWithoutGateway(params?: { claudeChannelMode?: "auto" | 
   return mcp;
 }
 
-function attachReadyGateway(
-  bridge: BranchChannelBridge,
-  gatewayRequest: ReturnType<typeof vi.fn>,
-) {
+function attachReadyGateway(bridge: BranchChannelBridge, gatewayRequest: ReturnType<typeof vi.fn>) {
   const bridgeInternals = bridge as unknown as {
     gateway: { request: typeof gatewayRequest; stopAndWait: () => Promise<void> };
   };

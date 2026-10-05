@@ -81,22 +81,23 @@ export async function createChannelMcpRuntime(
 
   // Part B: once the MCP client has said who it is, Branch shows it as an outside-agent contact and its
   // messages as its own. A gateway without contacts.outside.hello keeps plain (owner) messages.
-  let outsideAgent: OutsideAgentIdentity | undefined;
+  let outsideAgent: Promise<OutsideAgentIdentity | undefined> = Promise.resolve(undefined);
   let helloTimer: NodeJS.Timeout | undefined;
   const hello = async (agent: OutsideAgentIdentity) => {
     try {
       await bridge.request("contacts.outside.hello", { agent });
-      outsideAgent = agent;
+      return agent;
     } catch (error) {
       if (opts.verbose)
-        process.stderr.write(`branch mcp: outside-agent hello failed: ${String(error)}
-`);
+        process.stderr.write("branch mcp: outside-agent hello failed: " + String(error) + os.EOL);
+      return undefined;
     }
   };
   server.server.oninitialized = () => {
     const agent = outsideAgentFromClient(server.server.getClientVersion());
     if (!agent) return;
-    void hello(agent);
+    // Sends wait for the first hello, so the first message is already the agent's.
+    outsideAgent = hello(agent);
     helloTimer = setInterval(() => void hello(agent), HELLO_INTERVAL_MS);
     helloTimer.unref();
   };
