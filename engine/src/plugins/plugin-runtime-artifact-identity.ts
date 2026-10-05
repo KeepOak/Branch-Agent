@@ -92,12 +92,67 @@ function sameOpenedFile(before: fs.Stats, after: fs.Stats): boolean {
   );
 }
 
+// Digests of files this process already opened through the root boundary. Each plugin
+// instance fingerprints its root, so startup re-reads the same files several times.
+// A hit needs the path to still name the same regular file: an edit, replacement or
+// symlink swap changes its device, inode, size, mode, mtime or ctime.
+const MAX_CACHED_ARTIFACT_FILES = MAX_RUNTIME_ARTIFACT_ENTRIES;
+const cachedArtifactFiles = new Map<string, { stat: fs.Stats; hash: string }>();
+// Like git's racily-clean rule: a file changed this recently could change again
+// without a visible timestamp change, so it is re-read until it settles.
+const ARTIFACT_FILE_SETTLE_MS = 2_000;
+
+function sameFileIdentity(before: fs.Stats, after: fs.Stats): boolean {
+  return sameOpenedFile(before, after) && before.mode === after.mode;
+}
+
+function lstatOrUndefined(filePath: string): fs.Stats | undefined {
+  try {
+    return fs.lstatSync(filePath);
+  } catch {
+    return undefined;
+  }
+}
+
+function cachedRuntimeArtifactFile(
+  absolutePath: string,
+): { hash: string; size: number; mode: number } | undefined {
+  const cached = cachedArtifactFiles.get(absolutePath);
+  if (!cached) {
+    return undefined;
+  }
+  const current = lstatOrUndefined(absolutePath);
+  if (current?.isFile() && sameFileIdentity(cached.stat, current)) {
+    return { hash: cached.hash, size: current.size, mode: current.mode };
+  }
+  cachedArtifactFiles.delete(absolutePath);
+  return undefined;
+}
+
+function rememberRuntimeArtifactFile(absolutePath: string, opened: fs.Stats, hash: string): void {
+  const current = lstatOrUndefined(absolutePath);
+  if (!current?.isFile() || !sameFileIdentity(opened, current)) {
+    return;
+  }
+  if (Date.now() - Math.max(current.mtimeMs, current.ctimeMs) < ARTIFACT_FILE_SETTLE_MS) {
+    return;
+  }
+  if (cachedArtifactFiles.size >= MAX_CACHED_ARTIFACT_FILES) {
+    cachedArtifactFiles.clear();
+  }
+  cachedArtifactFiles.set(absolutePath, { stat: current, hash });
+}
+
 function hashRuntimeArtifactFile(params: {
   rootDir: string;
   rootRealPath: string;
   relativePath: string;
 }): { hash: string; size: number; mode: number } {
   const absolutePath = path.join(params.rootDir, params.relativePath);
+  const cached = cachedRuntimeArtifactFile(absolutePath);
+  if (cached) {
+    return cached;
+  }
   const opened = openRootFileSync({
     absolutePath,
     rootPath: params.rootDir,
@@ -116,6 +171,7 @@ function hashRuntimeArtifactFile(params: {
     if (hashed.sizeBytes !== opened.stat.size || !sameOpenedFile(opened.stat, after)) {
       throw new Error(changedMessage);
     }
+    rememberRuntimeArtifactFile(absolutePath, after, hashed.sha256);
     return { hash: hashed.sha256, size: opened.stat.size, mode: opened.stat.mode };
   } catch (error) {
     if (error instanceof FsSafeError && error.code === "too-large") {

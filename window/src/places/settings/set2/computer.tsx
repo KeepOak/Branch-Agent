@@ -147,7 +147,8 @@ function usersOf(node: Node, agents: RecordValue, cfgAgents: RecordValue[]): str
 function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: number; nodes: Res; agents: RecordValue }) {
   const status = useLive<RecordValue>(engine, "computer.status", {}, []);
   const config = useConfig(engine);
-  const cfgAgents = list(config.get("agents.list"));
+  // Each Trunk's own entry, keyed by id in agents.entries.
+  const cfgAgents = Object.entries(rec(config.get("agents.entries"))).map(([id, entry]) => ({ ...rec(entry), id }));
   const [find, setFind] = useState({ q: "", sort: "Online first", show: "All" });
   const paired = list(rec(nodes.data).nodes).filter((n) => n.approvalState !== "pending-approval" && n.approvalState !== "unapproved");
   const all = lv >= 1 ? arrange(paired, find) : paired;
@@ -354,29 +355,22 @@ function RemoveDialog({ engine, node, onClose }: Pick<SettingsPageProps, "engine
   );
 }
 
-/** Which Trunk uses which: a Trunk pinned to a computer runs its commands there (agents.list[].tools.exec.node). */
+/** Which Trunk uses which: a Trunk pinned to a computer runs its commands there (agents.entries.<id>.tools.exec.node). */
 function WhichTrunk({ engine, nodes, agents, defaultId }: SettingsPageProps & { nodes: Node[]; agents: RecordValue[]; defaultId: unknown }) {
   const config = useConfig(engine);
-  const entries = list(config.get("agents.list"));
+  const entries = rec(config.get("agents.entries"));
   const usable = nodes.filter((n) => n.approvalState !== "pending-approval" && n.approvalState !== "unapproved");
   if (!agents.length) return null;
   const main = str(defaultId);
   const ordered = [...agents.filter((a) => str(a.id) !== main), ...agents.filter((a) => str(a.id) === main)];
-  const pin = (agentId: string, nodeId: string | null) => {
-    const next = entries.map((a) => {
-      if (str(a.id) !== agentId) return a;
-      const tools = rec(a.tools); const exec = { ...rec(tools.exec) };
-      if (nodeId) exec.node = nodeId; else delete exec.node;
-      return { ...a, tools: { ...tools, exec } };
-    });
-    void config.set("agents.list", next);
-  };
+  // One Trunk's own entry only (a hot-applied, single-Trunk change; null puts the default back).
+  const pin = (agentId: string, nodeId: string | null) => void config.set(`agents.entries.${agentId}.tools.exec.node`, nodeId);
   return (
     <Sec title="Which Trunk uses which" hint="A Trunk can use several computers side by side.">
       <Plist>
         {ordered.map((a) => {
           const id = str(a.id); const name = str(rec(a.identity).name) || str(a.name) || id;
-          const entry = entries.find((e) => str(e.id) === id);
+          const entry = id in entries ? rec(entries[id]) : undefined;
           const pinned = str(rec(rec(entry?.tools).exec).node);
           return (
             <div key={id} className="prow s2-percomp" data-row={name}>

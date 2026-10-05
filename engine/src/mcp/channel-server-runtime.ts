@@ -78,6 +78,7 @@ export async function createChannelMcpRuntime(
   const presence = new OutsidePresence(
     (agent) => bridge.request("contacts.outside.hello", { agent }),
     (line) => opts.verbose && process.stderr.write(`branch mcp: ${line}${os.EOL}`),
+    (agent) => bridge.request("contacts.outside.hello", { agent, leaving: true }),
   );
   server.server.oninitialized = () => {
     presence.start(outsideAgentFromClient(server.server.getClientVersion()));
@@ -110,7 +111,7 @@ export async function createChannelMcpRuntime(
       await bridge.start();
     },
     close: async () => {
-      presence.stop();
+      await presence.leave();
       await ui.close().catch(() => undefined);
       // Both lifecycle owners must always close; one failure cannot strand the other.
       const results = await Promise.allSettled([bridge.close(), server.close()]);
