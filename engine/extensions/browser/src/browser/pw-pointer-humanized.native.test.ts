@@ -100,7 +100,6 @@ async function startFixtureService(cdpUrl: string) {
   const state = await createBrowserRuntimeState({
     server,
     port: address.port,
-    onWarn: () => {},
     resolved: fixtureConfig(cdpUrl, address.port),
   });
   registerBrowserRoutes(

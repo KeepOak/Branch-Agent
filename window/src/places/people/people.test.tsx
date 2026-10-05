@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -63,7 +64,7 @@ describe("People › Live now", () => {
     expect(strip.querySelector('[aria-label="Active"]')).toBeTruthy();
     expect(host.querySelectorAll(".pp-run")).toHaveLength(2);
     expect(host.textContent).toContain("Reconcile the card statement"); expect(host.textContent).toContain("shared");
-    const ask = button("Ask to join")!; expect(ask.disabled).toBe(true); expect(ask.title).toContain("ask-to-join");
+    const ask = button("Ask to join")!; expect(ask.disabled).toBe(true); expect(ask.title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
     await click("Open"); expect(opened).toHaveBeenCalledWith("agent:main:b");
     expect(host.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe("Live now2");
   });
@@ -106,9 +107,10 @@ describe("People › People", () => {
     expect(host.querySelector(".pp-item[aria-current='true']")!.textContent).toContain("Mira Stone");
     const card = host.querySelector(".pp-detail")!;
     expect(card.textContent).toContain("Online · active"); expect(card.textContent).toContain("Mira's laptop");
-    expect(card.textContent).toContain("books"); expect(card.textContent).toContain("Needs the engine's PIN store.");
+    expect(card.textContent).toContain("books"); expect(card.textContent).not.toContain("PIN"); expect(visibleDevNotes(card)).toEqual([]);
     const ticks = [...card.querySelectorAll<HTMLInputElement>(".pp-may input")]; expect(ticks).toHaveLength(7); expect(ticks.every(t => t.disabled)).toBe(true);
-    expect(button("Switch to Mira")!.disabled).toBe(true); expect(button("Remove")!.title).toContain("remove-a-person");
+    expect(button("Switch to Mira")!.disabled).toBe(true); expect(button("Remove")!.disabled).toBe(true); expect(button("Remove")!.title).toBe("");
+    expect(visibleDevNotes(host)).toEqual([]);
   });
 
   it("sets a role the engine defines through users.setRole", async () => {
@@ -121,7 +123,7 @@ describe("People › People", () => {
   it("greys the role when the engine defines no roles", async () => {
     const { engine } = fakeEngine(table({ "config.get": { hash: "h", config: {} } }));
     await mount(engine); await click("People2");
-    expect(button("No role")!.disabled).toBe(true); expect(button("No role")!.title).toContain("roles set up");
+    expect(button("No role")!.disabled).toBe(true); expect(button("No role")!.title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
   });
 
   it("makes a limited one-time code and says how long it works", async () => {
@@ -151,7 +153,9 @@ describe("People › People", () => {
   it("offers Make a one-time code from the invite dialog and greys the other ways in", async () => {
     const { engine } = fakeEngine(table());
     await mount(engine); await click("People2"); await click("Invite someone");
-    expect(button("Add them")!.disabled).toBe(true);
+    expect(button("Add them")!.disabled).toBe(true); expect(button("Add them")!.title).toBe("");
+    expect(document.querySelector<HTMLFieldSetElement>('[role="dialog"] fieldset')!.disabled).toBe(true);
+    expect(visibleDevNotes(document.querySelector('[role="dialog"]')!)).toEqual([]);
     await click("From your keepoak.com team"); expect(button("Invite")!.disabled).toBe(true);
     await click("On their own device"); expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Make a one-time code");
   });
@@ -163,7 +167,7 @@ describe("People › Groups", () => {
     await mount(engine); await click("Groups");
     expect(host.textContent).toContain("Being in a group can only take things away.");
     expect(host.textContent).toContain("No groups yet."); expect(host.textContent).not.toContain("Work");
-    expect(button("New group")!.disabled).toBe(true); expect(button("New group")!.title).toContain("permission groups");
+    expect(button("New group")!.disabled).toBe(true); expect(button("New group")!.title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
     expect(request.mock.calls.length).toBeGreaterThan(0);
   });
 });
@@ -327,7 +331,8 @@ describe("People › Signing in", () => {
   it("greys the sign-in rows the engine can't back, and approves or turns down waiting devices", async () => {
     const { engine, request } = fakeEngine(table());
     await mount(engine); await click("Signing in");
-    expect(button("When needed")!.disabled).toBe(true); expect(button("Passkey")!.title).toContain("sign-in methods");
+    expect(button("When needed")!.disabled).toBe(true); expect(button("Passkey")!.disabled).toBe(true); expect(button("Passkey")!.title).toBe("");
+    expect(host.querySelectorAll(".pp-ctl[data-off]").length).toBeGreaterThan(0); expect(visibleDevNotes(host)).toEqual([]);
     expect(host.textContent).toContain("Waiting for approval (1)"); expect(host.textContent).toContain("Wants: read, write");
     await click("Approve"); expect(request).toHaveBeenCalledWith("device.pair.approve", { requestId: "q1" });
     await click("Don’t"); await click("Don’t allow"); expect(request).toHaveBeenCalledWith("device.pair.reject", { requestId: "q1" });

@@ -1,10 +1,12 @@
 // The 11-step setup once the window is connected (DESIGN-SPEC §4.8.1). Steps 1–2 may already have been answered on
 // the pre-connect screens; then it opens at Models.
-import { useEffect, useState, type ReactNode } from "react";
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { PairDialog } from "../places/customize/pairing";
 import { AccountLoginDialog } from "../places/settings/AccountLogin";
 import { ConnectDialog } from "../places/settings/set1/chatapps-connect";
+import { AddAccountDialog } from "../places/settings/set1/add-account";
 import type { LoginStart } from "../places/settings/account-login";
 import { Icon } from "../shell/icons";
 import { notify } from "../shell/notify";
@@ -18,6 +20,9 @@ import { type ChatApp, CheckBody, KeepBody, PeopleBody, ReachBody, reachLede, To
 import { makeTrunks, recordSetup, runChecks, testModel, useChatApps, useDetected, useKnown } from "./use-setup-engine";
 import { readPreConnect } from "./pre-connect-state";
 import { FirstTrunk } from "./FirstTrunk";
+import type { TalkHandle } from "./TalkSetup";
+import type { TalkOption, TalkQuestion } from "./talk-setup";
+import { desktopControls } from "../connect/desktop-controls";
 
 type Props = {
   engine: WindowEngine;
@@ -31,6 +36,8 @@ type Props = {
   onContactCreated?: () => void;
   onClose: (finished: boolean) => void;
   onLocalModel: () => void;
+  /** Finish by talking: the setup card to show above the default Trunk's message box, or null to take it away. */
+  onTalk?: (handle: TalkHandle | null) => void;
 };
 
 const TITLES: Record<number, [string, string?]> = {
@@ -46,7 +53,6 @@ const TITLES: Record<number, [string, string?]> = {
   9: ["Two more things", "All optional. Skip them and Branch works the same."],
   10: ["All set?", "Branch checks everything before you start."],
 };
-const TALK_OFF = "Setting up by talking needs Sapling's setup conversation, which the engine doesn't run yet.";
 const PROPOSE_OFF = "Proposing Trunks from a sentence needs a setup call the engine doesn't have yet.";
 
 /** Start goes past the steps an already set-up Branch has done, to the first one left. */
@@ -67,18 +73,22 @@ function useChoices() {
 export function SetupFlow(p: Props) {
   const [contact, setContact] = useState<{ id: string; name: string } | null>(null);
   const [needsContact] = useState(() => !!p.requireContact || !p.trunkNames.length);
-  if ((needsContact || p.requireContact) && !contact) {
-    return <FirstTrunk engine={p.engine} onCreated={(id, name) => { setContact({ id, name }); p.onContactCreated?.(); }} />;
-  }
-  return <SetupFlowBody {...p} defaultAgentId={contact?.id ?? p.defaultAgentId} defaultName={contact?.name ?? p.defaultName} trunkNames={contact ? [...p.trunkNames, contact.name] : p.trunkNames} />;
+  // The design opens on Welcome; a Branch with no contact Trunk names its first one right after Start.
+  const gate = (needsContact || p.requireContact) && !contact
+    ? <FirstTrunk engine={p.engine} onCreated={(id, name) => { setContact({ id, name }); p.onContactCreated?.(); }} />
+    : null;
+  return <SetupFlowBody {...p} gate={gate} defaultAgentId={contact?.id ?? p.defaultAgentId} defaultName={contact?.name ?? p.defaultName} trunkNames={contact ? [...p.trunkNames, contact.name] : p.trunkNames} />;
 }
 
-function SetupFlowBody(p: Props) {
+function SetupFlowBody(p: Props & { gate: ReactNode }) {
   const [choices, setChoices] = useChoices();
   const [step, setStep] = useState(p.startAt ?? 0);
   const [test, setTest] = useState<TestResult | "testing" | null>(null);
   // null until the person changes it: setup writes update.auto.enabled only then (defaults stay the engine's).
   const [autoUpdate, setAutoUpdate] = useState<boolean | null>(null);
+  const [talking, setTalking] = useState(false);
+  // Start with Windows: on for a fresh Branch (as the design has it), applied through the Branch app when setup finishes.
+  const [boot, setBoot] = useState<boolean | null>(null);
   const [checks, setChecks] = useState<Check[]>([]);
   const [login, setLogin] = useState<LoginStart | null>(null);
   const [adding, setAdding] = useState(false);
@@ -111,10 +121,15 @@ function SetupFlowBody(p: Props) {
     // Leaving the step and coming back starts the checks again (§4.8.1.11).
     setChecks(runChecks(p.engine, apps ?? [], (i, row) => setChecks((rows) => rows.map((r, j) => (j === i ? row : r)))));
   }, [step, p.engine, apps]);
+  const latest = useRef({ choices, autoUpdate, boot });
+  latest.current = { choices, autoUpdate, boot };
   const close = async (finished: boolean) => {
     setBusy(true);
+    const { choices, autoUpdate, boot } = latest.current;
     try {
       await recordSetup(p.engine, choices, p.version, finished ? autoUpdate : null);
+      const desk = desktopControls();
+      if (finished && "bridge" in desk && (boot !== null || !known?.promise)) await desk.bridge.set("startWithWindows", boot ?? true);
       if (finished) {
         const failed = await makeTrunks(p.engine, choices.jobs, p.trunkNames);
         notify("Branch is ready. Here’s the two-minute walkthrough.", failed.length ? { line: failed.join(" ") } : {});
@@ -125,8 +140,29 @@ function SetupFlowBody(p: Props) {
       setBusy(false);
     }
   };
+  const answer = (q: TalkQuestion, o: TalkOption) => {
+    if (q.step === 3) { const look = o.value as SetupChoices["look"]; set({ look }); setThemeChoice(look); }
+    else if (q.step === 4 && o.value !== "enough") setChoices((c) => ({ ...c, jobs: [...c.jobs, Number(o.value)] }));
+    else if (q.step === 5 && o.value === "phone") setPairing(true);
+    else if (q.step === 5 && o.value.startsWith("app:")) { const app = apps?.find((a) => a.id === o.value.slice(4)); if (app) setConnecting(app); }
+    else if (q.step === 7) setAutoUpdate(o.value === "yes");
+    else if (q.step === 8) set({ people: o.value === "none" ? null : Number(o.value) });
+  };
+  useEffect(() => {
+    if (!talking) return;
+    p.onTalk?.({
+      start: firstUndone(done, Math.max(3, step)),
+      state: { look: choices.look, jobs: choices.jobs, apps: (apps ?? []).map((a) => ({ id: a.id, label: a.label, connected: Boolean(a.connected) })), autoUpdate: autoUpdate ?? known?.autoUpdate ?? false },
+      done: (i) => done.has(i),
+      answer,
+      steps: (i) => { setTalking(false); setStep(i); p.onTalk?.(null); },
+      finish: () => { p.onTalk?.(null); void close(true); },
+    });
+    // Published once when talking starts; the card keeps its own place from there.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [talking]);
   const doneChecks = checks.filter((c) => c.state !== "checking").length;
-  const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, adding, setAdding, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, checks, setStep });
+  const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, adding, setAdding, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, boot: boot ?? (known?.promise ? null : true), setBoot, checks, setStep });
   const [title, lede] = step === 5 ? [TITLES[5][0], reachLede(apps)] : TITLES[step];
   const footer = (
     <>
@@ -137,7 +173,7 @@ function SetupFlowBody(p: Props) {
       ) : null}
       <span className="grow" />
       {step >= 3 && step < LAST ? (
-        <button type="button" className="btn ghost" disabled title={TALK_OFF}>
+        <button type="button" className="btn ghost" data-testid="setup-talk" onClick={() => setTalking(true)}>
           Finish by talking
         </button>
       ) : null}
@@ -152,6 +188,18 @@ function SetupFlowBody(p: Props) {
       )}
     </>
   );
+  if (p.gate && step > 0) {
+    return <>{p.gate}</>;
+  }
+  const dialogs = (
+    <>
+      {login && login.method !== SECRET ? <AccountLoginDialog engine={p.engine} start={login} onClose={(signedIn) => { setLogin(null); if (signedIn) models.reload(); }} /> : null}
+      {login && login.method === SECRET ? <AddAccountDialog engine={p.engine} start={{ provider: login.provider }} caps={[]} providers={[]} agent={{ agentId: login.agentId }} onClose={(added) => { setLogin(null); if (added) models.reload(); }} /> : null}
+      {connecting ? <ConnectDialog engine={p.engine} app={{ id: connecting.id, name: connecting.label, detail: "" }} onClose={(changed) => { setConnecting(null); if (changed) chat.reload(); }} /> : null}
+      {pairing ? <PairDialog engine={p.engine} close={() => setPairing(false)} /> : null}
+    </>
+  );
+  if (talking) return dialogs;
   return (
     <>
       <SetupShell
@@ -168,31 +216,7 @@ function SetupFlowBody(p: Props) {
       >
         {body}
       </SetupShell>
-      {login ? (
-        <AccountLoginDialog
-          engine={p.engine}
-          start={login}
-          onClose={(signedIn) => {
-            setLogin(null);
-            if (signedIn) {
-              models.reload();
-            }
-          }}
-        />
-      ) : null}
-      {connecting ? (
-        <ConnectDialog
-          engine={p.engine}
-          app={{ id: connecting.id, name: connecting.label, detail: "" }}
-          onClose={(changed) => {
-            setConnecting(null);
-            if (changed) {
-              chat.reload();
-            }
-          }}
-        />
-      ) : null}
-      {pairing ? <PairDialog engine={p.engine} close={() => setPairing(false)} /> : null}
+      {dialogs}
     </>
   );
 }
@@ -213,12 +237,19 @@ type Ctx = {
   setPairing: (on: boolean) => void;
   autoUpdate: boolean;
   setAutoUpdate: (v: boolean) => void;
+  /** Start with Windows as chosen in setup; null shows what the Branch app has now. */
+  boot: boolean | null;
+  setBoot: (v: boolean) => void;
   checks: Check[];
   setStep: (i: number) => void;
 };
 
+/** A setup menu entry signed in by pasting what the service hands out (Claude's setup-token), in the Add account dialog. */
+const SECRET = "secret";
+
 function AddAccount({ c }: { c: Ctx }) {
-  const options = c.models.detected?.authOptions ?? [];
+  const secrets = c.models.detected?.secretLogins ?? [];
+  const options = [...secrets.filter((o) => o.brand === "anthropic"), ...(c.models.detected?.authOptions ?? [])];
   return (
     <span className="ob-add">
       <button type="button" className="btn sm" aria-expanded={c.adding} disabled={!options.length || !c.p.defaultAgentId} title={options.length ? undefined : "The engine offered no account sign-ins."} onClick={() => c.setAdding(!c.adding)}>
@@ -228,8 +259,8 @@ function AddAccount({ c }: { c: Ctx }) {
       {c.adding ? (
         <span className="ob-add-list" role="menu">
           {options.map((o) => (
-            <button key={o.id} type="button" className="mi" role="menuitem" onClick={() => (c.setAdding(false), c.setLogin({ agentId: c.p.defaultAgentId ?? "", provider: o.label, choiceId: o.id }))}>
-              <span className="mi-label">{o.label}</span>
+            <button key={o.id} type="button" className="mi" role="menuitem" onClick={() => (c.setAdding(false), c.setLogin(o.brand ? { agentId: c.p.defaultAgentId ?? "", provider: o.brand, choiceId: o.id, method: SECRET } : { agentId: c.p.defaultAgentId ?? "", provider: o.label, choiceId: o.id, method: "branch.setup.auth.start" }))}>
+              <span className="mi-label">{o.brand === "anthropic" ? "Claude · Sign in with your Claude subscription" : o.label}</span>
               {o.hint ? <span className="mi-hint">{o.hint}</span> : null}
             </button>
           ))}
@@ -288,7 +319,7 @@ function renderStep(step: number, c: Ctx): ReactNode {
     case "Tools":
       return <ToolsBody />;
     case "Keep it running":
-      return <KeepBody autoUpdate={c.autoUpdate} onAutoUpdate={c.setAutoUpdate} />;
+      return <KeepBody autoUpdate={c.autoUpdate} onAutoUpdate={c.setAutoUpdate} boot={c.boot} onBoot={c.setBoot} />;
     case "People":
       return <PeopleBody people={choices.people} onPeople={(people) => set({ people })} />;
     case "Two more things":

@@ -3,6 +3,31 @@ import { describe, expect, it } from "vitest";
 import { buildGatewayRuntimeHints } from "./doctor-format.js";
 
 describe("buildGatewayRuntimeHints", () => {
+  it.each([
+    { env: {}, task: "Branch Agent Gateway", command: "branch", status: "stopped" },
+    {
+      env: { BRANCH_PROFILE: "work" },
+      task: "Branch Agent Gateway (work)",
+      command: "branch --profile work",
+      status: "stopped",
+    },
+    { env: {}, task: "Branch Agent Gateway", command: "branch", status: "running" },
+  ])(
+    "names the disabled Scheduled Task and recovery for $task ($status)",
+    ({ env, task, command, status }) => {
+      const text = buildGatewayRuntimeHints(
+        { status, state: "Disabled" },
+        { platform: "win32", env },
+      ).join("\n");
+
+      expect(text).toContain(`Scheduled Task '${task}' is registered but DISABLED`);
+      expect(text).toContain(`${command} gateway start`);
+      expect(text).toContain(`${command} doctor --fix`);
+      expect(text).toContain("to re-enable it");
+      expect(text).not.toContain("likely exited immediately");
+    },
+  );
+
   it("renders macOS GUI-session recovery for the selected profile", () => {
     const hints = buildGatewayRuntimeHints(
       {

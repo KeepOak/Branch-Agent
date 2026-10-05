@@ -868,3 +868,9 @@
   min-height: 34px;
   padding: 6px 10px;
 }
+
+/* Finish by talking: the docked setup question (the preview's choice block above the message box). */
+.talk-setup .talk-done { margin: 0 0 8px; font-size: 13px; color: var(--ink-2); }
+.talk-setup .talk-steps { margin-top: 8px; font-size: 13px; color: var(--ink-2); background: none; border: 0; padding: 0; cursor: pointer; }
+.talk-setup .talk-steps:hover { color: var(--ink); text-decoration: underline; }
+.talk-setup .talk-steps { display: block; text-align: left; }

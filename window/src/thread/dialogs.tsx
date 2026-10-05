@@ -1,5 +1,6 @@
 // The thread's dialogs (DESIGN-SPEC §4.2.6): Edit and send again, Branch from here, Look inside; and the
 // reaction chips under a message.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Reaction } from "./actions";

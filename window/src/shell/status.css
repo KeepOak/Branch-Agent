@@ -387,3 +387,23 @@
     animation: none;
   }
 }
+
+/* "Offer to save progress at 95%" (the preview's .ckpt-q) */
+.ckpt-q { position: fixed; left: 50%; top: 44px; translate: -50% 0; z-index: 97; width: min(560px, calc(100% - 24px)); background: var(--raise); border-radius: 16px; box-shadow: var(--pop); padding: 12px 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; animation: rise 0.25s ease-out; }
+.ckpt-q .grow { flex: 1; min-width: 200px; }
+.ckpt-q b { display: block; font-weight: 600; font-size: 13.5px; }
+.ckpt-q small { color: var(--ink-3); font-size: 12px; }
+
+/* Get the apps (the preview's .appsPA18 and its .tile) */
+.appsPA18 { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.appsPA18 .tile { border: 1px solid var(--hair17); border-radius: var(--r3-17); padding: 16px; display: grid; gap: 8px; align-content: start; background: var(--raise); }
+.appsPA18 .th { display: flex; align-items: center; gap: 10px; }
+.appsPA18 .ico-tile { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: var(--r2-17); background: var(--wash17); color: var(--ink-2); }
+.appsPA18 .tile p { margin: 4px 0 8px; font-size: 12.5px; color: var(--ink-3); }
+.appsPA18 .tile .btn { justify-self: stretch; }
+
+/* Guide › What Branch can do (the preview's .r618-cando and .r618-pick) */
+.r618-cando { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.r618-pick { display: grid; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: none; color: var(--ink); font: inherit; cursor: pointer; }
+.r618-pick:hover { background: var(--fill); }
+.r618-pick small { color: var(--ink-3); }

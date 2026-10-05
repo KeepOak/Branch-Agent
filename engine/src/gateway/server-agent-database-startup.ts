@@ -2,17 +2,70 @@ import { resolveAgentDir } from "../agents/agent-scope-config.js";
 import { resolveAuthProfileDatabasePath } from "../agents/auth-profiles/sqlite.js";
 import { resolveConfiguredAgentDatabaseTargets } from "../config/sessions/targets.js";
 import type { BranchConfig } from "../config/types.branch.js";
+import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
 import { withPluginRuntimeRegistryScope } from "../plugins/runtime/gateway-request-scope.js";
 import { getSpawnBroker, runWithSpawnBroker } from "../process/spawn-broker/context.js";
-import { withAgentDatabasePreparationGuard } from "../state/agent-database-admission.js";
+import {
+  AgentDatabasePreparationSupersededError,
+  withAgentDatabasePreparationGuard,
+} from "../state/agent-database-admission.js";
 import type { getAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
 import { isSameBranchAgentDatabasePath } from "../state/branch-agent-db.paths.js";
+
+/**
+ * Runs startup model publication under the preparation's currency check. A config or secrets
+ * reload that supersedes the publication supersedes the whole preparation, so startup retries
+ * it instead of leaving the agent degraded.
+ */
+export async function runStartupModelPublication(
+  assertPreparationCurrent: () => void,
+  publish: (isPublicationCurrent: () => boolean) => Promise<unknown>,
+): Promise<void> {
+  let superseded: unknown;
+  try {
+    await publish(() => {
+      try {
+        assertPreparationCurrent();
+        return true;
+      } catch (error) {
+        superseded ??= error;
+        return false;
+      }
+    });
+  } catch (error) {
+    if (superseded instanceof AgentDatabasePreparationSupersededError) {
+      throw superseded;
+    }
+    throw error;
+  }
+}
+
+function assertAgentDatabaseConfiguration(
+  cfg: BranchConfig,
+  agentId: string,
+  paths: readonly string[],
+  env: NodeJS.ProcessEnv,
+) {
+  const configuredPaths = resolveConfiguredAgentDatabaseTargets(cfg, { env }).filter(
+    (target) => target.agentId === agentId,
+  );
+  if (
+    configuredPaths.length === 0 ||
+    paths.some(
+      (pathname) =>
+        !configuredPaths.some((target) => isSameBranchAgentDatabasePath(target.path, pathname)),
+    )
+  ) {
+    throw new Error(`Agent ${agentId} database configuration changed during startup inspection`);
+  }
+}
 
 /** Finish only the deferred agent's preparation before its admission owner recovers it. */
 export function activateGatewayAgentDatabaseStartup(params: {
   admission: ReturnType<typeof getAgentDatabaseStartupAdmission>;
+  preparationReady: Promise<void>;
   getConfig: () => BranchConfig;
   getPluginRegistry: () => PluginRegistry;
   getPluginMetadataSnapshot: () => PluginMetadataSnapshot | undefined;
@@ -22,8 +75,63 @@ export function activateGatewayAgentDatabaseStartup(params: {
   const broker = getSpawnBroker();
   params.admission?.activate({
     isCurrent: params.isCurrent,
+    openAgent: ({ agentId, paths, env, signal, assertCurrent }) =>
+      runWithSpawnBroker(broker, async () => {
+        const [
+          { captureBranchAgentDatabaseExecution },
+          { runBranchAgentWorkerWrite },
+          { createSqliteWorkerOperationAdmission },
+        ] = await Promise.all([
+          import("../state/branch-agent-execution.js"),
+          import("../state/branch-agent-write-admission.js"),
+          import("../infra/sqlite-worker-operation-admission.js"),
+        ]);
+        assertCurrent();
+        let cfg = params.getConfig();
+        assertAgentDatabaseConfiguration(cfg, agentId, paths, env);
+        const assertOpenCurrent = () => {
+          signal.throwIfAborted();
+          assertCurrent();
+          const currentConfig = params.getConfig();
+          if (currentConfig !== cfg) {
+            assertAgentDatabaseConfiguration(currentConfig, agentId, paths, env);
+            cfg = currentConfig;
+          }
+        };
+        for (const pathname of paths) {
+          const options = { agentId, path: pathname, env };
+          const execution = captureBranchAgentDatabaseExecution(options);
+          try {
+            await runBranchAgentWorkerWrite(
+              options,
+              () =>
+                execution.prepare(
+                  {
+                    assertCurrent: assertOpenCurrent,
+                    createAdmission: (binding) => () => ({
+                      nativeLocations: binding.nativeLocations,
+                      admission: createSqliteWorkerOperationAdmission((request, grant) => {
+                        binding.authorize(request);
+                        assertOpenCurrent();
+                        if (!grant()) {
+                          throw new Error(`Agent ${agentId} startup admission expired`);
+                        }
+                      }, binding.attachment),
+                    }),
+                  },
+                  signal,
+                ),
+              undefined,
+              signal,
+            );
+          } finally {
+            await execution.release();
+          }
+        }
+      }),
     prepareAgent: ({ agentId, paths, env, signal, assertCurrent }) =>
       runWithSpawnBroker(broker, async () => {
+        await racePromiseWithAbortSignal(params.preparationReady, signal);
         const [
           { runStartupSessionMigration },
           { refreshPreparedModelRuntimeSnapshots, getPreparedModelRuntimeSnapshot },
@@ -43,22 +151,7 @@ export function activateGatewayAgentDatabaseStartup(params: {
         const beforeConfig = params.getConfig();
         const previousSecretsRevision = getActiveSecretsRuntimeSnapshotRevision();
         const previousSecrets = getActiveSecretsRuntimeSnapshot();
-        const configuredPaths = resolveConfiguredAgentDatabaseTargets(beforeConfig, { env }).filter(
-          (target) => target.agentId === agentId,
-        );
-        if (
-          configuredPaths.length === 0 ||
-          paths.some(
-            (pathname) =>
-              !configuredPaths.some((target) =>
-                isSameBranchAgentDatabasePath(target.path, pathname),
-              ),
-          )
-        ) {
-          throw new Error(
-            `Agent ${agentId} database configuration changed during startup inspection`,
-          );
-        }
+        assertAgentDatabaseConfiguration(beforeConfig, agentId, paths, env);
         if (
           !previousSecrets ||
           !(await refreshActiveSecretsRuntimeSnapshotForConfig({
@@ -72,7 +165,9 @@ export function activateGatewayAgentDatabaseStartup(params: {
                 params.getConfig() !== beforeConfig ||
                 getActiveSecretsRuntimeSnapshotRevision() !== previousSecretsRevision
               ) {
-                throw new Error(`Agent ${agentId} secrets preparation was superseded`);
+                throw new AgentDatabasePreparationSupersededError(
+                  `Agent ${agentId} secrets preparation was superseded`,
+                );
               }
             },
           }))
@@ -83,8 +178,12 @@ export function activateGatewayAgentDatabaseStartup(params: {
         const secretsRevision = getActiveSecretsRuntimeSnapshotRevision();
         const secrets = getActiveSecretsRuntimeSnapshot();
         const authDatabasePath = resolveAuthProfileDatabasePath(resolveAgentDir(cfg, agentId, env));
+        if (secretsRevision !== previousSecretsRevision + 1) {
+          throw new AgentDatabasePreparationSupersededError(
+            `Agent ${agentId} secrets preparation was superseded`,
+          );
+        }
         if (
-          secretsRevision !== previousSecretsRevision + 1 ||
           !secrets?.authStores.some((entry) =>
             isSameBranchAgentDatabasePath(entry.databasePath, authDatabasePath),
           )
@@ -100,7 +199,9 @@ export function activateGatewayAgentDatabaseStartup(params: {
             params.getConfig() !== cfg ||
             getActiveSecretsRuntimeSnapshotRevision() !== secretsRevision
           ) {
-            throw new Error(`Agent ${agentId} startup preparation was superseded`);
+            throw new AgentDatabasePreparationSupersededError(
+              `Agent ${agentId} startup preparation was superseded`,
+            );
           }
           if (preparedInput && !getPreparedModelRuntimeSnapshot(preparedInput)) {
             throw new Error(`Agent ${agentId} model preparation has not published`);
@@ -118,21 +219,16 @@ export function activateGatewayAgentDatabaseStartup(params: {
           });
           assertPreparationCurrent();
           const pluginMetadataSnapshot = params.getPluginMetadataSnapshot();
-          await withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
-            refreshPreparedModelRuntimeSnapshots(cfg, {
-              agentIds,
-              catalogMode: "static",
-              allowGatewaySubagentBinding: true,
-              ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
-              isPublicationCurrent: () => {
-                try {
-                  assertPreparationCurrent();
-                  return true;
-                } catch {
-                  return false;
-                }
-              },
-            }),
+          await runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
+            withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
+              refreshPreparedModelRuntimeSnapshots(cfg, {
+                agentIds,
+                catalogMode: "static",
+                allowGatewaySubagentBinding: true,
+                ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
+                isPublicationCurrent,
+              }),
+            ),
           );
           preparedInput = listConfiguredOwnerInputs(cfg, undefined, true).find(
             (input) => input.agentId === agentId,

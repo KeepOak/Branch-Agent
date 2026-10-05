@@ -70,6 +70,11 @@ export function badgeList(row: Conversation, x: RowExtras | undefined): { icon: 
 
 /** The second line (§4.1.1.1): while working, its headline and a health word; failed shows why. */
 function secondLine(row: Conversation, state: RowState, x: RowExtras | undefined): { text: string; word: string; tone: string } | null {
+  if (["trunk", "chatGroup", "outside"].includes(row.kind)) {
+    if (state.waiting) return { text: row.preview, word: "Waiting on you", tone: "attn" };
+    if (state.working) return { text: row.preview, word: "", tone: "" };
+    return null;
+  }
   const mark = row.runMark ? MARKS[row.runMark] : null;
   if (state.waiting) return { text: (x?.headlines !== false && row.headline) || row.preview, word: "Waiting on you", tone: "attn" };
   if (mark?.bad) return { text: row.preview, word: mark.word, tone: "bad" };
@@ -134,7 +139,7 @@ export function ConversationRow(p: Props) {
         <button type="button" className="row-open" aria-current={current ? "true" : undefined} aria-selected={p.selected ? true : undefined} onClick={p.onOpen}
           onFocus={(e) => e.currentTarget.matches(":focus-visible") && card(e.currentTarget.parentElement)} onBlur={() => card(null)}>
           <span className={state.working ? "row-av working-ring" : "row-av"} data-working={state.working ? "true" : undefined}>
-            <Pebble size={twoLine ? 40 : 28} label={p.trunkName} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />
+            <Pebble size={twoLine ? 40 : 28} label={row.kind === "chatGroup" || row.kind === "outside" ? row.title : p.trunkName} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />
             {state.waiting ? <i className="needs-you" aria-label="Waiting for you" /> : null}
             {p.selected ? <span className="sel-tick" aria-hidden="true"><Icon name="tick" size={11} /></span> : null}
           </span>
@@ -143,6 +148,7 @@ export function ConversationRow(p: Props) {
               <RowIcon value={row.icon} />
               <span className="nm-t">{name}</span>
             </span>
+            {row.done ? <span className="bdg" title="Done" role="img" aria-label="Done"><Icon name="check" size={13} /></span> : null}
             {badges.map((b) => (
               <span key={b.words} className="bdg" title={b.words} role="img" aria-label={b.words}>
                 <Icon name={b.icon} size={13} />

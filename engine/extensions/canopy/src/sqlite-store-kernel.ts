@@ -15,7 +15,6 @@ import {
   runSqliteImmediateTransactionSync,
   sqliteStringSet,
 } from "branch/plugin-sdk/sqlite-worker-runtime";
-import { isRecord } from "branch/plugin-sdk/string-coerce-runtime";
 import type {
   PersistedCanopyAttachment,
   PersistedCanopyBoard,
@@ -30,7 +29,6 @@ import type {
   CanopySubscriptionStore,
 } from "./persistence-types.js";
 import {
-  asBlobContent,
   blobToBase64,
   definedFields,
   jsonValue,
@@ -72,18 +70,14 @@ class CanopySqliteCardStore implements SyncStore<CanopyCardStore> {
   constructor(private readonly db: DatabaseSync) {}
 
   private matchesUpdatedAt(key: string, expectedUpdatedAt: number): boolean {
-    const { compiled, bind } = compileSqliteQueryBindings<string>((parameter) =>
+    const current = executeSqliteQueryTakeFirstSync(
+      this.db,
       getNodeSqliteKysely<CanopyCardDatabase>(this.db)
         .selectFrom("canopy_cards")
         .select("updated_at")
-        .where(
-          "id",
-          "=",
-          parameter((value) => value),
-        ),
+        .where("id", "=", key),
     );
-    const current = this.db.prepare(compiled.sql).get(...bind(key));
-    return isRecord(current) && numberValue(current, "updated_at") === expectedUpdatedAt;
+    return current !== undefined && numberValue(current, "updated_at") === expectedUpdatedAt;
   }
 
   private validatePayload(key: string, value: PersistedCanopyCard): void {
@@ -706,7 +700,7 @@ class CanopySqliteAttachmentStore implements SyncStore<
           ON CONFLICT(attachment_id) DO UPDATE SET content = excluded.content
         `,
       )
-      .run(attachment.id, asBlobContent(value.contentBase64));
+      .run(attachment.id, Buffer.from(value.contentBase64, "base64"));
   }
 
   lookup(key: string): PersistedCanopyAttachment | undefined {

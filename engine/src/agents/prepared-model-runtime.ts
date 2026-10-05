@@ -1,9 +1,11 @@
 /** Lifecycle-owned auth/model discovery snapshots for agent runs. */
 import { toStringifiedError } from "@branch/normalization-core/error-coercion";
 import type { BranchConfig } from "../config/types.branch.js";
+import { runOutsideSqliteReadOnlyWorkerScope } from "../infra/sqlite-readonly-worker-context.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { registerRuntimeAuthProfileStoreMutationListener } from "./auth-profiles/runtime-snapshots.js";
 import type { ModelCatalogSnapshot } from "./model-catalog.types.js";
+import { assertPreparedModelRuntimeAdmissionCanWait } from "./prepared-model-runtime-admission.js";
 import {
   PreparedModelRuntimeAuthPublicationOwner,
   invalidatePreparedModelRuntimeOwnersForAuthMutation,
@@ -24,7 +26,6 @@ import {
   retirePreparedModelRuntimeGeneration,
 } from "./prepared-model-runtime.lifecycle.js";
 import {
-  PreparedModelRuntimeOwnerNotPublishedError,
   PreparedModelRuntimePublicationSupersededError,
   hasSameLifecycleInput,
   normalizeOptionalDir,
@@ -32,8 +33,7 @@ import {
   ownerKey,
   publishPreparedModelRuntimeOwnerBatch,
   publishModelRuntimeSnapshot,
-  rebindInputToCommittedConfiguredOwner,
-  resolveConfiguredOwnerPublication,
+  resolveConfiguredOwner,
   readPublishedModelRuntimeSnapshot,
   type PreparedModelRuntimeOwner,
   type PreparedModelRuntimeInput,
@@ -52,7 +52,7 @@ import {
 import { PreparedModelRuntimePublicationQueue } from "./prepared-model-runtime.publication-queue.js";
 import {
   createPublishedModelRuntimeAccess,
-  projectPublishedModelRuntimeOwner,
+  loadPreparedModelRuntimeOwner,
   refreshPublishedModelRuntimeCatalog,
   retainPublishedModelRuntimeOwner,
 } from "./prepared-model-runtime.published-owner.js";
@@ -67,6 +67,8 @@ import { closeEphemeralPreparedModelRuntimeResources } from "./prepared-model-ru
 import {
   acquireRetainedAgentRuntimeCleanupRegistries,
   PreparedModelRuntimeOwnerRetention,
+  retirePreparedModelRuntimeAgentOwners,
+  type AgentRuntimeRetirement,
 } from "./prepared-model-runtime.retention.js";
 import { setPreparedModelRuntimeStartupStatus } from "./prepared-model-runtime.startup-status.js";
 import { PreparedModelRuntimeStartup } from "./prepared-model-runtime.startup.js";
@@ -120,12 +122,12 @@ const getAdmissionReplacement = () => modelRuntimeDrain.pending ?? getBlockingRe
 
 const replyDispatchPublication = new PreparedReplyDispatchPublicationOwner({
   isGatewayLifecycleActive: () => gatewayLifecycleActive,
-  getPendingOwnerPublication: (agentId) =>
-    resolveConfiguredOwnerPublication(owners, {
+  getConfiguredOwner: (agentId) =>
+    resolveConfiguredOwner(owners, {
       agentId,
       agentDir: ".",
       config: {},
-    }).pending,
+    }),
   getPendingReplacement: () => getAdmissionReplacement()?.promise,
 });
 export const loadPublishedGatewayReplyDispatchRuntime = replyDispatchPublication.load;
@@ -185,18 +187,35 @@ async function closeModelRuntime(error: Error): Promise<void> {
   }
 }
 
+/** Retire deleted-agent publications before closing readers that their builds can reopen. */
+export async function retirePreparedModelRuntimeAgent(
+  target: AgentRuntimeRetirement,
+): Promise<void> {
+  await retirePreparedModelRuntimeAgentOwners(target, preparedModelRuntimeLeaseContext);
+}
+
 /** Resolves a published owner or activates a standalone lifecycle owner. */
 export async function loadPreparedModelRuntimeSnapshot(
   rawInput: PreparedModelRuntimeInput,
 ): Promise<PreparedModelRuntimeSnapshot> {
-  return await loadPreparedModelRuntimeOwner(rawInput, (_owner, snapshot) => snapshot);
+  return await loadPreparedModelRuntimeOwner(
+    rawInput,
+    preparedModelRuntimeLeaseContext,
+    activateStandalonePreparedModelRuntime,
+    (_owner, snapshot) => snapshot,
+  );
 }
 
 /** Borrows the selected publication without changing its activation or retention policy. */
 export async function acquirePublishedPreparedModelRuntime(
   rawInput: PreparedModelRuntimeInput,
 ): Promise<PreparedModelRuntimeLease> {
-  return await loadPreparedModelRuntimeOwner(rawInput, retainPublishedModelRuntimeOwner);
+  return await loadPreparedModelRuntimeOwner(
+    rawInput,
+    preparedModelRuntimeLeaseContext,
+    activateStandalonePreparedModelRuntime,
+    retainPublishedModelRuntimeOwner,
+  );
 }
 
 /** Retains existing execution owners, including switched-away models, without loading plugins. */
@@ -205,62 +224,6 @@ export async function acquireAgentRuntimeCleanupRegistries(agentDir: string) {
     normalizeOptionalDir(agentDir),
     preparedModelRuntimeLeaseContext,
   );
-}
-
-async function loadPreparedModelRuntimeOwner<T>(
-  rawInput: PreparedModelRuntimeInput,
-  project: (owner: PreparedModelRuntimeOwner, snapshot: PreparedModelRuntimeSnapshot) => T,
-): Promise<T> {
-  const assertLifetime = captureModelRuntimeLifetime();
-  let input = normalizePreparedModelRuntimeInput({
-    ...rawInput,
-    preserveWorkspaceDirOnRefresh:
-      rawInput.preserveWorkspaceDirOnRefresh ?? rawInput.workspaceDir !== undefined,
-  });
-  for (;;) {
-    assertLifetime();
-    const replacement = getAdmissionReplacement();
-    if (replacement) {
-      await replacement.promise;
-      if (getAdmissionReplacement()) {
-        continue;
-      }
-      input = rebindInputToCommittedConfiguredOwner(owners, input);
-      continue;
-    }
-    try {
-      return await projectPublishedModelRuntimeOwner(
-        input,
-        preparedModelRuntimeLeaseContext,
-        project,
-      );
-    } catch (error) {
-      if (!(error instanceof PreparedModelRuntimeOwnerNotPublishedError)) {
-        throw error;
-      }
-    }
-    if (getAdmissionReplacement()) {
-      continue;
-    }
-    assertLifetime();
-    const activated = await activateStandalonePreparedModelRuntime(input);
-    if (getAdmissionReplacement()) {
-      continue;
-    }
-    try {
-      return await projectPublishedModelRuntimeOwner(
-        input,
-        preparedModelRuntimeLeaseContext,
-        project,
-      );
-    } catch (error) {
-      if (!activated || !(error instanceof PreparedModelRuntimeOwnerNotPublishedError)) {
-        throw error;
-      }
-      // A concurrent publication boundary may retire the standalone owner between build and read.
-      // Retry only after proving that no replacement gate owns the next generation.
-    }
-  }
 }
 
 /** Returns an already-published generation without starting discovery. */
@@ -288,6 +251,7 @@ export async function publishPreparedModelRuntimeSnapshot(
   const existing = owners.get(ownerKey(input));
   if (existing?.pending) {
     if (!options.force && hasSameLifecycleInput(existing.input, input)) {
+      assertPreparedModelRuntimeAdmissionCanWait(existing);
       return await existing.pending;
     }
   } else {
@@ -378,6 +342,7 @@ async function activateStandalonePreparedModelRuntimeNow(
       }
       const replacement = pendingModelRuntimeReplacement;
       if (replacement) {
+        assertPreparedModelRuntimeAdmissionCanWait();
         await replacement.promise;
       }
     }
@@ -390,6 +355,7 @@ const preparedModelRuntimeLeaseContext = {
   agentBuildCompletions,
   retainedDirectRunOwners,
   retainedGatewayRunOwners,
+  replyDispatchPublication,
   getBuildTimeoutMs: () => modelRuntimeBuildTimeoutMs,
   getGatewayLifecycleActive: () => gatewayLifecycleActive,
   getPendingReplacement: getAdmissionReplacement,
@@ -738,7 +704,13 @@ function invalidateForAuthMutation(event: PreparedModelRuntimeAuthMutation): voi
   };
   // Auth revocation fences its affected owners immediately; publication must wait for the
   // plugin reservation to settle without occupying the queue needed by replacement recovery.
-  const publication = modelRuntimeDrain.runAfter(publicationQueue, publish);
+  // Republication belongs to the model runtime lifetime, not to the mutating caller: an agent's
+  // startup preparation mutates auth inside its own SQLite reader scope, which closes before this
+  // queued build reads. Inheriting it failed the build and stranded every invalidated owner
+  // outside reply dispatch until restart.
+  const publication = runOutsideSqliteReadOnlyWorkerScope(() =>
+    modelRuntimeDrain.runAfter(publicationQueue, publish),
+  );
   notifyPreparedModelRuntimePublication({ phase: "invalidated" });
   void publication.catch((error: unknown) => {
     if (!authPublication.isCurrent(transaction)) {

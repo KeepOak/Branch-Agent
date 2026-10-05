@@ -1,6 +1,7 @@
 // Settings › Saved sign-ins (DESIGN-SPEC §4.7.13): the password manager (secrets.providers + its plugin), the keys
 // Branch holds (secrets.store.list / set / delete), key sources, plain-text findings from the settings and
 // secrets.reload. Filling website sign-ins from a password manager needs an engine fill list, so that list says why.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, useConfig, type RowEntry } from "../kit";

@@ -1,5 +1,7 @@
 // Explicit schema exports keep public protocol changes reviewable.
 export * from "./schema/sessions-goal.js";
+export * from "./schema/contacts.js";
+export * from "./schema/session-processes.js";
 export * from "./schema/sessions-provider-review.js";
 export * from "./schema/human-mentions.js";
 export * from "./schema/presence.js";
@@ -185,6 +187,8 @@ export {
   SessionFileRelevanceSchema,
   SessionsFilesGetParamsSchema,
   SessionsFilesGetResultSchema,
+  SessionsFilesAssetsParamsSchema,
+  SessionsFilesAssetsResultSchema,
   SessionsFilesSetParamsSchema,
   SessionsFilesSetResultSchema,
   SessionsFilesListParamsSchema,
@@ -203,6 +207,9 @@ export {
   SessionRowSchema,
   SessionsBranchesListParamsSchema,
   SessionsBranchesListResultSchema,
+  SessionsSegmentsListParamsSchema,
+  SessionsSegmentsListResultSchema,
+  SessionSegmentSchema,
   SessionsBranchesSwitchParamsSchema,
   SessionsBranchesSwitchResultSchema,
   SessionsForkParamsSchema,
@@ -418,6 +425,8 @@ export {
   ChannelsStatusResultSchema,
   ChannelsPairingListParamsSchema,
   ChannelsPairingListResultSchema,
+  ChannelsPairingCliListResultSchema,
+  ChannelsPairingCodeApproveResultSchema,
   ChannelsPairingApproveParamsSchema,
   ChannelsPairingApproveResultSchema,
   ChannelsPairingDismissParamsSchema,
@@ -440,6 +449,8 @@ export {
   AgentsFilesListResultSchema,
   AgentsFilesGetParamsSchema,
   AgentsFilesGetResultSchema,
+  MemoryExportParamsSchema,
+  MemoryExportResultSchema,
   AgentsFilesSetParamsSchema,
   AgentsFilesSetResultSchema,
   TranscriptSessionSummarySchema,
@@ -656,6 +667,10 @@ export {
   WorktreesRestoreParamsSchema,
   WorktreesGcParamsSchema,
   WorktreesGcResultSchema,
+  WorktreesRecoverRemovalParamsSchema,
+  WorktreesRecoverRemovalResultSchema,
+  WorktreesRetireSnapshotParamsSchema,
+  WorktreesRetireSnapshotResultSchema,
   WorktreesBranchesParamsSchema,
   WorktreeBranchSchema,
   WorktreeRepositoryStatusSchema,

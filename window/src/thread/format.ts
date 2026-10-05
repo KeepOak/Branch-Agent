@@ -63,10 +63,13 @@ function joinWords(parts: string[]): string {
 }
 
 /** The Steps fold's summary: the step at work while it runs, then what was done ("Ran 2 commands and read a file"). */
-export function stepsSummary(steps: readonly Step[]): string {
+export function stepsSummary(steps: readonly Step[], run?: { title: string; durationMs?: number }): string {
   const running = steps.find((s) => s.status === "running");
   if (running) {
     return stepLabel(running);
+  }
+  if (run?.title) {
+    return [run.title, steps.length > 1 ? `${steps.length} steps` : "1 step", run.durationMs ? formatDuration(run.durationMs) : ""].filter(Boolean).join(" · ");
   }
   const commands = steps.filter((s) => s.tool === "exec" || s.tool === "process").length;
   const reads = steps.filter((s) => s.tool === "read").length;

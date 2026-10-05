@@ -2,6 +2,7 @@
 // sign-in (config gateway.bind / port / auth / tailscale / controlUi), restarting it (gateway.restart.request),
 // a live ping measured by this page, exposure, limits and another computer (gateway.remote.*).
 // Run mode, the tray and quitting belong to the Branch app.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Field, Hint, Num, Page, Pick, Sec, Seg, Status, Switch, useConfig, type RowEntry } from "../kit";

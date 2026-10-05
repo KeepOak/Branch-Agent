@@ -12,7 +12,7 @@ import type {
   ChannelOutboundPayloadContext,
   ChannelOutboundTargetRef,
 } from "../../channels/plugins/types.adapters.js";
-import type { ChannelPlugin } from "../../channels/plugins/types.plugin.js";
+import type { AnyChannelPlugin as ChannelPlugin } from "../../channels/plugins/types.plugin.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { PluginRegistry } from "../../plugins/registry-types.js";

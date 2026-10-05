@@ -1,6 +1,7 @@
 // Small parts the composer's menus share: segmented control (§5.2), switch (§5.3), menu item (§5.4).
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "./icons";
+import { shownWhy } from "../shell/shown-why";
 
 export type Seg = { id: string; label: string };
 
@@ -13,7 +14,7 @@ export function Segmented({ label, items, value, onPick, disabled, reason }: {
   reason?: string;
 }) {
   return (
-    <div className="c-seg" role="radiogroup" aria-label={label} aria-disabled={disabled || undefined} title={reason}>
+    <div className="c-seg" role="radiogroup" aria-label={label} aria-disabled={disabled || undefined} title={shownWhy(reason)}>
       {items.map((item) => (
         <button
           key={item.id}
@@ -44,7 +45,7 @@ export function Switch({ on, label, onChange, disabled, reason }: {
       role="switch"
       aria-checked={on}
       aria-label={label}
-      title={reason}
+      title={shownWhy(reason)}
       className={`c-switch${on ? " on" : ""}`}
       disabled={disabled}
       onClick={() => onChange(!on)}
@@ -84,8 +85,8 @@ export function MenuItem({ icon, lead, tick, top, label, sub, right, onClick, di
       role={checked === undefined ? "menuitem" : "menuitemradio"}
       aria-checked={checked}
       disabled={disabled}
-      title={reason}
-      aria-description={reason}
+      title={shownWhy(reason)}
+      aria-description={shownWhy(reason)}
       onClick={onClick}
     >
       {tick ? <span className="c-mi-tick">{checked ? <Icon name="check" size={15} /> : null}</span> : null}

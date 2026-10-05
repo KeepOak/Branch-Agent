@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -59,6 +59,10 @@ async function deployEngine(pnpm, scratch, identity) {
   await assertHoistedDeployment(deployment);
   assert.equal(JSON.parse(await readFile(join(deployment, "dist/build-info.json"), "utf8")).commit, identity.commit);
   assert(!(await readdir(deployment)).includes("src"), "Production deployment must not be an unbuilt source checkout");
+  // The Codex harness ships in every release: its plugin build and its runtime packages.
+  for (const file of ["dist/extensions/codex/branch.plugin.json", "node_modules/@openai/codex/package.json", "node_modules/smol-toml/package.json"]) {
+    assert((await stat(join(deployment, file))).isFile(), `Production deployment is missing ${file}`);
+  }
   return deployment;
 }
 
@@ -82,10 +86,26 @@ async function packageDesktop(scratch, output, identity) {
   const app = folders[0];
   const resources = identity.platform === "darwin" ? join(app, "Branch Agent.app/Contents/Resources") : join(app, "resources");
   const node = await bundleNode(resources, undefined, identity);
-  const filename = `branch-desktop-${identity.version}-${identity.platform}-${identity.arch}.${identity.platform === "win32" ? "zip" : "tar.gz"}`;
-  const tar = process.platform === "win32" ? join(process.env.SystemRoot, "System32/tar.exe") : "tar";
-  await run(tar, identity.platform === "win32" ? ["-a", "-cf", join(output, filename), "-C", app, "."] : ["-czf", join(output, filename), "-C", app, "."]);
-  return { node, electron, electronVersion: identity.electronVersion, nodePath: join(resources, "node", identity.platform === "win32" ? "node.exe" : "node") };
+  // The desktop update component: app.asar alone, plus the whole app (the bootstrap package) for Electron changes.
+  const asar = join(scratch, "desktop-asar"); await mkdir(asar);
+  await copyFile(join(resources, "app.asar"), join(asar, "app.asar"));
+  const desktop = { app: asar, electronVersion: identity.electronVersion };
+  if (identity.platform === "darwin") {
+    // The .app bundle's framework symlinks need the system tar; macOS takes Electron changes from this package.
+    await run("tar", ["-czf", join(output, `branch-desktop-${identity.version}-${identity.platform}-${identity.arch}.tar.gz`), "-C", app, "."]);
+  } else desktop.runtime = app;
+  return { node, electron, electronVersion: identity.electronVersion, desktop,
+    nodePath: join(resources, "node", identity.platform === "win32" ? "node.exe" : "node") };
+}
+
+/** CI starts the native build before the shared renderer exists; packaging waits for its ready file. */
+async function waitForSharedWindow() {
+  const ready = process.env.BRANCH_RELEASE_WINDOW_READY;
+  if (!ready) return;
+  for (const end = Date.now() + 12 * 60_000; ; await new Promise(next => setTimeout(next, 2000))) {
+    try { if ((await stat(ready)).isFile()) return; } catch (error) { if (error.code !== "ENOENT") throw error; }
+    assert(Date.now() < end, "The shared renderer never arrived");
+  }
 }
 
 export async function buildRelease(mode, output, windowDirectory) {
@@ -103,8 +123,10 @@ export async function buildRelease(mode, output, windowDirectory) {
     // The named feature suites already gate every pull request and main push (feature-batch-checks.yml).
     await prepareEngine(pnpm);
     const engine = await deployEngine(pnpm, scratch, identity);
-    const manifest = await makeComponentRelease({ ...identity, sourceCommit: identity.commit, tag: `v${identity.version}`, engine, window: windowDirectory, output });
-    const { nodePath, ...runtime } = await packageDesktop(scratch, output, identity);
+    // Packaged first, so the manifest's desktop component is the same app.asar as the bootstrap package.
+    const { nodePath, desktop, ...runtime } = await packageDesktop(scratch, output, identity);
+    await waitForSharedWindow();
+    const manifest = await makeComponentRelease({ ...identity, sourceCommit: identity.commit, tag: `v${identity.version}`, engine, window: windowDirectory, desktop, output });
     const source = await readFile(join(engineRoot, "packages/gateway-protocol/src/version.ts"), "utf8");
     const protocol = { min: Number(source.match(/MIN_CLIENT_PROTOCOL_VERSION = (\d+)/)?.[1]), max: Number(source.match(/PROTOCOL_VERSION = (\d+)/)?.[1]) };
     assert(Number.isInteger(protocol.min) && Number.isInteger(protocol.max), "Missing source gateway protocol levels");

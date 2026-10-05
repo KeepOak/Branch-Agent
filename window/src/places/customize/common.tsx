@@ -1,7 +1,9 @@
 // Shared pieces for Customize's Tools, Specialists, Channels and Everywhere tabs (preview .t9, .sec, .chip6, .seg).
 // Config writes follow the engine's config.patch contract: a minimal merge-patch, the file's hash as baseHash, and
 // replacePaths for any array that shrinks (engine/src/gateway/server-methods/config.ts).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { list, rec, str, type Rec } from "../../composer/engine";
 import { errorText, trunkName, type Trunk } from "../library/data";
@@ -92,9 +94,9 @@ export function withItem(items: string[], item: string, present: boolean): strin
 export function Sec({ title, children, testid }: { title: string; children: ReactNode; testid?: string }) {
   return <section className="cz-sec" data-testid={testid}><h2>{title}</h2>{children}</section>;
 }
-/** A control the engine cannot carry out yet: drawn greyed, its reason in the title. */
+/** A control the engine cannot carry out yet: drawn greyed, its reason in the title (a developer note stays in data-reason only). */
 export function Grey({ children, reason, className = "btn sm" }: { children: ReactNode; reason: string; className?: string }) {
-  return <button type="button" className={className} disabled title={reason} data-reason={reason}>{children}</button>;
+  return <button type="button" className={className} disabled title={shownWhy(reason)} data-reason={reason}>{children}</button>;
 }
 export function Dot({ on }: { on: boolean }) {
   return <span className={on ? "cz-dot on" : "cz-dot"} aria-hidden="true" />;
@@ -107,7 +109,7 @@ export function Pill({ tone, children, title }: { tone: "ok" | "warn" | "bad" | 
 export function WhoChips({ trunks, may, toggle, reason }: { trunks: Trunk[]; may: (id: string) => boolean; toggle?: (id: string, on: boolean) => void; reason?: string }) {
   return <div className="cz-chips" role="group" aria-label="Which Trunks may use it">{trunks.map(t => {
     const on = may(t.id);
-    return <button key={t.id} type="button" className="cz-chip" aria-pressed={on} disabled={!toggle} title={toggle ? undefined : reason} onClick={() => toggle?.(t.id, !on)}>{trunkName(t)}</button>;
+    return <button key={t.id} type="button" className="cz-chip" aria-pressed={on} disabled={!toggle} title={toggle ? undefined : shownWhy(reason)} onClick={() => toggle?.(t.id, !on)}>{trunkName(t)}</button>;
   })}</div>;
 }
 
@@ -125,7 +127,7 @@ export function PermRow({ name, value, change, disabled }: { name: string; value
 
 /** A small segmented control (preview .seg with aria-pressed buttons). */
 export function Seg<T extends string>({ label, value, options, change, disabled }: { label: string; value: T; options: { id: T; name: string }[]; change: (v: T) => void; disabled?: string }) {
-  return <div className="cz-seg" role="radiogroup" aria-label={label}>{options.map(o => <button key={o.id} type="button" role="radio" aria-checked={value === o.id} disabled={!!disabled} title={disabled} onClick={() => change(o.id)}>{o.name}</button>)}</div>;
+  return <div className="cz-seg" role="radiogroup" aria-label={label}>{options.map(o => <button key={o.id} type="button" role="radio" aria-checked={value === o.id} disabled={!!disabled} title={shownWhy(disabled)} onClick={() => change(o.id)}>{o.name}</button>)}</div>;
 }
 
 /** Relative words for a past time: "just now", "3 hours ago", "yesterday". */

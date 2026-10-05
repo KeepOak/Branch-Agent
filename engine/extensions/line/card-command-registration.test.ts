@@ -1,4 +1,5 @@
 // Line tests cover which channels the bundled /card registration is offered on.
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import type { BranchPluginCommandDefinition } from "branch/plugin-sdk/plugin-entry";
 import { createTestPluginApi } from "branch/plugin-sdk/plugin-test-api";
 import { describe, expect, it } from "vitest";

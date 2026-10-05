@@ -1,6 +1,8 @@
 // Trunk editor › Look (preview 12-look picker, 15 emoji face, 30-trunks §4.4.3): the looks with real art, an emoji face,
 // Name, What it's for. Colour, Shape and Eyes are the pebble's and the engine keeps none of them, so they are greyed.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { Face } from "../../face/Face";
 import { EMOJI, LOOKS } from "./model";
 import type { Draft } from "./api";
@@ -55,19 +57,19 @@ function Emojis({ draft, set }: { draft: Draft; set: (d: Partial<Draft>) => void
 function PebbleFields({ classic }: { classic: boolean }) {
   return (
     <>
-      <div className="tk-field" title={PEBBLE_WHY}>
+      <div className="tk-field" title={shownWhy(PEBBLE_WHY)}>
         <span className="tk-label">Colour</span>
         <div className="tk-swatches">{COLOURS.map((c) => <button key={c} type="button" className="tk-swatch" style={{ background: c }} aria-label={`Colour ${c}`} disabled />)}</div>
       </div>
-      {classic && <div className="tk-field" title={PEBBLE_WHY}>
+      {classic && <div className="tk-field" title={shownWhy(PEBBLE_WHY)}>
         <span className="tk-label">Shape</span>
-        <div className="tk-shapes">{SHAPES.map((s, i) => <button key={s} type="button" className="tk-shape" aria-label={s} title={`${s}. ${PEBBLE_WHY}`} disabled><span style={{ borderRadius: RADII[i] }} /></button>)}</div>
+        <div className="tk-shapes">{SHAPES.map((s, i) => <button key={s} type="button" className="tk-shape" aria-label={s} title={shownWhy(PEBBLE_WHY) ? `${s}. ${PEBBLE_WHY}` : s} disabled><span style={{ borderRadius: RADII[i] }} /></button>)}</div>
       </div>}
-      {classic && <div className="tk-field" title={PEBBLE_WHY}>
+      {classic && <div className="tk-field" title={shownWhy(PEBBLE_WHY)}>
         <span className="tk-label">Eyes</span>
         <span className="tk-seg">{["Round", "Wide", "Sleepy"].map((e) => <button key={e} type="button" disabled>{e}</button>)}</span>
       </div>}
-      <small className="tk-why">{PEBBLE_WHY}</small>
+      {shownWhy(PEBBLE_WHY) && <small className="tk-why">{shownWhy(PEBBLE_WHY)}</small>}
     </>
   );
 }

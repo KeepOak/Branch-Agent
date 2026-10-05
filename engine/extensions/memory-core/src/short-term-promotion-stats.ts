@@ -66,18 +66,7 @@ function trimRingsStatsEntries(
   entries: ShortTermRingsStatsEntry[],
   compare: (a: ShortTermRingsStatsEntry, b: ShortTermRingsStatsEntry) => number,
 ): ShortTermRingsStatsEntry[] {
-  const selected: ShortTermRingsStatsEntry[] = [];
-  for (const entry of entries) {
-    const match = selected.findIndex((current) => compare(entry, current) < 0);
-    const insertAt = match < 0 ? selected.length : match;
-    if (insertAt < RINGS_ENTRY_LIST_LIMIT) {
-      selected.splice(insertAt, 0, entry);
-      if (selected.length > RINGS_ENTRY_LIST_LIMIT) {
-        selected.pop();
-      }
-    }
-  }
-  return selected;
+  return entries.toSorted(compare).slice(0, RINGS_ENTRY_LIST_LIMIT);
 }
 
 export async function loadShortTermPromotionRingsStats(params: {
@@ -118,9 +107,9 @@ export async function loadShortTermPromotionRingsStats(params: {
       continue;
     }
     const range = parseEntryRangeFromKey(entryKey, entry.startLine, entry.endLine);
-    const recallCount = Math.max(0, toFiniteNonNegativeInt(entry.recallCount));
-    const dailyCount = Math.max(0, toFiniteNonNegativeInt(entry.dailyCount));
-    const groundedCount = Math.max(0, toFiniteNonNegativeInt(entry.groundedCount));
+    const recallCount = toFiniteNonNegativeInt(entry.recallCount);
+    const dailyCount = toFiniteNonNegativeInt(entry.dailyCount);
+    const groundedCount = toFiniteNonNegativeInt(entry.groundedCount);
     const totalEntrySignalCount = recallCount + dailyCount + groundedCount;
     const normalizedEntryPath = normalizeMemoryPathForWorkspace(workspaceDir, entry.path);
     const detail: ShortTermRingsStatsEntry = {
@@ -169,8 +158,8 @@ export async function loadShortTermPromotionRingsStats(params: {
     if (!detail) {
       continue;
     }
-    const lightHits = Math.max(0, toFiniteNonNegativeInt(phaseEntry.lightHits));
-    const remHits = Math.max(0, toFiniteNonNegativeInt(phaseEntry.remHits));
+    const lightHits = toFiniteNonNegativeInt(phaseEntry.lightHits);
+    const remHits = toFiniteNonNegativeInt(phaseEntry.remHits);
     lightPhaseHitCount += lightHits;
     remPhaseHitCount += remHits;
     phaseSignalCount += lightHits + remHits;
@@ -287,12 +276,10 @@ export async function readLightStagedKeys(params: {
     if (entry.lightHits <= 0) {
       continue;
     }
-    const lastLightMs = Date.parse(entry.lastLightAt ?? "");
-    const lastRemMs = Date.parse(entry.lastRemAt ?? "");
-    const lastRemConsideredMs = Date.parse(entry.lastRemConsideredAt ?? "");
+    const lastLightMs = parseStoreTimestampMs(entry.lastLightAt);
     const lastConsumedMs = Math.max(
-      Number.isFinite(lastRemMs) ? lastRemMs : Number.NEGATIVE_INFINITY,
-      Number.isFinite(lastRemConsideredMs) ? lastRemConsideredMs : Number.NEGATIVE_INFINITY,
+      parseStoreTimestampMs(entry.lastRemAt),
+      parseStoreTimestampMs(entry.lastRemConsideredAt),
     );
     const hasPendingLightSignal = Number.isFinite(lastLightMs)
       ? lastLightMs > lastConsumedMs

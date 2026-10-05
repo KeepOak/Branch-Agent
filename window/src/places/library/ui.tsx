@@ -1,3 +1,4 @@
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { Icon } from "../../shell/icons";
 import { useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
