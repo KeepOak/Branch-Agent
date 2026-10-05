@@ -69,6 +69,10 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
 }
 
 /** Polls the gateway's /readyz until it answers 200, the child exits, or the time runs out. */
+export class GatewayReadinessTimeoutError extends Error {
+  constructor() { super("the engine is still running but did not become ready in time; see gateway.log"); }
+}
+
 export async function waitForReady(cfg: DesktopConfig, child: ChildProcess, ms: number): Promise<void> {
   const end = Date.now() + ms;
   while (Date.now() < end) {
@@ -85,7 +89,12 @@ export async function waitForReady(cfg: DesktopConfig, child: ChildProcess, ms: 
     }
     await new Promise((r) => setTimeout(r, Math.max(0, Math.min(500, end - Date.now()))));
   }
-  throw new Error("the engine did not become ready in time; see gateway.log");
+  // A live, slow gateway is not proof that the newly staged release is bad.
+  // Only an actual child exit should mark that release rejected.
+  if (child.exitCode !== null || child.signalCode !== null) {
+    throw new Error(`the engine exited with code ${child.exitCode}; see gateway.log`);
+  }
+  throw new GatewayReadinessTimeoutError();
 }
 
 /** Stops the gateway and its own child processes by its PID only. */
