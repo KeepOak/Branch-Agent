@@ -53,12 +53,19 @@ export function useContacts(session: SaplingSession, ready: boolean): [Contact[]
     // A new connection is a new engine: no contact is working until contacts.list says so.
     setContacts((all) => (all.some((c) => c.working) ? all.map((c) => (c.working ? { ...c, working: false } : c)) : all));
     refresh();
+    // Read shortly after the event, as ConversationList.refreshSoon does: a run's final chat event can land
+    // just before the engine drops it from its live registry.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const soon = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; refresh(); }, 150);
+    };
     const off = session.onGatewayEvent((event, payload) => {
-      if (event === "contacts.changed" || event === "agents.changed" || event === "config.changed") refresh();
+      if (event === "contacts.changed" || event === "agents.changed" || event === "config.changed") soon();
       // A run ending clears its ring the way the conversation list does (ConversationList.onEvent).
-      else if (event === "chat" && ["final", "error", "aborted"].includes(str(rec(payload).state))) refresh();
+      else if (event === "chat" && ["final", "error", "aborted"].includes(str(rec(payload).state))) soon();
     });
-    return () => { off(); refresh.cancel(); };
+    return () => { off(); if (timer) clearTimeout(timer); refresh.cancel(); };
   }, [session, ready, refresh]);
   return [ready ? contacts : [], refresh, ready && loaded];
 }

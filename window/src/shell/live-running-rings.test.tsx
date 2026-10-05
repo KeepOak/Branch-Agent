@@ -41,8 +41,11 @@ function fakeEngine(running: string[]) {
     }
     return {};
   });
-  const sapling = { request, onGatewayEvent: () => () => undefined, getSnapshot: () => ({ sessionKey: null }) } as unknown as SaplingSession;
-  return { engine, sapling };
+  const listeners = new Set<(event: string, payload: unknown) => void>();
+  const emit = (event: string, payload: unknown) => listeners.forEach((listener) => listener(event, payload));
+  const onGatewayEvent = (listener: (event: string, payload: unknown) => void) => { listeners.add(listener); return () => listeners.delete(listener); };
+  const sapling = { request, onGatewayEvent, getSnapshot: () => ({ sessionKey: null }) } as unknown as SaplingSession;
+  return { engine, sapling, emit };
 }
 
 function Shell({ sapling, ready }: { sapling: SaplingSession; ready: boolean }) {
@@ -88,5 +91,22 @@ describe("running state after a reconnect", () => {
     expect(rings(container)).toHaveLength(1);
     expect(rings(container)[0]).toContain("Elm");
     expect(running(container)).toBe("1 running");
+  });
+
+  it("drops a Trunk's ring when its run ends, after the engine has let the run go", async () => {
+    const { engine, sapling, emit } = fakeEngine(["oak"]);
+    const container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root!.render(<Shell sapling={sapling} ready />));
+    expect(rings(container)).toHaveLength(1);
+    engine.running = [];
+    await act(async () => {
+      emit("chat", { state: "final", sessionKey: "agent:oak:main" });
+      emit("sessions.changed", { sessionKey: "agent:oak:main" });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    expect(rings(container)).toEqual([]);
+    expect(running(container)).toBe("0 running");
   });
 });
