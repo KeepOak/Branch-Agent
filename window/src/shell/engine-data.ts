@@ -9,7 +9,7 @@ import { NO_PEOPLE, type ListPeople } from "./list-model";
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
-export type Trunk = { id: string; name: string; isDefault: boolean; avatar?: string; theme?: string; paused?: boolean };
+export type Trunk = { id: string; name: string; isDefault: boolean; hidden?: boolean; avatar?: string; theme?: string; paused?: boolean };
 export type Trunks = { list: Trunk[]; defaultId: string | null; loaded?: boolean };
 
 const EMPTY_LIST: ConversationsSnapshot = { rows: [], loaded: false, error: null };
@@ -72,6 +72,7 @@ export function readTrunks(result: unknown): Trunks {
       id: str(a.id),
       name: str(rec(a.identity).name) || str(a.name) || str(a.id),
       isDefault: str(a.id) === defaultId || a.default === true,
+      ...(a.hidden === true ? { hidden: true } : {}),
       avatar: str(rec(a.identity).avatar) || str(a.avatar) || undefined,
       ...(str(rec(a.identity).theme) ? { theme: str(rec(a.identity).theme) } : {}),
       ...(a.paused === true ? { paused: true } : {}),

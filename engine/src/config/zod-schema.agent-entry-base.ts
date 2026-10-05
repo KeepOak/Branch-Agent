@@ -95,6 +95,8 @@ export const AgentEntryBaseSchema = z.strictObject({
   id: z.string(),
   name: z.string().optional(),
   description: z.string().optional(),
+  /** Hidden from navigation and pickers, but still eligible for routing. */
+  hidden: z.boolean().optional(),
   workspace: z.string().optional(),
   cwd: z.string().optional(),
   agentDir: z.string().optional(),

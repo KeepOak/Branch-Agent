@@ -57,6 +57,11 @@ describe("New group chat", () => {
     expect(c.people).toEqual([{ id: "p-2", name: "Rowan" }]);
     expect(c.peers).toEqual([{ id: "helper", name: "helper" }]);
   });
+  it("omits a hidden default from the picker and chooses a visible Trunk", () => {
+    const choices = readChoices({ defaultId: "main", agents: [{ id: "main", hidden: true }, { id: "birch", identity: { name: "Birch" } }] }, {}, {}, {});
+    expect(choices.trunks).toEqual([{ id: "birch", name: "Birch" }]);
+    expect(choices.defaultId).toBe("birch");
+  });
 
   it("makes the conversation with the chosen Trunk, adds each person, and opens it", async () => {
     const request = vi.fn(async (method: string) => responses[method]);

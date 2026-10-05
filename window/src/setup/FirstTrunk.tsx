@@ -7,7 +7,7 @@ import { SetupShell } from "./SetupShell";
 export function FirstTrunk({ engine, onCreated }: { engine: WindowEngine; onCreated: (id: string, name: string) => void }) {
   const formId = useId();
   const submitting = useRef(false);
-  const [name, setName] = useState("");
+  const [name, setName] = useState("Branch Agent");
   const [created, setCreated] = useState<{ id: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");

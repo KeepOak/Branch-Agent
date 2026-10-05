@@ -13,13 +13,14 @@ import { canWrite, loadTrunkData, useLoad, WRITE_WHY, type TrunkData } from "./d
 import { LookTab, PEBBLE_WHY, useNewLooks } from "./LookTab";
 import { readMay } from "./may";
 import { MayTab } from "./MayTab";
-import { errorText, lookOf } from "./model";
+import { entryOf, errorText, lookOf, str } from "./model";
 import { TrunkFace } from "./TrunkFace";
 import { Layer } from "./layer";
+import { TrunkFiles } from "./TrunkFiles";
 import "./trunk.css";
 
-export type EditorTab = "look" | "may" | "computers";
-const TABS: [EditorTab, string][] = [["look", "Look"], ["may", "What it may do"], ["computers", "Its computers"]];
+export type EditorTab = "look" | "may" | "computers" | "instructions";
+const TABS: [EditorTab, string][] = [["look", "Look"], ["may", "What it may do"], ["computers", "Its computers"], ["instructions", "Instructions"]];
 
 export type TrunkEditorProps = {
   engine: WindowEngine;
@@ -35,7 +36,7 @@ export type TrunkEditorProps = {
 function draftOf(data: TrunkData, id: string): Draft | null {
   const row = data.roster.agents.find((a) => a.id === id);
   if (!row) return null;
-  return { name: row.name, theme: row.theme, look: lookOf(row.avatar, row.name), emoji: row.emoji, model: row.model, may: readMay(data.snap, id) };
+  return { name: row.name, theme: row.theme, description: str(entryOf(data.snap, id).description), color: row.color, look: lookOf(row.avatar, row.name), emoji: row.emoji, model: row.model, may: readMay(data.snap, id) };
 }
 
 function TabRow({ tab, setTab }: { tab: EditorTab; setTab: (t: EditorTab) => void }) {
@@ -100,7 +101,7 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
     <Layer><Dialog title={`Edit ${initial.name}`} wide onClose={onClose} footer={footer} testid="trunk-editor">
       <div className="tk-editor">
         <div className="tk-big">
-          <TrunkFace name={draft.name || initial.name} look={draft.look} emoji={draft.emoji} size={84} draft />
+          <TrunkFace name={draft.name || initial.name} look={draft.look} emoji={draft.emoji} color={draft.color} size={84} draft />
           <button type="button" className="btn sm" disabled title={shownWhy(PEBBLE_WHY)}>Shuffle</button>
         </div>
         <div className="tk-col">
@@ -109,6 +110,7 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
             {tab === "look" && <LookTab draft={draft} set={set} fresh={fresh} />}
             {tab === "may" && <MayTab engine={engine} agentId={agentId} name={initial.name} draft={draft} models={data.models} level={level} set={set} openSettings={openSettings} />}
             {tab === "computers" && <ComputersTab name={initial.name} draft={draft} computers={data.computers} set={set} openSettings={openSettings} />}
+            {tab === "instructions" && <TrunkFiles engine={engine} agentId={agentId} />}
           </div>
           {data.partial.map((p) => <p key={p} className="tk-hint" role="status">{p}</p>)}
           {error && <p className="tk-error" role="alert">{error}</p>}

@@ -5,21 +5,21 @@ import { Face } from "../../face/Face";
 import { trunkAppearance } from "../../face/appearance";
 import { lookOf, type TrunkRow } from "./model";
 
-type Props = { name: string; look: string; emoji: string; size: number; draft?: boolean };
+type Props = { name: string; look: string; emoji: string; color?: string; size: number; draft?: boolean };
 
 /** `draft`: the face being chosen in the editor, so the shell's saved look must not show through. */
-export function TrunkFace({ name, look, emoji, size, draft }: Props) {
+export function TrunkFace({ name, look, emoji, color, size, draft }: Props) {
   const appearance = look === "classic" ? undefined : trunkAppearance(`branch:${look}`, name);
   if (appearance) return <CharacterFace appearance={appearance} size={size} label={name} />;
   if (emoji) {
     const style = { width: size, height: size, fontSize: Math.round(size * 0.56) } as CSSProperties;
-    return <span className="tk-emoji-face" style={style} role="img" aria-label={name}><i>{emoji}</i></span>;
+    return <span className="tk-emoji-face" style={{ ...style, background: color || undefined }} role="img" aria-label={name}><i>{emoji}</i></span>;
   }
-  return draft ? <span role="img" aria-label={name} className="tk-face-wrap"><Face size={size} /></span> : <Face size={size} label={name} />;
+  return draft ? <span role="img" aria-label={name} className="tk-face-wrap" style={{ background: color || undefined }}><Face size={size} /></span> : <span style={{ background: color || undefined }}><Face size={size} label={name} /></span>;
 }
 
 export function RowFace({ row, size }: { row: TrunkRow; size: number }) {
-  return <TrunkFace name={row.name} look={lookOf(row.avatar, row.name)} emoji={row.emoji} size={size} />;
+  return <TrunkFace name={row.name} look={lookOf(row.avatar, row.name)} emoji={row.emoji} color={row.color} size={size} />;
 }
 
 /* Line icons the shell set lacks, drawn on the same 24 px box (DESIGN-SPEC §2.9). */

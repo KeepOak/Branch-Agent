@@ -422,6 +422,7 @@ export const IdentitySchema = z
     theme: z.string().optional(),
     emoji: z.string().optional(),
     avatar: z.string().optional(),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   })
   .optional();
 

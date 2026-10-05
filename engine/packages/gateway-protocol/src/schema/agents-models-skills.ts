@@ -59,12 +59,14 @@ export const AgentSummarySchema = closedObject({
   creatorAgentId: Type.Optional(Type.Union([NonEmptyString, Type.Null()])),
   createdAt: Type.Optional(Type.Integer({ minimum: 0 })),
   name: Type.Optional(NonEmptyString),
+  hidden: Type.Optional(Type.Boolean()),
   identity: Type.Optional(
     closedObject({
       name: Type.Optional(NonEmptyString),
       theme: Type.Optional(NonEmptyString),
       emoji: Type.Optional(NonEmptyString),
       avatar: Type.Optional(NonEmptyString),
+      color: Type.Optional(NonEmptyString),
       avatarUrl: Type.Optional(NonEmptyString),
     }),
   ),

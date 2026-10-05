@@ -444,6 +444,7 @@ export async function listAgentsForGateway(
           theme: normalizeOptionalString(entry.identity.theme),
           emoji: normalizeOptionalString(entry.identity.emoji),
           avatar: httpAvatar ?? avatar,
+          color: normalizeOptionalString(entry.identity.color),
           avatarUrl,
         }
       : undefined;
@@ -519,6 +520,7 @@ export async function listAgentsForGateway(
           : {}),
         ...(options?.includeSystem ? { kind: entry.kind } : {}),
         name: entry.name,
+        ...(cfg.agents?.entries?.[id]?.hidden === true ? { hidden: true } : {}),
         identity: identityById.get(id),
         workspace,
         workspaceGit,
