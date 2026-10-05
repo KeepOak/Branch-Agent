@@ -1,6 +1,6 @@
 {
   "name": "@branch/openrouter-provider",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "private": true,
   "description": "Branch Agent OpenRouter provider plugin",
   "type": "module",

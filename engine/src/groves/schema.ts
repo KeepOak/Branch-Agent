@@ -11,6 +11,9 @@ import { isDangerousHostEnvVarName } from "../infra/host-env-security.js";
 import { isRenderableAvatarImageDataUrl } from "../shared/avatar-limits.js";
 import {
   GROVE_BOOTSTRAP_FILE_NAMES,
+  GROVE_EXTENSION_FORMATS,
+  GROVE_PACKAGE_KINDS,
+  GROVE_PACKAGE_SOURCE,
   GROVE_SCHEMA_VERSION,
   type ClawDiagnostic,
   type GroveBranchAgentSettings,
@@ -119,8 +122,8 @@ const branchExtensionSchema = z
   .object({
     id: agentId,
     kind: z.literal("plugin"),
-    format: z.enum(["branch", "claude", "codex", "cursor"]),
-    source: z.literal("clawhub"),
+    format: z.enum(GROVE_EXTENSION_FORMATS),
+    source: z.literal(GROVE_PACKAGE_SOURCE),
     ref: clawHubPackageName,
     version: exactVersion,
   })
@@ -352,8 +355,8 @@ const workspaceSchema = z
 
 const packageSchema = z
   .object({
-    kind: z.enum(["skill", "plugin"]),
-    source: z.literal("clawhub"),
+    kind: z.enum(GROVE_PACKAGE_KINDS),
+    source: z.literal(GROVE_PACKAGE_SOURCE),
     ref: clawHubPackageName,
     version: exactVersion,
   })

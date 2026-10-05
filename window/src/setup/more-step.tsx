@@ -1,6 +1,7 @@
 // Setup › Two more things (DESIGN-SPEC §4.8.1.10 and its parity adds): email, bringing another assistant's memory
 // along (migrations.memory.plan / apply), showing their conversations (the session catalogue plugins' switch),
 // a backup, and a first routine (cron.add). Each tile reads or writes the engine; nothing finishes on a timer.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { addParams, draftFromIdea } from "../places/automations/draft";
@@ -9,6 +10,7 @@ import { saveConfig, type ConfigSnapshot } from "../places/settings/adapter";
 import { MoveInDialog } from "../places/settings/set2/usage";
 import { Icon, type IconName } from "../shell/icons";
 import { ToolLogo } from "./tool-logos";
+import { shownWhy } from "../shell/shown-why";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -203,7 +205,7 @@ function RoutineTile({ engine, agentId, trunkName }: { engine: WindowEngine; age
 
 export function MoreBody({ engine, agentId, trunkName }: { engine: WindowEngine; agentId: string | null; trunkName: string }) {
   const off = (label: string, reason: string, logo: ReactNode) => (
-    <button type="button" className="btn sm" disabled title={reason}>
+    <button type="button" className="btn sm" disabled title={shownWhy(reason)}>
       {logo}
       {label}
     </button>

@@ -46,6 +46,7 @@ export type CanopyKeyedStore<T = PersistedCanopyCard> = {
 };
 
 export type CanopySessionPlacementWrite = CanopySessionPlacement & {
+  source: "operator";
   /** Undefined requires an absent row; otherwise compare the last observed revision. */
   expectedUpdatedAt?: number;
 };
@@ -54,9 +55,10 @@ export type CanopySessionsBoardStore = {
   get(boardId: string): Promise<CanopySessionsBoard>;
   update(boardId: string, patch: unknown): Promise<CanopySessionsBoard>;
   listPlacements(boardId: string): Promise<CanopySessionPlacement[]>;
-  writePlacements(
+  repairPlacements(): Promise<{ placements: number; boards: number }>;
+  writePlacement(
     boardId: string,
-    placements: CanopySessionPlacementWrite[],
+    placement: CanopySessionPlacementWrite,
     expectedSpec: CanopySessionsBoardSpec,
   ): Promise<boolean>;
 };

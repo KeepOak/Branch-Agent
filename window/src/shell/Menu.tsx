@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { shownWhy } from "./shown-why";
 import "./menu.css";
 
 // Glass menus (DESIGN-SPEC §5.4): opened at a point, Up/Down move, a letter runs its row, Right opens a
@@ -8,7 +9,7 @@ export type MenuItem =
   | { kind: "sub"; label: string; items: MenuItem[]; letter?: string; testid?: string; icon?: ReactNode }
   | { kind: "sep" }
   | { kind: "head"; label: string }
-  | { kind: "info"; label: string; sub?: string; checked?: boolean }
+  | { kind: "info"; label: string; sub?: string; checked?: boolean; icon?: ReactNode }
   /** Controls drawn inside the menu (the Icon and colour grids); they keep the menu open. */
   | { kind: "custom"; node: ReactNode };
 
@@ -110,7 +111,7 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
   if (it.kind === "info") {
     return (
       <div key={i} className="mi info" role="presentation">
-        <span className="mi-tick">{it.checked ? "✓" : ""}</span>
+        {it.icon ? <span className="mi-face">{it.icon}</span> : <span className="mi-tick">{it.checked ? "✓" : ""}</span>}
         <span className="mi-text">
           <span>{it.label}</span>
           {it.sub ? <small className="mi-s">{it.sub}</small> : null}
@@ -140,7 +141,7 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
     );
   }
   return (
-    <button key={i} type="button" role={it.checked !== undefined ? "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={it.disabled}
+    <button key={i} type="button" role={it.checked !== undefined ? "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={shownWhy(it.disabled)}
       onClick={() => {
         onClose();
         it.run();

@@ -110,13 +110,11 @@ describe("Hermes migration secret items", () => {
         defaults: {
           workspace: workspaceDir,
         },
-        list: [
-          {
-            id: "custom",
-            default: true,
+        entries: {
+          custom: {
             agentDir: customAgentDir,
           },
-        ],
+        },
       },
     } as BranchConfig;
     const plan = await provider.plan(

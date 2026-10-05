@@ -3,7 +3,7 @@ import {
   flatMapRetainedOperation,
   mapRetainedOperation,
   type RetainedOperation,
-} from "../infra/retained-operation.js";
+} from "@branch/worker-runtime/lifecycle";
 import {
   createSqliteLifecycleAggregateError,
   throwSqliteLifecycleErrors,

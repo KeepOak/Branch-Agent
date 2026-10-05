@@ -1,4 +1,3 @@
-// Tokenjuice plugin entrypoint registers its Branch Agent integration.
 import { definePluginEntry } from "branch/plugin-sdk/plugin-entry";
 import { createTokenjuiceAgentToolResultMiddleware } from "./tool-result-middleware.js";
 

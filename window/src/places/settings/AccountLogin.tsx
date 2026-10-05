@@ -55,7 +55,7 @@ export function WizardBody({ wizard: w, doneText }: { wizard: ReturnType<typeof 
 
 /** A provider sign-in in its own dialog (models.authLogin), for the setup flow; onClose says whether it signed in. */
 export function AccountLoginDialog({ engine, start, onClose }: { engine: WindowEngine; start: LoginStart; onClose: (signedIn: boolean) => void }) {
-  const w = useWizard(engine, { method: "models.authLogin", params: { agentId: start.agentId, authChoice: start.choiceId } });
+  const w = useWizard(engine, { method: start.method ?? "models.authLogin", params: { agentId: start.agentId, authChoice: start.choiceId } });
   const cancel = () => {
     w.cancel();
     onClose(false);

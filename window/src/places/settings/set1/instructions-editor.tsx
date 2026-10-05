@@ -1,6 +1,7 @@
 // Settings › Instructions & personality, the file editor (DESIGN-SPEC §4.7.5.1): Edit · Preview (· Side by side on wide
 // windows), Ctrl+S saves, "· unsaved" in the title, Escape asks before dropping changes, and "Changed on this computer"
 // with Reload / Overwrite when the engine refuses a save because the file moved on (agents.files.set expectedHash).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";

@@ -167,7 +167,9 @@ export function enableBranchCompileCache(params: {
   }
   try {
     const directory = resolveBranchCompileCacheDirectory(params);
-    enableOwnedNodeCompileCache(directory);
+    if (directory) {
+      enableOwnedNodeCompileCache(directory);
+    }
   } catch {
     // Best-effort only; never block startup.
   }

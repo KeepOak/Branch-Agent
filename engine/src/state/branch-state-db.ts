@@ -205,7 +205,7 @@ export function initializeNativeBranchStateDatabase(
 
 /** Open existing shared state without creating, migrating, chmodding, or configuring it. */
 export async function openExistingBranchStateDatabaseReadOnly(
-  options: BranchStateDatabaseOptions = {},
+  options: BranchStateDatabaseOptions & { requireCanonicalSchema?: boolean } = {},
 ): Promise<BranchStateDatabase | undefined> {
   const pathname = resolveDatabasePath(options);
   isExistingBranchStateSchema(pathname);
@@ -219,7 +219,7 @@ export async function openExistingBranchStateDatabaseReadOnly(
   try {
     assertSupportedStateSchemaVersion(db, pathname);
     assertSqliteIntegrity(db, pathname);
-    if (isExistingBranchStateSchema(pathname, db)) {
+    if (isExistingBranchStateSchema(pathname, db) || options.requireCanonicalSchema) {
       assertExistingBranchStateRuntimeSchema(db, pathname);
     }
     if (readStateSchemaContentVersion(db) === BRANCH_STATE_SCHEMA_VERSION) {
@@ -238,6 +238,7 @@ export async function openExistingBranchStateDatabaseReadOnly(
     path: pathname,
     walMaintenance: {
       checkpoint: () => false,
+      stop: async () => {},
       reclaimFreePages: createSqliteWalReclamationResult,
       // Cleanup can fail transiently after the database closes. Keep the
       // close contract retryable until one call finishes both responsibilities.
@@ -256,33 +257,26 @@ function openBranchStateDatabaseWithBusyTimeout(
 ): BranchStateDatabase {
   getBranchDatabaseMaintenanceScope()?.assertAdmission();
   const env = options.env ?? process.env;
-  if (options.database) {
-    assertStateDatabaseSchemaAdmission(options.database);
-    assertBranchStateWriteAllowed({
-      database: options.database.db,
-      databasePath: options.database.path,
-      env,
-    });
-    observeBranchDatabaseMaintenanceResource(options.database.db);
-    stateDbCache.touchStateDatabase(options.database);
-    return options.database;
-  }
-  const pathname = resolveDatabasePath(options);
-  const existingSchema = isExistingBranchStateSchema(pathname);
-  const cached = stateDbCache.getCachedBranchStateDatabase(pathname);
-  if (cached?.db.isOpen) {
-    // A refused cache borrow did not open or damage the database. Failure owners
-    // publish their own retirement events; caller admission must not retire it.
-    stateDbCache.assertBranchStateDatabaseOpenAllowed(pathname);
+  const pathname = options.database?.path ?? resolveDatabasePath(options);
+  const existingSchema = !options.database && isExistingBranchStateSchema(pathname);
+  const cached = options.database ?? stateDbCache.getCachedBranchStateDatabase(pathname);
+  if (cached && (options.database || cached.db.isOpen)) {
+    if (!options.database) {
+      // A refused cache borrow did not open or damage the database. Failure owners
+      // publish their own retirement events; caller admission must not retire it.
+      stateDbCache.assertBranchStateDatabaseOpenAllowed(pathname);
+    }
     assertStateDatabaseSchemaAdmission(cached);
     assertBranchStateWriteAllowed({
       database: cached.db,
       databasePath: pathname,
       env,
-      schemaReady: true,
+      schemaReady: stateDbCache.isBranchStateDatabaseSchemaReady(cached),
     });
     observeBranchDatabaseMaintenanceResource(cached.db);
-    if (!existingSchema && deferredStateDatabases.has(cached.db)) {
+    if (options.database) {
+      stateDbCache.touchStateDatabase(cached);
+    } else if (!existingSchema && deferredStateDatabases.has(cached.db)) {
       reconcileBranchStateSchemaPublication(options);
       if (readSqliteUserVersion(cached.db) === BRANCH_STATE_SCHEMA_VERSION) {
         deferredStateDatabases.delete(cached.db);
@@ -471,11 +465,15 @@ export function runBranchStateWriteTransaction<T>(
       acquired.db,
       () => {
         assertStateDatabaseSchemaAdmission(acquired);
+        // Recheck cached-path admission after a cold-open contention retry.
+        if (!options.database) {
+          getBranchStateDatabaseIfOpen(options);
+        }
         assertBranchStateWriteAllowed({
           database: acquired.db,
           databasePath: acquired.path,
           env: options.env ?? process.env,
-          schemaReady: !options.database && acquired === getBranchStateDatabaseIfOpen(options),
+          schemaReady: stateDbCache.isBranchStateDatabaseSchemaReady(acquired),
         });
         observeBranchDatabaseMaintenanceResource(acquired.db);
         callbackEntered = true;

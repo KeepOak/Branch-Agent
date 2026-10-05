@@ -311,7 +311,9 @@ function coalesceTurn(items: ChatItem[]): ChatItem[] {
       ? owner.source.index
       : invocation.first;
     const result = invocation.result;
-    const completed = result !== undefined && result.rank > 1;
+    const resultReceived = result !== undefined && result.rank > 1;
+    const itemEnded = invocation.live?.["__branchToolStreamItemEnded"] === true;
+    const completed = resultReceived || itemEnded;
     const transcript =
       message.messageId ??
       metadata?.id ??
@@ -328,6 +330,8 @@ function coalesceTurn(items: ChatItem[]): ChatItem[] {
       owner.runId,
       Boolean(invocation.live),
       completed,
+      resultReceived,
+      itemEnded,
       transcript,
       invocation.live?.["__branchToolStreamDiffStat"],
       invocation.live?.["__branchToolStreamReceivedAt"],
@@ -390,7 +394,8 @@ function coalesceTurn(items: ChatItem[]): ChatItem[] {
         ...(invocation.live
           ? {
               __branchToolStreamLive: true,
-              __branchToolStreamResultReceived: completed,
+              __branchToolStreamResultReceived: resultReceived,
+              __branchToolStreamItemEnded: itemEnded,
               __branchToolStreamDiffStat: completed
                 ? undefined
                 : invocation.live["__branchToolStreamDiffStat"],

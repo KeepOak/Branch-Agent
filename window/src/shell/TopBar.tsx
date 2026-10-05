@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type 
 import { Pebble } from "../face/Pebble";
 import { useTrunkAppearance } from "../face/appearance";
 import { Icon } from "./icons";
+import { syncTitleBar } from "../connect/title-bar";
 
 export type FaceState = "here" | "working" | "waiting" | "done";
 
@@ -166,6 +167,8 @@ export function useHeaderTint(header: Pick<HeaderInfo, "colour" | "trunkName" | 
 export function TopBar({ compact, machine, header, dark, listHidden, onTheme, onToggleList, onCharacter, onGuide, conversationTools, ask, onSettings }: Props) {
   const live = header !== null && !header.room && (header.state === "working" || header.state === "waiting");
   const tint = useHeaderTint(compact ? null : header);
+  // The app's window buttons sit over this bar's top-right; keep their colours and height matched to it.
+  useEffect(syncTitleBar, [dark, compact, listHidden]);
   return (
     <header className={tint ? "topbar tinted" : "topbar"} style={tint ? ({ "--tint": tint } as CSSProperties) : undefined}>
       <div className="topbar-left">{machine}</div>

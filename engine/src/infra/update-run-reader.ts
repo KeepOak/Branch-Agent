@@ -2,6 +2,7 @@ import type {
   BranchStateDatabaseOptions,
   BranchStateSchemaReadAdmission,
 } from "../state/branch-state-db-contract.js";
+import { createBranchStateCurrentWarmReader } from "../state/branch-state-db-current-reader.js";
 import {
   withExistingBranchStateDatabaseArtifactPreservingReadOnly,
   executeExistingBranchStateRead,
@@ -127,9 +128,8 @@ export function listUpdateRuns(
   );
 }
 
-/** Reuse decoded rows only after a fresh observation of every authoritative source byte.
+/** Read current rows on an independent warm owner; cold reads preserve every source byte.
  * The caller still evaluates admission on every invocation; no grant is cached.
- * This closure owns only rows, never a native handle, child, or temporary snapshot.
  */
 export function createUpdateRunAdmissionReader(
   input: UpdateRunListInput,
@@ -137,8 +137,18 @@ export function createUpdateRunAdmissionReader(
   openStateSchemaReadAdmission: BranchStateSchemaReadAdmission,
 ): () => UpdateRunRecord[] {
   const query = { ...input };
+  const readWarm = createBranchStateCurrentWarmReader(
+    ({ db }) => readUpdateRuns(db, query),
+    options,
+    openStateSchemaReadAdmission,
+  );
   let previous: { version: string; runs: UpdateRunRecord[] } | undefined;
   return () => {
+    const warm = readWarm();
+    if (warm.available) {
+      previous = undefined;
+      return warm.value;
+    }
     const version = readCurrentBranchStateDatabaseContentVersion(options);
     if (version !== undefined && previous?.version === version) {
       return structuredClone(previous.runs);

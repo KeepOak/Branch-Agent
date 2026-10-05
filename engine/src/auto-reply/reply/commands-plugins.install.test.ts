@@ -828,7 +828,7 @@ describe("handleCommands /plugins install", () => {
     installPluginFromClawHubMock.mockResolvedValue({
       ok: false,
       code: "clawhub_download_blocked",
-      error: 'Seedbank release "@branch/blocked-demo@1.2.3" is blocked from download by ClawHub.',
+      error: 'Seedbank release "@branch/blocked-demo@1.2.3" is blocked from download by Seedbank.',
       warning,
     });
 

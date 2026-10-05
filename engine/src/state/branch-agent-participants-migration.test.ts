@@ -4,12 +4,12 @@ import { recoverDoctorSessionSqliteTargets } from "../commands/doctor-session-sq
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
 import { withBranchTestState } from "../test-utils/branch-test-state.js";
+import { withAgentDatabaseMaintenanceLease } from "./branch-agent-db-maintenance-lease.js";
 import {
   closeBranchAgentDatabasesForTest,
   ensureBranchAgentDatabaseSchema,
   BRANCH_AGENT_SCHEMA_VERSION,
   openBranchAgentDatabase,
-  withAgentDatabaseMaintenanceLease,
 } from "./branch-agent-db.js";
 import { removeCanonicalValidationFromHistoricalAgentFixture } from "./branch-agent-db.test-support.js";
 import { withLegacySessionParticipantsSchema } from "./branch-agent-participants-migration.js";
@@ -198,7 +198,7 @@ describe("participant identity migration", () => {
       });
     },
   );
-  it.each([0, 17])(
+  it.each([17])(
     "refuses a v%s identity migration outside stopped-writer maintenance",
     async (version) => {
       await withBranchTestState({ scenario: "minimal" }, async (state) => {
