@@ -104,6 +104,8 @@ describe("branch graft join", () => {
       where: "Studio Laptop",
     });
     expect(graftTrunkIdentity(branch, { id: "main" }).name).toBe("main");
+    expect(graftBranchIdentity("Branch B").id).toBe("branch-b");
+    expect(graftBranchIdentity("Branch").id).toBe("branch");
   });
 
   it("remembers the host and finds it again for branch graft --host", () => {

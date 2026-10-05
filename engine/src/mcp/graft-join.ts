@@ -33,8 +33,10 @@ const slug = (value: string) =>
 
 /** This Branch as its host sees it: an outside agent of kind "branch" named after this Branch. */
 export function graftBranchIdentity(name: string, where = os.hostname()): GraftIdentity {
+  // "Studio Laptop" -> branch-studio-laptop; "Branch B" -> branch-b (never "branch-branch-b").
+  const rest = slug(name).replace(/^branch(?:-|$)/, "").slice(0, 56).replace(/-+$/, "");
   return {
-    id: `branch-${slug(name).slice(0, 56) || "branch"}`,
+    id: rest ? `branch-${rest}` : "branch",
     name: name.slice(0, 100),
     kind: "branch",
     ...(where ? { where: where.slice(0, 255) } : {}),
