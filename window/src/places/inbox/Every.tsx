@@ -72,7 +72,7 @@ export function Every({ engine, data, level, open }: { engine: WindowEngine; dat
           <td>{s.kind === "global" || s.kind === "unknown" ? null : <button type="button" className="ib-ib" aria-haspopup="menu" aria-label={`More for ${s.title}`} title={`More for ${s.title}`} onClick={e => setMenu({ at: at(e), kind: "row", row: s })}><Icon name="more" /></button>}</td></tr>)
           : <tr><td colSpan={7} className="ib-hint">Nothing matches.</td></tr>}</tbody></table></div>
     </>}
-    {menu?.kind === "trunk" ? <Menu at={menu.at} label="Trunk" onClose={() => setMenu(null)} items={[{ label: `${!f.trunk ? "✓ " : ""}All Trunks`, run: () => setF({ ...f, trunk: "" }) }, ...data.agents.list.map(a => ({ label: `${f.trunk === a.id ? "✓ " : ""}${a.name}`, run: () => setF({ ...f, trunk: a.id }) }))]} /> : null}
+    {menu?.kind === "trunk" ? <Menu at={menu.at} label="Trunk" onClose={() => setMenu(null)} items={[{ label: `${!f.trunk ? "✓ " : ""}All Trunks`, run: () => setF({ ...f, trunk: "" }) }, ...data.agents.list.filter(a => a.hidden !== true).map(a => ({ label: `${f.trunk === a.id ? "✓ " : ""}${a.name}`, run: () => setF({ ...f, trunk: a.id }) }))]} /> : null}
     {menu?.kind === "row" && menu.row ? <Menu at={menu.at} label="Conversation" onClose={() => setMenu(null)} items={[{ label: menu.row.archived ? "Unarchive" : "Archive", run: () => void archive(menu.row!) }]} /> : null}
   </section>;
 }

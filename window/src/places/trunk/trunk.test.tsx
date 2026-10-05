@@ -9,6 +9,8 @@ import { Jobs } from "../customize/jobs";
 import { TrunkEditor } from "./TrunkEditor";
 import { TrunkProfile } from "./TrunkProfile";
 import { TrunkStudio } from "./TrunkStudio";
+import { CHIEF_OF_STAFF_INSTRUCTIONS, makeChiefOfStaff } from "./chief-of-staff";
+import { createJob, JOBS } from "../customize/jobs-data";
 import { newTrunkName, setTrunkHidden, updateParams } from "./api";
 import { readMay } from "./may";
 import { LOOKS, lookOf, readConfig, readRoster } from "./model";
@@ -78,6 +80,14 @@ describe("Trunk data", () => {
 });
 
 describe("Trunk editor", () => {
+  it("makes an existing Trunk Chief of Staff from its editor and saves instructions plus A2A permissions", async () => {
+    const request = fake({ "agents.files.get": { file: { name: "SOUL.md", content: "# TK\n", hash: "old" } } });
+    await mount(<TrunkEditor engine={engine(request)} agentId="oak" level="regular" onClose={() => {}} />);
+    await click(byText("Instructions"));
+    await click(byText("Make this my Chief of Staff"));
+    expect(request).toHaveBeenCalledWith("agents.files.set", expect.objectContaining({ agentId: "oak", expectedHash: "old", content: expect.stringContaining(CHIEF_OF_STAFF_INSTRUCTIONS) }));
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { oak: { agentToAgent: { allow: ["*"], deny: [] } } } } }) });
+  });
   it("saves the default Trunk's name, character, colour, title and description", async () => {
     const request = fake();
     await mount(<TrunkEditor engine={engine(request)} agentId="oak" level="regular" onClose={() => {}} />);
@@ -245,6 +255,30 @@ describe("job creation across gateway replacement", () => {
 });
 
 describe("Trunk profile and studio", () => {
+  it("offers Chief of Staff from the profile", async () => {
+    const request = fake({ "agents.files.get": { file: { name: "SOUL.md", missing: true } }, "sessions.list": { sessions: [] } });
+    await mount(<TrunkProfile engine={engine(request)} agentId="oak" level="regular" onClose={() => {}} />);
+    await click(byText("Make this my Chief of Staff"));
+    expect(request).toHaveBeenCalledWith("agents.files.set", expect.objectContaining({ agentId: "oak", expectedMissing: true }));
+  });
+  it("creates the Chief of Staff job tile with its instructions and permissions", async () => {
+    const request = fake({ "agents.create": { ok: true, agentId: "chief-of-staff" }, "agents.files.get": { file: { name: "SOUL.md", missing: true } } });
+    await createJob(engine(request), JOBS.find((job) => job.name === "Chief of Staff")!);
+    expect(request).toHaveBeenCalledWith("agents.create", { name: "Chief of Staff" });
+    expect(request).toHaveBeenCalledWith("agents.files.set", expect.objectContaining({ agentId: "chief-of-staff", content: expect.stringContaining("sessions_send") }));
+    expect(request).toHaveBeenCalledWith("config.patch", expect.objectContaining({ baseHash: "h1" }));
+  });
+  it("opens blocked A2A paths for Chief of Staff without opening every inbound target", async () => {
+    const request = fake({
+      "agents.files.get": { file: { name: "SOUL.md", missing: true } },
+      "config.get": { hash: "h2", valid: true, config: { tools: { agentToAgent: { enabled: false, allow: ["birch"] } }, agents: { entries: { oak: {}, birch: { agentToAgent: { deny: ["*"], allow: ["*"] } } } } } },
+    });
+    await makeChiefOfStaff(engine(request), "oak");
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h2", raw: JSON.stringify({
+      tools: { agentToAgent: { enabled: true, allow: ["birch", "oak"] } },
+      agents: { entries: { oak: { agentToAgent: { allow: ["*"], deny: [] } }, birch: { agentToAgent: { allow: ["oak"], deny: [] } } } },
+    }) });
+  });
   it("lists its automations from cron.list, toggles one, and shows the ID only at Technical", async () => {
     const request = fake({ "cron.list": { jobs: [{ id: "j1", name: "Morning", agentId: "birch", enabled: true, schedule: { kind: "every", everyMs: 1800000 } }] }, "sessions.list": { sessions: [] } });
     await mount(<TrunkProfile engine={engine(request)} agentId="birch" level="technical" onClose={() => {}} />);

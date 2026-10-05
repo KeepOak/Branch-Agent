@@ -39,7 +39,7 @@ export function InstructionsPage(props: SettingsPageProps) {
   const [pick, setPick] = useState<string | null>(scope);
   useEffect(() => setPick(scope), [scope]);
   const defaultId = agents.data?.defaultId ? text(agents.data.defaultId) : "";
-  const trunks: Trunk[] = list(agents.data?.agents).map((a) => ({ id: text(a.id), name: visible(record(a.identity).name ?? a.name ?? a.id) }));
+  const trunks: Trunk[] = list(agents.data?.agents).filter((a) => a.hidden !== true).map((a) => ({ id: text(a.id), name: visible(record(a.identity).name ?? a.name ?? a.id) }));
   const owner = pick ?? defaultId;
   const ownerName = owner === defaultId ? "every Trunk" : trunks.find((t) => t.id === owner)?.name ?? owner;
   return (

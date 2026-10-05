@@ -130,5 +130,5 @@ export function useTrunk(engine: WindowEngine) {
   const id = engine.agentId ?? (typeof res.data?.defaultId === "string" ? res.data.defaultId : "");
   const a = agents.find((x) => x.id === id) ?? agents[0];
   const nameOf = (x: RecordValue) => visible(x.name ?? record(x.identity).name ?? x.id);
-  return { name: a ? nameOf(a) : "", agents, nameOf, defaultId: id, reload: res.reload };
+  return { name: a ? nameOf(a) : "", agents: agents.filter((agent) => agent.hidden !== true), nameOf, defaultId: id, reload: res.reload };
 }

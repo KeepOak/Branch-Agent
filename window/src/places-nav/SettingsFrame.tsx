@@ -112,7 +112,7 @@ function TrunkFace({ trunk, size }: { trunk: RecordValue; size: number }) {
 function ScopePicker({ engine, scope, onScope }: { engine: WindowEngine; scope: string | null; onScope: (id: string | null) => void }) {
   const agents = useResource<RecordValue>(engine, "agents.list", {});
   const def = text(agents.data?.defaultId ?? "");
-  const all = list(agents.data?.agents);
+  const all = list(agents.data?.agents).filter((agent) => agent.hidden !== true);
   const trunks = [...all.filter((t) => t.id === def), ...all.filter((t) => t.id !== def)];
   const cur = trunks.find((t) => t.id === (scope ?? def)) ?? trunks[0];
   return (

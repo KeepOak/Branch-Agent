@@ -3,7 +3,7 @@ import { createTopic, newMenuItems } from "./new-menu";
 
 const context = (newConversation: () => void, newWith: (id: string) => void) => ({
   newConversation, newWith, trunks: [{ id: "oak", name: "Oak" }, { id: "elm", name: "Elm" }],
-  newTrunk: vi.fn(), openPlace: vi.fn(), makeTrunk: vi.fn(), quickAsk: vi.fn(),
+  newTrunk: vi.fn(), newChiefOfStaff: vi.fn(), openPlace: vi.fn(), makeTrunk: vi.fn(), quickAsk: vi.fn(),
 });
 
 describe("new conversation drafts", () => {
@@ -25,6 +25,13 @@ describe("new conversation drafts", () => {
       agentId: "elm", parentSessionKey: "agent:elm:home",
       message: "First job for Elm", displayName: "First job for Elm", titleSource: "First job for Elm",
     });
+  });
+  it("offers a premade Chief of Staff when creating a Trunk", () => {
+    const c = context(vi.fn(), vi.fn());
+    const item = newMenuItems(c).find((entry) => "label" in entry && entry.label === "Chief of Staff Trunk");
+    expect(item).toMatchObject({ testid: "new-chief-of-staff" });
+    if (item && "run" in item) item.run();
+    expect(c.newChiefOfStaff).toHaveBeenCalledOnce();
   });
 
   it("rejects a blank first message without making an untitled session", async () => {
