@@ -130,6 +130,7 @@ export const windowTests = [
   'src/shell/who-it-knows.test.ts',
   'src/stage/ComputerStage.test.tsx',
   'src/stage/pane/ActivityTab.helper-facts.test.tsx',
+  'src/stage/pane/FilesTab.test.tsx',
   'src/stage/pane/PreviewTab.test.tsx',
   'src/stage/pane/pane-model.test.ts',
   'src/thread/Helpers.test.ts',
