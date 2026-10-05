@@ -31,12 +31,14 @@ describe("conversation row Mark done", () => {
     const first = menu(false, actions).find((item) => item.kind === undefined && item.testid === "menu-done");
     expect(first).toMatchObject({ label: "Mark done" });
     expect(first && "disabled" in first ? first.disabled : undefined).toBeUndefined();
-    if (first?.kind === undefined) first.run();
+    if (!first || first.kind !== undefined) throw new Error("Mark done action is missing");
+    first.run();
     expect(request).toHaveBeenCalledWith("sessions.patch", { key, agentId: "research", expectedSessionId: "session-1", done: true });
 
     const second = menu(true, actions).find((item) => item.kind === undefined && item.testid === "menu-done");
     expect(second).toMatchObject({ label: "Mark not done" });
-    if (second?.kind === undefined) second.run();
+    if (!second || second.kind !== undefined) throw new Error("Mark not done action is missing");
+    second.run();
     expect(request).toHaveBeenCalledWith("sessions.patch", { key, agentId: "research", expectedSessionId: "session-1", done: false });
   });
   it("shows a check after a done row name without changing an undone row", () => {
