@@ -278,6 +278,7 @@ describe("listGatewayMethods", () => {
       "sessions.processes.list",
       "sessions.processes.stop",
       "agents.documents.create",
+      "memory.export",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -362,6 +363,7 @@ describe("listGatewayMethods", () => {
       "sessions.processes.list",
       "sessions.processes.stop",
       "agents.documents.create",
+      "memory.export",
     ]);
   });
 
@@ -574,6 +576,7 @@ describe("listGatewayMethods", () => {
       "sessions.processes.list",
       "sessions.processes.stop",
       "agents.documents.create",
+      "memory.export",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));
