@@ -963,9 +963,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       {topicReturnKey && (draftTopic || openKey !== topicReturnKey) ? <button type="button" className="ib" aria-label="Back to contact thread" title="Back to contact thread" onClick={() => { const key = topicReturnKey; setTopicReturnKey(null); openConversation(key); }}><Icon name="back" /></button> : null}
       {topicContact && !draftTopic ? <button type="button" className="ib contact-conversations-button" aria-label={`Conversations · ${topicContact.topicCount}`} aria-pressed={pane === "Conversations"} onClick={() => setPane((value) => value === "Conversations" ? null : "Conversations")}>Conversations · {topicContact.topicCount}</button> : null}
       {draftTopic ? null : <>
-      {openRow?.kind === "group" || openRow?.kind === "channel" ? null : (
-        <button type="button" className="ib" aria-label={`New conversation with ${trunkName(openRow?.agentId)}`} title={`New conversation with ${trunkName(openRow?.agentId)}`} onClick={() => startNew(openRow?.agentId)}><Icon name="plus" /></button>
-      )}
       <button type="button" className="ib" aria-label="Computer" title={`Its computer · ${machine?.name ?? "This computer"}`} data-live={usingComputer || undefined} onClick={() => setStage("Computer")}>
         <Icon name="monitor" />
         {usingComputer ? <i className="live-dot" aria-hidden="true" /> : null}

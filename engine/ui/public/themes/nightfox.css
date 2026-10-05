@@ -1,0 +1,67 @@
+/* Ported from old Branch Agent's finished nightfox palette. */
+:root[data-theme="nightfox"] {
+  --bg: #192330;
+  --bg-accent: #1e2a39;
+  --bg-elevated: #263343;
+  --text: #cdcecf;
+  --muted-strong: #c2c4c5;
+  --muted: #a9b5c6;
+  --border: #303945;
+  --accent: #719cd6;
+  --primary: #719cd6;
+  --primary-foreground: #1a1a1a;
+  --ring: #719cd6;
+  --accent-muted: #719cd6;
+  --accent-hover: #83AFEA;
+  --accent-foreground: #1a1a1a;
+  --card: #263343;
+  --card-foreground: #cdcecf;
+  --popover: #263343;
+  --popover-foreground: #cdcecf;
+  --panel: #192330;
+  --panel-strong: #263343;
+  --panel-hover: #262f3b;
+  --secondary: #1e2a39;
+  --secondary-foreground: #cdcecf;
+  --muted-foreground: #a9b5c6;
+  --input: #303945;
+  --destructive: #ff9b94;
+  --destructive-foreground: #1a1a1a;
+  --chat-text: #cdcecf;
+  --text-strong: #cdcecf;
+  --chrome: #192330;
+  --chrome-strong: #192330;
+}
+:root[data-theme="nightfox-light"] {
+  --bg: #f6f2ee;
+  --bg-accent: #f5efe7;
+  --bg-elevated: #faf4eb;
+  --text: #3d2b5a;
+  --muted-strong: #57476f;
+  --muted: #5d5751;
+  --border: #ded8db;
+  --accent: #2848a9;
+  --primary: #2848a9;
+  --primary-foreground: #ffffff;
+  --ring: #2848a9;
+  --accent-muted: #2848a9;
+  --accent-hover: #3557BA;
+  --accent-foreground: #ffffff;
+  --card: #faf4eb;
+  --card-foreground: #3d2b5a;
+  --popover: #faf4eb;
+  --popover-foreground: #3d2b5a;
+  --panel: #f6f2ee;
+  --panel-strong: #faf4eb;
+  --panel-hover: #e9e4e4;
+  --secondary: #f5efe7;
+  --secondary-foreground: #3d2b5a;
+  --muted-foreground: #5d5751;
+  --input: #ded8db;
+  --destructive: #9e3532;
+  --destructive-foreground: #ffffff;
+  --chat-text: #3d2b5a;
+  --text-strong: #3d2b5a;
+  --chrome: #f6f2ee;
+  --chrome-strong: #f6f2ee;
+}

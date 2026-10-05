@@ -1,0 +1,17 @@
+/* Paper's quiet ink-and-page palette in both modes. */
+:root[data-theme="paper"] {
+  --bg: #191d20; --bg-accent: #22272a; --bg-elevated: #2a3033;
+  --card: #2a3033; --card-foreground: #f2f0eb; --popover: #2a3033; --popover-foreground: #f2f0eb;
+  --panel: #191d20; --panel-strong: #2a3033; --text: #f2f0eb; --text-strong: #f2f0eb;
+  --chat-text: #f2f0eb; --muted: #9fa9a7; --muted-foreground: #9fa9a7; --border: #3b4548;
+  --input: #3b4548; --accent: #9396ff; --primary: #9396ff; --ring: #9396ff;
+  --primary-foreground: #191d20; --accent-foreground: #191d20; --destructive: #ee9387;
+}
+:root[data-theme="paper-light"] {
+  --bg: #faf8f2; --bg-accent: #f2efe7; --bg-elevated: #fffdf9;
+  --card: #fffdf9; --card-foreground: #252b2d; --popover: #fffdf9; --popover-foreground: #252b2d;
+  --panel: #faf8f2; --panel-strong: #fffdf9; --text: #252b2d; --text-strong: #252b2d;
+  --chat-text: #252b2d; --muted: #727a79; --muted-foreground: #727a79; --border: #e2dfd7;
+  --input: #e2dfd7; --accent: #484ce5; --primary: #16212a; --ring: #484ce5;
+  --primary-foreground: #fffdf9; --accent-foreground: #fffdf9; --destructive: #c2412d;
+}
