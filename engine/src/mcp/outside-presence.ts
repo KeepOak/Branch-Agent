@@ -127,7 +127,20 @@ export class OutsidePresence {
   private async say(activity?: string): Promise<void> {
     if (!this.agent) return;
     try {
-      const result = await this.hello({ ...this.agent, ...(activity ? { activity } : {}) });
+      const full = { ...this.agent, ...(activity ? { activity } : {}) };
+      // A Branch from before Settings › Connected agents knows only id, name, version and where; on its
+      // "invalid params" the hello goes again in that shape instead of falling back to owner messages.
+      const result = await this.hello(full).catch(async (error: unknown) => {
+        if (!/invalid contacts\.outside\.hello params|INVALID_REQUEST/i.test(String(error)))
+          throw error;
+        const { id, name, version, where } = this.agent!;
+        return await this.hello({
+          id,
+          name,
+          ...(version ? { version } : {}),
+          ...(where ? { where } : {}),
+        });
+      });
       // Branch may give this process its own id (<id>-2) when another session already holds the stable one.
       const assigned = String((result.contact as { id?: unknown } | undefined)?.id ?? "").replace(
         /^a2a:/,

@@ -425,3 +425,28 @@ describe("Settings › Connected agents applies to every tool", () => {
     presence.stop();
   });
 });
+
+describe("an older Branch on the other side", () => {
+  it("says hello again in the older shape instead of sending as the owner", async () => {
+    const seen: Record<string, unknown>[] = [];
+    const presence = new OutsidePresence(async (agent) => {
+      seen.push({ ...agent });
+      if ("instance" in agent || "project" in agent) {
+        throw new Error(
+          "invalid contacts.outside.hello params: at /agent: unexpected property 'project'",
+        );
+      }
+      return { contact: { id: `a2a:${agent.id}` } };
+    });
+    presence.start({ ...claude, project: "Branch-Agent" });
+    const identity = await presence.identity();
+    expect(identity?.name).toBe("Claude Code");
+    expect(seen.at(-1)).toEqual({
+      id: claude.id,
+      name: "Claude Code",
+      version: "2.1.0",
+      where: "LEGION",
+    });
+    presence.stop();
+  });
+});
