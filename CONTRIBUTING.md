@@ -71,7 +71,7 @@ CI runs an explicit list of test files. A pull request adds its own list as `scr
 
 ```text
 engine:src/gateway/contacts/outside-agents.test.ts
-window:src/connect/engine.test.ts
+window:src/connect/conversations.test.ts
 ```
 
 Don't edit the arrays in `scripts/feature-batch-ci-targets.mjs` for new tests. `scripts/feature-batch-ci-named/README.txt` describes the format.
