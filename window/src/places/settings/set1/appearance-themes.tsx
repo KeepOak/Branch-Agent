@@ -10,6 +10,7 @@ import { errorText, list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, useLevel } from "../kit";
 import { BUILTIN, DEFAULT_THEME, EF_KEYS, isHex, pairOfDefinition, SLATE, type Ef, type Mode, type Pair } from "./appearance-look";
+import { LEGACY_THEMES } from "./appearance-legacy";
 
 export type ThemeDesc = { id: string; name: string; description?: string; source: "builtin" | "plugin" | "user"; modes?: Mode[] };
 export type Current = { id: string; mode?: string; effectiveMode?: Mode; overrides?: { id?: string; mode?: string } };
@@ -17,7 +18,9 @@ export type Extra = Partial<Record<string, { light?: Partial<Ef>; dark?: Partial
 export type Themes = { list: ThemeDesc[]; current: Current | null; pairOf: (id: string) => Pair | undefined; loading: boolean; error?: string; reload: () => Promise<void> };
 
 export const PALETTE_ICON = <svg className="i s" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.5-.2-.8-.5-1.2-.3-.3-.4-.6-.4-1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5C21 6.5 17 3 12 3z" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="7.5" cy="11" r="1.2" fill="currentColor" /><circle cx="10.5" cy="7.5" r="1.2" fill="currentColor" /><circle cx="15" cy="7.5" r="1.2" fill="currentColor" /></svg>;
-export const GROUP: Record<ThemeDesc["source"], string> = { builtin: "Branch", plugin: "From plugins", user: "Yours" };
+const legacyGroups = new Map<string, string>(LEGACY_THEMES.map((theme) => [theme.id, theme.group]));
+const classicIds = new Set([DEFAULT_THEME, "paper", ...LEGACY_THEMES.map((theme) => theme.id)]);
+export const themeGroup = (t: ThemeDesc): string => t.source === "builtin" ? legacyGroups.get(t.id) ?? "Branch" : t.source === "user" ? "Yours" : "From plugins";
 export const localId = (id: string) => id.replace(/^user\//, "");
 /** A theme's name as the window shows it: the default theme draws with the window's own Branch Slate colours. */
 export const themeName = (t: Pick<ThemeDesc, "id" | "name">) => (t.id === DEFAULT_THEME ? "Branch Slate" : visible(t.name));
@@ -26,7 +29,7 @@ export const themeName = (t: Pick<ThemeDesc, "id" | "name">) => (t.id === DEFAUL
 export function useThemes(engine: WindowEngine, extra: Extra): Themes {
   const res = useResource<RecordValue>(engine, "themes.list", {});
   const [defs, setDefs] = useState<Record<string, RecordValue>>({});
-  const themes = useMemo(() => list(res.data?.themes) as unknown as ThemeDesc[], [res.data]);
+  const themes = useMemo(() => (list(res.data?.themes) as unknown as ThemeDesc[]).filter((t) => t.source !== "builtin" || classicIds.has(t.id)), [res.data]);
   useEffect(() => {
     for (const t of themes) {
       if (t.source === "builtin" || defs[t.id]) continue;
@@ -75,8 +78,8 @@ export function ThemesDialog(p: DialogProps) {
   const [prev, setPrev] = useState<Mode>(p.mode);
   const [sub, setSub] = useState<Sub>(null);
   const all = p.themes.list;
-  const tabs = ["All", "Branch", ...(all.some((t) => t.source === "plugin") ? ["From plugins"] : []), "Yours"];
-  const shown = all.filter((t) => (tab === "All" || GROUP[t.source] === tab) && (!q.trim() || t.name.toLowerCase().includes(q.trim().toLowerCase())));
+  const tabs = ["All", "Branch", "KeepOak", "Editors & terminals", ...(all.some((t) => t.source === "plugin") ? ["From plugins"] : []), "Yours"];
+  const shown = all.filter((t) => (tab === "All" || themeGroup(t) === tab) && (!q.trim() || themeName(t).toLowerCase().includes(q.trim().toLowerCase())));
   if (sub) return <ThemeSubDialog {...p} sub={sub} back={() => setSub(null)} />;
   const foot = (
     <div className="gal-foot ap-k">
@@ -110,7 +113,7 @@ function ThemeCard({ t, p, prev, setSub }: { t: ThemeDesc; p: DialogProps; prev:
   return (
     <div className="theme6" aria-current={p.currentId === t.id}>
       <button className="theme6-b" type="button" aria-pressed={p.currentId === t.id} aria-label={themeName(t)} title={visible(t.description ?? "")} onClick={() => void p.onPick(t.id)}>
-        <Swatch c={pair[prev]} /><b>{themeName(t)}</b><small>{GROUP[t.source]}</small>
+        <Swatch c={pair[prev]} /><b>{themeName(t)}</b><small>{themeGroup(t)}</small>
       </button>
       {mine ? (
         <span className="my-acts">
