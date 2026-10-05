@@ -21,6 +21,7 @@ import { listDevicePairing } from "../../infra/device-pairing.js";
 import { NODE_DESKTOP_STREAM_COMMAND } from "../../shared/node-desktop-stream.js";
 import type { NodeListNode } from "../../shared/node-list-types.js";
 import { resolveDesktopObserveRequester } from "../desktop/observe-requester.js";
+import { effectiveHostDesktopConfig } from "../desktop/host-source.js";
 import {
   ADMIN_SCOPE,
   WRITE_SCOPE,
@@ -166,10 +167,10 @@ export async function listGatewayEnvironments(
   });
   const config = context.getRuntimeConfig();
   let gateway: EnvironmentSummary =
-    config.desktop?.host?.enabled === true
+    effectiveHostDesktopConfig(config.desktop?.host).enabled === true
       ? { ...GATEWAY_ENVIRONMENT, desktop: true }
       : GATEWAY_ENVIRONMENT;
-  if (includeDesktopSetup && config.desktop?.host?.enabled !== true) {
+  if (includeDesktopSetup && effectiveHostDesktopConfig(config.desktop?.host).enabled !== true) {
     const { inspectHostDesktopSetup } = await import("../desktop/host-source.js");
     gateway = {
       ...gateway,

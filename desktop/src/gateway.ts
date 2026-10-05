@@ -50,6 +50,7 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     BRANCH_SKIP_CHANNELS: "1",
     BRANCH_GATEWAY_PORT: String(cfg.gatewayPort),
     BRANCH_GATEWAY_TOKEN: token,
+    BRANCH_DESKTOP_APP: "1",
     ...testProfile(),
   };
   const args = ["branch.mjs", "gateway", "--dev", "--port", String(cfg.gatewayPort)];

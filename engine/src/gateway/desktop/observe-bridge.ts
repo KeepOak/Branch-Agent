@@ -24,6 +24,8 @@ import {
 } from "./rfb-preauth.js";
 import { createRfbClientMessageFilter } from "./rfb-view-only-filter.js";
 import type { DesktopSessionRegistry } from "./session-registry.js";
+import { randomUUID } from "node:crypto";
+import { startComputerHostProcess } from "./computer-process.js";
 
 type WebSocket = import("ws").WebSocket;
 
@@ -59,6 +61,13 @@ const observerTokens = createOneTimeTicketStore<DesktopObserverTokenEntry>({
   ttlMs: TOKEN_TTL_MS,
   onExpire: (entry) => entry.audio?.close(),
 });
+type FrameToken = { requester?: DesktopObserveRequester; control: boolean };
+const frameTokens = createOneTimeTicketStore<FrameToken>({ ttlMs: TOKEN_TTL_MS });
+export function mintDesktopFrameObserverToken(entry: FrameToken) {
+  return frameTokens.mint(entry, {
+    revokeSignal: entry.requester?.isCurrent() === false ? AbortSignal.abort() : entry.requester?.signal,
+  });
+}
 const desktopObserverWss = new NpmWebSocketServer({
   noServer: true,
   maxPayload: MAX_PAYLOAD_BYTES,
@@ -104,6 +113,9 @@ export async function releaseDesktopObserverToken(
   if (resource?.pathname !== DESKTOP_OBSERVE_PATH) {
     return false;
   }
+  const frame = frameTokens.consume(resource.searchParams.get("token") ?? "", Date.now(),
+    (candidate) => candidate.requester?.connId === connId && candidate.requester.isCurrent() && requester.isCurrent());
+  if (frame) return true;
   const entry = observerTokens.consume(
     resource.searchParams.get("token") ?? "",
     Date.now(),
@@ -182,6 +194,82 @@ export function handleDesktopObserveUpgrade(
     return false;
   }
   const token = resource.searchParams.get("token") ?? "";
+  const frame = frameTokens.consume(token);
+  if (frame) {
+    if (frame.requester?.isCurrent() === false) {
+      rejectWebSocketUpgrade(socket, { status: 401 });
+      return true;
+    }
+    desktopObserverWss.handleUpgrade(req, socket, head, (ws) => {
+      const executionId = randomUUID();
+      const controller = new AbortController();
+      const helper = startComputerHostProcess({ env: process.env, pluginIds: ["cua-computer"],
+        assertCurrent: () => {
+          if (controller.signal.aborted || frame.requester?.isCurrent() === false) throw new Error("Desktop observer closed");
+        } });
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let frameId = "";
+      let width = 0;
+      let height = 0;
+      const close = () => {
+        if (controller.signal.aborted) return;
+        controller.abort();
+        clearTimeout(timer);
+        frame.requester?.signal?.removeEventListener("abort", close);
+        void helper.close({ executionId, reason: "completion" }).catch(() => undefined);
+        if (ws.readyState === NpmWebSocket.OPEN) ws.close();
+      };
+      frame.requester?.signal?.addEventListener("abort", close, { once: true });
+      ws.once("close", close);
+      ws.once("error", close);
+      ws.on("message", (raw, binary) => {
+        if (binary || !frame.control || controller.signal.aborted) return;
+        let input: unknown;
+        try { input = JSON.parse(String(raw)); } catch { return; }
+        if (!input || typeof input !== "object") return;
+        const event = input as Record<string, unknown>;
+        const params = event.action === "left_click" && frameId &&
+          typeof event.x === "number" && typeof event.y === "number" &&
+          event.x >= 0 && event.y >= 0 && event.x < width && event.y < height
+          ? { action: "left_click", x: event.x, y: event.y, displayFrameId: frameId, executionId }
+          : event.action === "type" && typeof event.text === "string" && event.text.length <= 1000
+            ? { action: "type", text: event.text, executionId }
+            : event.action === "key" && typeof event.key === "string" && event.key.length <= 80
+              ? { action: "key", key: event.key, executionId }
+              : null;
+        if (params) void helper.invoke({ command: "computer.act", params, signal: controller.signal,
+          assertCurrent: () => controller.signal.throwIfAborted() }).catch(() => undefined);
+      });
+      const capture = async () => {
+        if (controller.signal.aborted) return;
+        try {
+          if (frame.requester?.isCurrent() === false) { close(); return; }
+          await helper.ready;
+          const result = await helper.invoke({ command: "screen.snapshot",
+            params: { executionId, format: "jpeg", maxWidth: 1600, quality: 0.72 },
+            signal: controller.signal, assertCurrent: () => {
+              controller.signal.throwIfAborted();
+              if (frame.requester?.isCurrent() === false) throw new Error("Desktop observer closed");
+            } }) as
+            { base64: string; displayFrameId: string; width: number; height: number };
+          frameId = result.displayFrameId;
+          width = result.width;
+          height = result.height;
+          if (ws.readyState === NpmWebSocket.OPEN && ws.bufferedAmount < PAUSE_BUFFERED_BYTES) {
+            ws.send(JSON.stringify({ type: "frame", image: result.base64, width, height }));
+          }
+          timer = setTimeout(() => void capture(), 500);
+        } catch (error) {
+          if (!controller.signal.aborted && ws.readyState === NpmWebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "error", message: error instanceof Error ? error.message : String(error) }));
+          }
+          close();
+        }
+      };
+      void capture();
+    });
+    return true;
+  }
   const entry = observerTokens.consume(token);
   if (!entry || entry.requester?.isCurrent() === false) {
     entry?.audio?.close();

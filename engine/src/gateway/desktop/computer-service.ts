@@ -86,7 +86,9 @@ export function createGatewayComputerService(options: {
         plugin.status === "loaded" &&
         config.plugins?.enabled !== false &&
         // Loading a node provider's default policy does not enable Gateway control.
-        config.plugins?.entries?.[entry.pluginId]?.enabled === true
+        (config.plugins?.entries?.[entry.pluginId]?.enabled === true ||
+          (entry.pluginId === "cua-computer" && process.platform === "win32" &&
+            process.env.BRANCH_DESKTOP_APP === "1" && config.plugins?.entries?.[entry.pluginId]?.enabled !== false))
       );
     });
   };

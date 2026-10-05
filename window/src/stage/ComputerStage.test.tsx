@@ -71,13 +71,12 @@ describe("conversation computer lifecycle", () => {
     });
     await render(engine(request as WindowEngine["request"]));
     await flush();
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Placement unavailable");
-    expect(container.textContent).not.toContain("It can't see a screen");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Placement unavailable");
     failed = false;
     await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Try again")!.click());
     await flush();
     expect(container.querySelector('[role="alert"]')).toBeNull();
-    expect(container.textContent).toContain("It can't see a screen");
+    expect(request).toHaveBeenCalledWith("environments.status", { environmentId: "gateway" });
   });
   it("keeps a known conversation placement when the computer list fails", async () => {
     viewer.connect.mockImplementation(async (options: any) => { options.onConnect(); return { disconnect: vi.fn() }; });
@@ -91,14 +90,17 @@ describe("conversation computer lifecycle", () => {
     expect(viewer.connect).toHaveBeenCalled();
     expect(container.textContent).toContain("Take over");
   });
-  it("never falls back to the host when this conversation has no placement", async () => {
-    const request = vi.fn(async () => ({ session: { key: "agent:scout:one" } }));
+  it("shows the host when this conversation has no placement", async () => {
+    viewer.connect.mockImplementation(async (options: any) => { options.onConnect(); return { disconnect: vi.fn() }; });
+    const request = vi.fn(async (method: string) => method === "sessions.describe"
+      ? { session: { key: "agent:scout:one" } }
+      : method === "environments.status" ? { id: "gateway", desktop: true, status: "available" }
+      : method === "desktop.observe" ? observed : { environments: [{ id: "gateway", desktop: true, status: "available" }] });
     await render(engine(request as any));
     await flush();
-    expect(request.mock.calls.map((c: unknown[]) => c[0])).not.toContain("desktop.observe");
-    expect(request.mock.calls.map((c: unknown[]) => c[0])).not.toContain("environments.status");
-    expect(container.textContent).toContain("It can't see a screen");
-    expect(viewer.connect).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledWith("desktop.observe", { source: { kind: "host" }, control: false });
+    expect(container.textContent).toContain("This computer");
+    expect(viewer.connect).toHaveBeenCalled();
   });
   it("releases a late observe response after closing without opening its socket", async () => {
     let resolve!: (value: any) => void;

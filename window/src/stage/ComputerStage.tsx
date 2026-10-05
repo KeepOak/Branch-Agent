@@ -21,7 +21,6 @@ export type StageMode = "Computer" | "Browser";
 const NO_PAUSE = "The engine has no per-run pause and resume method.";
 const NO_NUMBERS = "The engine can't number what it may click on a computer screen yet.";
 const NO_RECORD = "The engine can't record what you do on a computer yet.";
-const NO_WINDOW = "The engine can't show one window of a computer yet.";
 const OWN_WINDOW = "This window can't open the computer in a window of its own yet.";
 
 type Where = { placement: Placement | undefined; computers: Computer[]; profiles: { id: string; name: string }[]; loaded: boolean; error?: string };
@@ -258,9 +257,6 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
       items: [
         { kind: "head", label: `What to watch on ${view.title || viewed?.name || "this computer"}` },
         { kind: "info", label: "Whole screen", checked: true },
-        { kind: "sep" },
-        { kind: "head", label: "One window" },
-        { label: "Pick a window", run: () => undefined, disabled: NO_WINDOW },
       ],
     });
   const moreMenu = (at: MenuAnchor) =>

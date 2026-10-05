@@ -11,7 +11,7 @@ describe("stage computers", () => {
     expect(readComputer({ id: "gateway", type: "local", status: "available", platform: "win32", desktop: true } as EnvironmentSummary)).toMatchObject({ name: "This computer", sub: "Windows", desktop: true });
     expect(placementComputer({ state: "local" })).toBe("gateway");
     expect(placementComputer({ state: "active", environmentId: "w1" })).toBe("w1");
-    expect(placementComputer(undefined)).toBeNull();
+    expect(placementComputer(undefined)).toBe("gateway");
     expect(placementComputer({ state: "provisioning", environmentId: "w1" })).toBeNull();
   });
   it("shows busy slots only when the engine reports them, and offline computers as offline", () => {

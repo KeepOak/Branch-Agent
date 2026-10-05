@@ -1,7 +1,8 @@
 import { useEffect, useState, type RefObject } from "react";
 import type { DesktopObserveResult, DesktopSource, EnvironmentSummary } from "@branch/gateway-protocol";
 import type { WindowEngine } from "../connect/engine";
-import { DesktopClient, type DesktopConnectionHandle } from "./desktop-client";
+import { DesktopClient } from "./desktop-client";
+import { resolveGatewayWebSocketUrl } from "./gateway-websocket-url";
 
 export type DesktopPhase = "loading" | "empty" | "connected" | "error";
 export type DesktopView = {
@@ -37,7 +38,7 @@ export function useDesktopView(
   const key = `${engine.sessionKey}|${environmentId}|${control}|${retry}`;
   useEffect(() => {
     let active = true,
-      connection: DesktopConnectionHandle | undefined,
+      connection: { disconnect(): void } | undefined,
       observedPath: string | undefined;
     const show = (next: DesktopView) => {
       if (active) setView({ key, view: next });
@@ -73,6 +74,56 @@ export function useDesktopView(
         if (observed.auth === "ard-account" || (observed.auth === "vnc-password" && !observed.vncPassword && !observed.preauthenticated)) {
           release();
           show({ phase: "error", title, message: "This computer requires authentication. Open its computer settings to connect." });
+          return;
+        }
+        if (observed.transport === "frames") {
+          const host = target.current;
+          const image = document.createElement("img");
+          image.alt = `${title} live screen`;
+          image.className = "stage-frame-image";
+          host.replaceChildren(image);
+          if (control) host.tabIndex = 0;
+          const socket = new WebSocket(resolveGatewayWebSocketUrl(observed.wsPath, gatewayUrl));
+          const onClick = (event: MouseEvent) => {
+            if (!control || socket.readyState !== WebSocket.OPEN || !image.naturalWidth) return;
+            const rect = image.getBoundingClientRect();
+            socket.send(JSON.stringify({ action: "left_click", x: Math.floor((event.clientX - rect.left) * image.naturalWidth / rect.width),
+              y: Math.floor((event.clientY - rect.top) * image.naturalHeight / rect.height) }));
+            host.focus();
+          };
+          const onKey = (event: KeyboardEvent) => {
+            if (!control || socket.readyState !== WebSocket.OPEN) return;
+            if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
+              socket.send(JSON.stringify({ action: "type", text: event.key }));
+            } else if (["Enter", "Backspace", "Delete", "Tab", "Escape"].includes(event.key)) {
+              socket.send(JSON.stringify({ action: "key", key: event.key }));
+            } else return;
+            event.preventDefault();
+          };
+          host.addEventListener("click", onClick);
+          host.addEventListener("keydown", onKey);
+          let received = false;
+          socket.addEventListener("message", (event) => {
+            if (!active) return;
+            try {
+              const payload = JSON.parse(String(event.data)) as { type: string; image?: string; message?: string };
+              if (payload.type === "error") {
+                show({ phase: "error", title, message: payload.message || "Screen capture failed." });
+              } else if (payload.type === "frame" && payload.image) {
+                image.src = `data:image/jpeg;base64,${payload.image}`;
+                if (!received) { received = true; show({ phase: "connected", title, controlling: control }); }
+              }
+            } catch { /* Ignore invalid frames and wait for the next picture. */ }
+          });
+          socket.addEventListener("close", () => {
+            if (active && !received) show({ phase: "error", title, message: "The computer connection closed." });
+          });
+          connection = { disconnect: () => {
+            host.removeEventListener("click", onClick);
+            host.removeEventListener("keydown", onKey);
+            image.remove();
+            socket.close();
+          } };
           return;
         }
         const handle = await new DesktopClient().connect({

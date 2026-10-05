@@ -28,7 +28,7 @@ export async function describePlacement(engine: WindowEngine): Promise<Placement
 export function placementComputer(p: Placement | undefined): string | null {
   if (p?.state === "active" && p.environmentId) return p.environmentId;
   if (p?.state === "local") return "gateway";
-  return null;
+  return p ? null : "gateway";
 }
 
 export type Computer = {

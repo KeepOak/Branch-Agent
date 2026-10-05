@@ -474,7 +474,8 @@ function ShareScreen({ c }: { c: Ctx }) {
   const envs = useLive<RecordValue>(c.engine, "environments.list", { includeDesktopSetup: true }, ["node"]);
   const nodes = useLive<RecordValue>(c.engine, "node.list", {}, ["node"]);
   const setup = localSetup(rec(envs.data), nodes.data);
-  const on = cfg.get("desktop.host.enabled") === true;
+  const saved = cfg.get("desktop.host.enabled");
+  const on = saved === true || (saved === undefined && Boolean((window as { branchDesktop?: unknown }).branchDesktop));
   return (
     <Ctl title="Share this computer’s screen" sub="Watch and control this computer from Branch on another computer. A change reconnects it briefly; a new ability may need a yes there."
       after={setup ? <div className="s2cm-x"><div className="s2cm-stat"><span>Screen sharing</span><Pill tone={setup.ok ? "ok" : "bad"}>{setup.word}</Pill>{setup.detail ? <small>{setup.detail}</small> : null}</div></div> : null}>
@@ -498,7 +499,9 @@ function ShareKv({ c }: { c: Ctx }) {
   const envs = useLive<RecordValue>(c.engine, "environments.list", { includeDesktopSetup: true }, ["node"]);
   const nodes = useLive<RecordValue>(c.engine, "node.list", {}, ["node"]);
   const setup = localSetup(rec(envs.data), nodes.data);
-  return <Kv rows={[["Share this computer’s screen", cfg.get("desktop.host.enabled") === true ? "On" : "Off"], ["Status", setup ? [setup.word, setup.detail].filter(Boolean).join(": ") : ""]]} />;
+  const saved = cfg.get("desktop.host.enabled");
+  const on = saved === true || (saved === undefined && Boolean((window as { branchDesktop?: unknown }).branchDesktop));
+  return <Kv rows={[["Share this computer’s screen", on ? "On" : "Off"], ["Status", setup ? [setup.word, setup.detail].filter(Boolean).join(": ") : ""]]} />;
 }
 
 const PHONE = /ios|iphone|ipad|android/i;

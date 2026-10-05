@@ -12,6 +12,7 @@ import {
   type ManagedLinuxDesktopStatus,
 } from "./managed-linux.js";
 import { mintDesktopObserverToken } from "./observe-bridge.js";
+import { mintDesktopFrameObserverToken } from "./observe-bridge.js";
 import type { DesktopObserveRequester } from "./observe-requester.js";
 import type { RfbPreauthDescriptor } from "./rfb-preauth.js";
 import { classifyRfbSecurity, probeRfbServer, type RfbProbeResult } from "./rfb-probe.js";
@@ -19,6 +20,18 @@ import type { DesktopSessionRegistry } from "./session-registry.js";
 
 const DEFAULT_HOST_DESKTOP_PORT = 5900;
 const HOST_DESKTOP_PROBE_TIMEOUT_MS = 1_500;
+
+/** The installed Windows desktop has a native screen source without a VNC server. */
+export function effectiveHostDesktopConfig(config: DesktopHostConfig | undefined): DesktopHostConfig {
+  return process.platform === "win32" && process.env.BRANCH_DESKTOP_APP === "1"
+    ? { ...config, enabled: config?.enabled !== false }
+    : (config ?? { enabled: false });
+}
+
+export function usesNativeHostScreen(config: DesktopHostConfig | undefined): boolean {
+  return process.platform === "win32" && process.env.BRANCH_DESKTOP_APP === "1" &&
+    effectiveHostDesktopConfig(config).enabled === true && config?.port === undefined;
+}
 
 export type HostDesktopAcquireResult = {
   attachment: RfbAttachment;
@@ -111,7 +124,7 @@ type HostDesktopInspectionParams = {
 export async function inspectHostDesktop(
   params: HostDesktopInspectionParams,
 ): Promise<HostDesktopInspection> {
-  if (params.config?.enabled !== true) {
+  if (effectiveHostDesktopConfig(params.config).enabled !== true) {
     return {
       status: {
         enabled: false,
@@ -146,6 +159,9 @@ async function inspectConfiguredHostDesktop(
 ): Promise<HostDesktopInspection> {
   const port = params.config?.port ?? DEFAULT_HOST_DESKTOP_PORT;
   const platform = params.platform ?? process.platform;
+  if (platform === "win32" && params.config?.port === undefined && process.env.BRANCH_DESKTOP_APP === "1") {
+    return { status: { enabled: true, state: "attached", port, security: "native" }, detail: "attached (native screen capture)" };
+  }
   const probe = await (params.probeRfb ?? probeRfbServer)({
     host: "127.0.0.1",
     port,
@@ -326,6 +342,7 @@ export function createHostDesktopService(params: {
   managedDesktop?: ManagedLinuxDesktop;
 }) {
   const platform = params.platform ?? process.platform;
+  const getConfig = () => effectiveHostDesktopConfig(params.getConfig());
   type HostDesktopRuntime = {
     config: DesktopHostConfig;
     ownerEpoch: number;
@@ -336,7 +353,7 @@ export function createHostDesktopService(params: {
   let current: HostDesktopRuntime | undefined;
   let nextOwnerEpoch = 0;
   const isCurrent = (runtime: HostDesktopRuntime) => {
-    const config = params.getConfig();
+    const config = getConfig();
     return (
       current === runtime &&
       !runtime.controller.signal.aborted &&
@@ -375,7 +392,7 @@ export function createHostDesktopService(params: {
   };
   const resolveRuntime = async () => {
     await reconcileRuntimePolicy();
-    const config = params.getConfig();
+    const config = getConfig();
     if (config?.enabled !== true) {
       return undefined;
     }
@@ -427,6 +444,17 @@ export function createHostDesktopService(params: {
       requester?: DesktopObserveRequester;
       credentials?: { username?: string; password?: string };
     }) {
+      if (usesNativeHostScreen(params.getConfig())) {
+        const minted = mintDesktopFrameObserverToken({
+          requester: {
+            ...observeParams.requester,
+            isCurrent: () => usesNativeHostScreen(params.getConfig()) && observeParams.requester?.isCurrent() !== false,
+          },
+          control: observeParams.control,
+        });
+        return { transport: "frames" as const, wsPath: `/desktop/observe?token=${minted.token}`,
+          expiresAtMs: minted.expiresAtMs, control: observeParams.control };
+      }
       const { acquired, runtime } = await acquire();
       assertCurrent(runtime);
       const auth = acquired.auth;
@@ -508,7 +536,7 @@ export function createHostDesktopService(params: {
       for (;;) {
         const runtime = await resolveRuntime();
         if (!runtime) {
-          return (await inspectHostDesktop({ config: params.getConfig(), platform })).status;
+      return (await inspectHostDesktop({ config: getConfig(), platform })).status;
         }
         const inspection = await runtime.source.inspect();
         if (isCurrent(runtime)) {

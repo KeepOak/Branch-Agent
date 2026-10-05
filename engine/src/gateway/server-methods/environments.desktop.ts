@@ -4,6 +4,7 @@ import {
   errorShape,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { DesktopCredentialsRequiredError } from "../desktop/host-source-errors.js";
+import { effectiveHostDesktopConfig } from "../desktop/host-source.js";
 import { getNodeDesktopService } from "../desktop/node-source-context.js";
 import type { DesktopObserveRequester } from "../desktop/observe-requester.js";
 import type { GatewayRequestContext, RespondFn } from "./types.js";
@@ -35,7 +36,7 @@ export async function respondDesktopObserve(params: {
   const { request, context, respond } = params;
   if (request.source.kind !== "environment") {
     const host = request.source.kind === "host";
-    if (host && context.getRuntimeConfig().desktop?.host?.enabled !== true) {
+    if (host && effectiveHostDesktopConfig(context.getRuntimeConfig().desktop?.host).enabled !== true) {
       params.respond(
         false,
         undefined,

@@ -30,9 +30,11 @@ export default definePluginEntry({
     api.registerNodeInvokePolicy(createCuaComputerNodeInvokePolicy());
     // Remote policy must not enable local native control. macOS retains its
     // app-gated default; Windows/Linux nodes still require plugin enablement.
+    const explicitlyEnabled = normalizePluginsConfig(api.config.plugins).entries[api.id]?.enabled;
     if (
       process.platform !== "darwin" &&
-      normalizePluginsConfig(api.config.plugins).entries[api.id]?.enabled !== true
+      explicitlyEnabled !== true &&
+      !(process.platform === "win32" && process.env.BRANCH_DESKTOP_APP === "1" && explicitlyEnabled !== false)
     ) {
       return;
     }

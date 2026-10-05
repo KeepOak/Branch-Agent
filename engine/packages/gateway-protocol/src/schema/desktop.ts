@@ -35,7 +35,7 @@ export const DesktopObserveParamsSchema = Type.Union([
 ]);
 
 export const DesktopObserveResultSchema = closedObject({
-  transport: Type.String({ enum: ["rfb"] }),
+  transport: Type.String({ enum: ["rfb", "frames"] }),
   wsPath: NonEmptyString,
   expiresAtMs: Type.Integer({ minimum: 0 }),
   control: Type.Boolean(),
