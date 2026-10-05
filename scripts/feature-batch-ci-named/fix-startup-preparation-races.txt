@@ -1,0 +1,3 @@
+engine:src/agents/main-session-recovery/main-session-restart-recovery.parallel-startup.test.ts
+engine:src/agents/prepared-model-runtime.supersession-retry.test.ts
+engine:src/state/agent-database-startup.superseded-reload.test.ts
