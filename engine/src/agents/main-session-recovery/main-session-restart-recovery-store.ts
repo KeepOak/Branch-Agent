@@ -182,6 +182,7 @@ export async function recoverStore(params: {
   activeSessionKeys?: Iterable<string>;
   lifecycleGeneration?: string;
   recoveryCapacity?: MainSessionRecoveryCapacity;
+  terminalOnFailure?: boolean;
   shouldContinue?: () => boolean;
   gatewayRuntime: GatewayRecoveryRuntime;
 }): Promise<{ started: number; settled: number; failed: number; skipped: number }> {
@@ -218,6 +219,8 @@ export async function recoverStore(params: {
   for (const { sessionKey, entry: loadedEntry } of entries.toSorted((a, b) =>
     a.sessionKey.localeCompare(b.sessionKey),
   )) {
+    const failedBeforeEntry = result.failed;
+    try {
     if (stopped()) {
       return result;
     }
@@ -568,6 +571,41 @@ export async function recoverStore(params: {
           canonicalSessionKey: dispatchSessionKey,
           sessionId: entry.sessionId,
         });
+      }
+    }
+    } finally {
+      if (params.terminalOnFailure && shouldContinue() && result.failed > failedBeforeEntry) {
+        const current = loadExpectedRestartRecoveryTarget({
+          expected: { sessionId: loadedEntry.sessionId, sessionKey },
+          storePath: params.storePath,
+        });
+        const state = current?.mainRestartRecovery;
+        const failedDispatchTarget = resolveRestartRecoveryDispatchTarget({
+          agentId: params.expectedTarget?.agentId,
+          storeAgentId: params.storeAgentId,
+          cfg: params.cfg,
+          sessionKey,
+          storePath: params.storePath,
+        });
+        if (current && state && failedDispatchTarget && !state.reservation && !state.foregroundClaims) {
+          const tombstone = await tombstoneMainRestartRecoveryWithNotice({
+            agentId: failedDispatchTarget.agentId,
+            cfg: params.cfg,
+            entry: current,
+            gatewayRuntime: params.gatewayRuntime,
+            observation: {
+              sessionId: current.sessionId,
+              cycleId: state.cycleId,
+              revision: state.revision,
+            },
+            reason: "Interrupted by a restart. Continue?",
+            sessionKey,
+            storePath: params.storePath,
+          });
+          if (tombstone === "notice_failed") {
+            mainSessionRecoveryLog.warn(`failed to write restart recovery notice for ${sessionKey}`);
+          }
+        }
       }
     }
   }
