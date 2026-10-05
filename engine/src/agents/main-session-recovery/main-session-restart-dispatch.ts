@@ -15,6 +15,7 @@ import { isTrustedMessageActionTurnIngress } from "../../gateway/message-action-
 import type { GatewayRecoveryRuntime } from "../../gateway/server-instance-runtime.types.js";
 import type { AgentRunRequest } from "../../gateway/server-methods/agent-request-types.js";
 import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
+import { sleepWithAbort } from "../../infra/backoff.js";
 import { CommandLane } from "../../process/lanes.js";
 import { MAIN_SESSION_RESTART_RECOVERY_SOURCE_TOOL } from "../../sessions/input-provenance.js";
 import { formatSystemTurnPrompt } from "../../sessions/system-turn-prompt.js";
@@ -71,6 +72,15 @@ const RESTART_SAFE_TOOLS_NOTICE =
   "For this turn only, the tool surface has been narrowed to replay-safe tools as a " +
   "recovery precaution. Use the tools that are available to report status or continue " +
   "read-only work; the full tool surface restores on the next user turn.";
+
+const REPLY_DISPATCH_PUBLICATION_WAIT_MS = 120_000;
+const REPLY_DISPATCH_PUBLICATION_RETRY_MS = 1_000;
+
+function replyDispatchNotPublished(outcome: Awaited<ReturnType<typeof dispatchRestartRecoveryWithinCapacity>>): boolean {
+  return outcome?.kind === "failed" &&
+    outcome.observation.dispatchAccepted === false &&
+    String(outcome.error).includes("prepared reply dispatch runtime owner was not published");
+}
 
 export function hasRestartRecoveryMessageActionAuthority(entry: SessionEntry): boolean {
   const authority = resolveRestartRecoveryChannelAuthority(entry);
@@ -470,17 +480,34 @@ async function resumeMainSessionWithinAdmission(
     dispatchStarted = true;
     let dispatchSettled = false;
     let stopTyping: (() => void) | undefined;
-    const dispatchOutcome = await dispatchRestartRecoveryWithinCapacity({
-      agentParams,
-      capacity: params.recoveryCapacity,
-      beginDispatch: params.recoveryAdmission.beginDispatch,
-      gatewayRuntime: params.gatewayRuntime,
-      onSettled: () => {
-        dispatchSettled = true;
-        stopTyping?.();
-      },
-      shouldContinue: () => params.shouldContinue?.() !== false,
-    });
+    const publicationDeadline = Date.now() + REPLY_DISPATCH_PUBLICATION_WAIT_MS;
+    let dispatchOutcome: Awaited<ReturnType<typeof dispatchRestartRecoveryWithinCapacity>>;
+    do {
+      dispatchSettled = false;
+      dispatchOutcome = await dispatchRestartRecoveryWithinCapacity({
+        agentParams,
+        capacity: params.recoveryCapacity,
+        beginDispatch: params.recoveryAdmission.beginDispatch,
+        gatewayRuntime: params.gatewayRuntime,
+        onSettled: () => {
+          dispatchSettled = true;
+          stopTyping?.();
+        },
+        shouldContinue: () => params.shouldContinue?.() !== false,
+      });
+      if (
+        !replyDispatchNotPublished(dispatchOutcome) ||
+        params.shouldContinue?.() === false ||
+        Date.now() >= publicationDeadline
+      ) {
+        break;
+      }
+      await sleepWithAbort(
+        Math.min(REPLY_DISPATCH_PUBLICATION_RETRY_MS, publicationDeadline - Date.now()),
+        undefined,
+        { ref: false },
+      );
+    } while (true);
     if (!dispatchOutcome) {
       dispatchStarted = false;
       await rollbackReservation("cancel_reservation");
