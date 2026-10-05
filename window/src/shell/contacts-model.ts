@@ -2,6 +2,7 @@
 // contact classification and unread rollup; this file only adapts it to rows.
 import type { Contact as GatewayContact, Topic } from "@branch/gateway-protocol";
 import type { Conversation } from "../connect/conversations";
+import type { Actions } from "./conversation-actions";
 import type { ListPrefs, ListSection } from "./list-model";
 
 export type Contact = GatewayContact & { thread: Conversation | null };
@@ -23,7 +24,7 @@ export function contactRow(contact: Contact): Conversation {
     : contact.preview.text;
   return {
     key: contact.threadKey, title: contact.name, agentId: base?.agentId ?? (contact.kind === "trunk" ? contact.id.slice(6) : undefined),
-    isMain: contact.isDefault, pinned: Boolean(contact.pinnedAt), archived: Boolean(contact.archivedAt),
+    isMain: contact.kind === "trunk", pinned: Boolean(contact.pinnedAt), archived: Boolean(contact.archivedAt),
     unread: contact.threadUnread || contact.unreadTopics > 0, snoozedUntil: base?.snoozedUntil ?? null,
     createdAt: base?.createdAt ?? 0, updatedAt: contact.preview.at, preview,
     working: contact.working, needsYou: contact.needsYou, kind: contact.kind, system: false, automation: false,
@@ -32,9 +33,28 @@ export function contactRow(contact: Contact): Conversation {
   };
 }
 
+export function openContactRow(key: string | null, contacts: readonly Contact[], sessions: readonly Conversation[]): Conversation | null {
+  const contact = contacts.find((candidate) => candidate.threadKey === key);
+  return contact ? contactRow(contact) : sessions.find((row) => row.key === key) ?? null;
+}
+
+export function missingConversation(key: string | null, mainKey: string | null, contactsLoaded: boolean, contacts: readonly Contact[], sessions: readonly Conversation[]): boolean {
+  return Boolean(contactsLoaded && key && mainKey && key !== mainKey && !openContactRow(key, contacts, sessions));
+}
+
+export async function pinContact(contact: Contact, sessions: readonly Conversation[], actions: Actions, request: (method: string, params: unknown) => Promise<unknown>, refreshContacts: () => void): Promise<void> {
+  const row = contactRow(contact);
+  if (contact.pinnedAt) {
+    const topics = await listContactTopics(contact.id, request);
+    await actions.patchMany([row, ...topics.filter((topic) => topic.pinnedAt).map((topic) => sessions.find((candidate) => candidate.key === topic.key)).filter((candidate): candidate is Conversation => Boolean(candidate))], { pinned: false }, `Unpinned ${contact.name}.`);
+  } else {
+    await actions.pin(row);
+  }
+  refreshContacts();
+}
+
 export function buildContactSections(contacts: Contact[], prefs: ListPrefs, now: number): ListSection[] {
   const shown = contacts.filter((c) => {
-    if (c.isDefault) return false;
     if (prefs.trunk && c.id !== `trunk:${prefs.trunk}`) return false;
     if (prefs.status === "archived") return Boolean(c.archivedAt);
     if (prefs.status === "snoozed") return Boolean(c.thread?.snoozedUntil && c.thread.snoozedUntil > now);
