@@ -31,6 +31,7 @@ vi.mock("./devices.js", () => ({
 }));
 
 const { contactHandlers } = await import("./contacts.js");
+const { hasEventScope } = await import("../server-broadcast-scopes.js");
 
 let stateDir = "";
 const previousState = process.env.BRANCH_STATE_DIR;
@@ -160,6 +161,12 @@ describe("Branch-to-Branch graft on the host", () => {
     expect((await call("contacts.outside.hello", { agent: branchB }, device("dev-c"))).ok).toBe(
       false,
     );
+  });
+
+  it("Settings › Grafts hears contacts.changed (it reloads on it), and a grafted Branch's read scope does too", () => {
+    const reader = { connect: { role: "operator", scopes: ["operator.read"] } };
+    expect(hasEventScope(reader as never, "contacts.changed")).toBe(true);
+    expect(hasEventScope({ connect: { role: "operator", scopes: [] } } as never, "contacts.changed")).toBe(false);
   });
 
   it("keeps the rows connected when the pairing could not be removed", async () => {

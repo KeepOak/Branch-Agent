@@ -296,20 +296,30 @@ scoped device. It uses the same setup-code pairing a phone uses.
 1. On the host Branch, `branch graft invite` prints a one-time setup code. While
    the gateway is bound to loopback (the default), the code carries
    `ws://127.0.0.1:<port>`, so only a Branch on the same computer can use it.
-   When the owner opens the gateway to the network (`gateway.bind` other than
-   `loopback`), the code carries the LAN, tailnet or public address instead, and
-   `branch gateway discover` finds the host over Bonjour.
-2. On the joining Branch, run `branch graft join <setup-code> --name "Studio Laptop"`.
+   When the owner opens the gateway to the network (`gateway.bind: lan`), the
+   code carries the LAN address instead.
+2. With network access on and Bonjour discovery turned on
+   (`plugins.entries.bonjour.enabled`; on by default only on macOS), the other
+   Branch finds the host with `branch gateway discover`. On Windows it browses
+   with its own mDNS query, since Windows has no `dns-sd` or `avahi-browse`.
+3. On the joining Branch, run `branch graft join <setup-code> --name "Studio Laptop"`.
    It connects with the joining Branch's own device identity and asks for
    `operator.read` and `operator.write` only. It never asks for admin, approvals
-   or pairing.
-3. The host approves it like any device. A Branch on the same computer is
+   or pairing. Plain `ws://` to a LAN address needs a TLS gateway (`wss://`), or
+   `BRANCH_ALLOW_INSECURE_PRIVATE_WS=1` on the joining Branch for a trusted
+   private network.
+4. The host approves it like any device. A Branch on the same computer is
    approved silently, unless `gateway.nodes.pairing.autoApproveLocal` is
    `false`. Otherwise run `branch devices approve <requestId>`; `join` prints
    the command and waits until it's approved.
-4. Settings › Grafts on the host lists the joining Branch under its own name.
-   Each of its Trunks is a contact (`a2a:branch-studio-laptop--<trunk>`).
-5. On the joining Branch, `branch graft --host <url>` is Graft working with the
+5. From then on the joining Branch's own gateway keeps the link. It reconnects
+   by itself and says hello as the Branch and its Trunks every minute, so they
+   stay online on the host. It also starts the link whenever the gateway starts
+   and a host is saved.
+6. Settings › Grafts on the host shows the joining Branch as one row with a
+   Branch badge, with its Trunks nested under it. Each Trunk is also a contact
+   (`a2a:branch-studio-laptop--<trunk>`).
+7. On the joining Branch, `branch graft --host <url>` is Graft working with the
    host as that device. Use it to register Graft with an agent. Messages it
    sends to the host's Trunks are attributed to the joining Branch.
 
@@ -318,8 +328,10 @@ The host binds everything to the device:
 - It can only send messages as one of those.
 - Another device or client can't take its rows.
 
-Disconnect in Settings › Grafts removes the device's pairing through
-`device.pair.remove` and disconnects every row it said hello as.
+Disconnect on the Branch row removes the device's pairing through
+`device.pair.remove` and disconnects its Trunks too. The joining Branch's link
+stops and forgets the host. To bring it back, give it a new setup code: after
+the owner approves the new pairing, its rows come back by themselves.
 
 ### Event model
 
