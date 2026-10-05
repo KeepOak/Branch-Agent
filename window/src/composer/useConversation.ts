@@ -42,7 +42,7 @@ export function hasNoModel(conv: Conversation, currentRef: string): boolean {
 
 function readTrunks(result: unknown): { trunks: Trunk[]; defaultId: string } {
   const r = rec(result);
-  const trunks = list(r.agents).map((a) => ({
+  const trunks = list(r.agents).filter((a) => a.hidden !== true).map((a) => ({
     id: str(a.id),
     name: str(rec(a.identity).name) || str(a.name) || str(a.id),
     defaultMode: str(a.defaultPermissionMode),

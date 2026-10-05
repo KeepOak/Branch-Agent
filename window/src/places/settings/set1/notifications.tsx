@@ -48,7 +48,7 @@ export function NotificationsPage(props: SettingsPageProps) {
   const prefs = useNotifyPrefs(props.engine);
   const push = useWebPush(props.engine);
   const agents = useResource<RecordValue>(props.engine, "agents.list", {});
-  const trunks: Trunk[] = list(agents.data?.agents).map((a) => ({ id: String(a.id), name: visible(record(a.identity).name ?? a.name ?? a.id) }));
+  const trunks: Trunk[] = list(agents.data?.agents).filter((a) => a.hidden !== true).map((a) => ({ id: String(a.id), name: visible(record(a.identity).name ?? a.name ?? a.id) }));
   const level = useLevel();
   const device = /Mac/i.test(typeof navigator === "undefined" ? "" : navigator.platform) ? "This Mac" : "This PC";
   return (

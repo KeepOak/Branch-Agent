@@ -81,7 +81,7 @@ export function nextDeny(current: readonly string[], id: string, allow: boolean,
 
 function trunksOf(result: unknown): Trunk[] {
   const list = rec(result).agents;
-  return (Array.isArray(list) ? list : []).map(rec).filter((a) => str(a.id) && a.kind !== "system")
+  return (Array.isArray(list) ? list : []).map(rec).filter((a) => str(a.id) && a.kind !== "system" && a.hidden !== true)
     .map((a) => ({ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) }));
 }
 

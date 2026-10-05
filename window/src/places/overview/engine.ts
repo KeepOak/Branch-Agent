@@ -132,12 +132,12 @@ export function sessions(value: unknown): Session[] {
 /** Conversations a person can open, as the preview counts them: no helpers, automations or Branch-wide ones. */
 export const countable = (row: Session): boolean => !row.helper && !row.automation && !row.global && !row.archived;
 
-export type Agent = { id: string; name: string; mode: string };
+export type Agent = { id: string; name: string; mode: string; hidden?: boolean };
 export function agents(value: unknown): { defaultId: string; mainKey: string; list: Agent[] } {
   const v = record(value);
   return {
     defaultId: text(v.defaultId), mainKey: text(v.mainKey) || "main",
-    list: records(v.agents).filter(a => text(a.id)).map(a => ({ id: text(a.id), name: text(record(a.identity).name) || text(a.name) || text(a.id), mode: text(a.defaultPermissionMode) })),
+    list: records(v.agents).filter(a => text(a.id)).map(a => ({ id: text(a.id), name: text(record(a.identity).name) || text(a.name) || text(a.id), mode: text(a.defaultPermissionMode), ...(a.hidden === true ? { hidden: true } : {}) })),
   };
 }
 export const agentName = (list: Agent[], id: string): string => list.find(a => a.id === id)?.name || id || "Trunk";

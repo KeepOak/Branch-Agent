@@ -51,6 +51,7 @@ import { createReadyTrunk } from "../places/trunk/api";
 import { RemoveTrunkDialog, TRUNK_REMOVED_EVENT } from "../places/trunk/RemoveTrunk";
 import { NewTrunkPreview, type TrunkChoice } from "../places/trunk/NewTrunkPreview";
 import type { Roster } from "../places/trunk/model";
+import { createChiefOfStaff } from "../places/trunk/chief-of-staff";
 import { readRoster } from "../places/trunk/model";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
@@ -657,6 +658,15 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       setMakingTrunk(false);
     }
   };
+  const newChiefOfStaff = useCallback(async () => {
+    try {
+      const agentId = await createChiefOfStaff(session.engine);
+      const key = await actions.create(agentId);
+      if (key) openConversation(key);
+    } catch (e) {
+      notify(`Couldn't make the Chief of Staff: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" });
+    }
+  }, [session, actions, openConversation]);
 
   const contacts = projectContact(contactRows, lists.rows);
   // A saved conversation that is neither a session nor a contact thread reopens the default Trunk.
@@ -1238,7 +1248,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           openConversation(key);
         }}
         onPlace={openPlace}
-        onNew={(e) => showMenu(e, "new", newMenuItems({ newWith: (id) => startNew(id), trunks: visibleTrunks, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
+        onNew={(e) => showMenu(e, "new", newMenuItems({ newWith: (id) => startNew(id), trunks: visibleTrunks, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), newChiefOfStaff: () => void newChiefOfStaff(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
         onArchive={(r) => void (r.archived ? actions.restore(r) : actions.archive(r))}

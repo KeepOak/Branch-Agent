@@ -2,17 +2,19 @@
 import type { WindowEngine } from "../../connect/engine";
 import { errorText, type FileEntry } from "../library/data";
 import { createReadyTrunk } from "../trunk/api";
+import { CHIEF_OF_STAFF_DESCRIPTION, createChiefOfStaff } from "../trunk/chief-of-staff";
 /** The starting jobs, each with the pebble colour and shape the preview draws on its tile. */
 export const JOBS = [
   { name: "Inbox Manager", description: "Clears your inbox and drafts replies in your voice" , color: "#4F6FA8", shape: "50%" },
   { name: "Expense Manager", description: "Files receipts and builds monthly reports" , color: "#1785AF", shape: "46% 54% 42% 58% / 60% 44% 56% 40%" },
   { name: "Researcher", description: "Reads the web and writes short briefs with sources" , color: "#2F8C86", shape: "58% 42% 54% 46% / 52% 56% 44% 48%" },
-  { name: "Chief of Staff", description: "Plans your week and chases loose ends" , color: "#56616B", shape: "62% 38% 50% 50% / 45% 55% 45% 55%" },
+  { name: "Chief of Staff", description: CHIEF_OF_STAFF_DESCRIPTION, color: "#56616B", shape: "62% 38% 50% 50% / 45% 55% 45% 55%" },
   { name: "Bug Reproduction", description: "Turns a bug report into exact steps" , color: "#B84A6B", shape: "42% 58% 58% 42% / 50% 42% 58% 50%" },
   { name: "Trip Planner", description: "Finds and books refundable travel" , color: "#8A5AA8", shape: "62% 38% 50% 50% / 45% 55% 45% 55%" },
 ];
 /** Create an actual Trunk, then append the selected job to its source-generated instructions. */
 export async function createJob(engine: WindowEngine, job: typeof JOBS[number], current: () => boolean = () => true, avatar?: string, name = job.name) {
+  if (job.name === "Chief of Staff") return createChiefOfStaff(engine, current, name, avatar);
   const agentId = await createReadyTrunk(engine, name, current, avatar);
   try {
     if (!current()) throw new Error("You left this screen before its job instructions were saved.");
