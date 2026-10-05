@@ -233,9 +233,20 @@ function onCustom(b: Builder, m: Message, index: number): void {
   b.blocks.push({ kind: "notice", key: `h:${index}`, text });
 }
 
+/** The turn the engine's restart recovery sent to carry an interrupted run on (provenance
+ * internal_system / main_session_restart_recovery, engine sessions/input-provenance.ts). */
+function isRestartResume(m: Message): boolean {
+  const provenance = rec(m.provenance);
+  return str(provenance.kind) === "internal_system" && str(provenance.sourceTool).toLowerCase() === "main_session_restart_recovery";
+}
+
 function onUser(b: Builder, m: Message, index: number, inFlightRunId: string | null): void {
   closeRun(b, inFlightRunId);
   b.runStart = num(m.timestamp);
+  if (isRestartResume(m)) {
+    b.blocks.push({ kind: "notice", key: `h:${index}`, text: RESUMED_AFTER_RESTART });
+    return;
+  }
   const attachments = attachmentsOf(m.content);
   b.blocks.push({
     kind: "user",
@@ -245,6 +256,9 @@ function onUser(b: Builder, m: Message, index: number, inFlightRunId: string | n
     ...(attachments.length ? { attachments } : {}),
   });
 }
+
+/** The mark where restart recovery carried an interrupted run on. */
+export const RESUMED_AFTER_RESTART = "Continued after update";
 
 /** Builds the thread from `chat.history` messages. `inFlightRunId` is a run that is still going. */
 export function historyToBlocks(

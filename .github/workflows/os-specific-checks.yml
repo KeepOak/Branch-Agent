@@ -1,0 +1,98 @@
+name: macOS checks for OS-specific changes
+
+# Pull requests run the feature checks on Linux and Windows only. macOS runs on main after each merge,
+# nightly, and here for pull requests that touch code whose behaviour differs by operating system:
+# process spawning, the daemon/service layer, platform-named files, installers, dependency locks and
+# the CI runners themselves. Desktop changes already run all three systems in desktop-checks.yml.
+on:
+  pull_request:
+    paths:
+      - 'engine/src/process/**'
+      - 'engine/src/daemon/**'
+      - 'engine/src/**/*spawn*'
+      - 'engine/src/**/*windows*'
+      - 'engine/src/**/*win32*'
+      - 'engine/src/**/*darwin*'
+      - 'engine/src/**/*macos*'
+      - 'engine/src/**/*platform*'
+      - 'engine/scripts/build-installers.mjs'
+      - 'engine/pnpm-lock.yaml'
+      - 'window/pnpm-lock.yaml'
+      - 'scripts/feature-batch-ci*.mjs'
+      - 'scripts/feature-slice-ci*.mjs'
+      - '.github/workflows/os-specific-checks.yml'
+      - '.github/workflows/feature-batch-checks.yml'
+      - '.github/workflows/feature-capability-checks.yml'
+      - '.github/workflows/feature-slice-checks.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: os-specific-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  named:
+    name: Named feature tests on macos-latest (${{ matrix.shard }}/2)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    env:
+      CI: 'true'
+      FEATURE_SHARD: ${{ matrix.shard }}/2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Verify pins, install frozen dependencies, and run explicit feature checks
+        run: node scripts/feature-batch-ci.mjs all
+
+  capabilities:
+    name: Capability tests on macos-latest
+    runs-on: macos-latest
+    timeout-minutes: 15
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Verify pins, install frozen dependencies, and run capability tests
+        run: node scripts/feature-batch-ci.mjs capabilities
+
+  slices:
+    name: Exact feature slices on macos-latest
+    runs-on: macos-latest
+    timeout-minutes: 15
+    env:
+      CI: 'true'
+      NODE_OPTIONS: '--max-old-space-size=1024'
+      GOMEMLIMIT: '2GiB'
+      GOMAXPROCS: '2'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Validate exact inventory and coverage classification
+        run: node scripts/feature-slice-ci.mjs validate
+      - name: Run present source slices with frozen dependencies and strict source profiles
+        run: node scripts/feature-slice-ci.mjs all

@@ -1,16 +1,14 @@
 // Trunk editor › Look (preview 12-look picker, 15 emoji face, 30-trunks §4.4.3): the looks with real art, an emoji face,
-// Name, What it's for. Colour, Shape and Eyes are the pebble's and the engine keeps none of them, so they are greyed.
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+// Name, What it's for, and the pebble's Colour, Shape and Eyes.
 import { useState } from "react";
-import { shownWhy } from "../../shell/shown-why";
 import { Face } from "../../face/Face";
 import { EMOJI, LOOKS } from "./model";
 import type { Draft } from "./api";
 
-const COLOURS = ["#2F8C86", "#1785AF", "#8A5AA8", "#5E8C4A", "#4F6FA8", "#C9982E", "#B84A6B", "#56616B"];
-const SHAPES = ["Circle", "Stone", "Leaf", "Acorn", "Shield"];
+export const COLOURS = ["#2F8C86", "#1785AF", "#8A5AA8", "#5E8C4A", "#4F6FA8", "#C9982E", "#B84A6B", "#56616B"];
+export const SHAPES = ["Circle", "Stone", "Leaf", "Acorn", "Shield"];
+export const EYES = ["Round", "Wide", "Sleepy"];
 const RADII = ["50%", "58% 42% 54% 46% / 52% 56% 44% 48%", "46% 54% 42% 58% / 60% 44% 56% 40%", "62% 38% 50% 50% / 45% 55% 45% 55%", "42% 58% 58% 42% / 50% 42% 58% 50%"];
-export const PEBBLE_WHY = "Needs the engine to keep a Trunk’s colour, shape and eyes.";
 const SEEN_KEY = "branch.looks-seen";
 
 /** Looks that arrived in a later update stay marked "New" until the editor has shown them once. */
@@ -31,8 +29,8 @@ function Gallery({ draft, set, fresh }: { draft: Draft; set: (d: Partial<Draft>)
   return (
     <div className="tk-looks">
       {LOOKS.map((l) => (
-        <button key={l.id} type="button" className={fresh.has(l.id) ? "tk-look new" : "tk-look"} aria-pressed={draft.look === l.id} aria-label={fresh.has(l.id) ? `${l.name}, new` : l.name} onClick={() => set({ look: l.id })}>
-          {l.still ? <img src={l.still} alt="" draggable={false} /> : <span className="tk-peb-demo"><Face size={56} /></span>}
+        <button key={l.id} type="button" className={fresh.has(l.id) ? "tk-look new" : "tk-look"} aria-pressed={draft.look === l.id} aria-label={fresh.has(l.id) ? `${l.name}, new` : l.name} onClick={() => set({ look: l.id, ...(l.id === "classic" ? {} : { emoji: "" }) })}>
+          {l.still ? <img src={l.still} alt="" draggable={false} /> : <span className="tk-peb-demo"><Face size={56} pebbleLook={draft} /></span>}
           <b>{l.name}</b>
         </button>
       ))}
@@ -54,22 +52,22 @@ function Emojis({ draft, set }: { draft: Draft; set: (d: Partial<Draft>) => void
   );
 }
 
-function PebbleFields({ classic }: { classic: boolean }) {
+function PebbleFields({ draft, set }: { draft: Draft; set: (d: Partial<Draft>) => void }) {
+  const classic = draft.look === "classic";
   return (
     <>
-      <div className="tk-field" title={shownWhy(PEBBLE_WHY)}>
+      <div className="tk-field">
         <span className="tk-label">Colour</span>
-        <div className="tk-swatches">{COLOURS.map((c) => <button key={c} type="button" className="tk-swatch" style={{ background: c }} aria-label={`Colour ${c}`} disabled />)}</div>
+        <div className="tk-swatches">{COLOURS.map((c) => <button key={c} type="button" className="tk-swatch" style={{ background: c }} aria-label={`Colour ${c}`} aria-pressed={draft.colour === c} onClick={() => set({ colour: c })} />)}</div>
       </div>
-      {classic && <div className="tk-field" title={shownWhy(PEBBLE_WHY)}>
+      {classic && <div className="tk-field">
         <span className="tk-label">Shape</span>
-        <div className="tk-shapes">{SHAPES.map((s, i) => <button key={s} type="button" className="tk-shape" aria-label={s} title={shownWhy(PEBBLE_WHY) ? `${s}. ${PEBBLE_WHY}` : s} disabled><span style={{ borderRadius: RADII[i] }} /></button>)}</div>
+        <div className="tk-shapes">{SHAPES.map((s, i) => <button key={s} type="button" className="tk-shape" aria-label={s} title={s} aria-pressed={draft.shape === s} onClick={() => set({ shape: s })}><span style={{ borderRadius: RADII[i], background: draft.colour }} /></button>)}</div>
       </div>}
-      {classic && <div className="tk-field" title={shownWhy(PEBBLE_WHY)}>
+      {classic && <div className="tk-field">
         <span className="tk-label">Eyes</span>
-        <span className="tk-seg">{["Round", "Wide", "Sleepy"].map((e) => <button key={e} type="button" disabled>{e}</button>)}</span>
+        <span className="tk-seg">{EYES.map((e) => <button key={e} type="button" aria-pressed={draft.eyes === e} onClick={() => set({ eyes: e })}>{e}</button>)}</span>
       </div>}
-      {shownWhy(PEBBLE_WHY) && <small className="tk-why">{shownWhy(PEBBLE_WHY)}</small>}
     </>
   );
 }
@@ -87,7 +85,7 @@ export function LookTab({ draft, set, fresh }: { draft: Draft; set: (d: Partial<
         <label className="tk-field"><span className="tk-label">Name</span><input className="inp" value={draft.name} onChange={(e) => set({ name: e.target.value })} /></label>
         <label className="tk-field"><span className="tk-label">What it’s for</span><input className="inp" value={draft.theme} onChange={(e) => set({ theme: e.target.value })} /></label>
       </div>
-      <PebbleFields classic={draft.look === "classic"} />
+      <PebbleFields draft={draft} set={set} />
     </div>
   );
 }

@@ -1,0 +1,46 @@
+name: Merge gate recheck
+
+# The merge gate fails as soon as one check fails, and gives up after 20 minutes of waiting. When a
+# check workflow later passes on the same commit (a rerun after a flake, or a run that sat in the
+# runner queue), rerun the gate so auto-merge proceeds without anyone rerunning it by hand.
+on:
+  workflow_run:
+    workflows:
+      - Feature batch checks
+      - Capability feature checks
+      - Feature slice checks
+      - Priority capability checks
+      - Writing quality checks
+      - Desktop checks
+      - GitHub component release
+      - macOS checks for OS-specific changes
+    types: [completed]
+
+permissions:
+  actions: write
+
+concurrency:
+  group: merge-gate-recheck-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  recheck:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Rerun a finished, unsuccessful merge gate for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          gate=$(gh run list -R "$REPO" --workflow merge-gate.yml --commit "$SHA" --limit 1 \
+            --json databaseId,status,conclusion --jq '.[0] // empty')
+          if [ -z "$gate" ]; then echo "No merge gate run for $SHA."; exit 0; fi
+          id=$(jq -r .databaseId <<<"$gate"); status=$(jq -r .status <<<"$gate"); conclusion=$(jq -r .conclusion <<<"$gate")
+          if [ "$status" != "completed" ]; then echo "Merge gate $id is $status; it will see this result."; exit 0; fi
+          if [ "$conclusion" = "success" ]; then echo "Merge gate $id already passed."; exit 0; fi
+          echo "Merge gate $id ended $conclusion; rerunning it."
+          gh run rerun "$id" -R "$REPO"

@@ -9,7 +9,7 @@ import { NO_PEOPLE, type ListPeople } from "./list-model";
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
-export type Trunk = { id: string; name: string; isDefault: boolean; avatar?: string; theme?: string; paused?: boolean };
+export type Trunk = { id: string; name: string; isDefault: boolean; avatar?: string; emoji?: string; colour?: string; shape?: string; eyes?: string; theme?: string; paused?: boolean };
 export type Trunks = { list: Trunk[]; defaultId: string | null; loaded?: boolean };
 
 const EMPTY_LIST: ConversationsSnapshot = { rows: [], loaded: false, error: null };
@@ -50,11 +50,22 @@ export function useContacts(session: SaplingSession, ready: boolean): [Contact[]
   }, [session]);
   useEffect(() => {
     if (!ready) { setLoaded(false); return; }
+    // A new connection is a new engine: no contact is working until contacts.list says so.
+    setContacts((all) => (all.some((c) => c.working) ? all.map((c) => (c.working ? { ...c, working: false } : c)) : all));
     refresh();
-    const off = session.onGatewayEvent((event) => {
-      if (event === "contacts.changed" || event === "agents.changed" || event === "config.changed") refresh();
+    // Read shortly after the event, as ConversationList.refreshSoon does: a run's final chat event can land
+    // just before the engine drops it from its live registry.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const soon = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; refresh(); }, 150);
+    };
+    const off = session.onGatewayEvent((event, payload) => {
+      if (event === "contacts.changed" || event === "agents.changed" || event === "config.changed") soon();
+      // A run ending clears its ring the way the conversation list does (ConversationList.onEvent).
+      else if (event === "chat" && ["final", "error", "aborted"].includes(str(rec(payload).state))) soon();
     });
-    return () => { off(); refresh.cancel(); };
+    return () => { off(); if (timer) clearTimeout(timer); refresh.cancel(); };
   }, [session, ready, refresh]);
   return [ready ? contacts : [], refresh, ready && loaded];
 }
@@ -73,6 +84,10 @@ export function readTrunks(result: unknown): Trunks {
       name: str(rec(a.identity).name) || str(a.name) || str(a.id),
       isDefault: str(a.id) === defaultId || a.default === true,
       avatar: str(rec(a.identity).avatar) || str(a.avatar) || undefined,
+      emoji: str(rec(a.identity).emoji) || undefined,
+      colour: str(rec(a.identity).colour) || undefined,
+      shape: str(rec(a.identity).shape) || undefined,
+      eyes: str(rec(a.identity).eyes) || undefined,
       ...(str(rec(a.identity).theme) ? { theme: str(rec(a.identity).theme) } : {}),
       ...(a.paused === true ? { paused: true } : {}),
     })),

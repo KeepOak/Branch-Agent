@@ -100,7 +100,7 @@ export async function captureLegacyStateSnapshotIdentity(
     const child = execFile(
       process.execPath,
       [...resolveRuntimeWorkerArgv(worker), "--branch-state-snapshot"],
-      { encoding: "utf8" },
+      { encoding: "utf8", windowsHide: true },
       (error, stdout, stderr) => {
         if (error) {
           failure = `${formatErrorMessage(error)}${stderr ? `\n${stderr.trim()}` : ""}`;
