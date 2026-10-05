@@ -47,8 +47,10 @@ describe("status popovers", () => {
     expect(restart).toHaveBeenCalled();
   });
   it("Usage: rows, the summary and This month from usage.cost", async () => {
-    const request = vi.fn(async () => ({ totals: { totalCost: 3.5 } }));
-    const limits = { updatedAt: Date.now(), refreshing: false, rows: [{ id: "a", name: "Plan", account: "", pill: "Measured" as const, windows: [{ name: "Today", left: 40, reset: "", low: false }], line: "as of just now" }] };
+    const request = vi.fn(async (method: string) => method === "usage.status"
+      ? { updatedAt: Date.now(), providers: [{ provider: "openai", displayName: "Plan", windows: [{ label: "Today", usedPercent: 60 }] }] }
+      : { totals: { totalCost: 3.5 } });
+    const limits = { updatedAt: Date.now(), refreshing: false, rows: [{ id: "a", name: "Plan", account: "", pill: "Measured" as const, inUse: false, windows: [{ name: "Today", left: 40, reset: "", low: false }], line: "as of just now" }] };
     const host = await show(<UsagePopover above={above} onClose={() => {}} limits={limits} request={request as never} onOpenUsage={() => {}} />);
     expect(request).toHaveBeenCalledWith("usage.cost", expect.objectContaining({ agentScope: "all" }));
     expect(host.textContent).toContain("This month: $3.50");
