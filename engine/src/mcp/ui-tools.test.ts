@@ -188,7 +188,9 @@ describe("the window server", () => {
         (await fetch(`http://127.0.0.1:${port}/../secret`)).headers.get("content-type"),
       ).toContain("text/html");
     } finally {
-      server.close();
+      // fetch keeps sockets alive; a lingering one crashed the Windows test worker at teardown.
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
     }
   });
 });

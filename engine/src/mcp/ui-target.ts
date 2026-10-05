@@ -282,6 +282,7 @@ export async function openTestInstance(
       },
       close: async () => {
         await opened.context.close().catch(() => undefined);
+        opened.server.closeAllConnections();
         opened.server.close();
         engine.stop();
       },
