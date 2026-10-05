@@ -82,6 +82,7 @@ export const windowTests = [
   'src/places/canopy/canopy.test.tsx',
   'src/places/customize/customize.test.tsx',
   'src/places/customize/tools.test.tsx',
+  'src/places/inbox/history.test.tsx',
   'src/places/inbox/inbox.test.tsx',
   'src/places/library/create-document.test.ts',
   'src/places/library/documents.test.tsx',
