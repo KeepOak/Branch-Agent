@@ -66,17 +66,32 @@ async function runCapabilityTests(scratch) {
     'run', '--config', config, ...capabilityTests()], engineRoot, await featureTestEnv(scratch));
 }
 
-async function runFeatureTests(scratch) {
+// A CI job may run one lane ('engine' or 'window') or one engine shard ('engine:1/2'), so the
+// named tests run as parallel jobs that each stay well under the 15-minute cap.
+function parseLane(value) {
+  if (value === undefined) return { lanes: ['engine', 'window'] };
+  const match = /^(engine|window)(?::([1-9]\d*)\/([1-9]\d*))?$/.exec(value);
+  if (!match || (match[2] && Number(match[2]) > Number(match[3]))) {
+    throw new Error(`Unknown named-test lane "${value}": use engine, window or engine:<k>/<n>`);
+  }
+  return { lanes: [match[1]], shard: match[2] ? `${match[2]}/${match[3]}` : undefined };
+}
+
+async function runFeatureTests(scratch, selection = parseLane(undefined)) {
   const env = await featureTestEnv(scratch);
-  for (const lane of ['engine', 'window']) {
+  for (const lane of selection.lanes) {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     const config = path.join(repoRoot, 'scripts', `feature-batch-ci-${lane}.config.mjs`);
     await run(process.execPath, [path.join(root, 'node_modules/vitest/vitest.mjs'),
-      'run', '--config', config, ...namedTests(lane)], root, env);
+      'run', '--config', config, ...(selection.shard ? [`--shard=${selection.shard}`] : []), ...namedTests(lane)], root, env);
   }
 }
 
-async function checkAll(suite = 'named') {
+async function checkAll(suite = 'named', laneArg = undefined) {
+  const selection = parseLane(laneArg);
+  // The once-per-OS checks (strict typecheck, native protocol) run in the job that has no shard
+  // or the first engine shard, never twice.
+  const runsOncePerOs = laneArg === undefined || laneArg === 'engine' || laneArg === 'engine:1/2';
   const started = Date.now();
   await validateScope();
   const headBefore = await gitHead();
@@ -92,15 +107,15 @@ async function checkAll(suite = 'named') {
     else {
       // The strict typecheck is the same on every OS; Linux runs it once. On the 7 GB macOS
       // runners its ~6 GB check thrashes and alone pushed the job past the 15-minute cap.
-      if (process.platform === 'linux') await runTargetedStrictChecks(scratch);
+      if (process.platform === 'linux' && runsOncePerOs) await runTargetedStrictChecks(scratch);
       // The release's native-protocol step rejects schema changes the Swift/Kotlin generators cannot
       // name (an alias without a canonical name broke every release after #188). Check it per PR.
-      if (process.platform === 'linux') {
+      if (process.platform === 'linux' && runsOncePerOs) {
         for (const language of ['swift', 'kotlin']) {
           await run(process.execPath, ['scripts/prepare-native-protocol.mjs', '--language', language, '--check'], engineRoot);
         }
       }
-      await runFeatureTests(scratch);
+      await runFeatureTests(scratch, selection);
     }
     receipt.passed = true;
   } finally {
@@ -115,6 +130,6 @@ async function checkAll(suite = 'named') {
 
 const mode = process.argv[2];
 if (mode === 'validate') await validateScope();
-else if (mode === 'all') await checkAll();
+else if (mode === 'all') await checkAll('named', process.argv[3]);
 else if (mode === 'capabilities') await checkAll('capabilities');
-else throw new Error('Usage: node scripts/feature-batch-ci.mjs validate|all|capabilities');
+else throw new Error('Usage: node scripts/feature-batch-ci.mjs validate|all [engine|window|engine:<k>/<n>]|capabilities');

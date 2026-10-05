@@ -29,14 +29,17 @@ concurrency:
 
 jobs:
   feature-batch:
-    name: Named feature tests on ${{ matrix.os }}
+    name: Named feature tests (${{ matrix.lane }}) on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 9
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
+        # Engine tests alone took 11 min on windows-latest (2026-10-05); two engine shards plus the
+        # window lane keep every job well under the 15-minute cap.
+        lane: ['engine:1/2', 'engine:2/2', 'window']
     env:
       CI: 'true'
     steps:
@@ -51,4 +54,4 @@ jobs:
           node-version: '24.19.0'
           package-manager-cache: false
       - name: Verify pins, install frozen dependencies, and run explicit feature checks
-        run: node scripts/feature-batch-ci.mjs all
+        run: node scripts/feature-batch-ci.mjs all ${{ matrix.lane }}
