@@ -1190,7 +1190,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           openConversation(key);
         }}
         onPlace={openPlace}
-        onNew={(e) => showMenu(e, "new", newMenuItems({ newConversation: () => startNew(), newWith: (id) => startNew(id), trunks: trunks.list, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
+        onNew={(e) => showMenu(e, "new", newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
         onArchive={(r) => void (r.archived ? actions.restore(r) : actions.archive(r))}
