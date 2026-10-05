@@ -184,8 +184,8 @@ With no `--token`, `--password` or `BRANCH_GATEWAY_TOKEN`, it reads the app's
 never shown to the agent. Remote gateways still need `--url` plus a token, the
 same as before.
 
-Use the `branch` command the desktop app installs (Settings › Advanced ›
-"Add the branch command"). It always runs the current engine.
+Use the `branch` command the desktop app installs when "Type branch in any
+terminal" is on. It always runs the current engine.
 
 ```bash
 # Claude Code (all projects)
