@@ -75,6 +75,7 @@ export const windowTests = [
   'src/places/customize/tools.test.tsx',
   'src/places/library/places.test.tsx',
   'src/shell/conversation-actions.test.ts',
+  'src/shell/row-menu.test.tsx',
   'src/connect/conversations.test.ts',
   'src/transcript-export/replay-html.test.ts',
   'src/transcript-export/ExportDialog.test.tsx',

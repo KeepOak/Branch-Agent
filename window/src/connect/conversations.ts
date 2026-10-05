@@ -12,6 +12,7 @@ export type Conversation = {
   archived: boolean;
   unread: boolean;
   snoozedUntil: number | null;
+  done?: boolean;
   createdAt: number;
   updatedAt: number;
   preview: string;
@@ -99,6 +100,7 @@ export function projectConversation(raw: unknown, mainKey: string | null): Conve
     archived: r.archived === true,
     unread: r.unread === true,
     snoozedUntil: num(r.snoozedUntil) || null,
+    done: r.done === true,
     createdAt: num(r.createdAt) || num(r.updatedAt),
     updatedAt: num(r.updatedAt),
     preview: str(r.lastMessagePreview).replace(/\s+/g, " ").trim(),

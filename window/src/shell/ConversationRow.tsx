@@ -143,6 +143,7 @@ export function ConversationRow(p: Props) {
               <RowIcon value={row.icon} />
               <span className="nm-t">{name}</span>
             </span>
+            {row.done ? <span className="bdg" title="Done" role="img" aria-label="Done"><Icon name="check" size={13} /></span> : null}
             {badges.map((b) => (
               <span key={b.words} className="bdg" title={b.words} role="img" aria-label={b.words}>
                 <Icon name={b.icon} size={13} />
