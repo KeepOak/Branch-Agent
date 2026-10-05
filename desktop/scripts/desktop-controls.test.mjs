@@ -29,9 +29,9 @@ async function fixture(run) {
   try { await run({ root, deps, calls, state }); } finally { await rm(root, { recursive: true, force: true }); }
 }
 
-test("defaults keep working on close, keep awake off, tray ring off", async () => fixture(async ({ deps }) => {
+test("defaults keep working and auto-apply on, keep awake and tray ring off", async () => fixture(async ({ deps }) => {
   const controls = createDesktopControls(deps);
-  assert.deepEqual(await controls.get(), { keepWorking: true, keepAwake: false, trayUsage: false, startWithWindows: false, branchOnPath: false });
+  assert.deepEqual(await controls.get(), { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: true, startWithWindows: false, branchOnPath: false });
 }));
 
 test("Start with Windows goes to the login item, not the settings file", async () => fixture(async ({ deps, calls, state }) => {

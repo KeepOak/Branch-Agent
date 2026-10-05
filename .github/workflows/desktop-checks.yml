@@ -59,7 +59,7 @@ jobs:
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
           NODE_OPTIONS: '--max-old-space-size=96'
-        run: node --max-old-space-size=96 --test scripts/component-update.test.mjs scripts/component-update-ipc.test.mjs scripts/desktop-update.test.mjs scripts/gateway-ready.test.mjs scripts/resident-window.test.mjs
+        run: node --max-old-space-size=96 --test scripts/auto-apply-update.test.mjs scripts/component-update.test.mjs scripts/component-update-ipc.test.mjs scripts/desktop-update.test.mjs scripts/gateway-ready.test.mjs scripts/resident-window.test.mjs
       - name: Check component release archive scale
         working-directory: ${{ github.workspace }}
         env:

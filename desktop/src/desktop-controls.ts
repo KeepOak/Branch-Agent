@@ -13,6 +13,8 @@ export interface DesktopSettings {
   keepAwake: boolean;
   /** The tray icon shows the usage ring instead of the Branch icon. */
   trayUsage: boolean;
+  /** Apply verified releases after a sustained idle period. */
+  autoApplyUpdates: boolean;
 }
 export interface ControlsState extends DesktopSettings {
   startWithWindows: boolean;
@@ -20,7 +22,7 @@ export interface ControlsState extends DesktopSettings {
 }
 export type ControlName = keyof ControlsState;
 
-export const DEFAULT_SETTINGS: DesktopSettings = { keepWorking: true, keepAwake: false, trayUsage: false };
+export const DEFAULT_SETTINGS: DesktopSettings = { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: true };
 
 /** The engine's own app links (engine/ui/src/pages/apps/view.ts); desktops come from Branch's releases. */
 const DESKTOP_RELEASES = `https://github.com/${RELEASE_REPOSITORY}/releases/latest`;
@@ -40,6 +42,7 @@ export interface ControlDeps {
   cli: { installed(): Promise<boolean>; install(): Promise<void>; uninstall(): Promise<void> };
   tray: { usage(left: number | null, on: boolean): void };
   openExternal(url: string): Promise<void>;
+  onChange?: (settings: DesktopSettings) => void;
 }
 
 export interface DesktopControls {
@@ -57,7 +60,7 @@ function readSettings(file: string): DesktopSettings {
   try {
     const saved = JSON.parse(readFileSync(file, "utf8")) as Partial<DesktopSettings>;
     const pick = (key: keyof DesktopSettings) => typeof saved[key] === "boolean" ? saved[key] : DEFAULT_SETTINGS[key];
-    return { keepWorking: pick("keepWorking"), keepAwake: pick("keepAwake"), trayUsage: pick("trayUsage") };
+    return { keepWorking: pick("keepWorking"), keepAwake: pick("keepAwake"), trayUsage: pick("trayUsage"), autoApplyUpdates: pick("autoApplyUpdates") };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -80,11 +83,12 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
     if (typeof on !== "boolean") throw new Error("A desktop control takes on or off");
     if (name === "startWithWindows") deps.login.set(on);
     else if (name === "branchOnPath") await (on ? deps.cli.install() : deps.cli.uninstall());
-    else if (name === "keepWorking" || name === "keepAwake" || name === "trayUsage") {
+    else if (name === "keepWorking" || name === "keepAwake" || name === "trayUsage" || name === "autoApplyUpdates") {
       saved = { ...saved, [name]: on };
       save();
       if (name === "keepAwake") holdAwake(on);
       if (name === "trayUsage") deps.tray.usage(lastLeft, on);
+      deps.onChange?.({ ...saved });
     } else throw new Error(`Unknown desktop control: ${String(name)}`);
     return get();
   };

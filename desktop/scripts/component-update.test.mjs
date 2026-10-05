@@ -203,17 +203,18 @@ async function freePort() {
   const port = probe.address().port; await new Promise(resolve => probe.close(resolve)); return port;
 }
 
-test("actual desktop caller retains running engine until explicit restart and rolls back a failed new build", async () => fixture(async ({ cfg, request }) => {
+test("actual desktop caller retains running engine until explicit clean relaunch", async () => fixture(async ({ cfg, request }) => {
   const require = createRequire(import.meta.url); const Module = require("node:module");
   const load = Module._load; const previousFetch = globalThis.fetch;
   const previousData = process.env.BRANCH_DESKTOP_DATA; const previousHidden = process.env.BRANCH_DESKTOP_HIDDEN;
   const desktop = { ...cfg, nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() };
   await mkdir(join(cfg.engineDir, "dist"), { recursive: true });
   await writeFile(join(cfg.engineDir, "dist", "build-info.json"), '{"version":"old"}');
-  await writeFile(join(cfg.engineDir, "branch.mjs"), 'import http from "node:http"; setTimeout(()=>http.createServer((_req,res)=>res.writeHead(200).end()).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1"),1000);');
+  await writeFile(join(cfg.engineDir, "branch.mjs"), 'import http from "node:http"; process.on("message", m => { if(m.type?.startsWith("branch-desktop:")){ process.send({type:"branch-desktop:activity-result",id:m.id,idle:true,activeRuns:0,pendingReplies:0,totalActive:0}); if(m.type==="branch-desktop:stop-if-idle")setTimeout(()=>process.exit(0),20); }}); setTimeout(()=>http.createServer((_req,res)=>res.writeHead(200).end()).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1"),1000);');
   await writeFile(join(cfg.dataDir, "desktop.json"), JSON.stringify(desktop));
+  let relaunches = 0;
   const app = new EventEmitter(); Object.assign(app, { getVersion: () => "fixture", setPath: () => {}, setAppUserModelId: () => {},
-    requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(), quit: () => app.emit("will-quit") });
+    requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(), relaunch: () => { relaunches++; }, quit: () => app.emit("will-quit") });
   const ipcMain = Object.assign(new EventEmitter(), { handle() {} });
   let servedAt, ownerWindow, reloads = 0; const launchedAt = Date.now();
   class BrowserWindow extends EventEmitter {
@@ -246,13 +247,10 @@ test("actual desktop caller retains running engine until explicit restart and ro
     ipcMain.emit("branch-desktop:restart-engine", { sender: { ...ownerWindow.webContents }, senderFrame: ownerWindow.webContents.mainFrame });
     assert.doesNotThrow(() => process.kill(oldPid, 0), "foreign restart sender cannot stop the owned child");
     ipcMain.emit("branch-desktop:restart-engine", { sender: ownerWindow.webContents, senderFrame: ownerWindow.webContents.mainFrame });
-    await eventually(async () => {
-      const pointer = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
-      const pid = Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8"));
-      if (pointer !== cfg.engineDir || pid === oldPid) return false;
-      try { const response = await previousFetch(`http://127.0.0.1:${desktop.gatewayPort}/readyz`); await response.body?.cancel(); return response.status === 200; } catch { return false; }
-    });
-    await unchanged(cfg);
+    await eventually(() => relaunches === 1);
+    assert.equal(reloads, 0, "activation relaunches the app instead of reloading this renderer");
+    assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim() !== cfg.engineDir, true);
+    await eventually(async () => { try { process.kill(oldPid, 0); return false; } catch { return true; } });
   } finally {
     app.emit("will-quit"); Module._load = load; globalThis.fetch = previousFetch;
     if (previousData === undefined) delete process.env.BRANCH_DESKTOP_DATA; else process.env.BRANCH_DESKTOP_DATA = previousData;

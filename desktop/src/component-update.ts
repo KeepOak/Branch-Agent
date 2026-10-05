@@ -133,7 +133,7 @@ async function publish(cfg: DesktopConfig, release: ComponentRelease, next: { en
 }
 
 /**
- * Does not stop/restart the running engine. Its existing build watcher offers the explicit Restart action.
+ * Does not stop/restart the running engine. The desktop owns activation after staging.
  * An unfinished or held engine/window publication blocks the desktop component too.
  */
 async function refresh(cfg: DesktopConfig, request: typeof fetch, options: RefreshOptions): Promise<boolean> {
@@ -150,7 +150,8 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
 }
 
 const refreshes = new WeakMap<DesktopConfig, Promise<boolean>>();
-/** Startup, hourly and manual staging share one publication owner. */
+export const COMPONENT_UPDATE_CHECK_MS = 10 * 60 * 1000;
+/** Startup, periodic and manual staging share one publication owner. */
 export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch = fetch, options: RefreshOptions = {}): Promise<boolean> {
   const active = refreshes.get(cfg);
   if (active) return active;
@@ -173,7 +174,7 @@ export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) =>
     busy = true;
     try {
       if (await refreshComponentUpdate(cfg, fetch, options)) {
-        log("Verified GitHub component update staged; awaits Restart");
+        log("Verified GitHub component update staged");
         options.onStaged?.();
       }
     }
@@ -181,6 +182,6 @@ export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) =>
     finally { busy = false; }
   };
   void tick();
-  const timer = setInterval(() => void tick(), 60 * 60 * 1000);
+  const timer = setInterval(() => void tick(), COMPONENT_UPDATE_CHECK_MS);
   return () => { stopped = true; clearInterval(timer); };
 }

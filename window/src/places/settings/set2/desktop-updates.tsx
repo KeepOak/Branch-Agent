@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { SettingsPageProps } from "../index";
-import { Btn, Ctl, Hint, Page, Sec, Status } from "../kit";
+import { Btn, Ctl, Hint, Page, Sec, Status, Switch } from "../kit";
+import { useDesktopControls } from "../../../connect/desktop-controls";
 import { componentDesktop, DESKTOP_CHECKS_HOURLY, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus, type ComponentUpdateStatus } from "../../../connect/desktop-component-updates";
 import { rec, str, useLive, type RecordValue } from "./common";
 
@@ -11,6 +12,7 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   const desktop = componentDesktop(engine.gatewayUrl);
   const bridge = desktop?.componentUpdates;
   const data = useDesktopComponentStatus(engine.gatewayUrl);
+  const auto = useDesktopControls();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = async (method: "check" | "stage") => {
@@ -24,13 +26,19 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   const lede = data.status?.currentVersion ? `Branch Agent ${data.status.currentVersion}.` : "Updates for Branch Agent on this computer.";
   return <Page title={title} lede={lede}>
     {error || data.error ? <Status tone="bad" title="Branch couldn’t update">{error || data.error}</Status> : null}
-    <Status tone={data.status?.phase === "staged" ? "ok" : "idle"} title={statusLine(data.status)}>
-      {data.status?.phase === "staged" ? "Restart Branch when your work is ready. Your conversations and settings stay in place." : "Checks for a new verified Branch Agent release."}
+    <Status tone={data.status?.phase === "staged" ? "ok" : "idle"} title={statusLine(data.status, auto.state?.autoApplyUpdates !== false)}>
+      {data.status?.phase === "staged" ? auto.state?.autoApplyUpdates === false
+        ? "Restart Branch when your work is ready. Your conversations and settings stay in place."
+        : "Your conversations and settings stay in place." : "Checks for a new verified Branch Agent release."}
     </Status>
     <Sec title="Updating">
+      <Ctl title="Apply updates by themselves when no Trunk is working" off={auto.off}>
+        <Switch label="Apply updates by themselves when no Trunk is working" checked={auto.state?.autoApplyUpdates ?? true}
+          disabled={auto.busy !== null} onChange={on => void auto.set("autoApplyUpdates", on)} />
+      </Ctl>
       <Ctl title="Check for updates"><Btn sm disabled={busy} onClick={() => void run("check")}>{busy ? "Working…" : "Check now"}</Btn></Ctl>
       {data.status?.phase === "available" ? <Ctl title={`Install ${data.status.latestVersion}`}><Btn disabled={busy} onClick={() => void run("stage")}>Install when nothing is running</Btn></Ctl> : null}
-      <Hint>Branch checks when it starts and every hour. A downloaded update takes effect when Branch restarts.</Hint>
+      <Hint>Branch checks when it starts and every 10 minutes. A downloaded update applies after your Trunks finish.</Hint>
     </Sec>
   </Page>;
 }
@@ -54,9 +62,9 @@ function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title
   </Page>;
 }
 
-function statusLine(status: ComponentUpdateStatus | null): string {
+function statusLine(status: ComponentUpdateStatus | null, autoApply: boolean): string {
   if (!status) return "Reading desktop update status…";
-  if (status.phase === "staged") return `${status.pendingVersion} is ready; restart to finish`;
+  if (status.phase === "staged") return autoApply ? "Update ready, applying when your Trunks finish" : `${status.pendingVersion} is ready; restart to finish`;
   if (status.phase === "available") return `${status.latestVersion} is ready to install`;
   if (status.phase === "current") return "Branch is up to date.";
   if (status.phase === "checking") return "Checking for updates…";

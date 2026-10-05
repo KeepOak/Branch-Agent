@@ -271,13 +271,14 @@ export function RunningPopover({ request, working, onOpen, onAutomations, ...bas
   );
 }
 
-type VersionProps = Base & { update: UpdateInfo | null; version: string; onWhatsNew: () => void; onInstall: () => void; onRemind: () => void };
+type VersionProps = Base & { update: UpdateInfo | null; version: string; desktopPending?: string | null; autoApply?: boolean; onWhatsNew: () => void; onInstall: () => void; onRemind: () => void };
 
 /** §4.9.8 Version and update menu: what's ready, What's new, Install when nothing is running, Remind me tomorrow. */
-export function VersionPopover({ update, version, onWhatsNew, onInstall, onRemind, ...base }: VersionProps) {
+export function VersionPopover({ update, version, desktopPending, autoApply, onWhatsNew, onInstall, onRemind, ...base }: VersionProps) {
   const latest = update?.latest && update.latest !== version ? update.latest : null;
   return (
     <Popover at={{ x: 0, y: 0 }} label="Version and updates" testid="pop-version" className="sp" {...base}>
+      {desktopPending && autoApply ? <><div className="pt">Update ready, applying when your Trunks finish</div><p className="pp">Branch {desktopPending}</p></> : null}
       {latest ? (
         <>
           <div className="pt">Branch {latest} is ready</div>
