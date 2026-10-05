@@ -9,7 +9,7 @@ import { Jobs } from "../customize/jobs";
 import { TrunkEditor } from "./TrunkEditor";
 import { TrunkProfile } from "./TrunkProfile";
 import { TrunkStudio } from "./TrunkStudio";
-import { newTrunkName, updateParams } from "./api";
+import { newTrunkName, removeTrunk, updateParams } from "./api";
 import { readMay } from "./may";
 import { LOOKS, lookOf, readConfig, readRoster } from "./model";
 import { readFacts, scheduleText } from "./profile-data";
@@ -164,9 +164,22 @@ describe("Customize › Trunks", () => {
     await act(async () => { row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
     await click(byText("Remove Birch…"));
     expect(document.body.textContent).toContain("move to the Trash");
-    await click(byText("Remove"));
+    await click(document.querySelector('[data-testid="trunk-remove"] .btn.bad'));
     expect(request).toHaveBeenCalledWith("agents.delete", { agentId: "birch" });
     expect(document.body.textContent).not.toContain("Undo");
+  });
+  it("blocks the default Trunk and reports each failed file move", async () => {
+    const request = fake({ "agents.delete": { ok: true, failed: [{ path: "notes.md", reason: "locked" }], purgeFailed: true } });
+    await expect(removeTrunk(engine(request), "oak")).rejects.toThrow("default Trunk");
+    expect(request).not.toHaveBeenCalledWith("agents.delete", expect.anything());
+    await mount(tab(request));
+    expect(byText("Remove").disabled).toBe(true);
+    const row = document.querySelectorAll(".tk-row")[1];
+    await act(async () => { row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
+    await click(byText("Remove Birch…"));
+    await click(document.querySelector('[data-testid="trunk-remove"] .btn.bad'));
+    expect(document.body.textContent).not.toContain("Undo");
+    expect(await removeTrunk(engine(request), "birch")).toEqual({ failed: ["notes.md: locked"], purgeFailed: true });
   });
   it("saves the contact default in one patch, including explicit ownership", async () => {
     const request = fake();
@@ -218,6 +231,14 @@ describe("job creation across gateway replacement", () => {
 });
 
 describe("Trunk profile and studio", () => {
+  it("opens the shared Remove confirmation from a non-default profile", async () => {
+    const request = fake({ "sessions.list": { sessions: [] } });
+    await mount(<TrunkProfile engine={engine(request)} agentId="birch" level="regular" onClose={() => {}} />);
+    await click(byText("Remove Birch…"));
+    expect(document.querySelector('[data-testid="trunk-remove"]')).toBeTruthy();
+    await click(document.querySelector('[data-testid="trunk-remove"] .btn.bad'));
+    expect(request).toHaveBeenCalledWith("agents.delete", { agentId: "birch" });
+  });
   it("lists its automations from cron.list, toggles one, and shows the ID only at Technical", async () => {
     const request = fake({ "cron.list": { jobs: [{ id: "j1", name: "Morning", agentId: "birch", enabled: true, schedule: { kind: "every", everyMs: 1800000 } }] }, "sessions.list": { sessions: [] } });
     await mount(<TrunkProfile engine={engine(request)} agentId="birch" level="technical" onClose={() => {}} />);

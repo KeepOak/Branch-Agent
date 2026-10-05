@@ -16,7 +16,8 @@ import type { Block } from "../thread/model";
 import { loadCompleteTranscript } from "../transcript-export/load";
 import { eventsToMarkdown, type TranscriptExportFormat } from "../transcript-export/render";
 import { ExportDialog } from "../transcript-export/ExportDialog";
-import { AboutDialog, MapDialog, RemoveTrunkDialog, StartOverDialog } from "./ConversationDialogs";
+import { AboutDialog, MapDialog, StartOverDialog } from "./ConversationDialogs";
+import { RemoveTrunkDialog } from "../places/trunk/RemoveTrunk";
 import { conversationMenuItems, type ConversationDetail, type ConversationMenuRun, type StepUpdates } from "./conversation-menu";
 import type { Actions } from "./conversation-actions";
 import type { Trunks } from "./engine-data";
@@ -260,7 +261,7 @@ function Overlays({ p, open, items, close, target, lastReply, computers }: Overl
     case "start":
       return <StartOverDialog trunkName={p.trunk.name} onClose={close} onStart={() => p.session.request("sessions.reset", { ...target, reason: "reset" }).then(() => p.session.reload())} />;
     case "removeTrunk":
-      return p.trunk.id ? <RemoveTrunkDialog trunkName={p.trunk.name} onClose={close} onRemove={() => p.session.request("agents.delete", { agentId: p.trunk.id })} /> : null;
+      return p.trunk.id ? <RemoveTrunkDialog engine={engine} agentId={p.trunk.id} name={p.trunk.name} onClose={close} /> : null;
     case "about":
       return <AboutDialog engine={engine} sessionKey={target.key} agentId={target.agentId} trunkName={p.trunk.name} title={p.title} onCopy={copy} onClose={close} />;
     case "map":

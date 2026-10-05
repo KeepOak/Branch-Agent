@@ -78,13 +78,18 @@ export async function createReadyTrunk(engine: WindowEngine, name: string, curre
   return id;
 }
 
-/** agents.delete moves the Trunk's files to the Trash (deleteFiles defaults to true in the engine). */
-/** Returns how many of its files didn't reach the Trash (agents.delete failed[] / purgeFailed). */
-export async function removeTrunk(engine: WindowEngine, id: string): Promise<number> {
+/** agents.delete removes the Trunk and moves its files to the OS Trash. */
+export async function removeTrunk(engine: WindowEngine, id: string): Promise<{ failed: string[]; purgeFailed: boolean }> {
+  const roster = await loadRoster(engine);
+  if (roster.defaultId === id) throw new Error("The default Trunk cannot be removed.");
+  if (!roster.agents.some((agent) => agent.id === id)) throw new Error("This Trunk no longer exists.");
   const result = rec(await engine.request("agents.delete", { agentId: id }));
   refused(result, "The engine did not remove the Trunk.");
-  const failed = Array.isArray(result.failed) ? result.failed.length : 0;
-  return failed || (result.purgeFailed === true ? 1 : 0);
+  const failed = Array.isArray(result.failed) ? result.failed.map((entry) => {
+    const item = rec(entry);
+    return [str(item.path), str(item.reason)].filter(Boolean).join(": ") || "An unnamed file could not move to the Trash.";
+  }) : [];
+  return { failed, purgeFailed: result.purgeFailed === true };
 }
 
 /** Why "Make default" can't run here, or "" when it can. */

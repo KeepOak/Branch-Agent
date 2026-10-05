@@ -33,7 +33,7 @@ type Props = Pick<PlaceProps, "engine" | "level" | "openConversation" | "openSet
 };
 
 
-function TrunkRowView({ row, roster, open, menu, knows }: { row: TrunkRow; roster: Roster; open: (o: Open) => void; menu: (e: ReactMouseEvent, row: TrunkRow) => void; knows: (e: ReactMouseEvent, row: TrunkRow) => void }) {
+function TrunkRowView({ row, roster, write, open, menu, knows }: { row: TrunkRow; roster: Roster; write: boolean; open: (o: Open) => void; menu: (e: ReactMouseEvent, row: TrunkRow) => void; knows: (e: ReactMouseEvent, row: TrunkRow) => void }) {
   return (
     <div className="tk-row" onContextMenu={(e) => menu(e, row)} onKeyDown={(e) => { if ((e.key === "F10" && e.shiftKey) || e.key === "ContextMenu") menu(e as unknown as ReactMouseEvent, row); }}>
       <button type="button" className="tk-row-who" aria-label={`${row.name}: profile`} onClick={() => open({ kind: "profile", id: row.id })}>
@@ -43,6 +43,7 @@ function TrunkRowView({ row, roster, open, menu, knows }: { row: TrunkRow; roste
       <button type="button" className="btn ghost sm" onClick={(e) => knows(e, row)}>Who it knows</button>
       <button type="button" className="btn sm" onClick={() => open({ kind: "edit", id: row.id })}>Edit</button>
       <button type="button" className="btn ghost sm" disabled title={shownWhy(PAUSE_WHY)}>Pause</button>
+      <button type="button" className="btn ghost sm" disabled={row.id === roster.defaultId || !write} title={row.id === roster.defaultId ? "The default Trunk cannot be removed." : write ? undefined : WRITE_WHY} onClick={() => open({ kind: "remove", id: row.id })}>Remove</button>
     </div>
   );
 }
@@ -103,7 +104,7 @@ export function TrunksTab(props: Props) {
     </div>
     <Status {...trunks} />
     {error && <p role="alert" className="tk-error">{error}</p>}
-    {roster && <div className="tk-list">{roster.agents.map((row) => <TrunkRowView key={row.id} row={row} roster={roster} open={setOpen} menu={showMenu} knows={(e, trunk) => void showKnown(e, trunk)} />)}</div>}
+    {roster && <div className="tk-list">{roster.agents.map((row) => <TrunkRowView key={row.id} row={row} roster={roster} write={write} open={setOpen} menu={showMenu} knows={(e, trunk) => void showKnown(e, trunk)} />)}</div>}
     <Jobs engine={engine} reload={trunks.reload} />
     {shows(level, "technical") && <TrunkDefaults engine={engine} />}
     {menu && roster && <Menu at={menu.at} label={`${menu.row.name} menu`} onClose={() => setMenu(null)} items={rowMenu(props, roster, menu.row, setOpen, setError)} />}
@@ -120,6 +121,6 @@ function rowMenu(p: Props, roster: Roster, row: TrunkRow, setOpen: (o: Open) => 
   return [
     row.id === roster.defaultId ? { kind: "info", label: `${row.name} is your default Trunk.` } : { label: "Make default", run: () => void toDefault(), disabled: block || (write ? undefined : WRITE_WHY) },
     { kind: "sep" },
-    { label: `Remove ${row.name}…`, danger: true, run: () => setOpen({ kind: "remove", id: row.id }), disabled: last ? "Branch needs at least one Trunk." : write ? undefined : WRITE_WHY },
+    { label: `Remove ${row.name}…`, danger: true, run: () => setOpen({ kind: "remove", id: row.id }), disabled: row.id === roster.defaultId ? "The default Trunk cannot be removed." : last ? "Branch needs at least one Trunk." : write ? undefined : WRITE_WHY },
   ];
 }
