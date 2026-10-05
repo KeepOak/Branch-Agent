@@ -10,6 +10,7 @@ import {
   CHAT_INPUT_RUN_ID_MAX_CHARS,
 } from "./chat-history-constants.js";
 import { closedObject } from "./closed-object.js";
+import { OutsideAgentSchema } from "./contacts.js";
 import { HumanMentionsSchema } from "./human-mentions.js";
 import { ChatSendSessionKeyString, InputProvenanceSchema, NonEmptyString } from "./primitives.js";
 import { SessionPermissionModeSchema, SessionToolOverridesSchema } from "./sessions-row.js";
@@ -350,6 +351,8 @@ export const ChatSendParamsSchema = closedObject({
   expectedSessionRoutingContract: Type.Optional(NonEmptyString),
   expectedPermissionMode: Type.Optional(Type.Union([SessionPermissionModeSchema, Type.Null()])),
   expectedToolOverrides: Type.Optional(Type.Union([SessionToolOverridesSchema, Type.Null()])),
+  // An outside agent (branch mcp serve) wrote this message: the transcript names it, not the owner.
+  outsideAgent: Type.Optional(OutsideAgentSchema),
   idempotencyKey: NonEmptyString,
 });
 

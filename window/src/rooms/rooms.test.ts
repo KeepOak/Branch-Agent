@@ -6,7 +6,7 @@ import { describeMembers, isRoom, readParticipants, withSenders } from "./member
 import { roomMenuItems, ROOM_REASONS } from "./room-menu";
 import { roomRulesItems, ruleToast } from "./room-rules";
 import { isMine, readSender } from "./sender";
-import { readPeerHosts } from "./useRoom";
+import { readPeerHosts, readPeerList } from "./useRoom";
 
 // Message shapes follow the engine's own tests: chat-display-projection.forwarded.test.ts (forwarded and cron
 // deliveries), chat-display-projection.test.ts (profile / observation sender identities) and
@@ -141,3 +141,11 @@ describe("room menu and rules", () => {
     expect(readPeerHosts({ channels: { a2a: { peers: { researcher: { token: "t", url: "https://agents.example.net:8443/a2a" }, nourl: { token: "t" } } } } })).toEqual({ researcher: "agents.example.net:8443" });
   });
 });
+
+describe("outside agents from a2a.peers.list", () => {
+  it("reads where each agent runs and which are online", () => {
+    expect(readPeerList({ peers: [{ name: "claude-code", where: "LEGION", online: true }, { name: "hermes", where: null, online: false }, { where: "x" }] })).toEqual({ hosts: { "claude-code": "LEGION" }, online: ["claude-code"] });
+    expect(readPeerList(undefined)).toEqual({ hosts: {}, online: [] });
+  });
+});
+
