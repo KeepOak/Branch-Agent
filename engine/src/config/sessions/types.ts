@@ -312,6 +312,8 @@ type SessionEntryCore = SessionRestartRecoveryState &
     archivedBy?: SessionActor;
     /** Stable lifecycle cause; absent values are legacy archives and remain manually protected. */
     archiveReason?: SessionEntryArchiveReason;
+    /** Retained source of a contact migration; the destination owns the visible conversation. */
+    movedToSessionKey?: string;
     /** Timestamp (ms) when the session was pinned for quick access. */
     pinnedAt?: number;
     /** Epoch ms wake time; suppresses the active session in sidebar lists until then. */

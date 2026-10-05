@@ -47,6 +47,8 @@ export const SessionEntryArchiveReasonSchema = Type.Union([
   Type.Literal("age-retention"),
   Type.Literal("stale-dashboard"),
   Type.Literal("restart-recovery"),
+  Type.Literal("empty"),
+  Type.Literal("moved"),
 ]);
 
 export const SessionToolOverridesSchema = closedObject({
@@ -159,6 +161,7 @@ export const SessionRowSchema = Type.Object(
     archivedAt: Type.Optional(Type.Number()),
     archivedBy: Type.Optional(SessionCreatedActorSchema),
     archiveReason: Type.Optional(SessionEntryArchiveReasonSchema),
+    movedToSessionKey: Type.Optional(Type.String()),
     pinned: Type.Optional(Type.Boolean()),
     pinnedAt: Type.Optional(Type.Number()),
     snoozedUntil: Type.Optional(Type.Number()),
