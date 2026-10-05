@@ -21,6 +21,8 @@ import { createAutoApplyUpdate } from "./auto-apply-update";
 import type { Tray } from "electron";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
+/** Scratch test copies: never grouped with, or mistaken for, the owner's app (they also start hidden). */
+const TEST_COPY = process.env.BRANCH_DESKTOP_TEST === "1";
 /** Started with Windows: open quietly in the tray (only where the tray exists). */
 const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRAY);
 const ICON = join(__dirname, "..", "assets", "branch.ico");
@@ -47,7 +49,7 @@ log(`launch v${app.getVersion()} pid ${process.pid}`);
 
 // Own profile and lock, apart from the old installed Branch Agent app.
 app.setPath("userData", join(cfg.dataDir, "electron"));
-app.setAppUserModelId("dev.branch.agent.desktop");
+app.setAppUserModelId(TEST_COPY ? "dev.branch.agent.desktop.test" : "dev.branch.agent.desktop");
 // "Let agents use this window": Chromium remote debugging on a random loopback port, written to
 // <userData>/DevToolsActivePort for `branch mcp serve` ui_* tools. Off unless the owner turned it on.
 if (readSettings(join(cfg.dataDir, "desktop-settings.json")).agentControl) {
@@ -195,7 +197,7 @@ function createWindow(): BrowserWindow {
   // First launch opens maximized; later launches restore the last state, size, position and display.
   const place = placeWindow(readWindowState(cfg.dataDir), screen.getAllDisplays());
   const w = new BrowserWindow({
-    title: "Branch Agent",
+    title: TEST_COPY ? "Test — Branch Agent" : "Branch Agent",
     width: 1280,
     height: 840,
     ...place.bounds,
@@ -214,7 +216,8 @@ function createWindow(): BrowserWindow {
   });
   w.setMenuBarVisibility(false);
   if (place.maximized) w.once("show", () => w.maximize());
-  if (!HIDDEN && !QUIET) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
+  if (TEST_COPY) w.on("page-title-updated", (event, title) => { event.preventDefault(); w.setTitle(`Test — ${title}`); });
+  if (!HIDDEN && !QUIET && !TEST_COPY) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
   trackWindowState(w, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds);
   lockDown(w);
   tray = keepWindowsWindowResident(app, w, ICON, {
