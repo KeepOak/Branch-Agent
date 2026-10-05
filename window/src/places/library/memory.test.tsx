@@ -69,6 +69,30 @@ describe("memory file handling", () => {
 });
 
 describe("Library › Memory", () => {
+  it("exports the selected Trunk's memory as a Markdown download with each file heading", async () => {
+    const make = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:memory");
+    const drop = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    let filename = "";
+    const download = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function () { filename = this.download; });
+    const { engine, request } = engineOf(base((method) => method === "memory.export" ? {
+      agentId: "b",
+      files: [{ path: "MEMORY.md", content: "# Rowan\n" }, { path: "memory/2026-10-01.md", content: "Daily note\n" }],
+    } : undefined));
+    await mount(engine);
+    await click("Every Trunk");
+    await click("Rowan");
+    await click("Export everything");
+    expect(request).toHaveBeenCalledWith("memory.export", { agentId: "b" });
+    expect(make).toHaveBeenCalledTimes(1);
+    const blob = make.mock.calls[0][0];
+    const text = await blob.text();
+    expect(text).toContain("## MEMORY.md\n\n# Rowan");
+    expect(text).toContain("## memory/2026-10-01.md\n\nDaily note");
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(filename).toMatch(/^b-memory-\d{4}-\d{2}-\d{2}\.md$/);
+    expect(drop).toHaveBeenCalledWith("blob:memory");
+    make.mockRestore(); drop.mockRestore(); download.mockRestore();
+  });
   it("draws the characters card from MEMORY.md and the configured limit, with the memory count on the tab", async () => {
     const { engine, request } = engineOf(base());
     await mount(engine);
