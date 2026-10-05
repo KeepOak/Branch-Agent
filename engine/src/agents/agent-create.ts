@@ -14,6 +14,10 @@ import {
   withConfigMutationExclusive,
 } from "../config/config.js";
 import type { ReadConfigFileSnapshotForWriteResult } from "../config/io.js";
+import {
+  attachRuntimeConfigWriteApplication,
+  type RuntimeConfigWriteApplication,
+} from "../config/runtime-write-application.js";
 import type { LegacyMainSessionMigrationOutcome } from "../config/sessions/legacy-main-session-migration.contract.js";
 import { migrateLegacyMainSessionKeys } from "../config/sessions/legacy-main-session-migration.js";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
@@ -118,6 +122,8 @@ type CreateAgentParams = {
   skipOptionalBootstrapFiles?: OptionalBootstrapFileName[];
   bindingSpecs?: string[];
   transformConfig?: typeof transformConfigFileWithRetry;
+  /** A gateway caller may wait for the existing config reloader's application receipt. */
+  runtimeApplication?: RuntimeConfigWriteApplication;
   /** Revalidate delegated authority before each new persistent effect. */
   beforePersistentApply?: () => void;
   /** Admit new identity input until its first successful publication. */
@@ -432,16 +438,19 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
       const committed = await transformConfig<CreateAgentSuccess>({
         afterWrite: { mode: "auto" },
         maxAttempts: 1,
-        writeOptions: {
-          ...params.stagedConfig?.writeSnapshot.writeOptions,
-          ...(params.bootstrapFirstAgent
-            ? { allowedAgentRosterRemovals: [BOOTSTRAP_AGENT_ID] }
-            : {}),
-          assertConfigPathForWrite: () => {
-            params.stagedConfig?.writeSnapshot.writeOptions.assertConfigPathForWrite?.();
-            beforePersistentApply();
+        writeOptions: attachRuntimeConfigWriteApplication(
+          {
+            ...params.stagedConfig?.writeSnapshot.writeOptions,
+            ...(params.bootstrapFirstAgent
+              ? { allowedAgentRosterRemovals: [BOOTSTRAP_AGENT_ID] }
+              : {}),
+            assertConfigPathForWrite: () => {
+              params.stagedConfig?.writeSnapshot.writeOptions.assertConfigPathForWrite?.();
+              beforePersistentApply();
+            },
           },
-        },
+          params.runtimeApplication,
+        ),
         transform: async (currentConfig, context) => {
           if (
             (params.stagedConfig || Object.hasOwn(params, "expectedConfigHash")) &&

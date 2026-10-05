@@ -682,6 +682,17 @@ export const SessionsBranchesListParamsSchema = closedObject({
   agentId: Type.Optional(NonEmptyString),
 });
 
+export const SessionsSegmentsListParamsSchema = SessionsBranchesListParamsSchema;
+export const SessionSegmentSchema = closedObject({
+  sessionId: NonEmptyString,
+  startedAt: Type.Optional(Type.Number()),
+  endedAt: Type.Optional(Type.Number()),
+  current: Type.Boolean(),
+});
+export const SessionsSegmentsListResultSchema = closedObject({
+  segments: Type.Array(SessionSegmentSchema),
+});
+
 export const SessionsBranchesListResultSchema = closedObject({
   branches: Type.Array(SessionBranchSchema),
 });
@@ -776,6 +787,8 @@ export type SessionsRewindResult = Static<typeof SessionsRewindResultSchema>;
 export type SessionsForkResult = Static<typeof SessionsForkResultSchema>;
 export type SessionBranch = Static<typeof SessionBranchSchema>;
 export type SessionsBranchesListParams = Static<typeof SessionsBranchesListParamsSchema>;
+export type SessionsSegmentsListParams = Static<typeof SessionsSegmentsListParamsSchema>;
+export type SessionsSegmentsListResult = Static<typeof SessionsSegmentsListResultSchema>;
 export type SessionsBranchesListResult = Static<typeof SessionsBranchesListResultSchema>;
 export type SessionsBranchesSwitchParams = Static<typeof SessionsBranchesSwitchParamsSchema>;
 export type SessionsBranchesSwitchResult = Static<typeof SessionsBranchesSwitchResultSchema>;

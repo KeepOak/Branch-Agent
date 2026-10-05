@@ -128,6 +128,13 @@ export const AgentEntryBaseSchema = z.strictObject({
       requireAgentId: z.boolean().optional(),
     })
     .optional(),
+  /** Outbound permissions from this agent to other agents or A2A peers. */
+  agentToAgent: z
+    .strictObject({
+      allow: z.array(z.string()).optional(),
+      deny: z.array(z.string()).optional(),
+    })
+    .optional(),
   embeddedAgent: AgentEntryEmbeddedAgentConfigSchema,
   params: z.record(z.string(), z.unknown()).optional(),
   runtime: AgentRuntimeSchema,

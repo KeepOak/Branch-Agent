@@ -169,7 +169,9 @@ export function collectCrossAgentSessionAccessFindings(
     return [];
   }
   // Even blank allow entries are a configured restriction: the runtime denies them.
-  if (!createAgentToAgentPolicy(cfg).enabled || cfg.tools?.agentToAgent?.allow?.length) {
+  const a2aPolicy = createAgentToAgentPolicy(cfg);
+  if (!a2aPolicy.enabled || cfg.tools?.agentToAgent?.allow?.length ||
+    !agentIds.some((from) => agentIds.some((to) => from !== to && a2aPolicy.isAllowed(from, to)))) {
     return [];
   }
 
@@ -192,17 +194,19 @@ export function collectCrossAgentSessionAccessFindings(
       "session_status",
     ].filter((name) => isToolAllowedByPolicies(name, policies));
     const unclamped = sandboxMode !== "all" || sandboxClamp === "all";
-    if (unclamped && allowedTools.length > 0) {
+    const reachableIds = agentIds.filter((target) => target !== agentId && a2aPolicy.isAllowed(agentId, target));
+    if (unclamped && allowedTools.length > 0 && reachableIds.length > 0) {
       const context =
         sandboxMode === "off"
           ? "unsandboxed sessions"
           : sandboxMode === "non-main"
             ? "unsandboxed main session"
             : "sandboxed sessions (clamp disabled)";
-      reachers.push(`- ${agentId}: ${context}; allowed session tools: ${allowedTools.join(", ")}.`);
+      const restricted = reachableIds.length < agentIds.length - 1;
+      reachers.push(`- ${agentId}: ${context}; ${restricted ? `reachable agents: ${reachableIds.join(", ")}; ` : ""}allowed session tools: ${allowedTools.join(", ")}.`);
     } else {
       const reason = unclamped
-        ? "session tools removed by agent tool policy"
+        ? reachableIds.length === 0 ? "per-agent agent-to-agent permission denies other agents" : "session tools removed by agent tool policy"
         : "sandboxed sessions clamped to their spawn tree";
       nonReachers.push(
         `- ${agentId}: ${reason}; its transcripts remain readable by the agents above.`,

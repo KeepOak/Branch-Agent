@@ -93,6 +93,13 @@ async function checkAll(suite = 'named') {
       // The strict typecheck is the same on every OS; Linux runs it once. On the 7 GB macOS
       // runners its ~6 GB check thrashes and alone pushed the job past the 15-minute cap.
       if (process.platform === 'linux') await runTargetedStrictChecks(scratch);
+      // The release's native-protocol step rejects schema changes the Swift/Kotlin generators cannot
+      // name (an alias without a canonical name broke every release after #188). Check it per PR.
+      if (process.platform === 'linux') {
+        for (const language of ['swift', 'kotlin']) {
+          await run(process.execPath, ['scripts/prepare-native-protocol.mjs', '--language', language, '--check'], engineRoot);
+        }
+      }
       await runFeatureTests(scratch);
     }
     receipt.passed = true;

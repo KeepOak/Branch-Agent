@@ -3,10 +3,12 @@ import {
   ErrorCodes,
   errorShape,
   validateSessionsBranchesListParams,
+  validateSessionsSegmentsListParams,
   validateSessionsBranchesSwitchParams,
   validateSessionsForkParams,
   validateSessionsRewindParams,
   type SessionsBranchesListParams,
+  type SessionsSegmentsListParams,
   type SessionsBranchesSwitchParams,
   type SessionsRewindParams,
 } from "../../../packages/gateway-protocol/src/index.js";
@@ -20,6 +22,7 @@ import {
   type SessionMessageCutMutationResult,
 } from "../../config/sessions/session-accessor.js";
 import { forkSessionAtMessageWithPreconditions } from "../../config/sessions/session-accessor.sqlite-message-cut.js";
+import { listSessionSegmentsReadOnly } from "../../config/sessions/session-segments.js";
 import { parseInboundMediaUri } from "../../media/media-reference.js";
 import { MEDIA_MAX_BYTES, readMediaBuffer } from "../../media/store.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
@@ -106,6 +109,11 @@ async function resolveEditorMediaAttachments(
 }
 
 export const sessionRewindHandlers: GatewayRequestHandlers = {
+  "sessions.segments.list": defineValidatedGatewayHandler(
+    "sessions.segments.list",
+    validateSessionsSegmentsListParams,
+    listSegments,
+  ),
   "sessions.branches.list": defineValidatedGatewayHandler(
     "sessions.branches.list",
     validateSessionsBranchesListParams,
@@ -127,6 +135,40 @@ export const sessionRewindHandlers: GatewayRequestHandlers = {
     (options) => mutateSessionAtMessage(options, "fork"),
   ),
 };
+
+async function listSegments(
+  options: Omit<GatewayRequestHandlerOptions, "params"> & { params: SessionsSegmentsListParams },
+): Promise<void> {
+  const { params, respond, context } = options;
+  const sessionKey = params.sessionKey.trim();
+  const cfg = context.getRuntimeConfig();
+  const requestedAgent = resolveRequestedGlobalAgentId(cfg, sessionKey, params.agentId);
+  if (!requestedAgent.ok) {
+    respond(false, undefined, requestedAgent.error);
+    return;
+  }
+  const read = retainSessionScopedRead(options, sessionKey, requestedAgent.agentId, {
+    allowMetadataChanges: true,
+  });
+  try {
+    const current = loadAccessorSessionEntryForGatewayTarget({
+      key: sessionKey,
+      cfg,
+      agentId: requestedAgent.agentId,
+    });
+    const segments = current.entry?.sessionId
+      ? listSessionSegmentsReadOnly({
+          agentId: current.target.agentId,
+          sessionKey: current.sessionStoreKey,
+          storePath: current.storePath,
+        })
+      : [];
+    read?.assertCurrent();
+    respond(true, { segments });
+  } finally {
+    read?.release();
+  }
+}
 
 async function listBranches(
   options: Omit<GatewayRequestHandlerOptions, "params"> & { params: SessionsBranchesListParams },

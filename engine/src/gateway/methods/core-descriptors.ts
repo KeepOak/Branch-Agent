@@ -657,6 +657,7 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["sessions.processes.stop", "session-processes", "operator.write", "2026.9"],
   ["agents.documents.create", "agents-workspace", "operator.admin", "2026.9"],
   ["memory.export", "memory-search", "operator.read", "2026.9"],
+  ["sessions.segments.list", "sessions-rewind", "operator.read", "2026.9"],
   ["contacts.list", "contacts", "operator.read", "2026.9"],
   ["contacts.topics", "contacts", "operator.read", "2026.9"],
   ["contacts.markRead", "contacts", "operator.write", "2026.9"],
