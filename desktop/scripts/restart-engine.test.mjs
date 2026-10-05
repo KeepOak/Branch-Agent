@@ -12,8 +12,8 @@ const require = createRequire(import.meta.url), Module = require("node:module");
 const originalLoad = Module._load, originalFetch = globalThis.fetch;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
-async function eventually(predicate) {
-  const end = Date.now() + 8000;
+async function eventually(predicate, timeout = 8000) {
+  const end = Date.now() + timeout;
   while (!await predicate()) { if (Date.now() > end) throw Error("Fixture deadline"); await pause(20); }
 }
 async function freePort() {
@@ -48,7 +48,7 @@ const root=${JSON.stringify(root)}, file=root+"/starts.json";
 const starts=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[];
 starts.push(process.pid);fs.writeFileSync(file,JSON.stringify(starts));
 if(starts.length>1&&fs.existsSync(root+"/fail-next"))process.exit(1);
-process.on("message",m=>{if(!String(m?.type).startsWith("branch-desktop:"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
+process.on("message",m=>{if(!String(m?.type).startsWith("branch-desktop:"))return;if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
 if(m.type==="branch-desktop:drain-stop"){fs.writeFileSync(root+"/drained-"+process.pid,"1");setTimeout(()=>process.exit(0),20);}});
 http.createServer((q,r)=>{r.writeHead(starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end();}).listen(Number(process.argv.at(-1)),"127.0.0.1");`;
   await writeFile(join(engine, "branch.mjs"), script); await writeFile(join(windowDir, "index.html"), "<html>fixture</html>");
@@ -109,6 +109,15 @@ test("an update click swaps the engine in place: the app and window stay open an
   assert.equal(alive(old), false); assert.ok(await readFile(join(root, `drained-${old}`), "utf8"), "The busy engine was killed instead of drained");
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update").map(([, state]) => state), ["updating", "updated"]);
   assert.equal(alive((await starts())[1]), true);
+}));
+test("a busy engine from before drain-stop is never killed by an update click; the update is offered again", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const old = (await starts())[0]; await writeFile(join(root, "older-engine"), "1"); await writeFile(join(root, "busy"), "a Trunk is working");
+  restart();
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update failed"), 40_000);
+  assert.equal(alive(old), true, "A busy engine that cannot drain was killed");
+  assert.equal((await starts()).length, 1, "A second engine started while the first was busy");
+  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update").map(([, state]) => state), ["updating", "auto-wait"]);
 }));
 test("a new window build swaps in place after attached files are sent, keeping the engine", () => fixture(async ({ root, runtime, starts }) => {
   let files = true; const owner = runtime.window.webContents; owner.isDestroyed = () => false;

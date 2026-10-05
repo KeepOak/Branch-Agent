@@ -117,18 +117,24 @@ export async function stopGatewayCleanly(child: ChildProcess, timeoutMs = 90_000
  * engine's restart recovery resumes whatever the drain could not finish. An engine that does not answer the
  * drain request (an older build) or does not exit in time is stopped by PID, as before.
  */
-export async function drainStopGateway(child: ChildProcess, timeoutMs = 120_000): Promise<"drained" | "killed"> {
+export async function drainStopGateway(child: ChildProcess, timeoutMs = DRAIN_EXIT_TIMEOUT_MS): Promise<"drained" | "stopped idle" | "killed"> {
   if (child.exitCode !== null || child.signalCode !== null) return "drained";
-  try {
-    await gatewayActivity(child, "drain");
-    await waitForExit(child, timeoutMs);
-    return "drained";
-  } catch {
+  try { await gatewayActivity(child, "drain"); }
+  catch {
+    // No answer: an engine from before drain-stop. Stop it only while idle; a busy one is never killed.
+    await stopGatewayCleanly(child);
+    return "stopped idle";
+  }
+  try { await waitForExit(child, timeoutMs); return "drained"; }
+  catch {
     stopGateway(child);
     await waitForExit(child, 10_000).catch(() => undefined);
     return "killed";
   }
 }
+
+/** The engine's own drain budget is 315 s ("shutdown budget at startup: drain=315000ms"); never cut a drain short. */
+const DRAIN_EXIT_TIMEOUT_MS = 330_000;
 
 function waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();

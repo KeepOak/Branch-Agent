@@ -228,7 +228,7 @@ test("actual desktop caller retains running engine and checks a failing engine b
   }
   const electron = { app, BrowserWindow, ipcMain, screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) }, dialog: { showErrorBox: () => assert.fail("Unexpected native caller error") },
     session: { defaultSession: { setPermissionRequestHandler: () => {} } }, shell: { openExternal: () => {} } };
-  process.env.BRANCH_DESKTOP_DATA = cfg.dataDir; process.env.BRANCH_DESKTOP_HIDDEN = "1";
+  process.env.BRANCH_DESKTOP_DATA = cfg.dataDir; process.env.BRANCH_DESKTOP_HIDDEN = "1"; process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = "0";
   Module._load = function(name, ...args) { return name === "electron" ? electron : load.call(this, name, ...args); };
   globalThis.fetch = (url, options) => String(url).startsWith("https://github.com/") ? request(url, options) : previousFetch(url, options);
   delete require.cache[require.resolve(join(process.env.BRANCH_DESKTOP_TEST_DIST, "config.js"))];

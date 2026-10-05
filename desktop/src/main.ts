@@ -18,7 +18,8 @@ import { registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate } from "./auto-apply-update";
-import { checkCandidateBeside } from "./candidate-check";
+import { checkCandidateBeside, stopCandidate } from "./candidate-check";
+import { freemem } from "node:os";
 import type { Tray } from "electron";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
@@ -28,6 +29,8 @@ const TEST_COPY = process.env.BRANCH_DESKTOP_TEST === "1";
 const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRAY);
 const ICON = join(__dirname, "..", "assets", "branch.ico");
 const READY_TIMEOUT_MS = 600_000;
+/** Free memory a candidate check needs (6 GB, the shared load rule); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
+const CANDIDATE_MIN_FREE_BYTES = Number(process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB ?? 6144) * 2 ** 20;
 const cfg: DesktopConfig = loadConfig();
 /** The packaged app this process runs from; development runs (`electron .`) never update themselves. */
 const install: DesktopInstall | undefined = app.isPackaged ? {
@@ -140,18 +143,23 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
  * A staged engine first starts beside the running one (spare port, scratch state). One that exits is rejected and its
  * publication rolled back with nothing stopped; a slow one still gets the normal swap and its readiness rollback.
  */
+let candidateCheckedFor: string | undefined;
 async function candidatePassed(label: string): Promise<boolean> {
-  if (!(await readComponentUpdateStatus(cfg)).componentsPendingVersion) return true;
+  const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+  if (!version || candidateCheckedFor === version) return true;
+  // The machine-load rule: a second engine only when there is room for it; otherwise the plain swap with its rollback.
+  if (freemem() < CANDIDATE_MIN_FREE_BYTES) { log(`update ${label}: candidate check skipped; ${Math.round(freemem() / 2 ** 20)} MB free`); return true; }
   const candidate = resolveEngineDir(cfg);
   win?.webContents.send("branch-desktop:engine-update", "preparing");
   const started = Date.now();
   const result = await checkCandidateBeside(cfg, candidate, token, READY_TIMEOUT_MS);
   log(`update ${label}: candidate check beside the running engine ${result} after ${Date.now() - started} ms`);
-  if (result !== "exited") return true;
+  if (result !== "exited") { candidateCheckedFor = version; return true; }
   await rejectFailedComponentUpdate(cfg, candidate);
   await rollbackComponentUpdate(cfg);
   servedWindowDir = cfg.windowDir;
   engineUpdateReady = false;
+  watchEngine();
   log(`update ${label}: kept the running engine; nothing was stopped`);
   win?.webContents.send("branch-desktop:engine-update", "kept");
   return false;
@@ -337,6 +345,11 @@ async function bootEngine(): Promise<void> {
   await confirmComponentUpdate(cfg);
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
   engineUpdateReady = false;
+  watchEngine();
+}
+
+/** Watches the engine pointer and build from their current value (re-armed after a rejected candidate's rollback). */
+function watchEngine(): void {
   stopEngineWatch?.();
   stopEngineWatch = watchEngineBuild(() => engineSignature(cfg), () => {
     log("new engine build found; offering Update");
@@ -408,6 +421,7 @@ function shutdown(): void {
   autoApply.stop();
   stopWindowWatch?.();
   controls.dispose();
+  stopCandidate();
   if (gateway) stopGateway(gateway);
   server?.close();
 }

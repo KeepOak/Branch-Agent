@@ -11,6 +11,12 @@ import { stopGateway, waitForReady } from "./gateway";
 
 export type CandidateResult = "ready" | "exited" | "slow";
 
+let running: ChildProcess | undefined;
+/** Quitting during a check must not leave the candidate engine behind. */
+export function stopCandidate(): void {
+  if (running) stopGateway(running);
+}
+
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const probe = createServer();
@@ -37,6 +43,7 @@ function startCandidate(cfg: DesktopConfig, engineDir: string, token: string, po
 export async function checkCandidateBeside(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number): Promise<CandidateResult> {
   const port = await freePort();
   const child = startCandidate(cfg, engineDir, token, port);
+  running = child;
   try {
     await waitForReady({ ...cfg, gatewayPort: port }, child, timeoutMs);
     return "ready";
@@ -44,5 +51,6 @@ export async function checkCandidateBeside(cfg: DesktopConfig, engineDir: string
     return child.exitCode !== null || child.signalCode !== null ? "exited" : "slow";
   } finally {
     stopGateway(child);
+    running = undefined;
   }
 }
