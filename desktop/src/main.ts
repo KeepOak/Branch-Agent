@@ -113,10 +113,10 @@ const engineRunning = (): boolean => Boolean(gateway && gateway.exitCode === nul
 async function swapEngineInPlace(label: string, explicit: boolean): Promise<void> {
   if (!gateway || !win || engineRestartInProgress) throw new Error("The desktop is not ready to update");
   engineRestartInProgress = true;
-  const started = Date.now();
   const windowBefore = windowBuild(servedWindowDir);
   try {
     if (!await candidatePassed(label)) return;
+    const started = Date.now();
     win.webContents.send("branch-desktop:engine-update", "updating");
     if (explicit) log(`update ${label}: old engine ${await drainStopGateway(gateway)}`);
     else await stopGatewayCleanly(gateway);
