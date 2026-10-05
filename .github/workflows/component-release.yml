@@ -113,7 +113,6 @@ jobs:
       BRANCH_RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
       BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
       BRANCH_RELEASE_TARGET: ${{ matrix.target }}
-      BRANCH_RELEASE_WINDOW_READY: ${{ runner.temp }}/shared-window.ready
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -136,6 +135,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ASSETS: ${{ runner.temp }}/release-assets
           SHARED_WINDOW: ${{ runner.temp }}/shared-window
+          BRANCH_RELEASE_WINDOW_READY: ${{ runner.temp }}/shared-window.ready
         run: |
           set -euo pipefail
           node desktop/scripts/release-build.mjs components "$RELEASE_ASSETS" "$SHARED_WINDOW" &
