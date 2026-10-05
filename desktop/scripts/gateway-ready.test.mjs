@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
-const { waitForReady } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+const { GatewayReadinessError, waitForReady } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
 
 async function fixture(handler, run) {
   const server = createServer(handler); await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -16,17 +16,45 @@ async function fixture(handler, run) {
 
 test("real HTTP readiness stall obeys the total startup deadline", async () => fixture(() => {}, async cfg => {
   const started = Date.now();
-  await assert.rejects(waitForReady(cfg, { exitCode: null, signalCode: null }, 150), /in time/);
+  await assert.rejects(waitForReady(cfg, { exitCode: null, signalCode: null }, 150), error =>
+    error instanceof GatewayReadinessError && error.reason === "timeout");
   assert.ok(Date.now() - started < 1000, "stalled individual fetch must not hang beyond startup budget");
 }));
+
+test("a responding listener may become ready after the 180-second gate", async () => {
+  let probes = 0;
+  await fixture((_req, res) => res.writeHead(++probes < 8 ? 503 : 200).end(), async cfg => {
+    await waitForReady(cfg, { exitCode: null, signalCode: null }, 30, { maxWaitMs: 500, pollMs: 10 });
+  });
+  assert.equal(probes, 8);
+});
+
+test("continuing startup phases keep an unbound child eligible beyond the soft deadline", async () => {
+  const reservation = createServer();
+  await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
+  const port = reservation.address().port;
+  await new Promise(resolve => reservation.close(resolve));
+  const child = { exitCode: null, signalCode: null, startupPhaseAt: Date.now() };
+  const phases = setInterval(() => { child.startupPhaseAt = Date.now(); }, 20);
+  const listener = createServer((_req, res) => res.writeHead(200).end());
+  const later = setTimeout(() => listener.listen(port, "127.0.0.1"), 100);
+  try {
+    await waitForReady({ gatewayPort: port }, child, 40, { maxWaitMs: 500, phaseQuietMs: 60, pollMs: 10 });
+  } finally {
+    clearInterval(phases); clearTimeout(later);
+    if (listener.listening) await new Promise(resolve => listener.close(resolve));
+  }
+});
 
 test("real readyz200 response returns without waiting for a stalled response body", async () => fixture((_req, res) => {
   res.writeHead(200); res.flushHeaders();
 }, async cfg => { await waitForReady(cfg, { exitCode: null, signalCode: null }, 1000); }));
 
 test("child exit and signal termination fail readiness immediately", async () => fixture(() => {}, async cfg => {
-  await assert.rejects(waitForReady(cfg, { exitCode: 7, signalCode: null }, 1000), /exited/);
-  await assert.rejects(waitForReady(cfg, { exitCode: null, signalCode: "SIGTERM" }, 1000), /exited/);
+  await assert.rejects(waitForReady(cfg, { exitCode: 7, signalCode: null }, 1000), error =>
+    error instanceof GatewayReadinessError && error.reason === "exit");
+  await assert.rejects(waitForReady(cfg, { exitCode: null, signalCode: "SIGTERM" }, 1000), error =>
+    error instanceof GatewayReadinessError && error.reason === "exit");
 }));
 
 test("owned gateway shutdown also reaps its spawned child", async () => {

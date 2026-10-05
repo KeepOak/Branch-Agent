@@ -409,7 +409,7 @@ test("cold rollback retains renderer and engine while the failed latest stays on
     await unchanged(cfg);
     assert.equal(await readFile(join(cfg.dataDir, "component-update-version.txt"), "utf8"), "0.4.2\n");
     const rejected = JSON.parse(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"));
-    assert.deepEqual(rejected, { version: release.version, engineSha256: release.components.engine.sha256, windowSha256: release.components.window.sha256 });
+    assert.deepEqual(rejected, { version: release.version, engineSha256: release.components.engine.sha256, windowSha256: release.components.window.sha256, reason: "exit" });
     assert.equal(await source.refreshComponentUpdate(cfg, request), false);
     await new Promise(resolve => setTimeout(resolve, 100));
     await unchanged(cfg);
@@ -448,6 +448,33 @@ test("explicit retry bypasses only the exact failed identity without marking it 
   assert.equal(await source.refreshComponentUpdate(cfg, request), false);
   assert.equal(await source.refreshComponentUpdate(cfg, request, { retryRejected: true }), true);
   assert.equal(await readFile(join(cfg.dataDir, "component-update-version.txt"), "utf8"), "0.4.2\n");
+}));
+
+test("an exited staged engine records exit and is not automatically retried", async () => fixture(async ({ cfg, request }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  await source.rejectFailedComponentUpdate(cfg, selected, "exit");
+  const rejected = JSON.parse(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"));
+  assert.equal(rejected.reason, "exit");
+  await source.rollbackComponentUpdate(cfg);
+  assert.equal(await source.refreshComponentUpdate(cfg, request), false);
+}));
+
+test("a timed-out staged engine gets exactly one later automatic retry", async () => fixture(async ({ cfg, request }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  const first = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  await source.rejectFailedComponentUpdate(cfg, first, "timeout");
+  await source.rollbackComponentUpdate(cfg);
+  let rejected = JSON.parse(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"));
+  assert.equal(rejected.reason, "timeout");
+  assert.equal(rejected.timeoutAttempts, 1);
+  assert.equal(await source.refreshComponentUpdate(cfg, request), true);
+  const second = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  await source.rejectFailedComponentUpdate(cfg, second, "timeout");
+  await source.rollbackComponentUpdate(cfg);
+  rejected = JSON.parse(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"));
+  assert.equal(rejected.timeoutAttempts, 2);
+  assert.equal(await source.refreshComponentUpdate(cfg, request), false);
 }));
 
 test("prepared interruption and unrelated engines do not reject a release", async () => fixture(async ({ cfg, request }) => {

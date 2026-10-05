@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady } from "./gateway";
+import { GatewayReadinessError, gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady } from "./gateway";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowsWindowResident } from "./resident-window";
@@ -246,7 +246,9 @@ async function bootEngine(): Promise<void> {
   writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
 `);
   try { await waitForReady(cfg, gateway, READY_TIMEOUT_MS); } catch (error) {
-    await rejectFailedComponentUpdate(cfg, engineDir);
+    if (error instanceof GatewayReadinessError && error.reason !== "unready") {
+      await rejectFailedComponentUpdate(cfg, engineDir, error.reason);
+    }
     throw error;
   }
   await confirmComponentUpdate(cfg);
@@ -263,6 +265,7 @@ async function bootEngine(): Promise<void> {
 /** A failed newly published build restores the prior pointer/window before booting the retained engine. */
 async function bootSelectedEngine(): Promise<boolean> {
   try { await bootEngine(); return false; } catch (error) {
+    if (error instanceof GatewayReadinessError && error.reason === "unready") throw error;
     if (gateway) stopGateway(gateway);
     if (!await rollbackComponentUpdate(cfg)) throw error;
     log("Updated engine failed readiness; restored prior components");

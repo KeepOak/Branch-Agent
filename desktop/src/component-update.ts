@@ -14,6 +14,7 @@ export interface RefreshOptions {
 }
 
 interface ReleaseIdentity { version: string; engineSha256: string; windowSha256: string }
+interface RejectedRelease extends ReleaseIdentity { reason?: "exit" | "timeout"; timeoutAttempts?: number }
 interface Publication {
   version: string;
   identity?: ReleaseIdentity;
@@ -43,15 +44,24 @@ async function publication(cfg: DesktopConfig): Promise<Publication | undefined>
 
 export async function componentReleaseRejected(cfg: DesktopConfig, release: ComponentRelease): Promise<boolean> {
   const rejected = await readOrEmpty(rejectedFile(cfg));
-  return Boolean(rejected && sameIdentity(JSON.parse(rejected) as ReleaseIdentity, releaseIdentity(release)));
+  if (!rejected) return false;
+  const record = JSON.parse(rejected) as RejectedRelease;
+  return sameIdentity(record, releaseIdentity(release)) &&
+    (record.reason !== "timeout" || (record.timeoutAttempts ?? 1) >= 2);
 }
 
 /** Call only after the selected new engine fails its readiness probe, never for staging/network recovery. */
-export async function rejectFailedComponentUpdate(cfg: DesktopConfig, engineDir: string): Promise<void> {
+export async function rejectFailedComponentUpdate(cfg: DesktopConfig, engineDir: string, reason: "exit" | "timeout" = "exit"): Promise<void> {
   const pending = await publication(cfg);
   if (pending?.phase !== "pending" || !pending.identity || pending.engineNext !== engineDir) return;
   if (await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== engineDir) return;
-  await replaceFile(rejectedFile(cfg), JSON.stringify(pending.identity));
+  const previous = await readOrEmpty(rejectedFile(cfg));
+  const prior = previous ? JSON.parse(previous) as RejectedRelease : undefined;
+  const timeoutAttempts = reason === "timeout"
+    ? sameIdentity(prior, pending.identity) && prior?.reason === "timeout"
+      ? (prior.timeoutAttempts ?? 1) + 1 : 1
+    : undefined;
+  await replaceFile(rejectedFile(cfg), JSON.stringify({ ...pending.identity, reason, ...(timeoutAttempts ? { timeoutAttempts } : {}) }));
 }
 
 export async function rollbackComponentUpdate(cfg: DesktopConfig): Promise<boolean> {
