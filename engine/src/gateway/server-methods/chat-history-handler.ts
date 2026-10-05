@@ -14,6 +14,7 @@ import {
 } from "../../agents/subagents/registry/subagent-registry-state.js";
 import { readSessionHistoryPageInWorker } from "../../config/sessions/session-history-worker-runtime.js";
 import { readSessionPendingInputReceiptsInWorker } from "../../config/sessions/session-pending-input-receipts.js";
+import { listSessionSegmentsReadOnly } from "../../config/sessions/session-segments.js";
 import {
   measureDiagnosticsTimelineSpan,
   measureDiagnosticsTimelineSpanSync,
@@ -99,8 +100,8 @@ export async function handleChatHistoryRequest({
     selectorError = "offset and messageId cannot be used together";
   } else if (cursor !== undefined && (offset !== undefined || messageId !== undefined)) {
     selectorError = "cursor cannot be used with offset or messageId";
-  } else if (wireSessionId !== undefined && messageId === undefined) {
-    selectorError = "sessionId requires messageId";
+  } else if (wireSessionId !== undefined && cursor !== undefined) {
+    selectorError = "sessionId cannot be used with cursor";
   }
   if (selectorError) {
     respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, selectorError));
@@ -129,6 +130,22 @@ export async function handleChatHistoryRequest({
   try {
     const { selectedSession, entry, queries, readCurrentSharing, rowProjection } = selection;
     const { cfg, agentId: sessionAgentId, storePath, canonicalKey } = selectedSession;
+    if (wireSessionId && !retainedTranscript) {
+      const segments = listSessionSegmentsReadOnly({
+        agentId: sessionAgentId,
+        sessionKey: canonicalKey,
+        alternateSessionKey: sessionKey,
+        storePath,
+      });
+      if (!segments.some((segment) => segment.sessionId === wireSessionId)) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "sessionId does not belong to sessionKey"),
+        );
+        return;
+      }
+    }
     const readTranscriptOwner = async () => {
       if (!requestedSessionId) {
         return true;

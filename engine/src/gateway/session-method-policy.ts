@@ -98,6 +98,7 @@ const DIRECT_SESSION_READ_METHODS = new Set([
   "sessions.get",
   "sessions.preview",
   "sessions.branches.list",
+  "sessions.segments.list",
   "sessions.companion.ask",
   "sessions.companion.state",
   "sessions.diff",
