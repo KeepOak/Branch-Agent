@@ -13,6 +13,7 @@ import {
 } from "./register.cron-add.js";
 import { registerCronEstimateCommand } from "./register.cron-estimate.js";
 import { registerCronPipelinesCommand } from "./register.cron-pipelines.js";
+import { registerCronPreviewCommand } from "./register.cron-preview.js";
 import { registerCronEditCommand } from "./register.cron-edit.js";
 import { registerCronScratchCommand } from "./register.cron-scratch.js";
 import { registerCronSimpleCommands } from "./register.cron-simple.js";
@@ -43,6 +44,7 @@ export function registerCronCli(program: Command) {
 
   registerCronEstimateCommand(cron);
   registerCronPipelinesCommand(cron);
+  registerCronPreviewCommand(cron);
   registerCronStatusCommand(cron);
   registerCronListCommand(cron);
   registerCronAddCommand(cron);
