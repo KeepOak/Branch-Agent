@@ -285,6 +285,15 @@ describe("listGatewayMethods", () => {
       "contacts.markRead",
       "a2a.peers.list",
       "a2a.peers.refresh",
+      "rooms.create",
+      "rooms.get",
+      "rooms.list",
+      "rooms.send",
+      "rooms.log",
+      "rooms.members.add",
+      "rooms.members.remove",
+      "rooms.rule.set",
+      "rooms.archive",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -376,6 +385,15 @@ describe("listGatewayMethods", () => {
       "contacts.markRead",
       "a2a.peers.list",
       "a2a.peers.refresh",
+      "rooms.create",
+      "rooms.get",
+      "rooms.list",
+      "rooms.send",
+      "rooms.log",
+      "rooms.members.add",
+      "rooms.members.remove",
+      "rooms.rule.set",
+      "rooms.archive",
     ]);
   });
 
@@ -595,6 +613,15 @@ describe("listGatewayMethods", () => {
       "contacts.markRead",
       "a2a.peers.list",
       "a2a.peers.refresh",
+      "rooms.create",
+      "rooms.get",
+      "rooms.list",
+      "rooms.send",
+      "rooms.log",
+      "rooms.members.add",
+      "rooms.members.remove",
+      "rooms.rule.set",
+      "rooms.archive",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));
