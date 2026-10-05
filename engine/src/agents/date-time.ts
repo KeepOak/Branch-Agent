@@ -189,7 +189,7 @@ function detectSystemTimeFormat(): boolean {
       const result = execFileSync(
         "powershell",
         ["-Command", "(Get-Culture).DateTimeFormat.ShortTimePattern"],
-        { encoding: "utf8", timeout: 1000 },
+        { encoding: "utf8", timeout: 1000, windowsHide: true },
       ).trim();
       if (result.startsWith("H")) {
         return true;
