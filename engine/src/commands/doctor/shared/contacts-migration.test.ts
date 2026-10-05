@@ -174,6 +174,63 @@ describe("doctor contact migration", () => {
     expect(source.entry.archiveReason).toBe("moved");
   });
 
+  it.each([
+    { mainKey: undefined, canonical: "main" },
+    { mainKey: "home", canonical: "home" },
+  ])(
+    "keeps empty operator-created canonical $canonical threads while archiving a topic",
+    ({ mainKey, canonical }) => {
+      const fixture = createFixture({
+        agents: { entries: { ops: {}, worker: {} }, defaultId: "ops" },
+        ...(mainKey ? { session: { mainKey } } : {}),
+      });
+      const opsPath = databasePath(fixture.stateDir, "ops");
+      const workerPath = databasePath(fixture.stateDir, "worker");
+      for (const [agentId, databasePathname] of [
+        ["ops", opsPath],
+        ["worker", workerPath],
+      ] as const) {
+        seedClaim({
+          databaseAgentId: agentId,
+          databasePath: databasePathname,
+          key: `agent:${agentId}:${canonical}`,
+          entry: { sessionId: `${agentId}-canonical`, updatedAt: 10, createdVia: "operator" },
+          events: [],
+        });
+      }
+      seedClaim({
+        databaseAgentId: "ops",
+        databasePath: opsPath,
+        key: "agent:ops:something",
+        entry: { sessionId: "empty-topic", updatedAt: 11, createdVia: "operator" },
+        events: [],
+      });
+
+      expect(
+        migrateContacts({ cfg: fixture.cfg, env: fixture.env, apply: false, now: 20 }),
+      ).toEqual({ moved: 0, archivedEmpty: 1 });
+      expect(migrateContacts({ cfg: fixture.cfg, env: fixture.env, apply: true, now: 20 })).toEqual(
+        { moved: 0, archivedEmpty: 1 },
+      );
+      for (const [agentId, databasePathname] of [
+        ["ops", opsPath],
+        ["worker", workerPath],
+      ] as const) {
+        const entry = readClaim({
+          databaseAgentId: agentId,
+          databasePath: databasePathname,
+          key: `agent:${agentId}:${canonical}`,
+        })?.entry;
+        expect(entry?.archivedAt).toBeUndefined();
+        expect(entry?.archiveReason).toBeUndefined();
+      }
+      expect(
+        readClaim({ databaseAgentId: "ops", databasePath: opsPath, key: "agent:ops:something" })
+          ?.entry,
+      ).toMatchObject({ archivedAt: 20, archiveReason: "empty" });
+    },
+  );
+
   it("rolls back copied rows, source markers, archives, claims and audit in one transaction", () => {
     const fixture = createFixture({ agents: { entries: { ops: {} } } });
     const source = databasePath(fixture.stateDir, "main");

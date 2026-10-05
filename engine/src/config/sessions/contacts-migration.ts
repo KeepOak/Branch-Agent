@@ -339,7 +339,14 @@ export function migrateContacts(params: {
           if (entry.movedToSessionKey) continue;
           const parsed = parseAgentSessionKey(key);
           if (!parsed) continue;
+          const isCanonicalMain =
+            key ===
+            resolveCanonicalMainSessionKey({
+              agentId: parsed.agentId,
+              mainKey: params.cfg.session?.mainKey,
+            });
           if (
+            !isCanonicalMain &&
             !entry.archivedAt &&
             entry.createdVia === "operator" &&
             !entry.label?.trim() &&
