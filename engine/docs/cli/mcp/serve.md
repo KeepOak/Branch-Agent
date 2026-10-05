@@ -422,6 +422,9 @@ For broader testing context, see [Testing](/help/testing).
 ### Troubleshooting
 
 <AccordionGroup>
+  <Accordion title="The agent says the branch server is not connected">
+    Starting the server loads the engine, which takes about 8 seconds on a Windows PC and longer while Trunks are busy, and Claude Code gives a server 30 seconds by default. Start Claude Code with a longer startup time, for example `MCP_TIMEOUT=90000 claude`, or run `/mcp` to reconnect.
+  </Accordion>
   <Accordion title="No conversations returned">
     Usually means the Gateway session is not already routable. Confirm that the underlying session has stored channel/provider, recipient, and optional account/thread route metadata.
   </Accordion>

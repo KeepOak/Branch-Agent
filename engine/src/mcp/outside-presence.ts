@@ -71,6 +71,7 @@ export class OutsidePresence {
   constructor(
     private readonly hello: Hello,
     private readonly log: (line: string) => void = () => undefined,
+    private readonly goodbye?: (agent: OutsideAgentIdentity) => Promise<unknown>,
   ) {}
 
   start(agent: OutsideAgentIdentity | undefined): void {
@@ -122,6 +123,22 @@ export class OutsidePresence {
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
+  }
+
+  /** Say goodbye as the client exits, so its next session (often a short-lived one) gets the same id back. */
+  async leave(): Promise<void> {
+    this.stop();
+    if (!this.agent || !this.known || this.refusal) return;
+    // Bounded: shutting down must never wait on a slow gateway.
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      this.goodbye?.(this.agent).catch(() => undefined),
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, 2_000);
+        timer.unref();
+      }),
+    ]);
+    clearTimeout(timer);
   }
 
   private async say(activity?: string): Promise<void> {

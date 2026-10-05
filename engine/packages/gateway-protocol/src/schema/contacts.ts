@@ -109,7 +109,11 @@ export const OutsideAgentSchema = closedObject({
   instance: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
   activity: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
 });
-export const ContactsOutsideHelloParamsSchema = closedObject({ agent: OutsideAgentSchema });
+/** `leaving: true` is the goodbye a client sends when it exits: its id is free for the next session at once. */
+export const ContactsOutsideHelloParamsSchema = closedObject({
+  agent: OutsideAgentSchema,
+  leaving: Type.Optional(Type.Boolean()),
+});
 export const ContactsOutsideListParamsSchema = closedObject({});
 /** Settings › Connected agents: the master switch, or one agent's disconnect / window permission. */
 export const ContactsOutsideSetParamsSchema = closedObject({

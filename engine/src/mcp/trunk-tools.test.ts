@@ -450,3 +450,29 @@ describe("an older Branch on the other side", () => {
     presence.stop();
   });
 });
+
+describe("leaving", () => {
+  it("says goodbye with the id Branch gave this session, once, and never hangs", async () => {
+    const goodbyes: Record<string, unknown>[] = [];
+    const presence = new OutsidePresence(
+      async (agent) => ({ contact: { id: `a2a:${agent.id}-2` } }),
+      () => undefined,
+      async (agent) => goodbyes.push({ ...agent }),
+    );
+    presence.start(claude);
+    await presence.identity();
+    await presence.leave();
+    expect(goodbyes).toHaveLength(1);
+    expect(goodbyes[0]?.id).toBe("claude-code-2");
+    const stuck = new OutsidePresence(
+      async () => ({}),
+      () => undefined,
+      () => new Promise(() => undefined),
+    );
+    stuck.start(claude);
+    await stuck.identity();
+    const started = Date.now();
+    await stuck.leave();
+    expect(Date.now() - started).toBeLessThan(3_000);
+  });
+});
