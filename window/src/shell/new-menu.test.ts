@@ -32,4 +32,14 @@ describe("new conversation drafts", () => {
     await expect(createTopic(request, "oak", "main", " \n ")).rejects.toThrow("Write a message");
     expect(request).not.toHaveBeenCalled();
   });
+
+  it("creates an anchored conversation only with its first message", async () => {
+    const request = vi.fn(async () => ({ key: "agent:oak:topic-2" }));
+    const anchor = { threadKey: "agent:oak:main", afterMessageId: "entry-1" };
+    expect(await createTopic(request, "oak", "main", "Follow up here", { contactAnchor: anchor })).toBe("agent:oak:topic-2");
+    expect(request).toHaveBeenCalledExactlyOnceWith("sessions.create", {
+      agentId: "oak", parentSessionKey: "agent:oak:main", message: "Follow up here",
+      displayName: "Follow up here", titleSource: "Follow up here", contactAnchor: anchor,
+    });
+  });
 });

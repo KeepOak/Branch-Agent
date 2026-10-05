@@ -20,6 +20,8 @@ const { createComponentUpdateController } = await import(pathToFileURL(join(proc
 const { parseComponentRelease } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-manifest.js")));
 const { defaultDataDirectory } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "config.js")));
 const { readToken } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+const { GatewayReadinessTimeoutError } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+const { bootSelectedEngineWithRollback } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "boot-selected-engine.js")));
 
 async function fixture(run, modify = () => {}) {
   const parent = join(tmpdir(), "Codex-session-files", "resume-desktop-updater-20261003");
@@ -453,26 +455,65 @@ test("explicit retry bypasses only the exact failed identity without marking it 
 test("an exited staged engine records exit and is not automatically retried", async () => fixture(async ({ cfg, request }) => {
   await source.refreshComponentUpdate(cfg, request);
   const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
-  await source.rejectFailedComponentUpdate(cfg, selected, "exit");
+  let runningEngine;
+  await bootSelectedEngineWithRollback({
+    boot: async () => {
+      const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+      if (current === selected) throw new Error("gateway exited");
+      runningEngine = current;
+    },
+    stopFailedGateway: () => {},
+    recordTimeout: () => source.recordComponentUpdateTimeout(cfg, selected),
+    rejectExited: () => source.rejectFailedComponentUpdate(cfg, selected),
+    rollback: () => source.rollbackComponentUpdate(cfg),
+    waitForPortRelease: async () => {},
+    log: () => {},
+  });
+  assert.equal(runningEngine, cfg.engineDir);
   const rejected = JSON.parse(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"));
   assert.equal(rejected.reason, "exit");
-  await source.rollbackComponentUpdate(cfg);
   assert.equal(await source.refreshComponentUpdate(cfg, request), false);
 }));
 
-test("a timed-out staged engine gets exactly one later automatic retry", async () => fixture(async ({ cfg, request }) => {
+async function bootTimedOutRelease(cfg) {
+  const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  let stoppedPid;
+  let runningEngine;
+  const restored = await bootSelectedEngineWithRollback({
+    boot: async () => {
+      const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+      if (current === selected) throw new GatewayReadinessTimeoutError();
+      runningEngine = current;
+    },
+    stopFailedGateway: () => { stoppedPid = 12345; },
+    recordTimeout: () => source.recordComponentUpdateTimeout(cfg, selected),
+    rejectExited: () => source.rejectFailedComponentUpdate(cfg, selected),
+    rollback: () => source.rollbackComponentUpdate(cfg),
+    waitForPortRelease: async () => assert.equal(stoppedPid, 12345),
+    log: () => {},
+  });
+  assert.equal(restored, true);
+  assert.equal(stoppedPid, 12345, "timed-out selected gateway was stopped before the prior boot");
+  assert.equal(runningEngine, cfg.engineDir, "previous engine booted after rollback");
+  await unchanged(cfg);
+}
+
+test("a first readiness timeout stops the selected gateway and boots previous components without rejection", async () => fixture(async ({ cfg, request }) => {
   await source.refreshComponentUpdate(cfg, request);
-  const first = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
-  await source.rejectFailedComponentUpdate(cfg, first, "timeout");
-  await source.rollbackComponentUpdate(cfg);
-  let rejected = JSON.parse(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"));
-  assert.equal(rejected.reason, "timeout");
-  assert.equal(rejected.timeoutAttempts, 1);
+  await bootTimedOutRelease(cfg);
+  await assert.rejects(readFile(join(cfg.dataDir, "component-update-rejected.json")), { code: "ENOENT" });
+  const timeout = JSON.parse(await readFile(join(cfg.dataDir, "component-update-timeouts.json"), "utf8"));
+  assert.equal(timeout.attempts, 1);
   assert.equal(await source.refreshComponentUpdate(cfg, request), true);
-  const second = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
-  await source.rejectFailedComponentUpdate(cfg, second, "timeout");
-  await source.rollbackComponentUpdate(cfg);
-  rejected = JSON.parse(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"));
+}));
+
+test("a second readiness timeout rejects its release and auto-apply does not restage it", async () => fixture(async ({ cfg, request }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  await bootTimedOutRelease(cfg);
+  assert.equal(await source.refreshComponentUpdate(cfg, request), true);
+  await bootTimedOutRelease(cfg);
+  const rejected = JSON.parse(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"));
+  assert.equal(rejected.reason, "timeout");
   assert.equal(rejected.timeoutAttempts, 2);
   assert.equal(await source.refreshComponentUpdate(cfg, request), false);
 }));

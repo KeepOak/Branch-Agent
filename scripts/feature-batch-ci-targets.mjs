@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
   'extensions/a2a/src/card-cache.test.ts',
@@ -9,6 +11,8 @@ export const engineTests = [
   'extensions/browser/src/browser/pw-tools-core.activity.test.ts',
   'extensions/browser/src/browser/routes/agent.text.test.ts',
   'extensions/codex/src/app-server/windows-shell-guidance.test.ts',
+  'extensions/memory-core/src/rings-consolidation.test.ts',
+  'extensions/memory-core/src/rings-workspace-prompt.test.ts',
   'packages/ai/src/providers/agent-tools-parameter-schema.test.ts',
   'packages/ai/src/providers/clean-for-gemini-mastra.test.ts',
   'packages/ai/src/providers/clean-for-gemini.test.ts',
@@ -28,6 +32,7 @@ export const engineTests = [
   'src/agents/core-coding-tools.sandbox.test.ts',
   'src/agents/embedded-agent-runner/provider-capacity-failover.test.ts',
   'src/agents/main-session-recovery/main-session-restart-recovery.pending-admission.test.ts',
+  'src/agents/mcp-content.test.ts',
   'src/agents/prepared-model-runtime.auth-republication-scope.test.ts',
   'src/agents/project-instructions.test.ts',
   'src/agents/sessions/tools/read-office-page.test.ts',
@@ -43,10 +48,12 @@ export const engineTests = [
   'src/auto-reply/commands-registry.test.ts',
   'src/auto-reply/reply/commands-handlers.registration.test.ts',
   'src/auto-reply/reply/commands-warnings.test.ts',
+  'src/cli/cron-cli/register.cron-preview.test.ts',
   'src/coding/unified-diff.test.ts',
   'src/commands/agents.identity.test.ts',
   'src/commands/doctor/shared/contacts-migration.test.ts',
   'src/config/config.identity-avatar.test.ts',
+  'src/cron/schedule-preview.test.ts',
   'src/gateway/assistant-avatar.test.ts',
   'src/gateway/assistant-identity.test.ts',
   'src/gateway/config-reload-plan.test.ts',
@@ -60,6 +67,7 @@ export const engineTests = [
   'src/gateway/server-methods/memory-export.test.ts',
   'src/gateway/server-methods/session-change-event.test.ts',
   'src/gateway/server-reload-hot.agent-roster.test.ts',
+  'src/gateway/server.sessions.create.contact-anchor.test.ts',
   'src/gateway/sessions-patch.done.test.ts',
   'src/logging/logger-redaction-behavior.test.ts',
   'src/logging/retained-warnings.test.ts',
@@ -81,10 +89,14 @@ export const windowTests = [
   'src/connect/conversations.test.ts',
   'src/connect/desktop-component-updates.test.tsx',
   'src/connect/unread-guard.test.ts',
+  'src/face/character-arrival.test.tsx',
+  'src/face/character-calm.test.tsx',
+  'src/face/use-character-motion.test.tsx',
   'src/places-nav/SettingsFrame.test.tsx',
   'src/places/canopy/canopy.test.tsx',
   'src/places/customize/customize.test.tsx',
   'src/places/customize/tools.test.tsx',
+  'src/places/inbox/history.test.tsx',
   'src/places/inbox/inbox.test.tsx',
   'src/places/library/create-document.test.ts',
   'src/places/library/documents.test.tsx',
@@ -103,6 +115,7 @@ export const windowTests = [
   'src/places/settings/set1/permissions.test.tsx',
   'src/places/settings/set2/achievements.test.tsx',
   'src/places/settings/set2/advanced.test.tsx',
+  'src/places/settings/set2/computer-browser-doctor.test.tsx',
   'src/places/settings/set2/computer-more.test.tsx',
   'src/places/settings/set2/developer.test.tsx',
   'src/places/settings/set2/set2.test.tsx',
@@ -113,12 +126,17 @@ export const windowTests = [
   'src/places/trunk/trunk.test.tsx',
   'src/setup/FirstTrunk.test.tsx',
   'src/setup/setup.test.tsx',
+  'src/shell/PetReaction.test.tsx',
+  'src/shell/contact-row-routing.test.tsx',
+  'src/shell/contact-topics.test.ts',
   'src/shell/contacts-model.test.ts',
   'src/shell/contacts-source.test.tsx',
   'src/shell/conversation-actions.test.ts',
   'src/shell/guide.test.tsx',
   'src/shell/limit-window-reading.test.ts',
   'src/shell/new-menu.test.ts',
+  'src/shell/pet-first-frame.test.ts',
+  'src/shell/pet-pixel.test.ts',
   'src/shell/r2-shell.test.ts',
   'src/shell/resize-cancel.test.tsx',
   'src/shell/row-menu.test.ts',
@@ -127,7 +145,11 @@ export const windowTests = [
   'src/shell/status-gateway.test.tsx',
   'src/shell/who-it-knows-button.test.tsx',
   'src/shell/who-it-knows.test.ts',
+  'src/stage/ComputerStage.test.tsx',
   'src/stage/pane/ActivityTab.helper-facts.test.tsx',
+  'src/stage/pane/FilesTab.test.tsx',
+  'src/stage/pane/MemoryTab.test.tsx',
+  'src/stage/pane/MemoryTerminal.test.tsx',
   'src/stage/pane/PreviewTab.test.tsx',
   'src/stage/pane/pane-model.test.ts',
   'src/thread/Helpers.test.ts',
@@ -449,12 +471,38 @@ export const windowStrictFiles = [
   'src/places/library/memory.test.tsx',
 ];
 
+// A PR adds its named tests in its own file, scripts/feature-batch-ci-named/<topic>.txt, one
+// `engine:<file>` or `window:<file>` per line (# comments allowed), instead of editing the shared
+// lists above, so parallel PRs never conflict on them.
+const NAMED_DIR = new URL('./feature-batch-ci-named/', import.meta.url);
+
+export function namedTestFiles(lane) {
+  let names = [];
+  try {
+    names = readdirSync(NAMED_DIR).filter(name => name.endsWith('.txt')).sort();
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  const files = [];
+  for (const name of names) {
+    for (const raw of readFileSync(new URL(name, NAMED_DIR), 'utf8').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const match = /^(engine|window):(.+)$/.exec(line);
+      if (!match) throw new Error(`scripts/feature-batch-ci-named/${name}: expected engine:<file> or window:<file>, got "${line}"`);
+      if (match[1] === lane) files.push(match[2].trim());
+    }
+  }
+  return files;
+}
+
 export function namedTests(lane) {
   if (!['engine', 'window'].includes(lane)) throw new Error('Unknown feature test lane');
-  const targets = lane === 'engine' ? engineTests : windowTests;
-  if (targets.some((file, index) => index > 0 && targets[index - 1] >= file)) {
+  const listed = lane === 'engine' ? engineTests : windowTests;
+  if (listed.some((file, index) => index > 0 && listed[index - 1] >= file)) {
     throw new Error(`Keep ${lane}Tests sorted: insert new test files in code-point (plain string) order`);
   }
+  const targets = [...listed, ...namedTestFiles(lane)];
   if (!targets.length || new Set(targets).size !== targets.length
     || targets.some(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'))) {
     throw new Error('Explicit unique repository-relative test files are required');
@@ -464,7 +512,7 @@ export function namedTests(lane) {
 
 export function capabilityTests() {
   const targets = capabilityEngineTests;
-  if (!targets.length || new Set(targets).size !== targets.length || targets.some(file => engineTests.includes(file))
+  if (!targets.length || new Set(targets).size !== targets.length || targets.some(file => namedTests('engine').includes(file))
     || targets.some(file => !/^.+.test.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'))) {
     throw new Error('Explicit unique repository-relative capability test files are required');
   }

@@ -5,11 +5,12 @@ import type { Server } from "node:http";
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { GatewayReadinessError, gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady } from "./gateway";
+import { gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady } from "./gateway";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowsWindowResident } from "./resident-window";
-import { confirmComponentUpdate, readComponentUpdateStatus, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
+import { confirmComponentUpdate, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
+import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, registerDesktopControlsIpc } from "./desktop-controls";
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
@@ -23,7 +24,7 @@ const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 /** Started with Windows: open quietly in the tray (only where the tray exists). */
 const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRAY);
 const ICON = join(__dirname, "..", "assets", "branch.ico");
-const READY_TIMEOUT_MS = 180_000;
+const READY_TIMEOUT_MS = 600_000;
 const cfg: DesktopConfig = loadConfig();
 /** The packaged app this process runs from; development runs (`electron .`) never update themselves. */
 const install: DesktopInstall | undefined = app.isPackaged ? {
@@ -245,12 +246,7 @@ async function bootEngine(): Promise<void> {
   // publish-engine.sh never removes the folder named here.
   writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
 `);
-  try { await waitForReady(cfg, gateway, READY_TIMEOUT_MS); } catch (error) {
-    if (error instanceof GatewayReadinessError && error.reason !== "unready") {
-      await rejectFailedComponentUpdate(cfg, engineDir, error.reason);
-    }
-    throw error;
-  }
+  await waitForReady(cfg, gateway, READY_TIMEOUT_MS);
   await confirmComponentUpdate(cfg);
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
   engineUpdateReady = false;
@@ -264,15 +260,18 @@ async function bootEngine(): Promise<void> {
 
 /** A failed newly published build restores the prior pointer/window before booting the retained engine. */
 async function bootSelectedEngine(): Promise<boolean> {
-  try { await bootEngine(); return false; } catch (error) {
-    if (error instanceof GatewayReadinessError && error.reason === "unready") throw error;
-    if (gateway) stopGateway(gateway);
-    if (!await rollbackComponentUpdate(cfg)) throw error;
-    log("Updated engine failed readiness; restored prior components");
-    for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise(r => setTimeout(r, 250));
-    await bootEngine();
-    return true;
-  }
+  const selectedEngine = resolveEngineDir(cfg);
+  return bootSelectedEngineWithRollback({
+    boot: bootEngine,
+    stopFailedGateway: () => { if (gateway) stopGateway(gateway); },
+    recordTimeout: () => recordComponentUpdateTimeout(cfg, selectedEngine),
+    rejectExited: () => rejectFailedComponentUpdate(cfg, selectedEngine),
+    rollback: () => rollbackComponentUpdate(cfg),
+    waitForPortRelease: async () => {
+      for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise(r => setTimeout(r, 250));
+    },
+    log,
+  });
 }
 
 function watchUpdates(w: BrowserWindow): void {

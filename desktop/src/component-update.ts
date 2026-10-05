@@ -15,6 +15,7 @@ export interface RefreshOptions {
 
 interface ReleaseIdentity { version: string; engineSha256: string; windowSha256: string }
 interface RejectedRelease extends ReleaseIdentity { reason?: "exit" | "timeout"; timeoutAttempts?: number }
+interface TimedOutRelease extends ReleaseIdentity { attempts: number }
 interface Publication {
   version: string;
   identity?: ReleaseIdentity;
@@ -27,6 +28,7 @@ interface Publication {
 const journalFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-pending.json");
 const versionFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-version.txt");
 const rejectedFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-rejected.json");
+const timeoutFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-timeouts.json");
 const releaseIdentity = (release: ComponentRelease): ReleaseIdentity => ({ version: release.version,
   engineSha256: release.components.engine.sha256, windowSha256: release.components.window.sha256 });
 const sameIdentity = (a: ReleaseIdentity | undefined, b: ReleaseIdentity): boolean =>
@@ -46,22 +48,28 @@ export async function componentReleaseRejected(cfg: DesktopConfig, release: Comp
   const rejected = await readOrEmpty(rejectedFile(cfg));
   if (!rejected) return false;
   const record = JSON.parse(rejected) as RejectedRelease;
-  return sameIdentity(record, releaseIdentity(release)) &&
-    (record.reason !== "timeout" || (record.timeoutAttempts ?? 1) >= 2);
+  return sameIdentity(record, releaseIdentity(release));
+}
+
+/** A first timeout is retryable after rollback; a second timeout rejects this exact release. */
+export async function recordComponentUpdateTimeout(cfg: DesktopConfig, engineDir: string): Promise<number> {
+  const pending = await publication(cfg);
+  if (pending?.phase !== "pending" || !pending.identity || pending.engineNext !== engineDir) return 0;
+  if (await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== engineDir) return 0;
+  const raw = await readOrEmpty(timeoutFile(cfg));
+  const prior = raw ? JSON.parse(raw) as TimedOutRelease : undefined;
+  const attempts = sameIdentity(prior, pending.identity) && Number.isSafeInteger(prior?.attempts) ? prior!.attempts + 1 : 1;
+  await replaceFile(timeoutFile(cfg), JSON.stringify({ ...pending.identity, attempts }));
+  if (attempts >= 2) await replaceFile(rejectedFile(cfg), JSON.stringify({ ...pending.identity, reason: "timeout", timeoutAttempts: attempts }));
+  return attempts;
 }
 
 /** Call only after the selected new engine fails its readiness probe, never for staging/network recovery. */
-export async function rejectFailedComponentUpdate(cfg: DesktopConfig, engineDir: string, reason: "exit" | "timeout" = "exit"): Promise<void> {
+export async function rejectFailedComponentUpdate(cfg: DesktopConfig, engineDir: string): Promise<void> {
   const pending = await publication(cfg);
   if (pending?.phase !== "pending" || !pending.identity || pending.engineNext !== engineDir) return;
   if (await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== engineDir) return;
-  const previous = await readOrEmpty(rejectedFile(cfg));
-  const prior = previous ? JSON.parse(previous) as RejectedRelease : undefined;
-  const timeoutAttempts = reason === "timeout"
-    ? sameIdentity(prior, pending.identity) && prior?.reason === "timeout"
-      ? (prior.timeoutAttempts ?? 1) + 1 : 1
-    : undefined;
-  await replaceFile(rejectedFile(cfg), JSON.stringify({ ...pending.identity, reason, ...(timeoutAttempts ? { timeoutAttempts } : {}) }));
+  await replaceFile(rejectedFile(cfg), JSON.stringify({ ...pending.identity, reason: "exit" }));
 }
 
 export async function rollbackComponentUpdate(cfg: DesktopConfig): Promise<boolean> {
@@ -89,6 +97,7 @@ export async function confirmComponentUpdate(cfg: DesktopConfig): Promise<void> 
   if (await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== pending.engineNext) throw new Error("Engine publication changed before update confirmation");
   await replaceFile(versionFile(cfg), `${pending.version}\n`);
   await rm(journalFile(cfg));
+  await rm(timeoutFile(cfg), { force: true });
 }
 
 export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> {

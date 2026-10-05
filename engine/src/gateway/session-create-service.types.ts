@@ -134,6 +134,8 @@ export type CreateGatewaySessionParams = {
    * operator sessions and forks stay spawn-capable roots.
    */
   spawnDepth?: number;
+  /** Origin in the parent contact thread; stored only on a newly created topic. */
+  contactAnchor?: SessionEntry["contactAnchor"];
   /** Trusted effective policy captured by an in-process visible spawn. */
   spawnToolPolicy?: {
     version: 1;
