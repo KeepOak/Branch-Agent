@@ -22,15 +22,15 @@ const DEFAULT_HOST_DESKTOP_PORT = 5900;
 const HOST_DESKTOP_PROBE_TIMEOUT_MS = 1_500;
 
 /** The installed Windows desktop has a native screen source without a VNC server. */
-export function effectiveHostDesktopConfig(config: DesktopHostConfig | undefined): DesktopHostConfig {
-  return process.platform === "win32" && process.env.BRANCH_DESKTOP_APP === "1"
+export function effectiveHostDesktopConfig(config: DesktopHostConfig | undefined, platform = process.platform): DesktopHostConfig {
+  return platform === "win32" && process.env.BRANCH_DESKTOP_APP === "1"
     ? { ...config, enabled: config?.enabled !== false }
     : (config ?? { enabled: false });
 }
 
-export function usesNativeHostScreen(config: DesktopHostConfig | undefined): boolean {
-  return process.platform === "win32" && process.env.BRANCH_DESKTOP_APP === "1" &&
-    effectiveHostDesktopConfig(config).enabled === true && config?.port === undefined;
+export function usesNativeHostScreen(config: DesktopHostConfig | undefined, platform = process.platform): boolean {
+  return platform === "win32" && process.env.BRANCH_DESKTOP_APP === "1" &&
+    effectiveHostDesktopConfig(config, platform).enabled === true && config?.port === undefined;
 }
 
 export type HostDesktopAcquireResult = {
@@ -124,7 +124,7 @@ type HostDesktopInspectionParams = {
 export async function inspectHostDesktop(
   params: HostDesktopInspectionParams,
 ): Promise<HostDesktopInspection> {
-  if (effectiveHostDesktopConfig(params.config).enabled !== true) {
+  if (effectiveHostDesktopConfig(params.config, params.platform).enabled !== true) {
     return {
       status: {
         enabled: false,
@@ -342,7 +342,7 @@ export function createHostDesktopService(params: {
   managedDesktop?: ManagedLinuxDesktop;
 }) {
   const platform = params.platform ?? process.platform;
-  const getConfig = () => effectiveHostDesktopConfig(params.getConfig());
+  const getConfig = () => effectiveHostDesktopConfig(params.getConfig(), platform);
   type HostDesktopRuntime = {
     config: DesktopHostConfig;
     ownerEpoch: number;
@@ -444,11 +444,11 @@ export function createHostDesktopService(params: {
       requester?: DesktopObserveRequester;
       credentials?: { username?: string; password?: string };
     }) {
-      if (usesNativeHostScreen(params.getConfig())) {
+      if (usesNativeHostScreen(params.getConfig(), platform)) {
         const minted = mintDesktopFrameObserverToken({
           requester: {
             ...observeParams.requester,
-            isCurrent: () => usesNativeHostScreen(params.getConfig()) && observeParams.requester?.isCurrent() !== false,
+            isCurrent: () => usesNativeHostScreen(params.getConfig(), platform) && observeParams.requester?.isCurrent() !== false,
           },
           control: observeParams.control,
         });
@@ -536,7 +536,7 @@ export function createHostDesktopService(params: {
       for (;;) {
         const runtime = await resolveRuntime();
         if (!runtime) {
-      return (await inspectHostDesktop({ config: getConfig(), platform })).status;
+          return (await inspectHostDesktop({ config: getConfig(), platform })).status;
         }
         const inspection = await runtime.source.inspect();
         if (isCurrent(runtime)) {

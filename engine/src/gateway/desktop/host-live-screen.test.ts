@@ -12,16 +12,16 @@ afterEach(() => {
 describe("installed Windows desktop screen", () => {
   it("ships viewing on but respects the owner's off switch and an explicit VNC port", () => {
     process.env.BRANCH_DESKTOP_APP = "1";
-    expect(effectiveHostDesktopConfig(undefined).enabled).toBe(true);
-    expect(usesNativeHostScreen(undefined)).toBe(true);
-    expect(usesNativeHostScreen({ enabled: false })).toBe(false);
-    expect(usesNativeHostScreen({ enabled: true, port: 5901 })).toBe(false);
+    expect(effectiveHostDesktopConfig(undefined, "win32").enabled).toBe(true);
+    expect(usesNativeHostScreen(undefined, "win32")).toBe(true);
+    expect(usesNativeHostScreen({ enabled: false }, "win32")).toBe(false);
+    expect(usesNativeHostScreen({ enabled: true, port: 5901 }, "win32")).toBe(false);
   });
 
   it("grants a read-only live frame path without requiring a VNC server", async () => {
     process.env.BRANCH_DESKTOP_APP = "1";
     const registry = createDesktopSessionRegistry();
-    const service = createHostDesktopService({ getConfig: () => undefined, registry });
+    const service = createHostDesktopService({ getConfig: () => undefined, registry, platform: "win32" });
     const requester = { connId: "owner", isCurrent: () => true };
     const result = await service.observe({ control: false, requester });
     expect(result).toMatchObject({ transport: "frames", control: false,

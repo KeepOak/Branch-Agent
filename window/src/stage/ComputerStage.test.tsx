@@ -32,7 +32,7 @@ const engine = (request: WindowEngine["request"], key = "agent:scout:one"): Wind
   scopes: ["operator.admin"],
   onEvent: () => () => {},
 });
-const render = async (owner: WindowEngine, mode: "Computer" | "Browser" = "Computer") => {
+const render = async (owner: WindowEngine, mode: "Computer" | "Browser" = "Computer", initialComputer: string | null = null) => {
   if (!root) {
     container = document.createElement("div");
     document.body.append(container);
@@ -48,6 +48,7 @@ const render = async (owner: WindowEngine, mode: "Computer" | "Browser" = "Compu
         onMode={() => {}}
         onClose={() => {}}
         onChooseComputer={() => {}}
+        initialComputer={initialComputer}
       />,
     );
   });
@@ -84,7 +85,7 @@ describe("conversation computer lifecycle", () => {
       if (method === "environments.list") throw new Error("Computer list unavailable");
       return method === "sessions.describe" ? placed : method === "environments.status" ? environment : method === "desktop.observe" ? observed : {};
     });
-    await render(engine(request as WindowEngine["request"]));
+    await render(engine(request as WindowEngine["request"]), "Computer", "worker-one");
     await flush();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Computer list unavailable");
     expect(viewer.connect).toHaveBeenCalled();
@@ -102,6 +103,19 @@ describe("conversation computer lifecycle", () => {
     expect(container.textContent).toContain("This computer");
     expect(viewer.connect).toHaveBeenCalled();
   });
+  it("opens this computer from the header even when the Trunk is placed elsewhere", async () => {
+    viewer.connect.mockImplementation(async (options: any) => { options.onConnect(); return { disconnect: vi.fn() }; });
+    const request = vi.fn(async (method: string) => method === "sessions.describe"
+      ? placed
+      : method === "environments.status" ? { id: "gateway", desktop: true, status: "available" }
+      : method === "desktop.observe" ? observed
+      : { environments: [{ id: "gateway", desktop: true, status: "available" }, environment] });
+    await render(engine(request as any));
+    await flush();
+    expect(request).toHaveBeenCalledWith("desktop.observe", { source: { kind: "host" }, control: false });
+    expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("This computer");
+    expect(container.textContent).toContain("Private computer 1");
+  });
   it("releases a late observe response after closing without opening its socket", async () => {
     let resolve!: (value: any) => void;
     const waiting = new Promise((resolve_) => {
@@ -116,7 +130,7 @@ describe("conversation computer lifecycle", () => {
             ? waiting
             : {},
     );
-    await render(engine(request as any));
+    await render(engine(request as any), "Computer", "worker-one");
     await flush();
     await act(async () => root!.unmount());
     root = undefined;
@@ -142,7 +156,7 @@ describe("conversation computer lifecycle", () => {
             ? observed
             : {},
     );
-    await render(engine(request as any));
+    await render(engine(request as any), "Computer", "worker-one");
     await flush();
     expect(viewer.connect.mock.calls[0][0].viewOnly).toBe(true);
     expect(container.textContent).toContain("Take over");
@@ -165,7 +179,7 @@ describe("conversation computer lifecycle", () => {
             ? { ...observed, auth: "ard-account" }
             : {},
     );
-    await render(engine(request as any));
+    await render(engine(request as any), "Computer", "worker-one");
     await flush();
     expect(viewer.connect).not.toHaveBeenCalled();
     expect(request).toHaveBeenCalledWith("desktop.release", { wsPath: "/desktop/one" });

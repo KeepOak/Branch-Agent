@@ -235,7 +235,9 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
   }, []);
   const current = placementComputer(where.placement);
   const screens = where.computers.filter((c) => c.desktop || c.id === current);
-  const viewing = picked === "grid" ? null : picked ?? current;
+  // The header's computer button opens this PC; a Trunk's placed computer
+  // remains available in the tabs and can be selected explicitly.
+  const viewing = picked === "grid" ? null : picked ?? "gateway";
   const viewed = where.computers.find((c) => c.id === viewing);
   const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
   const screenView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: where.error } : view;
