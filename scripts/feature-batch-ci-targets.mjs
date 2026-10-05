@@ -110,6 +110,7 @@ export const windowTests = [
   'src/places/trunk/trunk.test.tsx',
   'src/setup/FirstTrunk.test.tsx',
   'src/setup/setup.test.tsx',
+  'src/shell/contact-row-routing.test.tsx',
   'src/shell/contacts-model.test.ts',
   'src/shell/contacts-source.test.tsx',
   'src/shell/conversation-actions.test.ts',

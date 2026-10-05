@@ -127,7 +127,7 @@ function contactMenuItems(row: Conversation, c: Ctx, contact: Contact): MenuItem
     row.unread
       ? { label: "Mark as read", letter: "u", run: () => c.markContactRead?.(contact), testid: "menu-unread", ...ic("chat") }
       : { label: "Mark as unread", letter: "u", run: () => contact.thread && void c.actions.setUnread(contact.thread, true), testid: "menu-unread", ...ic("chat"), ...(!canEdit ? { disabled: "Send a first message before marking this contact unread." } : {}) },
-    !contact.isDefault && canEdit ? { label: row.pinned ? "Unpin" : "Pin to top", letter: "p", run: () => c.pinContact?.(contact), testid: "menu-pin", ...ic("pin") } : null,
+    { label: row.pinned ? "Unpin" : "Pin to top", letter: "p", run: () => c.pinContact?.(contact), testid: "menu-pin", ...ic("pin") },
     { label: c.muted ? "Unmute" : "Mute", run: () => c.toggleMute?.(contact), testid: "menu-mute", ...ic("pause") },
     trunk
       ? { label: "Rename Trunk on profile", letter: "r", run: () => c.profile?.(row.agentId), testid: "menu-rename", ...ic("edit") }

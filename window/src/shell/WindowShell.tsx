@@ -23,7 +23,7 @@ import { useContacts, useConversations, useListPeople, useMachine, usePendingApp
 import { FilterButton, FilterSortPopover, readPrefs, savePrefs } from "./FilterSort";
 import { Icon } from "./icons";
 import { clearFilters, emptyLineFor, filterRows, filterSummary, hasFolders, homeRow, owners, roomUsed, type ListPrefs } from "./list-model";
-import { buildContactSections, contactRow, listContactTopics, markContactRead, projectContact, type Contact } from "./contacts-model";
+import { buildContactSections, contactRow, listContactTopics, markContactRead, missingConversation, openContactRow, pinContact, projectContact, type Contact } from "./contacts-model";
 import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./AppSections";
 import { batchMenuItems } from "./batch-menu";
 import { colourHue, iconColourItem } from "./row-look";
@@ -288,7 +288,7 @@ function useEngineReads(session: SaplingSession) {
   const s = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const ready = s.status.phase === "connected";
   const [lists, list] = useConversations(session, ready, s.mainKey);
-  const [contactRows, refreshContacts] = useContacts(session, ready);
+  const [contactRows, refreshContacts, contactsLoaded] = useContacts(session, ready);
   return {
     s,
     ready,
@@ -296,6 +296,7 @@ function useEngineReads(session: SaplingSession) {
     list,
     contactRows,
     refreshContacts,
+    contactsLoaded,
     trunks: useTrunks(session, ready),
     pending: usePendingApprovals(session, ready),
     machine: useMachine(session, ready),
@@ -307,7 +308,7 @@ function useEngineReads(session: SaplingSession) {
 
 /** The whole window once connected (DESIGN-SPEC §3): top bar, sidebar, main, status bar, menus and toasts. */
 export function WindowShell({ session, url }: { session: SaplingSession; url: string }) {
-  const { s, ready, lists, list, contactRows, refreshContacts, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  const { s, ready, lists, list, contactRows, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
   const people = useListPeople(session, ready);
   const update = useUpdate(session, ready, machine?.version ?? "");
   const projects = useProjects(session, ready);
@@ -584,12 +585,13 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     }
   }, [session, actions, openConversation]);
 
-  // A saved conversation that no longer exists reopens the default Trunk's main conversation (§3.3 Parity adds).
+  const contacts = projectContact(contactRows, lists.rows);
+  // A saved conversation that is neither a session nor a contact thread reopens the default Trunk.
   useEffect(() => {
-    if (!draftTopic && lists.loaded && openKey && s.mainKey && openKey !== s.mainKey && !lists.rows.some((r) => r.key === openKey)) {
+    if (!draftTopic && lists.loaded && s.mainKey && missingConversation(openKey, s.mainKey, contactsLoaded, contacts, lists.rows)) {
       openConversation(s.mainKey);
     }
-  }, [draftTopic, lists, openKey, s.mainKey, openConversation]);
+  }, [draftTopic, lists, contactsLoaded, contactRows, openKey, s.mainKey, openConversation]);
 
   const questions = useQuestions(ready ? session.engine : undefined);
   const waitingQuestion = questions.list.find((q) => q.status === "pending" && (!q.expiresAtMs || q.expiresAtMs > now)) ?? null;
@@ -598,7 +600,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     const open = row.key === openKey;
     return { waiting: row.needsYou === true || (pending.get(row.key) ?? 0) > 0 || (open && faceNow === "waiting"), working: row.working || (open && faceNow === "working") };
   }, [pending, openKey, faceNow]);
-  const contacts = projectContact(contactRows, lists.rows);
   const topicUpdates: TopicUpdate[] = activeContact ? activeTopics.map((topic) => {
     const row = lists.rows.find((candidate) => candidate.key === topic.key);
     const featured = activeContact.preview.kind === "topic" && activeContact.preview.topicKey === topic.key ? activeContact.preview : null;
@@ -609,15 +610,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const markReadContact = (contact: Contact) => {
     void markContactRead(contact, request).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark ${contact.name} read: ${e instanceof Error ? e.message : String(e)}.`, { tone: "bad" }));
   };
-  const pinContact = (contact: Contact) => {
-    if (!contact.thread) return;
-    if (contact.pinnedAt) {
-      void listContactTopics(contact.id, request).then((topics) =>
-        actions.patchMany([contact.thread!, ...topics.filter((topic) => topic.pinnedAt).map((topic) => lists.rows.find((row) => row.key === topic.key)).filter((row): row is Conversation => Boolean(row))], { pinned: false }, `Unpinned ${contact.name}.`),
-      ).catch((e: unknown) => notify(`Couldn't unpin ${contact.name}: ${e instanceof Error ? e.message : String(e)}.`, { tone: "bad" }));
-    } else {
-      void actions.pin(contact.thread);
-    }
+  const toggleContactPin = (contact: Contact) => {
+    void pinContact(contact, lists.rows, actions, request, refreshContacts).catch((e: unknown) => notify(`Couldn't change ${contact.name}: ${e instanceof Error ? e.message : String(e)}.`, { tone: "bad" }));
   };
   const shownCount = sections.reduce((n, x) => n + x.rows.length, 0);
   const level = readLevel();
@@ -625,17 +619,19 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const rowCard = useRowCard(!layout.rail);
   const catalogs = useCatalogs(request, ready);
   const personName = useCallback((id: string) => people.names.get(id) ?? lists.rows.find((r) => r.ownerId === id)?.ownerName ?? id, [people, lists.rows]);
-  const openRow = lists.rows.find((r) => r.key === openKey) ?? (openKey === s.mainKey ? home : null);
+  const openRow = openContactRow(openKey, contacts, lists.rows) ?? (openKey === s.mainKey ? home : null);
   const waitingTotal = [...pending.values()].reduce((a, b) => a + b, 0);
   const needsYou = useNeedsCount(session.engine, ready); // what Inbox › Needs you counts: the badge and the title
   const running = lists.rows.filter((r) => r.working).length;
   const ckptOn = useCkptOn(session.engine);
   const [setupTalk, setSetupTalk] = useState<TalkHandle | null>(null);
-  const name = draftTopic ? `New conversation with ${trunkName(draftTopic.agentId)}` : openRow?.isMain || !openRow ? defaultName : openRow.title || "New conversation";
+  const name = draftTopic ? `New conversation with ${trunkName(draftTopic.agentId)}` : activeContact?.name ?? (openRow?.isMain ? trunkName(openRow.agentId) : openRow?.title || defaultName);
   const room = useShellRoom({ engine: session.engine, rowKind: openRow?.kind, agentId: openRow?.agentId, title: name, ownTrunk: trunkName(openRow?.agentId), history: s.history, trunks: trunks.list });
   const rowName = (key: string) => {
+    const contact = contacts.find((c) => c.threadKey === key);
+    if (contact) return contact.name;
     const r = lists.rows.find((x) => x.key === key);
-    return !r || r.isMain || key === s.mainKey ? defaultName : r.title || "New conversation";
+    return !r ? defaultName : r.isMain ? trunkName(r.agentId) : r.title || "New conversation";
   };
   useMarkRead(request, openRow, route.kind === "chat" && ready, () => void list.refresh());
   const rowExtras = useRowExtras(openKey, level, useCallback((key: string) => lists.rows.find((r) => r.key === key)?.title || "a conversation", [lists.rows]));
@@ -697,7 +693,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       actions,
       contact: contacts.find((c) => c.threadKey === row.key),
       markContactRead: markReadContact,
-      pinContact,
+      pinContact: toggleContactPin,
       profile: openTrunkProfile,
       whoItKnows: (contact) => {
         openConversation(contact.threadKey);
@@ -762,7 +758,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     talkLive: () => window.dispatchEvent(new Event(TALK_EVENT)),
     stop: () => void session.stopRun(),
     nextConversation: () => {
-      const order = [home, ...sections.flatMap((x) => x.rows)].filter((r): r is Conversation => r !== null);
+      const order = sections.flatMap((x) => x.rows);
       const next = order[(order.findIndex((r) => r.key === openKey) + 1) % Math.max(order.length, 1)];
       if (next) {
         openConversation(next.key);
@@ -859,7 +855,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     ready,
     now,
     row: openRow,
-    isMain: !openRow || openRow.isMain || openKey === s.mainKey,
+    isMain: !openRow || openKey === s.mainKey,
     title: name,
     trunk: { id: openRow?.agentId ?? trunks.defaultId ?? undefined, name: trunkName(openRow?.agentId) },
     trunks,
@@ -1087,7 +1083,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       />
       <Sidebar
         pet={<SidebarPet pet={pet} still={reducedMotion} waiting={(() => { const w = lists.rows.find((r) => rowState(r).waiting); return w ? trunkName(w.agentId) : null; })()} />}
-        home={home}
         sections={sections}
         openKey={route.kind === "chat" ? openKey : null}
         currentPlace={route.kind === "place" ? route.place : null}
@@ -1144,7 +1139,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onPlace={openPlace}
         onNew={(e) => showMenu(e, "new", newMenuItems({ newConversation: () => startNew(), newWith: (id) => startNew(id), trunks: trunks.list, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
         onMenu={rowMenu}
-        onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) pinContact(contact); else void actions.pin(r); }}
+        onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
         onArchive={(r) => void (r.archived ? actions.restore(r) : actions.archive(r))}
         onMarkAllRead={() => void Promise.all(contacts.map((contact) => markContactRead(contact, request))).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark all read: ${e instanceof Error ? e.message : String(e)}.`, { tone: "bad" }))}
         onPerson={(e) => (overlay?.kind === "person" ? setOverlay(null) : setOverlay({ kind: "person", at: above(e), from: statusAnchor(e, "connection") }))}
@@ -1294,7 +1289,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onOpenConversation={openConversation}
           onClose={() => setOverlay(null)}
           rows={paletteRows({
-            conversations: [...(home ? [home] : []), ...lists.rows.filter((r) => !r.isMain && !r.archived)],
+            conversations: [...contacts.map(contactRow), ...lists.rows.filter((r) => !r.isMain && !r.archived)],
             trunks: trunks.list,
             trunkName,
             newConversation: () => void startNew(),
