@@ -476,10 +476,10 @@ export const windowStrictFiles = [
 // lists above, so parallel PRs never conflict on them.
 const NAMED_DIR = new URL('./feature-batch-ci-named/', import.meta.url);
 
-export function namedTestFiles(lane) {
+export function namedTestFiles(lane, only) {
   let names = [];
   try {
-    names = readdirSync(NAMED_DIR).filter(name => name.endsWith('.txt')).sort();
+    names = readdirSync(NAMED_DIR).filter(name => name.endsWith('.txt') && (!only || only.includes(name))).sort();
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
@@ -524,6 +524,29 @@ export function capabilityTests() {
 /** FEATURE_SHARD="<n>/<total>" (the workflow matrix): this job runs every total-th named test from the n-th.
  *  The named list grows with each PR; one serial job per OS passed the 15-minute cap (733 s of engine tests on
  *  Windows for #220), so the list is split across jobs instead of raising the cap. */
+// Pull requests run the full named suite on Linux. Windows runs only the named tests whose test file,
+// or whose own scripts/feature-batch-ci-named/*.txt list, the PR touches, plus this fixed Windows smoke
+// set; the full Windows suite runs after merge and nightly (about 14 minutes on Windows, over the cap).
+export const windowsSmokeTests = {
+  engine: [
+    'extensions/codex/src/app-server/windows-shell-guidance.test.ts',
+    'src/process/windows-hidden-launch.test.ts',
+    'src/process/windows-hidden-spawn-sites.test.ts',
+    'src/process/windows-worker-launch.test.ts',
+  ],
+  window: [],
+};
+
+export function touchedTests(lane, changedFiles) {
+  const prefix = `${lane}/`;
+  const changed = new Set(changedFiles.filter(file => file.startsWith(prefix)).map(file => file.slice(prefix.length)));
+  const listedByPr = new Set(namedTestFiles(lane, changedFiles
+    .filter(file => file.startsWith('scripts/feature-batch-ci-named/'))
+    .map(file => file.slice('scripts/feature-batch-ci-named/'.length))));
+  const all = namedTests(lane);
+  return all.filter(file => changed.has(file) || listedByPr.has(file) || windowsSmokeTests[lane].includes(file));
+}
+
 export function shardOf(value = process.env.FEATURE_SHARD) {
   if (!value) return { index: 0, total: 1 };
   const match = /^(\d+)\/(\d+)$/.exec(value);
