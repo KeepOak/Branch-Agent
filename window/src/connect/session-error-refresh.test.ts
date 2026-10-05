@@ -93,6 +93,26 @@ describe("a failing turn's error receipt reaches the thread after it is persiste
     session.stop();
   });
 
+  it("ends a persistent startup refusal with one plain message after the retry cap", async () => {
+    vi.useFakeTimers();
+    try {
+      fake.historyFailures = 1_000;
+      const session = new SaplingSession("ws://fake", undefined);
+      session.start();
+      fake.options?.onStatus({ phase: "connected", hello } as unknown as GatewayStatus);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(session.getSnapshot().error).toContain("startup inspection");
+      await vi.advanceTimersByTimeAsync(120_001);
+      expect(session.getSnapshot().error).toBe("Main is still starting up. Try again in a minute.");
+      const reads = fake.historyReads;
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(fake.historyReads).toBe(reads);
+      session.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows Couldn't finish once the engine announces the persisted receipt after the early lifecycle error", async () => {
     const session = await failTurnBeforeReceipt();
     const readsAfterEarlyTerminal = fake.historyReads;

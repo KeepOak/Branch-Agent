@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { agentOf, errorText, list, rec, str, type Rec, type WindowEngine } from "./engine";
 import { readModels, type ModelChoice } from "./model";
-import { isPreparationPending } from "../connect/preparation-status";
+import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 
 export type Trunk = { id: string; name: string; defaultMode: string; theme: string };
 
@@ -36,7 +36,7 @@ const EMPTY: Conversation = {
 
 /** No model set up: the engine names no default model, or none it names is connected (models.list has none usable). */
 export function hasNoModel(conv: Conversation, currentRef: string): boolean {
-  if (isPreparationPending(conv.error) || isPreparationPending(conv.modelsError)) return false;
+  if (conv.error || conv.modelsError) return false;
   return conv.loaded && (!currentRef || (conv.modelsLoaded && !conv.models.some((m) => m.available)));
 }
 
@@ -59,8 +59,10 @@ function touches(payload: unknown, key: string): boolean {
 
 export function useConversation(engine: WindowEngine | undefined, draftAgentId?: string) {
   const [state, setState] = useState<Conversation>(EMPTY);
+  const [retryGeneration, setRetryGeneration] = useState(0);
   const key = engine?.sessionKey ?? null;
   const live = useRef(key);
+  const preparationBackoff = useRef(new PreparationRetry());
   live.current = key;
 
   const readRow = useCallback(async () => {
@@ -76,10 +78,10 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
 
   const readModelList = useCallback(async () => {
     if (!engine || !key) return;
-    setState((s) => ({ ...s, modelsLoading: true, modelsError: null }));
+    setState((s) => ({ ...s, modelsLoading: true }));
     try {
       const result = await engine.request("models.list", { sessionKey: key, includeDetails: true });
-      if (live.current === key) setState((s) => ({ ...s, models: readModels(result), modelsLoaded: true, modelsLoading: false }));
+      if (live.current === key) setState((s) => ({ ...s, models: readModels(result), modelsLoaded: true, modelsLoading: false, modelsError: null }));
     } catch (error) {
       if (live.current === key) setState((s) => ({ ...s, modelsLoading: false, modelsError: errorText(error) }));
     }
@@ -94,19 +96,30 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
       await Promise.all([readRow(), readModelList()]);
     } catch (error) {
       if (live.current === key) setState((s) => ({ ...s, loaded: true, error: errorText(error) }));
+    } finally {
+      if (live.current === key) setRetryGeneration((n) => n + 1);
     }
   }, [engine, key, readRow, readModelList]);
 
   useEffect(() => {
     setState(EMPTY);
+    preparationBackoff.current.reset();
     void load();
   }, [load]);
 
   useEffect(() => {
-    if (!isPreparationPending(state.error) && !isPreparationPending(state.modelsError)) return;
-    const retry = setTimeout(() => void load(), 2_000);
+    if (!isPreparationPending(state.error) && !isPreparationPending(state.modelsError)) {
+      if (!state.error && !state.modelsError) preparationBackoff.current.reset();
+      return;
+    }
+    const delay = preparationBackoff.current.nextDelay();
+    if (delay === null) {
+      setState((s) => ({ ...s, error: preparationTimeoutLabel(s.trunks.find((t) => t.id === (draftAgentId ?? engine?.agentId))?.name ?? ""), modelsError: null }));
+      return;
+    }
+    const retry = setTimeout(() => void load(), delay);
     return () => clearTimeout(retry);
-  }, [load, state.error, state.modelsError]);
+  }, [load, state.error, state.modelsError, retryGeneration, draftAgentId, engine?.agentId]);
 
   useEffect(() => {
     if (!engine || !key) return;

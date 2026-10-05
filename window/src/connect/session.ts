@@ -8,7 +8,7 @@ import { RunStreams, readRunEvent } from "./stream-order";
 import { withOwner } from "./agent-owner";
 import { projectRun, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, readApprovalRecords } from "../thread/history";
-import { isPreparationPending } from "./preparation-status";
+import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "./preparation-status";
 
 export type SessionSnapshot = {
   status: GatewayStatus;
@@ -44,6 +44,7 @@ export class SaplingSession {
   /** Only the newest `chat.history` read may land; an older one resolving later would bring back stale history. */
   private historyReads = 0;
   private preparationRetry: ReturnType<typeof setTimeout> | null = null;
+  private readonly preparationBackoff = new PreparationRetry();
   private stopped = false;
   private readonly gateway: BranchGateway;
 
@@ -81,6 +82,7 @@ export class SaplingSession {
     this.stopped = true;
     if (this.preparationRetry) clearTimeout(this.preparationRetry);
     this.preparationRetry = null;
+    this.preparationBackoff.reset();
     this.gateway.stop();
   }
 
@@ -138,16 +140,21 @@ export class SaplingSession {
   }
 
   private set(patch: Partial<SessionSnapshot>): void {
+    const preparationDelay = patch.error && isPreparationPending(patch.error) ? this.preparationBackoff.nextDelay() : null;
+    if (patch.error && isPreparationPending(patch.error) && preparationDelay === null) {
+      patch = { ...patch, error: preparationTimeoutLabel(this.snapshot.name) };
+    }
     this.snapshot = { ...this.snapshot, ...patch };
     if (patch.error === null || (patch.status && patch.status.phase !== "connected")) {
       if (this.preparationRetry) clearTimeout(this.preparationRetry);
       this.preparationRetry = null;
+      this.preparationBackoff.reset();
     } else if (!this.stopped && patch.error && isPreparationPending(patch.error) && !this.preparationRetry) {
       this.preparationRetry = setTimeout(() => {
         this.preparationRetry = null;
         const { status, sessionKey } = this.snapshot;
         if (status.phase === "connected" && sessionKey) void this.bootstrap(status, sessionKey);
-      }, 2_000);
+      }, preparationDelay ?? 500);
     }
     for (const listener of this.listeners) {
       listener();
