@@ -1,3 +1,4 @@
+import "../test-utils/prepare-compiled-subprocesses.js";
 import { createApiRegistry, createLlmRuntime, getAiTransportHost } from "@branch/ai";
 import type {
   AssistantMessage,

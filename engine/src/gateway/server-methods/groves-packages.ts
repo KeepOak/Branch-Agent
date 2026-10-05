@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import { listAgentEntries } from "../../agents/agent-scope.js";
-import { readGroveStatus } from "../../groves/lifecycle-status.js";
+import { readClawPackageRemovalStatus } from "../../groves/lifecycle-status.js";
 import { resolveGroveMonitorCleanupBinding } from "../../groves/monitor-cleanup-binding.js";
 import { clawPackageRemovalRequestSchema } from "../../groves/package-remove-contract.js";
 import {
@@ -11,7 +11,7 @@ import {
   projectClawPackageRemovePlan,
 } from "../../groves/package-remove-plan.js";
 import { applyClawPackageRemovals, planClawPackageRemovals } from "../../groves/package-remove.js";
-import { readGroveInstallRecord } from "../../groves/provenance.js";
+import { claimClawPackageRefStatus } from "../../groves/provenance-write.js";
 import { projectPluginRuntimeFailure } from "../../plugins/lifecycle.js";
 import { withPluginLifecycleLease } from "../../plugins/plugin-lifecycle-lease.js";
 import { readAgentDeletionJournal } from "../../state/agent-deletion-journal.js";
@@ -71,11 +71,7 @@ export const grovesPackageHandlers = {
           ) ||
           journal?.operationId !== input.operationId ||
           journal.cleanupCompleted ||
-          listAgentEntries(context.getRuntimeConfig()).some(
-            (agent) => agent.id === input.agentId,
-          ) ||
-          digestGroveRemovalInstall(readGroveInstallRecord(input.agentId)) !==
-            input.expectedInstallDigest
+          listAgentEntries(context.getRuntimeConfig()).some((agent) => agent.id === input.agentId)
         ) {
           throw new Error("Grove package cleanup no longer owns the current removal state.");
         }
@@ -92,11 +88,17 @@ export const grovesPackageHandlers = {
             lease.assertOwned();
           };
           beforePersistentApply();
-          const status = await readGroveStatus(input.agentId);
+          const record = await readClawPackageRemovalStatus(input.agentId, { signal });
           beforePersistentApply();
-          const record = status.records[0];
-          if (!record || status.records.length !== 1) {
+          if (!record) {
             throw new Error("Grove package cleanup has no unique current owner.");
+          }
+          // The current journal operation freezes the entire install record.
+          if (
+            digestGroveRemovalInstall(record.orphaned ? undefined : record.install) !==
+            input.expectedInstallDigest
+          ) {
+            throw new Error("Grove package cleanup no longer owns the current removal state.");
           }
           const decisions = await planClawPackageRemovals(record.install, record.packages, {
             referencedCleanup: input.cleanup,
@@ -120,6 +122,7 @@ export const grovesPackageHandlers = {
           }
           return await applyClawPackageRemovals(orderClawPackageRemovals(decisions), {
             applyRuntime: applyOwnedRuntime,
+            deps: { claimPackageRef: claimClawPackageRefStatus },
             assertCurrent: beforePersistentApply,
           });
         },

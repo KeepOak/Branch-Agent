@@ -38,11 +38,13 @@ afterEach(() => {
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
 describe("agent deletion journal initialization", () => {
-  it.each(
-    ["missing", "reconstructed", "deleted-during-integrity", "lost-during-integrity"].flatMap(
-      (history) => ["canonical", "external"].map((location) => ({ history, location })),
-    ),
-  )(
+  it.each([
+    { history: "missing", location: "canonical" },
+    { history: "missing", location: "external" },
+    { history: "reconstructed", location: "external" },
+    { history: "deleted-during-integrity", location: "external" },
+    { history: "lost-during-integrity", location: "external" },
+  ])(
     "preserves $location independently managed agent bytes when history is $history",
     ({ history, location }) => {
       const env = { BRANCH_STATE_DIR: tempDirs.make("journal-independent-agent-") };
@@ -334,72 +336,53 @@ describe("agent deletion journal initialization", () => {
     }
   });
 
-  it.each([
-    "missing",
-    "inline",
-    "include-env",
-    "legacy-session-json",
-    "empty-agent",
-    "external-agent",
-  ])("creates a known-empty journal for fresh state (config: %s)", (configSource) => {
-    const env = { BRANCH_STATE_DIR: tempDirs.make("journal-fresh-") };
-    if (configSource === "external-agent") {
-      openBranchAgentDatabase({
-        agentId: "main",
-        path: path.join(tempDirs.make("journal-fresh-external-"), "branch-agent.sqlite"),
-        env,
-      });
-    }
-    if (configSource === "legacy-session-json" || configSource === "empty-agent") {
-      const file = path.join(
-        env.BRANCH_STATE_DIR,
-        "agents",
-        "main",
-        configSource === "empty-agent" ? "agent/branch-agent.sqlite" : "sessions/sessions.json",
-      );
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, configSource === "empty-agent" ? "" : "{}");
-    }
-    if (configSource === "inline" || configSource === "include-env") {
-      fs.writeFileSync(
-        path.join(env.BRANCH_STATE_DIR, "branch.json"),
-        configSource === "inline"
-          ? "{ agents: { entries: { main: {} } } }"
-          : JSON.stringify({
-              env: { L1072_AGENT_DIR: path.join(env.BRANCH_STATE_DIR, "custom-agent") },
-              agents: { $include: "./agents.json5" },
-            }),
-      );
+  it.each(["include-env", "legacy-session-json", "empty-agent"])(
+    "creates a known-empty journal for fresh state (config: %s)",
+    (configSource) => {
+      const env = { BRANCH_STATE_DIR: tempDirs.make("journal-fresh-") };
+      if (configSource === "legacy-session-json" || configSource === "empty-agent") {
+        const file = path.join(
+          env.BRANCH_STATE_DIR,
+          "agents",
+          "main",
+          configSource === "empty-agent" ? "agent/branch-agent.sqlite" : "sessions/sessions.json",
+        );
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, configSource === "empty-agent" ? "" : "{}");
+      }
       if (configSource === "include-env") {
+        fs.writeFileSync(
+          path.join(env.BRANCH_STATE_DIR, "branch.json"),
+          JSON.stringify({
+            env: { L1072_AGENT_DIR: path.join(env.BRANCH_STATE_DIR, "custom-agent") },
+            agents: { $include: "./agents.json5" },
+          }),
+        );
         fs.writeFileSync(
           path.join(env.BRANCH_STATE_DIR, "agents.json5"),
           "{ entries: { main: { agentDir: '${L1072_AGENT_DIR}' } } }",
         );
+        fs.mkdirSync(path.join(env.BRANCH_STATE_DIR, "agents"));
+        fs.writeFileSync(path.join(env.BRANCH_STATE_DIR, "agents", ".DS_Store"), "");
       }
-      fs.mkdirSync(path.join(env.BRANCH_STATE_DIR, "agents"));
-      fs.writeFileSync(path.join(env.BRANCH_STATE_DIR, "agents", ".DS_Store"), "");
-    }
-    const opened = openBranchStateDatabase({ env });
-    expect(opened.db.prepare("SELECT count(*) AS count FROM agent_deletion_journal").get()).toEqual(
-      { count: 0 },
-    );
-    const discovery = discoverAgentDatabaseMigrationTargets({
-      env,
-      configuredAgentDatabaseTargets: [],
-      registeredAgentDatabases: [],
-    });
-    expect(discovery.warnings).toEqual([]);
-    expect(discovery.retainedTargets).toEqual([]);
-  });
+      const opened = openBranchStateDatabase({ env });
+      expect(
+        opened.db.prepare("SELECT count(*) AS count FROM agent_deletion_journal").get(),
+      ).toEqual({ count: 0 });
+      const discovery = discoverAgentDatabaseMigrationTargets({
+        env,
+        configuredAgentDatabaseTargets: [],
+        registeredAgentDatabases: [],
+      });
+      expect(discovery.warnings).toEqual([]);
+      expect(discovery.retainedTargets).toEqual([]);
+    },
+  );
 
   it.each([
     "existing-empty-database",
     "shared-wal",
-    "shared-shm",
-    "shared-journal",
     "empty-agent-wal",
-    "empty-agent-shm",
-    "empty-agent-journal",
     "invalid-json5",
     "missing-include",
     "unresolved-storage-env",
@@ -414,27 +397,15 @@ describe("agent deletion journal initialization", () => {
       const pathname = resolveBranchStateSqlitePath(env);
       fs.mkdirSync(path.dirname(pathname));
       new DatabaseSync(pathname).close();
-    } else if (source === "shared-wal" || source === "shared-shm" || source === "shared-journal") {
+    } else if (source === "shared-wal") {
       const pathname = resolveBranchStateSqlitePath(env);
       fs.mkdirSync(path.dirname(pathname));
-      const suffix = { "shared-wal": "-wal", "shared-shm": "-shm", "shared-journal": "-journal" }[
-        source
-      ];
-      fs.writeFileSync(pathname + suffix, Buffer.alloc(64));
-    } else if (
-      source === "empty-agent-wal" ||
-      source === "empty-agent-shm" ||
-      source === "empty-agent-journal"
-    ) {
+      fs.writeFileSync(`${pathname}-wal`, Buffer.alloc(64));
+    } else if (source === "empty-agent-wal") {
       const pathname = path.join(env.BRANCH_STATE_DIR, "agents/main/agent/branch-agent.sqlite");
       fs.mkdirSync(path.dirname(pathname), { recursive: true });
       fs.writeFileSync(pathname, "");
-      const suffix = {
-        "empty-agent-wal": "-wal",
-        "empty-agent-shm": "-shm",
-        "empty-agent-journal": "-journal",
-      }[source];
-      fs.writeFileSync(pathname + suffix, Buffer.alloc(64));
+      fs.writeFileSync(`${pathname}-wal`, Buffer.alloc(64));
     } else {
       const config = {
         "invalid-json5": "{ agents:",

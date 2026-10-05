@@ -3,7 +3,6 @@ import path from "node:path";
 import { resolveIdentityPathViaExistingAncestorSync } from "../infra/boundary-path.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
 import { stageSqliteTransactionState } from "../infra/sqlite-post-commit.js";
-import { sessionChanges } from "../sessions/session-row-changes.js";
 import {
   assertAgentDeletionPathFence,
   prepareAgentDeletionPathFence,
@@ -12,7 +11,10 @@ import {
   BRANCH_AGENT_SCHEMA_VERSION,
   type BranchAgentDatabaseRegistrationObserver,
 } from "./branch-agent-db-contract.js";
-import { invalidateRegisteredAgentDatabasesMemo } from "./branch-agent-db-registry-listing.js";
+import {
+  emitBranchAgentDatabaseRegistryChange,
+  recordBranchAgentDatabaseRegistryMutation,
+} from "./branch-agent-db-registry-listing.js";
 import {
   invalidateBranchAgentDatabaseValidation,
   invalidateBranchAgentDatabaseValidationsForAgent,
@@ -110,7 +112,7 @@ export function registerBranchAgentDatabase(
             }),
           ),
       );
-      invalidateRegisteredAgentDatabasesMemo({ env: params.env });
+      recordBranchAgentDatabaseRegistryMutation(database, "upsert", [params]);
       const onCommitted = observer?.committed;
       if (onCommitted) {
         const receipt = Object.freeze({
@@ -132,10 +134,7 @@ export function registerBranchAgentDatabase(
           );
         }
       }
-      sessionChanges.emit(
-        { all: true, scope: { agentId: params.agentId, topology: true } },
-        database.db,
-      );
+      emitBranchAgentDatabaseRegistryChange(params.agentId, database.db);
     },
     { env: params.env },
   );
@@ -159,11 +158,8 @@ export function unregisterBranchAgentDatabase(params: {
           .where("agent_id", "=", params.agentId)
           .where("path", "in", matchingPaths),
       );
-      invalidateRegisteredAgentDatabasesMemo({ env: params.env });
-      sessionChanges.emit(
-        { all: true, scope: { agentId: params.agentId, topology: true } },
-        database.db,
-      );
+      recordBranchAgentDatabaseRegistryMutation(database, "remove", [params]);
+      emitBranchAgentDatabaseRegistryChange(params.agentId, database.db);
     },
     { env: params.env, initializationAgentPaths: [params.path] },
   );
@@ -186,11 +182,15 @@ export function unregisterBranchAgentDatabases(params: {
       database.db,
       db.deleteFrom("agent_databases").where("agent_id", "=", params.agentId).returning("path"),
     );
-    invalidateRegisteredAgentDatabasesMemo(options);
-    sessionChanges.emit(
-      { all: true, scope: { agentId: params.agentId, topology: true } },
-      database.db,
+    recordBranchAgentDatabaseRegistryMutation(
+      database,
+      "remove",
+      removed.rows.map((row) => ({
+        agentId: params.agentId,
+        path: resolveBranchRegisteredAgentDatabasePath(database.path, row.path),
+      })),
     );
+    emitBranchAgentDatabaseRegistryChange(params.agentId, database.db);
     return removed.rows.map((row) =>
       resolveBranchRegisteredAgentDatabasePath(database.path, row.path),
     );

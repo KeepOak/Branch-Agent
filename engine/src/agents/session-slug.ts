@@ -107,17 +107,17 @@ const SLUG_NOUNS = [
   "zephyr",
 ];
 
-const CRUSTACEAN_NOUNS = [
-  "barnacle",
+const WOODLAND_NOUNS = [
+  "acorn",
   "grove",
-  "crab",
-  "crayfish",
-  "krill",
-  "langoustine",
+  "birch",
+  "cedar",
+  "fern",
+  "maple",
   "trellis",
-  "prawn",
-  "shrimp",
-  "shell",
+  "willow",
+  "sapling",
+  "pinecone",
 ];
 
 function randomChoice(values: string[], fallback: string) {
@@ -181,5 +181,5 @@ export function createSessionSlug(isTaken?: (id: string) => boolean): string {
 
 /** Creates a human-readable crustacean-themed slug for unnamed worktrees. */
 export function createCrustaceanSlug(isTaken?: (id: string) => boolean): string {
-  return createUniqueSlug(CRUSTACEAN_NOUNS, isTaken);
+  return createUniqueSlug(WOODLAND_NOUNS, isTaken);
 }

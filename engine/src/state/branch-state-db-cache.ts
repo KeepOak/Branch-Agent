@@ -24,11 +24,6 @@ import {
   createSqliteLifecycleAggregateError,
   throwSqliteLifecycleErrors,
 } from "../infra/sqlite-lifecycle-errors.js";
-import {
-  admitSqliteSchema,
-  getAdmittedSqliteSchemaFacts,
-  runSqliteReadOperationSync,
-} from "../infra/sqlite-schema-facts.js";
 import { createSqliteTerminalOpenLatch } from "../infra/sqlite-terminal-open-latch.js";
 import { cancelSqliteWalWriteAdmission } from "../infra/sqlite-wal-write-admission.js";
 import { registerSqliteCacheExitClose } from "../infra/sqlite-wal.js";
@@ -50,6 +45,7 @@ import {
   createStateDatabaseRetainer,
   type StateDatabaseBorrowers,
 } from "./branch-state-db-borrow.js";
+import { createStateDatabaseCacheAdmission } from "./branch-state-db-cache.admission.js";
 import { createStateDatabaseIdleRetirement } from "./branch-state-db-cache.idle.js";
 import type {
   CachedBranchStateDatabase,
@@ -63,9 +59,7 @@ import type {
   StateDatabaseHandle,
 } from "./branch-state-db-contract.js";
 import { closeTrackedStateDatabase } from "./branch-state-db-handle.js";
-import { createBranchStateDatabaseRuntimeFailureOwner } from "./branch-state-db-runtime-failure.js";
 import { assertExistingBranchStateSchemaCacheAdmission } from "./branch-state-db-schema-policy.js";
-import { assertSupportedStateSchemaVersion } from "./branch-state-db-schema-version.js";
 import { branchStateSnapshotOwners } from "./branch-state-db-snapshot-owner.js";
 import type { BranchStateWorkerContext } from "./branch-state-worker-context.types.js";
 
@@ -81,7 +75,7 @@ const stateDatabaseLifecycle = resolveGlobalSingleton<StateDatabaseLifecycle>(
     borrowers: new WeakMap<DatabaseSync, StateDatabaseBorrowers>(),
     databaseLifecycleListeners: new Set<(event: BranchStateDatabaseLifecycleEvent) => void>(),
     terminalOpenLatch: createSqliteTerminalOpenLatch({
-      closeByPath: (pathname, error) => runtimeFailures.closeTerminalFailure(pathname, error),
+      closeByPath: (pathname, error) => cacheAdmission.closeTerminalFailure(pathname, error),
     }),
     asyncResources: createBranchStateDatabaseAsyncLifecycle(),
   }),
@@ -101,8 +95,16 @@ const {
 
 const { touch: touchStateDatabase, retain: retainBranchStateDatabaseForIdle } =
   createStateDatabaseIdleRetirement(stateDatabaseLifecycle, retireBranchStateDatabaseHandle);
-const { register: registerStateDatabaseWalAdmission, readHealth: readBranchStateWalHealth } =
-  createStateDatabaseWalOwner(stateDatabaseLifecycle, retainBranchStateDatabaseForIdle);
+const {
+  register: registerStateDatabaseWalAdmission,
+  readHealth: readBranchStateWalHealth,
+  ownRetirement: ownStateDatabaseRetirement,
+  stop: stopBranchStateDatabaseMaintenance,
+} = createStateDatabaseWalOwner(
+  stateDatabaseLifecycle,
+  retainBranchStateDatabaseForIdle,
+  requireBranchStateDatabaseIdentity,
+);
 export { readBranchStateWalHealth, retainBranchStateDatabaseForIdle };
 
 function notifyBranchStateDatabaseLifecycle(event: BranchStateDatabaseLifecycleEvent): void {
@@ -133,9 +135,8 @@ export function requireBranchStateDatabaseIdentity(
   return identity;
 }
 
-const runtimeFailures = createBranchStateDatabaseRuntimeFailureOwner({
+const cacheAdmission = createStateDatabaseCacheAdmission({
   cachedDatabases,
-  latch: terminalOpenLatch,
   evict: evictCachedBranchStateDatabase,
   invalidate: (pathname) => asyncResources.invalidate(pathname),
   notifyTerminalFailure: (pathname, error) =>
@@ -184,7 +185,7 @@ function ownMaintenanceStateDatabaseHandle(database: StateDatabaseHandle): void 
       cachedDatabases.get(database.path) === database ||
       retainedDatabaseHandles.get(database.db) === database
     ) {
-      await cancelSqliteWalWriteAdmission(database.db);
+      await database.walMaintenance?.stop();
       if (
         isBranchDatabaseMaintenanceResourceOwned(database.db, closingScope) &&
         (cachedDatabases.get(database.path) === database ||
@@ -217,6 +218,7 @@ export const {
   capture: (pathname) => asyncResources.capture(pathname),
   retire: retireBranchStateDatabaseHandle,
   retainFailed: retainStateDatabaseClose,
+  ownRetirement: ownStateDatabaseRetirement,
   touch: touchStateDatabase,
 });
 
@@ -323,11 +325,7 @@ function publishBranchStateDatabase(
   env: NodeJS.ProcessEnv,
 ): BranchStateDatabase {
   const { db, path: pathname } = database;
-  admitSqliteSchema(db);
-  const schemaFacts = runSqliteReadOperationSync(db, () => {
-    assertSupportedStateSchemaVersion(db, pathname);
-    return getAdmittedSqliteSchemaFacts(db);
-  });
+  const schemaFacts = cacheAdmission.initialize(database);
   const { identity, admission } = asyncResources.publish(pathname);
   databaseIdentities.set(db, identity);
   cachedDatabases.set(pathname, Object.assign(database, { schemaFacts }));
@@ -357,11 +355,14 @@ function getCachedBranchStateDatabase(
     maintenance?.assertAdmission();
   }
   assertExistingBranchStateSchemaCacheAdmission(pathname, stateDatabaseLifecycle);
-  const runtimeFailure = runtimeFailures.get(pathname);
+  const runtimeFailure = terminalOpenLatch.get(path.resolve(pathname));
   if (runtimeFailure) {
     throw runtimeFailure;
   }
   const database = cachedDatabases.get(path.resolve(pathname));
+  if (database?.db.isOpen && !cacheAdmission.refresh(database)) {
+    return undefined;
+  }
   if (database && borrowers.get(database.db)?.retiring) {
     throw new Error(`Branch Agent state database native borrower cleanup is pending: ${pathname}`);
   }
@@ -485,7 +486,7 @@ function assertBranchStateDatabaseFreshOpenAllowedAtPath(
   if (quarantineFailure) {
     // Another process can record quarantine. Revoke admitted owners without a
     // process-local latch that could outlive the durable decision's generation.
-    runtimeFailures.closeTerminalFailure(pathname, quarantineFailure);
+    cacheAdmission.closeTerminalFailure(pathname, quarantineFailure);
     throw quarantineFailure;
   }
 }
@@ -590,7 +591,6 @@ export const captureBranchStateDatabaseReadAdmission = asyncResources.capture;
 export function publishBranchStateDatabaseWorkerAdmission(
   admission: BranchStateDatabaseReadAdmission,
 ): void {
-  admission.assertCurrent();
   asyncResources.publish(admission.databasePath);
   admission.assertCurrent();
 }
@@ -601,18 +601,20 @@ export function closeBranchStateDatabaseByPathAsync(
   options?: BranchStateDatabaseCloseOptions,
 ): Promise<boolean> {
   const resolvedPath = path.resolve(pathname);
-  return asyncResources.close(resolvedPath, (identity) =>
-    retireBranchStateDatabaseHandles(resolvedPath, options, identity),
-  );
+  return asyncResources.close(resolvedPath, async (identity) => {
+    await stopBranchStateDatabaseMaintenance(resolvedPath, identity);
+    return retireBranchStateDatabaseHandles(resolvedPath, options, identity);
+  });
 }
 
 /** Orderly lifecycle close; synchronous close remains native/exit cleanup only. */
 export async function closeBranchStateDatabaseAsync(
   options?: BranchStateDatabaseCloseOptions,
 ): Promise<void> {
-  await asyncResources.close(undefined, () =>
-    retireBranchStateDatabaseHandles(undefined, options),
-  );
+  await asyncResources.close(undefined, async () => {
+    await stopBranchStateDatabaseMaintenance();
+    return retireBranchStateDatabaseHandles(undefined, options);
+  });
 }
 
 /** Test whether a cached shared state database handle is still open, optionally at one path. */
@@ -647,11 +649,13 @@ export const branchStateDatabaseCache = {
   evictCachedBranchStateDatabase,
   evictBranchStateDatabaseAfterCorruption,
   getCachedBranchStateDatabase,
-  getBranchStateDatabaseRuntimeFailure: runtimeFailures.get,
   getBranchStateDatabaseRecordedFailure: terminalOpenLatch.peek,
   getBranchStateDatabaseIfOpenAtPath,
   getKnownBranchStateDatabaseIdentity: asyncResources.knownIdentity,
   isBranchStateDatabaseOpen,
+  /** Only the exact published, open owner carries canonical schema readiness. */
+  isBranchStateDatabaseSchemaReady: (database: BranchStateDatabase): boolean =>
+    cachedDatabases.get(database.path) === database && database.db.isOpen,
   publishBranchStateDatabase,
   recordBranchStateDatabaseOpenFailure,
   recordBranchStateDatabaseLifecycleOpenError,

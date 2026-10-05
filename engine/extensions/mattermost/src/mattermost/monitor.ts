@@ -1,7 +1,6 @@
 import { fanInChannelIngressLifecycles } from "branch/plugin-sdk/channel-ingress-runtime";
 import { isLoopbackHost } from "branch/plugin-sdk/gateway-runtime";
 import { createRuntimeConfigReader } from "branch/plugin-sdk/runtime-config-snapshot";
-import { isPrivateNetworkOptInEnabled } from "branch/plugin-sdk/ssrf-runtime";
 import {
   normalizeOptionalString,
   normalizeTrimmedStringList,
@@ -112,7 +111,7 @@ export async function monitorMattermostProvider(opts: MonitorMattermostOpts = {}
   const client = createMattermostClient({
     baseUrl,
     botToken,
-    allowPrivateNetwork: isPrivateNetworkOptInEnabled(account.config),
+    allowPrivateNetwork: account.config.network?.dangerouslyAllowPrivateNetwork === true,
   });
 
   // Wait for the Mattermost API to accept our bot token before proceeding.

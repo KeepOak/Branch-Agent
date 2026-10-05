@@ -2,7 +2,3 @@
 
 export { readByteStreamWithLimit } from "@branch/media-core/read-byte-stream-with-limit";
 export { readResponseTextPrefix, readResponseWithLimit } from "../infra/http-response-body.js";
-export type {
-  ReadResponseTextPrefixOptions,
-  ReadResponseTextPrefixResult,
-} from "../infra/http-response-body.js";

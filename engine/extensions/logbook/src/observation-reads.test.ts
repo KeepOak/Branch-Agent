@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BranchPluginApi } from "branch/plugin-sdk/plugin-entry";
+import { createTestPluginServiceScheduler } from "branch/plugin-sdk/plugin-test-api";
 import { createPluginRuntimeMock } from "branch/plugin-sdk/plugin-test-runtime";
 import { resolveRuntimeWorkerUrl } from "branch/plugin-sdk/process-runtime";
 import { afterEach, expect, it, vi } from "vitest";
@@ -74,6 +75,7 @@ it("asks with the latest 200 observations in chronological order", async () => {
   const service = new LogbookService(resolveLogbookConfig({ captureEnabled: false }), {
     dataDir,
     workerModuleUrl,
+    scheduler: createTestPluginServiceScheduler(),
     runtime,
     fullConfig: {},
     logger: { info() {}, warn() {}, error() {}, debug() {} },

@@ -1,22 +1,9 @@
-import { resolveAgentDir } from "../agents/agent-scope-config.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { getAsyncWorkSignal } from "../shared/async-work-scope.js";
-import { resolveBranchAgentSqlitePath } from "../state/branch-agent-db.js";
 import type { SessionCostUsageRollupRow } from "./session-cost-usage-cache.kernel.js";
 import { publishSessionCostUsageUpdated } from "./session-cost-usage-events.js";
 import { prepareUsageCostWorker, runUsageCostWorker } from "./session-cost-usage-worker-runtime.js";
-
-export function resolveUsageCostCacheDatabasePath(agentId: string): string {
-  return resolveBranchAgentSqlitePath({ agentId: normalizeAgentId(agentId) });
-}
-
-export function resolveUsageCostAgentDir(
-  config: BranchConfig | undefined,
-  agentId: string,
-): string {
-  return resolveAgentDir(config ?? {}, agentId);
-}
 
 export async function refreshCostUsageCacheForAgent(params: {
   config?: BranchConfig;

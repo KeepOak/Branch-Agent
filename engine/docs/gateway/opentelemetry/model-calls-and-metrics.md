@@ -116,8 +116,9 @@ malformed request frames, and HTTP routes.
 | `branch.gateway.rpc.queue_wait_ms`     | histogram | Operator start-queue or worker frame-queue wait, when applicable  |
 | `branch.gateway.rpc.outcomes`          | counter   | Observations by phase and outcome                                 |
 
-Request and timing metrics have only `branch.gateway.rpc.method`: a canonical
-core or worker method name, `other` for plugin methods, or `unknown`. Outcome metrics have
+Request and timing metrics have only `branch.gateway.rpc.method`: an exact
+core, worker, or registered plugin method name, `other` for unregistered generic
+requests, or `unknown` for unrecognized dedicated worker RPCs. Outcome metrics have
 only `branch.gateway.rpc.phase` and `branch.gateway.rpc.outcome`, so errors do
 not multiply every method's series. No request, connection, session, or trace IDs
 appear in metric attributes.

@@ -9,8 +9,9 @@ import {
   handleCanopyChanged,
   resumeCanopyLiveRefresh,
 } from "./live-refresh.ts";
-import { loadCanopy } from "./loading.ts";
+import { loadCanopy, loadCanopyCatalog } from "./loading.ts";
 import { stopCanopyLiveRefresh, getCanopyState } from "./runtime.ts";
+import { createCanopyCard } from "./test/index-helpers.ts";
 
 function createClient(run: (method: string) => unknown) {
   return { request: vi.fn(async (method: string) => run(method)) };
@@ -236,4 +237,32 @@ describe("Canopy live refresh", () => {
     expect(getCanopyState(host).cards).toEqual([]);
     expect(getCanopyState(host).loading).toBe(false);
   });
+});
+
+it("retains cards on unchanged responses and still refreshes caller-scoped Sessions boards", async () => {
+  const host = {};
+  const revision = { epoch: "cards", revision: 1 };
+  const card = createCanopyCard();
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce({ cards: [card], boards: [], revision })
+    .mockResolvedValue({ unchanged: true, revision });
+  const client = { request } as never;
+  await loadCanopyCatalog({ host, client });
+  expect(getCanopyState(host).loaded).toBe(false);
+  await loadCanopy({ host, client });
+  expect(getCanopyState(host).loaded).toBe(true);
+  expect(getCanopyState(host).cards).toEqual([card]);
+  expect(request).toHaveBeenLastCalledWith("canopy.cards.list", { sinceRevision: revision });
+  configureCanopyLiveRefresh({ host, client });
+  expect(handleCanopyChanged(host, { epoch: "cards", revision: 2, cardsRevision: 1 })).toBe(
+    false,
+  );
+  const refresh = vi.fn(async () => true);
+  configureCanopyLiveRefresh({ host, client, refresh });
+  expect(handleCanopyChanged(host, { epoch: "cards", revision: 3, cardsRevision: 1 })).toBe(
+    true,
+  );
+  expect(refresh).toHaveBeenCalledOnce();
+  stopCanopyLiveRefresh(host);
 });

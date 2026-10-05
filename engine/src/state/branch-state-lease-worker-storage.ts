@@ -250,6 +250,7 @@ export function createBranchStateLeaseWorkerStorage(
           storage.path,
           cleanupContext,
           admission.assertCurrent,
+          observed,
         );
         if (!store) {
           throw new Error("State lease cleanup lost its original database");

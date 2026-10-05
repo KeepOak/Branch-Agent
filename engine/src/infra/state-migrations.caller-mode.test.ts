@@ -4,8 +4,8 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../config/types.branch.js";
-import { pluginDoctorContractRegistryLoaderState } from "../plugins/doctor-contract-registry-loader-state.js";
 import { EMPTY_LEGACY_SESSION_SURFACES } from "../plugins/legacy-session-surfaces.types.js";
+import * as pluginSetupModule from "../plugins/plugin-setup-module.js";
 import { closeBranchAgentDatabasesForTest } from "../state/branch-agent-db.js";
 import {
   closeBranchStateDatabaseForTest,
@@ -122,7 +122,6 @@ function planFixture(fixture: Awaited<ReturnType<typeof makeFixture>>) {
 }
 
 afterEach(async () => {
-  pluginDoctorContractRegistryLoaderState.moduleLoaderFactory = undefined;
   closeBranchAgentDatabasesForTest();
   closeBranchStateDatabaseForTest();
   await tempDirs.cleanup();
@@ -140,10 +139,11 @@ describe("legacy state migration caller mode", () => {
     });
 
     const before = snapshotFiles(fixture.root);
-    const pluginLoader = vi.fn(() => {
-      throw new Error("copied planning must not load plugins");
-    });
-    pluginDoctorContractRegistryLoaderState.moduleLoaderFactory = pluginLoader;
+    const pluginLoader = vi
+      .spyOn(pluginSetupModule, "getPluginSetupModuleLoader")
+      .mockImplementation(() => {
+        throw new Error("copied planning must not load plugins");
+      });
     const plan = await planLegacyStateMigrationsReadOnly({
       mode: "doctor",
       candidate: candidateAt(candidateRoot),
@@ -284,7 +284,7 @@ describe("legacy state migration caller mode", () => {
     "excludes copied %s agent inputs without overriding live shared-auth authority",
     async (overrideKey) => {
       const fixture = await makeFixture();
-      const cfg: BranchConfig = { agents: { list: [{ id: "main", default: true }] } };
+      const cfg: BranchConfig = { agents: { entries: { main: {} } } };
       fs.writeFileSync(fixture.configPath, `${JSON.stringify(cfg)}\n`);
       openBranchStateDatabase({ env: fixture.env });
       const sources = writeAgentScopedLegacySources(fixture.stateDir);
@@ -522,7 +522,7 @@ describe("legacy state migration caller mode", () => {
   });
   it("keeps agent-scoped plan and receipt items for the standard state root", async () => {
     const fixture = await makeFixture();
-    const cfg: BranchConfig = { agents: { list: [{ id: "main", default: true }] } };
+    const cfg: BranchConfig = { agents: { entries: { main: {} } } };
     fs.writeFileSync(fixture.configPath, `${JSON.stringify(cfg)}\n`);
     writeAgentScopedLegacySources(fixture.stateDir);
     const env: NodeJS.ProcessEnv = {

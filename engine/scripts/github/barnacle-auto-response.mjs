@@ -110,11 +110,11 @@ export const managedLabelSpecs = {
   },
   "r: third-party-extension": {
     color: "5319E7",
-    description: "Auto-close: third-party plugins/capabilities belong on ClawHub.",
+    description: "Auto-close: third-party plugins/capabilities belong on Seedbank.",
   },
   "r: bluebubbles": {
     color: "D93F0B",
-    description: "Auto-close: BlueBubbles is deprecated; use iMessage via imsg or ClawHub.",
+    description: "Auto-close: BlueBubbles is deprecated; use iMessage via imsg or Seedbank.",
   },
   "r: moltbook": {
     color: "B60205",
@@ -170,7 +170,7 @@ export const managedLabelSpecs = {
   },
   "triage: external-plugin-candidate": {
     color: "C5DEF5",
-    description: "Candidate: plugin/capability may belong on ClawHub.",
+    description: "Candidate: plugin/capability may belong on Seedbank.",
   },
 };
 

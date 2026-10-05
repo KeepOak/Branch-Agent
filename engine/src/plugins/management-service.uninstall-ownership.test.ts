@@ -3,6 +3,7 @@ import path from "node:path";
 import { expectDefined } from "@branch/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import * as groveOwnership from "../groves/provenance-async.js";
 import { createTestConfigFileStore } from "../commands/test-runtime-config-helpers.js";
 import { resolveConfigWriteFollowUp } from "../config/runtime-snapshot.js";
 import type { BranchConfig } from "../config/types.branch.js";
@@ -197,6 +198,45 @@ describe("plugin management uninstall channel ownership", () => {
       ]);
     },
   );
+
+  it("reports a committed uninstall when advisory Grove inspection fails", async () => {
+    const root = tempDirs.make("branch-managed-grove-warning-");
+    const pluginId = "custom-plugin";
+    const configPath = path.join(root, "branch.json");
+    const installRecord = {
+      source: "clawhub",
+      clawhubPackage: "@fixture/custom-plugin",
+      installPath: path.join(root, "extensions", pluginId),
+    } as const;
+    mockConfig(configPath, { plugins: { entries: { [pluginId]: { enabled: false } } } });
+    mocks.installRecords.mockResolvedValue({ [pluginId]: installRecord });
+    mocks.metadata.mockReturnValue(
+      packageMetadata(pluginId, { [pluginId]: installRecord }, [{ id: pluginId, enabled: false }]),
+    );
+    const read = vi
+      .spyOn(groveOwnership, "readClawPackageOwnership")
+      .mockImplementation(async () => {
+        expect(mocks.commitRecords).toHaveBeenCalledOnce();
+        throw new Error("Grove ownership read unavailable");
+      });
+    try {
+      const result = await uninstallManagedPlugin({
+        pluginId,
+        keepFiles: true,
+        env: { BRANCH_STATE_DIR: root },
+      });
+      expect(result.pluginId).toBe(pluginId);
+      expect(result.removed).toContain("install record");
+      expect(result.warnings).toContain(
+        'Could not inspect Grove references for plugin "custom-plugin": Grove ownership read unavailable',
+      );
+      expect(read).toHaveBeenCalledOnce();
+      expect(mocks.commitRecords).toHaveBeenCalledOnce();
+      expect(mocks.refreshRegistry).toHaveBeenCalledOnce();
+    } finally {
+      read.mockRestore();
+    }
+  });
 
   it("fails closed when an owner record has no authoritative child metadata", async () => {
     const pluginId = "custom-plugin";

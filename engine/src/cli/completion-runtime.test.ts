@@ -302,9 +302,10 @@ describe("completion-runtime", () => {
       await withBashCompletionHome(async ({ homeDir }) => {
         await writeCompletionCache("bash", "complete -W 'status' branch\n");
 
+        const profilePath = path.join(homeDir, ".bash_profile");
+        await fs.writeFile(profilePath, "export COMPLETION_PROOF=value\\ \n", "utf8");
         await installCompletion("bash", true, "branch");
 
-        const profilePath = path.join(homeDir, ".bash_profile");
         await expect(isCompletionInstalled("bash", "branch")).resolves.toBe(true);
         await expect(usesSlowDynamicCompletion("bash", "branch")).resolves.toBe(false);
 
@@ -314,7 +315,7 @@ describe("completion-runtime", () => {
             "--noprofile",
             "--norc",
             "-c",
-            'source "$1"; complete -p branch',
+            'source "$1"; complete -p branch; printf "<%s>\\n" "$COMPLETION_PROOF"',
             "branch",
             profilePath,
           ],
@@ -323,6 +324,7 @@ describe("completion-runtime", () => {
         expect(shell.stderr).toBe("");
         expect(shell.status).toBe(0);
         expect(shell.stdout).toContain("complete -W 'status' branch");
+        expect(shell.stdout).toContain("<value >\n");
       }, `branch-completion-${stateName}-`);
     },
   );

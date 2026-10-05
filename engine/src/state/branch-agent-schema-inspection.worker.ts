@@ -10,7 +10,10 @@ import {
   inspectAgentDatabaseSchema,
   type AgentSchemaInspectionInput,
 } from "./branch-agent-schema-inspection.js";
-import { readBranchAgentIntegrityVerification } from "./branch-quarantine-store.js";
+import {
+  canReuseBranchAgentIntegrityVerification,
+  readBranchAgentIntegrityVerification,
+} from "./branch-quarantine-store.js";
 import { BRANCH_SQLITE_BUSY_TIMEOUT_MS } from "./branch-state-db-contract.js";
 
 if (!process.send || !process.disconnect) {
@@ -63,7 +66,13 @@ process.on(
         });
         readSqliteIntegrityFileIdentity(snapshot.pathname, snapshot.identity);
       } else {
-        inspection = tryInspectSqliteReadOnlyInProcess(input.pathname, inspect)?.value;
+        inspection = tryInspectSqliteReadOnlyInProcess(input.pathname, inspect, {
+          allowClosedWal: canReuseBranchAgentIntegrityVerification(
+            input.pathname,
+            readVerification(),
+            false,
+          ),
+        })?.value;
       }
       send({
         requestId,
