@@ -1937,6 +1937,8 @@ describe("previous release update compatibility", () => {
     ["config-doctor", "missing"],
     ["native-hook-relay", "present"],
     ["native-hook-relay", "missing"],
+    ["graft", "present"],
+    ["graft", "missing"],
   ])(
     "excludes the isolated %s graph when the runtime binding is %s",
     async (directory, runtime) => {
