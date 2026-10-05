@@ -45,6 +45,7 @@ export const engineTests = [
   'src/agents/cli-output-stream.test.ts',
   'src/agents/cli-output-records.test.ts',
   'src/agents/cli-output-jsonl.test.ts',
+  'src/agents/main-session-recovery/main-session-restart-recovery.pending-admission.test.ts',
 ];
 
 export const windowTests = [
