@@ -2,6 +2,12 @@ import { MEDIA_AUDIO_FIELD_HELP } from "./media-audio-field-metadata.js";
 import { NODE_CAPABILITY_FIELD_HELP } from "./schema.node-capabilities.js";
 
 export const RUNTIME_FIELD_HELP: Record<string, string> = {
+  "agents.entries.*.agentToAgent":
+    "Directional permission for who this agent may message. Omitted or empty allow permits all targets; deny takes precedence. Targets may be agent ids, * globs, or a2a:<peer>.",
+  "agents.entries.*.agentToAgent.allow":
+    "Targets this agent may message. Omitted or empty permits every target; a configured blank entry denies.",
+  "agents.entries.*.agentToAgent.deny":
+    "Targets this agent may not message, even when allow matches. Use agent ids, * globs, or a2a:<peer>.",
   browser:
     "Browser runtime controls for local or remote CDP attachment, profile routing, and screenshot/snapshot behavior. Keep defaults unless your automation workflow requires custom browser transport settings.",
   "browser.enabled":

@@ -15,6 +15,17 @@ const sessionTools = [
 ];
 
 describe("security audit cross-agent session access", () => {
+  it("reads directional deny lists when reporting reachable agents", () => {
+    const isolated: BranchConfig = { agents: { entries: {
+      home: { agentToAgent: { deny: ["work"] } },
+      work: { agentToAgent: { deny: ["home"] } },
+    } } };
+    expect(collectCrossAgentSessionAccessFindings(isolated)).toEqual([]);
+    isolated.agents!.entries!.work!.agentToAgent = undefined;
+    const finding = collectCrossAgentSessionAccessFindings(isolated)[0];
+    expect(finding?.detail).toContain("work: unsandboxed sessions");
+    expect(finding?.detail).toContain("home: per-agent agent-to-agent permission denies other agents");
+  });
   it.each<{ name: string; cfg: BranchConfig }>([
     { name: "one implicit agent", cfg: {} },
     { name: "one explicit agent", cfg: { agents: { entries: { home: {} } } } },

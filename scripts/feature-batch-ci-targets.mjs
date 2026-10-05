@@ -1,5 +1,10 @@
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
+  'src/plugin-sdk/session-visibility.pairs.test.ts',
+  'src/agents/tools/sessions-send-tool.a2a.test.ts',
+  'src/agents/tools/message-tool-execution.test.ts',
+  'src/security/audit-cross-agent-session-access.test.ts',
+  'src/commands/agents.identity.test.ts',
   'src/gateway/server-methods/agents-delete-identity.test.ts',
   'src/state/agent-deletion-journal.identity.test.ts',
   'src/gateway/server-methods/chat-history.segments.test.ts',
@@ -55,6 +60,8 @@ export const engineTests = [
 ];
 
 export const windowTests = [
+  'src/shell/who-it-knows.test.ts',
+  'src/shell/who-it-knows-button.test.tsx',
   'src/shell/contacts-model.test.ts',
   'src/shell/row-menu.test.ts',
   'src/connect/desktop-component-updates.test.tsx',

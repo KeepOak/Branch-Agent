@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CallGatewayOptions } from "../../gateway/call.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
+import { createAgentToAgentPolicy } from "../../plugin-sdk/session-visibility.js";
 import { createSessionConversationTestRegistry } from "../../test-utils/session-conversation-registry.js";
 import { runAgentStep } from "./agent-step.js";
 import type { GatewaySessionListRow } from "./sessions-helpers.js";
@@ -101,6 +102,29 @@ describe("runSessionsSendA2AFlow reply delivery", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("delivers B's reply to A inside an allowed A-to-B exchange despite B-to-A denial", async () => {
+    const policy = createAgentToAgentPolicy({ agents: { entries: {
+      a: {}, b: { agentToAgent: { deny: ["a"] } },
+    } } });
+    expect(policy.isAllowed("a", "b")).toBe(true);
+    expect(policy.isAllowed("b", "a")).toBe(false);
+
+    await runSessionsSendA2AFlow({
+      runId: "run-one-way",
+      targetAgentId: "b",
+      targetSessionKey: "agent:b:main",
+      displayKey: "agent:b:main",
+      replyTimeoutMs: 10_000,
+      requesterSessionKey: "agent:a:main",
+      requesterChannel: "webchat",
+      reply: { status: "ok", replyText: "Reply inside A's exchange" },
+    });
+    expect(runAgentStep).toHaveBeenCalledOnce();
+    expect(vi.mocked(runAgentStep).mock.calls[0]?.[0]).toMatchObject({
+      sessionKey: "agent:a:main", message: "Reply inside A's exchange",
+    });
   });
 
   it("passes threadId through to gateway send for Telegram forum topics", async () => {
