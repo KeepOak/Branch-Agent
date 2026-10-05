@@ -8,7 +8,6 @@ export {
   extractPackageJsonFromTgz,
   packBranch,
   packageBuildCommitFromTgz,
-  packageVersionFromTgz,
   resolveBranchRegistryVersion,
 } from "./package-artifact.ts";
 export * from "./parallels-vm.ts";

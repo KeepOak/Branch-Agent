@@ -1,6 +1,7 @@
 // Accounts at Advanced and Technical (§4.7.8): which account goes next per service (an explicit order, or taking
 // turns: the engine's automatic order picks the least recently used), which account each Trunk uses (that Trunk's
 // own order), where each sign-in comes from, and the rows the engine has no setting for yet, greyed with why.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../../connect/engine";
 import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";

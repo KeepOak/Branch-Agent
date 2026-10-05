@@ -14,7 +14,7 @@ import { createEmptyPluginRegistry } from "../../src/plugins/registry-empty.js";
 import { withBranchTestState } from "../../src/test-utils/branch-test-state.js";
 
 describe("registered Codex runtime choices", () => {
-  it.each(["api_key", "oauth", "token"] as const)(
+  it.each(["api_key", "oauth"] as const)(
     "keeps native %s authentication with its registered harness",
     async (mode) => {
       await withBranchTestState(

@@ -24,6 +24,9 @@ export {
 } from "./session-placement-validators.js";
 
 // Validator names mirror schemas so callers can pair them with wire contracts.
+export const validateContactsListParams = compile(S.ContactsListParamsSchema);
+export const validateContactsTopicsParams = compile(S.ContactsTopicsParamsSchema);
+export const validateContactsMarkReadParams = compile(S.ContactsMarkReadParamsSchema);
 export const validateCommandsListParams = compile(S.CommandsListParamsSchema);
 export const validateBackupStatusParams = compile(S.BackupStatusParamsSchema);
 export const validateStorageLocationsListParams = compile(S.StorageLocationsListParamsSchema);
@@ -161,6 +164,8 @@ export const validateWorktreesCreateParams = compile(S.WorktreesCreateParamsSche
 export const validateWorktreesRemoveParams = compile(S.WorktreesRemoveParamsSchema);
 export const validateWorktreesRestoreParams = compile(S.WorktreesRestoreParamsSchema);
 export const validateWorktreesGcParams = compile(S.WorktreesGcParamsSchema);
+export const validateWorktreesRecoverRemovalParams = compile(S.WorktreesRecoverRemovalParamsSchema);
+export const validateWorktreesRetireSnapshotParams = compile(S.WorktreesRetireSnapshotParamsSchema);
 export const validateWorktreesBranchesParams = compile(S.WorktreesBranchesParamsSchema);
 export const validateFsListDirParams = compile(S.FsListDirParamsSchema);
 export const validateFsListDirResult = compile(S.FsListDirResultSchema);
@@ -169,6 +174,7 @@ export const validateAgentsUpdateParams = compile(S.AgentsUpdateParamsSchema);
 export const validateAgentsDeleteParams = compile(S.AgentsDeleteParamsSchema);
 export const validateAgentsFilesListParams = compile(S.AgentsFilesListParamsSchema);
 export const validateAgentsFilesGetParams = compile(S.AgentsFilesGetParamsSchema);
+export const validateMemoryExportParams = compile(S.MemoryExportParamsSchema);
 export const validateAgentsFilesSetParams = compile(S.AgentsFilesSetParamsSchema);
 export const validateAgentsWorkspaceListParams = compile(S.AgentsWorkspaceListParamsSchema);
 export const validateAgentsWorkspaceGetParams = compile(S.AgentsWorkspaceGetParamsSchema);
@@ -284,6 +290,7 @@ export const validateSessionsDescribeParams = compile(S.SessionsDescribeParamsSc
 export const validateSessionsResolveParams = compile(S.SessionsResolveParamsSchema);
 export const validateSessionsFilesListParams = compile(S.SessionsFilesListParamsSchema);
 export const validateSessionsFilesGetParams = compile(S.SessionsFilesGetParamsSchema);
+export const validateSessionsFilesAssetsParams = compile(S.SessionsFilesAssetsParamsSchema);
 export const validateSessionsFilesSetParams = compile(S.SessionsFilesSetParamsSchema);
 export const validateSessionsFilesRevealParams = compile(S.SessionsFilesRevealParamsSchema);
 export const validateSessionsDiffParams = compile(S.SessionsDiffParamsSchema);
@@ -351,6 +358,7 @@ export const validateSessionsGroupsDeleteParams = compile(S.SessionsGroupsDelete
 export const validateSessionsGroupsMutationResult = compile(S.SessionsGroupsMutationResultSchema);
 export const validateSessionsCompactParams = compile(S.SessionsCompactParamsSchema);
 export const validateSessionsBranchesListParams = compile(S.SessionsBranchesListParamsSchema);
+export const validateSessionsSegmentsListParams = compile(S.SessionsSegmentsListParamsSchema);
 export const validateSessionsBranchesSwitchParams = compile(S.SessionsBranchesSwitchParamsSchema);
 export const validateSessionsRewindParams = compile(S.SessionsRewindParamsSchema);
 export const validateSessionsForkParams = compile(S.SessionsForkParamsSchema);

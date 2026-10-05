@@ -1,4 +1,5 @@
 // Google tests cover web search provider plugin behavior.
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { withEnvAsync, withFetchPreconnect } from "branch/plugin-sdk/test-env";
 import { afterEach, describe, expect, it, vi } from "vitest";

@@ -467,32 +467,27 @@ function passerSprite(content: SVGTemplateResult): SVGTemplateResult {
   `;
 }
 
-const CRAB_SPRITE = passerSprite(svg`
-    <g stroke="#a63a2e" stroke-width="4" stroke-linecap="round" fill="none">
-      <path d="M22 78 L8 88" />
-      <path d="M28 88 L16 99" />
-      <path d="M98 78 L112 88" />
-      <path d="M92 88 L104 99" />
+const BEETLE_SPRITE = passerSprite(svg`
+    <g stroke="#3b2a1a" stroke-width="4" stroke-linecap="round" fill="none">
+      <path d="M36 62 L18 54" />
+      <path d="M34 76 L14 78" />
+      <path d="M38 90 L20 100" />
+      <path d="M84 62 L102 54" />
+      <path d="M86 76 L106 78" />
+      <path d="M82 90 L100 100" />
     </g>
-    <g stroke="#c44536" stroke-width="3.5" stroke-linecap="round" fill="none">
-      <path d="M44 38 L40 24" />
-      <path d="M76 38 L80 24" />
+    <g stroke="#3b2a1a" stroke-width="3" stroke-linecap="round" fill="none">
+      <path d="M52 34 Q46 20 38 16" />
+      <path d="M68 34 Q74 20 82 16" />
     </g>
-    <circle cx="40" cy="22" r="4.5" fill="#0a1014" />
-    <circle cx="80" cy="22" r="4.5" fill="#0a1014" />
-    <circle cx="41.5" cy="20.5" r="1.8" fill="#ffd166" />
-    <circle cx="81.5" cy="20.5" r="1.8" fill="#ffd166" />
-    <ellipse cx="60" cy="70" rx="46" ry="30" fill="#c44536" />
-    <ellipse cx="48" cy="60" rx="16" ry="9" fill="#ffffff" opacity="0.1" />
-    <path
-      d="M16 58 C2 52 -2 62 4 72 C10 82 20 76 24 66 C26 60 22 58 16 58 Z"
-      fill="#d95f4b"
-    />
-    <path
-      d="M104 58 C118 52 122 62 116 72 C110 82 100 76 96 66 C94 60 98 58 104 58 Z"
-      fill="#d95f4b"
-    />
-    <path d="M48 82 Q60 90 72 82" stroke="#7e2a20" stroke-width="3" stroke-linecap="round" fill="none" />
+    <ellipse cx="60" cy="40" rx="15" ry="11" fill="#2f3b22" />
+    <circle cx="54" cy="38" r="3" fill="#0a1014" />
+    <circle cx="66" cy="38" r="3" fill="#0a1014" />
+    <circle cx="55" cy="37" r="1.2" fill="#ffd166" />
+    <circle cx="67" cy="37" r="1.2" fill="#ffd166" />
+    <ellipse cx="60" cy="74" rx="28" ry="28" fill="#4f6b2f" />
+    <path d="M60 48 L60 100" stroke="#2f3b22" stroke-width="3" stroke-linecap="round" />
+    <ellipse cx="50" cy="66" rx="8" ry="12" fill="#ffffff" opacity="0.12" />
 `);
 
 const SNAIL_SPRITE = passerSprite(svg`
@@ -545,8 +540,8 @@ const JELLYFISH_SPRITE = passerSprite(svg`
     <circle cx="66" cy="45" r="2.6" fill="#0a1014" />
 `);
 
-export const PASSER_SPRITES: Record<"crab" | "snail" | "duck" | "jellyfish", TemplateResult> = {
-  crab: CRAB_SPRITE,
+export const PASSER_SPRITES: Record<"beetle" | "snail" | "duck" | "jellyfish", TemplateResult> = {
+  beetle: BEETLE_SPRITE,
   snail: SNAIL_SPRITE,
   duck: DUCK_SPRITE,
   jellyfish: JELLYFISH_SPRITE,
@@ -589,7 +584,7 @@ export const BALLOON = svg`
 
 export const PASSER_TITLES: Record<"stranger" | keyof typeof PASSER_SPRITES, string> = {
   stranger: "a stranger",
-  crab: "definitely a trellis",
+  beetle: "definitely a pinecone",
   snail: "in no particular hurry",
   duck: "a duck. obviously",
   jellyfish: "just drifting",

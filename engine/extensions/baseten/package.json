@@ -1,6 +1,6 @@
 {
   "name": "@branch/baseten-provider",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "description": "Branch Agent Baseten provider plugin.",
   "repository": {
     "type": "git",
@@ -21,10 +21,10 @@
       "minHostVersion": ">=2026.7.2"
     },
     "compat": {
-      "pluginApi": ">=2026.9.7"
+      "pluginApi": ">=2026.9.8"
     },
     "build": {
-      "branchVersion": "2026.9.7",
+      "branchVersion": "2026.9.8",
       "bundledDist": false
     },
     "release": {

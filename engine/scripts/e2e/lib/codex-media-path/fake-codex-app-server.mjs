@@ -5,7 +5,7 @@ import {
   runFakeCodexAppServer,
 } from "../codex-app-server-fixture.mjs";
 
-const version = "0.158.0";
+const version = "0.160.0";
 const requestLog =
   process.env.BRANCH_CODEX_MEDIA_PATH_APP_SERVER_LOG ??
   "/tmp/branch-codex-media-path-app-server.jsonl";

@@ -1,3 +1,4 @@
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Block } from "../thread/model";
@@ -266,6 +267,25 @@ type Props = {
 };
 
 /** The conversation's browser: its tabs, the address bar, the live page, the Tools drawer and the page menu. */
+/** The browser in the small window over the conversation (the preview's pip7 with kind "browser"): the newest tab the
+ *  Trunk used, live and look-only; a line when nothing is open. */
+export function BrowserMini({ engine, gatewayUrl, blocks }: { engine: WindowEngine; gatewayUrl: string; blocks: Block[] }) {
+  const entries = useMemo(() => recordedBrowserTabs(blocks), [blocks]);
+  const route = useMemo(() => routeOf(entries), [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
+  const browser = useBrowser(engine, route, 0);
+  const [phase, setPhase] = useState<BrowserPhase>("empty");
+  const newest = entries.at(-1)?.tab.targetId;
+  const tab = browser.tabs.find((t) => t.targetId === newest) ?? browser.tabs[0];
+  const entry: BrowserPresentation | null = route && tab ? { tab: { ...route, targetId: tab.targetId } as BrowserPresentation["tab"], revision: "0", url: tab.url, title: tab.title } : null;
+  const onState = useCallback((v: { phase: BrowserPhase }) => setPhase(v.phase), []);
+  return (
+    <>
+      {entry ? <Screencast engine={engine} gatewayUrl={gatewayUrl} entry={entry} interact={false} onState={onState} /> : null}
+      {!entry || phase !== "connected" ? <span className="cell-note-st">{!route ? "Nothing open" : browser.phase === "stopped" ? "The browser isn’t running" : "Connecting…"}</span> : null}
+    </>
+  );
+}
+
 export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", dock = null, onState }: Props) {
   const entries = useMemo(() => recordedBrowserTabs(blocks), [blocks]);
   const route = useMemo(() => routeOf(entries), [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps

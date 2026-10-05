@@ -170,10 +170,10 @@ function configureExplicitFleet() {
     ...sourceConfig,
     agents: {
       ownership: "explicit" as const,
-      list: [
-        { id: "main", workspace: "/tmp/branch-main-workspace" },
-        { id: "research", workspace: "/tmp/branch-research-workspace" },
-      ],
+      entries: {
+        main: { workspace: "/tmp/branch-main-workspace" },
+        research: { workspace: "/tmp/branch-research-workspace" },
+      },
     },
   };
   mocks.getRuntimeConfig.mockReturnValue(config);

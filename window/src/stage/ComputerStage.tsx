@@ -1,3 +1,4 @@
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { BrowserView, NO_MARKUP, type BrowserPhase } from "./BrowserView";
 import { profileLine, recordedBrowserTabs, routeOf } from "./browser-route";
@@ -6,6 +7,7 @@ import type { Block } from "../thread/model";
 import type { WindowEngine } from "../connect/engine";
 import type { ProgressCard } from "../thread/PlanCard";
 import { Face } from "../face/Face";
+import { Markdown } from "../thread/markdown";
 import { Menu, type MenuAnchor, type MenuItem } from "../shell/Menu";
 import { SIcon } from "./stage-icons";
 import { useDesktopView, type DesktopView } from "./use-desktop";
@@ -107,8 +109,8 @@ function Dock({ engine, name, steps, blocks, running, browser, reach, onChooseCo
       <div className="dk7-msgs">
         {messages.length ? (
           messages.map((b) => (
-            <div key={b.key} className={b.kind === "user" ? "dk7-m me7" : "dk7-m"}>
-              {b.text}
+            <div key={b.key} className={b.kind === "user" ? "dk7-m me7" : "dk7-m dk7-md"}>
+              {b.kind === "user" ? b.text : <Markdown text={b.text} />}
             </div>
           ))
         ) : (
@@ -198,12 +200,15 @@ type Props = {
   onClose: () => void;
   onChooseComputer: () => void;
   /** Shrinks the stage to a small window over the conversation, showing this computer. */
-  onPip?: (computer: { id: string; name: string }) => void;
+  onPip?: (small: PipTarget) => void;
   /** Opens on this computer instead of the conversation's own (the "branch:watch-computer" event). */
   initialComputer?: string | null;
   /** Opens already taken over ("Take over" on the conversation's computer card). */
   initialControl?: boolean;
 };
+
+/** What the small window over the conversation shows: a computer's screen, or the browser (the preview's S.pip.kind). */
+export type PipTarget = { kind: "computer" | "browser"; id: string; name: string };
 
 /** A conversation's computer and browser, full size: tabs per computer, the screen, the docked conversation and the plan's steps. */
 export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], running = false, card = null, onMode, onClose, onChooseComputer, onPip, initialComputer = null, initialControl = false }: Props) {
@@ -320,7 +325,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
             </button>
           ))}
         </span>
-        <button type="button" className="ib" aria-label="Shrink to a small window" title="Picture in picture" disabled={!onPip || browser || !viewing} onClick={() => viewing && onPip?.({ id: viewing, name: viewed?.name ?? view.title ?? viewing })}>
+        <button type="button" className="ib" aria-label="Shrink to a small window" title="Picture in picture" disabled={!onPip || (!browser && !viewing)} onClick={() => (browser ? onPip?.({ kind: "browser", id: "browser", name: "browser" }) : viewing && onPip?.({ kind: "computer", id: viewing, name: viewed?.name ?? view.title ?? viewing }))}>
           <SIcon name="pip" />
         </button>
         <button type="button" className="ib" aria-label="Open in its own window" title={OWN_WINDOW} disabled>

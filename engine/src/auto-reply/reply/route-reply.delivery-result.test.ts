@@ -10,7 +10,10 @@ import {
   PlatformMessageNotDispatchedError,
 } from "../../infra/outbound/deliver-types.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
-import { closeBranchAgentDatabasesForTest } from "../../state/branch-agent-db.js";
+import {
+  closeBranchAgentDatabasesAsync,
+  closeBranchAgentDatabasesForTest,
+} from "../../state/branch-agent-db.js";
 import {
   createChannelTestPluginBase,
   createTestRegistry,
@@ -217,14 +220,16 @@ describe("routeReply delivery result", () => {
         expect(mocks.deliverOutboundPayloads).toHaveBeenCalledTimes(calls);
         if (custody) {
           expect(deliveryError).toContain("later payload failed");
-          closeBranchAgentDatabasesForTest();
+          await closeBranchAgentDatabasesAsync(path.dirname(custody.storePath));
+          closeBranchAgentDatabasesForTest(path.dirname(custody.storePath));
           expect(
             (loadSessionEntry(custody) as InternalSessionEntry)?.pendingFinalDelivery?.deliveries,
           ).toEqual([{ id: custody.deliveryId, state: "delivered" }]);
         }
       } finally {
         if (custody) {
-          closeBranchAgentDatabasesForTest();
+          await closeBranchAgentDatabasesAsync(path.dirname(custody.storePath));
+          closeBranchAgentDatabasesForTest(path.dirname(custody.storePath));
         }
       }
     },

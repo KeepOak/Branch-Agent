@@ -18,6 +18,7 @@ import {
 } from "../cli/completion-runtime.js";
 import type { HealthFinding, HealthRepairEffect } from "../flows/health-checks.js";
 import { resolveBranchPackageRoot } from "../infra/branch-root.js";
+import { resolveRuntimeArgs } from "../infra/runtime-worker-url.js";
 import type { DoctorPrompter } from "./doctor-prompter.js";
 
 const COMPLETION_CACHE_WRITE_TIMEOUT_MS = 30_000;
@@ -70,7 +71,7 @@ async function generateCompletionCache(
   }
 
   const binPath = path.join(root, "branch.mjs");
-  const args = [binPath, "completion", "--write-state"];
+  const args = [...resolveRuntimeArgs(), binPath, "completion", "--write-state"];
   if (options.shell) {
     args.push("--shell", options.shell);
   }

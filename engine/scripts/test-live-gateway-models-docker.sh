@@ -15,8 +15,6 @@ if [[ -z "$TRUSTED_HARNESS_DIR" || ! -d "$TRUSTED_HARNESS_DIR" ]]; then
 fi
 TRUSTED_HARNESS_DIR="$(cd "$TRUSTED_HARNESS_DIR" && pwd)"
 source "$TRUSTED_HARNESS_DIR/scripts/lib/live-docker-auth.sh"
-source "$TRUSTED_HARNESS_DIR/scripts/lib/frozen-target-compat.sh"
-branch_resolve_frozen_live_cli_backend_package_mode "$ROOT_DIR"
 IMAGE_NAME="${BRANCH_IMAGE:-branch:local}"
 LIVE_IMAGE_NAME="${BRANCH_LIVE_IMAGE:-${IMAGE_NAME}-live}"
 CONFIG_DIR="${BRANCH_CONFIG_DIR:-$HOME/.branch}"
@@ -79,10 +77,6 @@ echo "==> Profile file: $PROFILE_STATUS"
 echo "==> External auth dirs: ${AUTH_DIRS_CSV:-none}"
 echo "==> External auth files: ${AUTH_FILES_CSV:-none}"
 DOCKER_RUN_ARGS=()
-FROZEN_TARGET_DOCKER_ENV=()
-if [[ "${BRANCH_FROZEN_TARGET_LIVE_CLI_BACKEND_PACKAGE_MODE:-current}" == "legacy" ]]; then
-  FROZEN_TARGET_DOCKER_ENV+=( -e "BRANCH_FROZEN_TARGET_LIVE_CLI_BACKEND_PACKAGE_MODE=legacy" )
-fi
 branch_live_init_docker_run_args DOCKER_RUN_ARGS "${BRANCH_LIVE_GATEWAY_DOCKER_RUN_TIMEOUT:-2100s}"
 DOCKER_RUN_ARGS+=(--rm -t \
   -u "$DOCKER_USER" \
@@ -122,7 +116,6 @@ DOCKER_RUN_ARGS+=(--rm -t \
   -e BRANCH_LIVE_GATEWAY_STEP_TIMEOUT_MS="$LIVE_GATEWAY_STEP_TIMEOUT_MS" \
   -e BRANCH_LIVE_GATEWAY_MODEL_TIMEOUT_MS="$LIVE_GATEWAY_MODEL_TIMEOUT_MS" \
   -e BRANCH_VITEST_FS_MODULE_CACHE=0)
-branch_live_append_array DOCKER_RUN_ARGS FROZEN_TARGET_DOCKER_ENV
 branch_live_append_array DOCKER_RUN_ARGS DOCKER_HOME_MOUNT
 branch_live_append_array DOCKER_RUN_ARGS DOCKER_TRUSTED_HARNESS_MOUNT
 DOCKER_RUN_ARGS+=(\

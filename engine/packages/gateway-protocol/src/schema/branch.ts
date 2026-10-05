@@ -446,6 +446,8 @@ export const SystemAgentSetupAuthStartParamsSchema = closedObject({
   workspace: Type.Optional(Type.String()),
   /** Fresh-install opt-in for native provider conversation discovery. */
   nativeSessionCatalogsEnabled: Type.Optional(Type.Boolean()),
+  /** models.authLogin only: names a token sign-in's profile (`<provider>:<label>`) so each account stays separate. */
+  profileLabel: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
 });
 
 export const SystemAgentSetupAuthStartResultSchema = WizardStartResultSchema;

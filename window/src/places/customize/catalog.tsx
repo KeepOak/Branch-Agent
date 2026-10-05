@@ -1,6 +1,7 @@
 // The plugin catalogue (plugins.catalog.browse / categories) as the preview's "Add a connector" and "Plugins"
 // dialogs (93-g3p.js, 42-placesbp.js czp-dlg). Installs go through plugins.install; when the engine asks for a
 // capability review first, the person confirms and the install is sent again with acknowledgeCapabilities.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
@@ -9,6 +10,7 @@ import { Icon } from "../../shell/icons";
 import { errorText, useResource } from "../library/data";
 import { Status } from "../library/ui";
 import { Grey, list, Logo, rec, str, type Rec } from "./common";
+import { shownWhy } from "../../shell/shown-why";
 
 type Item = { id: string; name: string; summary: string; author: string; categories: string[]; action: string; enabled: boolean; installed: boolean; install: Rec | null };
 export function readItems(result: unknown): Item[] {
@@ -92,6 +94,6 @@ function CatalogCard({ item, busy, install }: { item: Item; busy: boolean; insta
     <div className="cz-prov-h"><Logo name={item.name} /><span className="grow"><b>{item.name}</b>{item.author && <small>@{item.author}</small>}</span></div>
     <small>{item.summary}</small>
     {state ? <span className="cz-state">{state}</span>
-      : <button type="button" className="btn sm" disabled={busy || !!reason} title={reason} onClick={install}>{busy ? "Installing" : "Install"}</button>}
+      : <button type="button" className="btn sm" disabled={busy || !!reason} title={shownWhy(reason)} onClick={install}>{busy ? "Installing" : "Install"}</button>}
   </div>;
 }

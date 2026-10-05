@@ -141,18 +141,6 @@ export function assignOtelLogEventAttributes(
   assignOtelEventAttributes(attributes, eventAttributes, "branch.");
 }
 
-function assignOtelSecurityEventAttributes(
-  attributes: Record<string, string | number | boolean>,
-  eventAttributes: Record<string, string | number | boolean> | undefined,
-): void {
-  assignOtelEventAttributes(
-    attributes,
-    eventAttributes,
-    "branch.security.attribute.",
-    normalizeDiagnosticValue,
-  );
-}
-
 export function securitySeverityText(
   severity: Extract<DiagnosticEventPayload, { type: "security.event" }>["severity"],
 ): SecuritySeverityText {
@@ -229,5 +217,10 @@ export function assignOtelSecurityAttributes(
       assignOtelLogAttribute(attributes, "branch.security.control.family", evt.control.family);
     }
   }
-  assignOtelSecurityEventAttributes(attributes, evt.attributes);
+  assignOtelEventAttributes(
+    attributes,
+    evt.attributes,
+    "branch.security.attribute.",
+    normalizeDiagnosticValue,
+  );
 }

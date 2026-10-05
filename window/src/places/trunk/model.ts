@@ -1,6 +1,7 @@
 // The Trunk family's data: agents.list rows, the agent's config entry and the looks with real art.
 // Contracts: engine/packages/gateway-protocol/src/schema/agents-models-skills.ts (AgentSummary, agents.update),
 // engine/src/config/zod-schema.agents.ts (agents.entries, default, ownership) and zod-schema.agent-runtime.ts (tools).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { CHARACTERS, EXTRA, trunkAppearance } from "../../face/appearance";
 
 export type Rec = Record<string, unknown>;

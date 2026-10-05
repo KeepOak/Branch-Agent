@@ -110,7 +110,11 @@ export function ensureBranchStateRuntimeSchema(
             BRANCH_STATE_SCHEMA_SQL,
             {
               allowMissingColumns: true,
-              validateAfterRepair: () => assertCurrentStateRuntimeSchema(db, pathname),
+              validateAfterRepair: () => {
+                // Index repair precedes additive-column convergence in this transaction.
+                assertCanonicalStateSchemaShape(db, pathname);
+                assertBranchStateDatabaseForMaintenance(db, { pathname });
+              },
             },
           );
           ensureAdditiveStateColumns(db, "runtime");

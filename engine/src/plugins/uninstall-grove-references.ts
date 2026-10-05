@@ -1,4 +1,6 @@
-import { readClawPackageRefs, type PersistedClawPackageRef } from "../groves/provenance.js";
+import { coerceErrorMessage } from "@branch/normalization-core/error-coercion";
+import { readClawPackageOwnership } from "../groves/provenance-async.js";
+import type { PersistedClawPackageRef } from "../groves/provenance.js";
 import type { PluginInstallRecord } from "../config/types.plugins.js";
 import { parseClawHubPluginSpec } from "../infra/clawhub-spec.js";
 import type { BranchStateDatabaseOptions } from "../state/branch-state-db.js";
@@ -16,20 +18,24 @@ function clawPackageRefMatchesPluginInstall(
 }
 
 /** Explain Grove dependents without blocking the operator-owned uninstall. */
-export function collectGrovePluginUninstallWarnings(params: {
+export async function collectGrovePluginUninstallWarnings(params: {
   pluginId: string;
   installRecord?: PluginInstallRecord;
   env?: BranchStateDatabaseOptions["env"];
-}): string[] {
+}): Promise<string[]> {
   const installRecord = params.installRecord;
   if (!installRecord || installRecord.source !== "clawhub") {
     return [];
   }
-  const refs = readClawPackageRefs({
-    kind: "plugin",
-    source: "clawhub",
-    ...(params.env ? { env: params.env } : {}),
-  }).filter(
+  let packageRefs: PersistedClawPackageRef[];
+  try {
+    ({ packageRefs } = await readClawPackageOwnership(params.env ? { env: params.env } : {}));
+  } catch (error) {
+    return [
+      `Could not inspect Grove references for plugin "${params.pluginId}": ${coerceErrorMessage(error)}`,
+    ];
+  }
+  const refs = packageRefs.filter(
     (ref) =>
       ref.status !== "rolled_back" &&
       clawPackageRefMatchesPluginInstall(ref, params.pluginId, installRecord),

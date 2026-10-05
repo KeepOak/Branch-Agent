@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { OpenAsyncKeyedStoreOptions } from "branch/plugin-sdk/plugin-state-runtime";
 import { resetPluginStateStoreForTests } from "branch/plugin-sdk/plugin-state-test-runtime";
+import { createTestPluginServiceScheduler } from "branch/plugin-sdk/plugin-test-api";
 import { closeBranchStateDatabaseAsync } from "branch/plugin-sdk/sqlite-runtime-testing";
 import { postRawWebhook } from "branch/plugin-sdk/test-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,7 +53,12 @@ async function withServer(
   storePath = createTestStorePath(),
 ) {
   const manager = new CallManager(config, storePath);
-  const server = new VoiceCallWebhookServer(config, manager, provider);
+  const server = new VoiceCallWebhookServer(
+    createTestPluginServiceScheduler(),
+    config,
+    manager,
+    provider,
+  );
   try {
     const url = await server.start();
     await manager.initialize(provider, url);

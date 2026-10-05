@@ -2,11 +2,13 @@
 // per Trunk (face and name open its profile; Edit; Pause), right-click for Make default / Remove, the job tiles and,
 // at Technical, the defaults for every Trunk. Customize only mounts it; the dialogs live in places/trunk.
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { Jobs } from "./jobs";
 import { Icon } from "../../shell/icons";
 import { openNewGroupChat } from "../../rooms/NewGroupChat";
 import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
 import { notify } from "../../shell/notify";
+import { whoItKnowsItems } from "../../shell/who-it-knows-menu";
 import { shows } from "../../places-nav/level";
 import type { PlaceProps } from "../../places-nav/PlaceFrame";
 import type { useResource, Trunks } from "../library/data";
@@ -31,15 +33,16 @@ type Props = Pick<PlaceProps, "engine" | "level" | "openConversation" | "openSet
 };
 
 
-function TrunkRowView({ row, roster, open, menu }: { row: TrunkRow; roster: Roster; open: (o: Open) => void; menu: (e: ReactMouseEvent, row: TrunkRow) => void }) {
+function TrunkRowView({ row, roster, open, menu, knows }: { row: TrunkRow; roster: Roster; open: (o: Open) => void; menu: (e: ReactMouseEvent, row: TrunkRow) => void; knows: (e: ReactMouseEvent, row: TrunkRow) => void }) {
   return (
     <div className="tk-row" onContextMenu={(e) => menu(e, row)} onKeyDown={(e) => { if ((e.key === "F10" && e.shiftKey) || e.key === "ContextMenu") menu(e as unknown as ReactMouseEvent, row); }}>
       <button type="button" className="tk-row-who" aria-label={`${row.name}: profile`} onClick={() => open({ kind: "profile", id: row.id })}>
         <RowFace row={row} size={ROW_FACE} />
         <span className="tk-grow"><b>{row.name}{row.id === roster.defaultId && <span className="tk-pill">Default</span>}</b><small>{row.theme || "Just made"}</small></span>
       </button>
+      <button type="button" className="btn ghost sm" onClick={(e) => knows(e, row)}>Who it knows</button>
       <button type="button" className="btn sm" onClick={() => open({ kind: "edit", id: row.id })}>Edit</button>
-      <button type="button" className="btn ghost sm" disabled title={PAUSE_WHY}>Pause</button>
+      <button type="button" className="btn ghost sm" disabled title={shownWhy(PAUSE_WHY)}>Pause</button>
     </div>
   );
 }
@@ -49,6 +52,7 @@ export function TrunksTab(props: Props) {
   const roster = trunks.data ? readRoster(trunks.data) : null;
   const [open, setOpen] = useState<Open>(null);
   const [menu, setMenu] = useState<{ at: MenuAnchor; row: TrunkRow } | null>(null);
+  const [known, setKnown] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pending = useRef(false);
@@ -83,6 +87,15 @@ export function TrunksTab(props: Props) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setMenu({ at: e.clientX ? { x: e.clientX, y: e.clientY } : { x: r.left + 40, y: r.top + 30 }, row });
   };
+  const showKnown = async (e: ReactMouseEvent, row: TrunkRow) => {
+    if (!roster) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    try {
+      const items = await whoItKnowsItems((method, params) => engine.request(method, params),
+        { id: row.id, name: row.name }, roster.agents.map((agent) => ({ ...agent, isDefault: agent.id === roster.defaultId })));
+      setKnown({ at: { x: r.right - 340, y: r.bottom + 4 }, items });
+    } catch (error) { setError(errorText(error)); }
+  };
   return <div className="tk-tab-root">
     <div className="tk-toolbar">
       <button type="button" className="btn pri" disabled={busy || !roster || !write} title={write ? undefined : WRITE_WHY} onClick={() => void add()}><Icon name="plus" small />{busy ? "Making…" : "A new Trunk"}</button>
@@ -90,10 +103,11 @@ export function TrunksTab(props: Props) {
     </div>
     <Status {...trunks} />
     {error && <p role="alert" className="tk-error">{error}</p>}
-    {roster && <div className="tk-list">{roster.agents.map((row) => <TrunkRowView key={row.id} row={row} roster={roster} open={setOpen} menu={showMenu} />)}</div>}
+    {roster && <div className="tk-list">{roster.agents.map((row) => <TrunkRowView key={row.id} row={row} roster={roster} open={setOpen} menu={showMenu} knows={(e, trunk) => void showKnown(e, trunk)} />)}</div>}
     <Jobs engine={engine} reload={trunks.reload} />
     {shows(level, "technical") && <TrunkDefaults engine={engine} />}
     {menu && roster && <Menu at={menu.at} label={`${menu.row.name} menu`} onClose={() => setMenu(null)} items={rowMenu(props, roster, menu.row, setOpen, setError)} />}
+    {known && <Menu at={known.at} label="Who it knows" testid="who-it-knows" onClose={() => setKnown(null)} items={known.items} />}
     {open?.kind === "profile" && <TrunkProfile engine={engine} agentId={open.id} level={level} openSettings={openSettings} openPlace={props.openPlace} onClose={() => { setOpen(null); trunks.reload(); }} />}
     {open?.kind === "edit" && <TrunkEditor engine={engine} agentId={open.id} level={level} openSettings={openSettings} onClose={() => setOpen(null)} onSaved={trunks.reload} />}
     {open?.kind === "remove" && roster && <RemoveTrunkDialog engine={engine} agentId={open.id} name={roster.agents.find((a) => a.id === open.id)?.name || open.id} onClose={() => setOpen(null)} onRemoved={trunks.reload} />}

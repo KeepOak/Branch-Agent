@@ -55,7 +55,7 @@ function touches(payload: unknown, key: string): boolean {
   return keys.length === 0 || keys.includes(key);
 }
 
-export function useConversation(engine: WindowEngine | undefined) {
+export function useConversation(engine: WindowEngine | undefined, draftAgentId?: string) {
   const [state, setState] = useState<Conversation>(EMPTY);
   const key = engine?.sessionKey ?? null;
   const live = useRef(key);
@@ -64,13 +64,13 @@ export function useConversation(engine: WindowEngine | undefined) {
   const readRow = useCallback(async () => {
     if (!engine || !key) return;
     const [described, listed] = await Promise.all([
-      engine.request("sessions.describe", { key }),
+      draftAgentId ? Promise.resolve({ session: null }) : engine.request("sessions.describe", { key }),
       engine.request("sessions.list", { limit: 1 }),
     ]);
     if (live.current === key) {
       setState((s) => ({ ...s, loaded: true, row: rec(rec(described).session), defaults: rec(rec(listed).defaults), error: null }));
     }
-  }, [engine, key]);
+  }, [engine, key, draftAgentId]);
 
   const readModelList = useCallback(async () => {
     if (!engine || !key) return;
@@ -124,7 +124,7 @@ export function useConversation(engine: WindowEngine | undefined) {
     [engine, key, readRow],
   );
 
-  const trunkId = engine?.agentId ?? agentOf(key) ?? state.defaultTrunkId;
+  const trunkId = draftAgentId ?? engine?.agentId ?? agentOf(key) ?? state.defaultTrunkId;
   const trunk = state.trunks.find((t) => t.id === trunkId);
   return { ...state, key, trunk, trunkId, patch, reload: load, readModelList };
 }

@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import { closeBranchStateDatabaseForTest } from "branch/plugin-sdk/plugin-state-test-runtime";
+import { createTestPluginServiceScheduler } from "branch/plugin-sdk/plugin-test-api";
 import * as runtimeEnv from "branch/plugin-sdk/runtime-env";
 import * as sqliteRuntime from "branch/plugin-sdk/sqlite-runtime";
 import { closeBranchStateDatabaseAsync } from "branch/plugin-sdk/sqlite-runtime-testing";
@@ -84,6 +85,7 @@ describe("registered iMessage account startup", () => {
     vi.spyOn(client, "waitForClose").mockResolvedValue(undefined);
     createClient.mockResolvedValue(client);
     const starting = imessagePlugin.gateway!.startAccount!({
+      scheduler: createTestPluginServiceScheduler(),
       cfg,
       accountId: account.accountId,
       account,
@@ -270,6 +272,7 @@ describe("registered iMessage account startup", () => {
             }),
           };
           await imessagePlugin.gateway!.startAccount!({
+            scheduler: createTestPluginServiceScheduler(),
             cfg,
             accountId: account.accountId,
             account,

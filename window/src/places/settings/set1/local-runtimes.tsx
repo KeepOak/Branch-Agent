@@ -10,6 +10,7 @@ import { Dialog } from "../../../shell/Dialog";
 import { Btn, Ctl, Pill, Prow, Sec, Switch, useConfig, useLevel } from "../kit";
 import { Logo } from "./service";
 import type { Hw } from "./local";
+import { shownWhy } from "../../../shell/shown-why";
 
 type Runtime = { id: string; name: string; mark: string; note: string; off?: string };
 const NO_PROBE = "Branch can’t look for this runtime yet. Add it in Accounts as your own service.";
@@ -71,7 +72,7 @@ type RightProps = { r: Runtime; on: boolean; loading: boolean; busy: boolean; lo
 function RuntimeRight({ r, on, loading, busy, looked, onLook }: RightProps) {
   if (on) return <Pill tone="ok">Found</Pill>;
   if (loading) return <Pill tone="idle">Looking…</Pill>;
-  if (r.off) return <Btn ghost sm disabled title={r.off}>Look for it</Btn>;
+  if (r.off) return <Btn ghost sm disabled title={shownWhy(r.off)}>Look for it</Btn>;
   if (busy) return <Btn ghost sm disabled>Looking…</Btn>;
   return <>{looked ? <Pill tone="idle">Not found</Pill> : null}<Btn ghost sm onClick={onLook}>{looked ? "Look again" : "Look for it"}</Btn></>;
 }
@@ -94,10 +95,10 @@ function WslDialog({ onClose }: { onClose: () => void }) {
   const lv = useLevel();
   const why = "Branch can’t change WSL’s networking yet.";
   return (
-    <Dialog title="Change WSL networking?" onClose={onClose} footer={<><Btn ghost onClick={onClose}>Not now</Btn><Btn pri disabled title={why}>Change and restart WSL</Btn></>}>
+    <Dialog title="Change WSL networking?" onClose={onClose} footer={<><Btn ghost onClick={onClose}>Not now</Btn><Btn pri disabled title={shownWhy(why)}>Change and restart WSL</Btn></>}>
       <p className="lead-k">Models running in WSL can’t be reached from Windows with its current networking. Branch can change one WSL networking setting for your Windows account and restart WSL once. Anything running in WSL stops.</p>
       {lv >= 2 ? <p className="hint">Settings file: <code>%USERPROFILE%\.wslconfig</code></p> : null}
-      <p className="hint">{why}</p>
+      {shownWhy(why) ? <p className="hint">{shownWhy(why)}</p> : null}
     </Dialog>
   );
 }

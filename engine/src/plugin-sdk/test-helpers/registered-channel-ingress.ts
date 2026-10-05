@@ -1,5 +1,5 @@
 import { createChannelAdmissionAudit } from "../../channels/message-access/admission-evidence.js";
-import type { ChannelPlugin } from "../../channels/plugins/types.plugin.js";
+import type { AnyChannelPlugin } from "../../channels/plugins/types.plugin.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import type { GatewayRequestContext } from "../../gateway/server-methods/types.js";
 import { getPluginInstance } from "../../plugins/plugin-instance-scope.js";
@@ -14,7 +14,7 @@ import { createPluginRecord } from "../../plugins/status.test-helpers.js";
 /** Exercise native registration, activation, and retirement without a live Gateway. */
 export async function withRegisteredChannelIngress<T>(
   params: {
-    plugin: ChannelPlugin;
+    plugin: AnyChannelPlugin;
     config: BranchConfig;
     setRuntime: (runtime: PluginRuntime) => void;
   },

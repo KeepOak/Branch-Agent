@@ -1,10 +1,10 @@
+import { isSenderIdAllowed } from "branch/plugin-sdk/allow-from";
 import type { DmPolicy, BranchConfig } from "branch/plugin-sdk/config-contracts";
 import {
   expandAllowFromWithAccessGroups,
   parseAccessGroupAllowFromEntry,
 } from "branch/plugin-sdk/security-runtime";
 import {
-  isSenderAllowed,
   normalizeAllowFrom,
   normalizeDmAllowFromWithStore,
   type NormalizedAllowFrom,
@@ -27,10 +27,7 @@ export async function expandTelegramAllowFromWithAccessGroups(params: {
           accountId: params.accountId ?? "default",
           senderId,
           isSenderAllowed: (candidateSenderId, allowEntries) =>
-            isSenderAllowed({
-              allow: normalizeAllowFrom(allowEntries),
-              senderId: candidateSenderId,
-            }),
+            isSenderIdAllowed(normalizeAllowFrom(allowEntries), candidateSenderId, true),
         })
       : allowFrom;
   const originalEntries = new Set(allowFrom);

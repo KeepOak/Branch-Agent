@@ -23,7 +23,7 @@ import type { Trunks } from "./engine-data";
 import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import { notify } from "./notify";
 import { ShareDialog } from "./ShareDialog";
-import { knownTrunks, type AgentToAgent } from "./who-it-knows";
+import { whoItKnowsItems } from "./who-it-knows-menu";
 import { roomMenuItems } from "../rooms/room-menu";
 import "./conversation-menu.css";
 
@@ -217,14 +217,8 @@ async function whoItKnows(p: ConversationMenuProps, setOpen: (o: Open) => void, 
   const self = p.trunk.id ?? p.trunks.defaultId ?? "";
   const anchor = from ?? document.querySelector<HTMLElement>("[data-testid=conversation-menu-button]")?.getBoundingClientRect();
   try {
-    const cfg = rec(rec(await p.session.request("config.get", {})).config);
-    const policy = rec(rec(cfg.tools).agentToAgent) as AgentToAgent;
-    const known = knownTrunks(policy, self, p.trunks.list);
-    const items: MenuItem[] = [
-      { kind: "head", label: `${p.trunk.name} knows and may talk to` },
-      ...(known.length ? known.map((t): MenuItem => ({ kind: "info", label: t.name, sub: t.isDefault ? "Your default Trunk" : undefined })) : [{ kind: "info", label: policy.enabled === false ? "No other Trunk: talking between Trunks is off." : "No other Trunk yet." } as MenuItem]),
-    ];
-    setOpen({ kind: "known", at: { x: (anchor?.right ?? 300) - 260, y: (anchor?.bottom ?? 50) + 4 }, items });
+    const items = await whoItKnowsItems((method, params) => p.session.request(method, params), { id: self, name: p.trunk.name }, p.trunks.list);
+    setOpen({ kind: "known", at: { x: (anchor?.right ?? 360) - 340, y: (anchor?.bottom ?? 50) + 4 }, items });
   } catch (e) {
     bad(e);
   }

@@ -10,7 +10,10 @@ import { describe, expect, it, vi } from "vitest";
 import { upsertSessionEntryCore } from "../../../../src/config/sessions/session-accessor.js";
 import { closeBranchAgentDatabasesAsync } from "../../../../src/state/branch-agent-db-lifecycle.js";
 import { registerBranchAgentDatabase } from "../../../../src/state/branch-agent-db-registry.js";
-import { getBranchAgentDatabaseIfOpen } from "../../../../src/state/branch-agent-db.js";
+import {
+  getBranchAgentDatabaseIfOpen,
+  openBranchAgentDatabase,
+} from "../../../../src/state/branch-agent-db.js";
 import { tableExists } from "../../../../src/state/branch-state-db-schema-helpers.js";
 import { withBranchTestState } from "../../../../src/test-utils/branch-test-state.js";
 import { createDeferred } from "../../../../test/helpers/promise.js";
@@ -60,7 +63,7 @@ describe("listSessionTranscriptCorpusEntriesForAgent", () => {
           },
           { sessionId: "cron-thread", updatedAt: 1 },
         );
-        const { db } = getBranchAgentDatabaseIfOpen({ agentId: "main", env: state.env })!;
+        const { db } = openBranchAgentDatabase({ agentId: "main", env: state.env });
         if (!archiveTablePresent) {
           db.exec("DROP TABLE session_transcript_archives");
         }
@@ -119,7 +122,7 @@ describe("listSessionTranscriptCorpusEntriesForAgent", () => {
           /^\s*select\b[\s\S]*\bfrom\s+["`]?session_nodes\b/i.test(sql) &&
           /\bentry_json\b|\*/i.test(sql.split(/\bfrom\b/i)[0]!);
         try {
-          const { db } = getBranchAgentDatabaseIfOpen({ agentId: "main", env: state.env })!;
+          const { db } = openBranchAgentDatabase({ agentId: "main", env: state.env });
           expect(
             db.prepare('select "session_key", "entry_json" from "session_nodes" where 0').all(),
           ).toEqual([]);
@@ -146,9 +149,7 @@ describe("listSessionTranscriptCorpusEntriesForAgent", () => {
               updatedAtMs: persisted?.updatedAt,
             },
           ]);
-          if (readOnly && !includeRetainedSqlite) {
-            expect(observed.queries.filter(isSummaryRead)).toEqual([]);
-          }
+          expect(observed.queries).toEqual([]);
           const decodedEntries = parse.mock.calls.filter(([json]) =>
             json.includes('"sessionId":"corpus-metadata"'),
           );
@@ -175,7 +176,7 @@ describe("listSessionTranscriptCorpusEntriesForAgent", () => {
         { sessionKey, storePath },
         { sessionId, updatedAt: 10 },
       );
-      const { db } = getBranchAgentDatabaseIfOpen({ agentId: "main", env: state.env })!;
+      const { db } = openBranchAgentDatabase({ agentId: "main", env: state.env });
       const options = { readOnly: true, includeContentRevision: false };
       const expected = {
         agentId: "main",

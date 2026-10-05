@@ -23,4 +23,11 @@ export * from "@branch/gateway-protocol/gateway-error-details";
 export * from "@branch/gateway-protocol/startup-unavailable";
 export * from "@branch/gateway-protocol/version";
 export { GATEWAY_SERVER_CAPS } from "@branch/gateway-protocol/frame-guards";
-export type { ConnectParams, ErrorShape, EventFrame, HelloOk } from "@branch/gateway-protocol";
+export type {
+  ChannelsStatusResult,
+  ConnectParams,
+  ErrorShape,
+  EventFrame,
+  HelloOk,
+  QuestionRecord,
+} from "@branch/gateway-protocol";

@@ -85,7 +85,7 @@ describe("session-derived Google Chat delivery", () => {
   it("delivers to the canonical mixed-case space recorded by the session", async () => {
     await withBranchTestState({ prefix: "googlechat-session-target-" }, async (state) => {
       const config: BranchConfig = {
-        agents: { entries: { main: { default: true, workspace: state.workspaceDir } } },
+        agents: { entries: { main: { workspace: state.workspaceDir } } },
         channels: {
           googlechat: {
             accounts: {

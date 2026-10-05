@@ -4,11 +4,11 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { vi } from "vitest";
+import { applyImplicitAgentRosterDefaults } from "../config/implicit-agent-roster.js";
 import type {
   ReadConfigFileSnapshotForWriteResult,
   ReadConfigFileSnapshotWithPluginMetadataResult,
 } from "../config/io.js";
-import { migratePersistedImplicitMainRoster } from "../config/legacy.roster.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import type { AgentBinding } from "../config/types.agents.js";
 import type { ConfigFileSnapshot, BranchConfig } from "../config/types.js";
@@ -58,16 +58,9 @@ const composeTestConfig = (baseConfig: Record<string, unknown>) => {
     ...testState.agentConfig,
   };
   const testAgents = testState.agentsConfig;
-  const retainedFileAgents = { ...fileAgents };
-  if (testAgents && Object.hasOwn(testAgents, "list")) {
-    delete retainedFileAgents.entries;
-  }
-  if (testAgents && Object.hasOwn(testAgents, "entries")) {
-    delete retainedFileAgents.list;
-  }
   const agents = testAgents
-    ? { ...retainedFileAgents, ...testAgents, defaults }
-    : { ...retainedFileAgents, defaults };
+    ? { ...fileAgents, ...testAgents, defaults }
+    : { ...fileAgents, defaults };
 
   const fileBindings = Array.isArray(baseConfig.bindings)
     ? (baseConfig.bindings as AgentBinding[])
@@ -168,7 +161,7 @@ const composeTestConfig = (baseConfig: Record<string, unknown>) => {
     hooks,
     cron,
   } as BranchConfig;
-  return migratePersistedImplicitMainRoster(composed).config as BranchConfig;
+  return applyImplicitAgentRosterDefaults(composed) as BranchConfig;
 };
 
 export function loadGatewayTestConfig(): BranchConfig {

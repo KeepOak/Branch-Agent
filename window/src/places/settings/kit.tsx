@@ -8,6 +8,7 @@ import { errorText, record, type RecordValue } from "./adapter";
 import { configStore, pathKeys, type ConfigPath } from "./config-store";
 import { Icon } from "../../shell/icons";
 import { PIN_MAX, type Pins } from "./pins";
+import { isDevNote, shownWhy } from "../../shell/shown-why";
 import "./kit.css";
 
 /** 0 = Regular, 1 = Advanced, 2 = Technical. */
@@ -121,7 +122,8 @@ export function Ctl({ title, sub, children, off, keep, icon, stack, id, after, n
   const locked = useContext(LockContext);
   const why = off ?? (locked ? NOSETUP : undefined);
   const name = typeof title === "string" ? title : id;
-  const line = sub ?? why;
+  const shown = shownWhy(why);
+  const line = sub ?? shown;
   const kept = keep && level >= 1 ? KEEP_LINE[keep] : null;
   return (
     <div className={`ctl${why ? " off-k" : ""}${stack ? " stack-k" : ""}`} data-row={name} aria-disabled={why ? true : undefined}>
@@ -129,7 +131,7 @@ export function Ctl({ title, sub, children, off, keep, icon, stack, id, after, n
       {typeof title === "string" && !noPin ? <PinBtn title={title} /> : null}
       {children ? <span className="right" inert={why ? true : undefined}>{children}</span> : null}
       {line || kept ? <small>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
-      {why && sub ? <small className="why-k">{why}</small> : null}
+      {shown && sub ? <small className="why-k">{shown}</small> : null}
       {after}
     </div>
   );
@@ -158,7 +160,7 @@ export function Seg({ value, options, onChange, label, disabled }: { value: stri
       buttons[next].click();
     }}>
       {options.map((o) => (
-        <button key={o.id} type="button" aria-pressed={o.id === value} disabled={disabled || Boolean(o.off)} tabIndex={o.id === active ? 0 : -1} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" title={o.off} onClick={() => o.id !== value && onChange(o.id)}>
+        <button key={o.id} type="button" aria-pressed={o.id === value} disabled={disabled || Boolean(o.off)} tabIndex={o.id === active ? 0 : -1} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" title={shownWhy(o.off)} onClick={() => o.id !== value && onChange(o.id)}>
           {o.label}
         </button>
       ))}
@@ -247,9 +249,9 @@ export function Prow({ icon, title, sub, children }: { icon?: ReactNode; title: 
   );
 }
 
-export function Btn({ pri, sm, ghost, className, children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { pri?: boolean; sm?: boolean; ghost?: boolean }) {
+export function Btn({ pri, sm, ghost, className, children, title, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { pri?: boolean; sm?: boolean; ghost?: boolean }) {
   const cls = ["btn", pri ? "pri" : "", sm ? "sm" : "", ghost ? "ghost" : "", className ?? ""].filter(Boolean).join(" ");
-  return <button type="button" className={cls} {...rest}>{children}</button>;
+  return <button type="button" className={cls} title={shownWhy(title)} {...rest}>{children}</button>;
 }
 export function Acts({ children }: { children: ReactNode }) {
   return <div className="acts">{children}</div>;
@@ -258,19 +260,21 @@ export function Acts({ children }: { children: ReactNode }) {
 export function Pill({ tone = "idle", dot = true, children }: { tone?: "ok" | "warn" | "bad" | "idle" | "work"; dot?: boolean; children: ReactNode }) {
   return <span className={`pill ${tone}`}>{dot ? <i /> : null}{children}</span>;
 }
+/** A paragraph that is only a developer note (shown-why.ts) is not drawn. */
+const noteOnly = (children: ReactNode) => typeof children === "string" && isDevNote(children);
 export function Hint({ children }: { children: ReactNode }) {
-  return <p className="hint">{children}</p>;
+  return noteOnly(children) ? null : <p className="hint">{children}</p>;
 }
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="empty">{children}</p>;
+  return noteOnly(children) ? null : <p className="empty">{children}</p>;
 }
 /** A plain value on the right of a row (Technical readouts). */
 export function Val({ children, code }: { children: ReactNode; code?: boolean }) {
   return code ? <code className="val-k">{children}</code> : <span className="val-k">{children}</span>;
 }
 /** A link-styled button (Learn more, Back to default, section links). */
-export function LinkBtn({ children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button type="button" className="link-k" {...rest}>{children}</button>;
+export function LinkBtn({ children, title, ...rest }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return <button type="button" className="link-k" title={shownWhy(title)} {...rest}>{children}</button>;
 }
 
 /** The row search index: each page module lists its rows (title, section, level) so the frame can find and jump. */

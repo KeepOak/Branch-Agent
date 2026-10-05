@@ -8,6 +8,7 @@ import type { BranchStateDatabase } from "../../state/branch-state-db-contract.j
 import { runBranchStateWriteTransaction } from "../../state/branch-state-db.js";
 import { resolveCronJobConfigRevision } from "../config-revision.js";
 import { findCronRunRecoveryInDatabase } from "../service/run-history-recovery.js";
+import { readCronJobNamesInDatabase } from "./job-name.kernel.js";
 import {
   deleteCronJobRowInDatabase,
   fingerprintCronJobRows,
@@ -201,7 +202,10 @@ export function mutateCronJobsInWorker(
               hooks,
             );
           }
-          const outcome = loadCronMutationStore(db, input.storeKey);
+          const outcome = {
+            ...loadCronMutationStore(db, input.storeKey),
+            names: readCronJobNamesInDatabase(db, undefined, input.storeKey),
+          };
           return retainCronRuntimeMutationOutcome("cron.mutateJobs", db, input.nonce, outcome);
         } catch (error) {
           if (
