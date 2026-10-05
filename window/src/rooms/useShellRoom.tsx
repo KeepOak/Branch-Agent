@@ -37,7 +37,7 @@ type Args = {
 export function useShellRoom(a: Args): ShellRoom {
   const room = useRoom(a.engine, a.rowKind, a.history);
   const trunkName = useMemo(() => (id: string) => a.trunks.find((t) => t.id === id)?.name || id, [a.trunks]);
-  const thread: ThreadRoom = { isRoom: room.isRoom, selfId: room.selfId, ownAgentId: a.agentId ?? room.ownAgentId, trunkName, whereRuns: room.whereRuns };
+  const thread: ThreadRoom = { isRoom: room.isRoom, selfId: room.selfId, ownAgentId: a.agentId ?? room.ownAgentId, trunkName, whereRuns: room.whereRuns, isOnline: room.isOnline };
   if (!room.isRoom) return { thread, header: null, menu: null, others: [], members: [] };
   const picks = roomPicks(a.ownTrunk, room.members, trunkName);
   const choose = (rule: "mention" | "always") =>

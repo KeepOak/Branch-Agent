@@ -11,7 +11,7 @@ This is a source snapshot under active development. A feature being present in s
 - Git; npm for the desktop package.
 - A configured model provider for assistant replies.
 
-Snapshot package versions: engine `2026.9.7`, window `0.0.0`, desktop `0.4.3` with Electron `44.5.1`.
+Package versions on `main`: engine `2026.9.8` (synced from upstream OpenClaw), window `0.0.0`, desktop `0.4.4` with Electron `44.5.1`.
 
 ## Build
 
@@ -73,13 +73,18 @@ The `Source builds` workflow runs only when a maintainer dispatches it on `main`
 
 `Desktop checks` runs on pull requests, relevant pushes to `main`, and manual dispatch. Hosted Windows, macOS and Linux jobs install the desktop lockfile with `npm ci`, compile strict TypeScript, and run the two named update/readiness checks at 96 MiB. These jobs build only the desktop sources and skip the Electron binary download. They do not build the engine, launch a visible app, or call model providers.
 
-Saved `dist/` outputs are source build artifacts. The workflow does not create installers or publish releases. Artifact retention is three days.
+Saved `dist/` outputs are source build artifacts. `Source builds` does not create installers or publish releases; its artifact retention is three days. Releases come from the `GitHub component release` workflow on every merge to `main` that changes the engine, window or desktop; see [Releases and component updates](CONTRIBUTING.md#releases-and-component-updates).
+
+## Working on Branch
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) is the contributor workflow: repository layout, setting up a worktree with `node scripts/install-worktree.mjs`, the local strict type checks, running tests by name, the merge gate and the 15-minute CI cap, component releases and updates, and working with AI agents through `branch mcp serve`. [`AGENTS.md`](AGENTS.md) is the short rule list for coding agents.
 
 ## Source layout
 
 - `engine/`: assistant runtime, providers, tools, gateway, CLI, and runtime documentation.
 - `window/`: desktop window frontend.
-- `desktop/`: Electron launcher and packaging scripts.
+- `desktop/`: Electron launcher, packaging, component-release and update scripts.
+- `scripts/`: worktree install, strict type checks, CI runners and named-test lists, and the upstream rename script.
 - `assets/`: artwork and manifests shipped with the product.
 
 Build instructions, requirements, decision records, design specifications, and source archives are maintained separately in the private [Branch Agent Instructions Build repository](https://github.com/KeepOak/Branch-Agent-Instructions-Build). Access is restricted.

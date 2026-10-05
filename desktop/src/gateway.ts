@@ -58,7 +58,7 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     env,
     windowsHide: true,
     detached: process.platform !== "win32",
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
   child.stdout?.pipe(log);
   child.stderr?.pipe(log);
@@ -66,6 +66,49 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     writeFileSync(join(cfg.dataDir, "gateway.pid"), String(child.pid));
   }
   return child;
+}
+
+export interface GatewayActivity { idle: boolean; activeRuns: number; pendingReplies: number; totalActive: number }
+let nextActivityId = 0;
+/** Query the engine's process-wide restart-drain inventory through its owned child channel. */
+export function gatewayActivity(child: ChildProcess, stopIfIdle = false, timeoutMs = 5_000): Promise<GatewayActivity> {
+  if (!child.connected) return Promise.reject(new Error("The gateway activity channel is unavailable"));
+  const id = ++nextActivityId;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { cleanup(); reject(new Error("The gateway activity check timed out")); }, timeoutMs);
+    const cleanup = () => { clearTimeout(timer); child.off("message", onMessage); child.off("exit", onExit); child.off("error", onError); };
+    const onMessage = (value: unknown) => {
+      const response = value as { type?: unknown; id?: unknown } & Partial<GatewayActivity>;
+      if (response?.type !== "branch-desktop:activity-result" || response.id !== id) return;
+      cleanup();
+      if (typeof response.idle !== "boolean" || typeof response.activeRuns !== "number" ||
+        typeof response.pendingReplies !== "number" || typeof response.totalActive !== "number") {
+        reject(new Error("The gateway returned an invalid activity snapshot")); return;
+      }
+      resolve({ idle: response.idle, activeRuns: response.activeRuns, pendingReplies: response.pendingReplies, totalActive: response.totalActive });
+    };
+    const onExit = () => { cleanup(); reject(new Error("The gateway exited during activity check")); };
+    const onError = (error: Error) => { cleanup(); reject(error); };
+    child.on("message", onMessage);
+    child.once("exit", onExit);
+    child.once("error", onError);
+    child.send({ type: stopIfIdle ? "branch-desktop:stop-if-idle" : "branch-desktop:activity", id }, error => { if (error) onError(error); });
+  });
+}
+
+/** Ask the owned engine to drain cleanly, but only if it is still idle at the gateway. */
+export async function stopGatewayCleanly(child: ChildProcess, timeoutMs = 90_000): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const snapshot = await gatewayActivity(child, true);
+  if (!snapshot.idle) throw new Error("The gateway became busy before it could stop");
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => { cleanup(); reject(new Error("The gateway did not stop cleanly in time")); }, timeoutMs);
+    const cleanup = () => { clearTimeout(timer); child.off("exit", onExit); child.off("error", onError); };
+    const onExit = () => { cleanup(); resolve(); };
+    const onError = (error: Error) => { cleanup(); reject(error); };
+    child.once("exit", onExit); child.once("error", onError);
+  });
 }
 
 /** Polls the gateway's /readyz until it answers 200, the child exits, or the time runs out. */
@@ -99,7 +142,7 @@ export async function waitForReady(cfg: DesktopConfig, child: ChildProcess, ms: 
 
 /** Stops the gateway and its own child processes by its PID only. */
 export function stopGateway(child: ChildProcess): void {
-  if (child.pid === undefined || child.exitCode !== null) return;
+  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
   try {
     if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
     else process.kill(-child.pid, "SIGTERM");

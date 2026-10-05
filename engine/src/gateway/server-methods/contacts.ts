@@ -5,6 +5,9 @@ import {
   validateContactsListParams,
   validateContactsTopicsParams,
   validateContactsMarkReadParams,
+  validateContactsOutsideHelloParams,
+  validateContactsOutsideListParams,
+  validateContactsOutsideSetParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { listAgentEntries } from "../../agents/agent-scope.js";
 import { resolveExistingAgentSessionStoreTargetsSync } from "../../config/sessions.js";
@@ -15,6 +18,17 @@ import {
 } from "../../config/sessions/session-accessor.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { listExistingAgentIdsFromDisk, listGatewayAgentsBasic } from "../agent-list.js";
+import {
+  assignOutsideAgentId,
+  isOutsideAgentOnline,
+  listOutsideAgents,
+  outsideAgentPeers,
+  outsideAgentMayDriveWindow,
+  outsideAgentRefusal,
+  readOutsideAgentSettings,
+  recordOutsideAgent,
+  updateOutsideAgentSettings,
+} from "../contacts/outside-agents.js";
 import { projectContacts } from "../contacts/project.js";
 import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role-policy.js";
 import { createSessionListEntryFilter } from "../session-sharing.js";
@@ -96,15 +110,83 @@ async function readProjection({
       sessions: visible,
       previews,
       titles,
-      outsidePeers: listA2aPeers(cfg),
+      outsidePeers: withOutsideAgents(listA2aPeers(cfg)),
     }),
     sessionKeys: new Set(visible.map((row) => row.sessionKey)),
   };
 }
 
+/** Configured A2A peers plus the outside agents that said hello through `branch mcp serve`. */
+function withOutsideAgents<T extends ReturnType<typeof listA2aPeers>[number]>(configured: T[]) {
+  return [...configured, ...outsideAgentPeers(listOutsideAgents(), configured)];
+}
+
 export const contactHandlers: GatewayRequestHandlers = {
   "a2a.peers.list": async ({ context, respond }) => {
-    respond(true, { peers: listA2aPeers(context.getRuntimeConfig()) });
+    const configured = listA2aPeers(context.getRuntimeConfig());
+    const records = new Map(listOutsideAgents().map((row) => [row.id, row]));
+    const outside = outsideAgentPeers([...records.values()], configured).map((peer) => ({
+      ...peer,
+      online: isOutsideAgentOnline(records.get(peer.name)!),
+    }));
+    respond(true, { peers: [...configured, ...outside] });
+  },
+  "contacts.outside.hello": async ({ params, respond, context }) => {
+    if (
+      !assertValidParams(
+        params,
+        validateContactsOutsideHelloParams,
+        "contacts.outside.hello",
+        respond,
+      )
+    )
+      return;
+    const settings = readOutsideAgentSettings();
+    const id = assignOutsideAgentId(params.agent, listOutsideAgents());
+    const refusal = outsideAgentRefusal({ ...params.agent, id }, settings);
+    if (refusal) {
+      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, refusal));
+      return;
+    }
+    const record = recordOutsideAgent({ ...params.agent, id });
+    context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
+    respond(true, {
+      contact: { id: `a2a:${record.id}`, name: record.name, where: record.where ?? null },
+      mayDriveWindow: outsideAgentMayDriveWindow(record.id, settings),
+    });
+  },
+  "contacts.outside.list": async ({ params, respond }) => {
+    if (
+      !assertValidParams(
+        params,
+        validateContactsOutsideListParams,
+        "contacts.outside.list",
+        respond,
+      )
+    )
+      return;
+    const settings = readOutsideAgentSettings();
+    const agents = listOutsideAgents().map((row) => ({
+      ...row,
+      contactId: `a2a:${row.id}`,
+      online: isOutsideAgentOnline(row) && !outsideAgentRefusal(row, settings),
+      revoked: Boolean(outsideAgentRefusal(row, { ...settings, enabled: true })),
+      mayDriveWindow: outsideAgentMayDriveWindow(row.id, settings),
+    }));
+    respond(true, { enabled: settings.enabled, agents });
+  },
+  "contacts.outside.set": async ({ params, respond, context }) => {
+    if (
+      !assertValidParams(params, validateContactsOutsideSetParams, "contacts.outside.set", respond)
+    )
+      return;
+    if ((params.revoked !== undefined || params.mayDriveWindow !== undefined) && !params.id) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Name the agent (id)"));
+      return;
+    }
+    const settings = updateOutsideAgentSettings(params);
+    context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
+    respond(true, settings);
   },
   "a2a.peers.refresh": async ({ context, respond }) => {
     respond(true, { peers: await refreshA2aPeerCards(context.getRuntimeConfig()) });

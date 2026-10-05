@@ -13,6 +13,7 @@ import {
 } from "../../sessions/user-turn-transcript.js";
 import type { UserTurnOriginalInputCommit } from "../../sessions/user-turn-transcript.types.js";
 import { extractTextFromChatContent } from "../../shared/chat-content.js";
+import { outsideAgentSender } from "../contacts/outside-agents.js";
 import type { MentionInbox } from "../mention-inbox.types.js";
 import { hasGatewayAdminScope } from "../operator-scopes.js";
 import { formatForLog } from "../ws-log.js";
@@ -57,7 +58,9 @@ export function createGatewayChatUserTurnController(params: {
   const sender =
     request.goalOperation?.action === "resume"
       ? undefined
-      : gatewayClientSenderFields(params.client).sender;
+      : request.p.outsideAgent
+        ? outsideAgentSender(request.p.outsideAgent)
+        : gatewayClientSenderFields(params.client).sender;
   const senderProfileId = params.client?.authenticatedUserProfile?.profileId;
   const selectedMentions = request.mentions;
   const mentionInbox = params.mentionInbox;
@@ -78,7 +81,11 @@ export function createGatewayChatUserTurnController(params: {
     ...(request.p.replyToId ? { replyToId: request.p.replyToId } : {}),
     ...(sender ? { sender } : {}),
     ...(sourceClients.length ? { transport: { clients: sourceClients } } : {}),
-    ...(hasGatewayAdminScope(params.client) ? { senderIsOwner: true } : {}),
+    // An outside agent speaks through the owner's connection but is not the owner: its words never count as
+    // owner-authored (trusted memory, owner replies).
+    ...(hasGatewayAdminScope(params.client) && !request.p.outsideAgent
+      ? { senderIsOwner: true }
+      : {}),
     ...(request.systemInputProvenance ? { provenance: request.systemInputProvenance } : {}),
   };
   const replyContextFieldsPromise = request.p.replyToId

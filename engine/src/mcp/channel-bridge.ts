@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { resolveIntegerOption } from "@branch/normalization-core/number-coercion";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalLowercaseString,
 } from "@branch/normalization-core/string-coerce";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import type { GatewayClient } from "../gateway/client.js";
@@ -73,6 +73,7 @@ export class BranchChannelBridge {
   private started = false;
   private retryingInitialConnect = false;
   private readonly readiness = createDeferredCore();
+  private readonly eventListeners = new Set<(event: EventFrame) => void>();
 
   constructor(
     private readonly cfg: BranchConfig,
@@ -103,7 +104,7 @@ export class BranchChannelBridge {
       { resolveGatewayClientBootstrap },
       { GatewayClient: GatewayClientCtor },
       { startGatewayClientWhenEventLoopReady },
-      { APPROVALS_SCOPE, READ_SCOPE, WRITE_SCOPE },
+      { ADMIN_SCOPE, APPROVALS_SCOPE, READ_SCOPE, WRITE_SCOPE },
       { GATEWAY_CLIENT_CAPS, GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES },
     ] = await Promise.all([
       import("../gateway/client-bootstrap.js"),
@@ -139,7 +140,8 @@ export class BranchChannelBridge {
       clientVersion: VERSION,
       mode: GATEWAY_CLIENT_MODES.CLI,
       caps: [GATEWAY_CLIENT_CAPS.APPROVALS],
-      scopes: [READ_SCOPE, WRITE_SCOPE, APPROVALS_SCOPE],
+      // Admin lets the Trunk tools create Trunks (agents.create), as the owner's own window can.
+      scopes: [READ_SCOPE, WRITE_SCOPE, APPROVALS_SCOPE, ADMIN_SCOPE],
       requestTimeoutMs: 180_000,
       onEvent: (event) => {
         void this.dispatchGatewayEvent(event);
@@ -170,6 +172,21 @@ export class BranchChannelBridge {
       this.readiness.reject(new Error("gateway event loop readiness timeout"));
     }
     await this.readiness.promise;
+  }
+
+  /** Call any Gateway method once the bridge is ready (the Trunk tools use this). */
+  async request<T = Record<string, unknown>>(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<T> {
+    await this.waitUntilReady();
+    return await this.requestGateway<T>(method, params);
+  }
+
+  /** Observe every Gateway event (agent run streams for run progress). Returns the unsubscribe. */
+  onGatewayEvent(listener: (event: EventFrame) => void): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
   }
 
   /** Wait until the bridge has subscribed to Gateway session events. */
@@ -527,6 +544,13 @@ export class BranchChannelBridge {
   }
 
   private async dispatchGatewayEvent(event: EventFrame): Promise<void> {
+    for (const listener of this.eventListeners) {
+      try {
+        listener(event);
+      } catch {
+        // A tool's observer must never break channel event delivery.
+      }
+    }
     try {
       await this.handleGatewayEvent(event);
     } catch (error) {
@@ -534,9 +558,7 @@ export class BranchChannelBridge {
       // failures remain observable; the spammy error detail stays behind --verbose.
       process.stderr.write(`branch mcp: gateway event ${event.event} failed\n`);
       if (this.verbose) {
-        process.stderr.write(
-          `branch mcp: gateway event ${event.event} error: ${String(error)}\n`,
-        );
+        process.stderr.write(`branch mcp: gateway event ${event.event} error: ${String(error)}\n`);
       }
     }
   }

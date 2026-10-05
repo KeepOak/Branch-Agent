@@ -294,6 +294,9 @@ describe("listGatewayMethods", () => {
       "rooms.members.remove",
       "rooms.rule.set",
       "rooms.archive",
+      "contacts.outside.hello",
+      "contacts.outside.list",
+      "contacts.outside.set",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -394,6 +397,9 @@ describe("listGatewayMethods", () => {
       "rooms.members.remove",
       "rooms.rule.set",
       "rooms.archive",
+      "contacts.outside.hello",
+      "contacts.outside.list",
+      "contacts.outside.set",
     ]);
   });
 
@@ -622,6 +628,9 @@ describe("listGatewayMethods", () => {
       "rooms.members.remove",
       "rooms.rule.set",
       "rooms.archive",
+      "contacts.outside.hello",
+      "contacts.outside.list",
+      "contacts.outside.set",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));

@@ -33,8 +33,8 @@ import {
 import { resolveMcpTransportConfig } from "../agents/mcp-transport-config.js";
 import { parseConfigValue } from "../auto-reply/reply/config-value.js";
 import { listConfiguredMcpServers } from "../config/mcp-config.js";
-import type { McpCodexToolApprovalMode } from "../config/types.mcp.js";
 import type { BranchConfig } from "../config/types.branch.js";
+import type { McpCodexToolApprovalMode } from "../config/types.mcp.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import {
   startOAuthLoopbackCallbackServer,
@@ -666,11 +666,7 @@ async function probeMcpServersOrFail(params: {
       applyMcpProbeInitializeTimeout(server),
     ]),
   );
-  const runtime = await createMcpProbeRuntime(
-    "branch-cli-mcp-probe",
-    params.config,
-    probeServers,
-  );
+  const runtime = await createMcpProbeRuntime("branch-cli-mcp-probe", params.config, probeServers);
   try {
     const result = await readMcpProbeResult(runtime);
     const probeIssue = resolveMcpProbeIssue({ result, servers: params.servers, path: params.path });
@@ -693,7 +689,7 @@ export function registerMcpCli(program: Command) {
 
   mcp
     .command("serve")
-    .description("Expose Branch Agent channels over MCP stdio")
+    .description("Expose Branch Agent Trunks, group chats and channels over MCP stdio")
     .option("--url <url>", "Gateway WebSocket URL (defaults to gateway.remote.url when configured)")
     .option("--token <token>", "Gateway token (if required)")
     .option("--token-file <path>", "Read gateway token from file")
@@ -719,9 +715,16 @@ export function registerMcpCli(program: Command) {
           throw new Error('Invalid --claude-channel-mode value. Use "auto", "on", or "off".');
         }
         const { serveBranchChannelMcp } = await import("../mcp/channel-server.js");
+        const { resolveDesktopGateway } = await import("../mcp/desktop-gateway.js");
+        // With no auth named, use the Branch Agent desktop app's loopback gateway and token file.
+        const desktop = resolveDesktopGateway({
+          url: opts.url as string | undefined,
+          token: gatewayToken,
+          password: gatewayPassword,
+        });
         await serveBranchChannelMcp({
-          gatewayUrl: opts.url as string | undefined,
-          gatewayToken,
+          gatewayUrl: desktop?.url ?? (opts.url as string | undefined),
+          gatewayToken: desktop?.token ?? gatewayToken,
           gatewayPassword,
           claudeChannelMode,
           verbose: Boolean(opts.verbose),
