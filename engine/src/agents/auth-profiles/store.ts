@@ -13,6 +13,7 @@ import { deferSqlitePostCommitPublication } from "../../infra/sqlite-post-commit
 import { isUserModelAuthProfileId } from "../../state/user-model-account-id.js";
 import { readUserModelAuthProfile } from "../../state/user-model-accounts.js";
 import { isRecord, resolveUserPath } from "../../utils.js";
+import { resolveLegacyInheritedAuthDir } from "../legacy-inherited-auth-dir.js";
 import { cloneAuthProfileStore } from "./clone.js";
 import { AUTH_STORE_VERSION, authProfilesLog } from "./constants.js";
 import { normalizeAuthProfileSecretRefs } from "./credential-normalize.js";
@@ -193,9 +194,23 @@ function resolveRuntimeAuthProfileLoadOptions(
 ): LoadAuthProfileStoreOptions | undefined {
   const mode = authProfileRuntimeMode.getStore();
   if (mode?.kind !== "agent-dir") {
-    return options;
+    return withConfiguredInheritedAuthDir(options);
   }
   return { ...options, inheritedAuthDir: mode.agentDir };
+}
+
+/**
+ * Config-scoped reads inherit from the same owner as prepared runs: while the shared store is
+ * still the legacy one, agents.defaults.authInheritance names it (not a fixed main agent).
+ */
+function withConfiguredInheritedAuthDir(
+  options?: LoadAuthProfileStoreOptions,
+): LoadAuthProfileStoreOptions | undefined {
+  if (!options?.config || options.inheritedAuthDir) {
+    return options;
+  }
+  const inheritedAuthDir = resolveLegacyInheritedAuthDir(options.config);
+  return inheritedAuthDir ? { ...options, inheritedAuthDir } : options;
 }
 
 let runtimeSnapshotPublisherForTest: ((publish: () => void) => void) | undefined;
