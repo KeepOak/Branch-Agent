@@ -15,10 +15,12 @@ import { SideChatTab } from "./pane/SideChatTab";
 import { DashboardTab } from "./pane/DashboardTab";
 import { PreviewTab, usePortals } from "./pane/PreviewTab";
 import { ChangesTab } from "./coding/ChangesTab";
+import { ContactTopicsPane } from "../shell/ContactTopicsPane";
+import type { TopicListItem } from "../shell/contact-topics";
 import "./stage.css";
 import "./pane/pane.css";
 
-export const PANE_TABS = ["Activity", "Dashboard", "Preview", "Timeline", "Branches", "Plan", "Files", "Memory", "Terminal", "Side chat", "Changes"] as const;
+export const PANE_TABS = ["Conversations", "Activity", "Dashboard", "Preview", "Timeline", "Branches", "Plan", "Files", "Memory", "Terminal", "Side chat", "Changes"] as const;
 export type PaneTab = (typeof PANE_TABS)[number];
 const ADDABLE: PaneTab[] = ["Side chat", "Changes"];
 const NOT_HERE = "This window can't show it yet.";
@@ -92,10 +94,11 @@ type Props = {
   title?: string;
   /** Reads the conversation again after switching paths. */
   onReload?: () => void;
+  contactTopics?: { items: TopicListItem[]; name: string; onOpen: (key: string) => void; onNew?: () => void };
 };
 
 /** The side panel: its tabs, + Add a tab, Focus, Minimize, Layout and a resizer, over each tab's engine data. */
-export function SidePane({ engine, name, blocks, running, card, cardError, tab, onTab, onClose, toast, title, onReload }: Props) {
+export function SidePane({ engine, name, blocks, running, card, cardError, tab, onTab, onClose, toast, title, onReload, contactTopics }: Props) {
   const [prefs, setPrefs] = useState<Prefs>(readPrefs);
   const [focus, setFocus] = useState(false);
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[]; label: string } | null>(null);
@@ -120,7 +123,7 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
     head.current?.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [tab]);
   const tabs = PANE_TABS.filter((t) =>
-    t === "Branches" ? paths.length >= 2 || tab === "Branches" : t === "Preview" ? previews.portals.length > 0 || tab === "Preview" : ADDABLE.includes(t) ? added.includes(t) : true,
+    t === "Conversations" ? Boolean(contactTopics) : t === "Branches" ? paths.length >= 2 || tab === "Branches" : t === "Preview" ? previews.portals.length > 0 || tab === "Preview" : ADDABLE.includes(t) ? added.includes(t) : true,
   );
   const current = tabs.includes(tab) ? tab : "Activity";
   const fail = (m: string) => {
@@ -216,6 +219,7 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
               </p>
             ) : null}
             {current === "Activity" ? <ActivityTab engine={engine} name={name} blocks={blocks} running={running} level={level} onError={fail} /> : null}
+            {current === "Conversations" && contactTopics ? <ContactTopicsPane {...contactTopics} /> : null}
             {current === "Dashboard" ? <DashboardTab engine={engine} name={name} level={level} /> : null}
             {current === "Preview" ? <PreviewTab engine={engine} name={name} portals={previews.portals} error={previews.error} onError={fail} toast={toast} /> : null}
             {current === "Timeline" ? <TimelineTab name={name} title={title || name} blocks={blocks} running={running} level={level} /> : null}

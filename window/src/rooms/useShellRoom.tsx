@@ -21,6 +21,7 @@ export type ShellRoom = {
   menu: { ruleWords: string | null; rules: () => MenuItem[] } | null;
   /** The other Trunks in the room, for the agent window. */
   others: string[];
+  members: string[];
 };
 
 type Args = {
@@ -37,7 +38,7 @@ export function useShellRoom(a: Args): ShellRoom {
   const room = useRoom(a.engine, a.rowKind, a.history);
   const trunkName = useMemo(() => (id: string) => a.trunks.find((t) => t.id === id)?.name || id, [a.trunks]);
   const thread: ThreadRoom = { isRoom: room.isRoom, selfId: room.selfId, ownAgentId: a.agentId ?? room.ownAgentId, trunkName, whereRuns: room.whereRuns };
-  if (!room.isRoom) return { thread, header: null, menu: null, others: [] };
+  if (!room.isRoom) return { thread, header: null, menu: null, others: [], members: [] };
   const picks = roomPicks(a.ownTrunk, room.members, trunkName);
   const choose = (rule: "mention" | "always") =>
     void room.setRule(rule).then(
@@ -51,5 +52,6 @@ export function useShellRoom(a: Args): ShellRoom {
     header: { faces: (size) => <RoomFaces picks={picks} size={Math.min(size, 34)} />, line: room.line(a.ownTrunk, trunkName) },
     menu: { ruleWords: room.rule ? RULE_WORDS[room.rule] : null, rules: () => roomRulesItems({ chatApp: room.chatApp, rule: room.rule, choose }) },
     others: room.members.trunks.map(trunkName).filter((n) => n !== a.ownTrunk),
+    members: [a.ownTrunk, ...room.members.trunks.map(trunkName), ...room.members.people.map((member) => member.name), ...room.members.agents.map((member) => member.name)].filter((name, index, all) => Boolean(name) && all.indexOf(name) === index),
   };
 }

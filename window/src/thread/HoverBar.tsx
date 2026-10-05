@@ -21,6 +21,7 @@ export type HoverActions = {
   reactDisabled: string | null;
   inspect?: Act;
   branch: Act;
+  startConversation?: Act;
   /** Read aloud / Stop reading on a reply (§4.2.6). */
   read?: Act & { reading: boolean };
 };
@@ -102,6 +103,7 @@ function MoreMenu({ actions, isReply, onClose }: { actions: HoverActions; isRepl
   return (
     <Popover label="More" onClose={onClose}>
       {item("Branch from here", actions.branch)}
+      {actions.startConversation ? item("Start a conversation from here", actions.startConversation) : null}
       {item("Leave out of context", null, NO_LEAVE_OUT)}
       {isReply ? item("Every step behind this reply", null, NO_TIMELINE) : null}
       {isReply && actions.read ? item(actions.read.reading ? "Stop reading" : "Read aloud", actions.read) : null}
@@ -131,6 +133,7 @@ export function HoverBar({ isReply, actions, meta }: { isReply: boolean; actions
       {isReply ? <Btn label="Look inside" d={ICONS.eye} act={actions.inspect} /> : null}
       {isReply ? <Btn label="Report a problem" d={ICONS.flag} act={{ run: () => undefined, disabled: NO_FLAG }} /> : null}
       <Btn label="Branch from here" d={ICONS.branch} act={actions.branch} />
+      {actions.startConversation ? <Btn label="Start a conversation from here" d={ICONS.reply} act={actions.startConversation} /> : null}
       <Btn label="More" d={ICONS.more} act={{ run: () => setMenu("more"), disabled: null }} />
       <Btn label="Pin" d={ICONS.pin} act={{ run: () => undefined, disabled: NO_PIN }} />
       {time ? (

@@ -33,6 +33,8 @@ import { useRowCard, useRowExtras, useSelection } from "./sidebar-state";
 import { machineMenuItems, MachineSwitcher } from "./MachineMenu";
 import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import { createTopic, newMenuItems } from "./new-menu";
+import type { TopicListItem } from "./contact-topics";
+import { useContactSegments } from "./useContactSegments";
 import { contactAlert, contactAlertTarget, notify, readMutedContacts, saveMutedContacts } from "./notify";
 import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
 import { SidebarPet } from "./SidebarPet";
@@ -320,6 +322,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [slideOpen, setSlideOpen] = useState(false);
   const [route, setRoute] = useState<Route>(loadRoute);
   const [draftTopic, setDraftTopic] = useState<{ agentId: string; nonce: string; options: Record<string, unknown> } | null>(null);
+  const [topicReturnKey, setTopicReturnKey] = useState<string | null>(null);
   const draftTopicRef = useRef(draftTopic);
   draftTopicRef.current = draftTopic;
   const creatingTopic = useRef<string | null>(null);
@@ -375,23 +378,27 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   );
   const openKey = s.sessionKey;
   const activeContact = contactRows.find((contact) => contact.threadKey === openKey);
+  const draftContact = draftTopic ? contactRows.find((contact) => contact.id === `trunk:${draftTopic.agentId}`) : null;
+  const openParentKey = lists.rows.find((row) => row.key === openKey)?.parentKey;
+  const topicContact = draftContact ?? activeContact ?? contactRows.find((contact) => contact.threadKey === openParentKey) ?? contactRows.find((contact) => contact.threadKey === topicReturnKey);
   const [activeTopics, setActiveTopics] = useState<Topic[]>([]);
+  const segments = useContactSegments(request, ready && activeContact ? activeContact.threadKey : null);
   const [focusTopic, setFocusTopic] = useState<{ key: string; nonce: number } | null>(null);
   useEffect(() => {
-    if (!ready || !activeContact) { setActiveTopics([]); return; }
+    if (!ready || !topicContact) { setActiveTopics([]); return; }
     let live = true;
     let generation = 0;
     const load = async () => {
       const current = ++generation;
       try {
-        const found = await listContactTopics(activeContact.id, (method, params) => session.request(method, params));
+        const found = await listContactTopics(topicContact.id, (method, params) => session.request(method, params));
         if (live && current === generation) setActiveTopics(found);
       } catch (error) { if (live) console.warn("contacts.topics failed", error); }
     };
     void load();
     const off = session.onGatewayEvent((event) => { if (event === "contacts.changed") void load(); });
     return () => { live = false; off(); };
-  }, [session, ready, activeContact?.id]);
+  }, [session, ready, topicContact?.id]);
   const mainKeySuffix = s.mainKey?.split(":").slice(2).join(":") || "main";
   const activeEngine = session.engine;
   const draftEngine = useMemo(() => draftTopic ? {
@@ -415,6 +422,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     }
   }, [session]);
   const openConversation = useCallback((key: string) => go({ kind: "chat", key }), [go]);
+  const openTopic = (key: string) => {
+    if (topicContact) setTopicReturnKey(topicContact.threadKey);
+    openConversation(key);
+  };
   const previousContactActivity = useRef<Map<string, number> | null>(null);
   useEffect(() => {
     if (!ready) { previousContactActivity.current = null; return; }
@@ -553,12 +564,20 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     setRoute({ kind: "chat", key: null });
     setSlideOpen(false);
   }, [trunks.defaultId]);
+  const startFromMessage = (afterMessageId: string) => {
+    if (!activeContact || activeContact.kind !== "trunk") return;
+    setTopicReturnKey(activeContact.threadKey);
+    startNew(activeContact.id.slice(6), { contactAnchor: { threadKey: activeContact.threadKey, afterMessageId } });
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".conversation-column textarea")?.focus());
+  };
 
   const sendNew = async (text: string, extras?: SendExtras): Promise<boolean> => {
     if (!draftTopic || creatingTopic.current === draftTopic.nonce) return false;
     creatingTopic.current = draftTopic.nonce;
     try {
-      const key = await createTopic(request, draftTopic.agentId, mainKeySuffix, text, { ...draftTopic.options, ...extras });
+      const threadKey = contactRows.find((contact) => contact.id === `trunk:${draftTopic.agentId}`)?.threadKey;
+      const mainKey = threadKey?.slice(`agent:${draftTopic.agentId}:`.length) || mainKeySuffix;
+      const key = await createTopic(request, draftTopic.agentId, mainKey, text, { ...draftTopic.options, ...extras });
       await list.refresh();
       if (draftTopicRef.current?.nonce === draftTopic.nonce && draftTopicRef.current.agentId === draftTopic.agentId) openConversation(key);
       return true;
@@ -604,6 +623,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     const featured = activeContact.preview.kind === "topic" && activeContact.preview.topicKey === topic.key ? activeContact.preview : null;
     return { topic, text: featured?.text ?? row?.preview ?? "", at: featured?.at ?? row?.updatedAt ?? topic.anchor?.at ?? 0, unread: topic.unread };
   }) : [];
+  const topicItems: TopicListItem[] = activeTopics.map((topic) => {
+    const row = lists.rows.find((candidate) => candidate.key === topic.key);
+    return { topic, updatedAt: row?.updatedAt ?? topic.anchor?.at ?? 0, preview: row?.preview ?? "", projectName: projects.projects.find((project) => project.id === topic.projectId)?.name };
+  });
   const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
   const sections = buildContactSections(contacts, prefs, now);
   const markReadContact = (contact: Contact) => {
@@ -897,8 +920,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   const usingComputer = workWords(s, now) === "Working · using the computer";
   const who = trunkName(openRow?.agentId);
-  const conversationTools = draftTopic ? null : (
+  const conversationTools = (
     <>
+      {topicReturnKey && (draftTopic || openKey !== topicReturnKey) ? <button type="button" className="ib" aria-label="Back to contact thread" title="Back to contact thread" onClick={() => { const key = topicReturnKey; setTopicReturnKey(null); openConversation(key); }}><Icon name="back" /></button> : null}
+      {topicContact && !draftTopic ? <button type="button" className="ib contact-conversations-button" aria-label={`Conversations · ${topicContact.topicCount}`} aria-pressed={pane === "Conversations"} onClick={() => setPane((value) => value === "Conversations" ? null : "Conversations")}>Conversations · {topicContact.topicCount}</button> : null}
+      {draftTopic ? null : <>
       {openRow?.kind === "group" || openRow?.kind === "channel" ? null : (
         <button type="button" className="ib" aria-label={`New conversation with ${trunkName(openRow?.agentId)}`} title={`New conversation with ${trunkName(openRow?.agentId)}`} onClick={() => startNew(openRow?.agentId)}><Icon name="plus" /></button>
       )}
@@ -911,10 +937,13 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       {openRow?.kind === "group" || openRow?.kind === "channel" ? null : (
         <button type="button" className="ib" aria-label={`Who ${who} knows and may talk to`} title={`Who ${who} knows and may talk to`} data-testid="who-it-knows-button" onClick={conversationMenu.whoItKnows}><Icon name="users" /></button>
       )}
+      {room.menu ? <button type="button" className="ib" aria-label="Room rules" onClick={(e) => showMenu(e, "room-rules-header", room.menu!.rules(), "Room rules")}><Icon name="gear" /></button> : null}
+      {room.members.length ? <button type="button" className="ib" aria-label={`Members · ${room.members.length}`} onClick={(e) => showMenu(e, "room-members-header", [{ kind: "head", label: "Members" }, ...room.members.map((member) => ({ kind: "custom" as const, node: <div className="mi">{member}</div> }))], "Members")}><Icon name="users" /></button> : null}
       <button type="button" className="ib" aria-label="Find in this conversation" title="Find in this conversation (Ctrl+F)" onClick={() => window.dispatchEvent(new Event(FIND_EVENT))}><Icon name="search" /></button>
       <button type="button" className="ib" aria-label="Conversation menu" title={`More for ${openRow?.kind === "group" ? name : who}`} data-testid="conversation-menu-button" onClick={conversationMenu.open}>
         <Icon name="more" />
       </button>
+      </>}
     </>
   );
   let main: ReactNode;
@@ -977,6 +1006,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         }>
         <Thread
           {...areaProps}
+          earlierPages={segments.pages}
+          currentStartedAt={segments.currentStartedAt}
+          hasEarlierPages={segments.hasEarlier}
+          loadingEarlier={segments.loading}
+          earlierError={segments.error}
+          onLoadEarlier={segments.loadEarlier}
+          onOpenSession={openTopic}
+          onStartTopic={activeContact?.kind === "trunk" ? startFromMessage : undefined}
           topicUpdates={topicUpdates}
           focusTopic={focusTopic}
           onOpenActivity={() => setPane("Activity")}
@@ -1024,7 +1061,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         />
         </div>
         {pane && ready ? (
-          <SidePane key={s.sessionKey} engine={session.engine} name={trunkName(openRow?.agentId)} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} cardError={progress.error} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={notify} title={name} onReload={() => void session.reload()} />
+          <SidePane key={s.sessionKey} engine={session.engine} name={trunkName(openRow?.agentId)} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} cardError={progress.error} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={notify} title={name} onReload={() => void session.reload()}
+            contactTopics={topicContact ? { items: topicItems, name: topicContact.name, onOpen: openTopic, ...(topicContact.kind === "trunk" ? { onNew: () => { setTopicReturnKey(topicContact.threadKey); startNew(topicContact.id.slice(6)); } } : {}) } : undefined} />
         ) : null}
       </>
     );
@@ -1137,6 +1175,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onRailSearch={focusSearch}
         onOpen={(key) => {
           selection.clear();
+          setTopicReturnKey(null);
           const contact = contacts.find((candidate) => candidate.threadKey === key);
           setFocusTopic(contact?.preview.kind === "topic" ? { key: contact.preview.topicKey, nonce: Date.now() } : null);
           openConversation(key);
