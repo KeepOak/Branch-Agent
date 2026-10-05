@@ -18,8 +18,8 @@ import {
 import { createPluginRuntimeCapabilityLease } from "../../plugins/capability-lease.js";
 import { createPluginServiceGatewayEvents } from "../../plugins/gateway-events.js";
 import { sessionChanges } from "../../sessions/session-row-changes.js";
-import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import { withBranchTestState } from "../../test-utils/branch-test-state.js";
+import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import type { ChatAbortControllerEntry } from "../chat-abort.js";
 import { readGatewayAccessRevision } from "../gateway-access-revision.js";
 import { createGatewayBroadcaster } from "../server-broadcast.js";
@@ -187,6 +187,17 @@ afterEach(async () => {
 });
 
 describe("sessions.changed coalescing", () => {
+  it("emits contacts.changed from the same debounced session publication", async () => {
+    const context = createContext();
+    await emitAndSettleLeading(context, { sessionKey: "agent:main:main", reason: "update" });
+    await flushPendingSessionsChangedEvents(context);
+    expect(context.broadcastToConnIds).toHaveBeenCalledWith(
+      "contacts.changed",
+      expect.objectContaining({ agentId: "main", ts: expect.any(Number) }),
+      expect.any(Set),
+      expect.objectContaining({ dropIfSlow: true }),
+    );
+  });
   it("publishes catalog-only changes without invalidating session projections or access", async () => {
     const context = createContext();
     const changed = vi.fn();

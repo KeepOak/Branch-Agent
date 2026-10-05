@@ -147,6 +147,14 @@ function broadcastSessionsChanged(
     return;
   }
   const [eventAgentId, routingAgentId, compatibilityOwnerAgentId] = scope;
+  // The contact roster is a projection of these same sessions. Publish a
+  // debounced invalidation alongside each coalesced session notice.
+  context.broadcastToConnIds(
+    "contacts.changed",
+    { ts: Date.now(), ...(routingAgentId ? { agentId: routingAgentId } : {}) },
+    connIds,
+    { ...(routingAgentId ? { agentId: routingAgentId } : {}), dropIfSlow: true },
+  );
   const routingOptions = {
     ...(routingAgentId ? { agentId: routingAgentId } : {}),
     dropIfSlow: true,

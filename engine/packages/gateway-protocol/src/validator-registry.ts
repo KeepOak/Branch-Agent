@@ -24,6 +24,9 @@ export {
 } from "./session-placement-validators.js";
 
 // Validator names mirror schemas so callers can pair them with wire contracts.
+export const validateContactsListParams = compile(S.ContactsListParamsSchema);
+export const validateContactsTopicsParams = compile(S.ContactsTopicsParamsSchema);
+export const validateContactsMarkReadParams = compile(S.ContactsMarkReadParamsSchema);
 export const validateCommandsListParams = compile(S.CommandsListParamsSchema);
 export const validateBackupStatusParams = compile(S.BackupStatusParamsSchema);
 export const validateStorageLocationsListParams = compile(S.StorageLocationsListParamsSchema);
