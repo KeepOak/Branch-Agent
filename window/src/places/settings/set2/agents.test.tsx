@@ -17,7 +17,7 @@ const LIST = {
 const CONFIG = { hash: "h1", valid: true, config: { agents: { entries: { "builder-oak": { agentToAgent: { deny: ["a2a:hermes-agent-d4e5f6"] } } } } } };
 
 function engineWith(answers: Record<string, unknown>) {
-  const request = vi.fn(async (method: string) => answers[method] ?? {});
+  const request = vi.fn(async (method: string, _params?: unknown) => answers[method] ?? {});
   const engine: WindowEngine = { request: request as WindowEngine["request"], onEvent: () => () => {}, sessionKey: "agent:main:main", agentId: "main", scopes: ["operator.admin"] };
   return { engine, request };
 }
