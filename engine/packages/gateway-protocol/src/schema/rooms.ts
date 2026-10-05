@@ -62,13 +62,13 @@ export const RoomsLogParamsSchema = closedObject({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
 export const RoomsMembersAddParamsSchema = closedObject({ roomId: Id, kind: Kind, id: Id });
-export const RoomsMembersRemoveParamsSchema = RoomsMembersAddParamsSchema;
+export const RoomsMembersRemoveParamsSchema = closedObject({ roomId: Id, kind: Kind, id: Id });
 export const RoomsRuleSetParamsSchema = closedObject({
   roomId: Id,
   rule: Rule,
   trunksTalk: Type.Optional(Type.Boolean()),
 });
-export const RoomsArchiveParamsSchema = RoomsGetParamsSchema;
+export const RoomsArchiveParamsSchema = closedObject({ roomId: Id });
 export const RoomsRoomResultSchema = closedObject({ room: RoomSchema });
 export const RoomsListResultSchema = closedObject({ rooms: Type.Array(RoomSchema) });
 export const RoomsLogResultSchema = closedObject({
