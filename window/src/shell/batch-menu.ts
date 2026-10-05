@@ -1,4 +1,5 @@
 // The menu for several conversations picked with Alt or Shift (§4.1.1 select several, the preview's batchMenuPA18).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Conversation } from "../connect/conversations";
 import type { Actions } from "./conversation-actions";
 import type { MenuItem } from "./Menu";

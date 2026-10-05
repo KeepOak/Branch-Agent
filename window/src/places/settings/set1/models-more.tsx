@@ -1,6 +1,7 @@
 // Settings › Models, Advanced and Technical (§4.7.6): the sections every tab shares, in the preview's order, with
 // each tab's own sections in their place. Wired rows save to the engine config; rows the engine has no setting
 // for are greyed with the reason.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { ReactNode } from "react";
 import { list, text, visible } from "../adapter";
 import { Btn, Ctl, Num, Pick, Sec, Seg, Switch, useLevel, useSaveRunner, type Opt } from "../kit";

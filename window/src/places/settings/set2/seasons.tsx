@@ -2,6 +2,7 @@
 // (plugins.entries.memory-core.config.rings.*) and its doctor.memory.* readouts and actions, Budding on the skill
 // workshop (skills.workshop.autonomous.mode, skills.proposals.list), the season's changes, and session backfill.
 // The Gardener's skill resting is retired in the engine, so its rows say so.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { Btn, Ctl, Empty, Hint, Num, Page, Pick, Prow, Sec, Seg, Status, Switch, useConfig, useScope, type RowEntry } from "../kit";

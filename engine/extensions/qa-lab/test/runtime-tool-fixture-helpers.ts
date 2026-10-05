@@ -3,8 +3,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { closeQaRuntimeStores } from "branch/plugin-sdk/qa-runtime";
-import { upsertSessionEntry } from "branch/plugin-sdk/session-store-runtime";
+import { resolveStorePath, upsertSessionEntry } from "branch/plugin-sdk/session-store-runtime";
 import { appendSessionTranscriptMessageByIdentity } from "branch/plugin-sdk/session-transcript-runtime";
+import { appendSqliteTrajectoryRuntimeEvents } from "branch/plugin-sdk/sqlite-runtime-testing";
 import { vi } from "vitest";
 import { createQaBusState } from "../src/bus-state.js";
 import { createQaChannelTransport } from "../src/qa-channel-transport.js";
@@ -111,6 +112,7 @@ function runtimeToolFixtureConfig(
     toolCoverage: {
       bucket: "branch-dynamic-integration",
       expectedLayer: "branch-dynamic",
+      capabilityLayer: "branch-dynamic-direct",
     },
     ...overrides,
   };
@@ -276,6 +278,56 @@ export async function writeRuntimeToolTranscripts(
 ) {
   await writeQaSessionTranscript(env, `agent:qa:runtime-tool:${toolName}:happy`, happyMessages);
   await writeQaSessionTranscript(env, `agent:qa:runtime-tool:${toolName}:failure`, failureMessages);
+}
+
+export function writeToolSearchDiscoveryEvidence(
+  env: QaSuiteRuntimeEnv,
+  toolName: string,
+  phase: "happy" | "failure",
+  targetCallId = `call-${toolName}-${phase}`,
+  options?: { callStatus?: string | null },
+) {
+  const sessionKey = `agent:qa:runtime-tool:${toolName}:${phase}`;
+  const sessionId = sessionKey.replace(/[^a-z0-9]+/giu, "-");
+  const sessionEnv = {
+    ...process.env,
+    BRANCH_STATE_DIR: path.join(env.gateway.tempRoot, "state"),
+  };
+  const storePath = resolveStorePath(undefined, { agentId: "qa", env: sessionEnv });
+  appendSqliteTrajectoryRuntimeEvents({ agentId: "qa", env: sessionEnv, sessionId, storePath }, [
+    {
+      traceSchema: "branch-trajectory",
+      schemaVersion: 1,
+      traceId: sessionId,
+      source: "runtime",
+      type: "tool.search.discovery",
+      ts: new Date().toISOString(),
+      seq: 1,
+      sessionId,
+      sessionKey,
+      runId: `run-${phase}`,
+      data: {
+        threadId: `thread-${phase}`,
+        turnId: `turn-${phase}`,
+        search: {
+          callId: `search-${phase}`,
+          callExecution: "client",
+          ...(options?.callStatus === null
+            ? {}
+            : { callStatus: options?.callStatus ?? "completed" }),
+          outputExecution: "client",
+          outputStatus: "completed",
+          tools: [{ namespace: "branch", name: toolName }],
+        },
+        target: {
+          callId: targetCallId,
+          namespace: "branch",
+          name: toolName,
+          success: phase === "happy",
+        },
+      },
+    },
+  ]);
 }
 
 export async function cleanupRuntimeToolFixtureTempRoots() {

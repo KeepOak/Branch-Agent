@@ -1,10 +1,10 @@
-import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES } from "../agents/workspace-bootstrap-read.js";
 import { DEFAULT_BOOTSTRAP_FILENAME, seedWorkspaceBootstrap } from "../agents/workspace.js";
 import { root as fsSafeRoot } from "../infra/fs-safe.js";
 import type { BranchStateDatabaseOptions } from "../state/branch-state-db.js";
+import { digestGroveBytes } from "./digest.js";
 import { groveContainedRelativePath } from "./path-containment.js";
 import type { GroveAddPlan } from "./types.js";
 
@@ -16,10 +16,6 @@ export class GroveBootstrapWriteError extends Error {
     super(message);
     this.name = "GroveBootstrapWriteError";
   }
-}
-
-function contentDigest(content: Uint8Array): string {
-  return `sha256:${createHash("sha256").update(content).digest("hex")}`;
 }
 
 export async function seedClawPackageBootstrap(
@@ -62,7 +58,7 @@ export async function seedClawPackageBootstrap(
     maxBytes: MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES,
     symlinks: "reject",
   });
-  if (resolve(read.realPath) !== sourcePath || contentDigest(read.buffer) !== action.digest) {
+  if (resolve(read.realPath) !== sourcePath || digestGroveBytes(read.buffer) !== action.digest) {
     throw new GroveBootstrapWriteError(
       "bootstrap_source_changed",
       "BOOTSTRAP.md changed after consent; run add --dry-run again.",

@@ -4,9 +4,28 @@ import {
   openBranchAgentDatabase,
   type BranchAgentDatabaseOptions,
 } from "../../../state/branch-agent-db.js";
-import type { AcpParentStreamEvent } from "./acp-parent-stream-store.sqlite.js";
+import {
+  createAcpParentStreamRecorder,
+  type AcpParentStreamEvent,
+} from "./acp-parent-stream-store.sqlite.js";
 
 type AcpParentStreamDatabase = Pick<BranchAgentKyselyDatabase, "acp_parent_stream_events">;
+
+export async function recordAcpParentStreamEventsForTest(
+  options: Parameters<typeof createAcpParentStreamRecorder>[0] & {
+    events: Array<{ event: AcpParentStreamEvent; createdAt: number }>;
+  },
+): Promise<void> {
+  const recorder = createAcpParentStreamRecorder(options);
+  try {
+    const result = await recorder.record(options.events);
+    if (!result.ok) {
+      throw result.error;
+    }
+  } finally {
+    await recorder.close();
+  }
+}
 
 export function listAcpParentStreamEventsForTest(
   options: BranchAgentDatabaseOptions & { sessionId: string; runId: string },

@@ -1,5 +1,6 @@
 // What the Trunk family sends: agents.update / agents.create / agents.delete and config.patch on agents.entries.
 // The order and params follow engine/src/gateway/server-methods/agents.ts and the config.patch merge patch.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../connect/engine";
 import { mayChanges, type May } from "./may";
 import { avatarFor, patchConfig, readConfig, readRoster, rec, str, type ConfigSnapshot, type Roster, type TrunkRow } from "./model";

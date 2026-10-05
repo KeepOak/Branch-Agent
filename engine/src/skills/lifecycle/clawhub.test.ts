@@ -642,7 +642,7 @@ describe("skills-clawhub", () => {
     const result = await installTestSkill(testWorkspaceDir, "weather");
 
     expectFailure(result);
-    expect(result.error).toContain('Skill "weather" is ambiguous on ClawHub.');
+    expect(result.error).toContain('Skill "weather" is ambiguous on Seedbank.');
     expect(result.error).toContain("branch skills install @owner/weather");
     expect(result.error).toContain("Multiple Seedbank publishers provide weather.");
   });
@@ -663,8 +663,6 @@ describe("skills-clawhub", () => {
         skillMd: "---\nname: weather\n---\n",
       });
       const lockPath = path.join(workspaceDir, ".clawhub", "lock.json");
-      await fs.mkdir(path.join(workspaceDir, ".clawdhub"));
-      await fs.copyFile(lockPath, path.join(workspaceDir, ".clawdhub", "lock.json"));
       await fs.writeFile(lockPath, damaged);
       const originalSkill = await fs.readFile(path.join(skillDir, "SKILL.md"), "utf8");
       mockInstalledSkillFile("---\nname: agentreceipt\n---\n");
@@ -690,7 +688,7 @@ describe("skills-clawhub", () => {
     },
   );
 
-  it.each([".clawdhub"])(
+  it.each([".clawhub"])(
     "rejects damaged %s tracking in update, untracking, status and verification",
     async (directory) => {
       const workspaceDir = await tempDirs.make("branch-skills-damaged-tracking-");

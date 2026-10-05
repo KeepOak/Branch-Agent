@@ -23,8 +23,10 @@ import {
   isFutureDateTimestampMs,
   resolveExpiresAtMsFromDurationMs,
 } from "branch/plugin-sdk/number-runtime";
-import * as proxyCaptureSdk from "branch/plugin-sdk/proxy-capture";
-import { resolveEffectiveDebugProxyUrl } from "branch/plugin-sdk/proxy-capture";
+import {
+  captureHttpExchangeAsync,
+  resolveEffectiveDebugProxyUrl,
+} from "branch/plugin-sdk/proxy-capture";
 import { resolveRequestUrl } from "branch/plugin-sdk/request-url";
 import { createSubsystemLogger } from "branch/plugin-sdk/runtime-env";
 import { normalizeLowercaseStringOrEmpty } from "branch/plugin-sdk/string-coerce-runtime";
@@ -46,10 +48,6 @@ import {
 export { normalizeTelegramApiRoot as resolveTelegramApiBase } from "./api-root.js";
 
 const log = createSubsystemLogger("telegram/network");
-
-// The shipped 2026.9.6 host omits async capture; retire this check when the minimum advances.
-const captureSdk: Partial<Pick<typeof proxyCaptureSdk, "captureHttpExchangeAsync">> =
-  proxyCaptureSdk;
 
 const TELEGRAM_AUTO_SELECT_FAMILY_ATTEMPT_TIMEOUT_MS = 300;
 const TELEGRAM_API_HOSTNAME = "api.telegram.org";
@@ -703,20 +701,18 @@ export function resolveTelegramTransport(
     let err: unknown;
     const captureResponse = (response: Response, fallbackAttempt?: number): void => {
       // Finalization retains capture failures; observe the Promise returned by the SDK view.
-      void captureSdk
-        .captureHttpExchangeAsync?.({
-          url: resolveRequestUrl(input),
-          method: init?.method ?? "GET",
-          requestHeaders: init?.headers as Headers | Record<string, string> | undefined,
-          requestBody: init?.body ?? null,
-          response,
-          flowId: randomUUID(),
-          meta:
-            fallbackAttempt === undefined
-              ? { subsystem: "telegram-fetch" }
-              : { subsystem: "telegram-fetch", fallbackAttempt },
-        })
-        .catch(() => {});
+      void captureHttpExchangeAsync({
+        url: resolveRequestUrl(input),
+        method: init?.method ?? "GET",
+        requestHeaders: init?.headers as Headers | Record<string, string> | undefined,
+        requestBody: init?.body ?? null,
+        response,
+        flowId: randomUUID(),
+        meta:
+          fallbackAttempt === undefined
+            ? { subsystem: "telegram-fetch" }
+            : { subsystem: "telegram-fetch", fallbackAttempt },
+      }).catch(() => {});
     };
 
     if (callerProvidedDispatcher) {

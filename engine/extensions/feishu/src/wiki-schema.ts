@@ -1,4 +1,3 @@
-// Feishu helper module supports wiki schema behavior.
 import { optionalPositiveIntegerSchema } from "branch/plugin-sdk/channel-actions";
 import { Type } from "typebox";
 

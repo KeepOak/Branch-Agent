@@ -282,10 +282,10 @@ describe("buildXaiRealtimeVoiceProvider", () => {
     }));
     const cfg = {
       agents: {
-        list: [
-          { id: "helper", agentDir: "/tmp/branch-helper-agent" },
-          { id: "sprig", agentDir: "/tmp/branch-sprig-agent" },
-        ],
+        entries: {
+          helper: { agentDir: "/tmp/branch-helper-agent" },
+          sprig: { agentDir: "/tmp/branch-sprig-agent" },
+        },
       },
     };
     expect(

@@ -118,13 +118,13 @@ function StepRow({ step }: { step: Of<"step"> }) {
 }
 
 /** Steps fold (§4.2.2): closed in the history, open while the run is live, so steps show as they happen. */
-export function StepsFold({ steps, live }: { steps: Of<"step">[]; live: boolean }) {
+export function StepsFold({ steps, live, run }: { steps: Of<"step">[]; live: boolean; run?: { title: string; durationMs?: number } }) {
   const [open, setOpen] = useState(live);
   return (
     <details className="fold steps-fold indent" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>
         <Icon d={ICONS.chev} className="chev" />
-        {stepsSummary(steps)}
+        {stepsSummary(steps, live ? undefined : run)}
       </summary>
       <ol className="step-list">
         {steps.map((s) => (

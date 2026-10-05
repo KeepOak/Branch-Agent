@@ -503,6 +503,7 @@ export class CommandPalette extends BranchLightDomContentsElement {
     try {
       const result = await sessions.list({
         ...SESSION_SEARCH_SCOPE,
+        source: "command-palette",
         search,
         limit: SESSION_SEARCH_LIMIT,
       });

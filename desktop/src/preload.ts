@@ -19,6 +19,21 @@ if (info) {
       check: () => ipcRenderer.invoke("branch-desktop:component-update:check"),
       stage: () => ipcRenderer.invoke("branch-desktop:component-update:stage"),
     },
+    // Windows only: the header's colours and height for the native window buttons drawn over its top-right.
+    titleBar: process.platform === "win32"
+      ? { set: (overlay: { color: string; symbolColor: string; height: number }) => ipcRenderer.send("branch-desktop:title-bar", overlay) }
+      : undefined,
+    controls: {
+      get: () => ipcRenderer.invoke("branch-desktop:controls:get"),
+      set: (name: string, on: boolean) => ipcRenderer.invoke("branch-desktop:controls:set", name, on),
+      openDownload: (id: string) => ipcRenderer.invoke("branch-desktop:controls:open-download", id),
+      setTrayUsage: (left: number | null) => ipcRenderer.send("branch-desktop:controls:tray-usage", left),
+      onOpenUsage: (listener: () => void) => {
+        const handler = (): void => listener();
+        ipcRenderer.on("branch-desktop:open-usage", handler);
+        return () => { ipcRenderer.removeListener("branch-desktop:open-usage", handler); };
+      },
+    },
   });
   window.addEventListener("DOMContentLoaded", () => {
     fillTokenForm(info);

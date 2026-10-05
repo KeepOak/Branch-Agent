@@ -1,5 +1,6 @@
 // The permission mode menu (DESIGN-SPEC §4.3.4): this conversation's mode only (DECISIONS.md item 41), keys 1–5
 // (item 42), Full access only for the owner (item 128). Picking writes sessions.patch { permissionMode }.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useRef, type RefObject } from "react";
 import { blockedReason, modeName, MODE_ROWS, type EngineMode } from "./mode";
 import { NO_ROUTE, type OpenTarget } from "./nav";
@@ -8,6 +9,7 @@ import { MenuItem, Segmented, Sep, Switch } from "./ui";
 import { Icon } from "./icons";
 import { str, type Rec } from "./engine";
 import { shows, useLevel } from "../places-nav/level";
+import { shownWhy } from "../shell/shown-why";
 
 type Props = {
   anchor: RefObject<HTMLElement | null>;
@@ -121,7 +123,7 @@ export function ModeMenu(p: Props) {
             p.onOpen?.("settings/permissions");
           }}
         />
-        <div className="c-row c-lockdown" title={LOCKDOWN_GAP}>
+        <div className="c-row c-lockdown" title={shownWhy(LOCKDOWN_GAP)}>
           <span className="c-lock-t"><Icon name="lock" size={15} />Lockdown</span>
           <Switch on={false} label="Lockdown" disabled reason={LOCKDOWN_GAP} onChange={() => undefined} />
         </div>

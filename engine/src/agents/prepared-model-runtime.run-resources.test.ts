@@ -180,7 +180,7 @@ module.exports = { id: ${JSON.stringify(id)}, register(api) {
     }
     const config: BranchConfig = {
       agents: {
-        entries: { main: { default: true, workspace: state.workspaceDir } },
+        entries: { main: { workspace: state.workspaceDir } },
         defaults: { workspace: state.workspaceDir, model: `${providerId}/model` },
       },
       models: {

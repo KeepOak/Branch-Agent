@@ -1,6 +1,7 @@
 // Settings › Permissions, the row tables (§4.7.11): every section is data (title, level, hint, rows), drawn by a few
 // generic rows that read and save one engine config path at once. The same tables feed the settings search, so the
 // search can never drift from the page. A row the engine has no key for is drawn greyed with its reason.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import type { RecordValue } from "../adapter";

@@ -63,6 +63,34 @@ const environment = {
 };
 const observed = { wsPath: "/desktop/one", control: false, transport: "rfb", expiresAtMs: 1000 };
 describe("conversation computer lifecycle", () => {
+  it("shows placement lookup failures and retries instead of claiming no placement", async () => {
+    let failed = true;
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.describe" && failed) throw new Error("Placement unavailable");
+      return method === "sessions.describe" ? { session: { key: "agent:scout:one" } } : {};
+    });
+    await render(engine(request as WindowEngine["request"]));
+    await flush();
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Placement unavailable");
+    expect(container.textContent).not.toContain("It can't see a screen");
+    failed = false;
+    await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Try again")!.click());
+    await flush();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.textContent).toContain("It can't see a screen");
+  });
+  it("keeps a known conversation placement when the computer list fails", async () => {
+    viewer.connect.mockImplementation(async (options: any) => { options.onConnect(); return { disconnect: vi.fn() }; });
+    const request = vi.fn(async (method: string) => {
+      if (method === "environments.list") throw new Error("Computer list unavailable");
+      return method === "sessions.describe" ? placed : method === "environments.status" ? environment : method === "desktop.observe" ? observed : {};
+    });
+    await render(engine(request as WindowEngine["request"]));
+    await flush();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Computer list unavailable");
+    expect(viewer.connect).toHaveBeenCalled();
+    expect(container.textContent).toContain("Take over");
+  });
   it("never falls back to the host when this conversation has no placement", async () => {
     const request = vi.fn(async () => ({ session: { key: "agent:scout:one" } }));
     await render(engine(request as any));

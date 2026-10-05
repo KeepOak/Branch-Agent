@@ -1,6 +1,6 @@
 # Branch Agent Baseten Provider
 
-Official Branch Agent provider plugin for Baseten Model APIs, including Thinking Machines Lab's Inkling.
+Official Branch Agent provider plugin for Baseten Model APIs, with DeepSeek V4.1 Flash as the starter model.
 
 Install from Branch Agent:
 

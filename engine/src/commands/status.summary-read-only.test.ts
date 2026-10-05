@@ -16,14 +16,17 @@ import { readSessionStoreSummaryReadOnly } from "../config/sessions/session-acce
 import { resolveSqliteTargetFromSessionStorePath } from "../config/sessions/session-sqlite-target.js";
 import { spyOnSessionStoreSummaries } from "../config/sessions/session-store-summary.test-support.js";
 import { getActivePluginRegistry, setActivePluginRegistry } from "../plugins/runtime.js";
-import { closeBranchAgentDatabasesForTest } from "../state/branch-agent-db.js";
-import { closeBranchStateDatabaseForTest } from "../state/branch-state-db.js";
+import {
+  closeBranchAgentDatabasesAsync,
+  closeBranchAgentDatabasesForTest,
+} from "../state/branch-agent-db.js";
 import { getStatusSummary } from "../status/summary.js";
 import {
   createDirectOutboundTestAdapter,
   createOutboundTestPlugin,
   createTestRegistry,
 } from "../test-utils/channel-plugins.js";
+import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import { withBranchTestState } from "../test-utils/branch-test-state.js";
 import { useSessionStoreTempDirs } from "../test-utils/session-state-cleanup.js";
@@ -57,10 +60,11 @@ describe("getStatusSummary read-only session access", () => {
     setActivePluginRegistry(createTestRegistry());
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cliBackendsTesting.resetDepsForTest();
+    await closeBranchAgentDatabasesAsync();
     closeBranchAgentDatabasesForTest();
-    closeBranchStateDatabaseForTest();
+    await closeStateDatabaseForTest();
   });
 
   afterAll(() => {
@@ -111,8 +115,9 @@ describe("getStatusSummary read-only session access", () => {
       const storePath = path.join(tempDir, fileName);
       const config = {
         agents: {
+          ownership: "explicit" as const,
           defaults: { systemAgent: { agentId: "main" } },
-          list: [{ id: "main", default: true }, { id: "ops" }],
+          entries: { main: {}, ops: {} },
         },
         session: { store: storePath },
       };
@@ -125,7 +130,8 @@ describe("getStatusSummary read-only session access", () => {
             { sessionId: `${agentId}-session`, updatedAt: agentId === "main" ? 10 : 20 },
           );
         }
-        closeBranchAgentDatabasesForTest();
+        await closeBranchAgentDatabasesAsync(tempDir);
+        closeBranchAgentDatabasesForTest(tempDir);
 
         const expectedPaths = ["main", "ops"].map(
           (agentId) => resolveSqliteTargetFromSessionStorePath(storePath, { agentId }).path,
@@ -172,8 +178,9 @@ describe("getStatusSummary read-only session access", () => {
           now.mockRestore();
         }
       } finally {
-        closeBranchAgentDatabasesForTest();
-        closeBranchStateDatabaseForTest();
+        await closeBranchAgentDatabasesAsync(tempDir);
+        closeBranchAgentDatabasesForTest(tempDir);
+        await closeStateDatabaseForTest();
       }
     },
   );
@@ -189,7 +196,8 @@ describe("getStatusSummary read-only session access", () => {
           { agentId: "main", sessionKey: "agent:main:main", storePath },
           { sessionId: "prepared-config", updatedAt: 10 },
         );
-        closeBranchAgentDatabasesForTest();
+        await closeBranchAgentDatabasesAsync(state.root);
+        closeBranchAgentDatabasesForTest(state.root);
         clearRuntimeConfigSnapshot();
         const readFileSync = vi.spyOn(fs, "readFileSync");
         try {
@@ -318,7 +326,8 @@ describe("getStatusSummary read-only session access", () => {
           totalTokensVersion: 1,
         },
       );
-      closeBranchAgentDatabasesForTest();
+      await closeBranchAgentDatabasesAsync(state.root);
+      closeBranchAgentDatabasesForTest(state.root);
 
       const summary = await getStatusSummary({ includeChannelSummary: false, config });
       const session = summary.sessions.recent[0];
@@ -355,7 +364,8 @@ describe("getStatusSummary read-only session access", () => {
             },
           );
         }
-        closeBranchAgentDatabasesForTest();
+        await closeBranchAgentDatabasesAsync(state.root);
+        closeBranchAgentDatabasesForTest(state.root);
 
         const stored = readSessionStoreSummaryReadOnly(
           { agentId: "main", storePath },

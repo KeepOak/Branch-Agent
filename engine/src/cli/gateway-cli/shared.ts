@@ -8,7 +8,8 @@ import { resolveGatewayService } from "../../daemon/service.js";
 import { defaultRuntime } from "../../runtime.js";
 import { formatCliCommand } from "../command-format.js";
 
-function renderGatewayServiceStopHints(env: NodeJS.ProcessEnv = process.env): string[] {
+function renderGatewayServiceStopHints(): string[] {
+  const env = process.env;
   const profile = env.BRANCH_PROFILE;
   const hints = [`Tip: ${formatCliCommand("branch gateway stop")}`];
   switch (process.platform) {

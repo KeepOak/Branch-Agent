@@ -1,4 +1,5 @@
 // Gateway contracts adapted from engine/ui/src/pages/agents/files.ts and engine/src/gateway/server-methods/agents-workspace.ts.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 export type Trunk = { id: string; name?: string; identity?: { name?: string; emoji?: string; theme?: string; avatar?: string; avatarUrl?: string }; createdVia?: string; workspace?: string; model?: { primary?: string } };

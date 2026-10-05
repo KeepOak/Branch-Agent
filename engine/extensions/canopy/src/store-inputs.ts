@@ -176,7 +176,6 @@ export type CanopyBoardInput = {
 export type CanopySpecifyInput = CanopyCardPatch & {
   summary?: unknown;
 };
-export type CanopyDecomposeChildInput = CanopyLinkedCreateInput;
 export type CanopyDecomposeInput = {
   summary?: unknown;
   children?: unknown;

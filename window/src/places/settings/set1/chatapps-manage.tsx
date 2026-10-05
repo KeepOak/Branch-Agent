@@ -1,6 +1,7 @@
 // Settings › Chat apps › Manage <app> (§4.7.10.1): who answers there, who may message it (channels.<id>.dmPolicy and
 // allowFrom), who is asking, its live state with Pause/Start (channels.stop/start, kept with channels.<id>.enabled),
 // its token (the engine's setup steps again) and Disconnect. Advanced and Technical parts are in chatapps-manage-more.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
@@ -38,8 +39,10 @@ export function ManageDialog(p: ManageProps) {
     void p.cfg.set(base, { dmPolicy: w.policy, ...(withStar !== allow ? { allowFrom: withStar } : {}) });
   };
   return (
-    <Dialog title={`Manage ${p.app.name}`} wide onClose={p.onClose} testid="chatapps-manage" footer={<button type="button" className="btn pri" onClick={p.onClose}>Done</button>}>
+    <Dialog title={`Manage ${p.app.name}`} wide onClose={p.onClose} testid="chatapps-manage"
+      footer={<><button type="button" className="btn ghost" title="The setup steps again: a new token, a new check" onClick={p.onSetup}>Back</button><button type="button" className="btn pri" onClick={p.onClose}>Save</button></>}>
       <div className="ca-head"><Logo id={p.app.id} name={p.app.name} size={40} /><span className="grow"><b>{p.app.name}</b>{p.app.detail ? <small>{p.app.detail}</small> : null}</span></div>
+      <SetupSteps done={p.app.tone === "ok"} />
       <div className={p.app.tone === "ok" ? "ready-ca" : undefined}><Status tone={p.app.tone === "ok" ? "ok" : p.app.tone === "work" ? "idle" : "bad"} title={p.app.tone === "ok" ? `${p.app.name} is ready` : p.app.tone === "work" ? `${p.app.name} is connecting` : `${p.app.name} needs you`}>
         {p.app.tone === "ok" ? "Choose who answers there and who may use it." : p.app.sub}
       </Status></div>
@@ -157,6 +160,18 @@ function Disconnect({ engine, app, cfg, base, reload, onClose }: ManageProps & {
       {ask ? <Dialog title={`Disconnect ${app.name}?`} onClose={() => setAsk(false)} testid="chatapps-disconnect" footer={<><button type="button" className="btn ghost" onClick={() => setAsk(false)}>Cancel</button><button type="button" className="btn bad" onClick={() => void go()}>Disconnect</button></>}>
         <p className="dlg-p-ca">{env ? "Branch stops listening there and turns it off. You can connect it again later." : isLinked(app) ? "Branch stops listening there and unlinks this computer. You can connect it again later." : "Branch stops listening there and deletes its saved token. You can connect it again later."}</p>
       </Dialog> : null}
+    </div>
+  );
+}
+
+/** The five setup steps (the preview's .chw-steps12): every one ticked once the app is connected. Changes here save as
+ *  they are made, so Save closes; Back goes through the engine's setup steps again. */
+function SetupSteps({ done }: { done: boolean }) {
+  return (
+    <div className="chw-steps12" aria-label="Setup steps">
+      {["Create", "Paste", "Check", "Pair", "Save"].map((name, i) => (
+        <span key={name} className={done ? "done" : undefined}><em>{done ? "✓" : i + 1}</em>{name}</span>
+      ))}
     </div>
   );
 }

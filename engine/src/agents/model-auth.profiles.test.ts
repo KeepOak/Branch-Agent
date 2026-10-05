@@ -23,6 +23,7 @@ import {
   writePersistedAuthProfileStoreRaw,
 } from "./auth-profiles/sqlite.js";
 import { ensureAuthProfileStore } from "./auth-profiles/store-runtime.js";
+import { resolvePersistedAuthProfileOwnerAgentDir } from "./auth-profiles/store.js";
 import type { AuthProfileCredential, OAuthCredential } from "./auth-profiles/types.js";
 import { upsertAuthProfileWithLockOrThrow } from "./auth-profiles/upsert-with-lock.js";
 import { resolveInlineProviderApiKeyUsageId } from "./auth-profiles/usage.js";
@@ -224,7 +225,7 @@ function cooldownStore(
 }
 
 function configuredAgent(agentDir: string) {
-  return { list: [{ id: "configured", default: true, agentDir }] };
+  return { entries: { configured: { agentDir } } };
 }
 
 function buildDemoLocalStore(keys: string[]) {
@@ -332,6 +333,65 @@ describe("shared auth profile read-through", () => {
 
         expect(resolved.apiKey).toBe(localKey ?? baseKey);
         expect(resolved.source).toBe(`profile:${profileId}`);
+      },
+    );
+  });
+});
+
+describe("configured auth inheritance owner", () => {
+  it("lets every agent use the accounts of agents.defaults.authInheritance.agentId", async () => {
+    await withBranchTestState(
+      {
+        layout: "state-only",
+        prefix: "branch-auth-inheritance-owner-",
+        agentEnv: "clear",
+        env: { OPENAI_API_KEY: undefined },
+      },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: { defaults: { authInheritance: { agentId: "owner" } } },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:owner": keyCredential("openai", "owner-key") }),
+          state.agentDir("owner"),
+        );
+        const agentDir = state.agentDir("new-agent");
+
+        const store = ensureAuthProfileStore(agentDir, { allowKeychainPrompt: false, config: cfg });
+        expect(Object.keys(store.profiles)).toContain("openai:owner");
+        const resolved = await resolveAuth({ provider: "openai", cfg, agentDir });
+        expect(resolved.apiKey).toBe("owner-key");
+        expect(resolved.source).toBe("profile:openai:owner");
+      },
+    );
+  });
+
+  it("names the inheritance owner as the persisted owner of an inherited OAuth account", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-inheritance-oauth-", agentEnv: "clear" },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: { defaults: { authInheritance: { agentId: "owner" } } },
+        };
+        const ownerDir = state.agentDir("owner");
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:owner": { type: "oauth", provider: "openai", ...oauthFixture } }),
+          ownerDir,
+        );
+        const agentDir = state.agentDir("new-agent");
+        const owner = resolvePersistedAuthProfileOwnerAgentDir({
+          agentDir,
+          profileId: "openai:owner",
+          config: cfg,
+        });
+        expect(owner && path.resolve(owner)).toBe(path.resolve(ownerDir));
+        expect(
+          resolvePersistedAuthProfileOwnerAgentDir({
+            agentDir: ownerDir,
+            profileId: "openai:owner",
+            config: cfg,
+          }),
+        ).toBe(ownerDir);
       },
     );
   });

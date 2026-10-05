@@ -1,3 +1,4 @@
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { BrowserView, NO_MARKUP, type BrowserPhase } from "./BrowserView";
 import { profileLine, recordedBrowserTabs, routeOf } from "./browser-route";
@@ -6,6 +7,7 @@ import type { Block } from "../thread/model";
 import type { WindowEngine } from "../connect/engine";
 import type { ProgressCard } from "../thread/PlanCard";
 import { Face } from "../face/Face";
+import { Markdown } from "../thread/markdown";
 import { Menu, type MenuAnchor, type MenuItem } from "../shell/Menu";
 import { SIcon } from "./stage-icons";
 import { useDesktopView, type DesktopView } from "./use-desktop";
@@ -29,15 +31,20 @@ function useWhere(engine: WindowEngine, tick: number): Where {
   const [where, setWhere] = useState<Where & { owner: WindowEngine; tick: number }>({ owner: engine, tick, placement: undefined, computers: [], profiles: [], loaded: false });
   useEffect(() => {
     let live = true;
-    Promise.all([describePlacement(engine), listComputers(engine).catch(() => ({ computers: [] as Computer[], profiles: [] }))]).then(
-      ([placement, list]) => live && setWhere({ owner: engine, tick, placement, ...list, loaded: true }),
-      (e: unknown) => live && setWhere({ owner: engine, tick, placement: undefined, computers: [], profiles: [], loaded: true, error: e instanceof Error ? e.message : String(e) }),
-    );
+    void Promise.allSettled([describePlacement(engine), listComputers(engine)]).then(([placement, list]) => {
+      if (!live) return;
+      const failed = [placement, list].find((result) => result.status === "rejected");
+      setWhere({ owner: engine, tick, loaded: true,
+        placement: placement.status === "fulfilled" ? placement.value : undefined,
+        ...(list.status === "fulfilled" ? list.value : { computers: [], profiles: [] }),
+        ...(failed?.status === "rejected" ? { error: failed.reason instanceof Error ? failed.reason.message : String(failed.reason) } : {}),
+      });
+    });
     return () => {
       live = false;
     };
   }, [engine, tick]);
-  return where.owner === engine ? where : { placement: undefined, computers: [], profiles: [], loaded: false };
+  return where.owner === engine && where.tick === tick ? where : { placement: undefined, computers: [], profiles: [], loaded: false };
 }
 
 function StepStrip({ steps, controlling, running, connected, onWatch, watchOpen, tools }: { steps: PlanStep[]; controlling: boolean; running: boolean; connected: boolean; onWatch: (at: MenuAnchor) => void; watchOpen: boolean; tools: boolean }) {
@@ -107,8 +114,8 @@ function Dock({ engine, name, steps, blocks, running, browser, reach, onChooseCo
       <div className="dk7-msgs">
         {messages.length ? (
           messages.map((b) => (
-            <div key={b.key} className={b.kind === "user" ? "dk7-m me7" : "dk7-m"}>
-              {b.text}
+            <div key={b.key} className={b.kind === "user" ? "dk7-m me7" : "dk7-m dk7-md"}>
+              {b.kind === "user" ? b.text : <Markdown text={b.text} />}
             </div>
           ))
         ) : (
@@ -198,12 +205,15 @@ type Props = {
   onClose: () => void;
   onChooseComputer: () => void;
   /** Shrinks the stage to a small window over the conversation, showing this computer. */
-  onPip?: (computer: { id: string; name: string }) => void;
+  onPip?: (small: PipTarget) => void;
   /** Opens on this computer instead of the conversation's own (the "branch:watch-computer" event). */
   initialComputer?: string | null;
   /** Opens already taken over ("Take over" on the conversation's computer card). */
   initialControl?: boolean;
 };
+
+/** What the small window over the conversation shows: a computer's screen, or the browser (the preview's S.pip.kind). */
+export type PipTarget = { kind: "computer" | "browser"; id: string; name: string };
 
 /** A conversation's computer and browser, full size: tabs per computer, the screen, the docked conversation and the plan's steps. */
 export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], running = false, card = null, onMode, onClose, onChooseComputer, onPip, initialComputer = null, initialControl = false }: Props) {
@@ -229,6 +239,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
   const viewing = picked === "grid" ? null : picked ?? current;
   const viewed = where.computers.find((c) => c.id === viewing);
   const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
+  const screenView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: where.error } : view;
   const steps = planSteps(card);
   const browser = mode === "Browser";
   const controlling = browser ? control : view.phase === "connected" && view.controlling === true;
@@ -320,7 +331,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
             </button>
           ))}
         </span>
-        <button type="button" className="ib" aria-label="Shrink to a small window" title="Picture in picture" disabled={!onPip || browser || !viewing} onClick={() => viewing && onPip?.({ id: viewing, name: viewed?.name ?? view.title ?? viewing })}>
+        <button type="button" className="ib" aria-label="Shrink to a small window" title="Picture in picture" disabled={!onPip || (!browser && !viewing)} onClick={() => (browser ? onPip?.({ kind: "browser", id: "browser", name: "browser" }) : viewing && onPip?.({ kind: "computer", id: viewing, name: viewed?.name ?? view.title ?? viewing }))}>
           <SIcon name="pip" />
         </button>
         <button type="button" className="ib" aria-label="Open in its own window" title={OWN_WINDOW} disabled>
@@ -334,6 +345,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
         </button>
       </div>
       {stopError ? <p className="stage-error-st" role="alert">{stopError}</p> : null}
+      {!browser && where.error && viewing ? <p className="stage-error-st" role="alert">{where.error} <button type="button" className="btn sm" onClick={() => setTick((value) => value + 1)}>Try again</button></p> : null}
       {!browser && screens.length > 1 ? (
         <div className="st7-tabs" role="tablist" aria-label="Its computers">
           {screens.map((c) => (
@@ -373,7 +385,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
             </div>
           </div>
         ) : (
-          <Screen view={view} target={target} controlling={controlling} onRetry={() => setRetry((v) => v + 1)} onChoose={onChooseComputer} />
+          <Screen view={screenView} target={target} controlling={controlling} onRetry={() => { setRetry((v) => v + 1); if (where.error) setTick((v) => v + 1); }} onChoose={onChooseComputer} />
         )}
         {dock ? <Dock engine={engine} name={name} steps={steps} blocks={blocks} running={running} browser={false} reach={reachLine(viewed)} onChooseComputer={onChooseComputer} /> : null}
       </div>

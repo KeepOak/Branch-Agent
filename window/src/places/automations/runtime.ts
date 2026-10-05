@@ -1,5 +1,6 @@
 // Adapted from engine/ui cron controllers and extensions/workboard/browser runtime:
 // engine requests remain authoritative; late reads and duplicate mutations are suppressed.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 export type Row = Record<string, unknown>;

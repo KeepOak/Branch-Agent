@@ -1,6 +1,8 @@
 // Settings › Models › Defaults (§4.7.6): each connection's default model and thinking, which connection answers
 // what, and the fallback lists; plus the Defaults-only Advanced and Technical sections. Saves at once.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
+import { shownWhy } from "../../../shell/shown-why";
 import { record, text, visible } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Ctl, Empty, Hint, Pick, Sec, Seg, Switch, useSaveRunner, type Opt } from "../kit";
@@ -91,10 +93,10 @@ const PATTERNS = [
 export function HowTrunksWork() {
   return (
     <Sec title="How Trunks work together, by default" hint="For rooms and big tasks. A Trunk may suggest another pattern for one task; yours wins unless you agree. A room can use its own, in its Room rules.">
-      <div className="pats-k" role="radiogroup" aria-label="How Trunks work together" title={NONE}>
+      <div className="pats-k" role="radiogroup" aria-label="How Trunks work together" title={shownWhy(NONE)}>
         {PATTERNS.map(([id, name, sub]) => <button key={id} type="button" role="radio" aria-checked={id === "super"} className="pat-k" disabled><b>{name}</b><small>{sub}</small></button>)}
       </div>
-      <p className="hint">{NONE}</p>
+      {shownWhy(NONE) ? <p className="hint">{shownWhy(NONE)}</p> : null}
       <Ctl title="A Trunk may suggest a different pattern" sub="It asks first; nothing changes until you agree." off={NONE}><Switch checked label="A Trunk may suggest a different pattern" onChange={() => undefined} /></Ctl>
     </Sec>
   );
