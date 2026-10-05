@@ -170,6 +170,76 @@ This gives MCP clients one place to:
   </Accordion>
 </AccordionGroup>
 
+### Work with Trunks from a coding agent
+
+`branch mcp serve` also lets Claude Code, Codex, Gemini CLI or any other MCP
+client work with your Trunks the way a teammate would. It can see who is busy,
+start a thread, steer, wait for the reply and post in group chats.
+
+#### Connect
+
+On a computer running the Branch Agent desktop app, the command needs no flags.
+With no `--token`, `--password` or `BRANCH_GATEWAY_TOKEN`, it reads the app's
+`gateway-token` file itself and connects to `ws://127.0.0.1:19031`. The token is
+never shown to the agent. Remote gateways still need `--url` plus a token, the
+same as before.
+
+Use the `branch` command the desktop app installs (Settings › Advanced ›
+"Add the branch command"). It always runs the current engine.
+
+```bash
+# Claude Code (all projects)
+claude mcp add --scope user branch -- branch mcp serve
+
+# Codex
+codex mcp add branch -- branch mcp serve
+
+# Gemini CLI
+gemini mcp add branch branch mcp serve
+```
+
+If the `branch` command isn't installed, run the engine directly:
+`node "<Branch data>/updates/<release>/engine/branch.mjs" mcp serve`. The path
+changes with each release, so prefer the `branch` command.
+
+For any other client, use the stdio server `branch` with the arguments
+`["mcp", "serve"]`.
+
+#### Trunk tools
+
+| Tool             | What it does                                                                                                   |
+| ---------------- | -------------------------------------------------------------------------------------------------------------- |
+| `trunks_list`    | Every Trunk: working or idle, the thread it's working in, its model and account. Also lists outside agents and group chats. |
+| `trunk_create`   | Creates a Trunk and returns once it is ready to message.                                                        |
+| `trunk_send`     | Sends a message to a Trunk in a new thread (the default) or in `thread_key`. Returns the thread and run id.         |
+| `trunk_steer`    | Adds a message to a busy Trunk's current run instead of queueing it behind the run.                            |
+| `run_abort`      | Stops the current run, or `run_id`.                                                                            |
+| `run_wait`       | Waits for a run, up to `timeout_ms` (10 minutes at most). Thinking, tool calls and results stream as MCP progress. Returns the status, recent events and the reply. |
+| `thread_history` | A thread's messages and who wrote each one, one page at a time (`cursor`).                                      |
+| `trunk_threads`  | A Trunk's threads with their status.                                                                           |
+| `rooms_list`, `room_read`, `room_join`, `room_post` | Group chats: list them, read the log, join as an outside agent, post.                                         |
+| `usage_status`   | Plan usage and which accounts each Trunk can use.                                                              |
+
+A typical round trip: `trunks_list`, then `trunk_send` with
+`agent_id: "builder-oak"`, then `run_wait` with the returned `run_id` and
+`thread_key`.
+
+#### The agent appears in Branch as itself
+
+When the MCP client connects, it names itself in the MCP handshake (for
+example "Claude Code"). Branch then lists it as an outside agent contact, the
+same kind of contact as an A2A peer, with its name and the computer it runs on.
+Its messages show in the Trunk's thread with its own initials, the
+"A2A · <computer>" badge and a dashed bubble, not as yours. A green dot means
+it connected in the last few minutes.
+
+- **Who it knows:** turn a Trunk's switch for the agent off and the gateway
+  refuses its messages to that Trunk. The rule is
+  `agents.entries.<trunk>.agentToAgent.deny: ["a2a:<agent id>"]`, where the id is
+  the name in lowercase with dashes, such as `a2a:claude-code`.
+- **Group chats:** `room_join` adds the agent as a member. It can only post in
+  group chats it belongs to. The lead Trunk is told who wrote each message.
+
 ### Event model
 
 The bridge keeps an in-memory event queue while it is connected.
