@@ -385,6 +385,8 @@ export function buildAgentSystemPrompt(params: {
   nativeCommandGuidanceLines?: string[];
   runtimeInfo?: SystemPromptRuntimeInfo;
   messageToolHints?: string[];
+  /** Config-derived roster; stable for this config revision. */
+  contactsSection?: string[];
   toolSchemaDirectoryPrompt?: string;
   messageTool?: Parameters<typeof buildUiPresentationPrompt>[0]["messageTool"];
   sandboxInfo?: EmbeddedSandboxInfo;
@@ -670,6 +672,7 @@ export function buildAgentSystemPrompt(params: {
     memorySection,
     acpEnabled,
     stableContextFiles: contextFiles,
+    contactsSection: params.contactsSection,
   });
   const stablePrefix = cacheStablePromptPrefix(stablePrefixCacheKey, () => {
     const lines = [
@@ -888,6 +891,7 @@ export function buildAgentSystemPrompt(params: {
             .join("\n")
         : "",
       ...bootstrapSystemPromptSections,
+      ...(params.contactsSection ?? []),
       "## Workspace Files (injected)",
       "User-editable; Branch Agent loads below as Project Context.",
       "",

@@ -57,6 +57,7 @@ export const engineTests = [
   // Pins the advertised method order: new gateway methods must append, never shift older indices.
   'src/gateway/server-methods-list.test.ts',
   'src/agents/prepared-model-runtime.auth-republication-scope.test.ts',
+  'src/agents/system-prompt-contacts.test.ts',
 ];
 
 export const windowTests = [
