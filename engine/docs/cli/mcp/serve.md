@@ -170,6 +170,123 @@ This gives MCP clients one place to:
   </Accordion>
 </AccordionGroup>
 
+### Work with Trunks from a coding agent
+
+`branch mcp serve` also lets Claude Code, Codex, Gemini CLI or any other MCP
+client work with your Trunks the way a teammate would. It can see who is busy,
+start a thread, steer, wait for the reply and post in group chats.
+
+#### Connect
+
+On a computer running the Branch Agent desktop app, the command needs no flags.
+With no `--token`, `--password` or `BRANCH_GATEWAY_TOKEN`, it reads the app's
+`gateway-token` file itself and connects to `ws://127.0.0.1:19031`. The token is
+never shown to the agent. Remote gateways still need `--url` plus a token, the
+same as before.
+
+Use the `branch` command the desktop app installs when "Type branch in any
+terminal" is on. It always runs the current engine.
+
+```bash
+# Claude Code (all projects)
+claude mcp add --scope user branch -- branch mcp serve
+
+# Codex
+codex mcp add branch -- branch mcp serve
+
+# Gemini CLI
+gemini mcp add branch branch mcp serve
+```
+
+If the `branch` command isn't installed, run the engine directly:
+`node "<Branch data>/updates/<release>/engine/branch.mjs" mcp serve`. The path
+changes with each release, so prefer the `branch` command.
+
+For any other client, use the stdio server `branch` with the arguments
+`["mcp", "serve"]`.
+
+#### Trunk tools
+
+| Tool             | What it does                                                                                                   |
+| ---------------- | -------------------------------------------------------------------------------------------------------------- |
+| `trunks_list`    | Every Trunk: working or idle, the thread it's working in, its model and account. Also lists outside agents and group chats. |
+| `trunk_create`   | Creates a Trunk and returns once it is ready to message.                                                        |
+| `trunk_send`     | Sends a message to a Trunk in a new thread (the default) or in `thread_key`. Returns the thread and run id.         |
+| `trunk_steer`    | Adds a message to a busy Trunk's current run instead of queueing it behind the run.                            |
+| `run_abort`      | Stops the current run, or `run_id`.                                                                            |
+| `run_wait`       | Waits for a run, up to `timeout_ms` (10 minutes at most). Thinking, tool calls and results stream as MCP progress. Returns the status, recent events and the reply. |
+| `thread_history` | A thread's messages and who wrote each one, one page at a time (`cursor`).                                      |
+| `trunk_threads`  | A Trunk's threads with their status.                                                                           |
+| `rooms_list`, `room_read`, `room_join`, `room_post` | Group chats: list them, read the log, join as an outside agent, post.                                         |
+| `usage_status`   | Plan usage and which accounts each Trunk can use.                                                              |
+
+A typical round trip: `trunks_list`, then `trunk_send` with
+`agent_id: "builder-oak"`, then `run_wait` with the returned `run_id` and
+`thread_key`.
+
+#### See and use the Branch window (self-testing)
+
+The `ui_*` tools let an agent test the Branch window the way the owner uses it.
+If an agent can't find or use a control, the window needs fixing.
+
+| Tool                                                   | What it does                                                                 |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `ui_open`, `ui_close`                                  | Open or close the window the tools drive. `target: "test"` is the default.     |
+| `ui_snapshot`                                          | The accessibility tree, with a ref per control. Lists controls that have no name. |
+| `ui_screenshot`                                        | A PNG of the window, or of one control.                                       |
+| `ui_click`, `ui_type`, `ui_press`, `ui_hover`, `ui_scroll` | Act on a control by its ref or its accessible name.                       |
+| `ui_wait_for`                                          | Wait for text to appear or go away.                                           |
+| `ui_navigate`                                          | Click through a path such as `Settings › Usage`, or `reload`.                 |
+
+By default the tools start a separate **test Branch** the first time one is
+used. It runs a scratch engine with its own home, profile and state, so it never
+touches your accounts or conversations. It listens on a free loopback port and
+opens the window in Edge or Chrome without showing it. Set
+`BRANCH_UI_HEADED=1` to watch it. `ui_open` with `first_run: true` starts on
+first-run setup instead. `ui_close` stops it.
+
+Driving your own window needs two switches:
+
+- Settings › Branch itself › "Let agents use this window" (takes effect when
+  Branch restarts);
+- Settings › Connected agents › the agent › "May use your Branch window".
+
+While an agent drives a window, the window shows "An agent is controlling this
+window" with a Stop button. After Stop, every `ui_*` call is refused.
+
+A builder's self-test loop: `ui_open`, `ui_navigate` to the page you changed,
+`ui_snapshot` (fix anything listed as having no name), `ui_click` or
+`ui_type` through the change, `ui_screenshot` for the PR, then `ui_close`.
+
+#### Settings › Connected agents
+
+Every connected agent shows here with its face, the computer and project it
+runs from, what it is doing, and when it was last seen. Each Claude Code,
+Codex or Hermes session is its own agent, so sixteen sessions are sixteen
+rows.
+
+- "Let other agents work with Branch" turns every agent away when it's off.
+- For each agent, you choose which Trunks it may message, whether it may use
+  your window, and whether to Disconnect it. A disconnected agent stops working
+  with Branch within a minute.
+- "Connect an agent" has the lines above, ready to copy.
+
+#### The agent appears in Branch as itself
+
+When the MCP client connects, it names itself in the MCP handshake (for
+example "Claude Code"). Branch then lists it as an outside agent contact, the
+same kind of contact as an A2A peer, with its name and the computer it runs on.
+Its messages show in the Trunk's thread with its own initials, the
+"A2A · <computer>" badge and a dashed bubble, not as yours. A green dot means
+it connected in the last few minutes.
+
+- **Who it knows:** turn a Trunk's switch for the agent off and the gateway
+  refuses its messages to that Trunk. The rule is
+  `agents.entries.<trunk>.agentToAgent.deny: ["a2a:<agent id>"]`, where the id is
+  the name in lowercase with dashes, such as `a2a:claude-code`.
+- **Group chats:** `room_join` adds the agent as a member. It can only post in
+  group chats it belongs to. The lead Trunk is told who wrote each message.
+
 ### Event model
 
 The bridge keeps an in-memory event queue while it is connected.

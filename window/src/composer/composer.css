@@ -79,6 +79,7 @@
 
 .c-chipb {
   flex: none;
+  max-width: min(45vw, 360px);
   height: 30px;
   padding: 0 8px;
   border-radius: 15px;
@@ -92,6 +93,7 @@
   align-self: center;
   transition: background-color 140ms var(--ease17), color 140ms var(--ease17);
 }
+.c-chipw { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c-chipb:hover, .c-chipb[aria-expanded="true"] { background: var(--wash17); color: var(--ink); }
 .c-chipb.bad { color: var(--bad); }
 /* The provider logo tile (the preview's logo(k, 18) on the chip, 22 in the menu): the shared Logo component. */

@@ -97,6 +97,29 @@ export const ContactsTopicsResultSchema = closedObject({
 });
 export const ContactsMarkReadParamsSchema = closedObject({ contactId: NonEmptyString });
 export const ContactsMarkReadResultSchema = closedObject({ updated: Type.Integer({ minimum: 0 }) });
+/** An outside agent speaking through `branch mcp serve`: contact `a2a:<id>`, drawn as an A2A agent. */
+export const OutsideAgentSchema = closedObject({
+  id: Type.String({ pattern: "^[a-z0-9][a-z0-9-]{0,63}$" }),
+  name: Type.String({ minLength: 1, maxLength: 100 }),
+  version: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+  where: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+  project: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+  // One running client (a random tag per process), so two sessions with the same name, computer and folder
+  // become two contacts.
+  instance: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+  activity: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+});
+export const ContactsOutsideHelloParamsSchema = closedObject({ agent: OutsideAgentSchema });
+export const ContactsOutsideListParamsSchema = closedObject({});
+/** Settings › Connected agents: the master switch, or one agent's disconnect / window permission. */
+export const ContactsOutsideSetParamsSchema = closedObject({
+  enabled: Type.Optional(Type.Boolean()),
+  id: Type.Optional(OutsideAgentSchema.properties.id),
+  revoked: Type.Optional(Type.Boolean()),
+  mayDriveWindow: Type.Optional(Type.Boolean()),
+});
+export type OutsideAgentParams = Static<typeof OutsideAgentSchema>;
+export type ContactsOutsideHelloParams = Static<typeof ContactsOutsideHelloParamsSchema>;
 export type Contact = Static<typeof ContactSchema>;
 export type Topic = Static<typeof TopicSchema>;
 export type ContactsListParams = Static<typeof ContactsListParamsSchema>;

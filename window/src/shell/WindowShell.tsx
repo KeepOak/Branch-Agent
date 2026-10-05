@@ -6,6 +6,8 @@ import type { SendExtras } from "../connect/engine";
 import type { SaplingSession, SessionSnapshot } from "../connect/session";
 import { withOwner } from "../connect/agent-owner";
 import { Composer, VOICE_OFF } from "../composer/Composer";
+import { hasUnsavedDraftFiles } from "../composer/drafts";
+import { componentDesktop } from "../connect/desktop-component-updates";
 import { Thread } from "../thread/Thread";
 import { PlaceView } from "../places-nav/PlaceView";
 import { SettingsFrame } from "../places-nav/SettingsFrame";
@@ -310,6 +312,17 @@ function useEngineReads(session: SaplingSession) {
 
 /** The whole window once connected (DESIGN-SPEC §3): top bar, sidebar, main, status bar, menus and toasts. */
 export function WindowShell({ session, url }: { session: SaplingSession; url: string }) {
+  useEffect(() => componentDesktop(session.gatewayUrl)?.onAutoApplyProbe?.(async () => {
+    const approvals = await Promise.all(["exec.approval.list", "plugin.approval.list", "branch.approval.list"].map(
+      method => session.request<unknown>(method, {}),
+    ));
+    const pendingApprovals = approvals.reduce<number>((count, result) => {
+      const items = Array.isArray(result) ? result : (result as { items?: unknown })?.items;
+      if (!Array.isArray(items)) throw new Error("Approval status is unavailable");
+      return count + items.length;
+    }, 0);
+    return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles() };
+  }), [session]);
   const { s, ready, lists, list, contactRows, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
   const people = useListPeople(session, ready);
   const update = useUpdate(session, ready, machine?.version ?? "");
