@@ -1,0 +1,140 @@
+// A second Branch grafted in as a scoped device: its hello rows are bound to its device, its messages must be
+// its own, and Disconnect removes the whole device (its rows and its pairing, through device.pair.remove).
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  graftDeviceId,
+  graftSendRefusal,
+  listOutsideAgents,
+  outsideAgentDeviceRefusal,
+  outsideAgentDeviceRows,
+  readOutsideAgentSettings,
+} from "../contacts/outside-agents.js";
+
+const removed = vi.hoisted(() => ({ calls: [] as string[], fail: "" }));
+vi.mock("./devices.js", () => ({
+  deviceHandlers: {
+    "device.pair.remove": async ({
+      params,
+      respond,
+    }: {
+      params: { deviceId: string };
+      respond: (ok: boolean, payload?: unknown, error?: { message: string }) => void;
+    }) => {
+      removed.calls.push(params.deviceId);
+      if (removed.fail) respond(false, undefined, { message: removed.fail });
+      else respond(true, { deviceId: params.deviceId });
+    },
+  },
+}));
+
+const { contactHandlers } = await import("./contacts.js");
+
+let stateDir = "";
+const previousState = process.env.BRANCH_STATE_DIR;
+beforeEach(() => {
+  stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "branch-graft-contacts-"));
+  process.env.BRANCH_STATE_DIR = stateDir;
+  removed.calls = [];
+  removed.fail = "";
+});
+afterEach(() => {
+  if (previousState === undefined) delete process.env.BRANCH_STATE_DIR;
+  else process.env.BRANCH_STATE_DIR = previousState;
+  fs.rmSync(stateDir, { recursive: true, force: true });
+});
+
+const device = (id: string) => ({
+  connect: { scopes: ["operator.read", "operator.write"], device: { id } },
+});
+const owner = { connect: { scopes: ["operator.admin", "operator.read"], device: { id: "owner-dev" } } };
+
+async function call(method: string, params: Record<string, unknown>, client: unknown) {
+  let reply: { ok: boolean; payload?: any; error?: { message?: string } } | undefined;
+  await contactHandlers[method]!({
+    params,
+    client,
+    context: { broadcast: () => undefined, getRuntimeConfig: () => ({}) },
+    respond: (ok: boolean, payload?: unknown, error?: { message?: string }) => {
+      reply = { ok, payload, error };
+    },
+  } as never);
+  return reply!;
+}
+
+const branchB = { id: "branch-b", name: "Branch B", kind: "branch" };
+const scout = { id: "branch-b--scout", name: "Scout", kind: "trunk", via: "branch-b" };
+
+describe("Branch-to-Branch graft on the host", () => {
+  it("treats only non-admin device connections as grafted devices", () => {
+    expect(graftDeviceId(device("dev-b"))).toBe("dev-b");
+    expect(graftDeviceId(owner)).toBeUndefined();
+    expect(graftDeviceId({ connect: { scopes: ["operator.read"] } })).toBeUndefined();
+  });
+
+  it("lists the joining Branch and its Trunks bound to its device", async () => {
+    expect((await call("contacts.outside.hello", { agent: branchB }, device("dev-b"))).ok).toBe(true);
+    const trunk = await call("contacts.outside.hello", { agent: scout }, device("dev-b"));
+    expect(trunk.payload.contact).toMatchObject({ id: "a2a:branch-b--scout", name: "Scout" });
+    expect(listOutsideAgents().map((row) => [row.id, row.kind, row.via, row.deviceId])).toEqual(
+      expect.arrayContaining([
+        ["branch-b", "branch", undefined, "dev-b"],
+        ["branch-b--scout", "trunk", "branch-b", "dev-b"],
+      ]),
+    );
+    const listed = await call("contacts.outside.list", {}, owner);
+    expect(listed.payload.agents.map((row: { id: string }) => row.id).toSorted()).toEqual([
+      "branch-b",
+      "branch-b--scout",
+    ]);
+  });
+
+  it("refuses another device or the owner's tools taking a grafted Branch's rows", async () => {
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    const other = await call("contacts.outside.hello", { agent: branchB }, device("dev-c"));
+    expect(other.ok).toBe(false);
+    expect(other.error?.message).toContain("already connected from another device");
+    expect((await call("contacts.outside.hello", { agent: branchB }, owner)).ok).toBe(false);
+    const stray = await call(
+      "contacts.outside.hello",
+      { agent: { ...scout, id: "branch-c--scout", via: "branch-b" } },
+      device("dev-c"),
+    );
+    expect(stray.error?.message).toContain("through its own grafted Branch");
+    expect(outsideAgentDeviceRefusal({ ...scout }, undefined, listOutsideAgents())).toContain(
+      "through its own grafted Branch",
+    );
+  });
+
+  it("lets a grafted Branch send only as itself or its Trunks; a paired phone keeps upstream's rules", async () => {
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    expect(graftSendRefusal("branch-b", "dev-b")).toBeUndefined();
+    expect(graftSendRefusal(undefined, "dev-b")).toContain("sends only as itself");
+    expect(graftSendRefusal("claude-code-a1b2c3", "dev-b")).toContain("sends only as itself");
+    expect(graftSendRefusal(undefined, "phone-dev")).toBeUndefined();
+    expect(graftSendRefusal(undefined, undefined)).toBeUndefined();
+  });
+
+  it("Disconnect removes the grafted Branch's pairing and every row it said hello as", async () => {
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    await call("contacts.outside.hello", { agent: scout }, device("dev-b"));
+    expect(outsideAgentDeviceRows("branch-b--scout", listOutsideAgents())?.deviceId).toBe("dev-b");
+    const result = await call("contacts.outside.set", { id: "branch-b", revoked: true }, owner);
+    expect(result.ok).toBe(true);
+    expect(removed.calls).toEqual(["dev-b"]);
+    expect(readOutsideAgentSettings().revoked.toSorted()).toEqual(["branch-b", "branch-b--scout"]);
+    const again = await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    expect(again.error?.message).toContain("was disconnected");
+  });
+
+  it("keeps the rows connected when the pairing could not be removed", async () => {
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    removed.fail = "missing scope: operator.pairing";
+    const result = await call("contacts.outside.set", { id: "branch-b", revoked: true }, owner);
+    expect(result.ok).toBe(false);
+    expect(result.error?.message).toContain("operator.pairing");
+    expect(readOutsideAgentSettings().revoked).toEqual([]);
+  });
+});

@@ -108,6 +108,9 @@ export const OutsideAgentSchema = closedObject({
   // become two contacts.
   instance: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
   activity: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  // Branch-to-Branch: another Branch grafted in as a device ("branch") and its Trunks ("trunk", via that Branch).
+  kind: Type.Optional(Type.Union([Type.Literal("branch"), Type.Literal("trunk")])),
+  via: Type.Optional(Type.String({ pattern: "^[a-z0-9][a-z0-9-]{0,63}$" })),
 });
 export const ContactsOutsideHelloParamsSchema = closedObject({ agent: OutsideAgentSchema });
 export const ContactsOutsideListParamsSchema = closedObject({});
