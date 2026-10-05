@@ -649,6 +649,7 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["mcp.app.openFile", "mcp-app", "operator.read", "2026.9"],
   // Provider-neutral reads append without changing legacy method indices or payloads.
   ["memory.get", "memory-search", "operator.read", "2026.9"],
+  ["memory.export", "memory-search", "operator.read", "2026.10"],
   ["memory.status", "memory-search", "operator.read", "2026.9"],
   ["sessions.files.assets", "sessions-files", "operator.read", "2026.9"],
   ["worktrees.recoverRemoval", "worktrees", "operator.admin", "2026.9", CONTROL_PLANE_WRITE],
