@@ -4,8 +4,8 @@ import test from 'node:test';
 import { namedTests, shardOf, shardTests } from './feature-batch-ci-targets.mjs';
 
 test('no FEATURE_SHARD runs everything in one job', () => {
-  assert.deepEqual(shardOf(undefined), { index: 0, total: 1 });
-  assert.deepEqual(shardTests(['a', 'b'], shardOf(undefined)), ['a', 'b']);
+  assert.deepEqual(shardOf(''), { index: 0, total: 1 });
+  assert.deepEqual(shardTests(['a', 'b'], shardOf('')), ['a', 'b']);
 });
 
 test('the shards split the named list with nothing lost or run twice', () => {
