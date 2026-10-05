@@ -142,13 +142,18 @@ export const contactHandlers: GatewayRequestHandlers = {
     )
       return;
     const settings = readOutsideAgentSettings();
-    const id = assignOutsideAgentId(params.agent, listOutsideAgents());
+    // A goodbye keeps the id the session had; a hello may get <id>-N while another session holds the id.
+    const id = params.leaving
+      ? params.agent.id
+      : assignOutsideAgentId(params.agent, listOutsideAgents());
     const refusal = outsideAgentRefusal({ ...params.agent, id }, settings);
     if (refusal) {
       respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, refusal));
       return;
     }
-    const record = recordOutsideAgent({ ...params.agent, id });
+    const record = recordOutsideAgent({ ...params.agent, id }, Date.now(), undefined, {
+      leaving: params.leaving === true,
+    });
     context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
     respond(true, {
       contact: { id: `a2a:${record.id}`, name: record.name, where: record.where ?? null },
