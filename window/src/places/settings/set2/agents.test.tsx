@@ -72,3 +72,13 @@ describe("Who it knows written before per-session ids", () => {
     expect(nextDeny(["a2a:claude-code-a1b2c3"], "claude-code-a1b2c3", true, sessions)).toEqual([]);
   });
 });
+
+describe("Connected agents row title", () => {
+  it("names the product, the project and a second session in the same folder", async () => {
+    const { agentTitle } = await import("./agents");
+    expect(agentTitle({ id: "claude-code-5c7e96", name: "Claude Code", project: "proof" })).toBe("Claude Code · proof");
+    expect(agentTitle({ id: "claude-code-5c7e96-2", name: "Claude Code", project: "proof" })).toBe("Claude Code · proof · session 2");
+    expect(agentTitle({ id: "hermes", name: "Hermes Agent" })).toBe("Hermes Agent");
+  });
+});
+

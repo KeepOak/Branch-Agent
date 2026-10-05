@@ -1,0 +1,16 @@
+/* Settings › Connected agents: each agent's head reads like its contact row (face, name, where it runs). */
+.ca-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.ca-head .ca-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

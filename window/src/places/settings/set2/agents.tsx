@@ -7,6 +7,7 @@ import { Btn, Ctl, Empty, Page, Sec, Switch, useConfig, type RowEntry } from "..
 import { RoomAvatar, a2aBadge } from "../../../rooms/RoomMessage";
 import { DesktopCtl } from "../desktop-ctl";
 import { CodeRow, rec, str, useCall, useLive, when } from "./common";
+import "./agents.css";
 
 const LEDE = "Coding agents on your computers that work with your Trunks: who is connected, what each may do, and how to connect another.";
 
@@ -40,6 +41,12 @@ export const ROWS: RowEntry[] = [
 ];
 
 type Trunk = { id: string; name: string };
+
+/** "Claude Code · Branch-Agent", plus "· session 2" when a second session in the same folder got `<id>-2`. */
+export function agentTitle(agent: Pick<OutsideAgentRow, "id" | "name" | "project">): string {
+  const session = /-[0-9a-f]{6}-(\d+)$/.exec(agent.id)?.[1];
+  return [agent.name, agent.project, session ? `session ${session}` : undefined].filter(Boolean).join(" · ");
+}
 
 /** The product-wide id from before per-session ids (engine contacts/outside-agents.ts legacyOutsideId). */
 export function legacyOutsideId(id: string): string | undefined {
@@ -83,11 +90,11 @@ function AgentRow({ agent, trunks, props, reload, sessions }: { agent: OutsideAg
   const doing = agent.activity ? ` · ${agent.activity}${agent.activityAt ? ` (${when(agent.activityAt)})` : ""}` : "";
   return (
     <div className="sec" data-testid="connected-agent" data-agent={agent.id}>
-      <h2 tabIndex={-1} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <h3 className="ca-head">
         <RoomAvatar id={agent.id} name={agent.name} size={28} online={agent.online} />
-        <span>{agent.name}{agent.project ? ` · ${agent.project}` : ""}</span>
+        <span className="ca-name">{agentTitle(agent)}</span>
         <span className="rm-tag">{a2aBadge(agent.where ?? null)}</span>
-      </h2>
+      </h3>
       <p className="hint">{agent.revoked ? "Disconnected" : seen}{doing}{agent.version ? ` · version ${agent.version}` : ""}</p>
       {trunks.map((t) => (
         <Ctl key={t.id} id={`${agent.id}-${t.id}`} title={`May message ${t.name}`} noPin>
