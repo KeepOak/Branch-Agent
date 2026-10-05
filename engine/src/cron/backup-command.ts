@@ -24,6 +24,8 @@ export type BackupScheduleSpec = { everyMs: number } & (
       scope: { kind: "all" | "global" } | { kind: "agent"; agentId: string };
       push: boolean;
       excludeSecrets: boolean;
+      /** Branch: also back up the redacted config and workspace files. */
+      files?: boolean;
     }
   | (BackupRetention & {
       mode: "offsite";
@@ -42,6 +44,10 @@ export type BackupScheduleSummary = {
   enabled: boolean;
   everyMs: number;
   nextRunAtMs?: number;
+  /** Git schedules: whether runs push, omit secrets and include the Branch files scope. */
+  push?: boolean;
+  excludeSecrets?: boolean;
+  files?: boolean;
 };
 
 export function backupScheduleModeForDeclaration(
@@ -81,6 +87,9 @@ export function buildBackupScheduleJob(spec: BackupScheduleSpec): CronJobCreate 
     }
     if (spec.excludeSecrets) {
       argv.push("--exclude-secrets");
+    }
+    if (spec.files) {
+      argv.push("--files");
     }
   } else {
     argv.push("--to", spec.location, "--namespace", spec.namespace);
@@ -139,6 +148,7 @@ function parseBackupScheduleJob(
           agent: { type: "string" },
           push: { type: "boolean" },
           "exclude-secrets": { type: "boolean" },
+          files: { type: "boolean" },
         },
       });
       if (
@@ -156,6 +166,7 @@ function parseBackupScheduleJob(
           : { kind: values.global ? "global" : "all" },
         push: values.push === true,
         excludeSecrets: values["exclude-secrets"] === true,
+        ...(values.files === true ? { files: true } : {}),
       };
     }
     const { values } = parseArgs({
@@ -201,6 +212,13 @@ export function summarizeBackupSchedules(jobs: readonly CronJob[]): BackupSchedu
             mode: spec.mode,
             target: spec.mode === "git" ? spec.repository : spec.location,
             ...(spec.mode === "offsite" ? { namespace: spec.namespace } : {}),
+            ...(spec.mode === "git"
+              ? {
+                  push: spec.push,
+                  excludeSecrets: spec.excludeSecrets,
+                  ...(spec.files ? { files: true } : {}),
+                }
+              : {}),
             enabled: job.enabled,
             everyMs: spec.everyMs,
             ...(job.state.nextRunAtMs === undefined ? {} : { nextRunAtMs: job.state.nextRunAtMs }),
