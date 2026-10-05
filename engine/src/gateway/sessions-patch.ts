@@ -191,7 +191,7 @@ function* projectSessionPatchSteps(
   if (harnessSessionError) {
     return invalid(harnessSessionError);
   }
-  if (typeof patch.archived === "boolean" || "snoozedUntil" in patch) {
+  if (typeof patch.archived === "boolean" || "snoozedUntil" in patch || "done" in patch) {
     if (!params.existingEntry?.sessionId) {
       return invalid(`session not found: ${storeKey}`);
     }

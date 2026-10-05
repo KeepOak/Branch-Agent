@@ -50,6 +50,7 @@ function buildGatewaySessionEventFields(params: {
     pinned: sessionRow.pinned ?? false,
     pinnedAt: sessionRow.pinnedAt ?? null,
     snoozedUntil: sessionRow.snoozedUntil ?? null,
+    done: sessionRow.done ?? false,
     snoozedAt: sessionRow.snoozedAt ?? null,
     unread: sessionRow.unread ?? false,
     lastReadAt: sessionRow.lastReadAt,

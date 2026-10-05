@@ -93,6 +93,9 @@ export function conversationActions(request: Request, list: ConversationList, op
         notify(`Couldn't snooze ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" });
       }
     },
+    async setDone(row: Conversation, done: boolean) {
+      await patch(row, { done }).catch((e) => notify(`Couldn't change ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" }));
+    },
     async rename(row: Conversation, label: string) {
       await patch(row, { label: label.trim() || null }).catch((e) => notify(`Couldn't rename ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" }));
     },

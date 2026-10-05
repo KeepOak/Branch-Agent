@@ -93,6 +93,7 @@ const SESSIONS_PATCH_WRITE_SCOPE_MUTATIONS: ReadonlySet<string> = new Set([
   "pinned",
   "archived",
   "snoozedUntil",
+  "done",
   "unread",
   "model",
   "agentRuntime",
