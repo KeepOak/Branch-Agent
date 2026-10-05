@@ -84,13 +84,13 @@ describe("Settings › Permissions", () => {
     expect(set[1].file.defaults).toEqual({ security: "allowlist" });
   });
 
-  it("the empty rules list uses the empty line, and greyed rows say why", async () => {
+  it("the empty rules list uses the empty line, and greyed rows hide developer notes", async () => {
     const { engine } = engineOf({ "exec.approvals.get": { ...SNAP, file: { version: 1 } } });
     await render(engine, 1);
     expect(host.textContent).toContain("No rules yet. Everything follows the mode.");
     const lock = host.querySelector('[data-row="App lock"]')!;
     expect(lock.getAttribute("aria-disabled")).toBe("true");
-    expect(lock.textContent).toContain("The engine has no app lock or PIN yet.");
+    expect(lock.textContent).not.toContain("The engine has no app lock or PIN yet.");
   });
 
   it("Stop a Trunk that repeats itself turns off by removing the key, keeping the engine's own guard", async () => {

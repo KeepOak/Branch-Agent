@@ -35,7 +35,7 @@ describe("resolveGatewayAssistantAvatar", () => {
     "preserves a built-in character for native and browser clients (base %s)",
     async (httpBasePath) => {
       const { cfg } = createWorkspace();
-      cfg.agents!.list![0]!.identity = { avatar: "branch:ember", emoji: "🤖" };
+      cfg.agents!.entries!.main!.identity = { avatar: "branch:ember", emoji: "🤖" };
       const identity = await resolveAssistantIdentity({ cfg, agentId: "main" });
       expect(
         await resolveGatewayAssistantAvatar({
