@@ -261,7 +261,7 @@ export function resolveTelegramTargetSession(params: {
     shouldUseTelegramDmThreadSession({
       dmThreadId: params.dmThreadId,
       botHasTopicsEnabled: params.botHasTopicsEnabled,
-    }) && params.dmThreadId != null
+    }) && params.dmThreadId != null && params.dmThreadId !== 1
       ? resolveThreadSessionKeys({
           baseSessionKey,
           threadId: `${params.chatId}:${params.dmThreadId}`,
