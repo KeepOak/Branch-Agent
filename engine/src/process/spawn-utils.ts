@@ -8,13 +8,19 @@ import { brokerSpawnOptions } from "./spawn-broker/host.js";
 import { recordChildProcessSpawn } from "./spawn-diagnostics.js";
 import type { SpawnInitiation } from "./spawn-initiation.js";
 
-/** Select the process-scoped native spawn transport without changing launch options. */
+/** Keep every supervised Windows child hidden, including brokered launches. */
+export function hiddenSpawnOptions(options: SpawnOptions, platform: NodeJS.Platform = process.platform): SpawnOptions {
+  return platform === "win32" ? { ...options, windowsHide: true } : options;
+}
+
+/** Select the process-scoped native spawn transport. */
 export function spawnProcess(
   command: string,
   args: string[],
   options: SpawnOptions,
   initiateSpawn?: SpawnInitiation,
 ): ChildProcess {
+  options = hiddenSpawnOptions(options);
   const broker = getSpawnBroker();
   // Anonymous secret pipes and inherited numeric descriptors belong to this process.
   const child =

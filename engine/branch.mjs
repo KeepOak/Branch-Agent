@@ -1,28 +1,55 @@
 #!/usr/bin/env node
 
+import childProcess from "node:child_process";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { access } from "node:fs/promises";
 import module from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  maintainBranchCompileCache,
-  resolveBranchCompileCacheDirectory,
-} from "./node-compile-cache.mjs";
-import { isNodeHostLauncherChild, runNodeHostLauncher } from "./node-host-launcher.mjs";
-import {
+
+// The launcher runs before engine and plugin imports. Cover third-party and
+// legacy direct child_process calls that bypass src/process/spawn-utils.ts.
+// This affects Node children only; native children must hide their own spawns.
+if (process.platform === "win32") {
+  const optionIndex = (args) => Array.isArray(args[1]) || (args[1] == null && args.length > 2) ? 2 : 1;
+  for (const name of ["spawn", "spawnSync", "execFile", "execFileSync", "fork", "exec", "execSync"]) {
+    const original = childProcess[name];
+    childProcess[name] = function (...args) {
+      const index = name === "exec" || name === "execSync" ? 1 : optionIndex(args);
+      const options = args[index];
+      if (typeof options === "function") {
+        args.splice(index, 0, { windowsHide: true });
+      } else if (options == null) {
+        args[index] = { windowsHide: true };
+      } else {
+        args[index] = { ...options, windowsHide: true };
+      }
+      return Reflect.apply(original, this, args);
+    };
+  }
+  module.syncBuiltinESMExports();
+}
+const [compileCache, hostLauncher, runtimeRecovery, nodeVersion] = await Promise.all([
+  import("./node-compile-cache.mjs"),
+  import("./node-host-launcher.mjs"),
+  import("./node-runtime-recovery.mjs"),
+  import("./node-version.mjs"),
+]);
+const { maintainBranchCompileCache, resolveBranchCompileCacheDirectory } = compileCache;
+const { isNodeHostLauncherChild, runNodeHostLauncher } = hostLauncher;
+const {
   consumeLauncherRootOptionToken,
   isForegroundGmailRunInvocation,
   isNativeHookRelayInvocation,
   recoverNodeRuntime,
   runRespawnedChild,
-} from "./node-runtime-recovery.mjs";
-import {
+} = runtimeRecovery;
+const {
   canRunBranchNodeDiagnostics,
   classifyUnsupportedNodeCommand,
   formatUnsupportedNodeDiagnosticWarning,
-} from "./node-version.mjs";
+} = nodeVersion;
 
 const isSourceCheckoutLauncher = () =>
   existsSync(new URL("./.git", import.meta.url)) ||
