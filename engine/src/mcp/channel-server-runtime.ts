@@ -5,6 +5,7 @@ import { VERSION } from "../version.js";
 import { BranchChannelBridge } from "./channel-bridge.js";
 import { ClaudePermissionRequestSchema, type ClaudeChannelMode } from "./channel-shared.js";
 import { getChannelMcpCapabilities, registerChannelMcpTools } from "./channel-tools.js";
+import { registerHubMcpTools } from "./hub-tools.js";
 import { outsideAgentFromClient, OutsidePresence } from "./outside-presence.js";
 import { registerTrunkMcpTools } from "./trunk-tools.js";
 import { registerUiMcpTools, UiSession } from "./ui-tools.js";
@@ -86,10 +87,13 @@ export async function createChannelMcpRuntime(
   gateEveryTool(server, () => presence.assertAllowed());
   registerChannelMcpTools(server, bridge);
 
-  registerTrunkMcpTools(server, bridge, {
+  const agentTools = {
     outsideAgent: () => presence.identity(),
-    activity: (text) => presence.activity(text),
-  });
+    activity: (text: string) => presence.activity(text),
+  };
+  registerTrunkMcpTools(server, bridge, agentTools);
+  // The hub: shared documents, memory, board cards and an activity feed inside the owner's Branch.
+  registerHubMcpTools(server, bridge, agentTools);
   // Part C: eyes and hands on the Branch window. A separate test Branch unless the owner allowed their own.
   const ui = new UiSession(async (kind, uiOpts) => {
     const { openOwnerWindow, openTestInstance } = await import("./ui-target.js");
