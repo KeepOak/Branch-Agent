@@ -1,3 +1,4 @@
 engine:extensions/anthropic/usage-claude-code.test.ts
 engine:src/infra/model-upgrade-probe.test.ts
+engine:src/infra/provider-usage.auth-all.test.ts
 window:src/shell/usage-every-account.test.tsx

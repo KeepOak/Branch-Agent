@@ -252,6 +252,10 @@ export async function loadUsageStatusStaleWhileRevalidate(options: {
   now?: number;
 }): Promise<UsageSummary> {
   const snapshot = getProviderUsageRuntimeSnapshot({ config: options.config });
+  if (snapshot.providerIds.length === 0) {
+    usageCacheByAgentId.delete(snapshot.agentId);
+    return { updatedAt: options.now ?? Date.now(), providers: [] };
+  }
   const params: ProviderUsageCacheParams = {
     agentId: snapshot.agentId,
     agentDir: snapshot.agentDir,
