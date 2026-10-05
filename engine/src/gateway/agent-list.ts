@@ -32,7 +32,7 @@ type GatewayAgentSelectionState = {
   selectionRequired: boolean;
 };
 
-async function listExistingAgentIdsFromDisk(): Promise<string[]> {
+export async function listExistingAgentIdsFromDisk(): Promise<string[]> {
   const agentsDir = path.join(resolveStateDir(), "agents");
   try {
     return (await fs.readdir(agentsDir, { withFileTypes: true }))

@@ -1,83 +1,67 @@
-import { describe, expect, it } from "vitest";
+import type { Contact as GatewayContact } from "@branch/gateway-protocol";
+import { describe, expect, it, vi } from "vitest";
 import { projectConversation } from "../connect/conversations";
-import { buildContactSections, contactIdFor, contactRow, markContactRead, projectContact } from "./contacts-model";
-import { vi } from "vitest";
+import { buildContactSections, contactRow, listContactTopics, markContactRead, projectContact } from "./contacts-model";
 import { DEFAULT_PREFS } from "./list-model";
+import { contactAlert, contactAlertTarget } from "./notify";
 
 const row = (key: string, extra: Record<string, unknown> = {}) => projectConversation({ key, updatedAt: 10, lastMessagePreview: key, ...extra }, null);
+const raw = (id: string, extra: Partial<GatewayContact> = {}): GatewayContact => ({
+  id: `trunk:${id}`, kind: "trunk", name: id, threadKey: `agent:${id}:main`, isDefault: id === "oak",
+  lastActivityAt: 10, preview: { kind: "message", text: "Main reply", at: 10 },
+  unreadTopics: 0, threadUnread: false, needsYou: false, working: false, topicCount: 0, ...extra,
+});
 
-describe("contact projection", () => {
+describe("Gateway contact projection", () => {
   it("keeps the canonical key through a session id rotation", () => {
-    const source = { trunks: [{ id: "oak", name: "Oak", isDefault: true }], defaultId: "oak", mainKey: "main", sessions: [row("agent:oak:main", { sessionId: "rotated" }), row("agent:oak:job", { sessionId: "other" })] };
-    const contact = projectContact(source)[0];
-    expect(contact.threadKey).toBe("agent:oak:main");
-    expect(contactRow(contact).key).toBe("agent:oak:main");
-    expect(contact.topicCount).toBe(1);
-    source.sessions[0] = row("agent:oak:main", { sessionId: "next" });
-    expect(projectContact(source)[0].threadKey).toBe("agent:oak:main");
-  });
-
-  it("classifies sessions without loose sidebar rows", () => {
-    const samples: [string, Record<string, unknown>, string | null][] = [
-      ["agent:oak:home", {}, "trunk:oak"],
-      ["agent:oak:signal:direct:bob", {}, "trunk:oak"],
-      ["agent:oak:window-1", {}, "trunk:oak"],
-      ["agent:oak:background-1", {}, "trunk:oak"],
-      ["agent:oak:helper", { spawnedBy: "agent:oak:window-1" }, null],
-      ["agent:oak:cron:daily", {}, null],
-      ["agent:oak:telegram:group:team", {}, "chat:agent:oak:telegram:group:team"],
-      ["agent:oak:window-group", { participants: [{ identity: { type: "profile", id: "friend" } }] }, "chat:agent:oak:window-group"],
-      ["agent:oak:room:r1", {}, null],
-      ["agent:oak:a2a:v1:direct:peer:ctx", {}, "a2a:peer"],
-    ];
-    for (const [key, facts, expected] of samples) expect(contactIdFor(row(key, facts)), key).toBe(expected);
-    const contacts = projectContact({ trunks: [], defaultId: null, mainKey: "home", sessions: [row("agent:oak:home"), row("agent:oak:window-1")] });
-    expect(contacts[0]).toMatchObject({ id: "trunk:oak", archivedAt: 10, topicCount: 1 });
-  });
-
-  it("shows group and outside contacts without inventing a Trunk from their sessions", () => {
-    const contacts = projectContact({
-      trunks: [], defaultId: null, mainKey: "main",
-      sessions: [
-        row("agent:oak:telegram:group:team", { displayName: "Team" }),
-        row("agent:elm:a2a:v1:direct:peer:one", { displayName: "Peer", unread: true }),
-        row("agent:elm:a2a:v1:direct:peer:two", { unread: true }),
-      ],
-    });
-    expect(contacts.map((contact) => contact.kind)).toEqual(["chatGroup", "outside"]);
-    expect(contacts[1]).toMatchObject({ id: "a2a:peer", topicCount: 1, unreadTopics: 1, threadUnread: true });
+    const source = [row("agent:oak:main", { sessionId: "rotated" })];
+    expect(contactRow(projectContact([raw("oak")], source)[0]).key).toBe("agent:oak:main");
+    source[0] = row("agent:oak:main", { sessionId: "next" });
+    expect(contactRow(projectContact([raw("oak")], source)[0]).key).toBe("agent:oak:main");
   });
 
   it("shows default, pinned and recent contacts in that order", () => {
-    const contacts = projectContact({
-      trunks: [{ id: "oak", name: "Oak", isDefault: true }, { id: "elm", name: "Elm", isDefault: false }, { id: "ash", name: "Ash", isDefault: false }],
-      defaultId: "oak", mainKey: "main", sessions: [row("agent:oak:main"), row("agent:elm:main", { pinned: true }), row("agent:ash:main", { updatedAt: 20 })],
-    });
+    const contacts = projectContact([raw("oak"), raw("elm", { isDefault: false, pinnedAt: 8 }), raw("ash", { isDefault: false, lastActivityAt: 20 })], []);
     expect(contactRow(contacts.find((c) => c.isDefault)!).key).toBe("agent:oak:main");
     expect(buildContactSections(contacts, DEFAULT_PREFS, 100).map((s) => [s.label, s.rows.map((r) => r.key)])).toEqual([
       ["Pinned", ["agent:elm:main"]], ["Recent", ["agent:ash:main"]],
     ]);
   });
 
-  it("keeps row preview and timestamp on the opened thread while topics update", () => {
-    const [contact] = projectContact({
-      trunks: [{ id: "oak", name: "Oak", isDefault: true }], defaultId: "oak", mainKey: "main",
-      sessions: [row("agent:oak:main", { updatedAt: 10, lastMessagePreview: "Main reply" }), row("agent:oak:topic", { updatedAt: 50, lastMessagePreview: "Topic reply", unread: true, hasActiveRun: true })],
-    });
-    expect(contact).toMatchObject({ lastActivityAt: 50, unreadTopics: 1, working: true, preview: { kind: "message", text: "Main reply", at: 10 } });
-    expect(contactRow(contact)).toMatchObject({ key: "agent:oak:main", updatedAt: 10, preview: "Main reply", unread: true });
+  it("rolls up topic unread without marking the thread unread", () => {
+    const [contact] = projectContact([raw("oak", { unreadTopics: 2, topicCount: 3 })], [row("agent:oak:main", { unread: false })]);
+    expect(contactRow(contact)).toMatchObject({ key: "agent:oak:main", unread: true });
+    expect(contact.threadUnread).toBe(false);
   });
 
-  it("marks a contact's thread and unread topics through one patchMany call", async () => {
-    const [contact] = projectContact({
-      trunks: [{ id: "oak", name: "Oak", isDefault: true }], defaultId: "oak", mainKey: "main",
-      sessions: [row("agent:oak:main", { unread: true, sessionId: "segment-2" }), row("agent:oak:topic", { unread: true }), row("agent:oak:read", { unread: false })],
-    });
-    const request = vi.fn(async () => ({}));
+  it("keeps the unread dot when mute suppresses ordinary alerts", () => {
+    const [contact] = projectContact([raw("oak", { unreadTopics: 1, preview: { kind: "topic", topicKey: "agent:oak:topic", title: "Research", text: "Reply", at: 20 } })], []);
+    expect(contactRow(contact).unread).toBe(true);
+    expect(contactAlert(contact, true)).toBeNull();
+    expect(contactAlert({ ...contact, needsYou: true }, true)?.title).toBe("oak");
+    expect(contactAlert({ ...contact, preview: { ...contact.preview, text: "@owner please review" } }, true)?.body).toContain("in Research");
+    expect(contactAlertTarget(contact)).toBe("agent:oak:topic");
+    expect(contactAlertTarget(projectContact([raw("oak")], [])[0])).toBe("agent:oak:main");
+  });
+
+  it("uses the Gateway topic preview and its activity time on the canonical row", () => {
+    const [contact] = projectContact([raw("oak", {
+      lastActivityAt: 50, preview: { kind: "topic", topicKey: "agent:oak:topic", title: "Research", text: "Topic reply", at: 50 },
+    })], [row("agent:oak:main", { updatedAt: 10, lastMessagePreview: "Main reply" })]);
+    expect(contactRow(contact)).toMatchObject({ key: "agent:oak:main", updatedAt: 50, preview: "Research: Topic reply" });
+  });
+
+  it("marks all unread under a contact with one contacts.markRead request", async () => {
+    const [contact] = projectContact([raw("oak", { threadUnread: true, unreadTopics: 2 })], []);
+    const request = vi.fn(async () => ({ updated: 3 }));
     expect(await markContactRead(contact, request)).toBe(true);
-    expect(request).toHaveBeenCalledWith("sessions.patchMany", {
-      targets: [{ key: "agent:oak:main", agentId: "oak", expectedSessionId: "segment-2" }, { key: "agent:oak:topic", agentId: "oak" }],
-      patch: { unread: false },
-    });
+    expect(request).toHaveBeenCalledExactlyOnceWith("contacts.markRead", { contactId: "trunk:oak" });
+    expect(await markContactRead(projectContact([raw("oak")], [])[0], request)).toBe(false);
+  });
+
+  it("reads every topic page for contact actions", async () => {
+    const request = vi.fn(async (_method: string, params: unknown) => ({ topics: [{ key: (params as { cursor?: string }).cursor ?? "first" }], ...(!(params as { cursor?: string }).cursor ? { nextCursor: "second" } : {}) }));
+    expect((await listContactTopics("trunk:oak", request)).map((topic) => topic.key)).toEqual(["first", "second"]);
+    expect(request).toHaveBeenNthCalledWith(2, "contacts.topics", { contactId: "trunk:oak", limit: 200, cursor: "second" });
   });
 });

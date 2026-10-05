@@ -1680,3 +1680,8 @@
 
 /* A turn that starts with steps: the face sits beside the Steps fold, as in the approved design. */
 .thread .steps-turn > .steps-fold.indent { margin-left: 0; }
+.topic-origin { display: block; margin: 12px 0; padding: 6px 10px; border: 0; border-left: 2px solid currentColor; background: transparent; color: inherit; font: inherit; text-align: left; opacity: .7; cursor: pointer; }
+.topic-update { display: flex; flex-wrap: wrap; gap: 6px 10px; width: min(100%, 440px); margin: 12px 0; padding: 12px; border: 1px solid currentColor; border-radius: 12px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.topic-update small { display: block; flex-basis: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topic-update span { opacity: .7; }
+.topic-update .topic-new { opacity: 1; font-weight: 700; }
