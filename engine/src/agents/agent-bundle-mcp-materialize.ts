@@ -36,6 +36,7 @@ import {
 import {
   projectMcpCallToolResult,
   projectMcpGetPromptResult,
+  projectMcpReadResourceResult,
   setMcpCodeModeGuestResult,
   setMcpCodeModeGuestResultFromAgentResult,
 } from "./mcp-content.js";
@@ -263,9 +264,7 @@ export function buildBundleMcpToolsFromCatalog(params: {
         toolName: tool.toolName,
         operation: "tool",
         ...(tool.oauthConnectBootstrap ? { oauthConnectBootstrap: true } : {}),
-        ...(tool.excludedFromBranchCatalog || appOnly
-          ? { excludedFromBranchCatalog: true }
-          : {}),
+        ...(tool.excludedFromBranchCatalog || appOnly ? { excludedFromBranchCatalog: true } : {}),
         ...(tool.deniedBySession ? { deniedBySession: true } : {}),
         codexApproval: {
           mode: server?.codexApprovalMode,
@@ -576,10 +575,9 @@ export async function materializeBundleMcpToolsForRun(params: {
             runWithSessionMcpRequestSignal(signal, async () => {
               const uri = requireStringArg(input, "uri");
               runtime.markUsed();
-              return toJsonAgentToolResult({
+              return projectMcpReadResourceResult(await runtime.readResource!(serverName, uri), {
                 serverName,
                 operation: "resources_read",
-                value: await runtime.readResource?.(serverName, uri),
               });
             })
         : undefined,
