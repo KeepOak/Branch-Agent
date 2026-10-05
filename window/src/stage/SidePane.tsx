@@ -94,7 +94,7 @@ type Props = {
   title?: string;
   /** Reads the conversation again after switching paths. */
   onReload?: () => void;
-  contactTopics?: { items: TopicListItem[]; name: string; onOpen: (key: string) => void; onNew?: () => void };
+  contactTopics?: { items: TopicListItem[]; name: string; onOpen: (key: string) => void };
 };
 
 /** The side panel: its tabs, + Add a tab, Focus, Minimize, Layout and a resizer, over each tab's engine data. */

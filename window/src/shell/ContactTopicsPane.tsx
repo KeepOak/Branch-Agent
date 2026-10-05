@@ -3,7 +3,7 @@ import type { TopicListItem, TopicMode } from "./contact-topics";
 import { groupContactTopics } from "./contact-topics";
 import "./contact-topics.css";
 
-export function ContactTopicsPane({ items, name, onOpen, onNew }: { items: TopicListItem[]; name: string; onOpen: (key: string) => void; onNew?: () => void }) {
+export function ContactTopicsPane({ items, name, onOpen }: { items: TopicListItem[]; name: string; onOpen: (key: string) => void }) {
   const [mode, setMode] = useState<TopicMode>("time");
   const [query, setQuery] = useState("");
   const groups = groupContactTopics(items, mode, query);
@@ -14,7 +14,6 @@ export function ContactTopicsPane({ items, name, onOpen, onNew }: { items: Topic
         <option value="time">By time</option><option value="flat">Flat</option><option value="project">By project</option><option value="status">By status</option>
       </select>
     </div>
-    {onNew ? <button type="button" className="contact-topics-new" onClick={onNew}>New conversation with {name}</button> : null}
     {groups.every((group) => !group.items.length) ? <p className="hint">No conversations here yet.</p> : groups.map((group) => <div key={group.label} className="contact-topics-group">
       {group.label ? <h3>{group.label}</h3> : null}
       {group.items.map(({ topic, preview }) => <button type="button" className="contact-topics-row" key={topic.key} onClick={() => onOpen(topic.key)}>

@@ -3,8 +3,7 @@
 .contact-topics-controls input { min-width: 0; flex: 1; }
 .contact-topics-controls select { max-width: 112px; }
 .contact-topics-controls input, .contact-topics-controls select { border: 1px solid var(--line); border-radius: 8px; background: var(--raise); color: var(--ink); padding: 7px; }
-.contact-topics-new, .contact-topics-row { width: 100%; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.contact-topics-new { padding: 12px 8px; color: var(--ink-2); }
+.contact-topics-row { width: 100%; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .contact-topics-group h3 { margin: 14px 8px 4px; font-size: 11px; color: var(--ink-2); text-transform: uppercase; }
 .contact-topics-row { display: flex; flex-direction: column; gap: 3px; border-radius: 8px; padding: 10px 8px; }
 .contact-topics-row:hover, .contact-topics-row:focus-visible { background: var(--fill); }

@@ -1062,7 +1062,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         </div>
         {pane && ready ? (
           <SidePane key={s.sessionKey} engine={session.engine} name={trunkName(openRow?.agentId)} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} cardError={progress.error} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={notify} title={name} onReload={() => void session.reload()}
-            contactTopics={topicContact ? { items: topicItems, name: topicContact.name, onOpen: openTopic, ...(topicContact.kind === "trunk" ? { onNew: () => { setTopicReturnKey(topicContact.threadKey); startNew(topicContact.id.slice(6)); } } : {}) } : undefined} />
+            contactTopics={topicContact ? { items: topicItems, name: topicContact.name, onOpen: openTopic } : undefined} />
         ) : null}
       </>
     );
