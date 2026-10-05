@@ -24,8 +24,11 @@ export type BackupScheduleSpec = { everyMs: number } & (
       scope: { kind: "all" | "global" } | { kind: "agent"; agentId: string };
       push: boolean;
       excludeSecrets: boolean;
-      /** Branch: also back up the redacted config and workspace files. */
+      /** Branch: also back up the redacted config, workspace files and media. */
       files?: boolean;
+      /** Branch: media size limits in MB; omitted means the command's defaults. */
+      mediaMaxFileMb?: number;
+      mediaMaxTotalMb?: number;
     }
   | (BackupRetention & {
       mode: "offsite";
@@ -48,6 +51,8 @@ export type BackupScheduleSummary = {
   push?: boolean;
   excludeSecrets?: boolean;
   files?: boolean;
+  mediaMaxFileMb?: number;
+  mediaMaxTotalMb?: number;
 };
 
 export function backupScheduleModeForDeclaration(
@@ -91,6 +96,12 @@ export function buildBackupScheduleJob(spec: BackupScheduleSpec): CronJobCreate 
     if (spec.files) {
       argv.push("--files");
     }
+    if (spec.mediaMaxFileMb !== undefined) {
+      argv.push("--media-max-file-mb", String(spec.mediaMaxFileMb));
+    }
+    if (spec.mediaMaxTotalMb !== undefined) {
+      argv.push("--media-max-total-mb", String(spec.mediaMaxTotalMb));
+    }
   } else {
     argv.push("--to", spec.location, "--namespace", spec.namespace);
     if (spec.claimNamespace) {
@@ -122,6 +133,11 @@ export function buildBackupScheduleJob(spec: BackupScheduleSpec): CronJobCreate 
   };
 }
 
+function optionalMegabytes(key: "mediaMaxFileMb" | "mediaMaxTotalMb", raw: string | undefined) {
+  const value = raw === undefined ? undefined : Number(raw);
+  return value !== undefined && Number.isSafeInteger(value) && value > 0 ? { [key]: value } : {};
+}
+
 /** Decode the persisted argv contract for status without relying on display names. */
 function parseBackupScheduleJob(
   job: Pick<CronJob, "declarationKey" | "payload" | "schedule">,
@@ -149,6 +165,8 @@ function parseBackupScheduleJob(
           push: { type: "boolean" },
           "exclude-secrets": { type: "boolean" },
           files: { type: "boolean" },
+          "media-max-file-mb": { type: "string" },
+          "media-max-total-mb": { type: "string" },
         },
       });
       if (
@@ -167,6 +185,8 @@ function parseBackupScheduleJob(
         push: values.push === true,
         excludeSecrets: values["exclude-secrets"] === true,
         ...(values.files === true ? { files: true } : {}),
+        ...optionalMegabytes("mediaMaxFileMb", values["media-max-file-mb"]),
+        ...optionalMegabytes("mediaMaxTotalMb", values["media-max-total-mb"]),
       };
     }
     const { values } = parseArgs({
@@ -217,6 +237,8 @@ export function summarizeBackupSchedules(jobs: readonly CronJob[]): BackupSchedu
                   push: spec.push,
                   excludeSecrets: spec.excludeSecrets,
                   ...(spec.files ? { files: true } : {}),
+                  ...(spec.mediaMaxFileMb ? { mediaMaxFileMb: spec.mediaMaxFileMb } : {}),
+                  ...(spec.mediaMaxTotalMb ? { mediaMaxTotalMb: spec.mediaMaxTotalMb } : {}),
                 }
               : {}),
             enabled: job.enabled,

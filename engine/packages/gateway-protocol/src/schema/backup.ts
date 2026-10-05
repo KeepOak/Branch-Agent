@@ -57,6 +57,8 @@ export const BackupStatusResultSchema = closedObject({
       push: Type.Optional(Type.Boolean()),
       excludeSecrets: Type.Optional(Type.Boolean()),
       files: Type.Optional(Type.Boolean()),
+      mediaMaxFileMb: Type.Optional(Type.Integer({ minimum: 1 })),
+      mediaMaxTotalMb: Type.Optional(Type.Integer({ minimum: 1 })),
       /** Git schedules that push: the repository address, without any sign-in. */
       remote: Type.Optional(Type.String()),
     }),
@@ -71,6 +73,9 @@ export const BackupScheduleSetParamsSchema = closedObject({
   ]),
   everyMs: Type.Integer({ minimum: 60_000 }),
   enabled: Type.Boolean(),
+  /** Media size limits in MB; omitted means the backup command's defaults (50 per file, 1024 in all). */
+  mediaMaxFileMb: Type.Optional(Type.Integer({ minimum: 1 })),
+  mediaMaxTotalMb: Type.Optional(Type.Integer({ minimum: 1 })),
 });
 export const BackupScheduleSetResultSchema = closedObject({
   id: Type.String(),

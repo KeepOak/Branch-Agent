@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   listAgentIds,
   resolveAgentDir,
@@ -10,6 +11,12 @@ import { redactConfigSnapshot } from "../config/redact-snapshot.js";
 import { loadGatewayRuntimeConfigSchema } from "../config/runtime-schema.js";
 import { resolveUpdateCaptureRoot } from "../infra/update-capture-paths.js";
 import type { GitBackupFilesSource } from "../snapshot/git-backup-files.js";
+import {
+  DEFAULT_MEDIA_MAX_FILE_MB,
+  DEFAULT_MEDIA_MAX_TOTAL_MB,
+  type MediaLimits,
+} from "../snapshot/git-backup-media.js";
+import { resolveConfigDir } from "../infra/config-dir.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { beginLifecycleWriteCustody } from "../infra/lifecycle-write-custody.js";
 import { assertNotUpdateCapturePath } from "../infra/update-capture-paths.js";
@@ -41,6 +48,9 @@ type BackupGitCreateOptions = {
   excludeSecrets?: boolean;
   /** Branch: also back up the redacted config and every Trunk's workspace files. */
   files?: boolean;
+  /** Branch: media size limits in MB (defaults 50 per file, 1024 in all). */
+  mediaMaxFileMb?: string | number;
+  mediaMaxTotalMb?: string | number;
   json?: boolean;
 };
 
@@ -117,8 +127,33 @@ async function readRedactedConfig(): Promise<unknown> {
   return parsed && typeof parsed === "object" ? parsed : undefined;
 }
 
-/** Branch files scope: redacted config plus each configured Trunk's workspace. */
-async function resolveFilesSource(): Promise<GitBackupFilesSource> {
+function parseMegabytes(value: string | number | undefined, flag: string, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  const parsed = typeof value === "number" ? value : Number(value.trim());
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new Error(`${flag} must be a positive whole number of megabytes.`);
+  }
+  return parsed;
+}
+
+export function resolveMediaLimits(options: {
+  mediaMaxFileMb?: string | number;
+  mediaMaxTotalMb?: string | number;
+}): MediaLimits {
+  return {
+    maxFileMb: parseMegabytes(options.mediaMaxFileMb, "--media-max-file-mb", DEFAULT_MEDIA_MAX_FILE_MB),
+    maxTotalMb: parseMegabytes(
+      options.mediaMaxTotalMb,
+      "--media-max-total-mb",
+      DEFAULT_MEDIA_MAX_TOTAL_MB,
+    ),
+  };
+}
+
+/** Branch files scope: redacted config, each configured Trunk's workspace and media. */
+async function resolveFilesSource(limits: MediaLimits): Promise<GitBackupFilesSource> {
   const config = getRuntimeConfig({ skipPluginValidation: true });
   const stateDir = resolveStateDir();
   const agentIds = listAgentIds(config).toSorted();
@@ -135,6 +170,7 @@ async function resolveFilesSource(): Promise<GitBackupFilesSource> {
       resolveUpdateCaptureRoot(stateDir),
       ...agentIds.map((agentId) => resolveAgentDir(config, agentId)),
     ],
+    media: { dir: path.join(resolveConfigDir(), "media"), limits },
   };
 }
 
@@ -184,7 +220,7 @@ export async function backupGitCreateCommand(runtime: RuntimeEnv, options: Backu
         all: options.all,
         excludeSecrets: options.excludeSecrets,
         push: options.push,
-        ...(options.files ? { files: await resolveFilesSource() } : {}),
+        ...(options.files ? { files: await resolveFilesSource(resolveMediaLimits(options)) } : {}),
       }),
     );
     // A completed local backup remains successful even when requested remote replication fails;
