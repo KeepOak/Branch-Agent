@@ -20,6 +20,12 @@ export type Conversation = {
   kind: string;
   system: boolean;
   automation: boolean;
+  needsYou?: boolean;
+  /** Classification retained for the contact projection. */
+  classification?: string;
+  spawnDepth?: number;
+  helper?: boolean;
+  groupChat?: boolean;
   label?: string;
   /** The conversation's room: tokens used now and the model's window (sessions.list totalTokens, contextTokens). */
   totalTokens: number;
@@ -76,7 +82,7 @@ const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v)
 export const LIST_PARAMS = {
   includeGlobal: true,
   includeUnknown: true,
-  configuredAgentsOnly: true,
+  configuredAgentsOnly: false,
   includeLastMessage: true,
   includeDerivedTitles: true,
   archived: "all",
@@ -91,6 +97,7 @@ export function projectConversation(raw: unknown, mainKey: string | null): Conve
   const title = label || str(r.displayName) || str(r.derivedTitle) || "";
   const activeRunIds = Array.isArray(r.activeRunIds) ? r.activeRunIds : [];
   const classification = str(r.classification);
+  const participants = Array.isArray(r.participants) ? r.participants : [];
   return {
     key,
     title,
@@ -108,6 +115,10 @@ export function projectConversation(raw: unknown, mainKey: string | null): Conve
     kind: str(r.kind),
     system: classification === "system" || str(r.createdVia) === "system",
     automation: classification === "cron" || key.includes(":cron:"),
+    classification,
+    spawnDepth: num(r.spawnDepth),
+    helper: Boolean(r.spawnedBy) || num(r.spawnDepth) > 0,
+    groupChat: str(r.kind) === "group" || participants.some((p) => str(rec(rec(p).identity).type) === "profile"),
     label,
     ...(str(r.sessionId) ? { sessionId: str(r.sessionId) } : {}),
     ...(typeof r.markedUnreadAt === "number" ? { markedUnreadAt: r.markedUnreadAt } : {}),
