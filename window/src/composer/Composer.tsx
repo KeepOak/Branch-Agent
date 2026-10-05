@@ -21,6 +21,7 @@ import { useBackground } from "./useBackground";
 import { hasNoModel, useConversation } from "./useConversation";
 import { safeStorage, saveDraft } from "./drafts";
 import { useConversationPrefs } from "../thread/prefs";
+import { currentModelAccount, modelAccountTooltip, shortAccountEmail, useModelAccounts } from "./useModelAccount";
 import { vimKey, type VimMode } from "./vim";
 import { useDraft } from "./useDraft";
 import { useDrawer, type Pick } from "./useDrawer";
@@ -124,6 +125,9 @@ export function Composer(props: Props) {
   const row = conv.row;
   const currentRef = currentModelRef(row, conv.defaults);
   const current = conv.models.find((m) => m.ref === currentRef || m.id === currentRef);
+  const modelAccounts = useModelAccounts(engine, conv.trunkId, working);
+  const modelAccount = currentModelAccount(modelAccounts, current?.provider ?? currentRef.split("/")[0] ?? "", row);
+  const accountEmail = shortAccountEmail(modelAccount);
   const thinking = currentThinking(row, conv.defaults);
   // No model set up: the engine names a default model but none is connected (models.list has none usable), or none at all.
   const noModel = hasNoModel(conv, currentRef);
@@ -485,9 +489,9 @@ export function Composer(props: Props) {
           ) : null}
         </span>
         {engine && !noModel ? (
-          <button ref={anchors.model} type="button" className="c-chipb" data-testid="model-chip" aria-expanded={menu === "model"} title="Model and how long it thinks" onClick={() => setMenu(menu === "model" ? null : "model")}>
+          <button ref={anchors.model} type="button" className="c-chipb" data-testid="model-chip" aria-expanded={menu === "model"} title={modelAccountTooltip(modelAccount)} onClick={() => setMenu(menu === "model" ? null : "model")}>
             <Logo id={current?.provider ?? currentRef.split("/")[0] ?? ""} size={18} />
-            <span className="c-chipw">{chipLabel(current?.name ?? currentRef.split("/").pop() ?? "", thinking)}</span>
+            <span className="c-chipw">{chipLabel(current?.name ?? currentRef.split("/").pop() ?? "", thinking)}{accountEmail ? ` · ${accountEmail}` : ""}</span>
             {str(row.activeModel) && str(row.activeModel) !== str(row.model) ? (
               <span title={`${current?.name ?? str(row.model)} isn't answering, so ${str(row.activeModel)} is standing in.`}><Icon name="retry" size={13} /></span>
             ) : null}

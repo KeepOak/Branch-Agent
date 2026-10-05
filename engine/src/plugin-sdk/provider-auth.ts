@@ -17,7 +17,15 @@ export {
   ensureAuthProfileStore,
   ensureAuthProfileStoreForLocalUpdate,
 } from "../agents/auth-profiles/store-runtime.js";
-export { listProfilesForProvider, upsertAuthProfile } from "../agents/auth-profiles/profiles.js";
+export {
+  listProfilesForProvider,
+  markAuthProfileSuccess,
+  upsertAuthProfile,
+} from "../agents/auth-profiles/profiles.js";
+export { markAuthProfileFailure } from "../agents/auth-profiles/usage.js";
+export type { AuthProfileFailureReason } from "../agents/auth-profiles/types.js";
+export { resolveFailoverReasonFromError } from "../agents/failover-error.js";
+export { resolveAuthProfileFailureReason } from "../agents/embedded-agent-runner/run/auth-profile-failure-policy.js";
 export {
   removeProviderAuthProfilesWithLockCompat as removeProviderAuthProfilesWithLock,
   updateAuthProfileStoreWithLockCompat as updateAuthProfileStoreWithLock,
