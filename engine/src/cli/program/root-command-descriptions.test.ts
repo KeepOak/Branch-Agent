@@ -133,6 +133,7 @@ const JSON_NOT_APPLICABLE = {
       "gateway",
       "gateway run",
       "mcp serve",
+      "graft",
       "node worker",
       "node run",
       "connect",
