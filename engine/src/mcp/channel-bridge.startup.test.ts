@@ -66,6 +66,7 @@ vi.mock("../../packages/gateway-client/src/readiness.js", () => ({
 }));
 
 vi.mock("../gateway/method-scopes.js", () => ({
+  ADMIN_SCOPE: "operator.admin",
   APPROVALS_SCOPE: "operator.approvals",
   READ_SCOPE: "operator.read",
   WRITE_SCOPE: "operator.write",

@@ -12,7 +12,7 @@ import { keepWindowsWindowResident } from "./resident-window";
 import { confirmComponentUpdate, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
-import { createDesktopControls, registerDesktopControlsIpc } from "./desktop-controls";
+import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
 import { registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
@@ -48,6 +48,12 @@ log(`launch v${app.getVersion()} pid ${process.pid}`);
 // Own profile and lock, apart from the old installed Branch Agent app.
 app.setPath("userData", join(cfg.dataDir, "electron"));
 app.setAppUserModelId("dev.branch.agent.desktop");
+// "Let agents use this window": Chromium remote debugging on a random loopback port, written to
+// <userData>/DevToolsActivePort for `branch mcp serve` ui_* tools. Off unless the owner turned it on.
+if (readSettings(join(cfg.dataDir, "desktop-settings.json")).agentControl) {
+  app.commandLine.appendSwitch("remote-debugging-port", "0");
+  log("agent control is on: remote debugging on a loopback port");
+}
 
 let gateway: ChildProcess | undefined;
 let server: Server | undefined;

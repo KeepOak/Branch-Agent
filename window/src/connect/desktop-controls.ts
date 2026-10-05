@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 
 export type DesktopControlsState = {
   keepWorking: boolean; keepAwake: boolean; trayUsage: boolean; autoApplyUpdates: boolean; startWithWindows: boolean; branchOnPath: boolean;
+  /** Older desktop apps leave it out. */
+  agentControl?: boolean;
 };
 export type DesktopControlName = keyof DesktopControlsState;
 export type DesktopControlsBridge = {

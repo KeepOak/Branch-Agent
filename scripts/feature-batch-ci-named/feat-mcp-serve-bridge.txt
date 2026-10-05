@@ -1,0 +1,4 @@
+engine:src/mcp/trunk-tools.test.ts
+engine:src/mcp/channel-server.test.ts
+engine:src/mcp/channel-bridge.test.ts
+engine:src/mcp/channel-bridge.startup.test.ts

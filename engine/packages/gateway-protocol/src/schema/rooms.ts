@@ -1,6 +1,7 @@
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import { closedObject } from "./closed-object.js";
+import { OutsideAgentSchema } from "./contacts.js";
 import { NonEmptyString } from "./primitives.js";
 
 const Id = Type.String({ minLength: 1, maxLength: 128 });
@@ -55,7 +56,11 @@ export const RoomsListParamsSchema = closedObject({
   includeArchived: Type.Optional(Type.Boolean()),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
-export const RoomsSendParamsSchema = closedObject({ roomId: Id, message: NonEmptyString });
+export const RoomsSendParamsSchema = closedObject({
+  roomId: Id,
+  message: NonEmptyString,
+  outsideAgent: Type.Optional(OutsideAgentSchema),
+});
 export const RoomsLogParamsSchema = closedObject({
   roomId: Id,
   cursor: Type.Optional(Type.Integer({ minimum: 0 })),

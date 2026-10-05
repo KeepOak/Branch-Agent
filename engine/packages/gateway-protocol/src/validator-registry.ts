@@ -27,6 +27,7 @@ export {
 export const validateContactsListParams = compile(S.ContactsListParamsSchema);
 export const validateContactsTopicsParams = compile(S.ContactsTopicsParamsSchema);
 export const validateContactsMarkReadParams = compile(S.ContactsMarkReadParamsSchema);
+export const validateContactsOutsideHelloParams = compile(S.ContactsOutsideHelloParamsSchema);
 export const validateRoomsCreateParams = compile(S.RoomsCreateParamsSchema);
 export const validateRoomsGetParams = compile(S.RoomsGetParamsSchema);
 export const validateRoomsListParams = compile(S.RoomsListParamsSchema);
