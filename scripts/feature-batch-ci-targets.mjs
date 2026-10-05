@@ -2,6 +2,7 @@
 export const engineTests = [
   'src/gateway/server-methods/agents-delete-identity.test.ts',
   'src/state/agent-deletion-journal.fence.test.ts',
+  'src/gateway/server-methods/chat-history.segments.test.ts',
   'extensions/codex/src/app-server/windows-shell-guidance.test.ts',
   'src/gateway/server-methods/memory-export.test.ts',
   'src/agents/agent-create.test.ts',
@@ -48,6 +49,8 @@ export const engineTests = [
   'src/agents/cli-output-records.test.ts',
   'src/agents/cli-output-jsonl.test.ts',
   'src/agents/main-session-recovery/main-session-restart-recovery.pending-admission.test.ts',
+  // Pins the advertised method order: new gateway methods must append, never shift older indices.
+  'src/gateway/server-methods-list.test.ts',
 ];
 
 export const windowTests = [
