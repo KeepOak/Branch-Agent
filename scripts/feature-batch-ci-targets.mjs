@@ -1,8 +1,10 @@
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
   'src/gateway/config-reload-plan.test.ts',
-  'src/gateway/server-reload-handlers.test.ts',
-  'src/gateway/server-methods/agents-mutate.test.ts',
+  'src/gateway/server-reload-hot.agent-roster.test.ts',
+  'src/gateway/server-methods/agents-create-ready.test.ts',
+  'src/gateway/server-methods/agents-delete-identity.test.ts',
+  'src/state/agent-deletion-journal.identity.test.ts',
   'src/gateway/server-methods/chat-history.segments.test.ts',
   'extensions/codex/src/app-server/windows-shell-guidance.test.ts',
   'src/gateway/server-methods/memory-export.test.ts',
@@ -55,6 +57,8 @@ export const engineTests = [
 ];
 
 export const windowTests = [
+  'src/shell/contacts-model.test.ts',
+  'src/shell/row-menu.test.ts',
   'src/connect/desktop-component-updates.test.tsx',
   'src/thread/PlanCard.test.ts',
   'src/thread/PlanCard.note-only.test.tsx',

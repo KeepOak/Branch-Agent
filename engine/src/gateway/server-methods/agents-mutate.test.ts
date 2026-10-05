@@ -3,7 +3,7 @@
 
 import path from "node:path";
 import { expectDefined } from "@branch/normalization-core";
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { AgentDeletionAuthorityRollbackError } from "../../agents/agent-lifecycle-registry.js";
 import { WORKSPACE_BOOTSTRAP_FILENAMES } from "../../agents/workspace.js";
 import { getRuntimeConfigWriteApplication } from "../../config/runtime-write-application.js";
@@ -28,8 +28,6 @@ const mocks = vi.hoisted(() => ({
     location: "legacy-main" | "state-db";
   },
   loadConfigReturn: {} as Record<string, unknown>,
-  runtimeConfigReturn: undefined as Record<string, unknown> | undefined,
-  publishWrite: vi.fn((_options: object, _config: unknown) => {}),
   listAgentEntries: vi.fn((_cfg?: unknown) => [] as Array<Record<string, unknown>>),
   findAgentEntryIndex: vi.fn((_list?: unknown, _agentId?: string) => -1),
   applyAgentConfig: vi.fn((_cfg: unknown, _opts: unknown) => ({})),
@@ -173,7 +171,9 @@ vi.mock("../../config/config.js", async () => {
       });
       await mocks.writeConfigFile(transformed.nextConfig);
       mocks.loadConfigReturn = transformed.nextConfig;
-      if (params.writeOptions) mocks.publishWrite(params.writeOptions, transformed.nextConfig);
+      if (params.writeOptions) {
+        getRuntimeConfigWriteApplication(params.writeOptions)?.claim()?.settle("applied");
+      }
       return {
         path: "/tmp/branch/config.json",
         previousHash: "test-hash",
@@ -506,7 +506,7 @@ function makeCall(method: keyof typeof agentsHandlers, params: Record<string, un
     params,
     respond,
     context: {
-      getRuntimeConfig: () => mocks.runtimeConfigReturn ?? mocks.loadConfigReturn,
+      getRuntimeConfig: () => mocks.loadConfigReturn,
       cron: { removeAgentJobsTransactional: mocks.cronRemoveAgentJobsTransactional },
       logGateway: { warn: mocks.logGatewayWarn },
     } as never,
@@ -645,15 +645,8 @@ beforeEach(() => {
 });
 
 describe("agents.create", () => {
-  afterEach(() => {
-    mocks.runtimeConfigReturn = undefined;
-  });
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.runtimeConfigReturn = undefined;
-    mocks.publishWrite.mockReset().mockImplementation((options: object) => {
-      getRuntimeConfigWriteApplication(options)?.claim()?.settle("applied");
-    });
     mocks.hasDeletedAgentDatabases.mockReturnValue(false);
     mocks.reviveAgentDatabases.mockReset().mockResolvedValue(undefined);
     mocks.loadConfigReturn = {
@@ -665,35 +658,6 @@ describe("agents.create", () => {
     ...mocks,
     create: (params) => makeCall("agents.create", params),
     configuredConfig: () => mocks.loadConfigReturn,
-  });
-
-  it("resolves the new agent for agents.list when create returns", async () => {
-    let activate: (() => void) | undefined;
-    mocks.runtimeConfigReturn = structuredClone(mocks.loadConfigReturn);
-    mocks.publishWrite.mockImplementation((options: object, config: unknown) => {
-      const claim = getRuntimeConfigWriteApplication(options)?.claim();
-      activate = () => {
-        mocks.runtimeConfigReturn = config as Record<string, unknown>;
-        claim?.settle("applied");
-      };
-    });
-    mocks.listAgentsForGateway.mockImplementationOnce(async (config: unknown) => ({
-      defaultId: "main",
-      mainKey: "agent:main:main",
-      scope: "global",
-      agents: getAgentList(config).map((entry) => ({ id: entry.id })),
-    }));
-
-    const created = makeCall("agents.create", { name: "New Agent" });
-    await vi.waitFor(() => expect(activate).toBeTypeOf("function"));
-    expect(created.respond).not.toHaveBeenCalled();
-    activate?.();
-    await created.promise;
-    expectRespondOk(created.respond, { ok: true, agentId: "new-agent" });
-
-    const listed = await call("agents.list", {});
-    const agents = expectRecordFields(firstRespondResult(listed), {}).agents;
-    expect(agents).toEqual(expect.arrayContaining([expect.objectContaining({ id: "new-agent" })]));
   });
 
   it("rejects invalid params (missing name)", async () => {

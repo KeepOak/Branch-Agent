@@ -5,6 +5,7 @@ import { isSnoozed } from "./list-model";
 import type { MenuItem } from "./Menu";
 import { menuIcon } from "./menu-icons";
 import type { Level } from "../places-nav/settings-nav";
+import type { Contact } from "./contacts-model";
 
 type Ctx = {
   actions: Actions;
@@ -24,12 +25,21 @@ type Ctx = {
   copyLink: (row: Conversation) => void;
   /** Icon and colour (Advanced): a submenu with the picker, built where JSX is allowed. */
   lookItem?: MenuItem | null;
+  contact?: Contact;
+  markContactRead?: (contact: Contact) => void;
+  pinContact?: (contact: Contact) => void;
+  profile?: (agentId: string | undefined) => void;
+  whoItKnows?: (contact: Contact) => void;
 };
 
 const WINDOW_OFF = "A conversation in its own window needs the desktop app, which doesn't offer it yet.";
 const FORK_OFF = "Copying a conversation needs an engine call that copies up to the last reply; it doesn't have one yet.";
 const MOVE_OFF = "Moving a conversation into a project needs an engine method Branch doesn't have yet.";
 const PAUSE_OFF = "Pausing a Trunk needs an engine method it doesn't have yet.";
+// TODO(engine-lane): Non-default Trunk main sessions cannot be deleted until the engine supports their deletion and a Recently Deleted list.
+export const TRUNK_DELETE_OFF = "Deleting a Trunk's thread needs the engine to allow deleting a non-default Trunk's main session and a Recently Deleted list.";
+// TODO(engine-lane): Contact mute needs a persisted setting and notification routing; sessions.patch has no mute field.
+const MUTE_OFF = "Muting a contact needs a saved mute setting and notification routing, which the engine doesn't offer yet.";
 
 export const CARD_LINK_OFF = "A link with a preview card needs the engine's share preview, which it doesn't have yet.";
 
@@ -76,6 +86,7 @@ const ic = (name: Parameters<typeof menuIcon>[0]) => ({ icon: menuIcon(name) });
 /** The row menu in the preview's order (POPS.rowmenu with pass 18's rows): open and marks, copies, a line, the
  *  primary group (snooze, archive, project, icon and colour, tidy), the Trunk's rows, a line, Delete. */
 export function rowMenuItems(row: Conversation, c: Ctx): MenuItem[] {
+  if (c.contact) return contactMenuItems(row, c, c.contact);
   const items: (MenuItem | null)[] = [
     { label: "Open", run: () => c.open(row.key), testid: "menu-open", ...ic("chat") },
     row.unread
@@ -105,4 +116,32 @@ export function rowMenuItems(row: Conversation, c: Ctx): MenuItem[] {
     row.isMain ? null : { label: "Delete…", letter: "d", danger: true, run: () => c.confirmDelete(row), testid: "menu-delete", ...ic("trash") },
   ];
   return items.filter((i): i is MenuItem => i !== null);
+}
+
+function contactMenuItems(row: Conversation, c: Ctx, contact: Contact): MenuItem[] {
+  const trunk = contact.kind === "trunk";
+  const otherTrunk = trunk && !contact.isDefault;
+  const canEdit = Boolean(contact.thread);
+  const items: (MenuItem | null)[] = [
+    { label: "Open", run: () => c.open(contact.threadKey), testid: "menu-open", ...ic("chat") },
+    row.unread
+      ? { label: "Mark as read", letter: "u", run: () => c.markContactRead?.(contact), testid: "menu-unread", ...ic("chat") }
+      : { label: "Mark as unread", letter: "u", run: () => contact.thread && void c.actions.setUnread(contact.thread, true), testid: "menu-unread", ...ic("chat"), ...(!canEdit ? { disabled: "Send a first message before marking this contact unread." } : {}) },
+    !contact.isDefault && canEdit ? { label: row.pinned ? "Unpin" : "Pin to top", letter: "p", run: () => c.pinContact?.(contact), testid: "menu-pin", ...ic("pin") } : null,
+    { label: "Mute", run: () => undefined, disabled: MUTE_OFF, testid: "menu-mute", ...ic("pause") },
+    trunk
+      ? { label: "Rename Trunk on profile", letter: "r", run: () => c.profile?.(row.agentId), testid: "menu-rename", ...ic("edit") }
+      : { label: "Rename", letter: "r", run: () => c.rename(row), testid: "menu-rename", ...ic("edit") },
+    !contact.isDefault && (!trunk || Boolean(contact.archivedAt)) && canEdit
+      ? { label: row.archived ? "Restore" : "Archive", letter: "a", run: () => void (row.archived ? c.actions.restore(row) : c.actions.archive(row)), testid: "menu-archive", ...ic("box") }
+      : null,
+    trunk ? { label: `New conversation with ${contact.name}`, run: () => c.newWith(row.agentId), ...ic("plus") } : null,
+    trunk ? { label: "Who it knows", run: () => c.whoItKnows?.(contact), testid: "menu-who", ...ic("users") } : null,
+    trunk ? { label: "Open profile", run: () => c.profile?.(row.agentId), testid: "menu-profile", ...ic("info") } : null,
+    contact.isDefault ? null : { kind: "sep" },
+    otherTrunk
+      ? { label: "Delete…", letter: "d", danger: true, run: () => undefined, disabled: TRUNK_DELETE_OFF, testid: "menu-delete", ...ic("trash") }
+      : contact.isDefault ? null : { label: "Delete…", letter: "d", danger: true, run: () => c.confirmDelete(row), testid: "menu-delete", ...ic("trash") },
+  ];
+  return items.filter((item): item is MenuItem => item !== null);
 }
