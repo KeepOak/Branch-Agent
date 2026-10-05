@@ -17,7 +17,7 @@ import path from "node:path";
 
 const MAP = JSON.parse(readFileSync(new URL("./rebrand-map.json", import.meta.url), "utf8"));
 const PIN = "c83f02659ff9e181f81d12959970261fcaaa1d07";
-const CLONE = "C:/Users/bishi/Code/atlas-src/openclaw__openclaw";
+const CLONE = process.env.BRANCH_UPSTREAM_CLONE ?? "../openclaw";
 const WORDS = MAP.words.map(([from, to]) => ({ from, to, re: new RegExp(from, "gi") }));
 const PROTECT = MAP.protect.map((p) => ({ re: new RegExp(p.re, "g" + (p.flags ?? "").replace("g", "")), in: p.in ? new RegExp(p.in) : null }));
 const SKIP = MAP.skip.map((s) => new RegExp(s.re));
