@@ -262,15 +262,41 @@ export function outsideAgentDeviceRefusal(
   agent: Pick<OutsideAgent, "id" | "name" | "via">,
   deviceId: string | undefined,
   records: readonly OutsideAgentRecord[],
+  settings: OutsideAgentSettings = { enabled: true, revoked: [], mayDriveWindow: [] },
 ): string | undefined {
   const row = records.find((candidate) => candidate.id === agent.id);
-  if (row && row.deviceId !== deviceId) {
+  if (row && row.deviceId !== deviceId && !(deviceId && releasedDeviceRow(row, settings))) {
     return `${agent.name} is already connected from another device.`;
   }
   if (agent.via && (!deviceId || records.find((r) => r.id === agent.via)?.deviceId !== deviceId)) {
     return `${agent.name} must say hello through its own grafted Branch.`;
   }
   return undefined;
+}
+
+/**
+ * A grafted Branch's row after Disconnect: its pairing was removed with it (contacts.outside.set revokes device
+ * rows only once device.pair.remove succeeded), so only a new setup code the owner approved can bring a device
+ * back. Such a row is released: the next paired device that says hello as it takes it over and un-revokes it.
+ */
+export function releasedDeviceRow(
+  row: OutsideAgentRecord,
+  settings: OutsideAgentSettings,
+): boolean {
+  return Boolean(row.deviceId) && settings.revoked.includes(row.id);
+}
+
+/** Rows a re-paired grafted Branch takes back on hello: un-revoked, so its new pairing works without manual steps. */
+export function reclaimDeviceRow(
+  id: string,
+  deviceId: string | undefined,
+  records: readonly OutsideAgentRecord[],
+  env?: NodeJS.ProcessEnv,
+): OutsideAgentSettings | undefined {
+  const settings = readOutsideAgentSettings(env);
+  const row = records.find((candidate) => candidate.id === id);
+  if (!deviceId || !row || !releasedDeviceRow(row, settings)) return undefined;
+  return updateOutsideAgentSettings({ id, revoked: false }, env);
 }
 
 /** The paired device behind a scoped (non-owner) connection: a grafted Branch. Owner-level connections (admin

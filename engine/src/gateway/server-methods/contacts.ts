@@ -23,6 +23,7 @@ import {
   graftDeviceId,
   outsideAgentDeviceRefusal,
   outsideAgentDeviceRows,
+  reclaimDeviceRow,
   isOutsideAgentOnline,
   listOutsideAgents,
   outsideAgentPeers,
@@ -167,14 +168,20 @@ export const contactHandlers: GatewayRequestHandlers = {
       )
     )
       return;
-    const settings = readOutsideAgentSettings();
+    let settings = readOutsideAgentSettings();
     const records = listOutsideAgents();
     // A grafted Branch (a scoped paired device) keeps its own rows; it never takes another's.
     const deviceId = graftDeviceId(client);
     const id = deviceId ? params.agent.id : assignOutsideAgentId(params.agent, records);
-    const refusal =
-      outsideAgentDeviceRefusal({ ...params.agent, id }, deviceId, records) ??
-      outsideAgentRefusal({ ...params.agent, id }, settings);
+    const deviceRefusal = outsideAgentDeviceRefusal(
+      { ...params.agent, id },
+      deviceId,
+      records,
+      settings,
+    );
+    // Re-paired after Disconnect (a new code, approved): it takes its rows back.
+    if (!deviceRefusal) settings = reclaimDeviceRow(id, deviceId, records) ?? settings;
+    const refusal = deviceRefusal ?? outsideAgentRefusal({ ...params.agent, id }, settings);
     if (refusal) {
       respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, refusal));
       return;
@@ -233,6 +240,12 @@ export const contactHandlers: GatewayRequestHandlers = {
     }
     context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
     respond(true, settings);
+  },
+  // Branch-to-Branch: `branch graft join` saved a host while this gateway runs; start (or sync) its link.
+  "graft.links.sync": async ({ respond, context }) => {
+    const { ensureGraftLinks } = await import("../../mcp/graft-link.js");
+    const links = ensureGraftLinks((line) => context.logGateway.info(line));
+    respond(true, { links: links.states() });
   },
   "a2a.peers.refresh": async ({ context, respond }) => {
     respond(true, { peers: await refreshA2aPeerCards(context.getRuntimeConfig()) });

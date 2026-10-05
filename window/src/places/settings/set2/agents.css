@@ -14,3 +14,33 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* Another Branch grafted in: a "Branch" badge on its row and its Trunks nested under it. */
+.ca-badge {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line, rgba(127, 127, 127, 0.35));
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ca-trunks {
+  list-style: none;
+  margin: 6px 0 8px 38px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.ca-trunk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.ca-trunk .hint {
+  margin: 0;
+}

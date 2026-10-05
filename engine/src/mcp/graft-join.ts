@@ -234,3 +234,13 @@ export async function graftHostOptions(
   const roster = await listGatewayAgentsBasic(getRuntimeConfig());
   return { link, trunks: roster.agents.filter((agent) => agent.kind !== "system") };
 }
+
+/** Forget a host that disconnected this Branch (its pairing is gone there). */
+export function forgetGraftLink(url: string, env?: NodeJS.ProcessEnv): void {
+  const file = linksFile(env);
+  const rows = readGraftLinks(env).filter((row) => row.url !== url);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(rows, null, 2)}\n`);
+  fs.renameSync(tmp, file);
+}

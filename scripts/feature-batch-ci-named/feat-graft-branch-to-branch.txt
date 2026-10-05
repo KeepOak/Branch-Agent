@@ -1,2 +1,4 @@
 engine:src/gateway/server-methods/contacts.graft.test.ts
 engine:src/mcp/graft-join.test.ts
+engine:src/mcp/graft-link.test.ts
+window:src/places/settings/set2/agents.test.tsx

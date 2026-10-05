@@ -97,12 +97,32 @@ async function runJoin(code: string, opts: JoinOpts): Promise<void> {
   } finally {
     connection.stop();
   }
-  const summary = { host: link.url, name, deviceId: joined.deviceId, scopes: joined.scopes };
+  // This Branch's gateway keeps the link from now on (it also starts it whenever the gateway starts).
+  const linked = await callGatewayFromCli(
+    "graft.links.sync",
+    { json: true },
+    {},
+    { scopes: ["operator.admin"] },
+  )
+    .then(() => true)
+    .catch(() => false);
+  const summary = {
+    host: link.url,
+    name,
+    deviceId: joined.deviceId,
+    scopes: joined.scopes,
+    linked,
+  };
   if (opts.json) {
     defaultRuntime.writeJson(summary);
     return;
   }
   defaultRuntime.log(`Grafted into ${link.url} as "${name}" (${joined.scopes.join(", ")}).`);
+  defaultRuntime.log(
+    linked
+      ? "This Branch's gateway keeps it connected."
+      : "This Branch's gateway connects to it when it next starts.",
+  );
   defaultRuntime.log(
     `Work with it from this Branch: ${formatCliCommand(`branch graft --host ${link.url}`)}`,
   );

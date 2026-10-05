@@ -129,8 +129,37 @@ describe("Branch-to-Branch graft on the host", () => {
     expect(result.ok).toBe(true);
     expect(removed.calls).toEqual(["dev-b"]);
     expect(readOutsideAgentSettings().revoked.toSorted()).toEqual(["branch-b", "branch-b--scout"]);
-    const again = await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
-    expect(again.error?.message).toContain("was disconnected");
+    // Its pairing is gone (device.pair.remove above), so it cannot connect to say hello again until the owner
+    // approves a new setup code; that re-pair is the next case. Other agents' tools cannot speak as it meanwhile.
+    expect((await call("contacts.outside.hello", { agent: branchB }, owner)).ok).toBe(false);
+  });
+
+  it("a re-paired Branch takes its rows back after Disconnect, from the same or a new device", async () => {
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    await call("contacts.outside.hello", { agent: scout }, device("dev-b"));
+    await call("contacts.outside.set", { id: "branch-b", revoked: true }, owner);
+    // The owner's own clients still cannot take released rows.
+    expect((await call("contacts.outside.hello", { agent: branchB }, owner)).ok).toBe(false);
+    // A new setup code, approved: the same Branch (same identity) says hello again.
+    expect((await call("contacts.outside.hello", { agent: branchB }, device("dev-b"))).ok).toBe(
+      true,
+    );
+    expect((await call("contacts.outside.hello", { agent: scout }, device("dev-b"))).ok).toBe(true);
+    expect(readOutsideAgentSettings().revoked).toEqual([]);
+    // Disconnected again, it re-joins from a fresh state dir (a new device): the rows move to that device.
+    await call("contacts.outside.set", { id: "branch-b", revoked: true }, owner);
+    expect((await call("contacts.outside.hello", { agent: branchB }, device("dev-b2"))).ok).toBe(
+      true,
+    );
+    expect((await call("contacts.outside.hello", { agent: scout }, device("dev-b2"))).ok).toBe(
+      true,
+    );
+    expect(listOutsideAgents().map((row) => row.deviceId)).toEqual(["dev-b2", "dev-b2"]);
+    expect(readOutsideAgentSettings().revoked).toEqual([]);
+    // A connected Branch's rows are not released: another device still cannot take them.
+    expect((await call("contacts.outside.hello", { agent: branchB }, device("dev-c"))).ok).toBe(
+      false,
+    );
   });
 
   it("keeps the rows connected when the pairing could not be removed", async () => {
