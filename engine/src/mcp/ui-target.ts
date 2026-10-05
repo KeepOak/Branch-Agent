@@ -109,7 +109,9 @@ const TYPES: Record<string, string> = {
 };
 
 /** A loopback static server for the window build (the desktop app serves it the same way). */
-export function serveWindow(root: string, port: number): Promise<http.Server> {
+export function serveWindow(windowRoot: string, port: number): Promise<http.Server> {
+  // Normalised, so a folder given with forward slashes on Windows still matches the resolved file paths.
+  const root = path.resolve(windowRoot);
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const rel = decodeURIComponent(url.pathname).replace(/^\/+/, "") || "index.html";

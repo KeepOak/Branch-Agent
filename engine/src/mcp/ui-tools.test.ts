@@ -170,3 +170,25 @@ describe.runIf(
     }
   }, 60_000);
 });
+
+describe("the window server", () => {
+  it("serves assets from a folder given with forward slashes", async () => {
+    const root = scratch();
+    fs.mkdirSync(path.join(root, "assets"));
+    fs.writeFileSync(path.join(root, "index.html"), "<!doctype html>");
+    fs.writeFileSync(path.join(root, "assets", "app.js"), "export {}");
+    const server = await serveWindow(root.split(path.sep).join("/"), await freePort());
+    try {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      const res = await fetch(`http://127.0.0.1:${port}/assets/app.js`);
+      expect(res.headers.get("content-type")).toBe("text/javascript");
+      expect(await res.text()).toBe("export {}");
+      expect(
+        (await fetch(`http://127.0.0.1:${port}/../secret`)).headers.get("content-type"),
+      ).toContain("text/html");
+    } finally {
+      server.close();
+    }
+  });
+});
