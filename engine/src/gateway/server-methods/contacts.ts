@@ -6,6 +6,8 @@ import {
   validateContactsTopicsParams,
   validateContactsMarkReadParams,
   validateContactsOutsideHelloParams,
+  validateContactsOutsideListParams,
+  validateContactsOutsideSetParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { listAgentEntries } from "../../agents/agent-scope.js";
 import { resolveExistingAgentSessionStoreTargetsSync } from "../../config/sessions.js";
@@ -20,7 +22,10 @@ import {
   isOutsideAgentOnline,
   listOutsideAgents,
   outsideAgentPeers,
+  outsideAgentRefusal,
+  readOutsideAgentSettings,
   recordOutsideAgent,
+  updateOutsideAgentSettings,
 } from "../contacts/outside-agents.js";
 import { projectContacts } from "../contacts/project.js";
 import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role-policy.js";
@@ -134,11 +139,51 @@ export const contactHandlers: GatewayRequestHandlers = {
       )
     )
       return;
+    const settings = readOutsideAgentSettings();
+    const refusal = outsideAgentRefusal(params.agent, settings);
+    if (refusal) {
+      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, refusal));
+      return;
+    }
     const record = recordOutsideAgent(params.agent);
     context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
     respond(true, {
       contact: { id: `a2a:${record.id}`, name: record.name, where: record.where ?? null },
+      mayDriveWindow: settings.mayDriveWindow.includes(record.id),
     });
+  },
+  "contacts.outside.list": async ({ params, respond }) => {
+    if (
+      !assertValidParams(
+        params,
+        validateContactsOutsideListParams,
+        "contacts.outside.list",
+        respond,
+      )
+    )
+      return;
+    const settings = readOutsideAgentSettings();
+    const agents = listOutsideAgents().map((row) => ({
+      ...row,
+      contactId: `a2a:${row.id}`,
+      online: isOutsideAgentOnline(row) && !outsideAgentRefusal(row, settings),
+      revoked: settings.revoked.includes(row.id),
+      mayDriveWindow: settings.mayDriveWindow.includes(row.id),
+    }));
+    respond(true, { enabled: settings.enabled, agents });
+  },
+  "contacts.outside.set": async ({ params, respond, context }) => {
+    if (
+      !assertValidParams(params, validateContactsOutsideSetParams, "contacts.outside.set", respond)
+    )
+      return;
+    if ((params.revoked !== undefined || params.mayDriveWindow !== undefined) && !params.id) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Name the agent (id)"));
+      return;
+    }
+    const settings = updateOutsideAgentSettings(params);
+    context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
+    respond(true, settings);
   },
   "a2a.peers.refresh": async ({ context, respond }) => {
     respond(true, { peers: await refreshA2aPeerCards(context.getRuntimeConfig()) });

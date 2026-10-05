@@ -6,8 +6,8 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { afterEach, describe, expect, it } from "vitest";
 import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
-import { outsideAgentFromClient } from "./channel-server-runtime.js";
 import { resolveDesktopGateway } from "./desktop-gateway.js";
+import { displayName, outsideAgentFromClient, OutsidePresence } from "./outside-presence.js";
 import { registerTrunkMcpTools, type TrunkGateway } from "./trunk-tools.js";
 
 type Call = { method: string; params: Record<string, unknown> };
@@ -298,20 +298,54 @@ describe("branch mcp serve Trunk tools", () => {
 });
 
 describe("branch mcp serve identity and gateway", () => {
-  it("names the outside agent from the MCP clientInfo", () => {
-    expect(
-      outsideAgentFromClient(
-        { name: "claude-code", title: "Claude Code", version: "2.1.0" },
-        "LEGION",
-      ),
-    ).toEqual(claude);
-    expect(outsideAgentFromClient({ name: "codex-mcp-client", version: "0.9" }, "mac")).toEqual({
-      id: "codex-mcp-client",
-      name: "codex-mcp-client",
-      version: "0.9",
-      where: "mac",
+  it("names each connected client by its product name, computer and project folder", () => {
+    const a = outsideAgentFromClient(
+      { name: "claude-code", version: "2.1.0" },
+      "LEGION",
+      "/w/Branch-Agent",
+    );
+    const b = outsideAgentFromClient(
+      { name: "claude-code", version: "2.1.0" },
+      "LEGION",
+      "/w/EDILAS",
+    );
+    const again = outsideAgentFromClient({ name: "claude-code" }, "LEGION", "/w/Branch-Agent");
+    expect(a).toMatchObject({
+      name: "Claude Code",
+      version: "2.1.0",
+      where: "LEGION",
+      project: "Branch-Agent",
     });
+    expect(a?.id).toMatch(/^claude-code-[0-9a-f]{6}$/);
+    expect(b?.id).not.toBe(a?.id);
+    expect(again?.id).toBe(a?.id);
+    expect(displayName({ name: "codex-mcp-client" })).toBe("Codex");
+    expect(displayName({ name: "gemini-cli-mcp-client" })).toBe("Gemini CLI");
+    expect(displayName({ name: "hermes", title: "Hermes Agent" })).toBe("Hermes Agent");
+    expect(displayName({ name: "my-agent" })).toBe("my-agent");
     expect(outsideAgentFromClient(undefined)).toBeUndefined();
+  });
+
+  it("stops acting for the agent once Settings › Connected agents turns it away", async () => {
+    let refuse = false;
+    const presence = new OutsidePresence(async () => {
+      if (refuse) throw new Error("Claude Code was disconnected in Settings › Connected agents.");
+      return { mayDriveWindow: true };
+    });
+    presence.start(claude);
+    await expect(presence.identity()).resolves.toEqual(claude);
+    expect(presence.mayDriveWindow()).toBe(true);
+    refuse = true;
+    presence.activity("Messaging oak");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(presence.identity()).rejects.toThrow(/disconnected/);
+    presence.stop();
+    const older = new OutsidePresence(async () => {
+      throw new Error("unknown method: contacts.outside.hello");
+    });
+    older.start(claude);
+    await expect(older.identity()).resolves.toBeUndefined();
+    older.stop();
   });
 
   it("uses the desktop app's loopback gateway and token file only when no auth is named", () => {

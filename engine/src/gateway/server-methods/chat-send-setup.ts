@@ -1,7 +1,7 @@
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import type { SessionGoalOperation } from "../../config/sessions/goals-operations.js";
 import type { ProviderReviewAcknowledgment } from "../../sessions/provider-review.js";
-import { outsideAgentMayMessage } from "../contacts/outside-agents.js";
+import { outsideAgentMayMessage, outsideAgentRefusal } from "../contacts/outside-agents.js";
 import { admitChatSend } from "./chat-send-admission.js";
 import {
   respondChatSendAdmissionError,
@@ -90,6 +90,11 @@ export async function prepareAndAdmitChatSend(
     return undefined;
   }
   const outsideAgent = normalizedRequest.value.p.outsideAgent;
+  const outsideRefusal = outsideAgent ? outsideAgentRefusal(outsideAgent) : undefined;
+  if (outsideRefusal) {
+    respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, outsideRefusal));
+    return undefined;
+  }
   if (
     outsideAgent &&
     !outsideAgentMayMessage(loadedSession.value.cfg, loadedSession.value.agentId, outsideAgent.id)

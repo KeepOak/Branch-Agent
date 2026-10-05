@@ -14,10 +14,18 @@ export type TrunkGateway = {
   request<T = Record<string, unknown>>(method: string, params: Record<string, unknown>): Promise<T>;
   onGatewayEvent(listener: (event: EventFrame) => void): () => void;
 };
-export type OutsideAgentIdentity = { id: string; name: string; version?: string; where?: string };
+export type OutsideAgentIdentity = {
+  id: string;
+  name: string;
+  version?: string;
+  where?: string;
+  project?: string;
+};
 export type TrunkToolsOptions = {
   /** Who is speaking, once the gateway accepted contacts.outside.hello; undefined = plain owner messages. */
   outsideAgent: () => OutsideAgentIdentity | undefined | Promise<OutsideAgentIdentity | undefined>;
+  /** What this agent is doing now, for Settings › Connected agents. */
+  activity?: (text: string) => void;
   now?: () => number;
 };
 
@@ -240,6 +248,7 @@ function registerTrunkWriteTools(
       workspace: z.string().optional(),
     },
     async ({ name, model, workspace }) => {
+      opts.activity?.(`Creating Trunk ${name}`);
       const created = rec(
         await gw.request("agents.create", {
           name,
@@ -264,6 +273,7 @@ function registerTrunkWriteTools(
       title: z.string().max(100).optional(),
     },
     async ({ agent_id, text, thread_key, title }) => {
+      opts.activity?.(`Messaging ${agent_id}`);
       let key = thread_key;
       if (!key) {
         const who = (await opts.outsideAgent())?.id ?? "mcp";
@@ -288,6 +298,7 @@ function registerTrunkWriteTools(
     "Steer a Trunk that is working: the message joins its current run instead of waiting behind it.",
     { thread_key: z.string().min(1), text: z.string().min(1) },
     async ({ thread_key, text }) => {
+      opts.activity?.(`Steering ${thread_key}`);
       const sent = await chatSend(gw, opts, {
         sessionKey: thread_key,
         message: text,
@@ -422,6 +433,7 @@ function registerRoomTools(server: McpServer, gw: TrunkGateway, opts: TrunkTools
     "Post a message to a group chat; its lead Trunk answers. The message is shown as this agent's.",
     { room_id: z.string().min(1), text: z.string().min(1) },
     async ({ room_id, text }) => {
+      opts.activity?.(`Posting in group chat ${room_id}`);
       const agent = await opts.outsideAgent();
       const result = await gw.request("rooms.send", {
         roomId: room_id,
