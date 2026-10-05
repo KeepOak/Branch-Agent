@@ -26,12 +26,15 @@ export type ContactProjectionInput = {
   previews?: ReadonlyMap<string, string>;
   titles?: ReadonlyMap<string, string>;
   outsidePeers?: readonly OutsidePeer[];
+  /** Whether a session has a live run in the engine's run registry (the source sessions.list uses). */
+  isWorking?: (row: SessionEntrySummary) => boolean;
 };
 
+/** Unread follows activity, never bookkeeping writes such as restart recovery's (deriveSessionUnread). */
 export function isContactUnread(entry: SessionEntrySummary["entry"]): boolean {
   return (
     (entry.markedUnreadAt ?? 0) > (entry.lastReadAt ?? 0) ||
-    (entry.lastActivityAt ?? entry.updatedAt) > (entry.lastReadAt ?? 0)
+    Math.max(entry.lastInteractionAt ?? 0, entry.lastActivityAt ?? 0) > (entry.lastReadAt ?? 0)
   );
 }
 
@@ -76,6 +79,8 @@ export function projectContacts(input: ContactProjectionInput): {
   defaultId: string;
 } {
   const visibleSessions = input.sessions.filter((row) => !row.entry.movedToSessionKey);
+  const working = (row: SessionEntrySummary | undefined) =>
+    row !== undefined && (input.isWorking?.(row) ?? false);
   const byKey = new Map(visibleSessions.map((row) => [row.sessionKey, row]));
   const agentById = new Map(input.agents.map((agent) => [agent.id, agent]));
   const ids = new Set([
@@ -123,7 +128,7 @@ export function projectContacts(input: ContactProjectionInput): {
             ? "done"
             : entry.providerReview || entry.observerDigest?.health === "waiting-on-user"
               ? "waiting"
-              : entry.activeWriterRunId
+              : working(row)
                 ? "working"
                 : "active",
         unread: isContactUnread(entry),
@@ -180,7 +185,7 @@ export function projectContacts(input: ContactProjectionInput): {
           Boolean(row?.entry.providerReview) ||
           row?.entry.observerDigest?.health === "waiting-on-user",
       ),
-      working: [thread, ...children].some((row) => Boolean(row?.entry.activeWriterRunId)),
+      working: [thread, ...children].some(working),
       topicCount: projectedTopics.length,
     });
   }
@@ -214,7 +219,7 @@ export function projectContacts(input: ContactProjectionInput): {
         ? "archived"
         : child.entry.done
           ? "done"
-          : child.entry.activeWriterRunId
+          : working(child)
             ? "working"
             : "active",
       unread: isContactUnread(child.entry),
@@ -257,7 +262,7 @@ export function projectContacts(input: ContactProjectionInput): {
           Boolean(candidate?.entry.providerReview) ||
           candidate?.entry.observerDigest?.health === "waiting-on-user",
       ),
-      working: [row, ...children].some((candidate) => Boolean(candidate?.entry.activeWriterRunId)),
+      working: [row, ...children].some(working),
       topicCount: groupTopics.length,
     });
   }
@@ -290,7 +295,7 @@ export function projectContacts(input: ContactProjectionInput): {
       anchor: { threadKey, at: row.entry.createdAt ?? row.entry.updatedAt },
       status: row.entry.archivedAt
         ? "archived"
-        : row.entry.activeWriterRunId
+        : working(row)
           ? "working"
           : "active",
       unread: isContactUnread(row.entry),
@@ -321,7 +326,7 @@ export function projectContacts(input: ContactProjectionInput): {
           Boolean(row.entry.providerReview) ||
           row.entry.observerDigest?.health === "waiting-on-user",
       ),
-      working: rows.some((row) => Boolean(row.entry.activeWriterRunId)),
+      working: rows.some(working),
       topicCount: outsideTopics.length,
     });
   }

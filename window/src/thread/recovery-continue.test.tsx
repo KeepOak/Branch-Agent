@@ -14,7 +14,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-it("offers Continue for a restart failure and sends a turn in a fork of its transcript", async () => {
+it("shows Stopped by restart with Resume, which sends a turn in a fork of its transcript", async () => {
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
   const request = vi.fn(async (method: string) => method === "sessions.fork" ? { sessionKey: "agent:oak:continued" } : {});
@@ -29,7 +29,8 @@ it("offers Continue for a restart failure and sends a turn in a fork of its tran
   document.body.append(container);
   root = createRoot(container);
   await act(async () => root!.render(<Thread name="Oak" history={[{ kind: "user", key: "message", text: "Build it", meta: { entryId: "entry-1" } }]} live={[]} pendingUser={null} running={false} onAnswer={() => undefined} engine={engine} sessionKey={engine.sessionKey} recoveryFailure="Interrupted by a restart. Continue?" onOpenSession={open} />));
-  const button = [...container.querySelectorAll("button")].find((item) => item.textContent === "Continue");
+  const button = [...container.querySelectorAll("button")].find((item) => item.textContent === "Resume");
+  expect(container.querySelector("[data-testid=restart-stopped]")?.textContent).toContain("Stopped by restart");
   expect(button).toBeDefined();
   await act(async () => button!.click());
   expect(request).toHaveBeenCalledWith("sessions.fork", { sessionKey: engine.sessionKey, entryId: "entry-1" });
