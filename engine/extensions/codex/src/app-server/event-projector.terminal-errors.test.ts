@@ -108,7 +108,7 @@ describe("CodexAppServerEventProjector terminal errors", () => {
         expect(terminal.promptError).toBeInstanceOf(Error);
         expect(terminal.promptError).toMatchObject({ message: error.message, ...facts });
         expect(projector.settledTurnFailureFinalizationAllowed).toBe(
-          codexErrorInfo === "serverOverloaded",
+          codexErrorInfo === "serverOverloaded" || codexErrorInfo === "internalServerError",
         );
       }
     },

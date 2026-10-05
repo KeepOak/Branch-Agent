@@ -5,6 +5,17 @@ import type { SessionScope } from "../../config/sessions/types.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 
 export type ContactAgent = { id: string; name: string; iconUrl?: string };
+export type OutsidePeer = {
+  name: string;
+  where: string | null;
+  card?: {
+    name: string;
+    description: string;
+    iconUrl?: string;
+    skills: { name: string; description?: string }[];
+    fetchedAt: number;
+  };
+};
 export type ContactProjectionInput = {
   agents: readonly ContactAgent[];
   defaultAgentId: string;
@@ -14,6 +25,7 @@ export type ContactProjectionInput = {
   sessions: readonly SessionEntrySummary[];
   previews?: ReadonlyMap<string, string>;
   titles?: ReadonlyMap<string, string>;
+  outsidePeers?: readonly OutsidePeer[];
 };
 
 export function isContactUnread(entry: SessionEntrySummary["entry"]): boolean {
@@ -25,6 +37,7 @@ export function isContactUnread(entry: SessionEntrySummary["entry"]): boolean {
 
 /** Classify by the persisted key, never by a mutable session-id pointer. */
 export function contactIdForSession(row: SessionEntrySummary): string | undefined {
+  if (row.entry.movedToSessionKey) return undefined;
   const parsed = parseAgentSessionKey(row.sessionKey);
   if (
     !parsed ||
@@ -62,13 +75,14 @@ export function projectContacts(input: ContactProjectionInput): {
   topics: Topic[];
   defaultId: string;
 } {
-  const byKey = new Map(input.sessions.map((row) => [row.sessionKey, row]));
+  const visibleSessions = input.sessions.filter((row) => !row.entry.movedToSessionKey);
+  const byKey = new Map(visibleSessions.map((row) => [row.sessionKey, row]));
   const agentById = new Map(input.agents.map((agent) => [agent.id, agent]));
   const ids = new Set([
     ...agentById.keys(),
     ...(input.includeDefault === false ? [] : [input.defaultAgentId]),
   ]);
-  for (const row of input.sessions) {
+  for (const row of visibleSessions) {
     const id = contactIdForSession(row);
     if (id?.startsWith("trunk:")) ids.add(id.slice(6));
   }
@@ -82,7 +96,7 @@ export function projectContacts(input: ContactProjectionInput): {
     });
     const thread = byKey.get(threadKey);
     const contactId = `trunk:${agentId}`;
-    const children = input.sessions.filter(
+    const children = visibleSessions.filter(
       (row) => row.sessionKey !== threadKey && contactIdForSession(row) === contactId,
     );
     const projectedTopics = children.map((row): Topic => {
@@ -171,14 +185,14 @@ export function projectContacts(input: ContactProjectionInput): {
     });
   }
   const groupIds = new Set(
-    input.sessions
+    visibleSessions
       .map(contactIdForSession)
       .filter((id): id is string => Boolean(id?.startsWith("chat:"))),
   );
   for (const id of groupIds) {
     const threadKey = id.slice(5);
     const row = byKey.get(threadKey);
-    const children = input.sessions.filter(
+    const children = visibleSessions.filter(
       (candidate) => candidate.sessionKey !== threadKey && contactIdForSession(candidate) === id,
     );
     const groupTopics = children.map((child): Topic => ({
@@ -245,6 +259,70 @@ export function projectContacts(input: ContactProjectionInput): {
       ),
       working: [row, ...children].some((candidate) => Boolean(candidate?.entry.activeWriterRunId)),
       topicCount: groupTopics.length,
+    });
+  }
+  const outsideIds = new Set([
+    ...(input.outsidePeers ?? []).map((peer) => peer.name),
+    ...input.sessions
+      .map(contactIdForSession)
+      .filter((id): id is string => Boolean(id?.startsWith("a2a:")))
+      .map((id) => id.slice(4)),
+  ]);
+  for (const peerName of outsideIds) {
+    const id = `a2a:${peerName}`;
+    const peer = input.outsidePeers?.find((candidate) => candidate.name === peerName);
+    const rows = input.sessions
+      .filter((row) => contactIdForSession(row) === id)
+      .toSorted(
+        (a, b) =>
+          (a.entry.createdAt ?? a.entry.updatedAt) - (b.entry.createdAt ?? b.entry.updatedAt) ||
+          a.sessionKey.localeCompare(b.sessionKey),
+      );
+    const threadKey = id;
+    const outsideTopics = rows.map((row): Topic => ({
+      key: row.sessionKey,
+      contactId: id,
+      title: topicTitle(
+        row,
+        input.previews?.get(row.sessionKey) ?? "",
+        input.titles?.get(row.sessionKey),
+      ),
+      anchor: { threadKey, at: row.entry.createdAt ?? row.entry.updatedAt },
+      status: row.entry.archivedAt
+        ? "archived"
+        : row.entry.activeWriterRunId
+          ? "working"
+          : "active",
+      unread: isContactUnread(row.entry),
+      ...(row.entry.pinnedAt ? { pinnedAt: row.entry.pinnedAt } : {}),
+    }));
+    topics.push(...outsideTopics);
+    contacts.push({
+      id,
+      kind: "outside",
+      name: peer?.card?.name ?? peerName,
+      threadKey,
+      isDefault: false,
+      ...(peer?.where ? { where: peer.where } : {}),
+      ...(peer?.card
+        ? { card: peer.card, face: peer.card.iconUrl ? { iconUrl: peer.card.iconUrl } : {} }
+        : {}),
+      ...(rows.some((row) => row.entry.pinnedAt)
+        ? { pinnedAt: Math.max(...rows.map((row) => row.entry.pinnedAt ?? 0)) }
+        : {}),
+      // W-outside supplies the aggregate view. Do not preview a context
+      // that opening this contact key cannot show yet.
+      lastActivityAt: 0,
+      preview: { kind: "message", text: "", at: 0 },
+      unreadTopics: outsideTopics.filter((topic) => topic.unread).length,
+      threadUnread: false,
+      needsYou: rows.some(
+        (row) =>
+          Boolean(row.entry.providerReview) ||
+          row.entry.observerDigest?.health === "waiting-on-user",
+      ),
+      working: rows.some((row) => Boolean(row.entry.activeWriterRunId)),
+      topicCount: outsideTopics.length,
     });
   }
   contacts.sort(

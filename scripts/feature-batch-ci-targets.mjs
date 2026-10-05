@@ -1,5 +1,7 @@
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
+  'extensions/a2a/src/card-cache.test.ts',
+  'extensions/a2a/src/inbound.test.ts',
   'extensions/browser/src/browser-tool.schema.test.ts',
   'extensions/browser/src/browser-tool.test.ts',
   'extensions/browser/src/browser/client.test.ts',
@@ -24,6 +26,7 @@ export const engineTests = [
   'src/agents/contact-trunk.test.ts',
   'src/agents/core-coding-tools.project-instructions.test.ts',
   'src/agents/core-coding-tools.sandbox.test.ts',
+  'src/agents/embedded-agent-runner/provider-capacity-failover.test.ts',
   'src/agents/main-session-recovery/main-session-restart-recovery.pending-admission.test.ts',
   'src/agents/prepared-model-runtime.auth-republication-scope.test.ts',
   'src/agents/project-instructions.test.ts',
@@ -42,6 +45,7 @@ export const engineTests = [
   'src/auto-reply/reply/commands-warnings.test.ts',
   'src/coding/unified-diff.test.ts',
   'src/commands/agents.identity.test.ts',
+  'src/commands/doctor/shared/contacts-migration.test.ts',
   'src/config/config.identity-avatar.test.ts',
   'src/gateway/assistant-avatar.test.ts',
   'src/gateway/assistant-identity.test.ts',
