@@ -18,6 +18,7 @@ import { Icon, ICONS } from "./icons";
 import { layout, shownApprovalIds, type Item } from "./layout";
 import { planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
+import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
 import { QuestionLine } from "./QuestionCard";
 import { anchorQuestions, type QuestionRecord } from "./questions";
 import type { Approval, ApprovalDecision, Block } from "./model";
@@ -71,6 +72,8 @@ type Props = {
   hasEarlierPages?: boolean;
   loadingEarlier?: boolean;
   earlierError?: string;
+  preparationError?: string | null;
+  advancedDiagnostics?: boolean;
   onLoadEarlier?: () => void;
 };
 
@@ -159,6 +162,7 @@ export function Thread(props: Props) {
   const threadRef = useRef<HTMLDivElement>(null);
   useFindKey(useCallback(() => setFinding(true), []));
   const empty = !history.length && !pendingUser && !running && !props.questions?.length;
+  const preparationError = [props.preparationError, props.earlierError].find(isPreparationPending);
   const anchors = anchorQuestions(history, props.questions ?? []);
   const items: RoomItem[] = props.room ? foldTalks(layout(history), props.room.ownAgentId) : layout(history);
   const planWanted = props.plan ? planAnchor(history) : -1;
@@ -209,12 +213,16 @@ export function Thread(props: Props) {
       <div className="scroll" ref={follow.scroller} onScroll={(event) => { follow.onScroll(); if (event.currentTarget.scrollTop < 80 && props.hasEarlierPages && !props.loadingEarlier) props.onLoadEarlier?.(); }} data-testid="thread-scroll">
         <div className="thread" ref={threadRef}>
           {props.hasEarlierPages ? <button type="button" className="stamp segment-more" onClick={props.onLoadEarlier} disabled={props.loadingEarlier}>{props.loadingEarlier ? "Loading earlier pages…" : "Earlier pages"}</button> : null}
-          {props.earlierError ? <div className="stamp" role="status">Couldn't load earlier pages: {props.earlierError}</div> : null}
+          {preparationError ? <div className="stamp preparation-status" role="status">
+            <span className="preparation-spinner" aria-hidden="true" />{preparationLabel(name)}
+            {props.advancedDiagnostics ? <details><summary>Diagnostics</summary><code>{preparationError}</code></details> : null}
+          </div> : null}
+          {props.earlierError && !isPreparationPending(props.earlierError) ? <div className="stamp" role="status">Couldn't load earlier pages: {props.earlierError}</div> : null}
           {[...(props.earlierPages ?? [])].reverse().map((page) => <div key={page.sessionId} className="segment-page" aria-label="Earlier conversation segment">
             <div className="stamp">New start · {page.startedAt ? new Date(page.startedAt).toLocaleDateString() : "Earlier"}</div>
             {page.blocks.filter((block) => ["user", "text", "thinking", "step", "notice", "error"].includes(block.kind)).map((block) => <div key={block.key} className="segment-line">
               <strong>{block.kind === "user" ? "You" : block.kind === "text" ? name : block.kind === "step" ? block.tool : "Activity"}</strong>
-              <span>{block.kind === "user" || block.kind === "text" || block.kind === "thinking" || block.kind === "notice" ? block.text : block.kind === "step" ? `${block.title} · ${block.detail}` : block.kind === "error" ? block.message : block.kind === "status" ? block.phase : block.kind === "approval" ? block.approval.command : ""}</span>
+              <span>{block.kind === "user" || block.kind === "text" || block.kind === "thinking" || block.kind === "notice" ? block.text : block.kind === "step" ? `${block.title} · ${block.detail}` : block.kind === "error" ? isPreparationPending(block.message) ? "Branch retried a startup delay." : block.message : block.kind === "status" ? block.phase : block.kind === "approval" ? block.approval.command : ""}</span>
             </div>)}
           </div>)}
           {(props.earlierPages?.length || props.hasEarlierPages) ? <div className="stamp">New start · {props.currentStartedAt ? new Date(props.currentStartedAt).toLocaleDateString() : "Current"}</div> : null}
@@ -376,6 +384,7 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
     case "done":
       return <DoneLine block={block} name={view.name} />;
     case "error":
+      if (isPreparationPending(block.message)) return <div className="stamp" role="status">Branch retried a startup delay.</div>;
       return view.dismissed.has(block.key) ? null : <ErrorBlock block={block} onDismiss={() => view.setDismissed((s) => new Set(s).add(block.key))} />;
     case "notice":
       return <Notice block={block} />;

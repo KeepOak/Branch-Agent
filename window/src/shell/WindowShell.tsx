@@ -5,6 +5,7 @@ import type { TopicUpdate } from "../thread/TopicCard";
 import type { SendExtras } from "../connect/engine";
 import type { SaplingSession, SessionSnapshot } from "../connect/session";
 import { withOwner } from "../connect/agent-owner";
+import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { Composer, VOICE_OFF } from "../composer/Composer";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
@@ -593,7 +594,20 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     try {
       const threadKey = contactRows.find((contact) => contact.id === `trunk:${draftTopic.agentId}`)?.threadKey;
       const mainKey = threadKey?.slice(`agent:${draftTopic.agentId}:`.length) || mainKeySuffix;
-      const key = await createTopic(request, draftTopic.agentId, mainKey, text, { ...draftTopic.options, ...extras });
+      const backoff = new PreparationRetry();
+      let key: string;
+      while (true) {
+        if (draftTopicRef.current?.nonce !== draftTopic.nonce) return false;
+        try {
+          key = await createTopic(request, draftTopic.agentId, mainKey, text, { ...draftTopic.options, ...extras });
+          break;
+        } catch (error) {
+          if (!isPreparationPending(error)) throw error;
+          const delay = backoff.nextDelay();
+          if (delay === null) throw new Error(preparationTimeoutLabel(trunkName(draftTopic.agentId)));
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
       await list.refresh();
       if (draftTopicRef.current?.nonce === draftTopic.nonce && draftTopicRef.current.agentId === draftTopic.agentId) openConversation(key);
       return true;
@@ -1035,6 +1049,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           hasEarlierPages={segments.hasEarlier}
           loadingEarlier={segments.loading}
           earlierError={segments.error}
+          preparationError={s.error}
+          advancedDiagnostics={level !== "regular"}
           onLoadEarlier={segments.loadEarlier}
           onOpenSession={openTopic}
           onStartTopic={activeContact?.kind === "trunk" ? startFromMessage : undefined}
@@ -1059,7 +1075,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />
         </SplitFrame>
-        {s.error ? <p className="notice indent">{s.error}</p> : null}
+        {s.error && !isPreparationPending(s.error) ? <p className="notice indent">{s.error}</p> : null}
         <Composer
           {...composerProps}
           mainKey={mainKeySuffix}
