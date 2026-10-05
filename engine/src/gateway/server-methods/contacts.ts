@@ -1,3 +1,4 @@
+import { listA2aPeers, refreshA2aPeerCards } from "../../../extensions/a2a/src/card-cache.js";
 import {
   ErrorCodes,
   errorShape,
@@ -95,12 +96,19 @@ async function readProjection({
       sessions: visible,
       previews,
       titles,
+      outsidePeers: listA2aPeers(cfg),
     }),
     sessionKeys: new Set(visible.map((row) => row.sessionKey)),
   };
 }
 
 export const contactHandlers: GatewayRequestHandlers = {
+  "a2a.peers.list": async ({ context, respond }) => {
+    respond(true, { peers: listA2aPeers(context.getRuntimeConfig()) });
+  },
+  "a2a.peers.refresh": async ({ context, respond }) => {
+    respond(true, { peers: await refreshA2aPeerCards(context.getRuntimeConfig()) });
+  },
   "contacts.list": async (options) => {
     const { params, respond } = options;
     if (!assertValidParams(params, validateContactsListParams, "contacts.list", respond)) return;

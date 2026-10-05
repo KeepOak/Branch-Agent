@@ -152,4 +152,51 @@ describe("contact projection", () => {
       expect.objectContaining({ key: topic.sessionKey, contactId: group?.id }),
     );
   });
+
+  it("projects configured outside peers and keeps each context in its own topic", () => {
+    const first = row("agent:scout:a2a:remote:direct:peer:context-a", {
+      createdAt: 10,
+      lastActivityAt: 20,
+    });
+    const second = row("agent:scout:a2a:remote:direct:peer:context-b", {
+      createdAt: 30,
+      lastActivityAt: 40,
+    });
+    const result = projectContacts({
+      agents: [{ id: "scout", name: "Scout" }],
+      defaultAgentId: "scout",
+      sessions: [first, second],
+      outsidePeers: [
+        {
+          name: "peer",
+          where: "peer.example",
+          card: {
+            name: "Outside",
+            description: "Research",
+            skills: [{ name: "Search" }],
+            fetchedAt: 50,
+          },
+        },
+        { name: "idle", where: null },
+      ],
+      previews: new Map([[first.sessionKey, "First"]]),
+    });
+    expect(result.contacts.find((contact) => contact.id === "a2a:peer")).toMatchObject({
+      kind: "outside",
+      name: "Outside",
+      threadKey: "a2a:peer",
+      preview: { kind: "message", text: "", at: 0 },
+      topicCount: 2,
+    });
+    expect(result.topics).toContainEqual(
+      expect.objectContaining({ key: first.sessionKey, contactId: "a2a:peer" }),
+    );
+    expect(result.topics).toContainEqual(
+      expect.objectContaining({ key: second.sessionKey, contactId: "a2a:peer" }),
+    );
+    expect(result.contacts.find((contact) => contact.id === "a2a:idle")).toMatchObject({
+      topicCount: 0,
+    });
+    expect(result.contacts.find((contact) => contact.id === "trunk:scout")?.topicCount).toBe(0);
+  });
 });

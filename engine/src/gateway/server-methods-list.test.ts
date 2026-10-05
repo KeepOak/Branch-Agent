@@ -283,6 +283,8 @@ describe("listGatewayMethods", () => {
       "contacts.list",
       "contacts.topics",
       "contacts.markRead",
+      "a2a.peers.list",
+      "a2a.peers.refresh",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -372,6 +374,8 @@ describe("listGatewayMethods", () => {
       "contacts.list",
       "contacts.topics",
       "contacts.markRead",
+      "a2a.peers.list",
+      "a2a.peers.refresh",
     ]);
   });
 
@@ -589,6 +593,8 @@ describe("listGatewayMethods", () => {
       "contacts.list",
       "contacts.topics",
       "contacts.markRead",
+      "a2a.peers.list",
+      "a2a.peers.refresh",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));

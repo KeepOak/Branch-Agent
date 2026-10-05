@@ -1,5 +1,7 @@
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
+  'extensions/a2a/src/card-cache.test.ts',
+  'extensions/a2a/src/inbound.test.ts',
   'extensions/browser/src/browser-tool.schema.test.ts',
   'extensions/browser/src/browser-tool.test.ts',
   'extensions/browser/src/browser/client.test.ts',
