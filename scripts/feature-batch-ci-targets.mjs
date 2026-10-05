@@ -24,6 +24,7 @@ export const engineTests = [
   'src/agents/contact-trunk.test.ts',
   'src/agents/core-coding-tools.project-instructions.test.ts',
   'src/agents/core-coding-tools.sandbox.test.ts',
+  'src/agents/embedded-agent-runner/provider-capacity-failover.test.ts',
   'src/agents/main-session-recovery/main-session-restart-recovery.pending-admission.test.ts',
   'src/agents/prepared-model-runtime.auth-republication-scope.test.ts',
   'src/agents/project-instructions.test.ts',

@@ -162,6 +162,7 @@ const ERROR_PATTERNS = {
   serverError: [
     "an error occurred while processing",
     "internal server error",
+    "temporary internal error",
     "internal_error",
     "server_error",
     "bad gateway",
