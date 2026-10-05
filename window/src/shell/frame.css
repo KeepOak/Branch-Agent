@@ -221,6 +221,7 @@
   align-items: center;
   gap: 4px;
   margin-left: auto;
+  min-width: 0;
 }
 /* the conversation's own tools, 11 px apart, then the window's small buttons (the preview's .head icon-btns, .tb-btn) */
 .global .conv-tools {
@@ -228,6 +229,15 @@
   align-items: center;
   gap: 11px;
   margin-right: 6px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.global .conv-tools > .contact-conversations-button {
+  width: auto;
+  padding: 0 8px;
+  white-space: nowrap;
 }
 .topbar .global > .ib.guide-btn,
 .topbar .global > [data-testid="theme"],
@@ -1250,6 +1260,9 @@ button.mi:focus-visible {
   display: flex;
   align-items: center;
   gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .head-row .head-text {
   min-width: 0;

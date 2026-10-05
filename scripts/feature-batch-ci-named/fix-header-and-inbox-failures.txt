@@ -1,0 +1,2 @@
+window:src/places/inbox/failure-notices.test.tsx
+window:src/shell/header-tools.test.mjs
