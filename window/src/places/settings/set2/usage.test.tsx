@@ -186,6 +186,13 @@ describe("keeping things", () => {
     await show(engine);
     expect(button("1 year", row("Keep conversations")!).getAttribute("aria-pressed")).toBe("true");
   });
+  it("Keep conversations shows a custom 90-day retention without selecting a preset", async () => {
+    const { engine } = engineWith({ ...BASE, ...CFG({ session: { maintenance: { mode: "enforce", pruneAfter: "90d" } } }) });
+    await show(engine);
+    const keep = row("Keep conversations")!;
+    expect(keep.textContent).toContain("Now: 90 days.");
+    expect([...keep.querySelectorAll('button[aria-pressed="true"]')]).toHaveLength(0);
+  });
   it("saves the tidy rules and the upload clean-up through config.patch", async () => {
     const { engine, request } = engineWith({ ...BASE, ...CFG() });
     await show(engine, "advanced");
