@@ -303,6 +303,14 @@ export async function preparePendingAgentDatabase(
   sessionChanges.emit({ all: true, scope: { agentId: refusal.agentId, topology: true } });
 }
 
+/** A newer config or secrets generation replaced this preparation; startup retries it. */
+export class AgentDatabasePreparationSupersededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AgentDatabasePreparationSupersededError";
+  }
+}
+
 /** Runtime preparation adds its config-generation guard to the same admission borrow. */
 export async function withAgentDatabasePreparationGuard<T>(
   assertCurrent: () => void,

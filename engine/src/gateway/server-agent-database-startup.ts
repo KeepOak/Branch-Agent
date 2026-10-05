@@ -7,7 +7,10 @@ import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot
 import type { PluginRegistry } from "../plugins/registry-types.js";
 import { withPluginRuntimeRegistryScope } from "../plugins/runtime/gateway-request-scope.js";
 import { getSpawnBroker, runWithSpawnBroker } from "../process/spawn-broker/context.js";
-import { withAgentDatabasePreparationGuard } from "../state/agent-database-admission.js";
+import {
+  AgentDatabasePreparationSupersededError,
+  withAgentDatabasePreparationGuard,
+} from "../state/agent-database-admission.js";
 import type { getAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
 import { isSameBranchAgentDatabasePath } from "../state/branch-agent-db.paths.js";
 
@@ -134,7 +137,9 @@ export function activateGatewayAgentDatabaseStartup(params: {
                 params.getConfig() !== beforeConfig ||
                 getActiveSecretsRuntimeSnapshotRevision() !== previousSecretsRevision
               ) {
-                throw new Error(`Agent ${agentId} secrets preparation was superseded`);
+                throw new AgentDatabasePreparationSupersededError(
+                  `Agent ${agentId} secrets preparation was superseded`,
+                );
               }
             },
           }))
@@ -145,8 +150,12 @@ export function activateGatewayAgentDatabaseStartup(params: {
         const secretsRevision = getActiveSecretsRuntimeSnapshotRevision();
         const secrets = getActiveSecretsRuntimeSnapshot();
         const authDatabasePath = resolveAuthProfileDatabasePath(resolveAgentDir(cfg, agentId, env));
+        if (secretsRevision !== previousSecretsRevision + 1) {
+          throw new AgentDatabasePreparationSupersededError(
+            `Agent ${agentId} secrets preparation was superseded`,
+          );
+        }
         if (
-          secretsRevision !== previousSecretsRevision + 1 ||
           !secrets?.authStores.some((entry) =>
             isSameBranchAgentDatabasePath(entry.databasePath, authDatabasePath),
           )
@@ -162,7 +171,9 @@ export function activateGatewayAgentDatabaseStartup(params: {
             params.getConfig() !== cfg ||
             getActiveSecretsRuntimeSnapshotRevision() !== secretsRevision
           ) {
-            throw new Error(`Agent ${agentId} startup preparation was superseded`);
+            throw new AgentDatabasePreparationSupersededError(
+              `Agent ${agentId} startup preparation was superseded`,
+            );
           }
           if (preparedInput && !getPreparedModelRuntimeSnapshot(preparedInput)) {
             throw new Error(`Agent ${agentId} model preparation has not published`);
