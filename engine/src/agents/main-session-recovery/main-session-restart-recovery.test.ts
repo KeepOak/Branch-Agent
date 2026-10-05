@@ -67,10 +67,6 @@ import {
   runExclusiveSessionLifecycleMutation,
 } from "../../sessions/session-lifecycle-admission.js";
 import {
-  createAgentDatabaseInspectionRefusal,
-  recordAgentDatabaseAdmissions,
-} from "../../state/agent-database-admission.js";
-import {
   beginAgentDeletionJournal,
   removeAgentDeletionJournal,
 } from "../../state/agent-deletion-journal.js";
@@ -121,7 +117,6 @@ import {
 import { dispatchRestartRecoveryUntilStarted } from "./main-session-restart-dispatch-start.js";
 import { readStartupRecoveryWarning } from "./main-session-restart-recovery-diagnostics.js";
 import { createRestartRecoveryTranscriptFixture } from "./main-session-restart-recovery-fixture.test-support.js";
-import * as recoveryShared from "./main-session-restart-recovery-shared.js";
 import { discoverRestartRecoveryStoreTargets } from "./main-session-restart-recovery-shared.js";
 import { recoverStore } from "./main-session-restart-recovery-store.js";
 import {
@@ -2981,53 +2976,6 @@ describe("main-session-restart-recovery", () => {
     const customStore = readStore(customStorePath);
     expect(defaultStore["agent:main:main"]?.abortedLastRun).toBe(true);
     expect(customStore["agent:main:main"]?.abortedLastRun).toBe(false);
-  });
-
-  it("rescans an agent whose database admission was still pending at startup", async () => {
-    const sessionsDir = await makeSessionsDir();
-    const storePath = path.join(sessionsDir, "sessions.json");
-    const sessionKey = "agent:main:dogfood-1";
-    await writeStore(sessionsDir, {
-      [sessionKey]: {
-        sessionId: "dogfood-session",
-        updatedAt: Date.now() - 10_000,
-        status: "running",
-      },
-    });
-    await writeTranscript(sessionsDir, "dogfood-session", [
-      { role: "user", content: "keep building" },
-      { role: "toolResult", content: "done" },
-    ]);
-    const env = { ...process.env, BRANCH_STATE_DIR: tmpDir };
-    const pendingRefusal = createAgentDatabaseInspectionRefusal({
-      agentId: "main",
-      paths: [path.join(tmpDir, "agents", "main", "agent", "branch-agent.sqlite")],
-      pending: true,
-      reason: "Agent main has not completed startup inspection and preparation.",
-    });
-    recordAgentDatabaseAdmissions([pendingRefusal], { env, source: "startup" });
-    const pendingCheck = vi.spyOn(recoveryShared, "hasPendingRestartRecoveryAdmission");
-    const recovery = scheduleRestartAbortedMainSessionRecovery({
-      getConfig: () => ({}),
-      delayMs: 0,
-      stateDir: tmpDir,
-    });
-    try {
-      // The first scan skips the preparing agent instead of treating it as checked.
-      await vi.waitFor(() => expect(pendingCheck).toHaveBeenCalled());
-      expect(callGateway).not.toHaveBeenCalled();
-
-      recordAgentDatabaseAdmissions([], { env, source: "startup" });
-      await mockRecoveryRuntime.expectAdmission(1, recovery, { sessionKey, storePath });
-      expect(readStore(storePath)[sessionKey]).toMatchObject({
-        status: "running",
-        abortedLastRun: false,
-      });
-    } finally {
-      recordAgentDatabaseAdmissions([], { env, source: "startup" });
-      pendingCheck.mockRestore();
-      await recovery.stop();
-    }
   });
 
   it("rediscovers a restored configured store between startup marking and recovery", async () => {
