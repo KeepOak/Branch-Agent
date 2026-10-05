@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { agentOf, errorText, list, rec, str, type Rec, type WindowEngine } from "./engine";
 import { readModels, type ModelChoice } from "./model";
 
-export type Trunk = { id: string; name: string; defaultMode: string; theme: string };
+export type Trunk = { id: string; name: string; defaultMode: string; theme: string; model: string };
 
 export type Conversation = {
   loaded: boolean;
@@ -45,6 +45,7 @@ function readTrunks(result: unknown): { trunks: Trunk[]; defaultId: string } {
     name: str(rec(a.identity).name) || str(a.name) || str(a.id),
     defaultMode: str(a.defaultPermissionMode),
     theme: str(rec(a.identity).theme),
+    model: str(rec(a.model).primary),
   }));
   return { trunks, defaultId: str(r.defaultId) };
 }

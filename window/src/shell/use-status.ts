@@ -50,13 +50,16 @@ export function useLimits(session: SaplingSession, ready: boolean): Limits | nul
       return;
     }
     const load = () =>
-      session.request("usage.status", {}).then(
+      session.request("usage.status", { refresh: true }).then(
         (r) => setLimits(readLimits(r)),
         (error: unknown) => console.warn("usage.status failed", error),
       );
     void load();
     const timer = setInterval(load, 5 * 60_000);
-    return () => clearInterval(timer);
+    const off = session.onGatewayEvent((event, payload) => {
+      if (event === "chat" && rec(payload).state === "final") void load();
+    });
+    return () => { clearInterval(timer); off(); };
   }, [session, ready]);
   return limits;
 }

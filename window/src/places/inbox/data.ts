@@ -62,6 +62,7 @@ export type Needs = {
   approvals: Row[]; proposals: Row[]; pairing: Row[]; ownerSet: boolean; devices: Row[]; nodes: Row[]; questions: Row[]; mentions: Row[];
   failed: Row[]; expired: Row[]; channels: { channel: string; label: string; account: Row }[];
   sessions: Session[]; agents: { defaultId: string; mainKey: string; list: Agent[] }; errors: string[];
+  modelUpgradeNotice?: string;
 };
 
 const settle = async <T,>(label: string, errors: string[], read: () => Promise<T>, empty: T): Promise<T> => {
@@ -78,7 +79,7 @@ function stoppedChannels(value: unknown): Needs["channels"] {
 /** Everything Needs you shows, each source failing on its own. Reads a scope the window lacks are skipped. */
 export async function loadNeeds(engine: WindowEngine): Promise<Needs> {
   const errors: string[] = [], pairs = has(engine, "operator.pairing"), asks = has(engine, "operator.questions");
-  const [queue, proposals, pairing, devices, nodes, questions, mentions, failed, auth, channels, list, trunks] = await Promise.all([
+  const [queue, proposals, pairing, devices, nodes, questions, mentions, failed, auth, channels, list, trunks, usage] = await Promise.all([
     approvals(engine),
     settle("Improvements", errors, () => engine.request("skills.proposals.list", {}), {}),
     pairs ? settle("Chat app requests", errors, () => engine.request("channels.pairing.list", {}), {}) : {},
@@ -91,6 +92,7 @@ export async function loadNeeds(engine: WindowEngine): Promise<Needs> {
     settle("Chat apps", errors, () => engine.request("channels.status", { probe: false }), {}),
     settle("Conversations", errors, () => paged(engine, "sessions.list", "sessions", { includeGlobal: true, includeUnknown: true, includeLastMessage: true, includeDerivedTitles: true, archived: "all" }), [] as Row[]),
     settle("Trunks", errors, () => engine.request("agents.list", {}), {}),
+    settle("Model upgrade", errors, () => engine.request("usage.status", {}), {}),
   ]);
   return {
     approvals: queue.items, proposals: rows(rec(proposals).proposals).filter(p => p.status === "pending"), pairing: rows(rec(pairing).requests), ownerSet: rec(pairing).commandOwnerConfigured === true,
@@ -98,6 +100,7 @@ export async function loadNeeds(engine: WindowEngine): Promise<Needs> {
     questions: rows(rec(questions).questions).filter(q => q.status === "pending"), mentions: rows(rec(mentions).items),
     failed, expired: rows(rec(auth).providers).filter(p => p.status === "expired"), channels: stoppedChannels(channels),
     sessions: sessions({ sessions: list }), agents: agents(trunks), errors: [...queue.errors, ...errors],
+    ...(str(rec(usage).modelUpgradeNotice) ? { modelUpgradeNotice: str(rec(usage).modelUpgradeNotice) } : {}),
   };
 }
 

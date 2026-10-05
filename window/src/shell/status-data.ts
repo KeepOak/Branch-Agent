@@ -59,7 +59,7 @@ export function ageWords(at: number, now: number): string {
 
 export type LimitWindow = { name: string; left: number; reset: string; low: boolean };
 export type LimitPill = "Measured" | "Not published";
-export type LimitRow = { id: string; name: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string };
+export type LimitRow = { id: string; name: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse: boolean };
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
 
 function limitRow(p: Record<string, unknown>, updatedAt: number, now: number): LimitRow {
@@ -73,7 +73,7 @@ function limitRow(p: Record<string, unknown>, updatedAt: number, now: number): L
   const measured = windows.length > 0;
   const line = str(p.error) || (measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) || "This service does not say what it allows.");
   const name = str(p.displayName) || str(p.provider);
-  return { id: `${str(p.provider)}:${account}`, name, account, pill: measured ? "Measured" : "Not published", windows, line };
+  return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true };
 }
 
 /** usage.status: one row per connection and account, never added together (§4.9.4 rule 1). */

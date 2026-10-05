@@ -123,7 +123,7 @@ export function Composer(props: Props) {
     return () => window.removeEventListener(TALK_EVENT, start);
   }, [voice.live]);
   const row = conv.row;
-  const currentRef = currentModelRef(row, conv.defaults);
+  const currentRef = currentModelRef(row, conv.defaults, conv.trunk?.model);
   const current = conv.models.find((m) => m.ref === currentRef || m.id === currentRef);
   const modelAccounts = useModelAccounts(engine, conv.trunkId, working);
   const modelAccount = currentModelAccount(modelAccounts, current?.provider ?? currentRef.split("/")[0] ?? "", row);

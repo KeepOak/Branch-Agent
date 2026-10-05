@@ -8,7 +8,7 @@ import type { Conversation } from "../connect/conversations";
 import type { Level } from "../places-nav/settings-nav";
 import { Icon, type IconName } from "./icons";
 import { Popover, type Above } from "./Popover";
-import { comingUp, limitsSummary, readMonthSpend, readRoom, readRounds, sizeWords, uptimeWords, monthParams, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
+import { comingUp, limitsSummary, readLimits, readMonthSpend, readRoom, readRounds, sizeWords, uptimeWords, monthParams, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
 import "./status.css";
 import { shownWhy } from "./shown-why";
@@ -116,28 +116,46 @@ function LimitBars({ row }: { row: Limits["rows"][number] }) {
 /** §4.9.4 What each connection has left: one row per connection and account, then This month and Open Usage. */
 export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & { limits: Limits | null; request: Request; onOpenUsage: () => void }) {
   const spend = useRead(request, "usage.cost", monthParams(), readMonthSpend);
-  const rows = limits?.rows ?? [];
+  const [fresh, setFresh] = useState<Limits | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState("");
+  const check = () => {
+    setChecking(true);
+    setCheckError("");
+    request("usage.status", { refresh: true }).then(
+      (result) => setFresh(readLimits(result)),
+      (error: unknown) => setCheckError(error instanceof Error ? error.message : String(error)),
+    ).finally(() => setChecking(false));
+  };
+  useEffect(() => { check(); }, []);
+  const shown = fresh ?? limits;
+  const rows = shown?.rows ?? [];
   return (
     <Popover at={{ x: 0, y: 0 }} label="What each connection has left" testid="pop-usage" className="sp sp-wide" {...base}>
       <div className="lims">
         <div className="ph">What each connection has left</div>
-        {rows.map((row) => (
-          <div className="lim" key={row.id}>
+        {rows.map((row, index) => (
+          <div key={row.id}>
+          {index === 0 || rows[index - 1]?.name !== row.name ? <div className="ph">{row.name}</div> : null}
+          <div className="lim">
             <Logo id={row.id.split(":")[0] || row.name} name={row.name} size={28} />
             <div>
               <div className="lim-h">
                 <b>{row.name}</b>
                 {row.account ? <span className="muted">{row.account}</span> : null}
+                {row.inUse ? <span className="pill ok">used next</span> : null}
                 <span className={row.pill === "Measured" ? "pill ok" : "pill idle"}>{row.pill}</span>
               </div>
               <LimitBars row={row} />
               <small>{row.line}</small>
             </div>
           </div>
+          </div>
         ))}
-        {!limits ? <p className="sp-note">Asking each connection…</p> : null}
-        {limits && !rows.length ? <p className="sp-note">{limits.refreshing ? "Asking each connection…" : "No connection reports a limit yet."}</p> : null}
+        {!shown ? <p className="sp-note">Asking each connection…</p> : null}
+        {shown && !rows.length ? <p className="sp-note">{shown.refreshing ? "Asking each connection…" : "No connection reports a limit yet."}</p> : null}
         {rows.length ? <p className="sp-note">{limitsSummary(rows)}</p> : null}
+        {checkError ? <p className="sp-note bad">{checkError}</p> : null}
         <div className="lim-foot">
           {spend.data ? (
             <span>
@@ -145,6 +163,7 @@ export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & {
             </span>
           ) : null}
           <span className="sb-spacer" />
+          <button className="btn sm" type="button" disabled={checking} onClick={check}>{checking ? "Checking…" : "Check now"}</button>
           <button className="btn sm" type="button" data-testid="open-usage" onClick={onOpenUsage}>
             Open Usage
           </button>
