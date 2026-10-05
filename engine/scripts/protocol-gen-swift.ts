@@ -111,6 +111,7 @@ const CANONICAL_SCHEMA_ALIASES = new Set([
   "ProgressCardPutResult",
   "ProjectsAddResult",
   "SessionDiscussionOpenResult",
+  "SessionsBranchesListParams",
   "SessionMemberRemoveParams",
   "UsersAuthConnectCancelParams",
   "WizardStartResult",
