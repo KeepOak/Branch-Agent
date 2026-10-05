@@ -97,11 +97,18 @@ export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" = f
   });
 }
 
-/** Ask the owned engine to drain cleanly, but only if it is still idle at the gateway. */
-export async function stopGatewayCleanly(child: ChildProcess, timeoutMs = 90_000): Promise<void> {
+/**
+ * Ask the owned engine to drain cleanly, but only while it is idle at the gateway. Short post-ready and background
+ * work makes it answer "busy" for a few seconds, so the request repeats every 2 s for up to `busyRetryMs`.
+ */
+export async function stopGatewayCleanly(child: ChildProcess, timeoutMs = 90_000, busyRetryMs = 20_000): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
-  const snapshot = await gatewayActivity(child, true);
-  if (!snapshot.idle) throw new Error("The gateway became busy before it could stop");
+  const giveUp = Date.now() + busyRetryMs;
+  while (!(await gatewayActivity(child, true)).idle) {
+    if (Date.now() >= giveUp) throw new Error("The gateway became busy before it could stop");
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+    if (child.exitCode !== null || child.signalCode !== null) return;
+  }
   await waitForExit(child, timeoutMs);
 }
 
