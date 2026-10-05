@@ -51,6 +51,7 @@ export const engineTests = [
   'src/agents/main-session-recovery/main-session-restart-recovery.pending-admission.test.ts',
   // Pins the advertised method order: new gateway methods must append, never shift older indices.
   'src/gateway/server-methods-list.test.ts',
+  'src/agents/prepared-model-runtime.auth-republication-scope.test.ts',
 ];
 
 export const windowTests = [

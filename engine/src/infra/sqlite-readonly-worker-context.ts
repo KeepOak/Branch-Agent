@@ -21,6 +21,11 @@ export type SqliteReadOnlyWorkerScope = {
 };
 export const readOnlyWorkerScope = new AsyncLocalStorage<SqliteReadOnlyWorkerScope>();
 
+/** Run lifetime-owned work without inheriting a caller's reader scope, which may close first. */
+export function runOutsideSqliteReadOnlyWorkerScope<T>(operation: () => T): T {
+  return readOnlyWorkerScope.exit(operation);
+}
+
 /** Carry the owning readers into callbacks without retaining startup or request authority. */
 export function captureSqliteReadOnlyWorkerScope(): <T>(operation: () => T) => T {
   const scope = readOnlyWorkerScope.getStore();
