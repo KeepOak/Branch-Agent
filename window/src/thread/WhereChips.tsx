@@ -1,7 +1,7 @@
 // "Where it works" on an empty conversation (DESIGN-SPEC §4.2.9, the preview's where-pb18): the computer chip, the
 // folder chip and, at Advanced, the copy chip, just above the composer. The computer moves the conversation
 // (sessions.dispatch / sessions.move); a folder, a pasted path, a Git link or a separate copy starts the conversation
-// there (sessions.create with projectId, cwd, projectGitUrl or worktree) and opens it.
+// there on its first send (sessions.create with projectId, cwd, projectGitUrl or worktree).
 import { useEffect, useState, type MouseEvent } from "react";
 import type { Conversation } from "../connect/conversations";
 import type { WindowEngine } from "../connect/engine";
@@ -32,7 +32,8 @@ type Props = {
   trunkName: string;
   advanced: boolean;
   projectName: string | null;
-  onOpenConversation: (key: string) => void;
+  onStartTopic: (params: Record<string, unknown>) => void;
+  draft?: boolean;
 };
 
 function useWhere(engine: WindowEngine) {
@@ -56,24 +57,28 @@ export function WhereChips(p: Props) {
   const conv = useConversation(p.engine);
   const where = useWhere(p.engine);
   const [open, setOpen] = useState<Open>(null);
+  const [selectedComputer, setSelectedComputer] = useState<string | null>(null);
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [error, setError] = useState("");
   if (!conv.loaded || hasNoModel(conv, currentModelRef(conv.row, conv.defaults))) return null;
   const current = placementComputer(where.placement);
-  const compName = where.computers.find((c) => c.id === current)?.name ?? "This computer";
-  const folderName = p.projectName ?? (p.row?.folder ? base(p.row.folder) : `${p.trunkName}’s own folder`);
+  const computerId = selectedComputer ?? current ?? "gateway";
+  const compName = computerId === "free" ? "Any free computer" : where.computers.find((c) => c.id === computerId)?.name ?? "This computer";
+  const folderName = selectedFolder ?? p.projectName ?? (p.row?.folder ? base(p.row.folder) : `${p.trunkName}’s own folder`);
   const git = Boolean(p.row?.repoBranch);
   const toggle = (kind: "comp" | "folder" | "copy") => (e: MouseEvent<HTMLElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     setOpen((cur) => (cur?.kind === kind ? null : { kind, at: { x: r.left, y: r.bottom + 4 } }));
   };
   const start = async (params: Record<string, unknown>) => {
-    try {
-      const r = rec(await p.engine.request("sessions.create", { ...(p.engine.agentId ? { agentId: p.engine.agentId } : {}), ...params }));
-      setOpen(null);
-      if (str(r.key)) p.onOpenConversation(str(r.key));
-    } catch (e) {
-      setError(`Couldn't start it there: ${reason(e)}.`);
+    setOpen(null);
+    setError("");
+    if (p.draft) {
+      setSelectedComputer("gateway");
+      const project = where.projects.find((item) => item.id === params.projectId);
+      setSelectedFolder(project?.name ?? (typeof params.cwd === "string" ? base(params.cwd) : typeof params.projectGitUrl === "string" ? base(params.projectGitUrl).replace(/\.git$/, "") : params.worktreeSource === "empty" ? "New empty folder" : params.worktree ? "New separate copy" : null));
     }
+    p.onStartTopic(params);
   };
   return (
     <div className="where-chips" data-testid="where-chips">
@@ -99,20 +104,28 @@ export function WhereChips(p: Props) {
         <Popover at={open.at} onClose={() => setOpen(null)} label="Where it works" testid="where-comp">
           <div className="ph">Where it works</div>
           {where.computers.map((c) => (
-            <button key={c.id} type="button" className="mi" role="menuitemradio" aria-checked={c.id === (current ?? "gateway")} disabled={c.id !== "gateway" && !c.deviceId}
+            <button key={c.id} type="button" className="mi" role="menuitemradio" aria-checked={c.id === computerId} disabled={c.id !== "gateway" && !c.deviceId}
               title={c.id !== "gateway" && !c.deviceId ? "A cloud computer is picked by its kind." : undefined}
               onClick={() => {
                 const target = c.id === "gateway" ? { kind: "gateway" as const } : { kind: "device" as const, deviceId: c.deviceId ?? "" };
-                moveConversation(p.engine, where.placement, target).then(() => (setOpen(null), where.reload()), (e: unknown) => setError(`Couldn't move it: ${reason(e)}.`));
+                if (p.draft) {
+                  setSelectedComputer(c.id);
+                  setSelectedFolder(null);
+                  setOpen(null);
+                  p.onStartTopic({ execNode: c.id === "gateway" ? undefined : c.deviceId });
+                } else moveConversation(p.engine, where.placement, target).then(() => (setOpen(null), where.reload()), (e: unknown) => setError(`Couldn't move it: ${reason(e)}.`));
               }}>
-              <span className="tick" aria-hidden="true">{c.id === (current ?? "gateway") ? <Icon name="check" small /> : null}</span>
+              <span className="tick" aria-hidden="true">{c.id === computerId ? <Icon name="check" small /> : null}</span>
               <span className="mi-t">
                 <span>{c.name}</span>
                 {c.sub ? <small className="mi-s">{c.sub}</small> : null}
               </span>
             </button>
           ))}
-          <button type="button" className="mi" role="menuitemradio" aria-checked={false} onClick={() => moveConversation(p.engine, where.placement, { kind: "free" }).then(() => (setOpen(null), where.reload()), (e: unknown) => setError(`Couldn't move it: ${reason(e)}.`))}>
+          <button type="button" className="mi" role="menuitemradio" aria-checked={selectedComputer === "free"} onClick={() => {
+            if (p.draft) { setSelectedComputer("free"); setSelectedFolder(null); setOpen(null); p.onStartTopic({ execNode: undefined }); }
+            else moveConversation(p.engine, where.placement, { kind: "free" }).then(() => (setOpen(null), where.reload()), (e: unknown) => setError(`Couldn't move it: ${reason(e)}.`));
+          }}>
             <span className="tick" aria-hidden="true" />
             <span className="mi-t">
               <span>Any free computer</span>

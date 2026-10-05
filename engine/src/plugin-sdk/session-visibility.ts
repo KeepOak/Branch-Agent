@@ -221,6 +221,30 @@ export function createAgentToAgentPolicy(cfg: BranchConfig): AgentToAgentPolicy 
   const rawAllowPatterns = Array.isArray(routingA2A?.allow) ? routingA2A.allow : [];
   const allowPatterns = rawAllowPatterns.map((pattern) => compileAgentAllowPattern(pattern));
   const hasWildcardPatterns = allowPatterns.some((pattern) => pattern.kind === "wildcard");
+  const perAgent = new Map(
+    Object.entries(cfg.agents?.entries ?? {}).map(([id, entry]) => [
+      id,
+      {
+        allow: (entry.agentToAgent?.allow ?? []).map(compileAgentAllowPattern),
+        deny: (entry.agentToAgent?.deny ?? []).map(compileAgentAllowPattern),
+      },
+    ]),
+  );
+  const matches = (patterns: CompiledAgentAllowPattern[], id: string) =>
+    patterns.some((pattern) =>
+      pattern.kind === "all"
+        ? true
+        : pattern.kind === "exact"
+          ? pattern.value === id
+          : pattern.kind === "wildcard"
+            ? matchesCompiledWildcard(pattern, id.toLowerCase())
+            : false,
+    );
+  const perAgentAllows = (from: string, to: string) => {
+    const pair = perAgent.get(from);
+    return !pair || (!pair.deny.some((pattern) => pattern.kind === "deny") &&
+      !matches(pair.deny, to) && (pair.allow.length === 0 || matches(pair.allow, to)));
+  };
   const matchesAllow = (agentId: string) => {
     // Agent-to-agent is on by default; omitted/empty `allow` permits every agent pair.
     // Blank entries compile to `deny`, so a configured-but-blank list still fails closed.
@@ -243,7 +267,8 @@ export function createAgentToAgentPolicy(cfg: BranchConfig): AgentToAgentPolicy 
   };
   const isAllowed = (requesterAgentId: string, targetAgentId: string) =>
     requesterAgentId === targetAgentId ||
-    (enabled && matchesAllow(requesterAgentId) && matchesAllow(targetAgentId));
+    (enabled && matchesAllow(requesterAgentId) && matchesAllow(targetAgentId) &&
+      perAgentAllows(requesterAgentId, targetAgentId));
   return { enabled, matchesAllow, isAllowed };
 }
 

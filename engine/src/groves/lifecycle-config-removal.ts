@@ -61,6 +61,12 @@ export function digestGroveAgentRemovalSurface(config: BranchConfig, agentId: st
     agentToAgentAllow: (config.tools?.agentToAgent?.allow ?? []).filter(
       (entry) => entry === normalizedId,
     ),
+    perAgentReferences: Object.entries(config.agents?.entries ?? {}).flatMap(([id, entry]) =>
+      id === normalizedId ? [] : [
+        ...(entry.agentToAgent?.allow ?? []).filter((value) => value === normalizedId).map((value) => ({ id, kind: "allow", value })),
+        ...(entry.agentToAgent?.deny ?? []).filter((value) => value === normalizedId).map((value) => ({ id, kind: "deny", value })),
+      ],
+    ),
   };
   return digestGroveValue(surface);
 }

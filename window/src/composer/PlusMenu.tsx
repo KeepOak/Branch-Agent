@@ -14,7 +14,6 @@ export const GAP = {
   screenshot: "Not available in this window yet: screen capture needs the desktop app.",
   temporary: "Not available in this engine yet: a conversation is temporary only when it is made (sessions.create incognito).",
   checkWithMe: "Not available in this engine yet: it has no ask-questions-first switch for a conversation.",
-  whoAnswers: "Not available in this engine yet: a conversation's Trunk is fixed when it is made.",
   picture: "Connect a model first, in Settings › Models.",
   gif: "Not available in this engine yet: it has no GIF search service.",
   prompts: "Not available in this engine yet: it keeps no saved prompts.",
@@ -39,6 +38,7 @@ type Props = {
   temporary: boolean;
   /** Starts a new temporary conversation with this Trunk. */
   onTemporary?: () => void;
+  onWhoAnswers?: (agentId: string) => void;
   /** Opens "Make a picture"; absent when no model is set up. */
   onPicture?: () => void;
   /** Records a voice note; absent while the microphone isn't turned on. */
@@ -92,8 +92,9 @@ export function PlusMenu(p: Props) {
             key={t.id}
             label={t.name}
             checked={t.id === p.trunkId}
-            disabled={t.id !== p.trunkId}
-            reason={t.id !== p.trunkId ? GAP.whoAnswers : undefined}
+            disabled={t.id !== p.trunkId && !p.onWhoAnswers}
+            reason={t.id !== p.trunkId && !p.onWhoAnswers ? "This conversation's Trunk is fixed after its first message." : undefined}
+            onClick={t.id !== p.trunkId && p.onWhoAnswers ? run(() => p.onWhoAnswers?.(t.id)) : undefined}
           />
         ))}
         <Sep />
