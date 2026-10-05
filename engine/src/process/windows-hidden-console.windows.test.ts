@@ -1,11 +1,35 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { once } from "node:events";
+import { existsSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { withHiddenWindowsConsole } from "../plugin-sdk/windows-spawn.js";
+import { spawnWithHiddenConsole } from "./windows-hidden-console-child.js";
 
 describe("Windows inherited hidden console", () => {
+  it("starts the child after hidden console allocation fails and warns once", async () => {
+    const root = mkdtempSync(join(tmpdir(), "branch-hidden-console-fallback-"));
+    try {
+      const marker = join(root, "started");
+      const warnings: string[] = [];
+      const child = await spawnWithHiddenConsole(
+        process.execPath,
+        ["-e", `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'started')`],
+        false,
+        async () => { throw new Error("job retention should be skipped"); },
+        async () => { throw new Error("AllocConsole failed"); },
+        (message) => warnings.push(message),
+      );
+      const [code] = await once(child, "exit");
+      expect(code).toBe(0);
+      expect(existsSync(marker)).toBe(true);
+      expect(warnings).toEqual(["hidden console unavailable: AllocConsole failed"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it.skipIf(process.platform !== "win32")("gives an unhiding PowerShell grandchild an invisible console (requires Win32 console APIs)", () => {
     const root = mkdtempSync(join(tmpdir(), "branch-hidden-console-"));
     try {

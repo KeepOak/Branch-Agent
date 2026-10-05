@@ -6,7 +6,7 @@ import { createDeferredCore } from "../../shared/deferred.js";
 import { killProcessTree } from "../kill-tree.js";
 import { spawnWithInheritedOomScore } from "../linux-oom-score.js";
 import { hiddenWindowsOptions } from "../windows-hidden-options.js";
-import { ensureHiddenConsoleForDescendants } from "../windows-hidden-console.js";
+import { tryEnsureHiddenConsoleForDescendants } from "../windows-hidden-console.js";
 import { GRACEFUL_CANCEL_TIMEOUT_MS } from "../supervisor/cancellation-policy.js";
 import { hasLiveOwnedProcessGroupMembers } from "../supervisor/service-child-group-ownership.js";
 import { serializeExecaError } from "./execa-protocol.js";
@@ -514,7 +514,7 @@ process.on("message", (raw: unknown, handle: SendHandle) => {
   }
 });
 async function initialize(raw: unknown): Promise<void> {
-  await ensureHiddenConsoleForDescendants();
+  await tryEnsureHiddenConsoleForDescendants();
   if (!isRecord(raw) || raw.type !== "bootstrap") {
     throw new Error("Invalid spawn broker bootstrap");
   }

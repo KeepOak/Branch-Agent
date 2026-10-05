@@ -21,3 +21,17 @@ export async function ensureHiddenConsoleForDescendants(): Promise<void> {
   showWindow(window, 0);
   if (isWindowVisible(window)) throw new Error("Windows console is visible");
 }
+
+/** Console setup is best-effort: never prevent the worker or its child from starting. */
+export async function tryEnsureHiddenConsoleForDescendants(
+  ensure: () => Promise<void> = ensureHiddenConsoleForDescendants,
+  warn: (message: string) => void = (message) => process.stderr.write(`${message}\n`),
+): Promise<boolean> {
+  try {
+    await ensure();
+    return true;
+  } catch (error) {
+    warn(`hidden console unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
+}
