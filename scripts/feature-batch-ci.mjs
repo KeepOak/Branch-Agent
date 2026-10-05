@@ -90,7 +90,9 @@ async function checkAll(suite = 'named') {
     await prepareBuildArtifacts();
     if (suite === 'capabilities') await runCapabilityTests(scratch);
     else {
-      await runTargetedStrictChecks(scratch);
+      // The strict typecheck is the same on every OS; Linux runs it once. On the 7 GB macOS
+      // runners its ~6 GB check thrashes and alone pushed the job past the 15-minute cap.
+      if (process.platform === 'linux') await runTargetedStrictChecks(scratch);
       await runFeatureTests(scratch);
     }
     receipt.passed = true;
