@@ -31,15 +31,20 @@ function useWhere(engine: WindowEngine, tick: number): Where {
   const [where, setWhere] = useState<Where & { owner: WindowEngine; tick: number }>({ owner: engine, tick, placement: undefined, computers: [], profiles: [], loaded: false });
   useEffect(() => {
     let live = true;
-    Promise.all([describePlacement(engine), listComputers(engine).catch(() => ({ computers: [] as Computer[], profiles: [] }))]).then(
-      ([placement, list]) => live && setWhere({ owner: engine, tick, placement, ...list, loaded: true }),
-      (e: unknown) => live && setWhere({ owner: engine, tick, placement: undefined, computers: [], profiles: [], loaded: true, error: e instanceof Error ? e.message : String(e) }),
-    );
+    void Promise.allSettled([describePlacement(engine), listComputers(engine)]).then(([placement, list]) => {
+      if (!live) return;
+      const failed = [placement, list].find((result) => result.status === "rejected");
+      setWhere({ owner: engine, tick, loaded: true,
+        placement: placement.status === "fulfilled" ? placement.value : undefined,
+        ...(list.status === "fulfilled" ? list.value : { computers: [], profiles: [] }),
+        ...(failed?.status === "rejected" ? { error: failed.reason instanceof Error ? failed.reason.message : String(failed.reason) } : {}),
+      });
+    });
     return () => {
       live = false;
     };
   }, [engine, tick]);
-  return where.owner === engine ? where : { placement: undefined, computers: [], profiles: [], loaded: false };
+  return where.owner === engine && where.tick === tick ? where : { placement: undefined, computers: [], profiles: [], loaded: false };
 }
 
 function StepStrip({ steps, controlling, running, connected, onWatch, watchOpen, tools }: { steps: PlanStep[]; controlling: boolean; running: boolean; connected: boolean; onWatch: (at: MenuAnchor) => void; watchOpen: boolean; tools: boolean }) {
@@ -234,6 +239,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
   const viewing = picked === "grid" ? null : picked ?? current;
   const viewed = where.computers.find((c) => c.id === viewing);
   const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
+  const screenView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: where.error } : view;
   const steps = planSteps(card);
   const browser = mode === "Browser";
   const controlling = browser ? control : view.phase === "connected" && view.controlling === true;
@@ -339,6 +345,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
         </button>
       </div>
       {stopError ? <p className="stage-error-st" role="alert">{stopError}</p> : null}
+      {!browser && where.error && viewing ? <p className="stage-error-st" role="alert">{where.error} <button type="button" className="btn sm" onClick={() => setTick((value) => value + 1)}>Try again</button></p> : null}
       {!browser && screens.length > 1 ? (
         <div className="st7-tabs" role="tablist" aria-label="Its computers">
           {screens.map((c) => (
@@ -378,7 +385,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
             </div>
           </div>
         ) : (
-          <Screen view={view} target={target} controlling={controlling} onRetry={() => setRetry((v) => v + 1)} onChoose={onChooseComputer} />
+          <Screen view={screenView} target={target} controlling={controlling} onRetry={() => { setRetry((v) => v + 1); if (where.error) setTick((v) => v + 1); }} onChoose={onChooseComputer} />
         )}
         {dock ? <Dock engine={engine} name={name} steps={steps} blocks={blocks} running={running} browser={false} reach={reachLine(viewed)} onChooseComputer={onChooseComputer} /> : null}
       </div>
