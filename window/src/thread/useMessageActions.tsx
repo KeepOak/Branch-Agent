@@ -14,6 +14,7 @@ type Options = {
   onReload?: () => void;
   onOpenSession?: (key: string) => void;
   onReply?: (target: ReplyTarget) => void;
+  onStartTopic?: (afterMessageId: string) => void;
   applyReaction: (messageId: string, raw: unknown) => void;
 };
 
@@ -64,6 +65,7 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
       reactDisabled: !engine ? NO_ENGINE : !entryId ? "This message has no engine id yet." : null,
       ...(isReply ? { inspect: act(() => setDialog({ kind: "inspect", block, turn: turnOf(blocks, index) }), null) } : {}),
       branch: act(() => branchAt && setDialog({ kind: "branch", entryId: branchAt }), busy ?? (branchAt ? null : LATEST)),
+      ...(opts.onStartTopic ? { startConversation: { run: () => entryId && opts.onStartTopic?.(entryId), disabled: entryId ? null : "This message has no engine id yet." } } : {}),
       ...(isReply
         ? {
             read: {
@@ -104,4 +106,3 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
   }
   return { actionsFor, dialog: node };
 }
-
