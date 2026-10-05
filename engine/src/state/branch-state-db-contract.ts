@@ -4,6 +4,7 @@ import type { DatabasePathIdentity } from "../infra/sqlite-worker-identity.js";
 
 export type BranchStateSchemaReadAdmission = (database: DatabaseSync) => (() => void) | undefined;
 
+// v21 adds durable room contacts, members, and their append-only event log.
 // v20 fences possibly delivered cron completions across restart recovery.
 // v19 preserves original channel-owner authorization across recovery.
 // v18 binds shared GitHub publication to its original requesting authority.
@@ -20,7 +21,7 @@ export type BranchStateSchemaReadAdmission = (database: DatabaseSync) => (() => 
 // v7 retires the inert shared commitments table.
 // v6 makes every committed shared-state table part of the canonical runtime schema.
 // v5 records durable cloud-worker result refs on pending workspace fences.
-export const BRANCH_STATE_SCHEMA_VERSION = 20;
+export const BRANCH_STATE_SCHEMA_VERSION = 21;
 export const BRANCH_STATE_STRICT_SCHEMA_VERSION = 3;
 // Absence records lost history; only Doctor may reconstruct these on existing state.
 export const DOCTOR_OWNED_STATE_TABLES = ["agent_deletion_journal"] as const;

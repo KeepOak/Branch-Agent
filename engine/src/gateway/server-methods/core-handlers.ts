@@ -132,6 +132,7 @@ const CORE_GATEWAY_HANDLER_MODULES = {
     import("./session-processes.js").then((module) => module.sessionProcessHandlers),
   "sessions-read": () => import("./sessions-read.js").then((module) => module.sessionReadHandlers),
   contacts: () => import("./contacts.js").then((module) => module.contactHandlers),
+  rooms: () => import("./rooms.js").then((module) => module.roomHandlers),
   "sessions-rewind": () =>
     import("./sessions-rewind.js").then((module) => module.sessionRewindHandlers),
   "sessions-sharing": () =>
