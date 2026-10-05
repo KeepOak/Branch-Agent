@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ConversationList, type ConversationsSnapshot } from "../connect/conversations";
 import type { SaplingSession } from "../connect/session";
+import type { Contact } from "@branch/gateway-protocol";
 import { NO_PEOPLE, type ListPeople } from "./list-model";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
@@ -29,6 +30,32 @@ export function useConversations(session: SaplingSession, ready: boolean, mainKe
   }, [list, session, ready]);
   const snap = useSyncExternalStore(list.subscribe, list.getSnapshot);
   return [ready ? snap : EMPTY_LIST, list];
+}
+
+/** Gateway-owned contacts, refreshed on its own change event (including read watermarks). */
+export function useContacts(session: SaplingSession, ready: boolean): [Contact[], () => void] {
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const refresh = useMemo(() => {
+    let generation = 0;
+    const load = () => {
+      const current = ++generation;
+      void session.request<{ contacts: Contact[] }>("contacts.list", { includeArchived: true }).then(
+        (result) => { if (current === generation) setContacts(result.contacts); },
+        (error: unknown) => console.warn("contacts.list failed", error),
+      );
+    };
+    load.cancel = () => { generation++; };
+    return load;
+  }, [session]);
+  useEffect(() => {
+    if (!ready) return;
+    refresh();
+    const off = session.onGatewayEvent((event) => {
+      if (event === "contacts.changed" || event === "agents.changed" || event === "config.changed") refresh();
+    });
+    return () => { off(); refresh.cancel(); };
+  }, [session, ready, refresh]);
+  return [ready ? contacts : [], refresh];
 }
 
 /** The Trunks, as OpenClaw's agents.list returns them (identity.name, defaultId). */

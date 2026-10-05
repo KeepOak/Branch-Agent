@@ -1,4 +1,3 @@
-import { parseModelRef } from "branch/plugin-sdk/agent-runtime";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createQaBusState } from "./bus-state.js";
@@ -185,10 +184,6 @@ describe("QA web acquisition across the real scenario DSL", () => {
           env,
           scenario: nextScenario,
           runScenario: runtime.runQaSuiteScenarioSteps,
-          splitModelRef: (raw) => parseModelRef(raw, "openai"),
-          formatErrorMessage: String,
-          liveTurnTimeoutMs: () => 60_000,
-          resolveQaLiveTurnTimeoutMs: () => 60_000,
           constants: {
             imageUnderstandingPngBase64: "small",
             imageUnderstandingLargePngBase64: "large",

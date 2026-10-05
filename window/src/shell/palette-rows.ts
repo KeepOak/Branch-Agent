@@ -19,12 +19,13 @@ type Ctx = {
   openConversation: (key: string) => void;
   openPlace: (p: PlaceId) => void;
   openSettings: (page: string) => void;
+  newTrunk: () => void;
 };
 
 export function paletteRows(c: Ctx): PaletteRow[] {
   const actions: PaletteRow[] = [
     { id: "a:new", group: "Actions", label: "New conversation", hint: "Ctrl N", run: c.newConversation },
-    { id: "a:trunk", group: "Actions", label: "New Trunk", hint: "", run: () => c.openPlace("customize") },
+    { id: "a:trunk", group: "Actions", label: "New Trunk", hint: "", run: c.newTrunk },
     { id: "a:theme", group: "Actions", label: "Switch light or dark", hint: "", run: c.toggleTheme },
     { id: "a:focus", group: "Actions", label: "Focus mode", hint: "Ctrl .", run: c.focusMode },
     { id: "a:keys", group: "Actions", label: "Keyboard shortcuts", hint: "?", run: c.shortcuts },

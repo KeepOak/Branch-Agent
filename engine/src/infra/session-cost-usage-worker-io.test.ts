@@ -20,6 +20,7 @@ import {
   closeBranchAgentDatabasesAsync,
   runBranchAgentWriteTransaction,
 } from "../state/branch-agent-db.js";
+import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import { writeSessionCostUsageRollupInDatabase } from "./session-cost-usage-cache.kernel.js";
 import { readSessionCostUsageRollupRows } from "./session-cost-usage-cache.test-support.js";
@@ -63,11 +64,13 @@ async function withUsageWorkerPreload(
   operation: () => Promise<void>,
 ) {
   await closeBranchAgentDatabasesAsync();
+  await closeStateDatabaseForTest();
   await withEnvAsync({ BRANCH_STATE_DIR: root, ...sqliteWorkerPreloadEnv(preload) }, async () => {
     try {
       await operation();
     } finally {
       await closeBranchAgentDatabasesAsync();
+      await closeStateDatabaseForTest();
     }
   });
 }

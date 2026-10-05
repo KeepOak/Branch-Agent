@@ -175,7 +175,9 @@ describe("renderPluginConsentDialog", () => {
   });
 
   it("highlights newly declared capability groups since the previous acceptance", () => {
+    const reviewToken = "a".repeat(64);
     const inspection = createInspectResult({
+      reviewToken,
       declared: {
         ...createInspectResult().declared,
         tools: ["canopy_review"],
@@ -191,7 +193,7 @@ describe("renderPluginConsentDialog", () => {
         fallback: { name: "Canopy" },
         details: buildCapabilityConsentErrorDetails({
           pluginId: "canopy",
-          reviewToken: inspection.reviewToken,
+          reviewToken,
           widened: {
             tools: ["canopy_review"],
             contracts: ["gatewayMethodDispatch: canopy.dispatch"],
@@ -225,7 +227,7 @@ describe("renderPluginConsentDialog", () => {
           pluginId: "community-calendar",
           rowKey: "plugin:community-calendar",
         },
-        pluginId: null,
+        pluginId: "community-calendar",
         fallback: {
           name: "Community Calendar",
           version: "1.2.0",

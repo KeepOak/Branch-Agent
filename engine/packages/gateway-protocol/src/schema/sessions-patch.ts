@@ -46,6 +46,7 @@ const SessionsPatchMutationProperties = {
         "Epoch ms wake time that hides the session from active lists until then; null wakes it.",
     }),
   ),
+  done: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])),
   unread: Type.Optional(
     Type.Boolean({ description: "Set true to mark unread; false records the session as read." }),
   ),

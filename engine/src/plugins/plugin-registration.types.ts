@@ -16,9 +16,14 @@ import type { DiagnosticTracePropagationBridge as DiagnosticTracePropagationBrid
 import type { SecurityAuditFinding } from "../security/audit.types.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import type { PluginLogger } from "./logger-types.js";
+import type { PluginManifestCliCommand } from "./manifest-types.js";
+import type { PluginServiceSchedulerV1 } from "./service-scheduler.types.js";
 import type { BranchPluginNodeWorkspace } from "./types.node-host.js";
 
+export type { PluginServiceSchedulerV1 } from "./service-scheduler.types.js";
+
 type ChannelPlugin = import("../channels/plugins/types.plugin.js").ChannelPlugin;
+type AnyChannelPlugin = import("../channels/plugins/types.plugin.js").AnyChannelPlugin;
 type DiagnosticTracePropagationBridge = DiagnosticTracePropagationBridgeContract<
   DiagnosticEventPayload,
   DiagnosticEventMetadata
@@ -152,11 +157,7 @@ export type BranchPluginCliRegistrar = (ctx: BranchPluginCliContext) => void | P
  * advertising it at the root CLI level, provide descriptors that cover every
  * top-level command root registered by that plugin CLI surface.
  */
-type BranchPluginCliCommandDescriptor = {
-  name: string;
-  description: string;
-  hasSubcommands: boolean;
-};
+type BranchPluginCliCommandDescriptor = PluginManifestCliCommand;
 
 /** Root-command metadata that is available before a plugin registrar is activated. */
 export type BranchPluginCliRootCommandDescriptor = BranchPluginCliCommandDescriptor & {
@@ -280,18 +281,10 @@ export type BranchPluginNodeInvokePolicyContext = {
 };
 
 export type BranchPluginNodeInvokePolicyResult =
-  | {
-      ok: true;
-      payload?: unknown;
-      payloadJSON?: string | null;
-    }
-  | {
-      ok: false;
-      message: string;
-      code?: string;
-      details?: Record<string, unknown>;
+  | Extract<BranchPluginNodeInvokeTransportResult, { ok: true }>
+  | (Extract<BranchPluginNodeInvokeTransportResult, { ok: false }> & {
       unavailable?: boolean;
-    };
+    });
 
 export type BranchPluginNodeInvokePolicy = {
   commands: string[];
@@ -373,6 +366,8 @@ export type BranchPluginServiceContext = {
   stateDir: string;
   logger: PluginLogger;
   serviceHealth?: BranchPluginServiceHealth;
+  /** Gateway-owned timed work; required by the version 2 service contract. */
+  scheduler?: PluginServiceSchedulerV1;
   /** Gateway-owned scheduler access, revoked when this service stops. */
   getCron?: () =>
     | (import("./hook-gateway.types.js").PluginHookGatewayCronService & {
@@ -422,6 +417,7 @@ export type BranchPluginServiceContext = {
 
 /** Background service registered by a plugin during `register(api)`. */
 export type BranchPluginService = {
+  apiVersion?: 1;
   id: string;
   /** Restart this service with committed config when one of these paths changes. */
   reload?: { configPrefixes: readonly string[] };
@@ -429,8 +425,22 @@ export type BranchPluginService = {
   stop?: (ctx: BranchPluginServiceContext) => void | Promise<void>;
 };
 
-export type BranchPluginChannelRegistration = {
-  plugin: ChannelPlugin;
+export type BranchPluginServiceContextV2 = BranchPluginServiceContext & {
+  scheduler: PluginServiceSchedulerV1;
+};
+
+/** A service whose host must provide scheduling bound to its lifetime. */
+export type BranchPluginServiceV2 = Omit<
+  BranchPluginService,
+  "apiVersion" | "start" | "stop"
+> & {
+  apiVersion: 2;
+  start: (ctx: BranchPluginServiceContextV2) => void | Promise<void>;
+  stop?: (ctx: BranchPluginServiceContextV2) => void | Promise<void>;
+};
+
+export type BranchPluginChannelRegistration<Plugin extends AnyChannelPlugin = ChannelPlugin> = {
+  plugin: Plugin;
 };
 
 /**

@@ -8,7 +8,9 @@ import {
   normalizeTrimmedStringList,
 } from "branch/plugin-sdk/string-coerce-runtime";
 import type { BranchExecAsk, BranchExecSecurity } from "./config-contracts.shared.js";
-import type { CodexServiceTier } from "./protocol.js";
+import { normalizeCodexServiceTier } from "./service-tier-normalization.js";
+
+export { normalizeCodexServiceTier } from "./service-tier-normalization.js";
 
 const START_OPTIONS_KEY_SECRET = resolveGlobalSingleton(
   Symbol.for("branch.codexAppServerStartOptionsKeySecret"),
@@ -17,24 +19,6 @@ const START_OPTIONS_KEY_SECRET = resolveGlobalSingleton(
 const PLAIN_DECIMAL_NUMBER_RE = /^[+-]?(?:(?:\d+\.?\d*)|(?:\.\d+))$/;
 
 export { readNonEmptyString, readRecord };
-
-export function normalizeCodexServiceTier(value: unknown): CodexServiceTier | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  const normalized = trimmed.toLowerCase();
-  if (normalized === "fast" || normalized === "priority") {
-    return "priority";
-  }
-  if (normalized === "flex") {
-    return "flex";
-  }
-  return trimmed;
-}
 
 export function isCodexFastServiceTier(value: unknown): boolean {
   return normalizeCodexServiceTier(value) === "priority";

@@ -14,7 +14,7 @@ function envRef(id: string) {
 }
 
 const explicitMainRoster: NonNullable<BranchConfig["agents"]> = {
-  list: [{ id: "main", default: true }],
+  entries: { main: {} },
 };
 const isolatedEnv: NodeJS.ProcessEnv = { BRANCH_STATE_DIR: process.env.BRANCH_TEST_HOME };
 

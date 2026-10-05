@@ -1,4 +1,6 @@
+import { runSqliteReadOperationSync } from "../infra/sqlite-schema-facts.js";
 import { normalizeAgentId } from "../routing/session-key.js";
+import { assertCanonicalSessionValidationSchema } from "./branch-agent-canonical-validation-schema.js";
 import type {
   BranchAgentDatabase,
   BranchAgentDatabaseOptions,
@@ -34,8 +36,6 @@ import {
 export {
   openBranchAgentDatabaseReadOnly,
   type BranchAgentReadOnlyDatabase,
-  type BranchAgentReadOnlyDatabaseHandle,
-  type BranchAgentDatabaseReadOnlyOpenResult,
 } from "./branch-agent-db-readonly-open.js";
 
 /**
@@ -113,7 +113,14 @@ export function withBranchAgentDatabaseReadOnly<T>(
     );
   }
   // The handle's admission owner refreshes these facts after DDL or a foreign commit.
-  const userVersion = assertSupportedAgentSchemaVersion(processOpened.db, pathname);
-  assertCanonicalAgentPersistenceVersion(processOpened.db, pathname, userVersion);
-  return readBranchAgentDatabase(processOpened, operation);
+  return runSqliteReadOperationSync(
+    processOpened.db,
+    () => {
+      const userVersion = assertSupportedAgentSchemaVersion(processOpened.db, pathname);
+      assertCanonicalAgentPersistenceVersion(processOpened.db, pathname, userVersion);
+      assertCanonicalSessionValidationSchema(processOpened.db);
+      return readBranchAgentDatabase(processOpened, operation);
+    },
+    "fresh",
+  );
 }

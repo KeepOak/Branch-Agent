@@ -105,6 +105,7 @@ vi.mock("./branch-agent-db.js", async () => {
       path: boundary.route(options),
       db: new DatabaseSync(":memory:"),
       walMaintenance: {
+        stop: async () => {},
         checkpoint: () => false,
         close: () => true,
         reclaimFreePages: createSqliteWalReclamationResult,

@@ -12,6 +12,7 @@ import { resolveInstalledPluginIndexPolicyHash } from "../plugins/installed-plug
 import { clearPluginMetadataLifecycleCaches } from "../plugins/plugin-metadata-lifecycle.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import { buildDeclaredProviderOwnerIndex } from "../plugins/provider-owner-index.js";
+import { captureEnv } from "../test-utils/env.js";
 import * as facadeActivationRuntime from "./facade-activation-check.runtime.js";
 import { resolveBundledPluginPublicSurfaceAccess as resolveActivationCheckBundledPluginPublicSurfaceAccess } from "./facade-activation-check.runtime.js";
 import {
@@ -23,9 +24,11 @@ import {
 import { createPluginSdkTestHarness } from "./test-helpers.js";
 
 const { createTempDirSync } = createPluginSdkTestHarness();
-const originalBundledPluginsDir = process.env.BRANCH_BUNDLED_PLUGINS_DIR;
-const originalDisableBundledPlugins = process.env.BRANCH_DISABLE_BUNDLED_PLUGINS;
-const originalStateDir = process.env.BRANCH_STATE_DIR;
+const originalEnv = captureEnv([
+  "BRANCH_BUNDLED_PLUGINS_DIR",
+  "BRANCH_DISABLE_BUNDLED_PLUGINS",
+  "BRANCH_STATE_DIR",
+]);
 const trustedBundledFixturesRoot = path.resolve("dist-runtime", "extensions");
 const trustedBundledFixtureDirs: string[] = [];
 type SnapshotPluginRecord = PluginMetadataSnapshot["manifestRegistry"]["plugins"][number];
@@ -111,21 +114,7 @@ afterEach(() => {
   clearPluginMetadataLifecycleCaches();
   resetFacadeRuntimeStateForTest();
   vi.doUnmock("../plugins/manifest-registry.js");
-  if (originalBundledPluginsDir === undefined) {
-    delete process.env.BRANCH_BUNDLED_PLUGINS_DIR;
-  } else {
-    process.env.BRANCH_BUNDLED_PLUGINS_DIR = originalBundledPluginsDir;
-  }
-  if (originalDisableBundledPlugins === undefined) {
-    delete process.env.BRANCH_DISABLE_BUNDLED_PLUGINS;
-  } else {
-    process.env.BRANCH_DISABLE_BUNDLED_PLUGINS = originalDisableBundledPlugins;
-  }
-  if (originalStateDir === undefined) {
-    delete process.env.BRANCH_STATE_DIR;
-  } else {
-    process.env.BRANCH_STATE_DIR = originalStateDir;
-  }
+  originalEnv.restore();
 });
 
 describe("plugin-sdk facade runtime", () => {

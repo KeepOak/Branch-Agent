@@ -10,7 +10,7 @@ import {
 export function renderComposerQuestionDock(panel: QuestionPanelProps | null) {
   return panel
     ? html`<div class="agent-chat__question-dock">
-        <branch-chat-question-panel .props=${panel}></branch-chat-question-panel>
+        <branch-chat-question-card .props=${panel}></branch-chat-question-card>
       </div>`
     : nothing;
 }

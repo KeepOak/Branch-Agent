@@ -7,6 +7,7 @@ import { clearConfigCache, clearRuntimeConfigSnapshot } from "../config/config.j
 import type { BranchConfig } from "../config/types.branch.js";
 import { withTempHomeCore as withTempHomeBase } from "../plugin-sdk/test-helpers/temp-home.js";
 import { resetPluginLoaderTestStateForTest } from "../plugins/loader.test-fixtures.js";
+import { closeBranchAgentDatabasesAsync } from "../state/branch-agent-db.js";
 import { captureEnv } from "../test-utils/env.js";
 import { resetModelsJsonReadyCacheForTest } from "./models-config-state.test-support.js";
 
@@ -14,10 +15,16 @@ import { resetModelsJsonReadyCacheForTest } from "./models-config-state.test-sup
 export function withModelsTempHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
   // Models-config tests do not exercise session persistence; skip draining
   // unrelated session lock state during temp-home teardown.
-  return withTempHomeBase(fn, {
-    prefix: "branch-models-",
-    skipSessionCleanup: true,
-  });
+  return withTempHomeBase(
+    async (home) => {
+      try {
+        return await fn(home);
+      } finally {
+        await closeBranchAgentDatabasesAsync(home);
+      }
+    },
+    { prefix: "branch-models-", skipSessionCleanup: true },
+  );
 }
 
 /** Installs before/after hooks that reset config, plugin, env, and fetch state. */

@@ -1,3 +1,4 @@
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import type { GatewayRequestHandlerOptions } from "branch/plugin-sdk/gateway-runtime";
 import type { BranchPluginApi } from "branch/plugin-sdk/plugin-entry";
@@ -36,7 +37,7 @@ describe("codex.accountUsage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    config = { agents: { list: [{ id: "main" }, { id: "work" }] } };
+    config = { agents: { entries: { main: {}, work: {} } } };
     currentAuthority = true;
     store = {
       version: 1,

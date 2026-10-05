@@ -32,7 +32,7 @@ async function withSyntheticReader(
 ) {
   await withBranchTestState({ scenario: "minimal" }, async (state) => {
     const config: BranchConfig = {
-      agents: { list: [{ id: "main", default: true }] },
+      agents: { entries: { main: {} } },
       gateway: {
         roles: {
           default: "blocked",

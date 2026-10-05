@@ -33,6 +33,7 @@ import { RoomLine } from "../rooms/RoomLine";
 import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
 import { dayStamp, fullTime, messageTime, modelName } from "./format";
+import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
 
 type Props = {
   supplement?: ReactNode;
@@ -59,6 +60,8 @@ type Props = {
   plan?: ReactNode;
   /** Who else writes here (rooms/): other people, outside agents and other Trunks (§4.2.4). */
   room?: ThreadRoom;
+  topicUpdates?: TopicUpdate[];
+  focusTopic?: { key: string; nonce: number } | null;
 };
 
 /** Distance from the end that still counts as "at the end", and that shows "Scroll to latest" (§4.2.2). */
@@ -149,6 +152,21 @@ export function Thread(props: Props) {
   const planAt = items.some((i) => i.type === "block" && i.index === planWanted) ? planWanted : -1;
   const lastUser = history.map((b) => b.kind).lastIndexOf("user");
   const stamps = useMemo(() => dayStamps(history), [history]);
+  const topicEvents = new Map<number, { at: number; node: ReactNode }[]>();
+  for (const update of props.topicUpdates ?? []) {
+    const add = (position: number, at: number, node: ReactNode) => topicEvents.set(position, [...(topicEvents.get(position) ?? []), { at, node }]);
+    add(topicPosition(history, update.topic.anchor?.at ?? update.at, update.topic.anchor?.afterMessageId), update.topic.anchor?.at ?? update.at,
+      <TopicOrigin key={`origin:${update.topic.key}`} topic={update.topic} onOpen={(key) => props.onOpenSession?.(key)} />);
+    add(topicPosition(history, update.at), update.at,
+      <TopicCard key={`update:${update.topic.key}`} update={update} onOpen={(key) => props.onOpenSession?.(key)} />);
+  }
+  const renderTopicEvents = (position: number) => topicEvents.get(position)?.sort((a, b) => a.at - b.at).map((event) => event.node);
+  useEffect(() => {
+    if (!props.focusTopic) return;
+    const target = [...threadRef.current?.querySelectorAll<HTMLElement>("[data-testid]") ?? []]
+      .find((node) => node.dataset.testid === `topic-card-${props.focusTopic?.key}`);
+    target?.scrollIntoView({ block: "end" });
+  }, [props.focusTopic, props.topicUpdates]);
   const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser };
   return (
     <ThreadContext.Provider value={ctx}>
@@ -157,15 +175,20 @@ export function Thread(props: Props) {
       <div className="scroll" ref={follow.scroller} onScroll={follow.onScroll} data-testid="thread-scroll">
         <div className="thread" ref={threadRef}>
           {empty ? <EmptyState onOpenSession={props.onOpenSession} onStart={props.onStart} /> : null}
+          {renderTopicEvents(-1)}
           {items.map((item) =>
             item.type === "talk" ? (
-              <div key={item.key} className="blk" data-block-key={item.lines[0]?.key} data-block-keys={item.lines.map((l) => l.key).join(" ")}>
-                <TalkedFold talk={item} ownName={name} trunkName={props.room?.trunkName ?? ((id: string) => id)} />
-              </div>
+              <Fragment key={item.key}>
+                <div className="blk" data-block-key={item.lines[0]?.key} data-block-keys={item.lines.map((l) => l.key).join(" ")}>
+                  <TalkedFold talk={item} ownName={name} trunkName={props.room?.trunkName ?? ((id: string) => id)} />
+                </div>
+                {renderTopicEvents(history.findIndex((block) => block.key === item.lines.at(-1)?.key))}
+              </Fragment>
             ) : (
               <Fragment key={keyOf(item)}>
                 {item.type === "block" && stamps.has(item.index) ? <div className="stamp" data-testid="day-stamp">{stamps.get(item.index)}</div> : null}
                 <ItemWithQuestions item={item} view={view} asked={item.type === "block" ? anchors.get(item.index) : undefined} plan={item.type === "block" && item.index === planAt ? props.plan : null} />
+                {renderTopicEvents(item.type === "block" ? item.index : history.findIndex((block) => block.key === item.steps.at(-1)?.key))}
               </Fragment>
             ),
           )}
@@ -286,13 +309,19 @@ function ItemView(props: { item: Item; view: View; live: boolean }) {
 
 function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean }) {
   if (item.type === "steps") {
-    return <StepsFold steps={item.steps} live={live} />;
+    if (!item.face) return <StepsFold steps={item.steps} live={live} run={item.run} />;
+    return (
+      <div className="msg reply steps-turn">
+        <span className="gutter"><span className={view.running && live ? "gutter-face working-ring" : "gutter-face"}>{faceFor(view, live)}</span></span>
+        <StepsFold steps={item.steps} live={live} run={item.run} />
+      </div>
+    );
   }
-  const { block, index, firstReply } = item;
+  const { block, index, firstReply, face } = item;
   switch (block.kind) {
     case "user":
     case "text":
-      return <MessageView block={block} index={index} firstReply={firstReply} view={view} live={live} />;
+      return <MessageView block={block} index={index} firstReply={firstReply} face={face} view={view} live={live} />;
     case "thinking":
       return <Thinking block={block} />;
     case "approval":
@@ -313,7 +342,7 @@ function faceFor(view: View, live: boolean): ReactNode {
   return <Face size={28} label={view.name} state={state} priority={live ? PRIORITY.open : PRIORITY.row} />;
 }
 
-function MessageView({ block, index, firstReply, view, live }: { block: Extract<Block, { kind: "user" | "text" }>; index: number; firstReply: boolean; view: View; live: boolean }) {
+function MessageView({ block, index, firstReply, face, view, live }: { block: Extract<Block, { kind: "user" | "text" }>; index: number; firstReply: boolean; face: boolean; view: View; live: boolean }) {
   const actions = live ? null : view.actionsFor(view.all, index);
   const entryId = block.meta?.entryId;
   const chips = entryId ? view.reactions.get(entryId) ?? [] : [];
@@ -337,7 +366,7 @@ function MessageView({ block, index, firstReply, view, live }: { block: Extract<
   }
   return (
     <>
-      <Reply block={block} face={firstReply ? faceFor(view, live) : undefined} working={firstReply && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
+      <Reply block={block} face={face ? faceFor(view, live) : undefined} working={face && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
       {live ? null : <TimeLine block={block} view={view} />}
       <ReactionChips list={chips} onToggle={toggle} />
     </>

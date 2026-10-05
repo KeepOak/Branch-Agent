@@ -1,6 +1,7 @@
 // The thread's message actions, each through the engine method its DESIGN-SPEC row names
 // (copied from engine/ui/src: lib/sessions/session-scoped-operations.ts, pages/chat/chat-history-actions.ts,
 // pages/chat/chat-pane-reactions.ts).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../connect/engine";
 import type { ApprovalDecision, Block } from "./model";
 

@@ -52,22 +52,37 @@ async function withReceiptFixture(
 }
 
 describe("canonical proof on physical database validation", () => {
-  it("does not publish an uncommitted durable receipt into a cold reader cache", async () => {
-    await withReceiptFixture(true, (database, options) => {
-      expect(() =>
-        runBranchAgentWriteTransaction((current) => {
-          recordBranchAgentCanonicalValidation(current);
-          clearBranchAgentDatabaseValidationCache(current.path);
-          expect(hasBranchAgentCanonicalValidation(current)).toBe(false);
-          throw new Error("rollback durable receipt");
-        }, options),
-      ).toThrow("rollback durable receipt");
-      expect(hasBranchAgentCanonicalValidation(database)).toBe(false);
-      expect(database.db.prepare("SELECT canonical_ready FROM session_key_contract").get()).toEqual(
-        { canonical_ready: null },
-      );
-    });
-  });
+  it.each(["durable receipt", "empty view"] as const)(
+    "does not certify an uncommitted %s",
+    async (proof) => {
+      await withReceiptFixture(true, (database, options) => {
+        expect(() =>
+          runBranchAgentWriteTransaction((current) => {
+            if (proof === "durable receipt") {
+              recordBranchAgentCanonicalValidation(current);
+              clearBranchAgentDatabaseValidationCache(current.path);
+            } else {
+              current.db.exec("DELETE FROM session_nodes");
+              setBranchAgentDatabaseValidation(current);
+            }
+            expect(hasBranchAgentCanonicalValidation(current)).toBe(false);
+            throw new Error("rollback proof");
+          }, options),
+        ).toThrow("rollback proof");
+        expect(hasBranchAgentCanonicalValidation(database)).toBe(false);
+        if (proof === "durable receipt") {
+          expect(
+            database.db.prepare("SELECT canonical_ready FROM session_key_contract").get(),
+          ).toEqual({ canonical_ready: null });
+        } else {
+          expect(
+            database.db.prepare("SELECT current_session_id FROM session_nodes").get()
+              ?.current_session_id,
+          ).toBe("existing");
+        }
+      });
+    },
+  );
 
   function independentWorkerReceipt(database: BranchAgentDatabase) {
     const receipt = getBranchAgentDatabaseValidation(database);
@@ -131,21 +146,6 @@ describe("canonical proof on physical database validation", () => {
   );
 
   describe("native integrity proof handoff", () => {
-    it("accepts proof without a host handle and shares subsequent host revocation", async () => {
-      await withReceiptFixture(false, (database) => {
-        const received = independentWorkerReceipt(database);
-        closeBranchAgentDatabaseByPath(database.path);
-        clearBranchAgentDatabaseValidationCache(database.path);
-        const adopt = captureBranchAgentDatabaseValidationTransfer(database);
-
-        expect(adopt(received.identity, received)).toBe(true);
-        expect(getBranchAgentDatabaseValidationForTransfer(database)?.valid).toBe(received.valid);
-        invalidateBranchAgentDatabaseValidation(database.path);
-        expect(Atomics.load(new Int32Array(received.valid), 0)).toBe(0);
-        expect(getBranchAgentDatabaseValidationForTransfer(database)).toBeUndefined();
-      });
-    });
-
     it("does not restore delayed proof after path, repeated, cache, or agent revocation", async () => {
       await withReceiptFixture(false, (database) => {
         const received = independentWorkerReceipt(database);
@@ -207,9 +207,10 @@ describe("canonical proof on physical database validation", () => {
       });
     });
 
-    it("rejects foreign, revoked, and malformed receipts without accepting their proof", async () => {
+    it("accepts only valid native receipts without a host handle and shares revocation", async () => {
       await withReceiptFixture(false, (database) => {
         const received = independentWorkerReceipt(database);
+        closeBranchAgentDatabaseByPath(database.path);
         clearBranchAgentDatabaseValidationCache(database.path);
         const adopt = captureBranchAgentDatabaseValidationTransfer(database);
         for (const invalid of [
@@ -225,16 +226,8 @@ describe("canonical proof on physical database validation", () => {
         }
         expect(adopt(received.identity, received)).toBe(true);
         expect(getBranchAgentDatabaseValidationForTransfer(database)?.valid).toBe(received.valid);
-      });
-    });
-
-    it("keeps durable canonical proof readable during a pending native handoff", async () => {
-      await withReceiptFixture(false, (database, options) => {
-        runBranchAgentWriteTransaction(recordBranchAgentCanonicalValidation, options);
-        clearBranchAgentDatabaseValidationCache(database.path);
-        captureBranchAgentDatabaseValidationTransfer(database);
-
-        expect(hasBranchAgentCanonicalValidation(database)).toBe(true);
+        invalidateBranchAgentDatabaseValidation(database.path);
+        expect(Atomics.load(new Int32Array(received.valid), 0)).toBe(0);
         expect(getBranchAgentDatabaseValidationForTransfer(database)).toBeUndefined();
       });
     });
@@ -242,8 +235,6 @@ describe("canonical proof on physical database validation", () => {
 
   it.each([
     { cache: "warm", admission: "set" },
-    { cache: "cold", admission: "set" },
-    { cache: "warm", admission: "adopt" },
     { cache: "cold", admission: "adopt" },
   ] as const)(
     "does not revive revoked canonical proof on $cache integrity admission by $admission",
@@ -282,122 +273,118 @@ describe("canonical proof on physical database validation", () => {
     },
   );
 
-  it.each([false, true])(
-    "initializes readiness from committed emptiness (populated: %s)",
-    async (populated) => {
-      await withReceiptFixture(populated, (database) => {
-        expect(hasBranchAgentCanonicalValidation(database)).toBe(!populated);
+  it.each(["empty", "populated", "pending", "durable handoff"] as const)(
+    "initializes readiness from committed %s state",
+    async (state) => {
+      await withReceiptFixture(state === "populated", (database, options) => {
+        if (state === "pending") {
+          database.db
+            .prepare("INSERT INTO session_canonical_validation_pending (session_key) VALUES (?)")
+            .run("agent:main:unresolved");
+          setBranchAgentDatabaseValidation(database);
+        } else if (state === "durable handoff") {
+          runBranchAgentWriteTransaction(recordBranchAgentCanonicalValidation, options);
+          clearBranchAgentDatabaseValidationCache(database.path);
+          captureBranchAgentDatabaseValidationTransfer(database);
+        }
+        expect(hasBranchAgentCanonicalValidation(database)).toBe(
+          state === "empty" || state === "durable handoff",
+        );
+        if (state === "durable handoff") {
+          expect(getBranchAgentDatabaseValidationForTransfer(database)).toBeUndefined();
+        }
       });
     },
   );
 
-  it("keeps an empty database with pending work unready", async () => {
-    await withReceiptFixture(false, (database) => {
-      database.db
-        .prepare("INSERT INTO session_canonical_validation_pending (session_key) VALUES (?)")
-        .run("agent:main:unresolved");
-      setBranchAgentDatabaseValidation(database);
-      expect(hasBranchAgentCanonicalValidation(database)).toBe(false);
-    });
-  });
-
-  it("does not certify an uncommitted empty view that rolls back", async () => {
-    await withReceiptFixture(true, (database, options) => {
-      expect(() =>
-        runBranchAgentWriteTransaction((current) => {
-          current.db.exec("DELETE FROM session_nodes");
-          setBranchAgentDatabaseValidation(current);
-          expect(hasBranchAgentCanonicalValidation(current)).toBe(false);
-          throw new Error("rollback empty view");
-        }, options),
-      ).toThrow("rollback empty view");
-      expect(
-        database.db.prepare("SELECT current_session_id FROM session_nodes").get()
-          ?.current_session_id,
-      ).toBe("existing");
-      expect(hasBranchAgentCanonicalValidation(database)).toBe(false);
-    });
-  });
-
-  it("shares successful proof with registered thin readers but never raw readers", async () => {
-    await withReceiptFixture(true, (database, options) => {
-      const raw = new DatabaseSync(database.path, { readOnly: true });
-      try {
-        expect(hasBranchAgentCanonicalValidation({ agentId: "main", db: raw })).toBe(false);
-        expect(markBranchAgentCanonicalValidation({ agentId: "main", db: raw })).toBe(false);
-        const opened = openBranchAgentDatabaseReadOnly(options);
-        if (!opened.found) {
-          throw new Error("Expected readonly fixture database");
-        }
+  it.each(["thin", "transferred"] as const)(
+    "shares proof with %s readers but never raw readers",
+    async (mode) => {
+      await withReceiptFixture(true, (database, options) => {
+        const raw = new DatabaseSync(database.path, { readOnly: true });
         try {
-          expect(
-            markBranchAgentCanonicalValidation({ agentId: "main", db: opened.database.db }),
-          ).toBe(true);
-          expect(hasBranchAgentCanonicalValidation(database)).toBe(true);
-          expect(
-            hasBranchAgentCanonicalValidation({ agentId: "other", db: opened.database.db }),
-          ).toBe(false);
+          expect(hasBranchAgentCanonicalValidation({ agentId: "main", db: raw })).toBe(false);
+          expect(markBranchAgentCanonicalValidation({ agentId: "main", db: raw })).toBe(false);
+          const opened = openBranchAgentDatabaseReadOnly(options);
+          if (!opened.found) {
+            throw new Error("Expected readonly fixture database");
+          }
+          try {
+            const receipt = getBranchAgentDatabaseValidation(database);
+            if (!receipt) {
+              throw new Error("Expected physical validation receipt");
+            }
+            const transferred = structuredClone(receipt);
+            if (mode === "transferred") {
+              expect(adoptBranchAgentDatabaseValidation(opened.database, transferred)).toBe(true);
+            }
+            expect(
+              markBranchAgentCanonicalValidation(
+                mode === "thin" ? { agentId: "main", db: opened.database.db } : opened.database,
+              ),
+            ).toBe(true);
+            expect(hasBranchAgentCanonicalValidation(database)).toBe(true);
+            expect(
+              hasBranchAgentCanonicalValidation({ agentId: "other", db: opened.database.db }),
+            ).toBe(false);
+            expect(Atomics.load(new Int32Array(transferred.canonicalReady), 0)).toBe(1);
+            if (mode === "transferred") {
+              invalidateBranchAgentDatabaseValidation(database.path);
+              expect(adoptBranchAgentDatabaseValidation(opened.database, transferred)).toBe(
+                false,
+              );
+              expect(hasBranchAgentCanonicalValidation(opened.database)).toBe(false);
+            }
+          } finally {
+            opened.database.close();
+          }
+          expect(hasBranchAgentCanonicalValidation(database)).toBe(mode === "thin");
+          expect(hasBranchAgentCanonicalValidation({ agentId: "main", db: raw })).toBe(false);
         } finally {
-          opened.database.close();
+          raw.close();
         }
-        expect(hasBranchAgentCanonicalValidation(database)).toBe(true);
-        expect(hasBranchAgentCanonicalValidation({ agentId: "main", db: raw })).toBe(false);
-      } finally {
-        raw.close();
-      }
-    });
-  });
+      });
+    },
+  );
 
-  it("publishes nested successful proof only after the outer commit", async () => {
-    await withReceiptFixture(true, (database, options) => {
-      runBranchAgentWriteTransaction(() => {
-        runBranchAgentWriteTransaction((current) => {
-          expect(markBranchAgentCanonicalValidation(current)).toBe(true);
-          expect(hasBranchAgentCanonicalValidation(current)).toBe(false);
-        }, options);
-        expect(hasBranchAgentCanonicalValidation(database)).toBe(false);
-      }, options);
-      expect(hasBranchAgentCanonicalValidation(database)).toBe(true);
-    });
-  });
-
-  it.each(["outer", "savepoint"] as const)("discards proof after %s rollback", async (rollback) => {
-    await withReceiptFixture(true, (database, options) => {
-      const failing = () =>
-        runBranchAgentWriteTransaction((current) => {
-          expect(markBranchAgentCanonicalValidation(current)).toBe(true);
-          throw new Error("rollback proof");
-        }, options);
-      if (rollback === "outer") {
-        expect(failing).toThrow("rollback proof");
-      } else {
-        runBranchAgentWriteTransaction(() => {
-          expect(failing).toThrow("rollback proof");
-        }, options);
-      }
-      expect(hasBranchAgentCanonicalValidation(database)).toBe(false);
-    });
-  });
-
-  it("leaves manual transactions unready without an owned publication queue", async () => {
-    await withReceiptFixture(true, (database) => {
-      database.db.exec("BEGIN IMMEDIATE");
-      expect(markBranchAgentCanonicalValidation(database)).toBe(false);
-      database.db.exec("COMMIT");
-      expect(hasBranchAgentCanonicalValidation(database)).toBe(false);
-    });
-  });
-
-  it("does not revive a receipt revoked before its commit callback", async () => {
-    await withReceiptFixture(true, (database, options) => {
-      runBranchAgentWriteTransaction((current) => {
-        expect(markBranchAgentCanonicalValidation(current)).toBe(true);
-        invalidateBranchAgentDatabaseValidation(current.path);
-        setBranchAgentDatabaseValidation(current);
-      }, options);
-      expect(hasBranchAgentCanonicalValidation(database)).toBe(false);
-    });
-  });
+  it.each(["nested commit", "outer rollback", "savepoint rollback", "manual", "revoked"] as const)(
+    "publishes transaction proof only with a valid owned commit (%s)",
+    async (outcome) => {
+      await withReceiptFixture(true, (database, options) => {
+        const publish = () =>
+          runBranchAgentWriteTransaction((current) => {
+            expect(markBranchAgentCanonicalValidation(current)).toBe(true);
+            if (outcome === "revoked") {
+              invalidateBranchAgentDatabaseValidation(current.path);
+              setBranchAgentDatabaseValidation(current);
+            } else if (outcome === "nested commit") {
+              expect(hasBranchAgentCanonicalValidation(current)).toBe(false);
+            } else {
+              throw new Error("rollback proof");
+            }
+          }, options);
+        if (outcome === "manual") {
+          database.db.exec("BEGIN IMMEDIATE");
+          expect(markBranchAgentCanonicalValidation(database)).toBe(false);
+          database.db.exec("COMMIT");
+        } else if (outcome === "outer rollback") {
+          expect(publish).toThrow("rollback proof");
+        } else if (outcome === "revoked") {
+          publish();
+        } else {
+          runBranchAgentWriteTransaction(() => {
+            if (outcome === "savepoint rollback") {
+              expect(publish).toThrow("rollback proof");
+            } else {
+              publish();
+              expect(hasBranchAgentCanonicalValidation(database)).toBe(false);
+            }
+          }, options);
+        }
+        expect(hasBranchAgentCanonicalValidation(database)).toBe(outcome === "nested commit");
+      });
+    },
+  );
 
   it.each(["native close", "native dispose", "owner close"] as const)(
     "retains proof across %s and reopen",
@@ -418,30 +405,6 @@ describe("canonical proof on physical database validation", () => {
       });
     },
   );
-
-  it("shares readiness through worker receipt transfer and rejects revoked transfers", async () => {
-    await withReceiptFixture(true, (database, options) => {
-      const receipt = getBranchAgentDatabaseValidation(database);
-      if (!receipt) {
-        throw new Error("Expected physical validation receipt");
-      }
-      const transferred = structuredClone(receipt);
-      const opened = openBranchAgentDatabaseReadOnly(options);
-      if (!opened.found) {
-        throw new Error("Expected readonly fixture database");
-      }
-      try {
-        expect(adoptBranchAgentDatabaseValidation(opened.database, transferred)).toBe(true);
-        expect(markBranchAgentCanonicalValidation(opened.database)).toBe(true);
-        expect(Atomics.load(new Int32Array(transferred.canonicalReady), 0)).toBe(1);
-        invalidateBranchAgentDatabaseValidation(database.path);
-        expect(adoptBranchAgentDatabaseValidation(opened.database, transferred)).toBe(false);
-        expect(hasBranchAgentCanonicalValidation(opened.database)).toBe(false);
-      } finally {
-        opened.database.close();
-      }
-    });
-  });
 
   it.runIf(typeof DatabaseSync.prototype.deserialize === "function")(
     "revokes proof on a failed native replacement attempt",

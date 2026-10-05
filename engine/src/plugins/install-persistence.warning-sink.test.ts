@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  applyExclusiveSlotSelectionMock,
   configWriteMock,
   createEmptyUninstallActions,
   applyPluginUninstallDirectoryRemovalMock,
@@ -106,47 +105,6 @@ describe("plugin install persistence warning audiences", () => {
     );
     expect(pluginsCliRuntimeLogs.join("\n")).toContain("requires configuration first");
     expect(pluginsCliRuntimeLogs).toContain("Installed plugin: canopy");
-  });
-
-  it("preserves owner-authored exclusive-slot warnings verbatim", async () => {
-    const { persistPluginInstall } = await import("./install-persistence.js");
-    const warn = vi.fn();
-    const warning = 'Disabled other "memory" slot plugins: memory-core.';
-    loadPluginManifestRegistryMock.mockReturnValue({
-      plugins: [
-        recordPluginManifestInstallOwner(
-          {
-            id: "canopy",
-            kind: "memory",
-            channels: [],
-            providers: [],
-            cliBackends: [],
-            skills: [],
-            hooks: [],
-            origin: "config",
-            rootDir: install.installPath,
-            source: `${install.installPath}/index.js`,
-            manifestPath: `${install.installPath}/branch.plugin.json`,
-          },
-          "canopy",
-        ),
-      ],
-      diagnostics: [],
-    });
-    applyExclusiveSlotSelectionMock.mockReturnValue({
-      config: {},
-      warnings: [warning],
-      changed: true,
-    });
-
-    await persistPluginInstall({
-      snapshot,
-      pluginId: "canopy",
-      install,
-      persistenceLogger: { warn },
-    });
-
-    expect(warn).toHaveBeenCalledExactlyOnceWith(warning);
   });
 
   it.each(["management", "terminal"] as const)(

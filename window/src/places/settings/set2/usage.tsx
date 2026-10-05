@@ -12,7 +12,12 @@ import { CallLine, CodeRow, CopyBtn, Kv, Tile, bytes, lvOf, openPlace, rec, span
 import { Ico } from "./icons";
 import { Logo } from "../set1/service";
 import { readMeasuredPercent } from "../../../shell/limit-window-reading";
+import { ModelPrices } from "./usage-prices";
+import { useShown } from "../../../shell/shown";
+import { CKPT_PREF, CKPT_SHOW, useCkptCanShow, useCkptOn } from "../../../shell/SaveProgress";
+import { lookStore } from "../set1/appearance-store";
 import "./usage.css";
+import { DesktopCtl } from "../desktop-ctl";
 
 /* ---------- figures ---------- */
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -84,6 +89,7 @@ export function UsagePage(props: SettingsPageProps) {
       <Evals lv={lv} />
       <MovingInOut engine={props.engine} lv={lv} />
       {lv >= 1 ? <MoneyMore engine={props.engine} lv={lv} /> : null}
+      {lv >= 1 ? <ModelPrices engine={props.engine} /> : null}
       {lv >= 1 ? <KeepingMore engine={props.engine} lv={lv} /> : null}
       {lv >= 2 ? <EverySetting engine={props.engine} /> : null}
       <Flagged lv={lv} />
@@ -214,7 +220,7 @@ function Allowances({ engine }: { engine: WindowEngine }) {
       {res.data && !providers.length ? <p className="empty">No connection reports an allowance yet. Connect a model account to see what its service allows.</p> : null}
       {providers.length ? <div className="s2usage-lims">{providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} updatedAt={data.updatedAt} />)}</div> : null}
       {data.refreshing === true ? <Hint>Checking each connection again…</Hint> : null}
-      <AllowanceRows />
+      <AllowanceRows engine={engine} />
     </Sec>
   );
 }
@@ -748,15 +754,13 @@ function exportItems(data: RecordValue, all: Day[], names: Map<string, string>) 
    ====================================================================================================== */
 type Cfg = ReturnType<typeof useConfig>;
 const flag = (v: unknown, def: boolean) => (typeof v === "boolean" ? v : def);
-const NO_RING = "Drawing a usage ring needs a usage setting in the engine.";
-const NO_OFFER = "Offering to save progress needs a usage threshold in the engine.";
+// TODO(engine-lane): turning off "Asking a service what is left" needs a usage setting (old usage/limits/settings).
 const NO_ASK = "The engine asks each connected service when this page opens; turning that off needs an engine setting.";
-const TRAY = "The tray is part of the Branch app on your computer.";
-const NO_KEEP = "The engine archives old conversations and keeps them; deleting them by age needs an engine setting.";
 const NO_CKPT = "Listing checkpoints needs a checkpoint method in the engine.";
 const NO_EVAL = "Test sets and graders need evals in the engine.";
 const NO_EXPORT = "Exporting everything needs an export method in the engine; today it runs as branch backup create in a terminal.";
 const CLI_BACKUP = "This runs from a terminal (branch backup) or the Branch app; the engine has no method for it.";
+// TODO(engine-lane): spend caps per service need the engine to pause at a limit (old usage/budget).
 const NO_CAPS = "Spend caps need the engine to pause work at a limit.";
 const NO_PROJECT = "Cost by project needs the engine to count usage by project.";
 const NO_SAVE_FIRST = "Saving conversations before they are removed needs an engine setting.";
@@ -786,27 +790,52 @@ export function gbFrom(v: unknown): string {
   return String(Math.round((Number(m[1]) / per[unit]) * 100) / 100);
 }
 
+/** Read the same duration units as session.maintenance.pruneAfter (bare numbers mean days). */
+function retentionDays(v: unknown): number | null {
+  const raw = str(v).trim().toLowerCase();
+  const per: Record<string, number> = { ms: 86_400_000, s: 86_400, m: 1440, h: 24, d: 1 };
+  const single = /^(\d+(?:\.\d+)?)(ms|s|m|h|d)?$/.exec(raw);
+  if (single) return Number(single[1]) / per[single[2] ?? "d"];
+  const parts = [...raw.matchAll(/(\d+(?:\.\d+)?)(ms|s|m|h|d)/g)];
+  if (!parts.length || parts.map(([token]) => token).join("") !== raw) return null;
+  return parts.reduce((days, [, amount, unit]) => days + Number(amount) / per[unit], 0);
+}
+
 /** A config value as a number for Num: undefined (engine default) when unset or unreadable. */
 const asNum = (v: string): number | undefined => (v.trim() === "" || !Number.isFinite(Number(v)) ? undefined : Number(v));
 
 /** The connection rows under the allowances: what the engine doesn't do yet is greyed with why. */
-function AllowanceRows() {
+function AllowanceRows({ engine }: { engine: WindowEngine }) {
+  const shown = useShown(engine); // the same "show.usage" switch as Appearance › What's shown and the status bar's right-click
+  const ckptOn = useCkptOn(engine);
+  const ckptCanShow = useCkptCanShow();
   return (
     <>
-      <Ctl title="The ring bottom right" sub="The connection used next, how much of its window is left, and when it refills." off={NO_RING}><Switch label="Show the ring" checked={false} onChange={() => undefined} /></Ctl>
-      <Ctl title="Offer to save progress at 95%" sub={<>It only asks, once per connection per window, and never for an estimate. <button type="button" className="link-k" disabled title={NO_OFFER}>Show me</button></>} off={NO_OFFER}><Switch label="Offer to save progress at 95%" checked={false} onChange={() => undefined} /></Ctl>
+      <Ctl title="The ring bottom right" sub="The connection used next, how much of its window is left, and when it refills."><Switch label="Show the ring" checked={shown.usage} onChange={(on) => void lookStore(engine).set("show.usage", on)} /></Ctl>
+      <Ctl title="Offer to save progress at 95%" sub={<>It only asks, once per connection per window, and never for an estimate. <button type="button" className="link-k" disabled={!ckptCanShow} onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
       <Ctl title="Asking a service what is left" off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
-      <Ctl title="Show usage in the tray" sub="A small ring by the clock opens the same list." off={TRAY}><Switch label="Show usage in the tray" checked={false} onChange={() => undefined} /></Ctl>
+      <DesktopCtl title="Show usage in the tray" sub="A small ring by the clock opens the same list." name="trayUsage" />
     </>
   );
 }
 
 function Keeping({ engine, lv }: { engine: WindowEngine; lv: number }) {
+  const config = useConfig(engine);
   const [manage, setManage] = useState(false);
+  const maintenance = rec(config.get("session.maintenance"));
+  const pruneAfter = maintenance.pruneAfter ?? "30d";
+  const days = retentionDays(pruneAfter);
+  const keep = maintenance.mode === "warn" ? "forever" : days === 30 ? "30" : days === 365 ? "365" : "";
+  const sub = `Older ones are deleted for good.${keep ? "" : ` Now: ${days === null ? str(pruneAfter) : `${days} day${days === 1 ? "" : "s"}`}.`}`;
+  const setKeep = (v: string) => void config.set("session.maintenance", {
+    ...maintenance,
+    mode: v === "forever" ? "warn" : "enforce",
+    ...(v === "forever" ? {} : { pruneAfter: `${v}d` }),
+  });
   return (
     <Sec title="Keeping things">
-      <Ctl title="Keep conversations" sub="Older ones are deleted for good." off={NO_KEEP}>
-        <Seg label="Keep conversations" value="forever" options={[{ id: "30", label: "30 days" }, { id: "365", label: "1 year" }, { id: "forever", label: "Forever" }]} onChange={() => undefined} />
+      <Ctl title="Keep conversations" sub={sub}>
+        <Seg label="Keep conversations" value={keep} options={[{ id: "30", label: "30 days" }, { id: "365", label: "1 year" }, { id: "forever", label: "Forever" }]} disabled={config.loading} onChange={setKeep} />
       </Ctl>
       <Ctl title="Checkpoints" sub="Kept before a Trunk changes files. Put any of them back." off={NO_CKPT}><Btn sm>See all</Btn></Ctl>
       {lv >= 1 ? <Ctl title="Conversations" sub="Pick several to delete, or clear the archive."><Btn sm onClick={() => setManage(true)}>Manage</Btn></Ctl> : null}
@@ -1015,6 +1044,9 @@ export function MoveInDialog({ engine, onClose }: { engine: WindowEngine; onClos
 }
 
 /** Money and keeping, more (Advanced). */
+// TODO(engine-lane): metering export (the old app's usage/metering and usage/metering/now: write the usage figures to
+// a workspace folder on a schedule, or now). The artifact has no row for it; add one here, styled like "Backups",
+// once the engine has the method.
 function MoneyMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
   const [backups, setBackups] = useState(false);
   const usage = useLive<RecordValue>(engine, "usage.status", {}, []);

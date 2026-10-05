@@ -11,19 +11,19 @@ import type {
   BranchStateWorkerOperations,
   BranchStateWorkerInspectionOperations,
 } from "./branch-state-worker-contract.js";
-import type { captureBranchStateWorkerOpeningGuard } from "./branch-state-worker-operation.js";
 
 export type StoreOperations = BranchStateWorkerOperations &
   BranchStateWorkerInspectionOperations;
 export type Store = SqliteWorkerStore<StoreOperations>;
 export type DomainScope = Pick<SqliteWorkerStore<BranchStateWorkerOperations>, "execute">;
 export type IdleTimer = ReturnType<typeof setTimeout> & { unref?: () => void };
+export type OpeningAdmission = { assertCurrent?: () => void; refusal?: { error: unknown } };
 export type Entry = {
   source: ReturnType<typeof captureRuntimeWorkerSource>;
   context: BranchStateWorkerContext;
   databaseAdmission: BranchStateDatabaseReadAdmission;
   opening: Promise<Store | undefined>;
-  openingAdmission: ReturnType<typeof captureBranchStateWorkerOpeningGuard>["admission"];
+  openingAdmission: OpeningAdmission;
   existingOnly: boolean;
   store?: Store;
   actor?: ReturnType<typeof getSqliteWorkerActorIdentity>;

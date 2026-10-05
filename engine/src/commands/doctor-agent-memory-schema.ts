@@ -5,12 +5,12 @@ import { formatErrorMessage } from "../infra/errors.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
 import { readAgentDatabaseAdmissionRefusal } from "../state/agent-database-admission.js";
 import { createRetainedAgentDatabaseMatcher } from "../state/agent-deletion-discovery.js";
+import { withAgentDatabaseMaintenanceLease } from "../state/branch-agent-db-maintenance-lease.js";
+import { migrateBranchAgentDatabaseForMaintenance } from "../state/branch-agent-db-maintenance.js";
 import { invalidateRegisteredAgentDatabasesMemo } from "../state/branch-agent-db-registry-listing.js";
 import {
   closeBranchAgentDatabaseByPath,
   listBranchRegisteredAgentDatabases,
-  migrateBranchAgentDatabaseForMaintenance,
-  withAgentDatabaseMaintenanceLease,
 } from "../state/branch-agent-db.js";
 import type { BranchStateLeaseContext } from "../state/branch-state-lease.js";
 import { shortenHomePath } from "../utils.js";

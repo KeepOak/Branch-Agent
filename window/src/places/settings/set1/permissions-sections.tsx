@@ -2,6 +2,7 @@
 // level-0 sections; Advanced and Technical add theirs in place. Config keys and their engine defaults:
 // tools.exec.* and tools.* (schema.help.runtime.ts), agents.defaults.sandbox.* (agents/sandbox/config.ts),
 // gateway.terminal.* and gateway.controlUi.automaticallyFetchFavicons; the command rules live in the exec approvals file.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { record } from "../adapter";
 import { CommandDefaults, RulesFor, RulesList } from "./permissions-commands";
 import { WHY, type Cfg, type Dead, type Row, type Section } from "./permissions-rows";

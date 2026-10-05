@@ -1,5 +1,7 @@
 // Shared root CLI failure formatting with debug stack gating and recovery hints.
+import { isInvalidConfigError } from "../config/io.invalid-config.js";
 import { isGatewayTransportError } from "../gateway/transport-error.js";
+import { getRootOptionAwareCommandPath } from "../infra/cli-root-options.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { collectNestedErrorCandidates } from "../infra/error-graph-internal.js";
 import { formatErrorMessage, formatUncaughtError } from "../infra/errors.js";
@@ -98,6 +100,7 @@ const EXPECTED_CLI_ERROR_NAMES = new Set([
   "AgentSelectionRequiredError",
   "ConfigReadOnlyError",
   "NixModeConfigMutationError",
+  "LocalStateOwnerError",
 ]);
 
 export function isExpectedCliError(error: unknown): error is Error {
@@ -192,14 +195,73 @@ function pushPrefixed(out: string[], value: string): void {
 }
 
 export function formatCliFailureLines(options: FormatCliFailureOptions): string[] {
+  const env = options.env ?? process.env;
+  const argv = options.argv ?? process.argv;
+  const showDebugDetails = shouldShowDebugDetails(options.argv, env);
+  // Admission and argument failures can precede the updater marker.
+  const isUpdateCommand = getRootOptionAwareCommandPath(argv, 1)[0] === "update";
+  // Update subprocesses use both marker values and retain captured reasons for recovery.
+  const showUpdateDiagnostics = ["0", "1"].includes(env.BRANCH_UPDATE_IN_PROGRESS ?? "");
+  if (
+    isGatewayTransportError(options.error) &&
+    !showDebugDetails &&
+    !showUpdateDiagnostics &&
+    !isUpdateCommand
+  ) {
+    const error = options.error;
+    return [
+      error.kind === "timeout"
+        ? "Branch Agent took too long to respond."
+        : error.requestDispatched
+          ? "Lost the connection to Branch."
+          : "Couldn't connect to Branch.",
+      ...(error.requestDispatched
+        ? ["Your request may have completed. Check its result before trying again."]
+        : []),
+      `Check the Control UI or run \`${formatCliCommand("branch gateway status", options.env)}\` in your terminal.`,
+    ];
+  }
   if (isExpectedCliError(options.error)) {
     const output = resolveExpectedCliOutput(options.error);
     return output.humanOutputWritten ? [] : output.humanOutput.trimEnd().split("\n");
   }
 
   // Default output stays terse; causes and stack traces require explicit debug intent.
-  const env = options.env ?? process.env;
-  const showDebugDetails = shouldShowDebugDetails(options.argv, env);
+  const stateBusy = collectNestedErrorCandidates(options.error).some(
+    (error) => error instanceof Error && error.name === "GatewayStateOwnerContentionError",
+  );
+  if (!showDebugDetails && !showUpdateDiagnostics) {
+    if (
+      options.error instanceof UpdateSchemaRefusalError ||
+      (options.error instanceof Error &&
+        (options.error.name === "DoctorUnreadableStateDatabaseError" ||
+          options.error.name === "BranchDatabaseSchemaPreflightError"))
+    ) {
+      // Doctor cannot repair these refusals; their producers own the required recovery steps.
+      const lines = ["[branch] Branch Agent needs a manual recovery step."];
+      lines.push(
+        `[branch] Reason: ${formatCliOperatorError(options.error, { argv: options.argv, env })}`,
+      );
+      return lines;
+    }
+    // Config validation owns actionable file/field details; some startup paths have not printed them.
+    const showReason = isInvalidConfigError(options.error)
+      ? !options.error.diagnosticEmitted
+      : isUpdateCommand;
+    return [
+      `[branch] ${options.title}`,
+      ...(showReason
+        ? [
+            `[branch] Reason: ${formatCliOperatorError(options.error, { argv: options.argv, env })}`,
+          ]
+        : []),
+      stateBusy
+        ? "[branch] Another Branch Agent process is using your data. Wait for it to finish before trying again."
+        : options.includeDoctorHint === false
+          ? `[branch] For details, open Settings → Logs in the Control UI or run \`${formatCliCommand("branch logs --follow", env)}\`.`
+          : `[branch] For help, run \`${formatCliCommand("branch doctor", env)}\`.`,
+    ];
+  }
   const lines = [
     `[branch] ${options.title}`,
     `[branch] Reason: ${formatCliOperatorError(options.error, {
@@ -211,17 +273,10 @@ export function formatCliFailureLines(options: FormatCliFailureOptions): string[
   if (showDebugDetails) {
     lines.push("[branch] Stack:");
     pushPrefixed(lines, formatUncaughtError(options.error));
-  } else {
-    lines.push("[branch] Debug: set BRANCH_DEBUG=1 to include the stack trace.");
   }
 
   // Doctor needs the same state owner; inspect wrappers without loading the SQLite runtime.
-  if (
-    options.includeDoctorHint !== false &&
-    !collectNestedErrorCandidates(options.error).some(
-      (error) => error instanceof Error && error.name === "GatewayStateOwnerContentionError",
-    )
-  ) {
+  if (options.includeDoctorHint !== false && !stateBusy) {
     lines.push(`[branch] Try: ${formatCliCommand("branch doctor", env)}`);
   }
   lines.push(`[branch] Help: ${formatCliCommand("branch --help", env)}`);

@@ -38,14 +38,26 @@ export function accountsOf(providers: Provider[]): Account[] {
   });
 }
 
+/** A pasted subscription token (Claude's `claude setup-token`): engine profile type "token". */
+const isToken = (a: Pick<Profile, "type">) => a.type === "token";
+
+/** A token account's own name, the label in its id ("anthropic:claude-2" is "claude-2"), as a ChatGPT account shows
+ *  its email. Setup's generated "setup-<id>" and the engine's "default" are not names. */
+export function tokenLabel(a: Pick<Profile, "profileId" | "type">): string | undefined {
+  if (!isToken(a)) return undefined;
+  const name = a.profileId.slice(a.profileId.indexOf(":") + 1);
+  return name && name !== "default" && !name.startsWith("setup-") ? name : undefined;
+}
+
 export function accountName({ p, a, n }: Pick<Account, "p" | "a" | "n">): string {
   const svc = serviceName(p.provider, p.displayName, a.type === "api_key");
-  return `${svc} · ${a.displayName ?? a.email ?? (a.type === "api_key" ? `Key ${n}` : `Account ${n}`)}`;
+  const fallback = a.type === "api_key" ? `Key ${n}` : isToken(a) ? `Subscription ${n}` : `Account ${n}`;
+  return `${svc} · ${a.displayName ?? a.email ?? tokenLabel(a) ?? fallback}`;
 }
 
 const STATUS_WORDS: Record<string, string> = { ok: "", expiring: "Signing in again soon", expired: "Signed out · sign in again", missing: "Sign-in missing", static: "" };
 function accountSub(acc: Account): string {
-  const plan = acc.p.usage?.plan ? visible(acc.p.usage.plan) : acc.a.type === "api_key" ? "Key" : "";
+  const plan = acc.p.usage?.plan ? visible(acc.p.usage.plan) : acc.a.type === "api_key" ? "Key" : isToken(acc.a) ? "Subscription" : "";
   const email = acc.a.email && acc.a.displayName && acc.a.email !== acc.a.displayName ? visible(acc.a.email) : "";
   const state = STATUS_WORDS[acc.a.status] ?? visible(acc.a.status);
   return [plan, email, state, acc.ordered && acc.first ? "" : acc.ordered ? "next in line" : ""].filter(Boolean).join(" · ");
@@ -61,7 +73,9 @@ export function movedUp(acc: Account, all: Account[]): string[] {
 
 export function AccountsPage(props: SettingsPageProps) {
   const scope = useScope();
-  const agent = scope ? { agentId: scope } : {};
+  // As in Models: with several Trunks the engine needs an owner, so the household view uses the default Trunk.
+  const owner = scope || props.engine.agentId;
+  const agent = owner ? { agentId: owner } : {};
   const status = useResource<RecordValue>(props.engine, "models.authStatus", agent);
   const [add, setAdd] = useState<AddStart | null>(null);
   const providers = providersOf(status.data?.providers);
@@ -118,6 +132,7 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
           ))}
         </Plist>
       ) : <Empty>No account yet. Add one, and Branch uses it for every Trunk.</Empty>}
+      {all.some((x) => !x.first) ? <Hint>When one account runs low, Branch moves to the next.</Hint> : null}
       <Acts>
         <Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn>
         {brands.map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}

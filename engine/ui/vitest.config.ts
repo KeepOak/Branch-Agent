@@ -40,87 +40,16 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
 const workspaceSourceAliases = [
   {
-    find: "@branch/gateway-client/browser",
-    replacement: path.resolve(repoRoot, "packages/gateway-client/src/browser.ts"),
-  },
-  {
-    find: "@branch/gateway-client/scope-upgrade",
-    replacement: path.resolve(repoRoot, "packages/gateway-client/src/scope-upgrade.ts"),
-  },
-  {
-    find: /^@branch\/gateway-protocol\/(.+)$/u,
-    replacement: path.resolve(repoRoot, "packages/gateway-protocol/src/$1.ts"),
-  },
-  {
-    find: /^@branch\/(gateway-protocol|retry)$/u,
-    replacement: path.resolve(repoRoot, "packages/$1/src/index.ts"),
-  },
-  {
     find: "../logging/redact.js",
     replacement: path.resolve(here, "src/lib/browser-redact.ts"),
   },
+  // Share package source projections without pulling Node-only dependency shims
+  // (such as zod and ws) into the browser projects.
   ...sharedVitestConfig.resolve.alias.filter(
-    (alias) => typeof alias.find === "string" && alias.find.startsWith("branch/plugin-sdk/"),
+    (alias) =>
+      alias.replacement.startsWith(`${path.join(repoRoot, "packages")}${path.sep}`) ||
+      (typeof alias.find === "string" && alias.find.startsWith("branch/plugin-sdk/")),
   ),
-  {
-    find: /^@branch\/model-catalog-core\/(.+)$/u,
-    replacement: path.resolve(repoRoot, "packages/model-catalog-core/src/$1.ts"),
-  },
-  {
-    find: "@branch/model-catalog-core",
-    replacement: path.resolve(repoRoot, "packages/model-catalog-core/src/index.ts"),
-  },
-  {
-    find: /^@branch\/normalization-core\/(.+)$/u,
-    replacement: path.resolve(repoRoot, "packages/normalization-core/src/$1"),
-  },
-  {
-    find: "@branch/normalization-core",
-    replacement: path.resolve(repoRoot, "packages/normalization-core/src/index.ts"),
-  },
-  {
-    find: /^@branch\/media-core\/(.+)$/u,
-    replacement: path.resolve(repoRoot, "packages/media-core/src/$1"),
-  },
-  {
-    find: "@branch/media-core",
-    replacement: path.resolve(repoRoot, "packages/media-core/src/index.ts"),
-  },
-  {
-    find: "@branch/session-url-contract/parse",
-    replacement: path.resolve(repoRoot, "packages/session-url-contract/src/parse.ts"),
-  },
-  {
-    find: "@branch/session-url-contract/share-build",
-    replacement: path.resolve(repoRoot, "packages/session-url-contract/src/share-build.ts"),
-  },
-  {
-    find: "@branch/session-url-contract/public-share",
-    replacement: path.resolve(repoRoot, "packages/session-url-contract/src/public-share.ts"),
-  },
-  {
-    find: "@branch/session-url-contract/session-key-normalization",
-    replacement: path.resolve(
-      repoRoot,
-      "packages/session-url-contract/src/session-key-normalization.ts",
-    ),
-  },
-  {
-    find: "@branch/session-url-contract",
-    replacement: path.resolve(repoRoot, "packages/session-url-contract/src/index.ts"),
-  },
-  {
-    find: "@branch/canopy-contract",
-    replacement: path.resolve(repoRoot, "packages/canopy-contract/src/index.ts"),
-  },
-  {
-    find: /^@branch\/net-policy\/(.+)$/u,
-    replacement: path.resolve(repoRoot, "packages/net-policy/src/$1"),
-  },
-  {
-    find: "@branch/net-policy",
-    replacement: path.resolve(repoRoot, "packages/net-policy/src/index.ts"),
-  },
 ];
 function includeUiTests(patterns: string[], env = process.env): string[] {
   const selected = intersectIncludePatterns(

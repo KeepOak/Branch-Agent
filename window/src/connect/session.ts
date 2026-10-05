@@ -1,9 +1,11 @@
 // The open conversation on the engine: history, the live run, approvals and sending. It starts on the
 // default Trunk's main conversation and switches with open(key) (DESIGN-SPEC §4.1.1.1 row click).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { EventFrame, HelloOk } from "@branch/gateway-client/browser";
 import { BranchGateway, type GatewayStatus } from "./gateway";
 import type { SendExtras, WindowEngine } from "./engine";
 import { RunStreams, readRunEvent } from "./stream-order";
+import { withOwner } from "./agent-owner";
 import { projectRun, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, readApprovalRecords } from "../thread/history";
 
@@ -378,7 +380,8 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
   const agentId = sessionKey ? agentIdOf(sessionKey) : undefined;
   return {
     gatewayUrl: session.gatewayUrl,
-    request: (method, params) => session.request(method, params),
+    // With several Trunks, owned calls that name none go to the open conversation's Trunk (the default one).
+    request: (method, params) => session.request(method, withOwner(method, params, agentId)),
     onEvent: (listener) => session.onGatewayEvent((event, payload) => listener({ event, payload })),
     sessionKey,
     ...(agentId ? { agentId } : {}),

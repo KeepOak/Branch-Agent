@@ -2,6 +2,7 @@
 // renamed through sessions.patch), a settings section as JSON (config.patch as a merge patch, with every field from
 // config.schema), health readouts (status, health, diagnostics.lanes, diagnostics.stability), web search
 // (webSearch.status / webSearch.test), hooks (hooks.status) and bringing other agents' memory in (migrations.memory.*).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Btn, Ctl, Hint, Pill, Prow, Sec, usePinsKit, type Lv } from "../kit";

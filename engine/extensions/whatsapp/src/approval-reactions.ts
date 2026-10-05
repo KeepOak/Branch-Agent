@@ -18,7 +18,6 @@ import type { ExecApprovalReplyDecision } from "branch/plugin-sdk/approval-reply
 import type { OutboundDeliveryResult } from "branch/plugin-sdk/channel-send-result";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import type { MessagePresentation } from "branch/plugin-sdk/interactive-runtime";
-import { createLazyRuntimeSurface } from "branch/plugin-sdk/lazy-runtime";
 import { createPluginStateErrorReporter } from "branch/plugin-sdk/plugin-state-runtime";
 import type { ReplyPayload } from "branch/plugin-sdk/reply-runtime";
 import { normalizeUniqueTrimmedStringList } from "branch/plugin-sdk/string-coerce-runtime";
@@ -52,11 +51,6 @@ type WhatsAppApprovalReactionEvent = {
 type ResolvedWhatsAppApprovalReactionTarget = WhatsAppApprovalReactionResolution & {
   remoteJid: string;
 };
-
-const loadResolveApprovalOverGateway = createLazyRuntimeSurface(
-  () => import("branch/plugin-sdk/approval-gateway-runtime"),
-  (runtime) => runtime.resolveApprovalOverGateway,
-);
 
 const reportPersistentApprovalReactionError = createPluginStateErrorReporter(
   getOptionalWhatsAppRuntime,
@@ -424,7 +418,8 @@ export async function maybeResolveWhatsAppApprovalReaction(params: {
     },
     approvers: getWhatsAppApprovalApprovers({ cfg: params.cfg, accountId: params.accountId }),
     authorizeActorAction: (input) => whatsappApprovalAuth.authorizeActorAction(input),
-    loadResolver: loadResolveApprovalOverGateway,
+    loadResolver: async () =>
+      (await import("branch/plugin-sdk/approval-gateway-runtime")).resolveApprovalOverGateway,
     clearTarget: () =>
       unregisterWhatsAppApprovalReactionTarget({
         accountId: params.accountId,
@@ -447,5 +442,4 @@ export async function maybeResolveWhatsAppApprovalReaction(params: {
 
 export function clearWhatsAppApprovalReactionTargetsForTest(): void {
   whatsappApprovalReactionTargets.clearForTest();
-  loadResolveApprovalOverGateway.clear();
 }

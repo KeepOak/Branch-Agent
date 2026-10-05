@@ -1,12 +1,13 @@
 import { expectDefined } from "@branch/normalization-core";
+import type { WorkerTaskControl } from "@branch/worker-runtime/worker";
 import { sql } from "kysely";
 import {
   iterateSqliteQuerySync,
   prepareSqliteQueryTakeFirstSync,
 } from "../../infra/kysely-sync.js";
 import { sqlitePrimaryResultCode } from "../../infra/sqlite-error-diagnostics.js";
-import type { WorkerTaskControl } from "../../infra/worker-task-native-sections.js";
 import type { WorkerTaskChannel } from "../../infra/worker-task-server.js";
+import { assertBranchAgentDatabaseIdentity } from "../../state/branch-agent-db-identity.js";
 import { classifyBranchAgentDatabaseReadError } from "../../state/branch-agent-db-read-error.js";
 import { openBranchAgentDatabaseReadOnly } from "../../state/branch-agent-db-readonly.js";
 import { prepareTranscriptEventReadQuery } from "./session-accessor.sqlite-read.js";
@@ -43,6 +44,9 @@ export async function streamSessionTranscriptHydration(
       | { value: Extract<SessionTranscriptHydrationWorkerResult, { kind: "full" }> }
       | { error: unknown };
     try {
+      if (request.expectedIdentity) {
+        assertBranchAgentDatabaseIdentity(database, request.expectedIdentity);
+      }
       // sqlite-allow-raw: This task's dedicated read-only handle keeps one snapshot across host ACKs.
       database.db.exec("BEGIN DEFERRED");
       const fence = resolveSqliteSessionTranscriptReadFence({ database, ...request.resolvedScope });

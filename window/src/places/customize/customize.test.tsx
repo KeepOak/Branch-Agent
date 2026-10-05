@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -47,8 +48,9 @@ describe("Customize › Specialists", () => {
     expect(host.querySelector('[data-testid="fleet"]')?.textContent).toBe("2 Trunks on 1 computer2 working now");
     const patterns = [...host.querySelectorAll('[aria-label="How Trunks work together"] [role="radio"]')] as HTMLButtonElement[];
     expect(patterns).toHaveLength(6);
-    expect(patterns.every(p => p.disabled && p.title.startsWith("Needs the engine"))).toBe(true);
-    expect(button("Start")!.disabled).toBe(true);
+    expect(patterns.every(p => p.disabled && p.title === "")).toBe(true);
+    expect(button("Start")!.disabled).toBe(true); expect(button("Start")!.title).toBe("");
+    expect(visibleDevNotes(host)).toEqual([]);
   });
   it("shows Built in and Other coding agents only from Advanced", async () => {
     await open("Specialists");

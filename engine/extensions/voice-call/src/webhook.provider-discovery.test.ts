@@ -6,6 +6,7 @@ import {
   setActivePluginRegistry,
 } from "branch/plugin-sdk/channel-test-helpers";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
+import { createTestPluginServiceScheduler } from "branch/plugin-sdk/plugin-test-api";
 import { getRealtimeTranscriptionProvider } from "branch/plugin-sdk/realtime-transcription";
 import { useAutoCleanupTempDirTracker, withEnvAsync } from "branch/plugin-sdk/test-env";
 import { afterEach, describe, expect, it } from "vitest";
@@ -92,6 +93,7 @@ describe("VoiceCallWebhookServer transcription provider discovery", () => {
             [configKey]: { ready: true },
           };
           const server = new VoiceCallWebhookServer(
+            createTestPluginServiceScheduler(),
             config,
             new CallManager(config, path.join(root, "calls")),
             new MockProvider(),

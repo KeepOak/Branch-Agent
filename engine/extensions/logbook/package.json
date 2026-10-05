@@ -1,6 +1,6 @@
 {
   "name": "@branch/logbook",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "description": "Branch Agent automatic work journal plugin",
   "type": "module",
   "devDependencies": {
@@ -8,7 +8,7 @@
     "branch": "workspace:*"
   },
   "peerDependencies": {
-    "branch": ">=2026.9.7"
+    "branch": ">=2026.9.8"
   },
   "peerDependenciesMeta": {
     "branch": {
@@ -21,7 +21,7 @@
       "workerEntries": [
         "./src/store.worker.ts"
       ],
-      "branchVersion": "2026.9.7"
+      "branchVersion": "2026.9.8"
     },
     "extensions": [
       "./index.ts"
@@ -33,7 +33,7 @@
       "minHostVersion": ">=2026.9.5"
     },
     "compat": {
-      "pluginApi": ">=2026.9.7"
+      "pluginApi": ">=2026.9.8"
     },
     "release": {
       "publishToClawHub": true,

@@ -78,6 +78,20 @@ export function resolveCodexPromptError(
       });
 }
 
+/** Keep replay-safe settled-tool finalization available for transient provider failures. */
+export function isCodexTransientProviderTurnFailure(source: {
+  message?: string | null;
+  codexErrorInfo?: JsonValue | null;
+}): boolean {
+  return (
+    source.codexErrorInfo === "serverOverloaded" ||
+    source.codexErrorInfo === "internalServerError" ||
+    /\b(?:selected\s+)?model\s+(?:is\s+)?at capacity\b|\btemporary internal error\b/i.test(
+      source.message ?? "",
+    )
+  );
+}
+
 export async function markCodexAuthProfileBlockedFromRateLimits(params: {
   params: EmbeddedRunAttemptParams;
   authProfileId?: string;

@@ -6,27 +6,10 @@ import {
   normalizeLowercaseStringOrEmpty,
 } from "branch/plugin-sdk/string-coerce-runtime";
 
-function resolveRingsPluginConfig(cfg: BranchConfig): Record<string, unknown> {
-  const entry = asNullableRecord(cfg.plugins?.entries?.["memory-core"]);
-  return asNullableRecord(entry?.config) ?? {};
-}
-
-function formatEnabled(value: boolean): string {
-  return value ? "on" : "off";
-}
-
-function formatPhaseGuide(): string {
-  return [
-    "- implementation detail: each sweep runs light -> REM -> deep.",
-    "- deep is the only stage that writes durable entries to MEMORY.md.",
-    "- DREAMS.md is for human-readable rings summaries and diary entries.",
-  ].join("\n");
-}
-
 function formatStatus(cfg: BranchConfig): string {
-  const pluginConfig = resolveRingsPluginConfig(cfg);
+  const entry = asNullableRecord(cfg.plugins?.entries?.["memory-core"]);
   const rings = resolveMemoryRingsConfig({
-    pluginConfig,
+    pluginConfig: asNullableRecord(entry?.config) ?? {},
     cfg,
   });
   const deep = rings.phases.deep;
@@ -34,7 +17,7 @@ function formatStatus(cfg: BranchConfig): string {
 
   return [
     "Rings status:",
-    `- enabled: ${formatEnabled(rings.enabled)}${timezone}`,
+    `- enabled: ${rings.enabled ? "on" : "off"}${timezone}`,
     `- sweep cadence: ${rings.frequency}`,
     `- promotion policy: score>=${deep.minScore}, recalls>=${deep.minRecallCount}, uniqueQueries>=${deep.minUniqueQueries}`,
   ].join("\n");
@@ -48,7 +31,9 @@ function formatUsage(includeStatus: string): string {
     includeStatus,
     "",
     "Phases:",
-    formatPhaseGuide(),
+    "- implementation detail: each sweep runs light -> REM -> deep.",
+    "- deep is the only stage that writes durable entries to MEMORY.md.",
+    "- DREAMS.md is for human-readable rings summaries and diary entries.",
   ].join("\n");
 }
 
@@ -79,12 +64,7 @@ export async function handleRingsCommand(api: BranchPluginApi, ctx: PluginComman
   }
 
   if (firstToken === "on" || firstToken === "off") {
-    if (
-      lacksAdminOrOwnerForRingsMutation({
-        gatewayClientScopes: ctx.gatewayClientScopes,
-        senderIsOwner: ctx.senderIsOwner,
-      })
-    ) {
+    if (lacksAdminOrOwnerForRingsMutation(ctx)) {
       return {
         text: "⚠️ /rings on|off requires owner status for channel callers or operator.admin for gateway clients.",
       };
