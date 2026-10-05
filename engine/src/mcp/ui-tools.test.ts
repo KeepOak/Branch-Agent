@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import type { Page } from "playwright-core";
@@ -169,4 +170,38 @@ describe.runIf(
       server.close();
     }
   }, 60_000);
+});
+
+describe("the window server", () => {
+  /** One plain request with no kept-alive socket (fetch's pooled sockets crashed the Windows worker at teardown). */
+  const get = (port: number, pathname: string) =>
+    new Promise<{ type: string; body: string }>((resolve, reject) => {
+      http
+        .get({ host: "127.0.0.1", port, path: pathname, agent: false }, (res) => {
+          let body = "";
+          res.setEncoding("utf8");
+          res.on("data", (chunk: string) => (body += chunk));
+          res.on("end", () => resolve({ type: String(res.headers["content-type"]), body }));
+        })
+        .on("error", reject);
+    });
+
+  it("serves assets from a folder given with forward slashes", async () => {
+    const root = scratch();
+    fs.mkdirSync(path.join(root, "assets"));
+    fs.writeFileSync(path.join(root, "index.html"), "<!doctype html>");
+    fs.writeFileSync(path.join(root, "assets", "app.js"), "export {}");
+    const server = await serveWindow(root.split(path.sep).join("/"), await freePort());
+    try {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      expect(await get(port, "/assets/app.js")).toEqual({
+        type: "text/javascript",
+        body: "export {}",
+      });
+      expect((await get(port, "/../secret")).type).toContain("text/html");
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });
