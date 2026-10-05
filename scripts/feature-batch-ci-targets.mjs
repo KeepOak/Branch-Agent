@@ -518,3 +518,18 @@ export function capabilityTests() {
   }
   return targets;
 }
+
+/** FEATURE_SHARD="<n>/<total>" (the workflow matrix): this job runs every total-th named test from the n-th.
+ *  The named list grows with each PR; one serial job per OS passed the 15-minute cap (733 s of engine tests on
+ *  Windows for #220), so the list is split across jobs instead of raising the cap. */
+export function shardOf(value = process.env.FEATURE_SHARD) {
+  if (!value) return { index: 0, total: 1 };
+  const match = /^(\d+)\/(\d+)$/.exec(value);
+  const [n, total] = match ? [Number(match[1]), Number(match[2])] : [0, 0];
+  if (!total || n < 1 || n > total) throw new Error(`FEATURE_SHARD must be <n>/<total>, got ${value}`);
+  return { index: n - 1, total };
+}
+
+export function shardTests(tests, shard) {
+  return tests.filter((_, i) => i % shard.total === shard.index);
+}

@@ -1,0 +1,23 @@
+// node --test scripts/feature-batch-ci-shard.test.mjs
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { namedTests, shardOf, shardTests } from './feature-batch-ci-targets.mjs';
+
+test('no FEATURE_SHARD runs everything in one job', () => {
+  assert.deepEqual(shardOf(''), { index: 0, total: 1 });
+  assert.deepEqual(shardTests(['a', 'b'], shardOf('')), ['a', 'b']);
+});
+
+test('the shards split the named list with nothing lost or run twice', () => {
+  for (const lane of ['engine', 'window']) {
+    const all = namedTests(lane);
+    const parts = [shardTests(all, shardOf('1/2')), shardTests(all, shardOf('2/2'))];
+    assert.deepEqual([...parts[0], ...parts[1]].sort(), [...all].sort());
+    assert.equal(parts[0].filter((file) => parts[1].includes(file)).length, 0);
+    assert.ok(Math.abs(parts[0].length - parts[1].length) <= 1);
+  }
+});
+
+test('a malformed shard is an error, not a silent skip', () => {
+  for (const bad of ['0/2', '3/2', '1', 'a/b', '1/0']) assert.throws(() => shardOf(bad));
+});
