@@ -1,1 +1,1 @@
-engine:test/scripts/runtime-postbuild.test.ts
+engine:test/scripts/update-compat-isolated-graphs.test.ts
