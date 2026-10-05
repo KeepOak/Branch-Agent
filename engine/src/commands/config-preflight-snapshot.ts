@@ -362,8 +362,9 @@ async function assertStartupStateReady(params: {
   const agentCount = listAgentIds(params.cfg).length;
   const admissionMetrics: Record<string, number> = { agentCount };
   // These admission reads share no writer and all finish before a lease is
-  // acquired. Session target selection still waits for database refusals.
-  const [, registeredDatabases] = await Promise.all([
+  // acquired. Session target selection still waits for database refusals, and
+  // refusals surface in the order the sequential admission reported them.
+  const [databases, inventory, workspace] = await Promise.allSettled([
     measureDoctorConfigPreflightStep(
       "admission.database-readiness",
       () =>
@@ -391,6 +392,9 @@ async function assertStartupStateReady(params: {
       () => ({ agentCount }),
     ),
   ]);
+  if (databases.status === "rejected") throw databases.reason;
+  if (inventory.status === "rejected") throw inventory.reason;
+  const registeredDatabases = inventory.value;
   const targets = await measureDoctorConfigPreflightStep(
     "admission.session-targets",
     () =>
@@ -414,4 +418,5 @@ async function assertStartupStateReady(params: {
       (refusal) => `${refusal.reason}\n${refusal.repairHint}`,
     ),
   );
+  if (workspace.status === "rejected") throw workspace.reason;
 }
