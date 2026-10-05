@@ -9,7 +9,7 @@ import { outsideAgentFromClient, OutsidePresence } from "./outside-presence.js";
 import { registerTrunkMcpTools } from "./trunk-tools.js";
 import { registerUiMcpTools, UiSession } from "./ui-tools.js";
 
-/** Settings › Connected agents applies to every tool (channel, Trunk and window tools alike): each handler
+/** Settings › Grafts applies to every tool (channel, Trunk and window tools alike): each handler
  *  first asks whether Branch still lets this agent in. */
 export function gateEveryTool(server: McpServer, gate: () => Promise<void>): void {
   const register = server.tool.bind(server) as (...args: unknown[]) => unknown;
@@ -52,7 +52,7 @@ export async function createChannelMcpRuntime(
   const claudeChannelMode = opts.claudeChannelMode ?? "auto";
   const capabilities = getChannelMcpCapabilities(claudeChannelMode);
   const server = new McpServer(
-    { name: "branch", version: VERSION },
+    { name: "branch", title: "Graft: work with Branch", version: VERSION },
     capabilities ? { capabilities } : undefined,
   );
   const bridge = new BranchChannelBridge(cfg, {
@@ -73,7 +73,7 @@ export async function createChannelMcpRuntime(
     });
   });
   // Part B/D: once the MCP client has said who it is, Branch shows it as an outside-agent contact and its
-  // messages as its own, unless Settings › Connected agents turned it away. A gateway without
+  // messages as its own, unless Settings › Grafts turned it away. A gateway without
   // contacts.outside.hello keeps plain (owner) messages.
   const presence = new OutsidePresence(
     (agent) => bridge.request("contacts.outside.hello", { agent }),
@@ -96,7 +96,7 @@ export async function createChannelMcpRuntime(
     await presence.identity();
     if (!presence.mayDriveWindow()) {
       throw new Error(
-        "The owner has not let this agent drive their window (Settings › Connected agents). The test Branch is open to it.",
+        "The owner has not let this agent drive their window (Settings › Grafts). The test Branch is open to it.",
       );
     }
     return await openOwnerWindow();

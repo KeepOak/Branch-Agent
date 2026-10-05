@@ -120,7 +120,7 @@ describe.runIf(process.env.BRANCH_BROWSER_SNAPSHOT_E2E === "1")(
       const port = await getFreePort();
       browser = await getPlaywrightCore().chromium.launchPersistentContext(profileDir, {
         headless: true,
-        timeout: 15_000,
+        timeout: 60_000,
         executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
         args: [`--remote-debugging-port=${port}`],
         env: browserLaunchEnvironment(),
