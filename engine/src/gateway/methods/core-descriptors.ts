@@ -208,9 +208,6 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["secrets.resolve", null, "operator.admin", "<=2026.7"],
   ["voicewake.routing.get", "voicewake-routing", "operator.read", "<=2026.7"],
   ["sessions.list", "sessions-read", "operator.read", "<=2026.7", { startup: true }],
-  ["contacts.list", "contacts", "operator.read", "2026.9"],
-  ["contacts.topics", "contacts", "operator.read", "2026.9"],
-  ["contacts.markRead", "contacts", "operator.read", "2026.9"],
   ["sessions.subscribe", "sessions-subscriptions", "operator.read", "<=2026.7", { startup: true }],
   ["sessions.messages.subscribe", "sessions-subscriptions", "operator.read", "<=2026.7"],
   ["sessions.messages.unsubscribe", "sessions-subscriptions", "operator.read", "<=2026.7"],
@@ -660,4 +657,7 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["sessions.processes.stop", "session-processes", "operator.write", "2026.9"],
   ["agents.documents.create", "agents-workspace", "operator.admin", "2026.9"],
   ["memory.export", "memory-search", "operator.read", "2026.9"],
+  ["contacts.list", "contacts", "operator.read", "2026.9"],
+  ["contacts.topics", "contacts", "operator.read", "2026.9"],
+  ["contacts.markRead", "contacts", "operator.write", "2026.9"],
 ] as const satisfies readonly CoreGatewayMethodSpecRow[];
