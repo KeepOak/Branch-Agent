@@ -4,6 +4,8 @@
 // outside app.asar, run by plain Node) waits for the exit, swaps app.asar (or, when Electron itself changes, the
 // whole app folder), relaunches, and restores the previous copy if the new one never confirms its start.
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import type * as NodeFs from "node:fs";
 import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { DesktopConfig } from "./config";
@@ -47,6 +49,18 @@ const CONFIRM_TIMEOUT_MS = 90_000;
 export const STAGED_ASAR = ".asar.staged";
 const stagedName = (name: string): string => name.replace(/\.asar(?=\/|$)/g, STAGED_ASAR);
 
+/** Electron's fs opens app.asar as an archive; original-fs reads the file's own bytes. */
+const rawFs: typeof NodeFs = process.versions.electron ? require("original-fs") : require("node:fs");
+
+async function fileSha256(file: string): Promise<string | undefined> {
+  const hash = createHash("sha256");
+  try { for await (const chunk of rawFs.createReadStream(file)) hash.update(chunk as Buffer); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+  return hash.digest("hex");
+}
+
 async function readOrEmpty(file: string): Promise<string> {
   try { return (await readFile(file, "utf8")).trim(); } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
@@ -76,6 +90,24 @@ function choose(release: ComponentRelease, install: DesktopInstall): { asset: De
   return { asset: runtime, kind: "runtime" };
 }
 
+/** The installed desktop already is this component: same Electron and the same app.asar bytes. */
+async function installedMatches(asset: DesktopAsset, install: DesktopInstall): Promise<boolean> {
+  if (!asset.appAsarSha256 || asset.electronVersion !== install.electronVersion) return false;
+  return await fileSha256(join(install.resourcesDir, "app.asar")) === asset.appAsarSha256;
+}
+
+/** A staged copy byte-identical to the installed one: for a whole app, the same executable and app.asar. */
+async function stagedMatchesInstalled(journal: DesktopJournal, install: DesktopInstall): Promise<boolean> {
+  const pairs: Array<[string, string]> = journal.kind === "asar" ? [[journal.staged, journal.target]]
+    : [[join(journal.staged, basename(install.executable)), install.executable],
+      [join(journal.staged, `resources/app${STAGED_ASAR}`), join(install.resourcesDir, "app.asar")]];
+  for (const [staged, installed] of pairs) {
+    const digest = await fileSha256(staged);
+    if (!digest || digest !== await fileSha256(installed)) return false;
+  }
+  return true;
+}
+
 async function assertFile(file: string): Promise<void> {
   if (!(await stat(file)).isFile()) throw new Error(`Incomplete desktop component: ${basename(file)}`);
 }
@@ -85,6 +117,11 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
   if (!install || await readOrEmpty(versionFile(cfg)) === release.version || await readDesktopJournal(cfg)) return false;
   const choice = choose(release, install);
   if (!choice || await rejected(cfg, release.version, choice.asset.sha256)) return false;
+  if (await installedMatches(choice.asset, install)) {
+    await replaceFile(versionFile(cfg), `${release.version}
+`);
+    return false;
+  }
   const updates = join(cfg.dataDir, "updates");
   await mkdir(updates, { recursive: true });
   const directory = await mkdtemp(join(updates, `desktop-${release.version}-`));
@@ -120,6 +157,14 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
   const journal = await readDesktopJournal(cfg);
   if (journal?.phase !== "staged" || !explicit && (journal.heldUntil ?? 0) > Date.now()) return false;
   const work = dirname(journal.kind === "asar" ? dirname(journal.staged) : journal.staged);
+  if (await stagedMatchesInstalled(journal, install)) {
+    // Nothing would change: no swap, no restart; the installed copy already is this release's desktop.
+    await replaceFile(versionFile(cfg), `${journal.version}
+`);
+    await rm(journalFile(cfg), { force: true });
+    await rm(work, { recursive: true, force: true });
+    return false;
+  }
   const helper = join(work, "desktop-update-helper.js");
   // Read, not copied: the source sits inside app.asar, which only Electron's own fs can read.
   await writeFile(helper, await readFile(helperSource));

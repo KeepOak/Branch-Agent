@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -90,6 +91,38 @@ test("a desktop already on the release stages nothing; a new Electron stages the
     assert.equal(await readFile(join(journal.staged, "resources/app.asar.staged"), "utf8"), "new desktop asar");
   }, { runtime: true });
 });
+
+test("an installed desktop with the release's app.asar bytes is neither staged nor swapped", () => fixture(async ({ cfg, request, install, release }) => {
+  const sha = createHash("sha256").update("new desktop asar").digest("hex");
+  assert.equal(release.components.desktop.appAsarSha256, sha);
+  await writeFile(join(install.resourcesDir, "app.asar"), "new desktop asar");
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  assert.equal(await desktopUpdate.readDesktopJournal(cfg), undefined, "no download, no journal");
+  assert.equal((await readFile(join(cfg.dataDir, "desktop-update-version.txt"), "utf8")).trim(), "0.4.5");
+  assert.equal(await exists(join(install.resourcesDir, "app.asar.previous")), false);
+}));
+
+test("a staged app.asar identical to the installed one is recorded without a swap or restart", () => fixture(async ({ root, cfg, request, install }) => {
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  const journal = await desktopUpdate.readDesktopJournal(cfg);
+  await writeFile(join(install.resourcesDir, "app.asar"), "new desktop asar");
+  assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, install, join(dist, "desktop-update-helper.js"), [join(root, "never.cjs")]), false);
+  assert.equal(await desktopUpdate.readDesktopJournal(cfg), undefined);
+  assert.equal((await readFile(join(cfg.dataDir, "desktop-update-version.txt"), "utf8")).trim(), "0.4.5");
+  assert.equal(await exists(journal.staged), false, "the staged copy is cleaned up");
+  assert.equal(await exists(join(install.resourcesDir, "app.asar.previous")), false);
+}));
+
+test("a staged whole app identical to the installed one (desktopRuntime) is recorded without a swap", () => fixture(async ({ cfg, request, install, release }) => {
+  assert.equal(release.components.desktopRuntime.appAsarSha256, createHash("sha256").update("new desktop asar").digest("hex"));
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  assert.equal((await desktopUpdate.readDesktopJournal(cfg)).kind, "runtime");
+  await writeFile(install.executable, "new runtime"); await writeFile(join(install.resourcesDir, "app.asar"), "new desktop asar");
+  assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, install, join(dist, "desktop-update-helper.js")), false);
+  assert.equal(await desktopUpdate.readDesktopJournal(cfg), undefined);
+  assert.equal((await readFile(join(cfg.dataDir, "desktop-update-version.txt"), "utf8")).trim(), "0.4.5");
+  assert.equal(await exists(`${install.appDir}.previous`), false);
+}, { runtime: true }));
 
 test("a new Electron without a whole-app package is refused out loud", () => fixture(async ({ cfg, release, request, install }) => {
   const moved = structuredClone(release); moved.components.desktop.electronVersion = "45.0.0";

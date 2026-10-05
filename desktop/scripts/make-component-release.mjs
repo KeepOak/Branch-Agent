@@ -113,7 +113,10 @@ async function desktopComponents({ app, runtime, electronVersion }, { stage, out
   for (const [name, root, filename] of parts) {
     if (await existingDigest(join(output, filename))) throw new Error(`Release asset collision: ${filename}`);
     const info = await archive(root, join(stage, filename));
-    components[name] = { url: `https://github.com/KeepOak/Branch-Agent/releases/download/${tag}/${filename}`, ...info, platform, arch, electronVersion };
+    // The app.asar this component carries, so an installed desktop with the same bytes skips the download and swap.
+    const appAsarSha256 = await existingDigest(join(root, name === "desktop" ? "app.asar" : "resources/app.asar"));
+    components[name] = { url: `https://github.com/KeepOak/Branch-Agent/releases/download/${tag}/${filename}`, ...info, platform, arch, electronVersion,
+      ...(appAsarSha256 ? { appAsarSha256 } : {}) };
   }
   return { components, assets: parts.map(([, , filename]) => filename) };
 }
