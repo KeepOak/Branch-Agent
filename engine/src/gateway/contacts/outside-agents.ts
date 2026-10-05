@@ -96,6 +96,18 @@ export function assignOutsideAgentId(
   }
 }
 
+/**
+ * Before per-session ids (#226), an MCP client's id was its product name alone ("claude-code"), so rules written
+ * then (Who it knows `a2a:claude-code`, Disconnect, window rights) meant every session of that product. The
+ * product-wide id of a session id `claude-code-a1b2c3` or `claude-code-a1b2c3-2` is `claude-code`; its rules keep
+ * applying to every such session, so nothing set before the change is lost.
+ */
+export function legacyOutsideId(id: string): string | undefined {
+  return /^(.+)-[0-9a-f]{6}(?:-\d+)?$/.exec(id)?.[1];
+}
+
+const forms = (id: string) => [id, legacyOutsideId(id)].filter((v): v is string => Boolean(v));
+
 /** Remember an outside agent (insert or refresh). Written atomically; the oldest rows go past the cap. */
 export function recordOutsideAgent(
   agent: OutsideAgent,
@@ -103,8 +115,11 @@ export function recordOutsideAgent(
   env?: NodeJS.ProcessEnv,
 ): OutsideAgentRecord {
   const all = listOutsideAgents(env);
-  const rows = all.filter((row) => row.id !== agent.id);
-  const previous = all.find((row) => row.id === agent.id);
+  // The product-wide row from before per-session ids folds into the first session that says hello.
+  const legacy = legacyOutsideId(agent.id);
+  const old = legacy ? all.find((row) => row.id === legacy && !row.instance) : undefined;
+  const rows = all.filter((row) => row.id !== agent.id && row !== old);
+  const previous = all.find((row) => row.id === agent.id) ?? old;
   const record: OutsideAgentRecord = {
     id: agent.id,
     name: agent.name,
@@ -161,12 +176,23 @@ export function updateOutsideAgentSettings(
   env?: NodeJS.ProcessEnv,
 ): OutsideAgentSettings {
   const current = readOutsideAgentSettings(env);
-  const toggle = (list: string[], on: boolean | undefined) =>
-    on === undefined || !change.id
-      ? list
-      : on
-        ? [...new Set([...list, change.id])]
-        : list.filter((id) => id !== change.id);
+  const toggle = (list: string[], on: boolean | undefined) => {
+    if (on === undefined || !change.id) return list;
+    const legacy = legacyOutsideId(change.id);
+    // One session's choice turns a product-wide rule into per-session rules for its other sessions.
+    const expanded =
+      legacy && list.includes(legacy)
+        ? [
+            ...list.filter((id) => id !== legacy),
+            ...listOutsideAgents(env)
+              .map((row) => row.id)
+              .filter((id) => legacyOutsideId(id) === legacy),
+          ]
+        : list;
+    return on
+      ? [...new Set([...expanded, change.id])]
+      : [...new Set(expanded)].filter((id) => id !== change.id);
+  };
   const next: OutsideAgentSettings = {
     enabled: change.enabled ?? current.enabled,
     revoked: toggle(current.revoked, change.revoked),
@@ -174,6 +200,11 @@ export function updateOutsideAgentSettings(
   };
   writeJson(settingsFile(env), next);
   return next;
+}
+
+/** Whether the owner let this session drive their window (its own id or its product-wide one). */
+export function outsideAgentMayDriveWindow(id: string, settings: OutsideAgentSettings): boolean {
+  return forms(id).some((form) => settings.mayDriveWindow.includes(form));
 }
 
 /** Why Branch refuses this outside agent now, or undefined when it may work with Branch. */
@@ -184,7 +215,7 @@ export function outsideAgentRefusal(
   if (!settings.enabled) {
     return "Other agents are off in Settings › Connected agents.";
   }
-  if (settings.revoked.includes(agent.id)) {
+  if (forms(agent.id).some((id) => settings.revoked.includes(id))) {
     return `${agent.name} was disconnected in Settings › Connected agents.`;
   }
   return undefined;
@@ -241,5 +272,6 @@ export function outsideAgentMayMessage(
   agentId: string,
   outsideId: string,
 ): boolean {
-  return createAgentToAgentPolicy(cfg).isAllowed(agentId, `a2a:${outsideId}`);
+  const policy = createAgentToAgentPolicy(cfg);
+  return forms(outsideId).every((id) => policy.isAllowed(agentId, `a2a:${id}`));
 }

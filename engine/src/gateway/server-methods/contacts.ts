@@ -23,6 +23,7 @@ import {
   isOutsideAgentOnline,
   listOutsideAgents,
   outsideAgentPeers,
+  outsideAgentMayDriveWindow,
   outsideAgentRefusal,
   readOutsideAgentSettings,
   recordOutsideAgent,
@@ -151,7 +152,7 @@ export const contactHandlers: GatewayRequestHandlers = {
     context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
     respond(true, {
       contact: { id: `a2a:${record.id}`, name: record.name, where: record.where ?? null },
-      mayDriveWindow: settings.mayDriveWindow.includes(record.id),
+      mayDriveWindow: outsideAgentMayDriveWindow(record.id, settings),
     });
   },
   "contacts.outside.list": async ({ params, respond }) => {
@@ -169,8 +170,8 @@ export const contactHandlers: GatewayRequestHandlers = {
       ...row,
       contactId: `a2a:${row.id}`,
       online: isOutsideAgentOnline(row) && !outsideAgentRefusal(row, settings),
-      revoked: settings.revoked.includes(row.id),
-      mayDriveWindow: settings.mayDriveWindow.includes(row.id),
+      revoked: Boolean(outsideAgentRefusal(row, { ...settings, enabled: true })),
+      mayDriveWindow: outsideAgentMayDriveWindow(row.id, settings),
     }));
     respond(true, { enabled: settings.enabled, agents });
   },

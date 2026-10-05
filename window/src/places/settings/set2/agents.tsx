@@ -41,22 +41,43 @@ export const ROWS: RowEntry[] = [
 
 type Trunk = { id: string; name: string };
 
+/** The product-wide id from before per-session ids (engine contacts/outside-agents.ts legacyOutsideId). */
+export function legacyOutsideId(id: string): string | undefined {
+  return /^(.+)-[0-9a-f]{6}(?:-\d+)?$/.exec(id)?.[1];
+}
+
+/**
+ * The Trunk's deny list after this agent's "May message" switch: its own `a2a:<id>` entry, and a product-wide
+ * `a2a:<product>` entry written before per-session ids turned into entries for the product's other sessions, so
+ * one session's switch never changes the others.
+ */
+export function nextDeny(current: readonly string[], id: string, allow: boolean, sessions: readonly string[]): string[] {
+  const legacy = legacyOutsideId(id);
+  const expanded = legacy && current.includes(`a2a:${legacy}`)
+    ? [...current.filter((v) => v !== `a2a:${legacy}`), ...sessions.filter((s) => legacyOutsideId(s) === legacy).map((s) => `a2a:${s}`)]
+    : [...current];
+  const set = new Set(expanded);
+  if (allow) set.delete(`a2a:${id}`); else set.add(`a2a:${id}`);
+  return [...set];
+}
+
 function trunksOf(result: unknown): Trunk[] {
   const list = rec(result).agents;
   return (Array.isArray(list) ? list : []).map(rec).filter((a) => str(a.id) && a.kind !== "system")
     .map((a) => ({ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) }));
 }
 
-function AgentRow({ agent, trunks, props, reload }: { agent: OutsideAgentRow; trunks: Trunk[]; props: SettingsPageProps; reload: () => void }) {
+function AgentRow({ agent, trunks, props, reload, sessions }: { agent: OutsideAgentRow; trunks: Trunk[]; props: SettingsPageProps; reload: () => void; sessions: string[] }) {
   const config = useConfig(props.engine);
   const call = useCall();
   const set = (change: Record<string, unknown>) => void call.run(async () => { await props.engine.request("contacts.outside.set", { id: agent.id, ...change }); reload(); });
   const denyPath = (trunk: string) => ["agents", "entries", trunk, "agentToAgent", "deny"];
-  const denied = (trunk: string) => { const d = config.get(denyPath(trunk)); return Array.isArray(d) && d.includes(`a2a:${agent.id}`); };
+  const legacy = legacyOutsideId(agent.id);
+  const denied = (trunk: string) => { const d = config.get(denyPath(trunk)); return Array.isArray(d) && (d.includes(`a2a:${agent.id}`) || (!!legacy && d.includes(`a2a:${legacy}`))); };
   const allow = (trunk: string, on: boolean) => {
     const d = config.get(denyPath(trunk));
     const current = Array.isArray(d) ? d.filter((v): v is string => typeof v === "string") : [];
-    void config.set(denyPath(trunk), on ? current.filter((v) => v !== `a2a:${agent.id}`) : [...new Set([...current, `a2a:${agent.id}`])]);
+    void config.set(denyPath(trunk), nextDeny(current, agent.id, on, sessions));
   };
   const seen = agent.online ? "Online now" : agent.lastSeenAt ? `Last seen ${when(agent.lastSeenAt)}` : "Not seen yet";
   const doing = agent.activity ? ` · ${agent.activity}${agent.activityAt ? ` (${when(agent.activityAt)})` : ""}` : "";
@@ -98,7 +119,7 @@ export function AgentsPage(props: SettingsPageProps) {
           <Switch label="Let other agents work with Branch" checked={enabled} disabled={live.loading || call.busy} onChange={(on) => void call.run(async () => { await props.engine.request("contacts.outside.set", { enabled: on }); reload(); })} />
         </Ctl>
       </Sec>
-      {agents.length ? agents.map((a) => <AgentRow key={a.id} agent={a} trunks={trunks} props={props} reload={reload} />) : (
+      {agents.length ? agents.map((a) => <AgentRow key={a.id} agent={a} trunks={trunks} props={props} reload={reload} sessions={agents.map((x) => x.id)} />) : (
         <Sec title="Connected agents"><Empty>No agent has connected yet. Paste one of the lines below into it.</Empty></Sec>
       )}
       <Sec title="Connect an agent" hint="Each line is pasted once. It runs the branch command, which always uses the Branch on this computer, so it keeps working after updates.">
