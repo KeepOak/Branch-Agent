@@ -8,6 +8,7 @@ import { Icon } from "./icons";
 import type { MenuItem } from "./Menu";
 import { notify } from "./notify";
 import { PETS, PIXEL, PixelPet } from "../places/settings/set1/appearance-pet";
+import { PetReactionArt } from "./PetReaction";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -167,13 +168,13 @@ export function StatusGfx(p: Props) {
   );
 }
 
-/** The pet, before the version, when Appearance has it walk in the status bar (§6.5): a still that hops once when patted. */
+/** The status pet rests as a still and reacts once when patted (§6.5). */
 export function StatusPet({ pet }: { pet: Props["pet"] }) {
-  const [hop, setHop] = useState(0);
   if (!pet || pet.where !== "status" || pet.id === "none") return null;
+  const still = PETS.find((x) => x.id === pet.id)?.still;
   return (
-    <button type="button" className={hop ? "sb pet hop" : "sb pet"} aria-label={`Pat ${pet.name}`} title={pet.name} data-testid="sb-pet" onClick={() => setHop((n) => n + 1)} onAnimationEnd={() => setHop(0)}>
-      <PetStill id={pet.id} />
+    <button type="button" className="sb pet" aria-label={`Pat ${pet.name}`} title={pet.name} data-testid="sb-pet">
+      <PetReactionArt key={pet.id} id={pet.id} still={still}><PetStill id={pet.id} /></PetReactionArt>
     </button>
   );
 }

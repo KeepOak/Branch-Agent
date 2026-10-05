@@ -23,6 +23,18 @@ export const ContactSchema = closedObject({
     Type.Literal("outside"),
   ]),
   name: NonEmptyString,
+  where: Type.Optional(Type.String()),
+  card: Type.Optional(
+    closedObject({
+      name: NonEmptyString,
+      description: Type.String(),
+      iconUrl: Type.Optional(Type.String()),
+      skills: Type.Array(
+        closedObject({ name: NonEmptyString, description: Type.Optional(Type.String()) }),
+      ),
+      fetchedAt: Timestamp,
+    }),
+  ),
   face: Type.Optional(
     closedObject({
       agentId: Type.Optional(NonEmptyString),
