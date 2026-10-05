@@ -331,7 +331,7 @@ describe("Graft hub activity feed", () => {
                 key: "agent:builder-oak:t1",
                 label: "P38 startup races",
                 status: "running",
-                activeWriterRunId: "run-9",
+                hasActiveRun: true,
                 activitySummary: {
                   text: "editing the watchdog",
                   state: "current",
@@ -347,6 +347,8 @@ describe("Graft hub activity feed", () => {
               },
             ],
     });
+    handlers["chat.history"] = (p) =>
+      p.sessionKey === "agent:builder-oak:t1" ? { inFlightRun: { runId: "run-9" } } : {};
     handlers["contacts.outside.list"] = () => ({
       agents: [
         {
@@ -422,5 +424,27 @@ describe("Graft hub project choice", () => {
     );
     expect(calls.some((c) => c.method === "agents.documents.create")).toBe(false);
     expect(await call("docs_list", { project: "tk" })).toMatchObject({ project: "tk", docs: [] });
+  });
+});
+
+describe("Graft hub document retries", () => {
+  it("docs_write retried after a failed overwrite reuses the kept version instead of blocking the document", async () => {
+    const { gw, handlers, files } = fakeBranch();
+    const call = await connect(gw);
+    await call("docs_write", { name: "A.md", text: "one" });
+    const set = handlers["sessions.files.set"]!;
+    let failures = 1;
+    handlers["sessions.files.set"] = (p) => {
+      if (failures-- > 0) {
+        throw new Error("gateway timeout");
+      }
+      return set(p);
+    };
+    await expect(call("docs_write", { name: "A.md", text: "two" })).rejects.toThrow(
+      /gateway timeout/,
+    );
+    expect(await call("docs_write", { name: "A.md", text: "two" })).toMatchObject({ version: 2 });
+    expect(parseDoc(files.get("Documents/.A.v1.md")!).body).toBe("one");
+    expect((await call("docs_read", { name: "A.md" })).text).toBe("two");
   });
 });

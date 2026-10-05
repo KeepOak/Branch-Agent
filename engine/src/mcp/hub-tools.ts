@@ -120,6 +120,26 @@ async function overwrite(
   }
 }
 
+/**
+ * Keep the previous version first. Exclusive create catches two writers racing for one version; a kept version
+ * with the same text is a retry after an overwrite that failed, so it goes on.
+ */
+async function keepVersion(gw: TrunkGateway, agentId: string, name: string, content: string) {
+  try {
+    await gw.request("agents.documents.create", { agentId, name, content });
+  } catch (error) {
+    if (!/already exists/i.test(String(error))) {
+      throw error;
+    }
+    const kept = await readStored(gw, agentId, name);
+    if (kept?.content !== content) {
+      throw new Error(`Someone else saved ${name} at the same time; read the document again.`, {
+        cause: error,
+      });
+    }
+  }
+}
+
 export async function writeDoc(
   gw: TrunkGateway,
   input: {
@@ -159,12 +179,7 @@ export async function writeDoc(
       content: stored,
     });
   } else {
-    // Keep the previous version first; exclusive create also catches two writers racing for one version.
-    await gw.request("agents.documents.create", {
-      agentId,
-      name: versionName(name, previous),
-      content: current.content,
-    });
+    await keepVersion(gw, agentId, versionName(name, previous), current.content);
     await overwrite(gw, agentId, name, stored, current.hash);
   }
   return {
@@ -491,6 +506,15 @@ function threadTitle(row: Rec): string {
   );
 }
 
+/** The run a working thread is on: chat.history carries it (also one resumed after a restart); sessions.list doesn't. */
+async function runInFlight(gw: TrunkGateway, row: Rec): Promise<string | undefined> {
+  const key = str(row.key);
+  const history = key
+    ? rec(await gw.request("chat.history", { sessionKey: key, limit: 1 }).catch(() => ({})))
+    : {};
+  return str(rec(history.inFlightRun).runId) ?? str(row.activeWriterRunId);
+}
+
 /** Lines for the feed: working Trunks first (with run ids), then grafted agents, then recent finished threads. */
 export async function activityFeed(gw: TrunkGateway, recent: number, now: number) {
   const agents = list(rec(await gw.request("agents.list", {})).agents);
@@ -505,9 +529,9 @@ export async function activityFeed(gw: TrunkGateway, recent: number, now: number
           .sessions,
       );
       for (const row of rows) {
-        const run = str(row.activeWriterRunId) ?? str(rec(row.inFlightRun).runId);
         const summary = str(rec(row.activitySummary).text);
-        if (row.status === "running" || run) {
+        if (row.hasActiveRun === true || row.status === "running") {
+          const run = await runInFlight(gw, row);
           working.push({
             who: name,
             trunk: id,
