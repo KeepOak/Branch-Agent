@@ -8,6 +8,7 @@ import { RunStreams, readRunEvent } from "./stream-order";
 import { withOwner } from "./agent-owner";
 import { projectRun, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, readApprovalRecords } from "../thread/history";
+import { isPreparationPending } from "./preparation-status";
 
 export type SessionSnapshot = {
   status: GatewayStatus;
@@ -42,6 +43,8 @@ export class SaplingSession {
   private readonly finished = new Set<string>();
   /** Only the newest `chat.history` read may land; an older one resolving later would bring back stale history. */
   private historyReads = 0;
+  private preparationRetry: ReturnType<typeof setTimeout> | null = null;
+  private stopped = false;
   private readonly gateway: BranchGateway;
 
   /** `initialKey` reopens the conversation the window last showed (§3.3 "Reopen where you were"). */
@@ -70,10 +73,14 @@ export class SaplingSession {
   }
 
   start(): void {
+    this.stopped = false;
     this.gateway.start();
   }
 
   stop(): void {
+    this.stopped = true;
+    if (this.preparationRetry) clearTimeout(this.preparationRetry);
+    this.preparationRetry = null;
     this.gateway.stop();
   }
 
@@ -132,6 +139,16 @@ export class SaplingSession {
 
   private set(patch: Partial<SessionSnapshot>): void {
     this.snapshot = { ...this.snapshot, ...patch };
+    if (patch.error === null || (patch.status && patch.status.phase !== "connected")) {
+      if (this.preparationRetry) clearTimeout(this.preparationRetry);
+      this.preparationRetry = null;
+    } else if (!this.stopped && patch.error && isPreparationPending(patch.error) && !this.preparationRetry) {
+      this.preparationRetry = setTimeout(() => {
+        this.preparationRetry = null;
+        const { status, sessionKey } = this.snapshot;
+        if (status.phase === "connected" && sessionKey) void this.bootstrap(status, sessionKey);
+      }, 2_000);
+    }
     for (const listener of this.listeners) {
       listener();
     }
@@ -165,7 +182,7 @@ export class SaplingSession {
       this.set({ name: readAgentName(agents) });
       await this.backfillApprovals();
       await this.loadHistory();
-      this.set({ status });
+      this.set({ status, error: null });
     } catch (error) {
       this.set({ status, error: error instanceof Error ? error.message : String(error) });
     }

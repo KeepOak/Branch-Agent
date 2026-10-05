@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { agentOf, errorText, list, rec, str, type Rec, type WindowEngine } from "./engine";
 import { readModels, type ModelChoice } from "./model";
+import { isPreparationPending } from "../connect/preparation-status";
 
 export type Trunk = { id: string; name: string; defaultMode: string; theme: string };
 
@@ -35,6 +36,7 @@ const EMPTY: Conversation = {
 
 /** No model set up: the engine names no default model, or none it names is connected (models.list has none usable). */
 export function hasNoModel(conv: Conversation, currentRef: string): boolean {
+  if (isPreparationPending(conv.error) || isPreparationPending(conv.modelsError)) return false;
   return conv.loaded && (!currentRef || (conv.modelsLoaded && !conv.models.some((m) => m.available)));
 }
 
@@ -99,6 +101,12 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
     setState(EMPTY);
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!isPreparationPending(state.error) && !isPreparationPending(state.modelsError)) return;
+    const retry = setTimeout(() => void load(), 2_000);
+    return () => clearTimeout(retry);
+  }, [load, state.error, state.modelsError]);
 
   useEffect(() => {
     if (!engine || !key) return;

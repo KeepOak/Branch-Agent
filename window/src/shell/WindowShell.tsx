@@ -5,6 +5,7 @@ import type { TopicUpdate } from "../thread/TopicCard";
 import type { SendExtras } from "../connect/engine";
 import type { SaplingSession, SessionSnapshot } from "../connect/session";
 import { withOwner } from "../connect/agent-owner";
+import { isPreparationPending } from "../connect/preparation-status";
 import { Composer, VOICE_OFF } from "../composer/Composer";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
@@ -1020,6 +1021,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           hasEarlierPages={segments.hasEarlier}
           loadingEarlier={segments.loading}
           earlierError={segments.error}
+          preparationError={s.error}
+          advancedDiagnostics={level !== "regular"}
           onLoadEarlier={segments.loadEarlier}
           onOpenSession={openTopic}
           onStartTopic={activeContact?.kind === "trunk" ? startFromMessage : undefined}
@@ -1044,7 +1047,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />
         </SplitFrame>
-        {s.error ? <p className="notice indent">{s.error}</p> : null}
+        {s.error && !isPreparationPending(s.error) ? <p className="notice indent">{s.error}</p> : null}
         <Composer
           {...composerProps}
           mainKey={mainKeySuffix}

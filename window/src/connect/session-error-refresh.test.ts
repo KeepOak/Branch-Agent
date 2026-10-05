@@ -11,6 +11,7 @@ const fake = vi.hoisted(() => ({
   options: null as Options | null,
   transcript: [] as Record<string, unknown>[],
   historyReads: 0,
+  historyFailures: 0,
 }));
 
 vi.mock("./gateway", () => ({
@@ -24,6 +25,7 @@ vi.mock("./gateway", () => ({
       switch (method) {
         case "chat.history":
           fake.historyReads += 1;
+          if (fake.historyFailures-- > 0) throw new Error("Agent builder-oak has not completed startup inspection and preparation; run branch doctor --fix");
           return { messages: fake.transcript.map((m) => ({ ...m })) };
         case "chat.send":
           fake.transcript.push({ role: "user", content: String(params?.message ?? ""), timestamp: 1 });
@@ -76,9 +78,21 @@ afterEach(() => {
   fake.options = null;
   fake.transcript = [];
   fake.historyReads = 0;
+  fake.historyFailures = 0;
 });
 
 describe("a failing turn's error receipt reaches the thread after it is persisted", () => {
+  it("retries a temporary preparation refusal and clears it when history becomes available", async () => {
+    fake.historyFailures = 1;
+    const session = new SaplingSession("ws://fake", undefined);
+    session.start();
+    fake.options?.onStatus({ phase: "connected", hello } as unknown as GatewayStatus);
+    await vi.waitFor(() => expect(session.getSnapshot().error).toContain("startup inspection"));
+    await vi.waitFor(() => expect(session.getSnapshot().error).toBeNull(), { timeout: 5_000 });
+    expect(fake.historyReads).toBeGreaterThanOrEqual(2);
+    session.stop();
+  });
+
   it("shows Couldn't finish once the engine announces the persisted receipt after the early lifecycle error", async () => {
     const session = await failTurnBeforeReceipt();
     const readsAfterEarlyTerminal = fake.historyReads;
