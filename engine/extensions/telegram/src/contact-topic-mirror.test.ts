@@ -24,6 +24,8 @@ describe("Telegram contact topic mirror", () => {
     state = await createBranchTestState({ layout: "state-only", prefix: "telegram-contact-topic-" });
     cfg = {
       ...fixture.cfg,
+      // The fixture uses a numeric loopback API root; no DNS fallback transport is needed.
+      channels: { telegram: { ...fixture.cfg.channels.telegram, network: { dnsResultOrder: "verbatim" } } },
       agents: { ownership: "explicit", defaultId: "elm", entries: { elm: {} } },
       session: { store: path.join(state.stateDir, "{agentId}", "sessions.json") },
     };
