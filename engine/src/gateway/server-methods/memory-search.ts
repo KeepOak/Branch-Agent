@@ -73,6 +73,10 @@ function hasUsableAgentIdInput(value: string): boolean {
 
 /** Operator-scoped search over the active agent memory index. */
 export const memorySearchHandlers: GatewayRequestHandlers = {
+  "memory.export": async (options) => {
+    const { memoryExportHandler } = await import("./memory-export.js");
+    await memoryExportHandler(options);
+  },
   "memory.get": async (options) => {
     const { memoryProviderHandlers } = await import("./memory-provider.js");
     await memoryProviderHandlers["memory.get"](options);

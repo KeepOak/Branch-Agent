@@ -446,6 +446,8 @@ export {
   AgentsFilesListResultSchema,
   AgentsFilesGetParamsSchema,
   AgentsFilesGetResultSchema,
+  MemoryExportParamsSchema,
+  MemoryExportResultSchema,
   AgentsFilesSetParamsSchema,
   AgentsFilesSetResultSchema,
   TranscriptSessionSummarySchema,
