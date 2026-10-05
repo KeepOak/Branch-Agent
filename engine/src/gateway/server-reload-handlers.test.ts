@@ -1692,9 +1692,7 @@ describe("gateway hot reload model state", () => {
         current = !becomesStale;
         releaseReconciliation.resolve();
         if (publishes) {
-          await expect(reload).resolves.toBe(
-            reconciliationResult === "retry-scheduled" ? "applied-restart-required" : "applied",
-          );
+          await expect(reload).resolves.toBe("applied");
         } else {
           await expect(reload).rejects.toThrow("publication rejected");
         }
@@ -2287,6 +2285,22 @@ describe("gateway hot reload model state", () => {
       });
     },
   );
+
+  it("keeps an added agent hot when system-job convergence schedules a retry", async () => {
+    await withGatewayRestartSignal(async (signalSpy) => {
+      const { applyHotReload, reconcileSystemJobs, setState } = createReloadHandlersForTest();
+      reconcileSystemJobs.mockResolvedValueOnce("retry-scheduled");
+      const nextConfig: BranchConfig = { agents: { entries: { main: {}, newcomer: {} } } };
+      const result = await applyHotReload(
+        buildGatewayReloadPlan(["agents.entries.newcomer"]),
+        nextConfig,
+      );
+      expect(result).toBe("applied");
+      expect(setState).toHaveBeenCalledOnce();
+      expect(reconcileSystemJobs).toHaveBeenCalledOnce();
+      expect(signalSpy).not.toHaveBeenCalled();
+    });
+  });
 
   it("ignores a delayed cron failure after a newer reload supersedes it", async () => {
     let rejectFirstStart: ((reason: Error) => void) | undefined;

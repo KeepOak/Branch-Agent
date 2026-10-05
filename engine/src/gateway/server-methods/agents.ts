@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { resolvePathPrefixSync } from "@openclaw/fs-safe/advanced";
 import { normalizeOptionalString as resolveOptionalStringParam } from "@branch/normalization-core/string-coerce";
+import { resolvePathPrefixSync } from "@openclaw/fs-safe/advanced";
 import {
   ErrorCodes,
   errorShape,
@@ -72,6 +72,7 @@ import {
   readConfigFileSnapshotForWrite,
   withConfigMutationExclusive,
 } from "../../config/config.js";
+import { createRuntimeConfigWriteApplication } from "../../config/runtime-write-application.js";
 import { purgeAgentSessionStoreEntries } from "../../config/sessions.js";
 import { resolveSessionTranscriptsDirForAgent } from "../../config/sessions/paths.js";
 import type { BranchConfig } from "../../config/types.branch.js";
@@ -80,6 +81,7 @@ import { withAgentExecApprovalsRemoved } from "../../infra/exec-approvals.js";
 import { root, FsSafeError } from "../../infra/fs-safe.js";
 import { isPathInside } from "../../infra/path-guards.js";
 import { movePathToTrash } from "../../plugin-sdk/browser-maintenance.js";
+import { captureGatewayRootWorkAdmissionContinuationScope } from "../../process/gateway-work-admission.js";
 import { normalizeAgentIdStrict } from "../../routing/session-key.js";
 import {
   readAgentDeletionJournal,
@@ -433,12 +435,16 @@ export const agentsHandlers: GatewayRequestHandlers = {
     }
 
     try {
+      const runtimeApplication = createRuntimeConfigWriteApplication(
+        captureGatewayRootWorkAdmissionContinuationScope()?.run,
+      );
       const result = await createAgent({
         name: params.name,
         workspace: params.workspace,
         model: params.model,
         emoji: params.emoji,
         avatar: params.avatar,
+        runtimeApplication,
         assertIdentityInputAllowed: captureGatewayClientUploadCommitGuard({
           method: "agents.create",
           requestParams: params,
@@ -448,6 +454,20 @@ export const agentsHandlers: GatewayRequestHandlers = {
       });
       if (result.status === "error") {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.message));
+        return;
+      }
+      const applicationStatus = runtimeApplication.claimed
+        ? await runtimeApplication.result
+        : "unclaimed";
+      if (applicationStatus !== "applied") {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.UNAVAILABLE,
+            `agent config was saved but is not active (${applicationStatus})`,
+          ),
+        );
         return;
       }
       await reviveAgentDatabasesAfterConfigCommit([result.agentId], (message) =>

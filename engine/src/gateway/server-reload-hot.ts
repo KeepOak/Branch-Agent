@@ -363,12 +363,10 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
         return;
       }
       // Only accepted runtime state may own monitor writes and emitted events.
-      if (
-        plan.reconcileSystemJobs &&
-        (await nextState.cronState.reconcileSystemJobs().catch(failConfigCommit)) ===
-          "retry-scheduled"
-      ) {
-        failConfigCommit(new GatewayHotReloadRecoveryError("cron monitor"));
+      if (plan.reconcileSystemJobs) {
+        // The cron owner schedules its own convergence retry. A failed monitor
+        // row does not make the committed config or other agent runtimes stale.
+        await nextState.cronState.reconcileSystemJobs().catch(failConfigCommit);
       }
       if (plan.restartCron && ownsCron()) {
         startGatewayCronWithLogging({
