@@ -1,4 +1,5 @@
 import { statSync } from "node:fs";
+import { pickTrunkCharacter } from "./trunk-characters.js";
 import fs from "node:fs/promises";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
 import { applyAgentBindings, parseBindingSpecs } from "../commands/agents.bindings.js";
@@ -117,6 +118,9 @@ type CreateAgentParams = {
   model?: string;
   emoji?: unknown;
   avatar?: unknown;
+  colour?: unknown;
+  shape?: unknown;
+  eyes?: unknown;
   agentDir?: string;
   skipBootstrap?: boolean;
   skipOptionalBootstrapFiles?: OptionalBootstrapFileName[];
@@ -338,6 +342,9 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
       name: safeName,
       emoji: params.emoji,
       avatar: params.avatar,
+      colour: params.colour,
+      shape: params.shape,
+      eyes: params.eyes,
     }) ?? { name: safeName };
   const requestedWorkspace = params.entry?.workspace ?? params.workspace;
   const explicitWorkspace = requestedWorkspace?.trim()
@@ -470,6 +477,9 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
           const currentEntries = bootstrappingFirstAgent ? [] : listAgentEntries(currentConfig);
           const existingIndex = findAgentEntryIndex(currentEntries, agentId);
           const existingEntry = currentEntries[existingIndex];
+          if (!params.entry && !template && params.avatar === undefined && !params.bootstrapFirstAgent && !params.bootstrapMain && existingIndex < 0 && currentConfig.agents?.defaultId) {
+            identity.avatar = `branch:${pickTrunkCharacter(currentEntries.map((entry) => entry.identity?.avatar))}`;
+          }
           if (
             isBootstrapMain &&
             currentEntries.length > 0 &&
