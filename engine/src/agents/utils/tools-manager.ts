@@ -74,6 +74,7 @@ function commandExists(cmd: string): boolean {
       killSignal: "SIGKILL",
       stdio: "pipe",
       timeout: 5_000,
+      windowsHide: true,
     });
     // Require a clean exit, not just a successful spawn. An installed-but-broken
     // binary (e.g. GLIBC mismatch after a system upgrade, missing shared lib)

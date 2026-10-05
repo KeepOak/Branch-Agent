@@ -134,6 +134,7 @@ export function runDatabaseVerifyWorker(
     worker = fork(fileURLToPath(workerUrl), [DATABASE_VERIFY_CHILD_ARG], {
       execArgv,
       stdio: ["ignore", "ignore", "ignore", "ipc"],
+      windowsHide: true,
     });
   } catch (error) {
     return Promise.reject(toStructuredErrorObject(error));
