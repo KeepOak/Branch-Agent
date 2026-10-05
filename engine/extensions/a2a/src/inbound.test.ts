@@ -151,6 +151,41 @@ describe("A2A channel inbound dispatch", () => {
     fixture.store.stop();
   });
 
+  it("keeps two context IDs for one peer in distinct isolated sessions", async () => {
+    const fixture = createA2aInboundFixture();
+    const other = fixture.store.create("ctx-other", "hermes");
+    fixture.store.start(other.id);
+    vi.mocked(fixture.runtime.channel.inbound.dispatch).mockImplementation(async (turn) => ({
+      admission: { kind: "dispatch" },
+      dispatched: true,
+      ctxPayload: turn.ctxPayload,
+      routeSessionKey: turn.route.sessionKey,
+      dispatchResult: createA2aDispatchResult(false),
+    }));
+    try {
+      await dispatchA2aInbound(fixture.params);
+      await dispatchA2aInbound({
+        ...fixture.params,
+        taskId: other.id,
+        contextId: "ctx-other",
+        messageId: "other-message",
+      });
+      const turns = vi
+        .mocked(fixture.runtime.channel.inbound.dispatch)
+        .mock.calls.map(([turn]) => turn);
+      expect(turns.map((turn) => turn.route.sessionKey)).toEqual([
+        "agent:main:a2a:default:direct:hermes:ctx-inbound",
+        "agent:main:a2a:default:direct:hermes:ctx-other",
+      ]);
+      expect(turns.map((turn) => turn.route.dmScope)).toEqual([
+        "per-account-channel-peer",
+        "per-account-channel-peer",
+      ]);
+    } finally {
+      fixture.store.stop();
+    }
+  });
+
   it("routes a stable peer binding before account fallback while preserving exact context overrides", async () => {
     const fixture = createA2aInboundFixture();
     const exactTask = fixture.store.create("ctx-exact", "hermes");

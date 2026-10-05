@@ -63,6 +63,8 @@ export const engineTests = [
   'src/gateway/server-methods-list.test.ts',
   'src/agents/prepared-model-runtime.auth-republication-scope.test.ts',
   'src/agents/system-prompt-contacts.test.ts',
+  'extensions/a2a/src/card-cache.test.ts',
+  'extensions/a2a/src/inbound.test.ts',
 ];
 
 export const windowTests = [
