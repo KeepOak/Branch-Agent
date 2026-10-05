@@ -1,8 +1,9 @@
+import type { BigIntStats } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { resolvePathPrefixSync } from "@openclaw/fs-safe/advanced";
 import { normalizeOptionalString as resolveOptionalStringParam } from "@branch/normalization-core/string-coerce";
+import { resolvePathPrefixSync } from "@openclaw/fs-safe/advanced";
 import {
   ErrorCodes,
   errorShape,
@@ -77,7 +78,6 @@ import { resolveSessionTranscriptsDirForAgent } from "../../config/sessions/path
 import type { BranchConfig } from "../../config/types.branch.js";
 import { isMissingPathError } from "../../infra/errors.js";
 import { withAgentExecApprovalsRemoved } from "../../infra/exec-approvals.js";
-import { root, FsSafeError } from "../../infra/fs-safe.js";
 import { isPathInside } from "../../infra/path-guards.js";
 import { movePathToTrash } from "../../plugin-sdk/browser-maintenance.js";
 import { normalizeAgentIdStrict } from "../../routing/session-key.js";
@@ -99,6 +99,13 @@ import {
   validateAgentModelSelectionUpdate,
 } from "./agents-config-mutations.js";
 import {
+  AgentCleanupIdentityMismatchError,
+  cleanupPathIdentity,
+  persistedCleanupPathIdentity,
+  statAgentCleanupPath,
+  type AgentCleanupPathIdentity,
+} from "./agents-delete-identity.js";
+import {
   agentFileHandlers,
   buildIdentityMarkdownOrRespondUnsafe,
   writeWorkspaceFileOrRespond,
@@ -119,7 +126,6 @@ type AgentDeletePathOutcome =
   | { skipped: AgentDeleteFailedPath }
   | { failed: AgentDeleteFailedPath };
 
-class AgentCleanupIdentityMismatchError extends Error {}
 class AgentSharedAuthStoreOwnerError extends Error {}
 
 function agentOwnsSharedAuthStore(cfg: BranchConfig, agentId: string): boolean {
@@ -134,56 +140,6 @@ function agentOwnsSharedAuthStore(cfg: BranchConfig, agentId: string): boolean {
 function cleanupFailure(pathname: string, error: unknown): AgentDeletePathOutcome {
   const reason = error instanceof Error && error.message ? error.message : String(error);
   return { failed: { path: pathname, reason: reason || "unknown error" } };
-}
-
-function cleanupPathIdentity(stat: { dev?: number | bigint; ino?: number | bigint } | undefined) {
-  if (
-    (typeof stat?.dev !== "number" && typeof stat?.dev !== "bigint") ||
-    (typeof stat.ino !== "number" && typeof stat.ino !== "bigint")
-  ) {
-    return null;
-  }
-  const dev = Number(stat.dev);
-  const ino = Number(stat.ino);
-  if (!Number.isSafeInteger(dev) || !Number.isSafeInteger(ino)) {
-    throw new Error("cleanup path identity exceeds the safe integer range");
-  }
-  return { dev, ino };
-}
-
-async function statAgentCleanupPath(cleanupPath: AgentDeleteCleanupPath) {
-  const parentPath = cleanupPath.parentPath;
-  const parentRoot = await root(parentPath, {
-    hardlinks: "reject",
-    symlinks: "reject",
-  });
-  if (path.resolve(parentRoot.rootReal) !== parentPath) {
-    throw new FsSafeError("path-mismatch", "cleanup path parent changed before deletion");
-  }
-  const stat = await parentRoot.stat(path.basename(cleanupPath.trashPath));
-  const isSymlink = stat.isSymbolicLink;
-  if (isSymlink !== (cleanupPath.kind === "symlink")) {
-    throw new AgentCleanupIdentityMismatchError(
-      `cleanup path changed from ${cleanupPath.kind} before deletion`,
-    );
-  }
-  if (stat.isFile && stat.nlink > 1) {
-    throw new AgentCleanupIdentityMismatchError("hardlinked cleanup replacement preserved");
-  }
-  const identity = cleanupPathIdentity(stat);
-  if (cleanupPath.preparedIdentity === null) {
-    // The journal fence blocks legitimate claims on prepared-absent paths, so a
-    // file that appeared here is leaked deleted-agent state (recreated WAL
-    // sidecars, runtime home rewrites). Adopt it and sweep it; preserving it
-    // cascades ancestor protection and finishes over a surviving tree.
-    cleanupPath.preparedIdentity = identity;
-  } else if (
-    identity === null ||
-    identity.dev !== cleanupPath.preparedIdentity.dev ||
-    identity.ino !== cleanupPath.preparedIdentity.ino
-  ) {
-    throw new AgentCleanupIdentityMismatchError("cleanup path identity changed before deletion");
-  }
 }
 
 async function removeAgentPath(
@@ -243,7 +199,7 @@ type AgentDeleteCleanupPath = {
   trashPath: string;
   trashCoversDescendants: boolean;
   kind: "target" | "symlink";
-  preparedIdentity: { dev: number; ino: number } | null;
+  preparedIdentity: AgentCleanupPathIdentity | null;
   done: boolean;
   note?: string;
   preparationError?: unknown;
@@ -295,10 +251,7 @@ async function prepareAgentDeleteCleanupPaths(
       trashPath,
       trashCoversDescendants: persistedPath.coversDescendants,
       kind: persistedPath.kind,
-      preparedIdentity:
-        persistedPath.dev === null || persistedPath.ino === null
-          ? null
-          : { dev: persistedPath.dev, ino: persistedPath.ino },
+      preparedIdentity: persistedCleanupPathIdentity(persistedPath.dev, persistedPath.ino),
       done: persistedPath.done,
       note: persistedPath.note,
       sourcePaths: persistedPath.sourcePaths.map((sourcePath) => path.resolve(sourcePath)),
@@ -315,9 +268,9 @@ async function prepareAgentDeleteCleanupPaths(
     } catch (error) {
       preparationError = error;
     }
-    let sourceStat: Awaited<ReturnType<typeof fs.lstat>> | undefined;
+    let sourceStat: BigIntStats | undefined;
     try {
-      sourceStat = await fs.lstat(pathname);
+      sourceStat = await fs.lstat(pathname, { bigint: true });
     } catch (error) {
       if (!isMissingPathError(error)) {
         preparationError ??= error;
@@ -326,7 +279,7 @@ async function prepareAgentDeleteCleanupPaths(
     let targetStat = sourceStat;
     if (resolvedPath !== sourcePath) {
       try {
-        targetStat = await fs.lstat(resolvedPath);
+        targetStat = await fs.lstat(resolvedPath, { bigint: true });
       } catch (error) {
         if (!isMissingPathError(error)) {
           preparationError ??= error;

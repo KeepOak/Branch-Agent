@@ -5,6 +5,8 @@ export const engineTests = [
   'src/agents/tools/message-tool-execution.test.ts',
   'src/security/audit-cross-agent-session-access.test.ts',
   'src/commands/agents.identity.test.ts',
+  'src/gateway/server-methods/agents-delete-identity.test.ts',
+  'src/state/agent-deletion-journal.identity.test.ts',
   'src/gateway/server-methods/chat-history.segments.test.ts',
   'extensions/codex/src/app-server/windows-shell-guidance.test.ts',
   'src/gateway/server-methods/memory-export.test.ts',
@@ -59,6 +61,8 @@ export const engineTests = [
 export const windowTests = [
   'src/shell/who-it-knows.test.ts',
   'src/shell/who-it-knows-button.test.tsx',
+  'src/shell/contacts-model.test.ts',
+  'src/shell/row-menu.test.ts',
   'src/connect/desktop-component-updates.test.tsx',
   'src/thread/PlanCard.test.ts',
   'src/thread/PlanCard.note-only.test.tsx',

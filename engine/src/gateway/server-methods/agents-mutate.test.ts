@@ -292,8 +292,7 @@ vi.mock("../../state/branch-agent-db.js", () => ({
     mocks.closeBranchAgentDatabaseByPath(pathname, expectedAgentId),
   listBranchRegisteredAgentDatabases: mocks.listBranchRegisteredAgentDatabases,
   resolveBranchAgentSqlitePath: mocks.resolveBranchAgentSqlitePath,
-  resolveIncognitoBranchAgentSqlitePath: () =>
-    "/agents/test-agent/incognito-branch-agent.sqlite",
+  resolveIncognitoBranchAgentSqlitePath: () => "/agents/test-agent/incognito-branch-agent.sqlite",
 }));
 
 vi.mock("../../state/agent-deletion-journal.js", () => ({
