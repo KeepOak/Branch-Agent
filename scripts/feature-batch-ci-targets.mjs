@@ -7,6 +7,7 @@ export const engineTests = [
   'src/config/config.identity-avatar.test.ts',
   'src/gateway/assistant-avatar.test.ts',
   'src/gateway/assistant-identity.test.ts',
+  'src/gateway/sessions-patch.done.test.ts',
   'src/coding/unified-diff.test.ts',
   'src/agents/apply-patch.unified-diff.test.ts',
   'src/agents/apply-patch.test.ts',
