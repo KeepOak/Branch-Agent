@@ -1,5 +1,6 @@
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
+  'src/gateway/server-methods/chat-history.segments.test.ts',
   'extensions/codex/src/app-server/windows-shell-guidance.test.ts',
   'src/gateway/server-methods/memory-export.test.ts',
   'src/agents/agent-create.test.ts',
@@ -48,9 +49,13 @@ export const engineTests = [
   'src/agents/cli-output-records.test.ts',
   'src/agents/cli-output-jsonl.test.ts',
   'src/agents/main-session-recovery/main-session-restart-recovery.pending-admission.test.ts',
+  // Pins the advertised method order: new gateway methods must append, never shift older indices.
+  'src/gateway/server-methods-list.test.ts',
 ];
 
 export const windowTests = [
+  'src/shell/contacts-model.test.ts',
+  'src/shell/row-menu.test.ts',
   'src/connect/desktop-component-updates.test.tsx',
   'src/thread/PlanCard.test.ts',
   'src/thread/PlanCard.note-only.test.tsx',

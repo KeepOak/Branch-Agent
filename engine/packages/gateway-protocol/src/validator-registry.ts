@@ -358,6 +358,7 @@ export const validateSessionsGroupsDeleteParams = compile(S.SessionsGroupsDelete
 export const validateSessionsGroupsMutationResult = compile(S.SessionsGroupsMutationResultSchema);
 export const validateSessionsCompactParams = compile(S.SessionsCompactParamsSchema);
 export const validateSessionsBranchesListParams = compile(S.SessionsBranchesListParamsSchema);
+export const validateSessionsSegmentsListParams = compile(S.SessionsSegmentsListParamsSchema);
 export const validateSessionsBranchesSwitchParams = compile(S.SessionsBranchesSwitchParamsSchema);
 export const validateSessionsRewindParams = compile(S.SessionsRewindParamsSchema);
 export const validateSessionsForkParams = compile(S.SessionsForkParamsSchema);
