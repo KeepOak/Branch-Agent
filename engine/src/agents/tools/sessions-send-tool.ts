@@ -185,7 +185,9 @@ export function createSessionsSendTool(opts?: SessionsSendToolOptions): AnyAgent
           if (!a2aPolicy.isAllowed(requesterAgentId, requestedAgentId)) {
             return sendFailure(
               "forbidden",
-              "Agent-to-agent messaging denied by tools.agentToAgent.allow.",
+              a2aPolicy.matchesAllow(requesterAgentId) && a2aPolicy.matchesAllow(requestedAgentId)
+                ? "Agent-to-agent messaging denied by agents.entries.<id>.agentToAgent."
+                : "Agent-to-agent messaging denied by tools.agentToAgent.allow.",
             );
           }
         }

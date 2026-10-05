@@ -80,4 +80,26 @@ describe("the conversation header's Who it knows button", () => {
     await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=who-it-knows-button]")?.click());
     expect(document.querySelector("[data-testid=who-it-knows]")?.textContent).toContain("talking between Trunks is off");
   });
+
+  it("switches one target by writing deny without materializing an allow list", async () => {
+    let deny: string[] = [];
+    const request = vi.fn(async (method: string, params?: unknown) => {
+      if (method === "config.get") return { hash: "h1", config: { agents: { entries: { sapling: { agentToAgent: { deny } } } } } };
+      if (method === "config.patch") {
+        deny = (JSON.parse((params as { raw: string }).raw) as { agents: { entries: { sapling: { agentToAgent: { deny: string[] } } } } }).agents.entries.sapling.agentToAgent.deny;
+        return { ok: true };
+      }
+      return {};
+    });
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root?.render(<Harness p={props(request)} />));
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=who-it-knows-button]")?.click());
+    await act(async () => document.querySelector<HTMLButtonElement>("[data-testid=who-it-knows] button[role=menuitemcheckbox]")?.click());
+    expect(deny).toEqual(["fern"]);
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { sapling: { agentToAgent: { deny: ["fern"] } } } } }) });
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=who-it-knows-button]")?.click());
+    await act(async () => document.querySelector<HTMLButtonElement>("[data-testid=who-it-knows] button[role=menuitemcheckbox]")?.click());
+    expect(deny).toEqual([]);
+  });
 });

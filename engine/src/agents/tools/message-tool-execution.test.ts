@@ -188,7 +188,8 @@ describe("registered message action source completion", () => {
         agentId: "main",
         runId: "source-completion-run",
         sessionKey: "agent:main:workspace:group:C123",
-      };
+};
+
       const source = {
         currentChannelProvider: "workspace",
         currentChannelId: "C123",
@@ -837,4 +838,23 @@ describe("message tool group thread replies", () => {
       ]);
     },
   );
+});
+
+describe("message tool outbound A2A permission", () => {
+  it("denies a peer before credential preparation or delivery", async () => {
+    const resolveSecrets = vi.fn(secretDeps.resolveCommandSecretRefsViaGateway);
+    const send = vi.fn();
+    const tool = createMessageTool({
+      config: { agents: { entries: { main: { agentToAgent: { deny: ["a2a:blocked*"] } } } } },
+      agentId: "main",
+      preparedMessageToolCatalog: EMPTY_CATALOG,
+      ...secretDeps,
+      resolveCommandSecretRefsViaGateway: resolveSecrets,
+      runMessageAction: send,
+    });
+    await expect(tool.execute("a2a-denied", { action: "send", channel: "a2a", target: "blocked-peer", message: "hi" }))
+      .rejects.toThrow("Agent-to-agent messaging denied by agentToAgent policy");
+    expect(resolveSecrets).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
 });

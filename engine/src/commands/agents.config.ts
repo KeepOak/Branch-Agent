@@ -227,17 +227,15 @@ export function pruneAgentConfig(
     if (normalizeAgentId(entry.id) === id) {
       continue;
     }
-    nextAgentsList.push(
-      entry.subagents?.allowAgents
-        ? {
-            ...entry,
-            subagents: {
-              ...entry.subagents,
-              allowAgents: pruneAllowAgents(entry.subagents.allowAgents),
-            },
-          }
-        : entry,
-    );
+    nextAgentsList.push({
+      ...entry,
+      ...(entry.subagents?.allowAgents ? { subagents: { ...entry.subagents, allowAgents: pruneAllowAgents(entry.subagents.allowAgents) } } : {}),
+      ...(entry.agentToAgent ? { agentToAgent: {
+        ...entry.agentToAgent,
+        allow: pruneAllowAgents(entry.agentToAgent.allow),
+        deny: pruneAllowAgents(entry.agentToAgent.deny),
+      } } : {}),
+    });
   }
   const nextAgents = nextAgentsList.length > 0 ? toAgentEntriesRecord(nextAgentsList) : undefined;
 
