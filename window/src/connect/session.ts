@@ -168,11 +168,11 @@ export class SaplingSession {
     }
     const mainKey = readMainSessionKey(status.hello);
     const sessionKey = this.wanted ?? mainKey;
-    if (sessionKey !== this.snapshot.sessionKey) {
-      this.runs.clear();
-      this.approvals.clear();
-    }
-    this.set({ sessionKey, mainKey });
+    // Every hello is a fresh engine (a restart, or an update swapped in under this window): the runs this
+    // window mirrored are gone with the old one. Clear them; chat.history's inFlightRun says what still runs.
+    this.runs.clear();
+    this.approvals.clear();
+    this.set({ sessionKey, mainKey, live: [], liveRunId: null, pendingUser: null });
     void this.bootstrap(status, sessionKey);
   }
 

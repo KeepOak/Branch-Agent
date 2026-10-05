@@ -6,11 +6,12 @@ import { toErrorObject } from "../infra/errors.js";
 import { getSpawnBroker } from "./spawn-broker/context.js";
 import { brokerSpawnOptions } from "./spawn-broker/host.js";
 import { recordChildProcessSpawn } from "./spawn-diagnostics.js";
+import { hiddenWindowsOptions } from "./windows-hidden-options.js";
 import type { SpawnInitiation } from "./spawn-initiation.js";
 
 /** Default supervised Windows children to hidden, without overriding intentional GUI launches. */
 export function hiddenSpawnOptions(options: SpawnOptions, platform: NodeJS.Platform = process.platform): SpawnOptions {
-  return platform === "win32" ? { ...options, windowsHide: options.windowsHide ?? true } : options;
+  return hiddenWindowsOptions(options, platform);
 }
 
 /** Select the process-scoped native spawn transport. */

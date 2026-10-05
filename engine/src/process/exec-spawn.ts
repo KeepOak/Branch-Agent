@@ -19,6 +19,7 @@ import {
 import { killProcessTree } from "./kill-tree.js";
 import { scheduleAdoptedChildZombieReapAfterExit } from "./scoped-child-reaper.js";
 import { BrokerChild } from "./spawn-broker/child.js";
+import { hiddenWindowsOptions } from "./windows-hidden-options.js";
 import { getSpawnBroker } from "./spawn-broker/context.js";
 import { brokerExecaOptions, spawnBrokerCommand } from "./spawn-broker/execa-client.js";
 import type { CommandSpawnOptions, CommandSubprocess } from "./spawn-broker/execa-types.js";
@@ -400,7 +401,7 @@ export function spawnCommandWithInvocation<
     env: commandEnv,
     extendEnv: false,
     shell: false,
-    windowsHide: invocation.windowsHide,
+    windowsHide: hiddenWindowsOptions(invocation).windowsHide,
     windowsVerbatimArguments: invocation.windowsVerbatimArguments,
   };
   const broker = getSpawnBroker();

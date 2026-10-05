@@ -59,6 +59,7 @@ type Props = {
   questions?: QuestionRecord[];
   /** Sends a starter from the empty conversation (§4.2.9), the same way the composer sends. */
   onStart?: (text: string) => void;
+  /** The conversation's last run error (sessions.list lastRunError); restart recovery's own one shows "Stopped by restart". */
   recoveryFailure?: string;
   /** The Plan card; it goes after the turn that last updated it (planAnchor), else at the end (§4.2.2). */
   plan?: ReactNode;
@@ -77,6 +78,9 @@ type Props = {
 };
 
 /** Distance from the end that still counts as "at the end", and that shows "Scroll to latest" (§4.2.2). */
+/** The lastRunError the engine's restart recovery records when it could not carry a run on
+ * (engine main-session-restart-recovery-store.ts tombstoneMainRestartRecoveryWithNotice). */
+const RESTART_NOT_RESUMED = "Interrupted by a restart. Continue?";
 const NEAR_END_PX = 80;
 const LATEST_PX = 450;
 
@@ -251,8 +255,8 @@ export function Thread(props: Props) {
               onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
           ) : null}
           {props.supplement}
-          {props.recoveryFailure === "Interrupted by a restart. Continue?" ? (
-            <div className="notice" role="alert">Interrupted by a restart. {recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Continue</button> : null}</div>
+          {props.recoveryFailure === RESTART_NOT_RESUMED ? (
+            <div className="pass-line restart-stop" role="status" data-testid="restart-stopped">Stopped by restart{recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Resume</button> : null}</div>
           ) : null}
           {planAt < 0 ? props.plan : null}
           <div ref={follow.end} className="thread-end" />

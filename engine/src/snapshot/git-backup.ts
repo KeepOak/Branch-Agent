@@ -29,6 +29,13 @@ import {
   type GitBackupManifest,
   type GitBackupRestoreResult,
 } from "./git-backup-codec.js";
+import {
+  GIT_BACKUP_FILES_SCOPE,
+  isBackupOwnedFilesScope,
+  writeGitBackupFiles,
+  type GitBackupFilesSource,
+} from "./git-backup-files.js";
+import { describeSkippedMedia } from "./git-backup-media.js";
 import { ensurePrivateSnapshotRepositoryRoot } from "./local-repository.js";
 import { createBranchSnapshotCopy } from "./branch-snapshot-copy.js";
 import type { SnapshotDatabaseRef } from "./snapshot-provider.js";
@@ -44,6 +51,8 @@ type GitBackupCreateResult = {
   pushed: boolean;
   pushWarning?: string;
   manifests: GitBackupManifest[];
+  /** Files written by the Branch files scope (redacted config and workspaces), when selected. */
+  files?: Awaited<ReturnType<typeof writeGitBackupFiles>>;
   warnings: string[];
 };
 
@@ -285,6 +294,7 @@ export async function createGitBackup(params: {
   push?: boolean;
   now?: Date;
   gitEnv?: NodeJS.ProcessEnv;
+  files?: GitBackupFilesSource;
 }): Promise<GitBackupCreateResult> {
   for (const database of params.databases) {
     assertNotUpdateCapturePath(database.path, params.stateDir);
@@ -301,6 +311,7 @@ export async function createGitBackup(params: {
   });
   const manifests: GitBackupManifest[] = [];
   const warnings: string[] = [];
+  let filesManifest: GitBackupCreateResult["files"];
   try {
     for (const [index, database] of params.databases.entries()) {
       const outputPath = path.join(staging.dir, gitBackupScopePath(database.identity));
@@ -343,22 +354,31 @@ export async function createGitBackup(params: {
     for (const { identity } of manifests) {
       await copyStagedScope(staging.dir, repositoryPath, identity);
     }
+    if (params.files) {
+      filesManifest = await replaceFilesScope(staging.dir, repositoryPath, params.files);
+      const skippedMedia = filesManifest.media ? describeSkippedMedia(filesManifest.media) : undefined;
+      if (skippedMedia) {
+        warnings.push(skippedMedia);
+      }
+    }
   } finally {
     await staging.cleanup().catch(() => undefined);
   }
   // Keep both owned roots present so Git accepts both scoped pathspecs even on a first global-only
   // or agent-only backup. Empty directories remain untracked.
+  const ownedScopes = ["global", "agents", ...(params.files ? [GIT_BACKUP_FILES_SCOPE] : [])];
   await Promise.all(
-    ["global", "agents"].map(async (scope) =>
+    ownedScopes.map(async (scope) =>
       fs.mkdir(path.join(repositoryPath, scope), { recursive: true, mode: 0o700 }),
     ),
   );
-  await requireGit(repositoryPath, ["add", "-A", "--", "global", "agents"], {
+  // -f: a workspace's own .gitignore (or the user's global excludes) must not drop backed-up files.
+  await requireGit(repositoryPath, ["add", "-A", "-f", "--", ...ownedScopes], {
     env: params.gitEnv,
   });
   const changed = await requireGit(
     repositoryPath,
-    ["status", "--porcelain", "--", "global", "agents"],
+    ["status", "--porcelain", "--", ...ownedScopes],
     {
       env: params.gitEnv,
     },
@@ -371,10 +391,10 @@ export async function createGitBackup(params: {
     }
     const stagedBackupPaths = await requireGit(
       repositoryPath,
-      ["diff", "--cached", "--name-only", "--", "global", "agents"],
+      ["diff", "--cached", "--name-only", "--", ...ownedScopes],
       { env: params.gitEnv },
     );
-    const commitScopes = ["global", "agents"].filter((scope) =>
+    const commitScopes = ownedScopes.filter((scope) =>
       stagedBackupPaths.split("\n").some((entry) => entry.startsWith(`${scope}/`)),
     );
     commit = await commitGitBackup({
@@ -414,8 +434,32 @@ export async function createGitBackup(params: {
     pushed,
     ...(pushWarning ? { pushWarning } : {}),
     manifests,
+    ...(filesManifest ? { files: filesManifest } : {}),
     warnings,
   };
+}
+
+/** Rebuild the Branch files scope in staging, then swap it into the repository. */
+async function replaceFilesScope(
+  stagingRoot: string,
+  repositoryPath: string,
+  files: GitBackupFilesSource,
+): Promise<Awaited<ReturnType<typeof writeGitBackupFiles>>> {
+  const target = path.join(repositoryPath, GIT_BACKUP_FILES_SCOPE);
+  if (!(await isBackupOwnedFilesScope(target))) {
+    throw new Error(
+      `Refusing to replace non-backup-owned path ${target}; the repository must be dedicated to Branch Agent backups.`,
+    );
+  }
+  const staged = path.join(stagingRoot, GIT_BACKUP_FILES_SCOPE);
+  const manifest = await writeGitBackupFiles(staged, {
+    ...files,
+    // The staging root can sit inside a workspace (for example a home-folder workspace).
+    protectedPaths: [...files.protectedPaths, repositoryPath, stagingRoot],
+  });
+  await fs.rm(target, { recursive: true, force: true });
+  await fs.cp(staged, target, { recursive: true, force: false });
+  return manifest;
 }
 
 async function resolveGitCommit(repositoryPath: string, ref?: string): Promise<string> {

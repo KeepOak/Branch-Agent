@@ -35,6 +35,7 @@ export type AgentsConfig = {
   ownership?: "explicit";
   /** Contact Trunk used by unrouted conversations; explicit bindings take precedence. */
   defaultId?: string;
+  characterAssignmentVersion?: 1;
   defaults?: AgentDefaultsConfig;
   entries?: Record<string, AgentEntryConfig>;
 };

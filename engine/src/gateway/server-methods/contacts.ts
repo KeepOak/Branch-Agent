@@ -34,6 +34,7 @@ import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role
 import { createSessionListEntryFilter } from "../session-sharing.js";
 import { readSessionTitleFieldsFromTranscriptAsync } from "../session-transcript-title-reader.js";
 import { deriveSessionTitle } from "../session-utils-core.js";
+import { createVisibleActiveSessionRunProjector } from "./session-active-runs.js";
 import { emitSessionsChanged } from "./session-change-event.js";
 import type { GatewayRequestHandlers, GatewayRequestHandlerOptions } from "./types.js";
 import { assertValidParams } from "./validation.js";
@@ -100,8 +101,19 @@ async function readProjection({
     }
   }
   sessionMutationAuthorization?.assertCurrent();
+  // Working comes from the live run registry, as sessions.list's hasActiveRun does; the stored
+  // writer id outlives a restart.
+  const activeRun = createVisibleActiveSessionRunProjector(context);
   return {
     ...projectContacts({
+      isWorking: (row) =>
+        activeRun({
+          requestedKey: row.sessionKey,
+          canonicalKey: row.sessionKey,
+          sessionId: row.entry.sessionId,
+          agentId: parseAgentSessionKey(row.sessionKey)?.agentId ?? roster.defaultId,
+          defaultAgentId: roster.defaultId,
+        }).active,
       agents,
       defaultAgentId: roster.defaultId,
       mainKey: roster.mainKey,
@@ -142,13 +154,18 @@ export const contactHandlers: GatewayRequestHandlers = {
     )
       return;
     const settings = readOutsideAgentSettings();
-    const id = assignOutsideAgentId(params.agent, listOutsideAgents());
+    // A goodbye keeps the id the session had; a hello may get <id>-N while another session holds the id.
+    const id = params.leaving
+      ? params.agent.id
+      : assignOutsideAgentId(params.agent, listOutsideAgents());
     const refusal = outsideAgentRefusal({ ...params.agent, id }, settings);
     if (refusal) {
       respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, refusal));
       return;
     }
-    const record = recordOutsideAgent({ ...params.agent, id });
+    const record = recordOutsideAgent({ ...params.agent, id }, Date.now(), undefined, {
+      leaving: params.leaving === true,
+    });
     context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
     respond(true, {
       contact: { id: `a2a:${record.id}`, name: record.name, where: record.where ?? null },

@@ -691,6 +691,7 @@ describe("ensureTool exit-status handling", () => {
       killSignal: "SIGKILL",
       stdio: "pipe",
       timeout: 5_000,
+      windowsHide: true,
     });
     expect(fetchWithSsrFGuardMock).not.toHaveBeenCalled();
   });

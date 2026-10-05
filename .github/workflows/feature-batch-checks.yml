@@ -18,6 +18,8 @@ on:
       - 'scripts/feature-batch-ci-window-tooling/**'
       - 'scripts/feature-batch-ci-named/**'
       - '.github/workflows/feature-batch-checks.yml'
+  schedule:
+    - cron: '23 7 * * *'
   workflow_dispatch:
 
 permissions:
@@ -25,7 +27,7 @@ permissions:
 
 concurrency:
   group: feature-batch-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   feature-batch:
@@ -36,7 +38,9 @@ jobs:
       fail-fast: false
       max-parallel: 6
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        # PRs run Linux and Windows. macOS runs on main after merge, nightly, and on PRs that touch
+        # OS-specific code (os-specific-checks.yml). macOS runners have the lowest concurrency limit.
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["windows-latest", "ubuntu-latest"]' || '["windows-latest", "macos-latest", "ubuntu-latest"]') }}
         shard: [1, 2]
     env:
       CI: 'true'

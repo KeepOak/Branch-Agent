@@ -26,7 +26,7 @@ export type WindowsSpawnProgramCandidate = {
   leadingArgv: string[];
   /** Candidate resolution path, or unresolved-wrapper when shell policy must decide. */
   resolution: WindowsSpawnCandidateResolution | "unresolved-wrapper";
-  /** Hide the transient Windows console for Node/exe entrypoint launches. */
+  /** Hide the Windows console window; every win32 candidate sets it. */
   windowsHide?: boolean;
 };
 
@@ -346,10 +346,12 @@ export function resolveWindowsSpawnProgramCandidate(
   }
 
   // Unresolved wrappers need the caller's explicit shell-fallback policy.
+  // Direct .exe launches and cmd.exe fallbacks open a console window unless hidden.
   return {
     command: resolvedCommand,
     leadingArgv: [],
     resolution: isWrapper ? "unresolved-wrapper" : "direct",
+    windowsHide: true,
   };
 }
 
@@ -372,6 +374,7 @@ export function applyWindowsSpawnProgramPolicy(params: {
       leadingArgv: [],
       resolution: "shell-fallback",
       shell: true,
+      windowsHide: true,
     };
   }
   throw new Error(

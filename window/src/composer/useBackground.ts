@@ -1,6 +1,6 @@
 // Background work started from this composer (DESIGN-SPEC §4.3.2 "Run it in the background", §4.3.7 Background
 // chip): each job is its own conversation made with sessions.create { message }, followed with sessions.describe.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { errorText, list, rec, str, type WindowEngine } from "./engine";
 import type { BackgroundJob } from "./DockRow";
 
@@ -21,6 +21,15 @@ export function useBackground(engine: WindowEngine | undefined, agentId: string 
     },
     [engine],
   );
+
+  // A new connection is a new engine (a restart or an update): ask it again whether each job still runs.
+  const jobsNow = useRef(jobs);
+  jobsNow.current = jobs;
+  useEffect(() => {
+    for (const job of jobsNow.current.filter((j) => j.running)) {
+      refresh(job.key).catch((e: unknown) => console.warn("Couldn't read a background conversation:", errorText(e)));
+    }
+  }, [refresh]);
 
   useEffect(() => {
     if (!engine) return;
