@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
@@ -67,7 +67,9 @@ async function fixture(run, holdStartup = false) {
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
   Module._load = function(name, ...args) { return name === "electron" ? runtime.electron : originalLoad.call(this, name, ...args); };
   globalThis.fetch = (url, options) => String(url).startsWith("https://github.com/") ? Promise.resolve(new Response("", { status: 404 })) : originalFetch(url, options);
-  for (const file of Object.keys(require.cache)) if (file.replaceAll("\\", "/").startsWith(process.env.BRANCH_DESKTOP_TEST_DIST)) delete require.cache[file];
+  // Fresh main.js per test: compare normalized paths (CI passes a mixed-slash workspace path on Windows).
+  const dist = resolve(process.env.BRANCH_DESKTOP_TEST_DIST).replaceAll("\\", "/").toLowerCase();
+  for (const file of Object.keys(require.cache)) if (file.replaceAll("\\", "/").toLowerCase().startsWith(dist)) delete require.cache[file];
   const restart = () => runtime.ipcMain.emit("branch-desktop:restart-engine", { sender: runtime.window.webContents, senderFrame: runtime.window.webContents.mainFrame });
   try {
     require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js"));
