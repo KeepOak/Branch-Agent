@@ -14,6 +14,7 @@ const info = ipcRenderer.sendSync("branch-desktop:info") as DesktopInfo | null;
 if (info) {
   contextBridge.exposeInMainWorld("branchDesktop", {
     gatewayUrl: info.gatewayUrl, gatewayToken: info.gatewayToken,
+    clipboard: { writeText: (text: string) => ipcRenderer.invoke("branch-desktop:clipboard:write-text", text) },
     componentUpdates: {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
       check: () => ipcRenderer.invoke("branch-desktop:component-update:check"),

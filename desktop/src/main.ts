@@ -1,5 +1,5 @@
 // Branch Agent desktop app: starts the engine gateway, serves the built window on 127.0.0.1 and shows it.
-import { app, BrowserWindow, dialog, ipcMain, screen, session, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, session, shell } from "electron";
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
@@ -14,6 +14,7 @@ import { createComponentUpdateController, isOwnedComponentWindow, registerCompon
 import { createDesktopControls, registerDesktopControlsIpc } from "./desktop-controls";
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
 import { registerTitleBarIpc, titleBarOptions } from "./title-bar";
+import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, stagedDesktopVersion, type DesktopInstall } from "./desktop-update";
 import type { Tray } from "electron";
@@ -146,6 +147,7 @@ async function start(): Promise<void> {
   registerComponentUpdateIpc(ipcMain, () => win?.webContents, windowUrl(), componentUpdates);
   registerDesktopControlsIpc(ipcMain, () => win?.webContents, windowUrl(), controls);
   registerTitleBarIpc(ipcMain, () => win?.webContents, windowUrl(), (overlay) => win?.setTitleBarOverlay(overlay));
+  registerClipboardIpc(ipcMain, () => win?.webContents, windowUrl(), clipboard);
   controls.apply();
   win = createWindow();
   await win.loadURL(STARTING);

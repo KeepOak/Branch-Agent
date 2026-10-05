@@ -7,6 +7,11 @@ it("includes captured native command output in the live tool result", () => {
     id: "command-1", type: "commandExecution", status: "completed", command: "pnpm -C window typecheck",
     exitCode: 0, aggregatedOutput: "window strict type check passed",
   } as CodexThreadItem;
+  const started = projectNormalizedToolItem({ phase: "start", item });
+  expect(started?.event?.data).toMatchObject({
+    phase: "start", name: "bash", toolCallId: "command-1",
+    args: { command: "pnpm -C window typecheck" },
+  });
   const projected = projectNormalizedToolItem({ phase: "result", item });
   expect(projected?.event?.data).toMatchObject({
     phase: "result", name: "bash", toolCallId: "command-1",

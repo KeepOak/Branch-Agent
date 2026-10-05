@@ -48,7 +48,10 @@ it("renders Codex thinking, command input/output, changed files, and a ticking p
   expect(container.querySelector('[data-testid="step"][data-kind="bash"]')?.textContent).toContain("pnpm -C window typecheck");
   const command = container.querySelector('[data-testid="step"][data-kind="bash"] details') as HTMLDetailsElement;
   await act(async () => { command.open = true; });
-  expect(command.textContent).toContain("Typecheck passed");
+  expect(command.querySelector(".step-output pre")?.textContent).toBe("Typecheck passed");
+  const outputBlocks = [...container.querySelectorAll(".step-output pre")];
+  expect(outputBlocks.length).toBeGreaterThan(0);
+  expect(outputBlocks.every((pre) => Boolean(pre.textContent?.trim()))).toBe(true);
   expect(container.querySelector('[data-testid="files-changed"]')?.textContent).toContain("window/src/thread/model.ts");
   expect(container.querySelector('[data-testid="files-changed"]')?.textContent).toContain("window/src/thread/blocks.tsx");
   expect(container.querySelector('[data-testid="plan-card"] [data-state="completed"]')).not.toBeNull();
