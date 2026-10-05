@@ -14,6 +14,34 @@ import {
 import type { getAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
 import { isSameBranchAgentDatabasePath } from "../state/branch-agent-db.paths.js";
 
+/**
+ * Runs startup model publication under the preparation's currency check. A config or secrets
+ * reload that supersedes the publication supersedes the whole preparation, so startup retries
+ * it instead of leaving the agent degraded.
+ */
+export async function runStartupModelPublication(
+  assertPreparationCurrent: () => void,
+  publish: (isPublicationCurrent: () => boolean) => Promise<unknown>,
+): Promise<void> {
+  let superseded: unknown;
+  try {
+    await publish(() => {
+      try {
+        assertPreparationCurrent();
+        return true;
+      } catch (error) {
+        superseded ??= error;
+        return false;
+      }
+    });
+  } catch (error) {
+    if (superseded instanceof AgentDatabasePreparationSupersededError) {
+      throw superseded;
+    }
+    throw error;
+  }
+}
+
 function assertAgentDatabaseConfiguration(
   cfg: BranchConfig,
   agentId: string,
@@ -191,21 +219,16 @@ export function activateGatewayAgentDatabaseStartup(params: {
           });
           assertPreparationCurrent();
           const pluginMetadataSnapshot = params.getPluginMetadataSnapshot();
-          await withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
-            refreshPreparedModelRuntimeSnapshots(cfg, {
-              agentIds,
-              catalogMode: "static",
-              allowGatewaySubagentBinding: true,
-              ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
-              isPublicationCurrent: () => {
-                try {
-                  assertPreparationCurrent();
-                  return true;
-                } catch {
-                  return false;
-                }
-              },
-            }),
+          await runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
+            withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
+              refreshPreparedModelRuntimeSnapshots(cfg, {
+                agentIds,
+                catalogMode: "static",
+                allowGatewaySubagentBinding: true,
+                ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
+                isPublicationCurrent,
+              }),
+            ),
           );
           preparedInput = listConfiguredOwnerInputs(cfg, undefined, true).find(
             (input) => input.agentId === agentId,
