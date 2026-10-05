@@ -127,6 +127,8 @@ export const windowTests = [
   'src/thread/Rail.test.tsx',
   'src/stage/pane/PreviewTab.test.tsx',
   'src/places/library/memory.test.tsx',
+  'src/shell/new-menu.test.ts',
+  'src/composer/useBackground.test.ts',
 ];
 
 // Capability regressions run in their own CI job beside the named batch, in parallel workers.

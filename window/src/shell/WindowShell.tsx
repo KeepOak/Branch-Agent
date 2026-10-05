@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { Conversation } from "../connect/conversations";
 import type { SendExtras } from "../connect/engine";
 import type { SaplingSession, SessionSnapshot } from "../connect/session";
+import { withOwner } from "../connect/agent-owner";
 import { Composer, VOICE_OFF } from "../composer/Composer";
 import { Thread } from "../thread/Thread";
 import { PlaceView } from "../places-nav/PlaceView";
@@ -29,7 +30,7 @@ import { MIN_PANE, NO_ROOM, PaneDivider, SplitPanes, TOO_NARROW, type Pane } fro
 import { useRowCard, useRowExtras, useSelection } from "./sidebar-state";
 import { machineMenuItems, MachineSwitcher } from "./MachineMenu";
 import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
-import { newMenuItems } from "./new-menu";
+import { createTopic, newMenuItems } from "./new-menu";
 import { notify } from "./notify";
 import { SaveProgressOffer, useCkptOn } from "./SaveProgress";
 import { SidebarPet } from "./SidebarPet";
@@ -313,6 +314,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const isNarrow = useNarrow();
   const [slideOpen, setSlideOpen] = useState(false);
   const [route, setRoute] = useState<Route>(loadRoute);
+  const [draftTopic, setDraftTopic] = useState<{ agentId: string; nonce: string; options: Record<string, unknown> } | null>(null);
+  const draftTopicRef = useRef(draftTopic);
+  draftTopicRef.current = draftTopic;
+  const creatingTopic = useRef<string | null>(null);
   const [theme, setTheme] = useState<ThemeChoice>(readThemeChoice);
   const [prefs, setPrefs] = useState<ListPrefs>(readPrefs);
   const [overlay, setOverlay] = useState<Overlay>(null);
@@ -363,10 +368,20 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     [trunks],
   );
   const openKey = s.sessionKey;
+  const mainKeySuffix = s.mainKey?.split(":").slice(2).join(":") || "main";
+  const activeEngine = session.engine;
+  const draftEngine = useMemo(() => draftTopic ? {
+    ...activeEngine,
+    request: <T,>(method: string, params?: unknown) => session.request<T>(method, withOwner(method, params, draftTopic.agentId)),
+    sessionKey: `agent:${draftTopic.agentId}:${mainKeySuffix}`,
+    agentId: draftTopic.agentId,
+  } : undefined, [session, activeEngine, draftTopic?.agentId, mainKeySuffix]);
   const actions = useMemo(() => conversationActions(request, list, () => session.getSnapshot().sessionKey), [request, list, session]);
   const search = useSearch(request, lists.rows, trunkName);
 
   const go = useCallback((next: Route) => {
+    draftTopicRef.current = null;
+    setDraftTopic(null);
     setStage(null);
     setRoute(next);
     setSlideOpen(false); // opening anything closes the slide-over (§4.1.8)
@@ -480,12 +495,31 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     document.addEventListener("contextmenu", onMenu);
     return () => document.removeEventListener("contextmenu", onMenu);
   }, [session, openSettings]);
-  const startNew = useCallback(async (agentId?: string) => {
-    const key = await actions.create(agentId ?? trunks.defaultId ?? undefined);
-    if (key) {
-      openConversation(key);
+  const startNew = useCallback((agentId?: string, options: Record<string, unknown> = {}) => {
+    const id = agentId ?? trunks.defaultId;
+    if (!id) { notify("Create a Trunk before starting a conversation.", { tone: "bad" }); return; }
+    const next = { agentId: id, nonce: crypto.randomUUID(), options };
+    draftTopicRef.current = next;
+    setDraftTopic(next);
+    setRoute({ kind: "chat", key: null });
+    setSlideOpen(false);
+  }, [trunks.defaultId]);
+
+  const sendNew = async (text: string, extras?: SendExtras): Promise<boolean> => {
+    if (!draftTopic || creatingTopic.current === draftTopic.nonce) return false;
+    creatingTopic.current = draftTopic.nonce;
+    try {
+      const key = await createTopic(request, draftTopic.agentId, mainKeySuffix, text, { ...draftTopic.options, ...extras });
+      await list.refresh();
+      if (draftTopicRef.current?.nonce === draftTopic.nonce && draftTopicRef.current.agentId === draftTopic.agentId) openConversation(key);
+      return true;
+    } catch (error) {
+      notify(`Couldn't start the conversation: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" });
+      return false;
+    } finally {
+      if (creatingTopic.current === draftTopic.nonce) creatingTopic.current = null;
     }
-  }, [actions, trunks.defaultId, openConversation]);
+  };
 
   // + new › New Trunk (the artifact's newTrunkC18): make the Trunk, open a conversation with it, ask its two questions.
   const [newTrunkFlow, setNewTrunkFlow] = useState<NewTrunk | null>(null);
@@ -503,10 +537,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   // A saved conversation that no longer exists reopens the default Trunk's main conversation (§3.3 Parity adds).
   useEffect(() => {
-    if (lists.loaded && openKey && s.mainKey && openKey !== s.mainKey && !lists.rows.some((r) => r.key === openKey)) {
+    if (!draftTopic && lists.loaded && openKey && s.mainKey && openKey !== s.mainKey && !lists.rows.some((r) => r.key === openKey)) {
       openConversation(s.mainKey);
     }
-  }, [lists, openKey, s.mainKey, openConversation]);
+  }, [draftTopic, lists, openKey, s.mainKey, openConversation]);
 
   const questions = useQuestions(ready ? session.engine : undefined);
   const waitingQuestion = questions.list.find((q) => q.status === "pending" && (!q.expiresAtMs || q.expiresAtMs > now)) ?? null;
@@ -541,7 +575,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const running = lists.rows.filter((r) => r.working).length;
   const ckptOn = useCkptOn(session.engine);
   const [setupTalk, setSetupTalk] = useState<TalkHandle | null>(null);
-  const name = openRow?.isMain || !openRow ? defaultName : openRow.title || "New conversation";
+  const name = draftTopic ? `New conversation with ${trunkName(draftTopic.agentId)}` : openRow?.isMain || !openRow ? defaultName : openRow.title || "New conversation";
   const room = useShellRoom({ engine: session.engine, rowKind: openRow?.kind, agentId: openRow?.agentId, title: name, ownTrunk: trunkName(openRow?.agentId), history: s.history, trunks: trunks.list });
   const rowName = (key: string) => {
     const r = lists.rows.find((x) => x.key === key);
@@ -707,15 +741,15 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     route.kind === "chat"
       ? {
           name,
-          trunkName: trunkName(openRow?.agentId),
-          state: faceNow,
-          isDefaultTrunk: !openRow?.agentId || openRow.agentId === trunks.defaultId,
-          role: trunks.list.find((t) => t.id === (openRow?.agentId ?? trunks.defaultId))?.theme,
-          workWords: workWords(s, now),
-          renaming: renaming !== null && renaming === openKey,
-          onProfile: room.header ? undefined : () => openTrunkProfile(openRow?.agentId ?? trunks.defaultId ?? undefined),
-          room: room.header,
-          colour: colourHue(openRow?.color),
+          trunkName: trunkName(draftTopic?.agentId ?? openRow?.agentId),
+          state: draftTopic ? "here" as const : faceNow,
+          isDefaultTrunk: (draftTopic?.agentId ?? openRow?.agentId) === trunks.defaultId,
+          role: trunks.list.find((t) => t.id === (draftTopic?.agentId ?? openRow?.agentId ?? trunks.defaultId))?.theme,
+          workWords: draftTopic ? "" : workWords(s, now),
+          renaming: !draftTopic && renaming !== null && renaming === openKey,
+          onProfile: !draftTopic && room.header ? undefined : () => openTrunkProfile(draftTopic?.agentId ?? openRow?.agentId ?? trunks.defaultId ?? undefined),
+          room: draftTopic ? null : room.header,
+          colour: draftTopic ? null : colourHue(openRow?.color),
           onRename: (value: string | null) => {
             setRenaming(null);
             if (value !== null && openRow && value.trim() !== openRow.title) {
@@ -805,8 +839,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   const usingComputer = workWords(s, now) === "Working · using the computer";
   const who = trunkName(openRow?.agentId);
-  const conversationTools = (
+  const conversationTools = draftTopic ? null : (
     <>
+      {openRow?.kind === "group" || openRow?.kind === "channel" ? null : (
+        <button type="button" className="ib" aria-label={`New conversation with ${trunkName(openRow?.agentId)}`} title={`New conversation with ${trunkName(openRow?.agentId)}`} onClick={() => startNew(openRow?.agentId)}><Icon name="plus" /></button>
+      )}
       <button type="button" className="ib" aria-label="Computer" title={`Its computer · ${machine?.name ?? "This computer"}`} data-live={usingComputer || undefined} onClick={() => setStage("Computer")}>
         <Icon name="monitor" />
         {usingComputer ? <i className="live-dot" aria-hidden="true" /> : null}
@@ -840,7 +877,27 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         }
       },
     };
-    main = (
+    main = draftTopic ? (
+      <div className="conversation-column" data-testid="new-topic-draft">
+        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} onList={toggleList} /> : null}
+        <div className="conversation-empty" style={{ flex: 1 }} />
+        <Composer
+          key={draftTopic.nonce}
+          {...composerProps}
+          engine={draftEngine}
+          name={trunkName(draftTopic.agentId)}
+          draftAgentId={draftTopic.agentId}
+          draftTemporary={draftTopic.options.incognito === true}
+          mainKey={mainKeySuffix}
+          working={false}
+          disabled={!ready || !trunks.loaded || firstRun.requiresContact}
+          onSend={sendNew}
+          onStop={() => undefined}
+          onNewTopic={(agentId, options) => options ? startNew(agentId, options) : setDraftTopic((current) => current ? { ...current, agentId } : current)}
+          above={<WhereChips engine={session.engine} row={openRow?.agentId === draftTopic.agentId ? openRow : null} trunkName={trunkName(draftTopic.agentId)} advanced={level !== "regular"} projectName={null} draft onStartTopic={(options) => setDraftTopic((current) => current ? { ...current, options: { ...(current.options.incognito === true ? { incognito: true } : {}), ...options } } : current)} />}
+        />
+      </div>
+    ) : (
       <>
         <div className="conversation-column">
         {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} onList={toggleList} /> : null}
@@ -883,6 +940,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         {s.error ? <p className="notice indent">{s.error}</p> : null}
         <Composer
           {...composerProps}
+          mainKey={mainKeySuffix}
+          onNewTopic={startNew}
           name={trunkName(openRow?.agentId)}
           placeholder={room.placeholder}
           working={Boolean(s.liveRunId)}
@@ -897,7 +956,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
               <NewTrunkCard engine={session.engine} flow={newTrunkFlow} onDone={(name) => { setNewTrunkFlow(null); notify(`All set. I’m “${name}” for now; change my name, colour and face from the ⋯ menu. What’s the first job?`); }} />
             ) : ready && !s.history.length && !s.pendingUser && !s.liveRunId ? (
               <WhereChips key={s.sessionKey} engine={session.engine} row={openRow} trunkName={trunkName(openRow?.agentId)} advanced={level !== "regular"}
-                projectName={projects.projects.find((x) => x.id === openRow?.projectId)?.name ?? null} onOpenConversation={openConversation} />
+                projectName={projects.projects.find((x) => x.id === openRow?.projectId)?.name ?? null} onStartTopic={(options) => startNew(openRow?.agentId, options)} />
             ) : null
           }
           onSend={(text: string, extras?: SendExtras) => void session.send(text, extras)}
@@ -1021,7 +1080,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           openConversation(key);
         }}
         onPlace={openPlace}
-        onNew={(e) => showMenu(e, "new", newMenuItems({ newConversation: () => void startNew(), newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
+        onNew={(e) => showMenu(e, "new", newMenuItems({ newConversation: () => startNew(), newWith: (id) => startNew(id), trunks: trunks.list, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) pinContact(contact); else void actions.pin(r); }}
         onArchive={(r) => void (r.archived ? actions.restore(r) : actions.archive(r))}
