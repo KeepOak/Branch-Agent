@@ -41,18 +41,44 @@ export function resolveRestartRecoveryTerminalClientRunId(
     : undefined;
 }
 
+function resolveRestartRecoveryEnv(stateDir?: string) {
+  return { ...process.env, BRANCH_STATE_DIR: stateDir ?? resolveStateDir(process.env) };
+}
+
+/** True while any of these agents still waits for startup database admission. */
+export function hasPendingRestartRecoveryAdmission(
+  agentIds: Iterable<string>,
+  stateDir?: string,
+): boolean {
+  const env = resolveRestartRecoveryEnv(stateDir);
+  return [...agentIds].some(
+    (agentId) =>
+      readAgentDatabaseAdmissionRefusal(agentId, { env })?.code ===
+      "agent-database-inspection-pending",
+  );
+}
+
 export async function discoverRestartRecoveryStoreTargets(params: {
   cfg?: BranchConfig;
   stateDir?: string;
   statuses?: Parameters<typeof hasSessionEntriesByStatusReadOnly>[1];
   shouldContinue?: () => boolean;
+  /** Reports agents skipped only because startup admission is still preparing them. */
+  onPendingAdmission?: (agentId: string) => void;
 }): Promise<SessionStoreTarget[]> {
   if (params.shouldContinue?.() === false) {
     return [];
   }
   const storeTargets: SessionStoreTarget[] = [];
   const stateDir = params.stateDir ?? resolveStateDir(process.env);
-  const env = { ...process.env, BRANCH_STATE_DIR: stateDir };
+  const env = resolveRestartRecoveryEnv(stateDir);
+  const isAdmitted = (agentId: string) => {
+    const refusal = readAgentDatabaseAdmissionRefusal(agentId, { env });
+    if (refusal?.code === "agent-database-inspection-pending") {
+      params.onPendingAdmission?.(agentId);
+    }
+    return !refusal;
+  };
   if (params.cfg) {
     // Recovery must not reopen a deleted or otherwise unconfigured agent database merely
     // because its old directory still exists on disk. Those stores are intentionally fenced
@@ -99,7 +125,7 @@ export async function discoverRestartRecoveryStoreTargets(params: {
     if (params.shouldContinue?.() === false) {
       return [];
     }
-    if (readAgentDatabaseAdmissionRefusal(target.agentId, { env })) {
+    if (!isAdmitted(target.agentId)) {
       continue;
     }
     const hasStatus =
@@ -113,7 +139,7 @@ export async function discoverRestartRecoveryStoreTargets(params: {
     }
   }
   return eligibleTargets
-    .filter((target) => !readAgentDatabaseAdmissionRefusal(target.agentId, { env }))
+    .filter((target) => isAdmitted(target.agentId))
     .toSorted(
       (a, b) => a.storePath.localeCompare(b.storePath) || a.agentId.localeCompare(b.agentId),
     );
