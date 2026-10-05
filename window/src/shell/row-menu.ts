@@ -30,6 +30,8 @@ type Ctx = {
   pinContact?: (contact: Contact) => void;
   profile?: (agentId: string | undefined) => void;
   whoItKnows?: (contact: Contact) => void;
+  muted?: boolean;
+  toggleMute?: (contact: Contact) => void;
 };
 
 const WINDOW_OFF = "A conversation in its own window needs the desktop app, which doesn't offer it yet.";
@@ -38,8 +40,6 @@ const MOVE_OFF = "Moving a conversation into a project needs an engine method Br
 const PAUSE_OFF = "Pausing a Trunk needs an engine method it doesn't have yet.";
 // TODO(engine-lane): Non-default Trunk main sessions cannot be deleted until the engine supports their deletion and a Recently Deleted list.
 export const TRUNK_DELETE_OFF = "Deleting a Trunk's thread needs the engine to allow deleting a non-default Trunk's main session and a Recently Deleted list.";
-// TODO(engine-lane): Contact mute needs a persisted setting and notification routing; sessions.patch has no mute field.
-const MUTE_OFF = "Muting a contact needs a saved mute setting and notification routing, which the engine doesn't offer yet.";
 
 export const CARD_LINK_OFF = "A link with a preview card needs the engine's share preview, which it doesn't have yet.";
 
@@ -128,7 +128,7 @@ function contactMenuItems(row: Conversation, c: Ctx, contact: Contact): MenuItem
       ? { label: "Mark as read", letter: "u", run: () => c.markContactRead?.(contact), testid: "menu-unread", ...ic("chat") }
       : { label: "Mark as unread", letter: "u", run: () => contact.thread && void c.actions.setUnread(contact.thread, true), testid: "menu-unread", ...ic("chat"), ...(!canEdit ? { disabled: "Send a first message before marking this contact unread." } : {}) },
     !contact.isDefault && canEdit ? { label: row.pinned ? "Unpin" : "Pin to top", letter: "p", run: () => c.pinContact?.(contact), testid: "menu-pin", ...ic("pin") } : null,
-    { label: "Mute", run: () => undefined, disabled: MUTE_OFF, testid: "menu-mute", ...ic("pause") },
+    { label: c.muted ? "Unmute" : "Mute", run: () => c.toggleMute?.(contact), testid: "menu-mute", ...ic("pause") },
     trunk
       ? { label: "Rename Trunk on profile", letter: "r", run: () => c.profile?.(row.agentId), testid: "menu-rename", ...ic("edit") }
       : { label: "Rename", letter: "r", run: () => c.rename(row), testid: "menu-rename", ...ic("edit") },
