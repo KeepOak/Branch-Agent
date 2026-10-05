@@ -1,0 +1,49 @@
+name: Release packaging check
+
+# Pull requests never ran the release's runtime build and postbuild, so a change to the build graph
+# (#261 gave Graft its own dist/graft chunks) broke every release from main while all PR checks
+# passed. This runs that packaging step on Linux, without declarations, only when the build
+# scripts, the entry points or the dist layout change.
+on:
+  pull_request:
+    paths:
+      - 'engine/tsdown.config.ts'
+      - 'engine/tsdown.ai.config.ts'
+      - 'engine/package.json'
+      - 'engine/branch.mjs'
+      - 'engine/scripts/build-all.mts'
+      - 'engine/scripts/tsdown-build.mts'
+      - 'engine/scripts/runtime-postbuild*'
+      - 'engine/scripts/lib/update-compat-*'
+      - 'engine/scripts/lib/dist-*'
+      - 'engine/src/entry*.ts'
+      - 'engine/src/**/*-entry.ts'
+      - 'scripts/feature-batch-ci.mjs'
+      - '.github/workflows/release-packaging-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-packaging-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  package:
+    name: Release packaging on ubuntu-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Install frozen engine dependencies and run the release runtime build and postbuild
+        run: node scripts/feature-batch-ci.mjs package
