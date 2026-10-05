@@ -37,6 +37,7 @@ const BASE: SettingsGroup[] = [
     name: "Care",
     pages: [
       { id: "usage", name: "Data & usage" },
+      { id: "backups", name: "Backups" },
       { id: "gateway", name: "Gateway" },
       { id: "self", name: "Branch itself" },
       { id: "seasons", name: "Seasons" },
@@ -99,6 +100,7 @@ const KEYWORDS: Record<string, string> = {
   computer: "computers browser chrome sandbox sealed box cloud phone lend screen mouse",
   secrets: "passwords bitwarden 1password sign-ins keys tokens",
   usage: "spend cost money usage limits report export import checkpoints keep delete flagged tray",
+  backups: "backup back up copy restore git github repository folder schedule daily weekly",
   gateway: "background tray restart engine always on",
   self: "self improve restart doctor check fix roll back",
   seasons: "rings gardener budding memory overnight skills learn improve",
