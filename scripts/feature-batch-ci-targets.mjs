@@ -1,5 +1,8 @@
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
+  'src/gateway/config-reload-plan.test.ts',
+  'src/gateway/server-reload-hot.agent-roster.test.ts',
+  'src/gateway/server-methods/agents-create-ready.test.ts',
   'src/plugin-sdk/session-visibility.pairs.test.ts',
   'src/agents/tools/sessions-send-tool.a2a.test.ts',
   'src/agents/tools/message-tool-execution.test.ts',

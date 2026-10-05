@@ -6,6 +6,7 @@ import { expectDefined } from "@branch/normalization-core";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { AgentDeletionAuthorityRollbackError } from "../../agents/agent-lifecycle-registry.js";
 import { WORKSPACE_BOOTSTRAP_FILENAMES } from "../../agents/workspace.js";
+import { getRuntimeConfigWriteApplication } from "../../config/runtime-write-application.js";
 import { FsSafeError, root } from "../../infra/fs-safe.js";
 import { registerAgentDeleteFilesystemTests } from "./agents-delete-filesystem.test-support.js";
 import { registerAgentIdentityUpdateTests } from "./agents-identity-update.test-support.js";
@@ -157,6 +158,7 @@ vi.mock("../../config/config.js", async () => {
       };
     },
     transformConfigFileWithRetry: async (params: {
+      writeOptions?: object;
       transform: (
         config: Record<string, unknown>,
         context: unknown,
@@ -169,6 +171,9 @@ vi.mock("../../config/config.js", async () => {
       });
       await mocks.writeConfigFile(transformed.nextConfig);
       mocks.loadConfigReturn = transformed.nextConfig;
+      if (params.writeOptions) {
+        getRuntimeConfigWriteApplication(params.writeOptions)?.claim()?.settle("applied");
+      }
       return {
         path: "/tmp/branch/config.json",
         previousHash: "test-hash",
