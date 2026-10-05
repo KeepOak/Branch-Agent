@@ -55,6 +55,10 @@ const isSourceCheckoutLauncher = () =>
   existsSync(new URL("./.git", import.meta.url)) ||
   existsSync(new URL("./src/entry.ts", import.meta.url));
 
+// The launcher executes the built dist entry even from a source checkout. Node
+// invalidates bytecode when its source changes, so the same cache is safe here.
+const usesBuiltEntry = () => existsSync(new URL("./dist/entry.js", import.meta.url));
+
 const { detectCurrentSqliteCapabilities, nodeRuntimeFailure, nodeRuntimeNote } =
   await import("./node-sqlite.mjs");
 
@@ -142,7 +146,7 @@ const resolveCompileCacheRespawnLauncher = () => {
 };
 
 const respawnWithoutCompileCacheIfNeeded = () => {
-  if (!isSourceCheckoutLauncher()) {
+  if (!isSourceCheckoutLauncher() || usesBuiltEntry()) {
     return false;
   }
   if (process.env[COMPILE_CACHE_DISABLED_RESPAWNED_ENV] === "1") {
@@ -165,7 +169,7 @@ const respawnWithoutCompileCacheIfNeeded = () => {
 };
 
 const respawnWithPackagedCompileCacheIfNeeded = () => {
-  if (isSourceCheckoutLauncher() || isNodeCompileCacheDisabled()) {
+  if ((isSourceCheckoutLauncher() && !usesBuiltEntry()) || isNodeCompileCacheDisabled()) {
     return false;
   }
   if (process.env.BRANCH_PACKAGED_COMPILE_CACHE_RESPAWNED === "1") {
@@ -752,7 +756,7 @@ if (isBrowserNativeHostInvocation) {
     !waitingForCompileCacheRespawn &&
     module.enableCompileCache &&
     !isNodeCompileCacheDisabled() &&
-    !isSourceCheckoutLauncher()
+    (!isSourceCheckoutLauncher() || usesBuiltEntry())
   ) {
     try {
       const directory = resolvePackagedCompileCacheDirectory();
