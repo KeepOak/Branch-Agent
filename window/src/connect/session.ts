@@ -32,6 +32,11 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 export type GatewayEventListener = (event: string, payload: unknown) => void;
 
 
+/** The group chat a room's lead conversation belongs to: `agent:<lead>:room:<roomId>` (engine rooms.send). */
+export function roomIdOf(sessionKey: string): string {
+  return /^agent:[^:]+:room:([^:]+)$/.exec(sessionKey)?.[1] ?? "";
+}
+
 export class SaplingSession {
   readonly gatewayUrl: string;
   private readonly eventListeners = new Set<GatewayEventListener>();
@@ -262,6 +267,9 @@ export class SaplingSession {
         }
       }
     } else if ((event.event === "session.message" || event.event === "sessions.changed") && str(payload.sessionKey) === this.snapshot.sessionKey) {
+      this.refreshSettled();
+    } else if (event.event === "rooms.event" && roomIdOf(this.snapshot.sessionKey) === str(payload.roomId) && str(payload.roomId)) {
+      // A post in this group chat by a Trunk or an outside agent (rooms.send): the room's lead thread shows it.
       this.refreshSettled();
     } else if (event.event === "exec.approval.requested") {
       this.addApproval(payload);

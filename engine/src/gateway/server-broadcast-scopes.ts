@@ -78,6 +78,9 @@ const EVENT_SCOPE_GUARDS: Record<string, string[]> = {
   [GATEWAY_EVENT_NODE_RUNNER_INVENTORY_CHANGED]: [READ_SCOPE],
   "sessions.catalog.host": [READ_SCOPE],
   "sessions.changed": [SESSION_READ_SCOPE],
+  // Group chats (rooms.*): a room changed or something was posted in it. Readable like rooms.get / rooms.log.
+  "rooms.changed": [READ_SCOPE],
+  "rooms.event": [READ_SCOPE],
   "controlUi.sessionPullRequests.changed": [READ_SCOPE],
   "plugins.controlUi.changed": [READ_SCOPE],
   "mcp.app.resourceUpdated": [READ_SCOPE],
