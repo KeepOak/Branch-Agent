@@ -13,6 +13,7 @@ import {
 } from "../state/agent-database-admission.js";
 import type { getAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
 import { isSameBranchAgentDatabasePath } from "../state/branch-agent-db.paths.js";
+import { runStartupModelPublication } from "./server-agent-database-startup.publication.js";
 
 function assertAgentDatabaseConfiguration(
   cfg: BranchConfig,
@@ -191,21 +192,16 @@ export function activateGatewayAgentDatabaseStartup(params: {
           });
           assertPreparationCurrent();
           const pluginMetadataSnapshot = params.getPluginMetadataSnapshot();
-          await withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
-            refreshPreparedModelRuntimeSnapshots(cfg, {
-              agentIds,
-              catalogMode: "static",
-              allowGatewaySubagentBinding: true,
-              ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
-              isPublicationCurrent: () => {
-                try {
-                  assertPreparationCurrent();
-                  return true;
-                } catch {
-                  return false;
-                }
-              },
-            }),
+          await runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
+            withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
+              refreshPreparedModelRuntimeSnapshots(cfg, {
+                agentIds,
+                catalogMode: "static",
+                allowGatewaySubagentBinding: true,
+                ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
+                isPublicationCurrent,
+              }),
+            ),
           );
           preparedInput = listConfiguredOwnerInputs(cfg, undefined, true).find(
             (input) => input.agentId === agentId,
