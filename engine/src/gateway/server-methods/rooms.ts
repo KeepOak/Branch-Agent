@@ -155,18 +155,35 @@ export const roomHandlers: GatewayRequestHandlers = {
       failure(options.respond, new Error("Room not found"));
       return;
     }
+    const outside = options.params.outsideAgent;
+    if (
+      outside &&
+      !room.members.some(
+        (member) => member.kind === "a2a" && member.id === outside.id && member.enabled,
+      )
+    ) {
+      failure(options.respond, new Error(`${outside.name} is not a member of this group chat`));
+      return;
+    }
     try {
       // The user's message is committed before the hidden lead turn is admitted.
       // A failed admission stays visible and retryable, never silently discarded.
       const posted = appendRoomEvent(
         room.roomId,
         "message",
-        options.client?.authenticatedUserProfile?.profileId ?? "owner",
-        { text: options.params.message },
+        outside
+          ? `a2a:${outside.id}`
+          : (options.client?.authenticatedUserProfile?.profileId ?? "owner"),
+        { text: options.params.message, ...(outside ? { from: outside.name } : {}) },
       );
       event(options, posted);
       try {
-        const turn = await dispatchLead(options, room, options.params.message);
+        // The lead Trunk is told who spoke when it isn't the owner.
+        const leadMessage = outside
+          ? `${outside.name} (outside agent) wrote in the group chat:
+${options.params.message}`
+          : options.params.message;
+        const turn = await dispatchLead(options, room, leadMessage);
         const started = appendRoomEvent(room.roomId, "turn.started", room.lead!, {
           sessionKey: turn.sessionKey,
           ...(turn.runId ? { runId: turn.runId } : {}),

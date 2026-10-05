@@ -97,6 +97,16 @@ export const ContactsTopicsResultSchema = closedObject({
 });
 export const ContactsMarkReadParamsSchema = closedObject({ contactId: NonEmptyString });
 export const ContactsMarkReadResultSchema = closedObject({ updated: Type.Integer({ minimum: 0 }) });
+/** An outside agent speaking through `branch mcp serve`: contact `a2a:<id>`, drawn as an A2A agent. */
+export const OutsideAgentSchema = closedObject({
+  id: Type.String({ pattern: "^[a-z0-9][a-z0-9-]{0,63}$" }),
+  name: Type.String({ minLength: 1, maxLength: 100 }),
+  version: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+  where: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+});
+export const ContactsOutsideHelloParamsSchema = closedObject({ agent: OutsideAgentSchema });
+export type OutsideAgentParams = Static<typeof OutsideAgentSchema>;
+export type ContactsOutsideHelloParams = Static<typeof ContactsOutsideHelloParamsSchema>;
 export type Contact = Static<typeof ContactSchema>;
 export type Topic = Static<typeof TopicSchema>;
 export type ContactsListParams = Static<typeof ContactsListParamsSchema>;

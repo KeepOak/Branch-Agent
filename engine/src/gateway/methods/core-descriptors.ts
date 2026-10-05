@@ -672,4 +672,5 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["rooms.members.remove", "rooms", "operator.write", "2026.9"],
   ["rooms.rule.set", "rooms", "operator.write", "2026.9"],
   ["rooms.archive", "rooms", "operator.write", "2026.9"],
+  ["contacts.outside.hello", "contacts", "operator.write", "2026.9"],
 ] as const satisfies readonly CoreGatewayMethodSpecRow[];
