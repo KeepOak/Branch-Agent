@@ -6,6 +6,7 @@ import { BranchChannelBridge } from "./channel-bridge.js";
 import { ClaudePermissionRequestSchema, type ClaudeChannelMode } from "./channel-shared.js";
 import { getChannelMcpCapabilities, registerChannelMcpTools } from "./channel-tools.js";
 import { registerTrunkMcpTools, type OutsideAgentIdentity } from "./trunk-tools.js";
+import { registerUiMcpTools, UiSession } from "./ui-tools.js";
 
 const HELLO_INTERVAL_MS = 60_000;
 
@@ -102,6 +103,12 @@ export async function createChannelMcpRuntime(
     helloTimer.unref();
   };
   registerTrunkMcpTools(server, bridge, { outsideAgent: () => outsideAgent });
+  // Part C: eyes and hands on the Branch window. A separate test Branch unless the owner allowed their own.
+  const ui = new UiSession(async (kind, uiOpts) => {
+    const { openOwnerWindow, openTestInstance } = await import("./ui-target.js");
+    return kind === "owner" ? await openOwnerWindow() : await openTestInstance(process.env, uiOpts);
+  });
+  registerUiMcpTools(server, ui);
 
   return {
     server,
@@ -111,6 +118,7 @@ export async function createChannelMcpRuntime(
     },
     close: async () => {
       if (helloTimer) clearInterval(helloTimer);
+      await ui.close().catch(() => undefined);
       // Both lifecycle owners must always close; one failure cannot strand the other.
       const results = await Promise.allSettled([bridge.close(), server.close()]);
       const errors = results.flatMap((result) =>

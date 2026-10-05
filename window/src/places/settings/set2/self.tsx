@@ -71,6 +71,7 @@ export const ROWS: RowEntry[] = [
   ["Set up the Gateway again", "", 0],
   ...rows("What Branch may change about itself", 0, ["Its own settings", "Loosening what it may do", "The gateway’s timings", "Restarting its own engine", "Updating itself", "Its own program and your saved work", "Work on its own code in a separate copy"]),
   ["Type branch in any terminal", "", 1],
+  ["Let agents use this window", "", 1],
   ...rows("Learning", 0, LEARNING.map(([t]) => t)), ...rows("Learning", 1, [...LEARNING_MORE.map(([t]) => t), "What it adopts", "Learn overnight on"]),
   ...rows("Working on its own code", 1, ["Pull requests", "Reaching the app", "Build a missing setting when you ask", "Ask for a change"]),
   ["Export a copy without secrets", "A copy of your setup", 0],
@@ -92,7 +93,7 @@ export function SelfPage(props: SettingsPageProps) {
     <Page title={props.title} lede={LEDE}>
       <Running {...ctx} />
       <MayChange {...ctx} />
-      {lv >= 1 ? <Sec title=""><DesktopCtl title="Type branch in any terminal" sub="Adds the branch command, so the terminal view and scripts work anywhere." name="branchOnPath" /></Sec> : null}
+      {lv >= 1 ? <Sec title=""><DesktopCtl title="Type branch in any terminal" sub="Adds the branch command, so the terminal view and scripts work anywhere." name="branchOnPath" /><DesktopCtl title="Let agents use this window" sub="Coding agents connected with branch mcp serve may see and click this window. A bar with Stop shows while one does. Takes effect the next time Branch starts." name="agentControl" /></Sec> : null}
       <NeverDies />
       <Changes {...ctx} />
       <Learning lv={lv} />
