@@ -522,6 +522,7 @@ export async function listAgentsForGateway(
           : {}),
         ...(options?.includeSystem ? { kind: entry.kind } : {}),
         name: entry.name,
+        ...(cfg.agents?.entries?.[id]?.hidden === true ? { hidden: true } : {}),
         identity: identityById.get(id),
         workspace,
         workspaceGit,

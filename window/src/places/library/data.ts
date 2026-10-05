@@ -80,5 +80,5 @@ export function entriesOf(result: unknown): FileEntry[] {
 }
 /** The Trunks in an agents.list result. */
 export function trunksOf(result: unknown): Trunk[] {
-  return recs(rec(result).agents).filter(t => typeof t.id === "string" && t.id).map(t => ({ ...t, id: t.id as string, name: optStr(t.name), identity: { ...rec(t.identity), name: optStr(rec(t.identity).name) } } as Trunk));
+  return recs(rec(result).agents).filter(t => typeof t.id === "string" && t.id && t.hidden !== true).map(t => ({ ...t, id: t.id as string, name: optStr(t.name), identity: { ...rec(t.identity), name: optStr(rec(t.identity).name) } } as Trunk));
 }

@@ -12,13 +12,14 @@ import { canWrite, loadTrunkData, useLoad, WRITE_WHY, type TrunkData } from "./d
 import { COLOURS, EYES, LookTab, SHAPES, useNewLooks } from "./LookTab";
 import { readMay } from "./may";
 import { MayTab } from "./MayTab";
-import { errorText, lookOf, LOOKS } from "./model";
+import { entryOf, errorText, lookOf, LOOKS, str } from "./model";
 import { TrunkFace } from "./TrunkFace";
 import { Layer } from "./layer";
+import { TrunkFiles } from "./TrunkFiles";
 import "./trunk.css";
 
-export type EditorTab = "look" | "may" | "computers";
-const TABS: [EditorTab, string][] = [["look", "Look"], ["may", "What it may do"], ["computers", "Its computers"]];
+export type EditorTab = "look" | "may" | "computers" | "instructions";
+const TABS: [EditorTab, string][] = [["look", "Look"], ["may", "What it may do"], ["computers", "Its computers"], ["instructions", "Instructions"]];
 
 export type TrunkEditorProps = {
   engine: WindowEngine;
@@ -34,7 +35,7 @@ export type TrunkEditorProps = {
 function draftOf(data: TrunkData, id: string): Draft | null {
   const row = data.roster.agents.find((a) => a.id === id);
   if (!row) return null;
-  return { name: row.name, theme: row.theme, look: lookOf(row.avatar, row.name), emoji: row.emoji, colour: row.colour || COLOURS[0], shape: row.shape || SHAPES[0], eyes: row.eyes || EYES[0], model: row.model, may: readMay(data.snap, id) };
+  return { name: row.name, theme: row.theme, description: str(entryOf(data.snap, id).description), look: lookOf(row.avatar, row.name), emoji: row.emoji, colour: row.colour || COLOURS[0], shape: row.shape || SHAPES[0], eyes: row.eyes || EYES[0], model: row.model, may: readMay(data.snap, id) };
 }
 
 function TabRow({ tab, setTab }: { tab: EditorTab; setTab: (t: EditorTab) => void }) {
@@ -120,6 +121,7 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
             {tab === "look" && <LookTab draft={draft} set={set} fresh={fresh} />}
             {tab === "may" && <MayTab engine={engine} agentId={agentId} name={initial.name} draft={draft} models={data.models} level={level} set={set} openSettings={openSettings} />}
             {tab === "computers" && <ComputersTab name={initial.name} draft={draft} computers={data.computers} set={set} openSettings={openSettings} />}
+            {tab === "instructions" && <TrunkFiles engine={engine} agentId={agentId} />}
           </div>
           {data.partial.map((p) => <p key={p} className="tk-hint" role="status">{p}</p>)}
           {error && <p className="tk-error" role="alert">{error}</p>}

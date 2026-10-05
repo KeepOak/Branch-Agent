@@ -1,5 +1,5 @@
 // Trunk editor › Look (preview 12-look picker, 15 emoji face, 30-trunks §4.4.3): the looks with real art, an emoji face,
-// Name, What it's for, and the pebble's Colour, Shape and Eyes.
+// Name, title, description, and the pebble's Colour, Shape and Eyes.
 import { useState } from "react";
 import { Face } from "../../face/Face";
 import { EMOJI, LOOKS } from "./model";
@@ -83,8 +83,9 @@ export function LookTab({ draft, set, fresh }: { draft: Draft; set: (d: Partial<
       <Emojis draft={draft} set={set} />
       <div className="tk-split">
         <label className="tk-field"><span className="tk-label">Name</span><input className="inp" value={draft.name} onChange={(e) => set({ name: e.target.value })} /></label>
-        <label className="tk-field"><span className="tk-label">What it’s for</span><input className="inp" value={draft.theme} onChange={(e) => set({ theme: e.target.value })} /></label>
+        <label className="tk-field"><span className="tk-label">Title / what it’s for</span><input className="inp" value={draft.theme} onChange={(e) => set({ theme: e.target.value })} /></label>
       </div>
+      <label className="tk-field"><span className="tk-label">Description</span><textarea className="inp" value={draft.description} onChange={(e) => set({ description: e.target.value })} /></label>
       <PebbleFields draft={draft} set={set} />
     </div>
   );

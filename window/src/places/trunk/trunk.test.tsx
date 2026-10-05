@@ -9,7 +9,7 @@ import { Jobs } from "../customize/jobs";
 import { TrunkEditor } from "./TrunkEditor";
 import { TrunkProfile } from "./TrunkProfile";
 import { TrunkStudio } from "./TrunkStudio";
-import { removeTrunk, updateParams } from "./api";
+import { removeTrunk, setTrunkHidden, updateParams } from "./api";
 import { readMay } from "./may";
 import { LOOKS, lookOf, readConfig } from "./model";
 import { readFacts, scheduleText } from "./profile-data";
@@ -65,7 +65,7 @@ describe("Trunk data", () => {
   });
   it("names a new Trunk with a free name and sends only changed identity fields", () => {
     const may = readMay(readConfig(CONFIG), "birch");
-    const was = { name: "Birch", theme: "", look: "ember", emoji: "", colour: "#2F8C86", shape: "Circle", eyes: "Round", model: "p/one", may };
+    const was = { name: "Birch", theme: "", description: "", look: "ember", emoji: "", colour: "#2F8C86", shape: "Circle", eyes: "Round", model: "p/one", may };
     expect(updateParams("birch", was, was)).toBeNull();
     expect(updateParams("birch", was, { ...was, look: "classic", emoji: "🦉" })).toEqual({ agentId: "birch", avatar: "classic", emoji: "🦉" });
     expect(scheduleText({ kind: "cron", expr: "0 8 * * *" })).toBe("Every day at 8:00 AM");
@@ -77,6 +77,25 @@ describe("Trunk data", () => {
 });
 
 describe("Trunk editor", () => {
+  it("saves the default Trunk's name, character, colour, title and description", async () => {
+    const request = fake();
+    await mount(<TrunkEditor engine={engine(request)} agentId="oak" level="regular" onClose={() => {}} />);
+    await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[0], "TK");
+    await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[1], "Builder lead");
+    await act(async () => { const box = document.querySelector<HTMLTextAreaElement>(".tk-look-tab textarea")!; Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(box, "Coordinates builders"); box.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click(document.querySelector('[aria-label="Tock"]'));
+    await click(document.querySelector('[aria-label="Colour #56616B"]'));
+    await click(byText("Save"));
+    expect(request).toHaveBeenCalledWith("agents.update", { agentId: "oak", name: "TK", avatar: "branch:tock" });
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { oak: { identity: { theme: "Builder lead", colour: "#56616B" }, description: "Coordinates builders" } } } }) });
+  });
+  it("opens the default Trunk's instruction files from its editor", async () => {
+    const request = fake({ "agents.files.get": { file: { name: "SOUL.md", content: "# TK", hash: "s1" } } });
+    await mount(<TrunkEditor engine={engine(request)} agentId="oak" level="regular" onClose={() => {}} />);
+    await click(byText("Instructions"));
+    expect(request).toHaveBeenCalledWith("agents.files.get", { agentId: "oak", name: "SOUL.md" });
+    expect(document.querySelector<HTMLTextAreaElement>(".tk-files textarea")?.value).toContain("# TK");
+  });
   it("enables colour, shape, eyes and Shuffle on the Look tab", async () => {
     await mount(<TrunkEditor engine={engine(fake())} agentId="birch" level="regular" onClose={() => {}} />);
     await click(document.querySelector('[aria-label^="Classic pebble"]'));
@@ -192,6 +211,14 @@ describe("Customize › Trunks", () => {
     await mount(<TrunksTab engine={engine(fake())} level="regular" openConversation={() => {}} trunks={{ data: { ...ROSTER, ownership: "explicit" } as never, loading: false, error: null, reload: () => {} }} />);
     await act(async () => { document.querySelectorAll(".tk-row")[1].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
     expect(byText("Make default").disabled).toBe(false);
+  });
+  it("hides and shows even the default while retaining its routing target", async () => {
+    const request = fake();
+    await setTrunkHidden(engine(request), "oak", true);
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { oak: { hidden: true } } } }) });
+    await setTrunkHidden(engine(request), "oak", false);
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { oak: { hidden: false } } } }) });
+    expect(readRoster({ ...ROSTER, agents: [{ ...ROSTER.agents[0], hidden: true }] }).defaultId).toBe("oak");
   });
   it("shows Defaults for every Trunk only at Technical and patches a number", async () => {
     const request = fake();

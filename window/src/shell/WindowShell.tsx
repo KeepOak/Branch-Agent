@@ -682,8 +682,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     const row = lists.rows.find((candidate) => candidate.key === topic.key);
     return { topic, updatedAt: row?.updatedAt ?? topic.anchor?.at ?? 0, preview: row?.preview ?? "", projectName: projects.projects.find((project) => project.id === topic.projectId)?.name };
   });
-  const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
-  const sections = buildContactSections(contacts, prefs, now);
+  const hiddenTrunkIds = new Set(trunks.list.filter((t) => t.hidden).map((t) => t.id));
+  const visibleTrunks = trunks.list.filter((t) => !t.hidden);
+  const visibleContacts = contacts.filter((c) => c.kind !== "trunk" || !hiddenTrunkIds.has(c.id.slice(6)));
+  const home = hiddenTrunkIds.has(trunks.defaultId ?? "") ? null : visibleContacts.find((c) => c.isDefault) ? contactRow(visibleContacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
+  const sections = buildContactSections(visibleContacts, prefs, now);
   const markReadContact = (contact: Contact) => {
     void markContactRead(contact, request).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark ${contact.name} read: ${e instanceof Error ? e.message : String(e)}.`, { tone: "bad" }));
   };
@@ -1235,7 +1238,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           openConversation(key);
         }}
         onPlace={openPlace}
-        onNew={(e) => showMenu(e, "new", newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
+        onNew={(e) => showMenu(e, "new", newMenuItems({ newWith: (id) => startNew(id), trunks: visibleTrunks, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
         onArchive={(r) => void (r.archived ? actions.restore(r) : actions.archive(r))}
@@ -1340,7 +1343,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           at={overlay.at}
           prefs={prefs}
           facts={{
-            trunks: trunks.list,
+            trunks: visibleTrunks,
             people,
             owners: owners(lists.rows).length,
             folders: hasFolders(lists.rows),
@@ -1387,8 +1390,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onOpenConversation={openConversation}
           onClose={() => setOverlay(null)}
           rows={paletteRows({
-            conversations: [...contacts.map(contactRow), ...lists.rows.filter((r) => !r.isMain && !r.archived)],
-            trunks: trunks.list,
+            conversations: [...visibleContacts.map(contactRow), ...lists.rows.filter((r) => !r.isMain && !r.archived && !hiddenTrunkIds.has(r.agentId ?? ""))],
+            trunks: visibleTrunks,
             trunkName,
             newConversation: () => void startNew(),
             newTrunk: () => void newTrunk(),
@@ -1406,7 +1409,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       ) : null}
       {overlay?.kind === "ask" ? (
         <QuickAsk
-          trunks={trunks.list}
+          trunks={visibleTrunks}
           defaultId={trunks.defaultId}
           onClose={() => setOverlay(null)}
           onSend={(text, agentId) => {

@@ -44,6 +44,7 @@ import {
 import {
   resolveAgentDir,
   resolveAgentWorkspaceDir,
+  tryResolveContactDefaultAgentId,
   tryResolveSoleAgentId,
 } from "../../agents/agent-scope.js";
 import {
@@ -604,6 +605,10 @@ export const agentsHandlers: GatewayRequestHandlers = {
       return;
     }
     const agentId = normalized.value;
+    if (agentId === (tryResolveContactDefaultAgentId(cfg) ?? tryResolveSoleAgentId(cfg))) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, `Agent "${agentId}" is the default Trunk and cannot be deleted. Choose another default first.`));
+      return;
+    }
     if (agentOwnsSharedAuthStore(cfg, agentId)) {
       respond(
         false,
