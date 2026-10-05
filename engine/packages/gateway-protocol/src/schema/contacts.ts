@@ -104,6 +104,9 @@ export const OutsideAgentSchema = closedObject({
   version: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
   where: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
   project: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+  // One running client (a random tag per process), so two sessions with the same name, computer and folder
+  // become two contacts.
+  instance: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
   activity: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
 });
 export const ContactsOutsideHelloParamsSchema = closedObject({ agent: OutsideAgentSchema });

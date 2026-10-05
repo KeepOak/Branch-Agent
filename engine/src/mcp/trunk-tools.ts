@@ -20,6 +20,7 @@ export type OutsideAgentIdentity = {
   version?: string;
   where?: string;
   project?: string;
+  instance?: string;
 };
 export type TrunkToolsOptions = {
   /** Who is speaking, once the gateway accepted contacts.outside.hello; undefined = plain owner messages. */

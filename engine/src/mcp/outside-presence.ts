@@ -2,13 +2,15 @@
 // Every connected MCP client is its own identity: its display name plus a short tag for this computer and the
 // folder it works in, so ten Claude Code sessions in ten projects are ten contacts, and each one keeps its id
 // across restarts. It says hello every minute (online dot, last seen) and when it starts something (activity).
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import type { OutsideAgentIdentity } from "./trunk-tools.js";
 
 export const HELLO_INTERVAL_MS = 60_000;
 const ACTIVITY_MIN_INTERVAL_MS = 3_000;
+/** How long a tool waits for the first hello before acting on what is known (a slow gateway must not hang tools). */
+const FIRST_HELLO_WAIT_MS = 5_000;
 
 /** MCP clientInfo names some clients send without a title. */
 const KNOWN_CLIENTS: [RegExp, string][] = [
@@ -73,7 +75,8 @@ export class OutsidePresence {
 
   start(agent: OutsideAgentIdentity | undefined): void {
     if (!agent) return;
-    this.agent = agent;
+    // The instance tag lets Branch tell two sessions with the same name, computer and folder apart.
+    this.agent = { ...agent, instance: randomUUID().slice(0, 12) };
     this.first = this.say();
     this.timer = setInterval(() => void this.say(), HELLO_INTERVAL_MS);
     this.timer.unref();
@@ -81,9 +84,15 @@ export class OutsidePresence {
 
   /** The identity to send as. Throws when Branch has turned this agent away. */
   async identity(): Promise<OutsideAgentIdentity | undefined> {
-    await this.first;
+    await this.firstHello();
     if (this.refusal) throw new Error(this.refusal);
     return this.known ? this.agent : undefined;
+  }
+
+  /** Every tool calls this first: it throws once a hello was refused (hellos run at connect, every minute and on
+   *  activity). It never waits, so no tool hangs on a slow gateway. */
+  async assertAllowed(): Promise<void> {
+    if (this.refusal) throw new Error(this.refusal);
   }
 
   /** Whether the owner let this agent drive their own window (Settings › Connected agents). */
@@ -99,6 +108,18 @@ export class OutsidePresence {
     void this.say(text.slice(0, 200));
   }
 
+  private async firstHello(): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      this.first,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, FIRST_HELLO_WAIT_MS);
+        timer.unref();
+      }),
+    ]);
+    clearTimeout(timer);
+  }
+
   stop(): void {
     if (this.timer) clearInterval(this.timer);
   }
@@ -107,6 +128,12 @@ export class OutsidePresence {
     if (!this.agent) return;
     try {
       const result = await this.hello({ ...this.agent, ...(activity ? { activity } : {}) });
+      // Branch may give this process its own id (<id>-2) when another session already holds the stable one.
+      const assigned = String((result.contact as { id?: unknown } | undefined)?.id ?? "").replace(
+        /^a2a:/,
+        "",
+      );
+      if (assigned) this.agent = { ...this.agent, id: assigned };
       this.known = true;
       this.refusal = undefined;
       this.driveWindow = result.mayDriveWindow === true;

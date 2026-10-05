@@ -6,6 +6,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { afterEach, describe, expect, it } from "vitest";
 import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
+import { gateEveryTool } from "./channel-server-runtime.js";
 import { resolveDesktopGateway } from "./desktop-gateway.js";
 import { displayName, outsideAgentFromClient, OutsidePresence } from "./outside-presence.js";
 import { describeRunEvent, registerTrunkMcpTools, type TrunkGateway } from "./trunk-tools.js";
@@ -333,7 +334,7 @@ describe("branch mcp serve identity and gateway", () => {
       return { mayDriveWindow: true };
     });
     presence.start(claude);
-    await expect(presence.identity()).resolves.toEqual(claude);
+    await expect(presence.identity()).resolves.toMatchObject(claude);
     expect(presence.mayDriveWindow()).toBe(true);
     refuse = true;
     presence.activity("Messaging oak");
@@ -385,5 +386,42 @@ describe("run progress lines", () => {
       "usage 12 output tokens",
     );
     expect(describeRunEvent({ stream: "assistant", data: { text: "x" } })).toBeUndefined();
+  });
+});
+
+describe("Settings › Connected agents applies to every tool", () => {
+  it("a disconnected agent can no longer read Trunks or answer approvals, and takes the id Branch assigns", async () => {
+    let refuse = false;
+    const presence = new OutsidePresence(async (agent) => {
+      if (refuse) throw new Error("Claude Code was disconnected in Settings › Connected agents.");
+      return { contact: { id: `a2a:${agent.id}-2` } };
+    });
+    presence.start(claude);
+    expect((await presence.identity())?.id).toBe("claude-code-2");
+    const server = new McpServer({ name: "branch", version: "gate" });
+    gateEveryTool(server, () => presence.assertAllowed());
+    let answered = 0;
+    server.tool("permissions_respond", "x", {}, async () => (answered++, { content: [] }));
+    registerTrunkMcpTools(
+      server,
+      fakeGateway({ "agents.list": () => ({ agents: [] }), "contacts.list": () => ({}) }).gw,
+      {
+        outsideAgent: () => presence.identity(),
+      },
+    );
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "Claude Code", version: "1" });
+    clients.push(client);
+    await Promise.all([server.connect(a), client.connect(b)]);
+    expect((await client.callTool({ name: "trunks_list", arguments: {} })).isError).toBeFalsy();
+    refuse = true;
+    presence.activity("Reading Trunks");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const listed = await client.callTool({ name: "trunks_list", arguments: {} });
+    const approved = await client.callTool({ name: "permissions_respond", arguments: {} });
+    expect(listed.isError).toBe(true);
+    expect(approved.isError).toBe(true);
+    expect(answered).toBe(0);
+    presence.stop();
   });
 });

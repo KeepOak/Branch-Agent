@@ -10,6 +10,7 @@ import {
 import type { BranchConfig } from "../../config/types.branch.js";
 import { buildPersistedUserTurnMetadata } from "../../sessions/user-turn-transcript.metadata.js";
 import {
+  assignOutsideAgentId,
   isOutsideAgentOnline,
   listOutsideAgents,
   outsideAgentId,
@@ -183,5 +184,31 @@ describe("outside agents over branch mcp serve", () => {
       activityAt: 1_000,
       lastSeenAt: 9_000,
     });
+  });
+
+  it("gives a second session with the same name, computer and folder its own id while the first is online", () => {
+    const now = 100_000;
+    const first = {
+      id: "claude-code-a1b2c3",
+      name: "Claude Code",
+      firstSeenAt: 0,
+      lastSeenAt: now - 1_000,
+      instance: "p1",
+    };
+    expect(assignOutsideAgentId({ id: first.id, instance: "p1" }, [first], now)).toBe(first.id);
+    expect(assignOutsideAgentId({ id: first.id, instance: "p2" }, [first], now)).toBe(
+      `${first.id}-2`,
+    );
+    const second = { ...first, id: `${first.id}-2`, instance: "p2" };
+    expect(assignOutsideAgentId({ id: first.id, instance: "p3" }, [first, second], now)).toBe(
+      `${first.id}-3`,
+    );
+    expect(assignOutsideAgentId({ id: first.id, instance: "p2" }, [first, second], now)).toBe(
+      `${first.id}-2`,
+    );
+    // Once the first has gone quiet, a new session takes the stable id back.
+    expect(assignOutsideAgentId({ id: first.id, instance: "p4" }, [first], now + 10 * 60_000)).toBe(
+      first.id,
+    );
   });
 });

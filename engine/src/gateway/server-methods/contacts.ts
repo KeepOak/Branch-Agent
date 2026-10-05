@@ -19,6 +19,7 @@ import {
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { listExistingAgentIdsFromDisk, listGatewayAgentsBasic } from "../agent-list.js";
 import {
+  assignOutsideAgentId,
   isOutsideAgentOnline,
   listOutsideAgents,
   outsideAgentPeers,
@@ -140,12 +141,13 @@ export const contactHandlers: GatewayRequestHandlers = {
     )
       return;
     const settings = readOutsideAgentSettings();
-    const refusal = outsideAgentRefusal(params.agent, settings);
+    const id = assignOutsideAgentId(params.agent, listOutsideAgents());
+    const refusal = outsideAgentRefusal({ ...params.agent, id }, settings);
     if (refusal) {
       respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, refusal));
       return;
     }
-    const record = recordOutsideAgent(params.agent);
+    const record = recordOutsideAgent({ ...params.agent, id });
     context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
     respond(true, {
       contact: { id: `a2a:${record.id}`, name: record.name, where: record.where ?? null },

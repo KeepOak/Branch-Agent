@@ -18,6 +18,8 @@ export type OutsideAgent = {
   project?: string;
   /** What it is doing now, as it last said ("Messaging builder-oak"). */
   activity?: string;
+  /** A random tag of the running client process. */
+  instance?: string;
 };
 export type OutsideAgentRecord = OutsideAgent & {
   firstSeenAt: number;
@@ -69,6 +71,31 @@ export function listOutsideAgents(env?: NodeJS.ProcessEnv): OutsideAgentRecord[]
   }
 }
 
+/**
+ * The id this running client gets: its stable id, unless another process is online under it right now; then
+ * the first free `<id>-2`, `<id>-3`, ... (an offline row, or one this same process holds, is free).
+ */
+export function assignOutsideAgentId(
+  agent: Pick<OutsideAgent, "id" | "instance">,
+  records: readonly OutsideAgentRecord[],
+  now = Date.now(),
+): string {
+  if (!agent.instance) return agent.id;
+  const byId = new Map(records.map((row) => [row.id, row]));
+  for (let n = 1; ; n++) {
+    const id = n === 1 ? agent.id : `${agent.id.slice(0, 60)}-${n}`;
+    const row = byId.get(id);
+    if (
+      !row ||
+      !isOutsideAgentOnline(row, now) ||
+      !row.instance ||
+      row.instance === agent.instance
+    ) {
+      return id;
+    }
+  }
+}
+
 /** Remember an outside agent (insert or refresh). Written atomically; the oldest rows go past the cap. */
 export function recordOutsideAgent(
   agent: OutsideAgent,
@@ -84,6 +111,7 @@ export function recordOutsideAgent(
     ...(agent.version ? { version: agent.version } : {}),
     ...(agent.where ? { where: agent.where } : {}),
     ...(agent.project ? { project: agent.project } : {}),
+    ...(agent.instance ? { instance: agent.instance } : {}),
     ...(agent.activity
       ? { activity: agent.activity, activityAt: now }
       : previous?.activity

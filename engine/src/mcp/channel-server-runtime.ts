@@ -9,6 +9,22 @@ import { outsideAgentFromClient, OutsidePresence } from "./outside-presence.js";
 import { registerTrunkMcpTools } from "./trunk-tools.js";
 import { registerUiMcpTools, UiSession } from "./ui-tools.js";
 
+/** Settings › Connected agents applies to every tool (channel, Trunk and window tools alike): each handler
+ *  first asks whether Branch still lets this agent in. */
+export function gateEveryTool(server: McpServer, gate: () => Promise<void>): void {
+  const register = server.tool.bind(server) as (...args: unknown[]) => unknown;
+  (server as { tool: unknown }).tool = (...args: unknown[]) => {
+    const handler = args.at(-1);
+    if (typeof handler === "function") {
+      args[args.length - 1] = async (...input: unknown[]) => {
+        await gate();
+        return await (handler as (...a: unknown[]) => unknown)(...input);
+      };
+    }
+    return register(...args);
+  };
+}
+
 async function resolveMcpConfig(config: BranchConfig | undefined): Promise<BranchConfig> {
   if (config) {
     return config;
@@ -56,8 +72,6 @@ export async function createChannelMcpRuntime(
       inputPreview: params.input_preview,
     });
   });
-  registerChannelMcpTools(server, bridge);
-
   // Part B/D: once the MCP client has said who it is, Branch shows it as an outside-agent contact and its
   // messages as its own, unless Settings › Connected agents turned it away. A gateway without
   // contacts.outside.hello keeps plain (owner) messages.
@@ -68,6 +82,9 @@ export async function createChannelMcpRuntime(
   server.server.oninitialized = () => {
     presence.start(outsideAgentFromClient(server.server.getClientVersion()));
   };
+  gateEveryTool(server, () => presence.assertAllowed());
+  registerChannelMcpTools(server, bridge);
+
   registerTrunkMcpTools(server, bridge, {
     outsideAgent: () => presence.identity(),
     activity: (text) => presence.activity(text),
