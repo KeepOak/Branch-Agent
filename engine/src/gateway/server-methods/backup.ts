@@ -84,6 +84,8 @@ export const backupHandlers: GatewayRequestHandlers = {
         push: prepared.push,
         excludeSecrets: true,
         files: true,
+        ...(params.mediaMaxFileMb ? { mediaMaxFileMb: params.mediaMaxFileMb } : {}),
+        ...(params.mediaMaxTotalMb ? { mediaMaxTotalMb: params.mediaMaxTotalMb } : {}),
       });
       const added = await context.cron.add(
         { ...job, enabled: params.enabled },

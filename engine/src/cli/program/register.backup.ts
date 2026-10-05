@@ -192,9 +192,11 @@ function registerBackupScheduleCommands(backup: Command): void {
       )
       .option(
         "--files",
-        "Also back up the redacted config and workspace files (Git backups)",
+        "Also back up the redacted config, workspace files and media (Git backups)",
         false,
       )
+      .option("--media-max-file-mb <n>", "Largest media file to back up with --files, in MB (default 50)")
+      .option("--media-max-total-mb <n>", "Most media to back up with --files, in MB (default 1024)")
       .option("--global-only", "Back up only the shared state database", false)
       .option("--agent <id>", "Back up only one agent database")
       .action(async (opts) => {
@@ -253,9 +255,11 @@ function registerBackupGitCommands(backup: Command): void {
     .option("--exclude-secrets", "Omit credential-bearing database tables", false)
     .option(
       "--files",
-      "Also back up the redacted config and workspace files, never secret files",
+      "Also back up the redacted config and workspace files and media, never secret files",
       false,
     )
+    .option("--media-max-file-mb <n>", "Largest media file to back up with --files, in MB (default 50)")
+    .option("--media-max-total-mb <n>", "Most media to back up with --files, in MB (default 1024)")
     .option("--json", "Output JSON", false)
     .action(async (opts) => {
       await runCommandWithRuntime(defaultRuntime, async () => {

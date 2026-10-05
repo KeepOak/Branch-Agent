@@ -502,10 +502,12 @@ export function namedTests(lane) {
   if (listed.some((file, index) => index > 0 && listed[index - 1] >= file)) {
     throw new Error(`Keep ${lane}Tests sorted: insert new test files in code-point (plain string) order`);
   }
-  const targets = [...listed, ...namedTestFiles(lane)];
-  if (!targets.length || new Set(targets).size !== targets.length
-    || targets.some(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'))) {
-    throw new Error('Explicit unique repository-relative test files are required');
+  // Several PRs may name the same test in their own scripts/feature-batch-ci-named/*.txt; run it once.
+  const targets = [...new Set([...listed, ...namedTestFiles(lane)])];
+  if (!targets.length) throw new Error(`No ${lane} feature test files are listed`);
+  const bad = targets.find(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'));
+  if (bad) {
+    throw new Error(`Feature test "${lane}:${bad}" must be a repository-relative *.test.ts or *.test.tsx file`);
   }
   return targets;
 }

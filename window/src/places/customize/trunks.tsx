@@ -14,7 +14,8 @@ import type { PlaceProps } from "../../places-nav/PlaceFrame";
 import type { useResource, Trunks } from "../library/data";
 import { Status } from "../library/ui";
 import { RequestGeneration } from "../library/data";
-import { createReadyTrunk, defaultBlock, makeDefault, newTrunkName } from "../trunk/api";
+import { createReadyTrunk, defaultBlock, makeDefault } from "../trunk/api";
+import { NewTrunkPreview, type TrunkChoice } from "../trunk/NewTrunkPreview";
 import { canWrite, WRITE_WHY } from "../trunk/data";
 import { errorText, readRoster, type Roster, type TrunkRow } from "../trunk/model";
 import { RemoveTrunkDialog } from "../trunk/RemoveTrunk";
@@ -55,6 +56,7 @@ export function TrunksTab(props: Props) {
   const [menu, setMenu] = useState<{ at: MenuAnchor; row: TrunkRow } | null>(null);
   const [known, setKnown] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pending = useRef(false);
   const generation = useRef(new RequestGeneration());
@@ -66,14 +68,15 @@ export function TrunksTab(props: Props) {
     return () => { guard.retire(); pending.current = false; };
   }, [engine]);
   const write = canWrite(engine);
-  const add = async () => {
+  const add = async (choice: TrunkChoice) => {
     if (!roster || pending.current) return;
     pending.current = true;
     const current = generation.current.next();
     setBusy(true); setError(null);
     try {
-      const name = newTrunkName(roster), id = await createReadyTrunk(engine, name, current);
+      const name = choice.name, id = await createReadyTrunk(engine, name, current, choice.avatar);
       if (!current()) return;
+      setAdding(false);
       trunks.reload();
       // Its first conversation opens through the shell, which knows the new conversation once its list has it.
       // Without that hand-over the new Trunk's profile opens here, so the person sees what was made.
@@ -99,12 +102,13 @@ export function TrunksTab(props: Props) {
   };
   return <div className="tk-tab-root">
     <div className="tk-toolbar">
-      <button type="button" className="btn pri" disabled={busy || !roster || !write} title={write ? undefined : WRITE_WHY} onClick={() => void add()}><Icon name="plus" small />{busy ? "Making…" : "A new Trunk"}</button>
+      <button type="button" className="btn pri" disabled={busy || !roster || !write} title={write ? undefined : WRITE_WHY} onClick={() => setAdding(true)}><Icon name="plus" small />{busy ? "Making…" : "A new Trunk"}</button>
       <button type="button" className="btn" onClick={openNewGroupChat}><Icon name="users" small />New group chat</button>
     </div>
     <Status {...trunks} />
     {error && <p role="alert" className="tk-error">{error}</p>}
     {roster && <div className="tk-list">{roster.agents.map((row) => <TrunkRowView key={row.id} row={row} roster={roster} write={write} open={setOpen} menu={showMenu} knows={(e, trunk) => void showKnown(e, trunk)} />)}</div>}
+    {adding && roster && <NewTrunkPreview roster={roster} busy={busy} onClose={() => setAdding(false)} onConfirm={(choice) => void add(choice)} />}
     <Jobs engine={engine} reload={trunks.reload} />
     {shows(level, "technical") && <TrunkDefaults engine={engine} />}
     {menu && roster && <Menu at={menu.at} label={`${menu.row.name} menu`} onClose={() => setMenu(null)} items={rowMenu(props, roster, menu.row, setOpen, setError)} />}

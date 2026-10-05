@@ -317,146 +317,162 @@ export function migrateContacts(params: {
     paths.set(destinationPath, defaultAgentId);
   }
   const state = openBranchStateDatabase({ env });
-  const stores: Store[] = [...paths].map(([path, agentId], index) => ({
+  const allStores: Store[] = [...paths].map(([path, agentId], index) => ({
     path,
     agentId,
     alias: `contact_migration_${index}`,
   }));
-  const destination = stores.find((store) => store.path === destinationPath);
-  for (const store of stores)
-    state.db.prepare(`ATTACH DATABASE ? AS ${quote(store.alias)}`).run(store.path);
-  try {
-    const migrate = (db: DatabaseSync) => {
-      const now = params.now ?? Date.now();
-      const existingKeys = new Set(
-        destination ? sourceRows(db, destination).map((row) => row.key) : [],
-      );
-      const candidates: Move[] = [];
-      const empties: Array<{ store: Store; key: string; entry: SessionEntry }> = [];
-      const mainIsImplicit = !listAgentIds(params.cfg).map(normalizeAgentId).includes("main");
+  const destination = allStores.find((store) => store.path === destinationPath);
+  // Leave one slot free for SQLite's implicit databases, even with a large agent roster.
+  const sources = allStores.filter((store) => store !== destination);
+  const batches: Store[][] = [];
+  for (let index = 0; index < sources.length; index += 8)
+    batches.push([...(destination ? [destination] : []), ...sources.slice(index, index + 8)]);
+  if (batches.length === 0 && destination) batches.push([destination]);
+  const totals = { moved: 0, archivedEmpty: 0 };
+  for (const stores of batches) {
+    const attached: Store[] = [];
+    try {
       for (const store of stores) {
-        for (const { key, entry } of sourceRows(db, store)) {
-          if (entry.movedToSessionKey) continue;
-          const parsed = parseAgentSessionKey(key);
-          if (!parsed) continue;
-          const isCanonicalMain =
-            key ===
-            resolveCanonicalMainSessionKey({
-              agentId: parsed.agentId,
-              mainKey: params.cfg.session?.mainKey,
-            });
-          if (
-            !isCanonicalMain &&
-            !entry.archivedAt &&
-            entry.createdVia === "operator" &&
-            !entry.label?.trim() &&
-            !entry.topicName?.trim() &&
-            !entry.displayName?.trim() &&
-            !hasMessages(db, store, key, entry)
-          ) {
-            empties.push({ store, key, entry });
-            continue;
+        state.db.prepare(`ATTACH DATABASE ? AS ${quote(store.alias)}`).run(store.path);
+        attached.push(store);
+      }
+      const migrate = (db: DatabaseSync) => {
+        const now = params.now ?? Date.now();
+        const existingKeys = new Set(
+          destination ? sourceRows(db, destination).map((row) => row.key) : [],
+        );
+        const candidates: Move[] = [];
+        const empties: Array<{ store: Store; key: string; entry: SessionEntry }> = [];
+        const mainIsImplicit = !listAgentIds(params.cfg).map(normalizeAgentId).includes("main");
+        for (const store of stores) {
+          for (const { key, entry } of sourceRows(db, store)) {
+            if (entry.movedToSessionKey) continue;
+            const parsed = parseAgentSessionKey(key);
+            if (!parsed) continue;
+            const isCanonicalMain =
+              key ===
+              resolveCanonicalMainSessionKey({
+                agentId: parsed.agentId,
+                mainKey: params.cfg.session?.mainKey,
+              });
+            if (
+              !isCanonicalMain &&
+              !entry.archivedAt &&
+              entry.createdVia === "operator" &&
+              !entry.label?.trim() &&
+              !entry.topicName?.trim() &&
+              !entry.displayName?.trim() &&
+              !hasMessages(db, store, key, entry)
+            ) {
+              empties.push({ store, key, entry });
+              continue;
+            }
+            const legacy =
+              mainIsImplicit &&
+              normalizeAgentId(parsed.agentId) === "main" &&
+              defaultAgentId !== "main";
+            const brand =
+              normalizeAgentId(parsed.agentId) !== defaultAgentId &&
+              [entry.label, entry.displayName, entry.subject].some(
+                (value) => value?.trim() === "Branch",
+              );
+            if (!legacy && !brand) continue;
+            const natural = `agent:${defaultAgentId}:${parsed.rest}`;
+            const suffix = createHash("sha256")
+              .update(`${store.path}\0${key}`)
+              .digest("hex")
+              .slice(0, 16);
+            const targetKey =
+              legacy && !existingKeys.has(natural)
+                ? natural
+                : `agent:${defaultAgentId}:legacy-${suffix}`;
+            if (existingKeys.has(targetKey))
+              throw new Error(`Contact migration target collision: ${targetKey}`);
+            existingKeys.add(targetKey);
+            candidates.push({ source: store, key, targetKey, entry });
           }
-          const legacy =
-            mainIsImplicit &&
-            normalizeAgentId(parsed.agentId) === "main" &&
-            defaultAgentId !== "main";
-          const brand =
-            normalizeAgentId(parsed.agentId) !== defaultAgentId &&
-            [entry.label, entry.displayName, entry.subject].some(
-              (value) => value?.trim() === "Branch",
-            );
-          if (!legacy && !brand) continue;
-          const natural = `agent:${defaultAgentId}:${parsed.rest}`;
-          const suffix = createHash("sha256")
-            .update(`${store.path}\0${key}`)
-            .digest("hex")
-            .slice(0, 16);
-          const targetKey =
-            legacy && !existingKeys.has(natural)
-              ? natural
-              : `agent:${defaultAgentId}:legacy-${suffix}`;
-          if (existingKeys.has(targetKey))
-            throw new Error(`Contact migration target collision: ${targetKey}`);
-          existingKeys.add(targetKey);
-          candidates.push({ source: store, key, targetKey, entry });
         }
-      }
-      if (!params.apply) return { moved: candidates.length, archivedEmpty: empties.length };
-      if (candidates.length && !destination)
-        throw new Error("Contact migration destination is missing");
-      const remap = new Map(candidates.map((move) => [move.key, move.targetKey]));
-      const threadKey = resolveCanonicalMainSessionKey({
-        agentId: defaultAgentId,
-        mainKey: params.cfg.session?.mainKey,
-      });
-      const audit = createSqliteAuditRecordKernel(db, {
-        scope: SYSTEM_AGENT_AUDIT_SCOPE,
-        maxEntries: SYSTEM_AGENT_AUDIT_MAX_ENTRIES,
-      });
-      for (const move of candidates) {
-        copyMove(db, move, destination!, remap, threadKey);
-        updateNode(db, move.source, move.key, {
-          ...move.entry,
-          archivedAt: now,
-          archiveReason: "moved",
-          movedToSessionKey: move.targetKey,
+        if (!params.apply) return { moved: candidates.length, archivedEmpty: empties.length };
+        if (candidates.length && !destination)
+          throw new Error("Contact migration destination is missing");
+        const remap = new Map(candidates.map((move) => [move.key, move.targetKey]));
+        const threadKey = resolveCanonicalMainSessionKey({
+          agentId: defaultAgentId,
+          mainKey: params.cfg.session?.mainKey,
         });
-        const claimKey = `contacts-migration:${createHash("sha256").update(`${move.source.path}\0${move.key}`).digest("hex")}`;
-        const report = JSON.stringify({
-          sourceKey: move.key,
-          targetKey: move.targetKey,
-          sourcePath: move.source.path,
+        const audit = createSqliteAuditRecordKernel(db, {
+          scope: SYSTEM_AGENT_AUDIT_SCOPE,
+          maxEntries: SYSTEM_AGENT_AUDIT_MAX_ENTRIES,
         });
-        db.prepare(
-          `INSERT INTO migration_runs (id,started_at,finished_at,status,report_json) VALUES (?,?,?,?,?)`,
-        ).run(claimKey, now, now, "completed", report);
-        db.prepare(
-          `INSERT INTO migration_sources (source_key,migration_kind,target_table,source_path,source_sha256,source_size_bytes,source_record_count,last_run_id,status,imported_at,removed_source,report_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-        ).run(
-          claimKey,
-          "contacts-migration-v1",
-          "session_nodes",
-          move.source.path,
-          null,
-          null,
-          1,
-          claimKey,
-          "completed",
-          now,
-          0,
-          report,
-        );
-        audit.register(
-          prepareSqliteAuditRecord(SYSTEM_AGENT_AUDIT_SCOPE, {
-            key: claimKey,
-            createdAt: now,
-            value: {
-              timestamp: new Date(now).toISOString(),
-              operation: "contacts.migrate",
-              summary: `Moved conversation ${move.key} under ${defaultAgentId}`,
-              details: { sourceKey: move.key, targetKey: move.targetKey },
-            },
-          }),
-        );
-      }
-      for (const empty of empties)
-        updateNode(db, empty.store, empty.key, {
-          ...empty.entry,
-          archivedAt: now,
-          archiveReason: "empty",
-        });
-      params.beforeCommit?.();
-      return { moved: candidates.length, archivedEmpty: empties.length };
-    };
-    return params.apply
-      ? runBranchStateWriteTransaction(
-          ({ db }) => migrate(db),
-          { env },
-          { operationLabel: "contacts-migration" },
-        )
-      : migrate(state.db);
-  } finally {
-    for (const store of stores.toReversed()) state.db.exec(`DETACH DATABASE ${quote(store.alias)}`);
+        for (const move of candidates) {
+          copyMove(db, move, destination!, remap, threadKey);
+          updateNode(db, move.source, move.key, {
+            ...move.entry,
+            archivedAt: now,
+            archiveReason: "moved",
+            movedToSessionKey: move.targetKey,
+          });
+          const claimKey = `contacts-migration:${createHash("sha256").update(`${move.source.path}\0${move.key}`).digest("hex")}`;
+          const report = JSON.stringify({
+            sourceKey: move.key,
+            targetKey: move.targetKey,
+            sourcePath: move.source.path,
+          });
+          db.prepare(
+            `INSERT INTO migration_runs (id,started_at,finished_at,status,report_json) VALUES (?,?,?,?,?)`,
+          ).run(claimKey, now, now, "completed", report);
+          db.prepare(
+            `INSERT INTO migration_sources (source_key,migration_kind,target_table,source_path,source_sha256,source_size_bytes,source_record_count,last_run_id,status,imported_at,removed_source,report_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+          ).run(
+            claimKey,
+            "contacts-migration-v1",
+            "session_nodes",
+            move.source.path,
+            null,
+            null,
+            1,
+            claimKey,
+            "completed",
+            now,
+            0,
+            report,
+          );
+          audit.register(
+            prepareSqliteAuditRecord(SYSTEM_AGENT_AUDIT_SCOPE, {
+              key: claimKey,
+              createdAt: now,
+              value: {
+                timestamp: new Date(now).toISOString(),
+                operation: "contacts.migrate",
+                summary: `Moved conversation ${move.key} under ${defaultAgentId}`,
+                details: { sourceKey: move.key, targetKey: move.targetKey },
+              },
+            }),
+          );
+        }
+        for (const empty of empties)
+          updateNode(db, empty.store, empty.key, {
+            ...empty.entry,
+            archivedAt: now,
+            archiveReason: "empty",
+          });
+        params.beforeCommit?.();
+        return { moved: candidates.length, archivedEmpty: empties.length };
+      };
+      const result = params.apply
+        ? runBranchStateWriteTransaction(
+            ({ db }) => migrate(db),
+            { env },
+            { operationLabel: "contacts-migration" },
+          )
+        : migrate(state.db);
+      totals.moved += result.moved;
+      totals.archivedEmpty += result.archivedEmpty;
+    } finally {
+      for (const store of attached.toReversed())
+        state.db.exec(`DETACH DATABASE ${quote(store.alias)}`);
+    }
   }
+  return totals;
 }

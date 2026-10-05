@@ -542,6 +542,12 @@ async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRunt
   }
 
   gatewayLog.info("loading configuration…");
+  // Assign legacy Trunk faces before the startup snapshot is captured, so the
+  // gateway and the published config both see the same one-time migration.
+  if (!opts.updateCanary) {
+    const { assignTrunkCharactersAtStartup } = await import("../../gateway/trunk-character-startup.js");
+    await assignTrunkCharactersAtStartup();
+  }
   const { cfg, lowerPrecedenceEnv, snapshot, startupConfigSnapshotRead } =
     await readGatewayStartupConfigWithShellEnv({
       startupTrace,

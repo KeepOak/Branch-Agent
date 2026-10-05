@@ -3,20 +3,25 @@
 // backup.schedule.clear / backup.run; every backup made here leaves out passwords, keys and sign-ins.
 import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Field, Page, Pill, Sec, Seg, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Field, Hint, Num, Page, Pill, Sec, Seg, type RowEntry } from "../kit";
 import { list } from "../adapter";
-import { CallLine, rec, str, useCall, useLive, when, type RecordValue } from "./common";
+import { CallLine, lvOf, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 
 const DAY = 86_400_000;
 const WEEK = 7 * DAY;
-const LEDE = "A copy of your conversations, memory, Trunk workspaces (Library documents included) and settings, on a schedule you choose. Passwords, keys and sign-ins are never included.";
-const GIT_HINT = "Use a private repository, for example github.com/KeepOak/Branch-Agent-Private. Branch pushes to its backups branch with your Git sign-in.";
+const LEDE = "A copy of your conversations, memory, Trunk workspaces (Library documents included), the pictures and other media Trunks made, and settings, on a schedule you choose. Passwords, keys and sign-ins are never included.";
+/** The backup command's media defaults (engine DEFAULT_MEDIA_MAX_FILE_MB / _TOTAL_MB). */
+const MEDIA_FILE_MB = 50;
+const MEDIA_TOTAL_MB = 1024;
+const GIT_HINT = "A private Git repository you own, such as https://github.com/you/branch-backups.git. Branch pushes to its backups branch with your Git sign-in.";
 
 export const ROWS: RowEntry[] = [
   ["Where backups go", "Where", 0], ["How often", "When", 0], ["Back up now", "When", 0], ["Last backup", "When", 0],
+  ["Largest media file", "Media", 1], ["Media in all", "Media", 1],
 ].map(([title, sec, lv]) => ({ page: "backups", title: String(title), sec: String(sec), lv: lv as 0 | 1 | 2, words: "backup copy restore git repository folder schedule" }));
 
 type Kind = "folder" | "git";
+type MediaLimits = { mediaMaxFileMb?: number; mediaMaxTotalMb?: number };
 type Destination = { kind: "folder"; path: string } | { kind: "git"; url: string };
 
 /** The Settings-managed schedule: the Git one (backup.status lists one per mode). */
@@ -38,10 +43,21 @@ export function BackupsPage(props: SettingsPageProps) {
   const schedule = gitSchedule(status.data);
   const saved = destinationOf(schedule);
   const save = useCall(); const run = useCall();
-  const set = async (destination: Destination, every: string) => {
+  const lv = lvOf(props.level);
+  const media: MediaLimits = {
+    ...(typeof schedule?.mediaMaxFileMb === "number" ? { mediaMaxFileMb: schedule.mediaMaxFileMb } : {}),
+    ...(typeof schedule?.mediaMaxTotalMb === "number" ? { mediaMaxTotalMb: schedule.mediaMaxTotalMb } : {}),
+  };
+  const set = async (destination: Destination, every: string, limits: MediaLimits = media) => {
     const everyMs = every === "off" ? Number(schedule?.everyMs) || DAY : every === "week" ? WEEK : every === "day" ? DAY : Number(every);
-    await props.engine.request("backup.schedule.set", { destination, everyMs, enabled: every !== "off" });
+    await props.engine.request("backup.schedule.set", { destination, everyMs, enabled: every !== "off", ...limits });
     await status.reload();
+  };
+  const setLimit = (key: keyof MediaLimits, v: number | null) => {
+    if (!saved) return;
+    const next: MediaLimits = { ...media };
+    if (v === null) delete next[key]; else next[key] = Math.round(v);
+    void save.run(() => set(saved, everyOf(schedule), next), () => "Saved.");
   };
   return (
     <Page title={props.title} lede={LEDE}>
@@ -64,6 +80,16 @@ export function BackupsPage(props: SettingsPageProps) {
         <CallLine call={run} />
         <LastBackup status={status.data} repository={str(schedule?.target)} />
       </Sec>
+      <Sec title="Media">
+        {lv >= 1 ? <>
+          <Ctl title="Largest media file" sub="Pictures, sound, video or PDFs bigger than this are left out and counted.">
+            <Num label="Largest media file" unit="MB" min={1} placeholder={String(MEDIA_FILE_MB)} value={media.mediaMaxFileMb} disabled={!saved || save.busy} onCommit={(v) => setLimit("mediaMaxFileMb", v)} />
+          </Ctl>
+          <Ctl title="Media in all" sub="Once a backup holds this much media, the rest is left out and counted.">
+            <Num label="Media in all" unit="MB" min={1} placeholder={String(MEDIA_TOTAL_MB)} value={media.mediaMaxTotalMb} disabled={!saved || save.busy} onCommit={(v) => setLimit("mediaMaxTotalMb", v)} />
+          </Ctl>
+        </> : <Hint>Media files over {media.mediaMaxFileMb ?? MEDIA_FILE_MB} MB, or past {media.mediaMaxTotalMb ?? MEDIA_TOTAL_MB} MB in all, are left out and counted. Change the limits at How much to show › Advanced.</Hint>}
+      </Sec>
     </Page>
   );
 }
@@ -83,7 +109,7 @@ function Where({ saved, busy, onSave, onForget }: { saved?: Destination; busy: b
       </Ctl>
       <Ctl title={kind === "git" ? "Repository address" : "Folder"} stack>
         <Field wide label={kind === "git" ? "Repository address" : "Folder"} value={value} disabled={busy}
-          placeholder={kind === "git" ? "https://github.com/you/private-repo.git" : "C:\\Users\\you\\Backups\\Branch"} onCommit={setValue} />
+          placeholder={kind === "git" ? "https://github.com/you/branch-backups.git" : "C:\\Users\\you\\Backups\\Branch"} onCommit={setValue} />
         <Acts>
           <Btn sm pri disabled={busy || !changed} onClick={() => onSave(destination)}>Save</Btn>
           {saved ? <Btn sm ghost disabled={busy} onClick={onForget}>Stop backing up here</Btn> : null}
@@ -99,7 +125,9 @@ function LastBackup({ status, repository }: { status?: RecordValue; repository: 
   if (!repository || !t) return <Ctl title="Last backup" sub={repository ? "None yet." : "Nothing backed up yet."} />;
   const ok = latest.status === "ok";
   const commit = str(latest.target);
-  const what = !ok ? str(latest.error) || "Failed." : latest.pushFailed === true ? `Saved here, but sending it to the repository failed: ${str(latest.error)}` : commit ? `Saved as ${commit.slice(0, 10)}.` : "Nothing changed since the one before.";
+  // A successful run's error field holds its warnings, such as "3 large files skipped (…)".
+  const notes = ok && latest.pushFailed !== true && str(latest.error) ? ` ${str(latest.error)}.` : "";
+  const what = !ok ? str(latest.error) || "Failed." : latest.pushFailed === true ? `Saved here, but sending it to the repository failed: ${str(latest.error)}` : `${commit ? `Saved as ${commit.slice(0, 10)}.` : "Nothing changed since the one before."}${notes}`;
   const lastOk = rec(t.latestOk);
   return (
     <Ctl title="Last backup" sub={<>{when(latest.createdAt)} · {what}{!ok && lastOk.createdAt ? ` Last success: ${when(lastOk.createdAt)}.` : ""}</>}>

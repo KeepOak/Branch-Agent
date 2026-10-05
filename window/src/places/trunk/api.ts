@@ -5,7 +5,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { mayChanges, type May } from "./may";
 import { avatarFor, patchConfig, readConfig, readRoster, rec, str, type ConfigSnapshot, type Roster, type TrunkRow } from "./model";
 
-export type Draft = { name: string; theme: string; look: string; emoji: string; model: string; may: May };
+export type Draft = { name: string; theme: string; look: string; emoji: string; colour: string; shape: string; eyes: string; model: string; may: May };
 
 function refused(result: unknown, fallback: string): void {
   const r = rec(result);
@@ -18,6 +18,9 @@ export function updateParams(id: string, was: Draft, now: Draft): Record<string,
   if (now.name.trim() && now.name.trim() !== was.name) p.name = now.name.trim();
   if (now.look !== was.look) p.avatar = avatarFor(now.look);
   if (now.emoji && now.emoji !== was.emoji) p.emoji = now.emoji;
+  if (now.colour !== was.colour) p.colour = now.colour;
+  if (now.shape !== was.shape) p.shape = now.shape;
+  if (now.eyes !== was.eyes) p.eyes = now.eyes;
   const fallbacksChanged = was.may.fallbacks.join("\n") !== now.may.fallbacks.join("\n");
   if (now.model !== was.model && !fallbacksChanged) p.model = now.model || null;
   return Object.keys(p).length > 1 ? p : null;
@@ -40,14 +43,6 @@ export async function saveTrunk(engine: WindowEngine, id: string, was: Draft, no
   if (Object.keys(changes).length) await patchConfig(engine, fresh, changes);
 }
 
-/** A free "New Trunk" name: the engine derives the id from the name, so two Trunks can't share one. */
-export function newTrunkName(roster: Roster): string {
-  const taken = new Set(roster.agents.flatMap((a) => [a.name.toLowerCase(), a.id.toLowerCase()]));
-  let n = 1, name = "New Trunk";
-  while (taken.has(name.toLowerCase()) || taken.has(name.toLowerCase().replace(/\s+/g, "-"))) name = `New Trunk ${++n}`;
-  return name;
-}
-
 /** Creation is persisted before some engines adopt the new runtime roster. */
 export async function waitForTrunk(engine: WindowEngine, id: string, current: () => boolean = () => true): Promise<void> {
   const deadline = Date.now() + 15_000;
@@ -62,8 +57,8 @@ export async function waitForTrunk(engine: WindowEngine, id: string, current: ()
 }
 
 /** Returns the persisted receipt; onboarding retains this ID across its own retryable setup steps. */
-export async function createTrunk(engine: WindowEngine, name: string): Promise<string> {
-  const result = rec(await engine.request("agents.create", { name }));
+export async function createTrunk(engine: WindowEngine, name: string, avatar?: string): Promise<string> {
+  const result = rec(await engine.request("agents.create", { name, ...(avatar ? { avatar } : {}) }));
   refused(result, "The engine did not create the Trunk.");
   const id = str(result.agentId);
   if (!id) throw new Error("The engine did not confirm that the Trunk was created.");
@@ -71,9 +66,9 @@ export async function createTrunk(engine: WindowEngine, name: string): Promise<s
 }
 
 /** A new contact or job must also be available in the running gateway before it can be used. */
-export async function createReadyTrunk(engine: WindowEngine, name: string, current: () => boolean = () => true): Promise<string> {
+export async function createReadyTrunk(engine: WindowEngine, name: string, current: () => boolean = () => true, avatar?: string): Promise<string> {
   if (!current()) throw new Error("You left this screen before the Trunk was created.");
-  const id = await createTrunk(engine, name);
+  const id = await createTrunk(engine, name, avatar);
   await waitForTrunk(engine, id, current);
   return id;
 }

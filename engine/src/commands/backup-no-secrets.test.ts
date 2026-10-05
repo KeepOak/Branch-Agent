@@ -13,6 +13,7 @@ import { BRANCH_AGENT_SCHEMA_VERSION } from "../state/branch-agent-db-contract.j
 import { BRANCH_AGENT_SCHEMA_SQL } from "../state/branch-agent-schema.js";
 import { BRANCH_STATE_SCHEMA_VERSION } from "../state/branch-state-db-contract.js";
 import { BRANCH_STATE_SCHEMA_SQL } from "../state/branch-state-schema.js";
+import { readBackupRuns } from "../state/backup-run-records.js";
 import { createTempHomeEnv, type TempHomeEnv } from "../test-utils/temp-home.js";
 import { prepareBackupDestination } from "./backup-destination.js";
 import { backupGitCreateCommand } from "./backup-git.js";
@@ -31,7 +32,15 @@ const SECRETS = {
   workspaceEnv: "SENTINEL-WORKSPACE-DOTENV-3a4b",
   stateEnv: "SENTINEL-STATE-DOTENV-5c6d",
   pemKey: "SENTINEL-PRIVATE-KEY-PEM-7e8f",
+  mediaToken: "SENTINEL-MEDIA-TOKEN-JSON-9a0b",
+  mediaKey: "SENTINEL-MEDIA-KEY-PEM-1c2d",
+  mediaDisguised: "SENTINEL-MEDIA-DISGUISED-PNG-3e4f",
 } as const;
+/** A real 1x1 PNG: media Trunks made is backed up. */
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+  "base64",
+);
 /** Secrets that live in database tables: present without redaction, absent with it. */
 const DATABASE_SECRETS = [
   SECRETS.authProfile,
@@ -153,6 +162,14 @@ async function seedFiles(home: string, stateDir: string, agentDir: string): Prom
   await fs.writeFile(path.join(home, "memory", "2026-10-05.md"), `${MEMORY_MARKER}\n`);
   await fs.writeFile(path.join(home, ".env"), `ANTHROPIC_API_KEY=${SECRETS.workspaceEnv}\n`);
   await fs.writeFile(path.join(home, "deploy.pem"), SECRETS.pemKey);
+  // Media: a real picture, secret-looking files and a text file pretending to be a PNG.
+  const media = path.join(stateDir, "media");
+  await fs.mkdir(path.join(media, "outgoing"), { recursive: true });
+  await fs.writeFile(path.join(media, "outgoing", "chart.png"), PNG);
+  await fs.writeFile(path.join(media, "outgoing", "huge.png"), Buffer.concat([PNG, Buffer.alloc(2 * 1024 * 1024)]));
+  await fs.writeFile(path.join(media, "token.json"), JSON.stringify({ token: SECRETS.mediaToken }));
+  await fs.writeFile(path.join(media, "key.pem"), SECRETS.mediaKey);
+  await fs.writeFile(path.join(media, "secret.png"), `OPENAI_API_KEY=${SECRETS.mediaDisguised}`);
   // A workspace .gitignore must not drop backed-up files.
   await fs.writeFile(path.join(home, ".gitignore"), "*.md\n");
 }
@@ -200,6 +217,7 @@ describe("scheduled backup excludes every secret", () => {
       push,
       excludeSecrets,
       files: true,
+      mediaMaxFileMb: 1,
     });
     return { repository, remote, result };
   }
@@ -217,9 +235,21 @@ describe("scheduled backup excludes every secret", () => {
         "files/config/branch.json",
         "files/workspaces/main/MEMORY.md",
         "files/workspaces/main/memory/2026-10-05.md",
+        "files/media/outgoing/chart.png",
       ]),
     );
     expect(tree.some((entry) => entry.includes(".branch/") || entry.endsWith(".env"))).toBe(false);
+    expect(tree.filter((entry) => entry.startsWith("files/media/"))).toEqual([
+      "files/media/outgoing/chart.png",
+    ]);
+    expect(Number(git(remote, ["cat-file", "-s", "backups:files/media/outgoing/chart.png"]))).toBe(
+      PNG.length,
+    );
+    const skipped = "1 large file skipped (media over 1 MB each or past 1024 MB in all)";
+    expect(result.warnings).toContain(skipped);
+    // Recorded with the run, so Settings › Backups shows it under Last backup.
+    const runs = await readBackupRuns(process.env);
+    expect(runs.find((run) => run.kind === "git" && run.status === "ok")?.error).toContain(skipped);
     const config = JSON.parse(
       git(remote, ["show", "backups:files/config/branch.json"]),
     ) as Record<string, unknown>;
