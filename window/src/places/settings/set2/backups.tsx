@@ -9,7 +9,7 @@ import { CallLine, rec, str, useCall, useLive, when, type RecordValue } from "./
 
 const DAY = 86_400_000;
 const WEEK = 7 * DAY;
-const LEDE = "A copy of your conversations, memory, Library and settings, on a schedule you choose. Passwords, keys and sign-ins are never included.";
+const LEDE = "A copy of your conversations, memory, Trunk workspaces (Library documents included) and settings, on a schedule you choose. Passwords, keys and sign-ins are never included.";
 const GIT_HINT = "Use a private repository, for example github.com/KeepOak/Branch-Agent-Private. Branch pushes to its backups branch with your Git sign-in.";
 
 export const ROWS: RowEntry[] = [
