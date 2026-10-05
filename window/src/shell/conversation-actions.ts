@@ -2,6 +2,7 @@
 // each through the engine method its row names, followed by a read-back of the list.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Conversation, ConversationList } from "../connect/conversations";
+import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { notify } from "./notify";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
@@ -151,7 +152,8 @@ export function conversationActions(request: Request, list: ConversationList, op
     },
     /** Adopt the Trunk's canonical contact so the shell can retain its durable list row. */
     async create(agentId?: string): Promise<string | null> {
-      try {
+      const backoff = new PreparationRetry();
+      const createOnce = async (): Promise<string> => {
         const roster = (await request("agents.list", {})) as { defaultId?: unknown; mainKey?: unknown };
         const id = agentId || (typeof roster.defaultId === "string" ? roster.defaultId : "");
         if (!id) throw new Error("Create a Trunk before starting a conversation");
@@ -166,6 +168,18 @@ export function conversationActions(request: Request, list: ConversationList, op
           throw new Error("The contact conversation is saved, but the engine has not made it available. Try opening it again");
         }
         return key;
+      };
+      try {
+        while (true) {
+          try {
+            return await createOnce();
+          } catch (error) {
+            if (!isPreparationPending(error)) throw error;
+            const delay = backoff.nextDelay();
+            if (delay === null) throw new Error(preparationTimeoutLabel("This Trunk"));
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        }
       } catch (e) {
         notify(`Couldn't start a conversation: ${reason(e)}.`, { tone: "bad" });
         return null;
