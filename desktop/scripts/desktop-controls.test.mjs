@@ -8,7 +8,7 @@ import test from "node:test";
 
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 if (!dist) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to current strict-compiled source");
-const { createDesktopControls, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, DOWNLOAD_PAGES } =
+const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, DOWNLOAD_PAGES } =
   await import(pathToFileURL(join(dist, "desktop-controls.js")));
 
 async function fixture(run) {
@@ -31,7 +31,16 @@ async function fixture(run) {
 
 test("defaults keep working on close, keep awake off, tray ring off", async () => fixture(async ({ deps }) => {
   const controls = createDesktopControls(deps);
-  assert.deepEqual(await controls.get(), { keepWorking: true, keepAwake: false, trayUsage: false, startWithWindows: false, branchOnPath: false });
+  assert.deepEqual(await controls.get(), { keepWorking: true, keepAwake: false, trayUsage: false, agentControl: false, startWithWindows: false, branchOnPath: false });
+}));
+
+test("letting agents use the window is off by default, saved, and read at the next launch", async () => fixture(async ({ deps, calls }) => {
+  const controls = createDesktopControls(deps);
+  assert.equal((await controls.set("agentControl", true)).agentControl, true);
+  assert.deepEqual(calls, []);
+  assert.equal(readSettings(deps.settingsFile).agentControl, true);
+  await controls.set("agentControl", false);
+  assert.equal(readSettings(deps.settingsFile).agentControl, false);
 }));
 
 test("Start with Windows goes to the login item, not the settings file", async () => fixture(async ({ deps, calls, state }) => {
