@@ -1,8 +1,9 @@
+import type { BigIntStats } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { resolvePathPrefixSync } from "@openclaw/fs-safe/advanced";
 import { normalizeOptionalString as resolveOptionalStringParam } from "@branch/normalization-core/string-coerce";
+import { resolvePathPrefixSync } from "@openclaw/fs-safe/advanced";
 import {
   ErrorCodes,
   errorShape,
@@ -143,12 +144,7 @@ function cleanupPathIdentity(stat: { dev?: number | bigint; ino?: number | bigin
   ) {
     return null;
   }
-  const dev = Number(stat.dev);
-  const ino = Number(stat.ino);
-  if (!Number.isSafeInteger(dev) || !Number.isSafeInteger(ino)) {
-    throw new Error("cleanup path identity exceeds the safe integer range");
-  }
-  return { dev, ino };
+  return { dev: String(stat.dev), ino: String(stat.ino) };
 }
 
 async function statAgentCleanupPath(cleanupPath: AgentDeleteCleanupPath) {
@@ -170,7 +166,7 @@ async function statAgentCleanupPath(cleanupPath: AgentDeleteCleanupPath) {
   if (stat.isFile && stat.nlink > 1) {
     throw new AgentCleanupIdentityMismatchError("hardlinked cleanup replacement preserved");
   }
-  const identity = cleanupPathIdentity(stat);
+  const identity = cleanupPathIdentity(await fs.lstat(cleanupPath.trashPath, { bigint: true }));
   if (cleanupPath.preparedIdentity === null) {
     // The journal fence blocks legitimate claims on prepared-absent paths, so a
     // file that appeared here is leaked deleted-agent state (recreated WAL
@@ -243,7 +239,7 @@ type AgentDeleteCleanupPath = {
   trashPath: string;
   trashCoversDescendants: boolean;
   kind: "target" | "symlink";
-  preparedIdentity: { dev: number; ino: number } | null;
+  preparedIdentity: { dev: string; ino: string } | null;
   done: boolean;
   note?: string;
   preparationError?: unknown;
@@ -298,7 +294,7 @@ async function prepareAgentDeleteCleanupPaths(
       preparedIdentity:
         persistedPath.dev === null || persistedPath.ino === null
           ? null
-          : { dev: persistedPath.dev, ino: persistedPath.ino },
+          : { dev: String(persistedPath.dev), ino: String(persistedPath.ino) },
       done: persistedPath.done,
       note: persistedPath.note,
       sourcePaths: persistedPath.sourcePaths.map((sourcePath) => path.resolve(sourcePath)),
@@ -315,9 +311,9 @@ async function prepareAgentDeleteCleanupPaths(
     } catch (error) {
       preparationError = error;
     }
-    let sourceStat: Awaited<ReturnType<typeof fs.lstat>> | undefined;
+    let sourceStat: BigIntStats | undefined;
     try {
-      sourceStat = await fs.lstat(pathname);
+      sourceStat = await fs.lstat(pathname, { bigint: true });
     } catch (error) {
       if (!isMissingPathError(error)) {
         preparationError ??= error;
@@ -326,7 +322,7 @@ async function prepareAgentDeleteCleanupPaths(
     let targetStat = sourceStat;
     if (resolvedPath !== sourcePath) {
       try {
-        targetStat = await fs.lstat(resolvedPath);
+        targetStat = await fs.lstat(resolvedPath, { bigint: true });
       } catch (error) {
         if (!isMissingPathError(error)) {
           preparationError ??= error;

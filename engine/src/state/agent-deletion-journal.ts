@@ -70,8 +70,8 @@ export type AgentDeletionJournalCleanupPath = {
   parentPath: string;
   kind: "target" | "symlink";
   sourcePaths: string[];
-  dev: number | null;
-  ino: number | null;
+  dev: string | number | null;
+  ino: string | number | null;
   coversDescendants: boolean;
   done: boolean;
   note?: string;
@@ -301,8 +301,8 @@ export function parseCleanupPaths(value: string): AgentDeletionJournalCleanupPat
         typeof entry.canonicalPath === "string" &&
         typeof entry.parentPath === "string" &&
         (entry.kind === "target" || entry.kind === "symlink") &&
-        (entry.dev === null || typeof entry.dev === "number") &&
-        (entry.ino === null || typeof entry.ino === "number") &&
+        (entry.dev === null || typeof entry.dev === "number" || typeof entry.dev === "string") &&
+        (entry.ino === null || typeof entry.ino === "number" || typeof entry.ino === "string") &&
         typeof entry.coversDescendants === "boolean" &&
         typeof entry.done === "boolean" &&
         (entry.note === undefined || typeof entry.note === "string") &&

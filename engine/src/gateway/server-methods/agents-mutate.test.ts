@@ -292,8 +292,7 @@ vi.mock("../../state/branch-agent-db.js", () => ({
     mocks.closeBranchAgentDatabaseByPath(pathname, expectedAgentId),
   listBranchRegisteredAgentDatabases: mocks.listBranchRegisteredAgentDatabases,
   resolveBranchAgentSqlitePath: mocks.resolveBranchAgentSqlitePath,
-  resolveIncognitoBranchAgentSqlitePath: () =>
-    "/agents/test-agent/incognito-branch-agent.sqlite",
+  resolveIncognitoBranchAgentSqlitePath: () => "/agents/test-agent/incognito-branch-agent.sqlite",
 }));
 
 vi.mock("../../state/agent-deletion-journal.js", () => ({
@@ -1163,6 +1162,67 @@ describe("agents.delete", () => {
     expect(appearedRecord).toMatchObject({ done: true });
     expect(appearedRecord).not.toHaveProperty("note");
     expect(mocks.beginAgentDeletionFinish).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    {
+      name: "matching 64-bit identity",
+      dev: "1311768467463790320",
+      ino: "9223372036854775809",
+      currentIno: 0x8000_0000_0000_0001n,
+      trashed: true,
+    },
+    {
+      name: "adjacent 64-bit replacement",
+      dev: "1311768467463790320",
+      ino: "9223372036854775809",
+      currentIno: 0x8000_0000_0000_0002n,
+      trashed: false,
+    },
+    { name: "legacy numeric journal identity", dev: 12, ino: 34, currentIno: 34n, trashed: true },
+  ])("checks $name before cleanup", async ({ dev, ino, currentIno, trashed }) => {
+    const agentDir = path.resolve("/journal/agent");
+    const workspaceDir = path.resolve("/journal/workspace");
+    const sessionsDir = path.resolve("/journal/sessions");
+    const journal = deletionJournal({
+      agentDir,
+      workspaceDir,
+      sessionsDir,
+      cleanupPaths: [
+        cleanupPath(agentDir, { dev, ino }),
+        cleanupPath(workspaceDir, { done: true }),
+        cleanupPath(sessionsDir, { done: true }),
+      ],
+    });
+    mocks.findAgentEntryIndex.mockReturnValue(-1);
+    mocks.readAgentDeletionJournal.mockReturnValue(journal);
+    mocks.resolveRegisteredAgentIdForDir.mockImplementation((pathname?: string) =>
+      pathname === agentDir ? "test-agent" : undefined,
+    );
+    mocks.fsLstat.mockImplementation(async (pathname: unknown) => {
+      if (pathname !== journal.agentDir) {
+        throw createEnoentError();
+      }
+      return {
+        dev: typeof dev === "number" ? BigInt(dev) : 0x1234_5678_9abc_def0n,
+        ino: currentIno,
+        isFile: () => false,
+        isSymbolicLink: () => false,
+        nlink: 1n,
+      } as unknown as import("node:fs").BigIntStats;
+    });
+
+    const respond = await call("agents.delete", { agentId: "test-agent" });
+
+    const result = expectRespondOk(respond, { failed: [] });
+    if (trashed) {
+      expect(result.removed).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path: journal.agentDir })]),
+      );
+      expectTrashedWithinParent(journal.agentDir);
+    } else {
+      expectNotTrashed(journal.agentDir);
+    }
   });
 
   it("protects a pending ancestor when a done descendant is recreated", async () => {

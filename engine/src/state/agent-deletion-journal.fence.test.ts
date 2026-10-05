@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
   beginAgentDeletionJournal,
+  parseCleanupPaths,
   readAgentDeletionJournal,
   removeAgentDeletionJournal,
 } from "./agent-deletion-journal.js";
@@ -21,6 +22,24 @@ afterEach(() => {
   closeBranchStateDatabaseForTest();
 });
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+
+it.each([
+  { dev: "1311768467463790320", ino: "9223372036854775809" },
+  { dev: 12, ino: 34 },
+])("reads cleanup path identity from journal JSON: dev=$dev", ({ dev, ino }) => {
+  const cleanupPath = {
+    path: "/agent",
+    canonicalPath: "/agent",
+    parentPath: "/",
+    kind: "target",
+    sourcePaths: ["/agent"],
+    dev,
+    ino,
+    coversDescendants: true,
+    done: false,
+  };
+  expect(parseCleanupPaths(JSON.stringify([cleanupPath]))).toEqual([cleanupPath]);
+});
 
 it.each([
   ["registration", "database_paths_json", "[1]"],
