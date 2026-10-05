@@ -1,0 +1,326 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { afterEach, describe, expect, it } from "vitest";
+import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
+import { outsideAgentFromClient } from "./channel-server-runtime.js";
+import { resolveDesktopGateway } from "./desktop-gateway.js";
+import { registerTrunkMcpTools, type TrunkGateway } from "./trunk-tools.js";
+
+type Call = { method: string; params: Record<string, unknown> };
+
+/** A fake gateway: canned answers per method, every call recorded, events pushed by the test. */
+function fakeGateway(answers: Record<string, (params: Record<string, unknown>) => unknown>) {
+  const calls: Call[] = [];
+  const listeners = new Set<(event: EventFrame) => void>();
+  const gw: TrunkGateway = {
+    async request(method, params) {
+      calls.push({ method, params });
+      const answer = answers[method];
+      if (!answer) throw new Error(`unexpected ${method}`);
+      return (await answer(params)) as never;
+    },
+    onGatewayEvent(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+  const emit = (payload: Record<string, unknown>) => {
+    for (const listener of listeners)
+      listener({ type: "event", event: "agent", payload } as EventFrame);
+  };
+  return { gw, calls, emit };
+}
+
+const claude = { id: "claude-code", name: "Claude Code", version: "2.1.0", where: "LEGION" };
+const clients: Client[] = [];
+afterEach(async () => {
+  for (const client of clients.splice(0)) await client.close();
+});
+
+async function connect(gw: TrunkGateway, agent: typeof claude | null = claude) {
+  const server = new McpServer({ name: "branch", version: "test" });
+  registerTrunkMcpTools(server, gw, { outsideAgent: () => agent ?? undefined, now: () => 1_700 });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "Claude Code", version: "2.1.0" });
+  clients.push(client);
+  await Promise.all([server.connect(a), client.connect(b)]);
+  return client;
+}
+
+async function call(client: Client, name: string, args: Record<string, unknown>, extra = {}) {
+  const result = await client.callTool({ name, arguments: args }, undefined, extra);
+  return result.structuredContent as Record<string, unknown>;
+}
+
+describe("branch mcp serve Trunk tools", () => {
+  it("trunks_list shows each Trunk's live state, thread, model and account, plus outside contacts", async () => {
+    const { gw } = fakeGateway({
+      "agents.list": () => ({
+        agents: [
+          { id: "builder-oak", name: "Builder Oak", model: { primary: "openai-codex/gpt-5.5" } },
+          { id: "main", identity: { name: "Sapling" } },
+        ],
+      }),
+      "sessions.list": (p) =>
+        p.agentId === "builder-oak"
+          ? {
+              sessions: [
+                {
+                  key: "agent:builder-oak:t1",
+                  status: "running",
+                  authProfileOverride: "openai-codex:b",
+                },
+              ],
+            }
+          : { sessions: [{ key: "agent:main:main", status: "done", model: "claude-opus" }] },
+      "contacts.list": () => ({
+        contacts: [
+          { id: "trunk:main", kind: "trunk", name: "Sapling" },
+          { id: "a2a:claude-code", kind: "outside", name: "Claude Code", where: "LEGION" },
+        ],
+      }),
+    });
+    const out = await call(await connect(gw), "trunks_list", {});
+    expect(out.trunks).toEqual([
+      {
+        id: "builder-oak",
+        name: "Builder Oak",
+        state: "working",
+        thread: "agent:builder-oak:t1",
+        model: "openai-codex/gpt-5.5",
+        account: "openai-codex:b",
+      },
+      { id: "main", name: "Sapling", state: "idle", model: "claude-opus" },
+    ]);
+    expect(out.contacts).toEqual([
+      { id: "a2a:claude-code", kind: "outside", name: "Claude Code", where: "LEGION" },
+    ]);
+  });
+
+  it("trunk_send opens a new labelled thread and sends as the outside agent", async () => {
+    const { gw, calls } = fakeGateway({
+      "sessions.create": () => ({ ok: true }),
+      "chat.send": () => ({ runId: "run-1", status: "started" }),
+    });
+    const out = await call(await connect(gw), "trunk_send", {
+      agent_id: "builder-oak",
+      text: "Reply with exactly OK",
+    });
+    expect(out).toEqual({
+      thread_key: "agent:builder-oak:claude-code-1700",
+      run_id: "run-1",
+      status: "started",
+    });
+    expect(calls[0]).toEqual({
+      method: "sessions.create",
+      params: {
+        key: "agent:builder-oak:claude-code-1700",
+        agentId: "builder-oak",
+        label: "Reply with exactly OK",
+      },
+    });
+    expect(calls[1]?.params).toMatchObject({
+      sessionKey: "agent:builder-oak:claude-code-1700",
+      agentId: "builder-oak",
+      message: "Reply with exactly OK",
+      deliver: false,
+      outsideAgent: claude,
+    });
+  });
+
+  it("trunk_send into a given thread does not create one, and without a known identity sends plainly", async () => {
+    const { gw, calls } = fakeGateway({ "chat.send": () => ({ runId: "run-2" }) });
+    await call(await connect(gw, null), "trunk_send", {
+      agent_id: "main",
+      text: "hi",
+      thread_key: "agent:main:main",
+    });
+    expect(calls.map((c) => c.method)).toEqual(["chat.send"]);
+    expect(calls[0]?.params).not.toHaveProperty("outsideAgent");
+  });
+
+  it("trunk_steer steers the busy run and run_abort stops it", async () => {
+    const { gw, calls } = fakeGateway({
+      "chat.send": () => ({ runId: "run-1" }),
+      "chat.abort": () => ({ ok: true }),
+    });
+    const client = await connect(gw);
+    await call(client, "trunk_steer", { thread_key: "agent:oak:t", text: "also add tests" });
+    await call(client, "run_abort", { thread_key: "agent:oak:t", run_id: "run-1" });
+    expect(calls[0]?.params).toMatchObject({
+      sessionKey: "agent:oak:t",
+      queueMode: "steer",
+      outsideAgent: claude,
+    });
+    expect(calls[1]).toEqual({
+      method: "chat.abort",
+      params: { sessionKey: "agent:oak:t", runId: "run-1" },
+    });
+  });
+
+  it("run_wait streams thinking and tool events as progress and returns the reply", async () => {
+    let waits = 0;
+    const fake = fakeGateway({
+      "agent.wait": async () => {
+        waits += 1;
+        if (waits === 1) {
+          fake.emit({ runId: "run-1", stream: "thinking", data: { text: "checking the brief" } });
+          fake.emit({ runId: "run-1", stream: "tool", data: { phase: "start", name: "exec" } });
+          fake.emit({ runId: "other", stream: "tool", data: { phase: "start", name: "read" } });
+          return { status: "timeout" };
+        }
+        return { status: "ok" };
+      },
+      "sessions.describe": () => ({ session: { status: "running", activeWriterRunId: "run-1" } }),
+      "chat.history": () => ({
+        messages: [
+          { role: "user", content: "Reply with exactly OK" },
+          { role: "assistant", content: [{ type: "text", text: "OK" }] },
+        ],
+      }),
+    });
+    const progress: string[] = [];
+    const out = await call(
+      await connect(fake.gw),
+      "run_wait",
+      { run_id: "run-1", thread_key: "agent:oak:t", timeout_ms: 5_000 },
+      {
+        onprogress: (p: { message?: string }) => progress.push(p.message ?? ""),
+      },
+    );
+    expect(out).toEqual({
+      status: "ok",
+      reply: "OK",
+      events: ["thinking: checking the brief", "tool start: exec"],
+    });
+    expect(progress).toEqual(["thinking: checking the brief", "tool start: exec"]);
+  });
+
+  it("run_wait reads the thread row when agent.wait forgot a finished run", async () => {
+    const { gw } = fakeGateway({
+      "agent.wait": () => ({ status: "timeout" }),
+      "sessions.describe": () => ({ session: { status: "done" } }),
+      "chat.history": () => ({ messages: [] }),
+    });
+    const out = await call(await connect(gw), "run_wait", {
+      run_id: "run-1",
+      thread_key: "agent:oak:t",
+      timeout_ms: 5_000,
+    });
+    expect(out.status).toBe("done");
+  });
+
+  it("thread_history pages with a cursor and names who wrote each message", async () => {
+    const { gw, calls } = fakeGateway({
+      "chat.history": () => ({
+        messages: [
+          { role: "user", content: "hi", __branch: { senderName: "Claude Code", id: "e1" } },
+          { role: "user", content: "me", __branch: { senderIsOwner: true } },
+          { role: "assistant", content: [{ type: "text", text: "OK" }], __branch: { runId: "r1" } },
+        ],
+        nextCursor: "c2",
+      }),
+    });
+    const out = await call(await connect(gw), "thread_history", {
+      thread_key: "agent:oak:t",
+      limit: 3,
+      cursor: "c1",
+    });
+    expect(calls[0]?.params).toEqual({ sessionKey: "agent:oak:t", limit: 3, cursor: "c1" });
+    expect(out).toEqual({
+      messages: [
+        { role: "user", from: "Claude Code", text: "hi", id: "e1" },
+        { role: "user", from: "owner", text: "me" },
+        { role: "assistant", from: "trunk", text: "OK", runId: "r1" },
+      ],
+      next_cursor: "c2",
+    });
+  });
+
+  it("trunk_threads lists a Trunk's contact topics", async () => {
+    const { gw, calls } = fakeGateway({
+      "contacts.topics": () => ({
+        topics: [{ key: "agent:oak:t", title: "Fix CI", status: "working", unread: true }],
+        nextCursor: "agent:oak:t",
+      }),
+    });
+    const out = await call(await connect(gw), "trunk_threads", {
+      agent_id: "oak",
+      status: "working",
+    });
+    expect(calls[0]?.params).toEqual({ contactId: "trunk:oak", status: "working", limit: 20 });
+    expect(out).toEqual({
+      threads: [{ key: "agent:oak:t", title: "Fix CI", status: "working", unread: true }],
+      next_cursor: "agent:oak:t",
+    });
+  });
+
+  it("room_join and room_post act as the outside agent", async () => {
+    const { gw, calls } = fakeGateway({
+      "rooms.members.add": () => ({ room: {} }),
+      "rooms.send": () => ({ event: { seq: 4 } }),
+    });
+    const client = await connect(gw);
+    await call(client, "room_join", { room_id: "builders" });
+    await call(client, "room_post", { room_id: "builders", text: "Hello from Claude Code" });
+    expect(calls[0]).toEqual({
+      method: "rooms.members.add",
+      params: { roomId: "builders", kind: "a2a", id: "claude-code" },
+    });
+    expect(calls[1]).toEqual({
+      method: "rooms.send",
+      params: { roomId: "builders", message: "Hello from Claude Code", outsideAgent: claude },
+    });
+  });
+
+  it("trunk_create waits until the new Trunk is known", async () => {
+    let checks = 0;
+    const { gw } = fakeGateway({
+      "agents.create": () => ({ agentId: "scout", workspace: "C:/w/scout" }),
+      "models.authStatus": () => (++checks < 2 ? { unavailable: true } : { providers: [] }),
+    });
+    const out = await call(await connect(gw), "trunk_create", { name: "Scout" });
+    expect(out).toEqual({ agent_id: "scout", ready: true, workspace: "C:/w/scout" });
+  });
+});
+
+describe("branch mcp serve identity and gateway", () => {
+  it("names the outside agent from the MCP clientInfo", () => {
+    expect(
+      outsideAgentFromClient(
+        { name: "claude-code", title: "Claude Code", version: "2.1.0" },
+        "LEGION",
+      ),
+    ).toEqual(claude);
+    expect(outsideAgentFromClient({ name: "codex-mcp-client", version: "0.9" }, "mac")).toEqual({
+      id: "codex-mcp-client",
+      name: "codex-mcp-client",
+      version: "0.9",
+      where: "mac",
+    });
+    expect(outsideAgentFromClient(undefined)).toBeUndefined();
+  });
+
+  it("uses the desktop app's loopback gateway and token file only when no auth is named", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "branch-desktop-"));
+    try {
+      fs.writeFileSync(path.join(dir, "gateway-token"), "secret-value\r\n");
+      expect(resolveDesktopGateway({}, {}, dir)).toEqual({
+        url: "ws://127.0.0.1:19031",
+        token: "secret-value",
+      });
+      expect(resolveDesktopGateway({}, { BRANCH_GATEWAY_PORT: "19555" }, dir)?.url).toBe(
+        "ws://127.0.0.1:19555",
+      );
+      expect(resolveDesktopGateway({ token: "explicit" }, {}, dir)).toBeUndefined();
+      expect(resolveDesktopGateway({}, { BRANCH_GATEWAY_TOKEN: "env" }, dir)).toBeUndefined();
+      expect(resolveDesktopGateway({}, {}, path.join(dir, "missing"))).toBeUndefined();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
