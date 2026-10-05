@@ -61,3 +61,14 @@ describe("Settings › Connected agents", () => {
     expect(readAgents({ enabled: false, agents: [{ id: "x" }] })).toEqual({ enabled: false, agents: [] });
   });
 });
+
+describe("Who it knows written before per-session ids", () => {
+  it("a session's switch splits a product-wide deny into the other sessions' own entries", async () => {
+    const { nextDeny, legacyOutsideId } = await import("./agents");
+    expect(legacyOutsideId("claude-code-a1b2c3-2")).toBe("claude-code");
+    const sessions = ["claude-code-a1b2c3", "claude-code-d4e5f6", "hermes-agent-0a0b0c"];
+    expect(nextDeny(["a2a:claude-code", "scout"], "claude-code-a1b2c3", true, sessions)).toEqual(["scout", "a2a:claude-code-d4e5f6"]);
+    expect(nextDeny(["scout"], "claude-code-a1b2c3", false, sessions)).toEqual(["scout", "a2a:claude-code-a1b2c3"]);
+    expect(nextDeny(["a2a:claude-code-a1b2c3"], "claude-code-a1b2c3", true, sessions)).toEqual([]);
+  });
+});
