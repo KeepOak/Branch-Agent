@@ -149,7 +149,8 @@ function broadcastSessionsChanged(
   const [eventAgentId, routingAgentId, compatibilityOwnerAgentId] = scope;
   const routingOptions = {
     ...(routingAgentId ? { agentId: routingAgentId } : {}),
-    dropIfSlow: true,
+    // Persisted patches need an invalidation even when a subscriber is backed up.
+    dropIfSlow: payload.reason !== "patch",
   };
   const eventPayload = {
     ...payload,
