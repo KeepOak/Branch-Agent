@@ -93,6 +93,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+.thread .segment-more { border: 0; background: transparent; cursor: pointer; }
+.thread .segment-page { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.thread .segment-line { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 8px; background: var(--fill); white-space: pre-wrap; overflow-wrap: anywhere; }
+.thread .segment-line strong { font-size: 11px; color: var(--ink-2); }
+
 .thread .reply-text {
   font-size: 15px;
   line-height: 1.62;

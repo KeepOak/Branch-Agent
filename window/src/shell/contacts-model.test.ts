@@ -20,11 +20,11 @@ describe("Gateway contact projection", () => {
     expect(contactRow(projectContact([raw("oak")], source)[0]).key).toBe("agent:oak:main");
   });
 
-  it("shows default, pinned and recent contacts in that order", () => {
+  it("orders the default Trunk among recent contacts unless pinned", () => {
     const contacts = projectContact([raw("oak"), raw("elm", { isDefault: false, pinnedAt: 8 }), raw("ash", { isDefault: false, lastActivityAt: 20 })], []);
     expect(contactRow(contacts.find((c) => c.isDefault)!).key).toBe("agent:oak:main");
     expect(buildContactSections(contacts, DEFAULT_PREFS, 100).map((s) => [s.label, s.rows.map((r) => r.key)])).toEqual([
-      ["Pinned", ["agent:elm:main"]], ["Recent", ["agent:ash:main"]],
+      ["Pinned", ["agent:elm:main"]], ["Recent", ["agent:ash:main", "agent:oak:main"]],
     ]);
   });
 

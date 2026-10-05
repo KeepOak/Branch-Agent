@@ -11,7 +11,8 @@ import { ProjectsSection, type Project } from "./Projects";
 export type TalkEntry = { name: string; keys: string; open: boolean; onToggle: () => void };
 
 export type SidebarProps = {
-  home: Conversation | null;
+  /** Legacy prop for callers; contacts render only in sections. */
+  home?: Conversation | null;
   sections: ListSection[];
   openKey: string | null;
   currentPlace: PlaceId | null;
@@ -175,7 +176,7 @@ function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row:
           p.onOpen(row.key);
         }}
         onMenu={(e) => p.onMenu(row, e)}
-        onPin={row.isMain ? undefined : () => p.onPin(row)}
+        onPin={() => p.onPin(row)}
         onArchive={row.isMain || row.kind === "trunk" ? undefined : () => p.onArchive(row)}
         onCard={p.onCard ? (el) => p.onCard?.(row, el) : undefined}
       />
@@ -255,7 +256,6 @@ export function Sidebar(p: SidebarProps) {
         <div className="side-scroll">
           <Places current={p.currentPlace} inbox={p.inboxCount} running={p.runningCount} rail={p.rail} onPlace={p.onPlace} />
           <div className="list" data-testid="conversation-list">
-            {p.home ? <Rows p={p} rows={[p.home]} kids={kids} /> : null}
             {p.projects && p.onNewProject ? <ProjectsSection projects={p.projects} rows={p.allRows ?? []} renderRows={(rows) => <Rows p={p} rows={rows} kids={kids} />} onNew={p.onNewProject} /> : null}
             {p.sections.map((s, i) => {
               // The Filter and sort button sits on the "Recent" label row, or on the first row when there is no "Recent".

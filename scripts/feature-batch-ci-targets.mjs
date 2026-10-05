@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
   'extensions/a2a/src/card-cache.test.ts',
@@ -66,6 +68,7 @@ export const engineTests = [
   'src/gateway/server-methods/memory-export.test.ts',
   'src/gateway/server-methods/session-change-event.test.ts',
   'src/gateway/server-reload-hot.agent-roster.test.ts',
+  'src/gateway/server.sessions.create.contact-anchor.test.ts',
   'src/gateway/sessions-patch.done.test.ts',
   'src/logging/logger-redaction-behavior.test.ts',
   'src/logging/retained-warnings.test.ts',
@@ -88,6 +91,7 @@ export const windowTests = [
   'src/connect/conversations.test.ts',
   'src/connect/desktop-component-updates.test.tsx',
   'src/connect/unread-guard.test.ts',
+  'src/face/character-arrival.test.tsx',
   'src/face/character-calm.test.tsx',
   'src/face/use-character-motion.test.tsx',
   'src/places-nav/SettingsFrame.test.tsx',
@@ -125,6 +129,8 @@ export const windowTests = [
   'src/setup/FirstTrunk.test.tsx',
   'src/setup/setup.test.tsx',
   'src/shell/PetReaction.test.tsx',
+  'src/shell/contact-row-routing.test.tsx',
+  'src/shell/contact-topics.test.ts',
   'src/shell/contacts-model.test.ts',
   'src/shell/contacts-source.test.tsx',
   'src/shell/conversation-actions.test.ts',
@@ -467,12 +473,38 @@ export const windowStrictFiles = [
   'src/places/library/memory.test.tsx',
 ];
 
+// A PR adds its named tests in its own file, scripts/feature-batch-ci-named/<topic>.txt, one
+// `engine:<file>` or `window:<file>` per line (# comments allowed), instead of editing the shared
+// lists above, so parallel PRs never conflict on them.
+const NAMED_DIR = new URL('./feature-batch-ci-named/', import.meta.url);
+
+export function namedTestFiles(lane) {
+  let names = [];
+  try {
+    names = readdirSync(NAMED_DIR).filter(name => name.endsWith('.txt')).sort();
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  const files = [];
+  for (const name of names) {
+    for (const raw of readFileSync(new URL(name, NAMED_DIR), 'utf8').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const match = /^(engine|window):(.+)$/.exec(line);
+      if (!match) throw new Error(`scripts/feature-batch-ci-named/${name}: expected engine:<file> or window:<file>, got "${line}"`);
+      if (match[1] === lane) files.push(match[2].trim());
+    }
+  }
+  return files;
+}
+
 export function namedTests(lane) {
   if (!['engine', 'window'].includes(lane)) throw new Error('Unknown feature test lane');
-  const targets = lane === 'engine' ? engineTests : windowTests;
-  if (targets.some((file, index) => index > 0 && targets[index - 1] >= file)) {
+  const listed = lane === 'engine' ? engineTests : windowTests;
+  if (listed.some((file, index) => index > 0 && listed[index - 1] >= file)) {
     throw new Error(`Keep ${lane}Tests sorted: insert new test files in code-point (plain string) order`);
   }
+  const targets = [...listed, ...namedTestFiles(lane)];
   if (!targets.length || new Set(targets).size !== targets.length
     || targets.some(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'))) {
     throw new Error('Explicit unique repository-relative test files are required');
@@ -482,7 +514,7 @@ export function namedTests(lane) {
 
 export function capabilityTests() {
   const targets = capabilityEngineTests;
-  if (!targets.length || new Set(targets).size !== targets.length || targets.some(file => engineTests.includes(file))
+  if (!targets.length || new Set(targets).size !== targets.length || targets.some(file => namedTests('engine').includes(file))
     || targets.some(file => !/^.+.test.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'))) {
     throw new Error('Explicit unique repository-relative capability test files are required');
   }

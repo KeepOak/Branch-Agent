@@ -209,6 +209,10 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       return;
     }
     const { attachments, hasInitialTurn, message } = initialTurn;
+    if (p.contactAnchor && (!hasInitialTurn || p.contactAnchor.threadKey !== parentSessionKey || p.fork)) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "contactAnchor requires a first message and matching parent contact thread"));
+      return;
+    }
     const repositoryCreation = resolveSessionRepositoryCreation(p, hasInitialTurn);
     if (!repositoryCreation.ok) {
       respond(false, undefined, repositoryCreation.error);
@@ -499,6 +503,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       visibility: p.visibility,
       allowExistingModelSelection,
       parentSessionKey,
+      contactAnchor: p.contactAnchor,
       spawnDepth: p.spawnDepth,
       ...resolveSessionCreateRootParameters(p, preparedRoot?.value),
       permissionMode: p.permissionMode,

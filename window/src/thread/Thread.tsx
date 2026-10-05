@@ -34,6 +34,7 @@ import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
 import { dayStamp, fullTime, messageTime, modelName } from "./format";
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
+import type { EarlierPage } from "../shell/useContactSegments";
 
 type Props = {
   supplement?: ReactNode;
@@ -52,16 +53,24 @@ type Props = {
   onToast?: (text: string) => void;
   onOpenSession?: (key: string) => void;
   onReply?: (target: ReplyTarget) => void;
+  onStartTopic?: (afterMessageId: string) => void;
   /** The conversation's questions (question.list); the waiting one is answered above the message box. */
   questions?: QuestionRecord[];
   /** Sends a starter from the empty conversation (§4.2.9), the same way the composer sends. */
   onStart?: (text: string) => void;
+  recoveryFailure?: string;
   /** The Plan card; it goes after the turn that last updated it (planAnchor), else at the end (§4.2.2). */
   plan?: ReactNode;
   /** Who else writes here (rooms/): other people, outside agents and other Trunks (§4.2.4). */
   room?: ThreadRoom;
   topicUpdates?: TopicUpdate[];
   focusTopic?: { key: string; nonce: number } | null;
+  earlierPages?: EarlierPage[];
+  currentStartedAt?: number;
+  hasEarlierPages?: boolean;
+  loadingEarlier?: boolean;
+  earlierError?: string;
+  onLoadEarlier?: () => void;
 };
 
 /** Distance from the end that still counts as "at the end", and that shows "Scroll to latest" (§4.2.2). */
@@ -138,7 +147,7 @@ export function Thread(props: Props) {
   const waitingTwo = allApprovals.filter((a) => a.state === "pending");
   const grouped = useMemo(() => new Set(waitingTwo.length === 2 ? waitingTwo.map((a) => a.id) : []), [waitingTwo.map((a) => a.id).join(" ")]); // eslint-disable-line react-hooks/exhaustive-deps
   useApprovalKeys(firstPending, answer);
-  const { actionsFor, dialog } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, applyReaction: apply });
+  const { actionsFor, dialog } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, onStartTopic: props.onStartTopic, applyReaction: apply });
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
   const signature = `${history.length}:${live.length}:${liveText}:${pendingUser ? 1 : 0}:${running ? 1 : 0}:${extras.length}`;
   const follow = useFollow(signature);
@@ -168,12 +177,43 @@ export function Thread(props: Props) {
     target?.scrollIntoView({ block: "end" });
   }, [props.focusTopic, props.topicUpdates]);
   const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser };
+  const recoveryEntryId = history.findLast((block) =>
+    (block.kind === "user" || block.kind === "text") && Boolean(block.meta?.entryId),
+  );
+  const continueInterrupted = async () => {
+    if (!engine?.sessionKey || !recoveryEntryId || (recoveryEntryId.kind !== "user" && recoveryEntryId.kind !== "text") || !recoveryEntryId.meta?.entryId) return;
+    try {
+      const result = await engine.request<{ sessionKey?: string }>("sessions.fork", {
+        sessionKey: engine.sessionKey,
+        entryId: recoveryEntryId.meta.entryId,
+      });
+      if (!result.sessionKey) throw new Error("The recovered conversation was not created.");
+      await engine.request("chat.send", {
+        sessionKey: result.sessionKey,
+        message: "Continue the task interrupted by the restart from the transcript above.",
+        idempotencyKey: crypto.randomUUID(),
+      });
+      props.onOpenSession?.(result.sessionKey);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error));
+    }
+  };
   return (
     <ThreadContext.Provider value={ctx}>
       <div className="thread-wrap" data-times={prefs.messageTimes} data-look={prefs.msgLook} data-scrollbars={prefs.scroll} dir={prefs.dir}>
       {finding ? <FindBar root={threadRef} name={name} signature={signature} onClose={() => setFinding(false)} /> : null}
-      <div className="scroll" ref={follow.scroller} onScroll={follow.onScroll} data-testid="thread-scroll">
+      <div className="scroll" ref={follow.scroller} onScroll={(event) => { follow.onScroll(); if (event.currentTarget.scrollTop < 80 && props.hasEarlierPages && !props.loadingEarlier) props.onLoadEarlier?.(); }} data-testid="thread-scroll">
         <div className="thread" ref={threadRef}>
+          {props.hasEarlierPages ? <button type="button" className="stamp segment-more" onClick={props.onLoadEarlier} disabled={props.loadingEarlier}>{props.loadingEarlier ? "Loading earlier pages…" : "Earlier pages"}</button> : null}
+          {props.earlierError ? <div className="stamp" role="status">Couldn't load earlier pages: {props.earlierError}</div> : null}
+          {[...(props.earlierPages ?? [])].reverse().map((page) => <div key={page.sessionId} className="segment-page" aria-label="Earlier conversation segment">
+            <div className="stamp">New start · {page.startedAt ? new Date(page.startedAt).toLocaleDateString() : "Earlier"}</div>
+            {page.blocks.filter((block) => ["user", "text", "thinking", "step", "notice", "error"].includes(block.kind)).map((block) => <div key={block.key} className="segment-line">
+              <strong>{block.kind === "user" ? "You" : block.kind === "text" ? name : block.kind === "step" ? block.tool : "Activity"}</strong>
+              <span>{block.kind === "user" || block.kind === "text" || block.kind === "thinking" || block.kind === "notice" ? block.text : block.kind === "step" ? `${block.title} · ${block.detail}` : block.kind === "error" ? block.message : block.kind === "status" ? block.phase : block.kind === "approval" ? block.approval.command : ""}</span>
+            </div>)}
+          </div>)}
+          {(props.earlierPages?.length || props.hasEarlierPages) ? <div className="stamp">New start · {props.currentStartedAt ? new Date(props.currentStartedAt).toLocaleDateString() : "Current"}</div> : null}
           {empty ? <EmptyState onOpenSession={props.onOpenSession} onStart={props.onStart} /> : null}
           {renderTopicEvents(-1)}
           {items.map((item) =>
@@ -203,6 +243,9 @@ export function Thread(props: Props) {
               onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
           ) : null}
           {props.supplement}
+          {props.recoveryFailure === "Interrupted by a restart. Continue?" ? (
+            <div className="notice" role="alert">Interrupted by a restart. {recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Continue</button> : null}</div>
+          ) : null}
           {planAt < 0 ? props.plan : null}
           <div ref={follow.end} className="thread-end" />
         </div>

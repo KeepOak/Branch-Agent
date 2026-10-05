@@ -33,14 +33,15 @@ export function useConversations(session: SaplingSession, ready: boolean, mainKe
 }
 
 /** Gateway-owned contacts, refreshed on its own change event (including read watermarks). */
-export function useContacts(session: SaplingSession, ready: boolean): [Contact[], () => void] {
+export function useContacts(session: SaplingSession, ready: boolean): [Contact[], () => void, boolean] {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const refresh = useMemo(() => {
     let generation = 0;
     const load = () => {
       const current = ++generation;
       void session.request<{ contacts: Contact[] }>("contacts.list", { includeArchived: true }).then(
-        (result) => { if (current === generation) setContacts(result.contacts); },
+        (result) => { if (current === generation) { setContacts(result.contacts); setLoaded(true); } },
         (error: unknown) => console.warn("contacts.list failed", error),
       );
     };
@@ -48,14 +49,14 @@ export function useContacts(session: SaplingSession, ready: boolean): [Contact[]
     return load;
   }, [session]);
   useEffect(() => {
-    if (!ready) return;
+    if (!ready) { setLoaded(false); return; }
     refresh();
     const off = session.onGatewayEvent((event) => {
       if (event === "contacts.changed" || event === "agents.changed" || event === "config.changed") refresh();
     });
     return () => { off(); refresh.cancel(); };
   }, [session, ready, refresh]);
-  return [ready ? contacts : [], refresh];
+  return [ready ? contacts : [], refresh, ready && loaded];
 }
 
 /** The Trunks, as OpenClaw's agents.list returns them (identity.name, defaultId). */
