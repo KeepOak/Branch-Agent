@@ -113,23 +113,23 @@ The manual `Source builds` workflow and `Desktop checks` are described in the [R
 
 ## Working with AI agents
 
-### Connect an agent with `branch mcp serve`
+### Graft an agent onto Branch with `branch graft`
 
-`branch mcp serve` runs Branch as a stdio MCP server. On a computer running the desktop app it needs no flags: it reads the app's gateway token itself and connects to the local gateway. Connect a coding agent with one line:
+Graft (`branch graft`, also `branch mcp serve`) runs Branch as a stdio MCP server. On a computer running the desktop app it needs no flags: it reads the app's gateway token itself and connects to the local gateway. Connect a coding agent with one line:
 
 ```bash
-claude mcp add --scope user branch -- branch mcp serve   # Claude Code
-codex mcp add branch -- branch mcp serve                 # Codex
-gemini mcp add branch branch mcp serve                   # Gemini CLI
+claude mcp add --scope user branch -- branch graft   # Claude Code
+codex mcp add branch -- branch graft                 # Codex
+gemini mcp add branch branch graft                   # Gemini CLI
 ```
 
-The `branch` command is installed by the desktop app's "Type branch in any terminal" setting. Any other MCP client runs the stdio server `branch` with the arguments `["mcp", "serve"]`.
+The `branch` command is installed by the desktop app's "Type branch in any terminal" setting. Any other MCP client runs the stdio server `branch` with the argument `graft`.
 
 The bridge's Trunk tools (`trunks_list`, `trunk_create`, `trunk_threads`, `trunk_send`, `trunk_steer`, `run_abort`, `run_wait`, `thread_history`, `rooms_list`, `room_read`, `room_join`, `room_post`, `usage_status`) let an agent create Trunks, give them work, steer or stop a run, wait for it with live progress, read threads and take part in group chats. The full reference, including flags and the channel tools, is [`engine/docs/cli/mcp/serve.md`](engine/docs/cli/mcp/serve.md).
 
 ### Outside agents are contacts
 
-An agent connected over MCP appears in Branch as an outside agent contact, the same kind of contact as an A2A peer: with its own name (from the MCP handshake) and the computer it runs on. Its messages show in a Trunk's thread as its own, not as the user's. Each Trunk's "Who it knows" switch for the agent decides whether the gateway accepts its messages to that Trunk (`agents.entries.<trunk>.agentToAgent.deny: ["a2a:<agent id>"]`), and `room_join` makes it a member of a group chat. A Settings page to see, scope and revoke connected agents is in progress.
+An agent connected over MCP appears in Branch as an outside agent contact, the same kind of contact as an A2A peer: with its own name (from the MCP handshake) and the computer it runs on. Its messages show in a Trunk's thread as its own, not as the user's. Each Trunk's "Who it knows" switch for the agent decides whether the gateway accepts its messages to that Trunk (`agents.entries.<trunk>.agentToAgent.deny: ["a2a:<agent id>"]`), and `room_join` makes it a member of a group chat. Settings › Grafts lists every grafted agent and lets you scope or disconnect it.
 
 ### Self-testing a change
 

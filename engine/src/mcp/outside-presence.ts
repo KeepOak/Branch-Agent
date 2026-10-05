@@ -1,4 +1,4 @@
-// Who this `branch mcp serve` speaks for, and whether Branch still lets it in (Settings › Connected agents).
+// Who this `branch mcp serve` speaks for, and whether Branch still lets it in (Settings › Grafts).
 // Every connected MCP client is its own identity: its display name plus a short tag for this computer and the
 // folder it works in, so ten Claude Code sessions in ten projects are ten contacts, and each one keeps its id
 // across restarts. It says hello every minute (online dot, last seen) and when it starts something (activity).
@@ -95,12 +95,12 @@ export class OutsidePresence {
     if (this.refusal) throw new Error(this.refusal);
   }
 
-  /** Whether the owner let this agent drive their own window (Settings › Connected agents). */
+  /** Whether the owner let this agent drive their own window (Settings › Grafts). */
   mayDriveWindow(): boolean {
     return this.driveWindow;
   }
 
-  /** Tell Branch what this agent is doing now (shown in Settings › Connected agents). */
+  /** Tell Branch what this agent is doing now (shown in Settings › Grafts). */
   activity(text: string): void {
     const now = Date.now();
     if (!this.agent || now - this.lastActivityAt < ACTIVITY_MIN_INTERVAL_MS) return;
@@ -128,7 +128,7 @@ export class OutsidePresence {
     if (!this.agent) return;
     try {
       const full = { ...this.agent, ...(activity ? { activity } : {}) };
-      // A Branch from before Settings › Connected agents knows only id, name, version and where; on its
+      // A Branch from before Settings › Grafts knows only id, name, version and where; on its
       // "invalid params" the hello goes again in that shape instead of falling back to owner messages.
       const result = await this.hello(full).catch(async (error: unknown) => {
         if (!/invalid contacts\.outside\.hello params|INVALID_REQUEST/i.test(String(error)))
@@ -153,7 +153,8 @@ export class OutsidePresence {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       // A gateway without contacts.outside.hello keeps plain messages; a refusal stops this agent.
-      if (/Connected agents/.test(message)) this.refusal = message;
+      // "Connected agents" is the page's name on Branches from before it was called Grafts.
+      if (/Settings › (Grafts|Connected agents)/.test(message)) this.refusal = message;
       this.log(`outside-agent hello failed: ${message}`);
     }
   }

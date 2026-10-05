@@ -136,7 +136,7 @@ describe("outside agents over branch mcp serve", () => {
     );
   });
 
-  it("Settings › Connected agents: on by default, off turns every agent away, disconnect turns one away", () => {
+  it("Settings › Grafts: on by default, off turns every agent away, disconnect turns one away", () => {
     const env = scratchEnv();
     const claude = { id: "claude-code-a1b2c3", name: "Claude Code" };
     expect(readOutsideAgentSettings(env)).toEqual({
