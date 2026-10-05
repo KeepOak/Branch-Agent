@@ -1,0 +1,277 @@
+// Outside agents that reach Branch through `branch mcp serve` (Claude Code, Codex, Gemini CLI, ...). They use the
+// A2A outside-contact model (CONTACTS-SPEC E7): contact id `a2a:<id>`, an "A2A · <where>" badge, and the per-pair
+// agentToAgent rule `a2a:<id>` that the message tool already checks for configured A2A peers.
+import fs from "node:fs";
+import path from "node:path";
+import type { TranscriptSenderIdentity } from "../../chat/sender-identity.js";
+import { resolveStateDir } from "../../config/paths.js";
+import type { BranchConfig } from "../../config/types.branch.js";
+import { createAgentToAgentPolicy } from "../../plugin-sdk/session-visibility.js";
+import type { OutsidePeer } from "./project.js";
+
+export type OutsideAgent = {
+  id: string;
+  name: string;
+  version?: string;
+  where?: string;
+  /** The folder the agent works in (its MCP server's working folder name). */
+  project?: string;
+  /** What it is doing now, as it last said ("Messaging builder-oak"). */
+  activity?: string;
+  /** A random tag of the running client process. */
+  instance?: string;
+};
+export type OutsideAgentRecord = OutsideAgent & {
+  firstSeenAt: number;
+  lastSeenAt: number;
+  activityAt?: number;
+};
+/** Settings › Grafts: the master switch, disconnected agents, and who may drive the window. */
+export type OutsideAgentSettings = {
+  enabled: boolean;
+  revoked: string[];
+  mayDriveWindow: string[];
+};
+
+/** A client that said hello within this window is shown online. `branch mcp serve` says hello every minute. */
+export const OUTSIDE_AGENT_ONLINE_MS = 3 * 60_000;
+// Outside-agent rows are a Branch store with no upstream limit; this only bounds the file.
+const MAX_RECORDS = 512;
+
+/** "Claude Code" -> "claude-code": the stable id behind contact `a2a:<id>` and the per-pair rule. */
+export function outsideAgentId(name: string): string {
+  return (
+    name
+      .normalize("NFKD")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 64) || "outside-agent"
+  );
+}
+
+function registryFile(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(resolveStateDir(env), "contacts", "outside-agents.json");
+}
+
+export function listOutsideAgents(env?: NodeJS.ProcessEnv): OutsideAgentRecord[] {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(registryFile(env), "utf8")) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (row): row is OutsideAgentRecord =>
+            !!row &&
+            typeof row.id === "string" &&
+            typeof row.name === "string" &&
+            typeof row.lastSeenAt === "number",
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The id this running client gets: its stable id, unless another process is online under it right now; then
+ * the first free `<id>-2`, `<id>-3`, ... (an offline row, or one this same process holds, is free).
+ */
+export function assignOutsideAgentId(
+  agent: Pick<OutsideAgent, "id" | "instance">,
+  records: readonly OutsideAgentRecord[],
+  now = Date.now(),
+): string {
+  if (!agent.instance) return agent.id;
+  const byId = new Map(records.map((row) => [row.id, row]));
+  for (let n = 1; ; n++) {
+    const id = n === 1 ? agent.id : `${agent.id.slice(0, 60)}-${n}`;
+    const row = byId.get(id);
+    if (
+      !row ||
+      !isOutsideAgentOnline(row, now) ||
+      !row.instance ||
+      row.instance === agent.instance
+    ) {
+      return id;
+    }
+  }
+}
+
+/**
+ * Before per-session ids (#226), an MCP client's id was its product name alone ("claude-code"), so rules written
+ * then (Who it knows `a2a:claude-code`, Disconnect, window rights) meant every session of that product. The
+ * product-wide id of a session id `claude-code-a1b2c3` or `claude-code-a1b2c3-2` is `claude-code`; its rules keep
+ * applying to every such session, so nothing set before the change is lost.
+ */
+export function legacyOutsideId(id: string): string | undefined {
+  return /^(.+)-[0-9a-f]{6}(?:-\d+)?$/.exec(id)?.[1];
+}
+
+const forms = (id: string) => [id, legacyOutsideId(id)].filter((v): v is string => Boolean(v));
+
+/** Remember an outside agent (insert or refresh). Written atomically; the oldest rows go past the cap. */
+export function recordOutsideAgent(
+  agent: OutsideAgent,
+  now = Date.now(),
+  env?: NodeJS.ProcessEnv,
+): OutsideAgentRecord {
+  const all = listOutsideAgents(env);
+  // The product-wide row from before per-session ids folds into the first session that says hello.
+  const legacy = legacyOutsideId(agent.id);
+  const old = legacy ? all.find((row) => row.id === legacy && !row.instance) : undefined;
+  const rows = all.filter((row) => row.id !== agent.id && row !== old);
+  const previous = all.find((row) => row.id === agent.id) ?? old;
+  const record: OutsideAgentRecord = {
+    id: agent.id,
+    name: agent.name,
+    ...(agent.version ? { version: agent.version } : {}),
+    ...(agent.where ? { where: agent.where } : {}),
+    ...(agent.project ? { project: agent.project } : {}),
+    ...(agent.instance ? { instance: agent.instance } : {}),
+    ...(agent.activity
+      ? { activity: agent.activity, activityAt: now }
+      : previous?.activity
+        ? { activity: previous.activity, activityAt: previous.activityAt }
+        : {}),
+    firstSeenAt: previous?.firstSeenAt ?? now,
+    lastSeenAt: now,
+  };
+  const next = [record, ...rows]
+    .toSorted((a, b) => b.lastSeenAt - a.lastSeenAt)
+    .slice(0, MAX_RECORDS);
+  writeJson(registryFile(env), next);
+  return record;
+}
+
+function writeJson(file: string, value: unknown): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
+  fs.renameSync(tmp, file);
+}
+
+function settingsFile(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(resolveStateDir(env), "contacts", "outside-agents-settings.json");
+}
+
+const ids = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+
+/** On by default: `branch mcp serve` worked before this switch existed. */
+export function readOutsideAgentSettings(env?: NodeJS.ProcessEnv): OutsideAgentSettings {
+  try {
+    const saved = JSON.parse(fs.readFileSync(settingsFile(env), "utf8")) as Record<string, unknown>;
+    return {
+      enabled: saved.enabled !== false,
+      revoked: ids(saved.revoked),
+      mayDriveWindow: ids(saved.mayDriveWindow),
+    };
+  } catch {
+    return { enabled: true, revoked: [], mayDriveWindow: [] };
+  }
+}
+
+/** Apply one change from Settings › Grafts and return the result. */
+export function updateOutsideAgentSettings(
+  change: { enabled?: boolean; id?: string; revoked?: boolean; mayDriveWindow?: boolean },
+  env?: NodeJS.ProcessEnv,
+): OutsideAgentSettings {
+  const current = readOutsideAgentSettings(env);
+  const toggle = (list: string[], on: boolean | undefined) => {
+    if (on === undefined || !change.id) return list;
+    const legacy = legacyOutsideId(change.id);
+    // One session's choice turns a product-wide rule into per-session rules for its other sessions.
+    const expanded =
+      legacy && list.includes(legacy)
+        ? [
+            ...list.filter((id) => id !== legacy),
+            ...listOutsideAgents(env)
+              .map((row) => row.id)
+              .filter((id) => legacyOutsideId(id) === legacy),
+          ]
+        : list;
+    return on
+      ? [...new Set([...expanded, change.id])]
+      : [...new Set(expanded)].filter((id) => id !== change.id);
+  };
+  const next: OutsideAgentSettings = {
+    enabled: change.enabled ?? current.enabled,
+    revoked: toggle(current.revoked, change.revoked),
+    mayDriveWindow: toggle(current.mayDriveWindow, change.mayDriveWindow),
+  };
+  writeJson(settingsFile(env), next);
+  return next;
+}
+
+/** Whether the owner let this session drive their window (its own id or its product-wide one). */
+export function outsideAgentMayDriveWindow(id: string, settings: OutsideAgentSettings): boolean {
+  return forms(id).some((form) => settings.mayDriveWindow.includes(form));
+}
+
+/** Why Branch refuses this outside agent now, or undefined when it may work with Branch. */
+export function outsideAgentRefusal(
+  agent: Pick<OutsideAgent, "id" | "name">,
+  settings: OutsideAgentSettings = readOutsideAgentSettings(),
+): string | undefined {
+  if (!settings.enabled) {
+    return "Other agents are off in Settings › Grafts.";
+  }
+  if (forms(agent.id).some((id) => settings.revoked.includes(id))) {
+    return `${agent.name} was disconnected in Settings › Grafts.`;
+  }
+  return undefined;
+}
+
+/** Outside agents as the contacts projection's peers; configured A2A peers keep their own entry. */
+export function outsideAgentPeers(
+  records: readonly OutsideAgentRecord[],
+  configured: readonly OutsidePeer[],
+): OutsidePeer[] {
+  const taken = new Set(configured.map((peer) => peer.name));
+  return records
+    .filter((row) => !taken.has(row.id))
+    .map((row) => ({
+      name: row.id,
+      where: row.where ?? null,
+      card: {
+        name: row.name,
+        description: row.version
+          ? `${row.name} ${row.version}, connected over MCP`
+          : `${row.name}, connected over MCP`,
+        skills: [],
+        fetchedAt: row.lastSeenAt,
+      },
+    }));
+}
+
+export function isOutsideAgentOnline(record: OutsideAgentRecord, now = Date.now()): boolean {
+  return now - record.lastSeenAt < OUTSIDE_AGENT_ONLINE_MS;
+}
+
+/** The transcript sender for a message an outside agent wrote: drawn as an A2A agent, never as the owner. */
+export function outsideAgentSender(agent: Pick<OutsideAgent, "id" | "name">): {
+  id: string;
+  name: string;
+  identity: TranscriptSenderIdentity;
+} {
+  return {
+    id: agent.id,
+    name: agent.name,
+    identity: {
+      type: "observation" as const,
+      id: agent.id,
+      pluginId: "a2a",
+      accountId: "mcp",
+      senderKind: "bot" as const,
+    },
+  };
+}
+
+/** "Who it knows": the Trunk must know the outside agent (`agents.entries.<trunk>.agentToAgent` with `a2a:<id>`). */
+export function outsideAgentMayMessage(
+  cfg: BranchConfig,
+  agentId: string,
+  outsideId: string,
+): boolean {
+  const policy = createAgentToAgentPolicy(cfg);
+  return forms(outsideId).every((id) => policy.isAllowed(agentId, `a2a:${id}`));
+}

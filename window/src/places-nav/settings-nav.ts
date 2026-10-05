@@ -30,6 +30,7 @@ const BASE: SettingsGroup[] = [
       { id: "permissions", name: "Permissions" },
       { id: "computer", name: "Computer & browser" },
       { id: "secrets", name: "Saved sign-ins" },
+      { id: "agents", name: "Grafts" },
     ],
   },
   {

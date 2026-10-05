@@ -33,8 +33,8 @@ import {
 import { resolveMcpTransportConfig } from "../agents/mcp-transport-config.js";
 import { parseConfigValue } from "../auto-reply/reply/config-value.js";
 import { listConfiguredMcpServers } from "../config/mcp-config.js";
-import type { McpCodexToolApprovalMode } from "../config/types.mcp.js";
 import type { BranchConfig } from "../config/types.branch.js";
+import type { McpCodexToolApprovalMode } from "../config/types.mcp.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import {
   startOAuthLoopbackCallbackServer,
@@ -666,11 +666,7 @@ async function probeMcpServersOrFail(params: {
       applyMcpProbeInitializeTimeout(server),
     ]),
   );
-  const runtime = await createMcpProbeRuntime(
-    "branch-cli-mcp-probe",
-    params.config,
-    probeServers,
-  );
+  const runtime = await createMcpProbeRuntime("branch-cli-mcp-probe", params.config, probeServers);
   try {
     const result = await readMcpProbeResult(runtime);
     const probeIssue = resolveMcpProbeIssue({ result, servers: params.servers, path: params.path });
@@ -686,14 +682,13 @@ async function probeMcpServersOrFail(params: {
 const BRANCH_MCP_REGISTRY_SCOPE_NOTE =
   "Note: this command only shows Branch-managed mcp.servers entries and does not include mcporter servers from config/mcporter.json.";
 
-export function registerMcpCli(program: Command) {
-  const mcp = program
-    .command("mcp")
-    .description("Manage Branch Agent mcp.servers config and channel bridge");
+/** Graft: the stdio MCP server coding agents use to work with Branch. `branch graft` and `branch mcp serve`
+ *  (the upstream name, kept as an alias) are the same command. */
+export const GRAFT_DESCRIPTION =
+  "Graft: work with Branch (Trunks, group chats, the window and channels over MCP stdio)";
 
-  mcp
-    .command("serve")
-    .description("Expose Branch Agent channels over MCP stdio")
+function registerGraftServe(command: Command): void {
+  command
     .option("--url <url>", "Gateway WebSocket URL (defaults to gateway.remote.url when configured)")
     .option("--token <token>", "Gateway token (if required)")
     .option("--token-file <path>", "Read gateway token from file")
@@ -719,9 +714,16 @@ export function registerMcpCli(program: Command) {
           throw new Error('Invalid --claude-channel-mode value. Use "auto", "on", or "off".');
         }
         const { serveBranchChannelMcp } = await import("../mcp/channel-server.js");
+        const { resolveDesktopGateway } = await import("../mcp/desktop-gateway.js");
+        // With no auth named, use the Branch Agent desktop app's loopback gateway and token file.
+        const desktop = resolveDesktopGateway({
+          url: opts.url as string | undefined,
+          token: gatewayToken,
+          password: gatewayPassword,
+        });
         await serveBranchChannelMcp({
-          gatewayUrl: opts.url as string | undefined,
-          gatewayToken,
+          gatewayUrl: desktop?.url ?? (opts.url as string | undefined),
+          gatewayToken: desktop?.token ?? gatewayToken,
           gatewayPassword,
           claudeChannelMode,
           verbose: Boolean(opts.verbose),
@@ -733,6 +735,14 @@ export function registerMcpCli(program: Command) {
         defaultRuntime.exit(1);
       }
     });
+}
+
+export function registerMcpCli(program: Command) {
+  const mcp = program
+    .command("mcp")
+    .description("Manage Branch Agent mcp.servers config and Graft (mcp serve)");
+
+  registerGraftServe(mcp.command("serve").description(GRAFT_DESCRIPTION));
 
   mcp
     .command("list")
@@ -1365,3 +1375,8 @@ export function registerMcpCli(program: Command) {
   applyParentDefaultHelpAction(mcp);
 }
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
+
+/** `branch graft`: the primary name of `branch mcp serve`. */
+export function registerGraftCli(program: Command) {
+  registerGraftServe(program.command("graft").description(GRAFT_DESCRIPTION));
+}

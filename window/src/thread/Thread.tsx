@@ -398,7 +398,7 @@ function MessageView({ block, index, firstReply, face, view, live }: { block: Ex
     return (
       <>
         {other ? (
-          <RoomMessage sender={other} text={block.text} attachments={block.attachments} entryId={block.meta?.entryId} where={other.kind === "agent" ? view.room?.whereRuns(other.id) : null}>{bar}</RoomMessage>
+          <RoomMessage sender={other} text={block.text} attachments={block.attachments} entryId={block.meta?.entryId} where={other.kind === "agent" ? view.room?.whereRuns(other.id) : null} online={other.kind === "agent" && view.room?.isOnline?.(other.id) === true}>{bar}</RoomMessage>
         ) : (
           <UserMessage block={block}>{bar}</UserMessage>
         )}
