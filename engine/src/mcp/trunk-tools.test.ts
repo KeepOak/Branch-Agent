@@ -73,11 +73,20 @@ describe("branch mcp serve Trunk tools", () => {
                 {
                   key: "agent:builder-oak:t1",
                   status: "running",
+                  hasActiveRun: true,
                   authProfileOverride: "openai-codex:b",
+                  inputTokens: 900,
+                  outputTokens: 40,
+                  contextTokens: 1200,
                 },
               ],
             }
           : { sessions: [{ key: "agent:main:main", status: "done", model: "claude-opus" }] },
+      // The run in flight (also one resumed after a restart) comes from chat.history.
+      "chat.history": () => ({
+        sessionInfo: { status: "running" },
+        inFlightRun: { runId: "run-resumed-7" },
+      }),
       "contacts.list": () => ({
         contacts: [
           { id: "trunk:main", kind: "trunk", name: "Sapling" },
@@ -92,6 +101,9 @@ describe("branch mcp serve Trunk tools", () => {
         name: "Builder Oak",
         state: "working",
         thread: "agent:builder-oak:t1",
+        status: "running",
+        run_id: "run-resumed-7",
+        tokens: { input: 900, output: 40, context: 1200 },
         model: "openai-codex/gpt-5.5",
         account: "openai-codex:b",
       },
@@ -172,6 +184,21 @@ describe("branch mcp serve Trunk tools", () => {
           fake.emit({ runId: "run-1", stream: "thinking", data: { text: "checking the brief" } });
           fake.emit({ runId: "run-1", stream: "tool", data: { phase: "start", name: "exec" } });
           fake.emit({ runId: "other", stream: "tool", data: { phase: "start", name: "read" } });
+          fake.emit({
+            runId: "run-1",
+            stream: "usage",
+            data: { inputTokens: 1000, cachedInputTokens: 800, outputTokens: 30 },
+          });
+          fake.emit({
+            runId: "run-1",
+            stream: "usage",
+            data: { inputTokens: 1200, cachedInputTokens: 1000, outputTokens: 12 },
+          });
+          fake.emit({
+            runId: "other",
+            stream: "usage",
+            data: { inputTokens: 99, outputTokens: 99 },
+          });
           return { status: "timeout" };
         }
         return { status: "ok" };
@@ -205,9 +232,15 @@ describe("branch mcp serve Trunk tools", () => {
     expect(out).toEqual({
       status: "ok",
       reply: "OK",
-      events: ["thinking: checking the brief", "tool start: exec"],
+      usage: { model_calls: 2, input_tokens: 2200, cached_input_tokens: 1800, output_tokens: 42 },
+      events: [
+        "thinking: checking the brief",
+        "tool start: exec",
+        "usage 30 output tokens",
+        "usage 12 output tokens",
+      ],
     });
-    expect(progress).toEqual(["thinking: checking the brief", "tool start: exec"]);
+    expect(progress.slice(0, 2)).toEqual(["thinking: checking the brief", "tool start: exec"]);
   });
 
   it("run_wait reads the thread row when agent.wait forgot a finished run", async () => {
@@ -327,7 +360,7 @@ describe("branch mcp serve identity and gateway", () => {
     expect(outsideAgentFromClient(undefined)).toBeUndefined();
   });
 
-  it("stops acting for the agent once Settings › Connected agents turns it away", async () => {
+  it("stops acting for the agent once Settings › Grafts turns it away", async () => {
     let refuse = false;
     const presence = new OutsidePresence(async () => {
       if (refuse) throw new Error("Claude Code was disconnected in Settings › Connected agents.");
@@ -389,11 +422,11 @@ describe("run progress lines", () => {
   });
 });
 
-describe("Settings › Connected agents applies to every tool", () => {
+describe("Settings › Grafts applies to every tool", () => {
   it("a disconnected agent can no longer read Trunks or answer approvals, and takes the id Branch assigns", async () => {
     let refuse = false;
     const presence = new OutsidePresence(async (agent) => {
-      if (refuse) throw new Error("Claude Code was disconnected in Settings › Connected agents.");
+      if (refuse) throw new Error("Claude Code was disconnected in Settings › Grafts.");
       return { contact: { id: `a2a:${agent.id}-2` } };
     });
     presence.start(claude);
@@ -474,5 +507,61 @@ describe("leaving", () => {
     const started = Date.now();
     await stuck.leave();
     expect(Date.now() - started).toBeLessThan(3_000);
+  });
+});
+
+describe("supervising Trunks through Graft", () => {
+  it("trunk_threads shows each thread's status, the run it works on and a stuck thread", async () => {
+    const { gw } = fakeGateway({
+      "contacts.topics": () => ({
+        topics: [
+          { key: "agent:oak:a", title: "P22", status: "working", unread: false },
+          { key: "agent:oak:b", title: "P4", status: "working", unread: false },
+          { key: "agent:oak:c", title: "Old", status: "active", unread: false },
+        ],
+      }),
+      "sessions.list": () => ({
+        sessions: [
+          { key: "agent:oak:a", status: "running", hasActiveRun: true },
+          { key: "agent:oak:b", status: "running", hasActiveRun: false },
+          { key: "agent:oak:c", status: "done", abortedLastRun: true },
+        ],
+      }),
+      "chat.history": (p) =>
+        p.sessionKey === "agent:oak:a" ? { inFlightRun: { runId: "run-a" } } : {},
+    });
+    const out = await call(await connect(gw), "trunk_threads", { agent_id: "oak" });
+    const threads = out.threads as Record<string, unknown>[];
+    expect(threads[0]).toMatchObject({ key: "agent:oak:a", status: "running", run_id: "run-a" });
+    expect(threads[1]).toMatchObject({
+      key: "agent:oak:b",
+      stuck: "status running but no active run",
+    });
+    expect(threads[1]).not.toHaveProperty("run_id");
+    expect(threads[2]).toMatchObject({ key: "agent:oak:c", status: "done", last_run: "aborted" });
+  });
+
+  it("trunk_create sets the account order per provider", async () => {
+    const { gw, calls } = fakeGateway({
+      "agents.create": () => ({ agentId: "elm" }),
+      "models.authStatus": () => ({ providers: [] }),
+      "models.authOrderSet": () => ({ ok: true }),
+    });
+    const out = await call(await connect(gw), "trunk_create", {
+      name: "Elm",
+      accounts: ["openai-codex:b", "anthropic:work", "openai-codex:a"],
+    });
+    expect(calls.filter((c) => c.method === "models.authOrderSet").map((c) => c.params)).toEqual([
+      {
+        agentId: "elm",
+        provider: "openai-codex",
+        profileIds: ["openai-codex:b", "openai-codex:a"],
+      },
+      { agentId: "elm", provider: "anthropic", profileIds: ["anthropic:work"] },
+    ]);
+    expect(out.accounts).toEqual({
+      "openai-codex": ["openai-codex:b", "openai-codex:a"],
+      anthropic: ["anthropic:work"],
+    });
   });
 });

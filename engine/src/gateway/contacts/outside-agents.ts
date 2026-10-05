@@ -26,7 +26,7 @@ export type OutsideAgentRecord = OutsideAgent & {
   lastSeenAt: number;
   activityAt?: number;
 };
-/** Settings › Connected agents: the master switch, disconnected agents, and who may drive the window. */
+/** Settings › Grafts: the master switch, disconnected agents, and who may drive the window. */
 export type OutsideAgentSettings = {
   enabled: boolean;
   revoked: string[];
@@ -176,7 +176,7 @@ export function readOutsideAgentSettings(env?: NodeJS.ProcessEnv): OutsideAgentS
   }
 }
 
-/** Apply one change from Settings › Connected agents and return the result. */
+/** Apply one change from Settings › Grafts and return the result. */
 export function updateOutsideAgentSettings(
   change: { enabled?: boolean; id?: string; revoked?: boolean; mayDriveWindow?: boolean },
   env?: NodeJS.ProcessEnv,
@@ -219,10 +219,10 @@ export function outsideAgentRefusal(
   settings: OutsideAgentSettings = readOutsideAgentSettings(),
 ): string | undefined {
   if (!settings.enabled) {
-    return "Other agents are off in Settings › Connected agents.";
+    return "Other agents are off in Settings › Grafts.";
   }
   if (forms(agent.id).some((id) => settings.revoked.includes(id))) {
-    return `${agent.name} was disconnected in Settings › Connected agents.`;
+    return `${agent.name} was disconnected in Settings › Grafts.`;
   }
   return undefined;
 }
