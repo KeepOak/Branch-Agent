@@ -95,6 +95,9 @@ export function projectCanonicalSessionEntryShape(value: Record<string, unknown>
     delete canonicalValue.snoozedUntil;
     delete canonicalValue.snoozedAt;
   }
+  if (canonicalValue.done !== true) {
+    delete canonicalValue.done;
+  }
   return canonicalValue as unknown as SessionEntry;
 }
 

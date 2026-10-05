@@ -23,6 +23,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "archiveReason",
   "pinnedAt",
   "snoozedUntil",
+  "done",
   "snoozedAt",
   "lastReadAt",
   "agentStatus",
