@@ -19,6 +19,7 @@ import { logVerbose } from "branch/plugin-sdk/runtime-env";
 import { normalizeLowercaseStringOrEmpty } from "branch/plugin-sdk/string-coerce-runtime";
 import { resolveDefaultTelegramAccountId } from "./accounts.js";
 import { buildTelegramParentPeer, shouldUseTelegramDmThreadSession } from "./bot/helpers.js";
+import { peekContactTopicMirror, resolveContactTopicMirror } from "./contact-topic-mirror.js";
 import {
   resolveTelegramDirectPeerId,
   resolveTelegramNamedAccountBaseSessionKey,
@@ -46,10 +47,30 @@ type TelegramConversationRouteResult = {
   route: TelegramResolvedRoute;
   bindingMode: TelegramConversationBindingMode;
   bindingOwnerAvailable: boolean;
+  contactTopicMirror?: boolean;
   runtimeBinding?: NonNullable<
     ReturnType<typeof resolveRuntimeConversationBindingRoute>["bindingRecord"]
   >;
 };
+
+function applyContactTopicMirror(
+  result: TelegramConversationRouteResult,
+  sessionKey: string | undefined,
+): TelegramConversationRouteResult {
+  if (!sessionKey || !sessionKey.startsWith(`agent:${result.route.agentId}:`)) return result;
+  return {
+    ...result,
+    contactTopicMirror: true,
+    route: {
+      ...result.route,
+      sessionKey,
+      lastRoutePolicy: deriveLastRoutePolicy({
+        sessionKey,
+        mainSessionKey: result.route.mainSessionKey,
+      }),
+    },
+  };
+}
 
 type ResolveTelegramConversationRouteParams = {
   cfg: BranchConfig;
@@ -194,9 +215,16 @@ export async function resolveTelegramConversationRoute(
   params: ResolveTelegramConversationRouteParams,
 ): Promise<TelegramConversationRouteResult> {
   const prepared = prepareTelegramConversationRoute(params);
-  return applyTelegramRuntimeRoute(
+  const result = applyTelegramRuntimeRoute(
     prepared,
     await resolveRuntimeConversationBindingRouteAsync(prepared),
+  );
+  const id = params.threadSpec.scope === "dm" ? params.threadSpec.id : undefined;
+  return applyContactTopicMirror(
+    result,
+    id != null && id > 1
+      ? await resolveContactTopicMirror({ accountId: params.accountId, chatId: params.chatId, threadId: id })
+      : undefined,
   );
 }
 
@@ -205,9 +233,16 @@ export function inspectTelegramConversationRoute(
   params: ResolveTelegramConversationRouteParams,
 ): TelegramConversationRouteResult {
   const prepared = prepareTelegramConversationRoute(params);
-  return applyTelegramRuntimeRoute(
+  const result = applyTelegramRuntimeRoute(
     prepared,
     resolveRuntimeConversationBindingRoute({ ...prepared, touchBinding: false }),
+  );
+  const id = params.threadSpec.scope === "dm" ? params.threadSpec.id : undefined;
+  return applyContactTopicMirror(
+    result,
+    id != null && id > 1
+      ? peekContactTopicMirror({ accountId: params.accountId, chatId: params.chatId, threadId: id })
+      : undefined,
   );
 }
 
@@ -255,7 +290,11 @@ export function resolveTelegramTargetSession(params: {
   senderId?: string | number | null;
   dmThreadId?: number;
   botHasTopicsEnabled?: boolean;
+  preserveBoundTopic?: boolean;
 }): string {
+  if (params.preserveBoundTopic) {
+    return params.route.sessionKey;
+  }
   const baseSessionKey = resolveTelegramConversationBaseSessionKey(params);
   const threadKeys =
     shouldUseTelegramDmThreadSession({

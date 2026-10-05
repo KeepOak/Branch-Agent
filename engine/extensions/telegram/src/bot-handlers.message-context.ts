@@ -179,7 +179,7 @@ export function createTelegramMessageSessionRuntime({
       topicThreadId,
       params.runtimeCfg,
     );
-    const { route, bindingMode } = await resolveTelegramConversationRoute({
+    const { route, bindingMode, contactTopicMirror } = await resolveTelegramConversationRoute({
       cfg: params.runtimeCfg,
       accountId,
       chatId: params.chatId,
@@ -196,6 +196,7 @@ export function createTelegramMessageSessionRuntime({
       senderId: params.senderId,
       dmThreadId,
       botHasTopicsEnabled: params.botHasTopicsEnabled,
+      preserveBoundTopic: contactTopicMirror === true,
     });
     const storePath = telegramDeps.resolveStorePath(params.runtimeCfg.session?.store, {
       agentId: route.agentId,

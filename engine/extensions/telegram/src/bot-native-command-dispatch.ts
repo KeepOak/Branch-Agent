@@ -173,6 +173,7 @@ async function resolveTelegramCommandAuth(params: {
     senderId,
     dmThreadId: threadSpec.scope === "dm" ? threadSpec.id : undefined,
     botHasTopicsEnabled: resolveTelegramBotHasTopicsEnabled(params.botUser),
+    preserveBoundTopic: inspectedRoute.contactTopicMirror === true,
   });
   const ownerContext = await buildTelegramNativeCommandOwnerContext({
     cfg,

@@ -7,6 +7,7 @@ export const engineTests = [
   'extensions/browser/src/browser/pw-tools-core.activity.test.ts',
   'extensions/browser/src/browser/routes/agent.text.test.ts',
   'extensions/codex/src/app-server/windows-shell-guidance.test.ts',
+  'extensions/telegram/src/contact-topic-mirror.test.ts',
   'packages/ai/src/providers/agent-tools-parameter-schema.test.ts',
   'packages/ai/src/providers/clean-for-gemini-mastra.test.ts',
   'packages/ai/src/providers/clean-for-gemini.test.ts',

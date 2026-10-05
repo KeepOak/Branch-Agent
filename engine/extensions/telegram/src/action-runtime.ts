@@ -38,6 +38,8 @@ import {
   readTelegramSendMediaUrls,
   readTelegramThreadId,
 } from "./action-params.js";
+import { resolveTelegramBotHasTopicsEnabled } from "./bot/helpers.js";
+import { recordContactTopicMirror } from "./contact-topic-mirror.js";
 import {
   appendTelegramDroppedControlFallback,
   buildTelegramControlDegradation,
@@ -61,6 +63,7 @@ import { rejectTelegramNativeButtonParams } from "./native-button-params.js";
 import { resolveTelegramPollVisibility } from "./poll-visibility.js";
 import { renderTelegramAccountProgressDraftPreview } from "./progress-draft-preview.js";
 import { resolveTelegramReactionLevel } from "./reaction-level.js";
+import { withTelegramApiContext } from "./send-context.js";
 import {
   createForumTopicTelegram,
   deleteMessageTelegram,
@@ -821,7 +824,8 @@ export async function handleTelegramAction(
   }
 
   if (action === "createForumTopic") {
-    if (!isActionEnabled("createForumTopic")) {
+    const contactTopicMirror = params.contactTopicMirror === true;
+    if (!isActionEnabled("createForumTopic") && !contactTopicMirror) {
       throw new Error("Telegram createForumTopic is disabled.");
     }
     const chatId = readTelegramChatId(params);
@@ -831,14 +835,37 @@ export async function handleTelegramAction(
     const iconColor = readTelegramForumTopicIconColor(params);
     const iconCustomEmojiId = readStringParam(params, "iconCustomEmojiId");
     const token = requireToken();
+    if (contactTopicMirror) {
+      if (
+        options?.conversationReadOrigin !== "direct-operator" ||
+        !options.sessionKey?.startsWith("agent:") ||
+        !chatId ||
+        !/^[1-9]\d*$/.test(String(chatId))
+      ) {
+        throw new Error("A contact topic mirror requires an operator, session, and private chat.");
+      }
+      const bot = await withTelegramApiContext({ ...apiOptions, token }, ({ api }) => api.getMe());
+      if (!resolveTelegramBotHasTopicsEnabled(bot)) {
+        return jsonResult({ ok: true, mirrored: false });
+      }
+    }
     const result = await createForumTopicTelegram(chatId ?? "", name, {
       ...apiOptions,
       token,
       iconColor,
       iconCustomEmojiId: iconCustomEmojiId ?? undefined,
     });
+    if (contactTopicMirror) {
+      await recordContactTopicMirror({
+        accountId: accountId ?? resolveDefaultTelegramAccountId(cfg),
+        chatId: result.chatId,
+        threadId: result.topicId,
+        sessionKey: options!.sessionKey!,
+      });
+    }
     return jsonResult({
       ok: true,
+      ...(contactTopicMirror ? { mirrored: true } : {}),
       topicId: result.topicId,
       name: result.name,
       chatId: result.chatId,
