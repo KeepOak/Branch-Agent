@@ -73,7 +73,7 @@ describe("Library › Memory", () => {
     const make = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:memory");
     const drop = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
     let filename = "";
-    const download = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function () { filename = this.download; });
+    const download = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { filename = this.download; });
     const { engine, request } = engineOf(base((method) => method === "memory.export" ? {
       agentId: "b",
       files: [{ path: "MEMORY.md", content: "# Rowan\n" }, { path: "memory/2026-10-01.md", content: "Daily note\n" }],
@@ -85,6 +85,7 @@ describe("Library › Memory", () => {
     expect(request).toHaveBeenCalledWith("memory.export", { agentId: "b" });
     expect(make).toHaveBeenCalledTimes(1);
     const blob = make.mock.calls[0][0];
+    if (!(blob instanceof Blob)) throw new Error("Expected a Markdown Blob download");
     const text = await blob.text();
     expect(text).toContain("## MEMORY.md\n\n# Rowan");
     expect(text).toContain("## memory/2026-10-01.md\n\nDaily note");
