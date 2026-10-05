@@ -83,6 +83,8 @@ export const windowTests = [
   'src/connect/conversations.test.ts',
   'src/connect/desktop-component-updates.test.tsx',
   'src/connect/unread-guard.test.ts',
+  'src/face/character-calm.test.tsx',
+  'src/face/use-character-motion.test.tsx',
   'src/places-nav/SettingsFrame.test.tsx',
   'src/places/canopy/canopy.test.tsx',
   'src/places/customize/customize.test.tsx',
