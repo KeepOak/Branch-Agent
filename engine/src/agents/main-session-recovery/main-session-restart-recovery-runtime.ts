@@ -21,6 +21,7 @@ import {
   MAX_RECOVERY_RETRIES,
   RETRY_BACKOFF_MULTIPLIER,
   discoverRestartRecoveryStoreTargets,
+  hasPendingRestartRecoveryAdmission,
 } from "./main-session-restart-recovery-shared.js";
 import {
   loadExpectedRestartRecoveryTarget,
@@ -29,6 +30,29 @@ import {
 
 type RecoveryCounts = { started: number; settled: number; failed: number; skipped: number };
 const STARTUP_RECOVERY_MAX_ACTIVE_RUNS = 1;
+const PENDING_ADMISSION_POLL_MS = 1_000;
+
+/** Resolves true once none of these agents waits for startup database admission. */
+async function waitForPendingAdmissions(params: {
+  agentIds: readonly string[];
+  stateDir?: string;
+  signal: AbortSignal;
+  shouldContinue: () => boolean;
+}): Promise<boolean> {
+  try {
+    while (
+      params.shouldContinue() &&
+      hasPendingRestartRecoveryAdmission(params.agentIds, params.stateDir)
+    ) {
+      await sleepWithAbort(PENDING_ADMISSION_POLL_MS, params.signal, { ref: false });
+    }
+  } catch (error) {
+    if (params.shouldContinue()) {
+      throw error;
+    }
+  }
+  return params.shouldContinue();
+}
 
 async function runRecoveryRetries(params: {
   initialDelayMs: number;
@@ -75,6 +99,7 @@ export async function recoverRestartAbortedMainSessions(params: {
   excludedStoreTargets?: ReadonlySet<string>;
   lifecycleGeneration?: string;
   shouldContinue?: () => boolean;
+  onPendingAdmission?: (agentId: string) => void;
   gatewayRuntime: GatewayRecoveryRuntime;
   recoveryCapacity?: ReturnType<typeof createMainSessionRecoveryCapacity>;
 }): Promise<RecoveryCounts> {
@@ -255,6 +280,9 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
     limit: STARTUP_RECOVERY_MAX_ACTIVE_RUNS,
   });
   const startupCheckedStorePaths = params.startupCheckedStorePaths ?? new Set<string>();
+  // Agents still preparing their databases at startup are skipped, not checked.
+  const pendingAdmissionAgentIds = new Set<string>();
+  const onPendingAdmission = (agentId: string) => pendingAdmissionAgentIds.add(agentId);
   const runRecoveryAttempt = async (
     exhaustedTargets: Map<string, ExhaustedRestartRecoveryTarget>,
   ): Promise<RecoveryCounts> => {
@@ -266,6 +294,7 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
           stateDir: params.stateDir,
           startupCheckedStorePaths,
           updatedBeforeMs: startupRecoveryCutoffMs,
+          onPendingAdmission,
         });
         const result = await recoverRestartAbortedMainSessions({
           cfg,
@@ -284,6 +313,7 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
           excludedStoreTargets: new Set(marking.failedTargets?.map(restartRecoveryStoreTargetKey)),
           lifecycleGeneration,
           shouldContinue,
+          onPendingAdmission,
           gatewayRuntime: params.gatewayRuntime,
           recoveryCapacity,
         });
@@ -331,12 +361,9 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
     }
   };
   let exhaustedTargets = new Map<string, ExhaustedRestartRecoveryTarget>();
-  const run = Promise.resolve().then(async () => {
-    if (params.waitForStart) {
-      await Promise.race([params.waitForStart(), waitForAbortSignal(abortController.signal)]);
-    }
+  const runRecoveryWave = async (initialDelayMs: number): Promise<void> => {
     await runRecoveryRetries({
-      initialDelayMs: params.delayMs ?? DEFAULT_RECOVERY_DELAY_MS,
+      initialDelayMs,
       maxRetries: Math.max(1, params.maxRetries ?? MAX_RECOVERY_RETRIES),
       shouldContinue,
       signal: abortController.signal,
@@ -360,6 +387,28 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
         }
       },
     });
+  };
+  const run = Promise.resolve().then(async () => {
+    if (params.waitForStart) {
+      await Promise.race([params.waitForStart(), waitForAbortSignal(abortController.signal)]);
+    }
+    await runRecoveryWave(params.delayMs ?? DEFAULT_RECOVERY_DELAY_MS);
+    // Rescan each agent once its startup admission settles; otherwise its
+    // interrupted runs stay "running" with nothing left to resume them.
+    while (shouldContinue() && pendingAdmissionAgentIds.size > 0) {
+      const agentIds = [...pendingAdmissionAgentIds];
+      pendingAdmissionAgentIds.clear();
+      const admitted = await waitForPendingAdmissions({
+        agentIds,
+        stateDir: params.stateDir,
+        signal: abortController.signal,
+        shouldContinue,
+      });
+      if (!admitted) {
+        return;
+      }
+      await runRecoveryWave(0);
+    }
   });
   return {
     stop: async () => {

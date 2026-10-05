@@ -6,9 +6,6 @@ import type {
 } from "./binding-types.js";
 
 type StatefulBindingTargetReadyResult = { ok: true } | { ok: false; error: string };
-type StatefulBindingTargetSessionResult =
-  | { ok: true; sessionKey: string }
-  | { ok: false; sessionKey: string; error: string };
 export type StatefulBindingTargetResetResult =
   | { ok: true; sessionKey?: string; sessionId?: string; storePath?: string }
   | { ok: false; skipped?: boolean; error?: string };
@@ -21,10 +18,6 @@ export type StatefulBindingTargetDriver = {
     cfg: BranchConfig;
     bindingResolution: ConfiguredBindingResolution;
   }) => Promise<StatefulBindingTargetReadyResult>;
-  ensureSession: (params: {
-    cfg: BranchConfig;
-    bindingResolution: ConfiguredBindingResolution;
-  }) => Promise<StatefulBindingTargetSessionResult>;
   resolveTargetBySessionKey?: (params: {
     cfg: BranchConfig;
     sessionKey: string;

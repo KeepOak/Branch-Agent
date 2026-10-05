@@ -36,7 +36,7 @@ import type { GatewayRequestEntry } from "../../server-request-entry.js";
 import { SharedGatewaySessionGenerationState } from "../../server-shared-auth-generation.js";
 import { classifyGatewayStaleInstall } from "../../stale-install.js";
 import { createRequestErrorCorrelation } from "../../request-error-correlation.js";
-import { formatForLog, logWs } from "../../ws-log.js";
+import { formatForLog, logWs, summarizeSessionListForWsLog } from "../../ws-log.js";
 import {
   hasCurrentGatewayPolicyClientSource,
   invalidateGatewayPolicyClient,
@@ -275,6 +275,7 @@ export function createGatewayAuthenticatedRequestDispatcher(params: {
           }
           diagnostics?.response(
             sendResult.kind === "sent" ? (responseOk ? "ok" : "error") : "unavailable",
+            sendResult.kind === "sent" ? sendResult.bytes : undefined,
           );
           const unauthorizedRoleError = isUnauthorizedRoleError(responseError);
           let logMeta = meta;
@@ -303,7 +304,7 @@ export function createGatewayAuthenticatedRequestDispatcher(params: {
           } else {
             unauthorizedFloodGuard.reset();
           }
-          logWs("out", "res", {
+          logWs("out", "res", () => ({
             connId,
             id: req.id,
             ok: responseOk,
@@ -311,7 +312,9 @@ export function createGatewayAuthenticatedRequestDispatcher(params: {
             errorCode: responseError?.code,
             errorMessage: responseError?.message,
             ...logMeta,
-          });
+            ...(req.method === "sessions.list" ? summarizeSessionListForWsLog(req.params) : {}),
+            bytes: sendResult.kind === "sent" ? sendResult.bytes : undefined,
+          }));
         } finally {
           // ws queues frames in order: send the result before starting its close handshake.
           policyResponse?.finish();
@@ -349,6 +352,7 @@ export function createGatewayAuthenticatedRequestDispatcher(params: {
 
       const executeRequest = async () => {
         diagnostics?.bindTrace();
+        const settled = createDeferredCore();
         let entry: GatewayRequestEntry | undefined;
         // Ordinary mutations survive reconnects; an explicit reload wait instead
         // belongs to its requester so disconnect can release its admission fence.
@@ -403,7 +407,13 @@ export function createGatewayAuthenticatedRequestDispatcher(params: {
           // deadline. Operator requests share bounded starts without serializing completion.
           if (client.connect.role === "operator") {
             diagnostics?.startQueue();
-            const start = scheduleGatewayRequestStart(frameBytes, req, connId);
+            const start = scheduleGatewayRequestStart(
+              frameBytes,
+              req,
+              connId,
+              settled.promise,
+              context.requestEntryLifetime?.signal,
+            );
             if (!start) {
               respondWithAuthority(
                 false,
@@ -467,6 +477,7 @@ export function createGatewayAuthenticatedRequestDispatcher(params: {
             }),
           );
         } finally {
+          settled.resolve();
           policyResponse?.finish();
           diagnostics?.finish(signal?.aborted ? "cancelled" : dispatchOutcome);
           entry?.release();

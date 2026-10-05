@@ -1,6 +1,7 @@
 // Settings › People: Each person (switching PIN, separate conversations), and at Advanced the records (audit.list,
 // the engine's newest-first run and tool record) and how people sign in to Branch, greyed where the engine has no
 // setting yet.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { list, record, visible } from "../adapter";

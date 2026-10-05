@@ -96,14 +96,16 @@ describe("Settings › Advanced", () => {
     await show(engine);
     await click(row("Recall before replying").querySelector("input") as HTMLElement);
     expect(patches(request)).toContainEqual({ plugins: { entries: { "active-memory": { enabled: true } } } });
-    expect(row("Memory wiki").textContent).toContain("Its plugin isn’t installed in this engine.");
+    // Greyed, without the developer note (shell/shown-why.ts).
+    expect(row("Memory wiki").getAttribute("aria-disabled")).toBe("true");
+    expect(row("Memory wiki").textContent).not.toContain("Its plugin isn’t installed in this engine.");
   });
 
-  it("greyed rows say why", async () => {
+  it("greyed rows stay greyed without developer notes, and say why otherwise", async () => {
     const { engine } = engineWith(CONFIG);
     await show(engine);
     expect(row("Send crash reports").getAttribute("aria-disabled")).toBe("true");
-    expect(row("Send crash reports").textContent).toContain("The engine doesn’t send crash reports.");
+    expect(row("Send crash reports").textContent).not.toContain("The engine doesn’t send crash reports.");
     expect(row("Report for a bug").textContent).toContain("branch gateway diagnostics export");
   });
 

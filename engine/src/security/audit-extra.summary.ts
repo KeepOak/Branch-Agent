@@ -1,5 +1,9 @@
 import { normalizeOptionalLowercaseString } from "@branch/normalization-core/string-coerce";
-import { listAgentIds, resolveAgentConfig } from "../agents/agent-scope-config.js";
+import {
+  listAgentEntries,
+  listAgentIds,
+  resolveAgentConfig,
+} from "../agents/agent-scope-config.js";
 // Summarizes extra security audit findings for user-facing output.
 import {
   resolveConfiguredToolPolicies,
@@ -130,7 +134,7 @@ export function collectAttackSurfaceSummaryFindings(cfg: BranchConfig): Security
     `\n` +
     "trust model: personal assistant (one trusted operator boundary), not hostile multi-tenant on one shared gateway. For multiple users or organizations, run one isolated Gateway cell per tenant: https://docs.openclaw.ai/gateway/multi-tenant-hosting";
 
-  return [
+  const findings: SecurityAuditFinding[] = [
     {
       checkId: "summary.attack_surface",
       severity: "info",
@@ -138,6 +142,22 @@ export function collectAttackSurfaceSummaryFindings(cfg: BranchConfig): Security
       detail,
     },
   ];
+  for (const entry of listAgentEntries(cfg)) {
+    if (typeof entry.id !== "string" || entry.tools?.github?.allowInSandbox !== true) {
+      continue;
+    }
+    const configPath = `agents.entries.${entry.id}.tools.github.allowInSandbox`;
+    findings.push({
+      checkId: "sandbox.github_identity_exposed",
+      severity: "warn",
+      title: "Managed GitHub identity reaches sandboxed execution",
+      detail:
+        `${configPath}=true allows agent "${entry.id}" to use its managed GitHub credentials ` +
+        "and Git author in its own sandboxed execution. Commands in that sandbox can read and use the credentials.",
+      remediation: `Set ${configPath}=false unless this agent's sandboxed code is trusted with its GitHub access.`,
+    });
+  }
+  return findings;
 }
 
 /** Surface default cross-agent session access, escalating when trust boundaries may differ. */
@@ -149,7 +169,9 @@ export function collectCrossAgentSessionAccessFindings(
     return [];
   }
   // Even blank allow entries are a configured restriction: the runtime denies them.
-  if (!createAgentToAgentPolicy(cfg).enabled || cfg.tools?.agentToAgent?.allow?.length) {
+  const a2aPolicy = createAgentToAgentPolicy(cfg);
+  if (!a2aPolicy.enabled || cfg.tools?.agentToAgent?.allow?.length ||
+    !agentIds.some((from) => agentIds.some((to) => from !== to && a2aPolicy.isAllowed(from, to)))) {
     return [];
   }
 
@@ -172,17 +194,19 @@ export function collectCrossAgentSessionAccessFindings(
       "session_status",
     ].filter((name) => isToolAllowedByPolicies(name, policies));
     const unclamped = sandboxMode !== "all" || sandboxClamp === "all";
-    if (unclamped && allowedTools.length > 0) {
+    const reachableIds = agentIds.filter((target) => target !== agentId && a2aPolicy.isAllowed(agentId, target));
+    if (unclamped && allowedTools.length > 0 && reachableIds.length > 0) {
       const context =
         sandboxMode === "off"
           ? "unsandboxed sessions"
           : sandboxMode === "non-main"
             ? "unsandboxed main session"
             : "sandboxed sessions (clamp disabled)";
-      reachers.push(`- ${agentId}: ${context}; allowed session tools: ${allowedTools.join(", ")}.`);
+      const restricted = reachableIds.length < agentIds.length - 1;
+      reachers.push(`- ${agentId}: ${context}; ${restricted ? `reachable agents: ${reachableIds.join(", ")}; ` : ""}allowed session tools: ${allowedTools.join(", ")}.`);
     } else {
       const reason = unclamped
-        ? "session tools removed by agent tool policy"
+        ? reachableIds.length === 0 ? "per-agent agent-to-agent permission denies other agents" : "session tools removed by agent tool policy"
         : "sandboxed sessions clamped to their spawn tree";
       nonReachers.push(
         `- ${agentId}: ${reason}; its transcripts remain readable by the agents above.`,

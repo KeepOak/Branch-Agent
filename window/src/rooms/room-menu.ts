@@ -1,6 +1,7 @@
 // The conversation ⋯ menu's room rows (DESIGN-SPEC §4.2.7 "Rooms, in place of the Trunk rows"), in the preview's
 // order: Add a Trunk to this room, Rename room, Room rules (the current rule on the right), a separator, Leave and
 // archive, then Delete…. A row the engine has no method for is drawn greyed with the reason.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { MenuItem } from "../shell/Menu";
 import { menuIcon } from "../shell/menu-icons";
 

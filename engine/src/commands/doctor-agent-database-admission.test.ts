@@ -26,7 +26,7 @@ describe("Doctor agent database admission", () => {
     const stateDir = fs.realpathSync.native(tempDirs.make("doctor-agent-admission-"));
     const env = { BRANCH_STATE_DIR: stateDir };
     const cfg: BranchConfig = {
-      agents: { entries: { main: { default: true }, cleaner: {} } },
+      agents: { entries: { main: {}, cleaner: {} } },
     };
     const ownerPath = openBranchAgentDatabase({ agentId: "main", env }).path;
     closeBranchAgentDatabasesForTest();

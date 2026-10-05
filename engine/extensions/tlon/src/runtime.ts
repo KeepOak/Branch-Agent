@@ -1,4 +1,3 @@
-// Tlon plugin module implements runtime behavior.
 import type { PluginRuntime } from "branch/plugin-sdk/plugin-runtime";
 import { createPluginRuntimeStore } from "branch/plugin-sdk/runtime-store";
 

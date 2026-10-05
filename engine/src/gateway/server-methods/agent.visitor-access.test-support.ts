@@ -5,7 +5,10 @@ import type { BranchConfig } from "../../config/types.branch.js";
 import { createPluginStateKeyedStore } from "../../plugin-state/plugin-state-store.js";
 import { activatePluginRegistry } from "../../plugins/loader-shared.js";
 import { clearActivePluginRegistry } from "../../plugins/runtime.js";
-import { startPluginServices, type PluginServicesHandle } from "../../plugins/services.js";
+import {
+  startPluginServices,
+  type PluginServicesHandle,
+} from "../../plugins/services.test-support.js";
 import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import type { BranchTestState } from "../../test-utils/branch-test-state.js";
 import {
@@ -32,7 +35,7 @@ export const visitorTestStateOptions = {
 
 export function createVisitorGatewayConfig(workspaceDir: string): BranchConfig {
   return {
-    agents: { defaults: { workspace: workspaceDir }, list: [{ id: "main" }] },
+    agents: { defaults: { workspace: workspaceDir }, entries: { main: {} } },
     gateway: {
       roles: {
         default: "guest",

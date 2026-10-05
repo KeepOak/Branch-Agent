@@ -1,5 +1,6 @@
 // Settings › Models at Technical (§4.7.6): retries and timeouts, per connection, attachments, helpers, how turns
 // run, each model's own parameters (agents.defaults.models.<ref>.params) and the connection details.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { visible } from "../adapter";
 import { Btn, Ctl, Num, Pick, Sec, Seg, Switch, useSaveRunner } from "../kit";
 import { type ModelsCtx } from "./models-data";

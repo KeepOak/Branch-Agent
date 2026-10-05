@@ -640,7 +640,7 @@ describe("session-memory hook", () => {
       cfg: {
         agents: {
           defaults: { workspace: mainWorkspace },
-          list: [{ id: "navi", workspace: naviWorkspace }],
+          entries: { navi: { workspace: naviWorkspace } },
         },
       } satisfies BranchConfig,
       sessionKey: "agent:main:main",

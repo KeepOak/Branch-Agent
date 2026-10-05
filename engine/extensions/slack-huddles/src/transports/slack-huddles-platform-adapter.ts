@@ -2,12 +2,7 @@ import {
   MeetingPlatformAdapter,
   type MeetingBrowserJoinSession,
 } from "branch/plugin-sdk/meeting-runtime";
-import {
-  slackHuddleAudioCaptureScript,
-  slackHuddleLeaveScript,
-  slackHuddleStatusScript,
-  slackHuddleTranscriptScript,
-} from "./slack-huddles-page-scripts.js";
+import { slackHuddlePageScripts } from "./slack-huddles-page-scripts.js";
 import {
   isRecoverableSlackHuddleTab,
   isSameSlackHuddleUrl,
@@ -74,11 +69,6 @@ export const SLACK_HUDDLES_PLATFORM_ADAPTER = MeetingPlatformAdapter.create<
     unavailableMessage:
       "Open the Branch Agent browser profile, finish Slack sign-in, admission, or permission prompt, then retry.",
     origin: slackHuddleOrigin,
-    scripts: {
-      audioCapture: slackHuddleAudioCaptureScript,
-      status: slackHuddleStatusScript,
-      leave: slackHuddleLeaveScript,
-      transcript: slackHuddleTranscriptScript,
-    },
+    scripts: slackHuddlePageScripts,
   }),
 });

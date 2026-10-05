@@ -27,9 +27,9 @@ export function FirstTrunk({ engine, onCreated }: { engine: WindowEngine; onCrea
       setBusy(false);
     }
   };
-  return <SetupShell step={0} reach={0} done={() => false} onStep={() => {}} onSkip={null}
+  return <SetupShell step={4} reach={0} done={(i) => i === 0} onStep={() => {}} onSkip={null}
     title="Create your first Trunk" lede="Your Trunk is a contact with one ongoing conversation. New chats go here until you choose another default."
-    footer={<button type="submit" form={formId} className="btn pri" data-testid="first-trunk-create" disabled={busy || !name.trim()}>{busy ? "Creating…" : created ? "Continue" : "Create Trunk"}</button>}>
+    footer={<><span className="grow" /><button type="submit" form={formId} className="btn pri" data-testid="first-trunk-create" disabled={busy || !name.trim()}>{busy ? "Creating…" : created ? "Continue" : "Create Trunk"}</button></>}>
     <form id={formId} aria-busy={busy} onSubmit={e => { e.preventDefault(); void create(); }}>
     <label className="fld"><span>Name your Trunk</span><input className="inp" aria-label="Trunk name" value={name} disabled={busy || !!created} onChange={e => setName(e.target.value)} autoComplete="off" /></label>
     {error ? <p role="alert">{error}</p> : null}

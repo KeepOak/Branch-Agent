@@ -1,8 +1,8 @@
 import { expectDefined } from "@branch/normalization-core";
 import { asOptionalRecord } from "@branch/normalization-core/record-coerce";
 import { describe, expect, it, vi } from "vitest";
+import { saveSubagentRegistryToSqlite } from "../../agents/subagents/registry/subagent-registry-state.fixture.test-support.js";
 import { clearSubagentRunsReadCacheForTest } from "../../agents/subagents/registry/subagent-registry-state.js";
-import { saveSubagentRegistryToSqlite } from "../../agents/subagents/registry/subagent-registry.store.sqlite.js";
 import {
   appendTranscriptMessage,
   replaceSessionEntrySync,
@@ -58,7 +58,7 @@ describe("chat history registry projection", () => {
     async (sessionScope) => {
       await withBranchTestState({ scenario: "minimal" }, async (state) => {
         const cfg = {
-          agents: { list: [{ id: "main", default: true }, { id: "work" }] },
+          agents: { ownership: "explicit", entries: { main: {}, work: {} } },
           session: { scope: sessionScope, mainKey: "home" },
         } satisfies BranchConfig;
         await state.writeConfig(cfg);

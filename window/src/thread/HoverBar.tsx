@@ -1,11 +1,13 @@
 // The hover bar on a message (DESIGN-SPEC §4.2.6): it floats above the message on hover or keyboard focus and
 // never takes space in the thread. Each action calls its row's engine method; an action the engine or this
 // window can't do yet stays visible, greyed, with its reason as the tooltip (§5.1 "Disabled, with the reason").
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { Popover } from "./Dialog";
 import { fullTime, messageTime, modelName } from "./format";
 import { Icon, ICONS } from "./icons";
 import type { MessageMeta } from "./model";
+import { shownWhy } from "../shell/shown-why";
 
 /** An action and why it can't run now (null when it can). */
 export type Act = { run: () => void; disabled: string | null };
@@ -53,7 +55,7 @@ function Btn({ label, d, act, pressed }: { label: string; d: string; act?: Act |
       aria-label={label}
       aria-pressed={pressed}
       aria-disabled={!act || Boolean(reason)}
-      title={reason ?? label}
+      title={shownWhy(reason) ?? label}
       disabled={!act || Boolean(reason)}
       data-act={label}
       onClick={act && !reason ? act.run : undefined}
@@ -92,7 +94,7 @@ function ReactMenu({ onPick, onClose }: { onPick: (emoji: string) => void; onClo
 
 function MoreMenu({ actions, isReply, onClose }: { actions: HoverActions; isReply: boolean; onClose: () => void }) {
   const item = (label: string, act: Act | null, reason?: string) => (
-    <button type="button" className="mi" role="menuitem" disabled={Boolean(reason ?? act?.disabled)} title={reason ?? act?.disabled ?? undefined}
+    <button type="button" className="mi" role="menuitem" disabled={Boolean(reason ?? act?.disabled)} title={shownWhy(reason ?? act?.disabled)}
       onClick={() => { act?.run(); onClose(); }}>
       {label}
     </button>

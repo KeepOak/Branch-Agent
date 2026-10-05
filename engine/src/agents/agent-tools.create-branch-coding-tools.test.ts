@@ -552,9 +552,8 @@ describe("createBranchCodingTools", () => {
               localModelLean: true,
             },
           },
-          list: [
-            {
-              id: "artist",
+          entries: {
+            artist: {
               tools: {
                 alsoAllow: ["video_generate"],
                 byProvider: {
@@ -564,7 +563,7 @@ describe("createBranchCodingTools", () => {
                 },
               },
             },
-          ],
+          },
         },
         tools: {
           alsoAllow: ["pdf"],

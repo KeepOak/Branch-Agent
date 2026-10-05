@@ -8,7 +8,7 @@ import { recordSessionParticipant } from "../config/sessions/session-accessor.sq
 import { AsyncWorkScope } from "../shared/async-work-scope.js";
 import { openBranchAgentDatabase } from "../state/branch-agent-db.js";
 import { openBranchStateDatabase } from "../state/branch-state-db.js";
-import { setUserPreferences } from "../state/user-preferences.js";
+import { setUserPreferences } from "../state/user-preferences.test-support.js";
 import { linkEmail, syncGitHubIdentity } from "../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
 import {

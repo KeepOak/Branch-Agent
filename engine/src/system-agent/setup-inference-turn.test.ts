@@ -46,7 +46,7 @@ vi.mock("../agents/runtime-plugins.js", () => ({
 function embeddedRoute(runtime: "codex" | "branch" = "codex"): SystemAgentConfiguredRoute {
   const config: BranchConfig = {
     agents: {
-      entries: { main: { default: true, agentDir: "/tmp/branch-agent" } },
+      entries: { main: { agentDir: "/tmp/branch-agent" } },
       defaults: {
         model: "openai/gpt-5.6-sol",
         models: { "openai/gpt-5.6-sol": { agentRuntime: { id: runtime } } },
@@ -282,7 +282,7 @@ describe("setup inference plugin ownership", () => {
   it("does not load plugins for a direct custom provider using the built-in Branch Agent harness", async () => {
     const config: BranchConfig = {
       agents: {
-        entries: { main: { default: true, agentDir: "/tmp/branch-agent" } },
+        entries: { main: { agentDir: "/tmp/branch-agent" } },
         defaults: {
           model: "fixture/direct-model",
           models: { "fixture/direct-model": { agentRuntime: { id: "branch" } } },

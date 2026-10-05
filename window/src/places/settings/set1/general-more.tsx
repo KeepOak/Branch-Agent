@@ -1,5 +1,6 @@
 // Settings › General, the rows Branch has no setting for yet (§4.7.1): Writing, Clipboard history, Cover the screen,
 // Controllers and This PC. Each is drawn as the preview draws it, greyed, with the reason on its own line.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../../connect/engine";
 import { Btn, Ctl, Hint, Pick, Sec, Seg, Switch, useLevel, useSaveRunner } from "../kit";
 import { useLook } from "./appearance-store";

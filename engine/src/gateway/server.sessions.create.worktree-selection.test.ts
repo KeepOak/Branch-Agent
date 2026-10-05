@@ -300,7 +300,7 @@ test("sessions.create keeps the crustacean fallback when no title source exists"
     expect(created.ok, JSON.stringify(created.error)).toBe(true);
     worktreeId = created.payload?.worktree.id;
     expect(created.payload?.worktree.branch).toMatch(
-      /^branch\/[a-z]+-(?:barnacle|grove|crab|crayfish|krill|langoustine|trellis|prawn|shrimp|shell)$/,
+      /^branch\/[a-z]+-(?:acorn|grove|birch|cedar|fern|maple|trellis|willow|sapling|pinecone)$/,
     );
     expect(dashboardTitleGenerationMocks.generate).not.toHaveBeenCalled();
   } finally {
@@ -317,92 +317,90 @@ test("sessions.create keeps the crustacean fallback when no title source exists"
   }
 });
 
-test.each(["packages/app", "..notes"])(
-  "sessions.create maps worktree options and preserves nested workspace cwd %s",
-  async (workspaceRelativePath) => {
-    const branchState = await createBranchTestState({
-      layout: "state-only",
-      prefix: "branch-session-worktree-options-",
-    });
-    const repoRoot = await copyGitWorkspace(gitWorkspaceTemplate, branchState.root);
-    const workspace = path.join(repoRoot, workspaceRelativePath);
-    const worktreePath = path.join(branchState.root, "managed-worktree");
-    const key = "agent:main:dashboard:worktree-options";
-    await execFileAsync("git", ["-C", repoRoot, "branch", "base-branch"]);
-    await Promise.all([
-      fs.mkdir(workspace, { recursive: true }),
-      fs.mkdir(worktreePath, { recursive: true }),
-    ]);
-    testState.agentConfig = { workspace };
-    await createSessionStoreDir();
-    const createSpy = vi.spyOn(managedWorktrees, "createWithOutcome").mockResolvedValue({
-      record: managedWorktreeFixture({
-        id: "worktree-options",
-        name: "target-task",
-        ownerId: key,
-        path: worktreePath,
-        repoRoot,
-      }),
-      materialized: true,
-    });
-    try {
-      const created = await directSessionReq<{
-        entry: {
-          permissionMode?: string;
-          sessionRoot?: string;
-          spawnedCwd?: string;
-          worktree?: { id: string; branch: string; repoRoot: string };
-        };
-        worktree: { id: string; path: string; branch: string };
-      }>(
-        "sessions.create",
-        {
-          agentId: "main",
-          key,
-          worktree: true,
-          worktreeName: "target-task",
-          worktreeBaseRef: "base-branch",
-          permissionMode: "workspace",
-        },
-        { client: { connect: { scopes: ["operator.admin"] } } as never },
-      );
-
-      expect(created.ok).toBe(true);
-      expect(createSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          repoRoot: workspace,
-          ownerKind: "session",
-          ownerId: key,
-          name: "target-task",
-          baseRef: "base-branch",
-        }),
-      );
-      expect(created.payload?.entry).toMatchObject({
+test("sessions.create maps worktree options and preserves a nested dot-prefixed workspace cwd", async () => {
+  const workspaceRelativePath = "..notes/app";
+  const branchState = await createBranchTestState({
+    layout: "state-only",
+    prefix: "branch-session-worktree-options-",
+  });
+  const repoRoot = await copyGitWorkspace(gitWorkspaceTemplate, branchState.root);
+  const workspace = path.join(repoRoot, workspaceRelativePath);
+  const worktreePath = path.join(branchState.root, "managed-worktree");
+  const key = "agent:main:dashboard:worktree-options";
+  await execFileAsync("git", ["-C", repoRoot, "branch", "base-branch"]);
+  await Promise.all([
+    fs.mkdir(workspace, { recursive: true }),
+    fs.mkdir(worktreePath, { recursive: true }),
+  ]);
+  testState.agentConfig = { workspace };
+  await createSessionStoreDir();
+  const createSpy = vi.spyOn(managedWorktrees, "createWithOutcome").mockResolvedValue({
+    record: managedWorktreeFixture({
+      id: "worktree-options",
+      name: "target-task",
+      ownerId: key,
+      path: worktreePath,
+      repoRoot,
+    }),
+    materialized: true,
+  });
+  try {
+    const created = await directSessionReq<{
+      entry: {
+        permissionMode?: string;
+        sessionRoot?: string;
+        spawnedCwd?: string;
+        worktree?: { id: string; branch: string; repoRoot: string };
+      };
+      worktree: { id: string; path: string; branch: string };
+    }>(
+      "sessions.create",
+      {
+        agentId: "main",
+        key,
+        worktree: true,
+        worktreeName: "target-task",
+        worktreeBaseRef: "base-branch",
         permissionMode: "workspace",
-        sessionRoot: worktreePath,
-        spawnedCwd: path.join(worktreePath, workspaceRelativePath),
-        worktree: {
-          id: "worktree-options",
-          branch: "branch/target-task",
-          repoRoot,
-        },
-      });
-      await expect(fs.stat(path.join(worktreePath, workspaceRelativePath))).resolves.toBeDefined();
+      },
+      { client: { connect: { scopes: ["operator.admin"] } } as never },
+    );
 
-      const rejected = await directSessionReq(
-        "sessions.create",
-        { agentId: "main", worktreeName: "no-flag" },
-        { client: { connect: { scopes: ["operator.admin"] } } as never },
-      );
-      expect(rejected.ok).toBe(false);
-    } finally {
-      createSpy.mockRestore();
-      await disposeSessionReadContexts();
-      testState.agentConfig = undefined;
-      await branchState.cleanup();
-    }
-  },
-);
+    expect(created.ok).toBe(true);
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repoRoot: workspace,
+        ownerKind: "session",
+        ownerId: key,
+        name: "target-task",
+        baseRef: "base-branch",
+      }),
+    );
+    expect(created.payload?.entry).toMatchObject({
+      permissionMode: "workspace",
+      sessionRoot: worktreePath,
+      spawnedCwd: path.join(worktreePath, workspaceRelativePath),
+      worktree: {
+        id: "worktree-options",
+        branch: "branch/target-task",
+        repoRoot,
+      },
+    });
+    await expect(fs.stat(path.join(worktreePath, workspaceRelativePath))).resolves.toBeDefined();
+
+    const rejected = await directSessionReq(
+      "sessions.create",
+      { agentId: "main", worktreeName: "no-flag" },
+      { client: { connect: { scopes: ["operator.admin"] } } as never },
+    );
+    expect(rejected.ok).toBe(false);
+  } finally {
+    createSpy.mockRestore();
+    await disposeSessionReadContexts();
+    testState.agentConfig = undefined;
+    await branchState.cleanup();
+  }
+});
 
 test("sessions.create maps an admin-selected worktree cwd and rejects repository changes", async () => {
   const branchState = await createBranchTestState({

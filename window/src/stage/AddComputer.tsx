@@ -1,8 +1,10 @@
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Dialog } from "../shell/Dialog";
 import { SIcon, type StageIconName } from "./stage-icons";
 import { computersChanged } from "./computers";
+import { shownWhy } from "../shell/shown-why";
 
 type View = "choose" | "pair" | "cloud";
 type Pairing = { phase: "loading" } | { phase: "error"; message: string } | { phase: "code"; code: string; setupId?: string; expiresAtMs?: number; done?: boolean };
@@ -51,7 +53,7 @@ function usePairing(engine: WindowEngine, on: boolean): Pairing {
 
 function Choice({ icon, title, text, disabled, onPick }: { icon: StageIconName; title: string; text: string; disabled?: string; onPick?: () => void }) {
   return (
-    <button type="button" className="prov-st" disabled={Boolean(disabled)} title={disabled} onClick={onPick}>
+    <button type="button" className="prov-st" disabled={Boolean(disabled)} title={shownWhy(disabled)} onClick={onPick}>
       <span className="tile-st"><SIcon name={icon} small /></span>
       <b>{title}</b>
       <small>{disabled ? `${text} ${disabled}` : text}</small>
