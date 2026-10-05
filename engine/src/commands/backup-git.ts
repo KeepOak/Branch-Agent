@@ -1,6 +1,15 @@
-import { listAgentIds, resolveConfiguredAgentId } from "../agents/agent-scope-config.js";
-import { getRuntimeConfig } from "../config/config.js";
-import { resolveStateDir } from "../config/paths.js";
+import {
+  listAgentIds,
+  resolveAgentDir,
+  resolveAgentWorkspaceDir,
+  resolveConfiguredAgentId,
+} from "../agents/agent-scope-config.js";
+import { getRuntimeConfig, readConfigFileSnapshot } from "../config/config.js";
+import { resolveConfigPath, resolveOAuthDir, resolveStateDir } from "../config/paths.js";
+import { redactConfigSnapshot } from "../config/redact-snapshot.js";
+import { loadGatewayRuntimeConfigSchema } from "../config/runtime-schema.js";
+import { resolveUpdateCaptureRoot } from "../infra/update-capture-paths.js";
+import type { GitBackupFilesSource } from "../snapshot/git-backup-files.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { beginLifecycleWriteCustody } from "../infra/lifecycle-write-custody.js";
 import { assertNotUpdateCapturePath } from "../infra/update-capture-paths.js";
@@ -30,6 +39,8 @@ type BackupGitCreateOptions = {
   agents?: string[];
   push?: boolean;
   excludeSecrets?: boolean;
+  /** Branch: also back up the redacted config and every Trunk's workspace files. */
+  files?: boolean;
   json?: boolean;
 };
 
@@ -89,6 +100,44 @@ async function resolveCreateDatabases(options: BackupGitCreateOptions) {
   return databases;
 }
 
+/** The authored config with every secret field replaced; undefined when it cannot be redacted. */
+async function readRedactedConfig(): Promise<unknown> {
+  const snapshot = await readConfigFileSnapshot();
+  if (!snapshot.exists || !snapshot.valid) {
+    return undefined;
+  }
+  let uiHints: Parameters<typeof redactConfigSnapshot>[1];
+  try {
+    uiHints = loadGatewayRuntimeConfigSchema().uiHints;
+  } catch {
+    // Path-based detection still redacts every known secret field without plugin schema hints.
+    uiHints = undefined;
+  }
+  const parsed = redactConfigSnapshot(snapshot, uiHints).parsed;
+  return parsed && typeof parsed === "object" ? parsed : undefined;
+}
+
+/** Branch files scope: redacted config plus each configured Trunk's workspace. */
+async function resolveFilesSource(): Promise<GitBackupFilesSource> {
+  const config = getRuntimeConfig({ skipPluginValidation: true });
+  const stateDir = resolveStateDir();
+  const agentIds = listAgentIds(config).toSorted();
+  return {
+    stateDir,
+    config: await readRedactedConfig(),
+    workspaces: agentIds.map((agentId) => ({
+      agentId,
+      path: resolveAgentWorkspaceDir(config, agentId),
+    })),
+    protectedPaths: [
+      resolveConfigPath(),
+      resolveOAuthDir(),
+      resolveUpdateCaptureRoot(stateDir),
+      ...agentIds.map((agentId) => resolveAgentDir(config, agentId)),
+    ],
+  };
+}
+
 function resolveOneIdentity(options: BackupGitScopeOptions): GitBackupIdentity {
   const agent = options.agent?.trim();
   if (options.global === true && agent) {
@@ -135,6 +184,7 @@ export async function backupGitCreateCommand(runtime: RuntimeEnv, options: Backu
         all: options.all,
         excludeSecrets: options.excludeSecrets,
         push: options.push,
+        ...(options.files ? { files: await resolveFilesSource() } : {}),
       }),
     );
     // A completed local backup remains successful even when requested remote replication fails;

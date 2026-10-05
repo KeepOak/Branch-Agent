@@ -40,6 +40,7 @@ export type BackupScheduleOptions = GatewayRpcOpts &
     namespace?: string;
     claimNamespace?: boolean;
     includeWorkspace?: boolean;
+    files?: boolean;
   };
 
 export type BackupDisableOptions = GatewayRpcOpts & { git?: boolean; offsite?: boolean };
@@ -68,10 +69,11 @@ function resolveScheduleSpec(options: BackupScheduleOptions, everyMs: number): B
       options.excludeSecrets ||
       options.includeSecrets ||
       options.globalOnly ||
+      options.files ||
       options.agent !== undefined
     ) {
       throw new Error(
-        "--to cannot be combined with Git backup options (--repository, --push, --exclude-secrets, --include-secrets, --global-only, --agent).",
+        "--to cannot be combined with Git backup options (--repository, --push, --exclude-secrets, --include-secrets, --files, --global-only, --agent).",
       );
     }
     const location = options.to.trim();
@@ -130,6 +132,7 @@ function resolveScheduleSpec(options: BackupScheduleOptions, everyMs: number): B
         : { kind: "all" },
     push: options.push === true,
     excludeSecrets: resolveScheduledRedaction(options),
+    ...(options.files ? { files: true } : {}),
   };
 }
 

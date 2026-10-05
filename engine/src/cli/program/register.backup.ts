@@ -190,6 +190,11 @@ function registerBackupScheduleCommands(backup: Command): void {
         "Keep credential-bearing tables in pushed scheduled backups",
         false,
       )
+      .option(
+        "--files",
+        "Also back up the redacted config and workspace files (Git backups)",
+        false,
+      )
       .option("--global-only", "Back up only the shared state database", false)
       .option("--agent <id>", "Back up only one agent database")
       .action(async (opts) => {
@@ -246,6 +251,11 @@ function registerBackupGitCommands(backup: Command): void {
     .option("--agent <id>", "Back up an agent database (repeatable)", collectOption, [])
     .option("--push", "Push the current branch to origin", false)
     .option("--exclude-secrets", "Omit credential-bearing database tables", false)
+    .option(
+      "--files",
+      "Also back up the redacted config and workspace files, never secret files",
+      false,
+    )
     .option("--json", "Output JSON", false)
     .action(async (opts) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
