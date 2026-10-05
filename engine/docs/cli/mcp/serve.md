@@ -231,8 +231,8 @@ builder Trunks) works through the same Branch. These tools keep coordination,
 memory and documents inside it instead of in private repos or markdown boards.
 
 A **project** is a Trunk's workspace (Branch lists each one as a project). Pass
-`project` with the Trunk's id; without it the tools use the `branch-project` Trunk ("Branch project") if
-there is one, else Branch's default Trunk.
+`project` with the Trunk's id; without it the tools use the `branch-project` Trunk ("Branch project"); a
+Branch without one asks for `project` (a Trunk's own Library is never used as a shared project by accident).
 
 | Tool                   | What it does                                                                                                        |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------- |

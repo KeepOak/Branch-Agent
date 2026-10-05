@@ -411,3 +411,16 @@ describe("Graft hub board without Canopy", () => {
     await expect(call("board_list")).rejects.toThrow(/Canopy plugin, which is off on this Branch/);
   });
 });
+
+describe("Graft hub project choice", () => {
+  it("never falls back to another Trunk's Library when there is no project Trunk", async () => {
+    const { gw, handlers, calls } = fakeBranch();
+    handlers["agents.list"] = () => ({ defaultId: "tk", agents: [{ id: "tk" }] });
+    const call = await connect(gw);
+    await expect(call("docs_write", { name: "A.md", text: "x" })).rejects.toThrow(
+      /no "branch-project" Trunk/,
+    );
+    expect(calls.some((c) => c.method === "agents.documents.create")).toBe(false);
+    expect(await call("docs_list", { project: "tk" })).toMatchObject({ project: "tk", docs: [] });
+  });
+});

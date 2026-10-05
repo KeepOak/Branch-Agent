@@ -61,17 +61,19 @@ export function docName(name: string): string {
   return /\.md$/i.test(trimmed) ? trimmed : `${trimmed}.md`;
 }
 
-/** The project's Trunk: the one named, else the "branch-project" Trunk ("Branch project"), else Branch's default Trunk. */
+/** The project's Trunk: the one named, else the "branch-project" Trunk ("Branch project"). */
 export async function resolveProject(gw: TrunkGateway, project?: string): Promise<string> {
   if (project) {
     return project;
   }
   const agents = rec(await gw.request("agents.list", {}));
-  const ids = list(agents.agents).map((a) => str(a.id));
-  if (ids.includes(DEFAULT_PROJECT)) {
+  if (list(agents.agents).some((a) => a.id === DEFAULT_PROJECT)) {
     return DEFAULT_PROJECT;
   }
-  return str(agents.defaultId) ?? ids.find(Boolean) ?? "main";
+  // Never fall back to another Trunk's workspace: a Trunk's own Library is not a shared project.
+  throw new Error(
+    `This Branch has no "${DEFAULT_PROJECT}" Trunk yet; pass project with the id of the Trunk that holds the project.`,
+  );
 }
 
 async function readStored(gw: TrunkGateway, agentId: string, name: string) {
@@ -232,7 +234,7 @@ const projectArg = z
   .string()
   .optional()
   .describe(
-    'The project: a Trunk id whose workspace holds it. Default: the "branch-project" Trunk, else the default Trunk.',
+    'The project: a Trunk id whose workspace holds it. Default: the "branch-project" Trunk ("Branch project").',
   );
 
 function registerDocTools(server: McpServer, gw: TrunkGateway, opts: TrunkToolsOptions): void {
@@ -485,7 +487,7 @@ function threadTitle(row: Rec): string {
     str(row.displayName) ??
     str(row.derivedTitle) ??
     str(row.title) ??
-    String(row.key)
+    (String(row.key).endsWith(":main") ? "the main chat" : String(row.key))
   );
 }
 
@@ -528,7 +530,9 @@ export async function activityFeed(gw: TrunkGateway, recent: number, now: number
     .map(
       (a) =>
         `${String(a.name)} (grafted${str(a.where) ? `, ${String(a.where)}` : ""}) ${str(a.activity) ? `is ${lowerFirst(String(a.activity))}` : "is connected"}`,
-    );
+    )
+    // One line per agent and activity, however many processes it runs.
+    .filter((line, i, all) => all.indexOf(line) === i);
   const recentLines = lately
     .toSorted((a, b) => b.at - a.at)
     .slice(0, recent * Math.max(1, agents.length))
