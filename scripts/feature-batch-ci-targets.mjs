@@ -100,6 +100,7 @@ export const windowTests = [
   'src/places/settings/set1/permissions.test.tsx',
   'src/places/settings/set2/achievements.test.tsx',
   'src/places/settings/set2/advanced.test.tsx',
+  'src/places/settings/set2/computer-browser-doctor.test.tsx',
   'src/places/settings/set2/computer-more.test.tsx',
   'src/places/settings/set2/developer.test.tsx',
   'src/places/settings/set2/set2.test.tsx',
