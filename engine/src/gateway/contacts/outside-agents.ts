@@ -9,12 +9,34 @@ import type { BranchConfig } from "../../config/types.branch.js";
 import { createAgentToAgentPolicy } from "../../plugin-sdk/session-visibility.js";
 import type { OutsidePeer } from "./project.js";
 
-export type OutsideAgent = { id: string; name: string; version?: string; where?: string };
-export type OutsideAgentRecord = OutsideAgent & { firstSeenAt: number; lastSeenAt: number };
+export type OutsideAgent = {
+  id: string;
+  name: string;
+  version?: string;
+  where?: string;
+  /** The folder the agent works in (its MCP server's working folder name). */
+  project?: string;
+  /** What it is doing now, as it last said ("Messaging builder-oak"). */
+  activity?: string;
+  /** A random tag of the running client process. */
+  instance?: string;
+};
+export type OutsideAgentRecord = OutsideAgent & {
+  firstSeenAt: number;
+  lastSeenAt: number;
+  activityAt?: number;
+};
+/** Settings › Connected agents: the master switch, disconnected agents, and who may drive the window. */
+export type OutsideAgentSettings = {
+  enabled: boolean;
+  revoked: string[];
+  mayDriveWindow: string[];
+};
 
 /** A client that said hello within this window is shown online. `branch mcp serve` says hello every minute. */
 export const OUTSIDE_AGENT_ONLINE_MS = 3 * 60_000;
-const MAX_RECORDS = 64;
+// Outside-agent rows are a Branch store with no upstream limit; this only bounds the file.
+const MAX_RECORDS = 512;
 
 /** "Claude Code" -> "claude-code": the stable id behind contact `a2a:<id>` and the per-pair rule. */
 export function outsideAgentId(name: string): string {
@@ -49,31 +71,123 @@ export function listOutsideAgents(env?: NodeJS.ProcessEnv): OutsideAgentRecord[]
   }
 }
 
+/**
+ * The id this running client gets: its stable id, unless another process is online under it right now; then
+ * the first free `<id>-2`, `<id>-3`, ... (an offline row, or one this same process holds, is free).
+ */
+export function assignOutsideAgentId(
+  agent: Pick<OutsideAgent, "id" | "instance">,
+  records: readonly OutsideAgentRecord[],
+  now = Date.now(),
+): string {
+  if (!agent.instance) return agent.id;
+  const byId = new Map(records.map((row) => [row.id, row]));
+  for (let n = 1; ; n++) {
+    const id = n === 1 ? agent.id : `${agent.id.slice(0, 60)}-${n}`;
+    const row = byId.get(id);
+    if (
+      !row ||
+      !isOutsideAgentOnline(row, now) ||
+      !row.instance ||
+      row.instance === agent.instance
+    ) {
+      return id;
+    }
+  }
+}
+
 /** Remember an outside agent (insert or refresh). Written atomically; the oldest rows go past the cap. */
 export function recordOutsideAgent(
   agent: OutsideAgent,
   now = Date.now(),
   env?: NodeJS.ProcessEnv,
 ): OutsideAgentRecord {
-  const rows = listOutsideAgents(env).filter((row) => row.id !== agent.id);
-  const previous = listOutsideAgents(env).find((row) => row.id === agent.id);
+  const all = listOutsideAgents(env);
+  const rows = all.filter((row) => row.id !== agent.id);
+  const previous = all.find((row) => row.id === agent.id);
   const record: OutsideAgentRecord = {
     id: agent.id,
     name: agent.name,
     ...(agent.version ? { version: agent.version } : {}),
     ...(agent.where ? { where: agent.where } : {}),
+    ...(agent.project ? { project: agent.project } : {}),
+    ...(agent.instance ? { instance: agent.instance } : {}),
+    ...(agent.activity
+      ? { activity: agent.activity, activityAt: now }
+      : previous?.activity
+        ? { activity: previous.activity, activityAt: previous.activityAt }
+        : {}),
     firstSeenAt: previous?.firstSeenAt ?? now,
     lastSeenAt: now,
   };
   const next = [record, ...rows]
     .toSorted((a, b) => b.lastSeenAt - a.lastSeenAt)
     .slice(0, MAX_RECORDS);
-  const file = registryFile(env);
+  writeJson(registryFile(env), next);
+  return record;
+}
+
+function writeJson(file: string, value: unknown): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`);
+  fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
   fs.renameSync(tmp, file);
-  return record;
+}
+
+function settingsFile(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(resolveStateDir(env), "contacts", "outside-agents-settings.json");
+}
+
+const ids = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+
+/** On by default: `branch mcp serve` worked before this switch existed. */
+export function readOutsideAgentSettings(env?: NodeJS.ProcessEnv): OutsideAgentSettings {
+  try {
+    const saved = JSON.parse(fs.readFileSync(settingsFile(env), "utf8")) as Record<string, unknown>;
+    return {
+      enabled: saved.enabled !== false,
+      revoked: ids(saved.revoked),
+      mayDriveWindow: ids(saved.mayDriveWindow),
+    };
+  } catch {
+    return { enabled: true, revoked: [], mayDriveWindow: [] };
+  }
+}
+
+/** Apply one change from Settings › Connected agents and return the result. */
+export function updateOutsideAgentSettings(
+  change: { enabled?: boolean; id?: string; revoked?: boolean; mayDriveWindow?: boolean },
+  env?: NodeJS.ProcessEnv,
+): OutsideAgentSettings {
+  const current = readOutsideAgentSettings(env);
+  const toggle = (list: string[], on: boolean | undefined) =>
+    on === undefined || !change.id
+      ? list
+      : on
+        ? [...new Set([...list, change.id])]
+        : list.filter((id) => id !== change.id);
+  const next: OutsideAgentSettings = {
+    enabled: change.enabled ?? current.enabled,
+    revoked: toggle(current.revoked, change.revoked),
+    mayDriveWindow: toggle(current.mayDriveWindow, change.mayDriveWindow),
+  };
+  writeJson(settingsFile(env), next);
+  return next;
+}
+
+/** Why Branch refuses this outside agent now, or undefined when it may work with Branch. */
+export function outsideAgentRefusal(
+  agent: Pick<OutsideAgent, "id" | "name">,
+  settings: OutsideAgentSettings = readOutsideAgentSettings(),
+): string | undefined {
+  if (!settings.enabled) {
+    return "Other agents are off in Settings › Connected agents.";
+  }
+  if (settings.revoked.includes(agent.id)) {
+    return `${agent.name} was disconnected in Settings › Connected agents.`;
+  }
+  return undefined;
 }
 
 /** Outside agents as the contacts projection's peers; configured A2A peers keep their own entry. */
