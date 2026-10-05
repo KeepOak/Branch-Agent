@@ -7,8 +7,9 @@ read_when:
   - Debugging bridge events, Claude notifications, or missing conversations
 ---
 
-This page covers the `branch mcp serve` path: Branch Agent acting as an MCP
-server over stdio, its tools, its event model, and its limits.
+This page covers Graft, `branch graft`: Branch Agent acting as an MCP server
+over stdio, its tools, its event model, and its limits. `branch graft` is the
+same command as `branch mcp serve`, the upstream name, which keeps working.
 
 ## Branch Agent as an MCP server
 
@@ -189,17 +190,17 @@ terminal" is on. It always runs the current engine.
 
 ```bash
 # Claude Code (all projects)
-claude mcp add --scope user branch -- branch mcp serve
+claude mcp add --scope user branch -- branch graft
 
 # Codex
-codex mcp add branch -- branch mcp serve
+codex mcp add branch -- branch graft
 
 # Gemini CLI
-gemini mcp add branch branch mcp serve
+gemini mcp add branch branch graft
 ```
 
 If the `branch` command isn't installed, run the engine directly:
-`node "<Branch data>/updates/<release>/engine/branch.mjs" mcp serve`. The path
+`node "<Branch data>/updates/<release>/engine/branch.mjs" graft`. The path
 changes with each release, so prefer the `branch` command.
 
 For any other client, use the stdio server `branch` with the arguments
@@ -249,7 +250,7 @@ Driving your own window needs two switches:
 
 - Settings › Branch itself › "Let agents use this window" (takes effect when
   Branch restarts);
-- Settings › Connected agents › the agent › "May use your Branch window".
+- Settings › Grafts › the agent › "May use your Branch window".
 
 While an agent drives a window, the window shows "An agent is controlling this
 window" with a Stop button. After Stop, every `ui_*` call is refused.
@@ -258,7 +259,7 @@ A builder's self-test loop: `ui_open`, `ui_navigate` to the page you changed,
 `ui_snapshot` (fix anything listed as having no name), `ui_click` or
 `ui_type` through the change, `ui_screenshot` for the PR, then `ui_close`.
 
-#### Settings › Connected agents
+#### Settings › Grafts (agents grafted onto Branch)
 
 Every connected agent shows here with its face, the computer and project it
 runs from, what it is doing, and when it was last seen. Each Claude Code,
@@ -269,7 +270,7 @@ rows.
 - For each agent, you choose which Trunks it may message, whether it may use
   your window, and whether to Disconnect it. A disconnected agent stops working
   with Branch within a minute.
-- "Connect an agent" has the lines above, ready to copy.
+- "Graft an agent" has the lines above, ready to copy.
 
 #### The agent appears in Branch as itself
 
