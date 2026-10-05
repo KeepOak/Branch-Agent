@@ -50,9 +50,13 @@ export function useContacts(session: SaplingSession, ready: boolean): [Contact[]
   }, [session]);
   useEffect(() => {
     if (!ready) { setLoaded(false); return; }
+    // A new connection is a new engine: no contact is working until contacts.list says so.
+    setContacts((all) => (all.some((c) => c.working) ? all.map((c) => (c.working ? { ...c, working: false } : c)) : all));
     refresh();
-    const off = session.onGatewayEvent((event) => {
+    const off = session.onGatewayEvent((event, payload) => {
       if (event === "contacts.changed" || event === "agents.changed" || event === "config.changed") refresh();
+      // A run ending clears its ring the way the conversation list does (ConversationList.onEvent).
+      else if (event === "chat" && ["final", "error", "aborted"].includes(str(rec(payload).state))) refresh();
     });
     return () => { off(); refresh.cancel(); };
   }, [session, ready, refresh]);
