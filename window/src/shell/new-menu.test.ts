@@ -1,4 +1,8 @@
+// @vitest-environment jsdom
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
+import { Menu } from "./Menu";
 import { createTopic, newMenuItems } from "./new-menu";
 
 const context = (newWith: (id: string) => void) => ({
@@ -7,6 +11,27 @@ const context = (newWith: (id: string) => void) => ({
 });
 
 describe("new conversation drafts", () => {
+  it("opens the Trunk chooser on hover and selects one Trunk", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(host);
+    const draft = vi.fn();
+    const close = vi.fn();
+    try {
+      await act(async () => root.render(createElement(Menu, { at: { x: 0, y: 0 }, items: newMenuItems(context(draft)), onClose: close, label: "New" })));
+      const row = host.querySelector<HTMLButtonElement>('[data-testid="new-conversation"]')!;
+      await act(async () => row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
+      const chooser = host.querySelector<HTMLElement>('[role="menu"][aria-label="New conversation"]')!;
+      expect(chooser).toBeTruthy();
+      await act(async () => chooser.querySelector<HTMLButtonElement>('[data-testid="new-with-elm"]')!.click());
+      expect(draft).toHaveBeenCalledExactlyOnceWith("elm");
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
   it("offers one New conversation chooser with the default Trunk first and unsaved drafts", async () => {
     const request = vi.fn(async () => ({ key: "agent:elm:topic-1" }));
     const draft = vi.fn();
