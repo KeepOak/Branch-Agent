@@ -112,6 +112,7 @@ async function readProjection({
           canonicalKey: row.sessionKey,
           sessionId: row.entry.sessionId,
           agentId: parseAgentSessionKey(row.sessionKey)?.agentId ?? roster.defaultId,
+          defaultAgentId: roster.defaultId,
         }).active,
       agents,
       defaultAgentId: roster.defaultId,
