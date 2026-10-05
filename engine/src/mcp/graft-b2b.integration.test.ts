@@ -27,7 +27,11 @@ async function startEngine(root: string, name: string, approveLocal: boolean): P
   fs.writeFileSync(file, JSON.stringify(cfg));
   const port = await freePort();
   const token = randomBytes(24).toString("hex");
-  const env = scratchEngineEnv(scratch, port, token, process.env);
+  // The engines and CLIs run as they would outside the test runner (no VITEST/test-mode env).
+  const outside = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !/^(VITEST|NODE_ENV$|BRANCH_TEST_)/.test(key)),
+  );
+  const env = scratchEngineEnv(scratch, port, token, outside);
   const log = fs.openSync(path.join(scratch, "gateway.log"), "a");
   const child = spawn(process.execPath, ["branch.mjs", "gateway", "--dev", "--port", `${port}`], {
     cwd: engineDir,
@@ -102,7 +106,8 @@ describe.runIf(Boolean(engineDir))("Branch-to-Branch with two scratch engines", 
     }
     expect(pending?.scopes).toEqual(["operator.read", "operator.write"]);
     await callA("device.pair.approve", { requestId: pending!.requestId });
-    expect((await join).stdout).toContain("Grafted into");
+    const joined = await join;
+    expect(`${joined.stdout}${joined.stderr}`).toContain("Grafted into");
 
     const rows = (await callA("contacts.outside.list")).agents as {
       id: string;
