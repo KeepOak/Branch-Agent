@@ -135,6 +135,17 @@ describe("entry compile cache", () => {
     },
   );
 
+  it("enables compile cache for a built dist entry in a source checkout", async () => {
+    await markSourceCheckout();
+    const builtEntry = path.join(root, "dist", "entry.js");
+    enableBranchCompileCache({ env: {}, installRoot: root, entryFile: builtEntry });
+    expect(enableCompileCache).toHaveBeenCalledOnce();
+    await expect(
+      respawnWithoutBranchCompileCacheIfNeeded({ currentFile: builtEntry, installRoot: root }),
+    ).resolves.toBe(false);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
   it("skips cache activation with a warning when Windows TEMP makes the path too long", () => {
     vi.spyOn(os, "tmpdir").mockReturnValue(path.join(root, "x".repeat(200)));
     withMockedPlatform("win32", () => {
