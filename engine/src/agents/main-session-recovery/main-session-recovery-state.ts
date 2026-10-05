@@ -57,6 +57,18 @@ function createCycle(cycleId: string): MainRestartRecoveryState {
   };
 }
 
+function reservationOwnerIsDead(ownerPid: number | undefined): boolean {
+  if (ownerPid === undefined || ownerPid === process.pid) {
+    return false;
+  }
+  try {
+    process.kill(ownerPid, 0);
+    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ESRCH";
+  }
+}
+
 export function getMainSessionRecoveryRetryCount(
   state: MainRestartRecoveryState | undefined,
 ): number {
@@ -407,7 +419,8 @@ export function transitionMainSessionRecovery(
       }
       if (
         state?.reservation &&
-        state.reservation.lifecycleGeneration !== command.lifecycleGeneration
+        (state.reservation.lifecycleGeneration !== command.lifecycleGeneration ||
+          reservationOwnerIsDead(state.reservation.ownerPid))
       ) {
         // A process restart makes dispatch outcome unknowable: retain the charge,
         // but release the stale slot so the next bounded attempt can proceed.
@@ -460,6 +473,7 @@ export function transitionMainSessionRecovery(
           runId: command.runId,
           attempt: command.attempt,
           lifecycleGeneration: command.lifecycleGeneration,
+          ownerPid: process.pid,
         },
       });
       entry.updatedAt = command.now;
@@ -699,6 +713,7 @@ export function transitionMainSessionRecovery(
       });
       entry.abortedLastRun = false;
       entry.status = "failed";
+      entry.lastRunError = command.reason;
       entry.lifecycleRunId = undefined;
       entry.lastRunId = resolveRestartRecoveryTerminalClientRunId(entry);
       entry.endedAt = command.now;
