@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { levelFor, pageAtLevel, pageLevel, pageName, searchSettings, settingsGroups } from "./settings-nav";
 
 describe("settings nav", () => {
-  it("has 20, 21 and 22 pages by level (Connected agents is in Safety)", () => {
+  it("has 20, 21 and 22 pages by level (Grafts is in Safety)", () => {
     const count = (l: "regular" | "advanced" | "technical") => settingsGroups(l).reduce((n, g) => n + g.pages.length, 0);
     expect([count("regular"), count("advanced"), count("technical")]).toEqual([20, 21, 22]);
     expect(settingsGroups("regular").map((g) => g.name)).toEqual(["General", "Your assistant", "Safety", "Care"]);
