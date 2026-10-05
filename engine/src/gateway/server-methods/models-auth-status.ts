@@ -486,6 +486,10 @@ export const modelsAuthStatusHandlers: GatewayRequestHandlers = {
             }
             return profile;
           }),
+          ...(store.lastGood?.[authProviderKey] &&
+          prov.profiles.some((profile) => profile.profileId === store.lastGood?.[authProviderKey])
+            ? { lastGoodProfileId: store.lastGood[authProviderKey] }
+            : {}),
           ...(profileOrder.order !== undefined ? { profileOrder: profileOrder.order } : {}),
           ...(profileOrder.fromStore && localOrderStored ? { profileOrderStored: true } : {}),
           ...(providerOrderLocked
