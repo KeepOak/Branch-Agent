@@ -62,6 +62,7 @@ const coreEntrySpecs: readonly CommandGroupDescriptorSpec<[ctx: ProgramContext]>
       (await import("./register.message.js")).registerMessageCommands(program, ctx),
   ],
   [["mcp"], async (program) => (await import("../mcp-cli.js")).registerMcpCli(program)],
+  [["graft"], async (program) => (await import("../mcp-cli.js")).registerGraftCli(program)],
   [
     ["transcripts"],
     async (program) => (await import("./register.transcripts.js")).registerTranscriptsCli(program),

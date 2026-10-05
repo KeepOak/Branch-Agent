@@ -30,6 +30,7 @@ const AgentEntryConfigSchema = z.preprocess(
 export const AgentsSchema = z
   .strictObject({
     ownership: z.literal("explicit").optional(),
+    characterAssignmentVersion: z.literal(1).optional(),
     defaultId: z
       .string()
       .regex(/^[a-z0-9_][a-z0-9_-]{0,63}$/i, "Invalid agent id")

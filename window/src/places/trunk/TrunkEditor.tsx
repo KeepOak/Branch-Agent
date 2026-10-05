@@ -2,7 +2,6 @@
 // Look / What it may do / Its computers on the right; Cancel and Save. Save sends agents.update then one config.patch.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { notify } from "../../shell/notify";
@@ -10,10 +9,10 @@ import type { Level } from "../../places-nav/level";
 import { saveTrunk, type Draft } from "./api";
 import { ComputersTab } from "./ComputersTab";
 import { canWrite, loadTrunkData, useLoad, WRITE_WHY, type TrunkData } from "./data";
-import { LookTab, PEBBLE_WHY, useNewLooks } from "./LookTab";
+import { COLOURS, EYES, LookTab, SHAPES, useNewLooks } from "./LookTab";
 import { readMay } from "./may";
 import { MayTab } from "./MayTab";
-import { errorText, lookOf } from "./model";
+import { errorText, lookOf, LOOKS } from "./model";
 import { TrunkFace } from "./TrunkFace";
 import { Layer } from "./layer";
 import "./trunk.css";
@@ -35,7 +34,7 @@ export type TrunkEditorProps = {
 function draftOf(data: TrunkData, id: string): Draft | null {
   const row = data.roster.agents.find((a) => a.id === id);
   if (!row) return null;
-  return { name: row.name, theme: row.theme, look: lookOf(row.avatar, row.name), emoji: row.emoji, model: row.model, may: readMay(data.snap, id) };
+  return { name: row.name, theme: row.theme, look: lookOf(row.avatar, row.name), emoji: row.emoji, colour: row.colour || COLOURS[0], shape: row.shape || SHAPES[0], eyes: row.eyes || EYES[0], model: row.model, may: readMay(data.snap, id) };
 }
 
 function TabRow({ tab, setTab }: { tab: EditorTab; setTab: (t: EditorTab) => void }) {
@@ -84,6 +83,18 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
     if (body) body.scrollTop = 0;
   }, []);
   const set = (d: Partial<Draft>) => setDraft((x) => ({ ...x, ...d }));
+  const shuffle = () => {
+    if (draft.look === "classic") {
+      const combinations = COLOURS.flatMap((colour) => SHAPES.flatMap((shape) => EYES.map((eyes) => ({ colour, shape, eyes }))));
+      const alternatives = combinations.filter((look) => look.colour !== draft.colour || look.shape !== draft.shape || look.eyes !== draft.eyes);
+      set(alternatives[Math.floor(Math.random() * alternatives.length)]);
+    } else {
+      const worn = new Set(data.roster.agents.filter((a) => a.id !== agentId).map((a) => lookOf(a.avatar, a.name)));
+      const free = LOOKS.filter((l) => l.id !== "classic" && l.id !== "branch" && l.id !== draft.look && !worn.has(l.id));
+      const pool = free.length ? free : LOOKS.filter((l) => l.id !== "classic" && l.id !== "branch" && l.id !== draft.look);
+      set({ look: pool[Math.floor(Math.random() * pool.length)].id, emoji: "" });
+    }
+  };
   const changed = JSON.stringify(draft) !== JSON.stringify(initial);
   const save = async () => {
     setBusy(true); setError(null);
@@ -100,8 +111,8 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
     <Layer><Dialog title={`Edit ${initial.name}`} wide onClose={onClose} footer={footer} testid="trunk-editor">
       <div className="tk-editor">
         <div className="tk-big">
-          <TrunkFace name={draft.name || initial.name} look={draft.look} emoji={draft.emoji} size={84} draft />
-          <button type="button" className="btn sm" disabled title={shownWhy(PEBBLE_WHY)}>Shuffle</button>
+          <TrunkFace name={draft.name || initial.name} look={draft.look} emoji={draft.emoji} pebbleLook={draft} size={84} draft />
+          <button type="button" className="btn sm" onClick={shuffle}>Shuffle</button>
         </div>
         <div className="tk-col">
           <TabRow tab={tab} setTab={setTab} />

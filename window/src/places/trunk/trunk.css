@@ -51,11 +51,14 @@
 .tk-field .inp:focus-visible { outline: none; border-color: var(--ink-3); }
 .tk-swatches, .tk-shapes { display: flex; gap: 8px; flex-wrap: wrap; }
 .tk-swatch { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
+.tk-swatch[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 2px var(--raise); }
 .tk-shape { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); display: grid; place-items: center; }
+.tk-shape[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
 .tk-shape span { width: 26px; height: 26px; background: var(--ink-3); display: block; }
 .tk-swatch:disabled, .tk-shape:disabled, .tk-seg button:disabled { opacity: .45; cursor: default; }
 .tk-seg { display: inline-flex; padding: 2px; border-radius: 10px; background: var(--fill); gap: 2px; flex-wrap: wrap; }
 .tk-seg button { background: none; border: 0; height: 26px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+.tk-seg button[aria-pressed="true"] { background: var(--raise); color: var(--ink); box-shadow: var(--shadow-1); }
 
 /* What it may do: label and hint on the left, the control on the right */
 .tk-may { display: grid; }

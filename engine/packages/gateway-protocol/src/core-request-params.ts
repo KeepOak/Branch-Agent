@@ -1,7 +1,12 @@
 import type { Static } from "typebox";
 import type * as AgentSchema from "./schema/agent.js";
 import type { MemoryExportParams } from "./schema/agents-files.js";
-import type { BackupStatusParams } from "./schema/backup.js";
+import type {
+  BackupRunParams,
+  BackupScheduleClearParams,
+  BackupScheduleSetParams,
+  BackupStatusParams,
+} from "./schema/backup.js";
 import type * as BoardSchema from "./schema/board.js";
 import type { CanvasDocumentPreviewParams, CanvasDocumentViewParams } from "./schema/canvas.js";
 import type { CommandsListParams } from "./schema/commands.js";
@@ -32,6 +37,9 @@ import type * as UsersSchema from "./schema/users.js";
 export type GatewayCoreRequestParams = {
   "memory.export": MemoryExportParams;
   "backup.status": BackupStatusParams;
+  "backup.schedule.set": BackupScheduleSetParams;
+  "backup.schedule.clear": BackupScheduleClearParams;
+  "backup.run": BackupRunParams;
   "storage.locations.list": StorageLocationsListParams;
   "storage.locations.probe": StorageLocationsProbeParams;
   "presence.activity": PresenceActivityParams;

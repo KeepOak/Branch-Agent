@@ -111,6 +111,24 @@ describe("fingerprintPluginRuntimeArtifact", () => {
     expect(fingerprintPluginRuntimeArtifact(record)).not.toBe(first);
   });
 
+  it("reuses a settled file's digest until that file changes", () => {
+    const fixture = createPluginFixture();
+    const record = { pluginId: "fixture", origin: "global" as const, ...fixture };
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000);
+    const first = fingerprintPluginRuntimeArtifact(record);
+    const reads = vi.spyOn(fs, "readSync");
+
+    expect(fingerprintPluginRuntimeArtifact(record)).toBe(first);
+    expect(reads).not.toHaveBeenCalled();
+
+    fs.writeFileSync(
+      path.join(fixture.rootDir, "dist", "runtime.js"),
+      "export const run = () => 30;\n",
+    );
+    expect(fingerprintPluginRuntimeArtifact(record)).not.toBe(first);
+    expect(reads).toHaveBeenCalled();
+  });
+
   it.each(["node_modules", "transaction"])(
     "keeps %s outside the plugin-owned artifact identity",
     (kind) => {

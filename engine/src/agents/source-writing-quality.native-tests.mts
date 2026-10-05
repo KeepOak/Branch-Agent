@@ -30,6 +30,7 @@ function loadNativeComposition() {
     modifyingHookTimeoutMsByHook: {}, awaitHook: (_hook: unknown, promise: Promise<unknown>) => promise,
     shouldCatchHookErrors: () => true, handleHookError: (failure: unknown) => { failures.push(failure); },
     HookIsolationError: class extends Error {},
+    takeHookMessageLoader: () => undefined,
     concatOptionalTextSegments: ({ left, right }: { left?: string; right?: string }) => [left, right].filter(Boolean).join("\n\n"),
   };
   const code = stripTypeScriptTypes(lifecycle + "\n" + merge + "\n" + dispatch +

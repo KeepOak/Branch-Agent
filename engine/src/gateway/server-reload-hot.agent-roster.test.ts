@@ -1,7 +1,13 @@
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
+import {
+  markPreparedModelRuntimeSnapshotsStale,
+  refreshPreparedModelRuntimeSnapshots,
+} from "../agents/prepared-model-runtime.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/io.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
+import { diffConfigPaths } from "./config-diff.js";
 import { buildGatewayReloadPlan } from "./config-reload-plan.js";
 import type { GatewayCronState } from "./server-cron.js";
 import type { GatewayReloadHandlerParams } from "./server-reload-contracts.js";
@@ -23,10 +29,9 @@ vi.mock("../hooks/loader.js", async (importOriginal) => ({
 
 const { createGatewayReloadHandlers } = await import("./server-reload-hot.js");
 
-it("keeps an added agent hot when system-job convergence schedules a retry", async () => {
-  const reconcileSystemJobs = vi.fn<GatewayCronState["reconcileSystemJobs"]>(
-    async () => "retry-scheduled",
-  );
+function createRosterHandlers(
+  reconcileSystemJobs: GatewayCronState["reconcileSystemJobs"] = vi.fn(async () => "converged"),
+) {
   const cronState: GatewayCronState = {
     cron: { start: vi.fn(async () => {}), stop: vi.fn() } as never,
     storePath: "/tmp/cron.json",
@@ -71,6 +76,19 @@ it("keeps an added agent hot when system-job convergence schedules a retry", asy
     },
     requestRecoveryRestart,
   });
+  return { handlers, setState, requestRecoveryRestart };
+}
+
+afterEach(() => {
+  clearRuntimeConfigSnapshot();
+  vi.clearAllMocks();
+});
+
+it("keeps an added agent hot when system-job convergence schedules a retry", async () => {
+  const reconcileSystemJobs = vi.fn<GatewayCronState["reconcileSystemJobs"]>(
+    async () => "retry-scheduled",
+  );
+  const { handlers, setState, requestRecoveryRestart } = createRosterHandlers(reconcileSystemJobs);
   const nextConfig: BranchConfig = { agents: { entries: { main: {}, newcomer: {} } } };
   try {
     expect(
@@ -82,6 +100,87 @@ it("keeps an added agent hot when system-job convergence schedules a retry", asy
     expect(setState).toHaveBeenCalledOnce();
     expect(reconcileSystemJobs).toHaveBeenCalledOnce();
     expect(requestRecoveryRestart).not.toHaveBeenCalled();
+  } finally {
+    handlers.stopRestartRetries();
+  }
+});
+
+const rosterConfig: BranchConfig = {
+  agents: {
+    defaults: { model: "openai/gpt-5.5" },
+    entries: { elm: {}, oak: { model: "anthropic/claude-sonnet-5" } },
+  },
+  bindings: [{ agentId: "oak", match: { channel: "telegram" } }],
+  tools: { agentToAgent: { allow: ["elm", "oak"] } },
+  mcp: { servers: { docs: { command: "npx", args: ["docs-mcp"] } } },
+  skills: { entries: { summarize: { enabled: true } } },
+};
+
+function editRoster(mutate: (config: BranchConfig) => void): BranchConfig {
+  const next = structuredClone(rosterConfig);
+  mutate(next);
+  return next;
+}
+
+it.each<{ change: string; next: BranchConfig; refreshed: string[] | null }>([
+  {
+    change: "Trunk add",
+    next: editRoster((c) => {
+      c.agents!.entries!.birch = { name: "Birch", model: "openai/gpt-5.5" };
+      c.agents!.ownership = "explicit";
+    }),
+    refreshed: ["birch"],
+  },
+  {
+    change: "Trunk remove",
+    next: editRoster((c) => {
+      delete c.agents!.entries!.oak;
+      c.bindings = [];
+      c.tools!.agentToAgent = { allow: ["elm"] };
+    }),
+    refreshed: ["oak"],
+  },
+  {
+    change: "MCP server add",
+    next: editRoster((c) => {
+      c.mcp!.servers!.search = { url: "https://mcp.example.invalid/sse" };
+    }),
+    refreshed: null,
+  },
+  {
+    change: "skill off",
+    next: editRoster((c) => {
+      c.skills!.entries!.summarize!.enabled = false;
+    }),
+    refreshed: null,
+  },
+  {
+    change: "MCP Trunk limit",
+    next: editRoster((c) => {
+      c.tools!.deny = ["mcp__docs"];
+    }),
+    refreshed: null,
+  },
+])("hot-applies $change refreshing only the affected Trunks", async ({ next, refreshed }) => {
+  setRuntimeConfigSnapshot(rosterConfig);
+  const { handlers, requestRecoveryRestart } = createRosterHandlers();
+  try {
+    const plan = buildGatewayReloadPlan(diffConfigPaths(rosterConfig, next));
+    expect(plan.restartGateway).toBe(false);
+    expect(await handlers.applyHotReload(plan, next)).toBe("applied");
+    expect(requestRecoveryRestart).not.toHaveBeenCalled();
+    if (refreshed) {
+      expect(refreshPreparedModelRuntimeSnapshots).toHaveBeenCalledOnce();
+      expect(vi.mocked(refreshPreparedModelRuntimeSnapshots).mock.calls[0]?.[1]).toMatchObject({
+        agentIds: new Set(refreshed),
+      });
+      expect(vi.mocked(markPreparedModelRuntimeSnapshotsStale).mock.calls[0]?.[1]).toMatchObject({
+        agentIds: new Set(refreshed),
+      });
+    } else {
+      expect(refreshPreparedModelRuntimeSnapshots).not.toHaveBeenCalled();
+      expect(markPreparedModelRuntimeSnapshotsStale).not.toHaveBeenCalled();
+    }
   } finally {
     handlers.stopRestartRetries();
   }

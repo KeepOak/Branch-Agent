@@ -132,7 +132,6 @@ describe("Gateway core reload policy", () => {
 
   it.each([
     ...[
-      "mcp.apps.enabled",
       "gateway.auth.token",
       "gateway.bind",
       "gateway.controlUi.root",
@@ -142,7 +141,11 @@ describe("Gateway core reload policy", () => {
       "security.unknownPolicy",
       "secrets.egressProxy.enabled",
     ].map((path) => ({ path, restart: true, heartbeat: false })),
-    ...["tools.codeMode.enabled", "gateway.controlUi.experimental.customPlugins"].map((path) => ({
+    ...[
+      "tools.codeMode.enabled",
+      "gateway.controlUi.experimental.customPlugins",
+      "mcp.apps.enabled",
+    ].map((path) => ({
       path,
       restart: false,
       heartbeat: false,

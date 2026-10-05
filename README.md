@@ -77,7 +77,11 @@ Saved `dist/` outputs are source build artifacts. `Source builds` does not creat
 
 ## Working on Branch
 
-[`CONTRIBUTING.md`](CONTRIBUTING.md) is the contributor workflow: repository layout, setting up a worktree with `node scripts/install-worktree.mjs`, the local strict type checks, running tests by name, the merge gate and the 15-minute CI cap, component releases and updates, and working with AI agents through `branch mcp serve`. [`AGENTS.md`](AGENTS.md) is the short rule list for coding agents.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) is the contributor workflow: repository layout, setting up a worktree with `node scripts/install-worktree.mjs`, the local strict type checks, running tests by name, the merge gate and the 15-minute CI cap, component releases and updates, and working with AI agents through Graft (`branch graft`). [`AGENTS.md`](AGENTS.md) is the short rule list for coding agents.
+
+## Working with AI agents
+
+Graft (`branch graft`) lets Claude Code, Codex, Gemini CLI, Hermes or any MCP client work with your Trunks, group chats and the Branch window. Turn on "Type branch in any terminal" in the desktop app, then add it once, for example `claude mcp add --scope user branch -- branch graft`. Grafted agents appear in Settings › Grafts. Details: [`engine/docs/cli/mcp/serve.md`](engine/docs/cli/mcp/serve.md).
 
 ## Source layout
 

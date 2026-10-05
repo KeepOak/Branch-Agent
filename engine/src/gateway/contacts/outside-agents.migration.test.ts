@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BranchConfig } from "../../config/types.branch.js";
 import {
+  assignOutsideAgentId,
   legacyOutsideId,
   listOutsideAgents,
   outsideAgentMayDriveWindow,
@@ -101,5 +102,24 @@ describe("outside agents from before per-session ids", () => {
         readOutsideAgentSettings(env),
       ),
     ).toMatch(/disconnected/);
+  });
+
+  it("a goodbye frees the id at once, and day-old extra-session rows are dropped", () => {
+    const env = scratchEnv();
+    const day = 24 * 60 * 60_000;
+    recordOutsideAgent({ id: "lead-3c0900-2", name: "lead", instance: "old" }, 1_000, env);
+    const first = recordOutsideAgent(
+      { id: "lead-3c0900", name: "lead", instance: "p1" },
+      2 * day,
+      env,
+    );
+    expect(listOutsideAgents(env).map((row) => row.id)).toEqual(["lead-3c0900"]);
+    recordOutsideAgent({ id: first.id, name: "lead", instance: "p1" }, 2 * day + 5_000, env, {
+      leaving: true,
+    });
+    const rows = listOutsideAgents(env);
+    expect(assignOutsideAgentId({ id: "lead-3c0900", instance: "p2" }, rows, 2 * day + 6_000)).toBe(
+      "lead-3c0900",
+    );
   });
 });
