@@ -19,7 +19,7 @@ import { ok, type TrunkGateway, type TrunkToolsOptions } from "./trunk-tools.js"
 
 /** The Library preview reads at most 256 KiB; leave room for the attribution line. */
 export const DOC_MAX_BYTES = 240 * 1024;
-export const DEFAULT_PROJECT = "branch";
+export const DEFAULT_PROJECT = "branch-project";
 const HEADER = /^<!-- branch-doc (\{.*?\}) -->\r?\n?/;
 
 export type DocHeader = { v: number; by: string; at: string; note?: string };
@@ -61,7 +61,7 @@ export function docName(name: string): string {
   return /\.md$/i.test(trimmed) ? trimmed : `${trimmed}.md`;
 }
 
-/** The project's Trunk: the one named, else the "branch" Trunk, else Branch's default Trunk. */
+/** The project's Trunk: the one named, else the "branch-project" Trunk ("Branch project"), else Branch's default Trunk. */
 export async function resolveProject(gw: TrunkGateway, project?: string): Promise<string> {
   if (project) {
     return project;
@@ -232,7 +232,7 @@ const projectArg = z
   .string()
   .optional()
   .describe(
-    'The project: a Trunk id whose workspace holds it. Default: the "branch" Trunk, else the default Trunk.',
+    'The project: a Trunk id whose workspace holds it. Default: the "branch-project" Trunk, else the default Trunk.',
   );
 
 function registerDocTools(server: McpServer, gw: TrunkGateway, opts: TrunkToolsOptions): void {

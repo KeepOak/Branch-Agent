@@ -72,7 +72,7 @@ describe.runIf(Boolean(engineDir))("Graft hub tools against a scratch engine", (
   };
 
   it("keeps project documents versioned and attributed in the project Trunk's Library", async () => {
-    const created = await call("trunk_create", { name: "Branch" });
+    const created = await call("trunk_create", { name: "Branch project" });
     expect(created.ready).toBe(true);
     const project = String(created.agent_id);
     const first = await call("docs_write", {
@@ -110,22 +110,22 @@ describe.runIf(Boolean(engineDir))("Graft hub tools against a scratch engine", (
 
   it("writes project memory and instructions", async () => {
     await call("memory_write", {
-      project: "branch",
+      project: "branch-project",
       text: "Graft is the hub",
     });
     const memory = await request("agents.files.get", {
-      agentId: "branch",
+      agentId: "branch-project",
       name: "MEMORY.md",
     });
     expect(String((memory.file as Rec).content)).toMatch(/\(Claude Code\): Graft is the hub/);
     await call("project_instructions", {
-      project: "branch",
+      project: "branch-project",
       text: "# Continue here\n",
     });
-    expect((await call("project_instructions", { project: "branch" })).text).toBe(
+    expect((await call("project_instructions", { project: "branch-project" })).text).toBe(
       "# Continue here\n",
     );
-    expect((await call("memory_search", { project: "branch", query: "hub" })).hits).toEqual(
+    expect((await call("memory_search", { project: "branch-project", query: "hub" })).hits).toEqual(
       expect.any(Array),
     );
   }, 120_000);

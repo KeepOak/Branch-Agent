@@ -19,7 +19,7 @@ function fakeBranch() {
   const handlers: Record<string, (p: Rec) => unknown> = {
     "agents.list": () => ({
       defaultId: "main",
-      agents: [{ id: "main" }, { id: "branch", name: "Branch" }],
+      agents: [{ id: "main" }, { id: "branch-project", name: "Branch project" }],
     }),
     "agents.documents.create": (p) => {
       const key = `Documents/${String(p.name)}`;
@@ -178,7 +178,7 @@ describe("Graft hub documents", () => {
       text: "# Plan\nship it\n",
     });
     expect(first).toMatchObject({
-      project: "branch",
+      project: "branch-project",
       name: "PLAN.md",
       version: 1,
       created: true,
@@ -254,7 +254,7 @@ describe("Graft hub memory", () => {
     );
     const hits = await call("memory_search", { query: "merge gate" });
     expect(hits).toMatchObject({
-      project: "branch",
+      project: "branch-project",
       hits: [{ path: "MEMORY.md", text: "about merge gate", line: 3 }],
     });
   });
@@ -381,7 +381,7 @@ describe("Graft hub project instructions", () => {
     const { gw, files, calls } = fakeBranch();
     const call = await connect(gw);
     expect(await call("project_instructions")).toMatchObject({
-      project: "branch",
+      project: "branch-project",
       text: "",
       hash: null,
     });
