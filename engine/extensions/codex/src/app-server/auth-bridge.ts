@@ -965,6 +965,7 @@ async function resolveOAuthCredentialForCodexAppServer(
   const ownerAgentDir = resolvePersistedAuthProfileOwnerAgentDir({
     agentDir: params.agentDir,
     profileId,
+    config: params.config,
   });
   const persistedCredential = findPersistedAuthProfileCredential({
     agentDir: ownerAgentDir,

@@ -363,6 +363,9 @@ export function findPersistedAuthProfileCredential(params: {
 export function resolvePersistedAuthProfileOwnerAgentDir(params: {
   agentDir?: string;
   profileId: string;
+  /** Names the configured inheritance owner (agents.defaults.authInheritance) for inherited profiles. */
+  config?: BranchConfig;
+  cfg?: BranchConfig;
 }): string | undefined {
   if (isEnvOnlyAuthProfileRuntime() || isUserModelAuthProfileId(params.profileId)) {
     return undefined;
@@ -375,8 +378,19 @@ export function resolvePersistedAuthProfileOwnerAgentDir(params: {
   if (isSharedMainAuthProfileAgentDir(agentDir)) {
     return undefined;
   }
+  const configuredOwnerDir = withConfiguredInheritedAuthDir({
+    config: params.config ?? params.cfg,
+  })?.inheritedAuthDir;
+  // Only a configured owner other than the shared main store changes the owner; main stays implicit.
+  const inheritedAuthDir =
+    configuredOwnerDir && !isSharedMainAuthProfileAgentDir(configuredOwnerDir)
+      ? configuredOwnerDir
+      : undefined;
+  if (inheritedAuthDir && path.resolve(inheritedAuthDir) === path.resolve(agentDir)) {
+    return agentDir;
+  }
 
-  const mainAgentDir = resolveRuntimeAuthProfileAgentDir();
+  const mainAgentDir = inheritedAuthDir ?? resolveRuntimeAuthProfileAgentDir();
   const mainStore = loadPersistedAuthProfileStore(mainAgentDir);
   const requestedProfile = requestedStore?.profiles[params.profileId];
   if (requestedProfile) {
@@ -385,11 +399,11 @@ export function resolvePersistedAuthProfileOwnerAgentDir(params: {
       local: requestedProfile,
       main: mainStore?.profiles[params.profileId],
     })
-      ? undefined
+      ? inheritedAuthDir
       : agentDir;
   }
 
-  return mainStore?.profiles[params.profileId] ? undefined : agentDir;
+  return mainStore?.profiles[params.profileId] ? inheritedAuthDir : agentDir;
 }
 
 export {
