@@ -21,10 +21,7 @@ const SKIP_DELAY = 300;
 const RICH_CONTENT_CLOSE_DELAY = 100;
 
 let nextTooltipId = 0;
-
-function createTooltipId() {
-  return `branch-tooltip-${++nextTooltipId}`;
-}
+const createTooltipId = () => `branch-tooltip-${++nextTooltipId}`;
 
 class TooltipProvider extends BranchLitElement {
   @property({ type: Number }) delay = HOVER_DELAY;
@@ -522,6 +519,7 @@ class Tooltip extends BranchLitElement {
     this.#syncDescription();
     // Light-DOM owners can retain a revealed trigger without another popup lifecycle.
     this.setAttribute("open", "");
+    this.renderRoot.querySelector(".tooltip-rich-content")?.removeAttribute("inert");
     this.ownerDocument.addEventListener("pointerdown", this.#handleDocumentDismiss, true);
     this.ownerDocument.addEventListener("focusin", this.#handleDocumentDismiss, true);
     if (this.hoverDismissDelay !== undefined) {
@@ -564,6 +562,8 @@ class Tooltip extends BranchLitElement {
   #close() {
     this.#pinned = false;
     this.removeAttribute("open");
+    // Hide transitions may keep the popup painted, but its actions must leave Tab order now.
+    this.renderRoot.querySelector(".tooltip-rich-content")?.setAttribute("inert", "");
     this.ownerDocument.removeEventListener("pointerdown", this.#handleDocumentDismiss, true);
     this.ownerDocument.removeEventListener("focusin", this.#handleDocumentDismiss, true);
     this.ownerDocument.removeEventListener("pointermove", this.#handleDocumentPointerMove, true);
@@ -761,6 +761,7 @@ class Tooltip extends BranchLitElement {
               <span class="tooltip-content">${this.contentTemplate ?? this.content}</span>
               <span
                 class="tooltip-rich-content"
+                ?inert=${!this.hasAttribute("open")}
                 @pointerenter=${this.#handleContentPointerEnter}
                 @pointerleave=${this.#handleContentPointerLeave}
                 @focusin=${this.#handleFocusIn}

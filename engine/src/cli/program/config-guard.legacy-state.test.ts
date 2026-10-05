@@ -29,6 +29,7 @@ it.each([
       { BRANCH_DISABLE_BUNDLED_PLUGINS: "1", BRANCH_UPDATE_IN_PROGRESS: undefined },
       async () => {
         const configPath = await writeBranchConfig(home, {
+          meta: { migrations: { webhookListeners: true } },
           gateway: { mode: "local" },
           plugins: { enabled: false },
         });

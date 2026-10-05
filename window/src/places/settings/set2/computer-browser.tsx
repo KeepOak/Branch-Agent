@@ -1,7 +1,9 @@
 // Settings › Computer & browser: the browser sections (The browser … Cloud browsers). Wired rows read and save
 // browser.* config; launch flags live in browser.extraArgs; the profile list, status and check come from the
 // browser control service through browser.request. Rows the engine can't back are greyed with why.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useRef, useState } from "react";
+import { shownWhy } from "../../../shell/shown-why";
 import { Btn, Ctl, Empty, Field, Pill, useConfig } from "../kit";
 import { list } from "../adapter";
 import { useAction } from "../hooks";
@@ -122,7 +124,7 @@ function Sites() {
   return (
     <>
       <Empty>{why}</Empty>
-      <div className="s2cm-site" title={why}>
+      <div className="s2cm-site" title={shownWhy(why)}>
         <input className="inp" aria-label="Add a site" placeholder="Add a site, e.g. example.com" disabled />
         <Btn sm disabled>Add</Btn>
       </div>

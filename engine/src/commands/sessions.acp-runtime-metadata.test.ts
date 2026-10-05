@@ -19,10 +19,10 @@ const NON_ACP_SESSION_KEY = "agent:main:main";
 function buildConfigWithoutAgentRuntimePolicy(): BranchConfig {
   return {
     agents: {
-      list: [{ id: "copilot" }, { id: "main", default: true }],
+      entries: { copilot: {}, main: {} },
       defaults: {},
     },
-  } as BranchConfig;
+  };
 }
 
 function computeSessionAgentRuntime(params: {

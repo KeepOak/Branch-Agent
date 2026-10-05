@@ -1,6 +1,7 @@
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
 import { formatConsoleDiagnosticLine } from "./json-console-line.js";
 import { ALLOWED_LOG_LEVELS, type LogLevel, tryParseLogLevel } from "./levels.js";
+import { redactToolPayloadText } from "./redact.js";
 import { loggingState } from "./state.js";
 
 /** Resolves BRANCH_LOG_LEVEL once per value, warning only when the invalid value changes. */
@@ -17,7 +18,7 @@ export function resolveEnvLogLevelOverride(): LogLevel | undefined {
   }
   if (loggingState.invalidEnvLogLevelValue !== trimmed) {
     loggingState.invalidEnvLogLevelValue = trimmed;
-    const message = `[branch] Ignoring invalid BRANCH_LOG_LEVEL="${trimmed}" (allowed: ${ALLOWED_LOG_LEVELS.join("|")}).`;
+    const message = `[branch] Ignoring invalid BRANCH_LOG_LEVEL="${redactToolPayloadText(trimmed)}" (allowed: ${ALLOWED_LOG_LEVELS.join("|")}).`;
     process.stderr.write(`${formatConsoleDiagnosticLine({ level: "warn", message })}\n`);
   }
   return undefined;

@@ -1,3 +1,4 @@
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import type { MediaUnderstandingProvider } from "branch/plugin-sdk/media-understanding";
 import { createTestPluginApi } from "branch/plugin-sdk/plugin-test-api";
 import {

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { nip19 } from "nostr-tools";
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import type { RuntimeEnv } from "branch/plugin-sdk/runtime-env";
 import type { SecretInput, WizardPrompter } from "branch/plugin-sdk/setup";

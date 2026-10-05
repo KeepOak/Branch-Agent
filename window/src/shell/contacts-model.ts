@@ -1,0 +1,66 @@
+// Hermes' canonical Bot Chat supplies the durable row target. The Gateway owns
+// contact classification and unread rollup; this file only adapts it to rows.
+import type { Contact as GatewayContact, Topic } from "@branch/gateway-protocol";
+import type { Conversation } from "../connect/conversations";
+import type { ListPrefs, ListSection } from "./list-model";
+
+export type Contact = GatewayContact & { thread: Conversation | null };
+
+/** Join Gateway contacts to session rows only for existing row actions and detail. */
+export function projectContact(raw: readonly GatewayContact[], sessions: readonly Conversation[]): Contact[] {
+  const byKey = new Map(sessions.map((row) => [row.key, row]));
+  return raw.map((contact) => ({
+    ...contact,
+    thread: byKey.get(contact.threadKey) ?? null,
+  }));
+}
+
+/** ConversationRow is presentation only; its key remains the contact's thread key. */
+export function contactRow(contact: Contact): Conversation {
+  const base = contact.thread;
+  const preview = contact.preview.kind === "topic"
+    ? `${contact.preview.title}: ${contact.preview.text}`
+    : contact.preview.text;
+  return {
+    key: contact.threadKey, title: contact.name, agentId: base?.agentId ?? (contact.kind === "trunk" ? contact.id.slice(6) : undefined),
+    isMain: contact.isDefault, pinned: Boolean(contact.pinnedAt), archived: Boolean(contact.archivedAt),
+    unread: contact.threadUnread || contact.unreadTopics > 0, snoozedUntil: base?.snoozedUntil ?? null,
+    createdAt: base?.createdAt ?? 0, updatedAt: contact.preview.at, preview,
+    working: contact.working, needsYou: contact.needsYou, kind: contact.kind, system: false, automation: false,
+    totalTokens: base?.totalTokens ?? 0, contextTokens: base?.contextTokens ?? 0,
+    ...(base?.sessionId ? { sessionId: base.sessionId } : {}),
+  };
+}
+
+export function buildContactSections(contacts: Contact[], prefs: ListPrefs, now: number): ListSection[] {
+  const shown = contacts.filter((c) => {
+    if (c.isDefault) return false;
+    if (prefs.trunk && c.id !== `trunk:${prefs.trunk}`) return false;
+    if (prefs.status === "archived") return Boolean(c.archivedAt);
+    if (prefs.status === "snoozed") return Boolean(c.thread?.snoozedUntil && c.thread.snoozedUntil > now);
+    return prefs.status === "all" || (!c.archivedAt && !(c.thread?.snoozedUntil && c.thread.snoozedUntil > now));
+  }).sort((a, b) => b.lastActivityAt - a.lastActivityAt || a.name.localeCompare(b.name));
+  const pinned = shown.filter((c) => c.pinnedAt).map(contactRow);
+  const recent = shown.filter((c) => !c.pinnedAt).map(contactRow);
+  return [
+    ...(pinned.length || prefs.hideEmpty === "never" ? [{ id: "pinned", label: "Pinned", rows: pinned }] : []),
+    { id: "recent", label: "Recent", rows: recent },
+  ];
+}
+
+export async function markContactRead(contact: Contact, request: (method: string, params: unknown) => Promise<unknown>): Promise<boolean> {
+  if (!contact.threadUnread && contact.unreadTopics === 0) return false;
+  await request("contacts.markRead", { contactId: contact.id });
+  return true;
+}
+
+export async function listContactTopics(contactId: string, request: (method: string, params: unknown) => Promise<unknown>): Promise<Topic[]> {
+  const topics: Topic[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await request("contacts.topics", { contactId, limit: 200, ...(cursor ? { cursor } : {}) }) as { topics: Topic[]; nextCursor?: string };
+    topics.push(...page.topics);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return topics;
+}

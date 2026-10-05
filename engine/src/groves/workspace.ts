@@ -1,5 +1,4 @@
 // Creates Grove-owned bootstrap and supporting files inside the new agent workspace.
-import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -20,6 +19,7 @@ import {
   runBranchStateWriteTransaction,
   type BranchStateDatabaseOptions,
 } from "../state/branch-state-db.js";
+import { digestGroveBytes } from "./digest.js";
 import { groveContainedRelativePath } from "./path-containment.js";
 import { parseGroveMarkdown } from "./reader.js";
 import type { GroveAddPlan, GroveAddPlanAction, ClawDiagnostic } from "./types.js";
@@ -112,10 +112,6 @@ function diagnostic(action: GroveAddPlanAction, code: string, message: string): 
     path: `$.workspace[${JSON.stringify(action.id)}]`,
     message,
   };
-}
-
-function contentDigest(content: Uint8Array): string {
-  return `sha256:${createHash("sha256").update(content).digest("hex")}`;
 }
 
 export async function readGroveWorkspaceActionSource(params: {
@@ -359,7 +355,7 @@ export async function createGroveWorkspaceFiles(
         packageRoot,
         sourceRoot: source,
       });
-      const digest = contentDigest(resolvedSource.content);
+      const digest = digestGroveBytes(resolvedSource.content);
       if (digest !== action.digest) {
         throw writeError(
           "workspace_source_changed",
@@ -400,7 +396,7 @@ export async function createGroveWorkspaceFiles(
           maxBytes: MAX_GROVE_WORKSPACE_FILE_BYTES,
           symlinks: "reject",
         });
-        if (contentDigest(existingTarget.buffer) !== expectedRecord.contentDigest) {
+        if (digestGroveBytes(existingTarget.buffer) !== expectedRecord.contentDigest) {
           throw writeError(
             "workspace_file_drift",
             `Grove-owned workspace destination ${JSON.stringify(targetRelative)} no longer matches its recorded content.`,

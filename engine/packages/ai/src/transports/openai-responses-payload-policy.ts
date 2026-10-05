@@ -165,13 +165,10 @@ function resolveOpenAIResponsesPayloadCapabilities(
   return {
     allowsOpenAIServiceTier:
       (provider === "openai" &&
-        (api === "openai-responses" || api === "branch-openai-responses-transport") &&
-        endpointClass === "openai-public") ||
+        (api === "openai-responses" || api === "branch-openai-responses-transport")) ||
       (isOpenAIProvider &&
         (api === "openai-chatgpt-responses" ||
-          api === "branch-openai-chatgpt-responses-transport" ||
-          api === "openai-responses" ||
-          api === "branch-openai-responses-transport") &&
+          api === "branch-openai-chatgpt-responses-transport") &&
         endpointClass === "openai"),
     allowsResponsesStore:
       supportsResponsesStoreField &&

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -122,6 +123,9 @@ describe("Tools › Skills", () => {
     await click(button("Install ffmpeg"));
     expect(request).toHaveBeenCalledWith("skills.install", { name: "voice", installId: "brew" });
     await click(button("Add a skill"));
+    const provs = [...document.querySelectorAll<HTMLElement>(".cz-provs .cz-prov")];
+    for (const label of ["Choose a file", "Add from GitHub", "Draft it"]) { expect(button(label)!.disabled).toBe(true); expect(button(label)!.title).toBe(""); }
+    expect(provs.every(p => p.title === "")).toBe(true); expect(visibleDevNotes(document.body)).toEqual([]);
     await click(button("From the skill librarySearch skills others have shared and install one."));
     await click(button("Install"));
     expect(request).toHaveBeenCalledWith("skills.install", { source: "clawhub", slug: "@a/notes" });

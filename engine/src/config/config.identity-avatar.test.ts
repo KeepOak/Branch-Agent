@@ -67,7 +67,6 @@ it("rejects avatar paths outside the agent workspace", async () => {
         agents: {
           entries: {
             main: {
-              default: true,
               workspace: path.join(home, "branch"),
               identity: { avatar: "../oops.png" },
             },

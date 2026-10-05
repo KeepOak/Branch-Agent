@@ -1,6 +1,7 @@
 // One engine config per window for every Settings row (§4.7.0 "Switches save at once"). Saves run one at a time
 // against the latest revision; config.patch answers with the new hash and config, which every row adopts. A save
 // refused because the config changed elsewhere reads the config again and retries once.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../connect/engine";
 import { errorText, record, type ConfigSnapshot, type RecordValue } from "./adapter";
 

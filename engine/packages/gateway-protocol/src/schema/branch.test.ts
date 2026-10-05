@@ -184,6 +184,21 @@ describe("Branch Agent setup detection protocol", () => {
         nativeSessionCatalogsEnabled: false,
       }),
     ).toBe(true);
+    expect(
+      validateSystemAgentSetupAuthStartParams({
+        sessionId: "login-1",
+        agentId: "research",
+        authChoice: "anthropic/setup-token",
+        profileLabel: "work",
+      }),
+    ).toBe(true);
+    expect(
+      validateSystemAgentSetupAuthStartParams({
+        sessionId: "login-1",
+        authChoice: "anthropic/setup-token",
+        profileLabel: "",
+      }),
+    ).toBe(false);
     expect(validateSystemAgentSetupDetectParams({ agentId: "research", unknown: true })).toBe(
       false,
     );

@@ -1,5 +1,6 @@
 // Setup steps 4–11 (DESIGN-SPEC §4.8.1.4–§4.8.1.11). Controls the engine can't back yet are greyed with their reason.
 import type { ReactNode } from "react";
+import { shownWhy } from "../shell/shown-why";
 import { Icon as ModeIcon } from "../composer/icons";
 import { MODE_ROWS } from "../composer/mode";
 import { Icon, type IconName } from "../shell/icons";
@@ -7,6 +8,7 @@ import { ChatLogo } from "../places/settings/set1/chatapps-logo";
 import { ChoiceCards } from "./steps-early";
 import { ToolLogo, type ToolMark } from "./tool-logos";
 import { JOBS, type Check, type Look } from "./setup-model";
+import { useDesktopControls } from "../connect/desktop-controls";
 
 const LOOKS: { id: Look; name: string }[] = [
   { id: "system", name: "Match Windows" },
@@ -137,7 +139,7 @@ function Ctl({ title, sub, children }: { title: string; sub?: string; children: 
 function SegOf({ label, options, value, off }: { label: string; options: string[]; value: string; off: string }) {
   return (
     <span className="right">
-      <span className="ob-seg" role="group" aria-label={label} aria-disabled="true" title={off}>
+      <span className="ob-seg" role="group" aria-label={label} aria-disabled="true" title={shownWhy(off)}>
         {options.map((o) => (
           <button key={o} type="button" aria-pressed={o === value} disabled>
             {o}
@@ -156,7 +158,7 @@ function OffSwitchRow({ title, line, on, reason, logo, label }: { title: string;
         <b>{title}</b>
         <small>{line}</small>
       </span>
-      <button type="button" role="switch" aria-checked={on} aria-label={label ?? title} className="switch" disabled title={reason} />
+      <button type="button" role="switch" aria-checked={on} aria-label={label ?? title} className="switch" disabled title={shownWhy(reason)} />
     </div>
   );
 }
@@ -166,8 +168,11 @@ const CONNECTORS: { id: ToolMark; name: string; line: string }[] = [
   { id: "drive", name: "Google Drive", line: "Documents · sign in on their site" },
   { id: "github", name: "GitHub", line: "Code and issues · sign in on their site" },
 ];
+// TODO(engine-lane): connector sign-in from setup (Outlook, Google Drive, GitHub) hooks in here once the engine has it.
 const CONNECT_OFF = "Signing in to connectors from setup isn't in the engine yet; Customize › Tools has them.";
+// TODO(engine-lane): the engine reports the command-line tools it found; draw them as the artifact's on switch.
 const CLI_OFF = "Listing the command-line tools found needs the engine to report them.";
+// TODO(engine-lane): "What Trunks may use on this computer" (Read only / Standard / Everything) as an engine setting.
 const LEND_OFF = "What this computer lends to Trunks isn't an engine setting yet; Settings › Permissions has the rules.";
 
 export function ToolsBody() {
@@ -199,12 +204,18 @@ export function ToolsBody() {
   );
 }
 
-const DESKTOP = "The desktop app owns this; the window can't change it yet.";
+// TODO(desktop-lane): gateway mode needs the desktop app to run the engine's background service (branch gateway install);
+// see RecBar.tsx for why it can't yet.
+const DESKTOP = "The desktop app owns this; the window can’t change it yet.";
 
-export function KeepBody({ autoUpdate, onAutoUpdate }: { autoUpdate: boolean; onAutoUpdate: (v: boolean) => void }) {
-  const off = (title: string, sub: string) => (
+export function KeepBody({ autoUpdate, onAutoUpdate, boot = null, onBoot }: {
+  autoUpdate: boolean; onAutoUpdate: (v: boolean) => void; boot?: boolean | null; onBoot?: (v: boolean) => void;
+}) {
+  const desk = useDesktopControls();
+  const why = desk.off;
+  const sw = (title: string, sub: string, name: "startWithWindows" | "branchOnPath") => (
     <Ctl title={title} sub={sub}>
-      <button type="button" role="switch" aria-checked={false} aria-label={title} className="switch" disabled title={DESKTOP} />
+      <button type="button" role="switch" aria-checked={desk.state?.[name] ?? false} aria-label={title} className="switch" disabled={why !== undefined || desk.busy !== null} title={shownWhy(why)} onClick={() => void desk.set(name, !(desk.state?.[name] ?? false))} />
     </Ctl>
   );
   return (
@@ -212,8 +223,12 @@ export function KeepBody({ autoUpdate, onAutoUpdate }: { autoUpdate: boolean; on
       <Ctl title="The gateway" sub="Keeps Telegram, your phone and automations working when the window is closed, and starts Branch again if it ever stops.">
         <SegOf label="The gateway" options={["Off", "When needed", "On"]} value="On" off={DESKTOP} />
       </Ctl>
-      {off("Start with Windows", "Quietly, in the tray.")}
-      {off("Type branch in any terminal", "Adds the branch command, so the terminal view and scripts work anywhere.")}
+      {onBoot ? (
+        <Ctl title="Start with Windows" sub="Quietly, in the tray.">
+          <button type="button" role="switch" aria-checked={why ? false : boot ?? desk.state?.startWithWindows ?? false} aria-label="Start with Windows" className="switch" disabled={why !== undefined} title={shownWhy(why)} onClick={() => onBoot(!(boot ?? desk.state?.startWithWindows ?? false))} />
+        </Ctl>
+      ) : sw("Start with Windows", "Quietly, in the tray.", "startWithWindows")}
+      {sw("Type branch in any terminal", "Adds the branch command, so the terminal view and scripts work anywhere.", "branchOnPath")}
       <Ctl title="Keep Branch up to date by itself" sub="It waits until no task is working and keeps a safety copy.">
         <button type="button" role="switch" aria-checked={autoUpdate} aria-label="Keep Branch up to date by itself" className="switch" data-testid="setup-autoupdate" onClick={() => onAutoUpdate(!autoUpdate)} />
       </Ctl>

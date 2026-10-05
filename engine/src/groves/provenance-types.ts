@@ -1,6 +1,8 @@
+import type { GROVE_SCHEMA_VERSION, GroveSourceIdentity } from "./manifest-contract.js";
 import type { GroveAgentOrigin } from "./provenance-agent-origin.js";
 import type { parseGroveInstallRecordSchemaVersion } from "./provenance-schema-version.js";
-import type { GroveAddPlan } from "./types.js";
+
+export type GroveOrphanWorkspace = { workspace: string; updatedAtMs: number };
 
 export type GroveInstallStatus =
   | "pending"
@@ -11,8 +13,8 @@ export type GroveInstallStatus =
 
 export type PersistedGroveInstall = {
   schemaVersion: ReturnType<typeof parseGroveInstallRecordSchemaVersion>;
-  grove: GroveAddPlan["grove"];
-  manifestSchemaVersion: GroveAddPlan["manifestSchemaVersion"];
+  grove: GroveSourceIdentity;
+  manifestSchemaVersion: typeof GROVE_SCHEMA_VERSION;
   planIntegrity: string;
   agentId: string;
   workspace: string;

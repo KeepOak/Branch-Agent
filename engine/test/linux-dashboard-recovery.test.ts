@@ -410,7 +410,7 @@ test.each(
         elements.get("#install-hint")?.textContent,
         externalService
           ? "Installs the CLI in ~/.branch using your system Node.js and npm."
-          : "Installs the CLI and managed Node runtime in ~/.branch.",
+          : "Installs Branch Agent and its managed runtime in ~/.branch.",
       );
       if (phase === "unconfigured") {
         assert.deepEqual(

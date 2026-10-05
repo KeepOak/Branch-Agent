@@ -6,6 +6,7 @@ import {
   ssrfPolicyFromHttpBaseUrlAllowedOrigin,
 } from "branch/plugin-sdk/ssrf-runtime";
 import { z } from "zod";
+import { createAgentToAgentPolicy } from "../../../src/plugin-sdk/session-visibility.js";
 import { resolveA2aChannelAccount } from "./accounts.js";
 
 const A2A_OUTBOUND_TIMEOUT_MS = 30_000;
@@ -33,6 +34,7 @@ type A2aOutboundSendParams = {
   accountId?: string | null;
   to: string;
   text: string;
+  agentId?: string | null;
   assertDirectAdapterHandoff?: () => void;
 };
 
@@ -47,6 +49,12 @@ export async function sendA2aChannelText(
   const peer = account.config.peers?.[peerName];
   if (!peer?.url) {
     throw new Error(`peer ${peerName} has no url configured for outbound A2A`);
+  }
+  if (
+    params.agentId &&
+    !createAgentToAgentPolicy(params.cfg).isAllowed(params.agentId, `a2a:${peerName}`)
+  ) {
+    throw new Error(`agent ${params.agentId} may not message A2A peer ${peerName}`);
   }
 
   const messageId = randomUUID();
@@ -75,6 +83,12 @@ export async function sendA2aChannelText(
   const signal = AbortSignal.timeout(A2A_OUTBOUND_TIMEOUT_MS);
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (
+      params.agentId &&
+      !createAgentToAgentPolicy(params.cfg).isAllowed(params.agentId, `a2a:${peerName}`)
+    ) {
+      throw new Error(`agent ${params.agentId} may not message A2A peer ${peerName}`);
+    }
     // Peer URLs are operator config, but they still leave the Gateway: the shared
     // guard keeps that egress on the same SSRF policy as every other plugin call.
     const { response, release } = await fetchWithSsrFGuard({

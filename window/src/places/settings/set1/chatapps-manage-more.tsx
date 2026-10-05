@@ -1,6 +1,7 @@
 // Manage <app> at Advanced and Technical (§4.7.10.1): its commands, its groups, Discord's server actions, its
 // health and accounts, and every setting the app has (config.schema.lookup channels.<id>, saved together). A row the
 // app has no key for is greyed with why.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";

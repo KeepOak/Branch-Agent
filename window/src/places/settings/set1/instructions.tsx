@@ -14,6 +14,7 @@ import { JustAboutYou } from "./instructions-you";
 import { InstructionsMore } from "./instructions-more";
 import "./set1.css";
 import "./instructions.css";
+import { shownWhy } from "../../../shell/shown-why";
 
 /** The preview's eight files, in its order. */
 export const FILES: [string, string][] = [
@@ -127,7 +128,7 @@ function FileRow({ name, what, file, workspace, loading, never, onOpen }: RowPro
       <span className="grow">
         <b>{what}</b><small>{sub}</small>
         {lv >= 2 && path ? <small className="if-path">{visible(path)}</small> : null}
-        {why ? <small className="why-k">{why}</small> : null}
+        {shownWhy(why) ? <small className="why-k">{shownWhy(why)}</small> : null}
       </span>
       {boot ? null : <span title={readWhy}><Switch checked={n > 0 && !never} disabled label={`Read ${name}`} onChange={() => undefined} /></span>}
       <Btn sm disabled={!editable || !file || Boolean(file.error)} onClick={onOpen}>{n ? "Edit" : "Write"}</Btn>

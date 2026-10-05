@@ -35,7 +35,7 @@ type Props = {
   name: string;
   working: boolean;
   disabled: boolean;
-  onSend: (text: string, extras?: SendExtras) => void;
+  onSend: (text: string, extras?: SendExtras) => void | Promise<boolean>;
   onStop: () => void;
   engine?: WindowEngine;
   sessionKey?: string | null;
@@ -52,6 +52,11 @@ type Props = {
   plan?: { done: number; total: number; steps: { step: string; status: string }[] } | null;
   /** In a room: "Message the room · @ to call a Trunk" (rooms/, §4.3.1); else "Message <Trunk>". */
   placeholder?: string;
+  /** An unsaved topic; its first send is handled by the shell. */
+  draftAgentId?: string;
+  draftTemporary?: boolean;
+  onNewTopic?: (agentId: string, options?: Record<string, unknown>) => void;
+  mainKey?: string;
 };
 
 type Menu = "plus" | "plug" | "model" | "mode" | null;
@@ -85,8 +90,8 @@ function useComposeEvent(open: string | null, setText: (t: string) => void, box:
 /** The composer (DESIGN-SPEC §4.3.1): the message box and Send, which becomes Stop while the Trunk works. */
 export function Composer(props: Props) {
   const { name, working, disabled, onSend, onStop, engine, onToast, onOpen } = props;
-  const conv = useConversation(engine);
-  const draft = useDraft(engine?.sessionKey ?? null, engine?.attachmentPolicy);
+  const conv = useConversation(engine, props.draftAgentId);
+  const draft = useDraft(props.draftAgentId ? null : engine?.sessionKey ?? null, engine?.attachmentPolicy);
   const [menu, setMenu] = useState<Menu>(null);
   const [photo, setPhoto] = useState(false);
   const [picture, setPicture] = useState(false);
@@ -137,7 +142,7 @@ export function Composer(props: Props) {
     onSend(item.text, buildExtras(item.text, item.files, [], steer ? "steer" : undefined));
     if (steer) toast(`Steered ${trunkName}. It picks this up at its next step.`);
   });
-  const bg = useBackground(engine, conv.trunkId);
+  const bg = useBackground(engine, conv.trunkId, props.mainKey);
   const levels = current?.levels ?? [];
   const drawer = useDrawer(engine, conv.trunks, levels, useMemo(() => ({ think: thinking }), [thinking]));
   const view = draft.text === dismissed ? null : drawer.view(draft.text, caret);
@@ -178,6 +183,12 @@ export function Composer(props: Props) {
       return;
     }
     if (noModel && plan.kind !== "command") return;
+    if (props.draftAgentId) {
+      void Promise.resolve(deliver(draft.text.trim(), draft.files, draft.people)).then((created) => {
+        if (created) draft.clear();
+      });
+      return;
+    }
     if (plan.kind === "wait") {
       line.add(draft.text.trim(), draft.files);
     } else {
@@ -338,22 +349,16 @@ export function Composer(props: Props) {
     }
   };
 
-  /** A new temporary conversation with this Trunk (sessions.create incognito), opened in its place. */
+  /** A temporary topic is still only created with its first message. */
   const startTemporary = async () => {
-    if (!engine || !props.onOpenConversation) return;
-    try {
-      const made = rec(await engine.request("sessions.create", { incognito: true, ...(conv.trunkId ? { agentId: conv.trunkId } : {}) }));
-      if (str(made.key)) props.onOpenConversation(str(made.key));
-    } catch (e) {
-      setProblem(e instanceof Error ? e.message : String(e));
-    }
+    if (conv.trunkId) props.onNewTopic?.(conv.trunkId, { incognito: true });
   };
 
   const hasDraft = draft.text.trim().length > 0 || draft.files.length > 0;
   const stopMode = working && !hasDraft;
   const ready = hasDraft && !disabled && draft.preparing === 0 && (!noModel || draft.text.trim().startsWith("/"));
   const cost = num(row.estimatedCostUsd);
-  const temporary = row.incognito === true;
+  const temporary = props.draftTemporary === true || row.incognito === true;
 
   return (
     <div
@@ -547,7 +552,8 @@ export function Composer(props: Props) {
             onBackground={() => void runBackground(draft.text)}
             onOpen={onOpen}
             temporary={temporary}
-            onTemporary={engine && props.onOpenConversation ? () => void startTemporary() : undefined}
+            onTemporary={props.onNewTopic ? () => void startTemporary() : undefined}
+            onWhoAnswers={props.draftAgentId ? (agentId) => props.onNewTopic?.(agentId) : undefined}
             onVoiceNote={typeof MediaRecorder !== "undefined" && navigator.mediaDevices ? () => void note.start() : undefined}
           />
         ) : null}
@@ -580,6 +586,7 @@ export function Composer(props: Props) {
             onOpen={onOpen}
             onRetry={() => void conv.readModelList()}
             engine={engine}
+            trunkId={conv.trunkId}
           />
         ) : null}
         {searching ? (

@@ -2,8 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import type {
-  BranchPluginService,
-  BranchPluginServiceContext,
+  BranchPluginApi,
+  BranchPluginServiceContextV2,
   BranchPluginGatewayEvents,
 } from "branch/plugin-sdk/plugin-entry";
 import type { OpenKeyedStoreOptions } from "branch/plugin-sdk/plugin-state-runtime";
@@ -11,9 +11,12 @@ import {
   createPluginStateKeyedStoreForTests,
   openBranchStateDatabase,
 } from "branch/plugin-sdk/plugin-state-test-runtime";
-import { createTestPluginApi } from "branch/plugin-sdk/plugin-test-api";
+import {
+  createTestPluginApi,
+  createTestPluginServiceScheduler,
+} from "branch/plugin-sdk/plugin-test-api";
 import type { PluginRuntime } from "branch/plugin-sdk/runtime-store";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { registerBrowserPlugin } from "../plugin-registration.js";
 import {
   interceptStoreActions,
@@ -552,7 +555,6 @@ describe("Browser dashboard lifetime", () => {
     const { app, getHandlers } = createBrowserRouteApp();
     registerBrowserTabRoutes(app, {
       forProfile: () => ({ profile, isReachable, listTabs }),
-      mapTabError: () => null,
     } as unknown as BrowserRouteContext);
     const response = createBrowserRouteResponse();
     await getHandlers.get("/tabs")!(
@@ -658,7 +660,7 @@ describe("Browser dashboard lifetime", () => {
 
   it("publishes changed lifetimes and drains board-change cleanup through the existing service events", async () => {
     const serviceScope = new AsyncLocalStorage<string>();
-    const services: BranchPluginService[] = [];
+    const services: Parameters<BranchPluginApi["registerService"]>[0][] = [];
     let boardChanged: Parameters<BranchPluginGatewayEvents["onSessionsChanged"]>[0] | undefined;
     const emit = vi.fn();
     const unsubscribe = vi.fn();
@@ -683,7 +685,10 @@ describe("Browser dashboard lifetime", () => {
         },
       }),
     );
-    const context: BranchPluginServiceContext = {
+    const scheduler = createTestPluginServiceScheduler();
+    onTestFinished(() => scheduler.stop());
+    const context: BranchPluginServiceContextV2 = {
+      scheduler,
       config: {},
       stateDir: fixture.stateDir,
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

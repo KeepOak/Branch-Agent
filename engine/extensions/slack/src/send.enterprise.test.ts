@@ -20,7 +20,8 @@ const loadOutboundMediaFromUrl = vi.hoisted(() =>
 const fetchWithSsrFGuard = vi.hoisted(() => vi.fn());
 const getSlackWriteClientMock = vi.hoisted(() => vi.fn());
 
-vi.mock("branch/plugin-sdk/fetch-runtime", () => ({
+vi.mock("branch/plugin-sdk/fetch-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("branch/plugin-sdk/fetch-runtime")>()),
   withTrustedEnvProxyGuardedFetchMode: (value: unknown) => value,
 }));
 vi.mock("branch/plugin-sdk/ssrf-runtime", () => ({ fetchWithSsrFGuard }));

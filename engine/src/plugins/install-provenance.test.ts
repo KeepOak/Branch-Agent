@@ -17,7 +17,9 @@ describe("plugin install provenance", () => {
   it.each([
     "discord",
     "@branch/discord",
+    "@branch/discord@1.2.3",
     "npm:@branch/discord",
+    "npm:@branch/discord@1.2.3",
     "/opt/branch/extensions/discord",
     "brave",
     "npm:@branch/brave-plugin",

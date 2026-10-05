@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -269,14 +270,16 @@ describe("Inbox › other tabs", () => {
     const { host } = await render();
     await click(btn(host, "Later")[0]);
     expect(host.textContent).toContain("Nothing is waiting to finish later.");
-    expect(host.querySelector<HTMLInputElement>("input[placeholder='Search messages']")).toMatchObject({ disabled: true, title: MESSAGES_GAP });
+    expect(host.querySelector<HTMLInputElement>("input[placeholder='Search messages']")).toMatchObject({ disabled: true, title: "" });
+    expect(host.textContent).not.toContain(MESSAGES_GAP); expect(visibleDevNotes(host)).toEqual([]);
   });
   it("History groups by day with run lengths; Every conversation only from Advanced; the run menu only at Technical", async () => {
     const regular = await render();
     await click(btn(regular.host, "History")[0]);
     expect(regular.host.textContent).toContain("1m 12s");
     expect(regular.host.textContent).toContain("Today");
-    expect(btn(regular.host, "Watch again")[0]).toMatchObject({ disabled: true, title: REPLAY_GAP });
+    expect(btn(regular.host, "Watch again")[0]).toMatchObject({ disabled: true, title: "" });
+    expect(REPLAY_GAP).toMatch(/^Needs the engine/); expect(visibleDevNotes(regular.host)).toEqual([]);
     expect(regular.host.textContent).not.toContain("Every conversation");
     expect(regular.host.querySelector(".ib-hrow .ib-ib")).toBeNull();
     await act(async () => root?.unmount()); root = undefined;
