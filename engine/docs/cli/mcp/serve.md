@@ -224,6 +224,50 @@ A typical round trip: `trunks_list`, then `trunk_send` with
 `agent_id: "builder-oak"`, then `run_wait` with the returned `run_id` and
 `thread_key`.
 
+#### Hub tools: shared documents, memory, board and activity
+
+Everyone improving Branch (several Claude Code accounts, Codex, Hermes and the
+builder Trunks) works through the same Branch. These tools keep coordination,
+memory and documents inside it instead of in private repos or markdown boards.
+
+A **project** is a Trunk's workspace (Branch lists each one as a project). Pass
+`project` with the Trunk's id; without it the tools use the `branch` Trunk if
+there is one, else Branch's default Trunk.
+
+| Tool                   | What it does                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `docs_list`            | The project's Library documents with size, last change and how many versions each has.                               |
+| `docs_read`            | A document's text, its version, who wrote that version and when, and its hash. `version` reads an older one.          |
+| `docs_write`           | Creates or updates a markdown document (up to 240 KiB; split bigger ones into parts). Each write is a new version.     |
+| `docs_search`          | Lines in the project's documents that contain every word of `query`.                                                  |
+| `project_instructions` | Reads the project's instructions (its Trunk's AGENTS.md), or replaces them when `text` is given.                      |
+| `memory_search`        | Searches the project Trunk's memory.                                                                                |
+| `memory_write`         | Adds a dated line, signed with the agent's name, to the project Trunk's MEMORY.md.                                   |
+| `board_list`           | Board cards with status, owner, linked PRs and recent comments (`board` defaults to `branch`).                       |
+| `board_create`         | Creates a card. With `key` (for example `P12`) the same key never makes a second card. `pr_urls` links PRs.           |
+| `board_claim`          | Claims a card for this agent and returns the claim token.                                                           |
+| `board_update`         | Changes status, title, notes or labels, or links a PR with `pr_url`.                                                 |
+| `board_comment`        | Comments on a card; the comment starts with the agent's name.                                                       |
+| `activity_feed`        | "X is working on Y" lines for every working Trunk (with run ids), every connected agent, then recent work.            |
+
+How they are stored:
+
+- Documents live in the project Trunk's Library (`Documents/<name>`), so the
+  owner reads them in Library. The first line of each document is a hidden
+  comment saying which version it is, who wrote it and when. Before an update
+  the previous text is kept as the hidden document `.<name>.v<N>.md`; Library
+  doesn't show hidden documents, `docs_read` with `version` does. Pass the
+  `hash` from `docs_read` as `expected_hash` so a write never overwrites a change
+  someone made after you read it.
+- Memory is the project Trunk's MEMORY.md, so its Trunk and memory search see it.
+- Cards are Canopy cards. Canopy is a plugin that is off until it's turned on
+  (`plugins.entries.canopy.enabled`); the board tools say so when it's off.
+
+A builder's loop: `activity_feed` to see who is on what, `board_list` and
+`board_claim` a card, `docs_read` the spec, work, `board_update` with the PR
+link, `board_comment` the result, `memory_write` anything the next agent must
+know.
+
 #### See and use the Branch window (self-testing)
 
 The `ui_*` tools let an agent test the Branch window the way the owner uses it.
