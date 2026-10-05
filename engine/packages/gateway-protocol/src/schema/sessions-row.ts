@@ -162,6 +162,7 @@ export const SessionRowSchema = Type.Object(
     pinned: Type.Optional(Type.Boolean()),
     pinnedAt: Type.Optional(Type.Number()),
     snoozedUntil: Type.Optional(Type.Number()),
+    done: Type.Optional(Type.Boolean()),
     snoozedAt: Type.Optional(Type.Number()),
     unread: Type.Optional(Type.Boolean()),
     lastReadAt: Type.Optional(Type.Number()),
