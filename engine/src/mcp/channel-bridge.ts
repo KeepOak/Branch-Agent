@@ -102,13 +102,15 @@ export class BranchChannelBridge {
     this.started = true;
     const [
       { resolveGatewayClientBootstrap },
-      { GatewayClient: GatewayClientCtor },
+      { GatewayClient: GatewayClientCtor, prepareGatewayClientDeviceAuth },
+      { loadOrCreateDeviceIdentity },
       { startGatewayClientWhenEventLoopReady },
       { ADMIN_SCOPE, APPROVALS_SCOPE, READ_SCOPE, WRITE_SCOPE },
       { GATEWAY_CLIENT_CAPS, GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES },
     ] = await Promise.all([
       import("../gateway/client-bootstrap.js"),
       import("../gateway/client.js"),
+      import("../infra/device-identity.js"),
       import("../../packages/gateway-client/src/readiness.js"),
       import("../gateway/method-scopes.js"),
       import("../../packages/gateway-protocol/src/client-info.js"),
@@ -127,8 +129,26 @@ export class BranchChannelBridge {
       return;
     }
 
+    // The first device-auth read creates this process's state store, which takes seconds on a fresh state dir.
+    // Done after the socket opens, it runs inside the gateway's 15 s pre-connect budget and the gateway closes the
+    // socket ("connect timeout"); prepare it first, as one-shot gateway calls do (gateway/call.ts).
+    const deviceIdentity = loadOrCreateDeviceIdentity();
+    await prepareGatewayClientDeviceAuth({
+      url: bootstrap.url,
+      token: bootstrap.auth.token,
+      password: bootstrap.auth.password,
+      tlsFingerprint: bootstrap.tlsFingerprint,
+      deviceAuthScope: bootstrap.deviceAuthScope,
+      deviceIdentity,
+    });
+    if (this.closed) {
+      this.readiness.resolve();
+      return;
+    }
+
     this.gateway = new GatewayClientCtor({
       url: bootstrap.url,
+      deviceIdentity,
       deviceAuthScope: bootstrap.deviceAuthScope,
       ...(bootstrap.sshTunnel ? { sshTunnel: bootstrap.sshTunnel } : {}),
       token: bootstrap.auth.token,

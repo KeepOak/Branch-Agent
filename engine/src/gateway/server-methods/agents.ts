@@ -397,6 +397,9 @@ export const agentsHandlers: GatewayRequestHandlers = {
         model: params.model,
         emoji: params.emoji,
         avatar: params.avatar,
+        colour: params.colour,
+        shape: params.shape,
+        eyes: params.eyes,
         runtimeApplication,
         assertIdentityInputAllowed: captureGatewayClientUploadCommitGuard({
           method: "agents.create",
@@ -481,6 +484,9 @@ export const agentsHandlers: GatewayRequestHandlers = {
       name: safeName,
       emoji: params.emoji,
       avatar: params.avatar,
+      colour: params.colour,
+      shape: params.shape,
+      eyes: params.eyes,
     });
     const hasIdentityFields = Boolean(identity);
 

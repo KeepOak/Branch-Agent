@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { serialize } from "node:v8";
 import { toErrorObject } from "@branch/normalization-core/error-coercion";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
+import { hiddenWindowsOptions } from "../windows-hidden-options.js";
 import {
   resolveRuntimeWorkerArgv,
   resolveRuntimeWorkerUrl,
@@ -95,7 +96,7 @@ export function brokerSpawnOptions(options: SpawnOptions): BrokerSpawnOptions | 
     argv0: options.argv0,
     detached: options.detached,
     shell: options.shell,
-    windowsHide: options.windowsHide,
+    windowsHide: hiddenWindowsOptions(options).windowsHide,
     windowsVerbatimArguments: options.windowsVerbatimArguments,
     serialization: options.serialization,
     uid: options.uid,
@@ -382,11 +383,16 @@ export class SpawnBrokerHost {
     if (serialize(bootstrap).byteLength > MAX_BOOTSTRAP_BYTES) {
       throw new SpawnBrokerError("Spawn broker bootstrap exceeds its IPC bound");
     }
-    const child = spawn(process.execPath, resolveRuntimeWorkerArgv(this.workerUrl), {
+    const brokerLaunchOptions: SpawnOptions = hiddenWindowsOptions({
       stdio: ["inherit", "ignore", "ignore", "ipc"],
       detached: true,
       serialization: "advanced",
     });
+    const child: ChildProcess = spawn(
+      process.execPath,
+      resolveRuntimeWorkerArgv(this.workerUrl),
+      brokerLaunchOptions,
+    );
     this.process = child;
     this.brokerClosed = new Promise<void>((resolve) => {
       child.once("close", () => resolve());

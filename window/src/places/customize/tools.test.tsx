@@ -12,7 +12,7 @@ vi.mock("../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <sp
 
 const CONFIG = {
   hash: "h1",
-  sourceConfig: { agents: { list: [{ id: "main" }, { id: "oak", tools: { deny: ["github__*"] } }] }, mcp: { servers: { github: { url: "https://example.test/mcp" }, files: { command: "npx", args: ["files"], toolFilter: { exclude: ["write_file"] } } } } },
+  sourceConfig: { agents: { entries: { main: {}, oak: { tools: { deny: ["github__*"] } } } }, mcp: { servers: { github: { url: "https://example.test/mcp" }, files: { command: "npx", args: ["files"], toolFilter: { exclude: ["write_file"] } } } } },
   runtimeConfig: { mcp: { servers: { github: { url: "https://example.test/mcp" }, files: { command: "npx", args: ["files"], toolFilter: { exclude: ["write_file"] } } } } },
 };
 const BASE: Record<string, unknown> = {
@@ -74,7 +74,7 @@ describe("Tools, three panes", () => {
     expect(patches(request)[0]).toEqual({ raw: { mcp: { servers: { files: { enabled: false } } } }, baseHash: "h1" });
     await click([...host.querySelectorAll(".t9-item")].find(i => i.textContent?.includes("github")));
     await click(button("Oak", host.querySelector('[aria-label="Which Trunks may use it"]')!));
-    expect(patches(request)[1]).toEqual({ raw: { agents: { list: [{ id: "oak", tools: { deny: [] } }] } }, baseHash: "h1", replacePaths: ["agents.list[].tools.deny"] });
+    expect(patches(request)[1]).toEqual({ raw: { agents: { entries: { oak: { tools: { deny: [] } } } } }, baseHash: "h1", replacePaths: ["agents.entries.oak.tools.deny"] });
   });
   it("sets a tool to Never with toolFilter.exclude and greys Ask first", async () => {
     const request = await open("Connectors");
