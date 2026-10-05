@@ -14,6 +14,8 @@ on:
       - 'engine/src/agents/source-writing-detector/**'
       - 'engine/src/plugin-sdk/agent-harness.ts'
       - '.github/workflows/writing-quality-checks.yml'
+  schedule:
+    - cron: '23 7 * * *'
   workflow_dispatch:
 
 permissions:
@@ -21,7 +23,7 @@ permissions:
 
 concurrency:
   group: writing-quality-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   writing:
@@ -32,7 +34,9 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        # PRs run Linux and Windows. macOS runs on main after merge, nightly, and on PRs that touch
+        # OS-specific code (os-specific-checks.yml). macOS runners have the lowest concurrency limit.
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["windows-latest", "ubuntu-latest"]' || '["windows-latest", "macos-latest", "ubuntu-latest"]') }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

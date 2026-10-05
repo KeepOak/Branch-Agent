@@ -14,6 +14,8 @@ on:
       - '.github/workflows/desktop-checks.yml'
       - '.github/workflows/source-build.yml'
       - '.github/workflows/component-release.yml'
+  schedule:
+    - cron: '23 7 * * *'
   workflow_dispatch:
 
 permissions:
@@ -21,7 +23,7 @@ permissions:
 
 concurrency:
   group: desktop-checks-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   desktop:
