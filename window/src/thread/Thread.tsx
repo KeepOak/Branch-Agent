@@ -58,6 +58,7 @@ type Props = {
   questions?: QuestionRecord[];
   /** Sends a starter from the empty conversation (§4.2.9), the same way the composer sends. */
   onStart?: (text: string) => void;
+  recoveryFailure?: string;
   /** The Plan card; it goes after the turn that last updated it (planAnchor), else at the end (§4.2.2). */
   plan?: ReactNode;
   /** Who else writes here (rooms/): other people, outside agents and other Trunks (§4.2.4). */
@@ -176,6 +177,27 @@ export function Thread(props: Props) {
     target?.scrollIntoView({ block: "end" });
   }, [props.focusTopic, props.topicUpdates]);
   const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser };
+  const recoveryEntryId = history.findLast((block) =>
+    (block.kind === "user" || block.kind === "text") && Boolean(block.meta?.entryId),
+  );
+  const continueInterrupted = async () => {
+    if (!engine?.sessionKey || !recoveryEntryId || (recoveryEntryId.kind !== "user" && recoveryEntryId.kind !== "text") || !recoveryEntryId.meta?.entryId) return;
+    try {
+      const result = await engine.request<{ sessionKey?: string }>("sessions.fork", {
+        sessionKey: engine.sessionKey,
+        entryId: recoveryEntryId.meta.entryId,
+      });
+      if (!result.sessionKey) throw new Error("The recovered conversation was not created.");
+      await engine.request("chat.send", {
+        sessionKey: result.sessionKey,
+        message: "Continue the task interrupted by the restart from the transcript above.",
+        idempotencyKey: crypto.randomUUID(),
+      });
+      props.onOpenSession?.(result.sessionKey);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error));
+    }
+  };
   return (
     <ThreadContext.Provider value={ctx}>
       <div className="thread-wrap" data-times={prefs.messageTimes} data-look={prefs.msgLook} data-scrollbars={prefs.scroll} dir={prefs.dir}>
@@ -221,6 +243,9 @@ export function Thread(props: Props) {
               onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
           ) : null}
           {props.supplement}
+          {props.recoveryFailure === "Interrupted by a restart. Continue?" ? (
+            <div className="notice" role="alert">Interrupted by a restart. {recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Continue</button> : null}</div>
+          ) : null}
           {planAt < 0 ? props.plan : null}
           <div ref={follow.end} className="thread-end" />
         </div>

@@ -29,16 +29,18 @@ concurrency:
 
 jobs:
   feature-batch:
-    name: Named feature tests on ${{ matrix.os }}
+    name: Named feature tests on ${{ matrix.os }} (${{ matrix.shard }}/2)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 6
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
+        shard: [1, 2]
     env:
       CI: 'true'
+      FEATURE_SHARD: ${{ matrix.shard }}/2
     steps:
       - name: Check out the feature commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

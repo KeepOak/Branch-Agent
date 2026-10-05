@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { capabilityTests, namedTests } from './feature-batch-ci-targets.mjs';
+import { capabilityTests, namedTests, shardOf, shardTests } from './feature-batch-ci-targets.mjs';
 import { runTargetedStrictChecks } from './feature-batch-ci-typecheck.mjs';
 import {
   assertLocalModules, engineRoot, gitHead, hostedChrome, preparePnpm, publishWindowDependencies, repoRoot, run,
@@ -68,11 +68,15 @@ async function runCapabilityTests(scratch) {
 
 async function runFeatureTests(scratch) {
   const env = await featureTestEnv(scratch);
+  const shard = shardOf();
   for (const lane of ['engine', 'window']) {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     const config = path.join(repoRoot, 'scripts', `feature-batch-ci-${lane}.config.mjs`);
+    const tests = shardTests(namedTests(lane), shard);
+    if (!tests.length) continue;
+    console.log(`${lane}: ${tests.length} named test files in shard ${shard.index + 1}/${shard.total}`);
     await run(process.execPath, [path.join(root, 'node_modules/vitest/vitest.mjs'),
-      'run', '--config', config, ...namedTests(lane)], root, env);
+      'run', '--config', config, ...tests], root, env);
   }
 }
 
@@ -92,10 +96,13 @@ async function checkAll(suite = 'named') {
     else {
       // The strict typecheck is the same on every OS; Linux runs it once. On the 7 GB macOS
       // runners its ~6 GB check thrashes and alone pushed the job past the 15-minute cap.
-      if (process.platform === 'linux') await runTargetedStrictChecks(scratch);
+      // Whole-tree checks run once, in the first shard.
+      const firstShard = shardOf().index === 0;
+      if (process.platform === 'linux' && firstShard) await runTargetedStrictChecks(scratch);
+      if (process.platform === 'linux' && firstShard) await run(process.execPath, ['--test', 'scripts/feature-batch-ci-shard.test.mjs'], repoRoot);
       // The release's native-protocol step rejects schema changes the Swift/Kotlin generators cannot
       // name (an alias without a canonical name broke every release after #188). Check it per PR.
-      if (process.platform === 'linux') {
+      if (process.platform === 'linux' && firstShard) {
         for (const language of ['swift', 'kotlin']) {
           await run(process.execPath, ['scripts/prepare-native-protocol.mjs', '--language', language, '--check'], engineRoot);
         }

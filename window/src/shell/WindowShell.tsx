@@ -1037,6 +1037,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           live={s.live}
           questions={questions.list}
           onStart={(text: string) => void session.send(text)}
+          recoveryFailure={openRow?.runError}
           plan={progress.card && !planDismiss.dismissed ? <PlanCard card={progress.card} onRefresh={planRefresh.refresh} refreshing={planRefresh.status} onDismiss={planDismiss.dismiss} /> : null}
           pendingUser={s.pendingUser}
           running={Boolean(s.liveRunId)}
