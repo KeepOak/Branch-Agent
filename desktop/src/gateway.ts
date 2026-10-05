@@ -71,7 +71,7 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
 export interface GatewayActivity { idle: boolean; activeRuns: number; pendingReplies: number; totalActive: number }
 let nextActivityId = 0;
 /** Query the engine's process-wide restart-drain inventory through its owned child channel. */
-export function gatewayActivity(child: ChildProcess, stopIfIdle = false, timeoutMs = 5_000): Promise<GatewayActivity> {
+export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" = false, timeoutMs = 5_000): Promise<GatewayActivity> {
   if (!child.connected) return Promise.reject(new Error("The gateway activity channel is unavailable"));
   const id = ++nextActivityId;
   return new Promise((resolve, reject) => {
@@ -92,7 +92,8 @@ export function gatewayActivity(child: ChildProcess, stopIfIdle = false, timeout
     child.on("message", onMessage);
     child.once("exit", onExit);
     child.once("error", onError);
-    child.send({ type: stopIfIdle ? "branch-desktop:stop-if-idle" : "branch-desktop:activity", id }, error => { if (error) onError(error); });
+    const type = stop === "drain" ? "branch-desktop:drain-stop" : stop ? "branch-desktop:stop-if-idle" : "branch-desktop:activity";
+    child.send({ type, id }, error => { if (error) onError(error); });
   });
 }
 
@@ -101,8 +102,30 @@ export async function stopGatewayCleanly(child: ChildProcess, timeoutMs = 90_000
   if (child.exitCode !== null || child.signalCode !== null) return;
   const snapshot = await gatewayActivity(child, true);
   if (!snapshot.idle) throw new Error("The gateway became busy before it could stop");
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  await new Promise<void>((resolve, reject) => {
+  await waitForExit(child, timeoutMs);
+}
+
+/**
+ * Ask the owned engine to stop admitting work and drain as SIGTERM does, even while runs are active; the next
+ * engine's restart recovery resumes whatever the drain could not finish. An engine that does not answer the
+ * drain request (an older build) or does not exit in time is stopped by PID, as before.
+ */
+export async function drainStopGateway(child: ChildProcess, timeoutMs = 120_000): Promise<"drained" | "killed"> {
+  if (child.exitCode !== null || child.signalCode !== null) return "drained";
+  try {
+    await gatewayActivity(child, "drain");
+    await waitForExit(child, timeoutMs);
+    return "drained";
+  } catch {
+    stopGateway(child);
+    await waitForExit(child, 10_000).catch(() => undefined);
+    return "killed";
+  }
+}
+
+function waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => { cleanup(); reject(new Error("The gateway did not stop cleanly in time")); }, timeoutMs);
     const cleanup = () => { clearTimeout(timer); child.off("exit", onExit); child.off("error", onError); };
     const onExit = () => { cleanup(); resolve(); };

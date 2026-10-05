@@ -46,12 +46,92 @@ if (info) {
   window.addEventListener("DOMContentLoaded", () => {
     fillTokenForm(info);
     new MutationObserver(() => fillTokenForm(info)).observe(document.body, { childList: true, subtree: true });
+    restoreAfterSwap();
   });
-  ipcRenderer.on("branch-desktop:engine-update", (_e, state: "ready" | "restarting" | "auto-wait" | "updating") => showUpdateBar(state));
+  ipcRenderer.on("branch-desktop:engine-update", (_e, state: UpdateState) => showUpdateBar(state));
+  ipcRenderer.on("branch-desktop:prepare-swap", (_e, id: number) => {
+    saveBeforeSwap();
+    ipcRenderer.send("branch-desktop:swap-ready", id);
+  });
 }
 
-/** A small bar at the bottom of the window: "An update is ready — Restart". Restarts only on click. */
-function showUpdateBar(state: "ready" | "restarting" | "auto-wait" | "updating"): void {
+type UpdateState = "ready" | "restarting" | "auto-wait" | "updating" | "updated" | "kept";
+const SWAP_KEY = "branch-desktop:window-swap";
+
+/** Before the window swaps in its new build: the scroll position of every scrolled area (route and drafts are the window's own). */
+function saveBeforeSwap(): void {
+  const scrolled: { path: string; top: number; left: number }[] = [];
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>("body *"))) {
+    if (el.scrollTop > 0 || el.scrollLeft > 0) scrolled.push({ path: elementPath(el), top: el.scrollTop, left: el.scrollLeft });
+  }
+  try { sessionStorage.setItem(SWAP_KEY, JSON.stringify({ at: Date.now(), scrolled })); } catch { /* storage refused: swap without scroll */ }
+}
+
+/** After the swap: put each area back where it was once the content is there again, then say so quietly. */
+function restoreAfterSwap(): void {
+  let saved: { at: number; scrolled: { path: string; top: number; left: number }[] } | undefined;
+  try { saved = JSON.parse(sessionStorage.getItem(SWAP_KEY) ?? "null") ?? undefined; sessionStorage.removeItem(SWAP_KEY); } catch { saved = undefined; }
+  if (!saved || Date.now() - saved.at > 60_000) return;
+  const pending = [...saved.scrolled];
+  const tryRestore = () => {
+    for (let i = pending.length - 1; i >= 0; i--) {
+      const item = pending[i]!;
+      const el = document.querySelector<HTMLElement>(item.path);
+      if (!el || el.scrollHeight - el.clientHeight < item.top) continue;
+      el.scrollTop = item.top; el.scrollLeft = item.left;
+      pending.splice(i, 1);
+    }
+  };
+  const timer = setInterval(() => { tryRestore(); if (!pending.length) clearInterval(timer); }, 100);
+  setTimeout(() => clearInterval(timer), 10_000);
+  showToast("Branch updated");
+}
+
+function elementPath(el: Element): string {
+  const parts: string[] = [];
+  for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) {
+    const parent: Element | null = node.parentElement;
+    const index = parent ? Array.from(parent.children).indexOf(node) + 1 : 1;
+    parts.unshift(`${node.tagName.toLowerCase()}:nth-child(${index})`);
+  }
+  return `body > ${parts.join(" > ")}`;
+}
+
+/** A small, quiet note that fades by itself. */
+function showToast(message: string): void {
+  const show = () => {
+    document.getElementById("branch-desktop-update")?.remove();
+    const toast = document.createElement("div");
+    toast.setAttribute("role", "status");
+    toast.dataset.testid = "desktop-updated-toast";
+    toast.textContent = message;
+    toast.style.cssText = [
+      "position:fixed", "left:50%", "bottom:16px", "transform:translateX(-50%)", "z-index:2147483647",
+      "padding:7px 14px", "border-radius:10px", "background:#1e293b", "color:#f1f5f9",
+      "font:13px/1.3 system-ui,-apple-system,'Segoe UI',sans-serif", "box-shadow:0 6px 24px rgba(15,23,42,.28)",
+      "opacity:1", "transition:opacity .6s ease",
+    ].join(";");
+    document.body.appendChild(toast);
+    setTimeout(() => { toast.style.opacity = "0"; }, 2_400);
+    setTimeout(() => toast.remove(), 3_100);
+  };
+  if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
+}
+
+/** A small bar at the bottom of the window while an update waits or applies. The app and window stay open throughout. */
+function showUpdateBar(state: UpdateState): void {
+  if (state === "kept") {
+    // The new engine did not start; Branch keeps running the version it had.
+    window.dispatchEvent(new Event("branch:engine-ready"));
+    showToast("Update postponed; Branch kept the current version");
+    return;
+  }
+  if (state === "updated") {
+    // The engine changed under the open window: reconnect now rather than at the next backoff step.
+    window.dispatchEvent(new Event("branch:engine-ready"));
+    showToast("Branch updated");
+    return;
+  }
   let bar = document.getElementById("branch-desktop-update");
   if (!bar) {
     bar = document.createElement("div");
@@ -69,12 +149,12 @@ function showUpdateBar(state: "ready" | "restarting" | "auto-wait" | "updating")
   bar.replaceChildren();
   const text = document.createElement("span");
   text.textContent = state === "ready" ? "An update is ready" : state === "auto-wait"
-    ? "Update ready, applying when your Trunks finish" : state === "updating" ? "Updating Branch…" : "Restarting…";
+    ? "Update ready, applying when your Trunks finish" : "Updating Branch…";
   bar.appendChild(text);
-  if (state === "ready") {
+  if (state === "ready" || state === "auto-wait") {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = "Restart";
+    button.textContent = state === "ready" ? "Update" : "Update now";
     button.dataset.testid = "desktop-update-restart";
     button.style.cssText =
       "border:0;border-radius:7px;padding:5px 12px;background:#f1f5f9;color:#0f172a;font:inherit;font-weight:600;cursor:pointer";

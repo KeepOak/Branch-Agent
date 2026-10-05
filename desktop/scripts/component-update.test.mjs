@@ -205,14 +205,14 @@ async function freePort() {
   const port = probe.address().port; await new Promise(resolve => probe.close(resolve)); return port;
 }
 
-test("actual desktop caller retains running engine until explicit clean relaunch", async () => fixture(async ({ cfg, request }) => {
+test("actual desktop caller retains running engine, then swaps in place and rolls a failing engine back without restarting the app", async () => fixture(async ({ cfg, request }) => {
   const require = createRequire(import.meta.url); const Module = require("node:module");
   const load = Module._load; const previousFetch = globalThis.fetch;
   const previousData = process.env.BRANCH_DESKTOP_DATA; const previousHidden = process.env.BRANCH_DESKTOP_HIDDEN;
   const desktop = { ...cfg, nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() };
   await mkdir(join(cfg.engineDir, "dist"), { recursive: true });
   await writeFile(join(cfg.engineDir, "dist", "build-info.json"), '{"version":"old"}');
-  await writeFile(join(cfg.engineDir, "branch.mjs"), 'import http from "node:http"; process.on("message", m => { if(m.type?.startsWith("branch-desktop:")){ process.send({type:"branch-desktop:activity-result",id:m.id,idle:true,activeRuns:0,pendingReplies:0,totalActive:0}); if(m.type==="branch-desktop:stop-if-idle")setTimeout(()=>process.exit(0),20); }}); setTimeout(()=>http.createServer((_req,res)=>res.writeHead(200).end()).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1"),1000);');
+  await writeFile(join(cfg.engineDir, "branch.mjs"), 'import http from "node:http"; process.on("message", m => { if(m.type?.startsWith("branch-desktop:")){ process.send({type:"branch-desktop:activity-result",id:m.id,idle:true,activeRuns:0,pendingReplies:0,totalActive:0}); if(m.type==="branch-desktop:stop-if-idle"||m.type==="branch-desktop:drain-stop")setTimeout(()=>process.exit(0),20); }}); setTimeout(()=>http.createServer((_req,res)=>res.writeHead(200).end()).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1"),1000);');
   await writeFile(join(cfg.dataDir, "desktop.json"), JSON.stringify(desktop));
   let relaunches = 0;
   const app = new EventEmitter(); Object.assign(app, { getVersion: () => "fixture", setPath: () => {}, setAppUserModelId: () => {},
@@ -245,14 +245,20 @@ test("actual desktop caller retains running engine until explicit clean relaunch
     await new Promise(resolve => setTimeout(resolve, 3200));
     assert.equal(reloads, 0, "component staging must not reload the renderer before owned engine activation");
     assert.equal(ownerWindow.draft, "unfinished component-update draft");
+    const served = await (await previousFetch(`http://127.0.0.1:${desktop.windowPort}/index.html`)).text();
+    assert.equal(served, "old window", "until the swap, the window server keeps the build the running engine started with");
     ownerWindow.webContents.mainFrame = { url: ownerWindow.url };
     ipcMain.emit("branch-desktop:restart-engine", { sender: { ...ownerWindow.webContents }, senderFrame: ownerWindow.webContents.mainFrame });
     assert.doesNotThrow(() => process.kill(oldPid, 0), "foreign restart sender cannot stop the owned child");
     ipcMain.emit("branch-desktop:restart-engine", { sender: ownerWindow.webContents, senderFrame: ownerWindow.webContents.mainFrame });
-    await eventually(() => relaunches === 1);
-    assert.equal(reloads, 0, "activation relaunches the app instead of reloading this renderer");
-    assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim() !== cfg.engineDir, true);
+    await eventually(async () => (await readFile(join(cfg.dataDir, "desktop.log"), "utf8")).includes("engine rolled back in place"));
+    assert.equal(relaunches, 0, "an update never relaunches the app");
+    assert.equal(reloads, 0, "the retained window build stays loaded after a rollback");
+    assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), cfg.engineDir, "rollback restores the prior engine");
+    assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /old engine drained/);
     await eventually(async () => { try { process.kill(oldPid, 0); return false; } catch { return true; } });
+    const retained = Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8"));
+    assert.notEqual(retained, oldPid); assert.doesNotThrow(() => process.kill(retained, 0), "the prior engine runs again");
   } finally {
     app.emit("will-quit"); Module._load = load; globalThis.fetch = previousFetch;
     if (previousData === undefined) delete process.env.BRANCH_DESKTOP_DATA; else process.env.BRANCH_DESKTOP_DATA = previousData;
@@ -263,6 +269,14 @@ test("actual desktop caller retains running engine until explicit clean relaunch
   await writeFile(join(engine, "branch.mjs"), "process.exit(31);\n");
   for (const file of await readdir(output)) await rm(join(output, file));
   Object.assign(release, await makeComponentRelease({ version: "0.4.3", tag: "v0.4.3", engine, window: join(engine, "..", "source-window"), output }));
+}));
+
+test("a staged desktop app alone waits for the next launch and offers no in-place update", async () => fixture(async ({ cfg }) => {
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({ phase: "staged", version: "0.4.5", kind: "asar", staged: join(cfg.dataDir, "x", "app.asar") }));
+  const status = await source.readComponentUpdateStatus(cfg);
+  assert.equal(status.pendingVersion, "0.4.5", "Settings still shows the staged desktop app");
+  assert.equal(status.componentsPendingVersion, null, "auto-apply and the Update click never restart the app for it");
+  assert.equal(status.previousWindowDir, null);
 }));
 
 test("release maker assembles distinct Windows/macOS descriptors sharing only an identical renderer", async () => fixture(async ({ root, engine, window }) => {
