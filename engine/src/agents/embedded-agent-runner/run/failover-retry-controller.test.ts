@@ -531,4 +531,32 @@ describe("createEmbeddedRunFailoverRetryController", () => {
       status: 429,
     });
   });
+
+  it("hands a day-long rate-limit Retry-After to the configured fallback instead of waiting", async () => {
+    // The owner's 429: Anthropic asked for ~29.6 hours; the default retry.provider cap is 60 s.
+    const longWait = 106_639_000;
+    const withFallback = createController(vi.fn(async () => false), true);
+    await expect(
+      withFallback.maybeRetryTransient({
+        reason: "rate_limit",
+        message: "This request would exceed your account's rate limit.",
+        retryAfterMs: longWait,
+        maxRetryDelayMs: 60_000,
+      }),
+    ).resolves.toBe(false);
+    expect(mocks.sleepWithAbort).not.toHaveBeenCalled();
+
+    const withoutFallback = createController(vi.fn(async () => false), false);
+    await expect(
+      withoutFallback.maybeRetryTransient({
+        reason: "rate_limit",
+        message: "This request would exceed your account's rate limit.",
+        retryAfterMs: longWait,
+        maxRetryDelayMs: 60_000,
+      }),
+    ).resolves.toBe(true);
+    // Without a fallback the turn sleeps out the whole wait (in day-sized chunks).
+    const slept = mocks.sleepWithAbort.mock.calls.reduce((total, [ms]) => total + ms, 0);
+    expect(slept).toBe(longWait);
+  });
 });
