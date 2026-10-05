@@ -177,3 +177,16 @@ test("close policy and tray click follow the controls (mocked Electron, no windo
     assert.equal(clicks, 1);
   } finally { Module._load = originalLoad; }
 });
+
+test("launch refreshes an existing branch command and never installs one", async () => fixture(async ({ deps, calls }) => {
+  let refreshed = 0;
+  deps.cli.refresh = () => { refreshed++; calls.push(["cli-refresh"]); };
+  const controls = createDesktopControls(deps);
+  controls.apply();
+  assert.equal(refreshed, 1);
+  assert.ok(!calls.some(([name]) => name === "cli-install"));
+  deps.cli.refresh = () => { throw new Error("locked"); };
+  assert.doesNotThrow(() => createDesktopControls(deps).apply());
+  controls.dispose();
+}));
+

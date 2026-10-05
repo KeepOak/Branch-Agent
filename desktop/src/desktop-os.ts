@@ -57,6 +57,11 @@ export function desktopOs(app: App, cfg: DesktopConfig, tray: () => Tray | undef
         rmSync(shim, { force: true });
         rmSync(shShim, { force: true });
       },
+      refresh: () => {
+        if (process.platform !== "win32") return;
+        if (existsSync(shim)) writeFileSync(shim, branchShim(cfg));
+        if (existsSync(shShim)) writeFileSync(shShim, branchShShim(cfg));
+      },
     },
     tray: {
       usage: (left, on) => {

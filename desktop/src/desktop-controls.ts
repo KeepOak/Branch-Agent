@@ -42,7 +42,11 @@ export interface ControlDeps {
   settingsFile: string;
   login: { get(): boolean; set(on: boolean): void };
   awake: { start(): number; stop(id: number): void };
-  cli: { installed(): Promise<boolean>; install(): Promise<void>; uninstall(): Promise<void> };
+  cli: {
+    installed(): Promise<boolean>; install(): Promise<void>; uninstall(): Promise<void>;
+    /** Rewrites shims that exist with this launch's node and engine paths (never creates one, never touches PATH). */
+    refresh?(): void;
+  };
   tray: { usage(left: number | null, on: boolean): void };
   openExternal(url: string): Promise<void>;
   onChange?: (settings: DesktopSettings) => void;
@@ -106,7 +110,11 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
       lastLeft = typeof left === "number" && Number.isFinite(left) ? Math.max(0, Math.min(100, left)) : null;
       deps.tray.usage(lastLeft, saved.trayUsage);
     },
-    apply: () => holdAwake(saved.keepAwake),
+    apply: () => {
+      holdAwake(saved.keepAwake);
+      // An update can move the bundled node; the branch command (and agents registered with it) must keep working.
+      try { deps.cli.refresh?.(); } catch { /* a locked or read-only shim keeps its old copy */ }
+    },
     dispose: () => holdAwake(false),
   };
 }
