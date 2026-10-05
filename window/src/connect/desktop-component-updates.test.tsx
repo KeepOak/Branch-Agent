@@ -35,14 +35,37 @@ it("actual native Check now and Install buttons use component bridge and never g
   await show(); await click("Check now"); await click("Install when nothing is running");
   expect(status).toHaveBeenCalledTimes(1); expect(check).toHaveBeenCalledTimes(1); expect(stage).toHaveBeenCalledTimes(1);
   expect(request).not.toHaveBeenCalled();
-  expect(host.textContent).toContain("1.1 is ready; restart to finish");
+  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
   expect(localStorage.getItem("branch-draft")).toBe("unfinished input");
 });
 
-it("legacy native bootstrap says it checks every hour, greys Check now, and never falls back to update.run or update.status", async () => {
+it("Updates toggle is on by default and staged updates wait for Trunks in Settings and version popover", async () => {
+  const staged = { ...state, phase: "staged", pendingVersion: "1.1" };
+  const set = vi.fn(async (_name: string, on: boolean) => ({ keepWorking: true, keepAwake: false, trayUsage: false,
+    autoApplyUpdates: on, startWithWindows: false, branchOnPath: false }));
+  desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl,
+    componentUpdates: { status: async () => staged, check: async () => staged, stage: async () => staged },
+    controls: { get: async () => ({ keepWorking: true, keepAwake: false, trayUsage: false,
+      autoApplyUpdates: true, startWithWindows: false, branchOnPath: false }), set } };
+  await show();
+  const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Apply updates by themselves when no Trunk is working"]');
+  expect(toggle?.checked).toBe(true);
+  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
+  if (!toggle) throw new Error("missing auto-apply toggle");
+  await act(async () => toggle.click());
+  expect(set).toHaveBeenCalledWith("autoApplyUpdates", false);
+  expect(host.textContent).toContain("1.1 is ready; restart to finish");
+  await act(async () => root.unmount()); root = createRoot(host);
+  const session = { engine, gatewayUrl: engine.gatewayUrl, request } as unknown as SaplingSession;
+  const ctx = { session, update: null, version: "1.0", onWhatsNew: vi.fn(), onReminded: vi.fn() } as unknown as StatusContext;
+  await act(async () => root.render(<StatusPopover item="version" above={{ left: 10, right: 200, top: 700, align: "right" }} onClose={() => {}} ctx={ctx} />));
+  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
+});
+
+it("legacy native bootstrap says it checks every ten minutes, greys Check now, and never falls back to update.run or update.status", async () => {
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1" };
   const updateCalls = () => request.mock.calls.filter((call: unknown[]) => String(call[0]).startsWith("update."));
-  await show(); expect(host.textContent).toContain("Branch checks for updates every hour and lets you know when one is ready to restart into.");
+  await show(); expect(host.textContent).toContain("Branch checks for updates every 10 minutes and lets you know when one is ready to apply.");
   expect(host.textContent).not.toContain("aren’t available");
   const check = [...host.querySelectorAll("button")].find(row => row.textContent === "Check now");
   expect(check?.disabled).toBe(true); expect(host.textContent).toContain("Checking by hand needs a newer Branch Agent app.");

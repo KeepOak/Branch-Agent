@@ -29,9 +29,9 @@ async function fixture(run) {
   try { await run({ root, deps, calls, state }); } finally { await rm(root, { recursive: true, force: true }); }
 }
 
-test("defaults keep working on close, keep awake off, tray ring off", async () => fixture(async ({ deps }) => {
+test("defaults keep working and auto-apply on, keep awake and tray ring off", async () => fixture(async ({ deps }) => {
   const controls = createDesktopControls(deps);
-  assert.deepEqual(await controls.get(), { keepWorking: true, keepAwake: false, trayUsage: false, agentControl: false, startWithWindows: false, branchOnPath: false });
+  assert.deepEqual(await controls.get(), { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: true, agentControl: false, startWithWindows: false, branchOnPath: false });
 }));
 
 test("letting agents use the window is off by default, saved, and read at the next launch", async () => fixture(async ({ deps, calls }) => {

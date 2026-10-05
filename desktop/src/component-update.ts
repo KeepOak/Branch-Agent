@@ -14,6 +14,8 @@ export interface RefreshOptions {
 }
 
 interface ReleaseIdentity { version: string; engineSha256: string; windowSha256: string }
+interface RejectedRelease extends ReleaseIdentity { reason?: "exit" | "timeout"; timeoutAttempts?: number }
+interface TimedOutRelease extends ReleaseIdentity { attempts: number }
 interface Publication {
   version: string;
   identity?: ReleaseIdentity;
@@ -26,6 +28,7 @@ interface Publication {
 const journalFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-pending.json");
 const versionFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-version.txt");
 const rejectedFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-rejected.json");
+const timeoutFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-timeouts.json");
 const releaseIdentity = (release: ComponentRelease): ReleaseIdentity => ({ version: release.version,
   engineSha256: release.components.engine.sha256, windowSha256: release.components.window.sha256 });
 const sameIdentity = (a: ReleaseIdentity | undefined, b: ReleaseIdentity): boolean =>
@@ -43,7 +46,22 @@ async function publication(cfg: DesktopConfig): Promise<Publication | undefined>
 
 export async function componentReleaseRejected(cfg: DesktopConfig, release: ComponentRelease): Promise<boolean> {
   const rejected = await readOrEmpty(rejectedFile(cfg));
-  return Boolean(rejected && sameIdentity(JSON.parse(rejected) as ReleaseIdentity, releaseIdentity(release)));
+  if (!rejected) return false;
+  const record = JSON.parse(rejected) as RejectedRelease;
+  return sameIdentity(record, releaseIdentity(release));
+}
+
+/** A first timeout is retryable after rollback; a second timeout rejects this exact release. */
+export async function recordComponentUpdateTimeout(cfg: DesktopConfig, engineDir: string): Promise<number> {
+  const pending = await publication(cfg);
+  if (pending?.phase !== "pending" || !pending.identity || pending.engineNext !== engineDir) return 0;
+  if (await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== engineDir) return 0;
+  const raw = await readOrEmpty(timeoutFile(cfg));
+  const prior = raw ? JSON.parse(raw) as TimedOutRelease : undefined;
+  const attempts = sameIdentity(prior, pending.identity) && Number.isSafeInteger(prior?.attempts) ? prior!.attempts + 1 : 1;
+  await replaceFile(timeoutFile(cfg), JSON.stringify({ ...pending.identity, attempts }));
+  if (attempts >= 2) await replaceFile(rejectedFile(cfg), JSON.stringify({ ...pending.identity, reason: "timeout", timeoutAttempts: attempts }));
+  return attempts;
 }
 
 /** Call only after the selected new engine fails its readiness probe, never for staging/network recovery. */
@@ -51,7 +69,7 @@ export async function rejectFailedComponentUpdate(cfg: DesktopConfig, engineDir:
   const pending = await publication(cfg);
   if (pending?.phase !== "pending" || !pending.identity || pending.engineNext !== engineDir) return;
   if (await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== engineDir) return;
-  await replaceFile(rejectedFile(cfg), JSON.stringify(pending.identity));
+  await replaceFile(rejectedFile(cfg), JSON.stringify({ ...pending.identity, reason: "exit" }));
 }
 
 export async function rollbackComponentUpdate(cfg: DesktopConfig): Promise<boolean> {
@@ -79,6 +97,7 @@ export async function confirmComponentUpdate(cfg: DesktopConfig): Promise<void> 
   if (await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== pending.engineNext) throw new Error("Engine publication changed before update confirmation");
   await replaceFile(versionFile(cfg), `${pending.version}\n`);
   await rm(journalFile(cfg));
+  await rm(timeoutFile(cfg), { force: true });
 }
 
 export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> {
@@ -133,7 +152,7 @@ async function publish(cfg: DesktopConfig, release: ComponentRelease, next: { en
 }
 
 /**
- * Does not stop/restart the running engine. Its existing build watcher offers the explicit Restart action.
+ * Does not stop/restart the running engine. The desktop owns activation after staging.
  * An unfinished or held engine/window publication blocks the desktop component too.
  */
 async function refresh(cfg: DesktopConfig, request: typeof fetch, options: RefreshOptions): Promise<boolean> {
@@ -150,7 +169,8 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
 }
 
 const refreshes = new WeakMap<DesktopConfig, Promise<boolean>>();
-/** Startup, hourly and manual staging share one publication owner. */
+export const COMPONENT_UPDATE_CHECK_MS = 10 * 60 * 1000;
+/** Startup, periodic and manual staging share one publication owner. */
 export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch = fetch, options: RefreshOptions = {}): Promise<boolean> {
   const active = refreshes.get(cfg);
   if (active) return active;
@@ -173,7 +193,7 @@ export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) =>
     busy = true;
     try {
       if (await refreshComponentUpdate(cfg, fetch, options)) {
-        log("Verified GitHub component update staged; awaits Restart");
+        log("Verified GitHub component update staged");
         options.onStaged?.();
       }
     }
@@ -181,6 +201,6 @@ export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) =>
     finally { busy = false; }
   };
   void tick();
-  const timer = setInterval(() => void tick(), 60 * 60 * 1000);
+  const timer = setInterval(() => void tick(), COMPONENT_UPDATE_CHECK_MS);
   return () => { stopped = true; clearInterval(timer); };
 }
