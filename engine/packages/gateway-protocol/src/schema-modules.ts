@@ -19,6 +19,7 @@ export * from "./schema/talk-marks.js";
 export * from "./schema/talk-voice.js";
 export * from "./schema/commands.js";
 export * from "./schema/contacts.js";
+export * from "./schema/rooms.js";
 export * from "./schema/computer.js";
 export * from "./schema/config.js";
 export * from "./schema/update-runs.js";

@@ -663,4 +663,13 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["contacts.markRead", "contacts", "operator.write", "2026.9"],
   ["a2a.peers.list", "contacts", "operator.read", "2026.9"],
   ["a2a.peers.refresh", "contacts", "operator.write", "2026.9"],
+  ["rooms.create", "rooms", "operator.write", "2026.9"],
+  ["rooms.get", "rooms", "operator.read", "2026.9"],
+  ["rooms.list", "rooms", "operator.read", "2026.9"],
+  ["rooms.send", "rooms", "operator.write", "2026.9"],
+  ["rooms.log", "rooms", "operator.read", "2026.9"],
+  ["rooms.members.add", "rooms", "operator.write", "2026.9"],
+  ["rooms.members.remove", "rooms", "operator.write", "2026.9"],
+  ["rooms.rule.set", "rooms", "operator.write", "2026.9"],
+  ["rooms.archive", "rooms", "operator.write", "2026.9"],
 ] as const satisfies readonly CoreGatewayMethodSpecRow[];
