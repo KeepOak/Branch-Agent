@@ -35,6 +35,7 @@ import {
   writeGitBackupFiles,
   type GitBackupFilesSource,
 } from "./git-backup-files.js";
+import { describeSkippedMedia } from "./git-backup-media.js";
 import { ensurePrivateSnapshotRepositoryRoot } from "./local-repository.js";
 import { createBranchSnapshotCopy } from "./branch-snapshot-copy.js";
 import type { SnapshotDatabaseRef } from "./snapshot-provider.js";
@@ -355,6 +356,10 @@ export async function createGitBackup(params: {
     }
     if (params.files) {
       filesManifest = await replaceFilesScope(staging.dir, repositoryPath, params.files);
+      const skippedMedia = filesManifest.media ? describeSkippedMedia(filesManifest.media) : undefined;
+      if (skippedMedia) {
+        warnings.push(skippedMedia);
+      }
     }
   } finally {
     await staging.cleanup().catch(() => undefined);
