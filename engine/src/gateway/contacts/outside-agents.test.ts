@@ -10,13 +10,17 @@ import {
 import type { BranchConfig } from "../../config/types.branch.js";
 import { buildPersistedUserTurnMetadata } from "../../sessions/user-turn-transcript.metadata.js";
 import {
+  assignOutsideAgentId,
   isOutsideAgentOnline,
   listOutsideAgents,
   outsideAgentId,
   outsideAgentMayMessage,
   outsideAgentPeers,
+  outsideAgentRefusal,
   outsideAgentSender,
+  readOutsideAgentSettings,
   recordOutsideAgent,
+  updateOutsideAgentSettings,
 } from "./outside-agents.js";
 import { projectContacts } from "./project.js";
 
@@ -129,6 +133,82 @@ describe("outside agents over branch mcp serve", () => {
     ).toBe(true);
     expect(validateRoomsSendParams({ roomId: "r1", message: "hi", outsideAgent: agent })).toBe(
       true,
+    );
+  });
+
+  it("Settings › Grafts: on by default, off turns every agent away, disconnect turns one away", () => {
+    const env = scratchEnv();
+    const claude = { id: "claude-code-a1b2c3", name: "Claude Code" };
+    expect(readOutsideAgentSettings(env)).toEqual({
+      enabled: true,
+      revoked: [],
+      mayDriveWindow: [],
+    });
+    expect(outsideAgentRefusal(claude, readOutsideAgentSettings(env))).toBeUndefined();
+    updateOutsideAgentSettings({ id: claude.id, revoked: true }, env);
+    expect(outsideAgentRefusal(claude, readOutsideAgentSettings(env))).toMatch(
+      /Claude Code was disconnected/,
+    );
+    expect(
+      outsideAgentRefusal({ id: "hermes-1", name: "Hermes" }, readOutsideAgentSettings(env)),
+    ).toBeUndefined();
+    updateOutsideAgentSettings({ id: claude.id, revoked: false, mayDriveWindow: true }, env);
+    updateOutsideAgentSettings({ enabled: false }, env);
+    const off = readOutsideAgentSettings(env);
+    expect(off).toEqual({ enabled: false, revoked: [], mayDriveWindow: [claude.id] });
+    expect(outsideAgentRefusal({ id: "hermes-1", name: "Hermes" }, off)).toMatch(
+      /Other agents are off/,
+    );
+  });
+
+  it("keeps each agent's project and last activity", () => {
+    const env = scratchEnv();
+    recordOutsideAgent(
+      {
+        id: "claude-code-a1b2c3",
+        name: "Claude Code",
+        project: "EDILAS",
+        activity: "Messaging oak",
+      },
+      1_000,
+      env,
+    );
+    const later = recordOutsideAgent(
+      { id: "claude-code-a1b2c3", name: "Claude Code", project: "EDILAS" },
+      9_000,
+      env,
+    );
+    expect(later).toMatchObject({
+      project: "EDILAS",
+      activity: "Messaging oak",
+      activityAt: 1_000,
+      lastSeenAt: 9_000,
+    });
+  });
+
+  it("gives a second session with the same name, computer and folder its own id while the first is online", () => {
+    const now = 100_000;
+    const first = {
+      id: "claude-code-a1b2c3",
+      name: "Claude Code",
+      firstSeenAt: 0,
+      lastSeenAt: now - 1_000,
+      instance: "p1",
+    };
+    expect(assignOutsideAgentId({ id: first.id, instance: "p1" }, [first], now)).toBe(first.id);
+    expect(assignOutsideAgentId({ id: first.id, instance: "p2" }, [first], now)).toBe(
+      `${first.id}-2`,
+    );
+    const second = { ...first, id: `${first.id}-2`, instance: "p2" };
+    expect(assignOutsideAgentId({ id: first.id, instance: "p3" }, [first, second], now)).toBe(
+      `${first.id}-3`,
+    );
+    expect(assignOutsideAgentId({ id: first.id, instance: "p2" }, [first, second], now)).toBe(
+      `${first.id}-2`,
+    );
+    // Once the first has gone quiet, a new session takes the stable id back.
+    expect(assignOutsideAgentId({ id: first.id, instance: "p4" }, [first], now + 10 * 60_000)).toBe(
+      first.id,
     );
   });
 });

@@ -103,8 +103,21 @@ export const OutsideAgentSchema = closedObject({
   name: Type.String({ minLength: 1, maxLength: 100 }),
   version: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
   where: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+  project: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+  // One running client (a random tag per process), so two sessions with the same name, computer and folder
+  // become two contacts.
+  instance: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+  activity: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
 });
 export const ContactsOutsideHelloParamsSchema = closedObject({ agent: OutsideAgentSchema });
+export const ContactsOutsideListParamsSchema = closedObject({});
+/** Settings › Connected agents: the master switch, or one agent's disconnect / window permission. */
+export const ContactsOutsideSetParamsSchema = closedObject({
+  enabled: Type.Optional(Type.Boolean()),
+  id: Type.Optional(OutsideAgentSchema.properties.id),
+  revoked: Type.Optional(Type.Boolean()),
+  mayDriveWindow: Type.Optional(Type.Boolean()),
+});
 export type OutsideAgentParams = Static<typeof OutsideAgentSchema>;
 export type ContactsOutsideHelloParams = Static<typeof ContactsOutsideHelloParamsSchema>;
 export type Contact = Static<typeof ContactSchema>;

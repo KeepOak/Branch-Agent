@@ -81,7 +81,11 @@ export function createGatewayChatUserTurnController(params: {
     ...(request.p.replyToId ? { replyToId: request.p.replyToId } : {}),
     ...(sender ? { sender } : {}),
     ...(sourceClients.length ? { transport: { clients: sourceClients } } : {}),
-    ...(hasGatewayAdminScope(params.client) ? { senderIsOwner: true } : {}),
+    // An outside agent speaks through the owner's connection but is not the owner: its words never count as
+    // owner-authored (trusted memory, owner replies).
+    ...(hasGatewayAdminScope(params.client) && !request.p.outsideAgent
+      ? { senderIsOwner: true }
+      : {}),
     ...(request.systemInputProvenance ? { provenance: request.systemInputProvenance } : {}),
   };
   const replyContextFieldsPromise = request.p.replyToId

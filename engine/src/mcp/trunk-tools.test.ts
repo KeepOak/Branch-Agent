@@ -6,9 +6,10 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { afterEach, describe, expect, it } from "vitest";
 import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
-import { outsideAgentFromClient } from "./channel-server-runtime.js";
+import { gateEveryTool } from "./channel-server-runtime.js";
 import { resolveDesktopGateway } from "./desktop-gateway.js";
-import { registerTrunkMcpTools, type TrunkGateway } from "./trunk-tools.js";
+import { displayName, outsideAgentFromClient, OutsidePresence } from "./outside-presence.js";
+import { describeRunEvent, registerTrunkMcpTools, type TrunkGateway } from "./trunk-tools.js";
 
 type Call = { method: string; params: Record<string, unknown> };
 
@@ -72,11 +73,20 @@ describe("branch mcp serve Trunk tools", () => {
                 {
                   key: "agent:builder-oak:t1",
                   status: "running",
+                  hasActiveRun: true,
                   authProfileOverride: "openai-codex:b",
+                  inputTokens: 900,
+                  outputTokens: 40,
+                  contextTokens: 1200,
                 },
               ],
             }
           : { sessions: [{ key: "agent:main:main", status: "done", model: "claude-opus" }] },
+      // The run in flight (also one resumed after a restart) comes from chat.history.
+      "chat.history": () => ({
+        sessionInfo: { status: "running" },
+        inFlightRun: { runId: "run-resumed-7" },
+      }),
       "contacts.list": () => ({
         contacts: [
           { id: "trunk:main", kind: "trunk", name: "Sapling" },
@@ -91,6 +101,9 @@ describe("branch mcp serve Trunk tools", () => {
         name: "Builder Oak",
         state: "working",
         thread: "agent:builder-oak:t1",
+        status: "running",
+        run_id: "run-resumed-7",
+        tokens: { input: 900, output: 40, context: 1200 },
         model: "openai-codex/gpt-5.5",
         account: "openai-codex:b",
       },
@@ -171,6 +184,21 @@ describe("branch mcp serve Trunk tools", () => {
           fake.emit({ runId: "run-1", stream: "thinking", data: { text: "checking the brief" } });
           fake.emit({ runId: "run-1", stream: "tool", data: { phase: "start", name: "exec" } });
           fake.emit({ runId: "other", stream: "tool", data: { phase: "start", name: "read" } });
+          fake.emit({
+            runId: "run-1",
+            stream: "usage",
+            data: { inputTokens: 1000, cachedInputTokens: 800, outputTokens: 30 },
+          });
+          fake.emit({
+            runId: "run-1",
+            stream: "usage",
+            data: { inputTokens: 1200, cachedInputTokens: 1000, outputTokens: 12 },
+          });
+          fake.emit({
+            runId: "other",
+            stream: "usage",
+            data: { inputTokens: 99, outputTokens: 99 },
+          });
           return { status: "timeout" };
         }
         return { status: "ok" };
@@ -204,9 +232,15 @@ describe("branch mcp serve Trunk tools", () => {
     expect(out).toEqual({
       status: "ok",
       reply: "OK",
-      events: ["thinking: checking the brief", "tool start: exec"],
+      usage: { model_calls: 2, input_tokens: 2200, cached_input_tokens: 1800, output_tokens: 42 },
+      events: [
+        "thinking: checking the brief",
+        "tool start: exec",
+        "usage 30 output tokens",
+        "usage 12 output tokens",
+      ],
     });
-    expect(progress).toEqual(["thinking: checking the brief", "tool start: exec"]);
+    expect(progress.slice(0, 2)).toEqual(["thinking: checking the brief", "tool start: exec"]);
   });
 
   it("run_wait reads the thread row when agent.wait forgot a finished run", async () => {
@@ -298,20 +332,54 @@ describe("branch mcp serve Trunk tools", () => {
 });
 
 describe("branch mcp serve identity and gateway", () => {
-  it("names the outside agent from the MCP clientInfo", () => {
-    expect(
-      outsideAgentFromClient(
-        { name: "claude-code", title: "Claude Code", version: "2.1.0" },
-        "LEGION",
-      ),
-    ).toEqual(claude);
-    expect(outsideAgentFromClient({ name: "codex-mcp-client", version: "0.9" }, "mac")).toEqual({
-      id: "codex-mcp-client",
-      name: "codex-mcp-client",
-      version: "0.9",
-      where: "mac",
+  it("names each connected client by its product name, computer and project folder", () => {
+    const a = outsideAgentFromClient(
+      { name: "claude-code", version: "2.1.0" },
+      "LEGION",
+      "/w/Branch-Agent",
+    );
+    const b = outsideAgentFromClient(
+      { name: "claude-code", version: "2.1.0" },
+      "LEGION",
+      "/w/EDILAS",
+    );
+    const again = outsideAgentFromClient({ name: "claude-code" }, "LEGION", "/w/Branch-Agent");
+    expect(a).toMatchObject({
+      name: "Claude Code",
+      version: "2.1.0",
+      where: "LEGION",
+      project: "Branch-Agent",
     });
+    expect(a?.id).toMatch(/^claude-code-[0-9a-f]{6}$/);
+    expect(b?.id).not.toBe(a?.id);
+    expect(again?.id).toBe(a?.id);
+    expect(displayName({ name: "codex-mcp-client" })).toBe("Codex");
+    expect(displayName({ name: "gemini-cli-mcp-client" })).toBe("Gemini CLI");
+    expect(displayName({ name: "hermes", title: "Hermes Agent" })).toBe("Hermes Agent");
+    expect(displayName({ name: "my-agent" })).toBe("my-agent");
     expect(outsideAgentFromClient(undefined)).toBeUndefined();
+  });
+
+  it("stops acting for the agent once Settings › Grafts turns it away", async () => {
+    let refuse = false;
+    const presence = new OutsidePresence(async () => {
+      if (refuse) throw new Error("Claude Code was disconnected in Settings › Connected agents.");
+      return { mayDriveWindow: true };
+    });
+    presence.start(claude);
+    await expect(presence.identity()).resolves.toMatchObject(claude);
+    expect(presence.mayDriveWindow()).toBe(true);
+    refuse = true;
+    presence.activity("Messaging oak");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(presence.identity()).rejects.toThrow(/disconnected/);
+    presence.stop();
+    const older = new OutsidePresence(async () => {
+      throw new Error("unknown method: contacts.outside.hello");
+    });
+    older.start(claude);
+    await expect(older.identity()).resolves.toBeUndefined();
+    older.stop();
   });
 
   it("uses the desktop app's loopback gateway and token file only when no auth is named", () => {
@@ -333,5 +401,141 @@ describe("branch mcp serve identity and gateway", () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("run progress lines", () => {
+  it("names text-less events by what they are", () => {
+    expect(describeRunEvent({ stream: "run_status", data: { status: "running" } })).toBe(
+      "run_status running",
+    );
+    expect(
+      describeRunEvent({
+        stream: "codex_app_server.item",
+        data: { item: { type: "commandExecution" } },
+      }),
+    ).toBe("codex_app_server.item commandExecution");
+    expect(describeRunEvent({ stream: "usage", data: { outputTokens: 12 } })).toBe(
+      "usage 12 output tokens",
+    );
+    expect(describeRunEvent({ stream: "assistant", data: { text: "x" } })).toBeUndefined();
+  });
+});
+
+describe("Settings › Grafts applies to every tool", () => {
+  it("a disconnected agent can no longer read Trunks or answer approvals, and takes the id Branch assigns", async () => {
+    let refuse = false;
+    const presence = new OutsidePresence(async (agent) => {
+      if (refuse) throw new Error("Claude Code was disconnected in Settings › Grafts.");
+      return { contact: { id: `a2a:${agent.id}-2` } };
+    });
+    presence.start(claude);
+    expect((await presence.identity())?.id).toBe("claude-code-2");
+    const server = new McpServer({ name: "branch", version: "gate" });
+    gateEveryTool(server, () => presence.assertAllowed());
+    let answered = 0;
+    server.tool("permissions_respond", "x", {}, async () => (answered++, { content: [] }));
+    registerTrunkMcpTools(
+      server,
+      fakeGateway({ "agents.list": () => ({ agents: [] }), "contacts.list": () => ({}) }).gw,
+      {
+        outsideAgent: () => presence.identity(),
+      },
+    );
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "Claude Code", version: "1" });
+    clients.push(client);
+    await Promise.all([server.connect(a), client.connect(b)]);
+    expect((await client.callTool({ name: "trunks_list", arguments: {} })).isError).toBeFalsy();
+    refuse = true;
+    presence.activity("Reading Trunks");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const listed = await client.callTool({ name: "trunks_list", arguments: {} });
+    const approved = await client.callTool({ name: "permissions_respond", arguments: {} });
+    expect(listed.isError).toBe(true);
+    expect(approved.isError).toBe(true);
+    expect(answered).toBe(0);
+    presence.stop();
+  });
+});
+
+describe("an older Branch on the other side", () => {
+  it("says hello again in the older shape instead of sending as the owner", async () => {
+    const seen: Record<string, unknown>[] = [];
+    const presence = new OutsidePresence(async (agent) => {
+      seen.push({ ...agent });
+      if ("instance" in agent || "project" in agent) {
+        throw new Error(
+          "invalid contacts.outside.hello params: at /agent: unexpected property 'project'",
+        );
+      }
+      return { contact: { id: `a2a:${agent.id}` } };
+    });
+    presence.start({ ...claude, project: "Branch-Agent" });
+    const identity = await presence.identity();
+    expect(identity?.name).toBe("Claude Code");
+    expect(seen.at(-1)).toEqual({
+      id: claude.id,
+      name: "Claude Code",
+      version: "2.1.0",
+      where: "LEGION",
+    });
+    presence.stop();
+  });
+});
+
+describe("supervising Trunks through Graft", () => {
+  it("trunk_threads shows each thread's status, the run it works on and a stuck thread", async () => {
+    const { gw } = fakeGateway({
+      "contacts.topics": () => ({
+        topics: [
+          { key: "agent:oak:a", title: "P22", status: "working", unread: false },
+          { key: "agent:oak:b", title: "P4", status: "working", unread: false },
+          { key: "agent:oak:c", title: "Old", status: "active", unread: false },
+        ],
+      }),
+      "sessions.list": () => ({
+        sessions: [
+          { key: "agent:oak:a", status: "running", hasActiveRun: true },
+          { key: "agent:oak:b", status: "running", hasActiveRun: false },
+          { key: "agent:oak:c", status: "done", abortedLastRun: true },
+        ],
+      }),
+      "chat.history": (p) =>
+        p.sessionKey === "agent:oak:a" ? { inFlightRun: { runId: "run-a" } } : {},
+    });
+    const out = await call(await connect(gw), "trunk_threads", { agent_id: "oak" });
+    const threads = out.threads as Record<string, unknown>[];
+    expect(threads[0]).toMatchObject({ key: "agent:oak:a", status: "running", run_id: "run-a" });
+    expect(threads[1]).toMatchObject({
+      key: "agent:oak:b",
+      stuck: "status running but no active run",
+    });
+    expect(threads[1]).not.toHaveProperty("run_id");
+    expect(threads[2]).toMatchObject({ key: "agent:oak:c", status: "done", last_run: "aborted" });
+  });
+
+  it("trunk_create sets the account order per provider", async () => {
+    const { gw, calls } = fakeGateway({
+      "agents.create": () => ({ agentId: "elm" }),
+      "models.authStatus": () => ({ providers: [] }),
+      "models.authOrderSet": () => ({ ok: true }),
+    });
+    const out = await call(await connect(gw), "trunk_create", {
+      name: "Elm",
+      accounts: ["openai-codex:b", "anthropic:work", "openai-codex:a"],
+    });
+    expect(calls.filter((c) => c.method === "models.authOrderSet").map((c) => c.params)).toEqual([
+      {
+        agentId: "elm",
+        provider: "openai-codex",
+        profileIds: ["openai-codex:b", "openai-codex:a"],
+      },
+      { agentId: "elm", provider: "anthropic", profileIds: ["anthropic:work"] },
+    ]);
+    expect(out.accounts).toEqual({
+      "openai-codex": ["openai-codex:b", "openai-codex:a"],
+      anthropic: ["anthropic:work"],
+    });
   });
 });

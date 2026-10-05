@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 export type DesktopControlsState = {
-  keepWorking: boolean; keepAwake: boolean; trayUsage: boolean; startWithWindows: boolean; branchOnPath: boolean;
+  keepWorking: boolean; keepAwake: boolean; trayUsage: boolean; autoApplyUpdates: boolean; startWithWindows: boolean; branchOnPath: boolean;
   /** Older desktop apps leave it out. */
   agentControl?: boolean;
 };

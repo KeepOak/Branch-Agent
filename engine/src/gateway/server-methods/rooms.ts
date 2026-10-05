@@ -12,6 +12,7 @@ import {
   validateRoomsSendParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { listGatewayAgentsBasic } from "../agent-list.js";
+import { outsideAgentRefusal } from "../contacts/outside-agents.js";
 import { authorizeGatewaySessionCreation } from "../operator-role-policy.js";
 import {
   addRoomMember,
@@ -156,6 +157,11 @@ export const roomHandlers: GatewayRequestHandlers = {
       return;
     }
     const outside = options.params.outsideAgent;
+    const refusal = outside ? outsideAgentRefusal(outside) : undefined;
+    if (refusal) {
+      failure(options.respond, new Error(refusal));
+      return;
+    }
     if (
       outside &&
       !room.members.some(

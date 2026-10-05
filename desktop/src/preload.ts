@@ -19,6 +19,14 @@ if (info) {
       check: () => ipcRenderer.invoke("branch-desktop:component-update:check"),
       stage: () => ipcRenderer.invoke("branch-desktop:component-update:stage"),
     },
+    onAutoApplyProbe: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }>) => {
+      const handler = (_event: Electron.IpcRendererEvent, id: number): void => {
+        void listener().then(value => ipcRenderer.send("branch-desktop:auto-apply:result", id, value),
+          error => ipcRenderer.send("branch-desktop:auto-apply:result", id, { error: String(error) }));
+      };
+      ipcRenderer.on("branch-desktop:auto-apply:probe", handler);
+      return () => ipcRenderer.removeListener("branch-desktop:auto-apply:probe", handler);
+    },
     // Windows only: the header's colours and height for the native window buttons drawn over its top-right.
     titleBar: process.platform === "win32"
       ? { set: (overlay: { color: string; symbolColor: string; height: number }) => ipcRenderer.send("branch-desktop:title-bar", overlay) }
@@ -39,11 +47,11 @@ if (info) {
     fillTokenForm(info);
     new MutationObserver(() => fillTokenForm(info)).observe(document.body, { childList: true, subtree: true });
   });
-  ipcRenderer.on("branch-desktop:engine-update", (_e, state: "ready" | "restarting") => showUpdateBar(state));
+  ipcRenderer.on("branch-desktop:engine-update", (_e, state: "ready" | "restarting" | "auto-wait" | "updating") => showUpdateBar(state));
 }
 
 /** A small bar at the bottom of the window: "An update is ready — Restart". Restarts only on click. */
-function showUpdateBar(state: "ready" | "restarting"): void {
+function showUpdateBar(state: "ready" | "restarting" | "auto-wait" | "updating"): void {
   let bar = document.getElementById("branch-desktop-update");
   if (!bar) {
     bar = document.createElement("div");
@@ -60,7 +68,8 @@ function showUpdateBar(state: "ready" | "restarting"): void {
   }
   bar.replaceChildren();
   const text = document.createElement("span");
-  text.textContent = state === "ready" ? "An update is ready" : "Restarting…";
+  text.textContent = state === "ready" ? "An update is ready" : state === "auto-wait"
+    ? "Update ready, applying when your Trunks finish" : state === "updating" ? "Updating Branch…" : "Restarting…";
   bar.appendChild(text);
   if (state === "ready") {
     const button = document.createElement("button");

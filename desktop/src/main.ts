@@ -5,17 +5,19 @@ import type { Server } from "node:http";
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { GatewayReadinessTimeoutError, portIsFree, readToken, startGateway, stopGateway, waitForReady } from "./gateway";
+import { gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady } from "./gateway";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowsWindowResident } from "./resident-window";
-import { confirmComponentUpdate, readComponentUpdateStatus, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
+import { confirmComponentUpdate, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
+import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
 import { registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, stagedDesktopVersion, type DesktopInstall } from "./desktop-update";
+import { createAutoApplyUpdate } from "./auto-apply-update";
 import type { Tray } from "electron";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
@@ -65,15 +67,70 @@ let componentsReady = false;
 let engineRestartInProgress = false;
 const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
 let tray: Tray | undefined;
-const controls = createDesktopControls(desktopOs(app, cfg, () => tray, ICON));
+const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, ICON), onChange: settings => {
+  if (engineUpdateReady) win?.webContents.send("branch-desktop:engine-update", settings.autoApplyUpdates ? "auto-wait" : "ready");
+  void autoApply.tick();
+} });
+let nextProbeId = 0;
 
-/** Staging never invokes the restart IPC or the gateway's generic updater. */
+async function probeWindowState(): Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }> {
+  const owner = win?.webContents;
+  if (!owner || owner.isDestroyed()) throw new Error("The window is not ready to report approvals and drafts");
+  const id = ++nextProbeId;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { cleanup(); reject(new Error("The window activity check timed out")); }, 5_000);
+    const cleanup = () => { clearTimeout(timer); ipcMain.off("branch-desktop:auto-apply:result", receive); };
+    const receive = (event: Electron.IpcMainEvent, replyId: unknown, value: unknown) => {
+      if (replyId !== id || !isOwnedComponentWindow(event, owner, windowUrl())) return;
+      cleanup();
+      const result = value as { pendingApprovals?: unknown; streaming?: unknown; unsavedDraftFiles?: unknown; error?: unknown };
+      if (typeof result?.pendingApprovals !== "number" || typeof result.streaming !== "boolean" || typeof result.unsavedDraftFiles !== "boolean") {
+        reject(new Error(String(result?.error ?? "Invalid window activity snapshot"))); return;
+      }
+      resolve({ pendingApprovals: result.pendingApprovals, streaming: result.streaming, unsavedDraftFiles: result.unsavedDraftFiles });
+    };
+    ipcMain.on("branch-desktop:auto-apply:result", receive);
+    owner.send("branch-desktop:auto-apply:probe", id);
+  });
+}
+
+async function relaunchForUpdate(version: string): Promise<void> {
+  if (!gateway || !win || engineRestartInProgress) throw new Error("The desktop is not ready to restart");
+  engineRestartInProgress = true;
+  try {
+    // The engine rechecks the process-wide inventory before admitting its clean stop.
+    await stopGatewayCleanly(gateway);
+    log(`auto-apply: gateway stopped cleanly for ${version}`);
+    win.webContents.send("branch-desktop:engine-update", "updating");
+    await new Promise(resolve => setTimeout(resolve, 750));
+    if (!await handOffDesktop(true)) app.relaunch({ args: process.argv.slice(1) });
+    app.quit();
+  } catch (error) { engineRestartInProgress = false; throw error; }
+}
+
+const autoApply = createAutoApplyUpdate({
+  pendingVersion: async () => (await readComponentUpdateStatus(cfg)).pendingVersion,
+  enabled: () => controls.settings().autoApplyUpdates,
+  activity: async () => {
+    if (!gateway) throw new Error("The gateway is not running");
+    // The approval RPCs themselves count as gateway work; sample after they settle.
+    const window = await probeWindowState();
+    const engine = await gatewayActivity(gateway);
+    return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window.pendingApprovals,
+      streaming: engine.pendingReplies > 0 || window.streaming, unsavedDraftFiles: window.unsavedDraftFiles };
+  },
+  restart: relaunchForUpdate,
+  log,
+});
+
+/** Staging never invokes the gateway's generic updater. */
 async function stageComponentUpdate(): Promise<boolean> {
   if (!componentsReady) throw new Error("The desktop is still starting; check again when the engine is ready");
   const staged = await refreshComponentUpdate(cfg, fetch, { desktop: install });
   if ((await readComponentUpdateStatus(cfg)).pendingVersion) {
     engineUpdateReady = true;
-    win?.webContents.send("branch-desktop:engine-update", "ready");
+    win?.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
+    void autoApply.tick();
   }
   return staged;
 }
@@ -175,11 +232,13 @@ async function start(): Promise<void> {
   }
   watchUpdates(win);
   componentsReady = true;
+  autoApply.start();
   stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, onStaged: () => {
     void readComponentUpdateStatus(cfg).then(({ pendingVersion }) => {
       if (!pendingVersion) return;
       engineUpdateReady = true;
-      win?.webContents.send("branch-desktop:engine-update", "ready");
+      win?.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
+      void autoApply.tick();
     }).catch(error => log(`Component update status: ${String(error)}`));
   } });
 }
@@ -193,10 +252,7 @@ async function bootEngine(): Promise<void> {
   // publish-engine.sh never removes the folder named here.
   writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
 `);
-  try { await waitForReady(cfg, gateway, READY_TIMEOUT_MS); } catch (error) {
-    if (!(error instanceof GatewayReadinessTimeoutError)) await rejectFailedComponentUpdate(cfg, engineDir);
-    throw error;
-  }
+  await waitForReady(cfg, gateway, READY_TIMEOUT_MS);
   await confirmComponentUpdate(cfg);
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
   engineUpdateReady = false;
@@ -210,16 +266,18 @@ async function bootEngine(): Promise<void> {
 
 /** A failed newly published build restores the prior pointer/window before booting the retained engine. */
 async function bootSelectedEngine(): Promise<boolean> {
-  try { await bootEngine(); return false; } catch (error) {
-    // A live child that is merely late must retain the pending release.
-    if (error instanceof GatewayReadinessTimeoutError) throw error;
-    if (gateway) stopGateway(gateway);
-    if (!await rollbackComponentUpdate(cfg)) throw error;
-    log("Updated engine failed readiness; restored prior components");
-    for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise(r => setTimeout(r, 250));
-    await bootEngine();
-    return true;
-  }
+  const selectedEngine = resolveEngineDir(cfg);
+  return bootSelectedEngineWithRollback({
+    boot: bootEngine,
+    stopFailedGateway: () => { if (gateway) stopGateway(gateway); },
+    recordTimeout: () => recordComponentUpdateTimeout(cfg, selectedEngine),
+    rejectExited: () => rejectFailedComponentUpdate(cfg, selectedEngine),
+    rollback: () => rollbackComponentUpdate(cfg),
+    waitForPortRelease: async () => {
+      for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise(r => setTimeout(r, 250));
+    },
+    log,
+  });
 }
 
 function watchUpdates(w: BrowserWindow): void {
@@ -233,13 +291,19 @@ function watchUpdates(w: BrowserWindow): void {
   });
   // A reload re-runs the preload; show the bar again if an engine update is still waiting.
   w.webContents.on("did-finish-load", () => {
-    if (engineUpdateReady) w.webContents.send("branch-desktop:engine-update", "ready");
+    if (engineUpdateReady) w.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
   });
 }
 
-/** Only on the owner's click: stops the gateway by PID, starts the new build and reloads the window. */
+/** The explicit Restart action also handles non-release build changes. */
 async function restartEngine(): Promise<void> {
   if (!gateway || !win || !componentsReady || engineRestartInProgress) return;
+  const staged = (await readComponentUpdateStatus(cfg)).pendingVersion;
+  if (staged) {
+    try { await relaunchForUpdate(staged); }
+    catch (error) { log(`clean relaunch failed: ${String(error)}`); if (!HIDDEN) dialog.showErrorBox("Branch Agent could not restart", String(error)); }
+    return;
+  }
   engineRestartInProgress = true;
   try {
     // A staged desktop app restarts the whole app (the new engine and window come up with it).
@@ -263,6 +327,7 @@ function shutdown(): void {
   log(`quit; stopping gateway pid ${gateway?.pid}`);
   stopEngineWatch?.();
   stopComponentWatch?.();
+  autoApply.stop();
   stopWindowWatch?.();
   controls.dispose();
   if (gateway) stopGateway(gateway);

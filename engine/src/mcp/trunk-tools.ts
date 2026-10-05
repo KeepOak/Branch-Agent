@@ -14,10 +14,19 @@ export type TrunkGateway = {
   request<T = Record<string, unknown>>(method: string, params: Record<string, unknown>): Promise<T>;
   onGatewayEvent(listener: (event: EventFrame) => void): () => void;
 };
-export type OutsideAgentIdentity = { id: string; name: string; version?: string; where?: string };
+export type OutsideAgentIdentity = {
+  id: string;
+  name: string;
+  version?: string;
+  where?: string;
+  project?: string;
+  instance?: string;
+};
 export type TrunkToolsOptions = {
   /** Who is speaking, once the gateway accepted contacts.outside.hello; undefined = plain owner messages. */
   outsideAgent: () => OutsideAgentIdentity | undefined | Promise<OutsideAgentIdentity | undefined>;
+  /** What this agent is doing now, for Settings › Grafts. */
+  activity?: (text: string) => void;
   now?: () => number;
 };
 
@@ -52,6 +61,25 @@ export function readMessage(message: unknown): Rec {
 }
 
 /** A short line for a streamed run event (thinking, tool call, tool result, lifecycle); undefined to skip. */
+/** Token totals from a run's streamed `usage` events (the driver's usageFromLog): one model call per input report. */
+export function addUsage(
+  total: {
+    model_calls: number;
+    input_tokens: number;
+    cached_input_tokens: number;
+    output_tokens: number;
+  },
+  data: Rec,
+): void {
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  if (n(data.inputTokens)) {
+    total.model_calls += 1;
+    total.input_tokens += n(data.inputTokens);
+    total.cached_input_tokens += n(data.cachedInputTokens);
+  }
+  total.output_tokens += n(data.outputTokens);
+}
+
 export function describeRunEvent(payload: Rec): string | undefined {
   const stream = str(payload.stream);
   const data = rec(payload.data);
@@ -62,7 +90,25 @@ export function describeRunEvent(payload: Rec): string | undefined {
   }
   if (stream === "lifecycle") return `run ${str(data.phase) ?? "update"}`;
   const text = str(data.text) ?? str(data.delta);
-  return text ? `${stream}: ${text.slice(0, 200)}` : stream;
+  if (text) return `${stream}: ${text.slice(0, 200)}`;
+  // Item, status and usage events carry no text; name what they are so the stream reads as progress.
+  const item = rec(data.item);
+  const what = [
+    data.phase,
+    data.status,
+    data.type,
+    item.type,
+    data.kind,
+    data.name,
+    item.name,
+    data.title,
+  ]
+    .map(str)
+    .filter((part, i, all): part is string => Boolean(part) && all.indexOf(part) === i)
+    .slice(0, 3);
+  const usage =
+    typeof data.outputTokens === "number" ? `${data.outputTokens} output tokens` : undefined;
+  return [stream, ...what, ...(usage ? [usage] : [])].join(" ");
 }
 
 async function chatSend(gw: TrunkGateway, opts: TrunkToolsOptions, params: Rec) {
@@ -76,6 +122,33 @@ async function chatSend(gw: TrunkGateway, opts: TrunkToolsOptions, params: Rec) 
 }
 
 /** Live status per Trunk: working or idle, the thread it works in, its model and the account it uses. */
+/** A thread's state for a supervisor: its status, the run it is working on now, and why it may be stuck. */
+export async function threadState(gw: TrunkGateway, row: Rec): Promise<Rec> {
+  const working = row.hasActiveRun === true || row.status === "running";
+  const key = str(row.key);
+  // chat.history carries the run in flight (also one the engine resumed after a restart); sessions.list doesn't.
+  const history =
+    working && key
+      ? rec(await gw.request("chat.history", { sessionKey: key, limit: 1 }).catch(() => ({})))
+      : {};
+  const runId = str(rec(history.inFlightRun).runId);
+  const info = rec(history.sessionInfo);
+  const stuck =
+    row.status === "running" && row.hasActiveRun !== true
+      ? "status running but no active run"
+      : str(row.sendDisabledReason);
+  return {
+    status: str(info.status) ?? str(row.status) ?? (working ? "running" : "idle"),
+    ...(runId ? { run_id: runId } : {}),
+    ...(stuck ? { stuck } : {}),
+    ...(row.abortedLastRun === true ? { last_run: "aborted" } : {}),
+    ...(typeof row.inputTokens === "number"
+      ? { tokens: { input: row.inputTokens, output: row.outputTokens, context: row.contextTokens } }
+      : {}),
+  };
+}
+
+/** Live status per Trunk: working or idle, the thread and run it works on, its model and the account it uses. */
 export async function listTrunks(gw: TrunkGateway): Promise<Rec[]> {
   const agents = list(rec(await gw.request("agents.list", {})).agents);
   return await Promise.all(
@@ -85,12 +158,16 @@ export async function listTrunks(gw: TrunkGateway): Promise<Rec[]> {
         rec(await gw.request("sessions.list", { agentId: id, limit: 50 }).catch(() => ({})))
           .sessions,
       );
-      const running = rows.find((row) => row.status === "running" || str(row.activeWriterRunId));
+      const running = rows.find(
+        (row) =>
+          row.hasActiveRun === true || row.status === "running" || str(row.activeWriterRunId),
+      );
+      const state = running ? await threadState(gw, running) : undefined;
       return {
         id,
         name: str(rec(agent.identity).name) ?? str(agent.name) ?? id,
         state: running ? "working" : "idle",
-        ...(running ? { thread: running.key } : {}),
+        ...(running ? { thread: running.key, ...state } : {}),
         model: str(rec(agent.model).primary) ?? str(agent.model) ?? str(rows[0]?.model),
         account: str(running?.authProfileOverride) ?? str(rows[0]?.authProfileOverride),
       };
@@ -178,12 +255,25 @@ function registerTrunkReadTools(server: McpServer, gw: TrunkGateway): void {
           ...(cursor ? { cursor } : {}),
         }),
       );
-      const threads = list(result.topics).map((topic) => ({
-        key: topic.key,
-        title: topic.title,
-        status: topic.status,
-        unread: topic.unread,
-      }));
+      const rows = new Map(
+        list(
+          rec(
+            await gw.request("sessions.list", { agentId: agent_id, limit: 200 }).catch(() => ({})),
+          ).sessions,
+        ).map((row) => [str(row.key), row]),
+      );
+      const threads = await Promise.all(
+        list(result.topics).map(async (topic) => {
+          const row = rows.get(str(topic.key));
+          return {
+            key: topic.key,
+            title: topic.title,
+            status: topic.status,
+            unread: topic.unread,
+            ...(row ? await threadState(gw, row) : {}),
+          };
+        }),
+      );
       return ok(`${threads.length} threads`, { threads, next_cursor: result.nextCursor ?? null });
     },
   );
@@ -238,8 +328,15 @@ function registerTrunkWriteTools(
       name: z.string().min(1).max(80),
       model: z.string().optional(),
       workspace: z.string().optional(),
+      accounts: z
+        .array(z.string().min(1))
+        .optional()
+        .describe(
+          'Signed-in accounts in the order this Trunk should use them, e.g. ["openai-codex:b", "openai-codex:a"]',
+        ),
     },
-    async ({ name, model, workspace }) => {
+    async ({ name, model, workspace, accounts }) => {
+      opts.activity?.(`Creating Trunk ${name}`);
       const created = rec(
         await gw.request("agents.create", {
           name,
@@ -250,7 +347,21 @@ function registerTrunkWriteTools(
       const agentId = str(created.agentId) ?? str(created.id);
       if (!agentId) throw new Error("agents.create returned no agent id");
       const ready = await waitForTrunk(gw, agentId, 120_000);
-      return ok(`created ${agentId}`, { agent_id: agentId, ready, workspace: created.workspace });
+      // Account order per provider, as the driver set it (models.authOrderSet).
+      const byProvider = new Map<string, string[]>();
+      for (const profile of accounts ?? []) {
+        const provider = profile.split(":")[0]!;
+        byProvider.set(provider, [...(byProvider.get(provider) ?? []), profile]);
+      }
+      for (const [provider, profileIds] of byProvider) {
+        await gw.request("models.authOrderSet", { agentId, provider, profileIds });
+      }
+      return ok(`created ${agentId}`, {
+        agent_id: agentId,
+        ready,
+        workspace: created.workspace,
+        ...(byProvider.size ? { accounts: Object.fromEntries(byProvider) } : {}),
+      });
     },
   );
 
@@ -264,6 +375,7 @@ function registerTrunkWriteTools(
       title: z.string().max(100).optional(),
     },
     async ({ agent_id, text, thread_key, title }) => {
+      opts.activity?.(`Messaging ${agent_id}`);
       let key = thread_key;
       if (!key) {
         const who = (await opts.outsideAgent())?.id ?? "mcp";
@@ -288,6 +400,7 @@ function registerTrunkWriteTools(
     "Steer a Trunk that is working: the message joins its current run instead of waiting behind it.",
     { thread_key: z.string().min(1), text: z.string().min(1) },
     async ({ thread_key, text }) => {
+      opts.activity?.(`Steering ${thread_key}`);
       const sent = await chatSend(gw, opts, {
         sessionKey: thread_key,
         message: text,
@@ -322,10 +435,12 @@ function registerRunTools(server: McpServer, gw: TrunkGateway): void {
     },
     async ({ run_id, thread_key, timeout_ms }, extra) => {
       const events: string[] = [];
+      const usage = { model_calls: 0, input_tokens: 0, cached_input_tokens: 0, output_tokens: 0 };
       const progressToken = extra._meta?.progressToken;
       const stop = gw.onGatewayEvent((frame) => {
         const payload = rec(frame.payload);
         if (frame.event !== "agent" || payload.runId !== run_id) return;
+        if (payload.stream === "usage") addUsage(usage, rec(payload.data));
         const line = describeRunEvent(payload);
         if (!line) return;
         events.push(line);
@@ -362,6 +477,7 @@ function registerRunTools(server: McpServer, gw: TrunkGateway): void {
           status: status.status,
           ...(status.error ? { error: status.error } : {}),
           reply,
+          usage,
           events: events.slice(-50),
         });
       } finally {
@@ -422,6 +538,7 @@ function registerRoomTools(server: McpServer, gw: TrunkGateway, opts: TrunkTools
     "Post a message to a group chat; its lead Trunk answers. The message is shown as this agent's.",
     { room_id: z.string().min(1), text: z.string().min(1) },
     async ({ room_id, text }) => {
+      opts.activity?.(`Posting in group chat ${room_id}`);
       const agent = await opts.outsideAgent();
       const result = await gw.request("rooms.send", {
         roomId: room_id,

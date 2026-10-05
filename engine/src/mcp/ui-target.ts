@@ -109,7 +109,9 @@ const TYPES: Record<string, string> = {
 };
 
 /** A loopback static server for the window build (the desktop app serves it the same way). */
-export function serveWindow(root: string, port: number): Promise<http.Server> {
+export function serveWindow(windowRoot: string, port: number): Promise<http.Server> {
+  // Normalised, so a folder given with forward slashes on Windows still matches the resolved file paths.
+  const root = path.resolve(windowRoot);
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const rel = decodeURIComponent(url.pathname).replace(/^\/+/, "") || "index.html";
@@ -204,42 +206,67 @@ export function markSetupDone(scratch: string, now = new Date()): void {
   fs.writeFileSync(path.join(dir, "branch.json"), JSON.stringify(config, null, 2) + os.EOL);
 }
 
+export type ScratchEngine = {
+  scratch: string;
+  url: string;
+  token: string;
+  pid: number;
+  stop: () => void;
+};
+
+/** A scratch Branch engine on a free loopback port with its own home, profile and state (setup done unless
+ *  firstRun). Also used by the Part A integration test. */
+export async function startScratchEngine(
+  env = process.env,
+  opts: { firstRun?: boolean } = {},
+): Promise<ScratchEngine> {
+  const scratch = fs.mkdtempSync(
+    path.join(env.BRANCH_UI_TEST_ROOT ?? os.tmpdir(), "branch-ui-test-"),
+  );
+  if (!opts.firstRun) markSetupDone(scratch);
+  const port = await freePort();
+  const token = randomBytes(24).toString("hex");
+  const log = () => fs.openSync(path.join(scratch, "gateway.log"), "a");
+  const engine = spawn(
+    process.execPath,
+    ["branch.mjs", "gateway", "--dev", "--port", String(port)],
+    {
+      cwd: engineDirectory(env),
+      env: scratchEngineEnv(scratch, port, token, env),
+      windowsHide: true,
+      stdio: ["ignore", log(), log()],
+    },
+  );
+  try {
+    await waitForGateway(port, engine, Date.now() + READY_TIMEOUT_MS);
+  } catch (error) {
+    stopChild(engine);
+    throw error;
+  }
+  return {
+    scratch,
+    url: `ws://127.0.0.1:${port}`,
+    token,
+    pid: engine.pid ?? 0,
+    stop: () => stopChild(engine),
+  };
+}
+
 /** Start the test Branch: scratch engine, window server and a browser page with the desktop bridge. */
 export async function openTestInstance(
   env = process.env,
   opts: { firstRun?: boolean } = {},
 ): Promise<UiTarget> {
-  const scratch = fs.mkdtempSync(
-    path.join(env.BRANCH_UI_TEST_ROOT ?? os.tmpdir(), "branch-ui-test-"),
-  );
-  if (!opts.firstRun) markSetupDone(scratch);
-  const [gatewayPort, windowPort] = [await freePort(), await freePort()];
-  const token = randomBytes(24).toString("hex");
-  const engineDir = engineDirectory(env);
-  const engine = spawn(
-    process.execPath,
-    ["branch.mjs", "gateway", "--dev", "--port", String(gatewayPort)],
-    {
-      cwd: engineDir,
-      env: scratchEngineEnv(scratch, gatewayPort, token, env),
-      windowsHide: true,
-      stdio: [
-        "ignore",
-        fs.openSync(path.join(scratch, "gateway.log"), "a"),
-        fs.openSync(path.join(scratch, "gateway.log"), "a"),
-      ],
-    },
-  );
+  const windowPort = await freePort();
+  const engine = await startScratchEngine(env, opts);
   let server: http.Server | undefined;
   let context: BrowserContext | undefined;
   try {
     server = await serveWindow(windowDirectory(env), windowPort);
-    await waitForGateway(gatewayPort, engine, Date.now() + READY_TIMEOUT_MS);
-    context = await launchBrowser(path.join(scratch, "browser"), env);
-    const gatewayUrl = `ws://127.0.0.1:${gatewayPort}`;
+    context = await launchBrowser(path.join(engine.scratch, "browser"), env);
     // What the desktop preload gives its own window (desktop/src/preload.ts: gatewayUrl and gatewayToken).
     await context.addInitScript(
-      `window.branchDesktop = ${JSON.stringify({ gatewayUrl, gatewayToken: token })};`,
+      `window.branchDesktop = ${JSON.stringify({ gatewayUrl: engine.url, gatewayToken: engine.token })};`,
     );
     const page = context.pages()[0] ?? (await context.newPage());
     await page.goto(`http://127.0.0.1:${windowPort}/`);
@@ -249,20 +276,21 @@ export async function openTestInstance(
       page,
       describe: {
         window: `http://127.0.0.1:${windowPort}/`,
-        gateway: gatewayUrl,
-        scratch,
-        enginePid: engine.pid ?? 0,
+        gateway: engine.url,
+        scratch: engine.scratch,
+        enginePid: engine.pid,
       },
       close: async () => {
         await opened.context.close().catch(() => undefined);
+        opened.server.closeAllConnections();
         opened.server.close();
-        stopChild(engine);
+        engine.stop();
       },
     };
   } catch (error) {
     await context?.close().catch(() => undefined);
     server?.close();
-    stopChild(engine);
+    engine.stop();
     throw error;
   }
 }
