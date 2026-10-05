@@ -77,7 +77,8 @@ describe("entry compile cache", () => {
 
   beforeEach(() => {
     root = tempDirs.make("branch-compile-cache-");
-    entryFile = path.join(root, "dist", "entry.js");
+    // Respawns only apply to source runs; a built dist entry keeps its compile cache.
+    entryFile = path.join(root, "src", "entry.ts");
     argv = [process.execPath, entryFile, "status", "--json"];
     envSnapshot = captureEnv([
       "NODE_COMPILE_CACHE",
