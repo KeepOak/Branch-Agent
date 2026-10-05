@@ -127,6 +127,16 @@ describe("Trunk editor", () => {
 describe("Customize › Trunks", () => {
   const tab = (request: ReturnType<typeof vi.fn>, extra: Record<string, unknown> = {}) => (
     <TrunksTab engine={engine(request)} level="regular" openConversation={() => {}} trunks={{ data: ROSTER as never, loading: false, error: null, reload: () => {} }} {...extra} />);
+  it("opens directional Who it knows controls for a Trunk", async () => {
+    const request = fake();
+    await mount(tab(request));
+    await click(document.querySelectorAll<HTMLButtonElement>(".tk-row .btn.ghost")[0]);
+    const pop = document.querySelector("[data-testid=who-it-knows]");
+    expect(pop?.textContent).toContain("Oak knows and may talk to");
+    expect(pop?.textContent).toContain("May message Oak");
+    await click(pop?.querySelectorAll("button[role=menuitemcheckbox]")[1]);
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { birch: { agentToAgent: { deny: ["oak"] } } } } }) });
+  });
   it("adds a Trunk with agents.create and starts its conversation through the shell", async () => {
     const request = fake({ "agents.create": { ok: true, agentId: "new-trunk" } }), start = vi.fn();
     await mount(tab(request, { startConversation: start }));
