@@ -1,6 +1,7 @@
 /** Lifecycle-owned auth/model discovery snapshots for agent runs. */
 import { toStringifiedError } from "@branch/normalization-core/error-coercion";
 import type { BranchConfig } from "../config/types.branch.js";
+import { runOutsideSqliteReadOnlyWorkerScope } from "../infra/sqlite-readonly-worker-context.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { registerRuntimeAuthProfileStoreMutationListener } from "./auth-profiles/runtime-snapshots.js";
 import type { ModelCatalogSnapshot } from "./model-catalog.types.js";
@@ -703,7 +704,13 @@ function invalidateForAuthMutation(event: PreparedModelRuntimeAuthMutation): voi
   };
   // Auth revocation fences its affected owners immediately; publication must wait for the
   // plugin reservation to settle without occupying the queue needed by replacement recovery.
-  const publication = modelRuntimeDrain.runAfter(publicationQueue, publish);
+  // Republication belongs to the model runtime lifetime, not to the mutating caller: an agent's
+  // startup preparation mutates auth inside its own SQLite reader scope, which closes before this
+  // queued build reads. Inheriting it failed the build and stranded every invalidated owner
+  // outside reply dispatch until restart.
+  const publication = runOutsideSqliteReadOnlyWorkerScope(() =>
+    modelRuntimeDrain.runAfter(publicationQueue, publish),
+  );
   notifyPreparedModelRuntimePublication({ phase: "invalidated" });
   void publication.catch((error: unknown) => {
     if (!authPublication.isCurrent(transaction)) {
