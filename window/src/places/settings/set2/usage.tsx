@@ -756,7 +756,6 @@ type Cfg = ReturnType<typeof useConfig>;
 const flag = (v: unknown, def: boolean) => (typeof v === "boolean" ? v : def);
 // TODO(engine-lane): turning off "Asking a service what is left" needs a usage setting (old usage/limits/settings).
 const NO_ASK = "The engine asks each connected service when this page opens; turning that off needs an engine setting.";
-const NO_KEEP = "The engine archives old conversations and keeps them; deleting them by age needs an engine setting.";
 const NO_CKPT = "Listing checkpoints needs a checkpoint method in the engine.";
 const NO_EVAL = "Test sets and graders need evals in the engine.";
 const NO_EXPORT = "Exporting everything needs an export method in the engine; today it runs as branch backup create in a terminal.";
@@ -810,11 +809,19 @@ function AllowanceRows({ engine }: { engine: WindowEngine }) {
 }
 
 function Keeping({ engine, lv }: { engine: WindowEngine; lv: number }) {
+  const config = useConfig(engine);
   const [manage, setManage] = useState(false);
+  const maintenance = rec(config.get("session.maintenance"));
+  const keep = maintenance.mode === "warn" ? "forever" : daysFrom(maintenance.pruneAfter ?? "30d") === "365" ? "365" : "30";
+  const setKeep = (v: string) => void config.set("session.maintenance", {
+    ...maintenance,
+    mode: v === "forever" ? "warn" : "enforce",
+    ...(v === "forever" ? {} : { pruneAfter: `${v}d` }),
+  });
   return (
     <Sec title="Keeping things">
-      <Ctl title="Keep conversations" sub="Older ones are deleted for good." off={NO_KEEP}>
-        <Seg label="Keep conversations" value="forever" options={[{ id: "30", label: "30 days" }, { id: "365", label: "1 year" }, { id: "forever", label: "Forever" }]} onChange={() => undefined} />
+      <Ctl title="Keep conversations" sub="Older ones are deleted for good.">
+        <Seg label="Keep conversations" value={keep} options={[{ id: "30", label: "30 days" }, { id: "365", label: "1 year" }, { id: "forever", label: "Forever" }]} disabled={config.loading} onChange={setKeep} />
       </Ctl>
       <Ctl title="Checkpoints" sub="Kept before a Trunk changes files. Put any of them back." off={NO_CKPT}><Btn sm>See all</Btn></Ctl>
       {lv >= 1 ? <Ctl title="Conversations" sub="Pick several to delete, or clear the archive."><Btn sm onClick={() => setManage(true)}>Manage</Btn></Ctl> : null}
