@@ -1,9 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { Conversation, ConversationList } from "../connect/conversations";
+import { ConversationList, type Conversation } from "../connect/conversations";
 import { conversationActions } from "./conversation-actions";
 import { ConversationRow } from "./ConversationRow";
 import { rowMenuItems } from "./row-menu";
+import { Sidebar, type SidebarProps } from "./Sidebar";
+import { buildSections, DEFAULT_PREFS } from "./list-model";
 
 vi.mock("../face/Face", () => ({ Face: () => null }));
 
@@ -25,6 +27,52 @@ function menu(done: boolean, actions: ReturnType<typeof conversationActions>) {
 }
 
 describe("conversation row Mark done", () => {
+  it("refreshes the list after Mark done without waiting for an event", async () => {
+    const request = vi.fn(async () => ({})) as Parameters<typeof conversationActions>[0];
+    const refresh = vi.fn(async () => {});
+    const actions = conversationActions(request, { refresh } as unknown as ConversationList, () => null);
+    await actions.setDone(row(false), true);
+    expect(request).toHaveBeenCalledWith("sessions.patch", {
+      key, agentId: "research", expectedSessionId: "session-1", done: true,
+    });
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+  it("shows Done in the Sidebar after a started list receives sessions.changed", async () => {
+    vi.useFakeTimers();
+    try {
+      let done = false;
+      const request = vi.fn(async (method: string) =>
+        method === "sessions.subscribe"
+          ? { list: { sessions: [{ key, sessionId: "session-1", displayName: "Research", done }] } }
+          : { sessions: [{ key, sessionId: "session-1", displayName: "Research", done }] },
+      );
+      const list = new ConversationList(request as ConstructorParameters<typeof ConversationList>[0], null);
+      await list.start();
+      const renderSidebar = () => {
+        const rows = list.getSnapshot().rows;
+        const props: SidebarProps = {
+          home: null, sections: buildSections(rows, DEFAULT_PREFS, Date.now(), null), allRows: rows,
+          openKey: null, currentPlace: null, now: Date.now(), showPreview: false,
+          rowState: () => ({ waiting: false, working: false }), trunkName: () => "Research",
+          inboxCount: 0, runningCount: 0, personName: "Owner", hasUnread: false,
+          filterSlot: null, summary: null, emptyLine: null, search: null, searchResults: null,
+          rail: false, onRailSearch: () => {}, onOpen: () => {}, onPlace: () => {},
+          onNew: () => {}, onMenu: () => {}, onPin: () => {}, onArchive: () => {},
+          onMarkAllRead: () => {}, onPerson: () => {}, onSettings: () => {},
+        };
+        return renderToStaticMarkup(<Sidebar {...props} />);
+      };
+      expect(renderSidebar()).not.toContain('title="Done"');
+      done = true;
+      list.onEvent("sessions.changed", { sessionKey: key });
+      await vi.advanceTimersByTimeAsync(150);
+      expect(request).toHaveBeenCalledWith("sessions.list", expect.any(Object));
+      expect(renderSidebar()).toContain('title="Done"');
+      list.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("Mark done calls sessions.patch with done:true and a done row offers Mark not done", async () => {
     const request = vi.fn(async () => ({ sessions: [] })) as Parameters<typeof conversationActions>[0];
     const actions = conversationActions(request, { refresh: vi.fn(async () => {}) } as unknown as ConversationList, () => null);
