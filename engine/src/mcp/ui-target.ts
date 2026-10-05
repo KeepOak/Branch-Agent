@@ -192,11 +192,27 @@ function stopChild(child: ChildProcess): void {
   }
 }
 
+/** A test Branch opens on its window, not on first-run setup, unless asked (setup-model.ts setupDone reads
+ *  wizard.lastRunAt). Written before the scratch engine first starts, as `branch setup` would record it. */
+export function markSetupDone(scratch: string, now = new Date()): void {
+  const dir = path.join(scratch, "home", ".branch");
+  fs.mkdirSync(dir, { recursive: true });
+  const config = {
+    gateway: { mode: "local", bind: "loopback" },
+    wizard: { lastRunAt: now.toISOString(), lastRunCommand: "test-instance", lastRunMode: "local" },
+  };
+  fs.writeFileSync(path.join(dir, "branch.json"), JSON.stringify(config, null, 2) + os.EOL);
+}
+
 /** Start the test Branch: scratch engine, window server and a browser page with the desktop bridge. */
-export async function openTestInstance(env = process.env): Promise<UiTarget> {
+export async function openTestInstance(
+  env = process.env,
+  opts: { firstRun?: boolean } = {},
+): Promise<UiTarget> {
   const scratch = fs.mkdtempSync(
     path.join(env.BRANCH_UI_TEST_ROOT ?? os.tmpdir(), "branch-ui-test-"),
   );
+  if (!opts.firstRun) markSetupDone(scratch);
   const [gatewayPort, windowPort] = [await freePort(), await freePort()];
   const token = randomBytes(24).toString("hex");
   const engineDir = engineDirectory(env);

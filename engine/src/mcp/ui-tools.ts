@@ -10,7 +10,7 @@ import type { UiTarget, UiTargetKind } from "./ui-target.js";
  * pw-role-snapshot uses (`aria-ref=e12`). By default the tools drive a separate test Branch; the owner's own window
  * only after the owner turns it on, and it then shows "An agent is controlling this window" with a Stop button.
  */
-export type UiOpen = (kind: UiTargetKind) => Promise<UiTarget>;
+export type UiOpen = (kind: UiTargetKind, opts?: { firstRun?: boolean }) => Promise<UiTarget>;
 
 const BANNER_ID = "branch-agent-control";
 const STOPPED_KEY = "branch-agent-control-stopped";
@@ -84,9 +84,9 @@ export class UiSession {
   private target: UiTarget | undefined;
   constructor(private readonly open: UiOpen) {}
 
-  async page(kind?: UiTargetKind): Promise<Page> {
+  async page(kind?: UiTargetKind, opts?: { firstRun?: boolean }): Promise<Page> {
     if (kind && this.target && this.target.kind !== kind) await this.close();
-    this.target ??= await this.open(kind ?? "test");
+    this.target ??= await this.open(kind ?? "test", opts);
     const page = this.target.page;
     const state = await page.evaluate(
       `${CONTROL_BANNER_JS}(${JSON.stringify({ id: BANNER_ID, key: STOPPED_KEY })})`,
@@ -144,10 +144,10 @@ export function registerUiMcpTools(server: McpServer, session: UiSession): void 
 function registerUiSeeTools(server: McpServer, session: UiSession): void {
   server.tool(
     "ui_open",
-    'Open the Branch window for the ui_* tools. "test" (default) starts a separate test Branch with its own engine and no owner data; "owner" drives your real window and works only after the owner turns on "Let agents use this window".',
-    { target: z.enum(["test", "owner"]).optional() },
-    async ({ target: kind }) => {
-      await session.page(kind ?? "test");
+    'Open the Branch window for the ui_* tools. "test" (default) starts a separate test Branch with its own engine and no owner data (first_run: true opens it on first-run setup); "owner" drives your real window and works only after the owner turns on "Let agents use this window".',
+    { target: z.enum(["test", "owner"]).optional(), first_run: z.boolean().optional() },
+    async ({ target: kind, first_run }) => {
+      await session.page(kind ?? "test", { firstRun: first_run });
       return text(`opened the ${kind ?? "test"} Branch window`, session.info() ?? {});
     },
   );
