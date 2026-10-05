@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchStateLeaseContext } from "../state/branch-state-lease.js";
 import { materializeProjectClone } from "./project-clone.js";
-import type { ProjectRegistryRecord } from "./project-registry.kernel.js";
+import type { ProjectRegistryRecord } from "./project-registry.types.js";
 
 const fixture = vi.hoisted(() => {
   const lease = () =>

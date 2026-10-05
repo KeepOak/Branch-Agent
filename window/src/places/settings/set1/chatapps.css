@@ -92,3 +92,9 @@
 .set-col .sec[data-sec="Commands in chat apps"] .prow b code { font: 500 12px var(--mono); }
 .set-col .sec .ctl > b > small.when-ca { display: inline; font-size: 12.5px; line-height: 18.125px; font-weight: 500; color: var(--ink-3); }
 .set-col .ctl > b:has(> .when-ca) { gap: 4px; }
+
+/* The setup steps at the top of Manage (the preview's .chw-steps12) */
+.chw-steps12 { display: flex; gap: 4px; flex-wrap: wrap; margin: 14px 0 12px; }
+.chw-steps12 span { display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 999px; background: var(--fill); font-size: 12.5px; color: var(--ink-3); }
+.chw-steps12 em { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 600 11px var(--mono); font-style: normal; background: var(--fill-2); }
+.chw-steps12 .done em { background: var(--ok-tint); color: var(--ok); }

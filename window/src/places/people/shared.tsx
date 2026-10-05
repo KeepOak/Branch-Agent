@@ -1,5 +1,6 @@
 // People › Shared (§4.6.5.4): what you share and with whom (session.visibility.set, session.members.*), public
 // links you can stop (session.publicShare.set), and what others share with you.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState } from "react";
 import { Dialog } from "../../shell/Dialog";
 import { Icon } from "../../shell/icons";
@@ -45,7 +46,7 @@ export function SharedTab({ engine, me, level, openConversation }: { engine: Win
     </>}
     {shows(level, "advanced") && <Section title="Snapshots sent to you">
       <p className="pp-hint" style={{ margin: "0 0 8px" }}>Redacted copies of coding conversations others sent here, to read or carry on.</p>
-      <div className="pp-ctl"><b>Snapshots</b><span className="right"><Sw label="Snapshots" on={false} off={SNAPSHOTS_OFF} /></span><small>Lets people you trust send redacted coding conversations here. Off until you choose: it accepts uploads from outside this computer. <span className="pp-why">{SNAPSHOTS_OFF}</span></small></div>
+      <div className="pp-ctl"><b>Snapshots</b><span className="right"><Sw label="Snapshots" on={false} off={SNAPSHOTS_OFF} /></span><small>Lets people you trust send redacted coding conversations here. Off until you choose: it accepts uploads from outside this computer.</small></div>
     </Section>}
     {manage && <ManageDialog engine={engine} row={manage} onClose={() => setManage(null)} onChanged={list.reload} />}
   </>;

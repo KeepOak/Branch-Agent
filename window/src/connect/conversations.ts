@@ -1,5 +1,6 @@
 // The conversation list (DESIGN-SPEC §4.1.1): the engine's sessions, read with sessions.subscribe and
 // sessions.list and refreshed on every sessions.changed event, the way OpenClaw's ui/src/lib/sessions does.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { agentIdOf } from "./session";
 
 export type Conversation = {

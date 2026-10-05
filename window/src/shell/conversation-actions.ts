@@ -1,5 +1,6 @@
 // What the row menu, hover buttons and keys do to a conversation (DESIGN-SPEC §4.1.6 and its Parity adds),
 // each through the engine method its row names, followed by a read-back of the list.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Conversation, ConversationList } from "../connect/conversations";
 import { notify } from "./notify";
 

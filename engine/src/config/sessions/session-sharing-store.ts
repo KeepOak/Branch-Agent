@@ -1,8 +1,5 @@
 import { withBranchAgentDatabaseReadOnly } from "../../state/branch-agent-db-readonly.js";
-import type {
-  BranchAgentDatabase,
-  BranchAgentDatabaseOptions,
-} from "../../state/branch-agent-db.js";
+import type { BranchAgentDatabase } from "../../state/branch-agent-db.js";
 import {
   isIncognitoBranchAgentSqlitePath,
   resolveBranchAgentSqlitePath,
@@ -18,23 +15,21 @@ import {
 import { projectionLane } from "./session-transcript-worker-resources.js";
 import { withSessionHistoryWorkerDatabase } from "./session-transcript-worker-runtime.js";
 
-function resolveDatabaseOptions(scope: SessionAccessScope): BranchAgentDatabaseOptions {
-  return toDatabaseOptions(resolveSqliteScope(scope));
-}
-
 function readSessionMembers<T>(
   scope: SessionAccessScope,
   fallback: T,
-  operation: (database: Pick<BranchAgentDatabase, "db">) => T,
+  operation: (database: Pick<BranchAgentDatabase, "db">, sessionKey: string) => T,
 ): T {
-  const result = withBranchAgentDatabaseReadOnly(operation, resolveDatabaseOptions(scope));
+  const resolved = resolveSqliteScope(scope);
+  const result = withBranchAgentDatabaseReadOnly(
+    (database) => operation(database, resolved.sessionKey),
+    toDatabaseOptions(resolved),
+  );
   return result.found ? result.value : fallback;
 }
 
 export function listSessionMembers(scope: SessionAccessScope): SessionMember[] {
-  return readSessionMembers(scope, [], (database) =>
-    listSessionMembersInDatabase(database, resolveSqliteScope(scope).sessionKey),
-  );
+  return readSessionMembers(scope, [], listSessionMembersInDatabase);
 }
 
 /** Full membership evidence shares the existing read-only agent database worker. */
@@ -62,12 +57,8 @@ export function isSessionMember(scope: SessionAccessScope, identityId: string): 
   if (!normalizedIdentityId) {
     return false;
   }
-  return readSessionMembers(scope, false, (database) =>
-    hasSessionMemberInDatabase(
-      database,
-      resolveSqliteScope(scope).sessionKey,
-      normalizedIdentityId,
-    ),
+  return readSessionMembers(scope, false, (database, sessionKey) =>
+    hasSessionMemberInDatabase(database, sessionKey, normalizedIdentityId),
   );
 }
 

@@ -1,8 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { runNodeMain } from "../../../scripts/run-node.mts";
-import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { runNodeMain } from "../../../test/scripts/run-node-boundary.test-support.js";
 import * as serviceFiles from "../../daemon/inspect-files.js";
 import { ServiceInspectionError } from "../../daemon/service-inspection-error.js";
 import { withGatewayServiceOperationLock } from "../../daemon/service-operation-lock.js";
@@ -14,7 +13,6 @@ import {
 import * as gatewayLocks from "../../infra/gateway-lock.js";
 import { tryAcquireGatewayStateOwner } from "../../infra/gateway-state-owner.js";
 import * as portProbe from "../../infra/ports-probe.js";
-import * as branchTmp from "../../infra/tmp-branch-dir.js";
 import * as updateCheck from "../../infra/update-check.js";
 import { withPluginLifecycleLease } from "../../plugins/plugin-lifecycle-lease.js";
 import { createDeferredCore } from "../../shared/deferred.js";
@@ -27,10 +25,10 @@ import {
   openBranchStateDatabase,
 } from "../../state/branch-state-db.js";
 import { resolveBranchStateSqlitePath } from "../../state/branch-state-db.paths.js";
-import { withEnvAsync } from "../../test-utils/env.js";
 import { mockProcessPlatform } from "../../test-utils/vitest-spies.js";
 import { createUpdateCommandFailureResult } from "./update-command-result.js";
 import { completeSourceUpdateRuntime } from "./update-command-runtime.js";
+import { withServiceHome } from "./update-command-service-home.test-support.js";
 import { withGatewayRuntimeArtifactPublication } from "./update-command-service-maintenance.js";
 
 const mocks = vi.hoisted(() => ({ service: vi.fn<() => GatewayService>() }));
@@ -39,30 +37,8 @@ vi.mock("../../daemon/service.js", async (importOriginal) => ({
   resolveGatewayService: mocks.service,
 }));
 
-const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 beforeEach(() => mockSystemAccountHome());
 afterEach(() => vi.restoreAllMocks());
-
-async function withServiceHome(run: (home: string) => Promise<void>): Promise<void> {
-  const home = tempDirs.make("branch-runtime-publication-");
-  vi.spyOn(branchTmp, "resolvePreferredBranchTmpDir").mockReturnValue(home);
-  await withEnvAsync(
-    {
-      HOME: home,
-      USERPROFILE: home,
-      APPDATA: path.join(home, "AppData"),
-      BRANCH_GATEWAY_PORT: undefined,
-      BRANCH_HOME: undefined,
-      BRANCH_STATE_DIR: undefined,
-      BRANCH_CONFIG_PATH: undefined,
-      BRANCH_PROFILE: undefined,
-      BRANCH_SUPERVISOR_MODE: undefined,
-      BRANCH_SERVICE_MARKER: undefined,
-      BRANCH_SERVICE_KIND: undefined,
-    },
-    () => run(home),
-  );
-}
 
 async function withRuntimePublicationFixture(
   run: (fixture: {

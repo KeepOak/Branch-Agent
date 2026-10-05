@@ -30,10 +30,12 @@ function electronFixture() {
         reload: () => { this.reloads++; this.webContents.emit("did-finish-load"); } }); }
     async loadURL(url) { this.url = url; this.webContents.mainFrame.url = url; this.webContents.emit("did-finish-load"); }
     setMenuBarVisibility() {} show() {} focus() {} hide() {} isMinimized() { return false; }
+    maximize() {} isMaximized() { return false; } isDestroyed() { return false; } getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; }
   }
   class Tray extends EventEmitter { setToolTip() {} setContextMenu() {} destroy() {} }
   return { app, ipcMain, errors, get window() { return window; }, electron: { app, BrowserWindow, Tray,
     ipcMain: Object.assign(ipcMain, { handle() {} }), Menu: { buildFromTemplate: value => value },
+    screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) },
     dialog: { showErrorBox: (...args) => errors.push(args) }, shell: { openExternal() {} },
     session: { defaultSession: { setPermissionRequestHandler() {} } } } };
 }

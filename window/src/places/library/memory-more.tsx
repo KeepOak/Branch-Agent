@@ -1,6 +1,8 @@
 // Library › Memory, the sections under the list (preview 94-g4p secR418 + 42-placesbp "How it learns"):
 // How it learns [A], Memory health, What to remember, Pinned memories, About you, Waiting for your yes [T].
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { fileOf, num, optStr, rec, useOperation, useResource, trunkName, type Trunk } from "./data";
@@ -100,13 +102,13 @@ export function MemoryHealth({ status, check }: { status: { data: MemoryStatus |
 
 export function WhatToRemember() {
   return <Section title="What to remember" testid="what-to-remember">
-    <div className="lib-form"><input className="inp" disabled placeholder="Never remember my health details" aria-label="A rule about what to remember" title={REASONS.rules} /><Grey label="Add" reason={REASONS.rules} /></div>
+    <div className="lib-form"><input className="inp" disabled placeholder="Never remember my health details" aria-label="A rule about what to remember" title={shownWhy(REASONS.rules)} /><Grey label="Add" reason={REASONS.rules} /></div>
   </Section>;
 }
 
 export function Pinned({ facts }: { facts: Fact[] }) {
   return <Section title="Pinned memories" hint="Pinned memories always go with a message, like a standing rule, and rank first when Trunks share." testid="pinned">
-    <div className="lib-form"><select className="inp" disabled aria-label="A memory to pin" title={REASONS.pin}>{facts.map(f => <option key={f.agentId + f.start}>{f.text}</option>)}</select><Grey label="Pin" reason={REASONS.pin} /></div>
+    <div className="lib-form"><select className="inp" disabled aria-label="A memory to pin" title={shownWhy(REASONS.pin)}>{facts.map(f => <option key={f.agentId + f.start}>{f.text}</option>)}</select><Grey label="Pin" reason={REASONS.pin} /></div>
   </Section>;
 }
 

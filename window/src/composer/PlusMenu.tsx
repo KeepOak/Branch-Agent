@@ -1,11 +1,13 @@
 // The + menu (DESIGN-SPEC §4.3.2): add material and switch this conversation's options without leaving the box.
 // Rows the engine can't do yet stay listed, greyed with the reason (rule 2: never remove a feature).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useRef, type RefObject } from "react";
 import { NO_ROUTE, type OpenTarget } from "./nav";
 import { Popover, moveFocus } from "./Popover";
 import { Head, MenuItem, Sep, Switch } from "./ui";
 import { Icon } from "./icons";
 import type { Trunk } from "./useConversation";
+import { shownWhy } from "../shell/shown-why";
 
 export const GAP = {
   folder: "Not available in this engine yet: it has no per-conversation folder grant.",
@@ -116,7 +118,7 @@ export function PlusMenu(p: Props) {
 
 function SwitchRow({ icon, label, reason, on, onChange }: { icon: "ghost" | "help"; label: string; reason: string; on: boolean; onChange?: () => void }) {
   return (
-    <div className="c-mi c-switchrow" title={reason}>
+    <div className="c-mi c-switchrow" title={shownWhy(reason)}>
       <span className="c-mi-ic"><Icon name={icon} size={16} /></span>
       <span className="c-mi-t">
         <span>{label}</span>

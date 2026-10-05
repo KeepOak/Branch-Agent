@@ -40,7 +40,6 @@ import { renderMemoryOverview, type MemoryOverviewStatus } from "./memory-overvi
 import {
   canonicalMemoryRouteLocation,
   memoryTabForRoute,
-  memoryVisibleSchemaKeys,
   resolveMemoryEngineSelection,
   selectedEngineId,
   type MemoryEngineSelection,
@@ -88,8 +87,7 @@ class MemorySettingsPage extends BranchLightDomElement {
   @property() pluginsHref = "";
   @property() memoryImportHref = "";
   @property({ attribute: false }) routeData: ConfigRouteData | null = null;
-  @property({ attribute: false }) buildEditor: (keys: readonly string[]) => TemplateResult = () =>
-    html``;
+  @property({ attribute: false }) buildEditor: () => TemplateResult = () => html``;
 
   @state() private catalog: MemoryCatalog = { kind: "unavailable" };
   @state() private engineBusy = false;
@@ -109,7 +107,6 @@ class MemorySettingsPage extends BranchLightDomElement {
   private overviewRequest: {
     connection: CatalogConnection;
     agentId: string;
-    probeEmbeddings: boolean;
   } | null = null;
   private supportPluginId: string | null = null;
   private supportProbe: { pluginId: string } | null = null;
@@ -347,7 +344,7 @@ class MemorySettingsPage extends BranchLightDomElement {
       return;
     }
     const probeEmbeddings = options.probeEmbeddings === true;
-    const request = { connection, agentId, probeEmbeddings };
+    const request = { connection, agentId };
     this.overviewRequest = request;
     this.probingEmbeddings = probeEmbeddings;
     if (!probeEmbeddings) {
@@ -542,11 +539,6 @@ class MemorySettingsPage extends BranchLightDomElement {
     }
   }
 
-  private ringsPluginId(): string {
-    return resolveConfiguredRings(currentConfigObject(this.context.runtimeConfig.state))
-      .pluginId;
-  }
-
   private syncSupport(runtimeConfig: ApplicationContext["runtimeConfig"]) {
     const pluginId = resolveConfiguredRings(currentConfigObject(runtimeConfig.state)).pluginId;
     if (pluginId !== this.supportPluginId) {
@@ -577,7 +569,8 @@ class MemorySettingsPage extends BranchLightDomElement {
     if (this.mutationDisabled) {
       return;
     }
-    const writePath = ringsConfigPath(this.ringsPluginId(), path);
+    const config = currentConfigObject(this.context.runtimeConfig.state);
+    const writePath = ringsConfigPath(resolveConfiguredRings(config).pluginId, path);
     if (value === undefined) {
       this.context.runtimeConfig.removeFormValue(writePath);
       return;
@@ -673,7 +666,7 @@ class MemorySettingsPage extends BranchLightDomElement {
       dreams: agentId
         ? html`<branch-agent-memory-panel .agentId=${agentId}></branch-agent-memory-panel>`
         : html``,
-      editor: activeTab === "settings" ? this.buildEditor(memoryVisibleSchemaKeys()) : html``,
+      editor: activeTab === "settings" ? this.buildEditor() : html``,
       ringsSettings: activeTab === "settings" ? this.renderRingsControls() : html``,
     });
   }

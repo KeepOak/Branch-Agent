@@ -100,8 +100,26 @@ async function existingDigest(file) {
   return hash.digest("hex");
 }
 
+/**
+ * The desktop component: `app` holds app.asar alone (applied while Electron stays the same); `runtime`, when given,
+ * is the whole packaged app folder, published as the native bootstrap package and applied when Electron changes.
+ */
+async function desktopComponents({ app, runtime, electronVersion }, { stage, output, version, tag, platform, arch }) {
+  if (!/^\d+\.\d+\.\d+$/.test(electronVersion ?? "")) throw new Error("Desktop component needs its exact Electron version");
+  if (!(await stat(join(app, "app.asar"))).isFile()) throw new Error("Incomplete release input: desktop app.asar");
+  const parts = [["desktop", app, `branch-desktop-app-${version}-${platform}-${arch}.tar.gz`]];
+  if (runtime) parts.push(["desktopRuntime", runtime, `branch-desktop-${version}-${platform}-${arch}.tar.gz`]);
+  const components = {};
+  for (const [name, root, filename] of parts) {
+    if (await existingDigest(join(output, filename))) throw new Error(`Release asset collision: ${filename}`);
+    const info = await archive(root, join(stage, filename));
+    components[name] = { url: `https://github.com/KeepOak/Branch-Agent/releases/download/${tag}/${filename}`, ...info, platform, arch, electronVersion };
+  }
+  return { components, assets: parts.map(([, , filename]) => filename) };
+}
+
 /** Deploy engine production dependencies first. In-root symlinks are materialized; external links are rejected. */
-export async function makeComponentRelease({ version, tag = version, engine, window, output, sourceCommit, platform = process.platform, arch = process.arch }) {
+export async function makeComponentRelease({ version, tag = version, engine, window, desktop, output, sourceCommit, platform = process.platform, arch = process.arch }) {
   if (!/^[\w.-]+$/.test(version) || !/^[\w.-]+$/.test(tag)) throw new Error("Invalid release version/tag");
   if (sourceCommit !== undefined && !/^[a-f0-9]{40}$/.test(sourceCommit)) throw new Error("Invalid release source commit");
   if (!["win32", "darwin", "linux"].includes(platform) || !["x64", "arm64", "arm", "ia32"].includes(arch)) throw new Error("Unsupported release target");
@@ -123,6 +141,10 @@ export async function makeComponentRelease({ version, tag = version, engine, win
       components[name] = { url: `https://github.com/KeepOak/Branch-Agent/releases/download/${tag}/${filename}`, ...info,
         ...(name === "engine" ? { platform, arch } : {}) };
       if (!existing) assets.push(filename);
+    }
+    if (desktop) {
+      const made = await desktopComponents(desktop, { stage, output, version, tag, platform, arch });
+      Object.assign(components, made.components); assets.push(...made.assets);
     }
     if (await existingDigest(join(output, manifestName))) throw new Error(`Release manifest already exists: ${manifestName}`);
     const manifest = { schemaVersion: 1, version, components, ...(sourceCommit ? { sourceCommit } : {}) };

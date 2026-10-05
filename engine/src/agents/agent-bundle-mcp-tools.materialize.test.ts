@@ -1,5 +1,6 @@
 /** Tests materializing MCP catalog tools into agent tool definitions and results. */
 
+import "../test-utils/prepare-compiled-subprocesses.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { expectDefined } from "@branch/normalization-core";
 import { validateToolArguments } from "branch/plugin-sdk/llm";

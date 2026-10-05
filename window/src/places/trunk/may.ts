@@ -1,6 +1,7 @@
 // "What it may do" and "Its computers", read from and written to the Trunk's config entry
 // (engine/src/config/zod-schema.agent-runtime.ts: tools.fs.workspaceOnly, tools.deny, tools.exec.host/node,
 // decisionModel; zod-schema.agent-model.ts: model { primary, fallbacks }).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { agentDefaults, entryOf, rec, str, strs, type ConfigSnapshot } from "./model";
 
 export type May = {

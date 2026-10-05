@@ -57,7 +57,7 @@
   box-shadow: var(--focus-ring);
 }
 
-.about-hero__clawd .lobster-pet__svg {
+.about-hero__clawd .trellis-pet__svg {
   position: relative;
   width: 100%;
   height: 100%;
@@ -209,7 +209,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .about-hero__clawd,
-  .about-hero__clawd .lobster-pet__svg,
+  .about-hero__clawd .trellis-pet__svg,
   .about-hero__clawd .lob-eye-open,
   .about-hero__clawd .lob-eye-closed,
   .about-hero__clawd .lob-grove--r,

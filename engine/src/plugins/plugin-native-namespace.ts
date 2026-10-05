@@ -69,25 +69,31 @@ export function capturePluginNativeDirectoryAliases(
 export function assertPluginNativeNamespaceHost(
   fact: PluginNativeNamespaceFact,
   hostRoot: string,
+  pluginRoot: string,
 ): void {
   if (!fact.referenceRoot) {
     return;
   }
-  for (const directory of createRequire(
-    path.join(fact.sourceDirectory, "native-host.cjs"),
-  ).resolve.paths("branch") ?? []) {
-    const candidate = path.join(directory, "branch");
-    if (!isPathInside(fact.referenceRoot, candidate) || !fs.existsSync(candidate)) {
+  const pluginDirectory = fs.realpathSync(pluginRoot);
+  // Hoisted native dependencies need not have a host peer. The admitting plugin does,
+  // and any host visible from the native directory must agree with that selection.
+  for (const directory of new Set([pluginDirectory, fs.realpathSync(fact.sourceDirectory)])) {
+    const candidate = createRequire(path.join(directory, "native-host.cjs"))
+      .resolve.paths("branch")
+      ?.map((modules) => path.join(modules, "branch"))
+      .find((filename) => fs.existsSync(filename));
+    const resolvedHost = candidate ? fs.realpathSync(candidate) : undefined;
+    if (resolvedHost === hostRoot || (!candidate && directory !== pluginDirectory)) {
       continue;
     }
-    if (fs.realpathSync(candidate) === hostRoot) {
-      return;
-    }
-    break;
+    throw new Error(
+      `Retained native directory ${fact.sourceDirectory} does not resolve the selected Branch Agent host ${hostRoot}: ` +
+        (candidate
+          ? `${candidate} resolves to ${resolvedHost}`
+          : `no Branch Agent peer resolves from ${directory}`) +
+        ". Run branch doctor --fix with the selected host to repair the installed plugin's Branch Agent peer link, then reload the plugin.",
+    );
   }
-  throw new Error(
-    "Retained native directory does not resolve the selected Branch Agent host; repair the installed plugin's Branch Agent peer link before loading it.",
-  );
 }
 
 function inspectDirectory(

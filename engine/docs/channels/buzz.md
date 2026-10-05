@@ -296,8 +296,14 @@ workspace, or model while one Gateway and Buzz bot serve all of them:
 ```json5
 {
   agents: {
+    ownership: "explicit",
+    defaults: {
+      authInheritance: { agentId: "support" },
+      heartbeat: { agentId: "support" },
+      systemAgent: { agentId: "support" },
+    },
     entries: {
-      support: { default: true, workspace: "~/.branch/workspace-support" },
+      support: { workspace: "~/.branch/workspace-support" },
       engineering: { workspace: "~/.branch/workspace-engineering" },
     },
   },
@@ -316,12 +322,14 @@ workspace, or model while one Gateway and Buzz bot serve all of them:
         peer: { kind: "group", id: "buzz:<ENGINEERING_ROOM_UUID>" },
       },
     },
+    { agentId: "support", match: { channel: "buzz", accountId: "*" } },
   ],
+  talk: { agentId: "support" },
 }
 ```
 
-Without a room-specific binding, normal Branch Agent routing selects the default
-agent. See [Channel routing](/channels/channel-routing) for matching precedence.
+The channel-wide binding sends other admitted Buzz rooms to `support`.
+See [Channel routing](/channels/channel-routing) for matching precedence.
 
 ## Access control
 

@@ -1,7 +1,9 @@
 // Tools › Skills (preview 42-placesbp.js czs*, 93-g3p.js): skills.status rows with filters, the Gardener
 // (skills.gardener.status), Suggested and Drafts (skills.proposals.*), the detail with skills.update and
 // skills.install, kept versions (skills.library.*), and "Add a skill" (skills.search / skills.install).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { shows } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
@@ -93,9 +95,9 @@ function Suggested({ ctx, p, reload }: { ctx: ToolsCtx; p: Proposal; reload: () 
   const reason = p.revisionHash ? undefined : "The engine did not supply a revision for a safe change.";
   return <div className="cz-card" data-testid="suggested"><div className="cz-card-h"><b>{p.kind === "update" ? `A better version of “${p.skillName}”` : p.title || `A new skill: “${p.skillName}”`}</b><Pill tone="work">Suggested</Pill></div>
     <p>{p.description}</p>{op.error && <p role="alert" className="cz-error">{op.error}</p>}
-    <div className="cz-acts"><button type="button" className="btn sm" disabled={op.busy || !!reason} title={reason} onClick={() => void op.run("skills.proposals.evaluate", base, () => { setTried(true); reload(); })}>{tried ? "Try again" : "Practice run on recent tasks"}</button>
-      <button type="button" className="btn pri sm" disabled={op.busy || !!reason} title={reason} onClick={() => void op.run("skills.proposals.apply", base, reload)}>Keep it</button>
-      <button type="button" className="btn ghost sm" disabled={op.busy || !!reason} title={reason} onClick={() => void op.run("skills.proposals.reject", base, reload)}>Throw it away</button></div>
+    <div className="cz-acts"><button type="button" className="btn sm" disabled={op.busy || !!reason} title={shownWhy(reason)} onClick={() => void op.run("skills.proposals.evaluate", base, () => { setTried(true); reload(); })}>{tried ? "Try again" : "Practice run on recent tasks"}</button>
+      <button type="button" className="btn pri sm" disabled={op.busy || !!reason} title={shownWhy(reason)} onClick={() => void op.run("skills.proposals.apply", base, reload)}>Keep it</button>
+      <button type="button" className="btn ghost sm" disabled={op.busy || !!reason} title={shownWhy(reason)} onClick={() => void op.run("skills.proposals.reject", base, reload)}>Throw it away</button></div>
   </div>;
 }
 
@@ -172,7 +174,7 @@ export function AddSkill({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
   return <Dialog wide title="Add a skill" onClose={close} footer={<button type="button" className="btn ghost" onClick={close}>Cancel</button>}>
     <div className="cz-provs">
       <button type="button" className="cz-prov" onClick={() => setLibrary(true)}><b>From the skill library</b><small>Search skills others have shared and install one.</small></button>
-      <div className="cz-prov" title="Needs the engine's skill upload from this window."><b>From a file</b><small>A SKILL.md or a folder.</small><Grey reason="Needs the engine's skill upload from this window.">Choose a file</Grey></div>
+      <div className="cz-prov" title={shownWhy("Needs the engine's skill upload from this window.")}><b>From a file</b><small>A SKILL.md or a folder.</small><Grey reason="Needs the engine's skill upload from this window.">Choose a file</Grey></div>
       <div className="cz-prov"><b>From GitHub</b><small>A repository with a SKILL.md.</small><Grey reason="Needs the engine's install from a GitHub address.">Add from GitHub</Grey></div>
       <div className="cz-prov"><b>Write one with Branch</b><small>Say what it should know how to do.</small><Grey reason="Needs the engine's skill drafting method.">Draft it</Grey></div>
     </div>

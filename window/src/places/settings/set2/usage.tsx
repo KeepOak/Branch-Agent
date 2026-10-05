@@ -12,7 +12,12 @@ import { CallLine, CodeRow, CopyBtn, Kv, Tile, bytes, lvOf, openPlace, rec, span
 import { Ico } from "./icons";
 import { Logo } from "../set1/service";
 import { readMeasuredPercent } from "../../../shell/limit-window-reading";
+import { ModelPrices } from "./usage-prices";
+import { useShown } from "../../../shell/shown";
+import { CKPT_PREF, CKPT_SHOW, useCkptCanShow, useCkptOn } from "../../../shell/SaveProgress";
+import { lookStore } from "../set1/appearance-store";
 import "./usage.css";
+import { DesktopCtl } from "../desktop-ctl";
 
 /* ---------- figures ---------- */
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -84,6 +89,7 @@ export function UsagePage(props: SettingsPageProps) {
       <Evals lv={lv} />
       <MovingInOut engine={props.engine} lv={lv} />
       {lv >= 1 ? <MoneyMore engine={props.engine} lv={lv} /> : null}
+      {lv >= 1 ? <ModelPrices engine={props.engine} /> : null}
       {lv >= 1 ? <KeepingMore engine={props.engine} lv={lv} /> : null}
       {lv >= 2 ? <EverySetting engine={props.engine} /> : null}
       <Flagged lv={lv} />
@@ -214,7 +220,7 @@ function Allowances({ engine }: { engine: WindowEngine }) {
       {res.data && !providers.length ? <p className="empty">No connection reports an allowance yet. Connect a model account to see what its service allows.</p> : null}
       {providers.length ? <div className="s2usage-lims">{providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} updatedAt={data.updatedAt} />)}</div> : null}
       {data.refreshing === true ? <Hint>Checking each connection again…</Hint> : null}
-      <AllowanceRows />
+      <AllowanceRows engine={engine} />
     </Sec>
   );
 }
@@ -748,15 +754,14 @@ function exportItems(data: RecordValue, all: Day[], names: Map<string, string>) 
    ====================================================================================================== */
 type Cfg = ReturnType<typeof useConfig>;
 const flag = (v: unknown, def: boolean) => (typeof v === "boolean" ? v : def);
-const NO_RING = "Drawing a usage ring needs a usage setting in the engine.";
-const NO_OFFER = "Offering to save progress needs a usage threshold in the engine.";
+// TODO(engine-lane): turning off "Asking a service what is left" needs a usage setting (old usage/limits/settings).
 const NO_ASK = "The engine asks each connected service when this page opens; turning that off needs an engine setting.";
-const TRAY = "The tray is part of the Branch app on your computer.";
 const NO_KEEP = "The engine archives old conversations and keeps them; deleting them by age needs an engine setting.";
 const NO_CKPT = "Listing checkpoints needs a checkpoint method in the engine.";
 const NO_EVAL = "Test sets and graders need evals in the engine.";
 const NO_EXPORT = "Exporting everything needs an export method in the engine; today it runs as branch backup create in a terminal.";
 const CLI_BACKUP = "This runs from a terminal (branch backup) or the Branch app; the engine has no method for it.";
+// TODO(engine-lane): spend caps per service need the engine to pause at a limit (old usage/budget).
 const NO_CAPS = "Spend caps need the engine to pause work at a limit.";
 const NO_PROJECT = "Cost by project needs the engine to count usage by project.";
 const NO_SAVE_FIRST = "Saving conversations before they are removed needs an engine setting.";
@@ -790,13 +795,16 @@ export function gbFrom(v: unknown): string {
 const asNum = (v: string): number | undefined => (v.trim() === "" || !Number.isFinite(Number(v)) ? undefined : Number(v));
 
 /** The connection rows under the allowances: what the engine doesn't do yet is greyed with why. */
-function AllowanceRows() {
+function AllowanceRows({ engine }: { engine: WindowEngine }) {
+  const shown = useShown(engine); // the same "show.usage" switch as Appearance › What's shown and the status bar's right-click
+  const ckptOn = useCkptOn(engine);
+  const ckptCanShow = useCkptCanShow();
   return (
     <>
-      <Ctl title="The ring bottom right" sub="The connection used next, how much of its window is left, and when it refills." off={NO_RING}><Switch label="Show the ring" checked={false} onChange={() => undefined} /></Ctl>
-      <Ctl title="Offer to save progress at 95%" sub={<>It only asks, once per connection per window, and never for an estimate. <button type="button" className="link-k" disabled title={NO_OFFER}>Show me</button></>} off={NO_OFFER}><Switch label="Offer to save progress at 95%" checked={false} onChange={() => undefined} /></Ctl>
+      <Ctl title="The ring bottom right" sub="The connection used next, how much of its window is left, and when it refills."><Switch label="Show the ring" checked={shown.usage} onChange={(on) => void lookStore(engine).set("show.usage", on)} /></Ctl>
+      <Ctl title="Offer to save progress at 95%" sub={<>It only asks, once per connection per window, and never for an estimate. <button type="button" className="link-k" disabled={!ckptCanShow} onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
       <Ctl title="Asking a service what is left" off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
-      <Ctl title="Show usage in the tray" sub="A small ring by the clock opens the same list." off={TRAY}><Switch label="Show usage in the tray" checked={false} onChange={() => undefined} /></Ctl>
+      <DesktopCtl title="Show usage in the tray" sub="A small ring by the clock opens the same list." name="trayUsage" />
     </>
   );
 }
@@ -1015,6 +1023,9 @@ export function MoveInDialog({ engine, onClose }: { engine: WindowEngine; onClos
 }
 
 /** Money and keeping, more (Advanced). */
+// TODO(engine-lane): metering export (the old app's usage/metering and usage/metering/now: write the usage figures to
+// a workspace folder on a schedule, or now). The artifact has no row for it; add one here, styled like "Backups",
+// once the engine has the method.
 function MoneyMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
   const [backups, setBackups] = useState(false);
   const usage = useLive<RecordValue>(engine, "usage.status", {}, []);

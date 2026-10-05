@@ -1,5 +1,6 @@
 // Settings › Voice shared bits: the greyed rows (the engine has no key, or the row runs in the desktop app), a resource
 // that keeps its last answer while it reloads, and the small choice helpers every Voice section uses.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useRef } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { list, record, text, visible, type RecordValue } from "../adapter";

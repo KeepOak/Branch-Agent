@@ -1,5 +1,6 @@
 // The model menu (DESIGN-SPEC §4.3.4 and its Parity adds): which model answers here, how long it thinks, its speed,
 // its room to plan, and what is shown here. Every choice is a sessions.patch on this conversation, read back after.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { str, type Rec } from "./engine";
 import { accountLine, capitalize, groupModels, thinkingChoices, type ModelChoice } from "./model";
@@ -13,6 +14,7 @@ import { Logo, serviceName as brandName } from "../places/settings/set1/service"
 import { accountName, accountsOf, providersOf, type Account } from "../places/settings/set1/accounts";
 import { shows, useLevel } from "../places-nav/level";
 import type { WindowEngine } from "./engine";
+import { NOT_ON_PLAN, offPlan, planOrder, runsOnCodex, useCodexPlan } from "./codex-plan";
 
 type Props = {
   anchor: RefObject<HTMLElement | null>;
@@ -32,6 +34,8 @@ type Props = {
   onRetry: () => void;
   /** Reads the current service's accounts (models.authStatus) for the Account group and the fallback line. */
   engine?: WindowEngine;
+  /** The conversation's Trunk, whose ChatGPT plan (codex.models) says which Codex models it can run. */
+  trunkId?: string;
 };
 
 const NO_PICK_ACCOUNT = "Picking one account for a single conversation isn't in the engine yet. Change the order in Accounts.";
@@ -97,6 +101,7 @@ export function ModelMenu(p: Props) {
   const groups = groupModels(shown, query);
   const advanced = shows(useLevel(), "advanced");
   const allAccounts = useAccounts(p.engine);
+  const plan = useCodexPlan(p.engine, p.trunkId, p.models.some(runsOnCodex));
   const accounts = accountsFor(allAccounts, p.current?.provider);
   const levels = thinkingChoices(p.current);
   const speeds = p.current?.serviceTiers.includes("ultrafast") ? [...SPEEDS, { id: "ultrafast", label: "Ultrafast" }] : SPEEDS;
@@ -132,7 +137,7 @@ export function ModelMenu(p: Props) {
           {groups.map((g) => (
             <div key={g.service} role="group" aria-label={g.service}>
               <div className="c-grp">{g.models[0]?.local ? g.service : brandName(g.service)}</div>
-              {g.models.map((m) => (
+              {planOrder(g.models, plan).map((m) => { const off = offPlan(m, plan); return (
                 <MenuItem
                   key={m.ref}
                   testId="model-option"
@@ -141,10 +146,12 @@ export function ModelMenu(p: Props) {
                   label={<span className="c-modelname">{m.name}{m.supportsTools ? null : <span className="c-pill" title="It can chat, but it can't use tools. Pick another model for files, commands, the web or media.">Chat only</span>}</span>}
                   sub={modelLine(m, allAccounts)}
                   checked={m.ref === p.currentRef}
-                  disabled={locked}
+                  disabled={locked || off}
+                  reason={off ? NOT_ON_PLAN : undefined}
+                  reasonLine={off}
                   onClick={() => void p.patch({ model: m.ref, thinkingLevel: null })}
                 />
-              ))}
+              ); })}
             </div>
           ))}
         </div>

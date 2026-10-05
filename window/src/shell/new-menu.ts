@@ -3,12 +3,12 @@ import type { PlaceId } from "../places-nav/routes";
 import type { MenuItem } from "./Menu";
 import { openNewGroupChat } from "../rooms/NewGroupChat";
 
-type Ctx = { newConversation: () => void; openPlace: (p: PlaceId) => void; makeTrunk: () => void; quickAsk: () => void };
+type Ctx = { newConversation: () => void; newTrunk: () => void; openPlace: (p: PlaceId) => void; makeTrunk: () => void; quickAsk: () => void };
 
 export function newMenuItems(c: Ctx): MenuItem[] {
   return [
     { label: "New conversation", hint: "Ctrl N", run: c.newConversation, testid: "new-conversation" },
-    { label: "New Trunk", run: () => c.openPlace("customize"), testid: "new-trunk" },
+    { label: "New Trunk", run: c.newTrunk, testid: "new-trunk" },
     { label: "New group chat", hint: "people, Trunks, agents", run: openNewGroupChat, testid: "new-group-chat" },
     { label: "New automation", run: () => c.openPlace("automations"), testid: "new-automation" },
     { label: "A Trunk from a job…", run: () => c.openPlace("customize") },

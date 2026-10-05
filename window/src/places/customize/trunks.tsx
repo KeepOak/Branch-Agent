@@ -2,6 +2,7 @@
 // per Trunk (face and name open its profile; Edit; Pause), right-click for Make default / Remove, the job tiles and,
 // at Technical, the defaults for every Trunk. Customize only mounts it; the dialogs live in places/trunk.
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { Jobs } from "./jobs";
 import { Icon } from "../../shell/icons";
 import { openNewGroupChat } from "../../rooms/NewGroupChat";
@@ -39,7 +40,7 @@ function TrunkRowView({ row, roster, open, menu }: { row: TrunkRow; roster: Rost
         <span className="tk-grow"><b>{row.name}{row.id === roster.defaultId && <span className="tk-pill">Default</span>}</b><small>{row.theme || "Just made"}</small></span>
       </button>
       <button type="button" className="btn sm" onClick={() => open({ kind: "edit", id: row.id })}>Edit</button>
-      <button type="button" className="btn ghost sm" disabled title={PAUSE_WHY}>Pause</button>
+      <button type="button" className="btn ghost sm" disabled title={shownWhy(PAUSE_WHY)}>Pause</button>
     </div>
   );
 }

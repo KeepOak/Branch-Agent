@@ -1,6 +1,6 @@
 import { GATEWAY_ASSISTANT_ERROR_FALLBACK_TEXT } from "@branch/gateway-protocol/gateway-error-details";
 import { asNullableRecord as readRecord } from "@branch/normalization-core/record-coerce";
-import { readSessionProjectionString as readNonemptyString } from "./session-projection-message-identity.js";
+import { normalizeNullableString as readNonemptyString } from "@branch/normalization-core/string-coerce";
 
 export function readSessionMessageDisplayContent(message: unknown): {
   text: string;

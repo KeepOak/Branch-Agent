@@ -5,7 +5,7 @@ export function keepWindowsWindowResident(
   app: App,
   window: BrowserWindow,
   icon: string,
-  options: { hidden?: boolean; platform?: NodeJS.Platform } = {},
+  options: { hidden?: boolean; platform?: NodeJS.Platform; keepRunning?: () => boolean; onTrayClick?: () => void } = {},
 ): Tray | undefined {
   if ((options.platform ?? process.platform) !== "win32") return;
   let quitting = false;
@@ -16,7 +16,8 @@ export function keepWindowsWindowResident(
     window.focus();
   };
   window.on("close", (event) => {
-    if (quitting) return;
+    // "Keep working when the window closes" off: closing ends Branch and its engine.
+    if (quitting || !(options.keepRunning?.() ?? true)) return;
     event.preventDefault();
     window.hide();
   });
@@ -31,7 +32,7 @@ export function keepWindowsWindowResident(
     { type: "separator" },
     { label: "Quit Branch", click: () => app.quit() },
   ]));
-  tray.on("click", reveal);
+  tray.on("click", () => { reveal(); options.onTrayClick?.(); });
   tray.on("double-click", reveal);
   app.on("will-quit", () => tray.destroy());
   return tray;

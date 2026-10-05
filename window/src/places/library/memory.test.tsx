@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -118,8 +119,9 @@ describe("Library › Memory", () => {
     await mount(engine);
     expect(host.querySelector('[data-testid="rings-row"]')!.textContent).toContain("2 kept for good today · 7 waiting to be sorted");
     expect(button("Undo last night")!.disabled).toBe(true);
-    expect(button("Undo last night")!.title).toMatch(/^Needs /);
-    expect(button("Tidy up")!.disabled).toBe(true);
+    expect(button("Undo last night")!.title).toBe("");
+    expect(button("Tidy up")!.disabled).toBe(true); expect(button("Tidy up")!.title).toBe("");
+    expect(visibleDevNotes(host)).toEqual([]);
     await click("Read the diary");
     expect(request).toHaveBeenCalledWith("doctor.memory.dreamDiary", {});
     expect(host.querySelector('[data-testid="rings-diary"]')!.textContent).toContain("Night one notes");
@@ -170,7 +172,10 @@ describe("Library › Memory", () => {
   it("greys the head controls with their reasons and shows an empty line when nothing is remembered", async () => {
     const { engine } = engineOf(base((m, p) => m === "agents.files.get" ? { file: { name: String(p.name), missing: true } } : undefined));
     await mount(engine);
-    for (const label of ["Clearing", "Translate a document…", "Make pictures…"]) { expect(button(label)!.disabled).toBe(true); expect(button(label)!.title).toMatch(/^Needs /); }
+    for (const label of ["Clearing", "Translate a document…", "Make pictures…"]) expect(button(label)!.disabled).toBe(true);
+    expect(button("Clearing")!.title).toBe("");
+    for (const label of ["Translate a document…", "Make pictures…"]) expect(button(label)!.title).toBe("");
+    expect(visibleDevNotes(host)).toEqual([]);
     expect(host.textContent).not.toContain("Canvas");
     expect(button("Clearing")!.title).not.toMatch(/canvases/);
     expect(host.textContent).toContain("Nothing remembered yet.");

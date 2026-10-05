@@ -16,7 +16,9 @@ import {
   QA_LIVE_SETUP_TOKEN_VALUE_ENV,
 } from "./providers/live-frontier/auth.js";
 import { listMockCodexModelInfos } from "./providers/shared/mock-model-config.js";
-import type { RuntimeId } from "./runtime-id.js";
+import type { QaRuntimeSelection, RuntimeId } from "./runtime-id.js";
+
+const BRANCH_QA_CODEX_API_KEY_HANDOFF = "BRANCH_QA_CODEX_API_KEY_HANDOFF";
 
 const QA_GATEWAY_CHILD_BLOCKED_ENV_VARS = Object.freeze([
   // QA owns this child; parent service and test-runner markers describe a different process.
@@ -27,6 +29,7 @@ const QA_GATEWAY_CHILD_BLOCKED_ENV_VARS = Object.freeze([
   "BASH_ENV",
   "BASHOPTS",
   "ENV",
+  BRANCH_QA_CODEX_API_KEY_HANDOFF,
   "BRANCH_QA_CONVEX_SECRET_CI",
   "BRANCH_QA_CONVEX_SECRET_MAINTAINER",
   "BRANCH_QA_SUT_FORBIDDEN_SENTINEL",
@@ -80,7 +83,7 @@ export function buildQaRuntimeEnv(params: {
   const env: NodeJS.ProcessEnv = {
     ...baseEnv,
     HOME: forwardedHostHome ?? params.homeDir,
-    ...(provider?.appliesLiveEnvAliases
+    ...(provider?.kind === "live"
       ? resolveQaLiveCliAuthEnv(baseEnv, {
           forwardHostHomeForClaudeCli: params.forwardHostHomeForClaudeCli,
           claudeCliAuthMode: params.claudeCliAuthMode,
@@ -120,6 +123,13 @@ export function buildQaRuntimeEnv(params: {
   delete normalizedEnv.BRANCH_SKIP_PROVIDERS;
   delete normalizedEnv.BRANCH_SKIP_CRON;
   Object.assign(normalizedEnv, params.runtimeEnvPatch);
+  const codexApiKeyHandoff =
+    params.providerMode === "live-frontier"
+      ? normalizedEnv[BRANCH_QA_CODEX_API_KEY_HANDOFF]?.trim()
+      : undefined;
+  if (codexApiKeyHandoff && !normalizedEnv.CODEX_API_KEY?.trim()) {
+    normalizedEnv.CODEX_API_KEY = codexApiKeyHandoff;
+  }
   // Child scratch and default compiler caches share the Gateway's joined cleanup lifetime.
   normalizedEnv.TMPDIR = params.tempRoot;
   normalizedEnv.TMP = params.tempRoot;
@@ -176,6 +186,7 @@ export async function stageQaCodexMockModelCatalog(params: {
 
 export function buildQaForcedRuntimeEnvPatch(params: {
   forcedRuntime?: RuntimeId;
+  runtimeSelection?: QaRuntimeSelection;
   providerMode: QaProviderMode;
   providerBaseUrl?: string;
   codexModelCatalogPath?: string;
@@ -186,7 +197,9 @@ export function buildQaForcedRuntimeEnvPatch(params: {
   }
   const patch: NodeJS.ProcessEnv = {
     BRANCH_BUILD_PRIVATE_QA: "1",
-    BRANCH_QA_FORCE_RUNTIME: params.forcedRuntime,
+    ...(params.runtimeSelection === "configured"
+      ? {}
+      : { BRANCH_QA_FORCE_RUNTIME: params.forcedRuntime }),
   };
   if (params.forcedRuntime !== "codex") {
     return patch;

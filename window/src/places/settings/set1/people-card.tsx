@@ -7,6 +7,7 @@ import { Acts, Btn, Hint, Pill, Sec, Seg, useSaveRunner } from "../kit";
 import { ACTKINDS, OWNER_ID, devicesLine, firstName, mayOf, revokePlan, roleOf, scopesOf, type Profile } from "./people-data";
 import { Face, type People } from "./people";
 import { MineHead, YouSecs } from "./people-mine";
+import { shownWhy } from "../../../shell/shown-why";
 
 export function PersonCard({ ctx, p }: { ctx: People; p: Profile }) {
   const mine = p.id === ctx.self?.id;
@@ -102,5 +103,5 @@ function SignOut({ ctx, p, out, onOut }: ActProps) {
     onOut();
     await ctx.reload();
   });
-  return <Btn ghost sm disabled={out || Boolean(why)} title={why} onClick={run}>Sign out everywhere</Btn>;
+  return <Btn ghost sm disabled={out || Boolean(why)} title={shownWhy(why)} onClick={run}>Sign out everywhere</Btn>;
 }

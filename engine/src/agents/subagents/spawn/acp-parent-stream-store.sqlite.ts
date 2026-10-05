@@ -1,76 +1,99 @@
-// ACP parent-stream diagnostics live with their child session in the per-agent database.
+import type { Result } from "@branch/normalization-core/result";
+import { cloneEnvWithPlatformSemantics } from "../../../config/config-env-vars.js";
+import { runtimeProcessEntrypoints } from "../../../infra/runtime-process-entrypoints.js";
+import { resolveRuntimeWorkerUrl } from "../../../infra/runtime-worker-url.js";
+import { throwSqliteLifecycleErrors } from "../../../infra/sqlite-lifecycle-errors.js";
+import { readDatabasePathIdentitySync } from "../../../infra/sqlite-worker-identity.js";
+import type { BranchAgentDatabaseOptions } from "../../../state/branch-agent-db-contract.js";
+import { resolveBranchAgentSqlitePath } from "../../../state/branch-agent-db.paths.js";
+import { captureBranchAgentDatabaseExecution } from "../../../state/branch-agent-execution.js";
+import { openBranchAgentSqliteWorkerStore } from "../../../state/branch-agent-worker-store.js";
+import { runBranchAgentWriteAdmission } from "../../../state/branch-agent-write-admission.js";
 import {
-  executeSqliteQuerySync,
-  executeSqliteQueryTakeFirstSync,
-  getNodeSqliteKysely,
-} from "../../../infra/kysely-sync.js";
-import { coerceRequiredSqliteNumber as sqliteNumber } from "../../../infra/sqlite-number.js";
-import type { DB as BranchAgentKyselyDatabase } from "../../../state/branch-agent-db.generated.js";
-import {
-  runBranchAgentWriteTransaction,
-  type BranchAgentDatabaseOptions,
-} from "../../../state/branch-agent-db.js";
-
-type AcpParentStreamDatabase = Pick<BranchAgentKyselyDatabase, "acp_parent_stream_events">;
+  hydrateBranchStateWorkerError,
+  retainBranchStateWorkerErrorPayload,
+} from "../../../state/branch-state-worker-error.js";
+import type { AcpParentStreamWorkerOperations } from "./acp-parent-stream-store.worker.js";
 
 export type AcpParentStreamEvent = Record<string, unknown>;
+type EventBatch = Array<{ event: AcpParentStreamEvent; createdAt: number }>;
 
-function getAcpParentStreamKysely(database: import("node:sqlite").DatabaseSync) {
-  return getNodeSqliteKysely<AcpParentStreamDatabase>(database);
-}
-
-/** Records one ordered batch in the same synchronous commit section as sequence allocation. */
-export function recordAcpParentStreamEvents(
-  options: BranchAgentDatabaseOptions & {
-    sessionId: string;
-    runId: string;
-    events: Array<{ event: AcpParentStreamEvent; createdAt: number }>;
-  },
-): void {
-  if (options.events.length === 0) {
-    return;
+/** Captures the child and physical store before delayed relay flushes can yield. */
+export function createAcpParentStreamRecorder(
+  input: BranchAgentDatabaseOptions & { sessionId: string; runId: string },
+) {
+  const options = { ...input, env: cloneEnvWithPlatformSemantics(input.env ?? process.env) };
+  const identity = readDatabasePathIdentitySync(resolveBranchAgentSqlitePath(options));
+  if (!identity.key.startsWith("file:")) {
+    throw new Error("ACP parent-stream diagnostics require the existing child database");
   }
-  const prepared = options.events.flatMap((entry) => {
-    try {
-      const eventJson = JSON.stringify(entry.event);
-      if (eventJson !== undefined) {
-        return [{ eventJson, createdAt: entry.createdAt }];
-      }
-    } catch {
-      // One malformed diagnostic must not poison later valid events or retries.
-    }
-    return [];
-  });
-  if (prepared.length === 0) {
-    return;
-  }
-  runBranchAgentWriteTransaction(
-    (database) => {
-      const db = getAcpParentStreamKysely(database.db);
-      const row = executeSqliteQueryTakeFirstSync(
-        database.db,
-        db
-          .selectFrom("acp_parent_stream_events")
-          .select((eb) => eb.fn.max<number | bigint>("seq").as("max_seq"))
-          .where("session_id", "=", options.sessionId)
-          .where("run_id", "=", options.runId),
-      );
-      const firstSeq =
-        row?.max_seq === null || row?.max_seq === undefined ? 0 : sqliteNumber(row.max_seq) + 1;
-      executeSqliteQuerySync(
-        database.db,
-        db.insertInto("acp_parent_stream_events").values(
-          prepared.map((entry, index) => ({
-            session_id: options.sessionId,
-            run_id: options.runId,
-            seq: firstSeq + index,
-            event_json: entry.eventJson,
-            created_at: entry.createdAt,
-          })),
-        ),
-      );
+  const execution = captureBranchAgentDatabaseExecution(options, {
+    expectedIdentity: {
+      kind: "file",
+      physicalIdentity: identity.key.slice("file:".length),
+      nativeLocation: identity.canonicalPath,
+      birthtime: identity.birthtime,
     },
+  });
+  options.path = execution.path;
+  const worker = openBranchAgentSqliteWorkerStore<AcpParentStreamWorkerOperations>(
     options,
-    { operationLabel: "acp.parent-stream.record" },
+    { execution },
+    {
+      moduleUrl: resolveRuntimeWorkerUrl(runtimeProcessEntrypoints.acpParentStreamStore),
+      input: undefined,
+    },
   );
+  // A relay may finish without any serializable diagnostics.
+  void worker.catch(() => {});
+  return {
+    async record(events: EventBatch): Promise<Result<void, Error>> {
+      const prepared = events.flatMap((entry) => {
+        try {
+          const eventJson = JSON.stringify(entry.event);
+          if (eventJson !== undefined) {
+            return [{ eventJson, createdAt: entry.createdAt }];
+          }
+        } catch {
+          // One malformed diagnostic must not poison later valid events or retries.
+        }
+        return [];
+      });
+      if (prepared.length === 0) {
+        return { ok: true, value: undefined };
+      }
+      const result = await runBranchAgentWriteAdmission(
+        options,
+        async () =>
+          (await worker).execute(
+            {
+              type: "record",
+              input: { sessionId: options.sessionId, runId: options.runId, events: prepared },
+            },
+            () => execution.assertCurrent(),
+          ),
+        true,
+      );
+      if (result.ok) {
+        return result;
+      }
+      const error = new Error("ACP parent-stream transaction rolled back");
+      retainBranchStateWorkerErrorPayload(error, result.error);
+      return {
+        ok: false,
+        error: hydrateBranchStateWorkerError(error, { includeOrdinary: true }),
+      };
+    },
+    async close(): Promise<void> {
+      const failures: unknown[] = [];
+      for (const close of [async () => (await worker).close(), () => execution.release()]) {
+        try {
+          await close();
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+      throwSqliteLifecycleErrors(failures, "ACP parent-stream recorder cleanup failed");
+    },
+  };
 }

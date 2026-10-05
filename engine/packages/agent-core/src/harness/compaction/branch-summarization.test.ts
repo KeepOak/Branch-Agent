@@ -157,7 +157,7 @@ describe("branch summarization", () => {
         customType: "branch.runtime-context",
         content: "PRIVATE_RUNTIME_CONTEXT",
         display: false,
-        details: { runtimeContextCarrier: true },
+        details: { source: "branch-runtime-context", runtimeContextCarrier: true },
       },
       createMessageEntry(
         createResponse(model, [

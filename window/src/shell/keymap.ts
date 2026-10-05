@@ -1,5 +1,6 @@
 // The settable shortcuts (DESIGN-SPEC §4.8.8): each action's default keys, the person's own keys (kept on this
 // computer), and how a key press is read. A custom shortcut needs Ctrl or Alt, and two actions never share one.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 
 export type ActionId =
   | "palette"

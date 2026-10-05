@@ -25,6 +25,8 @@ import type {
   ChannelIngressReadCommand,
   ChannelIngressReadReply,
 } from "../channels/message/ingress-queue-read-contract.js";
+import type { PersistedClawPackageRef } from "../groves/package-extension-provenance.js";
+import type { GroveOrphanWorkspace, PersistedGroveInstall } from "../groves/provenance-types.js";
 import type { ConfigSnapshotAuditRecord } from "../config/config-journal-snapshot.kernel.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import type { CronScratchReadCommand, CronScratchSnapshot } from "../cron/scratch-contract.js";
@@ -39,7 +41,11 @@ import type {
 } from "../cron/store/run-recovery-read.types.js";
 import type { CronQuarantinedJob } from "../cron/types-shared.js";
 import type { FleetCellRecord } from "../fleet/registry.types.js";
-import type { CronStandingGrantListing } from "../gateway/operator-approval-standing-grants.types.js";
+import type {
+  CronStandingGrantListing,
+  CronStandingGrantLookupInput,
+  ConsumeCronStandingGrantResult,
+} from "../gateway/operator-approval-standing-grants.types.js";
 import type {
   ListTerminalOperatorApprovalsInput,
   ListTerminalOperatorApprovalsResult,
@@ -53,16 +59,20 @@ import type {
   WorkerPlacementRecoveryCandidate,
   WorkerSessionPlacementReadResult,
 } from "../gateway/worker-environments/placement-read-projection.types.js";
-import type { WorkerSessionPlacementChangeSnapshot } from "../gateway/worker-environments/placement-record.js";
+import type {
+  WorkerSessionPlacementChangeSnapshot,
+  WorkerSessionPlacementRecord,
+} from "../gateway/worker-environments/placement-record.js";
 import type {
   WorkspaceJournalReadCommand,
   WorkspaceJournalReadResult,
-} from "../gateway/worker-environments/placement-workspace-journal.worker-contract.js";
+} from "../gateway/worker-environments/placement-workspace-journal.types.js";
+import type { PreparedPoolPresenceDemand } from "../gateway/worker-environments/prepared-pool-presence.types.js";
 import type {
   WorkerEnvironmentFacts,
   WorkerEnvironmentPrunePage,
   WorkerEnvironmentPruneReadInput,
-} from "../gateway/worker-environments/store-worker-contract.js";
+} from "../gateway/worker-environments/store.types.js";
 import type {
   DevicePairingReadCommand,
   DevicePairingReadReply,
@@ -74,6 +84,7 @@ import type {
   ConversationRef,
   SessionBindingRecord,
 } from "../infra/outbound/session-binding.types.js";
+import type { SqliteWorkerCommand } from "../infra/sqlite-worker-contract.js";
 import type { SqliteWorkerStateContext } from "../infra/sqlite-worker-state-context.js";
 import type {
   readInterruptedUpdateCandidate,
@@ -96,6 +107,7 @@ import type { SkillLibraryReadOnlyOperations } from "../skills/library/selection
 import type { TuiLastSessionReadCommand } from "../tui/tui-last-session.contract.js";
 import type {
   AgentDatabaseDeletionSnapshot,
+  AgentDeletionJournalAuthority,
   AgentDeletionJournalPurpose,
   AgentDeletionJournalStatus,
 } from "./agent-deletion-journal.types.js";
@@ -111,9 +123,16 @@ import type {
 import type { OnboardingRecommendationsRecord } from "./onboarding-recommendations.contract.js";
 import type { BranchAgentDatabaseRegistryReadResult } from "./branch-agent-db-contract.js";
 import type { ConfigMachineState } from "./branch-state-db.generated.js";
+import type {
+  RegisteredStateReadCommand,
+  RegisteredStateReadResult,
+} from "./branch-state-read-operation-registry.js";
 import type { BranchStateWorkerContext } from "./branch-state-worker-context.types.js";
 import type { BranchStateWorkerErrorPayload } from "./branch-state-worker-error.js";
-import type { SessionRepositoryWorkspaceRecord } from "./session-repository-workspaces.types.js";
+import type {
+  RepositoryWorkspaceOwner,
+  SessionRepositoryWorkspaceRecord,
+} from "./session-repository-workspaces.types.js";
 import type {
   UserProfileAvatarReadCommand,
   UserProfileAvatarReadReply,
@@ -125,10 +144,12 @@ import type {
   UserChannelIdentityResult,
   CachedGitHubIdentity,
   UserProfileGitHubAttributionRead,
-  UserProfileDisplay,
   ProfileDisplayRow,
   UserProfileEmailBinding,
+  UserProfileAuthority,
 } from "./user-profiles.types.js";
+
+type ConfigMachineStateRow = Pick<Selectable<ConfigMachineState>, "value_json" | "updated_at_ms">;
 
 export type BranchStateReadLocation = {
   context: BranchStateWorkerContext;
@@ -144,6 +165,7 @@ export type BranchStateReadAuthority = {
 };
 
 export type BranchStateReadCommand =
+  | RegisteredStateReadCommand
   | { type: "backup.runs" }
   | TuiLastSessionReadCommand
   | ChannelIngressReadCommand
@@ -151,15 +173,11 @@ export type BranchStateReadCommand =
   | { type: "capture.readOnlyBlob"; blobId: string }
   | { type: "deliveryQueue.outbound"; id?: string; mode: "pending" | "unfinished" }
   | { type: "config.snapshot.read" }
+  | { type: "groves.packageOwnership"; agentId?: string; includeInstalls: boolean }
   | { type: "doctor.gatewayOwnerLease.read" }
   | { type: "acpSessions.list" }
   | { type: "acpSessions.metadata"; entries: readonly AcpSessionReadInput[] }
-  | {
-      [Kind in keyof McpOAuthReadOnlyOperations]: {
-        type: Kind;
-        input: McpOAuthReadOnlyOperations[Kind]["input"];
-      };
-    }[keyof McpOAuthReadOnlyOperations]
+  | SqliteWorkerCommand<McpOAuthReadOnlyOperations>
   | { type: "conversationBindings.inspect"; conversation: ConversationRef }
   | DevicePairingReadCommand
   | {
@@ -167,6 +185,7 @@ export type BranchStateReadCommand =
       input: ListTerminalOperatorApprovalsInput;
     }
   | { type: "operatorApprovals.listCronGrants"; input: { limit?: number } }
+  | { type: "operatorApprovals.validateCronGrant"; input: CronStandingGrantLookupInput }
   | PluginBlobReadCommand
   | { type: "subagents.sessionList" }
   | {
@@ -190,15 +209,11 @@ export type BranchStateReadCommand =
   | { type: "cron.quarantine"; storeKey: string }
   | { type: "subagents.forChildSession"; childSessionKey: string }
   | { type: "exec-approvals.read" }
-  | {
-      [Kind in keyof SkillLibraryReadOnlyOperations]: {
-        type: Kind;
-        input: SkillLibraryReadOnlyOperations[Kind]["input"];
-      };
-    }[keyof SkillLibraryReadOnlyOperations]
+  | SqliteWorkerCommand<SkillLibraryReadOnlyOperations>
   | { type: "agentDatabaseRegistry.read" }
   | { type: "agentDatabaseDeletion.snapshot"; purpose: AgentDeletionJournalPurpose }
   | { type: "agentDeletionJournal.status"; agentId: string }
+  | { type: "agentDeletionJournal.authority"; agentId: string }
   | { type: "workerEnvironments.snapshot"; ids?: readonly string[] }
   | { type: "workerEnvironments.pruneCandidates"; input: WorkerEnvironmentPruneReadInput }
   | { type: "sessionGroups.snapshot" }
@@ -241,10 +256,12 @@ export type BranchStateReadCommand =
   | { type: "workerPlacements.changeSnapshot"; profileIds?: string[] }
   | { type: "fleet.get"; tenantId: string }
   | { type: "nodeHost.config" }
+  | { type: "tts.prefsPath" }
   | { type: "operator.channelPolicy" }
+  | { type: "preparedPoolPresence.read" }
   | {
       type: "sessionRepositoryWorkspaces.find";
-      owners: readonly { agentId: string; sessionKey: string }[];
+      owners: readonly RepositoryWorkspaceOwner[];
     }
   | { type: "workspace.snapshot"; workspaceDir: string }
   | { type: "sandboxRegistry.list" }
@@ -253,6 +270,8 @@ export type BranchStateReadCommand =
   | { type: "sandboxRegistry.browsers" }
   | WorkspaceJournalReadCommand
   | { type: "workers.placementRecoveryCandidates" }
+  | { type: "workers.placementPreservation" }
+  | { type: "workers.placementPendingResults"; sessionId?: string }
   | {
       type: "workers.placementProjection";
       sessionIds: readonly string[];
@@ -270,16 +289,29 @@ export type BranchStateReadRequest = {
 type ReadResult<Reply> = Reply extends { ok: true } ? Omit<Reply, "ok" | "sourceAdmitted"> : never;
 
 export type BranchStateReadResult =
+  | RegisteredStateReadResult
   | { type: "backup.runs"; runs: BackupRunRecord[] }
+  | {
+      type: "groves.packageOwnership";
+      install: PersistedGroveInstall | undefined;
+      installs: PersistedGroveInstall[];
+      packageRefs: PersistedClawPackageRef[];
+      orphanWorkspace: GroveOrphanWorkspace | undefined;
+    }
   | { type: "doctor.gatewayOwnerLease.read"; lease: GatewayOwnerLeaseIdentity | undefined }
+  | { type: "preparedPoolPresence.read"; demand: PreparedPoolPresenceDemand | undefined }
   | {
       type: "tui.lastSession.read";
-      row: Pick<Selectable<ConfigMachineState>, "value_json" | "updated_at_ms"> | undefined;
+      row: ConfigMachineStateRow | undefined;
     }
   | ReadResult<ChannelIngressReadReply>
   | {
       type: "agentDeletionJournal.status";
       status: AgentDeletionJournalStatus;
+    }
+  | {
+      type: "agentDeletionJournal.authority";
+      authority: AgentDeletionJournalAuthority | undefined;
     }
   | {
       type: "deliveryQueue.outbound";
@@ -313,6 +345,7 @@ export type BranchStateReadResult =
       history: ListTerminalOperatorApprovalsResult;
     }
   | { type: "operatorApprovals.listCronGrants"; grants: CronStandingGrantListing[] }
+  | { type: "operatorApprovals.validateCronGrant"; result: ConsumeCronStandingGrantResult }
   | ReadResult<PluginBlobReadReply>
   | {
       type: "capture.readOnlyEvents";
@@ -374,6 +407,7 @@ export type BranchStateReadResult =
   | { type: "cron.scratch"; snapshot: CronScratchSnapshot | undefined }
   | {
       type: "cron.jobNames";
+      storeKey: string;
       names: Map<string, string | undefined>;
     }
   | {
@@ -392,6 +426,7 @@ export type BranchStateReadResult =
       type: "subagents.runs";
       projection?: never;
       runs: Map<string, SubagentRunRecord>;
+      versions?: Map<string, string | null>;
       descendantBasis?: { digest: string; sessionKeys: Set<string>; runIds: readonly string[] };
     }
   | {
@@ -445,14 +480,7 @@ export type BranchStateReadResult =
     }
   | {
       type: "userProfiles.authority.resolve";
-      profile:
-        | {
-            profileId: string;
-            role: string | null;
-            aliases: string[];
-            display: UserProfileDisplay;
-          }
-        | undefined;
+      profile: UserProfileAuthority | undefined;
     }
   | {
       type: "userProfiles.githubIdentity.cached";
@@ -501,8 +529,8 @@ export type BranchStateReadResult =
     }
   | { type: "fleet.get"; cell: FleetCellRecord | undefined }
   | {
-      type: "nodeHost.config" | "operator.channelPolicy";
-      row: Pick<Selectable<ConfigMachineState>, "value_json" | "updated_at_ms"> | undefined;
+      type: "nodeHost.config" | "operator.channelPolicy" | "tts.prefsPath";
+      row: ConfigMachineStateRow | undefined;
     }
   | {
       type: "sessionRepositoryWorkspaces.find";
@@ -524,6 +552,11 @@ export type BranchStateReadResult =
     }
   | WorkspaceJournalReadResult
   | { type: "workers.placementRecoveryCandidates"; candidates: WorkerPlacementRecoveryCandidate[] }
+  | { type: "workers.placementPreservation"; placements: WorkerSessionPlacementRecord[] }
+  | {
+      type: "workers.placementPendingResults";
+      pendingResults: import("../gateway/worker-environments/placement-workspace-result.types.js").WorkerWorkspacePendingResult[];
+    }
   | {
       type: "workers.placementProjection";
       result: WorkerSessionPlacementReadResult;
@@ -553,7 +586,8 @@ export type BranchStateReadOutcome =
   | { value: Extract<BranchStateReadReply, { ok: true }> }
   | { error: unknown; sourceAdmitted?: boolean };
 
-export type BranchStateReadPhase = "before-read" | "read" | "unobserved";
+type BranchStateReadPhase = "before-read" | "read" | "unobserved";
+export type BranchStateReadReceipt = { phase: BranchStateReadPhase };
 export type BranchStateReadOptions = {
   /** Cancellation abandons delivery only after the accepted read and cleanup settle. */
   signal?: AbortSignal;

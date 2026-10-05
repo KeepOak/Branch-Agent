@@ -580,6 +580,7 @@ export function Composer(props: Props) {
             onOpen={onOpen}
             onRetry={() => void conv.readModelList()}
             engine={engine}
+            trunkId={conv.trunkId}
           />
         ) : null}
         {searching ? (

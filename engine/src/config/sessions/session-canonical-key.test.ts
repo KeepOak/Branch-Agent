@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { FIRST_USE_ADDITIVE_AGENT_COLUMN_DEFINITIONS } from "../../state/branch-agent-db-additive-columns.js";
 import {
   closeBranchAgentDatabaseByPath,
+  closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
   openBranchAgentDatabase,
   runBranchAgentWriteTransaction,
@@ -354,6 +355,7 @@ describe("cold canonical session validation", () => {
       { ...scope, sessionKey: "agent:main:unrelated" },
       { sessionId: "unrelated", updatedAt: 2, skillsSnapshot: { prompt, skills: [] } },
     );
+    await closeBranchAgentDatabasesAsync();
     closeBranchAgentDatabasesForTest();
     closeBranchStateDatabaseForTest();
 
@@ -384,6 +386,7 @@ describe("cold canonical session validation", () => {
     database.db
       .prepare("UPDATE session_nodes SET parent_session_key = ? WHERE session_key = ?")
       .run("agent:main:different", scope.sessionKey);
+    await closeBranchAgentDatabasesAsync();
     closeBranchAgentDatabasesForTest();
     closeBranchStateDatabaseForTest();
 
