@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AgentDatabasePreparationSupersededError } from "../state/agent-database-admission.js";
-import { runStartupModelPublication } from "./server-agent-database-startup.publication.js";
+import { runStartupModelPublication } from "./server-agent-database-startup.js";
 
 class PublicationSupersededError extends Error {}
 
