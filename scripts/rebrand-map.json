@@ -251,6 +251,41 @@
       "re": "🦞",
       "to": "🌿",
       "key": "🦞"
+    },
+    {
+      "why": "the pet's crab visitor is a beetle (no crustacean names in the app); only inside the pet's own files",
+      "re": "the crab was a lobster all along",
+      "to": "the acorn was an oak all along",
+      "notIn": "^(?!engine/ui/src/(?:components/trellis-pet|styles/trellis-pet|e2e/trellis-pet))",
+      "key": "crab-fortune"
+    },
+    {
+      "why": "the pet's crab visitor is a beetle (no crustacean names in the app); only inside the pet's own files",
+      "re": "crab: \"definitely a lobster\"",
+      "to": "beetle: \"definitely a pinecone\"",
+      "notIn": "^(?!engine/ui/src/(?:components/trellis-pet|styles/trellis-pet|e2e/trellis-pet))",
+      "key": "crab-title"
+    },
+    {
+      "why": "the pet's crab visitor is a beetle (no crustacean names in the app); only inside the pet's own files",
+      "re": "The crab walks sideways by definition",
+      "to": "The beetle scuttles across in a hurry",
+      "notIn": "^(?!engine/ui/src/(?:components/trellis-pet|styles/trellis-pet|e2e/trellis-pet))",
+      "key": "crab-comment"
+    },
+    {
+      "why": "the pet's crab visitor is a beetle (no crustacean names in the app); only inside the pet's own files",
+      "re": "CRAB(?=_SPRITE)",
+      "to": "BEETLE",
+      "notIn": "^(?!engine/ui/src/(?:components/trellis-pet|styles/trellis-pet|e2e/trellis-pet))",
+      "key": "CRAB"
+    },
+    {
+      "why": "the pet's crab visitor is a beetle (no crustacean names in the app); only inside the pet's own files",
+      "re": "(?<![A-Za-z])crab(?!, allegedly)(?![a-z])",
+      "to": "beetle",
+      "notIn": "^(?!engine/ui/src/(?:components/trellis-pet|styles/trellis-pet|e2e/trellis-pet))",
+      "key": "crab"
     }
   ],
   "proposed": {
