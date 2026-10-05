@@ -682,14 +682,13 @@ async function probeMcpServersOrFail(params: {
 const BRANCH_MCP_REGISTRY_SCOPE_NOTE =
   "Note: this command only shows Branch-managed mcp.servers entries and does not include mcporter servers from config/mcporter.json.";
 
-export function registerMcpCli(program: Command) {
-  const mcp = program
-    .command("mcp")
-    .description("Manage Branch Agent mcp.servers config and channel bridge");
+/** Graft: the stdio MCP server coding agents use to work with Branch. `branch graft` and `branch mcp serve`
+ *  (the upstream name, kept as an alias) are the same command. */
+export const GRAFT_DESCRIPTION =
+  "Graft: work with Branch (Trunks, group chats, the window and channels over MCP stdio)";
 
-  mcp
-    .command("serve")
-    .description("Expose Branch Agent Trunks, group chats and channels over MCP stdio")
+function registerGraftServe(command: Command): void {
+  command
     .option("--url <url>", "Gateway WebSocket URL (defaults to gateway.remote.url when configured)")
     .option("--token <token>", "Gateway token (if required)")
     .option("--token-file <path>", "Read gateway token from file")
@@ -736,6 +735,14 @@ export function registerMcpCli(program: Command) {
         defaultRuntime.exit(1);
       }
     });
+}
+
+export function registerMcpCli(program: Command) {
+  const mcp = program
+    .command("mcp")
+    .description("Manage Branch Agent mcp.servers config and Graft (mcp serve)");
+
+  registerGraftServe(mcp.command("serve").description(GRAFT_DESCRIPTION));
 
   mcp
     .command("list")
@@ -1368,3 +1375,8 @@ export function registerMcpCli(program: Command) {
   applyParentDefaultHelpAction(mcp);
 }
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
+
+/** `branch graft`: the primary name of `branch mcp serve`. */
+export function registerGraftCli(program: Command) {
+  registerGraftServe(program.command("graft").description(GRAFT_DESCRIPTION));
+}
