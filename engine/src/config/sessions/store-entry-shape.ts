@@ -18,7 +18,9 @@ function normalizeSessionEntryArchiveReason(
     value === "active-session-cap" ||
     value === "age-retention" ||
     value === "stale-dashboard" ||
-    value === "restart-recovery"
+    value === "restart-recovery" ||
+    value === "empty" ||
+    value === "moved"
     ? value
     : undefined;
 }

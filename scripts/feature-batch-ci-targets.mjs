@@ -42,6 +42,7 @@ export const engineTests = [
   'src/auto-reply/reply/commands-warnings.test.ts',
   'src/coding/unified-diff.test.ts',
   'src/commands/agents.identity.test.ts',
+  'src/commands/doctor/shared/contacts-migration.test.ts',
   'src/config/config.identity-avatar.test.ts',
   'src/gateway/assistant-avatar.test.ts',
   'src/gateway/assistant-identity.test.ts',

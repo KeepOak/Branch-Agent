@@ -293,6 +293,12 @@ export async function noteSessionTranscriptHealth(options?: {
     );
     const { migrateLegacyMainSessionKeys } =
       await import("../config/sessions/legacy-main-session-migration.js");
+    const { migrateContacts } = await import("../config/sessions/contacts-migration.js");
+    migrateContacts({
+      cfg: params.cfg ?? {},
+      env: params.env,
+      apply: params.shouldRepair,
+    });
     legacyMainSessionResult = await migrateLegacyMainSessionKeys({
       cfg: params.cfg ?? {},
       env: params.env,
