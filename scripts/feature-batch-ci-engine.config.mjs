@@ -10,6 +10,9 @@ export default {
     ...sharedVitestConfig.test,
     include: namedTests('engine'),
     projects: undefined,
+    // Upstream runs host-owned SQLite broker consumers in forked processes (vitest.database-worker-core-paths.mjs);
+    // worker threads cannot admit agent or shared-state stores. Windows already used forks.
+    pool: 'forks',
     maxWorkers: 1,
     fileParallelism: false,
     isolate: true,

@@ -36,7 +36,6 @@ function buildBoundedDashboardProps(tab: "insights" | "wiki"): RingsProps {
     promotedCount: 0,
     shortTermEntries: [],
     promotedEntries: [],
-    ringsOf: null,
     nextCycle: null,
     timezone: null,
     statusError: null,

@@ -173,9 +173,13 @@ describe("shortenHomePath", () => {
     },
   );
 
-  it.skipIf(process.platform === "win32")("keeps POSIX home matching case-sensitive", () => {
+  it.skipIf(process.platform === "win32")("preserves POSIX home path boundaries and case", () => {
     withEnv({ BRANCH_HOME: "/srv/Branch-Home", HOME: "/home/other" }, () => {
       expect(shortenHomePath("/srv/branch-home/workspace")).toBe("/srv/branch-home/workspace");
+      expect(shortenHomePath("/srv/Branch-Home\\workspace")).toBe(
+        "/srv/Branch-Home\\workspace",
+      );
+      expect(shortenHomePath("/srv/Branch-Home/work\\space")).toBe("$BRANCH_HOME/work\\space");
     });
   });
 

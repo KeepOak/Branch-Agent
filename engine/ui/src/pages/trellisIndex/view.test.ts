@@ -21,7 +21,7 @@ describe("renderTrellisIndex", () => {
 
     expect(container.querySelector(".trellisIndex-page__count")?.textContent).toBe("1/42 visited");
 
-    const seen = container.querySelector(".lobster-pet--palette-crimson")?.closest("article");
+    const seen = container.querySelector(".trellis-pet--palette-crimson")?.closest("article");
     expect(seen?.id).toBe("trellisIndex-crimson");
     expect(seen?.querySelector("h3")?.textContent).toBe("Ruby");
     expect(seen?.querySelector(".trellisIndex-page__lore")?.textContent).toBe(
@@ -37,7 +37,7 @@ describe("renderTrellisIndex", () => {
     expect(seen?.querySelector(".trellisIndex-page__star")).not.toBeNull();
     expect(seen?.querySelector('button[aria-label="Copy link"]')).not.toBeNull();
 
-    const unseen = container.querySelector(".lobster-pet--palette-watermelon")?.closest("article");
+    const unseen = container.querySelector(".trellis-pet--palette-watermelon")?.closest("article");
     expect(unseen?.querySelector("h3")?.textContent).toBe("?");
     expect(unseen?.querySelector(".trellisIndex-page__lore")?.textContent).toBe("Ripe when thumped.");
     expect(unseen?.querySelector(".trellisIndex-page__date")).toBeNull();

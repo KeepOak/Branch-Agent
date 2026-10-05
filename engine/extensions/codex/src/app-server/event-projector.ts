@@ -36,6 +36,7 @@ import {
   type JsonObject,
   type JsonValue,
 } from "./protocol.js";
+import { isCodexTransientProviderTurnFailure } from "./usage-limit-error.js";
 
 const optedOutNotificationMethods = new Set<string>(CODEX_APP_SERVER_OPT_OUT_NOTIFICATION_METHODS);
 
@@ -256,7 +257,10 @@ export class CodexAppServerEventProjector extends CodexTurnProjection {
         this.eventProjection.handleCyberPolicyError(codexErrorInfo, this.params.modelId);
         const compactionFailure = codexErrorInfo === "other" && this.isCompacting();
         this.settledTurnFailureFinalizationAllowed =
-          codexErrorInfo === "serverOverloaded" || compactionFailure;
+          isCodexTransientProviderTurnFailure({
+            message: readCodexErrorNotificationMessage(params),
+            codexErrorInfo,
+          }) || compactionFailure;
         this.terminalFailure.record({
           message: readCodexErrorNotificationMessage(params),
           codexErrorInfo,
@@ -316,7 +320,13 @@ export class CodexAppServerEventProjector extends CodexTurnProjection {
     });
   }
 
-  recordDynamicToolCall(params: { callId: string; tool: string; arguments?: JsonValue }): void {
+  recordDynamicToolCall(params: {
+    callId: string;
+    namespace?: string | null;
+    tool: string;
+    arguments?: JsonValue;
+  }): void {
+    this.toolSearchEvidenceProjection?.recordDynamicToolCall(params);
     this.toolTranscriptProjection.recordDynamicToolCall(params);
   }
 
@@ -338,6 +348,7 @@ export class CodexAppServerEventProjector extends CodexTurnProjection {
       details?: unknown;
     },
   ): void {
+    this.toolSearchEvidenceProjection?.recordDynamicToolResult(params);
     this.toolProgressProjection.recordDynamicToolResult(params);
     const source = this.options.resolveDynamicToolResultContentSource?.(params.tool);
     this.toolTranscriptProjection.recordDynamicToolResult(params, source);
@@ -573,23 +584,34 @@ export class CodexAppServerEventProjector extends CodexTurnProjection {
         (turn.error?.codexErrorInfo === "other" && this.isCompacting()));
     this.settledTurnFailureFinalizationAllowed =
       turn.status === "failed" &&
-      (turn.error?.codexErrorInfo === "serverOverloaded" || compactionFailure);
+      (this.settledTurnFailureFinalizationAllowed ||
+        isCodexTransientProviderTurnFailure({
+          message: turn.error?.message,
+          codexErrorInfo: turn.error?.codexErrorInfo,
+        }) ||
+        compactionFailure);
     if (turn.status !== "completed") {
       this.usageProjection.invalidateContext();
     }
     if (turn.status === "failed") {
       const codexErrorInfo = turn.error?.codexErrorInfo as JsonValue | null | undefined;
       this.eventProjection.handleCyberPolicyError(codexErrorInfo, this.params.modelId);
-      this.terminalFailure.record({
-        message: turn.error?.message,
-        codexErrorInfo,
-        misalignment: turn.error?.misalignment,
-        nativeThreadId: this.threadId,
-        nativeTurnId: this.turnId,
-        rateLimits: this.options.readRecentRateLimits?.(),
-        fallbackMessage: "codex app-server turn failed",
-        promptErrorSource: compactionFailure ? "compaction" : "prompt",
-      });
+      if (
+        turn.error?.codexErrorInfo ||
+        !this.terminalFailure.promptError ||
+        (turn.error?.message && turn.error.message.trim().toLowerCase() !== "failed")
+      ) {
+        this.terminalFailure.record({
+          message: turn.error?.message,
+          codexErrorInfo,
+          misalignment: turn.error?.misalignment,
+          nativeThreadId: this.threadId,
+          nativeTurnId: this.turnId,
+          rateLimits: this.options.readRecentRateLimits?.(),
+          fallbackMessage: "codex app-server turn failed",
+          promptErrorSource: compactionFailure ? "compaction" : "prompt",
+        });
+      }
     }
     this.closeCompactionProgress();
     const turnItems = turn.items;
@@ -668,6 +690,7 @@ export class CodexAppServerEventProjector extends CodexTurnProjection {
     if (item.role === "assistant" && extractRawAssistantText(item)) {
       this.eventProjection.markSafetyBufferingAssistantStarted();
     }
+    this.toolSearchEvidenceProjection?.recordRawResponseItem(item);
     this.toolTranscriptProjection.recordRawNativeToolItem(item);
     // Project protocol state before media persistence yields. Notifications may overlap,
     // so delayed image I/O must not consume assistant-echo state from a newer item.

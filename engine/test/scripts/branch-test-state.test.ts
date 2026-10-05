@@ -26,8 +26,6 @@ function cleanupTestStateHomeTrap(): string {
   ].join("; ");
 }
 
-const secretKeyPattern = /^[a-f0-9]{64}$/u;
-
 describe("scripts/lib/branch-test-state", () => {
   it("creates a sourceable env file and JSON description", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "branch-test-state-script-"));
@@ -58,14 +56,12 @@ describe("scripts/lib/branch-test-state", () => {
       expect(payload.stateDir).toBe(path.join(payload.home, ".branch"));
       expect(payload.configPath).toBe(path.join(payload.stateDir, "branch.json"));
       expect(payload.workspaceDir).toBe(path.join(payload.home, "workspace"));
-      expect(payload.env.BRANCH_AUTH_PROFILE_SECRET_KEY).toMatch(secretKeyPattern);
       expect(payload.env).toEqual({
         HOME: payload.home,
         USERPROFILE: payload.home,
         BRANCH_HOME: payload.home,
         BRANCH_STATE_DIR: payload.stateDir,
         BRANCH_CONFIG_PATH: payload.configPath,
-        BRANCH_AUTH_PROFILE_SECRET_KEY: payload.env.BRANCH_AUTH_PROFILE_SECRET_KEY,
       });
       expect(payload.config).toEqual({
         update: {
@@ -79,16 +75,14 @@ describe("scripts/lib/branch-test-state", () => {
       expect(envFileText).toContain("export BRANCH_HOME=");
       expect(envFileText).toContain("export BRANCH_STATE_DIR=");
       expect(envFileText).toContain("export BRANCH_CONFIG_PATH=");
-      expect(envFileText).toContain("export BRANCH_AUTH_PROFILE_SECRET_KEY=");
 
       const probe = await execFileAsync("bash", [
         "-lc",
-        `source ${shellQuote(envFile)}; node -e 'const fs=require("node:fs"); const config=JSON.parse(fs.readFileSync(process.env.BRANCH_CONFIG_PATH,"utf8")); process.stdout.write(JSON.stringify({home:process.env.HOME,stateDir:process.env.BRANCH_STATE_DIR,secretKey:process.env.BRANCH_AUTH_PROFILE_SECRET_KEY,channel:config.update.channel}));'`,
+        `source ${shellQuote(envFile)}; node -e 'const fs=require("node:fs"); const config=JSON.parse(fs.readFileSync(process.env.BRANCH_CONFIG_PATH,"utf8")); process.stdout.write(JSON.stringify({home:process.env.HOME,stateDir:process.env.BRANCH_STATE_DIR,channel:config.update.channel}));'`,
       ]);
       expect(JSON.parse(probe.stdout)).toEqual({
         home: payload.home,
         stateDir: payload.stateDir,
-        secretKey: payload.env.BRANCH_AUTH_PROFILE_SECRET_KEY,
         channel: "stable",
       });
       await fs.rm(payload.root, { recursive: true, force: true });
@@ -121,7 +115,7 @@ describe("scripts/lib/branch-test-state", () => {
 
       const probe = await execFileAsync("bash", [
         "-lc",
-        `${cleanupTestStateHomeTrap()}; source ${shellQuote(snippetFile)}; node -e 'const fs=require("node:fs"); const config=JSON.parse(fs.readFileSync(process.env.BRANCH_CONFIG_PATH,"utf8")); process.stdout.write(JSON.stringify({home:process.env.HOME,branchHome:process.env.BRANCH_HOME,workspace:process.env.BRANCH_TEST_WORKSPACE_DIR,secretKey:process.env.BRANCH_AUTH_PROFILE_SECRET_KEY,channel:config.update.channel}));'`,
+        `${cleanupTestStateHomeTrap()}; source ${shellQuote(snippetFile)}; node -e 'const fs=require("node:fs"); const config=JSON.parse(fs.readFileSync(process.env.BRANCH_CONFIG_PATH,"utf8")); process.stdout.write(JSON.stringify({home:process.env.HOME,branchHome:process.env.BRANCH_HOME,workspace:process.env.BRANCH_TEST_WORKSPACE_DIR,channel:config.update.channel}));'`,
       ]);
 
       const payload = JSON.parse(probe.stdout);
@@ -131,7 +125,6 @@ describe("scripts/lib/branch-test-state", () => {
       );
       expect(payload.branchHome).toBe(payload.home);
       expect(payload.workspace).toBe(`${payload.home}/workspace`);
-      expect(payload.secretKey).toMatch(secretKeyPattern);
       expect(payload.channel).toBe("stable");
 
       const customTemp = path.join(tempRoot, "state-tmp");
@@ -159,52 +152,6 @@ describe("scripts/lib/branch-test-state", () => {
         ),
       );
       expect(trailingSlashPayload.stateDir).toBe(`${trailingSlashPayload.home}/.branch`);
-    } finally {
-      await fs.rm(tempRoot, { recursive: true, force: true });
-    }
-  });
-
-  it("keeps shell key generation independent of node", async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "branch-test-state-path-node-"));
-    const fakeBin = path.join(tempRoot, "bin");
-    const snippetFile = path.join(tempRoot, "state.sh");
-    const functionFile = path.join(tempRoot, "state-function.sh");
-    try {
-      await fs.mkdir(fakeBin, { recursive: true });
-      await fs.writeFile(
-        path.join(fakeBin, "node"),
-        "#!/bin/sh\necho 'fake node should not be used for key generation' >&2\nexit 42\n",
-        "utf8",
-      );
-      await fs.chmod(path.join(fakeBin, "node"), 0o755);
-
-      const shell = await execFileAsync(process.execPath, [
-        scriptPath,
-        "shell",
-        "--label",
-        "path-node",
-        "--scenario",
-        "empty",
-      ]);
-      await fs.writeFile(snippetFile, shell.stdout, "utf8");
-
-      const shellProbe = await execFileAsync("bash", [
-        "-lc",
-        `${cleanupTestStateHomeTrap()}; export PATH=${shellQuote(fakeBin)}:$PATH; source ${shellQuote(snippetFile)}; printf '%s' "$BRANCH_AUTH_PROFILE_SECRET_KEY"`,
-      ]);
-      expect(shellProbe.stdout).toMatch(secretKeyPattern);
-
-      const renderedFunction = await execFileAsync(process.execPath, [
-        scriptPath,
-        "shell-function",
-      ]);
-      await fs.writeFile(functionFile, renderedFunction.stdout, "utf8");
-
-      const functionProbe = await execFileAsync("bash", [
-        "-lc",
-        `${cleanupTestStateHomeTrap()}; export PATH=${shellQuote(fakeBin)}:$PATH; export BRANCH_TEST_STATE_TMPDIR=${shellQuote(path.join(tempRoot, "function-tmp"))}; source ${shellQuote(functionFile)}; branch_test_state_create "path node" minimal; printf '%s' "$BRANCH_AUTH_PROFILE_SECRET_KEY"`,
-      ]);
-      expect(functionProbe.stdout).toMatch(secretKeyPattern);
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
@@ -275,7 +222,7 @@ describe("scripts/lib/branch-test-state", () => {
 
       const probe = await execFileAsync("bash", [
         "-lc",
-        `${cleanupTestStateHomeTrap()}; export BRANCH_TEST_STATE_TMPDIR=${shellQuote(path.join(tempRoot, "function-tmp"))}; source ${shellQuote(snippetFile)}; export BRANCH_AGENT_DIR=/tmp/outside-agent; branch_test_state_create "onboard case" minimal; node -e 'const fs=require("node:fs"); const config=JSON.parse(fs.readFileSync(process.env.BRANCH_CONFIG_PATH,"utf8")); process.stdout.write(JSON.stringify({home:process.env.HOME,tmpDir:process.env.BRANCH_TEST_STATE_TMPDIR,agentDir:process.env.BRANCH_AGENT_DIR || null,workspace:process.env.BRANCH_TEST_WORKSPACE_DIR,secretKey:process.env.BRANCH_AUTH_PROFILE_SECRET_KEY,config}));'`,
+        `${cleanupTestStateHomeTrap()}; export BRANCH_TEST_STATE_TMPDIR=${shellQuote(path.join(tempRoot, "function-tmp"))}; source ${shellQuote(snippetFile)}; export BRANCH_AGENT_DIR=/tmp/outside-agent; branch_test_state_create "onboard case" minimal; node -e 'const fs=require("node:fs"); const config=JSON.parse(fs.readFileSync(process.env.BRANCH_CONFIG_PATH,"utf8")); process.stdout.write(JSON.stringify({home:process.env.HOME,tmpDir:process.env.BRANCH_TEST_STATE_TMPDIR,agentDir:process.env.BRANCH_AGENT_DIR || null,workspace:process.env.BRANCH_TEST_WORKSPACE_DIR,config}));'`,
       ]);
 
       const payload = JSON.parse(probe.stdout);
@@ -283,7 +230,6 @@ describe("scripts/lib/branch-test-state", () => {
       expect(payload.home).toContain("/branch-onboard-case-minimal-home.");
       expect(payload.agentDir).toBeNull();
       expect(payload.workspace).toBe(`${payload.home}/workspace`);
-      expect(payload.secretKey).toMatch(secretKeyPattern);
       expect(payload.config).toStrictEqual({});
 
       const trailingTmpDir = path.join(tempRoot, "function-trailing-tmp");
@@ -300,12 +246,11 @@ describe("scripts/lib/branch-test-state", () => {
       const existingHome = path.join(tempRoot, "existing-home");
       const existingProbe = await execFileAsync("bash", [
         "-lc",
-        `source ${shellQuote(snippetFile)}; branch_test_state_create ${shellQuote(existingHome)} minimal; firstKey="$BRANCH_AUTH_PROFILE_SECRET_KEY"; export firstKey; printf '{"kept":true}\\n' > "$BRANCH_CONFIG_PATH"; branch_test_state_create ${shellQuote(existingHome)} empty; node -e 'const fs=require("node:fs"); const config=JSON.parse(fs.readFileSync(process.env.BRANCH_CONFIG_PATH,"utf8")); process.stdout.write(JSON.stringify({home:process.env.HOME,secretKey:process.env.BRANCH_AUTH_PROFILE_SECRET_KEY,firstKey:process.env.firstKey,config}));'`,
+        `source ${shellQuote(snippetFile)}; branch_test_state_create ${shellQuote(existingHome)} minimal; printf '{"kept":true}\\n' > "$BRANCH_CONFIG_PATH"; branch_test_state_create ${shellQuote(existingHome)} empty; node -e 'const fs=require("node:fs"); const config=JSON.parse(fs.readFileSync(process.env.BRANCH_CONFIG_PATH,"utf8")); process.stdout.write(JSON.stringify({home:process.env.HOME,config}));'`,
       ]);
 
       const existingPayload = JSON.parse(existingProbe.stdout);
       expect(existingPayload.home).toBe(existingHome);
-      expect(existingPayload.secretKey).toBe(existingPayload.firstKey);
       expect(existingPayload.config).toEqual({ kept: true });
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });

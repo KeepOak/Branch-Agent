@@ -132,7 +132,11 @@ describe("doctor lint state isolation", () => {
       await withBranchTestState({ prefix: "branch-doctor-lint-workshop-" }, async (state) => {
         const customDir = state.path("custom-agent");
         await state.writeConfig({
-          agents: { entries: { main: { default: true }, custom: { agentDir: customDir } } },
+          agents: {
+            ownership: "explicit",
+            defaults: { systemAgent: { agentId: "main" } },
+            entries: { main: {}, custom: { agentDir: customDir } },
+          },
           memory: { search: { enabled: false } },
         });
         const targets = [
@@ -648,7 +652,7 @@ describe("doctor lint state isolation", () => {
         { prefix: "branch-doctor-personal-skills-", layout },
         async (state) => {
           await state.writeConfig({
-            agents: { entries: { main: { default: true, workspace: state.workspaceDir } } },
+            agents: { entries: { main: { workspace: state.workspaceDir } } },
             memory: { search: { enabled: false } },
           });
           const personal = path.join(state.home, ".agents", "skills", "personal-probe");

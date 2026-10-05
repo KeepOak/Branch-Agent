@@ -1,6 +1,6 @@
 import type { MessagePort } from "node:worker_threads";
+import type { RetainedOperation } from "@branch/worker-runtime/lifecycle";
 import type { BranchStateWorkerErrorPayload } from "../state/branch-state-worker-error.js";
-import type { RetainedOperation } from "./retained-operation.js";
 import type { DatabaseFileIdentity } from "./sqlite-worker-identity.js";
 
 export type SqliteSnapshotStagingDirectory = {

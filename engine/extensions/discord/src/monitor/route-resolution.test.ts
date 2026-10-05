@@ -16,7 +16,7 @@ function buildWorkerBindingConfig(peer: {
 }): BranchConfig {
   return {
     agents: {
-      list: [{ id: "worker" }],
+      entries: { worker: {} },
     },
     bindings: [
       {

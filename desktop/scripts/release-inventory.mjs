@@ -59,7 +59,7 @@ async function verifyTarget(directory, proof, inventory) {
   const target = `${proof.platform}-${proof.arch}`;
   const manifestName = `branch-release-${target}.json`;
   assert(Object.hasOwn(proof.assets, manifestName), "Missing platform component manifest");
-  const desktopName = `branch-desktop-${proof.version}-${target}.${proof.platform === "win32" ? "zip" : "tar.gz"}`;
+  const desktopName = `branch-desktop-${proof.version}-${target}.tar.gz`;
   assert(Object.hasOwn(proof.assets, desktopName), "Missing native desktop bootstrap package");
   for (const [name, expected] of Object.entries(proof.assets)) {
     assert(/^[A-Za-z0-9.-]+$/.test(name), "Unsafe proof asset filename");
@@ -72,7 +72,8 @@ async function verifyTarget(directory, proof, inventory) {
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.version, proof.version);
   assert.equal(manifest.sourceCommit, proof.commit, "Manifest source identity mismatch");
-  for (const component of ["engine", "window"]) verifyComponent(manifest.components?.[component], proof, inventory, component);
+  const components = ["engine", "window", "desktop", ...(proof.platform === "darwin" ? [] : ["desktopRuntime"])];
+  for (const component of components) verifyComponent(manifest.components?.[component], proof, inventory, component);
   assert.equal(manifest.components.engine.expandedBytes, proof.smoke.expandedBytes, "Extracted archive receipt byte count mismatch");
 }
 
@@ -105,12 +106,15 @@ function verifyComponent(asset, proof, inventory, component) {
   assert.equal(url.username + url.password + url.search + url.hash, "");
   const name = decodeURIComponent(url.pathname.split("/").at(-1));
   assert.equal(url.pathname, `/KeepOak/Branch-Agent/releases/download/v${proof.version}/${name}`);
-  const expectedName = component === "engine" ? `branch-engine-${proof.version}-${proof.platform}-${proof.arch}.tar.gz` : `branch-window-${proof.version}.tar.gz`;
+  const target = `${proof.platform}-${proof.arch}`;
+  const expectedName = { engine: `branch-engine-${proof.version}-${target}.tar.gz`, window: `branch-window-${proof.version}.tar.gz`,
+    desktop: `branch-desktop-app-${proof.version}-${target}.tar.gz`, desktopRuntime: `branch-desktop-${proof.version}-${target}.tar.gz` }[component];
   assert.equal(name, expectedName, "Component target filename mismatch");
   assert.deepEqual(inventory.get(name), { sha256: asset.sha256, bytes: asset.bytes }, "Manifest/asset mismatch");
   assert(Number.isSafeInteger(asset.expandedBytes) && asset.expandedBytes > 0, "Invalid expanded size");
-  if (component === "engine") {
+  if (component !== "window") {
     assert.equal(asset.platform, proof.platform);
     assert.equal(asset.arch, proof.arch);
   }
+  if (component.startsWith("desktop")) assert.equal(asset.electronVersion, proof.electronVersion, "Desktop component Electron differs from the packaged runtime");
 }

@@ -1,6 +1,7 @@
 // The status bar's popovers (DESIGN-SPEC §4.9.3–§4.9.8): Gateway, What each connection has left, Room left,
 // Running in the background and the version menu. Each reads the engine; controls the engine has no method for are
 // drawn greyed with the reason (WINDOW-BUILD-BRIEF "Hands off").
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState, type ReactNode } from "react";
 import { Logo } from "../places/settings/set1/service";
 import type { Conversation } from "../connect/conversations";
@@ -10,6 +11,7 @@ import { Popover, type Above } from "./Popover";
 import { comingUp, limitsSummary, readMonthSpend, readRoom, readRounds, sizeWords, uptimeWords, monthParams, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
 import "./status.css";
+import { shownWhy } from "./shown-why";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 type Base = { above: Above; onClose: () => void };
@@ -40,7 +42,7 @@ function useRead<T>(request: Request, method: string | null, params: unknown, re
 
 function Item({ icon, label, hint, onClick, off, testid }: { icon: IconName; label: string; hint?: ReactNode; onClick?: () => void; off?: string; testid?: string }) {
   return (
-    <button type="button" className="mi" role="menuitem" data-testid={testid} disabled={Boolean(off)} title={off} onClick={onClick}>
+    <button type="button" className="mi" role="menuitem" data-testid={testid} disabled={Boolean(off)} title={shownWhy(off)} onClick={onClick}>
       <Icon name={icon} small />
       <span className="mi-label">{label}</span>
       {hint ? <span className="mi-hint">{hint}</span> : null}
@@ -50,7 +52,7 @@ function Item({ icon, label, hint, onClick, off, testid }: { icon: IconName; lab
 
 /** A control the engine can't back yet: greyed, with its reason under it (§5.1 "Disabled, with the reason"). */
 function OffLine({ reason }: { reason: string }) {
-  return <p className="sp-off">{reason}</p>;
+  return shownWhy(reason) ? <p className="sp-off">{shownWhy(reason)}</p> : null;
 }
 
 const MODES = ["Off", "When needed", "On"] as const;

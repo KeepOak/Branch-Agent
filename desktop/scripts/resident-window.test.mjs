@@ -36,12 +36,13 @@ function electronFixture() {
     hide() { this.hidden = true; } show() { this.hidden = false; } focus() { this.focused = true; }
     isMinimized() { return this.minimized ?? false; } restore() { this.minimized = false; }
     setMenuBarVisibility() {}
+    maximize() {} isMaximized() { return false; } isDestroyed() { return false; } getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; }
   }
   class Tray extends EventEmitter { constructor() { super(); tray = this; }
     setToolTip(value) { this.tooltip = value; } setContextMenu(value) { this.menu = value; }
     destroy() { this.destroyed = true; } }
   return { app, get window() { return window; }, get tray() { return tray; }, electron: { app, BrowserWindow, Tray,
-    Menu: { buildFromTemplate: value => value }, ipcMain: Object.assign(new EventEmitter(), { handle() {} }), dialog: { showErrorBox: assert.fail },
+    Menu: { buildFromTemplate: value => value }, screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) }, ipcMain: Object.assign(new EventEmitter(), { handle() {} }), dialog: { showErrorBox: assert.fail },
     session: { defaultSession: { setPermissionRequestHandler() {} } }, shell: { openExternal() {} } } };
 }
 async function fixture(run, hidden = false) {

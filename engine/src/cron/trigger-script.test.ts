@@ -250,7 +250,7 @@ describe("cron trigger script evaluator", () => {
         evaluate({
           jobId: "job-canonical-pinned-exec",
           script:
-            'await exec({ command: "printf branch-canonical-ok", host: "node", node: "remote" }); return { fire: false };',
+            'await exec({ command: "echo branch-canonical-ok", host: "node", node: "remote" }); return { fire: false };',
           state: null,
           toolsAllow: ["exec", "process"],
           scheduledToolPolicy: { version: 1, mode: "trusted" },

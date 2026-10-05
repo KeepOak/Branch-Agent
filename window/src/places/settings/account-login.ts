@@ -19,7 +19,7 @@ export type WizardStep = {
 export type WizardResult = { done: boolean; step?: WizardStep; status?: "running" | "done" | "cancelled" | "error"; error?: string };
 export type WizardAnswer = { stepId: string; value?: unknown };
 /** One provider sign-in through models.authLogin (the setup flow's "Add another account"). */
-export type LoginStart = { agentId: string; provider: string; choiceId: string };
+export type LoginStart = { agentId: string; provider: string; choiceId: string; /** branch.setup.auth.start for setup's detected options (bare choice ids); models.authLogin otherwise. */ method?: string };
 
 /** Only web links open from a sign-in step. */
 export function safeSignInUrl(url: string | undefined): string | null {

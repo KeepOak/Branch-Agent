@@ -80,6 +80,7 @@ describe("renderSkills Seedbank", () => {
         {
           score: 0.95,
           slug: "github",
+          installRef: "@branch/github",
           registry: "https://clawhub.ai",
           displayName: "GitHub",
           summary: "GitHub integration for Branch Agent",
@@ -108,7 +109,9 @@ describe("renderSkills Seedbank", () => {
     expect(detailButton?.getAttribute("aria-label")).toBe("Open GitHub details");
     expect(detailButton?.contains(installButton!)).toBe(false);
     expect(resultItem?.querySelector("h2")?.textContent?.trim()).toBe("GitHub");
-    expect(resultItem?.querySelector(".plugin-card-author")?.textContent?.trim()).toBe("github");
+    expect(resultItem?.querySelector(".plugin-card-author")?.textContent?.trim()).toBe(
+      "@branch/github",
+    );
     expect(resultItem?.textContent).toContain("GitHub integration for Branch Agent");
     expect(resultItem?.querySelector<HTMLImageElement>("img")?.src).toBe(
       "blob:clawhub-search-icon",
@@ -118,9 +121,9 @@ describe("renderSkills Seedbank", () => {
     installButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
     expect(onClawHubDetailOpen).toHaveBeenCalledTimes(1);
-    expect(onClawHubDetailOpen).toHaveBeenCalledWith("github");
+    expect(onClawHubDetailOpen).toHaveBeenCalledWith("@branch/github");
     expect(onClawHubInstall).toHaveBeenCalledTimes(1);
-    expect(onClawHubInstall).toHaveBeenCalledWith("github");
+    expect(onClawHubInstall).toHaveBeenCalledWith("@branch/github");
 
     onClawHubInstall.mockClear();
     showModal.mockClear();

@@ -21,7 +21,7 @@ const LABEL = "io.branch.vitest-isolated";
 const CONTAINER_ENV = {
   PATH: "/opt/branch-vitest:/usr/local/bin:/usr/bin:/bin",
   HOME: "/tmp/home",
-  TMPDIR: "/tmp",
+  TMPDIR: "/workspace/.branch/tmp",
   LANG: "C.UTF-8",
   LC_ALL: "C.UTF-8",
   CI: "1",

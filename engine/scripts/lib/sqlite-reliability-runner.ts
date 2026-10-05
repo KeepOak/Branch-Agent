@@ -8,8 +8,8 @@ import { runDoctorStateSqliteCompact } from "../../src/commands/doctor-state-sql
 import { openNodeSqliteDatabase } from "../../src/infra/node-sqlite.js";
 import { createLocalSqliteSnapshotProvider } from "../../src/snapshot/local-repository.js";
 import type { SnapshotDatabaseIdentity } from "../../src/snapshot/snapshot-provider.js";
+import { assertBranchAgentDatabaseForMaintenance } from "../../src/state/branch-agent-db-maintenance.js";
 import {
-  assertBranchAgentDatabaseForMaintenance,
   closeBranchAgentDatabasesForTest,
   openBranchAgentDatabase,
 } from "../../src/state/branch-agent-db.js";

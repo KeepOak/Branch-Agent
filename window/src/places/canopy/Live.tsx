@@ -1,5 +1,7 @@
 // [A] sections at the foot of Canopy › Now (§4.6.7 parity adds): "Every step, live" and "Background tasks".
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { shows } from "../../places-nav/level";
 import { Icon } from "../../shell/icons";
 import { resultText } from "../../thread/model";
@@ -74,8 +76,8 @@ export function BackgroundTasks({ ctx }: { ctx: Ctx }) {
   return (
     <section className="cn-sec" aria-label="Background tasks">
       <div className="cn-sec-h"><h2>Background tasks</h2><span className="cn-acts">
-        <button className="btn ghost sm" type="button" disabled title={noTasks}>Check tasks</button>
-        <button className="btn ghost sm" type="button" disabled title={noTasks}>Tidy the task list</button></span></div>
+        <button className="btn ghost sm" type="button" disabled title={shownWhy(noTasks)}>Check tasks</button>
+        <button className="btn ghost sm" type="button" disabled title={shownWhy(noTasks)}>Tidy the task list</button></span></div>
       {tasks.length ? <div className="cn-rows">{tasks.map(t => {
         const name = trunkName(ctx.d, str(t.agentId));
         return <div className="cn-prow" key={str(t.key)}>

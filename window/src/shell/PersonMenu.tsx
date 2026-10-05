@@ -40,6 +40,7 @@ type Props = {
   onSettings: () => void;
   onAchievements: () => void;
   onShortcuts: () => void;
+  onApps: () => void;
   onAbout: () => void;
   onClose: () => void;
   /** The version waiting to install, when the person hasn't asked to be reminded tomorrow (§4.9.8). */
@@ -97,6 +98,7 @@ export function PersonMenu(p: Props) {
       <Row icon="gear" label="Settings" hint="Ctrl ," onClick={run(p.onSettings)} testid="person-settings" />
       <Row icon="check" label="Achievements" onClick={run(p.onAchievements)} />
       <Row icon="menu" label="Keyboard shortcuts" hint="?" onClick={run(p.onShortcuts)} testid="person-shortcuts" />
+      <Row icon="phone" label="Get the apps" onClick={run(p.onApps)} testid="person-apps" />
       <Row icon="help" label="Guide" onClick={run(p.onGuide)} testid="person-guide" />
       {p.updateTo && p.onUpdate ? (
         <button type="button" className="mi" data-testid="person-update" onClick={run(p.onUpdate)}>

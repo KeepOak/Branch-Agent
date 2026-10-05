@@ -1,4 +1,5 @@
 // Openai tests cover speech provider plugin behavior.
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import { isRecord } from "branch/plugin-sdk/string-coerce-runtime";
 import { withServer } from "branch/plugin-sdk/test-env";
 import { afterEach, describe, expect, it, vi } from "vitest";

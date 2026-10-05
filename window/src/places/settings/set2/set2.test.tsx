@@ -83,11 +83,13 @@ describe("Settings › Updates & about", () => {
     const patch = request.mock.calls.find(([m]) => m === "config.patch");
     expect(JSON.parse(String((patch?.[1] as { raw: string }).raw))).toEqual({ update: { channel: "beta" } });
   });
-  it("greys what the engine can't do yet, with the reason", async () => {
+  it("greys what the engine can't do yet, without the developer note", async () => {
     const { engine } = engineWith({ "update.status": READY });
     await show("updates", engine);
     expect(button("Skip this version").disabled).toBe(true);
-    expect(document.querySelector('[data-row="Undo the last update"]')?.textContent).toContain("needs the engine");
+    const undo = document.querySelector('[data-row="Undo the last update"]');
+    expect(undo?.getAttribute("aria-disabled")).toBe("true");
+    expect(undo?.textContent).not.toContain("needs the engine");
   });
 });
 

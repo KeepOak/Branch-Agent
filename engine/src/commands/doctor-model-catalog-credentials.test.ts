@@ -25,7 +25,10 @@ import {
 } from "../agents/plugin-model-catalog.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import type { RuntimeEnv } from "../runtime.js";
-import { closeBranchAgentDatabasesForTest } from "../state/branch-agent-db.js";
+import {
+  closeBranchAgentDatabasesAsync,
+  closeBranchAgentDatabasesForTest,
+} from "../state/branch-agent-db.js";
 import {
   closeBranchStateDatabaseForTest,
   openBranchStateDatabase,
@@ -80,7 +83,8 @@ function migrationParams(state: ReturnType<typeof createState>, cfg: BranchConfi
   };
 }
 
-afterEach(() => {
+afterEach(async () => {
+  await closeBranchAgentDatabasesAsync();
   closeBranchAgentDatabasesForTest();
   closeBranchStateDatabaseForTest();
   for (const dir of tempDirs.splice(0)) {
@@ -108,7 +112,7 @@ describe("doctor model catalog credential migration", () => {
       null,
       2,
     )}\n`;
-    replacePersistedPluginModelCatalogs({
+    await replacePersistedPluginModelCatalogs({
       agentDir,
       pluginCatalogWrites: {
         [encodePluginModelCatalogRelativePath("plugin-owner")]: pluginContents,

@@ -1,6 +1,8 @@
 // A card's detail sheet (§4.6.7 "Card detail tabs"): Overview · Activity · Conversation · Details [T], read live
 // from the card the engine returns (canopy.cards.list) and changed with canopy.cards.* methods.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState, type ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { shows } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
 import type { MenuAnchor } from "../../shell/Menu";
@@ -82,7 +84,7 @@ function WaitsFor({ ctx, c }: { ctx: Ctx; c: Row }) {
   return <Sec title="Waits for">
     {deps.length ? <div className="cn-rows">{deps.map(d => { const x = ctx.d.cards.find(y => str(y.id) === d);
       return <div className="cn-prow" key={d}><span className="cn-grow"><b>{x ? str(x.title) : "A card that’s gone"}</b></span>{x ? <Pill tone={x.status === "done" ? "ok" : "idle"}>{statusName(str(x.status))}</Pill> : <Pill tone="warn">Missing</Pill>}
-        <button className="btn ghost sm" type="button" disabled title="Needs the engine's unlink method for card dependencies.">Take it out</button></div>; })}</div> : <p className="cn-hint cn-flush">It doesn’t wait for any card.</p>}
+        <button className="btn ghost sm" type="button" disabled title={shownWhy("Needs the engine's unlink method for card dependencies.")}>Take it out</button></div>; })}</div> : <p className="cn-hint cn-flush">It doesn’t wait for any card.</p>}
     <button className="btn sm cn-left" type="button" aria-haspopup="menu" disabled={!ctx.write} onClick={e => setAt(anchorOf(e.currentTarget))}>Add a card it waits for</button>
     {n ? <p className="cn-hint cn-flush">{n} blocked: {n === 1 ? "1 card waits" : `${n} cards wait`} for this one.</p> : null}
     {at ? <ChoiceMenu at={at} label="Waits for" head="Waits for" radio onClose={() => setAt(null)} options={cand.map(x => ({ id: str(x.id), checked: false, label: <>{str(x.title)}<span className="cn-mi-r">{statusName(str(x.status))}</span></> }))}

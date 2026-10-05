@@ -4,7 +4,7 @@ import type { BranchConfig } from "../../config/types.branch.js";
 import {
   isSecretRef,
   LEGACY_DOUBLE_UNDERSCORE_ENV_MARKER_PREFIX,
-  resolveSecretInputRef,
+  parseSecretRef,
 } from "../../config/types.secrets.js";
 import { canResolveEnvSecretRefInReadOnlyPath } from "../../plugin-sdk/secret-ref-readonly.internal.js";
 import {
@@ -75,11 +75,8 @@ function resolveSecretInputReadOnlyAvailability(
   cfg: BranchConfig,
   env: NodeJS.ProcessEnv,
 ): ReadOnlyCredentialAvailability {
-  const { ref } = resolveSecretInputRef({
-    value,
-    refValue,
-    defaults: cfg.secrets?.defaults,
-  });
+  const ref =
+    parseSecretRef(refValue, cfg.secrets?.defaults) ?? parseSecretRef(value, cfg.secrets?.defaults);
   if (ref) {
     return resolveSecretRefReadOnlyAvailability(ref, cfg, env);
   }

@@ -2,6 +2,7 @@
 // Regular; at Advanced the prompts behind quick actions, saved prompts (the engine's skill library), what goes with
 // every message and rules. Rows the engine has no setting for are drawn greyed with why; the preview's sample kits,
 // rules, words and example conversations are not real and are not drawn.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { list, text, visible, type RecordValue } from "../adapter";
