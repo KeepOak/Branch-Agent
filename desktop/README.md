@@ -12,7 +12,7 @@ At launch and hourly, the launcher checks the latest release from `KeepOak/Branc
 
 The running engine remains unchanged until the user clicks Restart. A successful ready probe confirms the selected release. A failed updated engine restores the previous engine pointer and window, then retries the retained engine. Interrupted publication is recovered on the next launch. Existing token files and previous component folders are retained. When a newly selected engine fails readiness, automatic checks skip that exact version and engine/window hash identity. Confirmed installed version is recorded separately. A newer release can stage normally; callers can explicitly retry with `refreshComponentUpdate(config, fetch, { retryRejected: true })`. Interrupted preparation and failed downloads remain retryable.
 
-Desktop code changes require a new desktop package. Component updates currently replace only the engine and renderer; they do not update the Electron launcher executable or its Node runtime.
+The desktop app itself is a component too. Each target's manifest names `branch-desktop-app-<version>-<target>.tar.gz` (only `resources/app.asar`) and, on Windows and Linux, the whole packaged app (`branch-desktop-<version>-<target>.tar.gz`, also the bootstrap package), each with the Electron version it was built for. The launcher stages the app.asar archive while Electron stays the same, and the whole app when the release moves to another Electron, with the same size/SHA256 checks and private extraction as the engine and window, under its own journal (`desktop-update-pending.json`). Like electron-updater's quit-and-install, nothing in the running app changes: at the next start, or on Restart, the launcher writes a small helper outside app.asar, quits, and the helper (plain Node) waits for that exact PID to exit, renames the old copy to `.previous`, moves the new one in and relaunches. The new app confirms once its window shows; without confirmation within 90 seconds the helper stops it by PID, puts the previous copy back, records the release as rejected and relaunches the previous app. A held or unfinished engine/window publication blocks the desktop component as well. On macOS an Electron change still needs the new desktop package.
 
 ## Preparing a release
 
@@ -36,7 +36,7 @@ Before publication, each native job boots the actual production-deployed engine 
 
 Triggers create release attempts, not a promise that every source commit ships. A failed gate or a newer main head prevents stable publication. Main attempts use distinct source-SHA build versions; an immutable `v0.4.3` source-version tag cannot be reused for changed code. Future version-tag releases require a desktop source version bump, matching tag and a fresh successful native build matrix.
 
-This release path supplies both component updates and desktop bootstrap packages. Existing launchers gain engine/renderer changes through their GitHub watcher. A launcher that predates the watcher needs the new desktop package installed once; later Electron/launcher changes still require a desktop package upgrade. Release availability and successful hosted builds do not establish an installed upgrade: verify the downloaded Windows package, retained profile, actual selected engine, renderer connection and owned rollback separately.
+This release path supplies both component updates and desktop bootstrap packages. Existing launchers gain engine, renderer and desktop app changes through their GitHub watcher. A launcher that predates the desktop component needs the new desktop package (or its app.asar) installed once. Release availability and successful hosted builds do not establish an installed upgrade: verify the downloaded Windows package, retained profile, actual selected engine, renderer connection and owned rollback separately.
 
 Packages bundle a Node24.16+ executable with a SHA256/runtime receipt. The executable's actual platform and architecture must match the package target. `package.sh` targets Windows x64. `package.ps1` can reuse an existing Electron runtime; its optional version stamping changes executable metadata in the new package. Neither packaging script changes shortcuts or starts the installed app.
 
@@ -51,6 +51,7 @@ Compile strict TypeScript with `node node_modules/typescript/bin/tsc -p desktop/
 ```sh
 node --max-old-space-size=96 --test \
   desktop/scripts/component-update.test.mjs \
+  desktop/scripts/desktop-update.test.mjs \
   desktop/scripts/gateway-ready.test.mjs
 ```
 

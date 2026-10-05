@@ -5,6 +5,13 @@ import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
 import { downloadComponent, move, replaceFile } from "./component-update-files";
 import { parseComponentRelease, RELEASE_MANIFEST_URL, trustedDownloadResponse, type ComponentRelease } from "./component-update-manifest";
+import { stageDesktopUpdate, stagedDesktopVersion, type DesktopInstall } from "./desktop-update";
+
+export interface RefreshOptions {
+  retryRejected?: boolean;
+  /** The packaged desktop app to update as well; absent in development runs. */
+  desktop?: DesktopInstall;
+}
 
 interface ReleaseIdentity { version: string; engineSha256: string; windowSha256: string }
 interface Publication {
@@ -125,21 +132,26 @@ async function publish(cfg: DesktopConfig, release: ComponentRelease, next: { en
   } catch (error) { await rollbackComponentUpdate(cfg); throw error; }
 }
 
-/** Does not stop/restart the running engine. Its existing build watcher offers the explicit Restart action. */
-async function refresh(cfg: DesktopConfig, request: typeof fetch, options: { retryRejected?: boolean }): Promise<boolean> {
+/**
+ * Does not stop/restart the running engine. Its existing build watcher offers the explicit Restart action.
+ * An unfinished or held engine/window publication blocks the desktop component too.
+ */
+async function refresh(cfg: DesktopConfig, request: typeof fetch, options: RefreshOptions): Promise<boolean> {
   await recoverComponentUpdate(cfg);
   if (await publication(cfg)) return false;
   const release = await readComponentManifest(request);
-  if (await readOrEmpty(versionFile(cfg)) === release.version) return false;
-  if (!options.retryRejected && await componentReleaseRejected(cfg, release)) return false;
-  const next = await stage(cfg, release, request);
-  await publish(cfg, release, next);
-  return true;
+  let staged = false;
+  if (await readOrEmpty(versionFile(cfg)) !== release.version && (options.retryRejected || !await componentReleaseRejected(cfg, release))) {
+    const next = await stage(cfg, release, request);
+    await publish(cfg, release, next);
+    staged = true;
+  }
+  return await stageDesktopUpdate(cfg, release, request, options.desktop) || staged;
 }
 
 const refreshes = new WeakMap<DesktopConfig, Promise<boolean>>();
 /** Startup, hourly and manual staging share one publication owner. */
-export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch = fetch, options: { retryRejected?: boolean } = {}): Promise<boolean> {
+export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch = fetch, options: RefreshOptions = {}): Promise<boolean> {
   const active = refreshes.get(cfg);
   if (active) return active;
   const next = refresh(cfg, request, options).finally(() => refreshes.delete(cfg));
@@ -149,16 +161,22 @@ export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch
 
 export async function readComponentUpdateStatus(cfg: DesktopConfig): Promise<{ currentVersion: string | null; pendingVersion: string | null; publicationInProgress: boolean }> {
   const pending = await publication(cfg);
-  return { currentVersion: await readOrEmpty(versionFile(cfg)) || null, pendingVersion: pending?.phase === "pending" ? pending.version : null, publicationInProgress: Boolean(pending) };
+  const pendingVersion = pending?.phase === "pending" ? pending.version : await stagedDesktopVersion(cfg);
+  return { currentVersion: await readOrEmpty(versionFile(cfg)) || null, pendingVersion, publicationInProgress: Boolean(pending) };
 }
 
-export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void): () => void {
+export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void, options: RefreshOptions & { onStaged?: () => void } = {}): () => void {
   let busy = false;
   let stopped = false;
   const tick = async (): Promise<void> => {
     if (busy || stopped) return;
     busy = true;
-    try { if (await refreshComponentUpdate(cfg)) log("Verified GitHub component update staged; engine awaits Restart"); }
+    try {
+      if (await refreshComponentUpdate(cfg, fetch, options)) {
+        log("Verified GitHub component update staged; awaits Restart");
+        options.onStaged?.();
+      }
+    }
     catch (error) { log(`Component update check: ${error instanceof Error ? error.message : String(error)}`); }
     finally { busy = false; }
   };

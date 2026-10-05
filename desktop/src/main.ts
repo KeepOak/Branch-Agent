@@ -3,7 +3,7 @@ import { app, BrowserWindow, dialog, ipcMain, screen, session, shell } from "ele
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { portIsFree, readToken, startGateway, stopGateway, waitForReady } from "./gateway";
 import { serveWindow } from "./static-server";
@@ -15,6 +15,7 @@ import { createDesktopControls, registerDesktopControlsIpc } from "./desktop-con
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
 import { registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
+import { confirmDesktopUpdate, handOffDesktopUpdate, stagedDesktopVersion, type DesktopInstall } from "./desktop-update";
 import type { Tray } from "electron";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
@@ -23,6 +24,12 @@ const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRA
 const ICON = join(__dirname, "..", "assets", "branch.ico");
 const READY_TIMEOUT_MS = 180_000;
 const cfg: DesktopConfig = loadConfig();
+/** The packaged app this process runs from; development runs (`electron .`) never update themselves. */
+const install: DesktopInstall | undefined = app.isPackaged ? {
+  appDir: process.platform === "darwin" ? resolve(process.resourcesPath, "..", "..") : dirname(process.execPath),
+  resourcesDir: process.resourcesPath, executable: process.execPath,
+  electronVersion: process.versions.electron, nodePath: cfg.nodePath,
+} : undefined;
 
 /** Appends one line to the app's own data directory log. */
 function log(line: string): void {
@@ -57,7 +64,7 @@ const controls = createDesktopControls(desktopOs(app, cfg, () => tray, ICON));
 /** Staging never invokes the restart IPC or the gateway's generic updater. */
 async function stageComponentUpdate(): Promise<boolean> {
   if (!componentsReady) throw new Error("The desktop is still starting; check again when the engine is ready");
-  const staged = await refreshComponentUpdate(cfg);
+  const staged = await refreshComponentUpdate(cfg, fetch, { desktop: install });
   if ((await readComponentUpdateStatus(cfg)).pendingVersion) {
     engineUpdateReady = true;
     win?.webContents.send("branch-desktop:engine-update", "ready");
@@ -119,7 +126,16 @@ function lockDown(w: BrowserWindow): void {
 
 const windowUrl = (): string => `http://127.0.0.1:${cfg.windowPort}/`;
 
+/** Like quitAndInstall: the helper swaps the staged desktop app in once this process has exited, then relaunches it. */
+async function handOffDesktop(explicit: boolean): Promise<boolean> {
+  if (!install || !await handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), process.argv.slice(1), explicit)) return false;
+  log("desktop update staged; handing off to the update helper and quitting");
+  return true;
+}
+
 async function start(): Promise<void> {
+  // A desktop update staged during the last run applies before anything starts.
+  if (await handOffDesktop(false)) { app.exit(0); return; }
   token = readToken(cfg);
   // Registered before any page loads: the preload asks for it synchronously.
   ipcMain.on("branch-desktop:info", (e) => {
@@ -134,13 +150,15 @@ async function start(): Promise<void> {
   win = createWindow();
   await win.loadURL(STARTING);
   log(`starting page shown after ${Date.now() - launchStarted} ms`);
+  const desktopVersion = await confirmDesktopUpdate(cfg);
+  if (desktopVersion) log(`desktop update ${desktopVersion} started; confirmed`);
   for (const port of [cfg.gatewayPort, cfg.windowPort]) {
     if (!(await portIsFree(port))) throw new Error(`port ${port} is already in use; is Branch Agent already running?`);
   }
   await recoverComponentUpdate(cfg);
   if (!existsSync(join(cfg.windowDir, "index.html")) || !existsSync(join(cfg.dataDir, "engine-current.txt")) && !existsSync(join(cfg.engineDir, "branch.mjs"))) {
     log("Installing verified GitHub components for first launch");
-    await refreshComponentUpdate(cfg);
+    await refreshComponentUpdate(cfg, fetch, { desktop: install });
   }
   server = await serveWindow(cfg.windowDir, cfg.windowPort);
   await win.loadURL(windowUrl());
@@ -151,7 +169,13 @@ async function start(): Promise<void> {
   }
   watchUpdates(win);
   componentsReady = true;
-  stopComponentWatch = watchComponentUpdates(cfg, log);
+  stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, onStaged: () => {
+    void readComponentUpdateStatus(cfg).then(({ pendingVersion }) => {
+      if (!pendingVersion) return;
+      engineUpdateReady = true;
+      win?.webContents.send("branch-desktop:engine-update", "ready");
+    }).catch(error => log(`Component update status: ${String(error)}`));
+  } });
 }
 
 /** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
@@ -210,6 +234,8 @@ async function restartEngine(): Promise<void> {
   if (!gateway || !win || !componentsReady || engineRestartInProgress) return;
   engineRestartInProgress = true;
   try {
+    // A staged desktop app restarts the whole app (the new engine and window come up with it).
+    if (await stagedDesktopVersion(cfg) && await handOffDesktop(true)) { app.quit(); return; }
     log(`restart requested; stopping gateway pid ${gateway.pid}`);
     win.webContents.send("branch-desktop:engine-update", "restarting");
     stopGateway(gateway);

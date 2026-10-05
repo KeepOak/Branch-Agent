@@ -69,8 +69,11 @@ async function writeEntry(reader: ArchiveReader, file: string, size: number, mod
   if (padding) await reader.take(padding);
 }
 
-/** Only regular ustar files/directories; extraction always targets a new, private staging directory. */
-export async function extractComponentArchive(archive: string, destination: string, expectedBytes: number): Promise<void> {
+/**
+ * Only regular ustar files/directories; extraction always targets a new, private staging directory.
+ * `rename` maps each member's local name (the desktop component keeps Electron's fs off its .asar files).
+ */
+export async function extractComponentArchive(archive: string, destination: string, expectedBytes: number, rename = (name: string): string => name): Promise<void> {
   const input = createReadStream(archive);
   const gzip = createGunzip();
   input.on("error", error => gzip.destroy(error));
@@ -88,7 +91,7 @@ export async function extractComponentArchive(archive: string, destination: stri
       names.add(key);
       expanded += item.size;
       if (expanded > expectedBytes) throw new Error("Expanded component size mismatch");
-      const file = join(destination, item.name);
+      const file = join(destination, rename(item.name));
       if (item.directory) await mkdir(file, { recursive: true });
       else await writeEntry(reader, file, item.size, item.mode);
     }
