@@ -148,7 +148,7 @@ function requireXaiWebSearchTool(
 
 const defaultAgentConfig = {
   agents: {
-    list: [{ id: "main", default: true, agentDir: "/tmp/branch-xai-main-agent" }],
+    entries: { main: { agentDir: "/tmp/branch-xai-main-agent" } },
   },
 };
 
@@ -275,10 +275,10 @@ describe("xai web search config resolution", () => {
       agentDir: "/tmp/branch-xai-active-agent",
       config: {
         agents: {
-          list: [
-            { id: "main", default: true, agentDir: "/tmp/branch-xai-main-agent" },
-            { id: "side", agentDir: "/tmp/branch-xai-active-agent" },
-          ],
+          entries: {
+            main: { agentDir: "/tmp/branch-xai-main-agent" },
+            side: { agentDir: "/tmp/branch-xai-active-agent" },
+          },
         },
       },
     });

@@ -2,6 +2,7 @@
 // system.info, models.list, browser.request; gateway.restart.request; the log window on logs.tail), then the
 // preview's sections. Most rows are one engine config path (see advanced-more.tsx); the windows they open are in
 // advanced-tech.tsx. Rows the engine can't back are greyed with why.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import { Btn, Ctl, LinkBtn, Page, Pick, Sec, Seg, Switch, useConfig, useScope, type Opt, type RowEntry } from "../kit";

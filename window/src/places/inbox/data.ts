@@ -1,5 +1,6 @@
 // Inbox reads and writes. Helpers copied from places/automations/runtime.ts (adapted from engine/ui cron and
 // approval controllers): engine requests stay authoritative; late reads and duplicate mutations are suppressed.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { agents, sessions, type Agent, type Session } from "../overview/engine";

@@ -24,9 +24,9 @@ describe("session slug", () => {
     expect(slug).toBe("amber-atlas");
   });
 
-  it("generates a crustacean-themed slug for worktrees", () => {
+  it("generates a woodland-themed slug for worktrees", () => {
     randomMocks.generateSecureInt.mockReturnValue(0);
-    expect(createCrustaceanSlug()).toBe("amber-barnacle");
+    expect(createCrustaceanSlug()).toBe("amber-acorn");
   });
 
   it("adds a numeric suffix when the base slug is taken", () => {

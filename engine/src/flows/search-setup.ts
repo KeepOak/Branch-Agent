@@ -204,7 +204,7 @@ function buildSearchEnvRef(config: BranchConfig, provider: SearchProvider): Secr
   return { source: "env", provider: DEFAULT_SECRET_PROVIDER_ALIAS, id: resolvedEnvVar };
 }
 
-export function applySearchKey(
+function applySearchKey(
   config: BranchConfig,
   provider: SearchProvider,
   key: SecretInput,
@@ -243,7 +243,7 @@ function applySearchProviderSelectionConfig(
   return next;
 }
 
-export function applySearchProviderSelection(
+function applySearchProviderSelection(
   config: BranchConfig,
   provider: SearchProvider,
 ): BranchConfig {

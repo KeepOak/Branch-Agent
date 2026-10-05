@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import type { Level } from "../../places-nav/level";
 import { ProceduresTab, PROCEDURE_NEEDS } from "./Procedures";
 import { BoardTab, ORCHARD_COLUMNS, ORCHARD_NEEDS } from "./Board";
@@ -21,8 +22,9 @@ function engine() {
 describe("Procedures and Board", () => {
   it("Procedures greys what has no engine store, with the reason", async () => {
     await render(<ProceduresTab engine={engine().engine} level={"regular" as Level} />);
-    expect(byText("Show a Trunk how, once").disabled).toBe(true); expect(byText("Show a Trunk how, once").title).toBe(PROCEDURE_NEEDS.store);
-    expect(byText("New prompt").disabled).toBe(true); expect(byText("New prompt").title).toBe(PROCEDURE_NEEDS.prompts);
+    expect(byText("Show a Trunk how, once").disabled).toBe(true); expect(byText("Show a Trunk how, once").title).toBe("");
+    expect(byText("New prompt").disabled).toBe(true); expect(byText("New prompt").title).toBe("");
+    expect(PROCEDURE_NEEDS.store).toMatch(/^Needs the engine/); expect(visibleDevNotes(host)).toEqual([]);
     expect(host.textContent).not.toContain("Commands, technical");
   });
   it("Technical: Commands rows patch config commands", async () => {
@@ -39,7 +41,8 @@ describe("Procedures and Board", () => {
     const openPlace = vi.fn();
     await render(<BoardTab openPlace={openPlace} />);
     expect([...host.querySelectorAll(".au-col h3")].map(h => h.firstChild?.textContent)).toEqual(ORCHARD_COLUMNS);
-    expect(byText("Bring in issues").disabled).toBe(true); expect(byText("Bring in issues").title).toBe(ORCHARD_NEEDS);
+    expect(byText("Bring in issues").disabled).toBe(true); expect(byText("Bring in issues").title).toBe("");
+    expect(host.textContent).not.toContain(ORCHARD_NEEDS); expect(visibleDevNotes(host)).toEqual([]);
     await act(async () => { byText("Open Canopy").click(); });
     expect(openPlace).toHaveBeenCalledWith("canopy");
   });

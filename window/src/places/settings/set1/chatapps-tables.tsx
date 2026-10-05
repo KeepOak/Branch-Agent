@@ -1,6 +1,7 @@
 // Settings › Chat apps at Advanced and Technical (§4.7.10): the preview's sections as tables. Each row names the
 // engine config key it saves (messages.*, commands.*, channels.defaults.*, agents.defaults.* reply streaming,
 // approvals.exec.*), its choices as the engine's values and the source default; rows with no engine key are greyed.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Opt, Row, Section } from "./chatapps-kit";
 import { NO_KEY } from "./chatapps-kit";
 

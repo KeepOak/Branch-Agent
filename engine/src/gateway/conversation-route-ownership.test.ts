@@ -12,8 +12,8 @@ const baseConversation = {
 
 function configWithBindings(bindings: NonNullable<BranchConfig["bindings"]>): BranchConfig {
   return {
-    agents: { entries: { main: { default: true }, finance: {} } },
-    bindings,
+    agents: { entries: { main: {}, finance: {} } },
+    bindings: [...bindings, { type: "route", agentId: "main", match: { channel: "reef" } }],
   };
 }
 

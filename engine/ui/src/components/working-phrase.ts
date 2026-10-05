@@ -1,5 +1,5 @@
 // Whimsical long-wait status word ("Groveing…") for the chat working row.
-// Silent for the first stretch of a run, then rotates through crab-themed
+// Silent for the first stretch of a run, then rotates through tree-themed
 // gerunds so long quiet runs feel alive without claiming progress data the
 // UI does not have. Decorative only — the row keeps its sr-only "Working…".
 import { html, nothing, type PropertyValues } from "lit";
@@ -10,25 +10,25 @@ import { BranchLightDomContentsElement } from "../lit/branch-element.ts";
 import { PollController } from "../lit/poll-controller.ts";
 
 const PHRASE_KEYS = [
-  "shelling",
-  "scuttling",
+  "rooting",
+  "branching",
   "groveing",
-  "pinching",
+  "pruning",
   "shedding",
-  "bubbling",
-  "tiding",
-  "reefing",
-  "cracking",
+  "budding",
+  "leafing",
+  "grafting",
+  "seeding",
   "sifting",
-  "brining",
-  "nautiling",
-  "krilling",
-  "barnacling",
+  "ripening",
+  "sprouting",
+  "blooming",
+  "canopying",
   "trellising",
-  "tidepooling",
-  "pearling",
-  "snapping",
-  "surfacing",
+  "rustling",
+  "mossing",
+  "twigging",
+  "unfurling",
 ] as const;
 
 /** Quiet grace period before the first phrase appears. Mirrored as literals

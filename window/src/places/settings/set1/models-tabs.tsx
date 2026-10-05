@@ -1,4 +1,5 @@
 // Settings › Models tabs On this computer, Second opinion and Media (§4.7.6), with their own Advanced/Technical rows.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { visible } from "../adapter";
 import { Btn, Ctl, Plist, Prow, Sec, Status, Switch } from "../kit";
 import { refOf, type ModelsCtx } from "./models-data";

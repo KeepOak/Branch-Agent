@@ -1,6 +1,7 @@
 // On this computer › Running models here, more (Advanced): the OpenAI-shaped endpoint for other apps
 // (gateway.http.endpoints.chatCompletions.enabled) and its address (system.info port); the managed runtime's
 // fingerprint check; the models here (models.list). Rows the engine has no setting or method for are greyed with why.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../../connect/engine";
 import { visible, type RecordValue } from "../adapter";
 import { Btn, Ctl, Pick, Pill, Sec, Seg, Switch, Val, useConfig, useLevel } from "../kit";

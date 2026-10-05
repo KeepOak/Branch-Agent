@@ -15,6 +15,7 @@ if [[ -z "$TRUSTED_HARNESS_DIR" || ! -d "$TRUSTED_HARNESS_DIR" ]]; then
 fi
 TRUSTED_HARNESS_DIR="$(cd "$TRUSTED_HARNESS_DIR" && pwd)"
 source "$TRUSTED_HARNESS_DIR/scripts/lib/live-docker-auth.sh"
+source "$TRUSTED_HARNESS_DIR/scripts/lib/codex-live-docker-security.sh"
 IMAGE_NAME="${BRANCH_IMAGE:-branch:local}"
 LIVE_IMAGE_NAME="${BRANCH_LIVE_IMAGE:-${IMAGE_NAME}-live}"
 CONFIG_DIR="${BRANCH_CONFIG_DIR:-$HOME/.branch}"
@@ -52,6 +53,11 @@ if [[ -f "$PROFILE_FILE" && -r "$PROFILE_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$PROFILE_FILE"
   set +a
+fi
+
+CODEX_APP_SERVER_ARGS="${BRANCH_CODEX_APP_SERVER_ARGS:-}"
+if [[ -z "$CODEX_APP_SERVER_ARGS" ]] && branch_live_truthy "${BRANCH_LIVE_CODEX_HARNESS_SUBAGENT_PROBE:-1}"; then
+  CODEX_APP_SERVER_ARGS="app-server --listen stdio:// -c features.multi_agent_v2=true"
 fi
 
 if [[ "$CODEX_HARNESS_AUTH_MODE" == "api-key" && -z "${OPENAI_API_KEY:-}" ]]; then
@@ -204,6 +210,11 @@ cd "$tmp_dir"
 if [ "${BRANCH_LIVE_CODEX_HARNESS_USE_CI_SAFE_CODEX_CONFIG:-1}" = "1" ]; then
   node --import tsx "$trusted_scripts_dir/prepare-codex-ci-config.ts" "$HOME/.codex/config.toml" "$tmp_dir"
 fi
+# Detect runner namespace restrictions before making live provider requests.
+"$NPM_CONFIG_PREFIX/bin/codex" sandbox \
+  -c 'sandbox_mode="workspace-write"' \
+  -c sandbox_workspace_write.network_access=false \
+  -- true
 codex_preflight_log="$tmp_dir/codex-preflight.log"
 codex_preflight_token="CODEX-PREFLIGHT-OK"
 if ! "$NPM_CONFIG_PREFIX/bin/codex" exec \
@@ -294,6 +305,26 @@ echo "==> Harness fallback: none"
 echo "==> Auth files: ${AUTH_FILES_CSV:-none}"
 DOCKER_RUN_ARGS=()
 branch_live_init_docker_run_args DOCKER_RUN_ARGS "$CODEX_HARNESS_DOCKER_RUN_TIMEOUT"
+cleanup_codex_live_docker() {
+  local run_result=$?
+  local cleanup_failed=0
+  trap - EXIT
+  if ! branch_codex_live_cleanup_security; then
+    echo "ERROR: Codex Docker cleanup failed; retained recovery files at ${CODEX_LIVE_SECURITY_DIR:-<unavailable>}." >&2
+    cleanup_failed=1
+  fi
+  cleanup_temp_dirs || cleanup_failed=1
+  if [[ "$cleanup_failed" == 1 ]]; then
+    exit 1
+  fi
+  exit "$run_result"
+}
+trap cleanup_codex_live_docker EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+branch_codex_live_prepare_security "$TRUSTED_HARNESS_DIR/scripts/lib/codex-live-docker-security"
+branch_live_append_array DOCKER_RUN_ARGS CODEX_LIVE_SECURITY_ARGS
 DOCKER_RUN_ARGS+=(--rm -t \
   -u "$DOCKER_USER" \
   --entrypoint bash \
@@ -309,6 +340,7 @@ DOCKER_RUN_ARGS+=(--rm -t \
   -e BRANCH_AGENT_HARNESS_FALLBACK=none \
   -e BRANCH_DOCKER_AUTH_PRESTAGED="$DOCKER_AUTH_PRESTAGED" \
   -e BRANCH_CODEX_APP_SERVER_BIN="${BRANCH_CODEX_APP_SERVER_BIN:-codex}" \
+  -e BRANCH_CODEX_APP_SERVER_ARGS="$CODEX_APP_SERVER_ARGS" \
   -e BRANCH_DOCKER_AUTH_FILES_RESOLVED="$AUTH_FILES_CSV" \
   -e BRANCH_LIVE_DOCKER_SOURCE_STAGE_MODE="${BRANCH_LIVE_DOCKER_SOURCE_STAGE_MODE:-copy}" \
   -e BRANCH_LIVE_CODEX_HARNESS_AUTH="$CODEX_HARNESS_AUTH_MODE" \

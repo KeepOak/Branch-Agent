@@ -4,6 +4,7 @@ import { expectDefined } from "@branch/normalization-core";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { repairUnownedChannelAccountBindings } from "../../commands/doctor/shared/legacy-config-binding-repair.js";
 import { createDoctorPluginMetadataSnapshotScope } from "../../commands/doctor/shared/plugin-metadata-snapshot-scope.js";
+import type { BranchConfigWithLegacyRoster } from "../../config/legacy.roster.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { resolveOutboundMediaMaxBytes } from "../../media/configured-max-bytes.js";
 import {
@@ -92,7 +93,7 @@ describe("prepared channel account policy entry points", () => {
       const scope = createDoctorPluginMetadataSnapshotScope({});
       const sourceConfigBeforeMigrations = {
         agents: { list: [{ id: "ops" }, { id: "research" }] },
-      };
+      } satisfies BranchConfigWithLegacyRoster;
       const repair = (config: BranchConfig) =>
         scope.run({ config }, () =>
           repairUnownedChannelAccountBindings({ config, sourceConfigBeforeMigrations }),

@@ -5,7 +5,7 @@ import { asNullableRecord } from "@branch/normalization-core/record-coerce";
 import { resolveInspectedChannelAccount } from "../channels/account-inspection.js";
 import { resolveChannelDefaultAccountId } from "../channels/plugins/helpers.js";
 import { listReadOnlyChannelPluginsForConfig } from "../channels/plugins/read-only.js";
-import type { ChannelPlugin } from "../channels/plugins/types.plugin.js";
+import type { AnyChannelPlugin as ChannelPlugin } from "../channels/plugins/types.plugin.js";
 import type { BranchConfig } from "../config/types.branch.js";
 
 type LinkChannelContext = {

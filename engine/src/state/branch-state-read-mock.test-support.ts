@@ -1,4 +1,7 @@
-import { createRetainedOperation, type RetainedOperation } from "../infra/retained-operation.js";
+import {
+  createRetainedOperation,
+  type RetainedOperation,
+} from "@branch/worker-runtime/lifecycle";
 import type { captureBranchStateReadSource } from "./branch-state-read-worker.js";
 
 type ReadSource = ReturnType<typeof captureBranchStateReadSource>;

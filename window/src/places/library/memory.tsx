@@ -1,6 +1,7 @@
 // Library › Memory (preview 42-placesbp part 1 + 94-g4p): the characters card, Rings, search with its Trunk scope,
 // the memory list with Forget, then the sections below (memory-more.tsx). Data: MEMORY.md through agents.files.*,
 // memory.search, doctor.memory.*, config.get for the start-of-conversation limit.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useState, type FormEvent, type MouseEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
@@ -12,6 +13,7 @@ import { AboutYou, HoldForYes, HowItLearns, MemoryHealth, Pinned, statusOf, What
 import { RingsRow } from "./rings";
 import { EmptyIcon, Grey, IcoTile, LibIcon, plural, Row } from "./parts";
 import { FileDialog } from "./reader";
+import { shownWhy } from "../../shell/shown-why";
 
 export const TIDY_REASON = "Needs the engine’s memory tidy-up method.";
 
@@ -44,7 +46,7 @@ export function MemoryTab(props: MemoryProps) {
     <RingsRow engine={engine} level={level} scope={scope} status={status} openSettings={props.openSettings} />
     <MemorySearch engine={engine} trunks={trunks} scope={scope} setScope={setScope} scopeName={scopeName ? scopeName.identity?.name || scopeName.name || scopeName.id : null} files={scoped} reloadFiles={props.reloadFiles} />
     {shows(level, "advanced") && <HowItLearns engine={engine} trunks={trunks} scope={scope || props.defaultId} />}
-    <MemoryHealth status={status} check={check} />
+    <MemoryHealth engine={engine} agentId={scope || props.defaultId} status={status} check={check} />
     <WhatToRemember />
     <Pinned facts={scoped?.flatMap(f => f.facts) ?? []} />
     <AboutYou engine={engine} agentId={scope || props.defaultId} />
@@ -74,7 +76,7 @@ function MemoryCard({ engine, level, files, scope, status, check }: CardProps) {
     <div className="lib-grow">
       <b>{status.error ? "Memory needs attention" : plural(count, "memory", "memories") + (notes ? ` · ${plural(notes, "daily note", "daily notes")}` : "")}</b>
       <p>{status.error ? status.error : line}</p>
-      {failed.map(f => <p key={f.agentId} className="lib-bad" role="alert">{f.trunk}: {f.error}</p>)}
+      {failed.filter(f => shownWhy(f.error)).map(f => <p key={f.agentId} className="lib-bad" role="alert">{f.trunk}: {f.error}</p>)}
       {shows(level, "advanced") && s && !status.error && <small className="lib-third">{engineName(s.provider)} · {s.embedding.ok ? "searches by meaning and words" : "searches by words only"}</small>}
     </div>
     <span className="lib-card-acts">

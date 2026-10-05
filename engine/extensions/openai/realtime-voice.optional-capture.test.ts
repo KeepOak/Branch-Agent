@@ -1,3 +1,4 @@
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import { beforeEach, expect, it, vi } from "vitest";
 
 const { FakeWebSocket } = await vi.hoisted(async () => {

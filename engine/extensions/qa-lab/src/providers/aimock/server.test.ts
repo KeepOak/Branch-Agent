@@ -24,7 +24,15 @@ describe("qa aimock server", () => {
       apiKey: "qa-local",
       maxRetries: 0,
     });
-    const userText = "Recover the research answer";
+    const userText = [
+      "<<<BEGIN_BRANCH_INTERNAL_CONTEXT>>>",
+      "Task context",
+      "<<<END_BRANCH_INTERNAL_CONTEXT>>>",
+      "Recover the research answer",
+      "<<<BEGIN_BRANCH_INTERNAL_CONTEXT>>>",
+      "Begin the task.",
+      "<<<END_BRANCH_INTERNAL_CONTEXT>>>",
+    ].join("\n\n");
     const toolOutput = "approval-unavailable: initiating-platform-disabled";
     const carrier = [
       "<<<BEGIN_BRANCH_INTERNAL_CONTEXT>>>",

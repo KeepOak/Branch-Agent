@@ -1,6 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
 import { coerceErrorMessage } from "@branch/normalization-core";
-import type { Selectable } from "kysely";
 import { setConfiguredMcpServer } from "../agents/mcp-config-mutation.js";
 import { withGroveMcpLifecycleLease } from "../agents/mcp-lifecycle-lease.js";
 import { canonicalizeConfiguredMcpServer } from "../config/mcp-config-normalize.js";
@@ -10,70 +8,27 @@ import {
   executeSqliteQuerySync,
   getNodeSqliteKysely,
 } from "../infra/kysely-sync.js";
-import { coerceRequiredSqliteNumber as sqliteNumber } from "../infra/sqlite-number.js";
 import { tableExists } from "../state/branch-state-db-schema-helpers.js";
-import type { DB } from "../state/branch-state-db.generated.js";
 import {
   openBranchStateDatabase,
   runBranchStateWriteTransaction,
   type BranchStateDatabaseOptions,
 } from "../state/branch-state-db.js";
 import { digestGroveValue } from "./digest.js";
+import {
+  GROVE_MCP_REF_SCHEMA_VERSION,
+  refToRow,
+  rowToRef,
+  selectMcpRefs,
+  type McpDatabase,
+  type McpRefRow,
+  type PersistedGroveMcpServerRef,
+} from "./mcp-records.js";
 import type { GroveReferencedCleanup } from "./package-remove.js";
+import { reconcileGroveMcpServerRefsInWorker } from "./provenance-write.js";
 import type { GroveAddPlan, GroveMcpServer } from "./types.js";
 
-export const GROVE_MCP_REF_SCHEMA_VERSION = "branch.groveMcpServerRef.v1" as const;
-
-export type PersistedGroveMcpServerRef = {
-  schemaVersion: typeof GROVE_MCP_REF_SCHEMA_VERSION;
-  agentId: string;
-  name: string;
-  configDigest: string;
-  relationship: "managed" | "referenced";
-  origin: "grove-introduced" | "pre-existing";
-  independentOwner: boolean;
-  status: "pending" | "complete" | "failed";
-  error?: string;
-  createdAtMs: number;
-  updatedAtMs: number;
-};
-
-type McpDatabase = Pick<DB, "grove_mcp_server_refs">;
-type McpRefRow = Selectable<DB["grove_mcp_server_refs"]>;
-
-function selectMcpRefs(db: DatabaseSync) {
-  return getNodeSqliteKysely<McpDatabase>(db)
-    .selectFrom("grove_mcp_server_refs")
-    .select([
-      "schema_version",
-      "agent_id",
-      "name",
-      "config_digest",
-      "relationship",
-      "origin",
-      "independent_owner",
-      "status",
-      "error",
-      "created_at_ms",
-      "updated_at_ms",
-    ]);
-}
-
-function refToRow(ref: PersistedGroveMcpServerRef): McpRefRow {
-  return {
-    agent_id: ref.agentId,
-    name: ref.name,
-    schema_version: ref.schemaVersion,
-    config_digest: ref.configDigest,
-    relationship: ref.relationship,
-    origin: ref.origin,
-    independent_owner: ref.independentOwner ? 1 : 0,
-    status: ref.status,
-    error: ref.error ?? null,
-    created_at_ms: ref.createdAtMs,
-    updated_at_ms: ref.updatedAtMs,
-  };
-}
+export { GROVE_MCP_REF_SCHEMA_VERSION, type PersistedGroveMcpServerRef } from "./mcp-records.js";
 
 export class GroveMcpInstallError extends Error {
   constructor(
@@ -89,25 +44,6 @@ export class GroveMcpInstallError extends Error {
 function mcpServerFromActionDetails(details: Record<string, unknown>): GroveMcpServer | undefined {
   const { expectedState: _expectedState, prerequisites: _prerequisites, ...server } = details;
   return "command" in server || "url" in server ? (server as GroveMcpServer) : undefined;
-}
-
-function rowToRef(row: McpRefRow): PersistedGroveMcpServerRef {
-  return {
-    schemaVersion: GROVE_MCP_REF_SCHEMA_VERSION,
-    agentId: row.agent_id,
-    name: row.name,
-    configDigest: row.config_digest,
-    // SAFETY: The canonical table constrains relationship to these two values.
-    relationship: row.relationship as PersistedGroveMcpServerRef["relationship"],
-    // SAFETY: The canonical table constrains origin to these two values.
-    origin: row.origin as PersistedGroveMcpServerRef["origin"],
-    independentOwner: sqliteNumber(row.independent_owner) === 1,
-    // SAFETY: Existing inventory exposes stored status without additional validation.
-    status: row.status as PersistedGroveMcpServerRef["status"],
-    ...(row.error ? { error: row.error } : {}),
-    createdAtMs: sqliteNumber(row.created_at_ms),
-    updatedAtMs: sqliteNumber(row.updated_at_ms),
-  };
 }
 
 export function digestGroveMcpServer(server: Record<string, unknown>): string {
@@ -436,16 +372,17 @@ export function reconcileGroveMcpServerRefs(
   agentId: string,
   configuredServers: Record<string, Record<string, unknown>>,
   options: BranchStateDatabaseOptions & { nowMs?: number } = {},
-): PersistedGroveMcpServerRef[] {
-  return readGroveMcpServerRefs(agentId, options).map((ref) => {
-    if (ref.status !== "pending") {
-      return ref;
-    }
-    const configured = configuredServers[ref.name];
-    return configured && digestGroveMcpServer(configured) === ref.configDigest
-      ? updateRef(ref, { status: "complete" }, options)
-      : ref;
-  });
+): Promise<PersistedGroveMcpServerRef[]> {
+  return reconcileGroveMcpServerRefsInWorker(
+    agentId,
+    Object.fromEntries(
+      Object.entries(configuredServers).map(([name, server]) => [
+        name,
+        digestGroveMcpServer(server),
+      ]),
+    ),
+    options,
+  );
 }
 
 export function deleteGroveMcpServerRef(

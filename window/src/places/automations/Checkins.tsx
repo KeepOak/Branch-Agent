@@ -2,6 +2,7 @@
 // check-in from `last-heartbeat`, How often / Which hours on the heartbeat config (every, activeHours) through
 // config.patch, and "What it checks" as the Trunk's HEARTBEAT.md through agents.files.get/set.
 // Heartbeat fields from engine/src/config/zod-schema.agent-runtime.ts; only the edited fields are patched.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Segmented } from "../../shell/Popover";
@@ -12,6 +13,7 @@ import { Glyph } from "./glyphs";
 import { SwitchRow } from "./Proposal";
 import { Section, ToolRow } from "./Sections";
 import { errorText, rec, str, usePlaceData, type Row } from "./runtime";
+import { shownWhy } from "../../shell/shown-why";
 
 export type CheckinSnapshot = { hash: string; valid: boolean; defaults: Row; entries: { id: string; name: string; heartbeat: Row }[] };
 export async function loadCheckins(engine: WindowEngine): Promise<CheckinSnapshot> {
@@ -95,16 +97,16 @@ function WhatItChecks({ engine, agentId, trunk, level, canWrite }: { engine: Win
   return <div className="au-checks">
     <h3 className="au-sub">What it checks</h3>
     {hb.error && <p className="au-error" role="alert">{hb.error}</p>}
-    {items.map((it, i) => <div className="au-check" key={`${i}-${it}`}><span className="au-tile"><Glyph name="pulse" /></span><span className="au-grow">{it}</span><button type="button" className="ib" aria-label={`Take out “${it}”`} title={why} disabled={!canWrite || busy} onClick={() => void run(() => hb.write(withoutItem(content, i)), "Taken out of the list.")}><Glyph name="x" /></button></div>)}
+    {items.map((it, i) => <div className="au-check" key={`${i}-${it}`}><span className="au-tile"><Glyph name="pulse" /></span><span className="au-grow">{it}</span><button type="button" className="ib" aria-label={`Take out “${it}”`} title={shownWhy(why)} disabled={!canWrite || busy} onClick={() => void run(() => hb.write(withoutItem(content, i)), "Taken out of the list.")}><Glyph name="x" /></button></div>)}
     {hb.file && !items.length && <p className="au-hint">The list is empty, so check-ins are skipped.</p>}
     <form className="au-describe" onSubmit={e => { e.preventDefault(); if (item.trim()) void run(() => hb.write(withItem(content, item)), "Added to the list.").then(ok => ok && setItem("")); }}>
-      <input className="inp" aria-label="Add something to check" placeholder="Add something to check: “a reply from the landlord”" value={item} disabled={!canWrite || !hb.file} title={why} onChange={e => setItem(e.target.value)} />
+      <input className="inp" aria-label="Add something to check" placeholder="Add something to check: “a reply from the landlord”" value={item} disabled={!canWrite || !hb.file} title={shownWhy(why)} onChange={e => setItem(e.target.value)} />
       <button type="submit" className="btn sm" disabled={!canWrite || busy || !item.trim()}>Add</button>
     </form>
     <p className="au-hint">{trunk} may rewrite this list itself during a check-in; each change shows in Last check-ins.</p>
     {shows(level, "technical") && (text === null
       ? <button type="button" className="btn ghost sm" disabled={!hb.file} onClick={() => setText(content)}>Edit as text</button>
-      : <div className="au-field"><textarea className="inp au-text" aria-label="HEARTBEAT.md" value={text} onChange={e => setText(e.target.value)} /><div className="au-actions"><button type="button" className="btn ghost sm" onClick={() => setText(null)}>Cancel</button><button type="button" className="btn pri sm" disabled={!canWrite || busy} title={why} onClick={() => void run(() => hb.write(text), "Saved the list.").then(ok => ok && setText(null))}>Save</button></div></div>)}
+      : <div className="au-field"><textarea className="inp au-text" aria-label="HEARTBEAT.md" value={text} onChange={e => setText(e.target.value)} /><div className="au-actions"><button type="button" className="btn ghost sm" onClick={() => setText(null)}>Cancel</button><button type="button" className="btn pri sm" disabled={!canWrite || busy} title={shownWhy(why)} onClick={() => void run(() => hb.write(text), "Saved the list.").then(ok => ok && setText(null))}>Save</button></div></div>)}
   </div>;
 }
 
@@ -149,9 +151,9 @@ export function Checkins({ engine, level }: { engine: WindowEngine; level: Level
       <div className="au-card-h"><b>Check in on its own</b><button type="button" className="btn ghost sm" disabled={!canWake || busy} onClick={() => void run(() => engine.request("wake", { mode: "now", text: "Check in now.", ...(agentId ? { agentId } : {}) }), "Checking in now.")}>Check now</button></div>
       <p className="au-hint">Branch looks at the list below every so often and speaks up only when there’s news. It’s HEARTBEAT.md, in plain words.</p>
       {shows(level, "advanced") && data && data.snap.entries.length > 0 && <label className="au-field"><span className="au-flabel">Who checks in</span><select className="inp" value={target} onChange={e => setTarget(e.target.value)}><option value="">Every Trunk (the usual settings)</option>{data.snap.entries.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></label>}
-      <div className={admin ? "au-setrow" : "au-setrow au-off"} title={why}><span><b>How often</b><small>Quiet background work: no news, no message.</small></span><Segmented label="How often" value={otherEvery !== null ? "other" : everyChoice(every)} options={EVERY.map(([id, name]) => ({ id, name }))} onChange={v => { if (!admin) return; if (v === "other") setOtherEvery(every); else { setOtherEvery(null); save({ every: v }, v === "0m" ? "Check-ins are off." : "Saved how often it checks in."); } }} /></div>
+      <div className={admin ? "au-setrow" : "au-setrow au-off"} title={shownWhy(why)}><span><b>How often</b><small>Quiet background work: no news, no message.</small></span><Segmented label="How often" value={otherEvery !== null ? "other" : everyChoice(every)} options={EVERY.map(([id, name]) => ({ id, name }))} onChange={v => { if (!admin) return; if (v === "other") setOtherEvery(every); else { setOtherEvery(null); save({ every: v }, v === "0m" ? "Check-ins are off." : "Saved how often it checks in."); } }} /></div>
       {otherEvery !== null && <form className="au-describe" onSubmit={e => { e.preventDefault(); save({ every: otherEvery.trim() || null }, "Saved how often it checks in."); setOtherEvery(null); }}><input className="inp" aria-label="Every" placeholder="45m, 2h…" value={otherEvery} onChange={e => setOtherEvery(e.target.value)} /><button type="submit" className="btn sm" disabled={!admin}>Save</button></form>}
-      <div className={admin ? "au-setrow" : "au-setrow au-off"} title={why}><span><b>Which hours</b><small>Outside these hours it waits.</small></span><Segmented label="Which hours" value={otherHours ? "other" : hoursChoice(active)} options={HOURS.map(([id, name]) => ({ id, name }))} onChange={v => { if (!admin) return; const h = HOURS.find(x => x[0] === v)!; if (v === "other") setOtherHours({ start: str(active.start) || "08:00", end: str(active.end) || "20:00" }); else { setOtherHours(null); save({ activeHours: v === "always" ? null : { start: h[2], end: h[3] } }, "Saved which hours it checks in."); } }} /></div>
+      <div className={admin ? "au-setrow" : "au-setrow au-off"} title={shownWhy(why)}><span><b>Which hours</b><small>Outside these hours it waits.</small></span><Segmented label="Which hours" value={otherHours ? "other" : hoursChoice(active)} options={HOURS.map(([id, name]) => ({ id, name }))} onChange={v => { if (!admin) return; const h = HOURS.find(x => x[0] === v)!; if (v === "other") setOtherHours({ start: str(active.start) || "08:00", end: str(active.end) || "20:00" }); else { setOtherHours(null); save({ activeHours: v === "always" ? null : { start: h[2], end: h[3] } }, "Saved which hours it checks in."); } }} /></div>
       {otherHours && <form className="au-describe" onSubmit={e => { e.preventDefault(); save({ activeHours: { start: otherHours.start, end: otherHours.end } }, "Saved which hours it checks in."); setOtherHours(null); }}><input className="inp" type="time" aria-label="From" value={otherHours.start} onChange={e => setOtherHours({ ...otherHours, start: e.target.value })} /><input className="inp" type="time" aria-label="Until" value={otherHours.end} onChange={e => setOtherHours({ ...otherHours, end: e.target.value })} /><button type="submit" className="btn sm" disabled={!admin}>Save</button></form>}
       <SwitchRow title="Quiet on weekends" sub="It still tells you if a Trunk is stuck." on={false} change={() => undefined} disabled="Needs a days-of-the-week setting in the engine’s check-in hours." />
       {agentId && <WhatItChecks engine={engine} agentId={agentId} trunk={trunk} level={level} canWrite={admin} />}

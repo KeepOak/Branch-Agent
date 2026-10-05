@@ -1,5 +1,6 @@
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
+import { createTestPluginServiceScheduler } from "branch/plugin-sdk/plugin-test-api";
 import { createDiscordLivePolicyReader } from "../monitor/live-policy.js";
 import { defineDiscordVoiceTests } from "./voice-test-harness.test-support.js";
 
@@ -31,6 +32,7 @@ defineDiscordVoiceTests(
       let cfg: BranchConfig = { channels: { discord: discordConfig } };
       const client = createClientWithMember("333", "Guest", "4321");
       const manager = new managerModule.DiscordVoiceManager({
+        scheduler: createTestPluginServiceScheduler(),
         cfg,
         discordConfig,
         client: client as never,

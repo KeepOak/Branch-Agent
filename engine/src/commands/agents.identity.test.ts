@@ -410,6 +410,7 @@ describe("agents helpers", () => {
           work: { workspace: "/work-ws" },
           home: {
             subagents: { allowAgents: ["WORK", "home"] },
+            agentToAgent: { allow: ["WORK", "other*"], deny: ["work", "a2a:peer"] },
           },
         },
       },
@@ -440,7 +441,7 @@ describe("agents helpers", () => {
 
     const result = pruneAgentConfig(cfg, "work");
     expect(result.config.agents?.entries).not.toHaveProperty("work");
-    expect(result.config.agents?.entries?.home?.workspace).toBe("/srv/fleet/home");
+    expect(result.config.agents?.entries?.home?.workspace).toMatch(/(?:^|[\\/])srv[\\/]fleet[\\/]home$/);
     expect(result.config.bindings).toStrictEqual([
       { agentId: "home", match: { channel: "telegram" } },
     ]);
@@ -457,6 +458,9 @@ describe("agents helpers", () => {
       { id: "default-hook", action: "agent" },
     ]);
     expect(result.config.tools?.agentToAgent?.allow).toEqual(["home"]);
+    expect(result.config.agents?.entries?.home?.agentToAgent).toEqual({
+      allow: ["other*"], deny: ["a2a:peer"],
+    });
     expect(result.config.agents?.defaults?.subagents?.allowAgents).toEqual(["home"]);
     expect(result.config.agents?.defaults?.heartbeat).toEqual({ every: "5m" });
     expect(result.config.agents?.defaults?.systemAgent).toBeUndefined();

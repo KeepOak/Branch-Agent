@@ -11,7 +11,7 @@ import { renderCanopyToast, updateCanopyToastOutcome } from "../../components/to
 import { renderCanopyBoardGlyph } from "../../components/canopy-board-glyph.ts";
 import { t } from "../../i18n/index.ts";
 import { formatUiError } from "../../lib/format-error.ts";
-import type { CanopyBoardSummary } from "../../lib/canopy/types.ts";
+import type { CanopyBoardMetadata, CanopyBoardSummary } from "../../lib/canopy/types.ts";
 
 export type BoardDraft = {
   id: string;
@@ -61,7 +61,7 @@ export function renderBoardModal(props: {
   toastOwner: object;
   client: GatewayBrowserClient | null;
   readonly canWrite: boolean;
-  onSaved: (boardId: string) => void;
+  onSaved: (board: CanopyBoardMetadata) => void;
   onCancel: () => void;
   requestUpdate: () => void;
 }) {
@@ -107,17 +107,20 @@ export function renderBoardModal(props: {
     draft.error = null;
     props.requestUpdate();
     try {
-      await props.client.request("canopy.boards.upsert", input);
+      const { board } = await props.client.request<{ board: CanopyBoardMetadata }>(
+        "canopy.boards.upsert",
+        input,
+      );
       if (sessions) {
         if (!props.canWrite) {
           throw new Error(t("canopy.sessionsBoard.writeUnavailable"));
         }
         await props.client.request("canopy.sessionsBoard.update", {
           boardId: draft.id,
-          patch: { columns: sessions.columns, instructions: sessions.instructions ?? "" },
+          patch: { columns: sessions.columns },
         });
       }
-      props.onSaved(draft.id);
+      props.onSaved(board);
     } catch (error) {
       draft.error = formatUiError(error);
     } finally {
@@ -318,30 +321,20 @@ function renderSessionsEditor(draft: BoardDraft, canWrite: boolean, requestUpdat
           />${t("canopy.sessionsBoard.fallback")}</label
         >
         <div class="canopy-sessions-editor__actions">
-          <button
-            class="btn"
-            type="button"
-            ?disabled=${disabled || index === 0}
-            @click=${() => {
-              spec.columns.splice(index, 1);
-              spec.columns.splice(index - 1, 0, column);
-              requestUpdate();
-            }}
-          >
-            ${t("canopy.sessionsBoard.moveUp")}
-          </button>
-          <button
-            class="btn"
-            type="button"
-            ?disabled=${disabled || index === spec.columns.length - 1}
-            @click=${() => {
-              spec.columns.splice(index, 1);
-              spec.columns.splice(index + 1, 0, column);
-              requestUpdate();
-            }}
-          >
-            ${t("canopy.sessionsBoard.moveDown")}
-          </button>
+          ${[-1, 1].map(
+            (offset) => html`<button
+              class="btn"
+              type="button"
+              ?disabled=${disabled || index + offset < 0 || index + offset >= spec.columns.length}
+              @click=${() => {
+                spec.columns.splice(index, 1);
+                spec.columns.splice(index + offset, 0, column);
+                requestUpdate();
+              }}
+            >
+              ${t(offset < 0 ? "canopy.sessionsBoard.moveUp" : "canopy.sessionsBoard.moveDown")}
+            </button>`,
+          )}
           <button
             class="btn"
             type="button"
@@ -371,22 +364,6 @@ function renderSessionsEditor(draft: BoardDraft, canWrite: boolean, requestUpdat
     >
       ${icons.plus}${t("canopy.sessionsBoard.addColumn")}
     </button>
-    <label
-      ><span>${t("canopy.sessionsBoard.instructions")}</span
-      ><textarea
-        class="settings-input"
-        maxlength="2000"
-        rows="4"
-        aria-label=${t("canopy.sessionsBoard.instructions")}
-        .value=${live(spec.instructions ?? "")}
-        @input=${(event: Event) => {
-          if (event.currentTarget instanceof HTMLTextAreaElement) {
-            spec.instructions = event.currentTarget.value;
-            requestUpdate();
-          }
-        }}
-      ></textarea>
-    </label>
-    <p class="canopy-sessions-editor__help">${t("canopy.sessionsBoard.instructionsHelp")}</p>
+    <p class="canopy-sessions-editor__help">${t("canopy.sessionsBoard.rulesHelp")}</p>
   </fieldset>`;
 }

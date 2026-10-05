@@ -43,7 +43,7 @@ import { withPluginRuntimeRegistryScope } from "./runtime/gateway-request-scope.
 import * as statusSnapshot from "./status-snapshot.js";
 import { withPluginDiagnosticsReportForInspection, withPluginDiagnosticsReport } from "./status.js";
 import { createDiagnosticsFixture } from "./status.runtime-inspection.test-helpers.js";
-import type { BranchPluginService } from "./types.js";
+import type { BranchPluginApi } from "./types.js";
 
 function stateEnv(stateDir: string) {
   return {
@@ -591,7 +591,7 @@ it("keeps metadata getters live through awaited projection without retiring an i
     const independent = loadPluginRegistryHandle({ ...params, cache: false });
     const entered = createDeferredCore();
     const release = createDeferredCore();
-    let retained: BranchPluginService | undefined;
+    let retained: Parameters<BranchPluginApi["registerService"]>[0] | undefined;
     const projection = withPluginDiagnosticsReport(params, async (report) => {
       retained = report.services[0]?.service;
       entered.resolve();

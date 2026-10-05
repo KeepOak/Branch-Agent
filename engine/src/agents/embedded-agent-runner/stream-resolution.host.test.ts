@@ -1,3 +1,4 @@
+import "../../test-utils/prepare-compiled-subprocesses.js";
 import { createLlmRuntime, getAiTransportHost } from "@branch/ai";
 import type { Model } from "@branch/llm-core";
 import { describe, expect, it } from "vitest";

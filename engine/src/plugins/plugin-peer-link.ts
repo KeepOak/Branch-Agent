@@ -149,23 +149,20 @@ function auditBranchPeerDependency(params: {
           packageDir: params.packageDir,
         })
       : path.basename(params.packageDir));
+  const issue = (reason: string): BranchPeerLinkAuditIssue => ({
+    packageName,
+    packageDir: params.packageDir,
+    reason,
+  });
   const nodeModulesDir = path.join(params.packageDir, "node_modules");
   try {
     const existing = lstatSync(nodeModulesDir);
     if (!existing.isDirectory() || existing.isSymbolicLink()) {
-      return {
-        packageName,
-        packageDir: params.packageDir,
-        reason: `${nodeModulesDir} is not a real directory`,
-      };
+      return issue(`${nodeModulesDir} is not a real directory`);
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return {
-        packageName,
-        packageDir: params.packageDir,
-        reason: `missing ${path.join(nodeModulesDir, "branch")}`,
-      };
+      return issue(`missing ${path.join(nodeModulesDir, "branch")}`);
     }
     throw error;
   }
@@ -173,19 +170,11 @@ function auditBranchPeerDependency(params: {
   const linkPath = path.join(nodeModulesDir, "branch");
   const currentTarget = safeRealpathSync(linkPath);
   if (!currentTarget) {
-    return {
-      packageName,
-      packageDir: params.packageDir,
-      reason: `missing ${linkPath}`,
-    };
+    return issue(`missing ${linkPath}`);
   }
   const expectedTarget = safeRealpathSync(params.hostRoot) ?? params.hostRoot;
   if (currentTarget !== expectedTarget) {
-    return {
-      packageName,
-      packageDir: params.packageDir,
-      reason: `${linkPath} points to ${currentTarget} instead of ${expectedTarget}`,
-    };
+    return issue(`${linkPath} points to ${currentTarget} instead of ${expectedTarget}`);
   }
   return null;
 }

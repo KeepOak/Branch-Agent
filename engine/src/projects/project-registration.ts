@@ -9,7 +9,7 @@ import {
   resolveProjectCheckout,
   withProjectCheckoutLifecycle,
 } from "./project-checkout.js";
-import type { ProjectRegistryInsert, ProjectRegistryRecord } from "./project-registry.kernel.js";
+import type { ProjectRegistryInsert, ProjectRegistryRecord } from "./project-registry.types.js";
 
 type ProjectRegistrationInput = {
   path: string;
@@ -44,6 +44,7 @@ export async function registerPreparedProjectRegistry(
   lease: BranchStateLeaseContext,
   context: BranchStateWorkerContext,
   onRegistered?: () => void,
+  assertCurrent?: () => void,
 ): Promise<ProjectRegistryRecord> {
   // A deletion can win after planning; revalidate under the original checkout owner.
   const current = await resolveProjectCheckout(prepared.project.repoRoot);
@@ -55,15 +56,20 @@ export async function registerPreparedProjectRegistry(
   }
   const { runWithBranchStateLeaseWorker } =
     await import("../state/branch-state-lease-worker-operation.js");
-  return await runWithBranchStateLeaseWorker(lease, context, async (scope, identity) => {
-    const project = await scope.execute({
-      type: "projects.insert",
-      input: { project: prepared.project, lease: identity },
-    });
-    // Preserve acknowledgement before worker and lease finalization can fail.
-    onRegistered?.();
-    return project;
-  });
+  return await runWithBranchStateLeaseWorker(
+    lease,
+    context,
+    async (scope, identity) => {
+      const project = await scope.execute({
+        type: "projects.insert",
+        input: { project: prepared.project, lease: identity },
+      });
+      // Preserve acknowledgement before worker and lease finalization can fail.
+      onRegistered?.();
+      return project;
+    },
+    assertCurrent ? { assertCurrent, beforeCommit: assertCurrent } : undefined,
+  );
 }
 
 export async function registerResolvedProject(
