@@ -174,7 +174,7 @@ function topRows(c: ConversationMenuContext): (MenuItem | null)[] {
 function trunkRows(c: ConversationMenuContext): (MenuItem | null)[] {
   const row = c.row;
   return [
-    row ? item(row.pinned ? "Unpin" : "Pin to top", "pin", c.run.pin) : null,
+    row && !c.isMain ? item(row.pinned ? "Unpin" : "Pin to top", "pin", c.run.pin) : null,
     c.ownTrunk ? off("Pause this Trunk", "pause", OFF_REASONS.pause) : null,
     item("Rename", "edit", c.run.rename),
     item(`${c.trunkName}’s profile`, "users", c.run.profile),

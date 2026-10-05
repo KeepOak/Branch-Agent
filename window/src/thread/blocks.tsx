@@ -1,7 +1,7 @@
 // The thread's block kinds (DESIGN-SPEC §4.2.2): your message, the Trunk's reply, thinking, steps, Done,
 // "Couldn't finish" and notes. Hooks for the scripts: data-testid="message" with data-role, "step" with
 // data-kind, "run-done".
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Face } from "../face/Face";
 import type { AgentState } from "../face/agentState";
 import { Attachments } from "./Attachments";
@@ -9,7 +9,7 @@ import { copyText, useThread } from "./context";
 import { formatDuration, phaseWords, shortReason, stepLabel, stepsSummary } from "./format";
 import { Icon, ICONS } from "./icons";
 import { Markdown } from "./markdown";
-import type { Block } from "./model";
+import { fullOutput, type Block } from "./model";
 import { withMentions } from "../rooms/RoomMessage";
 
 type Of<K extends Block["kind"]> = Extract<Block, { kind: K }>;
@@ -61,12 +61,19 @@ export function Reply({ block, face, from, working, children }: { block: Of<"tex
 
 /** Live: the spark and the reasoning in italics. Finished: a closed fold under the reply (§4.2.2 rule 5). */
 export function Thinking({ block }: { block: Of<"thinking"> }) {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (!block.live || block.text) return;
+    const started = Date.now();
+    const timer = setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [block.live, block.text]);
   if (block.live) {
     return (
-      <div className="thinking indent" data-testid="thinking">
-        <Icon d={ICONS.spark} className="spark" />
-        <span>{block.text}</span>
-      </div>
+      <details className="fold indent" data-testid="thinking">
+        <summary><Icon d={ICONS.spark} className="spark" />{block.text ? "Thinking" : `Thinking… · ${seconds}s`}</summary>
+        {block.text ? <p className="fold-body thinking-text">{block.text}</p> : null}
+      </details>
     );
   }
   return (
@@ -82,7 +89,10 @@ export function Thinking({ block }: { block: Of<"thinking"> }) {
 
 function StepOutput({ step }: { step: Of<"step"> }) {
   const { toast } = useThread();
-  const output = (step.output ?? "").trimEnd();
+  const [all, setAll] = useState(false);
+  const outputKey = step.outputKey ?? step.key;
+  const expanded = all ? fullOutput(outputKey) : undefined;
+  const output = (expanded ?? step.output ?? "").trimEnd();
   const done = step.status !== "running";
   if (!output) {
     return done ? <p className="step-none">{step.status === "ok" ? "No output · it finished." : "No output · it failed."}</p> : null;
@@ -91,9 +101,10 @@ function StepOutput({ step }: { step: Of<"step"> }) {
   const tail = lines.slice(-12).join("\n");
   return (
     <div className="step-output">
-      <pre>{tail}</pre>
+      <pre>{all ? output : tail}</pre>
       <div className="row-buttons">
-        <button type="button" className="btn sm ghost" onClick={() => void copyText(output, toast)}>
+        {lines.length > 12 || fullOutput(outputKey) ? <button type="button" className="btn sm ghost" onClick={() => setAll((v) => !v)}>{all ? "Show less" : "Show all"}</button> : null}
+        <button type="button" className="btn sm ghost" onClick={() => void copyText(fullOutput(outputKey) ?? output, toast)}>
           Copy output
         </button>
       </div>
@@ -101,18 +112,31 @@ function StepOutput({ step }: { step: Of<"step"> }) {
   );
 }
 
+function ChangedFiles({ step }: { step: Of<"step"> }) {
+  if (!step.changes?.length) return null;
+  return <div className="changed-files" data-testid="files-changed">
+    <b>Files changed</b>
+    {step.changes.map((change) => <details key={change.path}>
+      <summary>{change.path} <span>+{change.added} −{change.removed}</span></summary>
+      {change.diff ? <pre>{change.diff}</pre> : null}
+    </details>)}
+  </div>;
+}
+
 function StepRow({ step }: { step: Of<"step"> }) {
   const mark = step.status === "ok" ? ICONS.check : step.status === "running" ? ICONS.spin : ICONS.x;
   return (
     <li className="step" data-testid="step" data-kind={step.tool} data-status={step.status}>
+      <details>
+      <summary>
       <span className={`step-mark ${step.status}`}>
         <Icon d={mark} />
       </span>
-      <div className="step-body">
-        <span className="step-label">{stepLabel(step)}</span>
-        <code className="step-detail">{step.title}</code>
-        <StepOutput step={step} />
-      </div>
+      <span className="step-label">{stepLabel(step)}</span> <code className="step-detail">{step.title}</code>
+      <span className="step-state">{step.status === "running" ? "Running" : step.status === "ok" ? "Done" : "Failed"}{/^Exit \d+/.test(step.detail) ? ` · ${step.detail}` : ""}</span>
+      </summary>
+      <div className="step-body"><span>{step.detail}</span><ChangedFiles step={step} /><StepOutput step={step} /></div>
+      </details>
     </li>
   );
 }

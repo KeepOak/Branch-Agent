@@ -389,6 +389,19 @@
   font-size: 13px;
 }
 
+.thread .step > details { grid-column: 1 / -1; min-width: 0; }
+.thread .step > details > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; min-width: 0; }
+.thread .step > details > summary::-webkit-details-marker { display: none; }
+.thread .step > details > summary .step-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread .step > details > summary .step-state { margin-left: auto; flex: none; color: var(--ink-3); font-size: 11px; }
+.thread .step > details > .step-body { margin: 6px 0 0 26px; }
+.thread .changed-files { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 12px; }
+.thread .changed-files details { padding: 4px 8px; border-radius: 6px; background: var(--fill); }
+.thread .changed-files summary { cursor: pointer; overflow-wrap: anywhere; }
+.thread .changed-files summary span { color: var(--ink-3); }
+.thread .changed-files pre { overflow: auto; max-height: 280px; font: 12px/1.45 var(--mono); white-space: pre-wrap; }
+.thread .live-run-head { margin-left: 38px; color: var(--ink-3); font-size: 12px; }
+
 .thread .step-mark {
   color: var(--ok);
   padding-top: 2px;

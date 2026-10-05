@@ -72,13 +72,13 @@ export function badgeList(row: Conversation, x: RowExtras | undefined): { icon: 
 function secondLine(row: Conversation, state: RowState, x: RowExtras | undefined): { text: string; word: string; tone: string } | null {
   if (["trunk", "chatGroup", "outside"].includes(row.kind)) {
     if (state.waiting) return { text: row.preview, word: "Waiting on you", tone: "attn" };
-    if (state.working) return { text: row.preview, word: "", tone: "" };
+    if (state.working) return { text: row.headline || "Thinking", word: "", tone: "" };
     return null;
   }
   const mark = row.runMark ? MARKS[row.runMark] : null;
   if (state.waiting) return { text: (x?.headlines !== false && row.headline) || row.preview, word: "Waiting on you", tone: "attn" };
   if (mark?.bad) return { text: row.preview, word: mark.word, tone: "bad" };
-  if (state.working) return { text: x?.liveInList !== false && x?.headlines !== false && row.headline ? row.headline : row.preview, word: "", tone: "" };
+  if (state.working) return { text: x?.liveInList !== false && x?.headlines !== false ? row.headline || "Thinking" : row.preview.trim() === "…" ? "Thinking" : row.preview, word: "", tone: "" };
   return null;
 }
 
@@ -110,7 +110,7 @@ export function ConversationRow(p: Props) {
   const mark = row.runMark ? MARKS[row.runMark] : null;
   const line = secondLine(row, state, p.extras);
   // One line unless previews are on, or it waits for you or failed (the preview's rowPA18).
-  const twoLine = p.showPreview || Boolean(line && (line.tone === "attn" || line.tone === "bad"));
+  const twoLine = p.showPreview || state.working || Boolean(line && (line.tone === "attn" || line.tone === "bad"));
   const text = line ?? (p.showPreview ? { text: row.preview, word: "", tone: "" } : null);
   const hue = colourHue(row.color);
   const classes = ["row", current ? "current" : "", twoLine ? "" : "one", p.dimmed ? "dim" : "", p.child ? "child" : "", p.selected ? "sel" : ""].filter(Boolean).join(" ");

@@ -117,7 +117,7 @@ describe("conversationMenuItems", () => {
 describe("the menu's engine reads", () => {
   it("reads step updates, thinking and the folder from sessions.describe", () => {
     expect(readDetail({ session: { verboseLevel: "full", reasoningLevel: "on", worktree: { path: "/w" } } })).toEqual({ verboseLevel: "full", showThinking: true, workspace: "/w" });
-    expect(readDetail({ session: {} })).toEqual({ verboseLevel: "off", showThinking: false, workspace: null });
+    expect(readDetail({ session: {} })).toEqual({ verboseLevel: "off", showThinking: true, workspace: null });
   });
 
   it("builds the conversation link on the window's own address and the public link on the engine's", () => {

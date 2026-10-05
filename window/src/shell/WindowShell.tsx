@@ -109,8 +109,9 @@ function workWords(s: SessionSnapshot, now: number): string {
   if (step?.kind === "step" && step.status === "running" && /browser|computer|screen|desktop/i.test(step.tool)) {
     return "Working · using the computer";
   }
+  if (step?.kind === "step" && step.status === "running") return `${step.tool === "bash" || step.tool === "command" ? "Running" : "Using"} ${step.title}`;
   const state = agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now });
-  return state === "work" || state === "idle" ? "Working on it" : STATE_LABEL[state];
+  return state === "work" || state === "idle" ? "Thinking" : STATE_LABEL[state];
 }
 
 function faceState(s: SessionSnapshot, now: number): FaceState {
@@ -1019,6 +1020,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             </>
           }
           name={trunkName(openRow?.agentId)}
+          showThinking={conversationMenu.showThinking}
           room={room.thread}
           history={s.history}
           live={s.live}

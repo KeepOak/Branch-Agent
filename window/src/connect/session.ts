@@ -40,6 +40,8 @@ export class SaplingSession {
   private readonly runs = new RunStreams();
   private readonly approvals = new Map<string, Approval>();
   private readonly finished = new Set<string>();
+  /** Codex emits many updates per item. Keep raw events off React's render path between frames. */
+  private liveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   /** Only the newest `chat.history` read may land; an older one resolving later would bring back stale history. */
   private historyReads = 0;
   private readonly gateway: BranchGateway;
@@ -74,6 +76,7 @@ export class SaplingSession {
   }
 
   stop(): void {
+    if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
     this.gateway.stop();
   }
 
@@ -120,6 +123,8 @@ export class SaplingSession {
     }
     this.wanted = key;
     this.runs.clear();
+    if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
+    this.liveRefreshTimer = null;
     this.approvals.clear();
     this.set({ sessionKey: key, history: [], live: [], pendingUser: null, liveRunId: null, doneAt: null, lastActivityAt: null, error: null });
     try {
@@ -209,12 +214,21 @@ export class SaplingSession {
       ...(inFlightRunId ? { liveRunId: inFlightRunId } : {}),
     });
     if (inFlightRunId) {
-      this.adoptInFlight(inFlightRunId, str(inFlight.text));
+      this.adoptInFlight(inFlightRunId, str(inFlight.text), inFlight);
     }
   }
 
-  private adoptInFlight(runId: string, text: string): void {
-    if (text && !this.runs.has(runId)) {
+  private adoptInFlight(runId: string, text: string, snapshot: Record<string, unknown>): void {
+    const events = Array.isArray(snapshot.events) ? snapshot.events : [];
+    for (const raw of events) {
+      const event = readRunEvent(raw);
+      if (event?.runId === runId) this.runs.accept(event);
+    }
+    if (!this.runs.events(runId).some((event) => event.stream === "plan")) {
+      const plan = rec(snapshot.plan);
+      if (Array.isArray(plan.steps)) this.runs.accept({ runId, seq: -1, stream: "plan", ts: 0, data: { steps: plan.steps } });
+    }
+    if (text && !this.runs.events(runId).some((event) => event.stream === "assistant")) {
       this.runs.accept({ runId, seq: 0, stream: "assistant", ts: 0, data: { delta: text } });
     }
     this.refreshLive();
@@ -225,7 +239,7 @@ export class SaplingSession {
       listener(event.event, event.payload);
     }
     const payload = rec(event.payload);
-    if (event.event === "agent") {
+    if (event.event === "agent" || event.event === "session.tool") {
       this.onAgentEvent(payload);
     } else if (event.event === "chat") {
       const state = str(payload.state);
@@ -257,12 +271,13 @@ export class SaplingSession {
     if (!event || !this.isOurs(payload) || this.finished.has(event.runId)) {
       return;
     }
-    this.runs.accept(event);
+    if (this.runs.accept(event) === "stale") return;
     if (!this.snapshot.liveRunId) {
       this.set({ liveRunId: event.runId, doneAt: null });
     }
     if (event.runId === this.snapshot.liveRunId) {
-      this.refreshLive();
+      if (event.stream === "lifecycle" && (event.data.phase === "end" || event.data.phase === "error")) this.refreshLive();
+      else this.scheduleLiveRefresh();
     }
     if (event.stream === "lifecycle" && (event.data.phase === "end" || event.data.phase === "error")) {
       void this.finishRun(event.runId);
@@ -299,8 +314,14 @@ export class SaplingSession {
   }
 
   private refreshLive(): void {
+    if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
+    this.liveRefreshTimer = null;
     const runId = this.snapshot.liveRunId;
     this.set({ live: runId ? projectRun(this.runs.events(runId), this.approvals) : [] });
+  }
+
+  private scheduleLiveRefresh(): void {
+    if (!this.liveRefreshTimer) this.liveRefreshTimer = setTimeout(() => this.refreshLive(), 100);
   }
 
   /**

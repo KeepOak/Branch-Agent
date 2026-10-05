@@ -16,7 +16,7 @@ import { HoverBar } from "./HoverBar";
 import { Rail } from "./Rail";
 import { Icon, ICONS } from "./icons";
 import { layout, shownApprovalIds, type Item } from "./layout";
-import { planAnchor } from "./PlanCard";
+import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
 import { QuestionLine } from "./QuestionCard";
 import { anchorQuestions, type QuestionRecord } from "./questions";
@@ -32,7 +32,7 @@ import { TalkedFold } from "../rooms/TalkedFold";
 import { RoomLine } from "../rooms/RoomLine";
 import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
-import { dayStamp, fullTime, messageTime, modelName } from "./format";
+import { dayStamp, formatDuration, fullTime, messageTime, modelName } from "./format";
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
 import type { EarlierPage } from "../shell/useContactSegments";
 
@@ -44,6 +44,7 @@ type Props = {
   live: Block[];
   pendingUser: string | null;
   running: boolean;
+  showThinking?: boolean;
   onAnswer: (id: string, decision: "allow-once" | "deny") => void;
   /** The shared engine handle (connect/engine.ts); without it the message actions stay greyed with their reason. */
   engine?: WindowEngine;
@@ -176,7 +177,7 @@ export function Thread(props: Props) {
       .find((node) => node.dataset.testid === `topic-card-${props.focusTopic?.key}`);
     target?.scrollIntoView({ block: "end" });
   }, [props.focusTopic, props.topicUpdates]);
-  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser };
+  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false };
   const recoveryEntryId = history.findLast((block) =>
     (block.kind === "user" || block.kind === "text") && Boolean(block.meta?.entryId),
   );
@@ -281,6 +282,7 @@ type View = {
   room?: ThreadRoom;
   /** The last message you sent in the history; the replies after it belong to the turn that is running. */
   lastUser: number;
+  showThinking: boolean;
 };
 
 /** A day stamp over the first message of each day that has a recorded time (§4.2.2 Stamp). */
@@ -316,11 +318,15 @@ function keyOf(item: Item): string {
 /** The run that is going now, from its first event until it ends (`data-streaming="true"`). */
 function LiveRun({ view, offset }: { view: View; offset: number }) {
   const { live, name } = view;
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => { const started = Date.now(); const timer = setInterval(() => setElapsed(Date.now() - started), 1000); return () => clearInterval(timer); }, []);
+  const usage = live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage");
   const waiting = live.some((b) => b.kind === "approval" && b.approval.state === "pending");
   const status = live.find((b): b is Extract<Block, { kind: "status" }> => b.kind === "status") ?? null;
-  const typing = !waiting && !live.some((b) => b.kind === "text" || b.kind === "thinking" || b.kind === "step");
+  const typing = !waiting && !live.some((b) => b.kind === "text" || (view.showThinking && b.kind === "thinking") || b.kind === "step" || b.kind === "preamble" || b.kind === "plan");
   return (
     <div className="live-run" data-streaming="true">
+      <header className="live-run-head">Working · {formatDuration(elapsed)}{usage?.total ? ` · ${usage.total.toLocaleString()} tokens` : ""}</header>
       {layout(live.filter((b) => b.kind !== "status"), offset).map((item) => <ItemView key={keyOf(item)} item={item} view={view} live />)}
       {typing ? <Typing name={name} status={status} /> : null}
     </div>
@@ -366,7 +372,11 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
     case "text":
       return <MessageView block={block} index={index} firstReply={firstReply} face={face} view={view} live={live} />;
     case "thinking":
-      return <Thinking block={block} />;
+      return view.showThinking ? <Thinking block={block} /> : null;
+    case "preamble":
+      return <div className="pass-line indent" data-testid="preamble">{block.text}</div>;
+    case "plan":
+      return <PlanCard card={{ sessionKey: "run", revision: 1, updatedAt: Date.now(), steps: block.steps }} />;
     case "approval":
       return view.grouped.has(block.approval.id) ? null : <ApprovalCard approval={block.approval} details={view.details.get(block.approval.id)} name={view.name} onAnswer={view.answer} />;
     case "done":
