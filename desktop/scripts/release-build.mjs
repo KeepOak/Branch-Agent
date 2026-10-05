@@ -98,6 +98,16 @@ async function packageDesktop(scratch, output, identity) {
     nodePath: join(resources, "node", identity.platform === "win32" ? "node.exe" : "node") };
 }
 
+/** CI starts the native build before the shared renderer exists; packaging waits for its ready file. */
+async function waitForSharedWindow() {
+  const ready = process.env.BRANCH_RELEASE_WINDOW_READY;
+  if (!ready) return;
+  for (const end = Date.now() + 12 * 60_000; ; await new Promise(next => setTimeout(next, 2000))) {
+    try { if ((await stat(ready)).isFile()) return; } catch (error) { if (error.code !== "ENOENT") throw error; }
+    assert(Date.now() < end, "The shared renderer never arrived");
+  }
+}
+
 export async function buildRelease(mode, output, windowDirectory) {
   assert(["window", "components"].includes(mode), "Usage: release-build.mjs window|components output [built-window]");
   const identity = await releaseIdentity();
@@ -115,6 +125,7 @@ export async function buildRelease(mode, output, windowDirectory) {
     const engine = await deployEngine(pnpm, scratch, identity);
     // Packaged first, so the manifest's desktop component is the same app.asar as the bootstrap package.
     const { nodePath, desktop, ...runtime } = await packageDesktop(scratch, output, identity);
+    await waitForSharedWindow();
     const manifest = await makeComponentRelease({ ...identity, sourceCommit: identity.commit, tag: `v${identity.version}`, engine, window: windowDirectory, desktop, output });
     const source = await readFile(join(engineRoot, "packages/gateway-protocol/src/version.ts"), "utf8");
     const protocol = { min: Number(source.match(/MIN_CLIENT_PROTOCOL_VERSION = (\d+)/)?.[1]), max: Number(source.match(/PROTOCOL_VERSION = (\d+)/)?.[1]) };
