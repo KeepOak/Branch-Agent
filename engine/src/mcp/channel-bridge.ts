@@ -121,7 +121,12 @@ export class BranchChannelBridge {
     const device = this.params.graftDevice;
     const bootstrap: Pick<
       Awaited<ReturnType<typeof resolveGatewayClientBootstrap>>,
-      "url" | "auth" | "tlsFingerprint" | "deviceAuthScope" | "sshTunnel" | "preauthHandshakeTimeoutMs"
+      | "url"
+      | "auth"
+      | "tlsFingerprint"
+      | "deviceAuthScope"
+      | "sshTunnel"
+      | "preauthHandshakeTimeoutMs"
     > = device
       ? { url: device.url, auth: {}, tlsFingerprint: device.tlsFingerprint }
       : await resolveGatewayClientBootstrap({

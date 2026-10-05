@@ -3,8 +3,8 @@
 import os from "node:os";
 import type { Command } from "commander";
 import type { BranchConfig } from "../config/types.branch.js";
-import { defaultRuntime } from "../runtime.js";
 import { formatErrorMessage } from "../infra/errors.js";
+import { defaultRuntime } from "../runtime.js";
 import { formatCliCommand } from "./command-format.js";
 import { callGatewayFromCli } from "./gateway-rpc.js";
 
@@ -37,7 +37,9 @@ async function runInvite(opts: InviteOpts): Promise<void> {
     defaultRuntime.writeJson(result);
     return;
   }
-  defaultRuntime.log(`Setup code for another Branch (works once, until it expires):\n${result.setupCode}`);
+  defaultRuntime.log(
+    `Setup code for another Branch (works once, until it expires):\n${result.setupCode}`,
+  );
   defaultRuntime.log(`It connects to ${result.gatewayUrl}. On the other Branch run:`);
   defaultRuntime.log(`  ${formatCliCommand("branch graft join <setup-code>")}`);
   defaultRuntime.log(
@@ -57,7 +59,12 @@ async function runJoin(code: string, opts: JoinOpts): Promise<void> {
     ]);
   const payload = decodePairingSetupCode(code.trim());
   const name = opts.name?.trim() || os.hostname();
-  const link = { url: payload.url, tlsFingerprint: payload.tlsFingerprint, name, joinedAt: Date.now() };
+  const link = {
+    url: payload.url,
+    tlsFingerprint: payload.tlsFingerprint,
+    name,
+    joinedAt: Date.now(),
+  };
   // Each attempt uses the code's one-time bootstrap token; once approved, the device token is stored.
   const joined = await graft.joinHost({
     connect: async () => {

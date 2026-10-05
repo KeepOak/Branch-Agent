@@ -5,13 +5,13 @@ import { VERSION } from "../version.js";
 import { BranchChannelBridge } from "./channel-bridge.js";
 import { ClaudePermissionRequestSchema, type ClaudeChannelMode } from "./channel-shared.js";
 import { getChannelMcpCapabilities, registerChannelMcpTools } from "./channel-tools.js";
-import { outsideAgentFromClient, OutsidePresence } from "./outside-presence.js";
 import {
   GRAFT_DEVICE_SCOPES,
   graftBranchIdentity,
   graftTrunkIdentity,
   type GraftLink,
 } from "./graft-join.js";
+import { outsideAgentFromClient, OutsidePresence } from "./outside-presence.js";
 import { registerTrunkMcpTools, type OutsideAgentIdentity } from "./trunk-tools.js";
 import { registerUiMcpTools, UiSession } from "./ui-tools.js";
 
@@ -97,7 +97,8 @@ export async function createChannelMcpRuntime(
     (agent) => bridge.request("contacts.outside.hello", { agent }),
     (line) => opts.verbose && process.stderr.write(`branch mcp: ${line}${os.EOL}`),
   );
-  const hello = (agent: OutsideAgentIdentity) => bridge.request("contacts.outside.hello", { agent });
+  const hello = (agent: OutsideAgentIdentity) =>
+    bridge.request("contacts.outside.hello", { agent });
   const trunkPresences: OutsidePresence[] = [];
   const graftBranch = opts.graftHost ? graftBranchIdentity(opts.graftHost.link.name) : undefined;
   // A grafted Branch speaks as itself, whatever MCP client drives it (its hello starts once connected).

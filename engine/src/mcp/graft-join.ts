@@ -34,7 +34,10 @@ const slug = (value: string) =>
 /** This Branch as its host sees it: an outside agent of kind "branch" named after this Branch. */
 export function graftBranchIdentity(name: string, where = os.hostname()): GraftIdentity {
   // "Studio Laptop" -> branch-studio-laptop; "Branch B" -> branch-b (never "branch-branch-b").
-  const rest = slug(name).replace(/^branch(?:-|$)/, "").slice(0, 56).replace(/-+$/, "");
+  const rest = slug(name)
+    .replace(/^branch(?:-|$)/, "")
+    .slice(0, 56)
+    .replace(/-+$/, "");
   return {
     id: rest ? `branch-${rest}` : "branch",
     name: name.slice(0, 100),
@@ -128,7 +131,8 @@ export function saveGraftLink(link: GraftLink, env?: NodeJS.ProcessEnv): void {
 export function resolveGraftLink(host: string, env?: NodeJS.ProcessEnv): GraftLink {
   const links = readGraftLinks(env);
   const match =
-    links.find((row) => row.url === host) ?? (host === "" && links.length === 1 ? links[0] : undefined);
+    links.find((row) => row.url === host) ??
+    (host === "" && links.length === 1 ? links[0] : undefined);
   if (!match) {
     throw new Error(
       links.length
@@ -139,7 +143,10 @@ export function resolveGraftLink(host: string, env?: NodeJS.ProcessEnv): GraftLi
   return match;
 }
 
-type DeviceConnection = { request: (method: string, params: unknown) => Promise<unknown>; stop: () => void };
+type DeviceConnection = {
+  request: (method: string, params: unknown) => Promise<unknown>;
+  stop: () => void;
+};
 
 /**
  * One connection to the host as this Branch's own device: read + write only, the bootstrap token while pairing and
@@ -162,7 +169,9 @@ export async function connectAsDevice(params: {
   const base = {
     url: params.url,
     tlsFingerprint: params.tlsFingerprint,
-    ...(params.bootstrapToken ? { bootstrapToken: params.bootstrapToken, preferBootstrapToken: true } : {}),
+    ...(params.bootstrapToken
+      ? { bootstrapToken: params.bootstrapToken, preferBootstrapToken: true }
+      : {}),
     deviceIdentity,
   };
   await prepareGatewayClientDeviceAuth(base);
@@ -186,18 +195,27 @@ export async function connectAsDevice(params: {
         const auth = (hello as { auth?: { scopes?: string[] } }).auth;
         resolve({
           outcome: { ok: true, deviceId: deviceIdentity.deviceId, scopes: auth?.scopes ?? [] },
-          connection: { request: (method, body) => client.request(method, body), stop: () => client.stop() },
+          connection: {
+            request: (method, body) => client.request(method, body),
+            stop: () => client.stop(),
+          },
         });
       },
       onConnectError: (error) => {
         resolve({
-          outcome: { ok: false, pendingRequestId: pendingPairingRequestId(error), message: error.message },
+          outcome: {
+            ok: false,
+            pendingRequestId: pendingPairingRequestId(error),
+            message: error.message,
+          },
         });
       },
       // A refusal can arrive as the close reason alone ("pairing required (requestId: ...)").
       onClose: (code, reason) => {
         const message = `The host closed the connection (${code}): ${reason}`;
-        resolve({ outcome: { ok: false, pendingRequestId: pendingPairingRequestId({ message }), message } });
+        resolve({
+          outcome: { ok: false, pendingRequestId: pendingPairingRequestId({ message }), message },
+        });
       },
     });
     client.start();

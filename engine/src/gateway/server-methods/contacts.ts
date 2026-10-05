@@ -37,9 +37,9 @@ import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role
 import { createSessionListEntryFilter } from "../session-sharing.js";
 import { readSessionTitleFieldsFromTranscriptAsync } from "../session-transcript-title-reader.js";
 import { deriveSessionTitle } from "../session-utils-core.js";
+import { deviceHandlers } from "./devices.js";
 import { emitSessionsChanged } from "./session-change-event.js";
 import type { GatewayRequestHandlers, GatewayRequestHandlerOptions } from "./types.js";
-import { deviceHandlers } from "./devices.js";
 import { assertValidParams } from "./validation.js";
 
 async function readProjection({
@@ -137,7 +137,11 @@ async function removeGraftDevice(
       params: { deviceId },
       respond: (ok, _payload, error) => {
         if (ok || /unknown deviceId/.test(error?.message ?? "")) resolve({ ok: true });
-        else resolve({ ok: false, error: error ?? errorShape(ErrorCodes.UNAVAILABLE, "remove failed") });
+        else
+          resolve({
+            ok: false,
+            error: error ?? errorShape(ErrorCodes.UNAVAILABLE, "remove failed"),
+          });
       },
     });
   });
@@ -214,7 +218,8 @@ export const contactHandlers: GatewayRequestHandlers = {
     }
     // Disconnecting a grafted Branch (or one of its Trunks) disconnects the whole device: every row it said hello
     // as, and its pairing, removed the way Settings › Devices removes one (device.pair.remove).
-    const device = params.revoked === true ? outsideAgentDeviceRows(params.id!, listOutsideAgents()) : undefined;
+    const device =
+      params.revoked === true ? outsideAgentDeviceRows(params.id!, listOutsideAgents()) : undefined;
     if (device) {
       const removed = await removeGraftDevice(options, device.deviceId);
       if (!removed.ok) {

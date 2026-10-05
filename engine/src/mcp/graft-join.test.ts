@@ -95,7 +95,12 @@ describe("branch graft join", () => {
 
   it("names the Branch after itself and binds each Trunk to it", () => {
     const branch = graftBranchIdentity("Studio Laptop", "studio");
-    expect(branch).toEqual({ id: "branch-studio-laptop", name: "Studio Laptop", kind: "branch", where: "studio" });
+    expect(branch).toEqual({
+      id: "branch-studio-laptop",
+      name: "Studio Laptop",
+      kind: "branch",
+      where: "studio",
+    });
     expect(graftTrunkIdentity(branch, { id: "scout", name: "Scout" })).toEqual({
       id: "branch-studio-laptop--scout",
       name: "Scout",
@@ -116,7 +121,9 @@ describe("branch graft join", () => {
     expect(readGraftLinks(env)).toEqual([{ url: "ws://127.0.0.1:41001", name: "B2", joinedAt: 2 }]);
     expect(resolveGraftLink("", env).name).toBe("B2");
     expect(resolveGraftLink("ws://127.0.0.1:41001", env).name).toBe("B2");
-    expect(() => resolveGraftLink("ws://10.0.0.5:18789", env)).toThrow("has not joined ws://10.0.0.5:18789");
+    expect(() => resolveGraftLink("ws://10.0.0.5:18789", env)).toThrow(
+      "has not joined ws://10.0.0.5:18789",
+    );
   });
 
   it("invites with a loopback address unless the owner opened the gateway to the network", () => {
@@ -127,6 +134,8 @@ describe("branch graft join", () => {
     expect(graftInviteParams({ gateway: { bind: "loopback" } } as never, 41002).publicUrl).toBe(
       "ws://127.0.0.1:41002",
     );
-    expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 41002)).toEqual({ includeQr: false });
+    expect(graftInviteParams({ gateway: { bind: "lan" } } as never, 41002)).toEqual({
+      includeQr: false,
+    });
   });
 });

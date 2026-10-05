@@ -49,7 +49,9 @@ afterEach(() => {
 const device = (id: string) => ({
   connect: { scopes: ["operator.read", "operator.write"], device: { id } },
 });
-const owner = { connect: { scopes: ["operator.admin", "operator.read"], device: { id: "owner-dev" } } };
+const owner = {
+  connect: { scopes: ["operator.admin", "operator.read"], device: { id: "owner-dev" } },
+};
 
 async function call(method: string, params: Record<string, unknown>, client: unknown) {
   let reply: { ok: boolean; payload?: any; error?: { message?: string } } | undefined;
@@ -75,7 +77,9 @@ describe("Branch-to-Branch graft on the host", () => {
   });
 
   it("lists the joining Branch and its Trunks bound to its device", async () => {
-    expect((await call("contacts.outside.hello", { agent: branchB }, device("dev-b"))).ok).toBe(true);
+    expect((await call("contacts.outside.hello", { agent: branchB }, device("dev-b"))).ok).toBe(
+      true,
+    );
     const trunk = await call("contacts.outside.hello", { agent: scout }, device("dev-b"));
     expect(trunk.payload.contact).toMatchObject({ id: "a2a:branch-b--scout", name: "Scout" });
     expect(listOutsideAgents().map((row) => [row.id, row.kind, row.via, row.deviceId])).toEqual(
