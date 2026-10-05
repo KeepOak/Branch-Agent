@@ -99,7 +99,7 @@ describe.runIf(Boolean(engineDir))("Graft hub tools against a scratch engine", (
     expect((await call("docs_list", { project })).docs).toEqual([
       expect.objectContaining({ name: "PLAN.md", versions: 2 }),
     ]);
-    expect((await call("docs_search", { project, query: "plan v2" })).results).toHaveLength(1);
+    expect((await call("docs_search", { project, query: "v2" })).results).toHaveLength(1);
     // The window's Library lists the same document (and hides the kept version).
     const library = await request("agents.workspace.list", {
       agentId: project,
