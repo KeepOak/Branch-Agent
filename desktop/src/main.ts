@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { portIsFree, readToken, startGateway, stopGateway, waitForReady } from "./gateway";
+import { GatewayReadinessTimeoutError, portIsFree, readToken, startGateway, stopGateway, waitForReady } from "./gateway";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowsWindowResident } from "./resident-window";
@@ -22,7 +22,7 @@ const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 /** Started with Windows: open quietly in the tray (only where the tray exists). */
 const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRAY);
 const ICON = join(__dirname, "..", "assets", "branch.ico");
-const READY_TIMEOUT_MS = 180_000;
+const READY_TIMEOUT_MS = 600_000;
 const cfg: DesktopConfig = loadConfig();
 /** The packaged app this process runs from; development runs (`electron .`) never update themselves. */
 const install: DesktopInstall | undefined = app.isPackaged ? {
@@ -188,7 +188,7 @@ async function bootEngine(): Promise<void> {
   writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
 `);
   try { await waitForReady(cfg, gateway, READY_TIMEOUT_MS); } catch (error) {
-    await rejectFailedComponentUpdate(cfg, engineDir);
+    if (!(error instanceof GatewayReadinessTimeoutError)) await rejectFailedComponentUpdate(cfg, engineDir);
     throw error;
   }
   await confirmComponentUpdate(cfg);
@@ -205,6 +205,8 @@ async function bootEngine(): Promise<void> {
 /** A failed newly published build restores the prior pointer/window before booting the retained engine. */
 async function bootSelectedEngine(): Promise<boolean> {
   try { await bootEngine(); return false; } catch (error) {
+    // A live child that is merely late must retain the pending release.
+    if (error instanceof GatewayReadinessTimeoutError) throw error;
     if (gateway) stopGateway(gateway);
     if (!await rollbackComponentUpdate(cfg)) throw error;
     log("Updated engine failed readiness; restored prior components");
