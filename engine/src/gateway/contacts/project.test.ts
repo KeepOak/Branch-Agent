@@ -199,4 +199,39 @@ describe("contact projection", () => {
     });
     expect(result.contacts.find((contact) => contact.id === "trunk:scout")?.topicCount).toBe(0);
   });
+
+  it("takes working from the live run registry, not a writer id left by a restart", () => {
+    const sessions = [
+      row("agent:scout:main", { activeWriterRunId: "stale-run" }),
+      row("agent:scout:window:job", { activeWriterRunId: "stale-run-2" }),
+      row("agent:oak:main"),
+    ];
+    const live = new Set(["agent:oak:main"]);
+    const projected = projectContacts({
+      agents: [
+        { id: "scout", name: "Scout" },
+        { id: "oak", name: "Oak" },
+      ],
+      defaultAgentId: "scout",
+      sessions,
+      isWorking: (candidate) => live.has(candidate.sessionKey),
+    });
+    const working = Object.fromEntries(projected.contacts.map((c) => [c.id, c.working]));
+    expect(working).toEqual({ "trunk:scout": false, "trunk:oak": true });
+    expect(projected.topics.find((t) => t.key === "agent:scout:window:job")?.status).toBe("active");
+  });
+
+  it("does not mark a conversation unread when restart recovery only touched it", () => {
+    const projected = projectContacts({
+      agents: [{ id: "scout", name: "Scout" }],
+      defaultAgentId: "scout",
+      sessions: [
+        // Restart recovery rewrote the row (updatedAt) after the person read it.
+        row("agent:scout:main", { lastReadAt: 100, lastActivityAt: 90, updatedAt: 500 }),
+        row("agent:scout:window:replied", { lastReadAt: 100, lastActivityAt: 400 }),
+        row("agent:scout:window:asked", { lastReadAt: 100, lastInteractionAt: 300 }),
+      ],
+    });
+    expect(projected.contacts[0]).toMatchObject({ threadUnread: false, unreadTopics: 2 });
+  });
 });

@@ -39,6 +39,7 @@ import { createSessionListEntryFilter } from "../session-sharing.js";
 import { readSessionTitleFieldsFromTranscriptAsync } from "../session-transcript-title-reader.js";
 import { deriveSessionTitle } from "../session-utils-core.js";
 import { deviceHandlers } from "./devices.js";
+import { createVisibleActiveSessionRunProjector } from "./session-active-runs.js";
 import { emitSessionsChanged } from "./session-change-event.js";
 import type { GatewayRequestHandlers, GatewayRequestHandlerOptions } from "./types.js";
 import { assertValidParams } from "./validation.js";
@@ -105,8 +106,19 @@ async function readProjection({
     }
   }
   sessionMutationAuthorization?.assertCurrent();
+  // Working comes from the live run registry, as sessions.list's hasActiveRun does; the stored
+  // writer id outlives a restart.
+  const activeRun = createVisibleActiveSessionRunProjector(context);
   return {
     ...projectContacts({
+      isWorking: (row) =>
+        activeRun({
+          requestedKey: row.sessionKey,
+          canonicalKey: row.sessionKey,
+          sessionId: row.entry.sessionId,
+          agentId: parseAgentSessionKey(row.sessionKey)?.agentId ?? roster.defaultId,
+          defaultAgentId: roster.defaultId,
+        }).active,
       agents,
       defaultAgentId: roster.defaultId,
       mainKey: roster.mainKey,
@@ -170,9 +182,11 @@ export const contactHandlers: GatewayRequestHandlers = {
       return;
     let settings = readOutsideAgentSettings();
     const records = listOutsideAgents();
-    // A grafted Branch (a scoped paired device) keeps its own rows; it never takes another's.
+    // A grafted Branch (a scoped paired device) keeps its own rows; it never takes another's. A goodbye keeps
+    // the id the session had; any other hello may get <id>-N while another session holds the id.
     const deviceId = graftDeviceId(client);
-    const id = deviceId ? params.agent.id : assignOutsideAgentId(params.agent, records);
+    const id =
+      deviceId || params.leaving ? params.agent.id : assignOutsideAgentId(params.agent, records);
     const deviceRefusal = outsideAgentDeviceRefusal(
       { ...params.agent, id },
       deviceId,
@@ -180,13 +194,18 @@ export const contactHandlers: GatewayRequestHandlers = {
       settings,
     );
     // Re-paired after Disconnect (a new code, approved): it takes its rows back.
-    if (!deviceRefusal) settings = reclaimDeviceRow(id, deviceId, records) ?? settings;
+    if (!deviceRefusal && !params.leaving) {
+      settings = reclaimDeviceRow(id, deviceId, records) ?? settings;
+    }
     const refusal = deviceRefusal ?? outsideAgentRefusal({ ...params.agent, id }, settings);
     if (refusal) {
       respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, refusal));
       return;
     }
-    const record = recordOutsideAgent({ ...params.agent, id }, Date.now(), undefined, deviceId);
+    const record = recordOutsideAgent({ ...params.agent, id }, Date.now(), undefined, {
+      leaving: params.leaving === true,
+      deviceId,
+    });
     context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
     respond(true, {
       contact: { id: `a2a:${record.id}`, name: record.name, where: record.where ?? null },

@@ -102,10 +102,12 @@ export function createGatewayReloadHandlers(params: GatewayReloadHandlerParams) 
     const candidateEnv = publication?.runtimeEnv ?? process.env;
     const committedConfig = getRuntimeConfig();
     const refreshModelRuntime = doesReloadAffectProviderAuth(plan, committedConfig, nextConfig);
-    const modelRuntimeAgentIds = mrReload.resolveReloadAgentIds([
-      ...plan.changedPaths,
-      ...diffConfigPaths(committedConfig, nextConfig),
-    ]);
+    const modelRuntimeAgentIds = mrReload.resolveModelRuntimeRefreshAgentIds({
+      changedPaths: [...plan.changedPaths, ...diffConfigPaths(committedConfig, nextConfig)],
+      reloadPlugins: plan.reloadPlugins,
+      previousConfig: committedConfig,
+      nextConfig,
+    });
     const modelRuntimeRefreshScope = modelRuntimeAgentIds ? { agentIds: modelRuntimeAgentIds } : {};
 
     if (plan.reloadHooks || plan.refreshHooksPolicy) {

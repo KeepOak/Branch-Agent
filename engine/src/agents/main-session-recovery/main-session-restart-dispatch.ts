@@ -76,10 +76,15 @@ const RESTART_SAFE_TOOLS_NOTICE =
 const REPLY_DISPATCH_PUBLICATION_WAIT_MS = 120_000;
 const REPLY_DISPATCH_PUBLICATION_RETRY_MS = 1_000;
 
-function replyDispatchNotPublished(outcome: Awaited<ReturnType<typeof dispatchRestartRecoveryWithinCapacity>>): boolean {
-  return outcome?.kind === "failed" &&
+function replyDispatchNotPublished(
+  outcome: Awaited<ReturnType<typeof dispatchRestartRecoveryWithinCapacity>>,
+): boolean {
+  return (
+    outcome?.kind === "failed" &&
     outcome.observation.dispatchAccepted === false &&
-    String(outcome.error).includes("prepared reply dispatch runtime owner was not published");
+    (String(outcome.error).includes("prepared reply dispatch runtime owner was not published") ||
+      String(outcome.error).includes("prepared model runtime publication was superseded"))
+  );
 }
 
 export function hasRestartRecoveryMessageActionAuthority(entry: SessionEntry): boolean {

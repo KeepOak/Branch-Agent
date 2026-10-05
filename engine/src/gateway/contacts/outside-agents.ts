@@ -41,6 +41,7 @@ export type OutsideAgentSettings = {
 
 /** A client that said hello within this window is shown online. `branch mcp serve` says hello every minute. */
 export const OUTSIDE_AGENT_ONLINE_MS = 3 * 60_000;
+const SESSION_ROW_TTL_MS = 24 * 60 * 60_000;
 // Outside-agent rows are a Branch store with no upstream limit; this only bounds the file.
 const MAX_RECORDS = 512;
 
@@ -119,7 +120,7 @@ export function recordOutsideAgent(
   agent: OutsideAgent,
   now = Date.now(),
   env?: NodeJS.ProcessEnv,
-  deviceId?: string,
+  opts: { leaving?: boolean; deviceId?: string } = {},
 ): OutsideAgentRecord {
   const all = listOutsideAgents(env);
   // The product-wide row from before per-session ids folds into the first session that says hello.
@@ -136,16 +137,20 @@ export function recordOutsideAgent(
     ...(agent.instance ? { instance: agent.instance } : {}),
     ...(agent.kind ? { kind: agent.kind } : {}),
     ...(agent.via ? { via: agent.via } : {}),
-    ...(deviceId ? { deviceId } : {}),
+    ...(opts.deviceId ? { deviceId: opts.deviceId } : {}),
     ...(agent.activity
       ? { activity: agent.activity, activityAt: now }
       : previous?.activity
         ? { activity: previous.activity, activityAt: previous.activityAt }
         : {}),
     firstSeenAt: previous?.firstSeenAt ?? now,
-    lastSeenAt: now,
+    // A goodbye marks it offline now, so the next session of the same agent gets this id back.
+    lastSeenAt: opts.leaving ? now - OUTSIDE_AGENT_ONLINE_MS : now,
   };
-  const next = [record, ...rows]
+  // Extra-session rows (<id>-2, -3, ...) that have been offline for a day carry nothing worth keeping.
+  const stale = (row: OutsideAgentRecord) =>
+    /-[0-9a-f]{6}-\d+$/.test(row.id) && now - row.lastSeenAt > SESSION_ROW_TTL_MS;
+  const next = [record, ...rows.filter((row) => !stale(row))]
     .toSorted((a, b) => b.lastSeenAt - a.lastSeenAt)
     .slice(0, MAX_RECORDS);
   writeJson(registryFile(env), next);

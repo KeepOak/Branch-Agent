@@ -11,6 +11,7 @@ import {
   graftTrunkIdentity,
   type GraftLink,
 } from "./graft-join.js";
+import { registerHubMcpTools } from "./hub-tools.js";
 import { outsideAgentFromClient, OutsidePresence } from "./outside-presence.js";
 import { registerTrunkMcpTools, type OutsideAgentIdentity } from "./trunk-tools.js";
 import { registerUiMcpTools, UiSession } from "./ui-tools.js";
@@ -96,6 +97,7 @@ export async function createChannelMcpRuntime(
   const presence = new OutsidePresence(
     (agent) => bridge.request("contacts.outside.hello", { agent }),
     (line) => opts.verbose && process.stderr.write(`branch mcp: ${line}${os.EOL}`),
+    (agent) => bridge.request("contacts.outside.hello", { agent, leaving: true }),
   );
   const hello = (agent: OutsideAgentIdentity) =>
     bridge.request("contacts.outside.hello", { agent });
@@ -110,10 +112,13 @@ export async function createChannelMcpRuntime(
   gateEveryTool(server, () => presence.assertAllowed());
   registerChannelMcpTools(server, bridge);
 
-  registerTrunkMcpTools(server, bridge, {
+  const agentTools = {
     outsideAgent: () => presence.identity(),
-    activity: (text) => presence.activity(text),
-  });
+    activity: (text: string) => presence.activity(text),
+  };
+  registerTrunkMcpTools(server, bridge, agentTools);
+  // The hub: shared documents, memory, board cards and an activity feed inside the owner's Branch.
+  registerHubMcpTools(server, bridge, agentTools);
   // Part C: eyes and hands on the Branch window. A separate test Branch unless the owner allowed their own.
   const ui = new UiSession(async (kind, uiOpts) => {
     const { openOwnerWindow, openTestInstance } = await import("./ui-target.js");
@@ -144,7 +149,9 @@ export async function createChannelMcpRuntime(
       }
     },
     close: async () => {
-      presence.stop();
+      // A grafted Branch's presence belongs to its gateway's link, which keeps saying hello; no goodbye here.
+      if (graftBranch) presence.stop();
+      else await presence.leave();
       for (const trunkPresence of trunkPresences) trunkPresence.stop();
       await ui.close().catch(() => undefined);
       // Both lifecycle owners must always close; one failure cannot strand the other.

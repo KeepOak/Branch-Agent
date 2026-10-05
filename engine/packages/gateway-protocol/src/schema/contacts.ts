@@ -112,7 +112,11 @@ export const OutsideAgentSchema = closedObject({
   kind: Type.Optional(Type.Union([Type.Literal("branch"), Type.Literal("trunk")])),
   via: Type.Optional(Type.String({ pattern: "^[a-z0-9][a-z0-9-]{0,63}$" })),
 });
-export const ContactsOutsideHelloParamsSchema = closedObject({ agent: OutsideAgentSchema });
+/** `leaving: true` is the goodbye a client sends when it exits: its id is free for the next session at once. */
+export const ContactsOutsideHelloParamsSchema = closedObject({
+  agent: OutsideAgentSchema,
+  leaving: Type.Optional(Type.Boolean()),
+});
 export const ContactsOutsideListParamsSchema = closedObject({});
 /** Settings › Connected agents: the master switch, or one agent's disconnect / window permission. */
 export const ContactsOutsideSetParamsSchema = closedObject({

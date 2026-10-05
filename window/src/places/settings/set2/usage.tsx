@@ -1070,7 +1070,8 @@ const KIND: Record<string, string> = { archive: "Archive", "sqlite-snapshot": "D
 
 /** Backups: backup.status (each place's newest run, schedules, places) and storage.locations.probe for Check. */
 function BackupsDialog({ engine, lv, onClose }: { engine: WindowEngine; lv: number; onClose: () => void }) {
-  const res = useLive<RecordValue>(engine, "backup.status", {}, []);
+  const res = useLive<RecordValue>(engine, "backup.status", {}, ["cron"]);
+  const run = useCall();
   const data = rec(res.data);
   const targets = list(data.targets); const schedules = list(data.schedules); const places = list(data.locations);
   const [probe, setProbe] = useState<Record<string, string>>({});
@@ -1084,9 +1085,10 @@ function BackupsDialog({ engine, lv, onClose }: { engine: WindowEngine; lv: numb
       <h3 className="s2-h3">Backups</h3>
       {targets.length ? <div className="rows">{targets.map((t, i) => <BackupRow key={i} t={t} />)}</div> : res.data ? <p className="empty">No backups yet.</p> : null}
       <p className="hint">If the newest success is older than 14 days, it says “No backup in 14 days”.</p>
-      <div className="acts">{["Back up now", "Check a backup", "Restore…"].map((b) => <Btn key={b} sm disabled title={CLI_BACKUP}>{b}</Btn>)}</div>
+      <div className="acts"><Btn sm disabled={!schedules.some((s) => s.mode === "git") || run.busy} title={schedules.some((s) => s.mode === "git") ? undefined : "Choose where backups go in Settings › Backups first."} onClick={() => void run.run(async () => rec(await engine.request("backup.run", {})), (r) => r.started === true ? "Backing up…" : `Didn’t start: ${str(r.reason) || "the engine declined"}.`)}>Back up now</Btn>{["Check a backup", "Restore…"].map((b) => <Btn key={b} sm disabled title={CLI_BACKUP}>{b}</Btn>)}</div>
+      <CallLine call={run} />
       <h3 className="s2-h3">On a schedule</h3>
-      {schedules.length ? <div className="rows">{schedules.map((s) => <Prow key={str(s.id)} title={s.mode === "git" ? "Git" : "Copy elsewhere"} sub={`${str(s.target)} · every ${span(s.everyMs)}${s.nextRunAtMs ? ` · next ${when(s.nextRunAtMs)}` : ""}`}><Pill tone={s.enabled === true ? "ok" : "idle"}>{s.enabled === true ? "On" : "Off"}</Pill></Prow>)}</div> : <p className="hint">Nothing is scheduled. Scheduling runs from a terminal: branch backup schedule enable.</p>}
+      {schedules.length ? <div className="rows">{schedules.map((s) => <Prow key={str(s.id)} title={s.mode === "git" ? "Git" : "Copy elsewhere"} sub={`${str(s.target)} · every ${span(s.everyMs)}${s.nextRunAtMs ? ` · next ${when(s.nextRunAtMs)}` : ""}`}><Pill tone={s.enabled === true ? "ok" : "idle"}>{s.enabled === true ? "On" : "Off"}</Pill></Prow>)}</div> : <p className="hint">Nothing is scheduled. Choose a schedule in Settings › Backups.</p>}
       <h3 className="s2-h3">Where backups go</h3>
       {places.length ? <div className="rows">{places.map((p) => (
         <Prow key={str(p.name)} icon={<Tile><Ico name={str(p.provider) === "local" ? "folder" : "globe"} s /></Tile>} title={str(p.name)} sub={`${str(p.provider)}${str(p.displayTarget) ? ` · ${str(p.displayTarget)}` : ""} · encryption: ${p.encrypted === true ? "passphrase" : "none"}${probe[str(p.name)] ? ` · ${probe[str(p.name)]}` : ""}`}>

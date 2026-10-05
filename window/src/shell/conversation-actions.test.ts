@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { ConversationList } from "../connect/conversations";
 import { conversationActions, snoozeChoices, wakeWords } from "./conversation-actions";
+import { notify } from "./notify";
+
+vi.mock("./notify", () => ({ notify: vi.fn() }));
 
 function fakeRequest(impl: (method: string, params?: unknown) => Promise<unknown>) {
   const request = vi.fn(impl);
@@ -8,6 +11,47 @@ function fakeRequest(impl: (method: string, params?: unknown) => Promise<unknown
 }
 
 describe("contact navigation", () => {
+  it("retries an admission-pending contact read without an error toast", async () => {
+    vi.mocked(notify).mockClear();
+    vi.useFakeTimers();
+    try {
+      let refused = true;
+      const request = fakeRequest((method: string) => method === "agents.list"
+        ? Promise.resolve({ defaultId: "fern", mainKey: "home" })
+        : method === "sessions.describe" && refused
+          ? Promise.reject(new Error("Agent fern has not completed startup inspection and preparation; run branch doctor --fix"))
+          : Promise.resolve({ session: { key: "agent:fern:home", agentId: "fern", sessionId: "saved-contact" } }));
+      const actions = conversationActions(request, new ConversationList(request, null), () => null);
+      const opened = actions.create();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(notify).not.toHaveBeenCalled();
+      refused = false;
+      await vi.advanceTimersByTimeAsync(500);
+      expect(await opened).toBe("agent:fern:home");
+      expect(notify).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows one plain message when contact admission stays pending past the cap", async () => {
+    vi.mocked(notify).mockClear();
+    vi.useFakeTimers();
+    try {
+      const request = fakeRequest((method: string) => method === "agents.list"
+        ? Promise.resolve({ defaultId: "fern", mainKey: "home" })
+        : Promise.reject(new Error("Agent fern has not completed startup inspection and preparation; run branch doctor --fix")));
+      const actions = conversationActions(request, new ConversationList(request, null), () => null);
+      const opened = actions.create();
+      await vi.advanceTimersByTimeAsync(120_001);
+      expect(await opened).toBeNull();
+      expect(notify).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(notify).mock.calls[0]?.[0]).toContain("still starting up. Try again in a minute.");
+      expect(vi.mocked(notify).mock.calls[0]?.[0]).not.toContain("doctor");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("adopts and reopens the configured canonical contact without creating duplicate random threads", async () => {
     const contacts = new Map<string, { key: string; sessionId: string }>();
     const request = fakeRequest((method: string, params?: unknown) => {
