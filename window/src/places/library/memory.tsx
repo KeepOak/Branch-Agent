@@ -46,7 +46,7 @@ export function MemoryTab(props: MemoryProps) {
     <RingsRow engine={engine} level={level} scope={scope} status={status} openSettings={props.openSettings} />
     <MemorySearch engine={engine} trunks={trunks} scope={scope} setScope={setScope} scopeName={scopeName ? scopeName.identity?.name || scopeName.name || scopeName.id : null} files={scoped} reloadFiles={props.reloadFiles} />
     {shows(level, "advanced") && <HowItLearns engine={engine} trunks={trunks} scope={scope || props.defaultId} />}
-    <MemoryHealth status={status} check={check} />
+    <MemoryHealth engine={engine} agentId={scope || props.defaultId} status={status} check={check} />
     <WhatToRemember />
     <Pinned facts={scoped?.flatMap(f => f.facts) ?? []} />
     <AboutYou engine={engine} agentId={scope || props.defaultId} />

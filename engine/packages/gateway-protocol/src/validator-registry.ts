@@ -171,6 +171,7 @@ export const validateAgentsUpdateParams = compile(S.AgentsUpdateParamsSchema);
 export const validateAgentsDeleteParams = compile(S.AgentsDeleteParamsSchema);
 export const validateAgentsFilesListParams = compile(S.AgentsFilesListParamsSchema);
 export const validateAgentsFilesGetParams = compile(S.AgentsFilesGetParamsSchema);
+export const validateMemoryExportParams = compile(S.MemoryExportParamsSchema);
 export const validateAgentsFilesSetParams = compile(S.AgentsFilesSetParamsSchema);
 export const validateAgentsWorkspaceListParams = compile(S.AgentsWorkspaceListParamsSchema);
 export const validateAgentsWorkspaceGetParams = compile(S.AgentsWorkspaceGetParamsSchema);
