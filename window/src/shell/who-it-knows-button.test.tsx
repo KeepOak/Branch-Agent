@@ -102,4 +102,32 @@ describe("the conversation header's Who it knows button", () => {
     await act(async () => document.querySelector<HTMLButtonElement>("[data-testid=who-it-knows] button[role=menuitemcheckbox]")?.click());
     expect(deny).toEqual([]);
   });
+
+  it("switches incoming access independently of outgoing access", async () => {
+    let entries = { sapling: { agentToAgent: { deny: [] as string[] } }, fern: { agentToAgent: { deny: [] as string[] } } };
+    const request = vi.fn(async (method: string, params?: unknown) => {
+      if (method === "config.get") return { hash: "h1", config: { agents: { entries } } };
+      if (method === "config.patch") {
+        const patch = JSON.parse((params as { raw: string }).raw) as { agents: { entries: typeof entries } };
+        entries = { ...entries, ...patch.agents.entries };
+        return { ok: true };
+      }
+      return {};
+    });
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root?.render(<Harness p={props(request)} />));
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=who-it-knows-button]")?.click());
+    expect(document.querySelector("[data-testid=who-it-knows]")?.textContent).toContain("May message Sapling");
+    await act(async () => document.querySelectorAll<HTMLButtonElement>("[data-testid=who-it-knows] button[role=menuitemcheckbox]")[1]?.click());
+    expect(entries.fern.agentToAgent.deny).toEqual(["sapling"]);
+    expect(entries.sapling.agentToAgent.deny).toEqual([]);
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=who-it-knows-button]")?.click());
+    const switches = document.querySelectorAll<HTMLButtonElement>("[data-testid=who-it-knows] button[role=menuitemcheckbox]");
+    expect(switches[0]?.getAttribute("aria-checked")).toBe("true");
+    expect(switches[1]?.getAttribute("aria-checked")).toBe("false");
+    await act(async () => switches[1]?.click());
+    expect(entries.fern.agentToAgent.deny).toEqual([]);
+    expect(entries.sapling.agentToAgent.deny).toEqual([]);
+  });
 });

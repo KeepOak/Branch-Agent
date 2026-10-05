@@ -4,7 +4,6 @@ import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { describePlacement, listComputers, placementComputer, type Computer, type Placement } from "../stage/computers";
 import { ComputerPicker } from "../stage/ComputerPicker";
 import { ReplayDialog } from "./Replay";
-import { Face } from "../face/Face";
 import { iconColourItem } from "./row-look";
 import type { Conversation } from "../connect/conversations";
 import type { SaplingSession } from "../connect/session";
@@ -24,7 +23,7 @@ import type { Trunks } from "./engine-data";
 import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import { notify } from "./notify";
 import { ShareDialog } from "./ShareDialog";
-import { mayTalk, type AgentToAgent, type PerAgent } from "./who-it-knows";
+import { whoItKnowsItems } from "./who-it-knows-menu";
 import { roomMenuItems } from "../rooms/room-menu";
 import "./conversation-menu.css";
 
@@ -218,39 +217,7 @@ async function whoItKnows(p: ConversationMenuProps, setOpen: (o: Open) => void, 
   const self = p.trunk.id ?? p.trunks.defaultId ?? "";
   const anchor = from ?? document.querySelector<HTMLElement>("[data-testid=conversation-menu-button]")?.getBoundingClientRect();
   try {
-    const snapshot = rec(await p.session.request("config.get", {}));
-    const cfg = rec(snapshot.config);
-    const policy = rec(rec(cfg.tools).agentToAgent) as AgentToAgent;
-    const entries = rec(rec(cfg.agents).entries) as PerAgent;
-    const others = p.trunks.list.filter((t) => t.id !== self);
-    const canEnable = (all: PerAgent, id: string) => {
-      const pair = all[self]?.agentToAgent;
-      const deny = Array.isArray(pair?.deny) ? pair.deny.filter((v): v is string => typeof v === "string") : [];
-      return mayTalk(policy, { ...all, [self]: { agentToAgent: { ...pair, deny: deny.filter((value) => value !== id) } } }, self, id);
-    };
-    const items: MenuItem[] = [
-      { kind: "head", label: `${p.trunk.name} knows and may talk to` },
-      ...(policy.enabled === false ? [{ kind: "info", label: "No other Trunk: talking between Trunks is off." } as MenuItem] : others.length ? others.map((t): MenuItem => ({
-        label: t.name,
-        sub: t.theme || (t.isDefault ? "Your default Trunk" : undefined),
-        icon: <Face size={26} label={t.name} />,
-        checked: mayTalk(policy, entries, self, t.id),
-        disabled: canEnable(entries, t.id) ? undefined : "Another agent-to-agent rule blocks this Trunk.",
-        run: () => void (async () => {
-          try {
-            const fresh = rec(await p.session.request("config.get", {}));
-            const freshEntries = rec(rec(rec(fresh.config).agents).entries) as PerAgent;
-            const existing = freshEntries[self]?.agentToAgent?.deny;
-            const deny = Array.isArray(existing) ? existing.filter((v): v is string => typeof v === "string") : [];
-            if (!canEnable(freshEntries, t.id)) throw new Error("Another agent-to-agent rule blocks this Trunk.");
-            const next = mayTalk(policy, freshEntries, self, t.id) ? [...deny, t.id] : deny.filter((id) => id !== t.id);
-            const result = rec(await p.session.request("config.patch", { baseHash: fresh.hash, raw: JSON.stringify({ agents: { entries: { [self]: { agentToAgent: { deny: next } } } } }) }));
-            if (result.ok === false) throw new Error(str(rec(result.error).message) || "The engine did not save the change.");
-            notify(next.includes(t.id) ? "It won't message them." : "It can reach them now.");
-          } catch (e) { bad(e); }
-        })(),
-      })) : [{ kind: "info", label: "No other Trunk yet." } as MenuItem]),
-    ];
+    const items = await whoItKnowsItems((method, params) => p.session.request(method, params), { id: self, name: p.trunk.name }, p.trunks.list);
     setOpen({ kind: "known", at: { x: (anchor?.right ?? 360) - 340, y: (anchor?.bottom ?? 50) + 4 }, items });
   } catch (e) {
     bad(e);
