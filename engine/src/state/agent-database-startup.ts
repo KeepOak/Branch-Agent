@@ -12,6 +12,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { createPermitPool } from "../shared/permit-pool.js";
 import {
+  AgentDatabasePreparationSupersededError,
   createAgentDatabaseInspectionRefusal,
   failPendingAgentDatabase,
   listAgentDatabaseAdmissionRefusals,
@@ -297,6 +298,40 @@ class AgentDatabaseStartupAdmission {
             }
           };
           const preparationComplete = createDeferredCore();
+          let queued = false;
+          const attempt = () =>
+            withSqliteReadOnlyWorkerScope(
+              async () => {
+                await assertNotDeleted();
+                await preparePendingAgentDatabase(refusal, { env, assertCurrent }, async () => {
+                  const input = {
+                    agentId,
+                    paths,
+                    env,
+                    signal: this.signal,
+                    assertCurrent,
+                  };
+                  const release = await this.opening.acquire({ signal: this.signal });
+                  try {
+                    assertCurrent();
+                    await activation.openAgent(input);
+                  } finally {
+                    release?.();
+                  }
+                  // Keep the revision until admission publishes after its final journal check.
+                  // A superseded attempt retries while still holding its place in this order.
+                  if (!queued) {
+                    queued = true;
+                    const previous = this.preparation;
+                    this.preparation = preparationComplete.promise;
+                    await previous;
+                  }
+                  await activation.prepareAgent(input);
+                  await assertNotDeleted();
+                });
+              },
+              { signal: this.signal, deadlineOwnedByCaller: true },
+            );
           try {
             assertCurrent();
             for (const result of results) {
@@ -317,34 +352,19 @@ class AgentDatabaseStartupAdmission {
                 );
               }
             }
-            await withSqliteReadOnlyWorkerScope(
-              async () => {
-                await assertNotDeleted();
-                await preparePendingAgentDatabase(refusal, { env, assertCurrent }, async () => {
-                  const input = {
-                    agentId,
-                    paths,
-                    env,
-                    signal: this.signal,
-                    assertCurrent,
-                  };
-                  const release = await this.opening.acquire({ signal: this.signal });
-                  try {
-                    assertCurrent();
-                    await activation.openAgent(input);
-                  } finally {
-                    release?.();
-                  }
-                  // Keep the revision until admission publishes after its final journal check.
-                  const previous = this.preparation;
-                  this.preparation = preparationComplete.promise;
-                  await previous;
-                  await activation.prepareAgent(input);
-                  await assertNotDeleted();
-                });
-              },
-              { signal: this.signal, deadlineOwnedByCaller: true },
-            );
+            for (;;) {
+              try {
+                await attempt();
+                break;
+              } catch (error) {
+                // A config reload during preparation must not leave the agent degraded.
+                if (!(error instanceof AgentDatabasePreparationSupersededError) || this.stopped) {
+                  throw error;
+                }
+                assertCurrent();
+                log.info("agent database startup preparation superseded; retrying", { agentId });
+              }
+            }
             log.info("agent database recovered after background inspection and preparation", {
               agentId,
               paths,
