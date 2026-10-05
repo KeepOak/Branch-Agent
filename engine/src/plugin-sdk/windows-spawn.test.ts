@@ -126,7 +126,7 @@ describe("resolveWindowsSpawnProgram", () => {
       command: "C:\\Program Files\\OpenAI Codex\\codex.exe",
       leadingArgv: [],
       resolution: "direct",
-      windowsHide: undefined,
+      windowsHide: true,
     });
   });
 
@@ -164,7 +164,7 @@ describe("resolveWindowsSpawnProgram", () => {
       argv: ["--cwd", "C:\\safe & calc.exe"],
       resolution: "shell-fallback",
       shell: true,
-      windowsHide: undefined,
+      windowsHide: true,
     });
   });
 
@@ -192,6 +192,7 @@ describe("resolveWindowsSpawnProgram", () => {
       leadingArgv: [],
       resolution: "shell-fallback",
       shell: true,
+      windowsHide: true,
     });
   });
 
@@ -215,6 +216,7 @@ describe("resolveWindowsSpawnProgram", () => {
       leadingArgv: [],
       resolution: "shell-fallback",
       shell: true,
+      windowsHide: true,
     });
   });
 });

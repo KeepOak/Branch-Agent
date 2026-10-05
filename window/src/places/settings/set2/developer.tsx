@@ -42,7 +42,7 @@ const EDITORS_MORE: OffRow[] = [
   ["Tidy each turn’s messages for the editor", "", ne("agent protocol message setting"), "sw"],
 ];
 const ASSISTANTS: OffRow[] = [
-  ["Branch as a connector", "Other assistants see your conversations, Trunks and folders as tools.", "Other assistants start it themselves with branch mcp serve.", "sw"],
+  ["Branch as a connector", "Other assistants see your conversations, Trunks and folders as tools.", "Other assistants start it themselves with branch graft (Settings › Grafts).", "sw"],
   ["Share your skills as a connector", "Other assistants can find and add your skills.", ne("skills connector"), "sw"],
   ["Share Branch’s browser", "Other assistants get Branch’s browser tools, sign-ins and saved steps.", ne("browser connector"), "sw"],
   ["Share skills, plugins and connectors with any assistant", "One address gives them what you assign, with your Google and Microsoft sign-ins kept here.", ne("shared connector address"), "sw"],

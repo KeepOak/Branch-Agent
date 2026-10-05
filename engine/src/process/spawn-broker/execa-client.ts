@@ -1,5 +1,6 @@
 import { once } from "node:events";
 import type { Options } from "execa";
+import { hiddenWindowsOptions } from "../windows-hidden-options.js";
 import {
   restoreExecaResult,
   type BrokerExecaOptions,
@@ -106,7 +107,7 @@ export function brokerExecaOptions(options: Options): BrokerExecaOptions | undef
   }
   const { cancelSignal: _cancelSignal, ...serializable } = options;
   // SAFETY: The allowed options were checked above, excluding streams, URLs, IPC and native descriptors.
-  return serializable as BrokerExecaOptions;
+  return hiddenWindowsOptions(serializable as BrokerExecaOptions);
 }
 
 export function spawnBrokerCommand(

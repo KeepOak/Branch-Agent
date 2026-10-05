@@ -70,9 +70,9 @@ export function useConfig(engine: WindowEngine) {
 }
 export type Config = ReturnType<typeof useConfig>;
 
-/** The file entry for one Trunk in agents.list, or an empty record. */
+/** The file entry for one Trunk in agents.entries (keyed by Trunk id), or an empty record. */
 export function agentEntry(file: Rec, agentId: string): Rec {
-  return list(rec(file.agents).list).find(a => str(a.id) === agentId) ?? {};
+  return rec(rec(rec(file.agents).entries)[agentId]);
 }
 /** A string list at tools.deny, for every Trunk (agentId null) or one Trunk. */
 export function denyList(file: Rec, agentId: string | null): string[] {
@@ -82,7 +82,7 @@ export function denyList(file: Rec, agentId: string | null): string[] {
 /** The merge-patch that sets a deny list, with the replace path the engine asks for when it shrinks. */
 export function denyPatch(agentId: string | null, next: string[]): { raw: Rec; replacePaths: string[] } {
   return agentId
-    ? { raw: { agents: { list: [{ id: agentId, tools: { deny: next } }] } }, replacePaths: ["agents.list[].tools.deny"] }
+    ? { raw: { agents: { entries: { [agentId]: { tools: { deny: next } } } } }, replacePaths: [`agents.entries.${agentId}.tools.deny`] }
     : { raw: { tools: { deny: next } }, replacePaths: ["tools.deny"] };
 }
 export function withItem(items: string[], item: string, present: boolean): string[] {

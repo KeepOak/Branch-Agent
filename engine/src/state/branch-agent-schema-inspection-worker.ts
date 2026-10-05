@@ -90,6 +90,7 @@ export function createAgentSchemaInspectionWorker() {
       execArgv: resolveRuntimeWorkerArgv(entry).slice(0, -1),
       serialization: "advanced",
       stdio: ["ignore", "ignore", "ignore", "ipc"],
+      windowsHide: true,
     });
     processCount += 1;
     const closed = createDeferredCore();

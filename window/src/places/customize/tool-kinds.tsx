@@ -187,7 +187,7 @@ export function Toolsets({ ctx }: { ctx: ToolsCtx }) {
   const toolOn = (t: { id: string; profiles: string[] }, g: Group) => groupOn(ctx, g, ctx.whose) && !deny.includes(t.id) && (profile.value === "full" || t.profiles.includes(profile.value));
   const total = groups.reduce((n, g) => n + g.tools.length, 0);
   const on = groups.reduce((n, g) => n + g.tools.filter(t => toolOn(t, g)).length, 0);
-  const setProfile = (v: string) => { const value = v === "same" ? null : v; void ctx.config.patch(ctx.whose ? { agents: { list: [{ id: ctx.whose, tools: { profile: value } }] } } : { tools: { profile: value } }); };
+  const setProfile = (v: string) => { const value = v === "same" ? null : v; void ctx.config.patch(ctx.whose ? { agents: { entries: { [ctx.whose]: { tools: { profile: value } } } } } : { tools: { profile: value } }); };
   const setAll = (enable: boolean) => { const next = deny.filter(d => !groups.some(g => groupKey(g) === d)); const p = denyPatch(ctx.whose, enable ? next : [...next, ...groups.map(groupKey)]); void ctx.config.patch(p.raw, p.replacePaths); };
   const options = [{ id: "minimal", name: "Minimal" }, { id: "coding", name: "Coding" }, { id: "messaging", name: "Messaging" }, { id: "full", name: "Full" }, ...(ctx.whose ? [{ id: "same", name: "Same as every Trunk" }] : [])];
   return <>

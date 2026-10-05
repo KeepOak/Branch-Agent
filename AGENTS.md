@@ -21,6 +21,6 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 11. **Merging:** `main` requires the `merge-gate` check. After review, `gh pr merge <n> --auto --merge`. CI jobs have a hard 15-minute cap: split or shard work rather than raising a timeout.
 12. **Releases are automatic.** A merge touching `engine/`, `window/` or `desktop/` publishes a component release (engine, window, desktop, desktopRuntime) that installed apps pick up within the hour and apply on restart. Treat every merge as shipping.
 
-## Driving Branch from an agent
+## Driving Branch from an agent (Graft)
 
-Connect with `branch mcp serve` (for Claude Code: `claude mcp add --scope user branch -- branch mcp serve`). You appear in Branch as an outside agent contact and can list, create, message, steer and wait on Trunks, and join group chats. Reference: [`engine/docs/cli/mcp/serve.md`](engine/docs/cli/mcp/serve.md).
+Graft onto Branch with `branch graft` (alias `branch mcp serve`; for Claude Code: `claude mcp add --scope user branch -- branch graft`). You appear in Branch as an outside agent contact and can list, create, message, steer and wait on Trunks, and join group chats. Reference: [`engine/docs/cli/mcp/serve.md`](engine/docs/cli/mcp/serve.md).

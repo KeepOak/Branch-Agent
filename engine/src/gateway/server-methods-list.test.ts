@@ -297,6 +297,9 @@ describe("listGatewayMethods", () => {
       "contacts.outside.hello",
       "contacts.outside.list",
       "contacts.outside.set",
+      "backup.schedule.set",
+      "backup.schedule.clear",
+      "backup.run",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -400,6 +403,9 @@ describe("listGatewayMethods", () => {
       "contacts.outside.hello",
       "contacts.outside.list",
       "contacts.outside.set",
+      "backup.schedule.set",
+      "backup.schedule.clear",
+      "backup.run",
     ]);
   });
 
@@ -631,6 +637,9 @@ describe("listGatewayMethods", () => {
       "contacts.outside.hello",
       "contacts.outside.list",
       "contacts.outside.set",
+      "backup.schedule.set",
+      "backup.schedule.clear",
+      "backup.run",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));

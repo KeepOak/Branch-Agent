@@ -294,6 +294,22 @@ const buildMissingEntryErrorMessage = async () => {
   return lines.join("\n");
 };
 
+/** `branch graft` and `branch mcp serve` start Graft's MCP server without the full CLI when the gateway is known
+ *  (dist/graft/entry.js, src/mcp/graft-fast.ts). Resolves false to run the full CLI. */
+async function tryGraftFastStart(argv) {
+  const args = argv.slice(2);
+  const graft = args[0] === "graft" || (args[0] === "mcp" && args[1] === "serve");
+  if (!graft || args.includes("--help") || args.includes("-h")) {
+    return false;
+  }
+  const entry = new URL("./dist/graft/entry.js", import.meta.url);
+  if (!existsSync(entry)) {
+    return false;
+  }
+  const { runGraftFast } = await import(entry.href);
+  return await runGraftFast(argv);
+}
+
 const isBareRootHelpInvocation = (argv) =>
   argv.length === 3 && (argv[2] === "--help" || argv[2] === "-h");
 
@@ -767,7 +783,9 @@ if (isBrowserNativeHostInvocation) {
       // OK
     } else {
       await installProcessWarningFilter();
-      if (await tryImport("./dist/entry.js")) {
+      if (await tryGraftFastStart(process.argv)) {
+        // OK: Graft is serving MCP; the full CLI is not loaded.
+      } else if (await tryImport("./dist/entry.js")) {
         // OK
       } else if (await tryImport("./dist/entry.mjs")) {
         // OK
