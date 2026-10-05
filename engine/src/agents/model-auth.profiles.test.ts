@@ -337,6 +337,33 @@ describe("shared auth profile read-through", () => {
   });
 });
 
+describe("configured auth inheritance owner", () => {
+  it("lets every agent use the accounts of agents.defaults.authInheritance.agentId", async () => {
+    await withBranchTestState(
+      {
+        layout: "state-only",
+        prefix: "branch-auth-inheritance-owner-",
+        agentEnv: "clear",
+        env: { OPENAI_API_KEY: undefined },
+      },
+      async (state) => {
+        const cfg: BranchConfig = { agents: { defaults: { authInheritance: { agentId: "owner" } } } };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:owner": keyCredential("openai", "owner-key") }),
+          state.agentDir("owner"),
+        );
+        const agentDir = state.agentDir("new-agent");
+
+        const store = ensureAuthProfileStore(agentDir, { allowKeychainPrompt: false, config: cfg });
+        expect(Object.keys(store.profiles)).toContain("openai:owner");
+        const resolved = await resolveAuth({ provider: "openai", cfg, agentDir });
+        expect(resolved.apiKey).toBe("owner-key");
+        expect(resolved.source).toBe("profile:openai:owner");
+      },
+    );
+  });
+});
+
 describe("getApiKeyForModelCore", () => {
   it("keeps OpenAI OAuth profiles on the Codex transport and API keys on direct OpenAI", async () => {
     await withBranchTestState(
