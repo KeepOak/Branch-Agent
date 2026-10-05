@@ -47,11 +47,11 @@ describe("agent database admission", () => {
     const env = { BRANCH_STATE_DIR: tempDirs.make("branch-admission-mixed-") };
     const config: BranchConfig = {
       agents: {
-        entries: { main: { default: true }, worker: {} },
+        entries: { branch: {}, worker: {} },
         defaults: { systemAgent: { agentId: "worker" } },
       },
     };
-    const unavailablePath = openBranchAgentDatabase({ agentId: "main", env }).path;
+    const unavailablePath = openBranchAgentDatabase({ agentId: "branch", env }).path;
     const newerPath = openBranchAgentDatabase({ agentId: "worker", env }).path;
     closeBranchAgentDatabasesForTest();
     closeBranchStateDatabaseForTest();
@@ -77,7 +77,10 @@ describe("agent database admission", () => {
   it("keeps a secondary with malformed ownership isolated while required agents start", async () => {
     const env = { BRANCH_STATE_DIR: tempDirs.make("branch-admission-ownerless-") };
     const config: BranchConfig = {
-      agents: { entries: { main: { default: true }, worker: {} } },
+      agents: {
+        entries: { main: {}, worker: {} },
+        defaults: { systemAgent: { agentId: "main" } },
+      },
     };
     openBranchAgentDatabase({ agentId: "main", env });
     const pathname = openBranchAgentDatabase({ agentId: "worker", env }).path;
@@ -182,7 +185,7 @@ describe("agent database admission", () => {
   it.each([
     { role: "secondary", agentId: "cleaner", isolate: true },
     { role: "registered secondary", agentId: "cleaner", isolate: true },
-    { role: "default", agentId: "cleaner", isolate: false },
+    { role: "sole", agentId: "cleaner", isolate: false },
     { role: "configured system", agentId: "cleaner", isolate: false },
     { role: "reserved system", agentId: "branch", isolate: false },
     { role: "reserved system", agentId: "crestodian", isolate: false },
@@ -195,9 +198,8 @@ describe("agent database admission", () => {
       const config: BranchConfig = {
         agents: {
           entries: {
-            main: { default: role !== "default" },
+            ...(role === "sole" ? {} : { main: {} }),
             [agentId]: {
-              default: role === "default",
               sandbox: { mode: "all", workspaceAccess: "none", scope: "session" },
             },
           },

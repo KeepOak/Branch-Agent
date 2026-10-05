@@ -1,6 +1,7 @@
 // Settings › Updates & about (DESIGN-SPEC §4.7.17): the waiting version, installing it on update.run (waiting for
 // running tasks, or stopping them first), the update schedule in config `update.*`, history from update.runs.*,
 // failure reports through update.report, and the parts that only the Branch app can do, greyed with why.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, type RowEntry } from "../kit";

@@ -758,6 +758,12 @@ describe("failed-open cleanup ownership", () => {
       release.mockImplementation(() => {
         throw new Error("synthetic lease release failure");
       });
+      const closeFailure = {
+        message: "Agent database close failed",
+        errors: expect.arrayContaining([
+          expect.objectContaining({ message: "synthetic lease release failure" }),
+        ]),
+      };
       if (mode === "sync") {
         expect(() =>
           openBranchAgentDatabase({ ...options, agentId: "other-owner", path: pathname }),
@@ -766,9 +772,7 @@ describe("failed-open cleanup ownership", () => {
         const admission = openBranchAgentDatabaseAsync(options);
         await Promise.all([
           expect(admission).rejects.toThrow("synthetic lease release failure"),
-          expect(closeBranchAgentDatabasesAsync()).rejects.toThrow(
-            "synthetic lease release failure",
-          ),
+          expect(closeBranchAgentDatabasesAsync()).rejects.toMatchObject(closeFailure),
         ]);
       }
       expect(rows()).toHaveLength(1);
@@ -776,9 +780,7 @@ describe("failed-open cleanup ownership", () => {
       const nextRoot = fs.mkdtempSync(path.join(os.tmpdir(), "agent-close-next-owner-"));
       roots.push(nextRoot);
       options.env.BRANCH_STATE_DIR = nextRoot;
-      await expect(closeBranchAgentDatabasesAsync()).rejects.toThrow(
-        "synthetic lease release failure",
-      );
+      await expect(closeBranchAgentDatabasesAsync()).rejects.toMatchObject(closeFailure);
       expect(rows()).toEqual([originalLease]);
       release.mockRestore();
       await closeBranchAgentDatabasesAsync();

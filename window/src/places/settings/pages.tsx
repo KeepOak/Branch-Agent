@@ -1,3 +1,4 @@
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { SettingsPageProps } from "./index";
@@ -133,7 +134,7 @@ export function BaselineSettingsPage(props: SettingsPageProps) {
   const section = (method: string, title: string, params?: unknown) => <EngineSection engine={props.engine} method={method} title={title} params={params} />;
   let content: ReactNode;
   switch (props.page) {
-    case "general": content = <><ConfigForm {...props} /><Gap>Start with Windows, tray behavior, message-box shortcuts and task display preferences need desktop or shared window adapters. They are not exposed by this connection.</Gap></>; break;
+    case "general": content = <><ConfigForm {...props} /><Gap>Message-box shortcuts and task display preferences need shared window adapters. They are not exposed by this connection.</Gap></>; break;
     case "people": content = section("users.list", "People in this Branch"); break;
     case "appearance": content = <Appearance />; break;
     case "notifications": content = <><Gap>This engine connection does not expose desktop notification preferences. Sounds, notification routing and quiet hours cannot be changed here yet.</Gap>{section("status", "Current engine status")}</>; break;

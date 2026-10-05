@@ -1,6 +1,7 @@
 // Customize › Everywhere (preview 40-places.js, 70-surfaces.js): one tile per place you reach Branch from.
 // Connected states come from the engine's computers (node.list) and paired devices (device.pair.list), and the
 // chat apps from channels.status; Pair makes a code with device.pair.setupCode.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { useResource } from "../library/data";

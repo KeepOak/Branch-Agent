@@ -1,8 +1,4 @@
-import {
-  CANOPY_STATUSES,
-  type CanopyCard,
-  type CanopyStatus,
-} from "@branch/canopy-contract";
+import { CANOPY_STATUSES, type CanopyCard } from "@branch/canopy-contract";
 import type { BranchPluginApi } from "../api.js";
 import { resolveCanopyCardByIdOrPrefix } from "./card-lookup.js";
 import type { ResolveAgentWorkspaceRuntime } from "./dispatcher-workspace.js";
@@ -18,10 +14,6 @@ import {
 
 const ADMIN_SCOPE = "operator.admin";
 const WRITE_SCOPE = "operator.write";
-
-function splitArgs(input: string | undefined): string[] {
-  return (input ?? "").trim().split(/\s+/).filter(Boolean);
-}
 
 function formatCardLine(card: CanopyCard): string {
   const boardId = card.metadata?.automation?.boardId ?? "default";
@@ -55,10 +47,6 @@ function formatCardDetails(card: CanopyCard): string {
   return lines.join("\n");
 }
 
-function isCanopyStatus(value: string): value is CanopyStatus {
-  return (CANOPY_STATUSES as readonly string[]).includes(value);
-}
-
 function requireWriteAccess(params: {
   senderIsOwner?: boolean;
   gatewayClientScopes?: readonly string[];
@@ -88,7 +76,7 @@ async function handleCanopyCommand(params: {
   resolveAgentWorkspaceRuntime?: ResolveAgentWorkspaceRuntime;
   workspaceAccess?: CanopyWorkspaceAccess;
 }): Promise<{ text: string; isError?: boolean }> {
-  const [action = "list", ...rest] = splitArgs(params.args);
+  const [action = "list", ...rest] = (params.args ?? "").trim().split(/\s+/).filter(Boolean);
   if (action === "help") {
     return {
       text: [
@@ -145,7 +133,7 @@ async function handleCanopyCommand(params: {
         isError: true,
       };
     }
-    if (!isCanopyStatus(status)) {
+    if (!(CANOPY_STATUSES as readonly string[]).includes(status)) {
       return {
         text: `status must be one of: ${CANOPY_STATUSES.join(", ")}.`,
         isError: true,

@@ -1,6 +1,5 @@
 import type { SlackCommandMiddlewareArgs } from "@slack/bolt";
 import type {
-  AppContextChangedEvent,
   AppHomeOpenedEvent,
   ChannelIDChangedEvent,
   ChannelRenameEvent,
@@ -17,6 +16,7 @@ import type { ChannelRuntimeSurface } from "branch/plugin-sdk/channel-contract";
 import type { ChatCommandDefinition, CommandArgs } from "branch/plugin-sdk/command-auth-native";
 import type { BranchConfig, SlackSlashCommandConfig } from "branch/plugin-sdk/config-contracts";
 import type { PluginCommandReplyOptions } from "branch/plugin-sdk/plugin-command-runtime";
+import type { PluginServiceSchedulerV1 } from "branch/plugin-sdk/plugin-entry";
 import type { ResolvedAgentRoute } from "branch/plugin-sdk/routing";
 import type { RuntimeEnv } from "branch/plugin-sdk/runtime-env";
 import type { SlackAppContext } from "../agent-context.js";
@@ -48,6 +48,7 @@ export type SlackCommandInvocation = {
 };
 
 export type MonitorSlackOpts = {
+  scheduler: PluginServiceSchedulerV1;
   botToken?: string;
   appToken?: string;
   accountId?: string;
@@ -79,10 +80,6 @@ export type SlackChannelIdChangedEvent = LooseSlackEvent<ChannelIDChangedEvent>;
 export type SlackAppHomeOpenedEvent = Omit<LooseSlackEvent<AppHomeOpenedEvent>, "context"> & {
   context?: SlackAppContext;
 };
-export type SlackAppContextChangedEvent = Omit<
-  LooseSlackEvent<AppContextChangedEvent>,
-  "context"
-> & { context?: SlackAppContext };
 export type SlackPinEvent = LooseSlackEvent<PinAddedEvent | PinRemovedEvent>;
 
 type SlackMessageSubtypeMessage = Pick<

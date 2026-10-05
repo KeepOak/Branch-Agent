@@ -32,8 +32,8 @@ INSTALL_TYPESCRIPT
 
 COPY --chmod=0644 scripts/prepublish-plugin-registry-artifact.mjs /opt/branch-e2e/scripts/
 COPY --chmod=0755 scripts/e2e/lib/prepublish-plugin-registry.sh /opt/branch-e2e/scripts/e2e/lib/
-COPY scripts/e2e/lib/plugins/npm-registry-server.mjs /opt/branch-e2e/scripts/e2e/lib/plugins/
-COPY scripts/lib/bounded-response.mjs /opt/branch-e2e/scripts/lib/
+COPY --chmod=0644 scripts/e2e/lib/plugins/npm-registry-server.mjs /opt/branch-e2e/scripts/e2e/lib/plugins/
+COPY --chmod=0644 scripts/lib/bounded-response.mjs /opt/branch-e2e/scripts/lib/
 
 # COPY --chmod can also set modes on newly created parent directories.
 RUN find /opt/branch-e2e -type d -exec chmod 0755 {} +

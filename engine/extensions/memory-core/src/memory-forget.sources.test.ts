@@ -338,6 +338,7 @@ describe("memory forget source removal", () => {
       // Explicit canonical disposal revokes even a live borrow; eviction would retain it.
       closeBranchAgentDatabasesForTest(fixture.stateDir);
       expect(db.isOpen).toBe(false);
+      await closeBranchAgentDatabasesAsync(fixture.stateDir);
       const successor = openBranchAgentDatabase({ agentId: "main" }).db;
       // Matcher deep-equality diagnostics cannot inspect a closed native handle.
       expect(successor === db).toBe(false);

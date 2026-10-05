@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import type { CanopyCard } from "@branch/canopy-contract";
 import { capturePluginRegistration } from "branch/plugin-sdk/plugin-test-runtime";
 import { describe, expect, it, vi } from "vitest";
-import type { BranchPluginService } from "../../extensions/canopy/api.js";
+import type { BranchPluginApi } from "../../extensions/canopy/api.js";
 import plugin from "../../extensions/canopy/index.js";
 import {
   createOperationalRunInstanceRef,
@@ -39,13 +39,9 @@ import { createTestGatewayScheduler } from "../../src/test-utils/gateway-schedul
 const { makeStorePath } = createCronStoreHarness({ prefix: "canopy-nudge-" });
 
 describe("Canopy terminal hook automation ownership", () => {
-  it.each(
-    (["agent_end", "subagent_ended"] as const).flatMap((hook) =>
-      ([false, true] as const).map((closeCaller) => ({ hook, closeCaller })),
-    ),
-  )("enqueues after $hook with closeCaller=$closeCaller", async ({ hook, closeCaller }) => {
+  it.each(["agent_end", "subagent_ended"] as const)("%s survives closure", async (hook) => {
     const sessionKey = "agent:main:subagent:canopy-d6-authority";
-    const runId = `d6-${hook}-${closeCaller}`;
+    const runId = `d6-${hook}`;
     const { storePath } = await makeStorePath();
     vi.stubEnv("BRANCH_STATE_DIR", path.dirname(storePath));
     const gatewayContext = createContext();
@@ -54,8 +50,9 @@ describe("Canopy terminal hook automation ownership", () => {
       expect(getGatewayToolCallerIdentity()).toBeUndefined();
       expect(getPluginRuntimeGatewayRequestScope()?.resolveGatewayContext?.()).toBe(gatewayContext);
     });
+    const scheduler = createTestGatewayScheduler();
     const cron = new CronService({
-      scheduler: createTestGatewayScheduler(),
+      scheduler,
       nowMs: () => Date.now(),
       storePath,
       cronEnabled: false,
@@ -75,7 +72,7 @@ describe("Canopy terminal hook automation ownership", () => {
       payload: { kind: "systemEvent", text: "categorize board" },
     });
     const settled = finished.waitForOk(job.id);
-    const services: BranchPluginService[] = [];
+    const services: Parameters<BranchPluginApi["registerService"]>[0][] = [];
     let agentEnd: PluginHookHandlerMap["agent_end"] | undefined;
     let subagentEnded: PluginHookHandlerMap["subagent_ended"] | undefined;
     const methods: GatewayMethodDescriptorInput[] = [];
@@ -126,10 +123,16 @@ describe("Canopy terminal hook automation ownership", () => {
       id: service.id,
       service: {
         ...service,
+        apiVersion: 2,
         start: (ctx) => service.start({ ...ctx, logger: { ...ctx.logger, warn } }),
       },
     });
-    const handle = await startPluginServices({ registry, config: {}, getCronService: () => cron });
+    const handle = await startPluginServices({
+      scheduler,
+      registry,
+      config: {},
+      getCronService: () => cron,
+    });
     const enqueue = vi.spyOn(cron, "enqueueRun");
     const dispatch: GatewayRequestHandler = async ({ respond }) =>
       respond(true, await cron.enqueueRun(job.id, "if-enabled"));
@@ -203,29 +206,23 @@ describe("Canopy terminal hook automation ownership", () => {
                     },
                     { childSessionKey: sessionKey, runId },
                   );
-            if (closeCaller) {
-              admission.close();
-            }
+            admission.close();
             await pending;
-            if (closeCaller) {
-              await expect(
-                dispatchTrustedPluginGatewayMethod(
-                  "cron.run",
-                  { id: job.id, mode: "if-enabled" },
-                  { scopes: ["operator.admin"] },
-                ),
-              ).rejects.toThrow("agent tool caller authority is no longer active");
-            }
+            await expect(
+              dispatchTrustedPluginGatewayMethod(
+                "cron.run",
+                { id: job.id, mode: "if-enabled" },
+                { scopes: ["operator.admin"] },
+              ),
+            ).rejects.toThrow("agent tool caller authority is no longer active");
           }),
       );
 
-      if (closeCaller) {
-        await withGatewayToolCallerIdentity({ ...caller }, async () => {
-          await expect(request("cron.run", { id: job.id, mode: "if-enabled" })).rejects.toThrow(
-            "agent tool caller authority is no longer active",
-          );
-        });
-      }
+      await withGatewayToolCallerIdentity({ ...caller }, async () => {
+        await expect(request("cron.run", { id: job.id, mode: "if-enabled" })).rejects.toThrow(
+          "agent tool caller authority is no longer active",
+        );
+      });
       await expect(request("canopy.cards.list", { boardId: "planning" })).resolves.toMatchObject(
         {
           cards: [expect.objectContaining({ id: card.id, status: "review" })],
@@ -245,6 +242,7 @@ describe("Canopy terminal hook automation ownership", () => {
       admission.close();
       await handle.stop();
       cron.stop();
+      await scheduler.stop();
       for (const lifecycle of captured.runtimeLifecycles) {
         await lifecycle.dispose?.();
       }

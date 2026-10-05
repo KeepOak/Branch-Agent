@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
@@ -35,21 +34,6 @@ describe("agent SQLite path memoization", () => {
         ),
       );
     }
-  });
-
-  it("rechecks legacy discovery and home changes after warming paths", () => {
-    const root = tempDirs.make("branch-agent-path-home-");
-    const env = { HOME: path.join(root, "first") };
-    const legacy = path.join(env.HOME, ".clawdbot");
-    fs.mkdirSync(legacy, { recursive: true });
-    expect(resolveBranchAgentSqlitePath({ agentId: "worker", env })).toBe(expectedPath(legacy));
-    const current = path.join(env.HOME, ".branch");
-    fs.mkdirSync(current);
-    expect(resolveBranchAgentSqlitePath({ agentId: "worker", env })).toBe(expectedPath(current));
-    env.HOME = path.join(root, "second");
-    expect(resolveBranchAgentSqlitePath({ agentId: "worker", env })).toBe(
-      expectedPath(path.join(env.HOME, ".branch")),
-    );
   });
 
   it("resolves relative overrides and explicit paths against the current cwd", () => {

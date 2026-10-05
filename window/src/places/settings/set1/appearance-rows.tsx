@@ -1,6 +1,7 @@
 // Settings › Appearance: every plain row (switches, segments, lists) as one table: the preview's titles, sub-lines,
 // defaults (51-set1p OWN_DEF_PE18 and the captured states), levels and where each choice is kept. The page draws the
 // rows from it and the settings search lists them from it, so the two can't drift.
+// TODO(engine-lane): TODO(desktop-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Keep, Lv, Opt, RowEntry } from "../kit";
 
 export type Kind = "sw" | "seg" | "pick";

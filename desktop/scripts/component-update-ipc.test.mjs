@@ -108,10 +108,13 @@ test("served preload exposes only fixed parameter-free component IPC methods", a
   const calls = []; let bridge;
   const electron = { contextBridge: { exposeInMainWorld: (name, value) => { assert.equal(name, "branchDesktop"); bridge = value; } },
     ipcRenderer: { sendSync: () => ({ gatewayUrl: "ws://127.0.0.1:1234", gatewayToken: "fixture-token" }),
-      invoke: async (...args) => { calls.push(args); return { phase: "unchecked" }; }, on: () => {} } };
-  runInNewContext(await readFile(join(dist, "preload.js"), "utf8"), { exports: {}, require: name => {
+      invoke: async (...args) => { calls.push(args); return { phase: "unchecked" }; }, on: () => {}, send: (...args) => calls.push(args) } };
+  runInNewContext(await readFile(join(dist, "preload.js"), "utf8"), { exports: {}, process: { platform: "win32" }, require: name => {
     assert.equal(name, "electron"); return electron;
   }, window: { addEventListener: () => {} } });
   await bridge.componentUpdates.status(); await bridge.componentUpdates.check(); await bridge.componentUpdates.stage();
-  assert.deepEqual(calls, [["branch-desktop:component-update:status"], ["branch-desktop:component-update:check"], ["branch-desktop:component-update:stage"]]);
+  const overlay = { color: "#0f1418", symbolColor: "#aebac3", height: 51 };
+  bridge.titleBar.set(overlay);
+  assert.deepEqual(calls, [["branch-desktop:component-update:status"], ["branch-desktop:component-update:check"], ["branch-desktop:component-update:stage"],
+    ["branch-desktop:title-bar", overlay]]);
 });

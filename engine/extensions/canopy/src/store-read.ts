@@ -1,10 +1,15 @@
 import type { CanopyCard } from "@branch/canopy-contract";
-import type {
-  PersistedCanopyCard,
-  CanopyCardReadScope,
-  CanopyCardStore,
-} from "./persistence-types.js";
+import type { CanopyCardReadScope, CanopyCardStore } from "./persistence-types.js";
 import { compareCards } from "./store-card-helpers.js";
+
+export function freezeCardList(value: unknown): void {
+  if (value && typeof value === "object") {
+    for (const child of Object.values(value)) {
+      freezeCardList(child);
+    }
+    Object.freeze(value);
+  }
+}
 
 export async function readCards(
   store: CanopyCardStore,
@@ -12,10 +17,6 @@ export async function readCards(
 ): Promise<CanopyCard[]> {
   const entries = await store.entries(scope);
   return entries
-    .map((entry) => entry.value)
-    .filter(
-      (entry): entry is PersistedCanopyCard => entry?.version === 1 && Boolean(entry.card?.id),
-    )
-    .map((entry) => entry.card)
+    .flatMap(({ value }) => (value?.version === 1 && value.card?.id ? [value.card] : []))
     .toSorted(compareCards);
 }

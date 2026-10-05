@@ -1,5 +1,7 @@
 // Overview (DESIGN-SPEC §4.6.1; preview renderOverview + 40-places + 41-placesap p10-overview).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
 import { Face } from "../../face/Face";
 import { isEngineMode, modeName } from "../../composer/mode";
@@ -114,7 +116,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
       </Tile>
       <Tile title="Controls">
         <p>Mode: <b>{mode || "As each Trunk is set"}</b> · <button type="button" className="ov-link ov-inline" disabled={!openSettings} onClick={() => openSettings?.("permissions")}>change</button></p>
-        <div className="ov-acts"><button type="button" className="btn bad sm" disabled title={LOCKDOWN_GAP}>Lockdown</button><button type="button" className="btn sm" disabled title={PAUSE_ALL_GAP}>Pause all Trunks</button></div>
+        <div className="ov-acts"><button type="button" className="btn bad sm" disabled title={shownWhy(LOCKDOWN_GAP)}>Lockdown</button><button type="button" className="btn sm" disabled title={shownWhy(PAUSE_ALL_GAP)}>Pause all Trunks</button></div>
       </Tile>
       <Tile title="Who is using Branch">
         {status("people", "people")}{status("presence", "live presence")}
@@ -122,7 +124,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
         {tiles.people.value !== undefined && !lines.length ? <p>No one has signed in yet.</p> : null}
         <div className="ov-acts"><button type="button" className="btn sm" onClick={() => openPlace("people")}>Invite someone</button></div>
       </Tile>
-      <Tile title="Milestones"><p className="ov-hint" title={MILESTONES_GAP}>{MILESTONES_GAP}</p></Tile>
+      <Tile title="Milestones"><div className="ov-badges" data-reason={MILESTONES_GAP} />{shownWhy(MILESTONES_GAP) && <p className="ov-hint">{shownWhy(MILESTONES_GAP)}</p>}</Tile>
     </div>
   </PlaceFrame>;
 }

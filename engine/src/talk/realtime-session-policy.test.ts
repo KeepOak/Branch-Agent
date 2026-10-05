@@ -9,8 +9,8 @@ import {
 } from "./realtime-session-policy.js";
 
 const cfg = {
-  agents: { list: [{ id: "agent-1", identity: { name: "Sprig" } }] },
-} as BranchConfig;
+  agents: { entries: { "agent-1": { name: "Grovebot", identity: { name: "Sprig" } } } },
+} satisfies BranchConfig;
 
 describe("realtime voice session policy", () => {
   it("defaults agent-proxy sessions to owner consults and adaptive wake names", () => {
@@ -31,7 +31,7 @@ describe("realtime voice session policy", () => {
       consultToolsAllow: undefined,
       consultPolicy: "always",
       wakeNamePolicy: "automatic",
-      wakeNames: ["branch", "sprig"],
+      wakeNames: ["branch", "grovebot", "sprig"],
       autoRespondToAudio: false,
     });
   });

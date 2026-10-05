@@ -1,9 +1,9 @@
 // Branch Agent desktop app: starts the engine gateway, serves the built window on 127.0.0.1 and shows it.
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, screen, session, shell } from "electron";
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { portIsFree, readToken, startGateway, stopGateway, waitForReady } from "./gateway";
 import { serveWindow } from "./static-server";
@@ -11,10 +11,25 @@ import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowsWindowResident } from "./resident-window";
 import { confirmComponentUpdate, readComponentUpdateStatus, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
+import { createDesktopControls, registerDesktopControlsIpc } from "./desktop-controls";
+import { desktopOs, START_IN_TRAY } from "./desktop-os";
+import { registerTitleBarIpc, titleBarOptions } from "./title-bar";
+import { placeWindow, readWindowState, trackWindowState } from "./window-state";
+import { confirmDesktopUpdate, handOffDesktopUpdate, stagedDesktopVersion, type DesktopInstall } from "./desktop-update";
+import type { Tray } from "electron";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
+/** Started with Windows: open quietly in the tray (only where the tray exists). */
+const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRAY);
+const ICON = join(__dirname, "..", "assets", "branch.ico");
 const READY_TIMEOUT_MS = 180_000;
 const cfg: DesktopConfig = loadConfig();
+/** The packaged app this process runs from; development runs (`electron .`) never update themselves. */
+const install: DesktopInstall | undefined = app.isPackaged ? {
+  appDir: process.platform === "darwin" ? resolve(process.resourcesPath, "..", "..") : dirname(process.execPath),
+  resourcesDir: process.resourcesPath, executable: process.execPath,
+  electronVersion: process.versions.electron, nodePath: cfg.nodePath,
+} : undefined;
 
 /** Appends one line to the app's own data directory log. */
 function log(line: string): void {
@@ -41,12 +56,15 @@ let stopEngineWatch: (() => void) | undefined;
 let stopComponentWatch: (() => void) | undefined;
 let stopWindowWatch: (() => void) | undefined;
 let componentsReady = false;
+let engineRestartInProgress = false;
 const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
+let tray: Tray | undefined;
+const controls = createDesktopControls(desktopOs(app, cfg, () => tray, ICON));
 
 /** Staging never invokes the restart IPC or the gateway's generic updater. */
 async function stageComponentUpdate(): Promise<boolean> {
   if (!componentsReady) throw new Error("The desktop is still starting; check again when the engine is ready");
-  const staged = await refreshComponentUpdate(cfg);
+  const staged = await refreshComponentUpdate(cfg, fetch, { desktop: install });
   if ((await readComponentUpdateStatus(cfg)).pendingVersion) {
     engineUpdateReady = true;
     win?.webContents.send("branch-desktop:engine-update", "ready");
@@ -55,16 +73,21 @@ async function stageComponentUpdate(): Promise<boolean> {
 }
 
 const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(
-  "<!doctype html><title>Branch Agent</title><body style=\"font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f8;color:#333\">Starting Branch Agent…</body>",
+  "<!doctype html><title>Branch Agent</title><body style=\"-webkit-app-region:drag;font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f8;color:#333\">Starting Branch Agent…</body>",
 )}`;
 
 function createWindow(): BrowserWindow {
+  // First launch opens maximized; later launches restore the last state, size, position and display.
+  const place = placeWindow(readWindowState(cfg.dataDir), screen.getAllDisplays());
   const w = new BrowserWindow({
     title: "Branch Agent",
     width: 1280,
     height: 840,
+    ...place.bounds,
     show: false,
-    icon: join(__dirname, "..", "assets", "branch.ico"),
+    icon: ICON,
+    // Windows: no native title bar; the window's header carries the minimise, maximise and close buttons.
+    ...titleBarOptions(),
     webPreferences: {
       preload: join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -75,9 +98,16 @@ function createWindow(): BrowserWindow {
     },
   });
   w.setMenuBarVisibility(false);
-  if (!HIDDEN) w.once("ready-to-show", () => w.show());
+  if (place.maximized) w.once("show", () => w.maximize());
+  if (!HIDDEN && !QUIET) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
+  trackWindowState(w, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds);
   lockDown(w);
-  keepWindowsWindowResident(app, w, join(__dirname, "..", "assets", "branch.ico"), { hidden: HIDDEN });
+  tray = keepWindowsWindowResident(app, w, ICON, {
+    hidden: HIDDEN,
+    keepRunning: () => controls.settings().keepWorking,
+    // With the usage ring in the tray, a click opens the same list (Settings › Usage).
+    onTrayClick: () => { if (controls.settings().trayUsage) w.webContents.send("branch-desktop:open-usage"); },
+  });
   return w;
 }
 
@@ -96,7 +126,16 @@ function lockDown(w: BrowserWindow): void {
 
 const windowUrl = (): string => `http://127.0.0.1:${cfg.windowPort}/`;
 
+/** Like quitAndInstall: the helper swaps the staged desktop app in once this process has exited, then relaunches it. */
+async function handOffDesktop(explicit: boolean): Promise<boolean> {
+  if (!install || !await handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), process.argv.slice(1), explicit)) return false;
+  log("desktop update staged; handing off to the update helper and quitting");
+  return true;
+}
+
 async function start(): Promise<void> {
+  // A desktop update staged during the last run applies before anything starts.
+  if (await handOffDesktop(false)) { app.exit(0); return; }
   token = readToken(cfg);
   // Registered before any page loads: the preload asks for it synchronously.
   ipcMain.on("branch-desktop:info", (e) => {
@@ -105,16 +144,21 @@ async function start(): Promise<void> {
   });
   ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, win?.webContents, windowUrl())) void restartEngine(); });
   registerComponentUpdateIpc(ipcMain, () => win?.webContents, windowUrl(), componentUpdates);
+  registerDesktopControlsIpc(ipcMain, () => win?.webContents, windowUrl(), controls);
+  registerTitleBarIpc(ipcMain, () => win?.webContents, windowUrl(), (overlay) => win?.setTitleBarOverlay(overlay));
+  controls.apply();
   win = createWindow();
   await win.loadURL(STARTING);
   log(`starting page shown after ${Date.now() - launchStarted} ms`);
+  const desktopVersion = await confirmDesktopUpdate(cfg);
+  if (desktopVersion) log(`desktop update ${desktopVersion} started; confirmed`);
   for (const port of [cfg.gatewayPort, cfg.windowPort]) {
     if (!(await portIsFree(port))) throw new Error(`port ${port} is already in use; is Branch Agent already running?`);
   }
   await recoverComponentUpdate(cfg);
   if (!existsSync(join(cfg.windowDir, "index.html")) || !existsSync(join(cfg.dataDir, "engine-current.txt")) && !existsSync(join(cfg.engineDir, "branch.mjs"))) {
     log("Installing verified GitHub components for first launch");
-    await refreshComponentUpdate(cfg);
+    await refreshComponentUpdate(cfg, fetch, { desktop: install });
   }
   server = await serveWindow(cfg.windowDir, cfg.windowPort);
   await win.loadURL(windowUrl());
@@ -125,7 +169,13 @@ async function start(): Promise<void> {
   }
   watchUpdates(win);
   componentsReady = true;
-  stopComponentWatch = watchComponentUpdates(cfg, log);
+  stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, onStaged: () => {
+    void readComponentUpdateStatus(cfg).then(({ pendingVersion }) => {
+      if (!pendingVersion) return;
+      engineUpdateReady = true;
+      win?.webContents.send("branch-desktop:engine-update", "ready");
+    }).catch(error => log(`Component update status: ${String(error)}`));
+  } });
 }
 
 /** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
@@ -181,11 +231,14 @@ function watchUpdates(w: BrowserWindow): void {
 
 /** Only on the owner's click: stops the gateway by PID, starts the new build and reloads the window. */
 async function restartEngine(): Promise<void> {
-  if (!gateway || !win) return;
-  log(`restart requested; stopping gateway pid ${gateway.pid}`);
-  win.webContents.send("branch-desktop:engine-update", "restarting");
-  stopGateway(gateway);
+  if (!gateway || !win || !componentsReady || engineRestartInProgress) return;
+  engineRestartInProgress = true;
   try {
+    // A staged desktop app restarts the whole app (the new engine and window come up with it).
+    if (await stagedDesktopVersion(cfg) && await handOffDesktop(true)) { app.quit(); return; }
+    log(`restart requested; stopping gateway pid ${gateway.pid}`);
+    win.webContents.send("branch-desktop:engine-update", "restarting");
+    stopGateway(gateway);
     for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise((r) => setTimeout(r, 250));
     await bootSelectedEngine();
     win.webContents.reload();
@@ -193,6 +246,8 @@ async function restartEngine(): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     log(`restart failed: ${msg}`);
     if (!HIDDEN) dialog.showErrorBox("Branch Agent could not restart the engine", msg);
+  } finally {
+    engineRestartInProgress = false;
   }
 }
 
@@ -201,6 +256,7 @@ function shutdown(): void {
   stopEngineWatch?.();
   stopComponentWatch?.();
   stopWindowWatch?.();
+  controls.dispose();
   if (gateway) stopGateway(gateway);
   server?.close();
 }

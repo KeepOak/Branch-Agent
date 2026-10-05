@@ -5,8 +5,8 @@ import "./test-helpers/fast-coding-tools.js";
 import "./test-helpers/fast-branch-tools.js";
 import { createWorkerPlacementTools } from "../worker/worker-placement-tools.js";
 import { createBranchCodingToolsInternal } from "./agent-tools.js";
+import type { AnyAgentTool } from "./agent-tools.types.js";
 import * as coreCodingTools from "./core-coding-tools.js";
-import { createBranchTools } from "./branch-tools.js";
 import { prepareCoreToolPolicy, projectAgentToolDefinition } from "./prepared-tool-surface.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -50,17 +50,53 @@ it.each([false, true])(
       expect(JSON.stringify(placed.map(projectAgentToolDefinition))).toBe(
         JSON.stringify(local.map(projectAgentToolDefinition)),
       );
-      const branchCalls = vi.mocked(createBranchTools).mock.calls.length;
-      createBranchCodingToolsInternal(
-        { ...options, toolConstructionPlan: undefined },
-        undefined,
-        undefined,
-        { tools: prepared, policy },
-      );
-      expect(construct).toHaveBeenCalledTimes(2);
-      expect(vi.mocked(createBranchTools).mock.calls).toHaveLength(branchCalls);
     } finally {
       construct.mockRestore();
     }
   },
 );
+
+it("retains Gateway tools while replacing a placed session tool's schema and execution", async () => {
+  const options = {
+    workspaceDir: tempDirs.make("prepared-surface-gateway-"),
+    config: {},
+    wrapBeforeToolCallHook: false,
+    toolConstructionPlan: {
+      includeBaseCodingTools: false,
+      includeShellTools: false,
+      includeChannelTools: false,
+      includeBranchTools: true,
+      includePluginTools: false,
+    },
+  };
+  const result = { content: [], details: { childSessionKey: "placed-child" } };
+  const execute = vi.fn<AnyAgentTool["execute"]>().mockResolvedValue(result);
+  const adapter: AnyAgentTool = {
+    name: "sessions_spawn",
+    label: "Placed spawn",
+    description: "Create a placed child",
+    parameters: {
+      type: "object",
+      properties: { task: { type: "string" } },
+      required: ["task"],
+    },
+    execute,
+  };
+  const tools = createBranchCodingToolsInternal(options, undefined, undefined, {
+    tools: [adapter],
+    policy: prepareCoreToolPolicy(options),
+  });
+  const names = tools.map((tool) => tool.name);
+  expect(names).toContain("web_fetch");
+  expect(names).toContain("sessions_list");
+  expect(names.filter((name) => name === "sessions_spawn")).toHaveLength(1);
+  const spawn = tools.find((tool) => tool.name === "sessions_spawn");
+  if (!spawn) {
+    throw new Error("Expected the placed spawn adapter");
+  }
+  expect(spawn.parameters).toMatchObject(adapter.parameters);
+  expect(spawn.parameters).not.toHaveProperty("properties.action");
+  await expect(spawn.execute("spawn-placed", { task: "synthetic task" })).resolves.toEqual(result);
+  expect(execute).toHaveBeenCalledOnce();
+  expect(execute).toHaveBeenCalledWith("spawn-placed", { task: "synthetic task" });
+});

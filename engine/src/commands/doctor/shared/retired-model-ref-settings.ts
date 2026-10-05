@@ -1,8 +1,8 @@
 import { asOptionalRecord } from "@branch/normalization-core/record-coerce";
 import { resolveMutableAgentEntry } from "../../../agents/agent-scope-config.js";
+import type { BranchConfigWithLegacyRoster } from "../../../config/legacy.roster.js";
 import { mergeAgentModelEntryForConfig } from "../../../config/model-input.js";
 import type { AgentModelEntryConfig } from "../../../config/types.agent-defaults.js";
-import type { BranchConfig } from "../../../config/types.branch.js";
 import type { ModelRetirementScope } from "./retired-model-ref-repair.types.js";
 
 type RetiredModelSettings<T> = {
@@ -42,13 +42,13 @@ export function mergeRetiredModelSettings(params: RetiredModelSettings<unknown>)
 
 /** Read-only auth evaluation must see the settings the repair will preserve. */
 export function projectRetiredModelSuccessorConfig(params: {
-  cfg: BranchConfig;
+  cfg: BranchConfigWithLegacyRoster;
   agentId: string;
   sourceModelRef: string;
   successorModelRef: string;
   retirementScope: ModelRetirementScope;
   resolveModelRef: (modelRef: string) => string | undefined;
-}): BranchConfig {
+}): BranchConfigWithLegacyRoster {
   const { cfg, agentId, sourceModelRef, successorModelRef } = params;
   const entry = resolveMutableAgentEntry(cfg, agentId);
   const inheritedModels = cfg.agents?.defaults?.models;

@@ -1,18 +1,19 @@
 // The + menu (DESIGN-SPEC §4.3.2): add material and switch this conversation's options without leaving the box.
 // Rows the engine can't do yet stay listed, greyed with the reason (rule 2: never remove a feature).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useRef, type RefObject } from "react";
 import { NO_ROUTE, type OpenTarget } from "./nav";
 import { Popover, moveFocus } from "./Popover";
 import { Head, MenuItem, Sep, Switch } from "./ui";
 import { Icon } from "./icons";
 import type { Trunk } from "./useConversation";
+import { shownWhy } from "../shell/shown-why";
 
 export const GAP = {
   folder: "Not available in this engine yet: it has no per-conversation folder grant.",
   screenshot: "Not available in this window yet: screen capture needs the desktop app.",
   temporary: "Not available in this engine yet: a conversation is temporary only when it is made (sessions.create incognito).",
   checkWithMe: "Not available in this engine yet: it has no ask-questions-first switch for a conversation.",
-  whoAnswers: "Not available in this engine yet: a conversation's Trunk is fixed when it is made.",
   picture: "Connect a model first, in Settings › Models.",
   gif: "Not available in this engine yet: it has no GIF search service.",
   prompts: "Not available in this engine yet: it keeps no saved prompts.",
@@ -37,6 +38,7 @@ type Props = {
   temporary: boolean;
   /** Starts a new temporary conversation with this Trunk. */
   onTemporary?: () => void;
+  onWhoAnswers?: (agentId: string) => void;
   /** Opens "Make a picture"; absent when no model is set up. */
   onPicture?: () => void;
   /** Records a voice note; absent while the microphone isn't turned on. */
@@ -90,8 +92,9 @@ export function PlusMenu(p: Props) {
             key={t.id}
             label={t.name}
             checked={t.id === p.trunkId}
-            disabled={t.id !== p.trunkId}
-            reason={t.id !== p.trunkId ? GAP.whoAnswers : undefined}
+            disabled={t.id !== p.trunkId && !p.onWhoAnswers}
+            reason={t.id !== p.trunkId && !p.onWhoAnswers ? "This conversation's Trunk is fixed after its first message." : undefined}
+            onClick={t.id !== p.trunkId && p.onWhoAnswers ? run(() => p.onWhoAnswers?.(t.id)) : undefined}
           />
         ))}
         <Sep />
@@ -116,7 +119,7 @@ export function PlusMenu(p: Props) {
 
 function SwitchRow({ icon, label, reason, on, onChange }: { icon: "ghost" | "help"; label: string; reason: string; on: boolean; onChange?: () => void }) {
   return (
-    <div className="c-mi c-switchrow" title={reason}>
+    <div className="c-mi c-switchrow" title={shownWhy(reason)}>
       <span className="c-mi-ic"><Icon name={icon} size={16} /></span>
       <span className="c-mi-t">
         <span>{label}</span>

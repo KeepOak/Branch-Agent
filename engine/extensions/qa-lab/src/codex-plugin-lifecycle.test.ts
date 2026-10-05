@@ -99,7 +99,7 @@ describe("codex plugin lifecycle: doctor migration safety matrix", () => {
     {
       name: "mixed profile with main-agent Branch Agent pin",
       profileShape: "mixed" as const,
-      config: { agents: { list: { main: { agentRuntime: { id: "branch" } } } } },
+      config: { agents: { entries: { main: { agentRuntime: { id: "branch" } } } } },
       expectedRemovedRuntimePins: ["agentRuntime.id=branch"],
     },
   ])(

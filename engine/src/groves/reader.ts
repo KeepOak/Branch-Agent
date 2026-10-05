@@ -5,6 +5,7 @@ import { assertNoSymlinkParents } from "@openclaw/fs-safe/advanced";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES } from "../agents/workspace-bootstrap-read.js";
 import { FsSafeError, root as fsSafeRoot, type OpenResult } from "../infra/fs-safe.js";
+import { digestGroveBytes } from "./digest.js";
 import { readGroveBranchProfile } from "./branch-profile.js";
 import { isCanonicalClawHubPackageName, isExactSemVer } from "./schema-portability.js";
 import { groveManifestWorkspaceConflictsWithPath, parseGroveManifest } from "./schema.js";
@@ -41,7 +42,6 @@ async function readBoundedFile(path: string, maxBytes: number): Promise<Buffer> 
   const read = await fileRoot.read(basename(path), {
     hardlinks: "reject",
     maxBytes,
-    nonBlockingRead: true,
     symlinks: "reject",
   });
   return read.buffer;
@@ -120,7 +120,7 @@ async function buildDevelopmentSnapshot(params: {
   };
   const snapshotFile = (bytes: Buffer) => ({
     byteLength: bytes.byteLength,
-    digest: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+    digest: digestGroveBytes(bytes),
   });
   const manifest = snapshotFile(params.manifestRaw);
   const branchProfile = params.branchProfile
@@ -150,7 +150,6 @@ async function buildDevelopmentSnapshot(params: {
       const read = await sourceRoot.read("BOOTSTRAP.md", {
         hardlinks: "reject",
         maxBytes: MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES,
-        nonBlockingRead: true,
         symlinks: "reject",
       });
       const text = new TextDecoder("utf-8", { fatal: true }).decode(read.buffer);
@@ -161,7 +160,7 @@ async function buildDevelopmentSnapshot(params: {
           "$.bootstrap",
         );
       }
-      const digest = `sha256:${createHash("sha256").update(read.buffer).digest("hex")}`;
+      const digest = digestGroveBytes(read.buffer);
       add("bootstrap:BOOTSTRAP.md", read.buffer);
       packageBootstrap = {
         sourcePath: "BOOTSTRAP.md",
@@ -249,7 +248,7 @@ async function buildDevelopmentSnapshot(params: {
         );
       }
       const normalizedSourcePath = sourcePath.replaceAll("\\", "/");
-      const digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+      const digest = digestGroveBytes(bytes);
       add(`workspace:${sourcePath.replaceAll("\\", "/")}`, bytes);
       workspaceSources.push({
         sourcePath: normalizedSourcePath,

@@ -1,5 +1,6 @@
 // Library › Memory › the Rings row and its diary (preview 42-placesbp ringsRowD18 / ringsDiaryD18), on
 // doctor.memory.status (rings stats) and doctor.memory.dreamDiary / backfill / reset / dedupe.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";

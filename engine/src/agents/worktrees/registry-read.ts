@@ -2,7 +2,24 @@ import { executeExistingBranchStateRead } from "../../state/branch-state-db-read
 import { captureBranchStateWorkerContext } from "../../state/branch-state-worker-context.js";
 import type { BranchStateWorkerContext } from "../../state/branch-state-worker-context.types.js";
 import type { WorktreeRegistryListOptions } from "./registry-read.kernel.js";
-import type { ManagedWorktreeRecord, ProvisionedFileState } from "./types.js";
+import type {
+  CreateManagedWorktreeParams,
+  ManagedWorktreeOwnerKind,
+  ManagedWorktreeRecord,
+  ProvisionedFileState,
+} from "./types.js";
+
+export async function readLiveRegistryWorktreeByOwner(
+  context: BranchStateWorkerContext,
+  ownerKind: ManagedWorktreeOwnerKind,
+  ownerId: string,
+): Promise<ManagedWorktreeRecord | undefined> {
+  const { executeBranchStateWorker } = await import("../../state/branch-state-worker-store.js");
+  return await executeBranchStateWorker(context, {
+    type: "worktrees.findLiveByOwner",
+    input: { ownerKind, ownerId },
+  });
+}
 
 export async function readRegistryWorktree(
   context: BranchStateWorkerContext,
@@ -10,6 +27,36 @@ export async function readRegistryWorktree(
 ): Promise<ManagedWorktreeRecord | undefined> {
   const { executeBranchStateWorker } = await import("../../state/branch-state-worker-store.js");
   return await executeBranchStateWorker(context, { type: "worktrees.get", input: { id } });
+}
+
+/** Resolve the exact target before lock admission without borrowing Gateway-thread SQLite. */
+export async function readRegistryWorktreeForMutation(
+  params: { env: NodeJS.ProcessEnv; id: string } & Pick<
+    CreateManagedWorktreeParams,
+    "signal" | "commitGuard"
+  >,
+): Promise<ManagedWorktreeRecord | undefined> {
+  const assertCurrent = () => {
+    params.signal?.throwIfAborted();
+    params.commitGuard?.();
+  };
+  assertCurrent();
+  const record = await readRegistryWorktree(
+    captureBranchStateWorkerContext({ env: params.env }),
+    params.id,
+  );
+  assertCurrent();
+  return record;
+}
+
+export function requireActiveWorktreeRecord(
+  id: string,
+  record: ManagedWorktreeRecord | undefined,
+): ManagedWorktreeRecord {
+  if (!record || record.removedAt !== undefined) {
+    throw new Error(`unknown active worktree: ${id}`);
+  }
+  return record;
 }
 
 export async function readRegistryWorktrees(

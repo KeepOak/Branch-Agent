@@ -1,4 +1,5 @@
 // Zalo tests cover actions plugin behavior.
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import http from "node:http";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";

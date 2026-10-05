@@ -1,3 +1,4 @@
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import type { SpeechSynthesisRequest } from "branch/plugin-sdk/speech";
 import { installPinnedHostnameTestHooks } from "branch/plugin-sdk/test-media-understanding";
 import { afterEach, describe, expect, it, vi } from "vitest";
