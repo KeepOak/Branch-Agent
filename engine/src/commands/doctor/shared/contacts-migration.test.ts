@@ -14,6 +14,49 @@ import { openBranchStateDatabase } from "../../../state/branch-state-db.js";
 describe("doctor contact migration", () => {
   const { createFixture } = setupLegacyMainSessionMigrationTests();
 
+  it("migrates thirteen agent stores without exceeding SQLite's attachment limit", () => {
+    const agentIds = Array.from({ length: 13 }, (_, index) => `worker-${index}`);
+    const fixture = createFixture({
+      agents: {
+        entries: Object.fromEntries(["ops", ...agentIds].map((agentId) => [agentId, {}])),
+        defaultId: "ops",
+      },
+    });
+    for (const agentId of agentIds) {
+      seedClaim({
+        databaseAgentId: agentId,
+        databasePath: databasePath(fixture.stateDir, agentId),
+        key: `agent:${agentId}:brand`,
+        entry: { sessionId: `${agentId}-session`, updatedAt: 10, label: "Branch" },
+      });
+    }
+    let peakAttached = 0;
+    expect(
+      migrateContacts({
+        cfg: fixture.cfg,
+        env: fixture.env,
+        apply: true,
+        beforeCommit: () => {
+          const db = openBranchStateDatabase({ env: fixture.env }).db;
+          peakAttached = Math.max(
+            peakAttached,
+            db.prepare("PRAGMA database_list").all().length - 1,
+          );
+        },
+      }),
+    ).toEqual({ moved: 13, archivedEmpty: 0 });
+    expect(peakAttached).toBeLessThanOrEqual(10);
+    for (const agentId of agentIds) {
+      expect(
+        readClaim({
+          databaseAgentId: agentId,
+          databasePath: databasePath(fixture.stateDir, agentId),
+          key: `agent:${agentId}:brand`,
+        })?.entry.movedToSessionKey,
+      ).toBeTruthy();
+    }
+  });
+
   it("copies legacy and brand history, archives empty window sessions, and is idempotent", () => {
     const fixture = createFixture({
       agents: { entries: { ops: {}, worker: {} }, defaultId: "ops" },
