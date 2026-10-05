@@ -21,8 +21,8 @@ beforeEach(() => { (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONM
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.restoreAllMocks(); });
 
 const flush = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
-async function show(engine: WindowEngine) {
-  await act(async () => root.render(<BackupsPage page="backups" title="Backups" level="regular" engine={engine} />));
+async function show(engine: WindowEngine, level: "regular" | "advanced" = "regular") {
+  await act(async () => root.render(<BackupsPage page="backups" title="Backups" level={level} engine={engine} />));
   await flush();
 }
 function button(text: string): HTMLButtonElement {
@@ -45,7 +45,7 @@ const EMPTY = { targets: [], schedules: [], locations: [] };
 const REPO = "C:\\Users\\me\\.branch-backup-1a2b3c4d5e6f";
 const SCHEDULED = {
   targets: [{ kind: "git", target: REPO, latest: { id: "r", createdAt: Date.now() - 60_000, archivePath: REPO, status: "ok", kind: "git", target: "0123456789abcdef" } }],
-  schedules: [{ id: "job-1", mode: "git", target: REPO, enabled: true, everyMs: 86_400_000, push: true, excludeSecrets: true, files: true, remote: "https://github.com/KeepOak/Branch-Agent-Private.git" }],
+  schedules: [{ id: "job-1", mode: "git", target: REPO, enabled: true, everyMs: 86_400_000, push: true, excludeSecrets: true, files: true, remote: "https://github.com/you/branch-backups.git" }],
   locations: [],
 };
 
@@ -55,22 +55,22 @@ describe("Settings › Backups", () => {
     await show(engine);
     expect(button("Back up now").disabled).toBe(true);
     expect(document.body.textContent).toContain("Passwords, keys and sign-ins are never included");
-    expect(document.body.textContent).toContain("KeepOak/Branch-Agent-Private");
-    await type("Repository address", "https://github.com/KeepOak/Branch-Agent-Private.git");
+    expect(document.body.textContent).toContain("you/branch-backups");
+    await type("Repository address", "https://github.com/you/branch-backups.git");
     await click("Save");
     expect(calls(request, "backup.schedule.set")).toEqual([
-      { destination: { kind: "git", url: "https://github.com/KeepOak/Branch-Agent-Private.git" }, everyMs: 86_400_000, enabled: true },
+      { destination: { kind: "git", url: "https://github.com/you/branch-backups.git" }, everyMs: 86_400_000, enabled: true },
     ]);
   });
 
   it("shows the schedule and last result, changes how often, and backs up now", async () => {
     const { engine, request } = engineWith({ "backup.status": SCHEDULED, "backup.schedule.set": { id: "job-1" }, "backup.run": { jobId: "job-1", started: true } });
     await show(engine);
-    expect(document.querySelector<HTMLInputElement>('input[aria-label="Repository address"]')!.value).toBe("https://github.com/KeepOak/Branch-Agent-Private.git");
+    expect(document.querySelector<HTMLInputElement>('input[aria-label="Repository address"]')!.value).toBe("https://github.com/you/branch-backups.git");
     expect(document.querySelector('[data-row="Last backup"]')!.textContent).toContain("Saved as 0123456789");
     expect(document.querySelector('[data-row="Last backup"]')!.textContent).toContain("Succeeded");
     await click("Every week");
-    expect(calls(request, "backup.schedule.set").at(-1)).toEqual({ destination: { kind: "git", url: "https://github.com/KeepOak/Branch-Agent-Private.git" }, everyMs: 604_800_000, enabled: true });
+    expect(calls(request, "backup.schedule.set").at(-1)).toEqual({ destination: { kind: "git", url: "https://github.com/you/branch-backups.git" }, everyMs: 604_800_000, enabled: true });
     await click("Off");
     expect(calls(request, "backup.schedule.set").at(-1)).toMatchObject({ enabled: false, everyMs: 86_400_000 });
     await click("Back up now");
@@ -88,5 +88,17 @@ describe("Settings › Backups", () => {
     expect(document.querySelector('[role="alert"]')?.textContent).toContain("outside the Branch Agent state directory");
     await click("Stop backing up here");
     expect(calls(request, "backup.schedule.clear")).toEqual([{}]);
+  });
+
+  it("shows how many large media files a backup left out, and sets the media limits at Advanced", async () => {
+    const skipped = { ...SCHEDULED, targets: [{ ...SCHEDULED.targets[0], latest: { ...SCHEDULED.targets[0].latest, error: "3 large files skipped (media over 50 MB each or past 1024 MB in all)" } }] };
+    const { engine, request } = engineWith({ "backup.status": skipped, "backup.schedule.set": { id: "job-1" } });
+    await show(engine);
+    expect(document.querySelector('[data-row="Last backup"]')!.textContent).toContain("3 large files skipped");
+    expect(document.body.textContent).toContain("Media files over 50 MB, or past 1024 MB in all, are left out");
+    await act(async () => root.unmount()); root = createRoot(host);
+    await show(engine, "advanced");
+    await type("Largest media file", "20");
+    expect(calls(request, "backup.schedule.set").at(-1)).toEqual({ destination: { kind: "git", url: "https://github.com/you/branch-backups.git" }, everyMs: 86_400_000, enabled: true, mediaMaxFileMb: 20 });
   });
 });

@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { isPathInside } from "../infra/fs-safe.js";
 import { isUpdateCapturePath } from "../infra/update-capture-paths.js";
+import { copyBackupMedia, type MediaLimits, type MediaManifest } from "./git-backup-media.js";
 
 export const GIT_BACKUP_FILES_SCOPE = "files";
 const FILES_MANIFEST = "manifest.json";
@@ -37,6 +38,8 @@ export type GitBackupFilesSource = {
   /** Roots never copied even when a workspace contains them (config, credentials, agents, repo). The
    *  state directory is guarded too, unless the workspace itself lives inside it (the default layout). */
   protectedPaths: string[];
+  /** Images, audio, video and PDFs Trunks made or received (<stateDir>/media), within the limits. */
+  media?: { dir: string; limits: MediaLimits };
 };
 
 type FilesManifest = {
@@ -45,6 +48,7 @@ type FilesManifest = {
   config: boolean;
   workspaces: Array<{ agentId: string; files: number }>;
   skipped: number;
+  media?: MediaManifest;
 };
 
 export function isSecretWorkspaceName(name: string): boolean {
@@ -124,6 +128,13 @@ export async function writeGitBackupFiles(
     await copyTree(root, target, state);
     manifest.workspaces.push({ agentId: workspace.agentId, files: state.files });
     manifest.skipped += state.skipped;
+  }
+  if (source.media) {
+    const mediaRoot = await canonical(source.media.dir);
+    const exists = await fs.lstat(mediaRoot).then((s) => s.isDirectory(), () => false);
+    manifest.media = exists
+      ? await copyBackupMedia(mediaRoot, path.join(outputDir, "media"), source.media.limits)
+      : { files: 0, bytes: 0, skippedLarge: 0, skippedOther: 0, ...source.media.limits };
   }
   await fs.writeFile(
     path.join(outputDir, FILES_MANIFEST),

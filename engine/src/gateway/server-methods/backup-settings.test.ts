@@ -84,6 +84,12 @@ describe("Settings › Backups gateway methods", () => {
       destination: { kind: "folder", path: folder },
       everyMs: 604_800_000,
       enabled: true,
+      mediaMaxFileMb: 20,
+      mediaMaxTotalMb: 500,
+    });
+    const [weeklyJob] = await cron.list({ includeDisabled: true });
+    expect(weeklyJob?.payload).toMatchObject({
+      argv: expect.arrayContaining(["--media-max-file-mb", "20", "--media-max-total-mb", "500"]),
     });
     expect(weekly.payload).toMatchObject({ id: job?.id, enabled: true, everyMs: 604_800_000 });
     const status = await call("backup.status", {});
@@ -96,6 +102,8 @@ describe("Settings › Backups gateway methods", () => {
         push: false,
         excludeSecrets: true,
         files: true,
+        mediaMaxFileMb: 20,
+        mediaMaxTotalMb: 500,
       }),
     ]);
 
@@ -105,7 +113,7 @@ describe("Settings › Backups gateway methods", () => {
 
   it("rejects a repository address that carries a sign-in, before writing anything", async () => {
     const set = await call("backup.schedule.set", {
-      destination: { kind: "git", url: "https://someone:ghp_example@github.com/KeepOak/x.git" },
+      destination: { kind: "git", url: "https://someone:ghp_example@github.com/you/branch-backups.git" },
       everyMs: 86_400_000,
       enabled: true,
     });
