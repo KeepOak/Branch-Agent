@@ -91,4 +91,4 @@ Graft (`branch graft`) lets Claude Code, Codex, Gemini CLI, Hermes or any MCP cl
 - `scripts/`: worktree install, strict type checks, CI runners and named-test lists, and the upstream rename script.
 - `assets/`: artwork and manifests shipped with the product.
 
-Build instructions, requirements, decision records, design specifications, and source archives are maintained separately in the private [Branch Agent Instructions Build repository](https://github.com/KeepOak/Branch-Agent-Instructions-Build). Access is restricted.
+Build instructions, requirements, decision records and design specifications are kept outside this repository.
