@@ -8,9 +8,9 @@ import { brokerSpawnOptions } from "./spawn-broker/host.js";
 import { recordChildProcessSpawn } from "./spawn-diagnostics.js";
 import type { SpawnInitiation } from "./spawn-initiation.js";
 
-/** Keep every supervised Windows child hidden, including brokered launches. */
+/** Default supervised Windows children to hidden, without overriding intentional GUI launches. */
 export function hiddenSpawnOptions(options: SpawnOptions, platform: NodeJS.Platform = process.platform): SpawnOptions {
-  return platform === "win32" ? { ...options, windowsHide: true } : options;
+  return platform === "win32" ? { ...options, windowsHide: options.windowsHide ?? true } : options;
 }
 
 /** Select the process-scoped native spawn transport. */

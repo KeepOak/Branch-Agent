@@ -25,13 +25,15 @@ function runtimeFiles(dir: string): string[] {
 }
 
 describe("hidden Windows child processes", () => {
-  it("forces hidden options at the supervised spawn boundary", async () => {
+  it("defaults Windows spawns to hidden but preserves explicit visible launches", async () => {
     const input = { windowsHide: false, stdio: "ignore" } as const;
     spawnMock.mockReturnValue(Object.assign(new EventEmitter(), { pid: 123 }));
     await withMockedPlatform("win32", async () => {
       spawnProcess("taskkill", [], input);
+      spawnProcess("git", [], { stdio: "ignore" });
     });
-    expect(spawnMock).toHaveBeenCalledWith("taskkill", [], { windowsHide: true, stdio: "ignore" });
+    expect(spawnMock).toHaveBeenCalledWith("taskkill", [], { windowsHide: false, stdio: "ignore" });
+    expect(spawnMock).toHaveBeenCalledWith("git", [], { windowsHide: true, stdio: "ignore" });
     expect(hiddenSpawnOptions(input, "linux")).toBe(input);
   });
 
@@ -41,6 +43,7 @@ describe("hidden Windows child processes", () => {
       launcher.indexOf('import("./node-host-launcher.mjs")'),
     );
     expect(launcher).toContain("module.syncBuiltinESMExports()");
+    expect(launcher).toContain("windowsHide: options.windowsHide ?? true");
     for (const api of ["spawn", "spawnSync", "execFile", "execFileSync", "fork", "exec", "execSync"]) {
       expect(launcher).toContain(`"${api}"`);
     }

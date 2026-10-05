@@ -23,7 +23,7 @@ if (process.platform === "win32") {
       } else if (options == null) {
         args[index] = { windowsHide: true };
       } else {
-        args[index] = { ...options, windowsHide: true };
+        args[index] = { ...options, windowsHide: options.windowsHide ?? true };
       }
       return Reflect.apply(original, this, args);
     };

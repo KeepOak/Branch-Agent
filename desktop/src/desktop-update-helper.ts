@@ -47,7 +47,8 @@ async function move(source: string, target: string, attempts = 120): Promise<voi
 function launch(plan: HelperPlan): number | undefined {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
-  const child = spawn(plan.relaunch.command, plan.relaunch.args, { detached: true, stdio: "ignore", windowsHide: true, env });
+  // This relaunches the Branch GUI, whose first ShowWindow must remain visible.
+  const child = spawn(plan.relaunch.command, plan.relaunch.args, { detached: true, stdio: "ignore", windowsHide: false, env });
   child.unref();
   return child.pid;
 }
