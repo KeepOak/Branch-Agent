@@ -280,6 +280,9 @@ describe("listGatewayMethods", () => {
       "agents.documents.create",
       "memory.export",
       "sessions.segments.list",
+      "contacts.list",
+      "contacts.topics",
+      "contacts.markRead",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -366,6 +369,9 @@ describe("listGatewayMethods", () => {
       "agents.documents.create",
       "memory.export",
       "sessions.segments.list",
+      "contacts.list",
+      "contacts.topics",
+      "contacts.markRead",
     ]);
   });
 
@@ -580,6 +586,9 @@ describe("listGatewayMethods", () => {
       "agents.documents.create",
       "memory.export",
       "sessions.segments.list",
+      "contacts.list",
+      "contacts.topics",
+      "contacts.markRead",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));

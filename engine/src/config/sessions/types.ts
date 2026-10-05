@@ -363,6 +363,8 @@ type SessionEntryCore = SessionRestartRecoveryState &
     repositoryWorkspaceId?: string;
     /** Explicit parent session linkage for dashboard-created child sessions. */
     parentSessionKey?: string;
+    /** Immutable origin of a contact conversation; update cards remain projection-only. */
+    contactAnchor?: { threadKey: string; afterMessageId?: string };
     /** Exact parent incarnation captured when this child was created. */
     parentSessionId?: string;
     /** Exact parent lifecycle captured for native spawn authority, including same-id resets. */

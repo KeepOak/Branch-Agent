@@ -17,6 +17,8 @@ export const engineTests = [
   'src/agents/auth-profiles/usage-state.test.ts',
   'src/agents/auth-profiles/order.test.ts',
   'src/agents/contact-trunk.test.ts',
+  'src/gateway/contacts/project.test.ts',
+  'src/gateway/server-methods/session-change-event.test.ts',
   'src/config/config.identity-avatar.test.ts',
   'src/gateway/assistant-avatar.test.ts',
   'src/gateway/assistant-identity.test.ts',
