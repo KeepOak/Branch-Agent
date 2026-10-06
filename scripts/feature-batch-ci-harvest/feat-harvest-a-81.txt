@@ -17,3 +17,4 @@ engine:src/infra/exec-approval-reply.test.ts
 engine:src/pairing/pairing-challenge.test.ts
 engine:src/pairing/pairing-store.test.ts
 engine:src/plugin-sdk/access-groups.test.ts
+engine:src/plugin-sdk/pair-loop-guard-runtime.test.ts
