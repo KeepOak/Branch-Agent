@@ -52,8 +52,8 @@ export function useSearch(request: Request, rows: Conversation[], trunkName: (id
   const local = query.trim() ? matchConversations(rows, query, trunkName) : { chats: [], past: [] };
   const results: SearchResults = query.trim() ? { ...local, messages: remote.query === query.trim() ? remote.messages : [], files: remote.query === query.trim() ? remote.files : [] } : EMPTY;
   const change = (next: string) => {
-    if (!query && next) {
-      setChip("all"); // typing into an empty field resets the filter (§4.1.2 States)
+    if ((!query && next) || !next) {
+      setChip("all"); // a fresh query or clearing the field resets the filter (§4.1.2)
     }
     setQuery(next);
   };

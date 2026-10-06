@@ -44,6 +44,21 @@ describe("message search to conversation find", () => {
 });
 
 describe("live search results", () => {
+  it("restores All when Clear or Escape empties a filtered search", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    let search!: ReturnType<typeof useSearch>;
+    const request = (async () => ({})) as <T = unknown>(method: string, params?: unknown) => Promise<T>;
+    function Probe() {
+      search = useSearch(request, [], () => "Sapling");
+      return <span>{search.query}:{search.chip}</span>;
+    }
+    await act(async () => root!.render(<Probe />));
+    await act(async () => { search.setQuery("needle"); search.setChip("past"); });
+    expect(host.textContent).toBe("needle:past");
+    await act(async () => search.setQuery(""));
+    expect(host.textContent).toBe(":all");
+  });
   it("opens a palette message hit with its query for in-conversation Find", () => {
     const opened: [string, string][] = [];
     const rows = messagePaletteRows([{ key: "agent:elm:main", role: "assistant", snippet: "Hartwell invoice", at: 1, messageId: "m" }],
