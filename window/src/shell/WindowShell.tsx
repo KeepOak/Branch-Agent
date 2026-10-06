@@ -76,7 +76,8 @@ import { useGatewayFacts, useLimits, useUpdate } from "./use-status";
 import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
 import { HeaderRow, PlaceHead, TopBar, type FaceState } from "./TopBar";
-import { useLayout } from "./use-layout";
+import { readLayout, useLayout } from "./use-layout";
+import { usePinOrder } from "./use-pin-order";
 import { hideMenuItems, hideTarget, HIDEABLE, usePetLook, useShown } from "./shown";
 import { StatusGfx, StatusLeftExtras, StatusPet } from "./StatusExtras";
 import { paneKeyFor, useShortcuts } from "./use-shortcuts";
@@ -337,6 +338,15 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null);
   const now = useNow(s.doneAt);
   const [layout, setLayout] = useLayout();
+  const [autoRail, setAutoRail] = useState(() => matchMedia("(min-width: 761px) and (max-width: 999px)").matches && !readLayout().rail && !readLayout().hidden);
+  useEffect(() => {
+    const medium = matchMedia("(min-width: 761px) and (max-width: 999px)");
+    const onResize = () => setAutoRail(medium.matches && !layout.rail && !layout.hidden);
+    medium.addEventListener("change", onResize);
+    return () => medium.removeEventListener("change", onResize);
+  }, [layout.rail, layout.hidden]);
+  const rail = layout.rail || autoRail;
+  const pinOrder = usePinOrder(session, ready);
   const [liveW, setLiveW] = useState<number | null>(null);
   const isNarrow = useNarrow();
   const [slideOpen, setSlideOpen] = useState(false);
@@ -684,6 +694,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   });
   const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
   const sections = buildContactSections(contacts, prefs, now);
+  const pinnedSection = sections.find((section) => section.id === "pinned");
+  if (pinnedSection) pinnedSection.rows.sort((a, b) => {
+    if (a.key === b.key) return 0;
+    if (a.key === home?.key) return -1;
+    if (b.key === home?.key) return 1;
+    const ar = pinOrder.order.indexOf(a.key), br = pinOrder.order.indexOf(b.key);
+    return (ar < 0 ? Number.MAX_SAFE_INTEGER : ar) - (br < 0 ? Number.MAX_SAFE_INTEGER : br);
+  });
   const markReadContact = (contact: Contact) => {
     void markContactRead(contact, request).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark ${contact.name} read: ${e instanceof Error ? e.message : String(e)}.`, { tone: "bad" }));
   };
@@ -693,7 +711,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const shownCount = sections.reduce((n, x) => n + x.rows.length, 0);
   const level = readLevel();
   const selection = useSelection(useCallback(() => sections.flatMap((x) => x.rows), [sections]));
-  const rowCard = useRowCard(!layout.rail);
+  const rowCard = useRowCard(!rail);
   const catalogs = useCatalogs(request, ready);
   const personName = useCallback((id: string) => people.names.get(id) ?? lists.rows.find((r) => r.ownerId === id)?.ownerName ?? id, [people, lists.rows]);
   const openRow = openContactRow(openKey, contacts, lists.rows) ?? (openKey === s.mainKey ? home : null);
@@ -733,7 +751,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   const narrow = () => isNarrow;
   const compact = isNarrow || layout.focus;
-  const toggleList = () => (narrow() ? setSlideOpen((o) => !o) : setLayout({ hidden: !(layout.hidden || layout.rail), rail: false }));
+  const toggleList = () => (narrow() ? setSlideOpen((o) => !o) : (setAutoRail(false), setLayout({ hidden: false, rail: !(layout.hidden || rail) })));
   const showMenu = (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string, upward = false) => {
     e.preventDefault();
     e.stopPropagation();
@@ -806,7 +824,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     savePrefs(p);
   };
   const focusSearch = () => {
-    if (layout.rail || layout.hidden) {
+    if (rail || layout.hidden) {
+      setAutoRail(false);
       setLayout({ rail: false, hidden: false });
     }
     if (narrow()) {
@@ -963,8 +982,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onOpenSession: openConversation,
     onReply: (target: { entryId: string; name: string; text: string }) => setReplyTo(target),
   };
-  const sideWidth = liveW ?? (layout.hidden ? 0 : layout.rail ? 68 : layout.sideW);
-  const frameClass = ["frame", layout.hidden ? "list-hidden" : "", layout.rail ? "rail" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
+  const sideWidth = liveW ?? (layout.hidden ? 0 : rail ? 68 : layout.sideW);
+  const frameClass = ["frame", layout.hidden ? "list-hidden" : "", rail ? "rail" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
   const summary = filterSummary(prefs, trunkName, personName);
   const dark = theme === "system" ? systemDark : effectiveDark(theme);
   const filterOpen = overlay?.kind === "filter";
@@ -1169,7 +1188,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         machine={<MachineSwitcher online={ready} connecting={s.status.phase === "connecting"} onOpen={(e) => machineMenu(e, "machine")} />}
         header={header}
         dark={dark}
-        listHidden={layout.hidden || layout.rail}
+        listHidden={layout.hidden || rail}
         onTheme={() => setTheme(toggleTheme(theme))}
         onToggleList={toggleList}
         onCharacter={() => setCharacterShown((v) => !v)}
@@ -1179,6 +1198,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onSettings={route.kind === "place" ? () => openSettings("general") : undefined}
       />
       <Sidebar
+        home={home}
         pet={<SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={(() => { const w = lists.rows.find((r) => rowState(r).waiting); return w ? trunkName(w.agentId) : null; })()} />}
         sections={sections}
         openKey={route.kind === "chat" ? openKey : null}
@@ -1187,8 +1207,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         showPreview={prefs.preview}
         rowState={rowState}
         trunkName={trunkName}
-        inboxCount={needsYou}
-        runningCount={running}
         personName={person}
         hasUnread={contacts.some((contact) => (contact.threadUnread && contact.threadKey !== openKey) || contact.unreadTopics > 0)}
         filterSlot={<FilterButton prefs={prefs} open={filterOpen} onOpen={(e) => (filterOpen ? setOverlay(null) : setOverlay({ kind: "filter", at: below(e) }))} />}
@@ -1225,7 +1243,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             />
           ) : null
         }
-        rail={layout.rail}
+        rail={rail}
+        onReorderPins={(drop, visible) => { if (drop.source !== home?.key) void pinOrder.move(drop.target === home?.key ? { ...drop, after: true } : drop, visible); }}
         onRailSearch={focusSearch}
         onOpen={(key) => {
           selection.clear();
@@ -1234,8 +1253,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           setFocusTopic(contact?.preview.kind === "topic" ? { key: contact.preview.topicKey, nonce: Date.now() } : null);
           openConversation(key);
         }}
-        onPlace={openPlace}
-        onNew={(e) => showMenu(e, "new", newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
+        onNew={(e) => showMenu(e, "new", [
+          ...newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }),
+          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { setAutoRail(false); setLayout({ rail: false, hidden: false }); } }] : []),
+        ], "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
         onArchive={(r) => void (r.archived ? actions.restore(r) : actions.archive(r))}
@@ -1275,7 +1296,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           extras={rowExtras(rowCard.card.row)}
         />
       ) : null}
-      {layout.focus ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
+      {layout.focus ? null : <SideResizer layout={{ ...layout, rail }} onLayout={(patch) => { setAutoRail(false); setLayout(patch); }} onLive={setLiveW} />}
       {slideOpen ? <div className="slide-scrim" onClick={() => setSlideOpen(false)} /> : null}
       <main className={mainClass} id="main">
         {layout.focus ? (

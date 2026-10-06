@@ -125,21 +125,24 @@ function contactMenuItems(row: Conversation, c: Ctx, contact: Contact): MenuItem
     row.unread
       ? { label: "Mark as read", letter: "u", run: () => c.markContactRead?.(contact), testid: "menu-unread", ...ic("chat") }
       : { label: "Mark as unread", letter: "u", run: () => contact.thread && void c.actions.setUnread(contact.thread, true), testid: "menu-unread", ...ic("chat"), ...(!canEdit ? { disabled: "Send a first message before marking this contact unread." } : {}) },
-    { label: row.pinned ? "Unpin" : "Pin to top", letter: "p", run: () => c.pinContact?.(contact), testid: "menu-pin", ...ic("pin") },
-    { label: c.muted ? "Unmute" : "Mute", run: () => c.toggleMute?.(contact), testid: "menu-mute", ...ic("pause") },
-    trunk
-      ? { label: "Rename Trunk on profile", letter: "r", run: () => c.profile?.(row.agentId), testid: "menu-rename", ...ic("edit") }
-      : { label: "Rename", letter: "r", run: () => c.rename(row), testid: "menu-rename", ...ic("edit") },
+    { label: row.pinned ? "Unpin" : "Pin", letter: "p", run: () => c.pinContact?.(contact), testid: "menu-pin", ...ic("pin") },
+    !contact.isDefault && canEdit ? snoozeItem(contact.thread!, c) : null,
+    canEdit ? { label: row.done ? "Mark not done" : "Mark done", run: () => void c.actions.setDone(contact.thread!, !row.done), testid: "menu-done", ...ic("check") } : null,
     !contact.isDefault && (!trunk || Boolean(contact.archivedAt)) && canEdit
       ? { label: row.archived ? "Restore" : "Archive", letter: "a", run: () => void (row.archived ? c.actions.restore(row) : c.actions.archive(row)), testid: "menu-archive", ...ic("box") }
       : null,
-    trunk ? { label: `New conversation with ${contact.name}`, run: () => c.newWith(row.agentId), ...ic("plus") } : null,
+    { kind: "sep" },
+    trunk
+      ? { label: `Rename ${contact.name}…`, letter: "r", run: () => c.profile?.(row.agentId), testid: "menu-rename", ...ic("edit") }
+      : { label: `Rename ${contact.name}…`, letter: "r", run: () => c.rename(row), testid: "menu-rename", ...ic("edit") },
+    { label: c.muted ? "Unmute" : "Mute", run: () => c.toggleMute?.(contact), testid: "menu-mute", ...ic("pause") },
     trunk ? { label: "Who it knows", run: () => c.whoItKnows?.(contact), testid: "menu-who", ...ic("users") } : null,
-    trunk ? { label: "Open profile", run: () => c.profile?.(row.agentId), testid: "menu-profile", ...ic("info") } : null,
+    trunk ? { label: `What can ${contact.name} do?`, run: () => c.ask(row), testid: "menu-ask", ...ic("info") } : null,
+    trunk ? { label: `Edit ${contact.name}…`, run: () => c.profile?.(row.agentId), testid: "menu-profile", ...ic("info") } : null,
     contact.isDefault ? null : { kind: "sep" },
     otherTrunk
       ? { label: `Remove ${contact.name}…`, letter: "d", danger: true, run: () => row.agentId && c.removeTrunk?.(row.agentId, contact.name), testid: "menu-remove-trunk", ...ic("trash") }
-      : contact.isDefault ? null : { label: "Delete…", letter: "d", danger: true, run: () => c.confirmDelete(row), testid: "menu-delete", ...ic("trash") },
+      : contact.isDefault ? null : { label: "Delete this conversation…", letter: "d", danger: true, run: () => c.confirmDelete(row), testid: "menu-delete", ...ic("trash") },
   ];
   return items.filter((item): item is MenuItem => item !== null);
 }

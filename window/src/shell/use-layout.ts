@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 export type Layout = { sideW: number; rail: boolean; hidden: boolean; focus: boolean };
 
 export const SIDE_DEFAULT = 292;
-export const SIDE_MIN = 180;
+export const SIDE_MIN = 220;
 export const SIDE_MAX = 640;
 const KEY = "branch.layout";
 
@@ -18,12 +18,9 @@ export function readLayout(): Layout {
   }
 }
 
-/** Where a drag of the sidebar's edge lands (§4.1.1 Interactions): hide below 40, rail from 40 to 149, else a width. */
+/** Below 200 px the list snaps to the face rail; it never sits at a truncated intermediate width. */
 export function dragResult(width: number): Pick<Layout, "sideW" | "rail" | "hidden"> | { hidden: true } | { rail: true } {
-  if (width < 40) {
-    return { hidden: true };
-  }
-  if (width < 150) {
+  if (width < 200) {
     return { rail: true };
   }
   return { sideW: Math.min(SIDE_MAX, Math.max(SIDE_MIN, Math.round(width))), rail: false, hidden: false };
