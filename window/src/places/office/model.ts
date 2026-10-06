@@ -7,6 +7,7 @@ export type OfficeAgent = {
   members?: string[]; subagents?: { id: string; label: string; state: "working" }[];
 };
 export type OfficeLink = { from: string; to: string; at: number };
+export type OfficeTools = Map<string, Map<string, string>>;
 type Row = Record<string, unknown>;
 const obj = (v: unknown): Row => v && typeof v === "object" && !Array.isArray(v) ? v as Row : {};
 const str = (v: unknown): string => typeof v === "string" ? v : "";
@@ -18,9 +19,21 @@ export function a2aVisit(payload: unknown, now = Date.now()): OfficeLink | null 
   const from = str(sender.id) || str(identity.id), to = str(event.agentId);
   return identity.pluginId === "a2a" && from && to ? { from: `a2a:${from}`, to, at: now } : null;
 }
+/** The same live tool lifecycle Canopy's activity feed consumes. */
+export function officeToolEvent(tools: OfficeTools, event: string, payload: unknown): OfficeTools {
+  if (event !== "session.tool" && event !== "agent") return tools;
+  const p = obj(payload), d = obj(p.data), key = str(p.sessionKey), id = str(d.toolCallId);
+  if (p.stream !== "tool" || !key || !id) return tools;
+  const next = new Map(tools), calls = new Map(next.get(key));
+  if (d.phase === "start") calls.set(id, str(d.name));
+  else if (d.phase === "result") calls.delete(id);
+  else return tools;
+  if (calls.size) next.set(key, calls); else next.delete(key);
+  return next;
+}
 
 /** sessions.list projects hasActiveRun from the live run registry; contacts supplies room/guest presence. */
-export function officeRoster(agentsValue: unknown, sessionsValue: unknown, contactsValue: unknown, outsideValue?: unknown): { agents: OfficeAgent[]; openKey: Map<string, string> } {
+export function officeRoster(agentsValue: unknown, sessionsValue: unknown, contactsValue: unknown, outsideValue?: unknown, tools: OfficeTools = new Map()): { agents: OfficeAgent[]; openKey: Map<string, string> } {
   const trunks = rows(obj(agentsValue).agents).filter(t => str(t.id) && t.kind !== "system").map(t => ({
     id: str(t.id), name: str(obj(t.identity).name) || str(t.name) || str(t.id),
     colour: str(obj(t.identity).colour), paused: t.paused === true,
@@ -35,9 +48,9 @@ export function officeRoster(agentsValue: unknown, sessionsValue: unknown, conta
     const active = mine.filter(s => s.hasActiveRun === true || (Array.isArray(s.activeRunIds) && s.activeRunIds.length > 0));
     const children = active.filter(s => str(s.parentSessionKey) || str(s.spawnedBy));
     const contact = contacts.find(c => c.kind === "trunk" && (c.face?.agentId === t.id || c.id === `trunk:${t.id}`));
-    const needs = mine.filter(s => s.needsYou === true).length + Number(contact?.needsYou && !mine.some(s => s.needsYou === true));
+    const needs = Number(contact?.needsYou);
     const activity = str(obj(active[0]?.activitySummary).text) || str(active[0]?.lastMessagePreview);
-    const reading = active.some(s => /^(read|grep|search|web_fetch)$/i.test(str(s.activeTool)));
+    const reading = active.some(s => [...(tools.get(str(s.key))?.values() ?? [])].some(name => /^(read|read_file|grep|glob|search|web_fetch|web_search)$/i.test(name)));
     return { id: t.id, name: t.name, kind: "trunk", state: needs ? "needs_you" : active.length ? reading ? "reading" : "working" : t.paused ? "offline" : "resting",
       activity, needsYou: needs, unread: Boolean(contact?.threadUnread || contact?.unreadTopics), colorHint: t.colour,
       subagents: children.map(s => ({ id: str(s.key), label: str(s.label) || str(s.displayName) || "Job", state: "working" as const })) };

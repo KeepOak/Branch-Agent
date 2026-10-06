@@ -1,1 +1,2 @@
+window:src/places/office/office-interactions.test.tsx
 window:src/places/office/office.test.tsx

@@ -12,6 +12,7 @@ import { componentDesktop } from "../connect/desktop-component-updates";
 import { Thread } from "../thread/Thread";
 import { stepLabel } from "../thread/format";
 import { PlaceView } from "../places-nav/PlaceView";
+import { handleOfficeNavigation } from "../places/office/navigation";
 import { SettingsFrame } from "../places-nav/SettingsFrame";
 import { lookStore } from "../places/settings/set1/appearance-store";
 import { loadRoute, parseRoute, saveRoute, windowTitle, PLACES, type PlaceId, type Route } from "../places-nav/routes";
@@ -465,11 +466,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   }, [session]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (event.altKey && event.key === "ArrowLeft") { event.preventDefault(); history.back(); }
-      else if (event.altKey && event.key === "ArrowRight") { event.preventDefault(); history.forward(); }
-      else if (event.key === "Escape" && routeRef.current.kind === "place" && routeRef.current.place === "office" && document.activeElement === document.body) {
-        if ((Number(history.state?.branchIndex) || 0) > 0) history.back(); else go({ kind: "place", place: "overview" });
-      }
+      handleOfficeNavigation(event, routeRef.current.kind === "place" && routeRef.current.place === "office", () => go({ kind: "place", place: "overview" }));
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);

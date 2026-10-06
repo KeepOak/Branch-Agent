@@ -1,28 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PlaceProps } from "../../places-nav/PlaceFrame";
-import { a2aVisit, officeRoster, type OfficeAgent, type OfficeLink } from "./model";
+import { a2aVisit, officeRoster, officeToolEvent, type OfficeLink, type OfficeTools } from "./model";
+import type { OfficeStore } from "./pixel/webview-ui/src/branch/storage";
 import "./office.css";
 
 type Layout = Record<string, unknown> | null;
-type Office = { update: (agents: OfficeAgent[], links: OfficeLink[]) => void; importLayout: (layout: Layout) => void; setReducedMotion: (value: boolean | "auto") => void; destroy: () => void };
-type OfficeModule = { mountPixelOffice: (el: HTMLElement, options: Record<string, unknown>) => Office };
+type Office = import("./pixel/webview-ui/src/branch/types").PixelOfficeHandle;
+type OfficeModule = typeof import("./pixel/webview-ui/src/branch/mount");
 const META = "ui.pixelOffice.layout.meta";
+const STORE_KEYS = { seats: "ui.pixelOffice.seats", looks: "ui.pixelOffice.looks", prefs: "ui.pixelOffice.prefs" } as const;
 const part = (n: number) => `ui.pixelOffice.layout.${n}`;
 const obj = (v: unknown): Record<string, unknown> => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
 const str = (v: unknown): string => typeof v === "string" ? v : "";
-
-function readyCanvas(host: HTMLElement): Promise<void> {
-  if (host.shadowRoot?.querySelector("canvas")) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const root = host.shadowRoot;
-    if (!root) { reject(new Error("The office stage didn't open.")); return; }
-    const watch = new MutationObserver(() => {
-      if (root.querySelector("canvas")) { watch.disconnect(); resolve(); }
-      else if (root.textContent?.includes("could not start")) { watch.disconnect(); reject(new Error("The office couldn't start.")); }
-    });
-    watch.observe(root, { childList: true, subtree: true });
-  });
-}
 
 async function encode(layout: Layout): Promise<string> {
   const source = new TextEncoder().encode(JSON.stringify(layout));
@@ -45,16 +34,32 @@ async function decode(value: string): Promise<Layout> {
   return JSON.parse(await output) as Layout;
 }
 
-export async function readLayout(engine: PlaceProps["engine"]): Promise<{ layout: Layout; count: number } | null> {
+export async function readLayout(engine: PlaceProps["engine"]): Promise<{ layout: Layout; count: number }> {
   const meta = obj(await engine.request("users.prefs.get", { keys: [META] }));
-  if (meta.status !== "ok") return null;
+  if (meta.status !== "ok") throw new Error("The engine couldn't load the office layout.");
   const count = Number(obj(obj(meta.entries)[META]).parts) || 0;
   if (!count || count > 31) return { layout: null, count: 0 };
   const reply = obj(await engine.request("users.prefs.get", { keys: Array.from({ length: count }, (_, n) => part(n)) }));
-  if (reply.status !== "ok") return null;
+  if (reply.status !== "ok") throw new Error("The engine couldn't load the office layout.");
   const value = Array.from({ length: count }, (_, n) => str(obj(reply.entries)[part(n)])).join("");
   try { return { layout: value ? await decode(value) : null, count }; }
   catch { return { layout: null, count }; }
+}
+export async function readOfficeStore(engine: PlaceProps["engine"]): Promise<{ store: OfficeStore; count: number }> {
+  const [saved, reply] = await Promise.all([readLayout(engine), engine.request("users.prefs.get", { keys: Object.values(STORE_KEYS) })]);
+  const result = obj(reply);
+  if (result.status !== "ok") throw new Error("The engine couldn't load the office preferences.");
+  const entries = obj(result.entries);
+  return { count: saved.count, store: {
+    layout: saved.layout as OfficeStore["layout"],
+    seats: obj(entries[STORE_KEYS.seats]) as OfficeStore["seats"],
+    looks: obj(entries[STORE_KEYS.looks]) as OfficeStore["looks"],
+    prefs: obj(entries[STORE_KEYS.prefs]) as unknown as OfficeStore["prefs"],
+  } };
+}
+export async function writeOfficeSetting(engine: PlaceProps["engine"], key: keyof typeof STORE_KEYS, value: unknown): Promise<void> {
+  const reply = obj(await engine.request("users.prefs.set", { entries: { [STORE_KEYS[key]]: value } }));
+  if (reply.status !== "ok") throw new Error(`The engine couldn't save office ${key}.`);
 }
 export async function writeLayout(engine: PlaceProps["engine"], layout: Layout, oldCount: number): Promise<number> {
   const value = await encode(layout);
@@ -77,7 +82,8 @@ export function OfficePlace({ engine, openConversation, createTrunk }: PlaceProp
   const [layoutError, setLayoutError] = useState("");
   const [retry, setRetry] = useState(0);
   const [links, setLinks] = useState<OfficeLink[]>([]);
-  const roster = useMemo(() => data ? officeRoster(data.agents, data.sessions, data.contacts, data.outside) : null, [data]);
+  const [tools, setTools] = useState<OfficeTools>(() => new Map());
+  const roster = useMemo(() => data ? officeRoster(data.agents, data.sessions, data.contacts, data.outside, tools) : null, [data, tools]);
   const rosterRef = useRef(roster);
   rosterRef.current = roster;
   const createTrunkRef = useRef(createTrunk);
@@ -98,6 +104,7 @@ export function OfficePlace({ engine, openConversation, createTrunk }: PlaceProp
     };
     void refresh();
     const off = engine.onEvent(({ event, payload }) => {
+      if (event === "session.tool" || event === "agent") setTools(current => officeToolEvent(current, event, payload));
       if (["agents.changed", "contacts.changed", "sessions.changed"].includes(event) || event === "chat" && ["final", "error", "aborted"].includes(str(obj(payload).state))) void refresh();
       if (event === "session.message") {
         const visit = a2aVisit(payload);
@@ -111,36 +118,30 @@ export function OfficePlace({ engine, openConversation, createTrunk }: PlaceProp
   useEffect(() => {
     if (!data || !host.current || office.current) return;
     let live = true;
-    let hydrating = true;
     let writes = Promise.resolve();
     const motion = () => office.current?.setReducedMotion(document.documentElement.hasAttribute("data-still") ? true : "auto");
     const motionObserver = new MutationObserver(motion);
     motionObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-still"] });
     void (async () => {
       try {
-        const saved = await readLayout(engine);
+        const saved = await readOfficeStore(engine);
         if (!live) return;
-        count.current = saved?.count ?? 0;
-        const officeUrl = "/pixel-office.js";
-        const module = await import(/* @vite-ignore */ officeUrl) as OfficeModule;
+        count.current = saved.count;
+        const module: OfficeModule = await import("./pixel/webview-ui/src/branch/mount");
         if (!live || !host.current) return;
         const current = rosterRef.current;
+        const storage = new module.Storage(saved.store, (key, value) => {
+          writes = writes.then(async () => {
+            if (key === "layout") count.current = await writeLayout(engine, value as Layout, count.current);
+            else await writeOfficeSetting(engine, key, value);
+            if (live) setLayoutError("");
+          }).catch(e => { if (live) setLayoutError(e instanceof Error ? e.message : String(e)); });
+        });
         office.current = module.mountPixelOffice(host.current, {
-          agents: current?.agents ?? [], links, theme: "auto", reducedMotion: document.documentElement.hasAttribute("data-still") ? true : "auto", storageKey: "branch-pixel-office",
+          agents: current?.agents ?? [], links, theme: "auto", reducedMotion: document.documentElement.hasAttribute("data-still") ? true : "auto", storage,
           onOpen: (id: string) => { const key = rosterRef.current?.openKey.get(id); if (key) openConversation(key); },
           onNewAgent: () => createTrunkRef.current?.(),
-          onLayoutChange: (layout: Layout) => {
-            if (hydrating || saved === null) return;
-            writes = writes.then(() => writeLayout(engine, layout, count.current).then(n => { count.current = n; setLayoutError(""); }))
-              .catch(e => setLayoutError(e instanceof Error ? e.message : String(e)));
-          },
         });
-        if (saved?.layout) {
-          await readyCanvas(host.current);
-          if (!live || !office.current) return;
-          office.current.importLayout(saved.layout);
-        }
-        hydrating = false;
       } catch (e) { if (live) setError(e instanceof Error ? e.message : String(e)); }
     })();
     return () => { live = false; motionObserver.disconnect(); office.current?.destroy(); office.current = null; };
