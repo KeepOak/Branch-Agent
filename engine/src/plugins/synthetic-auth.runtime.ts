@@ -61,7 +61,7 @@ export function resolveRuntimeSyntheticAuthProviderRefState(
   if (registry) {
     const declaredRefs = new Set(
       registry.plugins
-        .filter((plugin) => (plugin.syntheticAuthRefs?.length ?? 0) > 0)
+        .filter((plugin) => plugin.id && (plugin.syntheticAuthRefs?.length ?? 0) > 0)
         .map((plugin) => plugin.id),
     );
     return {
@@ -70,7 +70,7 @@ export function resolveRuntimeSyntheticAuthProviderRefState(
         ...(registry.providers ?? [])
           .filter(
             (entry) =>
-              !declaredRefs.has(entry.pluginId) &&
+              (!entry.pluginId || !declaredRefs.has(entry.pluginId)) &&
               (typeof entry.provider.resolveSyntheticAuth === "function" ||
                 typeof entry.provider.prepareSyntheticAuth === "function"),
           )
