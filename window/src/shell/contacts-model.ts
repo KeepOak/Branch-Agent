@@ -4,8 +4,25 @@ import type { Contact as GatewayContact, Topic } from "@branch/gateway-protocol"
 import type { Conversation } from "../connect/conversations";
 import type { Actions } from "./conversation-actions";
 import type { ListPrefs, ListSection } from "./list-model";
+import type { Trunk } from "./engine-data";
 
 export type Contact = GatewayContact & { thread: Conversation | null };
+
+/** Agents remain reachable while the richer contacts projection is unavailable on a fresh engine. */
+export function fallbackTrunkContacts(trunks: readonly Trunk[], sessions: readonly Conversation[], mainKey: string | null): GatewayContact[] {
+  const suffix = mainKey?.split(":").slice(2).join(":") || "main";
+  return trunks.map((trunk) => {
+    const threadKey = trunk.isDefault && mainKey ? mainKey : `agent:${trunk.id}:${suffix}`;
+    const thread = sessions.find((row) => row.key === threadKey);
+    return {
+      id: `trunk:${trunk.id}`, kind: "trunk", name: trunk.name, threadKey,
+      isDefault: trunk.isDefault, lastActivityAt: thread?.updatedAt ?? 0,
+      preview: { kind: "message", text: thread?.preview ?? "", at: thread?.updatedAt ?? 0 },
+      unreadTopics: 0, threadUnread: thread?.unread ?? false, needsYou: thread?.needsYou ?? false,
+      working: thread?.working ?? false, topicCount: 0,
+    };
+  });
+}
 
 /** Join Gateway contacts to session rows only for existing row actions and detail. */
 export function projectContact(raw: readonly GatewayContact[], sessions: readonly Conversation[]): Contact[] {

@@ -30,7 +30,7 @@ import { useContacts, useConversations, useListPeople, useMachine, usePendingApp
 import { FilterButton, FilterSortPopover, readPrefs, savePrefs } from "./FilterSort";
 import { Icon } from "./icons";
 import { clearFilters, emptyLineFor, filterRows, filterSummary, hasFolders, homeRow, owners, roomUsed, type ListPrefs } from "./list-model";
-import { buildContactSections, contactRow, listContactTopics, markContactRead, missingConversation, openContactRow, pinContact, projectContact, type Contact } from "./contacts-model";
+import { buildContactSections, contactRow, fallbackTrunkContacts, listContactTopics, markContactRead, missingConversation, openContactRow, pinContact, projectContact, type Contact } from "./contacts-model";
 import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./AppSections";
 import { batchMenuItems } from "./batch-menu";
 import { colourHue, iconColourItem } from "./row-look";
@@ -303,7 +303,9 @@ function useEngineReads(session: SaplingSession) {
   const s = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const ready = s.status.phase === "connected";
   const [lists, list] = useConversations(session, ready, s.mainKey);
-  const [contactRows, refreshContacts, contactsLoaded] = useContacts(session, ready);
+  const [gatewayContacts, refreshContacts, contactsLoaded] = useContacts(session, ready);
+  const trunks = useTrunks(session, ready);
+  const contactRows = gatewayContacts.length ? gatewayContacts : fallbackTrunkContacts(trunks.list, lists.rows, s.mainKey);
   return {
     s,
     ready,
@@ -311,8 +313,8 @@ function useEngineReads(session: SaplingSession) {
     list,
     contactRows,
     refreshContacts,
-    contactsLoaded,
-    trunks: useTrunks(session, ready),
+    contactsLoaded: contactsLoaded || Boolean(trunks.loaded),
+    trunks,
     pending: usePendingApprovals(session, ready),
     machine: useMachine(session, ready),
     limits: useLimits(session, ready),
@@ -1250,7 +1252,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             </span>
           ) : null
         }
-        emptyLine={emptyLineFor(prefs, shownCount)}
+        emptyLine={emptyLineFor(prefs, shownCount) ?? (contactsLoaded && trunks.loaded && contactRows.length === 0 ? "No Trunks yet. Use + to create one." : null)}
         search={<SearchBox query={search.query} onQuery={search.setQuery} />}
         searchResults={
           search.query.trim() ? (

@@ -97,7 +97,7 @@ describe("listGatewayAgentsBasic", () => {
     ).toEqual([{ id: "main", kind: "agent", name: undefined }]);
   });
 
-  it("does not list an old disk-only dev Trunk during first-contact bootstrap", async () => {
+  it("shows the default Trunk contact but not an old disk-only dev Trunk during first-contact bootstrap", async () => {
     await Promise.all(
       ["dev", "branch"].map((id) => fs.mkdir(path.join(stateDir, "agents", id), { recursive: true })),
     );
@@ -107,7 +107,7 @@ describe("listGatewayAgentsBasic", () => {
     });
     expect(result).toMatchObject({ defaultId: "main", selectionRequired: true });
     expect(result.agents).toEqual([
-      { id: "main", kind: "system", name: undefined },
+      { id: "main", kind: "agent", name: undefined },
       { id: "branch", kind: "system", name: undefined },
     ]);
   });

@@ -1,7 +1,7 @@
 import type { Contact as GatewayContact } from "@branch/gateway-protocol";
 import { describe, expect, it, vi } from "vitest";
 import { projectConversation } from "../connect/conversations";
-import { buildContactSections, contactRow, listContactTopics, markContactRead, projectContact } from "./contacts-model";
+import { buildContactSections, contactRow, fallbackTrunkContacts, listContactTopics, markContactRead, projectContact } from "./contacts-model";
 import { DEFAULT_PREFS } from "./list-model";
 import { contactAlert, contactAlertTarget } from "./notify";
 
@@ -13,6 +13,14 @@ const raw = (id: string, extra: Partial<GatewayContact> = {}): GatewayContact =>
 });
 
 describe("Gateway contact projection", () => {
+  it("shows each Trunk as a contact before its first conversation or contacts projection", () => {
+    const fallback = fallbackTrunkContacts([
+      { id: "main", name: "Main", isDefault: true },
+      { id: "scout", name: "Scout", isDefault: false },
+    ], [], "agent:main:main");
+    expect(buildContactSections(projectContact(fallback, []), DEFAULT_PREFS, 100).find((s) => s.id === "recent")?.rows.map((r) => r.title)).toEqual(["Main", "Scout"]);
+    expect(fallback.map((c) => c.threadKey)).toEqual(["agent:main:main", "agent:scout:main"]);
+  });
   it("keeps the canonical key through a session id rotation", () => {
     const source = [row("agent:oak:main", { sessionId: "rotated" })];
     expect(contactRow(projectContact([raw("oak")], source)[0]).key).toBe("agent:oak:main");

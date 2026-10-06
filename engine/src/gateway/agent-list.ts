@@ -133,9 +133,7 @@ export async function listGatewayAgentsBasic(cfg: BranchConfig): Promise<
     const agent: GatewayAgentListRow = {
       id,
       kind:
-        firstContactBootstrap && id === defaultId
-          ? "system"
-          : !configuredById.has(id) && diskIds.has(id)
+        !configuredById.has(id) && diskIds.has(id) && id !== defaultId
           ? (ownerEntries.get(id)?.kind ?? "agent")
           : "agent",
       name: configuredById.get(id),
