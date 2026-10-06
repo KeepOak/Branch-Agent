@@ -141,7 +141,7 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
       )}
       {latest && !str(active.runId) ? (
         <Acts>
-          <Btn pri disabled={call.busy} onClick={() => setDialog("install")}>{failed ? "Try again" : "Install when nothing is running"}</Btn>
+          <Btn pri disabled={call.busy} onClick={() => setDialog("install")}>{failed ? "Try again" : "Install when idle"}</Btn>
           {started && campaign.state !== "applying" && !(Number(campaign.holdUntilMs) > now) ? <Btn ghost disabled={hold.busy} onClick={holdIt}>Hold for an hour</Btn> : null}
           {failed ? <Btn ghost onClick={() => setDialog("report")}>Report the failure</Btn> : <Btn ghost disabled title={NO_SKIP}>Skip this version</Btn>}
         </Acts>
@@ -194,7 +194,7 @@ function NotesDialog({ available, version, onClose, onInstall }: { available: Re
   const commits = list(available.commits);
   const behind = typeof available.commitsBehind === "number" ? available.commitsBehind : undefined;
   return (
-    <Dialog title="What’s new" wide onClose={onClose} footer={<><Btn ghost disabled title={NO_SKIP}>Skip this version</Btn><Btn onClick={onClose}>Close</Btn><Btn pri onClick={onInstall}>Install when nothing is running</Btn></>}>
+    <Dialog title="What’s new" wide onClose={onClose} footer={<><Btn ghost disabled title={NO_SKIP}>Skip this version</Btn><Btn onClick={onClose}>Close</Btn><Btn pri onClick={onInstall}>Install when idle</Btn></>}>
       <p className="hint">{version ? `What this update changes from Branch ${versionParts(version).detail}.` : "What this Branch update changes."}</p>
       {commits.length ? (
         <div className="rows">{commits.map((c) => <Prow key={str(c.sha)} title={str(c.subject)} sub={str(c.sha).slice(0, 7)} />)}</div>
