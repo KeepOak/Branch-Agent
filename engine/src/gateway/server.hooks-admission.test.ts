@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/gateway/server.hooks-admission.test.ts (atlas AUTOMATION-0049). Changed for Branch: rebranded through scripts/rebrand-map.json; retain current upstream regression coverage instead of older atlas tests.
 /** Focused HTTP coverage for hook admission feedback and pending replay behavior. */
 import fs from "node:fs/promises";
 import { Agent, request as httpRequest } from "node:http";
