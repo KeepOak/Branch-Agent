@@ -2,10 +2,10 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, session, shell } from "electron";
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
-import { appendFileSync, writeFileSync, existsSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady } from "./gateway";
+import { drainStopGateway, gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady } from "./gateway";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowsWindowResident } from "./resident-window";
@@ -17,15 +17,21 @@ import { desktopOs, START_IN_TRAY } from "./desktop-os";
 import { registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
-import { confirmDesktopUpdate, handOffDesktopUpdate, stagedDesktopVersion, type DesktopInstall } from "./desktop-update";
+import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate } from "./auto-apply-update";
+import { checkCandidateBeside, stopCandidate } from "./candidate-check";
+import { freemem } from "node:os";
 import type { Tray } from "electron";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
+/** Scratch test copies: never grouped with, or mistaken for, the owner's app (they also start hidden). */
+const TEST_COPY = process.env.BRANCH_DESKTOP_TEST === "1";
 /** Started with Windows: open quietly in the tray (only where the tray exists). */
 const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRAY);
 const ICON = join(__dirname, "..", "assets", "branch.ico");
 const READY_TIMEOUT_MS = 600_000;
+/** Free memory a candidate check needs (6 GB, the shared load rule); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
+const CANDIDATE_MIN_FREE_BYTES = Number(process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB ?? 6144) * 2 ** 20;
 const cfg: DesktopConfig = loadConfig();
 /** The packaged app this process runs from; development runs (`electron .`) never update themselves. */
 const install: DesktopInstall | undefined = app.isPackaged ? {
@@ -48,7 +54,7 @@ log(`launch v${app.getVersion()} pid ${process.pid}`);
 
 // Own profile and lock, apart from the old installed Branch Agent app.
 app.setPath("userData", join(cfg.dataDir, "electron"));
-app.setAppUserModelId("dev.branch.agent.desktop");
+app.setAppUserModelId(TEST_COPY ? "dev.branch.agent.desktop.test" : "dev.branch.agent.desktop");
 // "Let agents use this window": Chromium remote debugging on a random loopback port, written to
 // <userData>/DevToolsActivePort for `branch mcp serve` ui_* tools. Off unless the owner turned it on.
 if (readSettings(join(cfg.dataDir, "desktop-settings.json")).agentControl) {
@@ -65,6 +71,8 @@ let stopEngineWatch: (() => void) | undefined;
 let stopComponentWatch: (() => void) | undefined;
 let stopWindowWatch: (() => void) | undefined;
 let componentsReady = false;
+/** The window build the static server serves: the staged one only once its engine runs. */
+let servedWindowDir = cfg.windowDir;
 let engineRestartInProgress = false;
 const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
 let tray: Tray | undefined;
@@ -95,22 +103,71 @@ async function probeWindowState(): Promise<{ pendingApprovals: number; streaming
   });
 }
 
-async function relaunchForUpdate(version: string): Promise<void> {
-  if (!gateway || !win || engineRestartInProgress) throw new Error("The desktop is not ready to restart");
+const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const windowBuild = (dir: string): string => { try { return readFileSync(join(dir, "branch-build.txt"), "utf8").trim(); } catch { return ""; } };
+const engineRunning = (): boolean => Boolean(gateway && gateway.exitCode === null && gateway.signalCode === null);
+
+/**
+ * Applies a staged engine/window update, or a rebuilt engine, inside the running app: the app and its window stay
+ * open. The old engine stops cleanly (auto-apply: only while idle; the owner's click: it drains, and the new
+ * engine's restart recovery resumes interrupted runs), the new one starts on the same port with the readiness
+ * rollback, and the window either reconnects (engine-only) or swaps in its new build keeping route, scroll and drafts.
+ * A staged desktop app is never applied here; it waits for the next natural launch.
+ */
+async function swapEngineInPlace(label: string, explicit: boolean): Promise<void> {
+  if (!gateway || !win || engineRestartInProgress) throw new Error("The desktop is not ready to update");
   engineRestartInProgress = true;
+  const windowBefore = windowBuild(servedWindowDir);
   try {
-    // The engine rechecks the process-wide inventory before admitting its clean stop.
-    await stopGatewayCleanly(gateway);
-    log(`auto-apply: gateway stopped cleanly for ${version}`);
+    if (!await candidatePassed(label)) return;
+    const started = Date.now();
     win.webContents.send("branch-desktop:engine-update", "updating");
-    await new Promise(resolve => setTimeout(resolve, 750));
-    if (!await handOffDesktop(true)) app.relaunch({ args: process.argv.slice(1) });
-    app.quit();
-  } catch (error) { engineRestartInProgress = false; throw error; }
+    if (explicit) log(`update ${label}: old engine ${await drainStopGateway(gateway)}`);
+    else await stopGatewayCleanly(gateway);
+    const stopped = Date.now();
+    servedWindowDir = cfg.windowDir;
+    await waitForGatewayPort();
+    const rolledBack = await bootSelectedEngine();
+    log(`update ${label}: engine ${rolledBack ? "rolled back" : "swapped"} in place; stop ${stopped - started} ms, start ${Date.now() - stopped} ms, app and window kept open`);
+    engineUpdateReady = false;
+    if (rolledBack) win.webContents.send("branch-desktop:engine-update", "kept");
+    else if (windowBuild(cfg.windowDir) !== windowBefore) void hotSwapWindow();
+    else win.webContents.send("branch-desktop:engine-update", "updated");
+  } catch (error) {
+    // Still serving (the engine became busy before it stopped): offer the update again.
+    if (engineRunning()) win.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
+    throw error;
+  } finally { engineRestartInProgress = false; }
+}
+
+/**
+ * A staged engine first starts beside the running one (spare port, scratch state). One that exits is rejected and its
+ * publication rolled back with nothing stopped; a slow one still gets the normal swap and its readiness rollback.
+ */
+let candidateCheckedFor: string | undefined;
+async function candidatePassed(label: string): Promise<boolean> {
+  const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+  if (!version || candidateCheckedFor === version) return true;
+  // The machine-load rule: a second engine only when there is room for it; otherwise the plain swap with its rollback.
+  if (freemem() < CANDIDATE_MIN_FREE_BYTES) { log(`update ${label}: candidate check skipped; ${Math.round(freemem() / 2 ** 20)} MB free`); return true; }
+  const candidate = resolveEngineDir(cfg);
+  win?.webContents.send("branch-desktop:engine-update", "preparing");
+  const started = Date.now();
+  const result = await checkCandidateBeside(cfg, candidate, token, READY_TIMEOUT_MS);
+  log(`update ${label}: candidate check beside the running engine ${result} after ${Date.now() - started} ms`);
+  if (result !== "exited") { candidateCheckedFor = version; return true; }
+  await rejectFailedComponentUpdate(cfg, candidate);
+  await rollbackComponentUpdate(cfg);
+  servedWindowDir = cfg.windowDir;
+  engineUpdateReady = false;
+  watchEngine();
+  log(`update ${label}: kept the running engine; nothing was stopped`);
+  win?.webContents.send("branch-desktop:engine-update", "kept");
+  return false;
 }
 
 const autoApply = createAutoApplyUpdate({
-  pendingVersion: async () => (await readComponentUpdateStatus(cfg)).pendingVersion,
+  pendingVersion: async () => (await readComponentUpdateStatus(cfg)).componentsPendingVersion,
   enabled: () => controls.settings().autoApplyUpdates,
   activity: async () => {
     if (!gateway) throw new Error("The gateway is not running");
@@ -120,20 +177,48 @@ const autoApply = createAutoApplyUpdate({
     return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window.pendingApprovals,
       streaming: engine.pendingReplies > 0 || window.streaming, unsavedDraftFiles: window.unsavedDraftFiles };
   },
-  restart: relaunchForUpdate,
+  restart: version => swapEngineInPlace(version, false),
   log,
 });
+
+/**
+ * A staged engine/window pair waits for the in-place swap; until then the window server keeps serving the build
+ * the running engine started with. A staged desktop app only waits for the next launch, so it offers nothing.
+ */
+async function offerStagedUpdate(): Promise<void> {
+  const { componentsPendingVersion, previousWindowDir } = await readComponentUpdateStatus(cfg);
+  if (!componentsPendingVersion) return;
+  if (previousWindowDir && !engineRestartInProgress) servedWindowDir = previousWindowDir;
+  engineUpdateReady = true;
+  win?.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
+  void autoApply.tick();
+}
 
 /** Staging never invokes the gateway's generic updater. */
 async function stageComponentUpdate(): Promise<boolean> {
   if (!componentsReady) throw new Error("The desktop is still starting; check again when the engine is ready");
   const staged = await refreshComponentUpdate(cfg, fetch, { desktop: install });
-  if ((await readComponentUpdateStatus(cfg)).pendingVersion) {
-    engineUpdateReady = true;
-    win?.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
-    void autoApply.tick();
-  }
+  await offerStagedUpdate();
   return staged;
+}
+
+/** Swaps in a new window build: route and drafts are already kept by the window; the preload keeps scroll. */
+async function hotSwapWindow(): Promise<void> {
+  const w = win;
+  if (!w || w.isDestroyed() || !w.webContents.getURL().startsWith(windowUrl())) return;
+  // Attached files live only in memory; the swap waits until they are sent or removed.
+  while (!w.isDestroyed() && (await probeWindowState().catch(() => undefined))?.unsavedDraftFiles) await pause(5_000);
+  if (w.isDestroyed()) return;
+  const id = ++nextProbeId;
+  await new Promise<void>(resolve => {
+    const done = () => { clearTimeout(timer); ipcMain.off("branch-desktop:swap-ready", receive); resolve(); };
+    const receive = (_event: Electron.IpcMainEvent, replyId: unknown) => { if (replyId === id) done(); };
+    const timer = setTimeout(done, 2_000);
+    ipcMain.on("branch-desktop:swap-ready", receive);
+    w.webContents.send("branch-desktop:prepare-swap", id);
+  });
+  log("window updated in place");
+  w.webContents.reload();
 }
 
 const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(
@@ -144,7 +229,7 @@ function createWindow(): BrowserWindow {
   // First launch opens maximized; later launches restore the last state, size, position and display.
   const place = placeWindow(readWindowState(cfg.dataDir), screen.getAllDisplays());
   const w = new BrowserWindow({
-    title: "Branch Agent",
+    title: TEST_COPY ? "Test — Branch Agent" : "Branch Agent",
     width: 1280,
     height: 840,
     ...place.bounds,
@@ -163,7 +248,8 @@ function createWindow(): BrowserWindow {
   });
   w.setMenuBarVisibility(false);
   if (place.maximized) w.once("show", () => w.maximize());
-  if (!HIDDEN && !QUIET) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
+  if (TEST_COPY) w.on("page-title-updated", (event, title) => { event.preventDefault(); w.setTitle(`Test — ${title}`); });
+  if (!HIDDEN && !QUIET && !TEST_COPY) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
   trackWindowState(w, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds);
   lockDown(w);
   tray = keepWindowsWindowResident(app, w, ICON, {
@@ -190,16 +276,19 @@ function lockDown(w: BrowserWindow): void {
 
 const windowUrl = (): string => `http://127.0.0.1:${cfg.windowPort}/`;
 
-/** Like quitAndInstall: the helper swaps the staged desktop app in once this process has exited, then relaunches it. */
-async function handOffDesktop(explicit: boolean): Promise<boolean> {
-  if (!install || !await handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), process.argv.slice(1), explicit)) return false;
+/**
+ * At a natural launch only: the helper swaps a staged desktop app in once this process has exited, then relaunches
+ * it. A running app never restarts itself for a desktop update.
+ */
+async function handOffDesktop(): Promise<boolean> {
+  if (!install || !await handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), process.argv.slice(1), false)) return false;
   log("desktop update staged; handing off to the update helper and quitting");
   return true;
 }
 
 async function start(): Promise<void> {
   // A desktop update staged during the last run applies before anything starts.
-  if (await handOffDesktop(false)) { app.exit(0); return; }
+  if (await handOffDesktop()) { app.exit(0); return; }
   token = readToken(cfg);
   // Registered before any page loads: the preload asks for it synchronously.
   ipcMain.on("branch-desktop:info", (e) => {
@@ -225,7 +314,8 @@ async function start(): Promise<void> {
     log("Installing verified GitHub components for first launch");
     await refreshComponentUpdate(cfg, fetch, { desktop: install });
   }
-  server = await serveWindow(cfg.windowDir, cfg.windowPort);
+  servedWindowDir = cfg.windowDir;
+  server = await serveWindow(() => servedWindowDir, cfg.windowPort);
   await win.loadURL(windowUrl());
   log(`window loaded after ${Date.now() - launchStarted} ms`);
   if (await bootSelectedEngine()) {
@@ -236,13 +326,12 @@ async function start(): Promise<void> {
   componentsReady = true;
   autoApply.start();
   stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, onStaged: () => {
-    void readComponentUpdateStatus(cfg).then(({ pendingVersion }) => {
-      if (!pendingVersion) return;
-      engineUpdateReady = true;
-      win?.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
-      void autoApply.tick();
-    }).catch(error => log(`Component update status: ${String(error)}`));
+    offerStagedUpdate().catch(error => log(`Component update status: ${String(error)}`));
   } });
+}
+
+async function waitForGatewayPort(): Promise<void> {
+  for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await pause(250);
 }
 
 /** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
@@ -258,11 +347,19 @@ async function bootEngine(): Promise<void> {
   await confirmComponentUpdate(cfg);
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
   engineUpdateReady = false;
+  watchEngine();
+}
+
+/** Watches the engine pointer and build from their current value (re-armed after a rejected candidate's rollback). */
+function watchEngine(): void {
   stopEngineWatch?.();
   stopEngineWatch = watchEngineBuild(() => engineSignature(cfg), () => {
-    engineUpdateReady = true;
-    log("new engine build found; offering Restart");
-    win?.webContents.send("branch-desktop:engine-update", "ready");
+    log("new engine build found; offering Update");
+    void readComponentUpdateStatus(cfg).then(({ componentsPendingVersion }) => {
+      if (componentsPendingVersion) return offerStagedUpdate();
+      engineUpdateReady = true;
+      win?.webContents.send("branch-desktop:engine-update", "ready");
+    }).catch(error => log(`Engine build status: ${String(error)}`));
   });
 }
 
@@ -275,9 +372,7 @@ async function bootSelectedEngine(): Promise<boolean> {
     recordTimeout: () => recordComponentUpdateTimeout(cfg, selectedEngine),
     rejectExited: () => rejectFailedComponentUpdate(cfg, selectedEngine),
     rollback: () => rollbackComponentUpdate(cfg),
-    waitForPortRelease: async () => {
-      for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise(r => setTimeout(r, 250));
-    },
+    waitForPortRelease: waitForGatewayPort,
     log,
   });
 }
@@ -285,10 +380,10 @@ async function bootSelectedEngine(): Promise<boolean> {
 function watchUpdates(w: BrowserWindow): void {
   stopWindowWatch = watchWindowBuild(cfg.windowDir, () => {
     void readComponentUpdateStatus(cfg).then(({ publicationInProgress }) => {
-      // A staged engine/window pair activates together through the owned restart flow.
-      if (publicationInProgress) return;
-      log("new window build found; reloading the window");
-      if (w.webContents.getURL().startsWith(windowUrl())) w.webContents.reload();
+      // A staged engine/window pair activates together through the in-place swap.
+      if (publicationInProgress || engineRestartInProgress) return;
+      log("new window build found; swapping it in");
+      void hotSwapWindow();
     }).catch(error => log(`Window update status: ${String(error)}`));
   });
   // A reload re-runs the preload; show the bar again if an engine update is still waiting.
@@ -297,32 +392,28 @@ function watchUpdates(w: BrowserWindow): void {
   });
 }
 
-/** The explicit Restart action also handles non-release build changes. */
+/** The owner's Update click: applies a staged engine/window pair, or a rebuilt engine, in place. */
 async function restartEngine(): Promise<void> {
   if (!gateway || !win || !componentsReady || engineRestartInProgress) return;
-  const staged = (await readComponentUpdateStatus(cfg)).pendingVersion;
-  if (staged) {
-    try { await relaunchForUpdate(staged); }
-    catch (error) { log(`clean relaunch failed: ${String(error)}`); if (!HIDDEN) dialog.showErrorBox("Branch Agent could not restart", String(error)); }
-    return;
-  }
-  engineRestartInProgress = true;
-  try {
-    // A staged desktop app restarts the whole app (the new engine and window come up with it).
-    if (await stagedDesktopVersion(cfg) && await handOffDesktop(true)) { app.quit(); return; }
-    log(`restart requested; stopping gateway pid ${gateway.pid}`);
-    win.webContents.send("branch-desktop:engine-update", "restarting");
-    stopGateway(gateway);
-    for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await new Promise((r) => setTimeout(r, 250));
-    await bootSelectedEngine();
-    win.webContents.reload();
-  } catch (err) {
+  const staged = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+  log(`update requested (${staged ?? "rebuilt engine"}); old engine pid ${gateway.pid}`);
+  try { await swapEngineInPlace(staged ?? "rebuilt engine", true); }
+  catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    log(`restart failed: ${msg}`);
-    if (!HIDDEN) dialog.showErrorBox("Branch Agent could not restart the engine", msg);
-  } finally {
-    engineRestartInProgress = false;
+    log(`update failed: ${msg}`);
+    if (!engineRunning() && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", msg);
   }
+}
+
+/** Quitting stops an idle engine cleanly, so the next launch skips the stale-lease integrity pass. */
+let quitAfterCleanStop = false;
+function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
+  if (quitAfterCleanStop || !gateway || !engineRunning() || typeof event?.preventDefault !== "function") return false;
+  event.preventDefault();
+  quitAfterCleanStop = true;
+  stopGatewayCleanly(gateway, 15_000).then(() => log("gateway stopped cleanly for quit"),
+    error => log(`quit: clean stop skipped: ${error instanceof Error ? error.message : String(error)}`)).finally(() => app.quit());
+  return true;
 }
 
 function shutdown(): void {
@@ -332,6 +423,7 @@ function shutdown(): void {
   autoApply.stop();
   stopWindowWatch?.();
   controls.dispose();
+  stopCandidate();
   if (gateway) stopGateway(gateway);
   server?.close();
 }
@@ -348,7 +440,7 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
   app.on("window-all-closed", () => app.quit());
-  app.on("will-quit", shutdown);
+  app.on("will-quit", (event?: Electron.Event) => { if (!deferQuitForCleanStop(event)) shutdown(); });
   app.whenReady().then(start).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);
     log(`could not start: ${msg}`);

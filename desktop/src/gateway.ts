@@ -71,7 +71,7 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
 export interface GatewayActivity { idle: boolean; activeRuns: number; pendingReplies: number; totalActive: number }
 let nextActivityId = 0;
 /** Query the engine's process-wide restart-drain inventory through its owned child channel. */
-export function gatewayActivity(child: ChildProcess, stopIfIdle = false, timeoutMs = 5_000): Promise<GatewayActivity> {
+export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" = false, timeoutMs = 5_000): Promise<GatewayActivity> {
   if (!child.connected) return Promise.reject(new Error("The gateway activity channel is unavailable"));
   const id = ++nextActivityId;
   return new Promise((resolve, reject) => {
@@ -92,17 +92,53 @@ export function gatewayActivity(child: ChildProcess, stopIfIdle = false, timeout
     child.on("message", onMessage);
     child.once("exit", onExit);
     child.once("error", onError);
-    child.send({ type: stopIfIdle ? "branch-desktop:stop-if-idle" : "branch-desktop:activity", id }, error => { if (error) onError(error); });
+    const type = stop === "drain" ? "branch-desktop:drain-stop" : stop ? "branch-desktop:stop-if-idle" : "branch-desktop:activity";
+    child.send({ type, id }, error => { if (error) onError(error); });
   });
 }
 
-/** Ask the owned engine to drain cleanly, but only if it is still idle at the gateway. */
-export async function stopGatewayCleanly(child: ChildProcess, timeoutMs = 90_000): Promise<void> {
+/**
+ * Ask the owned engine to drain cleanly, but only while it is idle at the gateway. Short post-ready and background
+ * work makes it answer "busy" for a few seconds, so the request repeats every 2 s for up to `busyRetryMs`.
+ */
+export async function stopGatewayCleanly(child: ChildProcess, timeoutMs = 90_000, busyRetryMs = 20_000): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
-  const snapshot = await gatewayActivity(child, true);
-  if (!snapshot.idle) throw new Error("The gateway became busy before it could stop");
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  await new Promise<void>((resolve, reject) => {
+  const giveUp = Date.now() + busyRetryMs;
+  while (!(await gatewayActivity(child, true)).idle) {
+    if (Date.now() >= giveUp) throw new Error("The gateway became busy before it could stop");
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+    if (child.exitCode !== null || child.signalCode !== null) return;
+  }
+  await waitForExit(child, timeoutMs);
+}
+
+/**
+ * Ask the owned engine to stop admitting work and drain as SIGTERM does, even while runs are active; the next
+ * engine's restart recovery resumes whatever the drain could not finish. An engine that does not answer the
+ * drain request (an older build) or does not exit in time is stopped by PID, as before.
+ */
+export async function drainStopGateway(child: ChildProcess, timeoutMs = DRAIN_EXIT_TIMEOUT_MS): Promise<"drained" | "stopped idle" | "killed"> {
+  if (child.exitCode !== null || child.signalCode !== null) return "drained";
+  try { await gatewayActivity(child, "drain"); }
+  catch {
+    // No answer: an engine from before drain-stop. Stop it only while idle; a busy one is never killed.
+    await stopGatewayCleanly(child);
+    return "stopped idle";
+  }
+  try { await waitForExit(child, timeoutMs); return "drained"; }
+  catch {
+    stopGateway(child);
+    await waitForExit(child, 10_000).catch(() => undefined);
+    return "killed";
+  }
+}
+
+/** The engine's own drain budget is 315 s ("shutdown budget at startup: drain=315000ms"); never cut a drain short. */
+const DRAIN_EXIT_TIMEOUT_MS = 330_000;
+
+function waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => { cleanup(); reject(new Error("The gateway did not stop cleanly in time")); }, timeoutMs);
     const cleanup = () => { clearTimeout(timer); child.off("exit", onExit); child.off("error", onError); };
     const onExit = () => { cleanup(); resolve(); };

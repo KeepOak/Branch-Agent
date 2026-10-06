@@ -53,7 +53,13 @@ function Window({ url, sharedToken, onConnect, onRetry }: WindowProps) {
   const session = useMemo(() => new SaplingSession(url, sharedToken, savedConversation()), [url, sharedToken]);
   useEffect(() => {
     session.start();
-    return () => session.stop();
+    // The desktop app updated the engine underneath this window; reconnect without waiting for the backoff.
+    const engineReady = () => session.reconnectNow();
+    window.addEventListener("branch:engine-ready", engineReady);
+    return () => {
+      window.removeEventListener("branch:engine-ready", engineReady);
+      session.stop();
+    };
   }, [session]);
   const s = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const [everConnected, setEverConnected] = useState(false);
