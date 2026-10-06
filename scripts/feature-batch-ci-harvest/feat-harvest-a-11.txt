@@ -1,10 +1,13 @@
+engine:extensions/signal/src/question-reactions.test.ts
 engine:extensions/telegram/src/poll-registry.test.ts
+engine:extensions/whatsapp/src/question-reactions.test.ts
 engine:packages/markdown-core/src/ir.test.ts
 engine:packages/markdown-core/src/render-aware-chunking.test.ts
 engine:packages/markdown-core/src/tables.test.ts
 engine:src/auto-reply/chunk.test.ts
 engine:src/auto-reply/reply/block-streaming.test.ts
 engine:src/channels/plugins/outbound/presentation-delivery.test.ts
+engine:src/infra/question-reaction-runtime.test.ts
 engine:src/interactive/payload.fallback.test.ts
 engine:src/interactive/payload.test.ts
 engine:src/poll-params.test.ts
