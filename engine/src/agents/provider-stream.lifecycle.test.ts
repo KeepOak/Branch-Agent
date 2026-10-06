@@ -1,5 +1,6 @@
 import { createApiRegistry, createLlmRuntime } from "@branch/ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { bindModelLlmRuntime } from "../llm/model-runtime-binding.js";
 import { createAssistantMessageEventStream } from "../llm/utils/event-stream.js";
 import { resolveProviderStreamFn } from "../plugins/provider-runtime.js";
@@ -115,6 +116,36 @@ describe("provider stream lifecycle registration", () => {
     expect(prepare.mock.invocationCallOrder[0]).toBeLessThan(
       providerStream.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it("refuses a prepared provider stream once Lockdown is on, without calling the provider", async () => {
+    providerStream.mockReturnValue(createAssistantMessageEventStream());
+    const llmRuntime = createLlmRuntime(createApiRegistry());
+    const model = bindModelLlmRuntime(
+      {
+        api: "test-lockdown-provider",
+        provider: "test-provider",
+        id: "test-model",
+        name: "Test Model",
+        baseUrl: "https://example.test",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 1024,
+        maxTokens: 512,
+      },
+      llmRuntime,
+    );
+    const streamFn = registerProviderStreamForModel({ model });
+    setRuntimeConfigSnapshot({ security: { lockdown: true } });
+    try {
+      const events = [];
+      for await (const event of await streamFn!(model, {} as never, {})) events.push(event);
+      expect(providerStream).not.toHaveBeenCalled();
+      expect(events).toMatchObject([{ type: "error", error: { errorMessage: "Lockdown is on: Trunks cannot run or send anything." } }]);
+    } finally {
+      clearRuntimeConfigSnapshot();
+    }
   });
 
   it.each([

@@ -10,6 +10,7 @@ import {
 import type { runBeforeToolCallHook as runBeforeToolCallHookType } from "../agents/agent-tools.before-tool-call.js";
 import type { BranchToolsOptions } from "../agents/branch-tools.types.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { withPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { ensureGatewayOwnerProfile, ensureProfileForEmail } from "../state/user-profiles.js";
@@ -752,6 +753,23 @@ describe("POST /tools/invoke", () => {
     expect(hookCtx.config).toBe(cfg);
     expect(hookCtx.sessionKey).toBe("agent:main:main");
     expect(hookCtx.loopDetection).toEqual({ warnAt: 3 });
+  });
+
+  it("refuses the tool API while Lockdown is on, before any tool is built", async () => {
+    allowAgentsListForMain();
+    lastCreateBranchToolsContext = undefined;
+    setRuntimeConfigSnapshot({ security: { lockdown: true } });
+    try {
+      const res = await invokeAgentsListAuthed({ sessionKey: "main" });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        ok: false,
+        error: { type: "tool_call_blocked", message: "Lockdown is on: Trunks cannot run or send anything." },
+      });
+      expect(lastCreateBranchToolsContext).toBeUndefined();
+    } finally {
+      clearRuntimeConfigSnapshot();
+    }
   });
 
   it("keeps plugin tools enabled for non-core tool invokes", async () => {
