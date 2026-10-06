@@ -344,4 +344,4 @@ export function LinkBtn({ children, title, ...rest }: ButtonHTMLAttributes<HTMLB
 }
 
 /** The row search index: each page module lists its rows (title, section, level) so the frame can find and jump. */
-export type RowEntry = { page: string; title: string; sec?: string; group?: string; lv: Lv; words?: string };
+export type RowEntry = { page: string; title: string; sec?: string; group: string; lv: Lv; words?: string };

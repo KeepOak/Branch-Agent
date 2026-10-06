@@ -1301,4 +1301,4 @@ export const ROWS: RowEntry[] = ([
   ["What’s kept on this computer", "Your data", 0], ["What leaves this computer", "Your data", 0], ["Export everything", "Your data", 0],
   ["Move to another computer", "Your data", 0], ["Backups go to", "Your data", 0], ["Back up to GitHub", "Your data", 0], ["Restore from a backup", "Your data", 0],
   ["Pictures and video this month", "Your data", 0], ["Delete everything", "Your data", 0],
-] as [string, string, number][]).map(([title, sec, lv]) => ({ page: "usage", title, ...(sec ? { sec } : {}), group: ({ "Money and keeping, more": "Keeping things", "Keeping things, more": "Keeping things", "Conversations, every setting": "Keeping things" } as Record<string, string>)[sec], lv: lv as 0 | 1 | 2 }));
+] as [string, string, number][]).map(([title, sec, lv]) => ({ page: "usage", title, ...(sec ? { sec } : {}), group: ({ "Money and keeping, more": "Keeping things", "Keeping things, more": "Keeping things", "Conversations, every setting": "Keeping things" } as Record<string, string>)[sec] ?? (sec || "Data & usage"), lv: lv as 0 | 1 | 2 }));

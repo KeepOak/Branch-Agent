@@ -119,7 +119,7 @@ function PlugRow({ r, c }: { r: Spec; c: Ctx }) {
 
 /** The search-index rows of a list of sections. */
 export function rowsOf(page: string, secs: SecSpec[]): RowEntry[] {
-  return secs.flatMap((s) => s.rows.map((r) => ({ page, title: r.t, sec: s.title, group: s.group, lv: Math.max(s.lv, r.lv ?? 0) as Lv })));
+  return secs.flatMap((s) => s.rows.map((r) => ({ page, title: r.t, sec: s.title, group: s.group ?? s.title, lv: Math.max(s.lv, r.lv ?? 0) as Lv })));
 }
 
 const sw = (t: string, s: string, k: ConfigPath, def: boolean, extra: Partial<Spec> = {}): Spec => ({ t, s, k, def, kind: "sw", ...extra });

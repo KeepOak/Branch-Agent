@@ -144,7 +144,7 @@ function SearchResults({ query, level, shown, onGo }: { query: string; level: Le
               <button type="button" className="set-item" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" data-page={page.id} aria-current={page.id === shown ? "true" : undefined} onClick={() => onGo(page.id)}>{page.name}{tag(page.lv)}</button>
               {rows.map((r) => (
                 <button key={r.title} type="button" className="set-item set-row" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" data-row-hit={r.title} onClick={() => onGo(page.id, r)}>
-                  <span className="grow"><span>{r.title}</span>{r.sec ? <small>{r.group ?? r.sec}</small> : null}</span>{tag(r.lv)}
+                  <span className="grow"><span>{r.title}</span><small>{r.group}</small></span>{tag(r.lv)}
                 </button>
               ))}
             </div>

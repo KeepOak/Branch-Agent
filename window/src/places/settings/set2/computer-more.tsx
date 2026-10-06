@@ -922,7 +922,7 @@ const SECTIONS: SecSpec[] = [
 ];
 
 export const ROWS: RowEntry[] = SECTIONS.flatMap((s) => [
-  { page: "computer", title: s.t, ...(s.group ? { sec: s.t, group: s.group } : {}), lv: s.lv },
-  ...(s.rows ?? []).filter((r) => r.k !== "hint").map((r) => ({ page: "computer", title: r.t, sec: s.t, group: s.group, lv: Math.max(s.lv, r.lv ?? 0) as Lv })),
-  ...(s.titles ?? []).map(([title, lv]) => ({ page: "computer", title, sec: s.t, group: s.group, lv: Math.max(s.lv, lv) as Lv })),
+  { page: "computer", title: s.t, sec: s.t, group: s.group ?? s.t, lv: s.lv },
+  ...(s.rows ?? []).filter((r) => r.k !== "hint").map((r) => ({ page: "computer", title: r.t, sec: s.t, group: s.group ?? s.t, lv: Math.max(s.lv, r.lv ?? 0) as Lv })),
+  ...(s.titles ?? []).map(([title, lv]) => ({ page: "computer", title, sec: s.t, group: s.group ?? s.t, lv: Math.max(s.lv, lv) as Lv })),
 ]);

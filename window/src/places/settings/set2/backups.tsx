@@ -19,7 +19,7 @@ const GIT_HINT = "A private Git repository you own, such as https://github.com/y
 export const ROWS: RowEntry[] = [
   ["Where backups go", "Where", 0], ["How often", "When", 0], ["Back up now", "When", 0], ["Last backup", "When", 0],
   ["Largest media file", "Media", 1], ["Media in all", "Media", 1],
-].map(([title, sec, lv]) => ({ page: "backups", title: String(title), sec: String(sec), lv: lv as 0 | 1 | 2, words: "backup copy restore git repository folder schedule" }));
+].map(([title, sec, lv]) => ({ page: "backups", title: String(title), sec: String(sec), group: String(sec), lv: lv as 0 | 1 | 2, words: "backup copy restore git repository folder schedule" }));
 
 type Kind = "folder" | "git";
 type MediaLimits = { mediaMaxFileMb?: number; mediaMaxTotalMb?: number };

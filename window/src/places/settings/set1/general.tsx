@@ -89,7 +89,7 @@ function Keyboard() {
   );
 }
 
-const rows = (sec: string, lv: Lv, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "general", title, sec, lv }));
+const rows = (sec: string, lv: Lv, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "general", title, sec, group: sec, lv }));
 export const GENERAL_ROWS: RowEntry[] = [
   ...rows("Starting up", 0, [`Start with ${OS}`]),
   ...rows("Projects", 0, []),

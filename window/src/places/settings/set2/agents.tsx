@@ -47,8 +47,8 @@ export const CONNECT_LINES: [string, string][] = [
 ];
 
 export const ROWS: RowEntry[] = [
-  { page: "agents", title: "Let other agents work with Branch", lv: 0 },
-  ...CONNECT_LINES.map(([title]) => ({ page: "agents", title, sec: "Graft an agent", lv: 0 as const })),
+  { page: "agents", title: "Let other agents work with Branch", group: "Grafts", lv: 0 },
+  ...CONNECT_LINES.map(([title]) => ({ page: "agents", title, sec: "Graft an agent", group: "Graft an agent", lv: 0 as const })),
 ];
 
 type Trunk = { id: string; name: string };

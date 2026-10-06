@@ -22,6 +22,7 @@ export function ModelsSections({ m, tab, openSettings }: { m: ModelsCtx; tab: st
     [true, <CompareModels key="compare" />],
     [t, <Retries key="retries" m={m} />],
     [t, <PerConnection key="perconn" />],
+    [t, <PerConnectionMore key="perconnmore" />],
     [true, <Mixtures key="mix" />],
     [tab === "second", <SecondMore key="second" />],
     [t && tab === "media", <MediaMore key="media" />],
@@ -40,7 +41,6 @@ export function ModelsSections({ m, tab, openSettings }: { m: ModelsCtx; tab: st
     [true, <PickingModels key="picking" m={m} />],
     [true, <ModelJobs key="jobs" m={m} />],
     [t, <EachModel key="each" m={m} />],
-    [t, <PerConnectionMore key="perconnmore" />],
   ];
   return <>{parts.filter(([on]) => on).map(([, node]) => node)}</>;
 }

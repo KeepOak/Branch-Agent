@@ -45,7 +45,7 @@ export const ROWS: RowEntry[] = [
   ["The handbook", "Help and updates, more", 1], ["If an update fails", "Help and updates, more", 1],
   ["Update history", "Help and updates, more", 1], ["The engine", "Help and updates, more", 1],
   ["Update status for scripts", "Help and updates, more", 2],
-].map(([title, sec, lv]) => ({ page: "updates", title: String(title), sec: String(sec), group: ({ "In your editors and notes": "Branch on your other devices", "Help and updates, more": "Updating", Technical: "Updating" } as Record<string, string>)[String(sec)], lv: lv as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "updates", title: String(title), sec: String(sec), group: ({ "In your editors and notes": "Branch on your other devices", "Help and updates, more": "Updating", Technical: "Updating" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
 type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => void };
 

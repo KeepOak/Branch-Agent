@@ -33,7 +33,7 @@ export const ROWS: RowEntry[] = [
   ["Infrastructure settings", "Technical", 2], ["Accept files and pictures", "Exposure", 2], ["HSTS header", "Exposure", 2], ["HTTPS for the Gateway", "Exposure", 2], ["Allowed browser addresses", "Exposure", 2],
   ["Trust the Host header for origins", "Exposure", 2], ["Wrong sign-ins allowed", "Limits", 2], ["Then lock that address for", "Limits", 2], ["Never lock out this computer", "Limits", 2],
   ["Reach previews from other devices", "App previews", 2], ["Send a message", "From scripts", 2], ["Connect a chat app", "From scripts", 2],
-].map(([title, sec, lv]) => ({ page: "gateway", title: String(title), sec: String(sec), group: ({ Reach: "Connection", "How it’s reached": "Connection", Exposure: "Connection", Limits: "Connection", Technical: "Connection", "From scripts": "Connection", "Never break": "If it stops", "Chat apps, more": "Chat apps" } as Record<string, string>)[String(sec)], lv: lv as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "gateway", title: String(title), sec: String(sec), group: ({ Reach: "Connection", "How it’s reached": "Connection", Exposure: "Connection", Limits: "Connection", Technical: "Connection", "From scripts": "Connection", "Never break": "If it stops", "Chat apps, more": "Chat apps" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
 type Config = ReturnType<typeof useConfig>;
 type Ctx = SettingsPageProps & { config: Config; health: RecordValue; sys: RecordValue; healthError?: string; lv: number };

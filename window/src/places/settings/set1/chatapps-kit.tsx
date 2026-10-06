@@ -90,5 +90,5 @@ export function TableSec({ sec, cfg, level, custom }: { sec: Section; cfg: Cfg; 
 }
 
 export function rowsOf(page: string, secs: Section[]): RowEntry[] {
-  return secs.flatMap((s) => s.rows.map((r) => ({ page, title: r.t, sec: s.title, group: s.group, lv: r.lv ?? s.lv })));
+  return secs.flatMap((s) => s.rows.map((r) => ({ page, title: r.t, sec: s.title, group: s.group ?? s.title, lv: r.lv ?? s.lv })));
 }

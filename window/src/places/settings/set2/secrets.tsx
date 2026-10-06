@@ -24,7 +24,7 @@ export const ROWS: RowEntry[] = [
   ["List the keys", "Keys Branch holds", 2], ["Set a key", "Keys Branch holds", 2], ["Remove a key", "Keys Branch holds", 2],
   ["Bring in a .env file", "Keys Branch holds", 2], ["Reload keys", "Keys, technical", 2], ["Keys written in plain text", "Keys, technical", 2],
   ["Move keys out of settings", "Keys, technical", 2], ["The settings file", "Keys, technical", 2],
-].map(([title, sec, lv]) => ({ page: "secrets", title: String(title), sec: String(sec), group: ({ "Where passwords come from": "Keys", "Keys Branch holds": "Keys", "Keys, technical": "Keys" } as Record<string, string>)[String(sec)], lv: lv as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "secrets", title: String(title), sec: String(sec), group: ({ "Where passwords come from": "Keys", "Keys Branch holds": "Keys", "Keys, technical": "Keys" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
 export function SecretsPage(props: SettingsPageProps) {
   const lv = lvOf(props.level);

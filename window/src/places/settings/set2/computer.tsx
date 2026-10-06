@@ -37,8 +37,8 @@ const OS: Record<string, string> = { win32: "Windows", windows: "Windows", darwi
 
 export const ROWS: RowEntry[] = [
   ...MORE_ROWS,
-  { page: "computer", title: "Waiting for your yes", lv: 0 }, { page: "computer", title: "Computers they may use", lv: 0 },
-  { page: "computer", title: "Keep this computer awake", sec: "Computers they may use", lv: 0 }, { page: "computer", title: "Which Trunk uses which", lv: 0 },
+  { page: "computer", title: "Waiting for your yes", group: "Waiting for your yes", lv: 0 }, { page: "computer", title: "Computers they may use", group: "Computers they may use", lv: 0 },
+  { page: "computer", title: "Keep this computer awake", sec: "Computers they may use", group: "Computers they may use", lv: 0 }, { page: "computer", title: "Which Trunk uses which", group: "Which Trunk uses which", lv: 0 },
 ];
 
 type Req = { id: string; kind: "device" | "node"; name: string; plat: string; access: string[]; more: boolean; ts: number; deviceId: string; ip: string; version: string };

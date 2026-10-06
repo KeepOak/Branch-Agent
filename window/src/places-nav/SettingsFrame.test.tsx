@@ -54,8 +54,19 @@ describe("settings frame level", () => {
 
   it("uses display groups without hidden depth suffixes for every search row", () => {
     expect(SETTINGS_ROWS.length).toBeGreaterThan(0);
-    const bad = SETTINGS_ROWS.filter((row) => /, (?:more|technical|in depth)$/i.test(row.group ?? row.sec ?? ""));
-    expect(bad.map((row) => `${row.page}: ${row.title} (${row.group ?? row.sec})`)).toEqual([]);
+    const missing = SETTINGS_ROWS.filter((row) => !row.group?.trim());
+    expect(missing.map((row) => `${row.page}: ${row.title}`)).toEqual([]);
+    const bad = SETTINGS_ROWS.filter((row) => /, (?:more|technical|in depth)$/i.test(row.group ?? ""));
+    expect(bad.map((row) => `${row.page}: ${row.title} (${row.group})`)).toEqual([]);
+  });
+
+  it("uses each page's explicit group in search instead of matching display copy", () => {
+    const group = (page: string, title: string) => SETTINGS_ROWS.find((row) => row.page === page && row.title === title)?.group;
+    expect(group("gateway", "Wrong sign-ins allowed")).toBe("Connection");
+    expect(group("gateway", "Apply settings changes")).toBe("Connection");
+    expect(group("permissions", "Code mode")).toBe("Sandbox");
+    expect(group("computer", "Technical")).toBe("Connections");
+    expect(group("updates", "Update status for scripts")).toBe("Updating");
   });
 
   it("a row found by search gets focus on its own control, not on its pin", async () => {

@@ -124,5 +124,5 @@ export function SectionView({ s, x }: { s: Section; x: Ctx }) {
 
 /** The search entries for a set of sections. */
 export function rowsOf(sections: Section[]): RowEntry[] {
-  return sections.flatMap((s) => s.rows.map((r) => ({ page: "permissions", title: r.t, sec: s.title, group: s.group, lv: Math.max(s.lv, r.lv ?? 0) as Lv, ...(r.words ? { words: r.words } : {}) })));
+  return sections.flatMap((s) => s.rows.map((r) => ({ page: "permissions", title: r.t, sec: s.title, group: s.group ?? s.title, lv: Math.max(s.lv, r.lv ?? 0) as Lv, ...(r.words ? { words: r.words } : {}) })));
 }

@@ -12,7 +12,7 @@ import "./achievements.css";
 
 const NO_LEDGER = "Branch doesn’t count most achievements yet.";
 
-export const ROWS: RowEntry[] = [{ page: "achievements", title: "Keep achievements quiet", sec: "Settings", lv: 0 }];
+export const ROWS: RowEntry[] = [{ page: "achievements", title: "Keep achievements quiet", sec: "Settings", group: "Settings", lv: 0 }];
 
 export const TIERS = ["Bronze", "Silver", "Gold", "Diamond", "Godly", "SSS+"] as const;
 export type Tier = (typeof TIERS)[number];

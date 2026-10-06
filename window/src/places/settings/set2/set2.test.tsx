@@ -217,6 +217,25 @@ describe("Settings › Seasons", () => {
 
 describe("Settings › Gateway", () => {
   const H = { ok: true, ts: Date.now(), durationMs: 3, channels: { telegram: { connected: true } }, channelLabels: { telegram: "Telegram" } };
+  it("keeps the close-window control below Gateway mode and saves through the desktop setting", async () => {
+    let state = { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: false, startWithWindows: false, branchOnPath: false };
+    const set = vi.fn(async (name: keyof typeof state, on: boolean) => (state = { ...state, [name]: on }));
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get: async () => state, set } };
+    try {
+      const { engine } = engineWith({ health: H });
+      await show("gateway", engine);
+      const mode = document.querySelector('[data-row="Gateway"]');
+      const row = document.querySelector('[data-row="Keep working when the window closes"]');
+      expect(mode?.nextElementSibling).toBe(row);
+      const control = row?.querySelector<HTMLInputElement>('input[role="switch"]');
+      expect(control?.checked).toBe(true);
+      await act(async () => control?.click());
+      expect(set).toHaveBeenCalledWith("keepWorking", false);
+      expect(control?.checked).toBe(false);
+    } finally {
+      delete (window as { branchDesktop?: unknown }).branchDesktop;
+    }
+  });
   it("says the gateway is on from health and system.info, and restarts it on gateway.restart.request", async () => {
     const { engine, request } = engineWith({ health: H, "system.info": { uptimeMs: 3 * 86_400_000 }, "gateway.restart.request": { ok: true, status: "scheduled" } });
     await show("gateway", engine);

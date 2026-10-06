@@ -30,7 +30,7 @@ export const ROWS: RowEntry[] = [
   ["Exact schedule", "Rings, in depth", 2], ["Log each pass in detail", "Rings, in depth", 2],
   ["Fill the diary from past notes", "Rings, maintenance", 2], ["Remove filled-in entries", "Rings, maintenance", 2],
   ["Remove repeated diary entries", "Rings, maintenance", 2], ["Repair Rings’ files", "Rings, maintenance", 2],
-].map(([title, sec, lv]) => ({ page: "seasons", title: String(title), sec: String(sec), group: ({ "Rings, by hand": "Rings", "Rings, in depth": "Rings", "Rings, maintenance": "Rings", "Seasons, more": "Seasons" } as Record<string, string>)[String(sec)], lv: lv as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "seasons", title: String(title), sec: String(sec), group: ({ "Rings, by hand": "Rings", "Rings, in depth": "Rings", "Rings, maintenance": "Rings", "Seasons, more": "Seasons" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
 type Config = ReturnType<typeof useConfig>;
 type Ctx = SettingsPageProps & { config: Config; agent: string; status: RecordValue; reload: () => void };
