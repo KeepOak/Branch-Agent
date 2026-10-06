@@ -5,3 +5,6 @@ engine:extensions/geolocation/src/database-store.test.ts
 engine:extensions/geolocation/src/lookup-route.test.ts
 engine:extensions/linux-node/src/commands.test.ts
 engine:extensions/linux-node/src/executables.test.ts
+engine:extensions/logbook/src/analyze.test.ts
+engine:extensions/logbook/src/service.test.ts
+engine:extensions/logbook/src/store.test.ts
