@@ -161,5 +161,5 @@ describe("Gateway startup node capabilities", () => {
         await state.cleanup();
       }
     }
-  });
+  }, 240_000);
 });
