@@ -1,3 +1,6 @@
+engine:extensions/deepgram/audio-flux.test.ts
+engine:extensions/deepgram/audio.test.ts
+engine:extensions/deepgram/realtime-transcription-provider.test.ts
 engine:extensions/document-extract/document-extractor.runtime.test.ts
 engine:extensions/document-extract/document-extractor.test.ts
 engine:extensions/elevenlabs/realtime-transcription-provider.test.ts
