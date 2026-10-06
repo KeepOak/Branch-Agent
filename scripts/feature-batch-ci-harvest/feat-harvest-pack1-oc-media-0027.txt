@@ -1,3 +1,5 @@
+engine:extensions/comfy/image-generation-provider.test.ts
+engine:extensions/comfy/workflow-runtime.header-secrets.integration.test.ts
 engine:src/agents/tools/image-generate-tool.test.ts
 engine:src/agents/tools/pdf-tool.model-config.test.ts
 engine:src/agents/tools/pdf-tool.test.ts
