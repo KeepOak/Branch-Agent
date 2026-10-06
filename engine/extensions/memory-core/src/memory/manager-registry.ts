@@ -116,6 +116,15 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
     return owner;
   }
 
+  findCachedDefault(predicate: (manager: T) => boolean): T | undefined {
+    for (const manager of this.cache.values()) {
+      if (predicate(manager)) {
+        return manager;
+      }
+    }
+    return undefined;
+  }
+
   async createProvider(
     manager: T,
     adapter: MemoryEmbeddingProviderAdapter,

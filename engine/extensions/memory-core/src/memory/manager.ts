@@ -531,6 +531,18 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
   }
 
   private publishedStatus(): MemoryProviderStatus {
+    // Status managers own a separate read-only connection. Project runtime state
+    // from the current writer for the same agent/store, never from this sidecar.
+    const active =
+      this.purpose === "status"
+        ? this.managerRegistry.findCachedDefault(
+            (manager) =>
+              manager.agentId === this.agentId &&
+              manager.settings.store.databasePath === this.settings.store.databasePath &&
+              !manager.closing &&
+              !manager.closed,
+          )
+        : this;
     if (this.embeddingBootstrapFailure) {
       this.refreshKeywordFallbackIndexIdentity();
     } else {
@@ -551,8 +563,11 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     // Status projects the effective keyword-only search mode while degraded.
     // Sync generations still snapshot this.provider so recovery can rebuild vectors.
     const providerInfo = resolveStatusProviderInfo({
-      provider: this.embeddingBootstrapFailure ? null : this.provider,
-      providerInitialized: this.embeddingBootstrapFailure ? true : this.providerInitialized,
+      provider: active?.embeddingBootstrapFailure ? null : (active?.provider ?? null),
+      providerInitialized:
+        this.purpose === "status" ||
+        active?.embeddingBootstrapFailure !== undefined ||
+        active?.providerInitialized === true,
       requestedProvider: this.settings.provider,
       resolveConfiguredModel: () =>
         this.resolveConfiguredIndexIdentity()?.provider.model || this.settings.model,
@@ -602,8 +617,8 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
         available: this.fts.available,
         error: this.fts.loadError,
       },
-      fallback: this.fallbackReason
-        ? { from: this.fallbackFrom ?? "local", reason: this.fallbackReason }
+      fallback: active?.fallbackReason
+        ? { from: active.fallbackFrom ?? "local", reason: active.fallbackReason }
         : undefined,
       vector: {
         enabled: this.vector.enabled,
@@ -633,14 +648,14 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
       },
       custom: {
         watcher: this.memoryWatcherHealth,
-        llamaCppRuntime: getLocalEmbeddingRuntimeFacts(this.provider),
+        llamaCppRuntime: getLocalEmbeddingRuntimeFacts(active?.provider ?? null),
         searchMode: providerInfo.searchMode,
-        providerState: this.providerLifecycle,
-        providerUnavailableReason: this.providerUnavailableReason,
+        providerState: active?.providerLifecycle ?? this.providerLifecycle,
+        providerUnavailableReason: active?.providerUnavailableReason,
         indexIdentity: this.indexIdentityState,
         automaticRebuildNotice: this.automaticRebuildNotice,
-        providerChangeProgress: this.providerChangeProgress,
-        providerPreparationProgress: this.providerPreparationProgress,
+        providerChangeProgress: active?.providerChangeProgress,
+        providerPreparationProgress: active?.providerPreparationProgress,
       },
     };
   }

@@ -51,6 +51,7 @@ type ProviderCall = {
   provider?: string;
   model?: string;
   outputDimensionality?: number;
+  onProgress?: (progress: { downloadedSize: number; totalSize?: number }) => void;
 };
 
 type ProviderControls = {
@@ -77,6 +78,7 @@ type ProviderControls = {
   providerNullResult: string | null;
   providerCloseGate: Promise<void> | null;
   providerInitGate: Promise<void> | null;
+  providerPreparationUpdate: { downloadedSize: number; totalSize?: number } | null;
   providerCalls: ProviderCall[];
   forceNoProvider: boolean;
   identityAlias: {
@@ -144,6 +146,7 @@ const providerState = vi.hoisted(() => ({
   providerNullResult: null as string | null,
   providerCloseGate: null as Promise<void> | null,
   providerInitGate: null as Promise<void> | null,
+  providerPreparationUpdate: null as ProviderControls["providerPreparationUpdate"],
   providerCalls: [] as ProviderCall[],
   forceNoProvider: false,
   identityAlias: {
@@ -221,6 +224,9 @@ vi.mock("./embeddings.js", async (importOriginal) => {
         model: options.model,
         outputDimensionality: options.outputDimensionality,
       });
+      if (providerState.providerPreparationUpdate) {
+        options.onProgress?.(providerState.providerPreparationUpdate);
+      }
       await providerState.providerInitGate;
       if (options.provider === providerState.providerCreationFailure) {
         throw new Error(`provider creation failed: ${options.provider}`);
@@ -581,6 +587,7 @@ export function createManagerIndexFixture(deps: {
     providerState.providerNullResult = null;
     providerState.providerCloseGate = null;
     providerState.providerInitGate = null;
+    providerState.providerPreparationUpdate = null;
     providerState.providerCalls = [];
     providerState.forceNoProvider = false;
 
