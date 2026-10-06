@@ -1,5 +1,7 @@
 engine:src/channels/plugins/setup-wizard.test.ts
 engine:src/commands/channels/add-wizard.owner.test.ts
+engine:src/commands/doctor-db-bloat.read.test.ts
+engine:src/commands/doctor-db-bloat.worker.test.ts
 engine:src/commands/doctor-disk-space.test.ts
 engine:src/commands/doctor-lint.config-snapshot.test.ts
 engine:src/commands/doctor-lint.crabbox.test.ts
