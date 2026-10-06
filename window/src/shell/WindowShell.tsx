@@ -998,6 +998,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       onOpenConversation: openConversation,
       lastUserEntryId: [...s.history].reverse().find((block) => block.kind === "user")?.meta?.entryId,
       offline: !ready,
+      connectionTarget: (() => {
+        const host = new URL(url).hostname;
+        return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]" ? "this computer" : machine?.name || host;
+      })(),
       onOpen: (target: string) => {
         if (target.startsWith("settings/")) {
           openSettings(target.slice("settings/".length));
@@ -1010,7 +1014,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     };
     main = draftTopic ? (
       <div className="conversation-column" data-testid="new-topic-draft">
-        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} onList={toggleList} /> : null}
+        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} /> : null}
         <div className="conversation-empty" style={{ flex: 1 }} />
         <div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
         <Composer
@@ -1032,7 +1036,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     ) : (
       <>
         <div className="conversation-column">
-        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} onList={toggleList} /> : null}
+        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} /> : null}
         <SplitFrame panes={panes} width={splitW} onWidth={setSplitW} side={
           <SplitPanes
             panes={panes}

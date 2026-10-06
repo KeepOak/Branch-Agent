@@ -15,10 +15,10 @@ const row: Conversation = {
 
 describe("P54 pet home and typing row", () => {
   it("shows one keeper for a selected pet and none when no pet is selected", () => {
-    const shown = renderToStaticMarkup(<div className="pet-lane"><SidebarPet pet={{ id: "px-squirrel", where: "status", name: "Pet" }} waiting={null} still /></div>);
+    const shown = renderToStaticMarkup(<div className="pet-lane"><SidebarPet pet={{ id: "px-squirrel", name: "Pet" }} waiting={null} still /></div>);
     expect(shown).toContain('class="keeper"');
     expect(shown).toContain('class="pet-lane"');
-    const hidden = renderToStaticMarkup(<div className="pet-lane empty"><SidebarPet pet={{ id: "none", where: "side", name: "Pet" }} waiting={null} still /></div>);
+    const hidden = renderToStaticMarkup(<div className="pet-lane empty"><SidebarPet pet={{ id: "none", name: "Pet" }} waiting={null} still /></div>);
     expect(hidden).not.toContain('class="keeper"');
   });
 

@@ -220,7 +220,7 @@ export function Notice({ block }: { block: Of<"notice"> }) {
 }
 
 /** While a turn runs, the face and dots alone indicate typing (#31). */
-export function Typing({ name, room = false }: { name: string; status: Of<"status"> | null; room?: boolean }) {
+export function Typing({ name }: { name: string }) {
   return (
     <div className="msg reply" aria-label="Typing" data-testid="typing">
       <span className="gutter">
@@ -231,7 +231,6 @@ export function Typing({ name, room = false }: { name: string; status: Of<"statu
         <i />
         <i />
       </div>
-      {room ? <small className="typing-who">{name} is typing…</small> : null}
     </div>
   );
 }

@@ -14,7 +14,6 @@ export function suggestionsFor(history: readonly Block[], running: boolean, pend
     if (offer) answer.push("Yes, please", "Not now");
     else answer.push("Yes", "No");
   }
-  if (/\$\d|short|late fee|difference/i.test(lower) && /invoice|paid/i.test(lower)) answer.push("Ask them to waive it", "Show me the invoice");
   if (/library|saved .*\.(md|pdf|xlsx)|\b\w+\.(xlsx|pdf|md)\b/i.test(words)) answer.push("Open it");
   if (/stopped|paused/i.test(lower)) answer.push("Carry on");
   if (words.length > 600) answer.push("Make it shorter");

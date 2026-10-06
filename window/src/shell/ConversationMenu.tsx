@@ -99,9 +99,8 @@ export function publicShareLink(token: string, gatewayUrl: string, controlUiUrl?
 
 export function readDetail(raw: unknown): ConversationDetail {
   const s = rec(rec(raw).session);
-  const v = str(s.verboseLevel);
   const r = str(s.reasoningLevel);
-  return { verboseLevel: v === "on" || v === "full" ? v : "off", showThinking: r !== "off", workspace: str(rec(s.worktree).path) || null };
+  return { showThinking: r !== "off" };
 }
 
 /** `open` shows the ⋯ menu, the only conversation-header control. */
@@ -183,6 +182,7 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     restore: () => row && void p.actions.restore(row),
     snooze: (until) => row && void p.actions.snooze(row, until),
     copyLink: () => key && copy(conversationLink(key)),
+    ownWindow: () => key && window.open(conversationLink(key)),
     pin: () => row && void p.actions.pin(row),
     rename: p.onRename,
     profile: () => openTrunk(p, "profile"),

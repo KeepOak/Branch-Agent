@@ -9,10 +9,8 @@ import { isSnoozed } from "./list-model";
 import type { MenuItem } from "./Menu";
 import { menuIcon } from "./menu-icons";
 
-export type StepUpdates = "off" | "on" | "full";
-
 /** What the engine says about the open conversation (sessions.describe), as far as the menu needs it. */
-export type ConversationDetail = { verboseLevel: StepUpdates; showThinking: boolean; workspace: string | null };
+export type ConversationDetail = { showThinking: boolean };
 
 export type ConversationMenuRun = {
   beside: () => void;
@@ -27,6 +25,7 @@ export type ConversationMenuRun = {
   restore: () => void;
   snooze: (until: number | null) => void;
   copyLink: () => void;
+  ownWindow: () => void;
   pin: () => void;
   rename: () => void;
   profile: () => void;
@@ -89,7 +88,6 @@ export const OFF_REASONS = {
   offline: "Offline: reload when it connects.",
   noReply: "There's no reply to look inside yet.",
   move: "Connect another computer before moving this conversation.",
-  ownWindow: "Opening this conversation in its own app window isn't available yet.",
   tower: "The Control tower isn't available in this window yet.",
 } as const;
 
@@ -168,7 +166,7 @@ export function conversationMenuItems(c: ConversationMenuContext): MenuItem[] {
     item(c.besideOpen ? "Change the conversation beside" : "Open another conversation beside", "cols", c.run.beside),
     item("Split right", "cols", () => c.run.split("right")),
     item("Split down", "cols", () => c.run.split("down")),
-    off("Open in its own window", "panel", OFF_REASONS.ownWindow),
+    item("Open in its own window", "panel", c.run.ownWindow),
     item("Open its computer", "monitor", c.run.computer),
     item("Open the browser", "eye", c.run.browser),
     item("Switch light or dark", "spark", c.run.theme),

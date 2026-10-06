@@ -69,17 +69,22 @@ export function badgeList(row: Conversation, x: RowExtras | undefined): { icon: 
 }
 
 /** A working row's second line: what it is doing now, unless the owner turned headlines or live activity in the list off. */
+function workingText(row: Conversation, x: RowExtras | undefined): string {
+  if (x?.liveInList !== false && x?.headlines !== false) return row.headline || "Thinking";
+  return row.preview.trim() === "…" ? "Thinking" : row.preview;
+}
+
 /** The second line (§4.1.1.1): while working, its headline and a health word; failed shows why. */
 function secondLine(row: Conversation, state: RowState, x: RowExtras | undefined): { text: string; word: string; tone: string } | null {
   if (["trunk", "chatGroup", "outside"].includes(row.kind)) {
     if (state.waiting) return { text: row.preview, word: "Waiting on you", tone: "attn" };
-    if (state.working) return { text: "typing…", word: "", tone: "" };
+    if (state.working) return { text: row.headline ? workingText(row, x) : "typing…", word: "", tone: "" };
     return null;
   }
   const mark = row.runMark ? MARKS[row.runMark] : null;
   if (state.waiting) return { text: (x?.headlines !== false && row.headline) || row.preview, word: "Waiting on you", tone: "attn" };
   if (mark?.bad) return { text: row.preview, word: mark.word, tone: "bad" };
-  if (state.working) return { text: "typing…", word: "", tone: "" };
+  if (state.working) return { text: workingText(row, x), word: "", tone: "" };
   return null;
 }
 

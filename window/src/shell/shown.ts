@@ -40,13 +40,12 @@ export function hideMenuItems(hide: () => void, choose: () => void): MenuItem[] 
   ];
 }
 
-/** The pet as Appearance sets it (look keys pet, petWhere, petName), for the status bar (§6.5). */
-export function usePetLook(engine: WindowEngine): { id: string; where: string; name: string } {
+/** The pet as Appearance sets it (look keys pet and petName). */
+export function usePetLook(engine: WindowEngine): { id: string; name: string } {
   const store = lookStore(engine);
   const look = useSyncExternalStore((fn) => store.subscribe(fn), () => store.snap.look, () => store.snap.look);
   return {
     id: typeof look.pet === "string" ? look.pet : "px-squirrel",
-    where: typeof look.petWhere === "string" ? look.petWhere : "side",
     name: typeof look.petName === "string" && look.petName ? look.petName : "Hazel",
   };
 }

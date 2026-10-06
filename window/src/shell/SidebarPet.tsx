@@ -11,7 +11,7 @@ export function petWords(waiting: string | null, now = Date.now()): string {
   return waiting ? `${waiting} needs a yes. It’s in your Inbox.` : TIPS[Math.floor(now / 60000) % TIPS.length];
 }
 
-export function SidebarPet({ pet, waiting, still, working = false }: { pet: { id: string; where: string; name: string }; waiting: string | null; still: boolean; working?: boolean }) {
+export function SidebarPet({ pet, waiting, still, working = false }: { pet: { id: string; name: string }; waiting: string | null; still: boolean; working?: boolean }) {
   const strip = useRef<HTMLDivElement>(null);
   const [x, setX] = useState(0);
   const [dir, setDir] = useState(1);

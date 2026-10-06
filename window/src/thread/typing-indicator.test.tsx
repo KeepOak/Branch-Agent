@@ -4,7 +4,6 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Typing } from "./blocks";
-import type { Block } from "./model";
 
 vi.mock("../face/Face", () => ({ Face: () => <span data-testid="face" /> }));
 
@@ -21,8 +20,8 @@ afterEach(async () => {
 async function renderPhase(phase: string, attempt?: number, maxAttempts?: number): Promise<Element | null> {
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
-  const status: Extract<Block, { kind: "status" }> = { kind: "status", key: "status", phase, attempt, maxAttempts };
-  await act(async () => root?.render(<Typing name="Research" status={status} />));
+  void phase; void attempt; void maxAttempts;
+  await act(async () => root?.render(<Typing name="Research" />));
   return host.querySelector('[data-testid="typing"]');
 }
 
@@ -41,11 +40,11 @@ describe("typing indicator", () => {
     expect(typing?.textContent).toBe("");
   });
 
-  it("names the typing Trunk in a group without a phase filler", async () => {
+  it("shows avatar and dots in a group without a typing caption", async () => {
     const host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
-    await act(async () => root?.render(<Typing name="Research" status={null} room />));
-    expect(host.querySelector(".typing-who")?.textContent).toBe("Research is typing…");
+    await act(async () => root?.render(<Typing name="Research" />));
+    expect(host.querySelector(".typing-who")).toBeNull();
     expect(host.querySelectorAll(".typing i")).toHaveLength(3);
     expect(host.querySelector(".typing-words")).toBeNull();
   });

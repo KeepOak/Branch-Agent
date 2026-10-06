@@ -50,6 +50,8 @@ type Props = {
   replyTo?: Reply | null;
   onClearReply?: () => void;
   offline?: boolean;
+  /** The computer hosting this Branch connection. */
+  connectionTarget?: string;
   /** Drawn just above the message box, under the dock row: the waiting question (§4.2.2 "Question above the message box"). */
   above?: ReactNode;
   /** The plan's progress for the dock row's "1 of 4" chip. */
@@ -626,7 +628,7 @@ export function Composer(props: Props) {
             </section>
             <section className="c-tune-section"><h3>Status</h3>
               {bg.jobs.filter((job) => job.running).length ? <div className="c-tune-line"><span>{bg.jobs.filter((job) => job.running).length} in the background</span><button type="button" onClick={() => { setMenu(null); props.onOpenConversation?.(bg.jobs.find((job) => job.running)?.key ?? ""); }}>Open</button></div> : null}
-              <div className="c-tune-line"><span>{working ? "Working" : props.offline ? "Offline" : "Ready"}<small>{props.offline ? "The engine is not connected" : "Connected to this computer’s Branch"}</small></span></div>
+              <div className="c-tune-line"><span>{working ? "Working" : props.offline ? "Offline" : "Ready"}<small>{props.offline ? "The engine is not connected" : `Connected to ${props.connectionTarget || "this computer"}’s Branch`}</small></span></div>
             </section>
             <section className="c-tune-section"><h3>Usage</h3>
               <div className="c-tune-line"><span>{cost !== undefined ? `$${cost.toFixed(2)} in this conversation` : "No usage recorded for this conversation"}{accountEmail ? <small>{accountEmail}</small> : null}</span><button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/usage"); }}>Details</button></div>

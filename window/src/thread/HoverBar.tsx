@@ -31,6 +31,7 @@ export const NO_FLAG = "Not available in this engine yet: message flags (no engi
 export const NO_PIN = "Not available in this engine yet: pinned messages (no engine method pins one message).";
 export const NO_LEAVE_OUT = "Not available in this engine yet: leaving one message out of context.";
 export const NO_GOOD = "Not available in this engine yet: marking a good reply (no engine method keeps reply feedback).";
+export const NO_BAD = "Not available in this engine yet: marking a bad reply (no engine method keeps reply feedback).";
 export const NO_COMPARE = "Not available in this engine yet: asking a second model the same thing beside this reply.";
 export const NO_PICTURE = "Not available in this window yet: drawing a message as a picture.";
 export const NO_CODING_APP = "Carrying a conversation into a coding app on this computer needs the Branch app.";
@@ -116,7 +117,7 @@ function MoreMenu({ actions, isReply, onClose }: { actions: HoverActions; isRepl
       <hr className="msep" />
       <div className="pop-head">Feedback</div>
       {isReply ? item("Good reply", null, NO_GOOD) : null}
-      {isReply ? item("Bad reply", null, NO_GOOD) : null}
+      {isReply ? item("Bad reply", null, NO_BAD) : null}
       {isReply ? item("Flag", null, NO_FLAG) : null}
       <hr className="msep" />
       <div className="pop-head">Share</div>

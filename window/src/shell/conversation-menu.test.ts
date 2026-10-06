@@ -67,21 +67,21 @@ describe("P54 conversation header menu", () => {
   it("keeps all active view actions wired and greys unavailable ones with reasons", () => {
     calls.length = 0;
     const items = conversationMenuItems(ctx("regular", true));
-    for (const label of ["Search in this conversation", "Side panel", "Hide or show the list", "Open its computer", "Open the browser", "Switch light or dark", "Why each thing is here"]) {
+    for (const label of ["Search in this conversation", "Side panel", "Hide or show the list", "Open in its own window", "Open its computer", "Open the browser", "Switch light or dark", "Why each thing is here"]) {
       const found = items.find((i) => i.kind !== "sub" && i.kind !== "sep" && i.kind !== "head" && i.kind !== "custom" && i.label === label) as Extract<MenuItem, { run: () => void }>;
       expect(found.disabled).toBeUndefined();
       found.run();
     }
-    expect(calls).toEqual(["search", "sidePanel", "list", "computer", "browser", "theme", "guide"]);
+    expect(calls).toEqual(["search", "sidePanel", "list", "ownWindow", "computer", "browser", "theme", "guide"]);
     const tower = items.find((i) => i.kind !== "sub" && i.kind !== "sep" && i.kind !== "head" && i.kind !== "custom" && i.label === "Hide the Control tower") as Extract<MenuItem, { disabled?: string }>;
     expect(tower.disabled).toBe(OFF_REASONS.tower);
   });
 });
 
 describe("the menu's engine reads", () => {
-  it("reads step updates, thinking and the folder from sessions.describe", () => {
-    expect(readDetail({ session: { verboseLevel: "full", reasoningLevel: "on", worktree: { path: "/w" } } })).toEqual({ verboseLevel: "full", showThinking: true, workspace: "/w" });
-    expect(readDetail({ session: {} })).toEqual({ verboseLevel: "off", showThinking: true, workspace: null });
+  it("reads thinking from sessions.describe", () => {
+    expect(readDetail({ session: { reasoningLevel: "on" } })).toEqual({ showThinking: true });
+    expect(readDetail({ session: {} })).toEqual({ showThinking: true });
   });
   it("builds conversation and public share links from the window and engine addresses", () => {
     expect(conversationLink("agent:main:x y", "http://127.0.0.1:5174/?a=1#top")).toBe("http://127.0.0.1:5174/?conversation=agent%3Amain%3Ax+y");
