@@ -346,7 +346,7 @@ describe("createEmbeddingProvider", () => {
     expect(result.provider?.model).toBe(expectedModel);
   });
 
-  it("does not run priority-based auto-selection after a skippable setup failure", async () => {
+  it("does not select a paid provider by priority for legacy auto mode", async () => {
     registerTestMemoryAdapter(createMissingCredentialsAdapter({ autoSelectPriority: 10 }));
     registerTestMemoryAdapter({
       id: "openai",
@@ -362,10 +362,9 @@ describe("createEmbeddingProvider", () => {
       }),
     });
 
-    const result = await createEmbeddingProvider(createOptions("auto"));
-
-    expect(result.provider?.id).toBe("openai");
-    expect(result.requestedProvider).toBe("openai");
+    await expect(createEmbeddingProvider(createOptions("auto"))).rejects.toThrow(
+      "Unknown memory embedding provider: local",
+    );
   });
 
   it("uses a generic embedding provider when no memory-specific provider exists", async () => {
@@ -504,7 +503,7 @@ describe("createEmbeddingProvider", () => {
     });
 
     await expect(createEmbeddingProvider(createOptions("auto"))).rejects.toThrow(
-      "Unknown memory embedding provider: openai",
+      "Unknown memory embedding provider: local",
     );
   });
 
