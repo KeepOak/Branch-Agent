@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3d23bf9dd463f6cec1928cc65a7297c885a4529e:src/daemon/schtasks.env-case.real.test.ts (atlas OPS-0002). Changed for Branch: retain current upstream child-close ownership and cleanup assertions.
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";

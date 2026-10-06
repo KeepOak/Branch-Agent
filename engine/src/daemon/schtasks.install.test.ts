@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/daemon/schtasks.install.test.ts (atlas OPS-0002). Changed for Branch: assert the complete configured custom task name after DECISIONS.md item 133 rebranding.
 // Windows schtasks install tests cover scheduled task installation behavior.
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -393,7 +394,9 @@ describe("installScheduledTask", () => {
     await expect(readScheduledTaskCommand(callerEnv)).resolves.toMatchObject({
       programArguments: ["node", "gateway.js"],
     });
-    expect(script).toContain('set "BRANCH_WINDOWS_TASK_NAME=Branch Custom Gateway"');
+    expect(script).toContain(
+      `set "BRANCH_WINDOWS_TASK_NAME=${callerEnv.BRANCH_WINDOWS_TASK_NAME}"`,
+    );
     expect(script).not.toContain('set "BRANCH_WINDOWS_TASK_HIDDEN_LAUNCHER=');
     expect(launcher).toContain(
       'shell.Environment("Process")("BRANCH_WINDOWS_TASK_HIDDEN_LAUNCHER") = "wscript"',
@@ -459,7 +462,13 @@ describe("installScheduledTask", () => {
       expectInitialTaskQuery();
       expect(schtasksCalls.map((call) => call[0])).toEqual(commands);
       const createCall = schtasksCalls[xmlIndex];
-      expect(createCall?.slice(0, 5)).toEqual(["/Create", "/F", "/TN", "Branch Agent Gateway", "/XML"]);
+      expect(createCall?.slice(0, 5)).toEqual([
+        "/Create",
+        "/F",
+        "/TN",
+        "Branch Agent Gateway",
+        "/XML",
+      ]);
       expect(createCall).not.toContain("/RU");
       expect(createCall).not.toContain("/NP");
       expectTaskRunCall(xmlIndex + 2);

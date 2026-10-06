@@ -2,6 +2,11 @@ engine:src/channels/status/read-model.test.ts
 engine:src/channels/transport/stall-watchdog.test.ts
 engine:src/commands/channels.status.command-flow.test.ts
 engine:src/commands/gateway-status.test.ts
+engine:src/daemon/schtasks.env-case.real.test.ts
+engine:src/daemon/schtasks.install.test.ts
+engine:src/daemon/schtasks.startup-fallback.test.ts
+engine:src/daemon/schtasks.startup-launch.test.ts
+engine:src/daemon/schtasks.test.ts
 engine:src/gateway/gateway-http-route-contracts.test.ts
 engine:src/gateway/local-http-probe.test.ts
 engine:src/gateway/probe.auth.integration.test.ts
