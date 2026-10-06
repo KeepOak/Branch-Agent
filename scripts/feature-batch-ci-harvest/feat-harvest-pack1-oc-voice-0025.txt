@@ -5,6 +5,8 @@
 # VOICE-0059: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
 # VOICE-0064: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
 # VOICE-0068: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
+# VOICE-0075 blocked: needs macOS: native VoicePushToTalk and VoiceSessionCoordinator are absent from Branch; AppKit global NSEvent Right Option monitoring and Speech/AVFoundation are unavailable on Linux.
+# Upstream 57e0aaa1c190f1abe16e597008fbcc14f5e609e3: no tests recorded; native behavior test cannot run without the macOS application target.
 engine:extensions/gradium/speech-provider.test.ts
 engine:extensions/gradium/tts.test.ts
 engine:extensions/senseaudio/media-understanding-provider.test.ts
