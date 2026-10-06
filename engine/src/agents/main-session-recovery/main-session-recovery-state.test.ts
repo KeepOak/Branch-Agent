@@ -973,3 +973,14 @@ describe("main session recovery state", () => {
     });
   });
 });
+
+it("timestamps a legacy interrupted cycle once when startup observes it", () => {
+  const entry = interruptedEntry({ mainRestartRecovery: undefined });
+  const before = Date.now();
+  observe(entry, "generation-1");
+  const interruptedAt = entry.mainRestartRecovery?.interruptedAt;
+  expect(interruptedAt).toBeGreaterThanOrEqual(before);
+  expect(interruptedAt).toBeLessThanOrEqual(Date.now());
+  observe(entry, "generation-1");
+  expect(entry.mainRestartRecovery?.interruptedAt).toBe(interruptedAt);
+});

@@ -58,7 +58,7 @@ it("does not revive an ancient in-flight turn merely because its session update 
       {
         sessionId,
         status: "running",
-        startedAt: Date.now() - 2 * 60 * 60_000,
+        startedAt: Date.now() - 97 * 60 * 60_000,
         updatedAt: Date.now() - 60_000,
       },
     );
@@ -75,22 +75,139 @@ it("does not revive an ancient in-flight turn merely because its session update 
 it("recovers a fresh exact turn even when its session update timestamp is old", async () => {
   await withBranchTestState({ label: "recovery-fresh-active-turn" }, async (state) => {
     const sessionKey = "agent:main:main";
+    const startedAt = Date.now() - 10 * 60_000;
     await replaceSessionEntry(
       { sessionKey },
       {
         sessionId: "fresh-turn",
         status: "running",
-        startedAt: Date.now() - 10 * 60_000,
+        startedAt,
         updatedAt: Date.now() - 2 * 60 * 60_000,
       },
     );
     const result = await markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir });
     expect(result).toEqual({ marked: 1, skipped: 0 });
+    const interruptedAt = loadSessionEntry({ sessionKey })?.mainRestartRecovery?.interruptedAt;
+    expect(interruptedAt).toBeGreaterThanOrEqual(Date.now() - 5_000);
+    expect(interruptedAt).toBeLessThanOrEqual(Date.now());
     expect(loadSessionEntry({ sessionKey })).toMatchObject({
       status: "running",
       abortedLastRun: true,
-      mainRestartRecovery: { interruptedAt: expect.any(Number), turnStartedAt: expect.any(Number) },
+      mainRestartRecovery: { interruptedAt, turnStartedAt: startedAt },
     });
+  });
+});
+
+it("preserves an existing interruption mark on a repeat startup scan", async () => {
+  await withBranchTestState({ label: "recovery-repeat-mark" }, async (state) => {
+    const sessionKey = "agent:main:main";
+    const interruptedAt = Date.now() - 2 * 60_000;
+    await replaceSessionEntry(
+      { sessionKey },
+      {
+        sessionId: "already-marked",
+        status: "running",
+        abortedLastRun: true,
+        updatedAt: Date.now(),
+        mainRestartRecovery: {
+          cycleId: "shutdown-timeout-cycle",
+          revision: 1,
+          chargedAttempts: 0,
+          interruptedAt,
+        },
+      },
+    );
+    expect(await markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir })).toEqual({
+      marked: 0,
+      skipped: 0,
+    });
+    expect(loadSessionEntry({ sessionKey })?.mainRestartRecovery).toMatchObject({
+      cycleId: "shutdown-timeout-cycle",
+      interruptedAt,
+    });
+  });
+});
+
+it("keeps a two-hour in-flight turn eligible under the default 48-hour agent timeout", async () => {
+  await withBranchTestState({ label: "recovery-long-active-turn" }, async (state) => {
+    const sessionKey = "agent:main:main";
+    const startedAt = Date.now() - 2 * 60 * 60_000;
+    await replaceSessionEntry(
+      { sessionKey },
+      {
+        sessionId: "long-running-turn",
+        status: "running",
+        startedAt,
+        updatedAt: Date.now(),
+      },
+    );
+    expect(await markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir })).toEqual({
+      marked: 1,
+      skipped: 0,
+    });
+    expect(loadSessionEntry({ sessionKey })?.mainRestartRecovery?.turnStartedAt).toBe(startedAt);
+  });
+});
+
+it("marks only the turn still in flight after another session already finished", async () => {
+  await withBranchTestState({ label: "recovery-only-in-flight" }, async (state) => {
+    const startedAt = Date.now() - 60_000;
+    await replaceSessionEntry(
+      { sessionKey: "agent:main:finished" },
+      {
+        sessionId: "finished",
+        status: "done",
+        startedAt,
+        endedAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    );
+    await replaceSessionEntry(
+      { sessionKey: "agent:main:in-flight" },
+      {
+        sessionId: "in-flight",
+        status: "running",
+        startedAt,
+        updatedAt: Date.now(),
+      },
+    );
+    expect(await markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir })).toEqual({
+      marked: 1,
+      skipped: 0,
+    });
+    expect(loadSessionEntry({ sessionKey: "agent:main:finished" })?.abortedLastRun).not.toBe(true);
+    expect(loadSessionEntry({ sessionKey: "agent:main:in-flight" })?.abortedLastRun).toBe(true);
+  });
+});
+
+it("recovers an absolute turn start across a process timezone change", async () => {
+  await withBranchTestState({ label: "recovery-timezone" }, async (state) => {
+    const sessionKey = "agent:main:main";
+    const priorTz = process.env.TZ;
+    try {
+      process.env.TZ = "Etc/GMT+7";
+      const startedAt = Date.now() - 60_000;
+      await replaceSessionEntry(
+        { sessionKey },
+        {
+          sessionId: "timezone-turn",
+          status: "running",
+          startedAt,
+          updatedAt: startedAt,
+        },
+      );
+      process.env.TZ = "UTC";
+      expect(
+        await markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir }),
+      ).toEqual({ marked: 1, skipped: 0 });
+      expect(loadSessionEntry({ sessionKey })?.mainRestartRecovery?.turnStartedAt).toBe(startedAt);
+    } finally {
+      if (priorTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = priorTz;
+      }
+    }
   });
 });
 

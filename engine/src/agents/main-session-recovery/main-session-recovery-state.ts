@@ -407,9 +407,12 @@ export function transitionMainSessionRecovery(
         !entry.mainRestartRecovery
       ) {
         // Acquire recovery identity before scanning interrupted rows.
-        entry.mainRestartRecovery = createCycle(command.cycleId);
+        entry.mainRestartRecovery = createCycle(command.cycleId, Date.now());
       }
       let state = entry.mainRestartRecovery;
+      if (state && entry.abortedLastRun === true) {
+        state.interruptedAt ??= Date.now();
+      }
       if (
         state?.foregroundClaims &&
         state.foregroundClaims.lifecycleGeneration !== command.lifecycleGeneration

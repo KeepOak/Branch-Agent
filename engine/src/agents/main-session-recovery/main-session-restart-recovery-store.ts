@@ -544,16 +544,11 @@ export async function recoverStore(params: {
     const recoveryNow = Date.now();
     if (
       !entry.pendingFinalDelivery &&
-      (!isFreshRestartInterruption({
-        timestamp: entry.mainRestartRecovery?.turnStartedAt,
+      !isFreshRestartInterruption({
+        timestamp: entry.mainRestartRecovery?.interruptedAt,
         now: recoveryNow,
         cfg: params.cfg,
-      }) ||
-        !isFreshRestartInterruption({
-          timestamp: entry.mainRestartRecovery?.interruptedAt,
-          now: recoveryNow,
-          cfg: params.cfg,
-        }))
+      })
     ) {
       const endedAt = Date.now();
       await updateSessionEntry(

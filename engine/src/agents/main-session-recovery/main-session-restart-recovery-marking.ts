@@ -20,6 +20,7 @@ import {
 } from "../../infra/agent-events.js";
 import { hasLiveAgentRunContext, listAgentRunsForSession } from "../../infra/agent-run-registry.js";
 import { captureGatewaySessionWorkAdmissions } from "../../sessions/session-lifecycle-admission.js";
+import { resolveAgentTimeoutMs } from "../timeout.js";
 import { createCurrentProcessOwnerLookup } from "./main-session-recovery-live-owners.js";
 import {
   isMainRestartRecoveryAggregateTerminalOnly,
@@ -385,14 +386,13 @@ async function markOrphanedMainSessionStore(
         return undefined;
       }
       orphanChecks.push(hasLiveOwner);
+      const startedAt = asFiniteNumber(entry.startedAt);
       if (
         entry.status === "running" &&
         !entry.pendingFinalDelivery &&
-        !isFreshRestartInterruption({
-          timestamp: asFiniteNumber(entry.startedAt),
-          now: Date.now(),
-          cfg: params.cfg,
-        })
+        startedAt !== undefined &&
+        Date.now() - startedAt >
+          Math.max(60 * 60_000, 2 * resolveAgentTimeoutMs({ cfg: params.cfg }))
       ) {
         return { action: "retire_stale" };
       }
