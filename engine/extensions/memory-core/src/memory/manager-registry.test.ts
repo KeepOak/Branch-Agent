@@ -238,6 +238,41 @@ describe("memory index", () => {
     });
   });
 
+  it("projects progress from a transient gateway memory manager", async () => {
+    const cfg = createCfg({ provider: "local" });
+    const transient = await RuntimeMemoryIndexManager.get({ cfg, agentId: "main", purpose: "cli" });
+    const status = await RuntimeMemoryIndexManager.get({ cfg, agentId: "main", purpose: "status" });
+    if (!transient || !status) {
+      throw new Error("Expected transient and status memory managers");
+    }
+    trackManager(transient);
+    trackManager(status);
+
+    let releaseProviderInit: () => void = () => {};
+    providerFixture.providerInitGate = new Promise<void>((resolve) => {
+      releaseProviderInit = resolve;
+    });
+    providerFixture.providerPreparationUpdate = { downloadedSize: 32, totalSize: 128 };
+    const probe = transient.probeEmbeddingAvailability();
+    try {
+      await vi.waitFor(() => expect(providerFixture.providerCalls).toHaveLength(1));
+      expect(status.status().custom?.providerPreparationProgress).toEqual({
+        downloadedSize: 32,
+        totalSize: 128,
+      });
+    } finally {
+      releaseProviderInit();
+      providerFixture.providerInitGate = null;
+    }
+    await probe;
+    expect(status.status()).toMatchObject({ provider: "mock", custom: { searchMode: "hybrid" } });
+    (transient as unknown as { providerChangeProgress: { completed: number; total: number } }).providerChangeProgress =
+      { completed: 3, total: 8 };
+    expect(status.status().custom?.providerChangeProgress).toEqual({ completed: 3, total: 8 });
+    await transient.close();
+    expect(status.status().custom?.providerChangeProgress).toBeUndefined();
+  });
+
   it("retires the prior builtin manager when an agent workspace changes", async () => {
     const firstCfg = createCfg({ model: "workspace-model" });
     const secondCfg = createCfg({ model: "workspace-model" });

@@ -125,6 +125,15 @@ export class MemoryManagerRegistry<T extends ClosableMemoryManager> {
     return undefined;
   }
 
+  findTracked(predicate: (manager: T) => boolean): T | undefined {
+    for (const [manager, owner] of this.managers) {
+      if (!owner.retiring && predicate(manager)) {
+        return manager;
+      }
+    }
+    return undefined;
+  }
+
   async createProvider(
     manager: T,
     adapter: MemoryEmbeddingProviderAdapter,
