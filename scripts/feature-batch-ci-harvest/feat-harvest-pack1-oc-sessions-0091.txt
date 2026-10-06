@@ -1,1 +1,4 @@
+engine:src/config/sessions/entry-freshness.test.ts
+engine:src/config/sessions/reset-policy.test.ts
+engine:src/config/sessions/reset.test.ts
 engine:src/sessions/session-created.test.ts
