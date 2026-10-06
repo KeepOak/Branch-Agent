@@ -190,6 +190,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "groupId",
   "subject",
   "topicName",
+  "topicMuted",
   "groupChannel",
   "space",
   "skillsSnapshot",

@@ -3,8 +3,10 @@
 // saves through agents.update; the small model line reads agents.defaults.utilityModel.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../../connect/engine";
+import { useState } from "react";
 import { trunkAppearance } from "../../../face/appearance";
 import { askBeforeDelete } from "../../../shell/ConfirmDelete";
+import { readTopicDefaultLayout, setTopicDefaultLayout, type TopicLayout } from "../../../shell/TopicsNav";
 import { list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Ctl, LinkBtn, Sec, Seg, Switch, useConfig, useLevel, useSaveRunner, Val } from "../kit";
@@ -101,6 +103,7 @@ function PicturesSec() {
 }
 
 function ListSec({ engine, look, openSettings }: MoreProps) {
+  const [topicLayout, setTopicLayout] = useState(readTopicDefaultLayout);
   const save = useSaveRunner();
   const level = useLevel();
   const cfg = useConfig(engine);
@@ -110,6 +113,9 @@ function ListSec({ engine, look, openSettings }: MoreProps) {
   const smallLine = small === undefined ? "Chosen by Branch (Automatic, from Models › Sub-tasks and side jobs)" : small === "" ? `None (${where})` : `${visible(small)} (${where})`;
   return (
     <Sec title="The list">
+      <Ctl title="Threads show as" sub="Choose how each contact's threads appear. A contact can have its own view.">
+        <Seg value={topicLayout} options={[{ id: "column", label: "Column" }, { id: "rail", label: "Emoji rail" }, { id: "side", label: "Side tabs" }, { id: "tabs", label: "Tabs above the chat" }]} label="Threads show as" onChange={(value) => { setTopicLayout(value as TopicLayout); setTopicDefaultLayout(value as TopicLayout); }} />
+      </Ctl>
       <Ctl title="Ask before deleting a conversation" sub="Removing a kept working copy always asks." keep="everywhere">
         <Switch checked={ask} label="Ask before deleting a conversation" onChange={(on) => void save(() => look.store.set("askDelete", on))} />
       </Ctl>

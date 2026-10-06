@@ -227,11 +227,6 @@
   overflow-x: auto;
   scrollbar-width: none;
 }
-.global .conv-tools > .contact-conversations-button {
-  width: auto;
-  padding: 0 8px;
-  white-space: nowrap;
-}
 .topbar .global > .ib.guide-btn,
 .topbar .global > [data-testid="theme"],
 .topbar .global > [data-testid="list-toggle"] {

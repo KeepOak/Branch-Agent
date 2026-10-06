@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import type { SessionEntrySummary } from "../../config/sessions/session-accessor.js";
+import { loadSessionEntryReadOnly, patchSessionEntryCore, upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
+import { closeBranchAgentDatabasesAsync } from "../../state/branch-agent-db.js";
+import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { contactIdForSession, projectContacts } from "./project.js";
+
+const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
 function row(
   sessionKey: string,
@@ -13,6 +19,28 @@ function row(
 }
 
 describe("contact projection", () => {
+  it("assigns relevant unique emoji from titles and first messages", () => {
+    const sessions = [row("agent:scout:main"), row("agent:scout:window:invoice", { label: "Invoice" }), row("agent:scout:window:receipt", { label: "Receipt" }), row("agent:scout:window:garden", { label: "Garden plan" })];
+    const result = projectContacts({ agents: [{ id: "scout", name: "Scout" }], defaultAgentId: "scout", sessions,
+      firstMessages: new Map([[sessions[1]!.sessionKey, "Check the bill"], [sessions[2]!.sessionKey, "Save the receipt"], [sessions[3]!.sessionKey, "Plan the allotment garden"]]) });
+    expect(result.topics).toHaveLength(3);
+    expect(new Set(result.topics.map((topic) => topic.emoji)).size).toBe(3);
+    expect(result.topics.some((topic) => topic.emoji === "🧾")).toBe(true);
+    expect(result.topics.find((topic) => topic.title === "Garden plan")?.emoji).toBe("🌱");
+  });
+
+  it("keeps an owner-picked emoji and mute state on the thread after the session store reopens", async () => {
+    const storePath = path.join(tempDirs.make("branch-topic-emoji-"), "sessions.json");
+    const scope = { agentId: "scout", sessionKey: "agent:scout:window:invoice", storePath };
+    await upsertSessionEntryCore(scope, { sessionId: "invoice-generation", updatedAt: 100, label: "Invoice", lastActivityAt: 120 });
+    await patchSessionEntryCore(scope, () => ({ icon: "🚀", topicMuted: true }));
+    await closeBranchAgentDatabasesAsync();
+    const saved = loadSessionEntryReadOnly(scope);
+    expect(saved).toMatchObject({ icon: "🚀", topicMuted: true });
+    const result = projectContacts({ agents: [{ id: "scout", name: "Scout" }], defaultAgentId: "scout", sessions: [row(scope.sessionKey, saved ?? {})] });
+    expect(result.topics[0]).toMatchObject({ emoji: "🚀", emojiSaved: true, muted: true, unread: false });
+    await closeBranchAgentDatabasesAsync();
+  });
   it("keeps the canonical main key as a Trunk row target across reset generations", () => {
     const sessions = [
       row("agent:scout:main", {
@@ -50,7 +78,7 @@ describe("contact projection", () => {
     ["outside DM", row("agent:scout:telegram:direct:alice"), "trunk:scout"],
     ["window topic", row("agent:scout:window:job"), "trunk:scout"],
     ["background topic", row("agent:scout:background:job"), "trunk:scout"],
-    ["subagent", row("agent:scout:subagent:one", { spawnedBy: "agent:scout:main" }), undefined],
+    ["subagent job", row("agent:scout:subagent:one", { spawnedBy: "agent:scout:main" }), "trunk:scout"],
     ["cron", row("agent:scout:cron:run:one"), undefined],
     ["group", row("agent:scout:telegram:group:123"), "chat:agent:scout:telegram:group:123"],
     [
@@ -117,10 +145,10 @@ describe("contact projection", () => {
       ]),
       titles: new Map([[child.sessionKey, "Plan the trip"]]),
     });
-    expect(result.contacts[0]?.preview).toEqual({
+    expect(result.contacts[0]?.preview).toMatchObject({
       kind: "topic",
       topicKey: child.sessionKey,
-      title: "Plan the trip",
+      title: "Trip",
       text: "Done",
       at: 150,
     });

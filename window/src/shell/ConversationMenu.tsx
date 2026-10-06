@@ -27,6 +27,7 @@ import { notify } from "./notify";
 import { ShareDialog } from "./ShareDialog";
 import { whoItKnowsItems } from "./who-it-knows-menu";
 import { roomMenuItems } from "../rooms/room-menu";
+import { TOPIC_LAYOUTS, TOPIC_LAYOUT_NAMES, type TopicLayout } from "./TopicsNav";
 import "./conversation-menu.css";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
@@ -63,6 +64,7 @@ export type ConversationMenuProps = {
   onManageComputers: () => void;
   /** A room (rooms/): its rule on the Room rules row, and the Room rules menu. */
   room?: { ruleWords: string | null; rules: () => MenuItem[] } | null;
+  topicView?: { layout: TopicLayout; onChoose: (layout: TopicLayout) => void };
 };
 
 type Open =
@@ -150,6 +152,10 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     room: p.room ? roomMenuItems({ ruleWords: p.room.ruleWords, canLeave: Boolean(p.row && !p.isMain), run: { rename: run.rename, rules: () => setOpen({ kind: "rules", at: menuAnchor() }), leave: run.archive, remove: run.remove } }) : null,
     run,
   });
+  if (p.topicView) items.unshift({ kind: "sub", label: "View", items: [
+    { kind: "head", label: "Threads show as" },
+    ...TOPIC_LAYOUTS.map((layout): MenuItem => ({ label: TOPIC_LAYOUT_NAMES[layout], checked: p.topicView?.layout === layout, run: () => p.topicView?.onChoose(layout) })),
+  ] });
   let bookmarked: string[] = [];
   try { if (key) bookmarked = JSON.parse(localStorage.getItem(`branch:turn-bookmarks:${key}`) ?? "[]") as string[]; } catch { /* storage unavailable */ }
   const ticks = useMemo(() => railTicks(p.history), [p.history]);

@@ -88,6 +88,7 @@ async function readProjection({
     }));
   const previews = new Map<string, string>();
   const titles = new Map<string, string>();
+  const firstMessages = new Map<string, string>();
   // Transcript previews are bound to the current generation. A failed/cold read
   // leaves the preview empty instead of borrowing text from a different thread.
   for (const row of visible) {
@@ -99,6 +100,7 @@ async function readProjection({
         sessionEntry: row.entry,
       });
       previews.set(row.sessionKey, fields.lastMessagePreview ?? "");
+      firstMessages.set(row.sessionKey, fields.firstUserMessage ?? "");
       const title = deriveSessionTitle(row.entry, fields.firstUserMessage);
       if (title) titles.set(row.sessionKey, title);
     } catch {
@@ -127,6 +129,7 @@ async function readProjection({
       sessions: visible,
       previews,
       titles,
+      firstMessages,
       outsidePeers: withOutsideAgents(listA2aPeers(cfg)),
     }),
     sessionKeys: new Set(visible.map((row) => row.sessionKey)),

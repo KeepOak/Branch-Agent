@@ -20,6 +20,7 @@ const SessionsPatchMutationProperties = {
   /** Automatic device name, separate from explicit user renames; null clears it. */
   autoLabel: Type.Optional(Type.Union([SessionLabelString, Type.Null()])),
   icon: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  topicMuted: Type.Optional(Type.Boolean()),
   /** Named sidebar tint from SESSION_COLOR_IDS; null clears it. */
   color: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   /** User-defined organization bucket ("category", not chat-group); null clears it. */

@@ -94,5 +94,6 @@ export {
 export type * from "./schema-types.js";
 export type { GatewayCoreRequestParams } from "./core-request-params.js";
 export type { SessionsPatchResult } from "./sessions-patch-result.js";
+export { TOPIC_EMOJI, rankTopicEmoji, chooseTopicEmojis } from "./topic-emoji.js";
 
 export * from "./schema/session-processes.js";

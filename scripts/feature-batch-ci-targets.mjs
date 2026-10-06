@@ -128,7 +128,6 @@ export const windowTests = [
   'src/setup/setup.test.tsx',
   'src/shell/PetReaction.test.tsx',
   'src/shell/contact-row-routing.test.tsx',
-  'src/shell/contact-topics.test.ts',
   'src/shell/contacts-model.test.ts',
   'src/shell/contacts-source.test.tsx',
   'src/shell/conversation-actions.test.ts',

@@ -599,6 +599,8 @@ type SessionEntryCore = SessionRestartRecoveryState &
     subject?: string;
     /** Display-only topic name; subject remains the group name used for routing. */
     topicName?: string;
+    /** A muted topic stays visible but does not contribute unread badges. */
+    topicMuted?: boolean;
     groupChannel?: string;
     space?: string;
     /** Last ambient room message durably appended to this transcript, keyed by channel scope. */

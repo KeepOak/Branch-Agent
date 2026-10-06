@@ -3,6 +3,7 @@ import { resolveCanonicalMainSessionKey } from "../../config/sessions/main-sessi
 import type { SessionEntrySummary } from "../../config/sessions/session-accessor.js";
 import type { SessionScope } from "../../config/sessions/types.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
+import { chooseTopicEmojis, TOPIC_EMOJI } from "../../../packages/gateway-protocol/src/topic-emoji.js";
 
 export type ContactAgent = { id: string; name: string; iconUrl?: string };
 export type OutsidePeer = {
@@ -25,6 +26,7 @@ export type ContactProjectionInput = {
   sessions: readonly SessionEntrySummary[];
   previews?: ReadonlyMap<string, string>;
   titles?: ReadonlyMap<string, string>;
+  firstMessages?: ReadonlyMap<string, string>;
   outsidePeers?: readonly OutsidePeer[];
   /** Whether a session has a live run in the engine's run registry (the source sessions.list uses). */
   isWorking?: (row: SessionEntrySummary) => boolean;
@@ -44,8 +46,6 @@ export function contactIdForSession(row: SessionEntrySummary): string | undefine
   const parsed = parseAgentSessionKey(row.sessionKey);
   if (
     !parsed ||
-    row.entry.spawnedBy ||
-    (row.entry.spawnDepth ?? 0) > 0 ||
     parsed.rest.startsWith("cron:") ||
     parsed.rest.includes(":cron:") ||
     parsed.rest.startsWith("room:") ||
@@ -62,8 +62,9 @@ export function contactIdForSession(row: SessionEntrySummary): string | undefine
 
 function topicTitle(row: SessionEntrySummary, preview: string, derivedTitle?: string): string {
   const outsideDm = row.sessionKey.match(/:([^:]+):direct:([^:]+)$/);
-  return (
-    row.entry.label?.trim() ||
+  const explicit = row.entry.label?.trim();
+  if (explicit) return explicit;
+  const title = (
     row.entry.topicName?.trim() ||
     row.entry.displayName?.trim() ||
     (outsideDm ? `${outsideDm[1]} \u00b7 ${outsideDm[2]}` : undefined) ||
@@ -71,6 +72,9 @@ function topicTitle(row: SessionEntrySummary, preview: string, derivedTitle?: st
     preview.trim().slice(0, 80) ||
     row.sessionKey
   );
+  const verb = /^(fix|watch|save|match|tidy|refactor|add|test|find|check|make|book|read|write|plan|send|put|sort|clean|update|review|build|run)\s+(?:the|a|an|my|every|all)?\s*/i;
+  const shortened = title.split(" · ")[0]!.replace(verb, "").replace(/\s+(through|on|for|to|since|from|with|before|after|in|into)\s+.*$/i, "").trim();
+  return (shortened || title).replace(/^./, (letter) => letter.toUpperCase());
 }
 
 export function projectContacts(input: ContactProjectionInput): {
@@ -131,7 +135,8 @@ export function projectContacts(input: ContactProjectionInput): {
               : working(row)
                 ? "working"
                 : "active",
-        unread: isContactUnread(entry),
+        unread: isContactUnread(entry) && !entry.topicMuted,
+        ...(entry.topicMuted ? { muted: true } : {}),
         ...(entry.pinnedAt ? { pinnedAt: entry.pinnedAt } : {}),
         ...(entry.projectId ? { projectId: entry.projectId } : {}),
         ...(entry.category ? { folder: entry.category } : {}),
@@ -222,7 +227,8 @@ export function projectContacts(input: ContactProjectionInput): {
           : working(child)
             ? "working"
             : "active",
-      unread: isContactUnread(child.entry),
+      unread: isContactUnread(child.entry) && !child.entry.topicMuted,
+      ...(child.entry.topicMuted ? { muted: true } : {}),
       ...(child.entry.pinnedAt ? { pinnedAt: child.entry.pinnedAt } : {}),
       ...(child.entry.projectId ? { projectId: child.entry.projectId } : {}),
       ...(child.entry.category ? { folder: child.entry.category } : {}),
@@ -298,7 +304,8 @@ export function projectContacts(input: ContactProjectionInput): {
         : working(row)
           ? "working"
           : "active",
-      unread: isContactUnread(row.entry),
+      unread: isContactUnread(row.entry) && !row.entry.topicMuted,
+      ...(row.entry.topicMuted ? { muted: true } : {}),
       ...(row.entry.pinnedAt ? { pinnedAt: row.entry.pinnedAt } : {}),
     }));
     topics.push(...outsideTopics);
@@ -336,5 +343,18 @@ export function projectContacts(input: ContactProjectionInput): {
       Number(Boolean(b.pinnedAt)) - Number(Boolean(a.pinnedAt)) ||
       b.lastActivityAt - a.lastActivityAt,
   );
+  const emojiCatalog = new Set(TOPIC_EMOJI.map((item) => item.emoji));
+  for (const contact of contacts) {
+    const siblings = topics.filter((topic) => topic.contactId === contact.id);
+    const selected = chooseTopicEmojis(siblings.map((topic) => {
+      const icon = byKey.get(topic.key)?.entry.icon;
+      return { key: topic.key, title: topic.title, firstMessage: input.firstMessages?.get(topic.key) ?? input.previews?.get(topic.key) ?? "", savedEmoji: icon && emojiCatalog.has(icon) ? icon : undefined };
+    }));
+    for (const topic of siblings) {
+      topic.emoji = selected.get(topic.key);
+      topic.emojiSaved = Boolean(byKey.get(topic.key)?.entry.icon && emojiCatalog.has(byKey.get(topic.key)!.entry.icon!));
+    }
+    if (contact.preview.kind === "topic") contact.preview.emoji = selected.get(contact.preview.topicKey);
+  }
   return { contacts, topics, defaultId: `trunk:${input.defaultAgentId}` };
 }

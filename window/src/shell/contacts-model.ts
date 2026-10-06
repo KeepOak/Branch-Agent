@@ -20,7 +20,7 @@ export function projectContact(raw: readonly GatewayContact[], sessions: readonl
 export function contactRow(contact: Contact): Conversation {
   const base = contact.thread;
   const preview = contact.preview.kind === "topic"
-    ? `${contact.preview.title}: ${contact.preview.text}`
+    ? `${contact.preview.emoji ?? "💬"} ${contact.preview.title}: ${contact.preview.text}`
     : contact.preview.text;
   return {
     key: contact.threadKey, title: contact.name, agentId: base?.agentId ?? (contact.kind === "trunk" ? contact.id.slice(6) : undefined),
@@ -85,4 +85,12 @@ export async function listContactTopics(contactId: string, request: (method: str
     cursor = page.nextCursor;
   } while (cursor);
   return topics;
+}
+
+/** Commit engine-ranked suggestions once; later reads use the saved icon, including after a restart. */
+export async function saveSuggestedTopicEmojis(topics: readonly Topic[], request: (method: string, params: unknown) => Promise<unknown>): Promise<void> {
+  for (const topic of topics) {
+    if (!topic.emoji || topic.emojiSaved) continue;
+    await request("sessions.patch", { key: topic.key, icon: topic.emoji });
+  }
 }
