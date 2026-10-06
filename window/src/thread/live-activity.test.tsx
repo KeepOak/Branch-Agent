@@ -268,3 +268,12 @@ it("follows the list settings for a working Trunk row", async () => {
   expect(container.querySelector(".row-preview")?.textContent).toContain("Last reply");
   expect(container.querySelector(".row-preview")?.textContent).not.toContain("typecheck");
 });
+
+it("shows only the face and dots, with no Working line above them, while a reply starts", async () => {
+  const container = await render(projectRun([
+    { runId: "s", seq: 1, stream: "lifecycle", ts: 1, data: { phase: "start", startedAt: 1 } },
+    { runId: "s", seq: 2, stream: "run_status", ts: 2, data: { phase: "starting_model" } },
+  ], new Map()));
+  expect(container.querySelector('[data-testid="typing"]')).not.toBeNull();
+  expect(container.querySelector(".live-run-head")).toBeNull();
+});
