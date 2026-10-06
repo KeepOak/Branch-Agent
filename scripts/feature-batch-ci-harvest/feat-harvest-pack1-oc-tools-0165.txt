@@ -19,5 +19,9 @@ engine:src/agents/bash-tools.exec-support.test.ts
 engine:src/agents/bash-tools.exec-target.test.ts
 engine:src/agents/bash-tools.exec-timeout-seconds.test.ts
 engine:src/agents/bash-tools.exec-workdir.test.ts
+engine:src/agents/tools/tts-tool.test.ts
 engine:src/channels/plugins/actions/reaction-message-id.test.ts
 engine:src/skills/library/service.test.ts
+engine:src/tts/tts-core.test.ts
+engine:src/tts/tts-runtime-fallbacks.test.ts
+engine:src/tts/tts.test.ts
