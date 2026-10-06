@@ -1,3 +1,1 @@
 engine:src/process/session-handoff-leases.test.ts
-engine:src/process/command-queue.test.ts
-engine:src/process/command-queue.scoped-lanes.test.ts
