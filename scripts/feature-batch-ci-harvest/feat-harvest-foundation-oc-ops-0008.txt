@@ -4,6 +4,9 @@ engine:src/cli/gateway-cli/suspend-cli.test.ts
 engine:src/daemon/service-audit.definition-facts.test.ts
 engine:src/daemon/service-audit.systemd-timeout.test.ts
 engine:src/daemon/service-audit.test.ts
+engine:src/gateway/channel-health-monitor.clock-rollback.test.ts
+engine:src/gateway/channel-health-monitor.test.ts
+engine:src/gateway/channel-health-policy.test.ts
 engine:src/gateway/host-thaw-recovery.test.ts
 engine:src/infra/gateway-suspend-coordinator.handoff.test.ts
 engine:src/infra/gateway-suspend-coordinator.test.ts
