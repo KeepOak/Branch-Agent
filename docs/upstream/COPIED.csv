@@ -43,3 +43,5 @@ engine/src/acp/control-plane/spawn.test.ts,MULTI-AGENT-0096,openclaw/openclaw,81
 engine/src/acp/control-plane/manager.actor-epoch-fencing.test.ts,MULTI-AGENT-0096,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/acp/control-plane/manager.actor-epoch-fencing.test.ts (verified existing Branch coverage),2026-10-06
 engine/src/auto-reply/group-thread.test.ts,MULTI-AGENT-0118,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/auto-reply/group-thread.test.ts (verified existing Branch coverage),2026-10-06
 engine/src/channels/turn/group-thread-delivery.test.ts,MULTI-AGENT-0118,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/channels/turn/group-thread-delivery.test.ts (verified existing Branch coverage),2026-10-06
+engine/extensions/canopy/src/cli.test.ts,MULTI-AGENT-0139,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,extensions/workboard/src/cli.test.ts (verified existing Branch coverage),2026-10-06
+engine/extensions/canopy/src/command.test.ts,MULTI-AGENT-0139,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,extensions/workboard/src/command.test.ts (verified existing Branch coverage),2026-10-06
