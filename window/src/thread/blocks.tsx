@@ -197,7 +197,7 @@ export function Typing({ name, status }: { name: string; status: Of<"status"> | 
         <i />
         <i />
         <i />
-        {words ? <span className="typing-words">{words}</span> : null}
+        {words ? <span className="typing-words" title={words}>{words}</span> : null}
       </div>
     </div>
   );

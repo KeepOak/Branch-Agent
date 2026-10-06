@@ -99,17 +99,15 @@ export function dayStamp(ms: number, now = Date.now()): string {
   return `${d.toLocaleDateString([], sameYear ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" })} ${time}`;
 }
 
-/** "Getting started words" (§4.2.5 Parity adds) for the engine's run_status phases. */
+/** "Getting started words" (§4.2.5 Parity adds) for the run_status phases that say something the dots do not.
+ *  Phases that only mean "working" (preparing_context, starting_model, waiting_for_state) show the dots alone (P47). */
 export const PHASE_WORDS: Record<string, string> = {
-  waiting_for_state: "Waiting for a reply…",
   preparing_workspace: "Preparing the folder…",
   naming_worktree: "Naming the separate copy…",
   creating_worktree: "Making a separate copy…",
   running_setup: "Running setup…",
   provisioning_environment: "Getting its computer ready…",
-  preparing_context: "Preparing this turn…",
   memory_flushing: "Saving what it remembers…",
-  starting_model: "Preparing this turn…",
 };
 
 export function phaseWords(status: Extract<Block, { kind: "status" }>): string {
