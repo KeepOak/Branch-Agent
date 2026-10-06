@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { capabilityTests, namedTests, shardOf, shardTests } from './feature-batch-ci-targets.mjs';
+import { capabilityTests, namedTests, shardOf, shardTests, touchedTests } from './feature-batch-ci-targets.mjs';
 import { runTargetedStrictChecks } from './feature-batch-ci-typecheck.mjs';
 import {
   assertLocalModules, engineRoot, gitHead, hostedChrome, preparePnpm, publishWindowDependencies, repoRoot, run,
@@ -66,13 +66,26 @@ async function runCapabilityTests(scratch) {
     'run', '--config', config, ...capabilityTests()], engineRoot, await featureTestEnv(scratch));
 }
 
+// The PR checkout is GitHub's merge commit; with fetch-depth 2 its first parent is the base.
+let changedFilesCache;
+async function prChangedFiles() {
+  if (!changedFilesCache) {
+    const { execFileSync } = await import('node:child_process');
+    changedFilesCache = execFileSync('git', ['diff', '--name-only', 'HEAD^1', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' })
+      .split(/\r?\n/).filter(Boolean);
+    console.log(`PR changes ${changedFilesCache.length} files`);
+  }
+  return changedFilesCache;
+}
+
 async function runFeatureTests(scratch) {
   const env = await featureTestEnv(scratch);
   const shard = shardOf();
   for (const lane of ['engine', 'window']) {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     const config = path.join(repoRoot, 'scripts', `feature-batch-ci-${lane}.config.mjs`);
-    const tests = shardTests(namedTests(lane), shard);
+    const tests = process.env.FEATURE_SCOPE === 'touched'
+      ? touchedTests(lane, await prChangedFiles()) : shardTests(namedTests(lane), shard);
     if (!tests.length) continue;
     console.log(`${lane}: ${tests.length} named test files in shard ${shard.index + 1}/${shard.total}`);
     await run(process.execPath, [path.join(root, 'node_modules/vitest/vitest.mjs'),

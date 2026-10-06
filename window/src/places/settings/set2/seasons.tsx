@@ -40,7 +40,7 @@ export function SeasonsPage(props: SettingsPageProps) {
   const config = useConfig(props.engine);
   const agent = useScope() ?? props.engine.agentId ?? "";
   const params = agent ? { agentId: agent } : {};
-  const status = useLive<RecordValue>(props.engine, "doctor.memory.status", params, ["memory"]);
+  const status = useLive<RecordValue>(props.engine, "doctor.memory.status", params, ["memory", "agents.changed", "config.changed"]);
   const proposals = useLive<RecordValue>(props.engine, "skills.proposals.list", params, ["skills"]);
   const ctx: Ctx = { ...props, config, agent, status: rec(rec(status.data).rings), reload: () => void status.reload() };
   return (

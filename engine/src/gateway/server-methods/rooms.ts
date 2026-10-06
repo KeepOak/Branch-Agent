@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   ErrorCodes,
   errorShape,
@@ -28,6 +29,7 @@ import {
   type RoomEvent,
 } from "../rooms/store.js";
 import { loadGatewaySessionEntryReadOnly } from "../session-utils.js";
+import { handleDirectExternalChatSend } from "./chat-send-external-entry.js";
 import { bindGatewayRequestHandlerMutationAuthority } from "./session-mutation-guards.js";
 import { sessionCreateHandlers } from "./sessions-create.js";
 import { sessionMessagingHandlers } from "./sessions-messaging.js";
@@ -59,16 +61,14 @@ async function checkTrunks(options: GatewayRequestHandlerOptions, ids: string[])
     if (error) throw new Error(error.message);
   }
 }
-async function dispatchLead(options: GatewayRequestHandlerOptions, room: Room, message: string) {
-  const lead = room.lead;
-  if (
-    !lead ||
-    !room.members.some((member) => member.kind === "trunk" && member.id === lead && member.enabled)
-  )
-    throw new Error("Room has no enabled lead Trunk");
-  await checkTrunks(options, [lead]);
-  const sessionKey = `agent:${lead}:room:${room.roomId}`;
-  const exists = !!loadGatewaySessionEntryReadOnly(sessionKey, { agentId: lead }).entry?.sessionId;
+type OutsideSender = NonNullable<GatewayRequestHandlerOptions["params"]["outsideAgent"]>;
+
+/** Run one handler as an internal step of rooms.send and return what it answered. */
+async function forward(
+  options: GatewayRequestHandlerOptions,
+  handler: (options: GatewayRequestHandlerOptions) => Promise<void> | void,
+  params: Record<string, unknown>,
+) {
   let response:
     | { ok: boolean; payload?: Record<string, unknown>; error?: { message?: string } }
     | undefined;
@@ -76,7 +76,7 @@ async function dispatchLead(options: GatewayRequestHandlerOptions, room: Room, m
     options,
     {
       ...options,
-      params: { key: sessionKey, agentId: lead, message },
+      params,
       respond: (ok, payload, error) => {
         response = {
           ok,
@@ -90,9 +90,52 @@ async function dispatchLead(options: GatewayRequestHandlerOptions, room: Room, m
     },
     undefined,
   );
-  await (
-    exists ? sessionMessagingHandlers["sessions.send"]! : sessionCreateHandlers["sessions.create"]!
-  )(forwarded);
+  await handler(forwarded);
+  return response;
+}
+
+async function dispatchLead(
+  options: GatewayRequestHandlerOptions,
+  room: Room,
+  message: string,
+  outside?: OutsideSender,
+) {
+  const lead = room.lead;
+  if (
+    !lead ||
+    !room.members.some((member) => member.kind === "trunk" && member.id === lead && member.enabled)
+  )
+    throw new Error("Room has no enabled lead Trunk");
+  await checkTrunks(options, [lead]);
+  const sessionKey = `agent:${lead}:room:${room.roomId}`;
+  const exists = !!loadGatewaySessionEntryReadOnly(sessionKey, { agentId: lead }).entry?.sessionId;
+  let response: Awaited<ReturnType<typeof forward>>;
+  if (outside) {
+    // The lead's room conversation first (without a message), then the post through chat.send as the agent.
+    if (!exists) {
+      const created = await forward(options, sessionCreateHandlers["sessions.create"]!, {
+        key: sessionKey,
+        agentId: lead,
+      });
+      if (!created?.ok) throw new Error(created?.error?.message ?? "Lead conversation not created");
+    }
+    response = await forward(options, handleDirectExternalChatSend, {
+      sessionKey,
+      agentId: lead,
+      message,
+      deliver: false,
+      idempotencyKey: randomUUID(),
+      outsideAgent: outside,
+    });
+  } else {
+    response = await forward(
+      options,
+      exists
+        ? sessionMessagingHandlers["sessions.send"]!
+        : sessionCreateHandlers["sessions.create"]!,
+      { key: sessionKey, agentId: lead, message },
+    );
+  }
   if (!response?.ok) throw new Error(response?.error?.message ?? "Lead turn was not accepted");
   const runStarted =
     response.payload?.runStarted === true || typeof response.payload?.runId === "string";
@@ -184,12 +227,9 @@ export const roomHandlers: GatewayRequestHandlers = {
       );
       event(options, posted);
       try {
-        // The lead Trunk is told who spoke when it isn't the owner.
-        const leadMessage = outside
-          ? `${outside.name} (outside agent) wrote in the group chat:
-${options.params.message}`
-          : options.params.message;
-        const turn = await dispatchLead(options, room, leadMessage);
+        // An outside agent's post reaches the lead as that agent's own message (chat.send outsideAgent: its name,
+        // face and A2A badge in the thread), never as the owner's.
+        const turn = await dispatchLead(options, room, options.params.message, outside);
         const started = appendRoomEvent(room.roomId, "turn.started", room.lead!, {
           sessionKey: turn.sessionKey,
           ...(turn.runId ? { runId: turn.runId } : {}),

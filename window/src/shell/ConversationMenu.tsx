@@ -93,14 +93,22 @@ export function readDetail(raw: unknown): ConversationDetail {
   const s = rec(rec(raw).session);
   const v = str(s.verboseLevel);
   const r = str(s.reasoningLevel);
-  return { verboseLevel: v === "on" || v === "full" ? v : "off", showThinking: r !== "" && r !== "off", workspace: str(rec(s.worktree).path) || null };
+  return { verboseLevel: v === "on" || v === "full" ? v : "off", showThinking: r !== "off", workspace: str(rec(s.worktree).path) || null };
 }
 
 /** `open` shows the ⋯ menu; `whoItKnows` shows Who it knows under the header's people button (a second click closes it). */
-export function useConversationMenu(p: ConversationMenuProps): { open: (e: MouseEvent<HTMLElement>) => void; whoItKnows: (e: MouseEvent<HTMLElement>) => void; node: ReactNode } {
+export function useConversationMenu(p: ConversationMenuProps): { open: (e: MouseEvent<HTMLElement>) => void; whoItKnows: (e: MouseEvent<HTMLElement>) => void; node: ReactNode; showThinking: boolean } {
   const [open, setOpen] = useState<Open>(null);
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const key = p.session.getSnapshot().sessionKey;
+  useEffect(() => {
+    setDetail(null);
+    if (!key || !p.ready) return;
+    let active = true;
+    p.session.request("sessions.describe", { key, ...(p.trunk.id ? { agentId: p.trunk.id } : {}) })
+      .then((value) => { if (active) setDetail(readDetail(value)); }, () => undefined);
+    return () => { active = false; };
+  }, [key, p.ready, p.session, p.trunk.id]);
   const target = key ? { key, ...(p.trunk.id ? { agentId: p.trunk.id } : {}) } : null;
   const close = () => setOpen(null);
 
@@ -113,7 +121,7 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     p.session.request("sessions.patch", { ...target, ...change }).then(loadDetail, bad);
   };
   const computers = useComputers(p, key);
-  const run = useRun(p, { detail, key, target, patch, setOpen });
+  const run = useRun(p, { detail, key, target, patch, setOpen, setDetail });
   const lastReply = [...p.history].reverse().find((b) => b.kind === "text");
   const items = conversationMenuItems({
     row: p.row,
@@ -151,7 +159,7 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     }
     void whoItKnows(p, setOpen, e.currentTarget.getBoundingClientRect());
   };
-  return { open: show, whoItKnows: showKnown, node: <Overlays p={p} open={open} items={items} close={close} target={target} lastReply={lastReply} computers={computers} /> };
+  return { open: show, whoItKnows: showKnown, showThinking: detail?.showThinking ?? true, node: <Overlays p={p} open={open} items={items} close={close} target={target} lastReply={lastReply} computers={computers} /> };
 }
 
 /** Under the header's ⋯ button, for what a menu row opens. */
@@ -160,7 +168,7 @@ function menuAnchor(): MenuAnchor {
   return { x: (r?.right ?? 300) - 300, y: (r?.bottom ?? 50) + 4 };
 }
 
-type RunCtx = { detail: ConversationDetail | null; key: string | null; target: { key: string; agentId?: string } | null; patch: (c: Record<string, unknown>) => void; setOpen: (o: Open) => void };
+type RunCtx = { detail: ConversationDetail | null; key: string | null; target: { key: string; agentId?: string } | null; patch: (c: Record<string, unknown>) => void; setOpen: (o: Open) => void; setDetail: (d: ConversationDetail) => void };
 
 function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
   const { key, target, patch, setOpen } = c;
@@ -184,7 +192,7 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     copyLink: () => key && copy(conversationLink(key)),
     copyMarkdown: () => key && void loadCompleteTranscript(p.session.engine, key, new AbortController().signal).then((blocks) => copy(eventsToMarkdown(blocks, { title: p.title, includeToolDetails: true, includeTimestamps: true })), bad),
     copyId: () => key && copy(key),
-    showThinking: (on) => patch({ reasoningLevel: on ? "on" : "off" }),
+    showThinking: (on) => { c.setDetail({ verboseLevel: c.detail?.verboseLevel ?? "off", workspace: c.detail?.workspace ?? null, showThinking: on }); patch({ reasoningLevel: on ? "on" : "off" }); },
     stepUpdates: (level: StepUpdates) => patch({ verboseLevel: level }),
     revealFolder: () => target && void req("sessions.files.reveal", target).catch(bad),
     copyPath: () => c.detail?.workspace && copy(c.detail.workspace),

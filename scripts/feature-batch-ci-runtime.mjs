@@ -109,9 +109,9 @@ export async function verifiedExceptionFlags(lane) {
     assert.match(policy, /^minimumReleaseAgeStrict: true$/m);
     retained = policy.split('minimumReleaseAgeExclude:')[1].split('\n\n')[0]
       .split('\n').map(line => line.match(/^  - "([^"]+)"/)?.[1]).filter(Boolean);
-    assert.equal(retained.length, 10, 'Review changed source exclusions before changing this gate');
+    assert.equal(retained.length, 14, 'Review changed source exclusions before changing this gate');
   }
-  return [...retained, ...targets.map(([name, version]) => `${name}@${version}`)]
+  return [...new Set([...retained, ...targets.map(([name, version]) => `${name}@${version}`)])]
     .map(value => `--config.minimum-release-age-exclude=${value}`);
 }
 

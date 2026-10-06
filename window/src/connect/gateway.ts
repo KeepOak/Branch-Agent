@@ -85,6 +85,8 @@ export class BranchGateway {
   private readonly auth: GatewayBrowserDeviceAuthLifecycle;
   private readonly opts: Options;
 
+  private connected = false;
+
   constructor(opts: Options) {
     this.opts = opts;
     this.auth = new GatewayBrowserDeviceAuthLifecycle({
@@ -105,14 +107,20 @@ export class BranchGateway {
         }),
       buildConnectParams: (plan) => this.connectParams(plan),
       onConnectHello: (hello, context) => this.auth.acceptHello(hello, context.plan),
-      onHello: (hello) => opts.onStatus({ phase: "connected", hello }),
+      onHello: (hello) => {
+        this.connected = true;
+        opts.onStatus({ phase: "connected", hello });
+      },
       onConnectFailure: (error) => ({
         closeCode: CONNECT_FAILED_CLOSE_CODE,
         closeReason: "connect failed",
         ...(isPairingRequired(error.details) ? { reconnectDelayMs: PAIRING_RETRY_MS } : {}),
       }),
       resolveClose: (context) => this.resolveClose(context),
-      onClose: (context, decision) => this.reportClose(context, decision.retry),
+      onClose: (context, decision) => {
+        this.connected = false;
+        this.reportClose(context, decision.retry);
+      },
       onEvent: (event) => opts.onEvent(event),
       handshake: { mode: "require-challenge", timeoutMs: 10_000 },
       reconnect: { initialMs: 800, multiplier: 1.7, maxMs: 15_000 },
@@ -126,6 +134,13 @@ export class BranchGateway {
 
   stop(): void {
     this.client.stop();
+  }
+
+  /** The engine came back (the desktop swapped it in place): try now instead of at the next backoff step. */
+  reconnectNow(): void {
+    if (this.connected) return;
+    this.client.stop();
+    this.start();
   }
 
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
