@@ -1,5 +1,6 @@
-import { DatabaseSync } from "node:sqlite";
 // From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/workboard/src/store.sessions-board.test.ts (atlas MULTI-AGENT-0146). Changed for Branch: retain current rule-based board and caller-authority tests and add upstream schema-reopening coverage.
+
+import { DatabaseSync } from "node:sqlite";
 import { createTestPluginApi } from "branch/plugin-sdk/plugin-test-api";
 import { describe, expect, it, vi } from "vitest";
 import type { BranchPluginApi } from "../api.js";
