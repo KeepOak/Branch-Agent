@@ -35,7 +35,7 @@ it("column shows emoji, title, time, preview, status and unread, with closed top
   expect(page.textContent).toContain("working"); expect(page.querySelector('[aria-label="Unread"]')).not.toBeNull();
   expect(page.textContent).toContain("Closed · 1"); expect(page.textContent).not.toContain("Old work");
   await click("Closed · 1"); expect(page.textContent).toContain("Old work");
-  await click("All"); expect(all).toHaveBeenCalledTimes(1);
+  expect(page.querySelector('[aria-label="All"]')).toBeNull();
 });
 
 it("layout picker switches rail, side tabs and top tabs and keeps the selection after remount", async () => {
@@ -47,6 +47,8 @@ it("layout picker switches rail, side tabs and top tabs and keeps the selection 
   await act(async () => separator?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
   await click("How threads show: Emoji rail"); await click("Side tabs");
   expect(page.querySelector(".topics-nav")?.classList.contains("lay-side")).toBe(true);
+  expect(page.textContent).toContain("Old work");
+  await click("All"); expect(all).toHaveBeenCalledTimes(1);
   await click("How threads show: Side tabs"); await click("Tabs above the chat");
   expect(page.querySelector(".topics-nav")?.classList.contains("lay-tabs")).toBe(true);
   await act(async () => root?.unmount()); root = createRoot(page);
