@@ -7,7 +7,6 @@ import { useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import { Btn, Ctl, LinkBtn, Page, Pick, Sec, Seg, Switch, useConfig, useScope, type Opt, type RowEntry } from "../kit";
 import { list } from "../adapter";
-import { Dialog } from "../../../shell/Dialog";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { CallLine, CodeRow, Kv, bytes, lvOf, openPlace, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 import {
@@ -218,27 +217,20 @@ function WebSearchPick({ c }: { c: Ctx }) {
     </Ctl>
   );
 }
-const HOW: Record<string, [string, string]> = {
-  decision: ["Skip tools on plain chat", "Before each turn, the decision model (Settings › Models › Decision models) judges whether the message needs tools; for plain conversation the optional tools are left out of that turn. Not the same as “A second look before approvals” in Permissions."],
-  code: ["Code mode", "On means Auto: models Branch has tested can make several tool calls as one short script instead of one round each; other models are unchanged. Off turns the default off. A per-model choice lives in Settings › Models at Technical. Applies to the next task."],
-};
-function HowLink({ id }: { id: string }) {
-  const [open, setOpen] = useState(false);
-  const [title, body] = HOW[id];
-  return <> <LinkBtn onClick={() => setOpen(true)}>How it works</LinkBtn>{open ? <Dialog title={title} onClose={() => setOpen(false)}><p className="s2advanced-how">{body}</p></Dialog> : null}</>;
-}
+const DECISION_HELP = "Before each turn, the decision model (Settings › Models › Decision models) judges whether the message needs tools; for plain conversation the optional tools are left out of that turn. Not the same as “A second look before approvals” in Permissions. Off until you choose: it’s an early feature and can leave out a tool a turn needed.";
+const CODE_HELP = "On means Auto: models Branch has tested can make several tool calls as one short script instead of one round each; other models are unchanged. Off turns the default off. A per-model choice lives in Settings › Models at Technical. Applies to the next task.";
 function CodeMode({ c }: { c: Ctx }) {
   const raw = c.config.get("tools.codeMode");
   const on = raw === undefined ? true : typeof raw === "object" && raw !== null ? (rec(raw).enabled ?? false) !== false : raw !== false;
   const set = (x: boolean) => void c.config.set(typeof raw === "object" && raw !== null ? "tools.codeMode.enabled" : "tools.codeMode", x ? "auto" : false);
   return (
-    <Ctl title="Code mode" sub={<>Several tool calls in one short script, for models that handle it well.<HowLink id="code" /></>}>
+    <Ctl title="Code mode" sub="Several tool calls in one short script, for models that handle it well." help={CODE_HELP}>
       <Switch label="Code mode" checked={on} disabled={c.config.loading} onChange={set} />
     </Ctl>
   );
 }
 const TRY: SecSpec = { title: "Try early", lv: 1, hint: "Early features. They may change or go away in a later version.", rows: [
-  sw("Skip tools on plain chat", "", "agents.defaults.experimental.decisionAssistance", false, { s: <>The decision model checks whether a turn needs tools, and plain chat goes without them. Off until you choose: it’s an early feature and can leave out a tool a turn needed.<HowLink id="decision" /></> }),
+  sw("Skip tools on plain chat", "The decision model skips tools for plain chat.", "agents.defaults.experimental.decisionAssistance", false, { help: DECISION_HELP }),
   { t: "Code mode", draw: (c) => <CodeMode c={c} /> },
 ] };
 

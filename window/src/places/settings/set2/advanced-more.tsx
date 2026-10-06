@@ -14,7 +14,7 @@ export type Ctx = SettingsPageProps & { config: Config; lv: Lv; agent: string; p
 
 /** One row. `k` is the config path it reads (and writes, unless `w` says where); `off` greys it with why. */
 export type Spec = {
-  t: string; s?: ReactNode; lv?: Lv; k?: ConfigPath; w?: ConfigPath;
+  t: string; s?: ReactNode; help?: string; lv?: Lv; k?: ConfigPath; w?: ConfigPath;
   kind?: "sw" | "num" | "seg" | "pick" | "text" | "list" | "btn" | "none";
   def?: unknown; opts?: Opt[]; unit?: string; ph?: string; min?: number; max?: number;
   /** Stored value → shown value, and back (MB ↔ bytes, inverted switches). */
@@ -47,10 +47,10 @@ export function Section({ spec, c }: { spec: SecSpec; c: Ctx }) {
 
 export function Row({ r, c }: { r: Spec; c: Ctx }) {
   if (r.draw) return <>{r.draw(c)}</>;
-  if (r.off) return <Ctl title={r.t} sub={r.s} off={r.off}>{greyControl(r)}</Ctl>;
+  if (r.off) return <Ctl title={r.t} sub={r.s} help={r.help} off={r.off}>{greyControl(r)}</Ctl>;
   if (r.plug) return <PlugRow r={r} c={c} />;
   const hold = r.hold?.(c);
-  return <Ctl title={r.t} sub={hold ?? r.s} after={r.kind === "list" ? <ListEditor r={r} c={c} /> : undefined}>{r.kind === "list" ? null : <Control r={r} c={c} disabled={Boolean(hold)} />}</Ctl>;
+  return <Ctl title={r.t} sub={hold ?? r.s} help={r.help} after={r.kind === "list" ? <ListEditor r={r} c={c} /> : undefined}>{r.kind === "list" ? null : <Control r={r} c={c} disabled={Boolean(hold)} />}</Ctl>;
 }
 
 /** The control a greyed row draws (inert), showing the engine's default where there is one. */
@@ -112,9 +112,9 @@ function PlugRow({ r, c }: { r: Spec; c: Ctx }) {
   const id = r.plug as string;
   const entry = c.plugins.find((p) => p.id === id);
   const saved = c.config.get(["plugins", "entries", id, "enabled"]);
-  if (!entry && saved === undefined) return <Ctl title={r.t} sub={r.s} off="Its plugin isn’t installed in this engine."><Switch label={r.t} checked={false} onChange={() => undefined} /></Ctl>;
+  if (!entry && saved === undefined) return <Ctl title={r.t} sub={r.s} help={r.help} off="Its plugin isn’t installed in this engine."><Switch label={r.t} checked={false} onChange={() => undefined} /></Ctl>;
   const on = typeof saved === "boolean" ? saved : entry?.enabled === true;
-  return <Ctl title={r.t} sub={r.s}><Switch label={r.t} checked={on} disabled={c.config.loading} onChange={(x) => void c.config.set(["plugins", "entries", id, "enabled"], x)} /></Ctl>;
+  return <Ctl title={r.t} sub={r.s} help={r.help}><Switch label={r.t} checked={on} disabled={c.config.loading} onChange={(x) => void c.config.set(["plugins", "entries", id, "enabled"], x)} /></Ctl>;
 }
 
 /** The search-index rows of a list of sections. */
