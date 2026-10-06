@@ -3,6 +3,13 @@ engine:src/cli/plugins-cli.clawhub-install.harvest.test.ts
 engine:src/commands/migrate.resources.test.ts
 engine:src/commands/migrate.test.ts
 engine:src/infra/clawhub-client.test.ts
+engine:src/media/fetch.store.test.ts
+engine:src/media/fetch.test.ts
+engine:src/media/store.cleanup.test.ts
+engine:src/media/store.playback-cache.test.ts
+engine:src/media/store.redirect.test.ts
+engine:src/media/store.retry.test.ts
+engine:src/media/store.test.ts
 engine:src/plugin-activation-boundary.test.ts
 engine:src/plugin-sdk/api-baseline.test.ts
 engine:src/plugin-sdk/core.test.ts
