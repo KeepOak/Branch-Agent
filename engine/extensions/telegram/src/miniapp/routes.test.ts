@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/telegram/src/miniapp/routes.test.ts (atlas UI-MOBILE-WEB-0104). Changed for Branch: preserve current-main explicit owner and launch-ticket coverage with the repository rename map.
 import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
 import { createServer, IncomingMessage, type Server, type ServerResponse } from "node:http";

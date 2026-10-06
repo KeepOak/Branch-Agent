@@ -5,3 +5,6 @@
 # no Android SDK is installed and Harvest CI accepts only engine/window Vitest files.
 # The cited Kotlin suites cannot run here; isolated controller copies would not
 # deliver a working watch app. Restore the native phone/watch build and test lane.
+# UI-MOBILE-WEB-0104: Telegram Mini App dashboard (existing production implementation).
+engine:extensions/telegram/src/miniapp/init-data.test.ts
+engine:extensions/telegram/src/miniapp/routes.test.ts
