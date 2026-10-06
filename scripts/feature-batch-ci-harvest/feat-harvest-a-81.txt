@@ -9,3 +9,5 @@ engine:extensions/sms/src/delivery-observations.test.ts
 engine:extensions/sms/src/send.test.ts
 engine:extensions/sms/src/twilio.test.ts
 engine:extensions/sms/src/webhook.test.ts
+engine:src/infra/exec-approval-forwarder.test.ts
+engine:src/infra/exec-approval-reply.test.ts
