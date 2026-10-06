@@ -73,3 +73,4 @@ engine/src/channels/plugins/setup-wizard.test.ts,OPS-0331,openclaw/openclaw,57e0
 engine/src/commands/doctor-lint.test.ts,OPS-0335,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/doctor-lint.test.ts,2026-10-06
 engine/src/commands/doctor-lint.config-snapshot.test.ts,OPS-0335,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/commands/doctor-lint.config-snapshot.test.ts,2026-10-06
 engine/src/commands/doctor-lint.crabbox.test.ts,OPS-0335,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/doctor-lint.crabbox.test.ts,2026-10-06
+engine/src/commands/doctor-disk-space.test.ts,OPS-0336,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/doctor-disk-space.test.ts,2026-10-06
