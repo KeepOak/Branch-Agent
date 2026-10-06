@@ -22,8 +22,8 @@ type Props = StatusFacts & {
   onItem: (item: StatusItem, e: MouseEvent<HTMLElement>) => void;
   /** Appearance › What's shown › The gateway in the status bar (on unless switched off). */
   gatewayShown?: boolean;
-  /** Paused Trunks and live calls (after "N running"), the graphics readout (after the spacer), the pet (before the version). */
-  extras?: { left?: ReactNode; gfx?: ReactNode; pet?: ReactNode };
+  /** Paused Trunks and live calls (after "N running"), and the graphics readout (after the spacer). */
+  extras?: { left?: ReactNode; gfx?: ReactNode };
 };
 
 /** The meter's colour by share used (§4.9.1 Room left): under 50% ok, 50–79% warn, 80–94% orange, 95% and over bad. */
@@ -104,7 +104,6 @@ export function StatusBar(p: Props) {
           </span>
         </button>
       ) : null}
-      {p.extras?.pet}
       {p.version ? (
         <button type="button" className="sb hide-sm" title="Version and updates" data-testid="sb-version" {...item("version")}>
           {p.version}

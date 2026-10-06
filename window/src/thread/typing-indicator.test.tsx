@@ -40,4 +40,13 @@ describe("typing indicator", () => {
     expect(typing?.querySelector(".typing-words")).toBeNull();
     expect(typing?.textContent).toBe("");
   });
+
+  it("names the typing Trunk in a group without a phase filler", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root?.render(<Typing name="Research" status={null} room />));
+    expect(host.querySelector(".typing-who")?.textContent).toBe("Research is typing…");
+    expect(host.querySelectorAll(".typing i")).toHaveLength(3);
+    expect(host.querySelector(".typing-words")).toBeNull();
+  });
 });

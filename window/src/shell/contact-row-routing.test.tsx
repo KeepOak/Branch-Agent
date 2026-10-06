@@ -69,12 +69,12 @@ it("offers Pin but not Archive or Delete on the default Trunk's conversation men
   const [contact] = projectContact([raw("tk", 10)], []);
   const items = conversationMenuItems({
     row: openContactRow(contact.threadKey, [contact], []), isMain: true, trunkName: "TK",
-    ownTrunk: false, canRemoveTrunk: false, level: "regular", online: true, now: 100,
-    hasReply: false, talkOff: null, detail: null, fileManager: "Show in File Explorer",
+    ownTrunk: false, canRemoveTrunk: false, online: true, now: 100,
+    hasReply: false, talkOff: null,
     run: new Proxy({}, { get: () => vi.fn() }) as ConversationMenuRun,
   });
-  expect(items.some((item) => item.kind === undefined && item.label === "Pin to top")).toBe(true);
-  expect(items.some((item) => item.kind === undefined && (item.label === "Archive" || item.label === "Delete…"))).toBe(false);
+  expect(items.some((item) => item.kind === undefined && item.label === "Pin")).toBe(true);
+  expect(items.some((item) => item.kind === undefined && (item.label === "Archive" || item.label === "Delete this conversation…"))).toBe(false);
 });
 
 it("orders TK by activity and moves it through Pinned on menu pin and unpin", async () => {

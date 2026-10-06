@@ -1,2 +1,6 @@
+window:src/composer/plus-menu-redesign.test.tsx
+window:src/composer/plug-menu-redesign.test.tsx
+window:src/composer/tune-redesign.test.tsx
+window:src/shell/pet-row-redesign.test.tsx
 window:src/thread/hover-toolbar-redesign.test.tsx
 window:src/thread/suggestions-redesign.test.tsx

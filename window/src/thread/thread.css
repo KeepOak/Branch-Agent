@@ -544,6 +544,13 @@
   animation-delay: 0.3s;
 }
 
+.thread .typing-who {
+  grid-column: 2;
+  margin-top: -10px;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
 @keyframes typing-dot {
   50% {
     opacity: 0.35;

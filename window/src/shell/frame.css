@@ -1296,7 +1296,11 @@ button.mi:focus-visible {
   scrollbar-color: var(--line-2) transparent;
 }
 
-/* The pet in the list (the preview's .keeper and .petbox, as its last rules leave them). */
+/* The pet's one visible home is the lane above the chat composer. */
+.pet-lane { position: relative; height: 44px; flex: none; margin: 0 auto; width: min(760px, calc(100% - 32px)); pointer-events: none; }
+.pet-lane.empty { height: 6px; }
+.pet-lane .keeper { position: absolute; inset: 0; height: 100%; border: 0; padding: 0; margin: 0; pointer-events: none; }
+.pet-lane .keeper .petbox { pointer-events: auto; }
 .keeper { position: relative; height: 66px; margin: 0 8px; padding: 4px; border-top: 1px solid var(--hair17); flex: none; }
 .keeper .petbox { position: absolute; bottom: 2px; left: 0; transition: transform 0.32s linear; }
 .keeper .pet-btn { display: block; padding: 0; border: 0; background: none; cursor: pointer; }
@@ -1306,7 +1310,6 @@ button.mi:focus-visible {
 .keeper .petbox.flip .pet-btn { transform: scaleX(-1); }
 .keeper .pet-say { position: absolute; bottom: 30px; left: 0; background: var(--raise); box-shadow: var(--pop); border-radius: 10px; padding: 6px 9px; font-size: 12px; line-height: 1.35; width: max-content; max-width: 190px; z-index: 3; }
 .keeper .pet-say::after { content: ""; position: absolute; left: 14px; bottom: -5px; width: 10px; height: 10px; background: var(--raise); transform: rotate(45deg); }
-.rail .keeper { display: none; }
 
 /* Inside the Branch app on Windows the top bar is the title bar (connect/title-bar.ts): drag it to move the window,
    double-click it to maximise. The app's minimise, maximise and close buttons sit over its top-right, so the bar keeps

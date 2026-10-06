@@ -360,7 +360,7 @@ function LiveRun({ view, offset }: { view: View; offset: number }) {
       {/* While only the dots show, nothing sits above them (P47); the clock comes with the first real activity. */}
       {typing ? null : <header className="live-run-head">Working{elapsed >= 1000 ? ` · ${formatDuration(elapsed)}` : ""}{usage?.total ? ` · ${usage.total.toLocaleString()} tokens` : ""}</header>}
       {layout(live.filter((b) => b.kind !== "status"), offset).map((item) => <ItemView key={keyOf(item)} item={item} view={view} live />)}
-      {typing ? <Typing name={name} status={status} /> : null}
+      {typing ? <Typing name={name} status={status} room={view.room?.isRoom} /> : null}
     </div>
   );
 }

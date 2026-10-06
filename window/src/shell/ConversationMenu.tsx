@@ -4,21 +4,18 @@ import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { describePlacement, listComputers, placementComputer, type Computer, type Placement } from "../stage/computers";
 import { ComputerPicker } from "../stage/ComputerPicker";
 import { ReplayDialog } from "./Replay";
-import { iconColourItem } from "./row-look";
 import type { Conversation } from "../connect/conversations";
 import type { SaplingSession } from "../connect/session";
-import { readLevel } from "../places-nav/SettingsFrame";
 import type { PlaceId } from "../places-nav/routes";
 import { copyText, ThreadContext } from "../thread/context";
 import { LookInside } from "../thread/dialogs";
 import { turnOf } from "../thread/layout";
 import type { Block } from "../thread/model";
-import { loadCompleteTranscript } from "../transcript-export/load";
-import { eventsToMarkdown, type TranscriptExportFormat } from "../transcript-export/render";
+import type { TranscriptExportFormat } from "../transcript-export/render";
 import { ExportDialog } from "../transcript-export/ExportDialog";
-import { AboutDialog, MapDialog, StartOverDialog } from "./ConversationDialogs";
+import { MapDialog, StartOverDialog } from "./ConversationDialogs";
 import { RemoveTrunkDialog } from "../places/trunk/RemoveTrunk";
-import { conversationMenuItems, type ConversationDetail, type ConversationMenuRun, type StepUpdates } from "./conversation-menu";
+import { conversationMenuItems, type ConversationDetail, type ConversationMenuRun } from "./conversation-menu";
 import type { Actions } from "./conversation-actions";
 import type { Trunks } from "./engine-data";
 import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
@@ -50,6 +47,17 @@ export type ConversationMenuProps = {
   openPlace: (place: PlaceId) => void;
   talkOff: string | null;
   onTalk: () => void;
+  onSearch?: () => void;
+  onSidePanel?: () => void;
+  onList?: () => void;
+  onTheme?: () => void;
+  onComputer?: () => void;
+  onBrowser?: () => void;
+  onGuide?: () => void;
+  onBackToContact?: () => void;
+  onConversations?: () => void;
+  hasContactReturn?: boolean;
+  hasContactConversations?: boolean;
   /** The agent window is closed; the header face opens the profile now, so the menu brings the window back. */
   characterHidden: boolean;
   onShowCharacter: () => void;
@@ -61,13 +69,13 @@ export type ConversationMenuProps = {
   onAddComputer: () => void;
   onManageComputers: () => void;
   /** A room (rooms/): its rule on the Room rules row, and the Room rules menu. */
-  room?: { ruleWords: string | null; rules: () => MenuItem[] } | null;
+  room?: { ruleWords: string | null; rules: () => MenuItem[]; members?: ReactNode[] } | null;
 };
 
 type Open =
   | { kind: "menu"; at: MenuAnchor }
   | { kind: "known"; at: MenuAnchor; items: MenuItem[] }
-  | { kind: "start" | "about" | "map" | "share" | "removeTrunk" | "inspect" | "replay" }
+  | { kind: "start" | "map" | "share" | "removeTrunk" | "inspect" | "replay" }
   | { kind: "move"; at: MenuAnchor }
   | { kind: "rules"; at: MenuAnchor }
   | { kind: "export"; format: TranscriptExportFormat }
@@ -96,8 +104,8 @@ export function readDetail(raw: unknown): ConversationDetail {
   return { verboseLevel: v === "on" || v === "full" ? v : "off", showThinking: r !== "off", workspace: str(rec(s.worktree).path) || null };
 }
 
-/** `open` shows the ⋯ menu; `whoItKnows` shows Who it knows under the header's people button (a second click closes it). */
-export function useConversationMenu(p: ConversationMenuProps): { open: (e: MouseEvent<HTMLElement>) => void; whoItKnows: (e: MouseEvent<HTMLElement>) => void; node: ReactNode; showThinking: boolean } {
+/** `open` shows the ⋯ menu, the only conversation-header control. */
+export function useConversationMenu(p: ConversationMenuProps): { open: (e: MouseEvent<HTMLElement>) => void; node: ReactNode; showThinking: boolean } {
   const [open, setOpen] = useState<Open>(null);
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const key = p.session.getSnapshot().sessionKey;
@@ -116,12 +124,8 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     if (!target) return;
     p.session.request("sessions.describe", target).then((r) => setDetail(readDetail(r)), () => setDetail(null));
   };
-  const patch = (change: Record<string, unknown>) => {
-    if (!target) return;
-    p.session.request("sessions.patch", { ...target, ...change }).then(loadDetail, bad);
-  };
   const computers = useComputers(p, key);
-  const run = useRun(p, { detail, key, target, patch, setOpen, setDetail });
+  const run = useRun(p, { key, setOpen });
   const lastReply = [...p.history].reverse().find((b) => b.kind === "text");
   const items = conversationMenuItems({
     row: p.row,
@@ -129,18 +133,17 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     trunkName: p.trunk.name,
     ownTrunk: Boolean(p.trunk.id && p.trunk.id !== p.trunks.defaultId),
     canRemoveTrunk: p.trunks.list.length > 1,
-    level: readLevel(),
     online: p.ready,
     now: p.now,
     hasReply: Boolean(lastReply),
     talkOff: p.talkOff,
-    detail,
     characterHidden: p.characterHidden,
     besideOpen: p.besideOpen,
     canMove: computers.list.length > 1,
-    lookItem: p.row ? iconColourItem(p.row, (change) => p.actions.setLook(p.row as Conversation, change)) : null,
-    fileManager: /Mac/i.test(navigator.platform) ? "Show in Finder" : "Show in File Explorer",
-    room: p.room ? roomMenuItems({ ruleWords: p.room.ruleWords, canLeave: Boolean(p.row && !p.isMain), run: { rename: run.rename, rules: () => setOpen({ kind: "rules", at: menuAnchor() }), leave: run.archive, remove: run.remove } }) : null,
+    hasContactReturn: p.hasContactReturn,
+    hasContactConversations: p.hasContactConversations,
+    room: p.room ? [...roomMenuItems({ ruleWords: p.room.ruleWords, canLeave: Boolean(p.row && !p.isMain), run: { rename: run.rename, rules: () => setOpen({ kind: "rules", at: menuAnchor() }), leave: run.archive, remove: run.remove } }),
+      ...(p.room.members?.length ? [{ kind: "sub" as const, label: `Members · ${p.room.members.length}`, items: [{ kind: "head" as const, label: "Members" }, ...p.room.members.map((member) => ({ kind: "custom" as const, node: <div className="mi">{member}</div> }))] }] : [])] : null,
     run,
   });
   const show = (e: MouseEvent<HTMLElement>) => {
@@ -148,18 +151,9 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     e.stopPropagation();
     const r = e.currentTarget.getBoundingClientRect();
     loadDetail();
-    setOpen((cur) => (cur?.kind === "menu" ? null : { kind: "menu", at: { x: r.right - 260, y: r.bottom + 4 } }));
+    setOpen((cur) => (cur ? null : { kind: "menu", at: { x: r.right - 260, y: r.bottom + 4 } }));
   };
-  const showKnown = (e: MouseEvent<HTMLElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (open?.kind === "known") {
-      setOpen(null);
-      return;
-    }
-    void whoItKnows(p, setOpen, e.currentTarget.getBoundingClientRect());
-  };
-  return { open: show, whoItKnows: showKnown, showThinking: detail?.showThinking ?? true, node: <Overlays p={p} open={open} items={items} close={close} target={target} lastReply={lastReply} computers={computers} /> };
+  return { open: show, showThinking: detail?.showThinking ?? true, node: <Overlays p={p} open={open} items={items} close={close} target={target} lastReply={lastReply} computers={computers} /> };
 }
 
 /** Under the header's ⋯ button, for what a menu row opens. */
@@ -168,10 +162,10 @@ function menuAnchor(): MenuAnchor {
   return { x: (r?.right ?? 300) - 300, y: (r?.bottom ?? 50) + 4 };
 }
 
-type RunCtx = { detail: ConversationDetail | null; key: string | null; target: { key: string; agentId?: string } | null; patch: (c: Record<string, unknown>) => void; setOpen: (o: Open) => void; setDetail: (d: ConversationDetail) => void };
+type RunCtx = { key: string | null; setOpen: (o: Open) => void };
 
 function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
-  const { key, target, patch, setOpen } = c;
+  const { key, setOpen } = c;
   const row = p.row;
   const copy = (text: string) => void copyText(text, notify);
   const req = (method: string, params: unknown) => p.session.request(method, params);
@@ -181,7 +175,6 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     split: p.onSplit,
     move: () => setOpen({ kind: "move", at: menuAt() }),
     replay: () => setOpen({ kind: "replay" }),
-    ownWindow: () => key && window.open(conversationLink(key), "_blank", "noopener"),
     share: () => setOpen({ kind: "share" }),
     whoItKnows: () => void whoItKnows(p, setOpen),
     reload: () => void p.session.reload(),
@@ -190,12 +183,6 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     restore: () => row && void p.actions.restore(row),
     snooze: (until) => row && void p.actions.snooze(row, until),
     copyLink: () => key && copy(conversationLink(key)),
-    copyMarkdown: () => key && void loadCompleteTranscript(p.session.engine, key, new AbortController().signal).then((blocks) => copy(eventsToMarkdown(blocks, { title: p.title, includeToolDetails: true, includeTimestamps: true })), bad),
-    copyId: () => key && copy(key),
-    showThinking: (on) => { c.setDetail({ verboseLevel: c.detail?.verboseLevel ?? "off", workspace: c.detail?.workspace ?? null, showThinking: on }); patch({ reasoningLevel: on ? "on" : "off" }); },
-    stepUpdates: (level: StepUpdates) => patch({ verboseLevel: level }),
-    revealFolder: () => target && void req("sessions.files.reveal", target).catch(bad),
-    copyPath: () => c.detail?.workspace && copy(c.detail.workspace),
     pin: () => row && void p.actions.pin(row),
     rename: p.onRename,
     profile: () => openTrunk(p, "profile"),
@@ -204,13 +191,20 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     showCharacter: p.onShowCharacter,
     lookInside: () => setOpen({ kind: "inspect" }),
     startOver: () => setOpen({ kind: "start" }),
-    exportSteps: () => void p.session.send("/export-trajectory"),
     exportConversation: () => setOpen({ kind: "export", format: "markdown" }),
-    about: () => setOpen({ kind: "about" }),
     map: () => setOpen({ kind: "map" }),
     exportWebPage: () => setOpen({ kind: "export", format: "html" }),
     remove: () => row && p.onDelete(row),
     removeTrunk: () => setOpen({ kind: "removeTrunk" }),
+    search: () => p.onSearch?.(),
+    sidePanel: () => p.onSidePanel?.(),
+    list: () => p.onList?.(),
+    theme: () => p.onTheme?.(),
+    computer: () => p.onComputer?.(),
+    browser: () => p.onBrowser?.(),
+    guide: () => p.onGuide?.(),
+    backToContact: () => p.onBackToContact?.(),
+    conversations: () => p.onConversations?.(),
   };
 }
 
@@ -220,8 +214,7 @@ function openTrunk(p: ConversationMenuProps, view: "profile" | "edit") {
   window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: p.trunk.id ?? p.trunks.defaultId, view } }));
 }
 
-/** Who it knows: the Trunks this one may talk to under tools.agentToAgent, as a list under the button that asked
- *  (the header's people button), or under the ⋯ button when the ⋯ menu's row asked. */
+/** Who it knows: the Trunks this one may talk to under tools.agentToAgent, opened from the ⋯ menu. */
 async function whoItKnows(p: ConversationMenuProps, setOpen: (o: Open) => void, from?: DOMRect) {
   const self = p.trunk.id ?? p.trunks.defaultId ?? "";
   const anchor = from ?? document.querySelector<HTMLElement>("[data-testid=conversation-menu-button]")?.getBoundingClientRect();
@@ -270,8 +263,6 @@ function Overlays({ p, open, items, close, target, lastReply, computers }: Overl
       return <StartOverDialog trunkName={p.trunk.name} onClose={close} onStart={() => p.session.request("sessions.reset", { ...target, reason: "reset" }).then(() => p.session.reload())} />;
     case "removeTrunk":
       return p.trunk.id ? <RemoveTrunkDialog engine={engine} agentId={p.trunk.id} name={p.trunk.name} onClose={close} /> : null;
-    case "about":
-      return <AboutDialog engine={engine} sessionKey={target.key} agentId={target.agentId} trunkName={p.trunk.name} title={p.title} onCopy={copy} onClose={close} />;
     case "map":
       return <MapDialog engine={engine} sessionKey={target.key} agentId={target.agentId} onSwitched={() => void p.session.reload()} onClose={close} />;
     case "share": {

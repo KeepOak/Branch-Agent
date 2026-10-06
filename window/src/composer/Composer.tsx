@@ -10,7 +10,8 @@ import { replaceToken } from "./mention";
 import { isEngineMode, modeName, nextMode, type EngineMode } from "./mode";
 import { chipLabel, currentModelRef, currentThinking } from "./model";
 import { ModelMenu } from "./ModelMenu";
-import { Logo } from "../places/settings/set1/service";
+import { Popover } from "./Popover";
+import { serviceName } from "../places/settings/set1/service";
 import { ModeMenu } from "./ModeMenu";
 import { NO_ROUTE, type OpenTarget } from "./nav";
 import { PhotoDialog, PictureDialog } from "./PhotoDialog";
@@ -22,7 +23,7 @@ import { useBackground } from "./useBackground";
 import { hasNoModel, useConversation } from "./useConversation";
 import { safeStorage, saveDraft } from "./drafts";
 import { useConversationPrefs } from "../thread/prefs";
-import { currentModelAccount, modelAccountTooltip, shortAccountEmail, useModelAccounts } from "./useModelAccount";
+import { currentModelAccount, shortAccountEmail, useModelAccounts } from "./useModelAccount";
 import { vimKey, type VimMode } from "./vim";
 import { useDraft } from "./useDraft";
 import { useDrawer, type Pick } from "./useDrawer";
@@ -45,6 +46,7 @@ type Props = {
   onToast?: (text: string) => void;
   onOpen?: (target: OpenTarget) => void;
   onOpenConversation?: (key: string) => void;
+  lastUserEntryId?: string;
   replyTo?: Reply | null;
   onClearReply?: () => void;
   offline?: boolean;
@@ -61,7 +63,7 @@ type Props = {
   mainKey?: string;
 };
 
-type Menu = "plus" | "plug" | "model" | "mode" | null;
+type Menu = "plus" | "plug" | "tune" | null;
 
 export const VOICE_OFF = "Off until you choose: it uses the microphone. Turn it on in Settings › Voice.";
 
@@ -95,6 +97,7 @@ export function Composer(props: Props) {
   const conv = useConversation(engine, props.draftAgentId);
   const draft = useDraft(props.draftAgentId ? null : engine?.sessionKey ?? null, engine?.attachmentPolicy);
   const [menu, setMenu] = useState<Menu>(null);
+  const [nextAsJob, setNextAsJob] = useState(false);
   const [photo, setPhoto] = useState(false);
   const [picture, setPicture] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -106,7 +109,7 @@ export function Composer(props: Props) {
   const box = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
-  const anchors = { plus: useRef<HTMLButtonElement>(null), plug: useRef<HTMLButtonElement>(null), model: useRef<HTMLButtonElement>(null), mode: useRef<HTMLButtonElement>(null) };
+  const anchors = { plus: useRef<HTMLButtonElement>(null), plug: useRef<HTMLButtonElement>(null), tune: useRef<HTMLButtonElement>(null) };
 
   const voice = useVoiceCatalog(engine);
   const typed = useRef(draft.text);
@@ -179,6 +182,16 @@ export function Composer(props: Props) {
   const submit = (alt: boolean) => {
     const plan = planSend(draft.text, draft.files.length > 0, working, queueMode, alt);
     if (plan.kind === "nothing") return;
+    if (noModel && plan.kind !== "command" && !draft.text.trim().startsWith("/")) return;
+    if (nextAsJob && draft.files.length) {
+      setProblem("A job starts with words. Send attachments in this conversation instead.");
+      return;
+    }
+    if (nextAsJob && plan.kind === "send") {
+      setNextAsJob(false);
+      void runBackground(draft.text.trim());
+      return;
+    }
     if (plan.kind === "stop") {
       onStop();
       draft.clear();
@@ -294,7 +307,7 @@ export function Composer(props: Props) {
       if (next) void pickMode(next);
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
       e.preventDefault();
-      setMenu("model");
+      setMenu("tune");
     } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       history.onArrow(e);
     }
@@ -485,28 +498,15 @@ export function Composer(props: Props) {
         <span className="c-flags">
           {temporary ? <span className="c-flag">Temporary</span> : null}
           {vimOn ? <span className="c-flag" data-testid="vim-normal">Normal</span> : null}
-          {cost !== undefined && cost > 0 && current && !current.local ? (
-            <span className="c-cost" title={`What this conversation has cost so far on ${current.name}. Details in Settings › Data & usage.`}>
-              ${cost < 1 ? cost.toFixed(2) : Math.round(cost)} so far
-            </span>
-          ) : null}
         </span>
-        {engine && !noModel ? (
-          <button ref={anchors.model} type="button" className="c-chipb" data-testid="model-chip" aria-expanded={menu === "model"} title={modelAccountTooltip(modelAccount)} onClick={() => setMenu(menu === "model" ? null : "model")}>
-            <Logo id={current?.provider ?? currentRef.split("/")[0] ?? ""} size={18} />
-            <span className="c-chipw">{chipLabel(current?.name ?? currentRef.split("/").pop() ?? "", thinking)}{accountEmail ? ` · ${accountEmail}` : ""}</span>
-            {str(row.activeModel) && str(row.activeModel) !== str(row.model) ? (
-              <span title={`${current?.name ?? str(row.model)} isn't answering, so ${str(row.activeModel)} is standing in.`}><Icon name="retry" size={13} /></span>
-            ) : null}
-            {row.fastMode === true || row.fastMode === "ultrafast" ? <Icon name="bolt" size={13} /> : null}
-            <Icon name="chev" size={14} />
-          </button>
-        ) : null}
         {engine ? (
-          <button ref={anchors.mode} type="button" className={`c-chipb${(mode ?? asSet) === "full" ? " bad" : ""}`} data-testid="mode-chip" aria-expanded={menu === "mode"} title="How much it may do in this conversation (Shift+Tab)" onClick={() => setMenu(menu === "mode" ? null : "mode")}>
-            <Icon name={(mode ?? asSet) === "full" ? "unlock" : (mode ?? asSet) === "read-only" ? "eye" : (mode ?? asSet) === "workspace" ? "spark" : "shield"} size={15} />
-            <span className="c-chipw">{modeName(mode ?? asSet) || "As set"}</span>
-            <Icon name="chev" size={14} />
+          <button ref={anchors.tune} type="button" className={`c-btn c-tune-button${(mode ?? asSet) === "full" ? " full" : ""}`} data-testid="tune-button" aria-haspopup="dialog" aria-expanded={menu === "tune"}
+            aria-label={`Model, access and usage: ${chipLabel(current?.name ?? currentRef.split("/").pop() ?? "", thinking)} · ${modeName(mode ?? asSet) || "As set"}${cost !== undefined ? ` · $${cost.toFixed(2)} so far` : ""}`}
+            title={`${current?.name ?? currentRef} · ${modeName(mode ?? asSet) || "As set"}${accountEmail ? ` · ${accountEmail}` : ""}`}
+            onClick={() => setMenu(menu === "tune" ? null : "tune")}>
+            <Icon name="sliders" />
+            {(mode ?? asSet) === "full" ? <Icon name="lock" size={10} /> : null}
+            {str(row.activeModel) && str(row.activeModel) !== str(row.model) ? <i className="c-tune-attention" aria-hidden="true" /> : null}
           </button>
         ) : null}
         {dict.on ? null : (
@@ -534,8 +534,10 @@ export function Composer(props: Props) {
           type="file"
           hidden
           onChange={(e) => {
-            const listing = folderContext([...(e.target.files ?? [])].map((f) => f.webkitRelativePath || f.name));
+            const files = [...(e.target.files ?? [])];
+            const listing = folderContext(files.map((f) => f.webkitRelativePath || f.name));
             if (listing) draft.addPastedText(listing);
+            void draft.addFiles(files, "file");
             e.target.value = "";
           }}
         />
@@ -547,6 +549,7 @@ export function Composer(props: Props) {
             trunks={conv.trunks}
             trunkId={conv.trunkId}
             onAttach={() => fileInput.current?.click()}
+            onFolder={() => folderInput.current?.click()}
             onPhoto={() => setPhoto(true)}
             onPicture={noModel ? undefined : () => setPicture(true)}
             onInsert={(t) => {
@@ -556,7 +559,7 @@ export function Composer(props: Props) {
               setDismissed(null);
               requestAnimationFrame(() => box.current?.focus());
             }}
-            onBackground={() => void runBackground(draft.text)}
+            onBackground={() => draft.text.trim() ? void runBackground(draft.text) : (draft.setText("/bg "), box.current?.focus())}
             onOpen={onOpen}
             temporary={temporary}
             onTemporary={props.onNewTopic ? () => void startTemporary() : undefined}
@@ -567,9 +570,11 @@ export function Composer(props: Props) {
         {menu === "plug" && engine ? (
           <PlugMenu anchor={anchors.plug} onClose={() => setMenu(null)} engine={engine} row={row} trunkName={trunkName} isAdmin={admin} patch={patch} onToast={onToast} onOpen={onOpen} />
         ) : null}
-        {menu === "model" ? (
-          <ModelMenu
-            anchor={anchors.model}
+        {menu === "tune" ? (
+          <Popover anchor={anchors.tune} onClose={() => setMenu(null)} label="Model, access and usage" className="c-tune c-model c-mode" align="right">
+            <section className="c-tune-section"><h3>Model</h3>
+          <ModelMenu embedded
+            anchor={anchors.tune}
             onClose={() => setMenu(null)}
             models={conv.models}
             loading={conv.modelsLoading}
@@ -595,6 +600,34 @@ export function Composer(props: Props) {
             engine={engine}
             trunkId={conv.trunkId}
           />
+            <div className="c-tune-line"><span>Runs on {current?.local ? "this computer" : current ? serviceName(current.provider) : "no model"}{modelAccount ? ` · ${modelAccount.a.displayName || modelAccount.a.profileId}` : ""}{modelAccount?.a.email ? <small>{modelAccount.a.email}</small> : null}</span>
+              <button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/accounts"); }}>Change</button></div>
+            <div className="c-tune-line"><button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/models"); }}>Manage models…</button>
+              <button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/accounts"); }}>Accounts and order…</button></div>
+            </section>
+            <section className="c-tune-section"><h3>Access</h3>
+              <ModeMenu embedded anchor={anchors.tune} onClose={() => setMenu(null)} mode={mode} asSet={asSet} canSelectFull={admin} onPick={(m) => void pickMode(m)} onOpen={onOpen} row={row} onElevated={(level) => void patch({ elevatedLevel: level })} />
+            </section>
+            <section className="c-tune-section"><h3>Thread</h3>
+              <div className="c-tune-line"><span>Start as a job<small>Your next message gets its own card and progress.</small></span><button type="button" aria-pressed={nextAsJob} onClick={() => setNextAsJob((v) => !v)}>{nextAsJob ? "On" : "Off"}</button></div>
+              <div className="c-tune-line"><span>Branch from here<small>A copy of this conversation to try another way.</small></span><button type="button" disabled={!engine?.sessionKey || !props.lastUserEntryId} title={!props.lastUserEntryId ? "Send a message before branching this conversation." : undefined} onClick={async () => {
+                if (!engine?.sessionKey || !props.lastUserEntryId) return;
+                try {
+                  const made = await engine.request<{ sessionKey?: string }>("sessions.fork", { sessionKey: engine.sessionKey, entryId: props.lastUserEntryId });
+                  if (!made.sessionKey) throw new Error("The engine did not create the copy.");
+                  setMenu(null);
+                  props.onOpenConversation?.(made.sessionKey);
+                } catch (error) { setProblem(error instanceof Error ? error.message : String(error)); }
+              }}>Branch</button></div>
+            </section>
+            <section className="c-tune-section"><h3>Status</h3>
+              {bg.jobs.filter((job) => job.running).length ? <div className="c-tune-line"><span>{bg.jobs.filter((job) => job.running).length} in the background</span><button type="button" onClick={() => { setMenu(null); props.onOpenConversation?.(bg.jobs.find((job) => job.running)?.key ?? ""); }}>Open</button></div> : null}
+              <div className="c-tune-line"><span>{working ? "Working" : props.offline ? "Offline" : "Ready"}<small>{props.offline ? "The engine is not connected" : "Connected to this computer’s Branch"}</small></span></div>
+            </section>
+            <section className="c-tune-section"><h3>Usage</h3>
+              <div className="c-tune-line"><span>{cost !== undefined ? `$${cost.toFixed(2)} in this conversation` : "No usage recorded for this conversation"}{accountEmail ? <small>{accountEmail}</small> : null}</span><button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/usage"); }}>Details</button></div>
+            </section>
+          </Popover>
         ) : null}
         {searching ? (
           <HistorySearch
@@ -610,7 +643,6 @@ export function Composer(props: Props) {
             }}
           />
         ) : null}
-        {menu === "mode" ? <ModeMenu anchor={anchors.mode} onClose={() => setMenu(null)} mode={mode} asSet={asSet} canSelectFull={admin} onPick={(m) => void pickMode(m)} onOpen={onOpen} row={row} onElevated={(level) => void patch({ elevatedLevel: level })} /> : null}
       </form>
       {picture ? <PictureDialog onClose={() => setPicture(false)} onMake={(words) => deliver(`Make a picture: ${words}`, [], [])} /> : null}
       {photo ? <PhotoDialog onClose={() => setPhoto(false)} onUse={(f) => void draft.addFiles([f], "file")} onUpload={() => fileInput.current?.click()} /> : null}

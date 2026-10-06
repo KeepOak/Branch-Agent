@@ -78,7 +78,7 @@ import { Toasts } from "./Toasts";
 import { HeaderRow, PlaceHead, TopBar, type FaceState } from "./TopBar";
 import { useLayout } from "./use-layout";
 import { hideMenuItems, hideTarget, HIDEABLE, usePetLook, useShown } from "./shown";
-import { StatusGfx, StatusLeftExtras, StatusPet } from "./StatusExtras";
+import { StatusGfx, StatusLeftExtras } from "./StatusExtras";
 import { paneKeyFor, useShortcuts } from "./use-shortcuts";
 import { currentKeys, keyActions, readCustomKeys } from "./keymap";
 import { ComputerActivityCard } from "../thread/ComputerActivityCard";
@@ -900,7 +900,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     paused: pausedTrunks.map((t) => ({ id: t.id, name: t.name })),
     allPaused: pausedTrunks.length > 0 && pausedTrunks.length === trunks.list.length,
     gfx: shown.gfx,
-    pet,
     onMenu: (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string) => showMenu(e, id, items, label, true),
     onSettings: openSettings,
   };
@@ -946,6 +945,17 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onShowCharacter: () => setCharacterShown(true),
     talkOff: voiceReady.live ? null : VOICE_OFF,
     onTalk: () => window.dispatchEvent(new Event(TALK_EVENT)),
+    onSearch: () => window.dispatchEvent(new Event(FIND_EVENT)),
+    onSidePanel: () => setPane((value) => value ? null : "Activity"),
+    onList: toggleList,
+    onTheme: () => setTheme(toggleTheme(theme)),
+    onComputer: () => setStage("Computer"),
+    onBrowser: () => setStage("Browser"),
+    onGuide: () => { const rect = document.querySelector<HTMLElement>("[data-testid=conversation-menu-button]")?.getBoundingClientRect(); setOverlay({ kind: "menu", id: "guide", at: { x: rect?.left ?? 8, y: (rect?.bottom ?? 48) + 4 }, items: guideItems(), label: "Guide" }); },
+    hasContactReturn: Boolean(topicReturnKey && (draftTopic || openKey !== topicReturnKey)),
+    onBackToContact: () => { if (topicReturnKey) { const key = topicReturnKey; setTopicReturnKey(null); openConversation(key); } },
+    hasContactConversations: Boolean(topicContact && !draftTopic),
+    onConversations: () => setPane((value) => value === "Conversations" ? null : "Conversations"),
     besideOpen: panes.length > 0,
     // The first time, the pane opens straight away with its own chooser (the artifact's pane); after that the menu
     // changes which conversation sits beside this one.
@@ -953,7 +963,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onSplit: split,
     onAddComputer: () => setAddingComputer(true),
     onManageComputers: () => openSettings("computer"),
-    room: room.menu,
+    room: room.menu ? { ...room.menu, members: room.members } : null,
   });
   const areaProps = {
     engine: session.engine,
@@ -969,29 +979,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const dark = theme === "system" ? systemDark : effectiveDark(theme);
   const filterOpen = overlay?.kind === "filter";
 
-  const usingComputer = workWords(s, now) === "Working · using the computer";
   const who = trunkName(openRow?.agentId);
   const conversationTools = (
     <>
-      {topicReturnKey && (draftTopic || openKey !== topicReturnKey) ? <button type="button" className="ib" aria-label="Back to contact thread" title="Back to contact thread" onClick={() => { const key = topicReturnKey; setTopicReturnKey(null); openConversation(key); }}><Icon name="back" /></button> : null}
-      {topicContact && !draftTopic ? <button type="button" className="ib contact-conversations-button" aria-label={`Conversations · ${topicContact.topicCount}`} aria-pressed={pane === "Conversations"} onClick={() => setPane((value) => value === "Conversations" ? null : "Conversations")}>Conversations · {topicContact.topicCount}</button> : null}
-      {draftTopic ? null : <>
-      <button type="button" className="ib" aria-label="Computer" title={`Its computer · ${machine?.name ?? "This computer"}`} data-live={usingComputer || undefined} onClick={() => setStage("Computer")}>
-        <Icon name="monitor" />
-        {usingComputer ? <i className="live-dot" aria-hidden="true" /> : null}
-      </button>
-      <button type="button" className="ib" aria-label="Browser" title="Open the browser full size" onClick={() => setStage("Browser")}><Icon name="globe" /></button>
-      <button type="button" className="ib" aria-label="Side panel" title="Side panel: Activity, Dashboard, Timeline, Plan, Files, Memory, Terminal (Ctrl+Shift+K)" aria-pressed={pane !== null} onClick={() => setPane((v) => (v ? null : "Activity"))}><Icon name="panel" /></button>
-      {openRow?.kind === "group" || openRow?.kind === "channel" ? null : (
-        <button type="button" className="ib" aria-label={`Who ${who} knows and may talk to`} title={`Who ${who} knows and may talk to`} data-testid="who-it-knows-button" onClick={conversationMenu.whoItKnows}><Icon name="users" /></button>
-      )}
-      {room.menu ? <button type="button" className="ib" aria-label="Room rules" onClick={(e) => showMenu(e, "room-rules-header", room.menu!.rules(), "Room rules")}><Icon name="gear" /></button> : null}
-      {room.members.length ? <button type="button" className="ib" aria-label={`Members · ${room.members.length}`} onClick={(e) => showMenu(e, "room-members-header", [{ kind: "head", label: "Members" }, ...room.members.map((member) => ({ kind: "custom" as const, node: <div className="mi">{member}</div> }))], "Members")}><Icon name="users" /></button> : null}
-      <button type="button" className="ib" aria-label="Find in this conversation" title="Find in this conversation (Ctrl+F)" onClick={() => window.dispatchEvent(new Event(FIND_EVENT))}><Icon name="search" /></button>
+      {draftTopic ? null :
       <button type="button" className="ib" aria-label="Conversation menu" title={`More for ${openRow?.kind === "group" ? name : who}`} data-testid="conversation-menu-button" onClick={conversationMenu.open}>
         <Icon name="more" />
       </button>
-      </>}
+      }
     </>
   );
   let main: ReactNode;
@@ -1001,6 +996,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       replyTo,
       onClearReply: () => setReplyTo(null),
       onOpenConversation: openConversation,
+      lastUserEntryId: [...s.history].reverse().find((block) => block.kind === "user")?.meta?.entryId,
       offline: !ready,
       onOpen: (target: string) => {
         if (target.startsWith("settings/")) {
@@ -1016,6 +1012,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       <div className="conversation-column" data-testid="new-topic-draft">
         {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} onList={toggleList} /> : null}
         <div className="conversation-empty" style={{ flex: 1 }} />
+        <div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
         <Composer
           key={draftTopic.nonce}
           {...composerProps}
@@ -1088,6 +1085,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         />
         </SplitFrame>
         {s.error && !isPreparationPending(s.error) ? <p className="notice indent">{s.error}</p> : null}
+        <div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={(() => { const w = lists.rows.find((r) => rowState(r).waiting); return w ? trunkName(w.agentId) : null; })()} /></div>
         <Composer
           {...composerProps}
           mainKey={mainKeySuffix}
@@ -1179,7 +1177,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onSettings={route.kind === "place" ? () => openSettings("general") : undefined}
       />
       <Sidebar
-        pet={<SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={(() => { const w = lists.rows.find((r) => rowState(r).waiting); return w ? trunkName(w.agentId) : null; })()} />}
         sections={sections}
         openKey={route.kind === "chat" ? openKey : null}
         currentPlace={route.kind === "place" ? route.place : null}
@@ -1307,7 +1304,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           extras={{
             left: <StatusLeftExtras {...statusExtras} />,
             gfx: <StatusGfx {...statusExtras} />,
-            pet: <StatusPet pet={statusExtras.pet} />,
           }}
           onItem={statusItem}
         />
