@@ -1,4 +1,5 @@
 engine:src/talk/agent-consult-tool.test.ts
+engine:src/talk/agent-run-control.test.ts
 engine:src/talk/agent-talkback-runtime.test.ts
 engine:src/talk/fast-context-runtime.test.ts
 engine:src/talk/forced-consult-coordinator.test.ts
