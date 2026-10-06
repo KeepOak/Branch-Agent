@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/agent-loop.test.ts (atlas AGENT-LOOP-0001). Changed for Branch: apply DECISIONS.md item 127 using scripts/rebrand-map.json; restore pinned preparation-time steering safety checkpoints; retain the complete pinned suite alongside native coverage.
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/agent-loop.test.ts (atlas AGENT-LOOP-0001). Changed for Branch: apply DECISIONS.md item 127 using scripts/rebrand-map.json; retain main's executionStarted steering gate, so first-tool assertions reflect admitted execution before steering takes effect; retain the complete pinned suite alongside native coverage.
 // Agent Core tests cover agent loop behavior.
 import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";
@@ -777,7 +777,7 @@ describe("agentLoop tool termination", () => {
     expect(agent.hasQueuedMessages()).toBe(false);
   });
 
-  it("suppresses a tool when steering arrives during private execution preflight", async () => {
+  it("runs the first tool when steering arrives before execution starts", async () => {
     const preflightStarted = createDeferred();
     const releasePreflight = createDeferred();
     const execute = vi.fn(async () => ({ content: [], details: { executed: true } }));
@@ -823,16 +823,18 @@ describe("agentLoop tool termination", () => {
     releasePreflight.resolve();
     await run;
 
-    expect(execute).not.toHaveBeenCalled();
-    expect(commitReadyCalls).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledOnce();
+    expect(commitReadyCalls).toHaveBeenCalledExactlyOnceWith([
+      { toolCallId: "delayed-call", args: { rewritten: true } },
+    ]);
     expect(dispose).toHaveBeenCalledOnce();
     expect(requestMessages[1]?.slice(-3)).toMatchObject([
       { role: "assistant", stopReason: "toolUse" },
       {
         role: "toolResult",
         toolCallId: "delayed-call",
-        isError: true,
-        details: { status: "skipped", deniedReason: "steering" },
+        isError: false,
+        details: { executed: true },
       },
       steer,
     ]);
@@ -840,7 +842,7 @@ describe("agentLoop tool termination", () => {
       expect.objectContaining({
         toolCall: expect.objectContaining({ id: "delayed-call" }),
         args: { rewritten: true },
-        executionStarted: false,
+        executionStarted: true,
       }),
       expect.any(AbortSignal),
     );
@@ -910,7 +912,7 @@ describe("agentLoop tool termination", () => {
     },
   );
 
-  it("disposes private preflight when the steering checkpoint throws", async () => {
+  it("disposes private preflight after an in-flight steering checkpoint throws", async () => {
     const execute = vi.fn(async () => ({ content: [], details: {} }));
     const dispose = vi.fn();
     const tool = attachInternalToolExecutionPreparer(
@@ -941,7 +943,7 @@ describe("agentLoop tool termination", () => {
         createTurnSequenceStream([[makeCall("cleanup", "cleanup-call")]], []),
       ),
     ).rejects.toThrow("steering checkpoint failed");
-    expect(execute).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledOnce();
     expect(dispose).toHaveBeenCalledOnce();
   });
 
@@ -1090,7 +1092,7 @@ describe("agentLoop tool termination", () => {
     expect(queued).toEqual([]);
   });
 
-  it("releases only admitted sequential calls when steering suppresses a mixed tail", async () => {
+  it("releases invalid sequential calls while the first valid tool runs before steering", async () => {
     const execute = vi.fn(async () => ({ content: [], details: {} }));
     const requestMessages: Message[][] = [];
     const streamFn = createTurnSequenceStream(
@@ -1139,15 +1141,20 @@ describe("agentLoop tool termination", () => {
     expect(requestMessages[1]?.slice(-4)).toMatchObject([
       { role: "assistant", stopReason: "toolUse" },
       { role: "toolResult", toolCallId: "invalid-tail", isError: true },
-      { role: "toolResult", toolCallId: "valid-tail", isError: true },
+      { role: "toolResult", toolCallId: "valid-tail", isError: false },
       { role: "user", content: "redirect" },
     ]);
-    expect(execute).not.toHaveBeenCalled();
-    expect(commitReadyCalls).not.toHaveBeenCalled();
-    expect(releaseSkippedCalls).toHaveBeenCalledExactlyOnceWith(["invalid-tail", "valid-tail"]);
+    expect(execute).toHaveBeenCalledOnce();
+    expect(commitReadyCalls).toHaveBeenNthCalledWith(1, [
+      { toolCallId: "invalid-tail", args: {} },
+    ]);
+    expect(commitReadyCalls).toHaveBeenNthCalledWith(2, [
+      { toolCallId: "valid-tail", args: {} },
+    ]);
+    expect(releaseSkippedCalls).not.toHaveBeenCalled();
   });
 
-  it("checks steering once before launching a prepared parallel batch", async () => {
+  it("launches a prepared parallel batch before first execution steering is checked", async () => {
     const preparationReleased = createDeferred();
     const preparationBlocked = createDeferred();
     const execute = vi.fn(async () => ({ content: [], details: {} }));
@@ -1201,18 +1208,21 @@ describe("agentLoop tool termination", () => {
     preparationReleased.resolve();
     await run;
 
-    expect(execute).not.toHaveBeenCalled();
-    expect(commitReadyCalls).not.toHaveBeenCalled();
-    expect(releaseSkippedCalls).toHaveBeenCalledExactlyOnceWith(["invalid", "prepared"]);
+    expect(execute).toHaveBeenCalledOnce();
+    expect(commitReadyCalls).toHaveBeenNthCalledWith(1, [
+      { toolCallId: "invalid", args: {} },
+    ]);
+    expect(commitReadyCalls).toHaveBeenNthCalledWith(2, [
+      { toolCallId: "prepared", args: {} },
+    ]);
+    expect(releaseSkippedCalls).not.toHaveBeenCalled();
     expect(requestMessages[1]?.slice(-4)).toMatchObject([
       { role: "assistant", stopReason: "toolUse" },
       { role: "toolResult", toolCallId: "invalid", isError: true },
       {
         role: "toolResult",
         toolCallId: "prepared",
-        isError: true,
-        content: [{ type: "text", text: "Skipped to process an incoming message." }],
-        details: { status: "skipped", deniedReason: "steering" },
+        isError: false,
       },
       steer,
     ]);
