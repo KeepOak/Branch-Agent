@@ -68,6 +68,12 @@ export function applySessionsPatchDisplayMetadata(params: {
     next.category = trimmed;
   }
 
+  if (patch.projectId === null) {
+    delete next.projectId;
+  } else if (patch.projectId !== undefined) {
+    next.projectId = patch.projectId;
+  }
+
   if (patch.boardFace !== undefined) {
     next.boardFace = patch.boardFace;
   }

@@ -32,6 +32,8 @@ type Ctx = {
   whoItKnows?: (contact: Contact) => void;
   muted?: boolean;
   toggleMute?: (contact: Contact) => void;
+  moveToGroup?: (contact: Contact) => void;
+  archiveRoom?: (contact: Contact) => void;
 };
 
 const WINDOW_OFF = "A conversation in its own window needs the desktop app, which doesn't offer it yet.";
@@ -115,6 +117,10 @@ export function rowMenuItems(row: Conversation, c: Ctx): MenuItem[] {
 }
 
 function contactMenuItems(row: Conversation, c: Ctx, contact: Contact): MenuItem[] {
+  if (contact.roomId) return [
+    { label: "Open", run: () => c.open(contact.threadKey), testid: "menu-open", ...ic("chat") },
+    { label: "Archive", letter: "a", run: () => c.archiveRoom?.(contact), testid: "menu-archive", ...ic("box") },
+  ];
   const trunk = contact.kind === "trunk";
   const otherTrunk = trunk && !contact.isDefault;
   const canEdit = Boolean(contact.thread);
@@ -124,6 +130,7 @@ function contactMenuItems(row: Conversation, c: Ctx, contact: Contact): MenuItem
       ? { label: "Mark as read", letter: "u", run: () => c.markContactRead?.(contact), testid: "menu-unread", ...ic("chat") }
       : { label: "Mark as unread", letter: "u", run: () => contact.thread && void c.actions.setUnread(contact.thread, true), testid: "menu-unread", ...ic("chat"), ...(!canEdit ? { disabled: "Send a first message before marking this contact unread." } : {}) },
     { label: row.pinned ? "Unpin" : "Pin", letter: "p", run: () => c.pinContact?.(contact), testid: "menu-pin", ...ic("pin") },
+    contact.kind !== "group" && contact.kind !== "chatGroup" ? { label: "Move to group…", run: () => c.moveToGroup?.(contact), testid: "menu-move-to-group", ...ic("users") } : null,
     !contact.isDefault && canEdit ? snoozeItem(contact.thread!, c) : null,
     canEdit ? { label: row.done ? "Mark not done" : "Mark done", run: () => void c.actions.setDone(contact.thread!, !row.done), testid: "menu-done", ...ic("check") } : null,
     !contact.isDefault && (!trunk || Boolean(contact.archivedAt)) && canEdit
