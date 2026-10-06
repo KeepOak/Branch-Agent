@@ -1,3 +1,5 @@
 branch_path,atlas_id,project,commit,upstream_path,date
 engine/extensions/telegram/src/webhook.host-floor.test.ts,CHAT-APPS-0119,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/telegram/src/webhook.host-floor.test.ts (changed: use Gateway-owned routes),2026-10-06
 engine/extensions/telegram/src/webhook.test.ts,CHAT-APPS-0119,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/telegram/src/webhook.test.ts (changed: expect assigned scratch Gateway port),2026-10-06
+engine/src/auto-reply/reply/inbound-meta.ts,CHAT-APPS-0001,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,packages/core/src/channels/processor.ts (adapted public-room silence guidance),2026-10-06
+engine/src/auto-reply/reply/inbound-meta.test.ts,CHAT-APPS-0001,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,packages/core/src/channels/processor.test.ts (adapted channel-context test),2026-10-06
