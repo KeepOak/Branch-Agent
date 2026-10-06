@@ -30,8 +30,8 @@ export type HoverActions = {
 export const NO_FLAG = "Not available in this engine yet: message flags (no engine method keeps a flag with a reply).";
 export const NO_PIN = "Not available in this engine yet: pinned messages (no engine method pins one message).";
 export const NO_LEAVE_OUT = "Not available in this engine yet: leaving one message out of context.";
-export const NO_TIMELINE = "Opens the side panel's Timeline, which this window doesn't have yet.";
 export const NO_GOOD = "Not available in this engine yet: marking a good reply (no engine method keeps reply feedback).";
+export const NO_BAD = "Not available in this engine yet: marking a bad reply (no engine method keeps reply feedback).";
 export const NO_COMPARE = "Not available in this engine yet: asking a second model the same thing beside this reply.";
 export const NO_PICTURE = "Not available in this window yet: drawing a message as a picture.";
 export const NO_CODING_APP = "Carrying a conversation into a coding app on this computer needs the Branch app.";
@@ -102,23 +102,34 @@ function MoreMenu({ actions, isReply, onClose }: { actions: HoverActions; isRepl
   );
   return (
     <Popover label="More" onClose={onClose}>
+      <div className="pop-head">Reply tools</div>
+      {!isReply ? item("Edit", actions.edit ?? null) : item("Try again", actions.retry ?? null)}
       {item("Branch from here", actions.branch)}
       {actions.startConversation ? item("Start a conversation from here", actions.startConversation) : null}
-      {item("Leave out of context", null, NO_LEAVE_OUT)}
-      {isReply ? item("Every step behind this reply", null, NO_TIMELINE) : null}
+      {isReply ? item("Ask another model", null, NO_COMPARE) : null}
+      <hr className="msep" />
+      <div className="pop-head">Inspect</div>
+      {isReply ? item("Every step behind this reply", actions.inspect ?? null) : null}
       {isReply && actions.read ? item(actions.read.reading ? "Stop reading" : "Read aloud", actions.read) : null}
       <hr className="msep" />
+      <div className="pop-head">Context</div>
+      {item("Leave out of context", null, NO_LEAVE_OUT)}
+      <hr className="msep" />
+      <div className="pop-head">Feedback</div>
       {isReply ? item("Good reply", null, NO_GOOD) : null}
-      {isReply ? item("Ask another model too", null, NO_COMPARE) : null}
-      {item("Share as a picture…", null, NO_PICTURE)}
-      {item("Continue in a coding app…", null, NO_CODING_APP)}
-      {item("Delete this message", null, NO_DELETE)}
+      {isReply ? item("Bad reply", null, NO_BAD) : null}
+      {isReply ? item("Flag", null, NO_FLAG) : null}
+      <hr className="msep" />
+      <div className="pop-head">Share</div>
+      {item("As a picture", null, NO_PICTURE)}
+      {item("To a coding app", null, NO_CODING_APP)}
+      <hr className="msep" />
+      {item("Delete", null, NO_DELETE)}
     </Popover>
   );
 }
 
-/** The bar itself: on a reply Copy, Try again, Reply, React, Look inside, Report a problem, Branch, More, Pin, time;
- *  on your message Edit, Reply, React, Branch, More, Pin, time. */
+/** One visible toolbar for either sender; secondary actions live under More (§2.19). */
 export function HoverBar({ isReply, actions, meta }: { isReply: boolean; actions: HoverActions; meta?: MessageMeta }) {
   const [menu, setMenu] = useState<"react" | "more" | null>(null);
   const time = meta?.timestamp ? messageTime(meta.timestamp) : "";
@@ -126,16 +137,11 @@ export function HoverBar({ isReply, actions, meta }: { isReply: boolean; actions
   const close = () => setMenu(null);
   return (
     <div className={`hover-bar ${isReply ? "on-reply" : "on-user"}${menu ? " held" : ""}`} data-testid="hover-bar">
-      {isReply ? <Btn label="Copy" d={ICONS.copy} act={actions.copy} /> : <Btn label="Edit" d={ICONS.edit} act={actions.edit} />}
-      {isReply ? <Btn label="Try again" d={ICONS.retry} act={actions.retry} /> : null}
+      <Btn label="Copy" d={ICONS.copy} act={actions.copy} />
       <Btn label="Reply" d={ICONS.reply} act={actions.reply} />
       <Btn label="React" d={ICONS.react} act={{ run: () => setMenu("react"), disabled: actions.reactDisabled }} />
-      {isReply ? <Btn label="Look inside" d={ICONS.eye} act={actions.inspect} /> : null}
-      {isReply ? <Btn label="Report a problem" d={ICONS.flag} act={{ run: () => undefined, disabled: NO_FLAG }} /> : null}
-      <Btn label="Branch from here" d={ICONS.branch} act={actions.branch} />
-      {actions.startConversation ? <Btn label="Start a conversation from here" d={ICONS.reply} act={actions.startConversation} /> : null}
-      <Btn label="More" d={ICONS.more} act={{ run: () => setMenu("more"), disabled: null }} />
       <Btn label="Pin" d={ICONS.pin} act={{ run: () => undefined, disabled: NO_PIN }} />
+      <Btn label="More" d={ICONS.more} act={{ run: () => setMenu("more"), disabled: null }} />
       {time ? (
         <span className="hb-time" title={meta?.timestamp ? fullTime(meta.timestamp) : undefined} aria-label={model ? `Sent at ${time} by ${model}` : `Sent at ${time}`}>
           {model ? `${time} · ${model}` : time}

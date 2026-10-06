@@ -43,7 +43,7 @@ if (mode === 'install') {
   const vitest = path.join(laneRoot, 'node_modules', 'vitest', 'vitest.mjs');
   const output = path.join(process.env.RUNNER_TEMP ?? root, `harvest-result-${process.pid}.json`);
   const code = await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [vitest, 'run', '--config', config, '--reporter=json', '--outputFile', output, ...selected],
+    const child = spawn(process.execPath, [vitest, 'run', '--config', config, '--reporter=default', '--reporter=json', `--outputFile.json=${output}`, ...selected],
       { cwd: laneRoot, env: { ...process.env, CI: '1' }, stdio: 'inherit', windowsHide: true });
     child.on('error', reject);
     child.on('exit', (exitCode) => resolve(exitCode ?? 1));
@@ -52,6 +52,13 @@ if (mode === 'install') {
   if (code) {
     const report = JSON.parse(await fs.readFile(output, 'utf8').catch(() => 'null'));
     const failed = report?.testResults?.filter(result => result.status === 'failed') ?? [];
+    // Name each failing test and its first error lines in the job log; the JSON report alone hides them.
+    for (const result of failed) {
+      for (const test of result.assertionResults?.filter(entry => entry.status === 'failed') ?? []) {
+        console.log(`::error title=Harvest test failed::${path.relative(laneRoot, result.name)} > ${test.fullName}`);
+        console.log((test.failureMessages ?? []).join('\n').split('\n').slice(0, 8).join('\n'));
+      }
+    }
     failures = failed.length
       ? failed.map(result => `${lane}:${(path.isAbsolute(result.name) ? path.relative(laneRoot, result.name) : result.name).replaceAll('\\', '/')}`)
       : selected.map(file => `${lane}:${file}`);

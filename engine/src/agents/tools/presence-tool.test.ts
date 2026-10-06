@@ -1,3 +1,4 @@
+// From openclaw/openclaw@9da070d4b99562e7b3f6069e825f1fb17b406544:src/agents/tools/presence-tool.test.ts (atlas INTEGRATIONS-0131). Changed for Branch: Retained current upstream isolated missing-authority coverage and all other assertions after the Branch rename.
 import { describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { createGatewayMethodRegistry } from "../../gateway/methods/registry.js";

@@ -1,6 +1,6 @@
 // The row menu's items for one conversation (DESIGN-SPEC §4.1.6, with its letter keys).
 import type { Conversation } from "../connect/conversations";
-import { snoozeChoices, wakeWords, type Actions } from "./conversation-actions";
+import { snoozeChoices, snoozeTime, wakeWords, type Actions } from "./conversation-actions";
 import { isSnoozed } from "./list-model";
 import type { MenuItem } from "./Menu";
 import { menuIcon } from "./menu-icons";
@@ -76,7 +76,7 @@ function snoozeItem(row: Conversation, c: Ctx): MenuItem | null {
     label: "Snooze",
     testid: "menu-snooze",
     icon: menuIcon("clock"),
-    items: snoozeChoices(c.now).map((s) => ({ label: s.label, hint: wakeWords(s.until, c.now), run: () => void c.actions.snooze(row, s.until), testid: `snooze-${s.label}` })),
+    items: snoozeChoices(c.now).map((s) => ({ label: s.label, hint: snoozeTime(s.until, s.label), run: () => void c.actions.snooze(row, s.until), testid: `snooze-${s.label}` })),
   };
 }
 

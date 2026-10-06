@@ -21,7 +21,7 @@ function Harness({ p }: { p: ConversationMenuProps }) {
   const menu = useConversationMenu(p);
   return (
     <>
-      <button type="button" data-testid="who-it-knows-button" onClick={menu.whoItKnows}>people</button>
+      <button type="button" data-testid="conversation-menu-button" onClick={menu.open}>⋯</button>
       {menu.node}
     </>
   );
@@ -56,14 +56,21 @@ function props(request: (method: string) => Promise<unknown>): ConversationMenuP
   };
 }
 
-describe("the conversation header's Who it knows button", () => {
-  it("reads the agent-to-agent policy, lists the Trunks under the button, and a second click closes it", async () => {
+async function openKnown(host: HTMLElement) {
+  if (document.querySelector("[data-testid=who-it-knows]")) await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=conversation-menu-button]")?.click());
+  await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=conversation-menu-button]")?.click());
+  const who = [...document.querySelectorAll<HTMLButtonElement>("[data-testid=conversation-menu] button")].find((button) => button.textContent?.includes("Who Sapling knows"));
+  await act(async () => who?.click());
+}
+
+describe("the conversation header's Who it knows menu row", () => {
+  it("reads the agent-to-agent policy, lists the Trunks from the ⋯ menu, and a second click closes it", async () => {
     const request = vi.fn(async (method: string) => (method === "config.get" ? { config: { tools: { agentToAgent: { enabled: true } } } } : {}));
     const host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
     await act(async () => root?.render(<Harness p={props(request)} />));
-    const button = host.querySelector<HTMLButtonElement>("[data-testid=who-it-knows-button]");
-    await act(async () => button?.click());
+    const button = host.querySelector<HTMLButtonElement>("[data-testid=conversation-menu-button]");
+    await openKnown(host);
     expect(request).toHaveBeenCalledWith("config.get", {});
     const pop = document.querySelector("[data-testid=who-it-knows]");
     expect(pop?.textContent).toContain("Sapling knows and may talk to");
@@ -77,7 +84,7 @@ describe("the conversation header's Who it knows button", () => {
     const host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
     await act(async () => root?.render(<Harness p={props(request)} />));
-    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=who-it-knows-button]")?.click());
+    await openKnown(host);
     expect(document.querySelector("[data-testid=who-it-knows]")?.textContent).toContain("talking between Trunks is off");
   });
 
@@ -94,11 +101,11 @@ describe("the conversation header's Who it knows button", () => {
     const host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
     await act(async () => root?.render(<Harness p={props(request)} />));
-    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=who-it-knows-button]")?.click());
+    await openKnown(host);
     await act(async () => document.querySelector<HTMLButtonElement>("[data-testid=who-it-knows] button[role=menuitemcheckbox]")?.click());
     expect(deny).toEqual(["fern"]);
     expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { sapling: { agentToAgent: { deny: ["fern"] } } } } }) });
-    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=who-it-knows-button]")?.click());
+    await openKnown(host);
     await act(async () => document.querySelector<HTMLButtonElement>("[data-testid=who-it-knows] button[role=menuitemcheckbox]")?.click());
     expect(deny).toEqual([]);
   });
@@ -117,12 +124,12 @@ describe("the conversation header's Who it knows button", () => {
     const host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
     await act(async () => root?.render(<Harness p={props(request)} />));
-    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=who-it-knows-button]")?.click());
+    await openKnown(host);
     expect(document.querySelector("[data-testid=who-it-knows]")?.textContent).toContain("May message Sapling");
     await act(async () => document.querySelectorAll<HTMLButtonElement>("[data-testid=who-it-knows] button[role=menuitemcheckbox]")[1]?.click());
     expect(entries.fern.agentToAgent.deny).toEqual(["sapling"]);
     expect(entries.sapling.agentToAgent.deny).toEqual([]);
-    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=who-it-knows-button]")?.click());
+    await openKnown(host);
     const switches = document.querySelectorAll<HTMLButtonElement>("[data-testid=who-it-knows] button[role=menuitemcheckbox]");
     expect(switches[0]?.getAttribute("aria-checked")).toBe("true");
     expect(switches[1]?.getAttribute("aria-checked")).toBe("false");
