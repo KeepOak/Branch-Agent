@@ -1,0 +1,5 @@
+engine:src/plugins/discovery.path-inspection.test.ts
+engine:src/plugins/discovery.test.ts
+engine:src/plugins/loader.admission-contracts.test.ts
+engine:src/plugins/loader.bundle.test.ts
+engine:src/plugins/loader.capability-factory.test.ts
