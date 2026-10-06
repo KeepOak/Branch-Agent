@@ -26,3 +26,7 @@ engine:extensions/msteams/src/reply-stream-controller.sdk.test.ts
 engine:extensions/msteams/src/reply-stream-controller.test.ts
 engine:extensions/msteams/src/sdk-proactive.process.test.ts
 engine:extensions/msteams/src/sdk-proactive.test.ts
+engine:extensions/twitch/src/access-control.test.ts
+engine:extensions/twitch/src/monitor.test.ts
+engine:extensions/twitch/src/token.test.ts
+engine:extensions/twitch/src/twitch-client.test.ts
