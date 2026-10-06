@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/slack/src/format.ts (atlas CHAT-APPS-0157). Changed for Branch: R-1458 makes mass mentions inert.
 import { eastAsianWidthType } from "get-east-asian-width";
 import type { MarkdownTableMode } from "branch/plugin-sdk/config-contracts";
 import { resolveIntegerOption } from "branch/plugin-sdk/number-runtime";
@@ -19,7 +20,7 @@ function isAllowedSlackAngleToken(token: string): boolean {
   return (
     inner.startsWith("@") ||
     inner.startsWith("#") ||
-    inner.startsWith("!") ||
+    inner.startsWith("!date^") ||
     inner.startsWith("mailto:") ||
     inner.startsWith("tel:") ||
     inner.startsWith("http://") ||

@@ -15,7 +15,9 @@ engine:extensions/discord/src/pluralkit.test.ts
 engine:extensions/discord/src/send.voice.test.ts
 engine:extensions/discord/src/voice-message.metadata.test.ts
 engine:extensions/discord/src/voice-message.test.ts
+engine:extensions/slack/src/block-mrkdwn.behaviour.test.ts
 engine:extensions/slack/src/draft-stream.test.ts
+engine:extensions/slack/src/format.test.ts
 engine:extensions/slack/src/monitor/http-handler.test.ts
 engine:extensions/slack/src/monitor/provider.auth-errors.test.ts
 engine:extensions/slack/src/monitor/relay-source.test.ts
