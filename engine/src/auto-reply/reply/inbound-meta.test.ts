@@ -6,6 +6,7 @@ import type { BranchConfig } from "../../config/types.branch.js";
 import { withEnv } from "../../test-utils/env.js";
 import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
 import type { TemplateContext } from "../templating.js";
+import { SILENT_REPLY_TOKEN } from "../tokens.js";
 import { INBOUND_CONTEXT_MARKER } from "./inbound-context-marker.js";
 import {
   buildInboundMetaSystemPrompt,
@@ -119,19 +120,39 @@ function createChatWindowContext(params: {
 }
 
 describe("buildInboundMetaSystemPrompt", () => {
-  it("guides public rooms to stay silent unless addressed without changing direct messages", () => {
+  it("does not encourage silence in public rooms when group silent replies are disallowed by default", () => {
     const group = buildInboundMetaSystemPrompt(
       { OriginatingChannel: "slack", ChatType: "group" } as TemplateContext,
       EMPTY_CFG,
     );
-    const direct = buildInboundMetaSystemPrompt(
-      { OriginatingChannel: "slack", ChatType: "direct" } as TemplateContext,
-      EMPTY_CFG,
-    );
     expect(group).toContain("not every message is directed at you");
+    expect(group).not.toContain("Reply with text only when mentioned");
+    expect(group).not.toContain(SILENT_REPLY_TOKEN);
+    expect(group).not.toContain("An empty reply is valid");
+  });
+
+  it("uses the exact silent token only when group policy allows silence", () => {
+    const context = {
+      OriginatingChannel: "slack",
+      Surface: "slack",
+      ChatType: "group",
+    } as TemplateContext;
+    const allowCfg = {
+      agents: { defaults: { silentReply: { group: "allow" } } },
+    } as BranchConfig;
+    const group = buildInboundMetaSystemPrompt(context, allowCfg);
+    const disallowedBySurface = buildInboundMetaSystemPrompt(context, {
+      ...allowCfg,
+      surfaces: { slack: { silentReply: { group: "disallow" } } },
+    } as BranchConfig);
+    const direct = buildInboundMetaSystemPrompt({ ...context, ChatType: "direct" }, allowCfg);
     expect(group).toContain("Reply with text only when mentioned, replied to, or clearly needed");
-    expect(group).toContain("An empty reply is valid");
+    expect(group).toContain(`reply exactly ${SILENT_REPLY_TOKEN}`);
+    expect(group).toContain("Do not return an empty response");
+    expect(group).not.toContain("An empty reply is valid");
+    expect(disallowedBySurface).not.toContain(SILENT_REPLY_TOKEN);
     expect(direct).not.toContain("not every message is directed at you");
+    expect(direct).not.toContain(SILENT_REPLY_TOKEN);
   });
   it.each(["direct", "group"] as const)(
     "keeps $0 system metadata byte-stable as per-turn context changes",

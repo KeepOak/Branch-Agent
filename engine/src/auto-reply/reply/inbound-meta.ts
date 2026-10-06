@@ -10,6 +10,7 @@ import {
 } from "@branch/normalization-core/utf16-slice";
 import type { CurrentInboundPromptContext } from "../../agents/embedded-agent-runner/run/params.js";
 import { normalizeChatType } from "../../channels/chat-type.js";
+import { resolveSilentReplySettings } from "../../config/silent-reply.js";
 import { resolveSessionGoalDisplayState } from "../../config/sessions/goals.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { BranchConfig } from "../../config/types.branch.js";
@@ -18,6 +19,7 @@ import type { EnvelopeFormatOptions } from "../envelope.js";
 import { formatAgentEnvelopeTimestamp } from "../envelope.js";
 import { getRequesterProfile } from "../requester-profile.js";
 import type { TemplateContext } from "../templating.js";
+import { SILENT_REPLY_TOKEN } from "../tokens.js";
 import {
   formatContextJsonBlock,
   MAX_CONTEXT_JSON_STRING_CHARS,
@@ -489,6 +491,14 @@ export function buildInboundMetaSystemPrompt(
   options?: { includeFormattingHints?: boolean },
 ): string {
   const chatType = normalizeChatType(ctx.ChatType);
+  const allowGroupSilence =
+    chatType !== undefined &&
+    chatType !== "direct" &&
+    resolveSilentReplySettings({
+      cfg,
+      surface: ctx.Surface ?? ctx.Provider,
+      conversationType: "group",
+    }).policy === "allow";
 
   // Per-turn identifiers, flags, sender facts, and human-authored text belong in
   // user-role context; keeping them out of this system prefix preserves prompt caches.
@@ -518,8 +528,13 @@ export function buildInboundMetaSystemPrompt(
     "When explicitly_mentioned_bot is true, the incoming message mentions your channel identity; treat it as addressed to you even if your persona name differs.",
     ...(chatType && chatType !== "direct"
       ? [
-          "In a public channel or group, not every message is directed at you. Reply with text only when mentioned, replied to, or clearly needed for a question or task addressed to you.",
-          "If people are talking to each other or sharing your previous output with someone else, stay silent. An empty reply is valid; do not narrate or apologize for silence.",
+          "In a public channel or group, not every message is directed at you.",
+          ...(allowGroupSilence
+            ? [
+                "Reply with text only when mentioned, replied to, or clearly needed for a question or task addressed to you.",
+                `If people are talking to each other or sharing your previous output with someone else, reply exactly ${SILENT_REPLY_TOKEN}. Do not return an empty response, narrate, or apologize for silence.`,
+              ]
+            : []),
         ]
       : []),
     "",
