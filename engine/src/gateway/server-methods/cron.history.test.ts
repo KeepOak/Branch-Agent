@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/gateway/server-methods/cron.history.test.ts (atlas AUTOMATION-0149). Changed for Branch: names mapped with scripts/rebrand-map.json; retain current-main transcript authority contract.
 import path from "node:path";
 import { expectDefined } from "@branch/normalization-core";
 import { expect, it, vi } from "vitest";
