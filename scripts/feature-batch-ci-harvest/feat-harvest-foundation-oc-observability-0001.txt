@@ -11,6 +11,7 @@ engine:extensions/diagnostics-prometheus/src/service.http-scope.test.ts
 engine:extensions/diagnostics-prometheus/src/service.test.ts
 engine:src/agents/cache-trace.test.ts
 engine:src/agents/embedded-agent-runner/prompt-cache-observability.test.ts
+engine:src/infra/diagnostic-flags.test.ts
 engine:src/infra/provider-usage.fetch.claude.test.ts
 engine:src/infra/provider-usage.fetch.codex.test.ts
 engine:src/logging/levels.test.ts
