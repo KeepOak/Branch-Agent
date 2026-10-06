@@ -465,7 +465,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       if (!previous.has(contact.id) || contact.lastActivityAt <= previous.get(contact.id)! || (!contact.threadUnread && contact.unreadTopics === 0)) continue;
       const alert = contactAlert(contact, mutedContacts.has(contact.id));
       if (!alert) continue;
-      const notification = new Notification(alert.title, { body: alert.body });
+      const notification = new Notification(alert.title, { body: alert.body, icon: "/favicon.ico" });
       notification.onclick = () => {
         window.focus();
         setFocusTopic(null);
