@@ -63,12 +63,12 @@ describe("Settings › Updates & about", () => {
     const { engine } = engineWith({ "update.status": { ...READY, updateAvailable: null }, status: { runtimeVersion: "1.0.0" } });
     await show("updates", engine);
     expect(document.body.textContent).toContain("Branch is up to date.");
-    expect(document.body.textContent).not.toContain("Install when nothing is running");
+    expect(document.body.textContent).not.toContain("Install when idle");
   });
   it("Let them finish first runs update.run without stopping anything", async () => {
     const { engine, request } = engineWith({ "update.status": READY, "sessions.list": RUNNING, "update.run": { ok: true, result: { status: "ok" } } });
     await show("updates", engine);
-    await click("Install when nothing is running");
+    await click("Install when idle");
     expect(document.body.textContent).toContain("1 task is working right now.");
     await click("Continue");
     expect(request.mock.calls.map(([m]) => m)).toContain("update.run");
@@ -78,7 +78,7 @@ describe("Settings › Updates & about", () => {
   it("Install now stops each running conversation, then runs update.run", async () => {
     const { engine, request } = engineWith({ "update.status": READY, "sessions.list": RUNNING, "sessions.abort": { ok: true }, "update.run": { ok: true } });
     await show("updates", engine);
-    await click("Install when nothing is running");
+    await click("Install when idle");
     await act(async () => button("Install nowStops them at a safe point. Afterwards you can pick each one up where it was.").click());
     await click("Continue");
     const methods = request.mock.calls.map(([m]) => m);
@@ -88,7 +88,7 @@ describe("Settings › Updates & about", () => {
   it("shows the engine's refusal instead of claiming it installs", async () => {
     const { engine } = engineWith({ "update.status": READY, "sessions.list": { sessions: [] }, "update.run": { ok: false, message: "Updates are managed by the package manager." } });
     await show("updates", engine);
-    await click("Install when nothing is running");
+    await click("Install when idle");
     await click("Continue");
     expect(document.body.textContent).toContain("Updates are managed by the package manager.");
   });

@@ -108,7 +108,6 @@ export function ReadingSec({ look }: { look: Look }) {
   const set = (k: "fontUi" | "fontChat") => (id: string) => void save(() => look.store.set(k, id === "theme" ? null : id));
   return (
     <Sec title="Reading">
-      <SpecRow r={rowOf("width")} look={look} />
       <SpecRow r={rowOf("size")} look={look} />
       {level >= 1 ? (
         <>
@@ -179,4 +178,3 @@ export function WindowSec({ look }: { look: Look }) {
     </Sec>
   );
 }
-

@@ -70,7 +70,8 @@ export function useLimits(session: SaplingSession, ready: boolean): Limits | nul
       );
     void load();
     const timer = setInterval(load, 5 * 60_000);
-    return () => clearInterval(timer);
+    window.addEventListener("branch:usage-checked", load);
+    return () => { clearInterval(timer); window.removeEventListener("branch:usage-checked", load); };
   }, [session, ready]);
   return limits;
 }

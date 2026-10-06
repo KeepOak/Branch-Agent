@@ -32,7 +32,7 @@ it("actual native Check now and Install buttons use component bridge and never g
   const status = vi.fn(async () => state); const check = vi.fn(async () => state);
   const stage = vi.fn(async () => ({ ...state, phase: "staged", pendingVersion: "1.1" }));
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status, check, stage } };
-  await show(); await click("Check now"); await click("Install when nothing is running");
+  await show(); await click("Check now"); await click("Install when idle");
   expect(status).toHaveBeenCalledTimes(1); expect(check).toHaveBeenCalledTimes(1); expect(stage).toHaveBeenCalledTimes(1);
   expect(request).not.toHaveBeenCalled();
   expect(host.textContent).toContain("Update ready, applying when your Trunks finish");

@@ -537,7 +537,12 @@ describe("IMessageRpcClient child stream error handling", () => {
     const childProcess =
       await vi.importActual<typeof import("node:child_process")>("node:child_process");
     spawnMock.mockImplementationOnce((command, args, options) =>
-      childProcess.spawn(command, args, options),
+      process.platform === "win32"
+        ? childProcess.spawn(process.execPath, [command, ...args], {
+            ...options,
+            windowsHide: true,
+          })
+        : childProcess.spawn(command, args, options),
     );
     const runtimeError = vi.fn();
     const client = new IMessageRpcClient({
@@ -587,7 +592,12 @@ describe("IMessageRpcClient child stream error handling", () => {
     const childProcess =
       await vi.importActual<typeof import("node:child_process")>("node:child_process");
     spawnMock.mockImplementationOnce((command, args, options) =>
-      childProcess.spawn(command, args, options),
+      process.platform === "win32"
+        ? childProcess.spawn(process.execPath, [command, ...args], {
+            ...options,
+            windowsHide: true,
+          })
+        : childProcess.spawn(command, args, options),
     );
     const client = new IMessageRpcClient({
       cliPath: "~/.branch/imsg remote",

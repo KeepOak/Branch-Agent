@@ -14,9 +14,10 @@ import { saveTargetName } from "../setup/pre-connect-state";
 import { Thread } from "../thread/Thread";
 import { stepLabel } from "../thread/format";
 import { PlaceView } from "../places-nav/PlaceView";
+import { handleOfficeNavigation } from "../places/office/navigation";
 import { SettingsFrame } from "../places-nav/SettingsFrame";
 import { lookStore } from "../places/settings/set1/appearance-store";
-import { loadRoute, saveRoute, windowTitle, PLACES, type PlaceId, type Route } from "../places-nav/routes";
+import { loadRoute, parseRoute, saveRoute, windowTitle, PLACES, type PlaceId, type Route } from "../places-nav/routes";
 import { pageName } from "../places-nav/settings-nav";
 import { effectiveDark, readThemeChoice, setThemeChoice, toggleTheme, type ThemeChoice } from "../theme/theme";
 import { BannerView, raiseBanner } from "./Banner";
@@ -87,6 +88,7 @@ import { currentKeys, keyActions, readCustomKeys } from "./keymap";
 import { ComputerActivityCard } from "../thread/ComputerActivityCard";
 import { PlanCard, usePlanDismiss, usePlanRefresh, useProgressCard } from "../thread/PlanCard";
 import { ComputerStage, type PipTarget, type StageMode } from "../stage/ComputerStage";
+import { StageConversation } from "../stage/StageConversation";
 import { SidePane, type PaneTab } from "../stage/SidePane";
 import { StagePip } from "../stage/StagePip";
 import { AddComputer } from "../stage/AddComputer";
@@ -350,6 +352,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const isNarrow = useNarrow();
   const [slideOpen, setSlideOpen] = useState(false);
   const [route, setRoute] = useState<Route>(loadRoute);
+  const routeRef = useRef(route);
+  routeRef.current = route;
   const [draftTopic, setDraftTopic] = useState<{ agentId: string; nonce: string; options: Record<string, unknown> } | null>(null);
   const [topicReturnKey, setTopicReturnKey] = useState<string | null>(null);
   const draftTopicRef = useRef(draftTopic);
@@ -441,6 +445,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const search = useSearch(request, lists.rows, trunkName);
 
   const go = useCallback((next: Route) => {
+    if (JSON.stringify(routeRef.current) !== JSON.stringify(next)) {
+      const index = Number(history.state?.branchIndex) || 0;
+      history.pushState({ branchRoute: next, branchIndex: index + 1 }, "");
+    }
     draftTopicRef.current = null;
     setDraftTopic(null);
     setStage(null);
@@ -451,6 +459,28 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       void session.open(next.key);
     }
   }, [session]);
+  useEffect(() => {
+    history.replaceState({ branchRoute: routeRef.current, branchIndex: Number(history.state?.branchIndex) || 0 }, "");
+    const pop = (event: PopStateEvent) => {
+      const next = parseRoute(JSON.stringify(event.state?.branchRoute));
+      if (!next) return;
+      setDraftTopic(null);
+      setStage(null);
+      setRoute(next);
+      setSlideOpen(false);
+      saveRoute(next);
+      if (next.kind === "chat" && next.key) void session.open(next.key);
+    };
+    window.addEventListener("popstate", pop);
+    return () => window.removeEventListener("popstate", pop);
+  }, [session]);
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      handleOfficeNavigation(event, routeRef.current.kind === "place" && routeRef.current.place === "office", () => go({ kind: "place", place: "overview" }));
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [go]);
   const openConversation = useCallback((key: string) => go({ kind: "chat", key }), [go]);
   useEffect(() => {
     const removed = () => {
@@ -743,7 +773,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       void session.open(key).then(() => session.send(text));
     },
   });
-  const pageTitle = route.kind === "chat" ? name : route.kind === "place" ? PLACES.find((p) => p.id === route.place)?.name ?? "" : pageName(route.page);
+  const pageTitle = route.kind === "chat" ? name : route.kind === "place" ? route.place === "office" ? "Grove" : PLACES.find((p) => p.id === route.place)?.name ?? "" : pageName(route.page);
   useEffect(() => {
     document.title = windowTitle(pageTitle, needsYou, !ready);
   }, [pageTitle, needsYou, ready]);
@@ -1050,9 +1080,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       </div>
     ) : (
       <>
-        <div className="conversation-column">
-        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} onList={toggleList} /> : null}
-        <SplitFrame panes={panes} width={splitW} onWidth={setSplitW} side={
+        <StageConversation
+        header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} onList={toggleList} /> : null}
+        thread={<SplitFrame panes={panes} width={splitW} onWidth={setSplitW} side={
           <SplitPanes
             panes={panes}
             rows={lists.rows}
@@ -1102,9 +1132,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           running={Boolean(s.liveRunId)}
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />
-        </SplitFrame>
-        {s.error && !isPreparationPending(s.error) ? <p className="notice indent">{s.error}</p> : null}
-        <Composer
+        </SplitFrame>}
+        notice={s.error && !isPreparationPending(s.error) ? <p className="notice indent">{s.error}</p> : null}
+        stage={stage ? (
+          <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
+        ) : null}
+        composer={<Composer
           {...composerProps}
           mainKey={mainKeySuffix}
           onNewTopic={startNew}
@@ -1127,8 +1160,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           }
           onSend={(text: string, extras?: SendExtras) => void session.send(text, extras)}
           onStop={() => void session.stopRun()}
+        />}
         />
-        </div>
         {pane && ready ? (
           <SidePane key={s.sessionKey} engine={session.engine} name={trunkName(openRow?.agentId)} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} cardError={progress.error} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={notify} title={name} onReload={() => void session.reload()}
             contactTopics={topicContact ? { items: topicItems, name: topicContact.name, onOpen: openTopic } : undefined} />
@@ -1139,7 +1172,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     main = (
       <>
         {isNarrow ? <PlaceHead onList={toggleList} onSettings={() => openSettings("general")} /> : null}
-        <PlaceView place={route.place} engine={session.engine} facts={{ running, waiting: waitingTotal }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={(agentId) => void startNew(agentId)} />
+        <PlaceView place={route.place} engine={session.engine} facts={{ running, waiting: waitingTotal }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={(agentId) => void startNew(agentId)} createTrunk={() => void newTrunk()} />
       </>
     );
   } else {
@@ -1303,9 +1336,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         ) : null}
         {main}
       </main>
-      {route.kind === "chat" && stage ? (
-        <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
-      ) : null}
       {addingComputer && ready ? <AddComputer engine={session.engine} onClose={() => setAddingComputer(false)} onAdded={computersChanged} /> : null}
       {route.kind === "chat" && pip && !stage ? (
         <StagePip key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} computer={pip} blocks={[...s.history, ...s.live]} onOpen={() => { setPip(null); setStage(pip.kind === "browser" ? "Browser" : "Computer"); }} onClose={() => setPip(null)} />
@@ -1319,7 +1349,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           roomUsed={route.kind === "chat" ? roomUsed(openRow) : null}
           running={running}
           version={branchVersion}
+          readyVersion={update?.latest}
           usage={shown.usage ? ringReading(limits) : null}
+          usageShown={shown.usage}
           gatewayShown={shown.gateway}
           open={overlay?.kind === "status" ? overlay.item : overlay?.kind === "menu" && overlay.id === "machine-sb" ? "connection" : null}
           extras={{
@@ -1344,7 +1376,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             version: branchVersion,
             computerName: machine?.name ?? "",
             openRow,
-            working: lists.rows.filter((r) => r.working).map((r) => ({ key: r.key, title: trunkName(r.agentId), line: r.isMain ? "Working" : r.title || "New conversation" })),
+            working: lists.rows.filter((r) => r.working).map((r) => ({ key: r.key, title: trunkName(r.agentId), line: r.isMain ? "Working" : r.title || "New conversation", runIds: r.activeRunIds })),
             openSettings,
             openAutomations: () => openPlace("automations"),
             openConversation,

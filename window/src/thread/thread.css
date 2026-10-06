@@ -1,6 +1,7 @@
 /* The conversation thread (DESIGN-SPEC §4.2, §5). Every rule is scoped to the thread so it never leaks. */
 .thread-wrap {
   position: relative;
+  container: chat / inline-size;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -18,17 +19,18 @@
   scrollbar-color: color-mix(in srgb, var(--ink) 34%, transparent) transparent;
 }
 
-.thread {
-  max-width: var(--thread-w);
-  margin: 0 auto;
-  padding: 26px 24px 20px;
+.thread-wrap .thread {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  padding: 26px clamp(16px, 2.2cqi, 28px) 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
 @media (max-width: 760px) {
-  .thread {
+  .thread-wrap .thread {
     padding: 18px 16px;
   }
 }
@@ -53,7 +55,7 @@
   flex-direction: column;
   align-items: flex-end;
   align-self: flex-end;
-  max-width: min(520px, 86%);
+  max-width: min(75%, 80ch);
 }
 
 .thread .bubble {
@@ -103,12 +105,17 @@
 .thread .segment-line strong { font-size: 11px; color: var(--ink-2); }
 
 .thread .reply-text {
-  font-size: 15px;
+  font-size: clamp(14px, .35cqi + 10px, 15.5px);
   line-height: 1.62;
-  max-width: 62ch;
+  max-width: min(78%, 82ch);
   white-space: normal;
   overflow-wrap: anywhere;
   min-width: 0;
+}
+
+@container chat (max-width: 620px) {
+  .thread .user-msg { max-width: 88%; }
+  .thread .reply-text { max-width: 100%; }
 }
 
 .thread .reply-text > :first-child {
@@ -546,7 +553,7 @@
   border: 1px solid var(--hair17);
   border-radius: 16px;
   padding: 16px;
-  max-width: 520px;
+  max-width: min(100%, 82ch);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -667,7 +674,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-width: 560px;
+  max-width: min(100%, 82ch);
   border: 1px dashed var(--line-2);
   background: var(--fill);
   border-radius: 14px;
@@ -1492,7 +1499,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  width: min(var(--thread-w), calc(100% - 32px));
+  width: calc(100% - 32px);
   margin: 8px auto 0;
   padding: 6px 6px 6px 12px;
   border: 1px solid var(--line-2);
@@ -1669,35 +1676,53 @@
 }
 .conversation-column > .rail {
   position: absolute;
-  right: 6px;
+  right: 4px;
   top: 50%;
   transform: translateY(-50%);
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  max-height: 60%;
-  padding: 6px 4px;
+  align-items: flex-end;
+  gap: 4px;
+  max-height: 72%;
+  padding: 8px 6px;
   overflow: hidden;
 }
 .rail .tick {
   flex: none;
-  width: 12px;
+  width: calc(10px + var(--mag, 0) * 16px);
   height: 2px;
   padding: 0;
   border: 0;
   border-radius: 2px;
   background: var(--line-2);
+  opacity: calc(.45 + var(--mag, 0) * .55);
+  transition: width .12s ease-out, opacity .12s ease-out;
   cursor: pointer;
 }
 .rail .tick.me {
-  width: 8px;
+  width: calc(16px + var(--mag, 0) * 18px);
   align-self: flex-end;
   background: var(--ink-3);
 }
 .rail .tick.on {
   background: var(--ink);
+  width: calc(20px + var(--mag, 0) * 14px);
 }
+.rail .tick.need { background: var(--warn); }
+.rail .tick.bookmarked { background: var(--accent); }
+.turn-preview { position: fixed; z-index: 150; width: 300px; box-sizing: border-box; background: var(--raise); color: var(--ink); border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 12px; box-shadow: 0 12px 32px rgba(0,0,0,.22); font-size: 12.5px; line-height: 1.45; }
+.turn-preview-head { display: flex; gap: 8px; align-items: flex-start; }
+.turn-preview-head b { flex: 1; font-size: 13px; line-height: 1.35; }
+.turn-preview-head button { border: 0; background: transparent; color: var(--ink-3); cursor: pointer; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; }
+.turn-preview-head button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; }
+.turn-preview-head button[aria-pressed="true"] svg { fill: currentColor; }
+.turn-preview-head button[aria-pressed="true"] { color: var(--accent); }
+.turn-preview p { margin: 4px 0 0; color: var(--ink-3); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.turn-preview small { display: block; margin-top: 4px; color: var(--ink-3); font-size: 11px; }
+.turn-flash { animation: turn-flash 1.4s ease; }
+@keyframes turn-flash { 0%, 30% { background: color-mix(in srgb, var(--accent) 16%, transparent); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .rail .tick { transition: none; } .turn-flash { animation: none; outline: 2px solid var(--accent); } }
 .rail .tick:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
