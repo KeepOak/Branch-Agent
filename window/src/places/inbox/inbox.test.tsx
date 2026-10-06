@@ -121,6 +121,21 @@ describe("Inbox › Needs you", () => {
     expect(host.querySelector(".ib-n")?.textContent).toBe("6");
     expect(btn(host, "Allow all 2…")).toHaveLength(1);
   });
+  it("reviews only the two approvable actions in a dialog before allowing them", async () => {
+    const { host, request } = await render({ fx: { ...FX, "approval.resolve": { applied: true } } });
+    await click(btn(host, "Allow all 2…")[0]);
+    const dialog = document.querySelector("[role=dialog]")!;
+    expect(dialog.textContent).toContain("Allow all 2?");
+    expect([...dialog.querySelectorAll(".allow18D li")].map(row => row.textContent)).toEqual(["Rowan: Run this command", "Rowan: Install a tool"]);
+    expect(dialog.textContent).not.toContain("Jordan Ellis");
+    expect(dialog.textContent).toContain("Each Trunk still asks next time.");
+    await click(btn(dialog, "Cancel")[0]);
+    expect(document.querySelector("[role=dialog]")).toBeNull();
+    expect(calls(request, "approval.resolve")).toHaveLength(0);
+    await click(btn(host, "Allow all 2…")[0]);
+    await click(btn(document.querySelector("[role=dialog]")!, "Allow all 2")[0]);
+    expect(calls(request, "approval.resolve")).toEqual([{ id: "x1", kind: "exec", decision: "allow-once" }, { id: "x2", kind: "plugin", decision: "allow-once" }]);
+  });
   it("draws the status cards from the engine and greys what it cannot back", async () => {
     const { host, request } = await render({ scopes: ["operator.read", "operator.approvals", "operator.pairing", "operator.questions", "operator.write"] });
     const text = host.textContent ?? "";
