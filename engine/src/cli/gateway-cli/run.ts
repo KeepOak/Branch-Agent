@@ -1083,7 +1083,9 @@ async function runGatewayCommandOnce(
     await triageStartupFailure(err);
     defaultRuntime.exit(resolveGatewayStartupFailureExitCode(err));
   } finally {
-    await hostRendezvous.close?.();
+    if (!preparedHost) {
+      await hostRendezvous.close?.();
+    }
   }
 }
 
