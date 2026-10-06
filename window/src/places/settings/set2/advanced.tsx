@@ -101,7 +101,7 @@ const LOCAL = new Set(["lmstudio", "ollama", "local"]);
 
 function MeaningSearch({ c }: { c: Ctx }) {
   const params = c.agent ? { agentId: c.agent } : {};
-  const st = useLive<RecordValue>(c.engine, "doctor.memory.status", params, ["memory"]);
+  const st = useLive<RecordValue>(c.engine, "doctor.memory.status", params, ["memory", "agents.changed", "config.changed"]);
   const test = useCall();
   const [probe, setProbe] = useState<RecordValue | null>(null);
   const emb = rec((probe ?? rec(st.data)).embedding);

@@ -331,7 +331,7 @@ const HOOK_EVENTS: [string, string[]][] = [
 const MAPPED = new Set(HOOK_EVENTS.flatMap(([, e]) => e));
 
 export function HooksSec({ c }: { c: Ctx }) {
-  const res = useLive<RecordValue>(c.engine, "hooks.status", c.agent ? { agentId: c.agent } : {}, ["hooks"]);
+  const res = useLive<RecordValue>(c.engine, "hooks.status", c.agent ? { agentId: c.agent } : {}, ["config.changed", "plugins"]);
   const hooks = list(rec(res.data).hooks);
   const dir = str(rec(res.data).managedHooksDir);
   const names = (events: string[]) => hooks.filter((h) => (Array.isArray(h.events) ? h.events.map(String) : []).some((e) => events.includes(e) || events.some((x) => x.startsWith(`${e}:`))));
