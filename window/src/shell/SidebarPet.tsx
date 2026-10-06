@@ -1,5 +1,4 @@
-// The pet in the list (the preview's .keeper / .petbox): when Appearance › The pet has it walk in "The list", it paces
-// the strip above the person's row and, patted, says one useful line: who needs a yes, else a tip.
+// The pet in the chat's lane above the composer; outside a chat it is not mounted.
 import { useEffect, useRef, useState } from "react";
 import { PETS, PIXEL, PixelPet } from "../places/settings/set1/appearance-pet";
 
@@ -12,7 +11,7 @@ export function petWords(waiting: string | null, now = Date.now()): string {
   return waiting ? `${waiting} needs a yes. It’s in your Inbox.` : TIPS[Math.floor(now / 60000) % TIPS.length];
 }
 
-export function SidebarPet({ pet, waiting, still, working = false }: { pet: { id: string; where: string; name: string }; waiting: string | null; still: boolean; working?: boolean }) {
+export function SidebarPet({ pet, waiting, still, working = false }: { pet: { id: string; name: string }; waiting: string | null; still: boolean; working?: boolean }) {
   const strip = useRef<HTMLDivElement>(null);
   const [x, setX] = useState(0);
   const [dir, setDir] = useState(1);
@@ -22,7 +21,7 @@ export function SidebarPet({ pet, waiting, still, working = false }: { pet: { id
   const [keepStill, setKeepStill] = useState(() => document.documentElement.hasAttribute("data-still"));
   const wasWorking = useRef(false);
   const lastActivity = useRef(Date.now());
-  const shown = pet.where === "side" && pet.id !== "none";
+  const shown = pet.id !== "none";
   useEffect(() => {
     const observer = new MutationObserver(() => setKeepStill(document.documentElement.hasAttribute("data-still")));
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-still"] });
