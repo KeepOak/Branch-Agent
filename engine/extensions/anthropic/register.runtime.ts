@@ -503,7 +503,7 @@ function normalizeAnthropicResolvedModel(
 export function buildAnthropicProvider(): ProviderPlugin {
   const providerId = "anthropic";
   const defaultAnthropicModel = CLAUDE_CLI_CANONICAL_DEFAULT_MODEL_REF;
-  const { cli, setupToken, apiKey: apiKeyMethod } = createAnthropicAuthMethods();
+  const { browser, cli, setupToken, apiKey: apiKeyMethod } = createAnthropicAuthMethods();
   return {
     ...createAnthropicProvider(),
     deprecatedProfileIds: [CLAUDE_CLI_PROFILE_ID],
@@ -514,6 +514,11 @@ export function buildAnthropicProvider(): ProviderPlugin {
       },
     ],
     auth: [
+      {
+        ...browser,
+        run: async (ctx: ProviderAuthContext) =>
+          await (await loadAuthRuntime()).runAnthropicBrowserAuth(ctx, defaultAnthropicModel),
+      },
       {
         ...cli,
         wizard: {
