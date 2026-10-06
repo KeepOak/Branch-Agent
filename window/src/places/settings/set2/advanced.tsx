@@ -243,7 +243,7 @@ const TOOLS_SKILLS: SecSpec = { title: "Tools and skills", lv: 1, rows: [
   { t: "Web search details", draw: (c) => <DialogRow t="Web search details" s="Which search each model uses, setting up a search service, and checking it works." btn="Open" open={(close) => <WebSearchDialog engine={c.engine} agent={c.agent} onClose={close} />} /> },
   sw("Search X", "Turns on when an X account is connected.", ["plugins", "entries", "xai", "config", "xSearch", "enabled"], false),
   no("Video tools", "Download, read captions, and make short videos."),
-  sw("Let plugins add their own views", "Pages, widgets and views from plugins you installed.", "gateway.controlUi.experimental.customPlugins", false, { help: "Off until you choose: their code runs with your sign-in, so turn it on only for plugins you trust." }),
+  sw("Let plugins add their own views", "Pages, widgets and views from plugins you installed. Their code runs with your sign-in, so turn it on only for plugins you trust.", "gateway.controlUi.experimental.customPlugins", false, { help: "Off until you choose." }),
   sw("Connector app views", "Small apps a connector can show inside a step.", "mcp.apps.enabled", false, { help: "Off until you choose: they run pages the connector supplies." }),
 ] };
 
@@ -299,7 +299,7 @@ const MEMORY_TECH: SecSpec = { title: "Memory, technical", group: "Memory", show
   { t: "Also search past conversations", help: "Off until you choose: it reads every past conversation into the index.", k: "memory.search.sources", kind: "sw", read: (v) => (Array.isArray(v) ? v : ["memory"]).includes("sessions"), write: (on, saved) => { const base = (Array.isArray(saved) ? saved : ["memory"]).filter((x) => x !== "sessions"); return on ? [...base, "sessions"] : base; } },
   sw("Keep search results ready", "Faster re-indexing; uses a little disk.", "memory.search.cache.enabled", true),
   sw("Index in batches", "Faster for big indexes where the service allows it. Off, as the services’ batch requests are opt-in.", "memory.search.remote.batch.enabled", false),
-  sw("Pictures and audio in extra folders", "", "memory.search.multimodal.enabled", false, { help: "Off until you choose: the files are uploaded to the meaning-search service." }),
+  sw("Pictures and audio in extra folders", "Files are uploaded to the meaning-search service.", "memory.search.multimodal.enabled", false, { help: "Off until you choose." }),
   { t: "Extra folders to search", k: "memory.search.extraPaths", kind: "list", add: "Add a folder", ph: "D:\\Notes" },
   { t: "Show where a memory came from", s: "Auto shows it when it helps.", k: "memory.citations", kind: "seg", def: "auto", opts: [{ id: "auto", label: "Auto" }, { id: "on", label: "Always" }, { id: "off", label: "Never" }] },
   { t: "Every memory setting", draw: (c) => <EditRow c={c} t="Every memory setting" path="memory" /> },

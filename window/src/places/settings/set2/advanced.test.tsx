@@ -107,6 +107,8 @@ describe("Settings › Advanced", () => {
       "Steps for other apps",
     ];
     for (const title of moved) expect(row(title).textContent, title).not.toContain("Off until you choose");
+    expect(row("Let plugins add their own views").querySelector("small")?.textContent).toContain("Their code runs with your sign-in, so turn it on only for plugins you trust.");
+    expect(row("Pictures and audio in extra folders").querySelector("small")?.textContent).toContain("Files are uploaded to the meaning-search service.");
     expect(row("Tell me when an automation keeps failing").textContent).toContain("The alert goes wherever the automation already reports.");
     expect(row("Outside memory").getAttribute("aria-disabled")).toBe("true");
     expect(row("Code mode").querySelector("small")?.textContent?.length).toBeLessThanOrEqual(70);

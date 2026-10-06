@@ -68,8 +68,9 @@ describe("Settings › Appearance", () => {
     expect(host.textContent).not.toContain("Right-click it anywhere to hide it too.");
     expect(host.querySelector('[data-row="Keep things still"] small')?.textContent).toBe("Stops the pet, the working ring and face animations.");
     await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
-    const help = document.querySelector(".kit-help-pop")?.textContent ?? "";
-    expect(help.split("Right-click it anywhere to hide it too.")).toHaveLength(2);
+    const entry = [...document.querySelectorAll(".kit-help-body > div")].find((item) => item.querySelector("strong")?.textContent === "What’s shown");
+    expect(entry?.querySelector("p")?.textContent).toBe("Right-click it anywhere to hide it too.");
+    expect(document.querySelector(".kit-help-body > div > strong")?.textContent).not.toBe("Appearance");
   });
 
   it("draws the theme, the gallery button and the mirrors from the engine", async () => {

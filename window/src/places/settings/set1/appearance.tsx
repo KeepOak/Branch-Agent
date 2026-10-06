@@ -35,7 +35,7 @@ export function AppearancePage(props: SettingsPageProps) {
   const acts = useThemeActs(props, look, themes, extra, profile);
   const make = (withAccent: boolean) => setOpen({ kind: "edit", start: startFrom(current, currentId, pair, withAccent ? String(look.val("accent", "")) : "") });
   return (
-    <Page title={props.title} lede="How Branch looks on this computer. Changes show as you pick." help="Right-click it anywhere to hide it too.">
+    <Page title={props.title} lede="How Branch looks on this computer. Changes show as you pick.">
       <WhereStatus look={look} />
       <LightDarkSec engine={props.engine} pair={pair} trunk={trunk.name} profile={profile} />
       <ThemeSec look={look} pair={pair} themes={themes} current={current} mode={mode} onBrowse={() => setOpen({ kind: "gallery" })} onMake={make} />

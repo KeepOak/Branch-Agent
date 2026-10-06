@@ -137,8 +137,8 @@ function Installed({ m }: { m: RecordValue }) {
       <div className="lm-h-k"><b>{name}</b></div>
       <p>On this computer through {runtime}. Free and private.</p>
       <div className="lm-tags-k">
-        {m.supportsTools === true ? <span className="tag-k">tools</span> : null}
-        {Array.isArray(m.input) && m.input.includes("image") ? <span className="tag-k">sees pictures</span> : null}
+        {m.supportsTools === true ? <span className="tag-k">Tools</span> : null}
+        {Array.isArray(m.input) && m.input.includes("image") ? <span className="tag-k">Sees pictures</span> : null}
         {ctx ? <span className="tag-k">{ctx}K-token context</span> : null}
       </div>
       <div className="acts">
