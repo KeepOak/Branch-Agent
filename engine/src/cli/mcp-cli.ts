@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/cli/mcp-cli.ts (atlas INTEGRATIONS-0015). Changed for Branch: retain the shipped Graft CLI registration alongside the upstream registry and OAuth commands (owner included-features rule 03 A1.4).
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
