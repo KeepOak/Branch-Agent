@@ -6,6 +6,7 @@ import {
   closeBranchStateDatabaseForTest,
   createChannelIngressQueueForTests,
 } from "branch/plugin-sdk/channel-ingress-test-runtime";
+import { closeBranchStateDatabaseAsync } from "branch/plugin-sdk/sqlite-runtime-testing";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import { withinTest } from "branch/plugin-sdk/test-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -191,6 +192,7 @@ describe("startNostrBus inbound guards", () => {
   afterEach(async () => {
     mockState.handlers = [];
     closeBranchStateDatabaseForTest();
+    await closeBranchStateDatabaseAsync();
     await fs.rm(stateDir, { recursive: true, force: true });
   });
 

@@ -19,7 +19,7 @@ function engineWith(answers: Answers) {
 }
 let host: HTMLDivElement; let root: Root;
 beforeEach(() => { (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true; window.matchMedia ??= ((q: string) => ({ matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, onchange: null, dispatchEvent: () => false })) as unknown as typeof window.matchMedia; host = document.createElement("div"); host.className = "set-col"; document.body.append(host); root = createRoot(host); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.restoreAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 const flush = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); };
 async function show(page: string, engine: WindowEngine, level: "regular" | "advanced" | "technical" = "regular") {
@@ -37,6 +37,20 @@ const READY = { sentinel: null, updateAvailable: { currentVersion: "1.0.0", late
 const RUNNING = { sessions: [{ key: "agent:main:a", agentId: "main", hasActiveRun: true, activeRunIds: ["r1"] }, { key: "agent:main:b", agentId: "main", hasActiveRun: false }] };
 
 describe("Settings › Updates & about", () => {
+  it("keeps build detail out of failed update copy", async () => {
+    const { engine } = engineWith({ "update.status": { ...READY, lastRun: { status: "failed", reason: "Install stopped.", updatedAtMs: Date.now() } } });
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, text: async () => "1.2.3-build-abcd1234" })));
+    await show("updates", engine);
+    expect(document.body.textContent).toContain("Branch 1.2.3 keeps running.");
+    expect(document.body.textContent).not.toContain("build abcd1234 keeps running");
+  });
+  it("describes the last installation without the engine version", async () => {
+    const { engine } = engineWith({ "update.status": { ...READY, lastRun: { status: "succeeded", updatedAtMs: Date.now(), after: { version: "2026.9.8" } } } });
+    await show("updates", engine);
+    const undo = document.querySelector('[data-row="Undo the last update"]');
+    expect(undo?.textContent).toContain("Branch update installed");
+    expect(undo?.textContent).not.toContain("2026.9.8");
+  });
   it("keeps the engine version out of the Branch Updates heading", async () => {
     const { engine } = engineWith({ "update.status": READY, status: { runtimeVersion: "1.0.0" }, "system.info": { platform: "win32" } });
     await show("updates", engine);
