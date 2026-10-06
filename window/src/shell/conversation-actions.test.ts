@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { ConversationList } from "../connect/conversations";
-import { conversationActions, snoozeChoices, wakeWords } from "./conversation-actions";
+import { conversationActions, snoozeChoices, snoozeTime, wakeWords } from "./conversation-actions";
+import { notify } from "./notify";
+
+vi.mock("./notify", () => ({ notify: vi.fn() }));
 
 function fakeRequest(impl: (method: string, params?: unknown) => Promise<unknown>) {
   const request = vi.fn(impl);
@@ -8,6 +11,47 @@ function fakeRequest(impl: (method: string, params?: unknown) => Promise<unknown
 }
 
 describe("contact navigation", () => {
+  it("retries an admission-pending contact read without an error toast", async () => {
+    vi.mocked(notify).mockClear();
+    vi.useFakeTimers();
+    try {
+      let refused = true;
+      const request = fakeRequest((method: string) => method === "agents.list"
+        ? Promise.resolve({ defaultId: "fern", mainKey: "home" })
+        : method === "sessions.describe" && refused
+          ? Promise.reject(new Error("Agent fern has not completed startup inspection and preparation; run branch doctor --fix"))
+          : Promise.resolve({ session: { key: "agent:fern:home", agentId: "fern", sessionId: "saved-contact" } }));
+      const actions = conversationActions(request, new ConversationList(request, null), () => null);
+      const opened = actions.create();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(notify).not.toHaveBeenCalled();
+      refused = false;
+      await vi.advanceTimersByTimeAsync(500);
+      expect(await opened).toBe("agent:fern:home");
+      expect(notify).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows one plain message when contact admission stays pending past the cap", async () => {
+    vi.mocked(notify).mockClear();
+    vi.useFakeTimers();
+    try {
+      const request = fakeRequest((method: string) => method === "agents.list"
+        ? Promise.resolve({ defaultId: "fern", mainKey: "home" })
+        : Promise.reject(new Error("Agent fern has not completed startup inspection and preparation; run branch doctor --fix")));
+      const actions = conversationActions(request, new ConversationList(request, null), () => null);
+      const opened = actions.create();
+      await vi.advanceTimersByTimeAsync(120_001);
+      expect(await opened).toBeNull();
+      expect(notify).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(notify).mock.calls[0]?.[0]).toContain("still starting up. Try again in a minute.");
+      expect(vi.mocked(notify).mock.calls[0]?.[0]).not.toContain("doctor");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("adopts and reopens the configured canonical contact without creating duplicate random threads", async () => {
     const contacts = new Map<string, { key: string; sessionId: string }>();
     const request = fakeRequest((method: string, params?: unknown) => {
@@ -84,15 +128,15 @@ describe("contact navigation", () => {
 });
 
 describe("snoozeChoices", () => {
-  it("offers This evening only when 18:00 is more than an hour away", () => {
+  it("always offers exactly the four final-pass choices", () => {
     const morning = new Date(2026, 9, 1, 9, 0).getTime(); // a Thursday
-    expect(snoozeChoices(morning).map((c) => c.label)).toEqual(["In 1 hour", "In 3 hours", "This evening", "Tomorrow", "Next week"]);
+    expect(snoozeChoices(morning).map((c) => c.label)).toEqual(["In 1 hour", "In 3 hours", "Tomorrow", "Next week"]);
     const late = new Date(2026, 9, 1, 17, 30).getTime();
-    expect(snoozeChoices(late).map((c) => c.label)).not.toContain("This evening");
+    expect(snoozeChoices(late).map((c) => c.label)).toEqual(["In 1 hour", "In 3 hours", "Tomorrow", "Next week"]);
   });
-  it("leaves out Next week on a Sunday and puts it on Monday 09:00", () => {
+  it("offers Next week even on Sunday and puts it on Monday 09:00", () => {
     const sunday = new Date(2026, 9, 4, 10, 0).getTime();
-    expect(snoozeChoices(sunday).map((c) => c.label)).not.toContain("Next week");
+    expect(snoozeChoices(sunday).map((c) => c.label)).toContain("Next week");
     const thursday = new Date(2026, 9, 1, 10, 0).getTime();
     const next = snoozeChoices(thursday).find((c) => c.label === "Next week");
     const d = new Date(next?.until ?? 0);
@@ -102,6 +146,12 @@ describe("snoozeChoices", () => {
     const t = snoozeChoices(new Date(2026, 9, 1, 22, 0).getTime()).find((c) => c.label === "Tomorrow");
     const d = new Date(t?.until ?? 0);
     expect([d.getDate(), d.getHours()]).toEqual([2, 9]);
+  });
+  it("prints a compact 12-hour time without doubling Tomorrow", () => {
+    const choices = snoozeChoices(new Date(2026, 9, 1, 9, 0).getTime());
+    expect(snoozeTime(choices[2].until, choices[2].label)).toMatch(/9:00 AM/);
+    expect(snoozeTime(choices[2].until, choices[2].label)).not.toMatch(/Tomorrow/);
+    expect(snoozeTime(choices[3].until, choices[3].label)).toMatch(/^Mon 9:00 AM$/);
   });
 });
 

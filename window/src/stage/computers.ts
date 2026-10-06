@@ -102,12 +102,6 @@ export function pickerLabel(computers: Computer[], current: string | null): stri
   return shown[0]?.name ?? computers.find((c) => c.id === current)?.name ?? "No computer";
 }
 
-/** The dock's line on what the Trunk can reach on the computer it uses (the preview's computer reach lines). */
-export function reachLine(c: Computer | undefined): string {
-  if (!c) return "It can’t see a screen or use a mouse. Pick a computer to let it.";
-  if (c.id === "gateway") return "Its screen, apps and browser.";
-  return c.desktop ? "Its own desktop and browser." : "A terminal and a headless browser only.";
-}
 
 /** Tells every open computer list (the stage, Settings › Computer & browser) to read the engine again. */
 export function computersChanged(): void {

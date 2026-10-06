@@ -1,8 +1,11 @@
+import fs from "node:fs";
+import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { setImmediate as nextTurn, setTimeout as sleep } from "node:timers/promises";
 import { loadGetReplyFromConfigRuntime } from "../auto-reply/reply/dispatch-from-config.runtime-loaders.js";
 import type { AmbientEnvTriggerPolicy } from "../channels/config-presence.js";
 import type { CliDeps } from "../cli/deps.types.js";
+import { resolveStateDir } from "../config/paths.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { resolveInternalHookSelection } from "../hooks/configured.js";
 import {
@@ -110,6 +113,18 @@ async function waitForAcpRuntimeBackendReady(backendId?: string): Promise<boolea
 }
 
 /** Start post-ready sidecars such as channels, hooks, plugin services, and cleanup tasks. */
+/** Whether this Branch joined another one (state/graft/hosts.json lists a host). */
+function hasSavedGraftHost(): boolean {
+  try {
+    const rows = JSON.parse(
+      fs.readFileSync(path.join(resolveStateDir(), "graft", "hosts.json"), "utf8"),
+    );
+    return Array.isArray(rows) && rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function startGatewaySidecars(params: {
   scheduler: GatewayScheduler;
   restartSentinelContext?: DeliveryQueueStateContext;
@@ -493,6 +508,28 @@ export async function startGatewaySidecars(params: {
     );
   }
 
+  // Branch-to-Branch: a Branch that joined another one (branch graft join) keeps its own link to that host while
+  // this gateway runs (src/mcp/graft-link.ts). A host saved while it runs starts through graft.links.sync.
+  if (hasSavedGraftHost()) {
+    postReadySidecars.push(
+      schedulePostReadySidecarTask({
+        startupTrace: params.startupTrace,
+        name: "sidecars.graft-links",
+        log: params.log,
+        waitForPostReadyWork: params.waitForPostReadyWork,
+        shouldRun: params.shouldCreatePostReadySidecars,
+        run: async (isStopped) => {
+          const { ensureGraftLinks } = await import("../mcp/graft-link.js");
+          if (isStopped()) {
+            return;
+          }
+          ensureGraftLinks((line) => params.logChannels.info(line));
+        },
+        stop: async () => (await import("../mcp/graft-link.js")).stopGraftLinks(),
+      }),
+    );
+  }
+
   if (params.cfg.hooks?.gmail?.model) {
     postReadySidecars.push(
       schedulePostReadySidecarTask({
@@ -672,20 +709,14 @@ export async function startGatewayPostAttachRuntime(
   const candidateCanary = params.updateCanary === true;
   const controlUiRootLifecycle = params.controlUiRootLifecycle;
   const mainSessionRecoveryStartupCheckedStorePaths = new Set<string>();
+  // Branch's window never loads the old control UI: its asset check, retention copy or rebuild
+  // starts on the first control UI request (requestControlUiRootPreparation), not at every start.
+  // Shutdown still owns the lifecycle so a builder started by a request is stopped.
   const controlUiAssetsSidecar =
     !params.minimalTestGateway && controlUiRootLifecycle
-      ? schedulePostReadySidecarTask({
-          name: "sidecars.control-ui-assets",
-          startupTrace: params.startupTrace,
-          log: params.log,
-          shouldRun: () => params.isClosing?.() !== true,
-          run: controlUiRootLifecycle.start,
-          stop: controlUiRootLifecycle.stop,
-        })
+      ? { stop: controlUiRootLifecycle.stop }
       : undefined;
   if (controlUiAssetsSidecar) {
-    // Publish before the first await: slow CA/plugin startup must not strand
-    // the dashboard or hide its running builder from Gateway shutdown.
     params.onGatewayLifetimeSidecars(controlUiAssetsSidecar);
   }
 

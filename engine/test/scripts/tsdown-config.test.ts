@@ -1125,7 +1125,11 @@ console.log("relocated Bash parser works without native grammar package");
       )
       .flatMap((entry) => Object.entries(entry.entry ?? {}));
     const runtimeEntryNames = runtimeEntries.map(([name]) => name);
-    const runtimeOnlyEntryNames = ["native-hook-relay/entry", "node-host-launcher-bootstrap"];
+    const runtimeOnlyEntryNames = [
+      "native-hook-relay/entry",
+      "graft/entry",
+      "node-host-launcher-bootstrap",
+    ];
     expect(runtimeEntryNames).toEqual(expect.arrayContaining(runtimeOnlyEntryNames));
     const declarationEntries = runtimeEntries.filter(
       ([name]) => !runtimeOnlyEntryNames.includes(name),

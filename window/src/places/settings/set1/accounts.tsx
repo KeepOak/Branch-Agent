@@ -46,16 +46,16 @@ const isToken = (a: Pick<Profile, "type">) => a.type === "token";
 export function tokenLabel(a: Pick<Profile, "profileId" | "type">): string | undefined {
   if (!isToken(a)) return undefined;
   const name = a.profileId.slice(a.profileId.indexOf(":") + 1);
-  return name && name !== "default" && !name.startsWith("setup-") ? name : undefined;
+  return name && name !== "default" && !name.startsWith("setup-") && !/^id-[a-f0-9]{12}$/.test(name) ? name : undefined;
 }
 
 export function accountName({ p, a, n }: Pick<Account, "p" | "a" | "n">): string {
   const svc = serviceName(p.provider, p.displayName, a.type === "api_key");
-  const fallback = a.type === "api_key" ? `Key ${n}` : isToken(a) ? `Subscription ${n}` : `Account ${n}`;
-  return `${svc} · ${a.displayName ?? a.email ?? tokenLabel(a) ?? fallback}`;
+  const fallback = a.type === "api_key" ? `Key ${n}` : `Account ${n}`;
+  return `${svc} · ${p.provider === "anthropic" ? a.email ?? a.displayName ?? tokenLabel(a) ?? fallback : a.displayName ?? a.email ?? tokenLabel(a) ?? fallback}`;
 }
 
-const STATUS_WORDS: Record<string, string> = { ok: "", expiring: "Signing in again soon", expired: "Signed out · sign in again", missing: "Sign-in missing", static: "" };
+export const STATUS_WORDS: Record<string, string> = { ok: "", expiring: "Signing in again soon", expired: "Signed out · sign in again", missing: "Sign-in missing", static: "" };
 function accountSub(acc: Account): string {
   const plan = acc.p.usage?.plan ? visible(acc.p.usage.plan) : acc.a.type === "api_key" ? "Key" : isToken(acc.a) ? "Subscription" : "";
   const email = acc.a.email && acc.a.displayName && acc.a.email !== acc.a.displayName ? visible(acc.a.email) : "";
@@ -114,7 +114,7 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
     await engine.request("models.authOrderSet", { provider: acc.p.authProvider ?? acc.p.provider, profileIds: ids, ...agent });
     await reload();
   });
-  const brands = [...new Map(all.map((x) => [x.p.provider, x.p])).values()].slice(0, 2);
+  const brands = [...new Map(all.map((x) => [x.p.provider, x.p])).values()];
   const selecting = lv >= 1 && picked !== null;
   const right = lv >= 1 && all.length ? <SelectLink on={selecting} onToggle={() => setPicked(selecting ? null : [])} /> : undefined;
   return (
@@ -135,7 +135,8 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
       {all.some((x) => !x.first) ? <Hint>When one account runs low, Branch moves to the next.</Hint> : null}
       <Acts>
         <Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn>
-        {brands.map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}
+        <Btn onClick={() => onAdd({ provider: "anthropic" })}>Add a Claude account</Btn>
+        {brands.filter((p) => p.provider !== "anthropic").map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}
       </Acts>
       {menu ? <AccountMenu engine={engine} acc={menu.acc} all={all} at={menu.at} agent={agent} reload={reload} setOrder={setOrder} onClose={() => setMenu(null)} /> : null}
     </Sec>

@@ -1,17 +1,15 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserView, NO_MARKUP, type BrowserPhase } from "./BrowserView";
 import { profileLine, recordedBrowserTabs, routeOf } from "./browser-route";
 import { readLevel } from "../places-nav/SettingsFrame";
 import type { Block } from "../thread/model";
 import type { WindowEngine } from "../connect/engine";
 import type { ProgressCard } from "../thread/PlanCard";
-import { Face } from "../face/Face";
-import { Markdown } from "../thread/markdown";
 import { Menu, type MenuAnchor, type MenuItem } from "../shell/Menu";
 import { SIcon } from "./stage-icons";
 import { useDesktopView, type DesktopView } from "./use-desktop";
-import { describePlacement, listComputers, pickerLabel, placementComputer, planSteps, reachLine, stagePill, type Computer, type Placement, type PlanStep } from "./computers";
+import { describePlacement, listComputers, pickerLabel, placementComputer, planSteps, stagePill, type Computer, type Placement, type PlanStep } from "./computers";
 import { ComputerPicker } from "./ComputerPicker";
 import { AddComputer } from "./AddComputer";
 import "./stage.css";
@@ -77,66 +75,6 @@ function StepStrip({ steps, controlling, running, connected, onWatch, watchOpen,
         </span>
       ) : null}
     </div>
-  );
-}
-
-function Dock({ engine, name, steps, blocks, running, browser, reach, onChooseComputer }: { engine: WindowEngine; name: string; steps: PlanStep[]; blocks: Block[]; running: boolean; browser: boolean; reach?: string; onChooseComputer: () => void }) {
-  const [text, setText] = useState("");
-  const [error, setError] = useState("");
-  const messages = blocks.filter((b): b is Extract<Block, { kind: "user" | "text" }> => b.kind === "user" || b.kind === "text").slice(-3);
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    const message = text.trim();
-    if (!message || !engine.sessionKey) return;
-    setError("");
-    // The same send the composer makes: steered into the run while it works, a new turn otherwise.
-    engine
-      .request("chat.send", { sessionKey: engine.sessionKey, message, idempotencyKey: crypto.randomUUID(), ...(running ? { queueMode: "steer" } : {}) })
-      .then(() => setText(""), (err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-  };
-  return (
-    <aside className="st7-dock" aria-label="The conversation">
-      <div className="dk7-h">
-        <Face size={28} label={name} state={running ? "work" : "idle"} />
-        <b>{name}</b>
-      </div>
-      {steps.length ? (
-        <ul className="dk7-plan">
-          {steps.map((s, i) => (
-            <li key={i} className={s.state}>
-              <SIcon name={s.state === "done" ? "check" : s.state === "now" ? "spin" : "info"} small className={s.state === "now" ? "spin-st" : undefined} />
-              {s.text}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      <div className="dk7-msgs">
-        {messages.length ? (
-          messages.map((b) => (
-            <div key={b.key} className={b.kind === "user" ? "dk7-m me7" : "dk7-m dk7-md"}>
-              {b.kind === "user" ? b.text : <Markdown text={b.text} />}
-            </div>
-          ))
-        ) : (
-          <p className="dk7-foot">No messages in this conversation yet.</p>
-        )}
-      </div>
-      <form className="dk7-in" onSubmit={submit}>
-        <input value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" placeholder={`Tell ${name} something while it works`} aria-label={`Tell ${name} something while it works`} />
-        <button type="submit" className="send-st" aria-label="Send">
-          <SIcon name="up" />
-        </button>
-      </form>
-      {error ? <p className="dk7-foot err-st" role="alert">{error}</p> : null}
-      {browser ? null : (
-        <p className="dk7-foot">
-          {reach ? `${reach} ` : null}
-          <button type="button" className="link" onClick={onChooseComputer}>
-            Change what it may use
-          </button>
-        </p>
-      )}
-    </aside>
   );
 }
 
@@ -214,9 +152,8 @@ type Props = {
 /** What the small window over the conversation shows: a computer's screen, or the browser (the preview's S.pip.kind). */
 export type PipTarget = { kind: "computer" | "browser"; id: string; name: string };
 
-/** A conversation's computer and browser, full size: tabs per computer, the screen, the docked conversation and the plan's steps. */
+/** A conversation's computer and browser, full size beside the one main conversation and composer. */
 export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], running = false, card = null, onMode, onClose, onChooseComputer, onPip, initialComputer = null, initialControl = false }: Props) {
-  const [dock, setDock] = useState(true);
   const [control, setControl] = useState(initialControl);
   const [retry, setRetry] = useState(0);
   const [tick, setTick] = useState(0);
@@ -335,9 +272,6 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
         <button type="button" className="ib" aria-label="Open in its own window" title={OWN_WINDOW} disabled>
           <SIcon name="window" />
         </button>
-        <button type="button" className="ib" aria-label={dock ? "Hide the conversation" : "Show the conversation"} title="Full screen" aria-pressed={dock} onClick={() => setDock((v) => !v)}>
-          <SIcon name="panel" />
-        </button>
         <button type="button" className="ib" aria-haspopup="menu" aria-label="More for this view" title="More" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); moreMenu({ x: r.right - 220, y: r.bottom + 6 }); }}>
           <SIcon name="more" />
         </button>
@@ -369,11 +303,10 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
           control={control}
           onControl={setControl}
           level={readLevel()}
-          dock={dock ? <Dock engine={engine} name={name} steps={steps} blocks={blocks} running={running} browser onChooseComputer={onChooseComputer} /> : null}
           onState={onBrowserState}
         />
       ) : (
-      <div className={dock ? "st7-body" : "st7-body nodock"}>
+      <div className="st7-body">
         {picked === "grid" ? (
           <div className="st7-wrap gridwrap7">
             <div className="st7-grid">
@@ -385,7 +318,6 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
         ) : (
           <Screen view={screenView} target={target} controlling={controlling} onRetry={() => { setRetry((v) => v + 1); if (where.error) setTick((v) => v + 1); }} onChoose={onChooseComputer} />
         )}
-        {dock ? <Dock engine={engine} name={name} steps={steps} blocks={blocks} running={running} browser={false} reach={reachLine(viewed)} onChooseComputer={onChooseComputer} /> : null}
       </div>
       )}
       {steps.length || connected || running ? (

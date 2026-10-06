@@ -675,4 +675,8 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["contacts.outside.hello", "contacts", "operator.write", "2026.9"],
   ["contacts.outside.list", "contacts", "operator.read", "2026.9"],
   ["contacts.outside.set", "contacts", "operator.admin", "2026.9"],
+  ["graft.links.sync", "contacts", "operator.admin", "2026.9"],
+  ["backup.schedule.set", "backup", "operator.admin", "2026.9"],
+  ["backup.schedule.clear", "backup", "operator.admin", "2026.9"],
+  ["backup.run", "backup", "operator.admin", "2026.9"],
 ] as const satisfies readonly CoreGatewayMethodSpecRow[];

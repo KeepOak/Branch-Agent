@@ -15,9 +15,10 @@ import { HelpersChip } from "./Helpers";
 import { HoverBar } from "./HoverBar";
 import { Rail } from "./Rail";
 import { Icon, ICONS } from "./icons";
-import { layout, shownApprovalIds, type Item } from "./layout";
-import { planAnchor } from "./PlanCard";
+import { layout, shownApprovalIds, turnOf, type Item } from "./layout";
+import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
+import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
 import { QuestionLine } from "./QuestionCard";
 import { anchorQuestions, type QuestionRecord } from "./questions";
 import type { Approval, ApprovalDecision, Block } from "./model";
@@ -32,8 +33,11 @@ import { TalkedFold } from "../rooms/TalkedFold";
 import { RoomLine } from "../rooms/RoomLine";
 import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
-import { dayStamp, fullTime, messageTime, modelName } from "./format";
+import { QueuedMessages, useOwnWaitingLine } from "./QueuedMessages";
+import type { QueuedMessage } from "../connect/session";
+import { dayStamp, formatDuration, fullTime, messageTime, modelName, stepLabel } from "./format";
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
+import { suggestionsFor } from "./suggestions";
 import type { EarlierPage } from "../shell/useContactSegments";
 
 type Props = {
@@ -43,7 +47,12 @@ type Props = {
   history: Block[];
   live: Block[];
   pendingUser: string | null;
+  /** Messages accepted but waiting for a turn (connect/session.ts queued). */
+  queued?: QueuedMessage[];
   running: boolean;
+  /** When the live run started (engine time); the "Working" clock counts from it. */
+  liveStartedAt?: number | null;
+  showThinking?: boolean;
   onAnswer: (id: string, decision: "allow-once" | "deny") => void;
   /** The shared engine handle (connect/engine.ts); without it the message actions stay greyed with their reason. */
   engine?: WindowEngine;
@@ -58,6 +67,7 @@ type Props = {
   questions?: QuestionRecord[];
   /** Sends a starter from the empty conversation (§4.2.9), the same way the composer sends. */
   onStart?: (text: string) => void;
+  /** The conversation's last run error (sessions.list lastRunError); restart recovery's own one shows "Stopped by restart". */
   recoveryFailure?: string;
   /** The Plan card; it goes after the turn that last updated it (planAnchor), else at the end (§4.2.2). */
   plan?: ReactNode;
@@ -70,10 +80,15 @@ type Props = {
   hasEarlierPages?: boolean;
   loadingEarlier?: boolean;
   earlierError?: string;
+  preparationError?: string | null;
+  advancedDiagnostics?: boolean;
   onLoadEarlier?: () => void;
 };
 
 /** Distance from the end that still counts as "at the end", and that shows "Scroll to latest" (§4.2.2). */
+/** The lastRunError the engine's restart recovery records when it could not carry a run on
+ * (engine main-session-restart-recovery-store.ts tombstoneMainRestartRecoveryWithNotice). */
+const RESTART_NOT_RESUMED = "Interrupted by a restart. Continue?";
 const NEAR_END_PX = 80;
 const LATEST_PX = 450;
 
@@ -122,6 +137,11 @@ function pendingExtras(details: Map<string, ApprovalDetails>, shown: Set<string>
 /** The thread (DESIGN-SPEC §4.2.2): history from the engine, then the run that is going now. */
 export function Thread(props: Props) {
   const { name, history, live, pendingUser, running, engine, onToast } = props;
+  const ownLine = useOwnWaitingLine(props.sessionKey ?? engine?.sessionKey);
+  // A message from this window's waiting line that a turn picked up: its bubble says "Delivered" until history has it.
+  const lineTexts = useRef(new Set<string>());
+  for (const item of ownLine) lineTexts.current.add(item.text);
+  const pendingDelivered = pendingUser !== null && lineTexts.current.has(pendingUser);
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
   const prefs = useConversationPrefs(engine);
   const prefKey = JSON.stringify(prefs);
@@ -131,6 +151,7 @@ export function Thread(props: Props) {
   const { reactions, apply } = useReactions(engine, history.length);
   const { helpers } = useHelpers(engine);
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
+  const [usedSuggestion, setUsedSuggestion] = useState<string | null>(null);
   const all = useMemo(() => [...history, ...(running ? live : [])], [history, live, running]);
   const extras = pendingExtras(details, shownApprovalIds(all), engine?.sessionKey);
   const answer = useCallback(
@@ -149,12 +170,18 @@ export function Thread(props: Props) {
   useApprovalKeys(firstPending, answer);
   const { actionsFor, dialog } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, onStartTopic: props.onStartTopic, applyReaction: apply });
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
-  const signature = `${history.length}:${live.length}:${liveText}:${pendingUser ? 1 : 0}:${running ? 1 : 0}:${extras.length}`;
+  const waitingCount = (props.queued?.length ?? 0) + ownLine.length;
+  const signature = `${history.length}:${live.length}:${liveText}:${pendingUser ? 1 : 0}:${running ? 1 : 0}:${extras.length}:${waitingCount}`;
   const follow = useFollow(signature);
   const [finding, setFinding] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
   useFindKey(useCallback(() => setFinding(true), []));
-  const empty = !history.length && !pendingUser && !running && !props.questions?.length;
+  const empty = !history.length && !pendingUser && !running && !props.questions?.length && !waitingCount;
+  const lastReply = [...history].reverse().find((block) => block.kind === "text");
+  const suggestionKey = lastReply ? `${props.sessionKey ?? ""}:${lastReply.key}` : null;
+  const suggestions = props.onStart && !firstPending && suggestionKey !== usedSuggestion
+    ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
+  const preparationError = [props.preparationError, props.earlierError].find(isPreparationPending);
   const anchors = anchorQuestions(history, props.questions ?? []);
   const items: RoomItem[] = props.room ? foldTalks(layout(history), props.room.ownAgentId) : layout(history);
   const planWanted = props.plan ? planAnchor(history) : -1;
@@ -176,7 +203,7 @@ export function Thread(props: Props) {
       .find((node) => node.dataset.testid === `topic-card-${props.focusTopic?.key}`);
     target?.scrollIntoView({ block: "end" });
   }, [props.focusTopic, props.topicUpdates]);
-  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser };
+  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false, liveStartedAt: props.liveStartedAt ?? null };
   const recoveryEntryId = history.findLast((block) =>
     (block.kind === "user" || block.kind === "text") && Boolean(block.meta?.entryId),
   );
@@ -202,15 +229,19 @@ export function Thread(props: Props) {
     <ThreadContext.Provider value={ctx}>
       <div className="thread-wrap" data-times={prefs.messageTimes} data-look={prefs.msgLook} data-scrollbars={prefs.scroll} dir={prefs.dir}>
       {finding ? <FindBar root={threadRef} name={name} signature={signature} onClose={() => setFinding(false)} /> : null}
-      <div className="scroll" ref={follow.scroller} onScroll={(event) => { follow.onScroll(); if (event.currentTarget.scrollTop < 80 && props.hasEarlierPages && !props.loadingEarlier) props.onLoadEarlier?.(); }} data-testid="thread-scroll">
+      <div className="scroll" ref={follow.scroller} tabIndex={-1} onScroll={(event) => { follow.onScroll(); if (event.currentTarget.scrollTop < 80 && props.hasEarlierPages && !props.loadingEarlier) props.onLoadEarlier?.(); }} data-testid="thread-scroll">
         <div className="thread" ref={threadRef}>
           {props.hasEarlierPages ? <button type="button" className="stamp segment-more" onClick={props.onLoadEarlier} disabled={props.loadingEarlier}>{props.loadingEarlier ? "Loading earlier pages…" : "Earlier pages"}</button> : null}
-          {props.earlierError ? <div className="stamp" role="status">Couldn't load earlier pages: {props.earlierError}</div> : null}
+          {preparationError ? <div className="stamp preparation-status" role="status">
+            <span className="preparation-spinner" aria-hidden="true" />{preparationLabel(name)}
+            {props.advancedDiagnostics ? <details><summary>Diagnostics</summary><code>{preparationError}</code></details> : null}
+          </div> : null}
+          {props.earlierError && !isPreparationPending(props.earlierError) ? <div className="stamp" role="status">Couldn't load earlier pages: {props.earlierError}</div> : null}
           {[...(props.earlierPages ?? [])].reverse().map((page) => <div key={page.sessionId} className="segment-page" aria-label="Earlier conversation segment">
             <div className="stamp">New start · {page.startedAt ? new Date(page.startedAt).toLocaleDateString() : "Earlier"}</div>
             {page.blocks.filter((block) => ["user", "text", "thinking", "step", "notice", "error"].includes(block.kind)).map((block) => <div key={block.key} className="segment-line">
-              <strong>{block.kind === "user" ? "You" : block.kind === "text" ? name : block.kind === "step" ? block.tool : "Activity"}</strong>
-              <span>{block.kind === "user" || block.kind === "text" || block.kind === "thinking" || block.kind === "notice" ? block.text : block.kind === "step" ? `${block.title} · ${block.detail}` : block.kind === "error" ? block.message : block.kind === "status" ? block.phase : block.kind === "approval" ? block.approval.command : ""}</span>
+              <strong>{block.kind === "user" ? "You" : block.kind === "text" ? name : block.kind === "step" ? stepLabel(block) : "Activity"}</strong>
+              <span>{block.kind === "user" || block.kind === "text" || block.kind === "thinking" || block.kind === "notice" ? block.text : block.kind === "step" ? [block.title, block.detail].filter(Boolean).join(" · ") : block.kind === "error" ? isPreparationPending(block.message) ? "Branch retried a startup delay." : block.message : block.kind === "status" ? block.phase : block.kind === "approval" ? block.approval.command : ""}</span>
             </div>)}
           </div>)}
           {(props.earlierPages?.length || props.hasEarlierPages) ? <div className="stamp">New start · {props.currentStartedAt ? new Date(props.currentStartedAt).toLocaleDateString() : "Current"}</div> : null}
@@ -233,8 +264,18 @@ export function Thread(props: Props) {
             ),
           )}
           {props.room ? <RoomLine history={history} room={props.room} ownName={name} /> : null}
-          {pendingUser ? <UserMessage block={{ kind: "user", key: "pending", text: pendingUser }} /> : null}
+          {pendingUser ? (
+            pendingDelivered ? (
+              <div className="queued-msg delivered" data-testid="queued-message" data-state="delivered">
+                <UserMessage block={{ kind: "user", key: "pending", text: pendingUser }} />
+                <span className="queue-mark mine">Delivered</span>
+              </div>
+            ) : (
+              <UserMessage block={{ kind: "user", key: "pending", text: pendingUser }} />
+            )
+          ) : null}
           {running ? <LiveRun view={view} offset={history.length} /> : null}
+          <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} />
           {(anchors.get(-1) ?? []).map((r) => <QuestionLine key={r.id} record={r} />)}
           {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} />)}
           {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} /> : null}
@@ -243,14 +284,17 @@ export function Thread(props: Props) {
               onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
           ) : null}
           {props.supplement}
-          {props.recoveryFailure === "Interrupted by a restart. Continue?" ? (
-            <div className="notice" role="alert">Interrupted by a restart. {recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Continue</button> : null}</div>
+          {suggestions.length ? <div className="suggestion-row" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
+            {suggestions.map((text) => <button key={text} type="button" onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}>{text}</button>)}
+          </div> : null}
+          {props.recoveryFailure === RESTART_NOT_RESUMED ? (
+            <div className="pass-line restart-stop" role="status" data-testid="restart-stopped">Stopped by restart{recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Resume</button> : null}</div>
           ) : null}
           {planAt < 0 ? props.plan : null}
           <div ref={follow.end} className="thread-end" />
         </div>
       </div>
-      <Rail scroller={follow.scroller} blocks={all} />
+      <Rail scroller={follow.scroller} blocks={all} sessionKey={props.sessionKey} />
       {follow.showLatest ? (
         <button type="button" className="to-latest" aria-label="Scroll to latest" title="Scroll to latest" onClick={follow.toEnd}>
           <Icon d={ICONS.down} size={16} />
@@ -281,6 +325,8 @@ type View = {
   room?: ThreadRoom;
   /** The last message you sent in the history; the replies after it belong to the turn that is running. */
   lastUser: number;
+  showThinking: boolean;
+  liveStartedAt: number | null;
 };
 
 /** A day stamp over the first message of each day that has a recorded time (§4.2.2 Stamp). */
@@ -316,13 +362,24 @@ function keyOf(item: Item): string {
 /** The run that is going now, from its first event until it ends (`data-streaming="true"`). */
 function LiveRun({ view, offset }: { view: View; offset: number }) {
   const { live, name } = view;
+  const [elapsed, setElapsed] = useState(0);
+  const startedAt = view.liveStartedAt;
+  useEffect(() => {
+    const started = startedAt ?? Date.now();
+    const tick = () => setElapsed(Math.max(0, Date.now() - started));
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [startedAt]);
+  const usage = live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage");
   const waiting = live.some((b) => b.kind === "approval" && b.approval.state === "pending");
-  const status = live.find((b): b is Extract<Block, { kind: "status" }> => b.kind === "status") ?? null;
-  const typing = !waiting && !live.some((b) => b.kind === "text" || b.kind === "thinking" || b.kind === "step");
+  const typing = !waiting && !live.some((b) => b.kind === "text" || (view.showThinking && b.kind === "thinking") || b.kind === "step" || b.kind === "preamble" || b.kind === "plan");
   return (
     <div className="live-run" data-streaming="true">
+      {/* While only the dots show, nothing sits above them (P47); the clock comes with the first real activity. */}
+      {typing ? null : <header className="live-run-head">Working{elapsed >= 1000 ? ` · ${formatDuration(elapsed)}` : ""}{usage?.total ? ` · ${usage.total.toLocaleString()} tokens` : ""}</header>}
       {layout(live.filter((b) => b.kind !== "status"), offset).map((item) => <ItemView key={keyOf(item)} item={item} view={view} live />)}
-      {typing ? <Typing name={name} status={status} /> : null}
+      {typing ? <Typing name={name} /> : null}
     </div>
   );
 }
@@ -366,12 +423,20 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
     case "text":
       return <MessageView block={block} index={index} firstReply={firstReply} face={face} view={view} live={live} />;
     case "thinking":
-      return <Thinking block={block} />;
+      return view.showThinking ? <Thinking block={block} /> : null;
+    case "preamble":
+      return <div className="pass-line indent" data-testid="preamble">{block.text}</div>;
+    case "plan":
+      return <PlanCard card={{ sessionKey: "run", revision: 1, updatedAt: Date.now(), steps: block.steps }} />;
     case "approval":
       return view.grouped.has(block.approval.id) ? null : <ApprovalCard approval={block.approval} details={view.details.get(block.approval.id)} name={view.name} onAnswer={view.answer} />;
-    case "done":
-      return <DoneLine block={block} name={view.name} />;
+    case "done": {
+      const words = turnOf(view.all, index).filter((entry): entry is Extract<Block, { kind: "text" }> => entry.kind === "text")
+        .reduce((count, entry) => count + (entry.text.trim().match(/\S+/g)?.length ?? 0), 0);
+      return <DoneLine block={block} name={view.name} words={words} />;
+    }
     case "error":
+      if (isPreparationPending(block.message)) return <div className="stamp" role="status">Branch retried a startup delay.</div>;
       return view.dismissed.has(block.key) ? null : <ErrorBlock block={block} onDismiss={() => view.setDismissed((s) => new Set(s).add(block.key))} />;
     case "notice":
       return <Notice block={block} />;

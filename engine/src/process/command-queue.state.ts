@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/process/command-queue.state.ts (atlas AGENT-LOOP-0013). Changed for Branch: preserve the existing Branch command-queue singleton namespace; retained under the Harvest rule that test assertions keep or strengthen upstream behavior.
 // Shared command-queue runtime state, split out of command-queue.ts so the
 // capacity-group policy can read lane state without importing the queue itself.
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";

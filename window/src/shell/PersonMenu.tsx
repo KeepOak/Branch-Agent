@@ -4,6 +4,7 @@ import type { ThemeChoice } from "../theme/theme";
 import { Icon } from "./icons";
 import type { MenuAnchor } from "./Menu";
 import { Popover, Segmented, type Above } from "./Popover";
+import { versionParts } from "../connect/branch-version";
 
 /** Who is using Branch: users.self's display name, else its first email, else "Owner" (OpenClaw's
  *  ui/src/components/app-sidebar-identity-menu.ts falls back the same way). */
@@ -103,7 +104,7 @@ export function PersonMenu(p: Props) {
       {p.updateTo && p.onUpdate ? (
         <button type="button" className="mi" data-testid="person-update" onClick={run(p.onUpdate)}>
           <Icon name="spark" small />
-          <span className="mi-label">Update to {p.updateTo}</span>
+          <span className="mi-label">Update to Branch {versionParts(p.updateTo).short}</span>
           <i className="sb-new" aria-hidden="true" />
         </button>
       ) : null}

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ComputerStage } from "./ComputerStage";
+import { StageConversation } from "./StageConversation";
 import type { WindowEngine } from "../connect/engine";
 const viewer = vi.hoisted(() => ({ connect: vi.fn() }));
 vi.mock("../face/Face", () => ({ Face: () => null }));
@@ -64,6 +65,27 @@ const environment = {
 };
 const observed = { wsPath: "/desktop/one", control: false, transport: "rfb", expiresAtMs: 1000 };
 describe("conversation computer lifecycle", () => {
+  it("keeps the main composer in the stage column at 900 px", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 900 });
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root!.render(<StageConversation
+      thread={<div className="thread-wrap" />}
+      stage={<ComputerStage engine={engine(vi.fn(async () => ({ session: { key: "agent:scout:one" } })) as WindowEngine["request"])} gatewayUrl="ws://gateway.invalid" name="Scout" mode="Computer" onMode={() => {}} onClose={() => {}} onChooseComputer={() => {}} />}
+      composer={<div className="c-wrap"><form className="composer"><textarea aria-label="Message" /></form></div>}
+    />));
+    expect(container.querySelector(".conversation-column > .computer-stage")).not.toBeNull();
+    expect(container.querySelector(".conversation-column > .c-wrap .composer textarea")).not.toBeNull();
+  });
+  it.each(["Computer", "Browser"] as const)("shows only the main composer beside the %s stage", async (mode) => {
+    const request = vi.fn(async () => ({ session: { key: "agent:scout:one" } }));
+    await render(engine(request as WindowEngine["request"]), mode);
+    await flush();
+    expect(container.querySelector(".st7-dock")).toBeNull();
+    expect(container.querySelector(".dk7-in")).toBeNull();
+    expect(container.querySelector('[aria-label="Show the conversation"]')).toBeNull();
+  });
   it("shows placement lookup failures and retries instead of claiming no placement", async () => {
     let failed = true;
     const request = vi.fn(async (method: string) => {

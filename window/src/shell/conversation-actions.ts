@@ -2,6 +2,7 @@
 // each through the engine method its row names, followed by a read-back of the list.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Conversation, ConversationList } from "../connect/conversations";
+import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { notify } from "./notify";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
@@ -19,16 +20,17 @@ export function snoozeChoices(now: number): { label: string; until: number }[] {
     { label: "In 1 hour", until: now + 3_600_000 },
     { label: "In 3 hours", until: now + 3 * 3_600_000 },
   ];
-  const evening = at(0, 18);
-  if (evening - now > 3_600_000) {
-    choices.push({ label: "This evening", until: evening });
-  }
   choices.push({ label: "Tomorrow", until: at(1, 9) });
-  if (d.getDay() !== 0) {
-    const toMonday = ((8 - d.getDay()) % 7) || 7;
-    choices.push({ label: "Next week", until: at(toMonday, 9) });
-  }
+  const toMonday = ((8 - d.getDay()) % 7) || 7;
+  choices.push({ label: "Next week", until: at(toMonday, 9) });
   return choices;
+}
+
+/** Compact time beside a Snooze choice (§2.10); its label already says Tomorrow or Next week. */
+export function snoozeTime(until: number, label: string): string {
+  const date = new Date(until);
+  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
+  return label === "Next week" ? `${date.toLocaleDateString([], { weekday: "short" })} ${time}` : time;
 }
 
 /** "18:00", "tomorrow 09:00" or "Mon 09:00" (§4.1.6 Snooze: the wake time). */
@@ -151,7 +153,8 @@ export function conversationActions(request: Request, list: ConversationList, op
     },
     /** Adopt the Trunk's canonical contact so the shell can retain its durable list row. */
     async create(agentId?: string): Promise<string | null> {
-      try {
+      const backoff = new PreparationRetry();
+      const createOnce = async (): Promise<string> => {
         const roster = (await request("agents.list", {})) as { defaultId?: unknown; mainKey?: unknown };
         const id = agentId || (typeof roster.defaultId === "string" ? roster.defaultId : "");
         if (!id) throw new Error("Create a Trunk before starting a conversation");
@@ -166,6 +169,18 @@ export function conversationActions(request: Request, list: ConversationList, op
           throw new Error("The contact conversation is saved, but the engine has not made it available. Try opening it again");
         }
         return key;
+      };
+      try {
+        while (true) {
+          try {
+            return await createOnce();
+          } catch (error) {
+            if (!isPreparationPending(error)) throw error;
+            const delay = backoff.nextDelay();
+            if (delay === null) throw new Error(preparationTimeoutLabel("This Trunk"));
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        }
       } catch (e) {
         notify(`Couldn't start a conversation: ${reason(e)}.`, { tone: "bad" });
         return null;

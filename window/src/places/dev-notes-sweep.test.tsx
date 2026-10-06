@@ -50,7 +50,7 @@ async function sweep(node: ReactNode): Promise<{ notes: string[]; greyed: number
 
 const props = (): PlaceProps => ({ engine: engine(), facts: { running: 0, waiting: 0 }, openConversation: () => undefined, openPlace: () => undefined, openSettings: () => undefined, startConversation: () => undefined, level: "technical" });
 const PLACES = { overview: OverviewPlace, canopy: CanopyPlace, inbox: InboxPlace, automations: AutomationsPlace, library: LibraryPlace, people: PeoplePlace, customize: CustomizePlace };
-const PAGES = ["general", "people", "appearance", "notifications", "instructions", "models", "local", "accounts", "voice", "chatapps", "permissions", "computer", "secrets", "usage", "gateway", "self", "seasons", "updates", "achievements", "advanced", "developer"];
+const PAGES = ["general", "people", "appearance", "notifications", "instructions", "models", "local", "accounts", "voice", "chatapps", "permissions", "computer", "secrets", "usage", "backups", "gateway", "self", "seasons", "updates", "achievements", "advanced", "developer"];
 
 describe("developer notes stay out of sight", () => {
   for (const [id, Place] of Object.entries(PLACES)) {

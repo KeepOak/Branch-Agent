@@ -29,16 +29,34 @@
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
   border: 0;
+  border-radius: var(--r-nav);
   background: transparent;
-  font: inherit;
-  color: var(--ink);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 13.5px;
   text-align: left;
+  position: relative;
+  transition: background var(--t-colour) var(--ease17), color var(--t-colour) var(--ease17), box-shadow var(--t-colour) var(--ease17);
 }
 .prj-row .icon {
   color: var(--ink-3);
   flex: none;
+}
+.prj-row:hover {
+  background: var(--wash17);
+}
+.prj-row[aria-current="page"] {
+  background: var(--raise);
+  box-shadow: var(--sh1-17);
+  color: var(--ink);
+  font-weight: 600;
+}
+.prj-row[aria-current="page"] .icon {
+  color: var(--ink);
 }
 .prj-name {
   flex: 1;

@@ -247,6 +247,8 @@ const CORE_RELOAD_POLICIES: ReloadPolicy[] = [
   { prefixes: ["cron"], kind: "hot", actions: ["restartCron"] },
   { prefixes: ["transcripts", "cloudWorkers.profiles"], kind: "hot", actions: ["reloadPlugins"] },
   { prefixes: ["mcp", "gateway.publicOrigin"], kind: "hot", actions: ["disposeMcpRuntimes"] },
+  // Requests and MCP runtime fingerprints read the flag live; the sandbox host starts on demand.
+  { prefixes: ["mcp.apps.enabled"], kind: "hot", actions: ["disposeMcpRuntimes"] },
   // Capability ownership changes replace the plugin generation that owns its routes.
   {
     prefixes: ["talk.provider", "talk.realtime.provider"],
