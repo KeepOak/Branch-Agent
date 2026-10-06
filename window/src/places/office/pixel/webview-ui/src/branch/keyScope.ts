@@ -23,7 +23,14 @@ function isTextTarget(t: EventTarget | undefined): boolean {
 
 export function isKeyForOffice(e: KeyboardEvent): boolean {
   const path = e.composedPath();
-  if (isTextTarget(path[0])) return false;
+  if (isTextTarget(path[0]) && (e.key !== 'Escape' || !officeRoot || !path.includes(officeRoot))) return false;
   if (!officeRoot) return true;
   return pointerInside || path.includes(officeRoot);
+}
+
+export function claimOfficeModalEscape(event: KeyboardEvent, onClose: () => void): boolean {
+  if (event.key !== 'Escape' || !isKeyForOffice(event)) return false;
+  event.preventDefault();
+  onClose();
+  return true;
 }

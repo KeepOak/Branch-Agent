@@ -8,7 +8,7 @@ import { Storage, defaultPrefs } from "./pixel/webview-ui/src/branch/storage";
 describe("Pixel office", () => {
   it("seats the live Trunk roster, guests, and groups with registry states and real chat targets", () => {
     const model = officeRoster(
-      { mainKey: "main", agents: [{ id: "oak", identity: { name: "Oak", colour: "#647c55" } }, { id: "elm", identity: { name: "Elm" }, paused: true }] },
+      { mainKey: "main", agents: [{ id: "oak", identity: { name: "Oak", colour: "#647c55" } }, { id: "elm", identity: { name: "Elm" } }] },
       { sessions: [{ key: "agent:oak:work", agentId: "oak", hasActiveRun: true, activeRunIds: ["r1"] }, { key: "agent:oak:child", agentId: "oak", hasActiveRun: true, spawnedBy: "agent:oak:work", label: "Research" }] },
       { contacts: [
         { id: "trunk:oak", kind: "trunk", name: "Oak", threadKey: "agent:oak:main", face: { agentId: "oak" }, needsYou: true },
@@ -17,7 +17,7 @@ describe("Pixel office", () => {
       ] },
     );
     expect(model.agents.map(a => [a.id, a.kind, a.state])).toEqual([
-      ["oak", "trunk", "needs_you"], ["elm", "trunk", "offline"], ["a2a:guest", "grafted", "working"], ["group:team", "group", "resting"],
+      ["oak", "trunk", "needs_you"], ["elm", "trunk", "resting"], ["a2a:guest", "grafted", "working"], ["group:team", "group", "resting"],
     ]);
     expect(model.agents[0]?.subagents).toEqual([{ id: "agent:oak:child", label: "Research", state: "working" }]);
     expect(model.openKey.get("oak")).toBe("agent:oak:main");

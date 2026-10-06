@@ -36,7 +36,7 @@ export function officeToolEvent(tools: OfficeTools, event: string, payload: unkn
 export function officeRoster(agentsValue: unknown, sessionsValue: unknown, contactsValue: unknown, outsideValue?: unknown, tools: OfficeTools = new Map()): { agents: OfficeAgent[]; openKey: Map<string, string> } {
   const trunks = rows(obj(agentsValue).agents).filter(t => str(t.id) && t.kind !== "system").map(t => ({
     id: str(t.id), name: str(obj(t.identity).name) || str(t.name) || str(t.id),
-    colour: str(obj(t.identity).colour), paused: t.paused === true,
+    colour: str(obj(t.identity).colour),
   }));
   const sessions = rows(obj(sessionsValue).sessions);
   const contacts = (Array.isArray(obj(contactsValue).contacts) ? obj(contactsValue).contacts as Contact[] : []).filter(c => !c.archivedAt);
@@ -51,7 +51,7 @@ export function officeRoster(agentsValue: unknown, sessionsValue: unknown, conta
     const needs = Number(contact?.needsYou);
     const activity = str(obj(active[0]?.activitySummary).text) || str(active[0]?.lastMessagePreview);
     const reading = active.some(s => [...(tools.get(str(s.key))?.values() ?? [])].some(name => /^(read|read_file|grep|glob|search|web_fetch|web_search)$/i.test(name)));
-    return { id: t.id, name: t.name, kind: "trunk", state: needs ? "needs_you" : active.length ? reading ? "reading" : "working" : t.paused ? "offline" : "resting",
+    return { id: t.id, name: t.name, kind: "trunk", state: needs ? "needs_you" : active.length ? reading ? "reading" : "working" : "resting",
       activity, needsYou: needs, unread: Boolean(contact?.threadUnread || contact?.unreadTopics), colorHint: t.colour,
       subagents: children.map(s => ({ id: str(s.key), label: str(s.label) || str(s.displayName) || "Job", state: "working" as const })) };
   });

@@ -1,6 +1,6 @@
 /**
- * What upstream keeps in ~/.pixel-agents (layout.json, the agents' seats, settings) lives in the browser
- * here, keyed by Branch ids rather than upstream's per-session numeric ids. The host owns persistence.
+ * The host persists layout, seats, looks, and settings in Branch profile preferences,
+ * keyed by Branch ids rather than upstream's per-session numeric ids.
  */
 import type { OfficeLayout } from '../office/types.js';
 

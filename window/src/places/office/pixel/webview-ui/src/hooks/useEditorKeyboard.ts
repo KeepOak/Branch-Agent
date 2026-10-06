@@ -22,6 +22,7 @@ export function useEditorKeyboard(
       // BRANCH PORT: ignore keys typed elsewhere in the app (see branch/keyScope.ts).
       if (!isKeyForOffice(e)) return;
       if (e.key === 'Escape') {
+        e.preventDefault();
         // Multi-stage Esc: deselect item → close tool → deselect placed → close editor
         if (editorState.activeTool === EditTool.FURNITURE_PICK) {
           editorState.activeTool = EditTool.FURNITURE_PLACE;
@@ -92,8 +93,8 @@ export function useEditorKeyboard(
         onRedo();
       }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
   }, [
     isEditMode,
     editorState,

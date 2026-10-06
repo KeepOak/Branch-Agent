@@ -3,11 +3,10 @@
  * (consent intro, hooks tooltip and modal, changelog, version and connection indicators, migration
  * notice) left out and Branch's parts added: per-mount office state, fit-to-pane integer zoom,
  * day/night lighting, the Trunks customization panel and Branch's overlay. Everything upstream
- * renders in the office itself — canvas, editor, toolbars, zoom, debug view — is upstream's code.
+ * renders in the office itself — canvas, editor, toolbars and zoom — is upstream's code.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
-import { DebugView } from '../components/DebugView.js';
 import { EditActionBar } from '../components/EditActionBar.js';
 import { ZoomControls } from '../components/ZoomControls.js';
 import { useEditorActions } from '../hooks/useEditorActions.js';
@@ -27,7 +26,7 @@ import { BranchSettings, BranchToolbar } from './BranchChrome.js';
 import { BranchOverlay } from './BranchOverlay.js';
 import type { BranchServer } from './branchServer.js';
 import { CharactersPanel } from './CharactersPanel.js';
-import { notePointerInside } from './keyScope.js';
+import { claimOfficeModalEscape, notePointerInside } from './keyScope.js';
 import { fitZoom, TOOLBAR_RESERVE_CSS } from './fit.js';
 import { makeLighting, type OfficeTheme } from './lighting.js';
 import type { BranchAgent } from './types.js';
@@ -76,7 +75,6 @@ export function BranchApp({ officeState, editorState, server, signals, onNewAgen
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isTrunksOpen, setIsTrunksOpen] = useState(false);
-  const [isDebugMode, setIsDebugMode] = useState(false);
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(true);
   const [autoFit, setAutoFit] = useState(true);
   const [, setTick] = useState(0);
@@ -149,7 +147,7 @@ export function BranchApp({ officeState, editorState, server, signals, onNewAgen
   const [kbTick, setKbTick] = useState(0);
   void kbTick;
   useEditorKeyboard(
-    editor.isEditMode,
+    editor.isEditMode && !isSettingsOpen && !isTrunksOpen,
     editorState,
     editor.handleDeleteSelected,
     editor.handleRotateSelected,
@@ -159,6 +157,17 @@ export function BranchApp({ officeState, editorState, server, signals, onNewAgen
     useCallback(() => setKbTick((n) => n + 1), []),
     editor.handleToggleEditMode,
   );
+  useEffect(() => {
+    if (!isSettingsOpen && !isTrunksOpen) return;
+    const claimEscape = (event: KeyboardEvent) => {
+      claimOfficeModalEscape(event, () => {
+        if (isSettingsOpen) setIsSettingsOpen(false);
+        else setIsTrunksOpen(false);
+      });
+    };
+    window.addEventListener('keydown', claimEscape, true);
+    return () => window.removeEventListener('keydown', claimEscape, true);
+  }, [isSettingsOpen, isTrunksOpen]);
 
   const handleClick = useCallback(
     (agentId: number) => {
@@ -241,8 +250,7 @@ export function BranchApp({ officeState, editorState, server, signals, onNewAgen
         onSeatDrop={() => setTick((n) => n + 1)}
       />
 
-      {!isDebugMode ? (
-        <>
+      <>
           <div className="pa-ui pa-zoom">
             {/* keyed by the fitted zoom so an automatic fit doesn't flash upstream's zoom-level badge */}
             <ZoomControls key={autoFit ? `fit${editor.zoom}` : 'manual'} zoom={editor.zoom} onZoomChange={manualZoom} />
@@ -337,18 +345,7 @@ export function BranchApp({ officeState, editorState, server, signals, onNewAgen
             hidden={editor.isEditMode}
             onOpen={onOpen}
           />
-        </>
-      ) : (
-        <DebugView
-          agents={msgs.agents}
-          selectedAgent={msgs.selectedAgent}
-          agentTools={msgs.agentTools}
-          agentStatuses={msgs.agentStatuses}
-          subagentTools={msgs.subagentTools}
-          officeState={officeState}
-          onSelectAgent={handleClick}
-        />
-      )}
+      </>
 
       <BranchToolbar
         isEditMode={editor.isEditMode}
@@ -362,8 +359,6 @@ export function BranchApp({ officeState, editorState, server, signals, onNewAgen
       <BranchSettings
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        isDebugMode={isDebugMode}
-        onToggleDebugMode={() => setIsDebugMode((v) => !v)}
         alwaysShowOverlay={alwaysShowOverlay}
         onToggleAlwaysShowOverlay={() => {
           const v = !alwaysShowOverlay;

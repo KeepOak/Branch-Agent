@@ -8,6 +8,15 @@
 
 declare function acquireVsCodeApi(): unknown;
 
+declare global {
+  interface Window {
+    __pixelAgentsTestHooks?: {
+      playedSounds?: Array<{ kind: string; at: number }>;
+      messageLog?: Array<{ at: number; type: string; id?: number; toolName?: string; status?: string; toolId?: string; parentToolId?: string }>;
+    };
+  }
+}
+
 type Runtime = 'vscode' | 'browser';
 // Future: 'cursor' | 'windsurf' | 'electron' | etc.
 

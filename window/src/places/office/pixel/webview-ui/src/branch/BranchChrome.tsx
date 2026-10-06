@@ -44,8 +44,6 @@ export function BranchToolbar(p: {
 export function BranchSettings(p: {
   isOpen: boolean;
   onClose: () => void;
-  isDebugMode: boolean;
-  onToggleDebugMode: () => void;
   alwaysShowOverlay: boolean;
   onToggleAlwaysShowOverlay: () => void;
   ghostOffline: boolean;
@@ -107,7 +105,6 @@ export function BranchSettings(p: {
       <Checkbox label="Always Show Names" checked={p.alwaysShowOverlay} onChange={p.onToggleAlwaysShowOverlay} />
       <Checkbox label="Offline Trunks as Ghosts" checked={p.ghostOffline} onChange={p.onToggleGhostOffline} />
       <Checkbox label="Show Areas" checked={p.showAreas} onChange={p.onToggleShowAreas} />
-      <Checkbox label="Debug View" checked={p.isDebugMode} onChange={p.onToggleDebugMode} />
     </Modal>
   );
 }
