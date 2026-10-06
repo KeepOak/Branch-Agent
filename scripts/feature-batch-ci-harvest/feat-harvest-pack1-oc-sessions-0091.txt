@@ -21,6 +21,10 @@ engine:src/node-host/node-worker-workspace.test.ts
 engine:src/sessions/session-created.test.ts
 engine:src/skills/discovery/status.test.ts
 engine:src/skills/loading/workspace-skill-loader.test.ts
+engine:src/skills/runtime/refresh.churn.test.ts
+engine:src/skills/runtime/refresh.recovery.test.ts
+engine:src/skills/runtime/refresh.structural-change.test.ts
+engine:src/skills/runtime/refresh.subscriptions.test.ts
 engine:src/talk/client-voice-session-store.test.ts
 engine:src/talk/client-voice-session.test.ts
 engine:src/talk/session-log-runtime.test.ts
