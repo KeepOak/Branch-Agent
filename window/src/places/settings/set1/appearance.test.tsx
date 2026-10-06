@@ -62,16 +62,44 @@ describe("Settings › Appearance", () => {
     expect(document.querySelector(".kit-help-pop")?.textContent).toContain("Off until you turn it on.");
   });
 
-  it("draws a selected painted scene behind readable glass panels and previews it", async () => {
+  it("draws a selected painted scene and holds to peek without a blank overlay", async () => {
     const { engine } = engineOf();
     await render(engine);
     await act(async () => { await lookStore(engine).set("bg", "painted"); await lookStore(engine).set("scene", "night17-lake"); });
     expect(document.documentElement.hasAttribute("data-scene")).toBe(true);
     expect(document.head.querySelector("#branch-look")?.textContent).toContain("/assets/art17/bg/lake-night.webp");
-    await act(async () => button("See it clearly").click());
-    expect(host.querySelector(".scene-preview")).not.toBeNull();
-    await act(async () => (host.querySelector(".scene-preview") as HTMLButtonElement).click());
-    expect(host.querySelector(".scene-preview")).toBeNull();
+    const peek = button("See it clearly");
+    expect(peek.disabled).toBe(false);
+    expect(host.textContent).toContain("Hold it to see the background on its own.");
+    await act(async () => peek.dispatchEvent(new Event("pointerdown", { bubbles: true, cancelable: true })));
+    expect(document.documentElement.classList.contains("scene-peek")).toBe(true);
+    await act(async () => window.dispatchEvent(new Event("pointerup")));
+    expect(document.documentElement.classList.contains("scene-peek")).toBe(false);
+    await act(async () => peek.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true })));
+    expect(document.documentElement.classList.contains("scene-peek")).toBe(true);
+    await act(async () => window.dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true })));
+    expect(document.documentElement.classList.contains("scene-peek")).toBe(false);
+    const shellEscape = vi.fn();
+    window.addEventListener("keydown", shellEscape);
+    await act(async () => peek.dispatchEvent(new Event("pointerdown", { bubbles: true, cancelable: true })));
+    await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(document.documentElement.classList.contains("scene-peek")).toBe(false);
+    expect(shellEscape).not.toHaveBeenCalled();
+    window.removeEventListener("keydown", shellEscape);
+    await act(async () => lookStore(engine).set("bg", "oak3d"));
+    expect(button("See it clearly").disabled).toBe(true);
+    expect(host.textContent).toContain("Not drawn yet.");
+    await act(async () => lookStore(engine).set("bg", "rings"));
+    expect(button("See it clearly").disabled).toBe(true);
+  });
+
+  it("uses the full scrim and see-through slider ranges", async () => {
+    const { engine } = engineOf();
+    await render(engine);
+    await act(async () => { await lookStore(engine).set("bg", "painted"); await lookStore(engine).set("scrim", 0); await lookStore(engine).set("see", 0); });
+    expect(document.getElementById("branch-look")?.textContent).toContain("--scene-cover:0%;--scene-panel:100%");
+    await act(async () => { await lookStore(engine).set("scrim", 90); await lookStore(engine).set("see", 60); });
+    expect(document.getElementById("branch-look")?.textContent).toContain("--scene-cover:90%;--scene-panel:40%");
   });
   it("draws the theme, the gallery button and the mirrors from the engine", async () => {
     const { engine } = engineOf();

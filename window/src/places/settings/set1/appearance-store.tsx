@@ -28,7 +28,7 @@ const SCENE_FILES: Record<string, string> = {
   "day17-sea": "/assets/art17/bg/sea-morning.webp", "day17-meadow": "/assets/art17/bg/meadow-afternoon.webp",
   "glow17-amber": "/assets/art17/bg/glow-amber.webp", "season17-snow": "/assets/art17/bg/first-snow.webp",
 };
-function sceneFile(look: RecordValue): string | null {
+export function sceneFile(look: RecordValue): string | null {
   if (look.bg !== "painted" && look.bg !== "grove") return null;
   const month = new Date().getMonth();
   const seasonal = month < 2 || month === 11 ? "winter" : month < 5 ? "spring" : month < 8 ? "summer" : "autumn";
@@ -83,10 +83,8 @@ export function lookCss(s: Saved): string {
   if (scene) {
     const scrim = Math.max(0, Math.min(90, Number(s.look.scrim ?? 35) || 0));
     const see = Math.max(0, Math.min(60, Number(s.look.see ?? 25) || 0));
-    const darkCover = Math.max(35, scrim);
-    out.push(block(":root:root", { "--scene-image": `url('${scene}')`, "--scene-cover": `${Math.max(75, scrim)}%`, "--scene-panel": `${Math.max(75, 95 - see / 2)}%` }));
-    out.push(`@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--scene-cover:${darkCover}%}}`);
-    out.push(block(':root[data-theme="dark"]', { "--scene-cover": `${darkCover}%` }));
+    // Preview index.html:702-704,1169,10198: scrim/100 over the image; panels use 100% - see.
+    out.push(block(":root:root", { "--scene-image": `url('${scene}')`, "--scene-cover": `${scrim}%`, "--scene-panel": `${100 - see}%` }));
   }
   const accent = isHex(s.prefs.accent) ? s.prefs.accent : null;
   const modeVars = (mode: Mode) => {
