@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/memory-core/src/tools.citations.test.ts (atlas MEMORY-0020). Changed for Branch: retain Branch agent configuration and current upstream citation and recall assertions.
 import fs from "node:fs/promises";
 import { MEMORY_SEARCH_DEADLINE_CONTROL } from "branch/plugin-sdk/memory-core-host-engine-storage";
 import {
