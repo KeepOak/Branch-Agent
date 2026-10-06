@@ -1,6 +1,7 @@
 engine:extensions/admin-http-rpc/index.test.ts
 engine:extensions/admin-http-rpc/src/handler.test.ts
 engine:extensions/codex/src/conversation-binding.test.ts
+engine:extensions/codex/src/native-plugin-tool.test.ts
 engine:extensions/file-transfer/src/tools/dir-fetch-tool.test.ts
 engine:extensions/file-transfer/src/tools/file-fetch-tool.test.ts
 engine:extensions/file-transfer/src/tools/file-write-tool.test.ts
