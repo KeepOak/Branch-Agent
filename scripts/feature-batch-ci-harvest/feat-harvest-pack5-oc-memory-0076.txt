@@ -4,6 +4,11 @@
 # SELF-IMPROVEMENT-0025 Reflect on negative feedback
 # SELF-IMPROVEMENT-0053 Skill Workshop proposals
 # SELF-IMPROVEMENT-0054 Immediate skill repair
+# SELF-IMPROVEMENT-0154 blocked: the pin requires a Python Slime/Megatron/PyTorch
+# training runtime and CUDA model workers; Branch has no corresponding strict
+# TypeScript trainer or weight-update contract. The sole upstream test proves
+# fetch header injection only; it cannot verify feedback-to-weight training.
+# No header-only implementation is counted as this training capability.
 engine:extensions/memory-core/src/standing-intents.async.test.ts
 engine:extensions/memory-core/src/standing-intents.test.ts
 engine:extensions/memory-wiki/src/compile.test.ts
