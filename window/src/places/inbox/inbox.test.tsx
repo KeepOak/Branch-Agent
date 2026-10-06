@@ -12,6 +12,7 @@ import { InboxPlace, useNeedsCount } from "./index";
 import { FULL_ACCESS_GAP } from "./NeedsYou";
 import { MESSAGES_GAP } from "./Tabs";
 import { session } from "../overview/engine";
+import { saveLine } from "../../composer/queue";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 vi.mock("../../face/Face", () => ({ Face: ({ label, size }: { label?: string; size: number }) => <span role="img" aria-label={label} data-face-size={size} /> }));
@@ -44,7 +45,7 @@ const FX: Record<string, unknown> = {
 };
 
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; });
+afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
 
 const engineWith = (request: WindowEngine["request"], scopes = ["operator.admin"]): WindowEngine => ({ request, onEvent: () => () => {}, sessionKey: null, scopes });
 function withoutUnrequestedRecaps(value: unknown): unknown {
@@ -145,6 +146,21 @@ describe("Inbox › Needs you", () => {
     expect(btn(host, "Ask for full access")[0]).toMatchObject({ disabled: true, title: FULL_ACCESS_GAP });
     expect(btn(host, "Turn Telegram off")[0].disabled).toBe(true);
     expect(calls(request, "cron.list")[0]).toMatchObject({ lastRunStatus: "error", enabled: "enabled" });
+  });
+  it("shows a failed waiting-line message above approvals without adding to the badge", async () => {
+    const key = "agent:main:done";
+    saveLine(localStorage, key, [{ id: "unsent", text: "Hello", files: [], state: "failed", error: "Network error", createdAt: NOW }]);
+    const { host, openConversation } = await render();
+    expect(host.textContent).toContain("Your message wasn’t sent");
+    await act(async () => saveLine(localStorage, key, [{ id: "unsent", text: "Hello", files: [], state: "failed", error: "Delivery not confirmed", createdAt: NOW }]));
+    const card = [...host.querySelectorAll(".ib-card")].find(row => row.textContent?.includes("Your message may not have arrived"))!;
+    expect(card.textContent).toContain("Finished one");
+    expect(card.textContent).toContain("Open the conversation to check before trying again.");
+    expect(host.querySelector(".ib-n")?.textContent).toBe("6");
+    await click(btn(card, "Review in the conversation")[0]);
+    expect(openConversation).toHaveBeenCalledWith(key);
+    await act(async () => saveLine(localStorage, key, []));
+    expect(host.textContent).not.toContain("Your message may not have arrived");
   });
   it("Ask <Trunk> drafts the card's question into the default Trunk's main conversation and opens it", async () => {
     const { host, openConversation } = await render();
