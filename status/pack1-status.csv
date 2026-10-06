@@ -1,3 +1,4 @@
 id,build_state,branch_files,upstream_tests_ported,named_test_command,notes
 AGENT-LOOP-0017,blocked,,0/5,,Required pinned git clone failed: Failed to connect to proxy port 8080. Retry reproduced curl error 7. Individual pinned files readable through GitHub connector but no pinned checkout for dependency inspection and upstream test runs. Referenced atlas and shared safety-layer guide are absent.
 AGENT-LOOP-0018,blocked,,0/4,,Required pinned git clone failed: Failed to connect to proxy port 8080. Retry reproduced curl error 7. Individual pinned files readable through GitHub connector but no pinned checkout for dependency inspection and upstream test runs. Referenced atlas and shared safety-layer guide are absent.
+AGENT-LOOP-0019,in progress,,0/5,,
