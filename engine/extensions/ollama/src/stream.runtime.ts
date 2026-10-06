@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:extensions/ollama/src/stream.runtime.ts (atlas MODELS-ACCOUNTS-0013). Changed for Branch: default native chat retention to 30 minutes; preserve explicit overrides and current transport fixes.
 import { randomUUID } from "node:crypto";
 import type { StreamFn } from "branch/plugin-sdk/agent-core";
 import { buildTimeoutAbortSignal } from "branch/plugin-sdk/extension-shared";
@@ -259,6 +260,7 @@ export function buildOllamaChatRequest(params: {
     model: normalizeOllamaWireModelId(params.modelId, params.providerId),
     messages: params.messages,
     stream: params.stream ?? true,
+    keep_alive: "30m",
     ...(params.tools && params.tools.length > 0 ? { tools: params.tools } : {}),
     ...(params.options ? { options: params.options } : {}),
     ...params.requestParams,
@@ -301,6 +303,7 @@ type OllamaUsageFallback = Partial<Record<"input" | "output", number | (() => nu
 const CHARS_PER_TOKEN_ESTIMATE = 4;
 
 interface OllamaChatRequest {
+  keep_alive?: string | number;
   model: string;
   messages: OllamaChatMessage[];
   stream: boolean;

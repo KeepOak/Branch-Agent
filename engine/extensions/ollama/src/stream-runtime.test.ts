@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:extensions/ollama/src/stream-runtime.test.ts (atlas MODELS-ACCOUNTS-0013). Changed for Branch: assert 30-minute default and explicit retention/thinking on consecutive transport requests.
 import { expectDefined } from "@branch/normalization-core";
 import { createAssistantMessageEventStream } from "branch/plugin-sdk/llm";
 import type { Model } from "branch/plugin-sdk/llm";
@@ -119,6 +120,7 @@ describe("createConfiguredOllamaCompatStreamWrapper", () => {
       model: "qwen3",
       messages: [],
       stream: true,
+      keep_alive: "30m",
     });
   });
 
@@ -1127,6 +1129,24 @@ describe("createOllamaStreamFn streaming events", () => {
 });
 
 describe("createOllamaStreamFn", () => {
+  it.each([undefined, "45m", 0, -1])(
+    "preserves retention %s and configured thinking across consecutive requests",
+    async (keepAlive) => {
+      for (const think of [true, false]) {
+        for (let turn = 0; turn < 2; turn++) {
+          fetchWithSsrFGuardMock.mockReset();
+          await expectSuccessfulOllamaRequest(
+            { model: { reasoning: true, params: { keep_alive: keepAlive, think } } },
+            ({ body }) => {
+              expect(body.keep_alive).toBe(keepAlive ?? "30m");
+              expect(body.think).toBe(think);
+            },
+          );
+        }
+      }
+    },
+  );
+
   it("preserves user and tool images for a vision model", async () => {
     const context = {
       messages: [
