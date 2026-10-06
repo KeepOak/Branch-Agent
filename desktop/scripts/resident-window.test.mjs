@@ -63,8 +63,8 @@ async function fixture(run, hidden = false) {
     if (name === 'electron') return runtime.electron;
     const loaded = originalLoad.call(this, name, ...args);
     if (name !== './resident-window') return loaded;
-    return { ...loaded, keepWindowsWindowResident(app, window, icon, options) {
-      return loaded.keepWindowsWindowResident(app, window, icon, { ...options, platform: 'win32' });
+    return { ...loaded, keepWindowResident(app, window, icon, options) {
+      return loaded.keepWindowResident(app, window, icon, { ...options, platform: 'win32' });
     } };
   };
   globalThis.fetch = (url, options) => String(url).startsWith('https://github.com/') ? Promise.resolve(new Response('', { status: 404 })) : originalFetch(url, options);
@@ -118,11 +118,20 @@ test('hidden native fixtures retain close policy without creating a visible tray
   app.quit(); assert.equal(window.destroyed, true);
   await eventually(() => { try { process.kill(pid, 0); return false; } catch { return true; } });
 }, true));
-test('non-Windows platforms retain their existing close policy', () => {
-  const { keepWindowsWindowResident } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'resident-window.js'));
+test('macOS and Linux keep the gateway resident after the window closes', () => {
+  const { keepWindowResident } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'resident-window.js'));
   for (const platform of ['darwin', 'linux']) {
     const app = new EventEmitter(), window = new EventEmitter();
-    assert.equal(keepWindowsWindowResident(app, window, 'unused.ico', { platform }), undefined);
-    assert.equal(window.listenerCount('close'), 0); assert.equal(app.listenerCount('before-quit'), 0);
+    let hidden = false;
+    window.hide = () => { hidden = true; };
+    keepWindowResident(app, window, 'unused.ico', { platform, hidden: true });
+    const close = { prevented: false, preventDefault() { this.prevented = true; } };
+    window.emit('close', close);
+    assert.equal(close.prevented, true);
+    assert.equal(hidden, true);
+    app.emit('before-quit');
+    const quitClose = { prevented: false, preventDefault() { this.prevented = true; } };
+    window.emit('close', quitClose);
+    assert.equal(quitClose.prevented, false);
   }
 });

@@ -27,9 +27,11 @@ test("packaged Keeper icon contains all seven Windows sizes and the approved 256
 
 test("desktop window, tray, shortcuts and packager use the approved icon; updater refreshes Windows cache", () => {
   const main = text("src/main.ts"), release = text("scripts/release-build.mjs"), shortcuts = text("scripts/shortcuts.ps1");
-  assert.match(main, /const ICON = join\(__dirname, "\.\.", "assets", "branch\.ico"\)/);
+  assert.match(main, /process\.platform === "win32"/);
+  assert.match(main, /join\(__dirname, "\.\.", "assets", "branch\.ico"\)/);
+  assert.match(main, /join\(__dirname, "\.\.", "assets", "brand", "linux", "branch-48\.png"\)/);
   assert.match(main, /icon: ICON/);
-  assert.match(main, /keepWindowsWindowResident\(app, w, ICON/);
+  assert.match(main, /keepWindowResident\(app, w, ICON/);
   assert.match(shortcuts, /IconLocation = "\$executable,0"/);
   assert.match(release, /assets\/branch\.ico/);
   assert.match(release, /assets\/branch\.icns/);
