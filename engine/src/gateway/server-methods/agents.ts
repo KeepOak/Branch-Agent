@@ -886,11 +886,6 @@ export const agentsHandlers: GatewayRequestHandlers = {
             const agentDirTrashEligible =
               resolveRegisteredAgentIdForDir(deleteResult.agentDir) === agentId &&
               unclaimedBySurvivor(deleteResult.agentDir);
-            if (!agentDirTrashEligible) {
-              context.logGateway.warn(
-                `agents.delete preserved agent directory ${deleteResult.agentDir}: registry owner ${resolveRegisteredAgentIdForDir(deleteResult.agentDir) ?? "none"}; claimed by survivor ${!unclaimedBySurvivor(deleteResult.agentDir)}`,
-              );
-            }
             if (agentDirTrashEligible) {
               await closeAgentDeleteDirectoryHandles(deleteResult.agentDir);
               await deletion.assertCurrentAsync();
@@ -902,7 +897,15 @@ export const agentsHandlers: GatewayRequestHandlers = {
                 : (databasePlan?.fileGroups ?? [])
               ).flat(),
               ...journal.databasePaths,
-            ].filter(unclaimedBySurvivor);
+            ].filter(
+              (pathname) =>
+                unclaimedBySurvivor(pathname) &&
+                (!agentDirTrashEligible ||
+                  !isPathInside(
+                    agentDirRegistryPath,
+                    normalizeAgentDirRegistryPath(pathname),
+                  )),
+            );
             const eligibleSourcePaths = new Set(
               [
                 ...(workspaceTrashEligible ? [deleteResult.workspaceDir] : []),
@@ -919,16 +922,6 @@ export const agentsHandlers: GatewayRequestHandlers = {
                 (agentDirTrashEligible ||
                   !cleanupPathCovers(cleanupPath, deleteResult.agentDir, agentDirRegistryPath)),
             );
-            if (
-              agentDirTrashEligible &&
-              !cleanupPaths.some((cleanupPath) =>
-                cleanupPathCovers(cleanupPath, deleteResult.agentDir, agentDirRegistryPath),
-              )
-            ) {
-              context.logGateway.warn(
-                `agents.delete has no cleanup path for eligible agent directory ${deleteResult.agentDir}`,
-              );
-            }
             const workspaceCanonicalPath = normalizeAgentDirRegistryPath(deleteResult.workspaceDir);
             const workspaceCleanupPaths = cleanupPaths.filter((cleanupPath) =>
               cleanupPathCovers(cleanupPath, deleteResult.workspaceDir, workspaceCanonicalPath),
