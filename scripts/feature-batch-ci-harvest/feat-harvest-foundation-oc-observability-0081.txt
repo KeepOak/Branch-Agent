@@ -6,3 +6,5 @@ engine:src/gateway/gateway-http-route-contracts.test.ts
 engine:src/gateway/local-http-probe.test.ts
 engine:src/gateway/probe.auth.integration.test.ts
 engine:src/gateway/probe.test.ts
+engine:src/logging/diagnostic-stability-bundle.test.ts
+engine:src/logging/diagnostic-stability.test.ts
