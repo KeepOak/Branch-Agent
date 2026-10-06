@@ -78,13 +78,14 @@ function createDiscordDynamicAccessGroupResolver(params: {
 
 function createDiscordIngressResolver(params: {
   accountId: string;
+  ingressRuntime?: ReturnType<typeof getDiscordRuntime>["channel"]["inbound"]["ingress"];
   cfg?: BranchConfig;
   token?: string;
   rest?: RequestClient;
   readStoreAllowFrom?: ResolveChannelMessageIngressParams["readStoreAllowFrom"];
   useDefaultPairingStore?: boolean;
 }) {
-  return getDiscordRuntime().channel.inbound.ingress.createResolver({
+  return (params.ingressRuntime ?? getDiscordRuntime().channel.inbound.ingress).createResolver({
     channelId: DISCORD_CHANNEL_ID,
     accountId: params.accountId,
     identity: discordIngressIdentity,
@@ -171,6 +172,7 @@ export async function resolveDiscordDmCommandAccess(params: {
 
 export async function resolveDiscordTextCommandAccess(params: {
   accountId: string;
+  ingressRuntime?: ReturnType<typeof getDiscordRuntime>["channel"]["inbound"]["ingress"];
   sender: DiscordIngressSender;
   ownerAllowFrom?: string[];
   memberAccessConfigured: boolean;

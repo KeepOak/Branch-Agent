@@ -9,7 +9,6 @@ import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { withBranchTestState } from "branch/plugin-sdk/test-state";
 import { describe, expect, it, vi } from "vitest";
 import { buildInboundUserContextPrefix } from "../../../../src/auto-reply/reply/inbound-meta.js";
-import * as discordRuntime from "../runtime.js";
 import { resolveDiscordTextCommandAccess } from "./dm-command-auth.js";
 import { buildDiscordMessageProcessContext } from "./message-handler.context.js";
 import { createBaseDiscordMessageContext } from "./message-handler.test-harness.js";
@@ -151,7 +150,6 @@ describe("discord message context", () => {
       const runtime = createPluginRuntimeMock({
         channel: { inbound: { ingress: createHostChannelIngressRuntime(host) } },
       });
-      const runtimeSpy = vi.spyOn(discordRuntime, "getDiscordRuntime").mockReturnValue(runtime);
       try {
         const text = "/config show messages.responsePrefix";
         const routeMetadata = Symbol("opaque route metadata");
@@ -175,6 +173,7 @@ describe("discord message context", () => {
         ctx.route = Object.assign({}, ctx.route, { [routeMetadata]: metadata });
         ctx.resolveChannelIngress = (contextBinding, conversation) =>
           resolveDiscordTextCommandAccess({
+            ingressRuntime: runtime.channel.inbound.ingress,
             accountId: ctx.accountId,
             cfg,
             sender: { id: senderId, authorKind: "bot" },
@@ -211,7 +210,6 @@ describe("discord message context", () => {
         expect(() => authorization.assertOwnerCurrent?.()).toThrow("authority changed");
       } finally {
         live = false;
-        runtimeSpy.mockRestore();
       }
     });
   });
