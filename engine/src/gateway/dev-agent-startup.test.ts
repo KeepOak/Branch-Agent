@@ -10,7 +10,8 @@ import { BranchSchema } from "../config/zod-schema.js";
 import { listGatewayAgentsBasic } from "./agent-list.js";
 import { migrateDevAgentConfig, removeSeededDevAgentAtStartup } from "./dev-agent-startup.js";
 
-const seedWorkspace = path.join("C:", "owner", ".branch-dev", "workspace");
+const ownerRoot = path.resolve(os.tmpdir(), "owner");
+const seedWorkspace = path.join(ownerRoot, ".branch-dev", "workspace");
 const seed = { workspace: seedWorkspace, identity: { name: "C3-PO", theme: "protocol droid", emoji: "🤖" } };
 const ownerConfig: BranchConfig = {
   gateway: { mode: "local", bind: "loopback" },
@@ -32,7 +33,7 @@ describe("P11 dev-profile migration", () => {
   it("keeps a fresh explicit profile contactless while retaining its internal owner", async () => {
     const config: BranchConfig = {
       gateway: { mode: "local", bind: "loopback" },
-      agents: { ownership: "explicit", defaults: { workspace: path.join("C:", "fresh", ".branch", "workspace") } },
+      agents: { ownership: "explicit", defaults: { workspace: path.resolve(os.tmpdir(), "fresh", ".branch", "workspace") } },
     };
     expect(BranchSchema.safeParse(config).success).toBe(true);
     const roster = await listGatewayAgentsBasic(config);
@@ -45,9 +46,9 @@ describe("P11 dev-profile migration", () => {
     expect(migrated.agents?.entries?.dev).toBeUndefined();
     expect(migrated.agents?.entries?.oak).toMatchObject({
       identity: { name: "Oak" },
-      workspace: path.join("C:", "owner", ".branch", "workspace", "oak"),
+      workspace: path.join(ownerRoot, ".branch", "workspace", "oak"),
     });
-    expect(migrated.agents?.defaults?.workspace).toBe(path.join("C:", "owner", ".branch", "workspace"));
+    expect(migrated.agents?.defaults?.workspace).toBe(path.join(ownerRoot, ".branch", "workspace"));
     expect(migrated.agents?.defaults?.heartbeat?.agentId).toBe("oak");
     expect(migrateDevAgentConfig(migrated)).toBeUndefined();
     const noDefault = structuredClone(ownerConfig);
@@ -60,7 +61,7 @@ describe("P11 dev-profile migration", () => {
     delete sole.agents!.defaultId;
     delete sole.agents!.entries!.dev;
     const migrated = migrateDevAgentConfig(sole)!;
-    expect(migrated.agents?.entries?.oak?.workspace).toBe(path.join("C:", "owner", ".branch", "workspace"));
+    expect(migrated.agents?.entries?.oak?.workspace).toBe(path.join(ownerRoot, ".branch", "workspace"));
   });
 
   it("keeps a normalized default dev Trunk instead of removing its entry", () => {

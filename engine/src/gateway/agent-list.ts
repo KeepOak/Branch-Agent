@@ -108,7 +108,7 @@ export async function listGatewayAgentsBasic(cfg: BranchConfig): Promise<
 
   for (const id of await listExistingAgentIdsFromDisk()) {
     diskIds.add(id);
-    if (!firstContactBootstrap) agentIds.add(id);
+    if (!firstContactBootstrap || ownerEntries.has(id)) agentIds.add(id);
   }
 
   const allowedIds = configuredById.size > 0 ? configuredById : null;
