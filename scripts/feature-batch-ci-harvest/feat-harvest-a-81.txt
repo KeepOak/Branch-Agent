@@ -5,6 +5,7 @@ engine:extensions/clickclack/src/inbound.test.ts
 engine:extensions/msteams/src/oauth.test.ts
 engine:extensions/msteams/src/sso-token-store.test.ts
 engine:extensions/msteams/src/token.test.ts
+engine:extensions/qa-channel/src/inbound.access-groups.test.ts
 engine:extensions/sms/src/delivery-observations.test.ts
 engine:extensions/sms/src/send.test.ts
 engine:extensions/sms/src/twilio.test.ts
@@ -15,3 +16,4 @@ engine:src/infra/exec-approval-forwarder.test.ts
 engine:src/infra/exec-approval-reply.test.ts
 engine:src/pairing/pairing-challenge.test.ts
 engine:src/pairing/pairing-store.test.ts
+engine:src/plugin-sdk/access-groups.test.ts
