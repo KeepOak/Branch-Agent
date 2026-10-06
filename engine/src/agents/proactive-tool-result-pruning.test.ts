@@ -1,4 +1,4 @@
-// From NousResearch/hermes-agent@18d125cc1bd9d0e26188ab49bb325427d5945fa2:tests/agent/test_proactive_tool_result_pruning.py (atlas AGENT-LOOP-0102). Seven source cases ported to canonical Branch messages; persistence and owner-tail assertions added.
+// From NousResearch/hermes-agent@18d125cc1bd9d0e26188ab49bb325427d5945fa2:tests/agent/test_proactive_tool_result_pruning.py (atlas AGENT-LOOP-0102). Six source cases ported to canonical Branch messages; persistence and owner-tail assertions added.
 import { expect, it, vi } from "vitest";
 import { estimateMessagesTokens } from "./compaction-planning.js";
 import {
@@ -67,7 +67,7 @@ it("test_rearms_only_after_reclaimed_token_runway", async () => {
   expect(rearmed.pruned).toBeGreaterThanOrEqual(2);
   expect(rearmed.messages).not.toBe(regrown);
 });
-it("test_successful_full_compression_resets_proactive_runway", async () => {
+it("resets the runway on the full-compression callback; source lifecycle integration remains pending", async () => {
   const c = configured();
   expect((await c.pruneToolResultsOnly(buildHistory(), 120_000)).pruned).toBeGreaterThanOrEqual(3);
   c.onFullCompression();
