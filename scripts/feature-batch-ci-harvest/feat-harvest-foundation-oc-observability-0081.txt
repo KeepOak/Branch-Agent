@@ -1,0 +1,3 @@
+engine:src/commands/gateway-status.test.ts
+engine:src/gateway/probe.auth.integration.test.ts
+engine:src/gateway/probe.test.ts
