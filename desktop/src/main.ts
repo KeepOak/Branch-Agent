@@ -81,6 +81,14 @@ let gatewayPort = cfg.gatewayPort;
 const gatewayUrl = (): string => `ws://127.0.0.1:${gatewayPort}`;
 /** An update's warmed standby until it is promoted or stopped; quitting never leaves it behind. */
 let standby: PreparedGateway | undefined;
+/** The update whose standby failed: auto-apply leaves it to the owner's click instead of retrying every poll. */
+let standbyFailedFor: string | undefined;
+/** The `branch` command reads the live port from here at run time (desktop.json keeps the configured one). */
+function adoptGatewayPort(port: number): void {
+  gatewayPort = port;
+  try { writeFileSync(join(cfg.dataDir, "gateway-port"), String(port)); }
+  catch (error) { log(`gateway-port could not be recorded: ${String(error)}`); }
+}
 let server: Server | undefined;
 let win: BrowserWindow | undefined;
 const conversationWindows = new Map<string, BrowserWindow>();
@@ -198,12 +206,16 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
   try {
     if (!await candidatePassed(label)) return;
     if (freemem() >= CANDIDATE_MIN_FREE_BYTES) {
-      // The live engine keeps its port while the standby warms on a spare one; a failed standby is already stopped.
+      if (!explicit && standbyFailedFor === label) throw new Error(`the standby for ${label} failed before; waiting for the owner's Update`);
+      // The live engine keeps its port while the standby warms on a spare one. A failed standby is already stopped,
+      // and nothing else is: the current engine keeps serving and the update is offered again.
       try {
         standby = await prepareStandbyGateway(cfg, resolveEngineDir(cfg), token, STANDBY_WARM_TIMEOUT_MS);
+        standbyFailedFor = undefined;
         log(`update ${label}: standby engine ${standby.child.pid} prepared on port ${standby.port} while the current engine kept serving`);
       } catch (error) {
-        log(`update ${label}: standby preparation failed; using the normal guarded swap: ${String(error)}`);
+        standbyFailedFor = label;
+        throw new Error(`the new engine could not be prepared beside the running one, which kept serving: ${String(error)}`);
       }
     }
     const started = Date.now();
@@ -514,6 +526,7 @@ async function start(): Promise<void> {
   for (const port of [cfg.gatewayPort, cfg.windowPort]) {
     if (!(await portIsFree(port))) throw new Error(`port ${port} is already in use; is Branch Agent already running?`);
   }
+  adoptGatewayPort(cfg.gatewayPort);
   await recoverComponentUpdate(cfg);
   if (!existsSync(join(cfg.windowDir, "index.html")) || !existsSync(join(cfg.dataDir, "engine-current.txt")) && !existsSync(join(cfg.engineDir, "branch.mjs"))) {
     log("Installing verified GitHub components for first launch");
@@ -554,7 +567,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
 `);
   // Ready means listening on its own port and answering /readyz there; only then does the window follow it.
   await waitForReady({ ...cfg, gatewayPort: port }, child, READY_TIMEOUT_MS);
-  gatewayPort = port;
+  adoptGatewayPort(port);
   if (confirmUpdate) await confirmComponentUpdate(cfg);
   observed.ready();
   gatewayRecoveryError = undefined;
