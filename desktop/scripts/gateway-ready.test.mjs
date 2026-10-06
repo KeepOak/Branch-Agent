@@ -58,6 +58,62 @@ test("a prepared standby reports warm without replacing the live gateway pid", a
   }
 });
 
+async function standbyFixture(script, run) {
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const gateway = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const { prepareNormalProfile } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "profile-migration.js")));
+  const root = await mkdtemp(join(tmpdir(), "branch-gateway-standby-port-"));
+  const children = [];
+  const exited = child => child.exitCode !== null || child.signalCode !== null;
+  try {
+    await writeFile(join(root, "branch.mjs"), script);
+    prepareNormalProfile(join(root, "home"));
+    await run(root, gateway, child => { children.push(child); return child; });
+  } finally {
+    for (const child of children) {
+      gateway.stopGateway(child);
+      if (!exited(child)) await new Promise(resolve => child.once("exit", resolve));
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+test("a standby comes up on its own loopback port while the live engine still holds the configured one", async () => {
+  // As the real engine: report warm first, then listen once on exactly the port it was given (no EADDRINUSE retry).
+  const script = `import fs from "node:fs";import http from "node:http";
+const port=Number(process.argv.at(-1));
+fs.writeFileSync("launch.json",JSON.stringify({port,env:Number(process.env.BRANCH_GATEWAY_PORT),token:process.env.BRANCH_GATEWAY_TOKEN}));
+process.send({type:"branch-desktop:standby-ready",pid:process.pid});
+http.createServer((q,r)=>r.writeHead(q.url==="/readyz"?200:404).end()).listen(port,"127.0.0.1");`;
+  await fixture((_req, res) => res.writeHead(200).end(), live => standbyFixture(script, async (root, gateway, track) => {
+    const { readFile } = await import("node:fs/promises");
+    const cfg = { dataDir: root, nodePath: process.execPath, gatewayPort: live.gatewayPort };
+    const prepared = await gateway.prepareStandbyGateway(cfg, root, "shared-token", 5000);
+    track(prepared.child);
+    assert.notEqual(prepared.port, live.gatewayPort, "the standby was pointed at the live engine's port");
+    await gateway.waitForReady({ ...cfg, gatewayPort: prepared.port }, prepared.child, 5000);
+    assert.deepEqual(JSON.parse(await readFile(join(root, "launch.json"), "utf8")),
+      { port: prepared.port, env: prepared.port, token: "shared-token" });
+    assert.equal(cfg.gatewayPort, live.gatewayPort, "the configured port changed");
+    assert.equal((await fetch(`http://127.0.0.1:${live.gatewayPort}/readyz`)).status, 200, "the live engine stopped serving");
+  }));
+});
+
+test("a standby that never warms is stopped at its deadline and leaves no process behind", async () => standbyFixture(
+  'import fs from "node:fs";fs.writeFileSync("standby.pid",String(process.pid));setInterval(()=>{},1000);',
+  async (root, gateway) => {
+    const { readFile } = await import("node:fs/promises");
+    const cfg = { dataDir: root, nodePath: process.execPath, gatewayPort: 0 };
+    const started = Date.now();
+    await assert.rejects(gateway.prepareStandbyGateway(cfg, root, "shared-token", 2000), /did not warm in time/);
+    assert.ok(Date.now() - started < 5000, "the warm-up wait was not bounded");
+    const pid = Number(await readFile(join(root, "standby.pid"), "utf8"));
+    const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    for (const end = Date.now() + 5000; alive() && Date.now() < end;) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(alive(), false, "the timed-out standby was left running");
+  }));
+
 test("the owned desktop gateway starts configured channels even when the launcher environment skips them", async () => {
   const { mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");

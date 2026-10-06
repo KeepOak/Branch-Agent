@@ -27,6 +27,18 @@ export function portIsFree(port: number): Promise<boolean> {
   });
 }
 
+/** A loopback port nothing listens on right now: the OS picks it for a throwaway listener. */
+export function freeLoopbackPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const port = (probe.address() as { port: number }).port;
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
 /**
  * Tests only: BRANCH_DESKTOP_ENGINE_PROFILE gives the engine its own user profile, so its state-owner lock
  * (under the profile's AppData/Local/Branch Agent/locks) never mixes with a real engine's. Unset for the owner's runs.
@@ -42,7 +54,8 @@ function testProfile(): Record<string, string> {
   };
 }
 
-export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false): ChildProcess {
+/** `port` defaults to the configured one; an update's standby passes its own spare port without changing the config. */
+export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false, port = cfg.gatewayPort): ChildProcess {
   const log = createWriteStream(join(cfg.dataDir, "gateway.log"), { flags: "a" });
   const profile = standby
     ? readPreparedNormalProfile(join(cfg.dataDir, "home"))
@@ -59,12 +72,12 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     // The desktop owns the live gateway: let it start every configured channel.
     // Candidate and smoke gateways opt out separately.
     BRANCH_SKIP_CHANNELS: undefined,
-    BRANCH_GATEWAY_PORT: String(cfg.gatewayPort),
+    BRANCH_GATEWAY_PORT: String(port),
     BRANCH_GATEWAY_TOKEN: token,
     BRANCH_GATEWAY_STANDBY: standby ? "1" : undefined,
     ...testProfile(),
   };
-  const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(cfg.gatewayPort)];
+  const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(port)];
   const child = spawn(cfg.nodePath, args, {
     cwd: engineDir,
     env,
@@ -97,6 +110,26 @@ export function waitForGatewayStandby(child: ChildProcess, timeoutMs: number): P
     child.once("exit", onExit);
     child.once("error", onError);
   });
+}
+
+export interface PreparedGateway { child: ChildProcess; port: number }
+
+/**
+ * Starts an update's standby engine beside the live one. The live engine still holds the configured port, so the
+ * standby gets its own free loopback port (same token) and is promoted on that port; the window is then handed the
+ * new address. Resolves once the standby has warmed; a standby that exits, cannot report or times out is stopped,
+ * so nothing is left behind and the live engine keeps serving.
+ */
+export async function prepareStandbyGateway(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number): Promise<PreparedGateway> {
+  const port = await freeLoopbackPort();
+  const child = startGateway(cfg, engineDir, token, true, port);
+  try {
+    await waitForGatewayStandby(child, timeoutMs);
+    return { child, port };
+  } catch (error) {
+    stopGateway(child);
+    throw error;
+  }
 }
 
 export interface GatewayActivity { idle: boolean; activeRuns: number; pendingReplies: number; totalActive: number }
