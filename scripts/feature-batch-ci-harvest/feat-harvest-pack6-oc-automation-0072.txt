@@ -1,3 +1,4 @@
 engine:src/hooks/bundled/boot-md/handler.gateway-startup.integration.test.ts
 engine:src/hooks/bundled/boot-md/handler.test.ts
 engine:src/hooks/bundled/command-logger/handler.behaviour.test.ts
+engine:src/hooks/bundled/compaction-notifier/handler.behaviour.test.ts
