@@ -2,10 +2,13 @@ engine:extensions/qa-channel/src/channel.test.ts
 engine:extensions/qa-channel/src/inbound.test.ts
 engine:extensions/qa-channel/src/outbound.test.ts
 engine:extensions/telegram/src/doctor.test.ts
+engine:extensions/telegram/src/monitor.webhook-identity.test.ts
 engine:extensions/telegram/src/polling-session.test.ts
 engine:extensions/telegram/src/probe.test.ts
 engine:extensions/telegram/src/security-audit.test.ts
 engine:extensions/telegram/src/telegram-ingress-spool.test.ts
 engine:extensions/telegram/src/telegram-ingress-worker.deadline.test.ts
 engine:extensions/telegram/src/telegram-ingress-worker.test.ts
+engine:extensions/telegram/src/webhook.host-floor.test.ts
+engine:extensions/telegram/src/webhook.test.ts
 engine:src/auto-reply/group-thread.test.ts
