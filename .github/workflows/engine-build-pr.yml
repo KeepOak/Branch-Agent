@@ -106,3 +106,5 @@ jobs:
       - run: for archive in declaration-caches/*/*.tar; do tar -xf "$archive"; done
       - run: pnpm build
         working-directory: engine
+        env:
+          BRANCH_CI_PREBUILT_UNIFIED_DTS: '1'
