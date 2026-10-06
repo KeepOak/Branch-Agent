@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/commands/dashboard.test.ts (atlas OPS-0162). Changed for Branch: retain newer remote SSH dashboard routing tests.
 // Dashboard command tests cover dashboard URL selection, gateway bind modes, and runtime output.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GatewayBindMode } from "../config/types.gateway.js";

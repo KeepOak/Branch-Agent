@@ -67,3 +67,5 @@ engine/src/agents/tools/presence-tool.test.ts,INTEGRATIONS-0131,openclaw/opencla
 engine/src/infra/tailscale.claim.test.ts,OPS-0156,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/infra/tailscale.claim.test.ts (changed: retain newer route owner readiness and teardown coverage),2026-10-06
 engine/test/fixtures/tailscale-foreground-fixture.mjs,OPS-0156,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,test/fixtures/tailscale-foreground-fixture.mjs (changed: restore upstream executable mode),2026-10-06
 engine/test/fixtures/tailscale-sudo-fixture.mjs,OPS-0156,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,test/fixtures/tailscale-sudo-fixture.mjs (changed: restore upstream executable mode),2026-10-06
+engine/src/commands/dashboard.test.ts,OPS-0162,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/commands/dashboard.test.ts (changed: retain newer remote SSH dashboard routing tests),2026-10-06
+engine/src/commands/dashboard.links.test.ts,OPS-0162,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/commands/dashboard.links.test.ts (changed: retain newer remote SSH dashboard routing tests),2026-10-06
