@@ -1,3 +1,6 @@
+engine:extensions/lmstudio/src/models.fetch.test.ts
+engine:extensions/lmstudio/src/setup.test.ts
+engine:extensions/lmstudio/src/stream.test.ts
 engine:extensions/ollama/provider-discovery.test.ts
 engine:extensions/ollama/src/provider-models.test.ts
 engine:extensions/ollama/src/setup-pull.test.ts
