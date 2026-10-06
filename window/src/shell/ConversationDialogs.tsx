@@ -57,7 +57,7 @@ export function AboutDialog({ engine, sessionKey, agentId, trunkName, title, onC
       ]
     : [];
   return (
-    <Dialog title="About this conversation" onClose={onClose} footer={<button type="button" className="btn primary" onClick={onClose}>Close</button>} testid="about-conversation">
+    <Dialog title="About this conversation" onClose={onClose} testid="about-conversation">
       {error ? <p className="field-error" role="alert">{error}</p> : null}
       {row ? (
         <dl className="kv">
@@ -92,7 +92,7 @@ export function MapDialog({ engine, sessionKey, agentId, onSwitched, onClose }: 
     );
   }, [engine, sessionKey, agentId]);
   return (
-    <Dialog title="Map of this conversation" wide onClose={onClose} footer={<button type="button" className="btn primary" onClick={onClose}>Close</button>} testid="conversation-map">
+    <Dialog title="Map of this conversation" wide onClose={onClose} testid="conversation-map">
       {loadError ? <p className="field-error" role="alert">{loadError}</p> : null}
       {tips && tips.length < 2 ? <p className="hint">One path so far. Conversations branched off with “Branch from here” show here.</p> : null}
       {tips && tips.length > 1 ? (

@@ -52,7 +52,7 @@ export const BADGES: Badge[] = [
     ["Paired", "Pair a second computer."],
     ["In your pocket", "Pair your phone."],
     ["Borrowed browser", "Let a Trunk use another computer's browser."],
-    ["Room for two", "Have a conversation with two Trunks."],
+    ["Group of two", "Have a conversation with two Trunks."],
     ["@ you", "Mention a Trunk with @."],
     ["Handoff", "One Trunk hands work to another."],
     ["Renamed", "Give a computer a friendly name."],
@@ -271,7 +271,7 @@ export function AchievementsPage(props: SettingsPageProps) {
       <BadgeGrid got={got} />
       <PetsSec engine={props.engine} openSettings={props.openSettings} />
       <Sec title="Settings">
-        <Ctl title="Keep achievements quiet" sub="No pop-ups. They still unlock. Bronze and Silver pop small for a few seconds; Gold and up get the big one with confetti." off={NO_LEDGER}>
+        <Ctl title="Keep achievements quiet" sub="No pop-ups." help="No pop-ups. They still unlock. Bronze and Silver pop small for a few seconds; Gold and up get the big one with confetti." off={NO_LEDGER}>
           <Switch label="Keep achievements quiet" checked={false} onChange={() => undefined} />
         </Ctl>
         <Hint>Hints: Bronze and Silver get a pet hint at most once an hour; Gold and up get none.</Hint>

@@ -78,7 +78,7 @@ export const ISOLATION: Section = { title: "Isolation", lv: 1, rows: [
   { k: "seg", t: "Sandbox", lv: 2, path: "agents.defaults.sandbox.mode", def: "off", opts: [{ id: "off", label: "Off" }, { id: "non-main", label: "All but each Trunk’s main conversation" }, { id: "all", label: "Every conversation" }], subOf: (v) => SB_SUB[v] ?? "" },
   { k: "pick", t: "One sandbox per", lv: 2, path: "agents.defaults.sandbox.scope", def: "agent", opts: [{ id: "agent", label: "Trunk" }, { id: "session", label: "Conversation" }, { id: "shared", label: "Shared by all" }], subOf: (v) => (v === "shared" ? "Shared ignores per-Trunk settings." : "") },
   { k: "pick", t: "Runs in", lv: 2, sub: "Plugins can add more (OpenShell, Cuttings).", path: "agents.defaults.sandbox.backend", def: "docker", opts: [{ id: "docker", label: "Docker" }, { id: "podman", label: "Podman" }, { id: "ssh", label: "SSH" }, { id: "openshell", label: "OpenShell" }, { id: "crabbox", label: "Cuttings" }] },
-  off("System sandbox for commands", "Every command runs contained on this PC.", { seg: ["Off", "When needed", "Always"], v: "Always" }, WHY.desk, 2),
+  off("System sandbox for commands", "Every command runs contained here.", { seg: ["Off", "When needed", "Always"], v: "Always" }, WHY.desk, 2),
   { k: "sw", t: "Let a conversation run commands outside the sealed box", sub: "Commands may leave the sealed box only for the people and chats on the list. No one is on it at first. Turning it off turns it off in every conversation.", path: "tools.elevated.enabled", def: true },
   { k: "el", t: "Who may", when: (c) => c.get("tools.elevated.enabled") !== false, el: (x) => <WhoMay x={x} /> },
   off("Add sign-ins from outside the sandbox", "The sandbox never holds a password; Branch adds it on the way out. Off until you choose: a Trunk’s web requests then pass through Branch.", { sw: false }, WHY.key, 2),
@@ -88,8 +88,8 @@ export const ISOLATION: Section = { title: "Isolation", lv: 1, rows: [
   { k: "code", t: "Extra commands computers may run", lv: 2, sub: "Commands beyond each computer’s and phone’s usual set, such as taking a photo, recording the screen or sending a text. Change it in the settings file; a blocked command always wins.", code: (c) => list(c.get("gateway.nodes.commands.allow")).join(", ") || "None" },
   { k: "pick", t: "Commands run on", lv: 2, sub: "Auto uses the sandbox when one is running, otherwise the Gateway’s computer.", path: "tools.exec.host", def: "auto", opts: [{ id: "auto", label: "Auto" }, { id: "sandbox", label: "The sandbox" }, { id: "gateway", label: "The Gateway" }, { id: "node", label: "A computer" }] },
   { k: "code", t: "Safe programs", lv: 2, sub: "Run on plain input without a rule; a program counts only with a profile.", code: (c) => (list(c.get("tools.exec.safeBins")).length ? list(c.get("tools.exec.safeBins")) : SAFE_BINS).join(" ") },
-  off("The Linux sandbox on this PC", "No Windows programs, no Windows drives, and an ordinary user, never the administrator.", { btn: "Check it" }, WHY.desk, 2),
-  off("Refuse commands when the sandbox can’t start", "Off: commands run on this PC under your rules while the sandbox is missing. Off until you choose: commands would stop until the sandbox works.", { sw: false }, WHY.key, 2),
+  off("The Linux sandbox here", "No Windows programs or drives; never an administrator.", { btn: "Check it" }, WHY.desk, 2),
+  off("Refuse commands when the sandbox can’t start", "Stops commands until the sandbox works.", { sw: false }, WHY.key, 2),
 ] };
 
 export const TOOLS_TECH: Section = { title: "Tools, technical", lv: 2, rows: [

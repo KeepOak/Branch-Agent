@@ -36,7 +36,7 @@ export function LocalTab({ m, openSettings }: { m: ModelsCtx; openSettings?: (pa
 
 export function LocalMore({ openSettings }: { openSettings?: (page: string) => void }) {
   return (
-    <Sec title="Will it fit on this computer?" hint="Each model is checked against this computer’s graphics memory, memory and free space.">
+    <Sec title="Will it fit on this computer?" hint="Checks models against memory, graphics memory and disk space." help="Each model is checked against this computer’s graphics memory, memory and free space.">
       <Ctl title="Models that fit here" sub="The full list, with a fit for each, is in Settings › On this computer.">{openSettings ? <Btn sm onClick={() => openSettings("local")}>See what fits</Btn> : null}</Ctl>
     </Sec>
   );
@@ -45,7 +45,7 @@ export function LocalMore({ openSettings }: { openSettings?: (page: string) => v
 export function SecondTab() {
   return (
     <Sec title="">
-      <Ctl title="Ask a second model on hard questions" sub="Shows both answers side by side when they disagree. Off until you choose: it doubles the cost." off={NONE}><Switch checked={false} label="Ask a second model on hard questions" onChange={() => undefined} /></Ctl>
+      <Ctl title="Ask a second model on hard questions" sub="Shows both answers side by side when they disagree." help="Shows both answers side by side when they disagree. Off until you choose: it doubles the cost." off={NONE}><Switch checked={false} label="Ask a second model on hard questions" onChange={() => undefined} /></Ctl>
     </Sec>
   );
 }

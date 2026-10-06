@@ -9,7 +9,7 @@ export const ACCOUNTS_ROWS: RowEntry[] = [
   ...rows("accounts", "GitHub", 0, ["GitHub"]),
   ...rows("accounts", "When one runs out", 0, ["Move to the next account in the list", "Fall back to this computer"]),
   ...rows("accounts", "Terms", 1, ["Each service’s terms"]),
-  ...rows("accounts", "Accounts, more", 1, ["Which account each Trunk uses", "Helpers keep their account", "Pick by what the task needs", "Fallback keys", "Resting now", "Which sign-in each request used", "Organisation", "A customer’s ChatGPT plan on a KeepOak computer"]),
+  ...rows("accounts", "Accounts", 1, ["Which account each Trunk uses", "Helpers keep their account", "Pick by what the task needs", "Fallback keys", "Resting now", "Which sign-in each request used", "Organisation", "A customer’s ChatGPT account on a KeepOak computer"]),
   ...rows("accounts", "Which account goes next", 2, ["Which account goes next"]),
   ...rows("accounts", "Where each sign-in comes from", 2, ["Where each sign-in comes from"]),
   ...rows("accounts", "Accounts, technical", 2, ["This Branch’s identity", "Use a model from a hub for one run", "Install a service’s package when needed", "Point your coding apps at Branch", "A command that makes a sign-in", "On a build server, sign in with", "Accept sign-ins from your editor", "Sign-ins through the Gateway", "Settings from another Branch", "Keep service settings in step on my devices", "Region", "Each account keeps its own folder"]),

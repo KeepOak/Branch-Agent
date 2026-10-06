@@ -11,7 +11,7 @@ const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 export function monthToDate(now = new Date()) {
   return { agentScope: "all", startDate: iso(new Date(now.getFullYear(), now.getMonth(), 1)), endDate: iso(now), mode: "gateway" };
 }
-const money = (n: number) => n >= 100 ? `$${Math.round(n)}` : `$${n.toFixed(2)}`;
+const money = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 
 export function UsageTab({ engine }: { engine: WindowEngine }) {
   const usage = useResource<unknown>(engine, "sessions.usage", monthToDate());

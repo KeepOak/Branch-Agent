@@ -52,7 +52,6 @@ function Diary({ engine, level, agentId, onClose }: { engine: WindowEngine; leve
       <button type="button" className="btn ghost sm" disabled={op.busy} onClick={() => act("doctor.memory.resetDreamDiary", r => `${n(r.removedEntries)} written-back nights removed.`)}>Remove written-back nights</button>
       <button type="button" className="btn ghost sm" disabled={op.busy} onClick={() => act("doctor.memory.dedupeDreamDiary", r => `${n(r.removedEntries)} repeats removed.`)}>Remove repeats</button>
     </>}
-    <button type="button" className="btn" onClick={onClose}>Close</button>
   </>;
   return <Dialog title="Rings diary" wide onClose={onClose} footer={footer} testid="rings-diary">
     {diary.loading && <p className="lib-hint" role="status">Loading…</p>}

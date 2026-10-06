@@ -58,7 +58,7 @@ function WakeWords({ engine, wake }: Shared) {
     void save(async () => { await engine.request("voicewake.set", { triggers: lines }); await wake.reload(); });
   };
   return (
-    <Ctl stack title="Wake words" sub="Saying one of these starts listening. One per line, up to 32, each up to 64 characters. Shared by every computer and phone on this Branch. Clear the list to go back to the standard words."
+    <Ctl stack title="Wake words" sub="Saying one of these starts listening." help="Saying one of these starts listening. One per line, up to 32, each up to 64 characters. Shared by every computer and phone on this Branch. Clear the list to go back to the standard words."
       after={err ? <small className="bad-k" role="alert">{err}</small> : wake.error ? <small className="bad-k">{visible(wake.error)}</small> : null}>
       <textarea className="inp" rows={4} aria-label="Wake words" value={draft} disabled={!wake.data} onChange={(e) => setDraft(e.target.value)} onBlur={commit} />
     </Ctl>
@@ -92,7 +92,7 @@ export function TalkingMore({ cfg }: { cfg: Cfg }) {
   return (
     <Sec title="Talking, more">
       <Greyed why={APP} rows={[{ t: "Answer approvals by voice", sub: "Say yes or no to an approval, or hold the phone key to talk turn by turn.", c: { btn: "Try one" } }]} />
-      <Ctl title="Talking over it stops it" sub="Speak while it is talking and it stops to listen. On a Mac, pressing the right Option key does the same at any time.">
+      <Ctl title="Talking over it stops it" sub="Speak while it is talking and it stops to listen." help="Speak while it is talking and it stops to listen. On a Mac, pressing the right Option key does the same at any time.">
         <Switch checked={cfg.get("talk.interruptOnSpeech") !== false} label="Talking over it stops it" disabled={cfg.loading} onChange={(on) => void cfg.set("talk.interruptOnSpeech", on)} />
       </Ctl>
       <Greyed why={APP} rows={[{ t: "Hold the microphone to dictate", sub: "Hold the microphone button until it listens, then let go and keep talking. Done puts the words in the message box.", c: { sw: true } }]} />

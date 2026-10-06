@@ -7,7 +7,7 @@ import { Dialog } from "../../../shell/Dialog";
 import { Icon } from "../../../shell/icons";
 import { MODE_ROWS, blockedReason, modeName, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { record, text, visible, type RecordValue } from "../adapter";
-import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec } from "../kit";
+import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
 import { shownWhy } from "../../../shell/shown-why";
 
@@ -37,7 +37,7 @@ export function ThisPc() {
       </Plist>
       <Hint>{WHY.os}</Hint>
       <div className="sec pm-loc">
-        <Ctl title="Location access" sub="Lets a Trunk ask where this computer is when a tool needs it. On Windows it asks the first time a Trunk needs it." off={WHY.os}>{deadControl({ seg: ["Off", "While using", "Always"], v: "While using" }, "Location access")}</Ctl>
+        <Ctl title="Location access" sub="Lets a Trunk ask where this computer is when a tool needs it." help="Lets a Trunk ask where this computer is when a tool needs it. On Windows it asks the first time a Trunk needs it." off={WHY.os}>{deadControl({ seg: ["Off", "While using", "Always"], v: "While using" }, "Location access")}</Ctl>
         <Ctl title="Precise location" sub="The exact spot, not just the area." off={WHY.os}>{deadControl({ sw: true }, "Precise location")}</Ctl>
       </div>
     </Sec>
@@ -73,11 +73,7 @@ export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: Rec
   const selected = execMode(cfg, agents);
   return (
     <Sec title="Access" hint="Every conversation starts here. A conversation can change its own.">
-      <div className="pm-access" role="radiogroup" aria-label="Access" data-row="Access">
-        {MODE_OPTS.map((option) => <button key={option.id} type="button" role="radio" aria-checked={selected === option.id} className={selected === option.id ? "pm-access-row selected" : "pm-access-row"} disabled={cfg.loading || Boolean(option.off)} title={option.off} onClick={() => void saveMode(cfg, option.id, reload)}>
-          <span aria-hidden="true">{selected === option.id ? "✓" : ""}</span><b>{option.label}</b>
-        </button>)}
-      </div>
+      <div data-row="Access"><Seg layout="radio" label="Access" value={selected} options={MODE_OPTS} disabled={cfg.loading} onChange={(mode) => void saveMode(cfg, mode, reload)} /></div>
     </Sec>
   );
 }
@@ -102,7 +98,7 @@ export function Pinned() {
 }
 
 export function ApprovalsRow({ x }: { x: Ctx }) {
-  return <Ctl title="Approvals" sub="Every yes and no from the last 30 days, and the standing permissions automations hold."><Btn sm onClick={x.openApprovals}>Open</Btn></Ctl>;
+  return <Ctl title="Approvals" sub="Shows recent requests and standing automation permissions." help="Every yes and no from the last 30 days, and the standing permissions automations hold."><Btn sm onClick={x.openApprovals}>Open</Btn></Ctl>;
 }
 
 /** tools.elevated.allowFrom: { provider: [sender ids] }. */
@@ -147,6 +143,6 @@ function WhoDialog({ cfg, onClose }: { cfg: Cfg; onClose: () => void }) {
 export function Connectors({ x }: { x: Ctx }) {
   const names = Object.keys(record(x.cfg.get("mcp.servers")));
   const mark = "What each connector may do";
-  if (!names.length) return <p className="empty" data-row={mark}>No connectors yet.</p>;
+  if (!names.length) return <Empty data-row={mark}>No connectors yet.</Empty>;
   return <><p className="pm-anchor" data-row={mark} aria-hidden="true" />{names.map((n) => <Ctl key={n} id={n} title={visible(n)} off="The engine can’t limit a connector to reading yet.">{deadControl({ seg: ["Nothing", "Read", "Read and write"], v: "" }, `What ${text(n)} may do`)}</Ctl>)}</>;
 }

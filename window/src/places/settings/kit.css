@@ -118,6 +118,7 @@
 .set-col .num-k { display: inline-flex; align-items: center; gap: 6px; }
 .set-col .num-k .inp { width: 72px; height: 32px; text-align: right; font-variant-numeric: tabular-nums; }
 /* Advanced's number fields are the preview's wider, left-aligned ones */
+.set-col .sec > h2[hidden] { display: none; }
 .set-col .kit-page[data-page-title="Advanced"] .num-k .inp { width: 96px; height: 34px; text-align: left; }
 .set-col .num-k small { min-width: 0; font-size: 12.5px; color: var(--ink-3); }
 /* Advanced writes its units as plain text beside the number (preview <span>) */

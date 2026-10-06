@@ -34,8 +34,8 @@ async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
   await act(async () => root.render(<KitProvider level={level} report={report} scope={null}><PermissionsPage page="permissions" title="Permissions" level="regular" engine={engine} /></KitProvider>));
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 }
-const heads = () => [...host.querySelectorAll(".sec > h2")].map((h) => h.textContent);
-const button = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === label)!;
+const heads = () => [...host.querySelectorAll(".sec > h2:not([hidden])")].map((h) => h.textContent);
+const button = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === label || b.textContent?.trim().startsWith(label))!;
 const patchOf = (request: ReturnType<typeof vi.fn>) => JSON.parse((request.mock.calls.find(([m]) => m === "config.patch") as [string, { raw: string }])[1].raw);
 
 describe("Settings › Permissions", () => {
@@ -51,11 +51,11 @@ describe("Settings › Permissions", () => {
   it("adds the Advanced and Technical sections in place", async () => {
     const { engine } = engineOf();
     await render(engine, 1);
-    expect(heads()).toEqual(["This computer", "Access", "Without asking, Trunks may…", "Locks and records", "Pinned settings", "Rules for each tool and folder", "Commands, by default", "Without asking, more", "Checks before anything runs", "Isolation", "Test and explain", "Tools and loops", "Privacy", "Your terminal", "Folders the sandbox may reach", "Approvals, more", "Guards, more", "Money", "What each connector may do"]);
+    expect(heads()).toEqual(["This computer", "Access", "Without asking, Trunks may…", "Locks and records", "Pinned settings", "Rules and checks", "Sandbox", "Privacy", "Your terminal", "Approvals", "Guards", "Locks"]);
     await render(engine, 2);
-    expect(heads()).toContain("Tools, technical");
-    expect(heads().indexOf("Security, technical")).toBe(heads().indexOf("Guards that are always on") - 1);
-    expect(heads()).toContain("Network and sandbox, technical");
+    expect(heads()).toContain("Rules and checks");
+    expect(heads()).toContain("Sandbox");
+    expect(heads()).not.toContain("Tools, technical");
   });
 
   it("Access saves tools.exec.mode without the older security/ask keys", async () => {
@@ -63,6 +63,18 @@ describe("Settings › Permissions", () => {
     await render(engine);
     await act(async () => button("Ask first").click());
     expect(patchOf(request)).toEqual({ tools: { exec: { mode: "ask", security: null, ask: null } } });
+  });
+
+  it("Access arrows select a mode and show disabled reasons inline", async () => {
+    const { engine, request } = engineOf();
+    await render(engine);
+    const group = host.querySelector<HTMLElement>('[role="radiogroup"][aria-label="Access"]')!;
+    const selected = group.querySelector<HTMLButtonElement>('[role="radio"][aria-checked="true"]')!;
+    expect(selected.textContent).toContain("Full access");
+    expect(button("Plan first").textContent).toContain("Plan first isn't available with this version of Branch.");
+    await act(async () => selected.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    expect(document.activeElement?.textContent).toContain("Auto");
+    expect(patchOf(request)).toEqual({ tools: { exec: { mode: "auto", security: null, ask: null } } });
   });
 
   it("lists the rules from the approvals file and saves with its base hash", async () => {

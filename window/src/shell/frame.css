@@ -745,10 +745,10 @@ button.mi:focus-visible {
 }
 
 /* Final-pass headings use sentence case and the interface face throughout. */
-.frame :is(h2, h3, .lh, .ph, .c-ph, .c-grp, .au-flabel, .au-sub, .cz-lh, .cz-grp, .cz-h2, .tk-h, .kp-section-title, .ib-day, .pp-grp, .pp-onl) {
-  font-family: var(--sans) !important;
-  text-transform: none !important;
-  letter-spacing: normal !important;
+.frame.frame :is(h2, h3, .lh, .ph, .c-ph, .c-grp, .au-flabel, .au-sub, .cz-lh, .cz-grp, .cz-h2, .tk-h, .kp-section-title, .ib-day, .pp-grp, .pp-onl) {
+  font-family: var(--sans);
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 /* §5.5 dialogs */

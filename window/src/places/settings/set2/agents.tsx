@@ -125,7 +125,7 @@ function AgentRow({ agent, trunks, props, reload, sessions, nested = [] }: { age
           <Switch label={`${agent.name} may message ${t.name}`} checked={!denied(t.id)} disabled={config.loading} onChange={(on) => allow(t.id, on)} />
         </Ctl>
       ))}
-      <Ctl id={`${agent.id}-window`} title="May use your Branch window" sub="Also needs Branch itself › Let agents use this window. Without it the agent gets its own test Branch." noPin>
+      <Ctl id={`${agent.id}-window`} title="May use your Branch window" sub="Also needs Branch itself › Let agents use this window." help="Also needs Branch itself › Let agents use this window. Without it the agent gets its own test Branch." noPin>
         <Switch label={`${agent.name} may use your Branch window`} checked={agent.mayDriveWindow} disabled={call.busy} onChange={(on) => set({ mayDriveWindow: on })} />
       </Ctl>
       {isBranch ? (
@@ -152,14 +152,14 @@ export function AgentsPage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede={LEDE}>
       <Sec title="">
-        <Ctl title="Let other agents work with Branch" sub="Claude Code, Codex, Hermes and other agents grafted with branch graft may see your Trunks, message them and join group chats. Off turns every one of them away." off={live.error ? String(live.error) : undefined}>
+        <Ctl title="Let other agents work with Branch" sub="Grafted agents may message Trunks and join groups." help="Claude Code, Codex, Hermes and other agents grafted with branch graft may see your Trunks, message them and join group chats. Off turns every one of them away." off={live.error ? String(live.error) : undefined}>
           <Switch label="Let other agents work with Branch" checked={enabled} disabled={live.loading || call.busy} onChange={(on) => void call.run(async () => { await props.engine.request("contacts.outside.set", { enabled: on }); reload(); })} />
         </Ctl>
       </Sec>
       {agents.length ? groupAgents(agents).map(({ row, trunks: nested }) => <AgentRow key={row.id} agent={row} nested={nested} trunks={trunks} props={props} reload={reload} sessions={agents.map((x) => x.id)} />) : (
         <Sec title="Grafts"><Empty>No agent is grafted yet. Paste one of the lines below into it.</Empty></Sec>
       )}
-      <Sec title="Graft an agent" hint="Each line is pasted once. It runs the branch command, which always uses the Branch on this computer, so it keeps working after updates.">
+      <Sec title="Graft an agent" hint="Each line is pasted once." help="Each line is pasted once. It runs the branch command, which always uses the Branch on this computer, so it keeps working after updates.">
         <DesktopCtl title="Type branch in any terminal" sub="Needed for these lines: adds the branch command." name="branchOnPath" />
         {CONNECT_LINES.map(([title, code]) => <CodeRow key={title} title={title} code={code} />)}
       </Sec>

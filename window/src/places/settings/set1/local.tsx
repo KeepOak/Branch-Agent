@@ -68,7 +68,7 @@ export function LocalPage(props: SettingsPageProps) {
   const found = foundRuntimes(detect.data, local);
   const done = () => { setSetup(null); void detect.reload(); void models.reload(); };
   return (
-    <Page title={props.title} lede="Models that run here, free and private. Branch looks at this computer first and only offers what fits.">
+    <Page title={props.title} lede="Models that run here, free and private." help="Models that run here, free and private. Branch looks at this computer first and only offers what fits.">
       <Hardware loading={info.loading} error={info.error} hw={hw} runtimes={detect.loading ? undefined : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} />
       <Recommended loading={detect.loading || models.loading} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} />
       <Runtimes engine={props.engine} hw={hw} detect={detect} models={models} found={found} />
@@ -123,7 +123,7 @@ function Recommended({ loading, options, local, onSetup }: RecProps) {
           ))}
         </div>
       ) : loading ? <p className="hint">Looking for what this computer can run…</p> : <Empty>Nothing to set up on this computer yet.</Empty>}
-      <Ctl title="Recommended models, sized to this computer" sub="Each model with how well it fits here, and a size to pick: small, balanced or full." off={NO_CATALOGUE} />
+      <Ctl title="Recommended models, sized to this computer" sub="Show models that fit here and the sizes available." help="Each model with how well it fits here, and a size to pick: small, balanced or full." off={NO_CATALOGUE} />
     </Sec>
   );
 }

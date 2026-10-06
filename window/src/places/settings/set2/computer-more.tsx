@@ -161,7 +161,7 @@ const MORE_PLACES: SecSpec = { t: "More places to run work", lv: 1, rows: [
   { t: "An editor inside the box", sub: "Opens a code editor running in the box, in Branch’s browser.", k: "btn", btn: "Open", off: "Needs the engine to run an editor in a sealed box." },
   { t: "Cloud storage in the box", sub: "Mounts cloud storage buckets beside your folders, under one folder in the box.", k: "btn", btn: "Add", off: "Needs the engine to mount cloud storage in a sealed box." },
   { t: "A Kubernetes cluster", sub: "Each sandbox runs in its own pod on your cluster, with spares ready.", k: "btn", btn: "Add", off: "Needs the engine’s Kubernetes sandbox backend." },
-  { t: "A lasting virtual computer", sub: "A Trunk’s own virtual computer on this PC that keeps its files and memory between sessions. Pause it and pick up where it left off.", k: "btn", btn: "Set up", off: "Needs the engine’s virtual computer backend." },
+  { t: "A lasting virtual computer", sub: "A Trunk’s own virtual computer here keeps its files and memory.", k: "btn", btn: "Set up", off: "Needs the engine’s virtual computer backend." },
   { t: "Virtual computers on your own machines", sub: "Start in a moment, save a snapshot, copy a sandbox, roll back to any saved point, or move it to another machine.", k: "btn", btn: "Set up", off: "Needs the engine’s virtual computer backend." },
   { t: "Throwaway virtual computers", sub: "A full Linux computer made fresh from a fixed image for each task. It reaches only a package cache; any other address asks you first.", k: "btn", btn: "Set up", off: "Needs the engine’s virtual computer backend." },
   { t: "New addresses waiting for your yes", sub: "None. When a throwaway virtual computer asks to reach a new address, it shows here.", k: "info", off: "Needs the engine’s virtual computer backend." },
@@ -178,7 +178,7 @@ const USING_TECH: SecSpec = { t: "Using the screen, technical", lv: 2, rows: [
   { t: "Desktop apps built from web pages", sub: "Slack and apps like it are reopened once with a debugging link (port 9223), so it reads them like a web page.", k: "info", off: SCREEN_DRIVER },
   { t: "Its browser on a box’s desktop", sub: "Skips first-run screens, blocks notifications and never saves passwords.", k: "info", off: "Needs the engine to give a sealed box its own desktop." },
   { t: "Offer these screen tools to other apps", sub: "Other AI apps on this computer may use the screen tools through a connector. Off until you choose: another app could use your screen.", k: "sw", off: "Needs the engine to offer the screen tools as a connector." },
-  { t: "Linux on this PC may take screen pictures", sub: "Through Windows’ own tools: the whole screen, one screen or one window, with marked parts blacked out first. Off until you choose: it can see your screen.", k: "sw", off: "Needs the engine to take pictures through Windows for Linux." },
+  { t: "Linux here may take screen pictures", sub: "Uses Windows tools and blacks out marked parts first.", k: "sw", off: "Needs the engine to take pictures through Windows for Linux." },
   { t: "From the terminal", sub: "Starts a computer, browser or phone task from a command line.", k: "code", code: "branch computer run", off: "Needs the engine’s computer command line." },
 ] };
 
@@ -197,7 +197,7 @@ const WHERE_MORE: SecSpec = { t: "Where scripts run, more", lv: 1, rows: [
 
 const NO_CONTAIN = "Needs the engine to contain scripts on this computer.";
 const SCRIPTS: SecSpec = { t: "Scripts on this computer", lv: 1, rows: [
-  { t: "Contain scripts on this PC", sub: "Each script a Trunk starts runs in its own container, with only what the rows below allow.", k: "sw", off: NO_CONTAIN },
+  { t: "Contain scripts on this computer", sub: "Each script a Trunk starts runs in its own container.", k: "sw", off: NO_CONTAIN },
   { t: "Starting point", sub: "No internet, no clipboard, no folders.", k: "seg", opts: [{ v: "locked", l: "Locked down" }, { v: "rec", l: "Recommended" }, { v: "open", l: "Open" }], off: NO_CONTAIN },
   { t: "Internet", sub: "Contained scripts can reach public internet addresses. Your local network and shares are not included. Off until you choose: scripts could send what they read over the internet.", k: "sw", off: NO_CONTAIN },
   { t: "Clipboard", sub: "Scripts can’t see or change your clipboard. Off until you choose: the clipboard often holds passwords.", k: "seg", opts: [{ v: "none", l: "None" }, { v: "r", l: "Read" }, { v: "w", l: "Write" }, { v: "rw", l: "Read and write" }], off: NO_CONTAIN },
@@ -415,7 +415,7 @@ function ArgRow({ s, c }: { s: Spec; c: Ctx }) {
 function CheckWorks({ c }: { c: Ctx }) {
   const [open, setOpen] = useState(false);
   return (
-    <Ctl title="Check what works" sub="Screen pictures, the mouse and keyboard, reading apps, each screen, and the stop key on this computer.">
+    <Ctl title="Check what works" sub="Checks screen, mouse, keyboard, apps and the stop key." help="Screen pictures, the mouse and keyboard, reading apps, each screen, and the stop key on this computer.">
       <Btn sm onClick={() => setOpen(true)}>Check</Btn>
       {open ? <CheckDialog engine={c.engine} onClose={() => setOpen(false)} /> : null}
     </Ctl>
@@ -428,7 +428,7 @@ function CheckDialog({ engine, onClose }: { engine: WindowEngine; onClose: () =>
   const use = rec(d.computerUse);
   const caps = Object.entries(use).filter(([k, v]) => k !== "provider" && typeof v !== "object").map(([k, v]): [string, ReactNode] => [k, String(v)]);
   return (
-    <Dialog title="Check what works" onClose={onClose} footer={<><Btn ghost onClick={() => void st.reload()}>Check again</Btn><Btn onClick={onClose}>Close</Btn></>}>
+    <Dialog title="Check what works" onClose={onClose} footer={<><Btn ghost onClick={() => void st.reload()}>Check again</Btn></>}>
       {st.error ? <p className="hint s2-err" role="alert">{st.error}</p> : null}
       {st.loading && !st.data ? <p>Checking…</p> : null}
       {st.data ? (
@@ -452,7 +452,7 @@ function TechKv({ c }: { c: Ctx }) {
 /** Stop-everything key: the keys drawn inert until the engine has a stop key on this computer. */
 function StopKey() {
   return (
-    <Ctl title="Stop-everything key" sub="Press it anywhere to stop every Trunk’s mouse and keyboard on every computer at once. It stays stopped until you let them resume." off="Needs the engine’s stop key on this computer.">
+    <Ctl title="Stop-everything key" sub="Stops every Trunk’s mouse and keyboard on every computer." help="Press it anywhere to stop every Trunk’s mouse and keyboard on every computer at once. It stays stopped until you let them resume." off="Needs the engine’s stop key on this computer.">
       <span className="s2cm-kbd">{["Ctrl", "Alt", "Shift", "Esc"].map((k) => <kbd key={k}>{k}</kbd>)}</span>
     </Ctl>
   );
@@ -461,7 +461,7 @@ function StopKey() {
 /** Lending this computer starts on this computer's node: the Branch app pairs it with the other Branch. */
 function PairRow() {
   return (
-    <Ctl title="Code from the other computer" sub="8 characters, two groups of 4. Make it on the other computer: Add a computer › Another computer with Branch." off="Lending this computer is done by the Branch app on it.">
+    <Ctl title="Code from the other computer" sub="8 characters, two groups of 4." help="8 characters, two groups of 4. Make it on the other computer: Add a computer › Another computer with Branch." off="Lending this computer is done by the Branch app on it.">
       <input className="inp s2cm-code" aria-label="Code from the other computer" placeholder="ABCD-1234" disabled />
       <Btn pri sm disabled>Pair</Btn>
     </Ctl>
@@ -476,7 +476,7 @@ function ShareScreen({ c }: { c: Ctx }) {
   const setup = localSetup(rec(envs.data), nodes.data);
   const on = cfg.get("desktop.host.enabled") === true;
   return (
-    <Ctl title="Share this computer’s screen" sub="Watch and control this computer from Branch on another computer. A change reconnects it briefly; a new ability may need a yes there."
+    <Ctl title="Share this computer’s screen" sub="Watch and control this computer from Branch on another computer." help="Watch and control this computer from Branch on another computer. A change reconnects it briefly; a new ability may need a yes there."
       after={setup ? <div className="s2cm-x"><div className="s2cm-stat"><span>Screen sharing</span><Pill tone={setup.ok ? "ok" : "bad"}>{setup.word}</Pill>{setup.detail ? <small>{setup.detail}</small> : null}</div></div> : null}>
       <Switch label="Share this computer’s screen" checked={on} disabled={cfg.loading} onChange={(v) => void cfg.set("desktop.host.enabled", v)} />
     </Ctl>
@@ -513,7 +513,7 @@ function PhonesLent({ c }: { c: Ctx }) {
           <span className="grow"><b>{str(n.displayName) || str(n.nodeId)}</b><small>{[str(n.platform), str(n.version)].filter(Boolean).join(" · ")}</small></span>
           <Pill tone={n.connected === true ? "ok" : "idle"}>{n.connected === true ? "Lent" : "Offline"}</Pill>
         </div>
-      )) : <p className="empty">No phone is lent. Turn it on from the phone: Settings › Lend this phone.</p>}
+      )) : <Empty>No phone is lent. Turn it on from the phone’s settings.</Empty>}
     </div>
   );
 }
@@ -672,7 +672,7 @@ function SparesMax({ c }: { c: Ctx }) {
   const ok = n === null || (Number.isInteger(n) && n >= 0);
   const save = () => { if (!ok) return; void cfg.set("cloudWorkers.preparedPool.maxTotal", n); setDraft(null); };
   return (
-    <Ctl title="Most spares at once" sub="Across every repository and cloud computer. Empty means 4; 0 stops spares and lets the unused ones go.">
+    <Ctl title="Most spares at once" sub="Across every repository and cloud computer." help="Across every repository and cloud computer. Empty means 4; 0 stops spares and lets the unused ones go.">
       <input className="inp s2cm-num" inputMode="numeric" aria-label="Most spares at once" placeholder="4" value={shown} disabled={cfg.loading} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") save(); }} />
       <Btn sm disabled={cfg.loading || !ok} onClick={save}>Save</Btn>
     </Ctl>
@@ -849,7 +849,7 @@ function KeyRow({ c, t, k, onChanged }: { c: Ctx; t: Thing; k: RecordValue; onCh
       {dlg === "revoke" ? <Confirm title={`Revoke the ${role} key?`} body="It stops working at once and can’t be brought back." yes="Revoke" danger
         onYes={async () => { await c.engine.request("device.token.revoke", { deviceId: t.id, role }); onChanged(); }} onClose={() => setDlg("")} /> : null}
       {done ? (
-        <Dialog title={`Key replaced · ${t.name}`} onClose={() => setDone(null)} footer={<Btn onClick={() => setDone(null)}>Close</Btn>}>
+        <Dialog title={`Key replaced · ${t.name}`} onClose={() => setDone(null)}>
           <p>{done.tokenDelivery === "in-band" ? "This device has its new key already; there is nothing else to do." : "It reconnects with the new key by itself; there is nothing else to do. If it doesn’t, pair it again. For safety, the new key is shown only on the device itself."}</p>
         </Dialog>
       ) : null}

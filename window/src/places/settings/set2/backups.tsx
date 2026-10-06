@@ -9,7 +9,8 @@ import { CallLine, lvOf, rec, str, useCall, useLive, when, type RecordValue } fr
 
 const DAY = 86_400_000;
 const WEEK = 7 * DAY;
-const LEDE = "A copy of your conversations, memory, Trunk workspaces (Library documents included), the pictures and other media Trunks made, and settings, on a schedule you choose. Passwords, keys and sign-ins are never included.";
+const LEDE = "Save your conversations, memory, files, and settings on a schedule.";
+const LEDE_HELP = "A copy of your conversations, memory, Trunk workspaces (Library documents included), the pictures and other media Trunks made, and settings, on a schedule you choose. Passwords, keys and sign-ins are never included.";
 /** The backup command's media defaults (engine DEFAULT_MEDIA_MAX_FILE_MB / _TOTAL_MB). */
 const MEDIA_FILE_MB = 50;
 const MEDIA_TOTAL_MB = 1024;
@@ -60,7 +61,7 @@ export function BackupsPage(props: SettingsPageProps) {
     void save.run(() => set(saved, everyOf(schedule), next), () => "Saved.");
   };
   return (
-    <Page title={props.title} lede={LEDE}>
+    <Page title={props.title} lede={LEDE} help={LEDE_HELP}>
       {status.error ? <p className="hint s2-err" role="alert">{status.error}</p> : null}
       <Sec title="Where">
         <Where saved={saved} busy={save.busy} onSave={(d) => void save.run(() => set(d, saved ? everyOf(schedule) : "day"), () => "Saved.")}
@@ -82,7 +83,7 @@ export function BackupsPage(props: SettingsPageProps) {
       </Sec>
       <Sec title="Media">
         {lv >= 1 ? <>
-          <Ctl title="Largest media file" sub="Pictures, sound, video or PDFs bigger than this are left out and counted.">
+          <Ctl title="Largest media file" sub="Large pictures, audio, video and PDFs are counted and left out." help="Pictures, sound, video or PDFs bigger than this are left out and counted.">
             <Num label="Largest media file" unit="MB" min={1} placeholder={String(MEDIA_FILE_MB)} value={media.mediaMaxFileMb} disabled={!saved || save.busy} onCommit={(v) => setLimit("mediaMaxFileMb", v)} />
           </Ctl>
           <Ctl title="Media in all" sub="Once a backup holds this much media, the rest is left out and counted.">
@@ -104,7 +105,7 @@ function Where({ saved, busy, onSave, onForget }: { saved?: Destination; busy: b
   const changed = value.trim() !== "" && (kind !== saved?.kind || value.trim() !== savedValue);
   return (
     <>
-      <Ctl title="Where backups go" sub={kind === "git" ? GIT_HINT : "A private folder on this computer, outside Branch’s own data. It becomes a Git history of your backups."}>
+      <Ctl title="Where backups go" sub={kind === "git" ? "A private Git repository you own." : "A private folder on this computer."} help={kind === "git" ? GIT_HINT : "A private folder on this computer, outside Branch’s own data. It becomes a Git history of your backups."}>
         <Seg label="Where backups go" value={kind} disabled={busy} options={[{ id: "git", label: "A Git repository" }, { id: "folder", label: "A folder on this computer" }]} onChange={(v) => setKind(v as Kind)} />
       </Ctl>
       <Ctl title={kind === "git" ? "Repository address" : "Folder"} stack>

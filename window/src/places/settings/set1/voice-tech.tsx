@@ -10,8 +10,8 @@ export function VoiceTechnical({ cfg }: Shared) {
   return (
     <Sec title="Voice, technical">
       <CodeRow t="Speak into a file" code={'branch infer tts convert --text "Your build is done" --output done.mp3'} sub="Uses the speaking engine above." />
-      <CodeRow t="Speaking status" code="branch infer tts status" sub="Which engine, voice and named voice are in use, and whether it reads replies aloud. Turning reading aloud on and off is the “Voice” row’s Off and “Answer aloud”." />
-      <Ctl title="Voice nicknames" sub="A Trunk can switch voice by nickname, such as “Roger”. Short names for voices of the chosen engine." off={NO_KEY}
+      <CodeRow t="Speaking status" code="branch infer tts status" sub="Show the current voice engine and reading-aloud setting." help="Which engine, voice and named voice are in use, and whether it reads replies aloud. Turning reading aloud on and off is the “Voice” row’s Off and “Answer aloud”." />
+      <Ctl title="Voice nicknames" sub="A Trunk can switch voice by nickname, such as “Roger”." help="A Trunk can switch voice by nickname, such as “Roger”. Short names for voices of the chosen engine." off={NO_KEY}
         after={<div className="prow add-k" aria-disabled="true"><input className="inp" placeholder="Nickname" aria-label="Nickname" disabled /><input className="inp" placeholder="Voice ID" aria-label="Voice ID" disabled /><Btn sm disabled>Add</Btn></div>} />
       <Greyed why={NO_KEY} rows={[{ t: "Audio format", sub: "The file format spoken replies are made in.", c: { pick: ["Engine default"] } }]} />
       <CodeRow t="Check the call setup" code="branch voicecall setup" />
@@ -66,7 +66,7 @@ function AllVoiceSettings({ cfg }: { cfg: Cfg }) {
     setDraft({}); setBusy(false);
   };
   return (
-    <Ctl stack title="All voice settings" sub="Every live-voice and speaking setting the engine has, by its key. The rows above and this form change the same settings."
+    <Ctl stack title="All voice settings" sub="Every live-voice and speaking setting the engine has, by its key." help="Every live-voice and speaking setting the engine has, by its key. The rows above and this form change the same settings."
       after={(
         <div className="kv-k">
           {KEYS.map(([key, kind, what]) => {

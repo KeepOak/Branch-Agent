@@ -1020,7 +1020,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const conversationTools = (
     <>
       {topicReturnKey && (draftTopic || openKey !== topicReturnKey) ? <button type="button" className="ib" aria-label="Back to contact thread" title="Back to contact thread" onClick={() => { const key = topicReturnKey; setTopicReturnKey(null); openConversation(key); }}><Icon name="back" /></button> : null}
-      {topicContact && !draftTopic ? <button type="button" className="ib contact-conversations-button" aria-label={`Conversations · ${topicContact.topicCount}`} aria-pressed={pane === "Conversations"} onClick={() => setPane((value) => value === "Conversations" ? null : "Conversations")}>Conversations · {topicContact.topicCount}</button> : null}
+      {topicContact && !draftTopic ? <button type="button" className="ib contact-conversations-button" aria-label={`Threads · ${topicContact.topicCount}`} aria-pressed={pane === "Conversations"} onClick={() => setPane((value) => value === "Conversations" ? null : "Conversations")}>Threads · {topicContact.topicCount}</button> : null}
       {draftTopic ? null : <>
       <button type="button" className="ib" aria-label="Computer" title={`Its computer · ${machine?.name ?? "This computer"}`} data-live={usingComputer || undefined} onClick={() => setStage("Computer")}>
         <Icon name="monitor" />
@@ -1031,7 +1031,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       {openRow?.kind === "group" || openRow?.kind === "channel" ? null : (
         <button type="button" className="ib" aria-label={`Who ${who} knows and may talk to`} title={`Who ${who} knows and may talk to`} data-testid="who-it-knows-button" onClick={conversationMenu.whoItKnows}><Icon name="users" /></button>
       )}
-      {room.menu ? <button type="button" className="ib" aria-label="Room rules" onClick={(e) => showMenu(e, "room-rules-header", room.menu!.rules(), "Room rules")}><Icon name="gear" /></button> : null}
+      {room.menu ? <button type="button" className="ib" aria-label="Group rules" onClick={(e) => showMenu(e, "room-rules-header", room.menu!.rules(), "Group rules")}><Icon name="gear" /></button> : null}
       {room.members.length ? <button type="button" className="ib" aria-label={`Members · ${room.members.length}`} onClick={(e) => showMenu(e, "room-members-header", [{ kind: "head", label: "Members" }, ...room.members.map((member) => ({ kind: "custom" as const, node: <div className="mi">{member}</div> }))], "Members")}><Icon name="users" /></button> : null}
       <button type="button" className="ib" aria-label="Find in this conversation" title="Find in this conversation (Ctrl+F)" onClick={() => window.dispatchEvent(new Event(FIND_EVENT))}><Icon name="search" /></button>
       <button type="button" className="ib" aria-label="Conversation menu" title={`More for ${openRow?.kind === "group" ? name : who}`} data-testid="conversation-menu-button" onClick={conversationMenu.open}>

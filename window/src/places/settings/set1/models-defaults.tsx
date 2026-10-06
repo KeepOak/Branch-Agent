@@ -63,14 +63,14 @@ function WhoAnswers({ m, conns, defaultOf }: { m: ModelsCtx; conns: Connection[]
   const others = modelOpts(m.models, (x) => x.ref !== primary);
   return (
     <Sec title="">
-      <Ctl title="Reading pictures" sub="Used when the conversation’s model can’t see pictures. Automatic picks the first connected one that can.">
+      <Ctl title="Reading pictures" sub="Used when the conversation’s model can’t see pictures." help="Used when the conversation’s model can’t see pictures. Automatic picks the first connected one that can.">
         <Pick label="Reading pictures" value={image} options={[{ id: "", label: "Automatic" }, ...modelOpts(m.models, (x) => x.images)]} onChange={(v) => void m.cfg.set(m.shared("imageModel", "primary"), v || null)} />
       </Ctl>
       <Ctl title="Everyday answers" sub="Most conversations."><Seg label="Everyday answers" value={connOf(primary)} options={segs} onChange={(id) => setConn(["model", "primary"], id)} /></Ctl>
       <Ctl title="Planning and hard problems" sub="When a task has many steps." off={NONE}><Seg label="Planning and hard problems" value={connOf(primary)} options={segs} onChange={() => undefined} /></Ctl>
       <Ctl title="Quick and cheap jobs" sub="Sorting, tagging, short replies."><Seg label="Quick and cheap jobs" value={connOf(refOf(m.ownOrShared("utilityModel")))} options={segs} onChange={(id) => setConn(["utilityModel"], id)} /></Ctl>
       <Ctl title="Summaries" sub="Keeping long conversations short."><Seg label="Summaries" value={connOf(text(m.cfg.get(m.shared("compaction", "model")) ?? ""))} options={segs} onChange={(id) => { const c = conns.find((x) => x.id === id); if (c) void m.cfg.set(m.shared("compaction", "model"), defaultOf(c)); }} /></Ctl>
-      <Ctl title="If the model fails" sub="When the default model can’t answer, try this one. Your next account is tried first.">
+      <Ctl title="If the model fails" sub="When the default model can’t answer, try this one." help="When the default model can’t answer, try this one. Your next account is tried first.">
         <Pick label="If the model fails" value={fallbacks[0] ?? ""} options={[{ id: "", label: "Don’t switch" }, ...others]} onChange={(v) => void m.cfg.set(m.own("model", "fallbacks"), v ? [v, ...fallbacks.filter((f) => f !== v)] : fallbacks.slice(1))} />
       </Ctl>
     </Sec>
@@ -80,7 +80,7 @@ function WhoAnswers({ m, conns, defaultOf }: { m: ModelsCtx; conns: Connection[]
 export function AnyModelMore() {
   return (
     <Sec title="Any model, more">
-      <Ctl title="Add pictures and tools to any model" sub="A model that can’t see pictures or call tools gets them through Branch." off={NONE}><Switch checked={false} label="Add pictures and tools to any model" onChange={() => undefined} /></Ctl>
+      <Ctl title="Add pictures and tools to any model" sub="Branch helps models that cannot see pictures or use tools." help="A model that can’t see pictures or call tools gets them through Branch." off={NONE}><Switch checked={false} label="Add pictures and tools to any model" onChange={() => undefined} /></Ctl>
     </Sec>
   );
 }
@@ -92,7 +92,7 @@ const PATTERNS = [
 ];
 export function HowTrunksWork() {
   return (
-    <Sec title="How Trunks work together, by default" hint="For rooms and big tasks. A Trunk may suggest another pattern for one task; yours wins unless you agree. A room can use its own, in its Room rules.">
+    <Sec title="How Trunks work together, by default" hint="For groups and big jobs." help="For groups and big jobs. A Trunk may suggest another pattern for one job; yours wins unless you agree. A group can use its own Group rules.">
       <div className="pats-k" role="radiogroup" aria-label="How Trunks work together" title={shownWhy(NONE)}>
         {PATTERNS.map(([id, name, sub]) => <button key={id} type="button" role="radio" aria-checked={id === "super"} className="pat-k" disabled><b>{name}</b><small>{sub}</small></button>)}
       </div>
@@ -118,7 +118,7 @@ export function NewConversations({ m }: { m: ModelsCtx }) {
 /** If the model fails: the ordered fallback lists for answers and for reading pictures. */
 export function FallbackLists({ m }: { m: ModelsCtx }) {
   return (
-    <Sec title="If the model fails" hint="Tried in order when the model a conversation uses fails: sign-in trouble, limits or time-outs. Your other accounts with the same service are tried first (Accounts).">
+    <Sec title="If the model fails" hint="Tries fallback models in order when the first fails." help="Tried in order when the model a conversation uses fails: sign-in trouble, limits or time-outs. Your other accounts with the same service are tried first (Accounts).">
       <FallbackList m={m} title="For answers" keys={["model"]} own />
       <FallbackList m={m} title="For reading pictures" keys={["imageModel"]} images />
     </Sec>

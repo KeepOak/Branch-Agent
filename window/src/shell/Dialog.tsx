@@ -1,22 +1,12 @@
-import { Children, Fragment, isValidElement, useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Icon } from "./icons";
 
 // Dialogs (DESIGN-SPEC §5.5): scrim with 2 px blur, glass surface, 17 px title with ×, a body grid and a
 // right-aligned footer with at most one filled button (none when the dialog only shows things). Escape and × close; focus stays inside and returns.
 type Props = { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean; testid?: string };
 
-/** The header X already closes the dialog, so a footer Close is a duplicate action. */
-function footerActions(node: ReactNode): ReactNode[] {
-  return Children.toArray(node).flatMap((child) => {
-    if (!isValidElement<{ children?: ReactNode }>(child)) return [child];
-    if (child.type === Fragment) return footerActions(child.props.children);
-    return child.props.children === "Close" ? [] : [child];
-  });
-}
-
 export function Dialog({ title, onClose, children, footer, wide, testid }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const actions = footerActions(footer);
   useEffect(() => {
     const back = document.activeElement as HTMLElement | null;
     const first = ref.current?.querySelector<HTMLElement>("[autofocus], .dlg-b input, .dlg-f button:last-child, .dlg-h button");
@@ -52,7 +42,7 @@ export function Dialog({ title, onClose, children, footer, wide, testid }: Props
           </button>
         </div>
         <div className="dlg-b">{children}</div>
-        {actions.length ? <div className="dlg-f">{actions}</div> : null}
+        {footer ? <div className="dlg-f">{footer}</div> : null}
       </div>
     </div>
   );

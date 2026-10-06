@@ -27,10 +27,12 @@ export function GeneralPage(props: SettingsPageProps) {
       <Writing engine={props.engine} />
       {lv >= 1 ? <ClipboardHistory /> : null}
       <CoverScreen />
-      {lv >= 1 ? <><Controllers /><Conversation engine={props.engine} /><OlderTurns engine={props.engine} /></> : null}
-      {lv >= 2 ? <SummariesTechnical engine={props.engine} /> : null}
+      {lv >= 1 ? <><Controllers /><Conversation engine={props.engine} /><Sec title="Summaries">
+        <OlderTurns engine={props.engine} grouped />
+        {lv >= 2 ? <><SummariesTechnical engine={props.engine} grouped /><SummariesMore grouped /></> : null}
+      </Sec></> : null}
       {lv >= 1 ? <ThisComputer /> : null}
-      {lv >= 2 ? <><WaitingLine engine={props.engine} /><SummariesMore /></> : null}
+      {lv >= 2 ? <WaitingLine engine={props.engine} /> : null}
     </Page>
   );
 }
@@ -98,9 +100,9 @@ export const GENERAL_ROWS: RowEntry[] = [
   ...rows("Cover the screen", 0, ["Cover now"]),
   ...rows("Controllers", 1, ["Use a gamepad or macro pad"]),
   ...rows("The conversation", 1, ["Vim keys in the message box", "Message times", "When you send while it works", "Send with", "Task progress above the message box", "Task progress starts", "Open past sessions in", "Ask before deleting a conversation"]),
-  ...rows("Summaries of older turns", 1, ["Summarise older turns by themselves", "Summarise when the room left is under", "Always keep the latest", "Model for summaries"]),
-  ...rows("Summaries, technical", 2, ["Room to plan for", "Repair the history before each call", "How it summarises", "Summary time limit", "Keep names and numbers exact", "Trim old tool results", "Trim after"]),
+  ...rows("Summaries", 1, ["Summarise older turns by themselves", "Summarise when context left is under", "Always keep the latest", "Model for summaries"]),
+  ...rows("Summaries", 2, ["Context to plan for", "Repair the history before each call", "How it summarises", "Summary time limit", "Keep names and numbers exact", "Trim old tool results", "Trim after"]),
   ...rows("This computer", 1, ["Quick ask from anywhere", "Quick ask shortcut"]),
   ...rows("Waiting line", 2, ["Wait before sending what’s in line", "Most messages in line", "When the line is full"]),
-  ...rows("Summaries, more", 2, ["How to write the summary", "If a summary can’t be made", "Keep the originals of what it summarises", "A receipt for each thing left out"]),
+  ...rows("Summaries", 2, ["How to write the summary", "If a summary can’t be made", "Keep the originals of what it summarises", "A receipt for each thing left out"]),
 ];

@@ -119,7 +119,7 @@ describe("settings page help", () => {
       <KitProvider level={0} report={{ saving: vi.fn(), saved: vi.fn(), failed: vi.fn() }} scope={null} ask={ask} askName="Sapling">
         <Page title="General" lede="Set up the way Branch starts.">
           <Sec title="Starting up">
-            <Ctl title="Start with Windows" sub="Branch waits in the tray and keeps scheduled work running when the window is closed."><button>Change</button></Ctl>
+            <Ctl title="Start with Windows" sub="Branch waits in the tray." help="Branch waits in the tray and keeps scheduled work running when the window is closed."><button>Change</button></Ctl>
           </Sec>
         </Page>
       </KitProvider>,

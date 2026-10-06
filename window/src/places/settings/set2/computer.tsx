@@ -161,7 +161,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
       {nodes.error ? <p className="hint s2-err" role="alert">{nodes.error}</p> : null}
       {lv >= 1 ? <FindRow find={find} onFind={setFind} onRefresh={() => { void nodes.reload(); void status.reload(); }} /> : null}
       {lv >= 1 && paired.length && !all.length ? <Hint>No computer matches.</Hint> : null}
-      {here.length || (status.data && !find.q) ? <div className="s2-grp">On this PC</div> : null}
+      {here.length || (status.data && !find.q) ? <div className="s2-grp">On this computer</div> : null}
       <div className="s2-comps">
         {here.map(card)}
         {status.data && !here.length && !find.q ? <ThisComputer status={local} /> : null}
@@ -169,7 +169,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
       {other.length ? <><div className="s2-grp">Your other computers</div><div className="s2-comps">{other.map(card)}</div></> : null}
       {nodes.data && !all.length && !status.data ? <Hint>No computers are paired yet.</Hint> : null}
       <InTheCloud engine={engine} />
-      <DesktopCtl title="Keep this computer awake" sub="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." name="keepAwake" />
+      <DesktopCtl title="Keep this computer awake" sub="Keeps this computer awake while Trunks use it." help="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." name="keepAwake" />
       <Acts><Btn pri onClick={() => window.dispatchEvent(new CustomEvent("branch:add-computer"))}><Icon name="plus" small />Add a computer</Btn></Acts>
     </Sec>
   );
@@ -312,7 +312,7 @@ function DetailsDialog({ node, lv, users, onClose }: { node: Node; lv: number; u
   const caps = (Array.isArray(node.caps) ? node.caps : []).map(String);
   const s = rec(node.hostStats);
   return (
-    <Dialog title={name} wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title={name} wide onClose={onClose}>
       <p>{node.connected === true ? "Connected" : `Offline${node.lastSeenAtMs ? ` · last reported ${when(node.lastSeenAtMs)}` : ""}`}</p>
       <Kv rows={[["Kind", node.gatewayLocal === true ? "The computer Branch runs on" : "Another computer"], ["System", [osOf(node.platform), str(node.modelIdentifier)].filter(Boolean).join(" · ")], ["Version", str(node.version)], ...(lv >= 2 ? [["ID", <code key="id">{str(node.nodeId)}</code>] as [string, ReactNode]] : [])]} />
       {lv >= 1 ? (

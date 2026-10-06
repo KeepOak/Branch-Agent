@@ -37,7 +37,7 @@ function GatewayLogRow({ c }: { c: Ctx }) {
 function DiagLogRow() {
   const t = "Detailed diagnostics log";
   return (
-    <Ctl title={t} sub="A rolling, more detailed log kept only on this computer. Off until you choose: it writes a lot to disk, so turn it on while you chase a problem." off={APP}
+    <Ctl title={t} sub="A rolling, more detailed log kept only on this computer." help="A rolling, more detailed log kept only on this computer. Off until you choose: it writes a lot to disk, so turn it on while you chase a problem." off={APP}
       after={<span className="acts s2advanced-acts"><Btn sm ghost disabled>Open folder</Btn><Btn sm ghost disabled>Clear</Btn></span>}>
       <Switch label={t} checked={false} onChange={() => undefined} />
     </Ctl>
@@ -90,7 +90,7 @@ function HelpersModel({ c }: { c: Ctx }) {
   const raw = c.config.get("agents.defaults.subagents.model");
   const value = typeof raw === "string" ? raw : str(rec(raw).primary);
   return (
-    <Ctl title="Helpers’ model" sub="A Trunk’s helpers can use a cheaper or stronger model, and their own account.">
+    <Ctl title="Helpers’ model" sub="Helpers may use their own account and a different model." help="A Trunk’s helpers can use a cheaper or stronger model, and their own account.">
       <Pick label="Helpers’ model" value={value} disabled={c.config.loading} onChange={(v) => void c.config.set("agents.defaults.subagents.model", v || null)} options={[{ id: "", label: "Same as the Trunk" }, ...modelOpts(models.data)]} />
     </Ctl>
   );
@@ -225,7 +225,7 @@ const HOW: Record<string, [string, string]> = {
 function HowLink({ id }: { id: string }) {
   const [open, setOpen] = useState(false);
   const [title, body] = HOW[id];
-  return <> <LinkBtn onClick={() => setOpen(true)}>How it works</LinkBtn>{open ? <Dialog title={title} onClose={() => setOpen(false)} footer={<Btn onClick={() => setOpen(false)}>Close</Btn>}><p className="s2advanced-how">{body}</p></Dialog> : null}</>;
+  return <> <LinkBtn onClick={() => setOpen(true)}>How it works</LinkBtn>{open ? <Dialog title={title} onClose={() => setOpen(false)}><p className="s2advanced-how">{body}</p></Dialog> : null}</>;
 }
 function CodeMode({ c }: { c: Ctx }) {
   const raw = c.config.get("tools.codeMode");
@@ -293,9 +293,9 @@ const WHAT: SecSpec = { title: "What it can do", lv: 1, hint: "Model tools. Each
   no("Smart home", "Lights, heating and sensors through Home Assistant. Turns on when Home Assistant is connected."),
   btnOff("Numbered sources you can check", "Each claim in a brief has a number that opens the passage it came from.", "See an example", "Needs the engine’s research briefs."),
 ] };
-const CONVERSATIONS: SecSpec = { title: "Conversations", lv: 1, rows: [{ t: "All conversations", draw: (c) => <DialogRow t="All conversations" s="Every conversation, with its room used and status." btn="Open the table" open={(close) => <ConvDialog engine={c.engine} lv={c.lv} onClose={close} />} /> }] };
+const CONVERSATIONS: SecSpec = { title: "Conversations", lv: 1, rows: [{ t: "All conversations", draw: (c) => <DialogRow t="All conversations" s="Every conversation, with its context used and status." btn="Open the table" open={(close) => <ConvDialog engine={c.engine} lv={c.lv} onClose={close} />} /> }] };
 const MEMORY_MORE: SecSpec = { title: "Memory, more", lv: 1, rows: [
-  { t: "Tidy by meaning each night", draw: (c) => <Ctl title="Tidy by meaning each night" sub="At 3 AM it merges facts that say the same thing in different words. Every merge is listed."><Btn sm disabled={!c.openSettings} onClick={() => c.openSettings?.("seasons")}>Last night</Btn></Ctl> },
+  { t: "Tidy by meaning each night", draw: (c) => <Ctl title="Tidy by meaning each night" sub="At 3 AM it merges facts that say the same thing in different words." help="At 3 AM it merges facts that say the same thing in different words. Every merge is listed."><Btn sm disabled={!c.openSettings} onClick={() => c.openSettings?.("seasons")}>Last night</Btn></Ctl> },
   btnOff("Project notes as files", "Each project keeps its memory as Markdown in its own folder, so you can read and edit it.", "Open"),
   btnOff("Follow-ups made whole", "A short follow-up like “and July?” becomes a full question before it searches.", "Show one"),
   btnOff("Scratch space for pasted text", "Long text you paste is used for that job, then let go. It never becomes memory.", "Show it"),
@@ -351,7 +351,7 @@ const ALWAYS = "Always on in this engine; there is no switch for it.";
 function LearnRow({ c }: { c: Ctx }) {
   const [open, setOpen] = useState(false);
   return (
-    <Ctl title="Learn from other coding agents’ history on this computer" sub="Past sessions other coding tools left on disk come up when they matter. Off until you choose: it reads their files." off="The engine copies their memory in once instead of reading it as you go."
+    <Ctl title="Learn from other coding agents’ history on this computer" sub="Past coding conversations appear when they matter." help="Past sessions other coding tools left on disk come up when they matter. Off until you choose: it reads their files." off="The engine copies their memory in once instead of reading it as you go."
       after={<span className="s2advanced-after"><Btn sm disabled={!c.agent} onClick={() => setOpen(true)}>Bring their memory in…</Btn>{open ? <MigrateDialog engine={c.engine} agent={c.agent} onClose={() => setOpen(false)} /> : null}</span>}>
       <Switch label="Learn from other coding agents’ history on this computer" checked={false} onChange={() => undefined} />
     </Ctl>

@@ -103,7 +103,7 @@ export function duration(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-export const money = (n: number) => `$${n < 0.01 && n > 0 ? n.toFixed(3) : n.toFixed(2)}`;
+export const money = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: n < 0.01 && n > 0 ? 3 : 2 }).format(n);
 
 export function summaryLine(s: Summary, running: boolean): string {
   return [`${s.steps} step${s.steps === 1 ? "" : "s"}`, s.ms !== undefined ? `${duration(s.ms)}${running ? " so far" : ""}` : "", s.cost !== undefined ? money(s.cost) : ""].filter(Boolean).join(" · ");

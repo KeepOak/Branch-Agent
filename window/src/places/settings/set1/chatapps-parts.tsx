@@ -64,7 +64,7 @@ const PROGRESS_APPS = ["Slack", "Discord", "Signal", "Telegram", "WhatsApp"];
 function Progress({ cfg }: Ctx) {
   const on = cfg.get("messages.statusReactions.enabled");
   return (
-    <Ctl title="Show progress as reactions" sub="The reaction on your message changes as the Trunk works and finishes. Slack keeps its own “is thinking” status as well. Off in Slack, Signal, Telegram and WhatsApp until you choose: it adds reactions to every message." off="Branch has one switch for every app (Technical › messages.statusReactions.enabled).">
+    <Ctl title="Show progress as reactions" sub="The reaction on your message changes as the Trunk works and finishes." help="The reaction on your message changes as the Trunk works and finishes. Slack keeps its own “is thinking” status as well. Off in Slack, Signal, Telegram and WhatsApp until you choose: it adds reactions to every message." off="Branch has one switch for every app (Technical › messages.statusReactions.enabled).">
       <span className="chips-ca">{PROGRESS_APPS.map((n) => <button key={n} type="button" className="chip-ca" aria-pressed={n === "Discord" ? on !== false : on === true} disabled>{n}</button>)}</span>
     </Ctl>
   );
@@ -101,7 +101,7 @@ function Greyed({ id }: { id: string }) {
   if (id === "relay") return <Ctl title="A relay sends only to chats it knows" sub="Messages through a relay go only to chats Branch has heard from." off="Branch can’t tell yet how a relay sends." ><Pill tone="idle">Not known</Pill></Ctl>;
   if (id === "muted") return <Ctl title="Muted chats" sub="A muted chat is read but not answered." off={off}><Pick label="Chat to mute" value="" disabled options={[{ id: "", label: "Choose a chat" }]} onChange={() => undefined} /><Pick label="For how long" value="1" disabled options={[{ id: "1", label: "1 hour" }, { id: "t", label: "Until tomorrow" }, { id: "u", label: "Until I unmute it" }]} onChange={() => undefined} /><Btn sm disabled>Mute</Btn></Ctl>;
   if (id === "takeover") return <Ctl title="Take over a chat" sub="While you answer a chat yourself, the Trunk stays quiet there." off={off}><Btn ghost sm disabled>Take over</Btn></Ctl>;
-  if (id === "forward") return <Ctl title="Forward between chats" sub="Copy messages from one chat to another, from now on, through your filters." off={off}><Btn sm disabled>Add a rule</Btn></Ctl>;
+  if (id === "forward") return <Ctl title="Forward between chats" sub="Copies new messages between chat apps through your filters." help="Copy messages from one chat to another, from now on, through your filters." off={off}><Btn sm disabled>Add a rule</Btn></Ctl>;
   if (id === "ownCmds") return <Ctl title="Your own commands" sub="A word that answers with your text, in any chat. Owners only." off="Only Telegram has its own commands, on its page."><Btn sm disabled>Add a command</Btn></Ctl>;
   return null;
 }

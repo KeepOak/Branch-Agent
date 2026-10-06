@@ -128,7 +128,7 @@ function TellMore({ prefs, trunks }: { prefs: Prefs; trunks: Trunk[] }) {
       <Ctl title="Which sound" sub="The system’s sound is your computer’s own notification sound." keep="everywhere" off="Sounds play from the Branch app on your computer.">
         <Seg label="Which sound" value="" disabled options={[{ id: "system", label: "The system’s sound" }, { id: "chime", label: "Branch’s chime" }]} onChange={() => undefined} />
       </Ctl>
-      <Ctl title="Recent notifications" sub="The last 100 Branch showed on this device, after they leave the screen." off="Branch doesn’t keep the notifications it showed yet.">
+      <Ctl title="Recent notifications" sub="Keep the last 100 notices shown on this device." help="The last 100 Branch showed on this device, after they leave the screen." off="Branch doesn’t keep the notifications it showed yet.">
         <Btn sm disabled>Show</Btn>
       </Ctl>
     </>

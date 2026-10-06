@@ -28,7 +28,6 @@ export const BROWSER_BASIC: SecSpec = { t: "The browser", lv: 0, rows: [
   sw("Decline cookie notices", "Needs the engine to answer cookie notices.", "Always picks the most private choice on any site: only the cookies the site needs."),
   sw("Let Trunks ask to read your browser history", "Needs the engine to read your browser history.", "A Trunk can’t read your history."),
   { t: "Browser privacy note", sub: "Shown before a Trunk first used the browser.", k: "btn", btn: "Read it", off: "Needs the engine to show this note before a Trunk first uses the browser." },
-  { t: "Switch to Technical", k: "hint", upTo: 1, sub: "Switch to Technical (bottom left) to see file paths, ports and raw settings." },
 ] };
 
 const MORE: SecSpec = { t: "The browser, more", lv: 1, rows: [
@@ -146,7 +145,7 @@ function Program({ c }: { c: Ctx }) {
   const st = useLive<RecordValue>(c.engine, "browser.request", STATUS, []);
   const found = str(rec(st.data).detectedExecutablePath);
   return (
-    <Ctl title="Browser program" sub="Branch finds the browsers on this computer, starts the one picked here and closes what it started when a task ends.">
+    <Ctl title="Browser program" sub="Branch uses the browser picked here for each job." help="Branch finds the browsers on this computer, starts the one picked here and closes what it started when a task ends.">
       <Field label="Browser program" value={str(cfg.get("browser.executablePath"))} placeholder={found ? `${str(rec(st.data).detectedBrowser) || "Found"} · ${found}` : "Found by itself"} onCommit={(v) => void cfg.set("browser.executablePath", v.trim() || null)} wide />
     </Ctl>
   );
@@ -180,7 +179,7 @@ function ProfilesDialog({ c, onClose }: { c: Ctx; onClose: () => void }) {
   const res = useLive<RecordValue>(c.engine, "browser.request", { method: "GET", path: "/profiles" }, []);
   const profiles = list(rec(res.data).profiles);
   return (
-    <Dialog title="Browser profiles" wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title="Browser profiles" wide onClose={onClose}>
       {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
       {res.loading && !res.data ? <p>Reading the profiles…</p> : null}
       {res.data && !profiles.length ? <p className="hint">No browser profiles yet.</p> : null}
@@ -213,10 +212,10 @@ function Doctor({ c }: { c: Ctx }) {
     if (current === generation.current) setReport(next);
   }));
   return (
-    <Ctl title="Check the browser end to end" sub="Start, open, read, close, a signed-in flow and a form that stops before your yes." after={<CallLine call={call} />}>
+    <Ctl title="Check the browser end to end" sub="Checks browsing, sign-in and forms that need your yes." help="Start, open, read, close, a signed-in flow and a form that stops before your yes." after={<CallLine call={call} />}>
       <Btn sm disabled={action.busy} onClick={run}>{action.busy ? "Checking…" : "Open the check"}</Btn>
       {report ? (
-        <Dialog title="Browser check" wide onClose={close} footer={<><Btn ghost disabled={action.busy} onClick={run}>{action.busy ? "Checking…" : "Check again"}</Btn><Btn onClick={close}>Close</Btn></>}>
+        <Dialog title="Browser check" wide onClose={close} footer={<><Btn ghost disabled={action.busy} onClick={run}>{action.busy ? "Checking…" : "Check again"}</Btn></>}>
           <CallLine call={call} />
           {action.busy ? <p role="status">Checking…</p> : null}
           {!action.busy && !call.error ? <><p>{report.ok === true ? "Every check passed." : "Some checks need attention."}</p>

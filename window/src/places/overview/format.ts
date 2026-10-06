@@ -8,7 +8,7 @@ export function clock(at: Date): string {
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
 
-/** "Today", "Yesterday", "Tomorrow", or "Mon 28 Sep". */
+/** "Today", "Yesterday", "Tomorrow", or "Mon, Sep 28". */
 export function dayWord(at: Date, now = new Date()): string {
   const a = new Date(now); a.setHours(0, 0, 0, 0);
   const b = new Date(at); b.setHours(0, 0, 0, 0);
@@ -16,10 +16,10 @@ export function dayWord(at: Date, now = new Date()): string {
   if (diff === 0) return "Today";
   if (diff === -1) return "Yesterday";
   if (diff === 1) return "Tomorrow";
-  return `${DAYS[b.getDay()].slice(0, 3)} ${b.getDate()} ${MONTHS[b.getMonth()]}`;
+  return `${DAYS[b.getDay()].slice(0, 3)}, ${MONTHS[b.getMonth()]} ${b.getDate()}`;
 }
 
-/** "Last night, 2:00 AM" (small hours of today), "Today, 9:40 AM", "Mon 28 Sep, 5:02 PM". */
+/** "Last night, 2:00 AM" (small hours of today), "Today, 9:40 AM", "Mon, Sep 28, 5:02 PM". */
 export function whenWord(ms: number, now = new Date()): string {
   const at = new Date(ms), day = dayWord(at, now);
   return day === "Today" && at.getHours() < 6 ? `Last night, ${clock(at)}` : `${day}, ${clock(at)}`;
@@ -41,7 +41,7 @@ export function runLength(ms: number): string {
 }
 
 export function money(amount: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: amount > 0 && amount < 0.01 ? 4 : 2 }).format(amount);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
 }
 
 export function plural(n: number, one: string, many = `${one}s`): string {

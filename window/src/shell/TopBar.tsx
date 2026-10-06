@@ -54,7 +54,7 @@ type Props = {
 export function stateWords(h: Pick<HeaderInfo, "state" | "isDefaultTrunk" | "trunkName" | "role" | "workWords" | "room">): string {
   if (h.room) return h.room.line;
   if (h.state === "here") {
-    const role = h.role || (h.isDefaultTrunk ? "The assistant on this computer" : h.trunkName);
+    const role = h.role || (h.isDefaultTrunk ? "Your Trunk on this computer" : h.trunkName);
     return `${role} · ${STATE_WORDS.here}`;
   }
   if (h.state === "working") {
@@ -200,7 +200,7 @@ export function TopBar({ compact, machine, header, dark, listHidden, onTheme, on
           {onGuide ? <button type="button" className="ib guide-btn" title="Guide" data-testid="guide" onClick={onGuide}><Icon name="help" small /><span>Guide</span></button> : null}
           {ask ? (
             <button type="button" className="ib talk-btn" aria-label={ask.help ? "Help for this page" : `Ask ${ask.name}`} title={ask.help ? "Help for this page" : `Ask ${ask.name}`} aria-haspopup={ask.help ? "dialog" : undefined} aria-pressed={ask.help ? undefined : ask.open} data-testid="ask-default" onClick={ask.onToggle}>
-              <Icon name="ask" small />
+              {ask.help ? "?" : <Icon name="ask" small />}
             </button>
           ) : null}
           <button type="button" className="ib" aria-label={dark ? "Light" : "Dark"} title="Switch light or dark" data-testid="theme" onClick={onTheme}>

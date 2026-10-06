@@ -19,7 +19,7 @@ export function SpeakingMore(props: Shared) {
   const ready = providers.filter((p) => p.configured).map((p) => p.label);
   return (
     <Sec title="Speaking back, more">
-      <Ctl title="Speaking engine" sub="Voices on this computer are free and private. A service needs its key and gets the text it reads out.">
+      <Ctl title="Speaking engine" sub="Voices on this computer are free and private." help="Voices on this computer are free and private. A service needs its key and gets the text it reads out.">
         <Pick label="Speaking engine" value={current} options={providers.map((p) => ({ id: p.id, label: p.label }))} disabled={!voices.data} onChange={pick} />
       </Ctl>
       <PreviewRow {...props} />
@@ -72,10 +72,10 @@ function NamedVoices({ tts }: Shared) {
   const personas = list(tts.data?.personas);
   if (!personas.length) return <Greyed why="Branch can’t add a named voice from here yet." rows={[{ t: "Named voices", sub: "A name for a voice that keeps sounding the same, whichever engine speaks.", c: { btn: "Manage" } }]} />;
   return (
-    <Ctl title="Named voices" sub="A name for a voice that keeps sounding the same, whichever engine speaks.">
+    <Ctl title="Named voices" sub="Save one voice name across speech engines." help="A name for a voice that keeps sounding the same, whichever engine speaks.">
       <Btn sm onClick={() => setOpen(true)}>See {personas.length}</Btn>
       {open ? (
-        <Dialog title="Named voices" onClose={() => setOpen(false)} footer={<button type="button" className="btn pri" onClick={() => setOpen(false)}>Close</button>}>
+        <Dialog title="Named voices" onClose={() => setOpen(false)}>
           <div className="rows">
             {personas.map((p) => <div key={text(p.id)} className="prow"><span className="grow"><b>{visible(p.label ?? p.id)}</b><small>{[p.description, p.provider].filter(Boolean).map(visible).join(" · ")}</small></span></div>)}
           </div>
@@ -104,7 +104,7 @@ export function ListeningServices({ cfg, catalog, openSettings }: Shared) {
   const cli = text(cfg.get("tts.providers.tts-local-cli.command") ?? "");
   return (
     <Sec title="Listening, services">
-      <Ctl title="Listening engine" sub="What turns your voice into words. A service needs its key and hears the recording.">
+      <Ctl title="Listening engine" sub="What turns your voice into words." help="What turns your voice into words. A service needs its key and hears the recording.">
         <Pick label="Listening engine" value={value} options={providers.map((p) => ({ id: p.id, label: p.label }))} disabled={cfg.loading || !providers.length} onChange={(id) => void cfg.set(STREAM, id)} />
       </Ctl>
       <Ctl stack title="A program of yours as an engine" sub="{{Text}} and {{OutputPath}} are filled in for you.">

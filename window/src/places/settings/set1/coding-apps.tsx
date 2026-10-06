@@ -25,7 +25,7 @@ export function foundState(app: App, detect: RecordValue | undefined): Found {
 const PILL: Record<Found["state"], [string, string]> = { ready: ["ok", "Models ready"], signin: ["warn", "Sign-in needed"], missing: ["idle", "Not found"] };
 
 function sub(app: App, f: Found, on: boolean): string {
-  if (f.state === "missing") return f.reason ?? `Install and sign in to ${app.name} on this PC, then check again.`;
+  if (f.state === "missing") return f.reason ?? `Install and sign in to ${app.name} on this computer, then check again.`;
   if (f.state === "signin") return `Open ${app.name} and check its sign-in, then check again.`;
   return on ? `On because ${app.name} is connected on this computer.` : `${app.name} is connected on this computer. Turn it on to use its models.`;
 }
@@ -35,7 +35,7 @@ export function CodingApps({ engine }: { engine: WindowEngine }) {
   const detect = useResource<RecordValue>(engine, "branch.setup.detect", scope ? { agentId: scope } : {});
   const cfg = useConfig(engine);
   return (
-    <Sec title="Coding apps on this computer" hint="Each app keeps its own account and permissions. Turning one on doesn’t sign you in.">
+    <Sec title="Coding apps on this computer" hint="Each app keeps its own account and permissions." help="Each app keeps its own account and permissions. Turning one on doesn’t sign you in.">
       {APPS.map((app) => {
         const f = foundState(app, detect.data);
         const [tone, word] = detect.loading ? ["idle", "Looking…"] : PILL[f.state];

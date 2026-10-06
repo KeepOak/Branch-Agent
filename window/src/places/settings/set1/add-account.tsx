@@ -8,7 +8,7 @@ import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Footer, WizardBody } from "../AccountLogin";
 import { useWizard, type WizardStart, type WizardStep } from "../use-wizard";
-import { useSaveRunner } from "../kit";
+import { Empty, useSaveRunner } from "../kit";
 import { Logo, serviceName } from "./service";
 import { providersOf, tokenLabel, type Provider } from "./accounts";
 
@@ -106,7 +106,7 @@ function PickService({ services, detect, engine, agent, onPick, onUsed }: PickPr
       </div>
       {detect.loading && !services.length ? <p className="hint">Looking for services…</p> : null}
       {kinds.map((k) => <Group key={k} kind={k} services={shown.filter((s) => s.kind === k)} onPick={onPick} />)}
-      {!shown.length && !detect.loading ? <p className="empty">No service matches.</p> : null}
+      {!shown.length && !detect.loading ? <Empty>No service matches.</Empty> : null}
     </>
   );
 }
@@ -267,7 +267,7 @@ function RunWizard({ engine, run, onDone, onBack }: { engine: WindowEngine; run:
   return (
     <>
       <WizardBody wizard={w} doneText="Signed in." />
-      <div className="acts"><Footer view={w.view} value={w.value} busy={w.busy} onAnswer={w.answer} onCancel={() => { w.cancel(); onBack(); }} onClose={phase === "error" ? onBack : onDone} /></div>
+      <div className="acts"><Footer view={w.view} value={w.value} busy={w.busy} onAnswer={w.answer} onCancel={() => { w.cancel(); onBack(); }} /></div>
     </>
   );
 }

@@ -489,7 +489,7 @@ export function Composer(props: Props) {
           {vimOn ? <span className="c-flag" data-testid="vim-normal">Normal</span> : null}
           {cost !== undefined && cost > 0 && current && !current.local ? (
             <span className="c-cost" title={`What this conversation has cost so far on ${current.name}. Details in Settings › Data & usage.`}>
-              ${cost < 1 ? cost.toFixed(2) : Math.round(cost)} so far
+              {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cost)} so far
             </span>
           ) : null}
         </span>

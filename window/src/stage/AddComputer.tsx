@@ -171,7 +171,7 @@ export function AddComputer({ engine, onClose, onAdded }: { engine: WindowEngine
     <Dialog title={title} onClose={onClose} wide={view === "cloud"} testid="add-computer" footer={<>{back}<button type="button" className="btn ghost" onClick={onClose}>{view === "pair" && pairing.phase === "code" && pairing.done ? "Done" : "Cancel"}</button></>}>
       {view === "choose" ? (
         <div className="provs-st">
-          <Choice icon="shield" title="A new private computer on this PC" text="A sealed Windows box. Takes about 2 GB and a minute to set up." disabled="The engine has no provider for a private computer on this PC yet." />
+          <Choice icon="shield" title="A new private computer here" text="A sealed Windows box. Takes about 2 GB and a minute to set up." disabled="The engine has no provider for a private computer here yet." />
           <Choice icon="monitor" title="Another computer with Branch" text="A PC, a Mac or a Linux box. Pair it once with a code." onPick={() => setView("pair")} />
           <Choice icon="cloud" title="A cloud computer" text="A fresh machine for each conversation, thrown away when its work stops. Your own cloud account (Amazon, Hetzner and others) or KeepOak; the provider bills while machines run." onPick={() => setView("cloud")} />
         </div>

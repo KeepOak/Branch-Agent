@@ -216,7 +216,7 @@ function WhereRun({ c }: { c: Ctx }) {
   const none = "Not in this engine.";
   const opts: Opt[] = [{ id: "local", label: "This computer" }, { id: "docker", label: "Docker" }, { id: "ssh", label: "SSH" }, { id: "singularity", label: "Singularity", off: none }, { id: "modal", label: "Modal", off: none }, { id: "daytona", label: "Daytona", off: none }];
   return (
-    <Ctl title="Where commands run" sub="This computer, or a separate place: a container, another computer over SSH, or a cloud sealed box.">
+    <Ctl title="Where commands run" sub="Run commands here, over SSH, or in a sealed cloud box." help="This computer, or a separate place: a container, another computer over SSH, or a cloud sealed box.">
       <Pick label="Where commands run" value={value} options={opts} disabled={c.config.loading} onChange={pick} />
     </Ctl>
   );

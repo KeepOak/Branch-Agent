@@ -82,7 +82,7 @@ export function AccountsPage(props: SettingsPageProps) {
   const caps = list(status.data?.providerCapabilities);
   const all = accountsOf(providers);
   return (
-    <Page title={props.title} lede="Your model accounts, the order Branch uses them in, which Trunks use each, and your keepoak.com account.">
+    <Page title={props.title} lede="Manage model accounts and the order Branch uses them." help="Your model accounts, the order Branch uses them in, which Trunks use each, and your keepoak.com account.">
       <AccountsStatus loading={status.loading} error={status.error} count={all.length} unavailable={record(status.data?.unavailable).message} />
       <OrderSection {...props} all={all} reload={status.reload} onAdd={setAdd} agent={agent} />
       <CodingApps engine={props.engine} />
@@ -170,7 +170,7 @@ function WhenOneRunsOut({ engine }: { engine: SettingsPageProps["engine"] }) {
   const on = Boolean(localRef) && fallbacks.includes(localRef);
   return (
     <Sec title="When one runs out">
-      <Ctl title="Move to the next account in the list" sub="Only between accounts you own and pay for, within each provider’s terms. No account’s allowance is shared with another person.">
+      <Ctl title="Move to the next account in the list" sub="Only switches between accounts you own and pay for." help="Only between accounts you own and pay for, within each provider’s terms. No account’s allowance is shared with another person.">
         <span title="Branch always moves on when an account runs out."><Switch checked label="Move to the next account in the list" disabled onChange={() => undefined} /></span>
       </Ctl>
       <Ctl title="Fall back to this computer" sub={local ? `When every account is out, keep going on ${visible(local.name ?? local.id)} instead of stopping.` : "Needs a model on this computer first."}>

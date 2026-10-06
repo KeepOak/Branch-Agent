@@ -30,7 +30,7 @@ export function AgentsSec({ look }: { look: Look }) {
   const shown = look.val("agentShown", shellShown()) === true;
   return (
     <Sec title="Agents">
-      <Ctl title="Show the agent beside the conversation" sub="It acts out what the Trunk is doing: thinking, searching, reading, working, waiting for you, celebrating, resting.">
+      <Ctl title="Show the agent beside the conversation" sub="The Trunk’s character shows what it is doing." help="It acts out what the Trunk is doing: thinking, searching, reading, working, waiting for you, celebrating, resting.">
         <Switch checked={shown} label="Show the agent beside the conversation" onChange={(on) => void save(() => look.store.set("agentShown", on))} />
       </Ctl>
       <SpecRow r={rowOf("agentSize")} look={look} />
@@ -75,7 +75,7 @@ export function BackgroundSec({ look }: { look: Look }) {
       </div>
       <RangeRow look={look} k="scrim" def={35} max={90} title="How much the theme covers it" label="How much the theme covers the background" sub="More keeps text calmer; less shows more of the background." off={bg === "none"} />
       <RangeRow look={look} k="see" def={25} max={60} title="See-through panels" label="See-through panels" sub="Panels blur what’s behind them." off={bg === "none"} />
-      <Ctl title="Preview" sub="Clear the view: see the background. Click anywhere or press Escape to come back." off={bg === "none" ? undefined : "The window doesn’t draw a background yet, so there’s nothing behind it to see."}>
+      <Ctl title="Preview" sub="Clear the view: see the background." help="Clear the view: see the background. Click anywhere or press Escape to come back." off={bg === "none" ? undefined : "The window doesn’t draw a background yet, so there’s nothing behind it to see."}>
         <Btn sm disabled>{EYE}See it clearly</Btn>
       </Ctl>
     </Sec>

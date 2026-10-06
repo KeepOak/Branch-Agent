@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { list, rec, str, type WindowEngine } from "./engine";
 import type { ModelChoice } from "./model";
 
-export const NOT_ON_PLAN = "Not on your ChatGPT plan";
+export const NOT_ON_PLAN = "Not on this account’s plan";
 const FRESH_MS = 60_000;
 const cache = new Map<string, { at: number; plan: Set<string> | null }>();
 

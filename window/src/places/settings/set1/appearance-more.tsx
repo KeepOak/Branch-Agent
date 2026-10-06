@@ -46,9 +46,9 @@ function CharactersSec({ engine, look, trunk }: MoreProps) {
         <small>The animated 3D videos. Still at rest; they act on events.</small>
       </div>
       <TrunkCards engine={engine} look={look} trunk={trunk} />
-      <Ctl title="Bring in a character" sub="Live2D, VRM, MikuMikuDance or Spine. Checked before it joins your characters and kept for offline use." off="The engine can’t check and keep a character file yet."><Btn sm>Choose a .zip</Btn></Ctl>
+      <Ctl title="Bring in a character" sub="Live2D, VRM, MikuMikuDance or Spine." help="Live2D, VRM, MikuMikuDance or Spine. Checked before it joins your characters and kept for offline use." off="The engine can’t check and keep a character file yet."><Btn sm>Choose a .zip</Btn></Ctl>
       {rowsOf("Characters").map((r) => <SpecRow key={r.key} r={r} look={look} />)}
-      <Ctl title="Pose by hand" sub="Pose a 3D character and make your own moves with a joystick or keyframes." off="Needs a 3D character, and the window draws faces as videos."><Btn sm>Open the poser</Btn></Ctl>
+      <Ctl title="Pose by hand" sub="Pose a 3D character with a joystick or keyframes." help="Pose a 3D character and make your own moves with a joystick or keyframes." off="Needs a 3D character, and the window draws faces as videos."><Btn sm>Open the poser</Btn></Ctl>
       <Ctl title="Describe a pet" sub="An image model draws its sprite sheet." off="The engine can’t draw a pet’s sprite sheet yet."><input className="inp" placeholder="A small fox with a leaf scarf" aria-label="Describe a pet" /><Btn sm>Draw it</Btn></Ctl>
     </Sec>
   );
@@ -92,7 +92,7 @@ function TrunkCards({ engine, look, trunk }: Omit<MoreProps, "openSettings">) {
 const ART = [["cloud", "A cloud computer at work"], ["call", "A phone call in progress"], ["meeting", "Joining a meeting"], ["learn", "Learning an app"], ["timeline", "A timeline replaying"]];
 function PicturesSec() {
   return (
-    <Sec title="Pictures around Branch" hint="Shown where a feature starts or has nothing to show yet. They move gently, and hold still when motion is reduced.">
+    <Sec title="Pictures around Branch" hint="Shown where a feature starts or has nothing to show yet." help="Shown where a feature starts or has nothing to show yet. They move gently, and hold still when motion is reduced.">
       <div className="arts17e ap-k" data-row="Pictures around Branch">
         {ART.map(([id, label]) => <figure key={id} className="art-c17e"><img src={`/assets/art17/feature/${id}.webp`} alt="" width={88} height={88} /><figcaption>{label}</figcaption></figure>)}
       </div>

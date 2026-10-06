@@ -198,7 +198,7 @@ function CopiesDialog({ c, title, mode, res, onClose }: { c: Ctx; title: string;
   const rows = list(rec(res.data).worktrees).filter((w) => !w.removedAt || w.snapshotRef);
   const act = (method: string, params: unknown, note: (r: RecordValue) => string) => void call.run(async () => { const r = rec(await c.engine.request(method, params)); void res.reload(); return r; }, note);
   return (
-    <Dialog title={title} wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title={title} wide onClose={onClose}>
       <Acts>
         <input className="inp" aria-label="Repository folder" placeholder="Repository folder" value={repo} onChange={(e) => setRepo(e.target.value)} />
         <Btn pri sm disabled={!repo.trim() || call.busy} onClick={() => act("worktrees.create", { repoRoot: repo.trim() }, () => "Made a new copy.")}>New copy</Btn>
@@ -252,4 +252,3 @@ export function Confirm({ title, body, yes, danger, onYes, onClose }: { title: s
     </Dialog>
   );
 }
-

@@ -43,7 +43,7 @@ export function InstructionsPage(props: SettingsPageProps) {
   const owner = pick ?? defaultId;
   const ownerName = owner === defaultId ? "every Trunk" : trunks.find((t) => t.id === owner)?.name ?? owner;
   return (
-    <Page title={props.title} lede="Plain files every Trunk reads before it works. They work the same as in other agents, so a file written for one of them works here.">
+    <Page title={props.title} lede="Plain files every Trunk reads before it works." help="Plain files every Trunk reads before it works. They work the same as in other agents, so a file written for one of them works here.">
       {agents.error ? <Status tone="bad" title="Branch couldn’t read your Trunks">{visible(agents.error)}</Status> : null}
       {defaultId ? <Whose trunks={trunks} defaultId={defaultId} owner={owner} onPick={setPick} /> : null}
       {owner ? <OwnerFiles key={`files-${owner}`} engine={props.engine} agentId={owner} ownerName={ownerName} /> : null}

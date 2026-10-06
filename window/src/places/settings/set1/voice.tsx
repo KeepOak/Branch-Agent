@@ -22,7 +22,7 @@ export function VoicePage(props: SettingsPageProps) {
   const wake = useKept<RecordValue>(props.engine, "voicewake.get", {});
   const word = wakeWordOf(wake.data);
   return (
-    <Page title={props.title} lede="Talking to Branch. Voice stays on this computer unless a voice service is connected.">
+    <Page title={props.title} lede="Talking to Branch." help="Talking to Branch. Voice stays on this computer unless a voice service is connected.">
       <Sec title="Talking">
         <Greyed why={APP} rows={[
           { t: "Listening", sub: `Push to talk holds the key; wake word listens for ${word}.`, c: { seg: ["Off", "Push to talk", "Wake word"], v: "Off" } },

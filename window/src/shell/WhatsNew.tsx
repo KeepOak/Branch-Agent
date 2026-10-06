@@ -91,7 +91,7 @@ export function WhatsNew(p: Props) {
 export function installedRows(go: { setup: () => void; shortcuts: () => void; palette: () => void; settings: (page: string) => void }): NewGroups {
   return {
     New: [
-      { icon: "spark", title: "Setup and the walkthrough", line: "Eleven short steps, including how it looks and how much it asks, then a tour of every part.", run: go.setup },
+      { icon: "spark", title: "Setup and the walkthrough", line: "11 short steps, then a walkthrough of each part.", run: go.setup },
       { icon: "clock", title: "Account allowances", line: "Click the ring for each account’s limits and context left.", run: () => go.settings("usage") },
       { icon: "menu", title: "Shortcuts you choose", line: "Click a shortcut, then press the keys you want.", run: go.shortcuts },
     ],

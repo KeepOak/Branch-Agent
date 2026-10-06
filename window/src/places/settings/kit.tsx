@@ -32,6 +32,85 @@ export const useAsk = (): ((text: string) => void) | undefined => useContext(Kit
 export const useScope = (): string | null => useContext(KitContext).scope;
 /** The pinned rows, for General's Pinned list. */
 export const usePinsKit = (): Pins | undefined => useContext(KitContext).pins;
+/** Advanced and Technical rows retain their parent section heading. */
+const SECTION_PARENTS: Record<string, string> = {
+  "Summaries of older turns": "Summaries",
+  "Summaries, technical": "Summaries",
+  "Kinds of notice": "Tell me when…",
+  "Sorting notifications": "Tell me when…",
+  "Prompts behind quick actions": "Project instructions",
+  "Per connection": "Per account",
+  "Connections, technical": "Accounts",
+  "Helpers, technical": "Models for smaller jobs",
+  "Terms": "When one runs out",
+  "Which account goes next": "When one runs out",
+  "Where each sign-in comes from": "Accounts",
+  "Hearing, more": "Listening",
+  "Talking, more": "Listening",
+  "Listening, services": "Listening",
+  "Live voice, more services": "Live voice",
+  "Voice, technical": "Voice engine",
+  "A spoken turn": "Voice engine",
+  "What Trunks may use": "Voice engine",
+  "Reach": "Connection",
+  "How it's reached": "Connection",
+  "Exposure": "Connection",
+  "Gateway::Limits": "Connection",
+  "Gateway::Technical": "Connection",
+  "From scripts": "Connection",
+  "Never break": "If it stops",
+  "Rules for each tool and folder": "Rules and checks",
+  "Commands, by default": "Rules and checks",
+  "Checks before anything runs": "Rules and checks",
+  "Guards that are always on": "Rules and checks",
+  "Tools and loops": "Rules and checks",
+  "Test and explain": "Rules and checks",
+  "What each connector may do": "Rules and checks",
+  "Isolation": "Sandbox",
+  "Folders the sandbox may reach": "Sandbox",
+  "Network and sandbox, technical": "Sandbox",
+  "Security, technical": "Sandbox",
+  "Permissions::Tools, technical": "Sandbox",
+  "Without asking, more": "Without asking, Trunks may…",
+  "Company policy": "Pinned settings",
+  "Money": "Locks",
+  "Everything connected": "Connections",
+  "Who is connected now": "Connections",
+  "Logbook": "Connections",
+  "Allowing connections by themselves": "Connections",
+  "Lent computer, technical": "Lending",
+  "Computer & browser::Technical": "Connections",
+  "Phones and small devices": "Lending",
+  "Screen sharing, technical": "Using the screen",
+  "Where scripts run, more": "On a computer",
+  "Scripts on this computer": "On a computer",
+  "Sealed box, technical": "On a computer",
+  "How it browses": "The browser",
+  "Page cleaners": "The browser",
+  "Sites": "The browser",
+  "What it hands to you": "The browser",
+  "Saved flows": "The browser",
+  "Your own browser": "The browser",
+  "Cloud browsers": "The browser",
+  "Where passwords come from": "Keys",
+  "Keys Branch holds": "Keys",
+  "Money and keeping, more": "Keeping things",
+  "Conversations, every setting": "Keeping things",
+  "Working on its own code": "What it may change",
+  "What it may fix by itself": "What it may change",
+  "Rings, by hand": "Rings",
+  "Rings, in depth": "Rings",
+  "Rings, maintenance": "Rings",
+  "In your editors and notes": "Branch on your other devices",
+  "Help and updates, more": "Updating",
+  "Updates & about::Technical": "Updating",
+  "Characters": "The Trunk beside the conversation",
+  "The list": "Status bar and list",
+};
+export function sectionHeading(title: string, page = ""): string {
+  const base = title.replace(/, (?:even more|more|technical|in depth)$/i, "");
+  return SECTION_PARENTS[`${page}::${title}`] ?? SECTION_PARENTS[title] ?? SECTION_PARENTS[base] ?? base;
+}
 
 /** The not-allowed state (§4.7.0): a person who may not change how Branch is set up sees these rows greyed. */
 export const NOSETUP = "Only someone who may change how Branch is set up can change this.";
@@ -72,33 +151,25 @@ export function useConfig(engine: WindowEngine) {
 
 type HelpEntry = { label: string; text: string };
 const HelpContext = createContext<((key: string, entry?: HelpEntry) => void) | null>(null);
+const PageTitleContext = createContext("");
 
-/** Keep the short description on the page and its full explanation in page help. */
-function useShortDescription(key: string, label: string, value?: ReactNode): ReactNode {
+/** Long explanations are supplied explicitly, never inferred from display copy. */
+function useHelpEntry(key: string, label: string, help?: string): void {
   const register = useContext(HelpContext);
-  const rationale = typeof value === "string" ? value.search(/(?:^|\s)(?:Off until you choose:|Off out of the box\.|On because\b|Right-click it anywhere to hide it too\.)/) : -1;
-  const full = typeof value === "string" && (value.length > 70 || rationale >= 0) ? value : undefined;
   useEffect(() => {
-    if (!full || !register) return;
-    register(key, { label, text: full });
+    if (!help || !register) return;
+    register(key, { label, text: help });
     return () => register(key);
-  }, [full, key, label, register]);
-  if (!full) return value;
-  const inline = rationale >= 0 ? full.slice(0, rationale).trim() : full;
-  if (!inline) return null;
-  const sentence = inline.match(/^.{1,70}?[.!?](?=\s|$)/)?.[0];
-  if (sentence) return sentence;
-  if (inline.length <= 70) return inline;
-  const words = inline.slice(0, 67).trimEnd().replace(/\s+\S*$/, "");
-  return `${words || inline.slice(0, 67)}…`;
+  }, [help, key, label, register]);
 }
 
 /** A page head with one help affordance and the original ask action inside it. */
-export function Page({ title, lede, children, top }: { title: string; lede: ReactNode; children?: ReactNode; top?: ReactNode }) {
+export function Page({ title, lede, help, children, top }: { title: string; lede: ReactNode; help?: string; children?: ReactNode; top?: ReactNode }) {
   const { ask, askName } = useContext(KitContext);
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<Record<string, HelpEntry>>({});
   const helpRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
   const [helpPosition, setHelpPosition] = useState({ top: 0, right: 0 });
   const register = useCallback((key: string, entry?: HelpEntry) => {
     setEntries((current) => {
@@ -132,36 +203,44 @@ export function Page({ title, lede, children, top }: { title: string; lede: Reac
     document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", escape); };
   }, [open]);
-  const shortLede = typeof lede === "string" && lede.length > 70 ? `${lede.slice(0, 67).trimEnd().replace(/\s+\S*$/, "")}…` : lede;
+  useEffect(() => {
+    const seen = new Set<string>();
+    pageRef.current?.querySelectorAll<HTMLElement>(".sec > h2[data-section-heading]").forEach((heading) => {
+      const name = heading.dataset.sectionHeading ?? "";
+      heading.hidden = seen.has(name);
+      seen.add(name);
+    });
+  });
   return (
-    <div className="kit-page" data-page-title={title}>
+    <div className="kit-page" data-page-title={title} ref={pageRef}>
       {top}
       <div className="kit-head"><h1>{title}</h1><div className="kit-help-anchor" ref={helpRef}>
         {open ? <div className="kit-help-pop" role="dialog" aria-label="Help for this page" style={helpPosition}>
           <b>About {title}</b>
           <div className="kit-help-body">
-            {typeof lede === "string" && lede.length > 70 ? <div><strong>{title}</strong><p>{lede}</p></div> : null}
+            {help ? <div><strong>{title}</strong><p>{help}</p></div> : null}
             {Object.values(entries).map((entry) => <div key={`${entry.label}-${entry.text}`}><strong>{entry.label}</strong><p>{entry.text}</p></div>)}
           </div>
           <button type="button" className="kit-help-ask" disabled={!ask} title={ask ? undefined : "Set up a model to ask about this page"} onClick={() => { setOpen(false); ask?.(`Tell me about Settings › ${title}.`); }}>Ask {askName ?? "your Trunk"} about this page</button>
         </div> : null}
       </div></div>
-      <p className="lede">{shortLede}</p>
-      <HelpContext.Provider value={register}>{children}</HelpContext.Provider>
+      <p className="lede">{lede}</p>
+      <PageTitleContext.Provider value={title}><HelpContext.Provider value={register}>{children}</HelpContext.Provider></PageTitleContext.Provider>
     </div>
   );
 }
 
 /** A section: sentence-case heading, an optional hint and its rows. */
-export function Sec({ title, hint, right, children, id, personal }: { title: string; hint?: ReactNode; right?: ReactNode; children?: ReactNode; id?: string; personal?: boolean }) {
+export function Sec({ title, hint, help, right, children, id, personal }: { title: string; hint?: ReactNode; help?: string; right?: ReactNode; children?: ReactNode; id?: string; personal?: boolean }) {
   const locked = useContext(LockContext);
   const helpKey = useId();
-  const shortHint = useShortDescription(helpKey, title, hint);
-  if (personal && locked) return <SetupLock locked={false}><Sec title={title} hint={hint} right={right} id={id}>{children}</Sec></SetupLock>;
+  useHelpEntry(helpKey, title, help);
+  const heading = sectionHeading(title, useContext(PageTitleContext));
+  if (personal && locked) return <SetupLock locked={false}><Sec title={title} hint={hint} help={help} right={right} id={id}>{children}</Sec></SetupLock>;
   return (
     <div className="sec" data-sec={title || undefined} id={id}>
-      {title || right ? <h2 tabIndex={-1}>{title}{right}</h2> : null}
-      {shortHint ? <p className="hint">{shortHint}</p> : null}
+      {title || right ? <h2 tabIndex={-1} data-section-heading={heading}>{heading}{right}</h2> : null}
+      {hint ? <p className="hint">{hint}</p> : null}
       {children}
     </div>
   );
@@ -185,8 +264,8 @@ function PinBtn({ title }: { title: string }) {
 
 /** One settings row: title, sub-line and the control on the right. `off` greys the control and says why on its own line.
  *  Every row with a plain title has a pin, except General's Pinned list itself (noPin). */
-export function Ctl({ title, sub, children, off, keep, icon, stack, id, after, noPin }: {
-  title: ReactNode; sub?: ReactNode; children?: ReactNode; off?: string; keep?: Keep; icon?: ReactNode; stack?: boolean; id?: string; after?: ReactNode; noPin?: boolean;
+export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, after, noPin }: {
+  title: ReactNode; sub?: ReactNode; help?: string; children?: ReactNode; off?: string; keep?: Keep; icon?: ReactNode; stack?: boolean; id?: string; after?: ReactNode; noPin?: boolean;
 }) {
   const level = useLevel();
   const helpKey = useId();
@@ -195,14 +274,14 @@ export function Ctl({ title, sub, children, off, keep, icon, stack, id, after, n
   const name = typeof title === "string" ? title : id;
   const shown = shownWhy(why);
   const line = sub ?? shown;
-  const shortLine = useShortDescription(helpKey, typeof title === "string" ? title : id ?? "Setting", line);
+  useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", help);
   const kept = keep && level >= 1 ? KEEP_LINE[keep] : null;
   return (
     <div className={`ctl${why ? " off-k" : ""}${stack ? " stack-k" : ""}`} data-row={name} aria-disabled={why ? true : undefined}>
       <b>{icon}{title}</b>
       {typeof title === "string" && !noPin ? <PinBtn title={title} /> : null}
       {children ? <span className="right" inert={why ? true : undefined}>{children}</span> : null}
-      {shortLine || kept ? <small>{shortLine}{shortLine && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
+      {line || kept ? <small>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
       {shown && sub ? <small className="why-k">{shown}</small> : null}
       {after}
     </div>
@@ -216,10 +295,10 @@ export function Switch({ checked, onChange, label, disabled }: { checked: boolea
 export type Opt = { id: string; label: string; off?: string };
 
 /** A segmented choice (pressed-style, like the preview's settings rows). */
-export function Seg({ value, options, onChange, label, disabled }: { value: string; options: Opt[]; onChange: (id: string) => void; label: string; disabled?: boolean }) {
+export function Seg({ value, options, onChange, label, disabled, layout = "segments" }: { value: string; options: Opt[]; onChange: (id: string) => void; label: string; disabled?: boolean; layout?: "segments" | "radio" }) {
   const active = options.find((option) => option.id === value && !option.off)?.id ?? options.find((option) => !option.off)?.id;
   return (
-    <span className="sseg" role="group" aria-label={label} onKeyDown={(e) => {
+    <span className={layout === "radio" ? "sseg sseg-radio" : "sseg"} role={layout === "radio" ? "radiogroup" : "group"} aria-label={label} onKeyDown={(e) => {
       if (disabled || e.altKey || e.ctrlKey || e.metaKey) return;
       const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
       const index = buttons.indexOf(e.target as HTMLButtonElement);
@@ -232,8 +311,8 @@ export function Seg({ value, options, onChange, label, disabled }: { value: stri
       buttons[next].click();
     }}>
       {options.map((o) => (
-        <button key={o.id} type="button" aria-pressed={o.id === value} disabled={disabled || Boolean(o.off)} tabIndex={o.id === active ? 0 : -1} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" title={shownWhy(o.off)} onClick={() => o.id !== value && onChange(o.id)}>
-          {o.label}
+        <button key={o.id} type="button" role={layout === "radio" ? "radio" : undefined} aria-checked={layout === "radio" ? o.id === value : undefined} aria-pressed={layout === "radio" ? undefined : o.id === value} disabled={disabled || Boolean(o.off)} tabIndex={o.id === active ? 0 : -1} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" title={layout === "radio" ? undefined : shownWhy(o.off)} onClick={() => o.id !== value && onChange(o.id)}>
+          {layout === "radio" ? <span aria-hidden="true" className="sseg-radio-check">{o.id === value ? "✓" : ""}</span> : null}{o.label}{layout === "radio" && o.off ? <small>{o.off}</small> : null}
         </button>
       ))}
     </span>
@@ -294,15 +373,15 @@ export function Tabs({ tabs, value, onChange, label }: { tabs: Opt[]; value: str
 
 export type Tone = "ok" | "warn" | "bad" | "idle";
 /** The status box at the top of a page: a dot, a bold line and what it means. */
-export function Status({ tone = "ok", title, children, action }: { tone?: Tone; title: ReactNode; children?: ReactNode; action?: ReactNode }) {
+export function Status({ tone = "ok", title, help, children, action }: { tone?: Tone; title: ReactNode; help?: string; children?: ReactNode; action?: ReactNode }) {
   const helpKey = useId();
-  const short = useShortDescription(helpKey, typeof title === "string" ? title : "Status", children);
+  useHelpEntry(helpKey, typeof title === "string" ? title : "Status", help);
   return (
     <div className={`status${tone === "bad" ? " bad-k" : ""}`} role="status">
       <span className={`sdot ${tone === "ok" ? "" : tone}`} />
       <div className="grow">
         <b>{title}</b>
-        {short ? <p>{short}</p> : null}
+        {children ? <p>{children}</p> : null}
       </div>
       {action}
     </div>
@@ -313,13 +392,13 @@ export function Status({ tone = "ok", title, children, action }: { tone?: Tone; 
 export function Plist({ children }: { children: ReactNode }) {
   return <div className="rows">{children}</div>;
 }
-export function Prow({ icon, title, sub, children }: { icon?: ReactNode; title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
+export function Prow({ icon, title, sub, help, children }: { icon?: ReactNode; title: ReactNode; sub?: ReactNode; help?: string; children?: ReactNode }) {
   const helpKey = useId();
-  const short = useShortDescription(helpKey, typeof title === "string" ? title : "Row", sub);
+  useHelpEntry(helpKey, typeof title === "string" ? title : "Row", help);
   return (
     <div className="prow" data-row={typeof title === "string" ? title : undefined}>
       {icon}
-      <span className="grow"><b>{title}</b>{short ? <small>{short}</small> : null}</span>
+      <span className="grow"><b>{title}</b>{sub ? <small>{sub}</small> : null}</span>
       {children}
     </div>
   );
@@ -341,8 +420,8 @@ const noteOnly = (children: ReactNode) => typeof children === "string" && isDevN
 export function Hint({ children }: { children: ReactNode }) {
   return noteOnly(children) ? null : <p className="hint">{children}</p>;
 }
-export function Empty({ children }: { children: ReactNode }) {
-  return noteOnly(children) ? null : <p className="empty"><Icon name="inbox" size={22} />{children}</p>;
+export function Empty({ children, ...rest }: { children: ReactNode; "data-row"?: string }) {
+  return noteOnly(children) ? null : <p className="empty" {...rest}><Icon name="inbox" size={22} />{children}</p>;
 }
 /** A plain value on the right of a row (Technical readouts). */
 export function Val({ children, code }: { children: ReactNode; code?: boolean }) {
