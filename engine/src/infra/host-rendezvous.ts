@@ -342,7 +342,7 @@ export async function prepareHostRendezvous(params: {
       retry: { retries: 0 },
       staleRecovery: "remove-if-unchanged",
       payload: () => ({ pid: process.pid, createTime: processStart(process.pid) }),
-      parsePayload: (payload) => payload as { pid: number; createTime: number | null },
+      parsePayload: (payload) => JSON.parse(payload) as { pid: number; createTime: number | null },
       shouldReclaim: ({ payload }) =>
         Boolean(payload && !sameProcess(payload as { pid: number; createTime: number | null })),
       shouldRemoveStaleLock: ({ payload }) =>
