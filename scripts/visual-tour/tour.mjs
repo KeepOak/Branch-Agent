@@ -49,7 +49,9 @@ try {
         await page.getByText('Researcher', { exact: true }).first().waitFor({ state: 'attached', timeout: 30000 });
         if (width === 700 && ['main-chat', 'new-menu', 'settings-general', 'settings-accounts', 'add-claude-account', 'settings-updates', 'group-chat', 'topics'].includes(screen.id)) {
           const list = page.getByTestId('list-toggle');
-          if (await list.getAttribute('aria-pressed') === 'false') await list.click();
+          // At narrow widths the button opens a slide-out drawer. aria-pressed
+          // describes the desktop rail, not the drawer's open state.
+          if (!(await page.locator('.frame').evaluate((node) => node.classList.contains('slide-open')))) await list.click();
         }
         for (const step of screen.steps) await checkedStep(page, step, locate);
         await page.screenshot({ path: resolve(out, `${stem}.png`) });

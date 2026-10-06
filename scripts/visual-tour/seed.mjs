@@ -32,23 +32,19 @@ const notes = [
 const researchKey = `agent:${agents[0]}:visual-research`;
 for (const [index, [suffix, title, message]] of notes.entries()) {
   const agentId = agents[index];
-  call('sessions.create', { key: `agent:${agentId}:${suffix}`, agentId, displayName: title, message });
+  const key = `agent:${agentId}:${suffix}`;
+  call('sessions.create', { key, agentId, displayName: title });
+  // An initial sessions.create message starts an agent run. Inject a fixture
+  // transcript entry instead so screenshots need no model or provider access.
+  call('chat.inject', { sessionKey: key, agentId, message, label: 'Tour fixture' });
 }
 const roomResponse = call('rooms.create', { name: 'Planning circle', members: [
   { kind: 'trunk', id: agents[0], role: 'lead' }, { kind: 'trunk', id: agents[1] },
 ] });
 const roomId = roomResponse.room?.roomId ?? roomResponse.result?.room?.roomId;
 if (!roomId) throw new Error('rooms.create did not return a group');
-call('rooms.send', { roomId, message: 'Let’s review the October plan together.' });
-for (const provider of ['anthropic', 'openai']) {
-  call('models.authSetApiKey', {
-    agentId: agents[0],
-    provider,
-    apiKey: provider === 'openai'
-      ? 'sk-visual-tour-fixture-openai-never-valid'
-      : `visual-tour-fixture-${provider}-never-valid`,
-  });
-}
+// The tour only inspects UI state. Do not install fake credentials: the gateway
+// validates provider keys on write, which can make a real provider request.
 const config = call('config.get');
 if (!config.hash) throw new Error('config.get did not return a revision for fixture setup');
 call('config.patch', {
@@ -56,4 +52,4 @@ call('config.patch', {
   raw: JSON.stringify({ wizard: { lastRunAt: new Date().toISOString(), lastRunCommand: 'window', lastRunMode: 'local' } }),
 });
 writeFileSync(resolve(process.env.VISUAL_OUT ?? 'visual-tour-output', 'fixture.json'), JSON.stringify({ researchKey }));
-console.log(`Seeded ${agents.length} Trunks, ${notes.length} conversations, one group, and two fake accounts.`);
+console.log(`Seeded ${agents.length} Trunks, ${notes.length} conversations, and one group without provider credentials.`);

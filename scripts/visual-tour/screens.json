@@ -7,7 +7,7 @@
   {"id":"running","steps":[{"action":"click","by":"testid","target":"sb-running","expectBy":"testid","expect":"pop-running"}]},
   {"id":"header-more","route":{"kind":"chat","key":"$research"},"steps":[{"action":"click","by":"testid","target":"conversation-menu-button","expectBy":"css","expect":".pop[role=menu]"}]},
   {"id":"composer-plus","route":{"kind":"chat","key":"$research"},"steps":[{"action":"click","by":"testid","target":"plus","expectBy":"css","expect":".c-plus"}]},
-  {"id":"composer-tune","route":{"kind":"chat","key":"$research"},"steps":[{"action":"click","by":"testid","target":"tune-button","expectBy":"css","expect":".pop"}]},
+  {"id":"composer-tune","route":{"kind":"chat","key":"$research"},"steps":[{"action":"click","by":"testid","target":"tune-button","expectBy":"css","expect":".c-pop.c-tune"}]},
   {"id":"composer-plug","route":{"kind":"chat","key":"$research"},"steps":[{"action":"click","by":"testid","target":"plug","expectBy":"css","expect":".c-plug"}]},
   {"id":"settings-general","steps":[{"action":"click","by":"testid","target":"gear","expectBy":"testid","expect":"settings"},{"action":"assert","by":"css","target":".set-item[data-page=general][aria-current=true]"}]},
   {"id":"settings-accounts","steps":[{"action":"click","by":"testid","target":"gear","expectBy":"testid","expect":"settings"},{"action":"click","by":"css","target":".set-item[data-page=accounts]","expectBy":"text","expect":"Add a Claude account"}]},
