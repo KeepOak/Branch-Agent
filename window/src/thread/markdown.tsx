@@ -6,12 +6,15 @@ import type { ReactNode } from "react";
 import { CodeBlock } from "./CodeBlock";
 import { useThread } from "./context";
 import { INLINE_MATH, MathTex, readInlineMath } from "./math";
+import { isImageTarget, isLocalPath, MdImage } from "./MdImage";
 
 export type MdBlock =
   | { type: "p"; text: string }
   | { type: "h"; level: number; text: string }
   | { type: "code"; lang: string; text: string }
-  | { type: "list"; ordered: boolean; items: { text: string; task?: boolean; done?: boolean }[] }
+  /** `start`: an ordered list's first number, so a list the reply split with blank lines or notes keeps counting. */
+  | { type: "list"; ordered: boolean; start: number; items: { text: string; task?: boolean; done?: boolean }[] }
+  | { type: "image"; alt: string; src: string }
   | { type: "quote"; text: string }
   | { type: "table"; head: string[]; rows: string[][] }
   | { type: "hr" }
@@ -39,18 +42,49 @@ function readFence(lines: string[], i: number, out: MdBlock[]): number {
   return j + 1;
 }
 
+const indentOf = (line: string): number => /^\s*/.exec(line)?.[0].length ?? 0;
+
+/**
+ * One list, to its end: items at its own indent; deeper lines (notes, sub-items) stay with the item above; a blank
+ * line between items keeps the list going ("loose" lists, as models write them). Before, each such item started a
+ * new list, so every numbered item read "1.".
+ */
 function readList(lines: string[], i: number, out: MdBlock[]): number {
-  const ordered = /^\s*\d/.test(lines[i]);
+  const first = LIST.exec(lines[i])!;
+  const ordered = /^\d/.test(first[1]);
+  const indent = indentOf(lines[i]);
+  const sameList = (line: string | undefined) => {
+    const m = line === undefined ? null : LIST.exec(line);
+    return Boolean(m && indentOf(line!) <= indent && /^\d/.test(m[1]) === ordered);
+  };
   const items: { text: string; task?: boolean; done?: boolean }[] = [];
   let j = i;
-  while (j < lines.length && LIST.test(lines[j])) {
-    const text = LIST.exec(lines[j])?.[2] ?? "";
-    const task = TASK.exec(text);
-    items.push(task ? { text: task[2], task: true, done: task[1] !== " " } : { text });
-    j += 1;
+  while (j < lines.length) {
+    const line = lines[j];
+    if (sameList(line)) {
+      const text = LIST.exec(line)?.[2] ?? "";
+      const task = TASK.exec(text);
+      items.push(task ? { text: task[2], task: true, done: task[1] !== " " } : { text });
+      j += 1;
+    } else if (line.trim() && indentOf(line) > indent) {
+      items[items.length - 1]!.text += `\n${line.trim()}`;
+      j += 1;
+    } else if (!line.trim()) {
+      let next = j + 1;
+      while (next < lines.length && !lines[next].trim()) next += 1;
+      if (next >= lines.length || !(sameList(lines[next]) || indentOf(lines[next]) > indent)) break;
+      j = next;
+    } else break;
   }
-  out.push({ type: "list", ordered, items });
+  out.push({ type: "list", ordered, start: ordered ? Number.parseInt(first[1], 10) || 1 : 1, items });
   return j;
+}
+
+/** A line that is only a picture: `![alt](src)`, or a link to an image file (a screenshot path a Trunk returns). */
+const IMAGE_LINE = /^\s*(!?)\[([^\]\n]*)\]\(<?([^)\s>]+)>?\)\s*$/;
+function readImageLine(line: string): Extract<MdBlock, { type: "image" }> | null {
+  const m = IMAGE_LINE.exec(line);
+  return m && (m[1] === "!" || isImageTarget(m[3])) ? { type: "image", alt: m[2], src: m[3] } : null;
 }
 
 function readTable(lines: string[], i: number, out: MdBlock[]): number {
@@ -127,6 +161,9 @@ export function parseMarkdown(text: string): MdBlock[] {
     } else if (/^\s*(---|\*\*\*)\s*$/.test(line)) {
       out.push({ type: "hr" });
       i += 1;
+    } else if (readImageLine(line)) {
+      out.push(readImageLine(line)!);
+      i += 1;
     } else if (LIST.test(line)) i = readList(lines, i, out);
     else if (line.includes("|") && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1] ?? "")) i = readTable(lines, i, out);
     else if (line.startsWith(">")) i = readQuote(lines, i, out);
@@ -135,7 +172,7 @@ export function parseMarkdown(text: string): MdBlock[] {
   return out;
 }
 
-const INLINE_BASE = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|_[^_\n]+_|\[[^\]\n]+\]\((?:https?:\/\/|mailto:)[^)\s]+\)|https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/g;
+const INLINE_BASE = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|_[^_\n]+_|!\[[^\]\n]*\]\([^)\s]+\)|\[[^\]\n]+\]\((?:https?:\/\/|mailto:|\/|~[\\/]|[A-Za-z]:[\\/]|file:)[^)\s]*\)|https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/g;
 const INLINE = new RegExp(`${INLINE_BASE.source.slice(0, -1)}|${INLINE_MATH.source.slice(1, -1)})`, "g");
 
 function link(href: string, label: ReactNode, key: number): ReactNode {
@@ -155,8 +192,12 @@ export function inline(text: string, math = false): ReactNode[] {
     if (part.startsWith("`")) return <code key={i}>{part.slice(1, -1)}</code>;
     if (part.startsWith("**")) return <strong key={i}>{part.slice(2, -2)}</strong>;
     if (part.startsWith("*") || part.startsWith("_")) return <em key={i}>{part.slice(1, -1)}</em>;
-    const md = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part);
-    return md ? link(md[2], md[1], i) : link(part, part, i);
+    const md = /^(!?)\[([^\]]*)\]\(([^)]+)\)$/.exec(part);
+    if (!md) return link(part, part, i);
+    if (md[1] === "!" || isImageTarget(md[3])) return <MdImage key={i} src={md[3]} alt={md[2]} />;
+    // A path on the Trunk's computer is not an address this window can open: its name, with the path on hover.
+    if (isLocalPath(md[3])) return <span key={i} className="md-path" title={md[3]}>{md[2]}</span>;
+    return link(md[3], md[2], i);
   });
 }
 
@@ -182,7 +223,7 @@ function ListView({ block }: { block: Extract<MdBlock, { type: "list" }> }) {
       <Lines text={item.text} />
     </li>
   ));
-  return block.ordered ? <ol>{items}</ol> : <ul>{items}</ul>;
+  return block.ordered ? <ol start={block.start !== 1 ? block.start : undefined}>{items}</ol> : <ul>{items}</ul>;
 }
 
 function TableView({ block }: { block: Extract<MdBlock, { type: "table" }> }) {
@@ -225,6 +266,8 @@ function BlockView({ block }: { block: MdBlock }) {
       return <hr />;
     case "math":
       return <MathBlock block={block} />;
+    case "image":
+      return <MdImage src={block.src} alt={block.alt} />;
   }
 }
 
