@@ -1,1 +1,11 @@
-engine:src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.test.tsengine:src/agents/historical-tool-call-args.providers.test.tsengine:src/agents/historical-tool-call-args.test.tsengine:src/agents/model-switch-instructions.integration.test.tsengine:src/agents/model-switch-instructions.test.ts
+engine:packages/agent-core/src/harness/compaction/compaction.test.ts
+engine:src/agents/compaction.harvest.behaviour.test.ts
+engine:src/agents/compaction.identifier-preservation.test.ts
+engine:src/agents/compaction.summarize-fallback.test.ts
+engine:src/agents/compaction.test.ts
+engine:src/agents/embedded-agent-runner/compact.hooks.test.ts
+engine:src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.test.ts
+engine:src/agents/historical-tool-call-args.providers.test.ts
+engine:src/agents/historical-tool-call-args.test.ts
+engine:src/agents/model-switch-instructions.integration.test.ts
+engine:src/agents/model-switch-instructions.test.ts
