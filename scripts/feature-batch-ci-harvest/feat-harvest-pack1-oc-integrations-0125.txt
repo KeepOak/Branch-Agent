@@ -4,6 +4,7 @@ engine:src/cli/qr-cli.test.ts
 engine:src/gateway/node-command-policy.authority.test.ts
 engine:src/gateway/node-command-policy.test.ts
 engine:src/gateway/server-methods/nodes-policy.behaviour.test.ts
+engine:src/gateway/server-methods/nodes.invoke-wake.test.ts
 engine:src/media/qr-terminal.render.test.ts
 engine:src/node-host/gateway-candidate-connection.test.ts
 engine:src/node-host/runner.test.ts
