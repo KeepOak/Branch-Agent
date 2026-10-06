@@ -11,6 +11,9 @@ engine:src/cron/delivery.test.ts
 engine:src/cron/isolated-agent.lane.test.ts
 engine:src/cron/isolated-agent.model-preflight.test.ts
 engine:src/cron/isolated-agent.session-identity.test.ts
+engine:src/cron/maintenance-scheduler.test.ts
+engine:src/cron/maintenance.test.ts
+engine:src/cron/session-reaper.test.ts
 engine:src/cron/webhook-url.test.ts
 engine:src/gateway/hooks-mapping.fanout.test.ts
 engine:src/gateway/hooks-mapping.test.ts
