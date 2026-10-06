@@ -306,7 +306,7 @@ function Devices({ lv }: { lv: number }) {
   );
 }
 
-function About() {
+export function About() {
   return (
     <Sec title="About">
       <Ctl title="Open-source licences" sub="The software Branch is built on, with each licence." off="The list comes with the Branch app on your computer."><Btn sm disabled>Show</Btn></Ctl>
