@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/ai/src/providers/google-shared.test.ts (atlas AGENT-LOOP-0096). Changed for Branch: full call/result ID assertions follow owner R-1633; existing payload assertions retained.
 import {
   ApiError,
   BlockedReason,
@@ -911,7 +912,7 @@ describe("Google message conversion", () => {
     },
   );
 
-  it("strips call and response IDs for google-gemini-cli", () => {
+  it("preserves call and response IDs for google-gemini-cli per R-1633", () => {
     const target = makeGeminiCliModel(conversionModel.id);
     const contents = convertMessagesForTest(target, {
       messages: [
@@ -923,10 +924,12 @@ describe("Google message conversion", () => {
     expect(parts.find((part) => part.functionCall)?.functionCall).toEqual({
       name: "lookup",
       args: {},
+      id: "call_1",
     });
     expect(parts.find((part) => part.functionResponse)?.functionResponse).toEqual({
       name: "lookup",
       response: { output: "ok" },
+      id: "call_1",
     });
   });
 

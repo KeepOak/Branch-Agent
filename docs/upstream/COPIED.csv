@@ -66,3 +66,14 @@ engine/packages/agent-core/src/history-repair/provider-compat/provider-history-c
 engine/packages/agent-core/src/history-repair/provider-compat/provider-history-compat.fixtures.ts,AGENT-LOOP-0095,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,packages/core/__recordings__/core-src-processors-provider-history-compat-native-anthropic-foreign-reasoning.e2e.json,2026-10-06
 engine/packages/agent-core/src/history-repair/provider-compat/provider-history-compat.ts,AGENT-LOOP-0095,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,packages/core/src/processors/provider-history-compat.ts,2026-10-06
 engine/packages/agent-core/src/history-repair/provider-compat/types.ts,AGENT-LOOP-0095,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,packages/core/src/processors/provider-history-compat.ts,2026-10-06
+engine/packages/ai/src/providers/history-hardening.ts,AGENT-LOOP-0096,google-gemini/gemini-cli,c6bccb7ecbf6d8368d995455dd725ed34466faad,packages/core/src/utils/historyHardening.ts,2026-10-06
+engine/packages/ai/src/providers/history-hardening-types.ts,AGENT-LOOP-0096,google-gemini/gemini-cli,c6bccb7ecbf6d8368d995455dd725ed34466faad,packages/core/src/core/agentChatHistory.ts,2026-10-06
+engine/packages/ai/src/providers/history-hardening-crypto.ts,AGENT-LOOP-0096,google-gemini/gemini-cli,c6bccb7ecbf6d8368d995455dd725ed34466faad,packages/core/src/utils/cryptoUtils.ts,2026-10-06
+engine/packages/ai/src/providers/history-hardening.test.ts,AGENT-LOOP-0096,google-gemini/gemini-cli,c6bccb7ecbf6d8368d995455dd725ed34466faad,packages/core/src/utils/historyHardening.test.ts,2026-10-06
+engine/packages/ai/src/providers/google-messages.ts,AGENT-LOOP-0096,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,packages/ai/src/providers/google-messages.ts,2026-10-06
+engine/packages/ai/src/providers/google-shared.ts,AGENT-LOOP-0096,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,packages/ai/src/providers/google-shared.ts,2026-10-06
+engine/packages/ai/src/providers/google-shared.test.ts,AGENT-LOOP-0096,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,packages/ai/src/providers/google-shared.test.ts,2026-10-06
+engine/packages/ai/src/transports.ts,AGENT-LOOP-0096,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,packages/ai/src/transports.ts,2026-10-06
+engine/src/plugin-sdk/provider-transport-runtime.ts,AGENT-LOOP-0096,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/plugin-sdk/provider-transport-runtime.ts,2026-10-06
+engine/extensions/google/transport-stream.ts,AGENT-LOOP-0096,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/google/transport-stream.ts,2026-10-06
+engine/extensions/google/transport-stream.test.ts,AGENT-LOOP-0096,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/google/transport-stream.test.ts,2026-10-06

@@ -1,4 +1,5 @@
-import type { Part } from "@google/genai";
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/ai/src/providers/google-messages.ts (atlas AGENT-LOOP-0096). Changed for Branch: preserve Gemini call IDs/signatures and harden outbound histories per R-1633 and the pinned Gemini CLI.
+import type { Part, Content } from "@google/genai";
 import { isImageWithMediaPayload } from "../media-payload.js";
 import type { ProviderContext, ProviderModel, VideoContent } from "../provider-types.js";
 import {
@@ -8,6 +9,7 @@ import {
 import type { Tool } from "../types.js";
 import { sortPromptCacheToolsByName } from "../utils/prompt-cache-stability.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
+import { hardenHistory } from "./history-hardening.js";
 import { describeToolResultMediaPlaceholder, extractToolResultText } from "./tool-result-text.js";
 
 type GoogleContentPart = Part & Record<string, unknown>;
@@ -82,7 +84,6 @@ export function projectGoogleMessages(params: {
   // Parallel calls need one immediate function-response turn. Gemini < 3 images cannot
   // live inside functionResponse, so hold them until the consecutive result run ends.
   const pendingToolResultImageTurns: GoogleContent[] = [];
-  const sameRouteToolCallIds = new Set<string>();
   let activeToolResultParts: GoogleContentPart[] | undefined;
   const flushToolResultRun = (): void => {
     contents.push(...pendingToolResultImageTurns);
@@ -152,12 +153,9 @@ export function projectGoogleMessages(params: {
             ...(thoughtSignature && { thoughtSignature }),
           });
         } else if (block.type === "toolCall") {
-          if (isSameProviderAndModel && (managed || model.provider !== "google-gemini-cli")) {
-            sameRouteToolCallIds.add(block.id);
-          }
           const args = coerceTransportToolCallArguments(block.arguments);
           const ownSignature = isSameProviderAndModel
-            ? signature(block.thoughtSignature)
+            ? block.thoughtSignature || undefined
             : undefined;
           // Keys serve managed signature recording or a possible earlier-turn replay lookup.
           const replayKey =
@@ -184,10 +182,7 @@ export function projectGoogleMessages(params: {
             functionCall: {
               name: block.name,
               args,
-              ...((managed ? isSameProviderAndModel : sameRouteToolCallIds.has(block.id)) ||
-              requiresGoogleToolCallId(model.id)
-                ? { id: block.id }
-                : {}),
+              id: block.id,
             },
             ...(thoughtSignature && { thoughtSignature }),
           };
@@ -230,14 +225,12 @@ export function projectGoogleMessages(params: {
         },
       }));
 
-      const includeId =
-        sameRouteToolCallIds.has(msg.toolCallId) || requiresGoogleToolCallId(model.id);
       const functionResponsePart: GoogleContentPart = {
         functionResponse: {
           name: msg.toolName,
           response: msg.isError ? { error: responseValue } : { output: responseValue },
           ...(hasImages && modelSupportsMultimodalFunctionResponse && { parts: imageParts }),
-          ...(includeId ? { id: msg.toolCallId } : {}),
+          id: msg.toolCallId,
         },
       };
 
@@ -288,4 +281,26 @@ export function convertGoogleTools(
       })),
     },
   ];
+}
+
+/** Apply the pinned hardener to the final wire history, after native video admission. */
+export function hardenGoogleContents(contents: Content[]): Content[] {
+  const nativeResponses = new Map<object, NonNullable<Part["functionResponse"]>>();
+  for (const content of contents)
+    for (const part of content.parts ?? []) {
+      if (part.functionResponse?.response)
+        nativeResponses.set(part.functionResponse.response, part.functionResponse);
+    }
+  const hardened = hardenHistory(
+    contents.map((content, index) => ({ id: `branch-google-${index}`, content })),
+  );
+  for (const turn of hardened)
+    for (const part of turn.content.parts ?? []) {
+      const response = part.functionResponse;
+      if (!response?.response) continue;
+      const native = nativeResponses.get(response.response);
+      // FunctionResponse.parts is a standard newer SDK field carrying native tool-result media.
+      if (native?.parts) response.parts = native.parts;
+    }
+  return hardened.map((turn) => turn.content);
 }

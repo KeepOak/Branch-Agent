@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/plugin-sdk/provider-transport-runtime.ts (atlas AGENT-LOOP-0096). Changed for Branch: preserve Gemini call IDs/signatures and harden outbound histories per R-1633 and the pinned Gemini CLI.
 /**
  * Runtime SDK subpath for provider transport helpers and stream primitives.
  */
@@ -22,6 +23,7 @@ export {
   consumeGoogleGenerateContentStream,
   convertGoogleTools,
   projectGoogleMessages,
+  hardenGoogleContents,
   requiresGoogleToolCallId,
   type GoogleStreamChunk,
   copyProviderAcceptanceObserver,
