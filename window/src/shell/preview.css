@@ -11,11 +11,9 @@
 .frame.rail .machine > :not(.mico) { display: none; }
 .frame.rail .side-top { justify-content: center; padding: 8px 4px; }
 .frame.rail .side-top .search { display: none; }
-.frame.rail .nav { justify-content: center; padding: 8px; }
-.frame.rail .nav-name, .frame.rail .places-h, .frame.rail .cnt, .frame.rail .lh-row, .frame.rail .row-name, .frame.rail .row-preview, .frame.rail .row-time, .frame.rail .row-acts, .frame.rail .me { display: none; }
+.frame.rail .lh-row, .frame.rail .row-name, .frame.rail .row-preview, .frame.rail .row-time, .frame.rail .row-acts, .frame.rail .me { display: none; }
 .frame.rail .row-open, .frame.rail .row.one .row-open { display: flex; justify-content: center; padding: 8px 0; }
 .frame.rail .owner { justify-content: center; padding: 8px 4px; }
-.frame.rail .places.folded .place-rows { display: flex; }
 .search-scrim { position: fixed; inset: 0; z-index: 110; background: var(--scrim); display: flex; justify-content: center; align-items: flex-start; padding: min(16vh,140px) 16px 24px; }
 .search-dialog { width: min(600px,100%); border-radius: 20px; background: var(--glass2-17); box-shadow: var(--pop); border: 1px solid var(--line); backdrop-filter: var(--glass-blur17); overflow: hidden; }
 .search-dialog-input { display: flex; gap: 12px; align-items: center; padding: 16px 18px; border-bottom: 1px solid var(--line); }

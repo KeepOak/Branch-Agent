@@ -59,10 +59,8 @@
   width: 40px;
   height: 40px;
 }
-.frame.rail .places-h,
 .frame.rail .lh,
 .frame.rail .lh-row,
-.frame.rail .nav-name,
 .frame.rail .row-name,
 .frame.rail .row-time,
 .frame.rail .row-preview,
@@ -76,18 +74,6 @@
 .frame.rail .mdot,
 .frame.rail .list-empty {
   display: none;
-}
-.frame.rail .nav {
-  justify-content: center;
-  padding: 0;
-}
-.frame.rail .nav .cnt {
-  position: absolute;
-  top: 0;
-  right: 6px;
-  min-height: 15px;
-  padding: 2px 4px;
-  font-size: 9.5px;
 }
 .frame.rail .row-open {
   grid-template-columns: 1fr;
