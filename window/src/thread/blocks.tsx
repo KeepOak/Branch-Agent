@@ -123,8 +123,13 @@ function ChangedFiles({ step }: { step: Of<"step"> }) {
   </div>;
 }
 
+const STEP_STATE: Record<Of<"step">["status"], string> = { running: "Running", ok: "Done", failed: "Failed", denied: "Not allowed" };
+
 function StepRow({ step }: { step: Of<"step"> }) {
   const mark = step.status === "ok" ? ICONS.check : step.status === "running" ? ICONS.spin : ICONS.x;
+  const exit = /^Exit \d+/.test(step.detail) ? step.detail : "";
+  // The detail is the output's first lines unless it says how the call ended; don't print the output twice.
+  const detail = !exit && step.detail && !(step.output ?? "").startsWith(step.detail) ? step.detail : "";
   return (
     <li className="step" data-testid="step" data-kind={step.tool} data-status={step.status}>
       <details>
@@ -132,10 +137,15 @@ function StepRow({ step }: { step: Of<"step"> }) {
       <span className={`step-mark ${step.status}`}>
         <Icon d={mark} />
       </span>
-      <span className="step-label">{stepLabel(step)}</span> <code className="step-detail">{step.title}</code>
-      <span className="step-state">{step.status === "running" ? "Running" : step.status === "ok" ? "Done" : "Failed"}{/^Exit \d+/.test(step.detail) ? ` · ${step.detail}` : ""}</span>
+      <span className="step-label">{stepLabel(step)}</span>{step.title ? <> <code className="step-detail">{step.title}</code></> : null}
+      <span className="step-state">{STEP_STATE[step.status]}{exit ? ` · ${exit}` : ""}</span>
       </summary>
-      <div className="step-body"><span>{step.detail}</span><ChangedFiles step={step} /><StepOutput step={step} /></div>
+      <div className="step-body">
+        {step.input ? <pre className="step-input" data-testid="step-input">{step.input}</pre> : null}
+        {detail ? <span>{detail}</span> : null}
+        <ChangedFiles step={step} />
+        <StepOutput step={step} />
+      </div>
       </details>
     </li>
   );

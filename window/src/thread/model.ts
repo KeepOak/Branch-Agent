@@ -51,13 +51,14 @@ export type Attachment = {
 
 export type FileChange = { path: string; added: number; removed: number; diff?: string };
 const fullOutputs = new Map<string, string>();
-/** Keep large command output outside React snapshots until someone opens it. */
+/** Keep large command output outside React snapshots until someone opens it. The block keeps the last 2,000
+ *  characters, so the default view shows the real final lines (where failures and summaries are). */
 export function keepOutput(key: string, value: string): string {
   if (value.length <= 2_000) { fullOutputs.delete(key); return value; }
   fullOutputs.delete(key);
   fullOutputs.set(key, value);
   if (fullOutputs.size > 100) fullOutputs.delete(fullOutputs.keys().next().value!);
-  return `${value.slice(0, 2_000)}\n…`;
+  return `…\n${value.slice(-2_000)}`;
 }
 export function fullOutput(key: string): string | undefined { return fullOutputs.get(key); }
 export function readFileChanges(args: unknown): FileChange[] {
@@ -76,7 +77,7 @@ export type Block =
   | { kind: "preamble"; key: string; text: string }
   | { kind: "plan"; key: string; steps: { step: string; status: "pending" | "in_progress" | "completed" }[] }
   | { kind: "usage"; key: string; input: number; output: number; total: number }
-  | { kind: "step"; key: string; outputKey?: string; tool: string; title: string; detail: string; status: StepStatus; output?: string; changes?: FileChange[]; browser?: BrowserPresentation; at?: number }
+  | { kind: "step"; key: string; outputKey?: string; tool: string; title: string; detail: string; status: StepStatus; input?: string; output?: string; changes?: FileChange[]; browser?: BrowserPresentation; at?: number }
   | { kind: "approval"; key: string; approval: Approval }
   | { kind: "done"; key: string; runId: string; durationMs?: number }
   | { kind: "error"; key: string; runId?: string; message: string }
@@ -93,7 +94,7 @@ export function recordedAt(value: unknown): { at?: number } {
 }
 
 /** One line that says what a tool call does, for the step line. */
-export function describeToolCall(name: string, args: unknown): string {
+export function describeToolCall(_name: string, args: unknown): string {
   const a = record(args);
   const nested = record(a.args);
   const command = str(a.command) || str(nested.command);
@@ -104,7 +105,15 @@ export function describeToolCall(name: string, args: unknown): string {
   const changes = Array.isArray(a.changes) ? a.changes.map((change) => str(record(change).path)).filter(Boolean) : [];
   if (changes.length) return changes.join(", ");
   const query = str(a.query) || str(a.url) || str(a.task) || str(a.label);
-  return path || query || (Object.keys(a).length ? JSON.stringify(a) : name);
+  const first = Object.values(a).find((value): value is string => typeof value === "string" && value.trim().length > 0 && value.length <= 120);
+  return path || query || first || "";
+}
+
+/** A tool call's whole input, for the step's expanded view, when the one-line title can't carry it. */
+export function toolInput(args: unknown): string | undefined {
+  const a = record(args);
+  if (!Object.keys(a).length || str(a.command) || str(record(a.args).command) || Array.isArray(a.changes)) return undefined;
+  return JSON.stringify(a, null, 2);
 }
 
 /** Reads whether a tool result means "the person said no". */
@@ -158,7 +167,7 @@ function addThinking(b: Builder, event: RunEvent): void {
 function startStep(b: Builder, id: string, name: string, args: unknown, at: number, runId: string): void {
   b.text = null;
   b.thinking = null;
-  b.blocks.push({ kind: "step", key: id, outputKey: `${runId}:${id}`, tool: name, title: describeToolCall(name, args), detail: "", status: "running", changes: readFileChanges(args), ...recordedAt(at) });
+  b.blocks.push({ kind: "step", key: id, outputKey: `${runId}:${id}`, tool: name, title: describeToolCall(name, args), detail: "", status: "running", input: toolInput(args), changes: readFileChanges(args), ...recordedAt(at) });
   b.steps.set(id, b.blocks.length - 1);
 }
 
@@ -174,7 +183,7 @@ function onTool(b: Builder, event: RunEvent): void {
     else {
       const at = b.steps.get(id)!;
       const step = b.blocks[at] as Extract<Block, { kind: "step" }>;
-      b.blocks[at] = { ...step, tool: name || step.tool, title: describeToolCall(name, d.args), changes: readFileChanges(d.args) };
+      b.blocks[at] = { ...step, tool: name || step.tool, title: describeToolCall(name, d.args) || step.title, input: toolInput(d.args), changes: readFileChanges(d.args) };
     }
     return;
   }
@@ -228,9 +237,11 @@ function onItem(b: Builder, event: RunEvent): void {
   const position = b.steps.get(id)!;
   const step = b.blocks[position] as Extract<Block, { kind: "step" }>;
   const meta = str(d.meta);
-  const title = meta || (step.title === step.tool ? str(d.title) || name : step.title);
+  const title = meta || step.title;
   const status: StepStatus = d.status === "failed" || d.status === "blocked" ? "failed" : d.phase === "end" ? "ok" : "running";
-  b.blocks[position] = { ...step, tool: name, title, status: step.status === "failed" ? "failed" : status, ...recordedAt(event.ts) };
+  // A result already said "failed" or "denied" (not allowed); the item's own end must not turn it back into "ok".
+  const settled = step.status === "failed" || step.status === "denied";
+  b.blocks[position] = { ...step, tool: name, title, status: settled ? step.status : status, ...recordedAt(event.ts) };
 }
 
 function onPlan(b: Builder, event: RunEvent): void {
@@ -247,6 +258,9 @@ function onPlan(b: Builder, event: RunEvent): void {
   } else b.blocks[b.plan] = block;
 }
 
+/** Result fields that describe how a call ended, not what it printed. */
+const RESULT_METADATA = new Set(["status", "exitCode", "exit_code", "durationMs", "duration", "isError", "success", "output"]);
+
 /** The visible text of a tool result: its text blocks, joined. */
 export function resultText(result: unknown): string {
   if (typeof result === "string") return result;
@@ -262,7 +276,8 @@ export function resultText(result: unknown): string {
       .map((c) => str(record(c).text))
       .join("\n");
   }
-  return Object.keys(value).length ? JSON.stringify(value, null, 2) : "";
+  const shown = Object.keys(value).filter((key) => !RESULT_METADATA.has(key));
+  return shown.length ? JSON.stringify(value, null, 2) : "";
 }
 
 function onLifecycle(b: Builder, event: RunEvent, approvals: ReadonlyMap<string, Approval>): void {

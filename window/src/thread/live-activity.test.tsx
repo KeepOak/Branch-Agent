@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import type { RunEvent } from "../connect/stream-order";
 import type { WindowEngine } from "../connect/engine";
+import { stepLabel, stepsSummary } from "./format";
 import { historyToBlocks } from "./history";
 import { fullOutput, projectRun, type Block } from "./model";
 import { Thread } from "./Thread";
-import { ConversationRow } from "../shell/ConversationRow";
+import { ConversationRow, type RowExtras } from "../shell/ConversationRow";
 import type { Conversation } from "../connect/conversations";
 import { SaplingSession } from "../connect/session";
 import fixture from "./__fixtures__/codex-live-activity.json";
@@ -136,4 +137,134 @@ it("does not draw an empty output code block for a completed step", async () => 
   await act(async () => { (step.querySelector("details") as HTMLDetailsElement).open = true; });
   expect(step.querySelector("pre")).toBeNull();
   expect(step.textContent).toContain("No output · it finished.");
+});
+
+const stepOf = (patch: Partial<Extract<Block, { kind: "step" }>>): Extract<Block, { kind: "step" }> =>
+  ({ kind: "step", key: "s", tool: "exec", title: "", detail: "", status: "ok", ...patch });
+
+it("labels tool steps in plain words, never by their raw tool id", () => {
+  const changes = [{ path: "a.ts", added: 1, removed: 0 }, { path: "b.ts", added: 2, removed: 1 }, { path: "c.ts", added: 3, removed: 0 }];
+  expect(stepLabel(stepOf({ tool: "apply_patch", changes }))).toBe("Edited 3 files");
+  expect(stepLabel(stepOf({ tool: "apply_patch", changes, status: "running" }))).toBe("Editing 3 files");
+  expect(stepLabel(stepOf({ tool: "edit", changes: [] }))).toBe("Edited a file");
+  expect(stepLabel(stepOf({ tool: "bash", status: "running" }))).toBe("Running a command");
+  expect(stepLabel(stepOf({ tool: "command" }))).toBe("Ran a command");
+  expect(stepLabel(stepOf({ tool: "web_search" }))).toBe("Searched the web");
+  expect(stepLabel(stepOf({ tool: "mcp__github__create_issue", status: "running" }))).toBe("Using create issue");
+  expect(stepLabel(stepOf({ tool: "exec", status: "denied" }))).toBe("Command not run");
+  expect(stepsSummary([stepOf({ tool: "bash" }), stepOf({ key: "p", tool: "apply_patch", changes })])).toBe("Ran a command and edited 3 files · 2 steps");
+  for (const tool of ["apply_patch", "web_search", "memory_search", "sessions_spawn", "mcp__x__do_it"]) {
+    expect(stepLabel(stepOf({ tool }))).not.toContain(tool);
+  }
+});
+
+it("shows the Codex patch as 'Edited 2 files' with the file list, not 'Used apply_patch'", async () => {
+  const container = await render(projectRun(events, new Map()));
+  const patch = container.querySelector('[data-testid="step"][data-kind="apply_patch"]') as HTMLElement;
+  expect(patch.querySelector(".step-label")?.textContent).toBe("Edited 2 files");
+  expect(patch.querySelector(".step-detail")?.textContent).toBe("window/src/thread/model.ts, window/src/thread/blocks.tsx");
+  expect(container.textContent).not.toMatch(/Used apply_patch|Using apply_patch|Used command/);
+});
+
+it("updates the steps list as the run's events stream in", async () => {
+  vi.useFakeTimers();
+  try {
+    const session = new SaplingSession("ws://127.0.0.1:19641", undefined);
+    const internal = session as unknown as {
+      snapshot: { sessionKey: string; live: Block[]; liveStartedAt: number | null };
+      onEvent: (event: { event: string; payload: unknown }) => void;
+    };
+    internal.snapshot.sessionKey = "agent:main:main";
+    const labels = () => internal.snapshot.live.filter((b): b is Extract<Block, { kind: "step" }> => b.kind === "step").map((b) => stepLabel(b));
+    const seen: string[][] = [];
+    for (const event of events) {
+      internal.onEvent({ event: "agent", payload: { ...event, sessionKey: "agent:main:main" } });
+      vi.advanceTimersByTime(150);
+      const now = labels();
+      if (JSON.stringify(now) !== JSON.stringify(seen.at(-1) ?? [])) seen.push(now);
+    }
+    expect(internal.snapshot.liveStartedAt).toBe(1000);
+    expect(seen).toEqual([
+      ["Running a command"],
+      ["Ran a command"],
+      ["Ran a command", "Editing a file"],
+      ["Ran a command", "Editing 2 files"],
+      ["Ran a command", "Edited 2 files"],
+    ]);
+    session.stop();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("keeps a denied step denied when the item's own end arrives after the result", () => {
+  const blocks = projectRun([
+    { runId: "d", seq: 1, stream: "item", ts: 1, data: { itemId: "c1", toolCallId: "c1", kind: "command", phase: "start", name: "bash", meta: "rm -rf build" } },
+    { runId: "d", seq: 2, stream: "tool", ts: 2, data: { toolCallId: "c1", name: "bash", phase: "result", result: { content: [{ type: "text", text: "Exec denied (user said no)" }] } } },
+    { runId: "d", seq: 3, stream: "item", ts: 3, data: { itemId: "c1", toolCallId: "c1", kind: "command", phase: "end", name: "bash", status: "completed" } },
+  ], new Map());
+  const step = blocks.find((b) => b.kind === "step");
+  expect(step).toMatchObject({ status: "denied" });
+  if (step?.kind === "step") expect(stepLabel(step)).toBe("Command not run");
+});
+
+it("shows 'No output' for a command whose result has only its exit status", async () => {
+  const blocks = projectRun([
+    { runId: "m", seq: 1, stream: "tool", ts: 1, data: { phase: "start", name: "bash", toolCallId: "m1", args: { command: "touch done" } } },
+    { runId: "m", seq: 2, stream: "tool", ts: 2, data: { phase: "result", name: "bash", toolCallId: "m1", result: { status: "completed", exitCode: 0 } } },
+  ], new Map());
+  const container = await render(blocks);
+  const step = container.querySelector('[data-testid="step"]') as HTMLElement;
+  await act(async () => { (step.querySelector("details") as HTMLDetailsElement).open = true; });
+  expect(step.querySelector("pre")).toBeNull();
+  expect(step.textContent).toContain("No output · it finished.");
+  expect(step.textContent).not.toContain("exitCode");
+});
+
+it("shows a tool's input when expanded, and no raw JSON as its title", async () => {
+  const blocks = projectRun([
+    { runId: "i", seq: 1, stream: "tool", ts: 1, data: { phase: "start", name: "github_publish", toolCallId: "g1", args: { repo: "KeepOak/x", draft: true } } },
+  ], new Map());
+  const container = await render(blocks);
+  const step = container.querySelector('[data-testid="step"]') as HTMLElement;
+  expect(step.querySelector(".step-label")?.textContent).toBe("Using github publish");
+  expect(step.querySelector(".step-detail")?.textContent).toBe("KeepOak/x");
+  expect(step.querySelector('[data-testid="step-input"]')?.textContent).toContain('"draft": true');
+});
+
+it("shows the real last lines of a long output by default", async () => {
+  const output = Array.from({ length: 400 }, (_, i) => `line ${i + 1}`).join("\n");
+  const blocks = projectRun([
+    { runId: "t", seq: 1, stream: "tool", ts: 1, data: { phase: "start", name: "bash", toolCallId: "t1", args: { command: "build" } } },
+    { runId: "t", seq: 2, stream: "tool", ts: 2, data: { phase: "result", name: "bash", toolCallId: "t1", result: { exitCode: 1, output } } },
+  ], new Map());
+  const container = await render(blocks);
+  const step = container.querySelector('[data-testid="step"]') as HTMLElement;
+  await act(async () => { (step.querySelector("details") as HTMLDetailsElement).open = true; });
+  expect(step.querySelector(".step-output pre")?.textContent?.split("\n").at(-1)).toBe("line 400");
+});
+
+it("keeps whole tool output in complete transcript exports", () => {
+  const output = "x".repeat(5_000);
+  const messages = [
+    { role: "assistant", timestamp: 1, __branch: { runId: "e" }, content: [{ type: "toolCall", id: "c", name: "bash", arguments: { command: "cat big" } }] },
+    { role: "toolResult", toolCallId: "c", timestamp: 2, content: [{ type: "text", text: output }] },
+  ];
+  const whole = historyToBlocks(messages, [], "agent:main:main", null, { wholeOutput: true }).find((b) => b.kind === "step");
+  const shown = historyToBlocks(messages, [], "agent:main:main", null).find((b) => b.kind === "step");
+  expect(whole?.kind === "step" ? whole.output : undefined).toBe(output);
+  expect(shown?.kind === "step" ? (shown.output?.length ?? 0) : 0).toBeLessThan(2_100);
+});
+
+it("follows the list settings for a working Trunk row", async () => {
+  const row: Conversation = {
+    key: "agent:main:main", title: "Builder", isMain: true, pinned: false, archived: false, unread: false,
+    snoozedUntil: null, createdAt: 0, updatedAt: 0, preview: "Last reply", working: true, kind: "trunk",
+    system: false, automation: false, totalTokens: 0, contextTokens: 0, headline: "Running pnpm -C window typecheck",
+  };
+  const extras = { headlines: false, liveInList: true } as RowExtras;
+  const container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+  await act(async () => root!.render(<ConversationRow row={row} current time="now" showPreview={false} state={{ working: true, waiting: false }} trunkName="Builder" extras={extras} onOpen={() => {}} onMenu={() => {}} />));
+  expect(container.querySelector(".row-preview")?.textContent).toContain("Last reply");
+  expect(container.querySelector(".row-preview")?.textContent).not.toContain("typecheck");
 });

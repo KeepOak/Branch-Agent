@@ -5,6 +5,7 @@ import {
   describeToolCall,
   isDeniedResultText,
   keepOutput,
+  toolInput,
   resultText,
   recordedAt,
   readFileChanges,
@@ -33,6 +34,8 @@ type Builder = {
   runStart: number;
   runFinished: boolean;
   lastTs: number;
+  /** Keep every tool result whole (complete transcript exports); the thread keeps a tail of long ones. */
+  wholeOutput: boolean;
 };
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
@@ -153,7 +156,7 @@ function onAssistantPart(b: Builder, part: unknown, key: string, m: Message): vo
   } else if (p.type === "toolCall") {
     const id = str(p.id) || key;
     const title = describeToolCall(str(p.name), p.arguments);
-    b.blocks.push({ kind: "step", key: id, outputKey: `${b.runId ?? key}:${id}`, tool: str(p.name), title, detail: "", status: "ok", changes: readFileChanges(p.arguments), ...recordedAt(m.timestamp) });
+    b.blocks.push({ kind: "step", key: id, outputKey: `${b.runId ?? key}:${id}`, tool: str(p.name), title, detail: "", status: "ok", input: toolInput(p.arguments), changes: readFileChanges(p.arguments), ...recordedAt(m.timestamp) });
     b.steps.set(id, { at: b.blocks.length - 1, command: str(rec(p.arguments).command), ts: num(m.timestamp) });
   } else if (typeof part === "string" && part.trim()) {
     b.blocks.push({ kind: "text", key, text: part, streaming: false, meta: readMeta(m) });
@@ -202,7 +205,7 @@ function onToolResult(b: Builder, m: Message, records: readonly ApprovalRecord[]
   const text = resultText(m);
   const status: StepStatus = isDeniedResultText(text) ? "denied" : m.isError ? "failed" : "ok";
   const block = b.blocks[step.at] as Extract<Block, { kind: "step" }>;
-  b.blocks[step.at] = { ...block, status, detail: text.slice(0, 400), output: keepOutput(block.outputKey ?? block.key, text), browser: status === "ok" ? readBrowserPresentation(m, block.tool, block.key) : undefined, ...recordedAt(m.timestamp) };
+  b.blocks[step.at] = { ...block, status, detail: text.slice(0, 400), output: b.wholeOutput ? text : keepOutput(block.outputKey ?? block.key, text), browser: status === "ok" ? readBrowserPresentation(m, block.tool, block.key) : undefined, ...recordedAt(m.timestamp) };
   const deniedId = /gateway id=([0-9a-f-]{8,})/i.exec(text)?.[1];
   const found = findApproval(records, sessionKey, step, num(m.timestamp));
   const id = deniedId ?? found?.id;
@@ -268,8 +271,9 @@ export function historyToBlocks(
   records: readonly ApprovalRecord[],
   sessionKey: string,
   inFlightRunId: string | null,
+  options: { wholeOutput?: boolean } = {},
 ): Block[] {
-  const b: Builder = { blocks: [], steps: new Map(), runId: null, runStart: 0, runFinished: false, lastTs: 0 };
+  const b: Builder = { blocks: [], steps: new Map(), runId: null, runStart: 0, runFinished: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
   for (const [index, raw] of messages.entries()) {
     const m = rec(raw);
     const runId = str(rec(m.__branch).runId) || null;

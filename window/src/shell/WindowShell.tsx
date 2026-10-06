@@ -1062,6 +1062,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           }
           name={trunkName(openRow?.agentId)}
           showThinking={conversationMenu.showThinking}
+          liveStartedAt={s.liveStartedAt}
           room={room.thread}
           history={s.history}
           live={s.live}

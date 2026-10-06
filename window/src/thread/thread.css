@@ -399,6 +399,8 @@
 .thread .step > details > summary .step-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thread .step > details > summary .step-state { margin-left: auto; flex: none; color: var(--ink-3); font-size: 11px; }
 .thread .step > details > .step-body { margin: 6px 0 0 26px; }
+.thread .step > details > summary .step-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread .step-input { margin: 0 0 4px; padding: 8px 10px; max-height: 160px; overflow: auto; border-radius: 10px; background: var(--fill); font: 12px/1.45 var(--mono); color: var(--ink-3); white-space: pre-wrap; overflow-wrap: anywhere; }
 .thread .changed-files { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 12px; }
 .thread .changed-files details { padding: 4px 8px; border-radius: 6px; background: var(--fill); }
 .thread .changed-files summary { cursor: pointer; overflow-wrap: anywhere; }

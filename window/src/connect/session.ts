@@ -21,6 +21,9 @@ export type SessionSnapshot = {
   live: Block[];
   pendingUser: string | null;
   liveRunId: string | null;
+  /** When the live run started (engine time), so "Working · 3m 12s" counts from the real start, not from when this
+   *  window opened it. */
+  liveStartedAt: number | null;
   doneAt: number | null;
   lastActivityAt: number | null;
   error: string | null;
@@ -28,6 +31,9 @@ export type SessionSnapshot = {
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
+/** A run's start time, as the engine reports it on its in-flight snapshot or lifecycle start. */
+const runStart = (v: Record<string, unknown>): number | null =>
+  typeof v.startedAt === "number" && Number.isFinite(v.startedAt) && v.startedAt > 0 ? v.startedAt : null;
 
 export type GatewayEventListener = (event: string, payload: unknown) => void;
 
@@ -63,6 +69,7 @@ export class SaplingSession {
       live: [],
       pendingUser: null,
       liveRunId: null,
+      liveStartedAt: null,
       doneAt: null,
       lastActivityAt: null,
       error: null,
@@ -135,7 +142,7 @@ export class SaplingSession {
     if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
     this.liveRefreshTimer = null;
     this.approvals.clear();
-    this.set({ sessionKey: key, history: [], live: [], pendingUser: null, liveRunId: null, doneAt: null, lastActivityAt: null, error: null });
+    this.set({ sessionKey: key, history: [], live: [], pendingUser: null, liveRunId: null, liveStartedAt: null, doneAt: null, lastActivityAt: null, error: null });
     try {
       await this.backfillApprovals();
       await this.loadHistory();
@@ -177,7 +184,7 @@ export class SaplingSession {
     // window mirrored are gone with the old one. Clear them; chat.history's inFlightRun says what still runs.
     this.runs.clear();
     this.approvals.clear();
-    this.set({ sessionKey, mainKey, live: [], liveRunId: null, pendingUser: null });
+    this.set({ sessionKey, mainKey, live: [], liveRunId: null, liveStartedAt: null, pendingUser: null });
     void this.bootstrap(status, sessionKey);
   }
 
@@ -235,7 +242,7 @@ export class SaplingSession {
     this.set({
       history: blocks,
       lastActivityAt: typeof info.lastActivityAt === "number" ? info.lastActivityAt : null,
-      ...(inFlightRunId ? { liveRunId: inFlightRunId } : {}),
+      ...(inFlightRunId ? { liveRunId: inFlightRunId, liveStartedAt: runStart(inFlight) } : {}),
     });
     if (inFlightRunId) {
       this.adoptInFlight(inFlightRunId, str(inFlight.text), inFlight);
@@ -297,7 +304,7 @@ export class SaplingSession {
     }
     if (this.runs.accept(event) === "stale") return;
     if (!this.snapshot.liveRunId) {
-      this.set({ liveRunId: event.runId, doneAt: null });
+      this.set({ liveRunId: event.runId, liveStartedAt: runStart(event.data) ?? (event.ts || Date.now()), doneAt: null });
     }
     if (event.runId === this.snapshot.liveRunId) {
       if (event.stream === "lifecycle" && (event.data.phase === "end" || event.data.phase === "error")) this.refreshLive();
@@ -373,7 +380,7 @@ export class SaplingSession {
       this.runs.drop(runId);
       const wasLive = this.snapshot.liveRunId === runId;
       this.set({
-        ...(wasLive ? { liveRunId: null, live: [], pendingUser: null, doneAt: Date.now() } : {}),
+        ...(wasLive ? { liveRunId: null, liveStartedAt: null, live: [], pendingUser: null, doneAt: Date.now() } : {}),
       });
     }
   }
@@ -395,7 +402,7 @@ export class SaplingSession {
       );
       const runId = str(result.runId);
       if (runId && !this.finished.has(runId)) {
-        this.set({ liveRunId: runId });
+        this.set({ liveRunId: runId, liveStartedAt: this.snapshot.liveRunId === runId ? this.snapshot.liveStartedAt : Date.now() });
         this.refreshLive();
       }
     } catch (error) {

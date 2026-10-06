@@ -45,6 +45,8 @@ type Props = {
   live: Block[];
   pendingUser: string | null;
   running: boolean;
+  /** When the live run started (engine time); the "Working" clock counts from it. */
+  liveStartedAt?: number | null;
   showThinking?: boolean;
   onAnswer: (id: string, decision: "allow-once" | "deny") => void;
   /** The shared engine handle (connect/engine.ts); without it the message actions stay greyed with their reason. */
@@ -185,7 +187,7 @@ export function Thread(props: Props) {
       .find((node) => node.dataset.testid === `topic-card-${props.focusTopic?.key}`);
     target?.scrollIntoView({ block: "end" });
   }, [props.focusTopic, props.topicUpdates]);
-  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false };
+  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false, liveStartedAt: props.liveStartedAt ?? null };
   const recoveryEntryId = history.findLast((block) =>
     (block.kind === "user" || block.kind === "text") && Boolean(block.meta?.entryId),
   );
@@ -295,6 +297,7 @@ type View = {
   /** The last message you sent in the history; the replies after it belong to the turn that is running. */
   lastUser: number;
   showThinking: boolean;
+  liveStartedAt: number | null;
 };
 
 /** A day stamp over the first message of each day that has a recorded time (§4.2.2 Stamp). */
@@ -331,14 +334,21 @@ function keyOf(item: Item): string {
 function LiveRun({ view, offset }: { view: View; offset: number }) {
   const { live, name } = view;
   const [elapsed, setElapsed] = useState(0);
-  useEffect(() => { const started = Date.now(); const timer = setInterval(() => setElapsed(Date.now() - started), 1000); return () => clearInterval(timer); }, []);
+  const startedAt = view.liveStartedAt;
+  useEffect(() => {
+    const started = startedAt ?? Date.now();
+    const tick = () => setElapsed(Math.max(0, Date.now() - started));
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [startedAt]);
   const usage = live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage");
   const waiting = live.some((b) => b.kind === "approval" && b.approval.state === "pending");
   const status = live.find((b): b is Extract<Block, { kind: "status" }> => b.kind === "status") ?? null;
   const typing = !waiting && !live.some((b) => b.kind === "text" || (view.showThinking && b.kind === "thinking") || b.kind === "step" || b.kind === "preamble" || b.kind === "plan");
   return (
     <div className="live-run" data-streaming="true">
-      <header className="live-run-head">Working · {formatDuration(elapsed)}{usage?.total ? ` · ${usage.total.toLocaleString()} tokens` : ""}</header>
+      <header className="live-run-head">Working{elapsed >= 1000 ? ` · ${formatDuration(elapsed)}` : ""}{usage?.total ? ` · ${usage.total.toLocaleString()} tokens` : ""}</header>
       {layout(live.filter((b) => b.kind !== "status"), offset).map((item) => <ItemView key={keyOf(item)} item={item} view={view} live />)}
       {typing ? <Typing name={name} status={status} /> : null}
     </div>
