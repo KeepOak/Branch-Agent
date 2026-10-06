@@ -16,9 +16,10 @@ import {
 import { resolveGatewayLockDir } from "../config/paths.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { resolveIdentityPathViaExistingAncestorSync } from "../infra/boundary-path.js";
-import { formatErrorMessage, isMissingPathError } from "../infra/errors.js";
+import { formatErrorMessage, hasErrnoCode, isMissingPathError } from "../infra/errors.js";
 import { movePathToTrash } from "../infra/fs-safe.js";
 import { acquireGatewayLock, GatewayLockError } from "../infra/gateway-lock.js";
+import { retryAsync } from "../infra/retry.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { prepareBranchStateDatabaseRemoval } from "../state/branch-state-db-cache.js";
 import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js";
@@ -82,9 +83,28 @@ export async function moveToTrashResult(
       [sourcePath],
       isSymbolicLink ? await fs.realpath(sourcePath).catch(() => undefined) : undefined,
     );
-    // Preparation can outlive its owner; revalidate immediately before Trash dispatch.
-    assertCurrent?.();
-    await movePathToTrash(sourcePath, { allowedRoots });
+    let trashFailure: unknown;
+    await retryAsync(
+      async () => {
+        trashFailure = undefined;
+        // Preparation can outlive its owner; revalidate before each Trash dispatch.
+        assertCurrent?.();
+        try {
+          await movePathToTrash(sourcePath, { allowedRoots });
+        } catch (error) {
+          trashFailure = error;
+          throw error;
+        }
+      },
+      {
+        attempts: process.platform === "win32" ? 3 : 1,
+        minDelayMs: 250,
+        maxDelayMs: 5_000,
+        shouldRetry: (error) =>
+          error === trashFailure &&
+          ["EPERM", "EBUSY", "EACCES"].some((code) => hasErrnoCode(error, code)),
+      },
+    );
     runtime.log(`Moved to Trash: ${shortenHomePath(pathname)}`);
     return { removed: { path: pathname, method: "trash" } };
   } catch (error) {

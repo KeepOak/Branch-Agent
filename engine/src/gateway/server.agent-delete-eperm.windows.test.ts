@@ -52,7 +52,7 @@ it.skipIf(process.platform !== "win32")(
         role: "operator",
         scopes: ["operator.admin", "operator.read", "operator.write"],
       });
-      const agentDir = resolveAgentDir(loadConfig(), agentId);
+      const agentDir = await fs.realpath(resolveAgentDir(loadConfig(), agentId));
       await client.request("sessions.create", {
         agentId,
         key: `agent:${agentId}:main`,
@@ -80,8 +80,8 @@ it.skipIf(process.platform !== "win32")(
           survivingDatabaseFilePaths,
         ),
       }).toEqual({ registeredOwner: agentId, claimedBySurvivor: false });
-      expect(deleted.removed).toContainEqual({ path: agentDir, method: "trash" });
       expect(deleted.failed).toEqual([]);
+      expect(deleted.removed).toContainEqual({ path: agentDir, method: "trash" });
       await expect(fs.stat(agentDir)).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       if (client) {

@@ -1,1 +1,2 @@
 engine:src/gateway/server.agent-delete-eperm.windows.test.ts
+engine:src/gateway/server-methods/agents-mutate.test.ts

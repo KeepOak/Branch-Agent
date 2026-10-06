@@ -2,6 +2,7 @@ import type { AgentsDeleteResult } from "../../packages/gateway-protocol/src/sch
 import {
   AgentSharedStoreOwnerError,
   assertAgentSessionStoreDeletionSafe,
+  closeAgentDeleteDirectoryHandles,
   isPathOwnedBySurvivingAgent,
   prepareAgentDeleteDatabases,
   readAgentDeleteDatabaseRegistry,
@@ -373,6 +374,9 @@ export async function agentsDeleteCommand(
     const purgeFailed = await purgeAgentSessionStoreEntries(cfg, agentId, {
       runDatabaseCleanup: deletion.runDatabaseCleanup,
     });
+    if (deleteFiles && !purgeFailed) {
+      await closeAgentDeleteDirectoryHandles(agentDir);
+    }
     deletion.assertCurrent();
     // Directory ownership is process-local; resolve survivors before the destructive recheck.
     for (const survivingAgentId of listAgentIds(result.config)) {
