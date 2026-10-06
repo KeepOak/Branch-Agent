@@ -147,6 +147,9 @@ export function formatGatewayChannelsStatusLines(payload: Record<string, unknown
       if (typeof account.healthState === "string" && account.healthState) {
         bits.push(`health:${account.healthState}`);
       }
+      if (account.needsAttention === true) {
+        bits.push("needs attention (retries continue)");
+      }
       appendBaseUrlBit(bits, account);
       const probe = account.probe as { ok?: boolean } | undefined;
       if (probe && typeof probe.ok === "boolean") {
