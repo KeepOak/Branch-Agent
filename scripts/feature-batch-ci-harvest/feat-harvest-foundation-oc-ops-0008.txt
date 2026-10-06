@@ -8,6 +8,9 @@ engine:src/gateway/channel-health-monitor.clock-rollback.test.ts
 engine:src/gateway/channel-health-monitor.test.ts
 engine:src/gateway/channel-health-policy.test.ts
 engine:src/gateway/host-thaw-recovery.test.ts
+engine:src/gateway/server-restart-sentinel.media-binding.test.ts
+engine:src/gateway/server-restart-sentinel.state-context.test.ts
+engine:src/gateway/server-restart-sentinel.test.ts
 engine:src/gateway/worker-environments/placement-idle-sweep.test.ts
 engine:src/infra/gateway-suspend-coordinator.handoff.test.ts
 engine:src/infra/gateway-suspend-coordinator.test.ts
