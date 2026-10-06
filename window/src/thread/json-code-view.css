@@ -1,0 +1,13 @@
+.json-code-modes{display:inline-flex;gap:2px;padding:2px;border:1px solid var(--line);border-radius:8px;font-size:11.5px}
+.json-code-modes button{border:0;border-radius:6px;background:transparent;color:var(--ink-3);padding:3px 8px;cursor:pointer}
+.json-code-modes button[aria-pressed=true]{background:var(--paper);color:var(--ink)}
+.json-code-modes button:disabled{cursor:default;opacity:.5}
+.json-code-tree{padding:12px;font:12.5px/1.55 var(--mono);overflow:auto}
+.json-code-node summary{cursor:pointer;color:var(--ink-3)}
+.json-code-children{padding-left:18px;border-left:1px solid var(--line)}
+.json-code-key{color:var(--ink-3)}
+.json-code-value [data-json-literal=string]{color:var(--hl-string,var(--ink))}
+.json-code-value [data-json-literal=number],.json-code-value [data-json-literal=boolean]{color:var(--hl-number,var(--ink))}
+.thread .code-block [hidden]{display:none}
+.thread .code-head .json-code-language{flex:0;margin-right:8px}
+.json-code-modes{margin-right:auto}
