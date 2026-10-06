@@ -70,8 +70,8 @@ with automatic user modeling.
 
 ## Getting started
 
-By default, the builtin engine uses local GGUF embeddings when the local
-provider is ready. It downloads its model on first use. Until then, memory
+By default, the builtin engine provisions a managed llama.cpp service for local
+GGUF embeddings and downloads its model on first use. While it prepares, memory
 search still uses keyword search; an API key alone never opts memory into a
 metered embedding service.
 

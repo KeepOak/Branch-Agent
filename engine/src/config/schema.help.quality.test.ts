@@ -94,6 +94,10 @@ describe("config help copy quality", () => {
     expect(help).toContain("ordinary file edits");
   });
 
+  it("documents the local memory provider default", () => {
+    expect(requireHelp("memory.search.provider")).toMatchSnapshot();
+  });
+
   it("keeps root section labels and help complete", () => {
     for (const key of ROOT_SECTIONS) {
       expect(requireLabel(key)).not.toHaveLength(0);

@@ -1,5 +1,6 @@
 import path from "node:path";
 import {
+  acquireManagedLlamaCppEmbeddingService,
   getEmbeddingProvider,
   type EmbeddingProvider,
   type EmbeddingProviderAdapter,
@@ -12,6 +13,7 @@ import {
   DEFAULT_LLAMA_CPP_EMBEDDING_MODEL,
   DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_ID,
   LLAMA_CPP_PROVIDER_ID,
+  buildLlamaCppProviderConfig,
   resolveLegacyLlamaCppModelCacheDir,
   resolveLlamaCppEmbeddingModel,
   resolveLlamaCppModelCacheDir,
@@ -86,23 +88,45 @@ async function prepareEmbeddingServer(
   options: EmbeddingProviderCreateOptions,
   embeddingSource: string,
   embeddingModelIsDefault: boolean,
-): Promise<void> {
-  const provider = resolveManagedLlamaCppProviderConfig(options.config);
-  const cacheDir = resolveLlamaCppModelCacheDir(provider);
+): Promise<EmbeddingProviderCreateOptions["config"]> {
+  const configured = options.config.models?.providers?.[LLAMA_CPP_PROVIDER_ID];
+  // The default memory provider needs no interactive chat-model setup. Keep an
+  // explicitly configured llama.cpp endpoint authoritative.
+  if (configured) {
+    resolveManagedLlamaCppProviderConfig(options.config);
+  }
+  const initial = configured ?? buildLlamaCppProviderConfig({ modelInventory: [] });
+  const cacheDir = resolveLlamaCppModelCacheDir(initial);
   const embeddingModelPath = await ensureLlamaCppModel({
     source: embeddingSource,
     cacheDir,
     download: true,
+    onProgress: options.onProgress,
   });
-  await prepareManagedLlamaServer({
+  const managed = await prepareManagedLlamaServer({
     chatModel: { mode: "preserve" },
-    configuredChatModelIds: provider.models.map((model) => model.id),
+    configuredChatModelIds: initial.models.map((model) => model.id),
     embeddingModelIsDefault,
     embeddingModelPath,
-    port: resolveProviderPort(provider),
-    reconcileBaseUrl: provider.baseUrl,
-    localService: provider.localService,
+    ...(configured
+      ? { port: resolveProviderPort(resolveManagedLlamaCppProviderConfig(options.config)) }
+      : {}),
+    ...(configured
+      ? { reconcileBaseUrl: configured.baseUrl, localService: configured.localService }
+      : {}),
+    onProgress: options.onProgress,
   });
+  if (configured) {
+    return options.config;
+  }
+  const provider = buildLlamaCppProviderConfig({ managed, modelInventory: [] });
+  return {
+    ...options.config,
+    models: {
+      ...options.config.models,
+      providers: { ...options.config.models?.providers, [LLAMA_CPP_PROVIDER_ID]: provider },
+    },
+  };
 }
 
 function wrapProvider(params: {
@@ -160,23 +184,39 @@ export const llamaCppEmbeddingProviderAdapter: EmbeddingProviderAdapter = {
     const local = readIdentityLocalOptions(options);
     const embeddingModel = resolveLlamaCppEmbeddingModel(local);
     const identity = resolveModelIdentity(local, options.dimensions);
-    await prepareEmbeddingServer(options, embeddingModel.source, embeddingModel.isDefault);
+    const config = await prepareEmbeddingServer(
+      options,
+      embeddingModel.source,
+      embeddingModel.isDefault,
+    );
     const genericAdapter = getEmbeddingProvider("openai-compatible", options.config);
     if (!genericAdapter) {
       throw new Error("OpenAI-compatible embedding transport is unavailable.");
     }
     const acquireLocalService = (options as LocalServiceAwareOptions).acquireLocalService; // SAFETY: core runtime owns this injected option.
+    const generatedService = options.config.models?.providers?.[LLAMA_CPP_PROVIDER_ID]
+      ? undefined
+      : resolveManagedLlamaCppProviderConfig(config).localService;
     const result = await genericAdapter.create({
       ...options,
+      config,
       provider: LLAMA_CPP_PROVIDER_ID,
       model: DEFAULT_LLAMA_CPP_EMBEDDING_MODEL_ID,
       remote: undefined,
-      ...(acquireLocalService
+      ...(generatedService
         ? {
             acquireLocalService: (...[target, signal]: Parameters<AcquireLocalService>) =>
-              acquireLocalService({ ...target, reconcile: reconcileLocalService }, signal),
+              acquireManagedLlamaCppEmbeddingService(
+                { ...target, service: generatedService, reconcile: reconcileLocalService },
+                signal,
+              ),
           }
-        : {}),
+        : acquireLocalService
+          ? {
+              acquireLocalService: (...[target, signal]: Parameters<AcquireLocalService>) =>
+                acquireLocalService({ ...target, reconcile: reconcileLocalService }, signal),
+            }
+          : {}),
     });
     if (!result.provider) {
       return result;
@@ -185,7 +225,7 @@ export const llamaCppEmbeddingProviderAdapter: EmbeddingProviderAdapter = {
       provider: wrapProvider({
         provider: result.provider,
         canonicalModel: identity.model,
-        baseUrl: resolveManagedLlamaCppProviderConfig(options.config).baseUrl ?? "",
+        baseUrl: resolveManagedLlamaCppProviderConfig(config).baseUrl ?? "",
       }),
       runtime: {
         id: "local",

@@ -105,15 +105,21 @@ function MeaningSearch({ c }: { c: Ctx }) {
   const [probe, setProbe] = useState<RecordValue | null>(null);
   const emb = rec((probe ?? rec(st.data)).embedding);
   const selected = str(c.config.get("memory.search.provider"));
-  const provider = (selected && selected !== "auto" ? selected : "") || str(rec(probe ?? st.data).provider) || "local";
+  const runtime = rec(probe ?? st.data);
+  const runtimeProvider = str(runtime.provider);
+  const provider = runtimeProvider === "none" || runtimeProvider === "local"
+    ? runtimeProvider
+    : (selected && selected !== "auto" ? selected : "") || runtimeProvider || "none";
   const name = PROVIDERS.find((p) => p.id === provider)?.label ?? provider;
   const rebuild = rec(rec(st.data).rebuild);
-  const progress = rebuild.state === "rebuilding" ? `Rebuilding the index · ${Number(rebuild.indexedChunks) || 0} passages available` : "";
+  const progress = rebuild.state === "rebuilding" ? `Rebuilding the index · ${Number(rebuild.done) || 0}/${Number(rebuild.total) || 0} passages` : "";
+  const download = rec(rec(probe ?? st.data).download);
+  const downloading = Number(download.total) > 0 ? `Downloading local model · ${Math.round(100 * Number(download.done) / Number(download.total))}%` : "";
   const checked = emb.checked !== false && (emb.ok === true || Boolean(emb.error));
   const word = !checked ? "Not checked yet" : emb.ok === true ? "Working" : "Not working";
   const line = !checked ? "Branch hasn’t checked meaning search yet." : emb.ok === true ? "Meaning search answered." : str(emb.error);
   return (
-    <Ctl title="Meaning search" sub={`${st.error ?? line} ${name}${progress ? ` · ${progress}` : ""}`} after={<CallLine call={test} />}>
+    <Ctl title="Meaning search" sub={`${st.error ?? line} ${name}${downloading ? ` · ${downloading}` : ""}${progress ? ` · ${progress}` : ""}`} after={<CallLine call={test} />}>
       <span className="s2advanced-v">{word}</span>
       <Btn sm disabled={test.busy} onClick={() => void test.run(async () => setProbe(rec(await c.engine.request("doctor.memory.status", { ...params, probe: true }))))}>Test</Btn>
     </Ctl>

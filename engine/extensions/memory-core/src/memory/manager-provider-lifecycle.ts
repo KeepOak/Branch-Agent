@@ -1,9 +1,5 @@
 import { resolveAgentConfig } from "branch/plugin-sdk/agent-scope-runtime";
-import {
-  formatErrorMessage,
-  readErrorName,
-  toErrorObject,
-} from "branch/plugin-sdk/error-runtime";
+import { formatErrorMessage, readErrorName, toErrorObject } from "branch/plugin-sdk/error-runtime";
 import { listRegisteredMemoryEmbeddingProviderAdapters } from "branch/plugin-sdk/memory-core-host-embedding-registry";
 import type { MemoryEmbeddingProviderAdapter } from "branch/plugin-sdk/memory-core-host-engine-embeddings";
 import {
@@ -114,6 +110,8 @@ export abstract class MemoryProviderLifecycle extends MemoryManagerEmbeddingOps 
   protected providerRetirementPromise: Promise<void> = Promise.resolve();
   protected providersPendingRetirement = new Set<EmbeddingProvider>();
   protected activeBackgroundSearchSyncs = new Set<Promise<void>>();
+  protected providerChangeProgress?: { completed: number; total: number };
+  protected providerPreparationProgress?: { downloadedSize: number; totalSize?: number };
   protected indexIdentityDirty = false;
   private primaryRecoveryPromise: Promise<void> | null = null;
   private primaryRecoveryRetryAt = 0;
@@ -435,11 +433,15 @@ export abstract class MemoryProviderLifecycle extends MemoryManagerEmbeddingOps 
         const providerResult = await createEmbeddingProvider({
           createProvider: this.createProvider,
           config: this.cfg,
+          onProgress: ({ downloadedSize, totalSize }) => {
+            this.providerPreparationProgress = { downloadedSize, totalSize };
+          },
           agentDir: resolveAgentDir(this.cfg, this.agentId),
           ...(this.acquireLocalService ? { acquireLocalService: this.acquireLocalService } : {}),
           ...resolveMemoryPrimaryProviderRequest({ settings: this.settings }),
         });
         this.applyProviderResult(providerResult);
+        this.providerPreparationProgress = undefined;
       })();
     }
     try {
@@ -448,6 +450,7 @@ export abstract class MemoryProviderLifecycle extends MemoryManagerEmbeddingOps 
       // Clear the cached rejected promise so subsequent calls can retry
       // initialization instead of being permanently stuck with a stale failure.
       this.providerInitPromise = null;
+      this.providerPreparationProgress = undefined;
       throw err;
     } finally {
       if (this.providerInitialized) {

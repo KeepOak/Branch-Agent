@@ -363,10 +363,6 @@ export async function loadGatewayStartupPluginRuntime(params: {
       : {}),
   });
   try {
-    const memoryProvider = loaded.resolvedConfig.memory?.search?.provider?.trim();
-    if (!memoryProvider || memoryProvider === "auto") {
-      params.log.warn("Memory search: legacy automatic provider now uses local embeddings (or text search until local embeddings are ready); API keys are not used by default.");
-    }
     withPluginRegistryPreparationScope(loaded.pluginRegistry, () =>
       withPluginRuntimeRegistryScope(loaded.pluginRegistry, () =>
         validateConfiguredBindings(loaded.resolvedConfig),

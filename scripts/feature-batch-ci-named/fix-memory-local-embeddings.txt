@@ -1,2 +1,4 @@
+engine:extensions/llama-cpp/src/embedding-provider.test.ts
+engine:extensions/memory-core/src/memory/embeddings.test.ts
 engine:extensions/memory-core/src/memory/manager-provider-change.test.ts
 engine:src/agents/memory-search.test.ts

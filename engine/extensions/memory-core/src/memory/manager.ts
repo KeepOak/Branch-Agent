@@ -339,21 +339,35 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     if (this.syncing) {
       return await this.syncing;
     }
-    await this.syncOutcomes.track(() =>
-      runMemorySearchMaintenance({
-        reason: params.reason,
-        takeDirtyGeneration: () => this.takeSearchMaintenanceRequest(),
-        restoreDirtyGeneration: (generation) => this.adoptReindexRetryState(generation),
-        acquireManager: () =>
-          MemoryIndexManager.get({
-            cfg: this.cfg,
-            agentId: this.agentId,
-            purpose: "maintenance",
-            acquireLocalService: this.acquireLocalService,
-            maintenanceSource: this,
-          }),
-      }),
-    );
+    if (params.reason === "provider-change") {
+      this.providerChangeProgress = { completed: 0, total: 0 };
+    }
+    try {
+      await this.syncOutcomes.track(() =>
+        runMemorySearchMaintenance({
+          reason: params.reason,
+          ...(params.reason === "provider-change"
+            ? {
+                progress: (update: { completed: number; total: number }) => {
+                  this.providerChangeProgress = update;
+                },
+              }
+            : {}),
+          takeDirtyGeneration: () => this.takeSearchMaintenanceRequest(),
+          restoreDirtyGeneration: (generation) => this.adoptReindexRetryState(generation),
+          acquireManager: () =>
+            MemoryIndexManager.get({
+              cfg: this.cfg,
+              agentId: this.agentId,
+              purpose: "maintenance",
+              acquireLocalService: this.acquireLocalService,
+              maintenanceSource: this,
+            }),
+        }),
+      );
+    } finally {
+      this.providerChangeProgress = undefined;
+    }
   }
 
   protected async syncAdmitted(
@@ -625,6 +639,8 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
         providerUnavailableReason: this.providerUnavailableReason,
         indexIdentity: this.indexIdentityState,
         automaticRebuildNotice: this.automaticRebuildNotice,
+        providerChangeProgress: this.providerChangeProgress,
+        providerPreparationProgress: this.providerPreparationProgress,
       },
     };
   }

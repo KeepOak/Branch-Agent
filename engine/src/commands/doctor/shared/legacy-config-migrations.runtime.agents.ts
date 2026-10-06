@@ -50,19 +50,19 @@ const LEGACY_MEMORY_SEARCH_AUTO_PROVIDER_RULES: LegacyConfigRule[] = [
   {
     path: ["memorySearch", "provider"],
     message:
-      'memorySearch.provider = "auto" is legacy; use "openai" explicitly. Run "branch doctor --fix".',
+      'memorySearch.provider = "auto" is legacy; use "local" explicitly. Run "branch doctor --fix".',
     match: isLegacyMemorySearchAutoProvider,
   },
   {
     path: ["memory", "search", "provider"],
     message:
-      'memory.search.provider = "auto" is legacy; use "openai" explicitly. Run "branch doctor --fix".',
+      'memory.search.provider = "auto" is legacy; use "local" explicitly. Run "branch doctor --fix".',
     match: isLegacyMemorySearchAutoProvider,
   },
   {
     path: ["agents"],
     message:
-      'agents.entries.*.memorySearch.provider = "auto" is legacy; use "openai" explicitly. Run "branch doctor --fix".',
+      'agents.entries.*.memorySearch.provider = "auto" is legacy; use "local" explicitly. Run "branch doctor --fix".',
     match: (value) =>
       someAgentEntry(value, (agent) =>
         isLegacyMemorySearchAutoProvider(getAgentMemorySearchRecord(agent)?.provider),
@@ -213,8 +213,8 @@ function rewriteLegacyMemorySearchAutoProvider(
   if (!memorySearch || !isLegacyMemorySearchAutoProvider(memorySearch.provider)) {
     return;
   }
-  memorySearch.provider = "openai";
-  changes.push(`Moved ${pathLabel}.provider from legacy "auto" to "openai".`);
+  memorySearch.provider = "local";
+  changes.push(`Moved ${pathLabel}.provider from legacy "auto" to "local".`);
 }
 
 function migrateCanonicalMemorySearches(
@@ -785,8 +785,8 @@ export const LEGACY_CONFIG_MIGRATIONS_RUNTIME_AGENTS: LegacyConfigMigrationSpec[
       migrateCanonicalMemorySearches(raw, changes, migrateLegacyMemorySearchFlatKeys),
   }),
   defineLegacyConfigMigration({
-    id: "memorySearch.provider-auto->openai",
-    describe: 'Rewrite legacy memorySearch provider "auto" to "openai"',
+    id: "memorySearch.provider-auto->local",
+    describe: 'Rewrite legacy memorySearch provider "auto" to "local"',
     legacyRules: LEGACY_MEMORY_SEARCH_AUTO_PROVIDER_RULES,
     apply: (raw, changes) =>
       migrateCanonicalMemorySearches(raw, changes, rewriteLegacyMemorySearchAutoProvider),

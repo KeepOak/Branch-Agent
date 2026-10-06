@@ -5,7 +5,10 @@ import { MemoryIndexRevisionConflictError } from "./manager-db-kernel.js";
 type MemorySearchMaintenanceManager<DirtyGeneration> = {
   adoptReindexRetryState(generation: DirtyGeneration): void;
   takeReindexRetryStateForMaintenance(): DirtyGeneration;
-  sync(params: { reason: string }): Promise<void>;
+  sync(params: {
+    reason: string;
+    progress?: (update: { completed: number; total: number }) => void;
+  }): Promise<void>;
   status(): { dirty?: boolean; lastSyncError?: string };
   close(): Promise<void>;
 };
@@ -15,6 +18,7 @@ export async function runMemorySearchMaintenance<DirtyGeneration>(params: {
   takeDirtyGeneration: () => DirtyGeneration;
   restoreDirtyGeneration: (generation: DirtyGeneration) => void;
   acquireManager: () => Promise<MemorySearchMaintenanceManager<DirtyGeneration> | null>;
+  progress?: (update: { completed: number; total: number }) => void;
 }): Promise<string | undefined> {
   const dirtyGeneration = params.takeDirtyGeneration();
   let manager: MemorySearchMaintenanceManager<DirtyGeneration> | null;
@@ -36,14 +40,14 @@ export async function runMemorySearchMaintenance<DirtyGeneration>(params: {
     // its initial repair state. Full-retry flags still select rebuilds in runSync.
     manager.adoptReindexRetryState(dirtyGeneration);
     try {
-      await manager.sync({ reason: params.reason });
+      await manager.sync({ reason: params.reason, progress: params.progress });
     } catch (err) {
       if (!(err instanceof MemoryIndexRevisionConflictError)) {
         throw err;
       }
       // Retry only this automatic generation. The failed sync released its reindex
       // lease, and the next shadow build starts from the newest live revision.
-      await manager.sync({ reason: params.reason });
+      await manager.sync({ reason: params.reason, progress: params.progress });
     }
     const status = manager.status();
     if (status.dirty === true) {

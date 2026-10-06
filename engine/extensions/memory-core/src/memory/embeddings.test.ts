@@ -146,7 +146,7 @@ describe("createEmbeddingProvider", () => {
     });
   });
 
-  it("normalizes legacy auto mode to OpenAI", async () => {
+  it("normalizes legacy auto mode to local", async () => {
     registerTestMemoryAdapter(createMissingCredentialsAdapter({ id: "bedrock" }));
     registerTestMemoryAdapter({
       id: "openai",
@@ -161,11 +161,23 @@ describe("createEmbeddingProvider", () => {
         },
       }),
     });
+    registerTestMemoryAdapter({
+      id: "local",
+      transport: "local",
+      create: async () => ({
+        provider: {
+          id: "local",
+          model: "embeddinggemma",
+          embed: async () => [1],
+          embedBatch: async (texts) => texts.map(() => [1]),
+        },
+      }),
+    });
 
     const result = await createEmbeddingProvider(createOptions("auto"));
 
-    expect(result.provider?.id).toBe("openai");
-    expect(result.requestedProvider).toBe("openai");
+    expect(result.provider?.id).toBe("local");
+    expect(result.requestedProvider).toBe("local");
   });
 
   it("still throws missing credentials for an explicit provider request", async () => {
