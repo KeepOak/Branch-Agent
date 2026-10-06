@@ -3,3 +3,16 @@ engine:extensions/reef/protocol/guard.test.ts
 engine:extensions/reef/protocol/pipeline.test.ts
 engine:extensions/reef/src/flow.test.ts
 engine:extensions/reef/src/trust-store.test.ts
+
+# MULTI-AGENT-0228: blocked; upstream tests ported 0/4.
+# Reviewed blocksnetwork/OpenClaw-Agent-Blocks@9c60a4db36976fd0b7c8ee05b171b41aac75dc6b.
+# Required shared safety prerequisite is absent in this checkout: no safety-layer
+# design/entry point or conformance test with caller/profile identity, App lock,
+# Lockdown, exact-action approvals, post-await rechecks, effect ledger and egress scrubber.
+# Guide 41 sections 4.1 and 8 require this one shared path; guide 47 section 2
+# makes it a pack prerequisite. Existing exec/tool hooks are not that contract.
+# Upstream negotiate.ts placeHold calls its own runAssistant owner/write gate;
+# confirmHolds invokes confirmHold directly and releaseHolds calls calendar.deleteEvent
+# directly. Branch has no production owner-scoped calendar adapter for these calls.
+# Copying the standalone runtime would add local checks instead of calling the
+# required layer. No orphan code, fake adapters, weakened or skipped tests added.
