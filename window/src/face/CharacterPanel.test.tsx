@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CharacterPanel } from "./CharacterPanel";
-import { panelLimits, panelPlaceAt, panelPoint, readPanelPlace, savePanelPlace } from "./panel-position";
+import { panelLimits, panelPlaceAt, panelPlaceOnResize, panelPoint, readPanelPlace, savePanelPlace } from "./panel-position";
 import { getToasts } from "../shell/notify";
 
 vi.mock("./Face", () => ({ Face: ({ label }: { label: string }) => <span>{label}</span> }));
@@ -35,7 +35,9 @@ it("moves to a chosen corner and remembers it for this computer", async () => {
   const panel = host.querySelector<HTMLElement>(".character-panel")!;
   await act(async () => panel.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 400, clientY: 300 })));
   expect(document.querySelector('[role="menu"][aria-label="Move the agent window"]')).not.toBeNull();
-  const choice = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((button) => button.textContent === "Top left")!;
+  expect(document.querySelector('[role="menu"] .ph')?.textContent).toBe("Move the agent");
+  expect(document.querySelector('[role="menuitemcheckbox"][aria-checked="true"]')?.textContent).toBe("Bottom right");
+  const choice = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemcheckbox"]')].find((button) => button.textContent === "Top left")!;
   await act(async () => choice.click());
   expect(readPanelPlace()).toEqual({ corner: "top-left" });
   expect(panel.style.left).toBe("218px");
@@ -54,6 +56,13 @@ it("keeps a dropped position relative to the conversation column and clamps on r
   expect(panelPoint(dropped, panelLimits({ left: 200, top: 50, right: 360, bottom: 250 }, 158, 166, 175))).toEqual({ x: 218, y: 68 });
 });
 
+it("anchors a dropped position to its nearest corner on resize", () => {
+  const before = { left: 100, top: 100, right: 800, bottom: 700 };
+  const after = { left: 100, top: 100, right: 1100, bottom: 900 };
+  expect(panelPoint(panelPlaceOnResize(panelPlaceAt(760, 660, before), before, after), after)).toEqual({ x: 1060, y: 860 });
+  expect(panelPoint(panelPlaceOnResize(panelPlaceAt(140, 150, before), before, after), after)).toEqual({ x: 140, y: 150 });
+});
+
 it("keeps top corners below the conversation header", () => {
   const limits = panelLimits({ left: 0, top: 34, right: 1000, bottom: 800 }, 158, 166, 700, 88);
   expect(panelPoint({ corner: "top-left" }, limits)).toEqual({ x: 18, y: 106 });
@@ -68,7 +77,7 @@ it("reserves the agent window's height after the latest message", async () => {
   expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("190px");
 });
 
-it("reattaches clearance and observers when the conversation column is replaced", async () => {
+it("reattaches clearance when switching between conversations of the same Trunk", async () => {
   const oldColumn = document.querySelector<HTMLElement>(".conversation-column")!;
   const newColumn = oldColumn.cloneNode(true) as HTMLElement;
   newColumn.getBoundingClientRect = oldColumn.getBoundingClientRect;
@@ -79,6 +88,16 @@ it("reattaches clearance and observers when the conversation column is replaced"
   expect(host.querySelector(".character-panel")).toBe(panel);
   expect(oldColumn.style.getPropertyValue("--agent-window-clearance")).toBe("");
   expect(newColumn.style.getPropertyValue("--agent-window-clearance")).toBe("190px");
+});
+
+it("attaches clearance after starting a new conversation and sending", async () => {
+  const column = document.querySelector<HTMLElement>(".conversation-column")!;
+  await act(async () => root.render(<CharacterPanel name="Juniper" state="idle" onClose={close} column={null} />));
+  expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("");
+  const panel = host.querySelector<HTMLElement>(".character-panel")!;
+  Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 166 });
+  await act(async () => root.render(<CharacterPanel name="Juniper" state="work" onClose={close} column={column} />));
+  expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("190px");
 });
 
 it("hides while the focused pane removes the conversation and restores its column position", async () => {

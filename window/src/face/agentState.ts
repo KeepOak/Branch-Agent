@@ -75,9 +75,9 @@ export function agentState(s: StateInput): AgentState {
   const run = lastRun(s.history);
   const failed = !s.running && run.findLast((b) => b.kind === "error" || b.kind === "text")?.kind === "error";
   const usedTools = run.some((b) => b.kind === "step");
-  if (s.live.some((b) => b.kind === "approval" && b.approval.state === "pending")) return "wait";
-  if (failed) return "oops";
   if (!s.running && usedTools && since < DONE_MS) return "yay";
+  if (failed) return "oops";
+  if (s.live.some((b) => b.kind === "approval" && b.approval.state === "pending")) return "wait";
   if (s.paused) return "sleep";
   if (s.onCall) return "talk";
   if (s.running) return runningState(s.live);

@@ -41,7 +41,7 @@ export function officeRoster(agentsValue: unknown, sessionsValue: unknown, conta
   const sessions = rows(obj(sessionsValue).sessions);
   const contacts = (Array.isArray(obj(contactsValue).contacts) ? obj(contactsValue).contacts as Contact[] : []).filter(c => !c.archivedAt);
   const outside = new Map(rows(obj(outsideValue).agents).map(agent => [str(agent.contactId), agent]));
-  const approvals = Array.isArray(approvalsValue) ? rows(approvalsValue) : rows(obj(approvalsValue).items ?? obj(approvalsValue).approvals);
+  const approvals = Array.isArray(approvalsValue) ? approvalsValue.flatMap(value => obj(value).request ? [obj(value)] : rows(obj(value).items ?? obj(value).approvals)) : rows(obj(approvalsValue).items ?? obj(approvalsValue).approvals);
   const keys = new Map<string, string>();
   for (const c of contacts) if (c.kind === "trunk") keys.set(str(c.face?.agentId) || c.id.replace(/^trunk:/, ""), c.threadKey);
   const agents: OfficeAgent[] = trunks.map(t => {
@@ -52,11 +52,15 @@ export function officeRoster(agentsValue: unknown, sessionsValue: unknown, conta
     const pendingApprovals = approvals.filter(a => {
       const key = str(obj(a.request).sessionKey);
       return key && mine.some(s => str(s.key) === key) && (!a.state || a.state === "pending");
-    }).length;
-    const needs = Math.max(Number(contact?.needsYou) || 0, pendingApprovals);
+    });
+    const ownApproval = pendingApprovals.some(a => {
+      const key = str(obj(a.request).sessionKey);
+      return mine.some(s => str(s.key) === key && !str(s.parentSessionKey) && !str(s.spawnedBy));
+    });
+    const needs = Math.max(Number(contact?.needsYou) || 0, pendingApprovals.length);
     const activity = str(obj(active[0]?.activitySummary).text) || str(active[0]?.lastMessagePreview);
     const reading = active.some(s => [...(tools.get(str(s.key))?.values() ?? [])].some(name => /^(read|read_file|grep|glob|search|web_fetch|web_search)$/i.test(name)));
-    return { id: t.id, name: t.name, kind: "trunk", state: needs ? "needs_you" : active.length ? reading ? "reading" : "working" : "resting",
+    return { id: t.id, name: t.name, kind: "trunk", state: contact?.needsYou || ownApproval ? "needs_you" : active.length ? reading ? "reading" : "working" : "resting",
       activity, needsYou: needs, unread: Boolean(contact?.threadUnread || contact?.unreadTopics), colorHint: t.colour,
       subagents: children.map(s => ({ id: str(s.key), label: str(s.label) || str(s.displayName) || "Job", state: "working" as const })) };
   });

@@ -45,3 +45,17 @@ export function panelPlaceAt(x: number, y: number, limits: PanelBounds): PanelPl
     y: limits.bottom === limits.top ? 0 : Math.max(0, Math.min(1, (y - limits.top) / (limits.bottom - limits.top))),
   };
 }
+
+/** Preserve a dropped window's distance from its nearest edges when its column resizes. */
+export function panelPlaceOnResize(place: PanelPlace, before: PanelBounds, after: PanelBounds): PanelPlace {
+  if ("corner" in place) return place;
+  const point = panelPoint(place, before);
+  const x = place.x < 0.5 ? after.left + point.x - before.left : after.right - (before.right - point.x);
+  const y = place.y < 0.5 ? after.top + point.y - before.top : after.bottom - (before.bottom - point.y);
+  return panelPlaceAt(x, y, after);
+}
+
+export function panelNearestCorner(place: PanelPlace): Extract<PanelPlace, { corner: string }>["corner"] {
+  if ("corner" in place) return place.corner;
+  return `${place.y < 0.5 ? "top" : "bottom"}-${place.x < 0.5 ? "left" : "right"}`;
+}

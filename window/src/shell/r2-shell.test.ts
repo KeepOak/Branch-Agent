@@ -124,10 +124,12 @@ describe("the conversation header and cards", () => {
   it("header state words as the preview's statusLine", () => {
     expect(stateWords({ state: "idle", isDefaultTrunk: true, trunkName: "Sapling" })).toBe("Your Trunk on this computer · ready");
     expect(stateWords({ state: "idle", isDefaultTrunk: false, trunkName: "Fern", role: "Research" })).toBe("Research · ready");
-    expect(stateWords({ state: "work", isDefaultTrunk: false, trunkName: "Fern" })).toBe("Working on it");
+    expect(stateWords({ state: "work", isDefaultTrunk: false, trunkName: "Fern" })).toBe("Working · using the computer");
     expect(stateWords({ state: "wait", isDefaultTrunk: false, trunkName: "Fern" })).toBe("Waiting for you");
-    expect(stateWords({ state: "talk", isDefaultTrunk: false, trunkName: "Fern" })).toBe("Explaining");
-    expect(stateWords({ state: "oops", isDefaultTrunk: false, trunkName: "Fern" })).toBe("Hit a snag");
+    expect(stateWords({ state: "sleep", isDefaultTrunk: false, trunkName: "Fern" })).toBe("Paused · won’t start anything new");
+    for (const state of ["idle", "talk", "yay", "oops"] as const) {
+      expect(stateWords({ state, isDefaultTrunk: false, trunkName: "Fern", role: "Research" })).toBe("Research · ready");
+    }
   });
   it("an action's verbs and rows", () => {
     expect(actionWords("Send this email to Dana?")).toMatchObject({ yes: "Send it", no: "Don’t send" });

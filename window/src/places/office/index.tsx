@@ -98,7 +98,9 @@ export function OfficePlace({ engine, openConversation, createTrunk }: PlaceProp
           engine.request("sessions.list", { includeGlobal: true, includeUnknown: true, configuredAgentsOnly: true, archived: "all" }),
           engine.request("contacts.list", { includeArchived: true }),
           engine.request("contacts.outside.list", {}).catch(() => ({})),
-          engine.request("exec.approval.list", {}),
+          Promise.all(["exec.approval.list", "plugin.approval.list", "branch.approval.list"].map(method =>
+            engine.request(method, {}).catch((error: unknown) => { console.warn(`${method} failed`, error); return { items: [] }; }),
+          )),
         ]);
         if (live) { setData({ agents, sessions, contacts, outside, approvals }); setError(""); }
       } catch (e) { if (live) setError(e instanceof Error ? e.message : String(e)); }
@@ -106,7 +108,7 @@ export function OfficePlace({ engine, openConversation, createTrunk }: PlaceProp
     void refresh();
     const off = engine.onEvent(({ event, payload }) => {
       if (event === "session.tool" || event === "agent") setTools(current => officeToolEvent(current, event, payload));
-      if (["agents.changed", "contacts.changed", "sessions.changed", "exec.approval.requested", "exec.approval.resolved"].includes(event) || event === "chat" && ["final", "error", "aborted"].includes(str(obj(payload).state))) void refresh();
+      if (["agents.changed", "contacts.changed", "sessions.changed", "exec.approval.requested", "exec.approval.resolved", "plugin.approval.requested", "plugin.approval.resolved", "branch.approval.requested", "branch.approval.resolved"].includes(event) || event === "chat" && ["final", "error", "aborted"].includes(str(obj(payload).state))) void refresh();
       if (event === "session.message") {
         const visit = a2aVisit(payload);
         if (visit) setLinks(current => [...current.slice(-39), visit]);
