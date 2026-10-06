@@ -88,6 +88,11 @@ const systemChromiumExecutableCandidates = [
 ] as const;
 
 function canRunChromiumExecutable(executablePath: string): boolean {
+  // On Windows, `chrome.exe --version` can attach to an existing browser or hang
+  // instead of reporting its version. The browser provider validates launch below.
+  if (process.platform === "win32") {
+    return existsSync(executablePath);
+  }
   const result = spawnSync(executablePath, ["--version"], {
     stdio: "ignore",
     windowsHide: true,
