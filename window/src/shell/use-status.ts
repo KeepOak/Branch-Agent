@@ -6,6 +6,20 @@ import { readLimits, type Limits, type UpdateInfo } from "./status-data";
 import { componentDesktop, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus } from "../connect/desktop-component-updates";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
+const RELEASE_URL = "https://api.github.com/repos/KeepOak/Branch-Agent/releases/latest";
+const BRANCH_RELEASE = /^v?(\d+\.\d+\.\d+(?:-build-[a-zA-Z0-9]+)?)$/;
+
+async function latestBranchRelease(signal: AbortSignal): Promise<string> {
+  const response = await fetch(RELEASE_URL, { signal, cache: "no-store", headers: { Accept: "application/vnd.github+json" } });
+  if (!response.ok) throw new Error(`Release check failed (${response.status})`);
+  const release = rec(await response.json());
+  const version = BRANCH_RELEASE.exec(typeof release.tag_name === "string" ? release.tag_name : "")?.[1];
+  if (!version || !Array.isArray(release.assets) || !release.assets.some((asset) =>
+    typeof rec(asset).name === "string" && /^branch-release-(?:win32|darwin|linux)-(?:x64|arm64)\.json$/.test(rec(asset).name as string))) {
+    throw new Error("Release manifest is unavailable");
+  }
+  return version;
+}
 
 export type Health = { ok: boolean; durationMs: number | null; checkedAt: number };
 export type GatewayFacts = { health: Health | null; error: string | null; uptimeMs: number | null; connectedAt: number };
@@ -61,10 +75,23 @@ export function useLimits(session: SaplingSession, ready: boolean): Limits | nul
   return limits;
 }
 
-/** Branch component updates come from the desktop; the engine's release is not the app's version. */
+/** Branch component updates come from the desktop, or the same GitHub release feed in a browser. */
 export function useUpdate(session: SaplingSession, ready: boolean, version: string): UpdateInfo | null {
   const desktop = componentDesktop(session.gatewayUrl);
+  const remote = !desktop;
   const native = useDesktopComponentStatus(session.gatewayUrl);
+  const [release, setRelease] = useState<{ version: string | null; error: string | null }>({ version: null, error: null });
+  useEffect(() => {
+    if (!ready || !remote) return;
+    const controller = new AbortController();
+    const load = () => void latestBranchRelease(controller.signal).then(
+      (latest) => setRelease({ version: latest, error: null }),
+      (error: unknown) => { if (!controller.signal.aborted) setRelease({ version: null, error: error instanceof Error ? error.message : String(error) }); },
+    );
+    load();
+    const timer = setInterval(load, 10 * 60_000);
+    return () => { controller.abort(); clearInterval(timer); };
+  }, [ready, remote]);
   if (!ready) return null;
   if (desktop) {
     const status = native.status;
@@ -76,6 +103,7 @@ export function useUpdate(session: SaplingSession, ready: boolean, version: stri
       statusMessage: !desktop.componentUpdates ? desktop.unavailableReason ?? MANUAL_UPDATE_UNSUPPORTED : native.error ??
         (status?.phase === "current" ? undefined : "Check for updates in Updates & about.") };
   }
-  return { current: version, latest: null, notes: [], installing: false, waiting: null,
-    statusMessage: "Check for updates in Updates & about." };
+  return { current: version, latest: version && release.version !== version ? release.version : null,
+    notes: [], installing: false, waiting: null,
+    statusMessage: release.error ?? (release.version ? undefined : "Checking Branch releases…") };
 }
