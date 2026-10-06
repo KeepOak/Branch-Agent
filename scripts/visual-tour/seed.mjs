@@ -42,7 +42,9 @@ for (const provider of ['anthropic', 'openai']) {
   call('models.authSetApiKey', {
     agentId: agents[0],
     provider,
-    apiKey: `visual-tour-fixture-${provider}-never-valid`,
+    apiKey: provider === 'openai'
+      ? 'sk-visual-tour-fixture-openai-never-valid'
+      : `visual-tour-fixture-${provider}-never-valid`,
   });
 }
 console.log(`Seeded ${agents.length} Trunks, ${notes.length} conversations, one group, and two fake accounts.`);
