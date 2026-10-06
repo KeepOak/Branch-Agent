@@ -15,6 +15,10 @@ engine:src/agents/tools/pdf-tool.test.ts
 engine:src/agents/tools/video-generate-tool.behaviour.test.ts
 engine:src/agents/tools/video-generate-tool.test.ts
 engine:src/image-generation/runtime.test.ts
+engine:src/media-understanding/apply.test.ts
+engine:src/media-understanding/image.test.ts
+engine:src/media-understanding/runner.attachments.test.ts
+engine:src/media-understanding/runner.video.test.ts
 engine:src/media/pdf-extract.test.ts
 engine:src/music-generation/runtime.test.ts
 engine:src/video-generation/capabilities.test.ts
