@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/memory-core/src/memory-entry-origins.test.ts (atlas MEMORY-0071). Changed for Branch: retain Branch reservation compensation checks.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
