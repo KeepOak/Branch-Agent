@@ -30,7 +30,7 @@ function electronFixture() {
         reload: () => { this.reloads++; this.webContents.emit("did-finish-load"); } }); }
     async loadURL(url) { this.url = url; this.webContents.mainFrame.url = url; this.webContents.emit("did-finish-load"); }
     setMenuBarVisibility() {} show() {} focus() {} hide() {} isMinimized() { return false; }
-    maximize() {} isMaximized() { return false; } isDestroyed() { return false; } getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; }
+    maximize() {} isMaximized() { return false; } isVisible() { return true; } isDestroyed() { return false; } getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; }
   }
   class Tray extends EventEmitter { setToolTip() {} setContextMenu() {} destroy() {} }
   return { app, ipcMain, errors, get window() { return window; }, electron: { app, BrowserWindow, Tray,
@@ -49,14 +49,15 @@ const starts=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[];
 starts.push(process.pid);fs.writeFileSync(file,JSON.stringify(starts));
 if(starts.length>1&&fs.existsSync(root+"/fail-next"))process.exit(1);
 process.on("message",m=>{if(!String(m?.type).startsWith("branch-desktop:"))return;if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
-if(m.type==="branch-desktop:drain-stop"){fs.writeFileSync(root+"/drained-"+process.pid,"1");setTimeout(()=>process.exit(0),20);}});
+if(m.type==="branch-desktop:drain-stop"){fs.writeFileSync(root+"/drained-"+process.pid,"1");setTimeout(()=>process.exit(0),20);}
+if(m.type==="branch-desktop:stop-if-idle"&&!fs.existsSync(root+"/busy"))setTimeout(()=>process.exit(0),20);});
 http.createServer((q,r)=>{r.writeHead(starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end();}).listen(Number(process.argv.at(-1)),"127.0.0.1");`;
   await writeFile(join(engine, "branch.mjs"), script); await writeFile(join(windowDir, "index.html"), "<html>fixture</html>");
   await writeFile(join(root, "gateway-token"), "isolated-fixture-token");
   await writeFile(join(root, "desktop.json"), JSON.stringify({ dataDir: root, engineDir: engine, windowDir,
     nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() }));
 }
-async function fixture(run, holdStartup = false) {
+async function fixture(run, holdStartup = false, fastSupervisor = false) {
   const scratch = join(tmpdir(), "Codex-session-files"); await mkdir(scratch, { recursive: true });
   const root = await mkdtemp(join(scratch, "branch-restart-")); await createFixtureFiles(root);
   const previous = process.env.BRANCH_DESKTOP_DATA; process.env.BRANCH_DESKTOP_DATA = root;
@@ -65,7 +66,15 @@ async function fixture(run, holdStartup = false) {
     catch (error) { if (error.code === "ENOENT") return []; throw error; }
   };
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
-  Module._load = function(name, ...args) { return name === "electron" ? runtime.electron : originalLoad.call(this, name, ...args); };
+  Module._load = function(name, ...args) {
+    if (name === "electron") return runtime.electron;
+    if (fastSupervisor && name === "./gateway-supervisor") {
+      const source = originalLoad.call(this, name, ...args);
+      return { createGatewayCrashSupervisor: options => source.createGatewayCrashSupervisor({ ...options,
+        policy: { maxAttempts: 1, initialDelayMs: 10, maxDelayMs: 10, stableAfterMs: 60_000 } }) };
+    }
+    return originalLoad.call(this, name, ...args);
+  };
   globalThis.fetch = (url, options) => String(url).startsWith("https://github.com/") ? Promise.resolve(new Response("", { status: 404 })) : originalFetch(url, options);
   // Fresh main.js per test: compare normalized paths (CI passes a mixed-slash workspace path on Windows).
   const dist = resolve(process.env.BRANCH_DESKTOP_TEST_DIST).replaceAll("\\", "/").toLowerCase();
@@ -95,6 +104,37 @@ test("a crashed ready gateway restarts without closing or reloading the window",
   assert.equal(runtime.window.reloads, 0);
   assert.equal(runtime.errors.length, 0);
 }));
+test("an Update click cancels a pending crash restart without starting a second gateway", () => fixture(async ({ root, runtime, starts, restart }) => {
+  await writeFile(join(root, "release-ready"), "ready");
+  process.kill((await starts())[0], "SIGTERM");
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway restart attempt"));
+  restart();
+  await eventually(() => swapped(root));
+  await pause(1200);
+  assert.equal((await starts()).length, 2, "The supervisor started another gateway after Update");
+  assert.equal(runtime.errors.length, 0);
+}));
+test("a clean quit closes supervision before stopping the gateway", () => fixture(async ({ root, runtime, starts }) => {
+  let deferred = false;
+  runtime.app.emit("will-quit", { preventDefault() { deferred = true; } });
+  assert.equal(deferred, true);
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway stopped cleanly for quit"));
+  assert.equal((await starts()).every(pid => !alive(pid)), true);
+  const log = await readFile(join(root, "desktop.log"), "utf8");
+  assert.match(log, /gateway stopped cleanly for quit/);
+  assert.doesNotMatch(log, /gateway restart attempt|gateway recovery stopped/);
+}));
+test("exhausted crash recovery notifies the window and shows a visible-window error", () => fixture(async ({ root, runtime, starts }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  await writeFile(join(root, "fail-next"), "fail");
+  process.kill((await starts())[0], "SIGTERM");
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:gateway-recovery-failed"));
+  const notification = sent.find(([channel]) => channel === "branch-desktop:gateway-recovery-failed")[1];
+  assert.match(notification, /couldn't restart the engine after repeated attempts/);
+  assert.match(notification, /Restart Branch Agent to try again/);
+  assert.equal(runtime.errors.length, 1);
+  assert.equal(runtime.errors[0][0], "Branch couldn't restart the engine");
+}, false, true));
 test("a second update click preserves the gateway already starting", () => fixture(async ({ root, runtime, starts, restart }) => {
   restart(); await eventually(async () => (await starts()).length === 2);
   const candidate = (await starts())[1]; restart();

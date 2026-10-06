@@ -101,3 +101,23 @@ test('expected exits are ignored, failed stops resume supervision, and shutdown 
   await pause(30);
   assert.equal(restarts, 1);
 });
+
+test('an owner-initiated restart cancels a pending crash restart', async () => {
+  let current = new Child();
+  let restarts = 0;
+  const supervisor = createGatewayCrashSupervisor({
+    current: () => current,
+    log: () => {},
+    restart: async () => { restarts++; },
+    policy: { initialDelayMs: 20, maxDelayMs: 20 },
+  });
+  try {
+    supervisor.observe(current).ready();
+    current.exit();
+    supervisor.cancelPending();
+    current = new Child();
+    supervisor.observe(current).ready();
+    await pause(40);
+    assert.equal(restarts, 0);
+  } finally { supervisor.close(); }
+});

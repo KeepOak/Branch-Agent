@@ -106,6 +106,10 @@ export function createGatewayCrashSupervisor(options: {
 
   return {
     observe,
+    cancelPending: () => {
+      if (restartTimer) clearTimeout(restartTimer);
+      restartTimer = undefined;
+    },
     expectExit: (child: GatewayChild) => {
       const state = watched.get(child);
       if (state) state.expected = true;

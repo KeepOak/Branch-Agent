@@ -75,11 +75,18 @@ let componentsReady = false;
 /** The window build the static server serves: the staged one only once its engine runs. */
 let servedWindowDir = cfg.windowDir;
 let engineRestartInProgress = false;
+let gatewayRecoveryError: string | undefined;
 const gatewaySupervisor = createGatewayCrashSupervisor({
   current: () => gateway,
   log,
-  onExhausted: error => log(`gateway recovery stopped: ${error.message}`),
+  onExhausted: error => {
+    gatewayRecoveryError = `Branch couldn't restart the engine after repeated attempts. Restart Branch Agent to try again. ${error.message}`;
+    log(`gateway recovery stopped: ${error.message}`);
+    win?.webContents.send("branch-desktop:gateway-recovery-failed", gatewayRecoveryError);
+    if (!HIDDEN && win?.isVisible()) dialog.showErrorBox("Branch couldn't restart the engine", error.message);
+  },
   restart: async () => {
+    if (engineRestartInProgress || engineRunning()) return;
     engineRestartInProgress = true;
     try {
       await waitForGatewayPort();
@@ -133,6 +140,7 @@ const engineRunning = (): boolean => Boolean(gateway && gateway.exitCode === nul
 async function swapEngineInPlace(label: string, explicit: boolean): Promise<void> {
   if (!gateway || !win || engineRestartInProgress) throw new Error("The desktop is not ready to update");
   engineRestartInProgress = true;
+  gatewaySupervisor.cancelPending();
   const windowBefore = windowBuild(servedWindowDir);
   try {
     if (!await candidatePassed(label)) return;
@@ -371,6 +379,7 @@ async function bootEngine(): Promise<void> {
   await waitForReady(cfg, child, READY_TIMEOUT_MS);
   await confirmComponentUpdate(cfg);
   observed.ready();
+  gatewayRecoveryError = undefined;
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
   engineUpdateReady = false;
   watchEngine();
@@ -415,12 +424,14 @@ function watchUpdates(w: BrowserWindow): void {
   // A reload re-runs the preload; show the bar again if an engine update is still waiting.
   w.webContents.on("did-finish-load", () => {
     if (engineUpdateReady) w.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
+    if (gatewayRecoveryError) w.webContents.send("branch-desktop:gateway-recovery-failed", gatewayRecoveryError);
   });
 }
 
 /** The owner's Update click: applies a staged engine/window pair, or a rebuilt engine, in place. */
 async function restartEngine(): Promise<void> {
   if (!gateway || !win || !componentsReady || engineRestartInProgress) return;
+  gatewaySupervisor.cancelPending();
   const staged = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   log(`update requested (${staged ?? "rebuilt engine"}); old engine pid ${gateway.pid}`);
   try { await swapEngineInPlace(staged ?? "rebuilt engine", true); }
@@ -437,6 +448,7 @@ function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
   if (quitAfterCleanStop || !gateway || !engineRunning() || typeof event?.preventDefault !== "function") return false;
   event.preventDefault();
   quitAfterCleanStop = true;
+  gatewaySupervisor.close();
   stopGatewayCleanly(gateway, 15_000).then(() => log("gateway stopped cleanly for quit"),
     error => log(`quit: clean stop skipped: ${error instanceof Error ? error.message : String(error)}`)).finally(() => app.quit());
   return true;
