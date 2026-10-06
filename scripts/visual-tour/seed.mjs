@@ -39,6 +39,10 @@ const roomId = roomResponse.room?.roomId ?? roomResponse.result?.room?.roomId;
 if (!roomId) throw new Error('rooms.create did not return a group');
 call('rooms.send', { roomId, message: 'Let’s review the October plan together.' });
 for (const provider of ['anthropic', 'openai']) {
-  call('models.authSetApiKey', { provider, apiKey: `visual-tour-fixture-${provider}-never-valid` });
+  call('models.authSetApiKey', {
+    agentId: agents[0],
+    provider,
+    apiKey: `visual-tour-fixture-${provider}-never-valid`,
+  });
 }
 console.log(`Seeded ${agents.length} Trunks, ${notes.length} conversations, one group, and two fake accounts.`);
