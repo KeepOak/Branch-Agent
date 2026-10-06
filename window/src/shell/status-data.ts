@@ -59,7 +59,7 @@ export function ageWords(at: number, now: number): string {
 
 export type LimitWindow = { name: string; left: number; reset: string; low: boolean };
 export type LimitPill = "Measured" | "Not published";
-export type LimitRow = { id: string; name: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string };
+export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string };
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
 
 function limitRow(p: Record<string, unknown>, updatedAt: number, now: number): LimitRow {
@@ -72,8 +72,8 @@ function limitRow(p: Record<string, unknown>, updatedAt: number, now: number): L
   const account = [str(p.accountEmail), str(p.plan)].filter(Boolean).join(" · ");
   const measured = windows.length > 0;
   const line = str(p.error) || (measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) || "This service does not say what it allows.");
-  const name = str(p.displayName) || str(p.provider);
-  return { id: `${str(p.provider)}:${account}`, name, account, pill: measured ? "Measured" : "Not published", windows, line };
+  const name = (str(p.displayName) || str(p.provider)).replace(/\s+plan$/i, "");
+  return { id: `${str(p.provider)}:${account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line };
 }
 
 /** usage.status: one row per connection and account, never added together (§4.9.4 rule 1). */
@@ -93,17 +93,17 @@ export function limitsSummary(rows: LimitRow[]): string {
 
 export type RingReading = { name: string; left: number; reset: string; low: boolean };
 
-/** The bar's ring and label: the measured window with the least left (§4.9.1 item 8). */
+/** The bar and first account row use the same next account's 5-hour reading (FINAL-PASS C1). */
 export function ringReading(limits: Limits | null): RingReading | null {
-  let best: RingReading | null = null;
-  for (const row of limits?.rows ?? []) {
-    for (const w of row.windows) {
-      if (!best || w.left < best.left) {
-        best = { name: row.name, left: w.left, reset: w.reset, low: w.low };
-      }
+  const rows = limits?.rows ?? [];
+  for (const row of rows) {
+    const w = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
+    if (w) {
+      const number = rows.slice(0, rows.indexOf(row) + 1).filter((account) => account.name === row.name).length;
+      return { name: `${row.name} · Account ${number}`, left: w.left, reset: w.reset, low: w.low };
     }
   }
-  return best;
+  return null;
 }
 
 /** usage.cost params for this calendar month on this computer's clock (as the Control UI's buildSessionUsageDateParams). */

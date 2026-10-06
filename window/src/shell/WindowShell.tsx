@@ -1319,7 +1319,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           roomUsed={route.kind === "chat" ? roomUsed(openRow) : null}
           running={running}
           version={branchVersion}
+          readyVersion={update?.latest}
           usage={shown.usage ? ringReading(limits) : null}
+          usageShown={shown.usage}
           gatewayShown={shown.gateway}
           open={overlay?.kind === "status" ? overlay.item : overlay?.kind === "menu" && overlay.id === "machine-sb" ? "connection" : null}
           extras={{

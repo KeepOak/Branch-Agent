@@ -58,7 +58,7 @@ export function WhatsNew(p: Props) {
     <>
       {on === "ready" ? (
         <button type="button" className="btn" data-testid="wn-install" disabled={p.update?.installing} onClick={() => (p.onClose(), p.onInstall())}>
-          Install when nothing is running
+          Install when idle
         </button>
       ) : null}
       <button type="button" className="btn primary" onClick={p.onClose}>
