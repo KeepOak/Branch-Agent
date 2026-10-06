@@ -21,6 +21,16 @@ const present = async file => fs.access(path.join(engineRoot, file)).then(() => 
 const sourceHash = async file => crypto.createHash('sha256').update(await fs.readFile(path.join(engineRoot, file))).digest('hex');
 const launcherFile = path.join(engineRoot, 'branch.mjs');
 
+function shardSelection(raw = process.env.FEATURE_SLICE_SHARD) {
+  if (!raw) return { index: 0, total: 1 };
+  const match = /^(\d+)\/(\d+)$/.exec(raw);
+  assert(match, `Invalid FEATURE_SLICE_SHARD: ${raw}`);
+  const index = Number(match[1]) - 1, total = Number(match[2]);
+  assert(Number.isSafeInteger(index) && Number.isSafeInteger(total) && total > 0 && index >= 0 && index < total,
+    `Invalid FEATURE_SLICE_SHARD: ${raw}`);
+  return { index, total };
+}
+
 async function launcherState(file) {
   const stat = await fs.lstat(file);
   assert(stat.isFile() && !stat.isSymbolicLink(), 'The tracked launcher must remain a regular file');
@@ -229,14 +239,17 @@ fileParallelism: false, isolate: true, passWithNoTests: false, pool: 'forks', ex
 
 async function all() {
   const scope = await inventory();
-  const selected = scope.filter(slice => slice.state === 'ready');
+  const shard = shardSelection();
+  const selected = scope.filter(slice => slice.state === 'ready')
+    .filter((_, index) => index % shard.total === shard.index);
   const windowScope = await windowInventory();
-  const selectedWindow = windowScope.filter(slice => slice.state === 'ready');
+  const selectedWindow = windowScope.filter(slice => slice.state === 'ready')
+    .filter((_, index) => (index + 1) % shard.total === shard.index);
   const base = process.env.RUNNER_TEMP ?? process.env.BRANCH_FEATURE_SLICE_TEMP;
   assert(base, 'RUNNER_TEMP or explicit BRANCH_FEATURE_SLICE_TEMP is required');
   await fs.mkdir(base, { recursive: true });
   const scratch = await fs.mkdtemp(path.join(base, 'branch-feature-slice-'));
-  const receipt = { head: await gitHead(), platform: process.platform, node: process.version, scope, windowScope,
+  const receipt = { head: await gitHead(), platform: process.platform, node: process.version, shard, scope, windowScope,
     nativeFiles: selected.flatMap(slice => slice.native), vitestFiles: selected.flatMap(slice => slice.vitest),
     windowVitestFiles: selectedWindow.flatMap(slice => slice.vitest),
     steps: [], status: selected.length || selectedWindow.length ? 'started' : 'inventory-only', coverageClaim: 'Named offline source tests only; no installed or complete feature acceptance.' };
@@ -245,7 +258,7 @@ async function all() {
   const env = { ...baseEnv, BRANCH_TEST_ARTIFACT_DIR: path.join(scratch, 'fixtures'),
     BRANCH_HOME: path.join(scratch, 'home'), BRANCH_STATE_DIR: path.join(scratch, 'state'),
     BRANCH_CONFIG_PATH: path.join(scratch, 'config.json'), BRANCH_TEST_FAST: '1' };
-  console.log(`Feature slices: ${selected.length} ready, ${scope.length - selected.length} absent. ${receipt.nativeFiles.length} native, ${receipt.vitestFiles.length} Vitest files.`);
+  console.log(`Feature slice shard ${shard.index + 1}/${shard.total}: ${selected.length} ready selected, ${scope.filter(slice => slice.state === 'absent').length} absent. ${receipt.nativeFiles.length} native, ${receipt.vitestFiles.length} Vitest files.`);
   console.log(`Receipt directory: ${scratch}`);
   console.log(`Window slices: ${selectedWindow.length} ready. ${receipt.windowVitestFiles.length} exact React/jsdom files.`);
   try {
@@ -304,6 +317,10 @@ async function all() {
 
 async function selfTest() {
   let controls = 0;
+  assert.deepEqual(shardSelection(''), { index: 0, total: 1 });
+  assert.deepEqual(shardSelection('2/2'), { index: 1, total: 2 });
+  assert.throws(() => shardSelection('3/2'), /Invalid FEATURE_SLICE_SHARD/);
+  controls += 3;
   const empty = await inventory(async () => false);
   assert(empty.every(slice => slice.state === 'absent'));
   controls++;
