@@ -1,3 +1,4 @@
+engine:extensions/anthropic/cli-auth-seam.test.ts
 engine:extensions/lmstudio/src/models.fetch.test.ts
 engine:extensions/lmstudio/src/setup.test.ts
 engine:extensions/lmstudio/src/stream.test.ts
@@ -17,6 +18,7 @@ engine:packages/ai/src/providers/openai-chatgpt-responses.test.ts
 engine:src/agents/tools/nodes-tool-ptz.test.ts
 engine:src/agents/tools/nodes-tool.test.ts
 engine:src/cli/nodes-camera.test.ts
+engine:src/llm/utils/oauth/anthropic.test.ts
 engine:src/llm/utils/oauth/openai-chatgpt.test.ts
 engine:src/media/audio-transcode.test.ts
 engine:src/media/ffmpeg-exec.test.ts

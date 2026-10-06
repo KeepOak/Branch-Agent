@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:extensions/anthropic/cli-auth-seam.test.ts (atlas MODELS-ACCOUNTS-0029). Changed for Branch: retained current upstream auth-method and email validation assertions.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createWindowsCmdShimFixture, withTempDir } from "branch/plugin-sdk/test-env";
