@@ -127,6 +127,34 @@ const getPassiveReplacement = (agentId?: string) => {
 };
 const getAdmissionReplacement = () => modelRuntimeDrain.pending ?? getBlockingReplacement();
 
+function widenReplacementForAdoptedAuth(
+  replacement: PreparedModelRuntimeReplacement,
+  adoptedOwners: readonly PreparedModelRuntimeOwner[],
+): void {
+  if (!replacement.agentIds) {
+    return;
+  }
+  const agentIds = new Set(replacement.agentIds);
+  for (const owner of adoptedOwners) {
+    if (owner.provenance === "standalone" || !owner.input.agentId) {
+      replacement.agentIds = undefined;
+      return;
+    }
+    agentIds.add(normalizeAgentId(owner.input.agentId));
+  }
+  replacement.agentIds = agentIds;
+}
+
+function adoptAuthTransaction(
+  replacement: PreparedModelRuntimeReplacement,
+  transaction?: Parameters<PreparedModelRuntimeAuthPublicationOwner["adoptTransaction"]>[0],
+): void {
+  const adoptedOwners = transaction
+    ? authPublication.adoptTransaction(transaction, replacement.gateId)
+    : authPublication.adopt(replacement.gateId);
+  widenReplacementForAdoptedAuth(replacement, adoptedOwners);
+}
+
 const replyDispatchPublication = new PreparedReplyDispatchPublicationOwner({
   isGatewayLifecycleActive: () => gatewayLifecycleActive,
   getConfiguredOwner: (agentId) =>
@@ -431,7 +459,7 @@ export function markPreparedModelRuntimeSnapshotsStale(
     pendingModelRuntimeReplacement.agentIds = options.agentIds
       ? new Set([...options.agentIds].map(normalizeAgentId))
       : undefined;
-    authPublication.adopt(pendingModelRuntimeReplacement.gateId);
+    adoptAuthTransaction(pendingModelRuntimeReplacement);
     // Superseded readers retry against the newer replacement gate.
     superseded?.resolve();
   } else if (!options.preserveReplacementWait && pendingModelRuntimeReplacement) {
@@ -599,6 +627,7 @@ export function refreshPreparedModelRuntimeSnapshots(
         replacement.agentIds = publicationAgentIds
           ? new Set([...publicationAgentIds].map(normalizeAgentId))
           : undefined;
+        adoptAuthTransaction(replacement);
       }
       retainedGatewayRunOwners.clear(owners);
       gatewayLifecycleActive ||= options.gatewayLifecycle === true;
@@ -685,7 +714,7 @@ function invalidateForAuthMutation(event: PreparedModelRuntimeAuthMutation): voi
   if (getBlockingReplacement()) {
     // The active config transaction drains this event before its atomic dispatch commit. Retire
     // the superseded build gate; queuing another task would make this commit depend on future work.
-    authPublication.adoptTransaction(transaction, getBlockingReplacement()!.gateId);
+    adoptAuthTransaction(getBlockingReplacement()!, transaction);
     notifyPreparedModelRuntimePublication({ phase: "invalidated" });
     return;
   }
@@ -699,13 +728,13 @@ function invalidateForAuthMutation(event: PreparedModelRuntimeAuthMutation): voi
     // dispatch publication. Rebuilding here would revive stale owners with the old config or
     // throw on them, emitting a spurious failed/published event that wedges chat metadata.
     if (getBlockingReplacement()) {
-      authPublication.adoptTransaction(transaction, getBlockingReplacement()!.gateId);
+      adoptAuthTransaction(getBlockingReplacement()!, transaction);
       return;
     }
     await drainPendingAuthMutations(() => {
       // Admission waits only for static publication; account discovery owns a separate lifetime.
       if (getBlockingReplacement()) {
-        authPublication.adoptTransaction(transaction, getBlockingReplacement()!.gateId);
+        adoptAuthTransaction(getBlockingReplacement()!, transaction);
         return;
       }
       if (!authPublication.resolve(transaction, owners)) {
@@ -732,7 +761,7 @@ function invalidateForAuthMutation(event: PreparedModelRuntimeAuthMutation): voi
       return;
     }
     if (getBlockingReplacement()) {
-      authPublication.adoptTransaction(transaction, getBlockingReplacement()!.gateId);
+      adoptAuthTransaction(getBlockingReplacement()!, transaction);
       return;
     }
     if (error instanceof PreparedModelRuntimePublicationSupersededError) {

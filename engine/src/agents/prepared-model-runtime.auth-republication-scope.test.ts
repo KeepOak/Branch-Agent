@@ -8,6 +8,7 @@ import {
   readOnlyWorkerScope,
   type SqliteReadOnlyWorkerScope,
 } from "../infra/sqlite-readonly-worker-context.js";
+import { createDeferredCore } from "../shared/deferred.js";
 import {
   getPendingPreparedModelRuntimeReplacement,
   loadPublishedGatewayReplyDispatchRuntime,
@@ -31,6 +32,67 @@ function createCallerScope(): SqliteReadOnlyWorkerScope {
 }
 
 describe("prepared model runtime auth republication scope", () => {
+  it("waits for an adopted auth change outside the scoped replacement before reading that Trunk", async () => {
+    const config: BranchConfig = {
+      agents: { ownership: "explicit", entries: { default: {}, worker: {} } },
+    };
+    mocks.configuredAgentIds = ["default", "worker"];
+    await refreshPreparedModelRuntimeSnapshots(config, { gatewayLifecycle: true });
+
+    const buildEntered = createDeferredCore<void>();
+    const releaseBuild = createDeferredCore<void>();
+    const defaultDir = fixture.agentInput("default", config).agentDir;
+    mocks.ensureBranchModelsJson.mockImplementation(async (_config, agentDir) => {
+      if (agentDir === defaultDir) {
+        buildEntered.resolve();
+        await releaseBuild.promise;
+      }
+      return { agentDir: String(agentDir), wrote: false };
+    });
+    const publication = refreshPreparedModelRuntimeSnapshots(config, {
+      gatewayLifecycle: true,
+      agentIds: new Set(["default"]),
+    });
+    try {
+      await buildEntered.promise;
+      expect(getPendingPreparedModelRuntimeReplacement("worker")).toBeUndefined();
+      mocks.mutationListener?.({
+        agentDir: fixture.agentInput("worker", config).agentDir,
+        affectsInheritedStores: false,
+      });
+      expect(getPendingPreparedModelRuntimeReplacement("worker")).toBeDefined();
+
+      let systemInfoSettled = false;
+      let modelsListSettled = false;
+      const systemInfo = readPreparedGatewayModelCatalogOwnerSnapshot({
+        agentId: "worker",
+        getConfig: () => config,
+      }).then((catalog) => {
+        systemInfoSettled = true;
+        return catalog;
+      });
+      const modelsList = loadPublishedPreparedModelCatalogOwnerSnapshot({
+        agentId: "worker",
+        config,
+        readOnly: true,
+      }).then((owner) => {
+        modelsListSettled = true;
+        return owner;
+      });
+      await Promise.resolve();
+      expect(systemInfoSettled).toBe(false);
+      expect(modelsListSettled).toBe(false);
+
+      releaseBuild.resolve();
+      await publication;
+      expect(await systemInfo).toMatchObject({ agentId: "worker" });
+      expect(await modelsList).toMatchObject({ agentId: "worker" });
+    } finally {
+      releaseBuild.resolve();
+      await Promise.allSettled([publication]);
+    }
+  });
+
   it("serves another Trunk's system.info and models.list reads while a scoped publication aborts", async () => {
     const config: BranchConfig = { agents: { ownership: "explicit", entries: { default: {}, worker: {} } } };
     mocks.configuredAgentIds = ["default", "worker"];
