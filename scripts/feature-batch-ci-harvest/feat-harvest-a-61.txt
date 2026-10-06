@@ -9,6 +9,8 @@ engine:extensions/googlechat/src/monitor-durable.test.ts
 engine:extensions/googlechat/src/monitor-webhook.test.ts
 engine:extensions/line/src/bot-handlers.test.ts
 engine:extensions/line/src/bot.test.ts
+engine:extensions/line/src/card-command.escapes.test.ts
+engine:extensions/line/src/channel.rich-messages.test.ts
 engine:extensions/msteams/src/conversation-store.shared.test.ts
 engine:extensions/msteams/src/reply-stream-controller.sdk.test.ts
 engine:extensions/msteams/src/reply-stream-controller.test.ts
