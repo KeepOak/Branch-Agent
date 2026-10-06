@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:extensions/ollama/src/node-inference.paired-node.e2e.test.ts (atlas MODELS-ACCOUNTS-0155). Changed for Branch: canonical rename map; retain current upstream keyed agent configuration in the paired-node Gateway test.
 // Proves local Ollama inference crosses a real Gateway and paired node socket.
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";

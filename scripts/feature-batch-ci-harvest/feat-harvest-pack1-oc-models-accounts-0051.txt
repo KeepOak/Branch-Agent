@@ -1,6 +1,8 @@
 engine:extensions/apple-fm/index.test.ts
 engine:extensions/apple-fm/native.test.ts
 engine:extensions/apple-fm/stream.test.ts
+engine:extensions/ollama/src/node-inference.paired-node.e2e.test.ts
+engine:extensions/ollama/src/node-inference.test.ts
 engine:src/agents/auth-profiles/oauth-manager.lock-cancel.test.ts
 engine:src/agents/auth-profiles/oauth-manager.test.ts
 engine:src/agents/auth-profiles/oauth-refresh-fence.test.ts
