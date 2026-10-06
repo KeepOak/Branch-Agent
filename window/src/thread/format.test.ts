@@ -15,7 +15,7 @@ describe("thread words", () => {
   it("sums up a run's steps in plain words", () => {
     expect(stepsSummary([step("exec")])).toBe("Ran a command");
     expect(stepsSummary([step("exec"), step("exec"), step("read")])).toBe("Ran 2 commands and read a file · 3 steps");
-    expect(stepsSummary([step("read"), step("read"), step("web_search")])).toBe("Read 2 files and used web_search · 3 steps");
+    expect(stepsSummary([step("read"), step("read"), step("web_search")])).toBe("Read 2 files and searched the web · 3 steps");
     expect(stepsSummary([{ ...step("exec"), at: 1_000 }, { ...step("read"), at: 42_000 }])).toBe("Ran a command and read a file · 2 steps · 41s");
     expect(stepsSummary([step("exec"), step("read", "running")])).toBe("Reading a file");
   });

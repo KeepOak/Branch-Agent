@@ -184,6 +184,7 @@ export function Composer(props: Props) {
       draft.clear();
       return;
     }
+    if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") {
       void runBackground(plan.text);
       return;
@@ -362,7 +363,8 @@ export function Composer(props: Props) {
 
   const hasDraft = draft.text.trim().length > 0 || draft.files.length > 0;
   const stopMode = working && !hasDraft;
-  const ready = hasDraft && !disabled && draft.preparing === 0 && (!noModel || draft.text.trim().startsWith("/"));
+  // Sessions and history arrive before the engine finishes starting; sending waits for this Trunk.
+  const ready = hasDraft && !disabled && draft.preparing === 0 && !isPreparationPending(conversationProblem) && (!noModel || draft.text.trim().startsWith("/"));
   const cost = num(row.estimatedCostUsd);
   const temporary = props.draftTemporary === true || row.incognito === true;
 

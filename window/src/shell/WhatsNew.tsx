@@ -1,7 +1,9 @@
 // What's new (DESIGN-SPEC §4.8.3, Q83): one dialog for every entry point. The installed version lists what this
 // window brought, each row opening its place; a version waiting to install lists the engine's own update notes
-// (update.status updateAvailable.commits) and offers "Install when nothing is running".
+// (update.status updateAvailable.commits) and offers "Install when idle".
 import { useState } from "react";
+import { versionParts } from "../connect/branch-version";
+import { installOnComputer } from "../connect/desktop-component-updates";
 import { Dialog } from "./Dialog";
 import { Icon, type IconName } from "./icons";
 import type { UpdateInfo } from "./status-data";
@@ -20,6 +22,8 @@ type Props = {
   onClose: () => void;
   /** Open on the waiting version (the version menu's "What's new"). */
   startOnReady?: boolean;
+  desktopInstall?: boolean;
+  computerName?: string;
 };
 
 function Rows({ title, rows, close }: { title: string; rows: NewRow[]; close: () => void }) {
@@ -55,9 +59,9 @@ export function WhatsNew(p: Props) {
   const groups = on === "ready" ? waiting : p.installed;
   const footer = (
     <>
-      {on === "ready" ? (
+      {on === "ready" && p.desktopInstall ? (
         <button type="button" className="btn" data-testid="wn-install" disabled={p.update?.installing} onClick={() => (p.onClose(), p.onInstall())}>
-          Install when nothing is running
+          Install when idle
         </button>
       ) : null}
       <button type="button" className="btn primary" onClick={p.onClose}>
@@ -70,14 +74,14 @@ export function WhatsNew(p: Props) {
       {ready ? (
         <span className="seg wn-seg" role="radiogroup" aria-label="Version" style={{ gridTemplateColumns: "repeat(2, auto)", ["--i" as string]: on === "ready" ? 1 : 0, ["--n" as string]: 2 }}>
           <button type="button" role="radio" aria-checked={on === "installed"} onClick={() => setOn("installed")}>
-            {p.version} · installed
+            Branch {versionParts(p.version).short} · installed
           </button>
           <button type="button" role="radio" aria-checked={on === "ready"} onClick={() => setOn("ready")}>
-            {ready} · ready
+            Branch {versionParts(ready).short} · ready
           </button>
         </span>
       ) : null}
-      <p className="hint wn-hint">{on === "ready" ? `What Branch ${ready} brings. It installs when nothing is running and keeps a safety copy first.` : `What Branch ${p.version} brought, and where each part lives.`}</p>
+      <p className="hint wn-hint">{on === "ready" && ready ? p.desktopInstall ? `What Branch ${versionParts(ready).short} brings. It installs when nothing is running and keeps a safety copy first.` : installOnComputer(p.computerName ?? "") : `What Branch ${versionParts(p.version).short} brought, and where each part lives.`}</p>
       {on === "ready" && !notes.length ? <p className="hint">The update didn't say what it changes.</p> : null}
       <Rows title="New" rows={groups.New} close={p.onClose} />
       <Rows title="Better" rows={groups.Better} close={p.onClose} />

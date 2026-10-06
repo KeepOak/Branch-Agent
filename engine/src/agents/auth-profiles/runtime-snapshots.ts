@@ -483,6 +483,7 @@ export function replaceOwnedRuntimeAuthProfileStoreSnapshots(
       clearRuntimeAuthMaterializationsAtDatabasePath(key);
     }
   }
+  const addedAgentDirs = resolveAddedAgentStoreDirs(sharedEntries);
   const metadataChanged = recordChangedSnapshotRevisions(next);
   const nextOwned = sharedEntries.map((entry) => {
     const key = resolveRuntimeSnapshotEntryKey(entry);
@@ -499,9 +500,58 @@ export function replaceOwnedRuntimeAuthProfileStoreSnapshots(
   for (const [key, entry] of nextOwned) {
     runtimeAuthStoreSnapshots.set(key, entry);
   }
-  if (metadataChanged) {
-    notifyRuntimeAuthStoreMutation(undefined, profileSetChanged);
+  if (!metadataChanged) {
+    return;
   }
+  if (addedAgentDirs) {
+    // A newly admitted agent's first store publication only affects that agent and the agents
+    // inheriting from it. A global event would stale every published owner and turn each later
+    // startup preparation into a rebuild of all agents (P38).
+    for (const { agentDir, profileSetChanged: added } of addedAgentDirs) {
+      notifyRuntimeAuthStoreMutation(agentDir, added);
+    }
+    return;
+  }
+  notifyRuntimeAuthStoreMutation(undefined, profileSetChanged);
+}
+
+/** Agent dirs of stores this publication adds, or undefined when any existing store changes. */
+function resolveAddedAgentStoreDirs(
+  entries: readonly OwnedRuntimeAuthProfileStoreSnapshotEntry[],
+): Array<{ agentDir: string; profileSetChanged: boolean }> | undefined {
+  const nextKeys = new Set(entries.map((entry) => entry.databasePath));
+  for (const [key, previous] of runtimeAuthStoreSnapshots) {
+    const entry = entries.find((candidate) => candidate.databasePath === key);
+    if (
+      !nextKeys.has(key) ||
+      !entry ||
+      !isDeepStrictEqual(
+        snapshotMetadataState(previous),
+        snapshotMetadataState({
+          store: entry.store,
+          owner: entry.owner,
+          legacyCandidates: entry.legacyCandidates,
+        }),
+      )
+    ) {
+      return undefined;
+    }
+  }
+  const sharedKey = resolveRuntimeStoreKey(undefined);
+  const added: Array<{ agentDir: string; profileSetChanged: boolean }> = [];
+  for (const entry of entries) {
+    if (runtimeAuthStoreSnapshots.has(entry.databasePath)) {
+      continue;
+    }
+    if (!entry.agentDir || entry.databasePath === sharedKey) {
+      return undefined;
+    }
+    added.push({
+      agentDir: entry.agentDir,
+      profileSetChanged: Object.keys(entry.store.profiles).length > 0,
+    });
+  }
+  return added.length > 0 ? added : undefined;
 }
 
 /** Clears all runtime auth profile snapshots. */

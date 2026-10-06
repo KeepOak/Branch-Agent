@@ -78,15 +78,27 @@ describe("Gateway startup node capabilities", () => {
           maxProtocol: PROTOCOL_VERSION,
           client: { id: "branch-macos", version: "test", platform: "darwin", mode: "node" },
           role,
+          ...(role === "operator" ? { scopes: ["operator.read"] } : {}),
           caps,
         },
         pluginNodeCapabilitySurfaces: {},
       };
-      return { client, closed };
+      return { client, closed, peer };
     };
     const affected = await connectPeer("affected", "node", ["files"]);
     const unaffected = await connectPeer("unaffected", "node", ["camera"]);
     const operator = await connectPeer("operator", "operator", ["files"]);
+    const pluginChanged = new Promise<{ event?: string; payload?: { generation?: number } }>(
+      (resolve) => {
+        operator.peer.on("message", (data) => {
+          const frame = JSON.parse(data.toString()) as {
+            event?: string;
+            payload?: { generation?: number };
+          };
+          if (frame.event === "plugins.changed") resolve(frame);
+        });
+      },
+    );
     const peers = [affected, unaffected, operator];
     let kernel: Awaited<ReturnType<typeof createGatewayKernel>> | undefined;
     let server: GatewayServer | undefined;
@@ -134,6 +146,10 @@ describe("Gateway startup node capabilities", () => {
       });
       expect(unaffected.client.socket.readyState).toBe(WebSocket.OPEN);
       expect(operator.client.socket.readyState).toBe(WebSocket.OPEN);
+      await expect(pluginChanged).resolves.toMatchObject({
+        event: "plugins.changed",
+        payload: { generation: expect.any(Number) },
+      });
     } finally {
       kernel?.clients.clear();
       try {

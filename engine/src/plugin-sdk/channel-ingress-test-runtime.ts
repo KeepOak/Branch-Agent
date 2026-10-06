@@ -6,6 +6,9 @@ export {
   readChannelContextAdmissionEvidence,
 } from "../channels/message-access/admission-evidence.js";
 export { createHostChannelIngressRuntime } from "../channels/message-access/runtime.js";
+// Keep authorization checks in the same module instance as host ingress's
+// opaque owner capability when exercising the integration in SDK tests.
+export { resolveCommandAuthorization } from "../auto-reply/command-auth.js";
 export {
   createChannelIngressQueue as createChannelIngressQueueForTests,
   listChannelIngressQueueAccountIdsReadOnly as listChannelIngressQueueAccountIdsForTests,

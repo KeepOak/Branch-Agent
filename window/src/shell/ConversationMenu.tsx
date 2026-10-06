@@ -1,6 +1,6 @@
 // The header's ⋯ conversation menu and what its rows open (DESIGN-SPEC §4.2.7): the rows come from
 // conversation-menu.ts; this hook runs them against the engine and keeps the menu, popover and dialogs.
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { describePlacement, listComputers, placementComputer, type Computer, type Placement } from "../stage/computers";
 import { ComputerPicker } from "../stage/ComputerPicker";
 import { ReplayDialog } from "./Replay";
@@ -12,11 +12,13 @@ import type { PlaceId } from "../places-nav/routes";
 import { copyText, ThreadContext } from "../thread/context";
 import { LookInside } from "../thread/dialogs";
 import { turnOf } from "../thread/layout";
+import { railTicks } from "../thread/Rail";
 import type { Block } from "../thread/model";
 import { loadCompleteTranscript } from "../transcript-export/load";
 import { eventsToMarkdown, type TranscriptExportFormat } from "../transcript-export/render";
 import { ExportDialog } from "../transcript-export/ExportDialog";
-import { AboutDialog, MapDialog, RemoveTrunkDialog, StartOverDialog } from "./ConversationDialogs";
+import { AboutDialog, MapDialog, StartOverDialog } from "./ConversationDialogs";
+import { RemoveTrunkDialog } from "../places/trunk/RemoveTrunk";
 import { conversationMenuItems, type ConversationDetail, type ConversationMenuRun, type StepUpdates } from "./conversation-menu";
 import type { Actions } from "./conversation-actions";
 import type { Trunks } from "./engine-data";
@@ -92,14 +94,28 @@ export function readDetail(raw: unknown): ConversationDetail {
   const s = rec(rec(raw).session);
   const v = str(s.verboseLevel);
   const r = str(s.reasoningLevel);
-  return { verboseLevel: v === "on" || v === "full" ? v : "off", showThinking: r !== "" && r !== "off", workspace: str(rec(s.worktree).path) || null };
+  return { verboseLevel: v === "on" || v === "full" ? v : "off", showThinking: r !== "off", workspace: str(rec(s.worktree).path) || null };
 }
 
 /** `open` shows the ⋯ menu; `whoItKnows` shows Who it knows under the header's people button (a second click closes it). */
-export function useConversationMenu(p: ConversationMenuProps): { open: (e: MouseEvent<HTMLElement>) => void; whoItKnows: (e: MouseEvent<HTMLElement>) => void; node: ReactNode } {
+export function useConversationMenu(p: ConversationMenuProps): { open: (e: MouseEvent<HTMLElement>) => void; whoItKnows: (e: MouseEvent<HTMLElement>) => void; node: ReactNode; showThinking: boolean } {
   const [open, setOpen] = useState<Open>(null);
+  const [, setBookmarkVersion] = useState(0);
+  useEffect(() => {
+    const update = () => setBookmarkVersion((v) => v + 1);
+    window.addEventListener("branch:turn-bookmarks-changed", update);
+    return () => window.removeEventListener("branch:turn-bookmarks-changed", update);
+  }, []);
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const key = p.session.getSnapshot().sessionKey;
+  useEffect(() => {
+    setDetail(null);
+    if (!key || !p.ready) return;
+    let active = true;
+    p.session.request("sessions.describe", { key, ...(p.trunk.id ? { agentId: p.trunk.id } : {}) })
+      .then((value) => { if (active) setDetail(readDetail(value)); }, () => undefined);
+    return () => { active = false; };
+  }, [key, p.ready, p.session, p.trunk.id]);
   const target = key ? { key, ...(p.trunk.id ? { agentId: p.trunk.id } : {}) } : null;
   const close = () => setOpen(null);
 
@@ -112,7 +128,7 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     p.session.request("sessions.patch", { ...target, ...change }).then(loadDetail, bad);
   };
   const computers = useComputers(p, key);
-  const run = useRun(p, { detail, key, target, patch, setOpen });
+  const run = useRun(p, { detail, key, target, patch, setOpen, setDetail });
   const lastReply = [...p.history].reverse().find((b) => b.kind === "text");
   const items = conversationMenuItems({
     row: p.row,
@@ -134,6 +150,19 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     room: p.room ? roomMenuItems({ ruleWords: p.room.ruleWords, canLeave: Boolean(p.row && !p.isMain), run: { rename: run.rename, rules: () => setOpen({ kind: "rules", at: menuAnchor() }), leave: run.archive, remove: run.remove } }) : null,
     run,
   });
+  let bookmarked: string[] = [];
+  try { if (key) bookmarked = JSON.parse(localStorage.getItem(`branch:turn-bookmarks:${key}`) ?? "[]") as string[]; } catch { /* storage unavailable */ }
+  const ticks = useMemo(() => railTicks(p.history), [p.history]);
+  const bookmarkedTicks = ticks.filter((tick) => bookmarked.includes(tick.key));
+  if (bookmarkedTicks.length && key) items.unshift({
+    kind: "sub", label: "Bookmarks", items: [
+      { kind: "head", label: "Bookmarks" },
+      ...bookmarkedTicks.map((tick): MenuItem => ({ label: tick.title.slice(0, 48), run: () => {
+        close();
+        window.dispatchEvent(new CustomEvent("branch:turn-jump", { detail: { sessionKey: key, blockKey: tick.key } }));
+      } })),
+    ],
+  });
   const show = (e: MouseEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -150,7 +179,7 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     }
     void whoItKnows(p, setOpen, e.currentTarget.getBoundingClientRect());
   };
-  return { open: show, whoItKnows: showKnown, node: <Overlays p={p} open={open} items={items} close={close} target={target} lastReply={lastReply} computers={computers} /> };
+  return { open: show, whoItKnows: showKnown, showThinking: detail?.showThinking ?? true, node: <Overlays p={p} open={open} items={items} close={close} target={target} lastReply={lastReply} computers={computers} /> };
 }
 
 /** Under the header's ⋯ button, for what a menu row opens. */
@@ -159,7 +188,7 @@ function menuAnchor(): MenuAnchor {
   return { x: (r?.right ?? 300) - 300, y: (r?.bottom ?? 50) + 4 };
 }
 
-type RunCtx = { detail: ConversationDetail | null; key: string | null; target: { key: string; agentId?: string } | null; patch: (c: Record<string, unknown>) => void; setOpen: (o: Open) => void };
+type RunCtx = { detail: ConversationDetail | null; key: string | null; target: { key: string; agentId?: string } | null; patch: (c: Record<string, unknown>) => void; setOpen: (o: Open) => void; setDetail: (d: ConversationDetail) => void };
 
 function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
   const { key, target, patch, setOpen } = c;
@@ -183,7 +212,7 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     copyLink: () => key && copy(conversationLink(key)),
     copyMarkdown: () => key && void loadCompleteTranscript(p.session.engine, key, new AbortController().signal).then((blocks) => copy(eventsToMarkdown(blocks, { title: p.title, includeToolDetails: true, includeTimestamps: true })), bad),
     copyId: () => key && copy(key),
-    showThinking: (on) => patch({ reasoningLevel: on ? "on" : "off" }),
+    showThinking: (on) => { c.setDetail({ verboseLevel: c.detail?.verboseLevel ?? "off", workspace: c.detail?.workspace ?? null, showThinking: on }); patch({ reasoningLevel: on ? "on" : "off" }); },
     stepUpdates: (level: StepUpdates) => patch({ verboseLevel: level }),
     revealFolder: () => target && void req("sessions.files.reveal", target).catch(bad),
     copyPath: () => c.detail?.workspace && copy(c.detail.workspace),
@@ -260,7 +289,7 @@ function Overlays({ p, open, items, close, target, lastReply, computers }: Overl
     case "start":
       return <StartOverDialog trunkName={p.trunk.name} onClose={close} onStart={() => p.session.request("sessions.reset", { ...target, reason: "reset" }).then(() => p.session.reload())} />;
     case "removeTrunk":
-      return p.trunk.id ? <RemoveTrunkDialog trunkName={p.trunk.name} onClose={close} onRemove={() => p.session.request("agents.delete", { agentId: p.trunk.id })} /> : null;
+      return p.trunk.id ? <RemoveTrunkDialog engine={engine} agentId={p.trunk.id} name={p.trunk.name} onClose={close} /> : null;
     case "about":
       return <AboutDialog engine={engine} sessionKey={target.key} agentId={target.agentId} trunkName={p.trunk.name} title={p.title} onCopy={copy} onClose={close} />;
     case "map":

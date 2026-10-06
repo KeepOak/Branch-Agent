@@ -22,6 +22,7 @@ import {
 } from "./event-projector-items.js";
 import {
   itemMeta,
+  itemOutputText,
   isCommandBearingToolItem,
   itemToolArgs,
   itemToolResult,
@@ -102,6 +103,7 @@ export function projectNormalizedToolItem(params: {
   phase: "start" | "result";
   item: CodexThreadItem | undefined;
   detailMode?: ToolProgressDetailMode;
+  outputTextByItem?: ReadonlyMap<string, string>;
 }): NormalizedToolItemProjection | undefined {
   const { item } = params;
   if (!item || !isProjectedNativeToolItem(item)) {
@@ -117,6 +119,7 @@ export function projectNormalizedToolItem(params: {
   const meta = itemMeta(item, params.detailMode);
   const emit = shouldEmitTranscriptToolProgress(name);
   const result = emit && params.phase === "result" ? itemToolResult(item) : undefined;
+  const output = emit && params.phase === "result" ? itemOutputText(item, params.outputTextByItem) : undefined;
   const event = emit
     ? {
         stream: "tool",
@@ -132,7 +135,7 @@ export function projectNormalizedToolItem(params: {
             ? {
                 status,
                 isError: isNonSuccessItemStatus(status),
-                ...(result ? { result } : {}),
+                ...(result || output ? { result: { ...result, ...(output ? { output } : {}) } } : {}),
               }
             : {}),
         },
@@ -559,6 +562,7 @@ export class CodexEventProjection {
     const projection = projectNormalizedToolItem({
       ...params,
       detailMode: this.toolProgress.toolProgressDetailMode(),
+      outputTextByItem: this.toolProgress.outputTextByItem,
     });
     if (!projection || !params.item) {
       return;

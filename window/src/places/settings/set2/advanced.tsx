@@ -8,6 +8,7 @@ import type { SettingsPageProps } from "../index";
 import { Btn, Ctl, LinkBtn, Page, Pick, Sec, Seg, Switch, useConfig, useScope, type Opt, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
+import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { CallLine, CodeRow, Kv, bytes, lvOf, openPlace, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 import {
   APP, COMMANDS, DOCKER_SEC, FILES, LOG_ROWS, NOSET, SEEING, SKILLS_MORE, SPEC, Section, WEB_MORE, rowsOf,
@@ -101,7 +102,7 @@ const LOCAL = new Set(["lmstudio", "ollama", "local"]);
 
 function MeaningSearch({ c }: { c: Ctx }) {
   const params = c.agent ? { agentId: c.agent } : {};
-  const st = useLive<RecordValue>(c.engine, "doctor.memory.status", params, ["memory"]);
+  const st = useLive<RecordValue>(c.engine, "doctor.memory.status", params, ["memory", "agents.changed", "config.changed"]);
   const test = useCall();
   const [probe, setProbe] = useState<RecordValue | null>(null);
   const emb = rec((probe ?? rec(st.data)).embedding);
@@ -454,6 +455,7 @@ function Tiles({ c }: { c: Ctx }) {
   );
 }
 function ServiceTile({ c, onLogs }: { c: Ctx; onLogs: () => void }) {
+  const version = useBranchVersion(c.engine.gatewayUrl);
   const status = useLive<RecordValue>(c.engine, "status", {}, ["health"]);
   const health = useLive<RecordValue>(c.engine, "health", { probe: false }, ["health"]);
   const sys = useLive<RecordValue>(c.engine, "system.info", {}, []);
@@ -463,7 +465,7 @@ function ServiceTile({ c, onLogs }: { c: Ctx; onLogs: () => void }) {
   const go = () => void restart.run(() => c.engine.request<RecordValue>("gateway.restart.request", { reason: "settings" }), (r) => (rec(r).status === "deferred" ? "Restarting once the running work finishes." : "Restarting. The window reconnects by itself."));
   return (
     <Tile name="Branch service" pill={health.error ? "Not answering" : ok ? "Running" : "Checking"} tone={health.error ? "bad" : ok ? "ok" : "idle"}
-      rows={[["Version", str(rec(status.data).runtimeVersion)], ["Address", `127.0.0.1:${port}`], ["Process", str(rec(status.data).pid) || str(rec(sys.data).pid)]]}>
+      rows={[["Version", version ? versionParts(version).detail : "Unavailable"], ["Address", `127.0.0.1:${port}`], ["Process", str(rec(status.data).pid) || str(rec(sys.data).pid)]]}>
       <Btn sm disabled={restart.busy} onClick={go}>Restart</Btn><Btn sm ghost onClick={onLogs}>Open logs</Btn>
       <CallLine call={restart} />
     </Tile>
@@ -497,4 +499,3 @@ function BrowserTile({ c, onLogs }: { c: Ctx; onLogs: () => void }) {
     </Tile>
   );
 }
-

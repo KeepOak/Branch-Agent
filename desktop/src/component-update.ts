@@ -179,10 +179,24 @@ export function refreshComponentUpdate(cfg: DesktopConfig, request: typeof fetch
   return next;
 }
 
-export async function readComponentUpdateStatus(cfg: DesktopConfig): Promise<{ currentVersion: string | null; pendingVersion: string | null; publicationInProgress: boolean }> {
+export interface ComponentUpdateState {
+  currentVersion: string | null;
+  /** Any staged update, including a desktop app that waits for the next launch. */
+  pendingVersion: string | null;
+  /** A staged engine/window pair, which the desktop applies in place without restarting the app. */
+  componentsPendingVersion: string | null;
+  publicationInProgress: boolean;
+  /** The window build the running engine was started with, kept beside the staged one until it is applied. */
+  previousWindowDir: string | null;
+}
+
+export async function readComponentUpdateStatus(cfg: DesktopConfig): Promise<ComponentUpdateState> {
   const pending = await publication(cfg);
-  const pendingVersion = pending?.phase === "pending" ? pending.version : await stagedDesktopVersion(cfg);
-  return { currentVersion: await readOrEmpty(versionFile(cfg)) || null, pendingVersion, publicationInProgress: Boolean(pending) };
+  const componentsPendingVersion = pending?.phase === "pending" ? pending.version : null;
+  const previousWindowDir = pending?.phase === "pending" && typeof pending.windowPrevious === "string"
+    && existsSync(join(pending.windowPrevious, "index.html")) ? pending.windowPrevious : null;
+  return { currentVersion: await readOrEmpty(versionFile(cfg)) || null, pendingVersion: componentsPendingVersion ?? await stagedDesktopVersion(cfg),
+    componentsPendingVersion, publicationInProgress: Boolean(pending), previousWindowDir };
 }
 
 export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void, options: RefreshOptions & { onStaged?: () => void } = {}): () => void {

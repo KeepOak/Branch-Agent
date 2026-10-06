@@ -10,6 +10,7 @@ import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Num, Page, Pick, Sec, Seg, Status, Switch, Val, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
+import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { CallLine, CodeRow, Kv, bytes, lvOf, rec, span, str, useCall, useLive, when, type RecordValue } from "./common";
 import { Icon } from "../../../shell/icons";
 import { DesktopCtl } from "../desktop-ctl";
@@ -117,13 +118,13 @@ function OffSwitches({ items }: { items: Off[] }) {
 
 /** The running status and its actions. Reload is this window's own reload; nothing running stops. */
 function Running({ engine, lv }: Ctx) {
+  const version = useBranchVersion(engine.gatewayUrl);
   const health = useLive<RecordValue>(engine, "health", { probe: false }, ["health"]);
   const sys = rec(useLive<RecordValue>(engine, "system.info", {}, []).data);
-  const status = rec(useLive<RecordValue>(engine, "status", {}, []).data);
   const restart = useCall();
   const [check, setCheck] = useState<"" | "fix" | "only">("");
   const up = span(sys.uptimeMs);
-  const facts = lv >= 2 ? [str(status.runtimeVersion) ? `Engine ${str(status.runtimeVersion)}` : "", sys.pid ? `process ${str(sys.pid)}` : "", rec(sys.processMemory).rssBytes ? bytes(rec(sys.processMemory).rssBytes) : ""].filter(Boolean) : [];
+  const facts = lv >= 2 ? [version ? `Branch ${versionParts(version).detail}` : "", sys.pid ? `process ${str(sys.pid)}` : "", rec(sys.processMemory).rssBytes ? bytes(rec(sys.processMemory).rssBytes) : ""].filter(Boolean) : [];
   return (
     <>
       {health.error ? <Status tone="bad" title="The engine isn’t answering">{health.error}</Status>

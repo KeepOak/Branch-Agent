@@ -10,7 +10,7 @@
 .main:has(> .pane-pn.at-below) > .pane-pn > .pane-resizer-pn {left:0;right:0;top:-5px;bottom:auto;width:auto;height:9px;}
 .main:has(> .pane-pn.swap:not(.at-below)) > .conversation-column {flex:none;width:var(--pane-w,352px);}
 .main:has(> .pane-pn.swap:not(.at-below)) > .pane-pn {flex:1;width:auto;}
-.main:has(> .pane-pn.focus) > .conversation-column {display:none;}
+.main:has(> .pane-pn.focus) > .conversation-column:not(:has(> .stage7)) {display:none;}
 .main:has(> .pane-pn.focus) > .pane-pn {flex:1;width:auto;height:auto;max-width:none;}
 .pane-pn.min {width:auto;}
 .main:has(> .pane-pn.at-below.min) > .pane-pn {height:auto;}

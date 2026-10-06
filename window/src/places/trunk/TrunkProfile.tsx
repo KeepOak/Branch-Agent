@@ -16,6 +16,7 @@ import { readMay } from "./may";
 import { errorText, lookOf, type TrunkRow } from "./model";
 import { loadProfile, skillsLine, type ProfileData } from "./profile-data";
 import { TrunkEditor, type EditorTab } from "./TrunkEditor";
+import { RemoveTrunkDialog } from "./RemoveTrunk";
 import { TrunkFace } from "./TrunkFace";
 import { LineIcon } from "./TrunkFace";
 import { TrunkFiles } from "./TrunkFiles";
@@ -99,18 +100,20 @@ export function TrunkProfile(props: TrunkProfileProps) {
   const { engine, agentId, level, onClose } = props;
   const data = useLoad(() => loadProfile(engine, agentId), agentId);
   const [editing, setEditing] = useState<EditorTab | null>(null);
+  const [removing, setRemoving] = useState(false);
   const [files, setFiles] = useState(false);
   const row = data.data?.roster.agents.find((a) => a.id === agentId);
   if (editing) return <TrunkEditor engine={engine} agentId={agentId} level={level} tab={editing} openSettings={props.openSettings} onClose={() => setEditing(null)} onSaved={data.reload} />;
+  if (removing && row) return <RemoveTrunkDialog engine={engine} agentId={agentId} name={row.name} onClose={() => setRemoving(false)} onRemoved={onClose} />;
   if (!data.data || !row) {
     const line = data.error || (data.loading ? "Reading this Trunk…" : "This Trunk is no longer in the engine’s list.");
     return <Layer><Dialog title="Trunk" wide onClose={onClose} testid="trunk-profile" footer={<button type="button" className="btn ghost" onClick={onClose}>Close</button>}><p className={data.error ? "tk-error" : "tk-hint"} role={data.error ? "alert" : "status"}>{line}</p></Dialog></Layer>;
   }
-  return <ProfileBody {...props} data={data.data} row={row} reload={data.reload} edit={setEditing} files={files} setFiles={setFiles} />;
+  return <ProfileBody {...props} data={data.data} row={row} reload={data.reload} edit={setEditing} remove={() => setRemoving(true)} files={files} setFiles={setFiles} />;
 }
 
-type BodyProps = TrunkProfileProps & { data: ProfileData; row: TrunkRow; reload: () => void; edit: (t: EditorTab) => void; files: boolean; setFiles: (v: boolean) => void };
-function ProfileBody({ engine, level, onClose, openPlace, data, row, reload, edit, files, setFiles }: BodyProps) {
+type BodyProps = TrunkProfileProps & { data: ProfileData; row: TrunkRow; reload: () => void; edit: (t: EditorTab) => void; remove: () => void; files: boolean; setFiles: (v: boolean) => void };
+function ProfileBody({ engine, level, onClose, openPlace, data, row, reload, edit, remove, files, setFiles }: BodyProps) {
   const [error, setError] = useState<string | null>(null);
   const isDefault = data.roster.defaultId === row.id;
   const block = defaultBlock(data.roster, row.id), write = canWrite(engine);
@@ -118,6 +121,7 @@ function ProfileBody({ engine, level, onClose, openPlace, data, row, reload, edi
   const footer = <>
     <button type="button" className="btn ghost tk-pf-pause" disabled title={shownWhy(PAUSE_WHY)}>Pause {row.name}</button>
     {!isDefault && <button type="button" className="btn ghost" disabled={!!block || !write} title={block || (write ? undefined : WRITE_WHY)} onClick={() => void toDefault()}>Make default</button>}
+    {!isDefault && <button type="button" className="btn ghost" disabled={!write} title={write ? undefined : WRITE_WHY} onClick={remove}>Remove {row.name}…</button>}
     <button type="button" className="btn pri" onClick={() => edit("look")}>Edit {row.name}</button>
   </>;
   return (

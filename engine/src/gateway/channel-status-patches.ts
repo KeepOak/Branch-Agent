@@ -149,6 +149,8 @@ export function sanitizeAbortedTaskStatusPatch(
   delete next.running;
   delete next.restartPending;
   delete next.reconnectAttempts;
+  delete next.needsAttention;
+  delete next.retryingSince;
   delete next.lastStartAt;
   delete next.lastStopAt;
   delete next.lifecycle;
