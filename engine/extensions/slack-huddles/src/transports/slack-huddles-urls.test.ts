@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3e932a5937b529ae45b89c57a1b5db2078aa1407:extensions/slack-huddles/src/transports/slack-huddles-urls.test.ts (atlas VOICE-0108). Changed for Branch: Retained newer upstream tests and Branch adapters; never regress the atlas pin.
 import { describe, expect, it } from "vitest";
 import { SlackHuddlesInvalidRequestError } from "../errors.js";
 import {
