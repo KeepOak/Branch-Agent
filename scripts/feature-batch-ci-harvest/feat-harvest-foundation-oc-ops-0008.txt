@@ -11,9 +11,12 @@ engine:src/gateway/host-thaw-recovery.test.ts
 engine:src/gateway/server-restart-sentinel.media-binding.test.ts
 engine:src/gateway/server-restart-sentinel.state-context.test.ts
 engine:src/gateway/server-restart-sentinel.test.ts
+engine:src/gateway/server-startup-update-check.test.ts
 engine:src/gateway/worker-environments/placement-idle-sweep.test.ts
 engine:src/infra/gateway-suspend-coordinator.handoff.test.ts
 engine:src/infra/gateway-suspend-coordinator.test.ts
+engine:src/infra/update-campaign.test.ts
 engine:src/infra/update-candidate-canary.cleanup.test.ts
 engine:src/infra/update-candidate-canary.exit.process.test.ts
 engine:src/infra/update-candidate-canary.test.ts
+engine:src/infra/update-check.test.ts

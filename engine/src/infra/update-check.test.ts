@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/infra/update-check.test.ts (atlas OPS-0043). Changed for Branch: route registry fixtures through the rename map to the installed Branch package (DECISIONS.md item 127).
 // Covers update version resolution, Git install labels, and registry fetch helpers.
 import fs from "node:fs/promises";
 import http from "node:http";
@@ -366,7 +367,7 @@ describe("resolveNpmChannelTag", () => {
 
   it("uses the public registry when no npm command is available", async () => {
     mockHttp.intercept({
-      url: "https://registry.npmjs.org/openclaw/latest",
+      url: "https://registry.npmjs.org/branch/latest",
       reply: {
         json: {
           version: "2026.6.8",
@@ -419,7 +420,7 @@ describe("resolveNpmChannelTag", () => {
         error: "TimeoutError: request timed out",
       });
       expect(fetchMock).toHaveBeenCalledWith(
-        "https://registry.npmjs.org/openclaw/latest",
+        "https://registry.npmjs.org/branch/latest",
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
     } finally {
@@ -431,7 +432,7 @@ describe("resolveNpmChannelTag", () => {
   it("cancels public registry HTTP failure bodies", async () => {
     const cancel = vi.spyOn(ReadableStream.prototype, "cancel");
     mockHttp.intercept({
-      url: "https://registry.npmjs.org/openclaw/latest",
+      url: "https://registry.npmjs.org/branch/latest",
       reply: { status: 503, body: "unavailable" },
     });
 
@@ -448,7 +449,7 @@ describe("resolveNpmChannelTag", () => {
   it("returns error on oversized public registry response exceeding 16 MiB", async () => {
     const ONE_MIB = 1024 * 1024;
     mockHttp.intercept({
-      url: "https://registry.npmjs.org/openclaw/latest",
+      url: "https://registry.npmjs.org/branch/latest",
       reply: {
         body: Buffer.alloc(16 * ONE_MIB + 1, 0x41),
         headers: { "content-type": "application/json" },
@@ -468,7 +469,7 @@ describe("resolveNpmChannelTag", () => {
     const body = `{"version":"${"0".repeat(innerLen)}"}`;
 
     mockHttp.intercept({
-      url: "https://registry.npmjs.org/openclaw/latest",
+      url: "https://registry.npmjs.org/branch/latest",
       reply: { body, headers: { "content-type": "application/json" } },
     });
 
@@ -481,7 +482,7 @@ describe("resolveNpmChannelTag", () => {
 
   it("returns error on malformed JSON from registry", async () => {
     mockHttp.intercept({
-      url: "https://registry.npmjs.org/openclaw/latest",
+      url: "https://registry.npmjs.org/branch/latest",
       reply: {
         body: "not-json-at-all{{{",
         headers: { "content-type": "application/json" },
@@ -616,11 +617,11 @@ describe("resolveNpmChannelTag", () => {
 describe("resolveExtendedStablePackage", () => {
   it("resolves and verifies an exact public package without falling back", async () => {
     mockHttp.intercept({
-      url: "https://registry.npmjs.org/openclaw/extended-stable",
+      url: "https://registry.npmjs.org/branch/extended-stable",
       reply: { json: { version: "2026.6.33" } },
     });
     mockHttp.intercept({
-      url: "https://registry.npmjs.org/openclaw/2026.6.33",
+      url: "https://registry.npmjs.org/branch/2026.6.33",
       reply: { json: { version: "2026.6.33" } },
     });
 
@@ -664,11 +665,11 @@ describe("resolveExtendedStablePackage", () => {
 
   it("ignores package overrides that do not use a loopback registry", async () => {
     mockHttp.intercept({
-      url: "https://registry.npmjs.org/openclaw/extended-stable",
+      url: "https://registry.npmjs.org/branch/extended-stable",
       reply: { json: { version: "2026.6.33" } },
     });
     mockHttp.intercept({
-      url: "https://registry.npmjs.org/openclaw/2026.6.33",
+      url: "https://registry.npmjs.org/branch/2026.6.33",
       reply: { json: { version: "2026.6.33" } },
     });
 
@@ -690,7 +691,7 @@ describe("resolveExtendedStablePackage", () => {
 
   it("returns selector_missing for an absent public selector", async () => {
     mockHttp.intercept({
-      url: "https://registry.npmjs.org/openclaw/extended-stable",
+      url: "https://registry.npmjs.org/branch/extended-stable",
       reply: { status: 404, body: "not found" },
     });
 
@@ -701,7 +702,7 @@ describe("resolveExtendedStablePackage", () => {
 
   it("returns selector_query_failed for unusable selector metadata", async () => {
     mockHttp.intercept({
-      url: "https://registry.npmjs.org/openclaw/extended-stable",
+      url: "https://registry.npmjs.org/branch/extended-stable",
       reply: { body: "{", headers: { "content-type": "application/json" } },
     });
 
@@ -712,11 +713,11 @@ describe("resolveExtendedStablePackage", () => {
 
   it("returns exact_package_mismatch when exact readback differs", async () => {
     mockHttp.intercept({
-      url: "https://registry.npmjs.org/openclaw/extended-stable",
+      url: "https://registry.npmjs.org/branch/extended-stable",
       reply: { json: { version: "2026.6.33" } },
     });
     mockHttp.intercept({
-      url: "https://registry.npmjs.org/openclaw/2026.6.33",
+      url: "https://registry.npmjs.org/branch/2026.6.33",
       reply: { json: { version: "2026.6.34" } },
     });
 
@@ -724,7 +725,7 @@ describe("resolveExtendedStablePackage", () => {
       resolveExtendedStablePackage({ installKind: "package", timeoutMs: 1000 }),
     ).resolves.toEqual({ status: "failed", reason: "exact_package_mismatch" });
     expect(mockHttp.requests().map((request) => request.fullUrl)).not.toContain(
-      "https://registry.npmjs.org/openclaw/latest",
+      "https://registry.npmjs.org/branch/latest",
     );
   });
 
@@ -794,7 +795,7 @@ describe("checkUpdateStatus registry behavior", () => {
   ] as const)("preserves $channel registry failures in status", async ({ channel, tag }) => {
     for (const queryTag of channel === "beta" ? ["beta", "latest"] : [tag]) {
       mockHttp.intercept({
-        url: `https://registry.npmjs.org/openclaw/${queryTag}`,
+        url: `https://registry.npmjs.org/branch/${queryTag}`,
         reply: { status: 503, body: "unavailable" },
       });
     }
@@ -815,7 +816,7 @@ describe("checkUpdateStatus registry behavior", () => {
       const selectedTag = failedTag === "beta" ? "latest" : "beta";
       for (const tag of ["beta", "latest"]) {
         mockHttp.intercept({
-          url: `https://registry.npmjs.org/openclaw/${tag}`,
+          url: `https://registry.npmjs.org/branch/${tag}`,
           reply:
             tag === failedTag
               ? { status: 503, body: "unavailable" }
