@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:extensions/apple-fm/native.test.ts (atlas MODELS-ACCOUNTS-0153). Changed for Branch: canonical rename map; retain current upstream native discovery and schema validation contracts.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
