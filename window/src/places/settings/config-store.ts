@@ -74,9 +74,10 @@ export class ConfigStore {
     if (typeof result.hash === "string" && result.config && typeof result.config === "object") {
       this.snap = { ...this.snap, hash: result.hash, config: record(result.config), valid: true };
       this.emit();
-    } else {
-      await this.load();
     }
+    // Runtime config may be applied after the patch response. Read the committed value so
+    // controls do not keep showing the previous default until the whole window reloads.
+    await this.load();
   }
 
   /** Saves one path; queued behind earlier saves so each one uses the revision the last one returned. */

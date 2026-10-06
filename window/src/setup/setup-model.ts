@@ -82,7 +82,14 @@ export function readDetected(result: unknown): Detected {
 
 /** The connection "Say hello to test it" uses: the first switched-on one that isn't signed out. */
 export function firstOn(detected: Detected, off: string[]): Candidate | null {
-  return detected.candidates.find((c) => !off.includes(c.key) && !c.signedOut) ?? null;
+  const on = detected.candidates.filter((c) => !off.includes(c.key) && !c.signedOut);
+  // A signed-in account is ready to answer across Trunks. A discovered local server
+  // may still need its provider setup, so do not make it the fresh default first.
+  return on.find((c) => c.kind !== "existing-model" && !isLocalModel(c.modelRef)) ?? on[0] ?? null;
+}
+
+export function isLocalModel(ref: string): boolean {
+  return /^(?:llama-cpp|ollama|lmstudio|vllm|localai|jan)\//i.test(ref);
 }
 
 export type TestResult = { ok: true; seconds: string; modelRef: string; madeDefault?: boolean } | { ok: false; error: string };

@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { connectProblem } from "./connect-problems";
 import { PreConnect } from "./PreConnect";
-import { freshChoices, readDetected, readTest, setupDone, setupRecord, STEPS } from "./setup-model";
+import { firstOn, freshChoices, readDetected, readTest, setupDone, setupRecord, STEPS } from "./setup-model";
 import { SetupFlow } from "./SetupFlow";
-import { readChatApps, recordSetup } from "./use-setup-engine";
+import { readChatApps, recordSetup, testModel } from "./use-setup-engine";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -46,6 +46,17 @@ describe("setup model", () => {
     expect(record).toMatchObject({ "wizard.lastRunAt": "2026-10-03T00:00:00.000Z", "wizard.lastRunMode": "remote", "wizard.securityAcknowledgedAt": "2026-10-03T00:00:00.000Z" });
     expect(setupDone({ config: { wizard: { lastRunAt: "x" } } })).toBe(true);
     expect(setupDone({ config: {} })).toBe(false);
+  });
+  it("chooses a signed-in account before a detected local model for a fresh default", async () => {
+    const detected = readDetected({ candidates: [
+      { kind: "llama-cpp", modelRef: "llama-cpp/qwen", label: "Qwen", credentials: true },
+      { kind: "saved-auth:openai:a", modelRef: "openai/gpt-6.1-sol", label: "ChatGPT", credentials: true },
+      { kind: "existing-model", modelRef: "llama-cpp/qwen", label: "In use", credentials: true },
+    ] });
+    expect(firstOn(detected, [])?.modelRef).toBe("openai/gpt-6.1-sol");
+    const { engine: e, request } = engine({ "branch.setup.activate": { ok: true, modelRef: "openai/gpt-6.1-sol", latencyMs: 800 } });
+    expect(await testModel(e, detected, [], "llama-cpp/qwen")).toMatchObject({ ok: true, madeDefault: true });
+    expect(params(request, "branch.setup.activate")).toEqual([{ agentId: "main", kind: "saved-auth:openai:a", modelRef: "openai/gpt-6.1-sol" }]);
   });
   it("chat apps from channels.status and connect problems in plain words", () => {
     expect(readChatApps({ channelOrder: ["telegram", "slack"], channelLabels: { telegram: "Telegram", slack: "Slack" }, channelAccounts: { telegram: [{ connected: true }] } })).toEqual([
@@ -123,6 +134,29 @@ describe("setup flow", () => {
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     // Researcher already exists, so setup prefills it as the only pick and makes nothing twice.
     expect(params(request, "agents.create")).toEqual([]);
+    expect(closed).toHaveBeenCalledWith(true);
+  });
+  it("replaces a local setup default with a working signed-in model before finishing", async () => {
+    const { engine: e, request } = engine({
+      health: { ok: true },
+      "branch.setup.detect": { candidates: [
+        { kind: "llama-cpp", modelRef: "llama-cpp/qwen", credentials: true },
+        { kind: "saved-auth:openai:a", modelRef: "openai/gpt-6.1-sol", credentials: true },
+        { kind: "existing-model", modelRef: "llama-cpp/qwen", credentials: true },
+      ] },
+      "branch.setup.verify": { ok: false, error: "No API key found for provider llama-cpp" },
+      "branch.setup.activate": { ok: true, modelRef: "openai/gpt-6.1-sol", latencyMs: 800 },
+      "system.info": { diskAvailableBytes: 2 * 1024 ** 3 },
+      "channels.status": { channelOrder: [] },
+      "config.get": { hash: "h", config: { agents: { defaults: { model: { primary: "llama-cpp/qwen" } } } } },
+      "config.patch": { ok: true },
+    });
+    const closed = vi.fn();
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={10} onClose={closed} onLocalModel={() => {}} />);
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    await act(async () => tid(host, "setup-finish").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(params(request, "branch.setup.activate")).toEqual([{ agentId: "main", kind: "saved-auth:openai:a", modelRef: "openai/gpt-6.1-sol" }]);
     expect(closed).toHaveBeenCalledWith(true);
   });
   it("an already set-up Branch opens at the first step not done, with Models marked done and its model shown", async () => {

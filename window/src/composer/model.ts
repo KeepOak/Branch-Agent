@@ -1,6 +1,7 @@
 // The model and thinking chip (DESIGN-SPEC §4.3.4): projections of models.list and the session row.
 import { list, rec, str, type Rec } from "./engine";
 import { readModelRuntimeMetadata, type ModelRuntimeMetadata } from "./model-capabilities";
+import { displayModelName } from "./model-display";
 
 export type Level = { id: string; label: string };
 
@@ -39,7 +40,7 @@ export function readModel(r: Rec): ModelChoice | null {
   return {
     ref: `${provider}/${id}`,
     id,
-    name: str(r.name) || id,
+    name: displayModelName(str(r.name) || id),
     provider,
     local: r.local === true,
     available: r.available !== false,

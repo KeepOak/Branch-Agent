@@ -1,5 +1,6 @@
 // Words and numbers the thread shows (DESIGN-SPEC §4.2, §7.1 rule 9).
 import type { Block } from "./model";
+import { displayModelName } from "../composer/model-display";
 
 export function formatDuration(ms?: number): string {
   if (!ms || ms < 0) {
@@ -160,5 +161,5 @@ export function shortReason(message: string): string {
 
 /** A model id as the hover bar shows it: the part after the provider. */
 export function modelName(model?: string): string {
-  return model ? model.replace(/^[^/]+\//, "") : "";
+  return model ? displayModelName(model.replace(/^[^/]+\//, "")) : "";
 }

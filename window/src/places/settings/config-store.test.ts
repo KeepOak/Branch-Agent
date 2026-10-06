@@ -19,7 +19,7 @@ describe("ConfigStore", () => {
 
   it("queues two quick saves; the second uses the hash the first returned", async () => {
     let n = 0;
-    const { engine, calls } = engineWith((method) => method === "config.get" ? { hash: "h0", config: {}, valid: true } : { ok: true, hash: `h${++n}`, config: { n } });
+    const { engine, calls } = engineWith((method) => method === "config.get" ? { hash: `h${n}`, config: { n }, valid: true } : { ok: true, hash: `h${++n}`, config: { n } });
     const store = new ConfigStore(engine);
     await Promise.all([store.set("a.one", true), store.set("a.two", false)]);
     const patches = calls.filter(([m]) => m === "config.patch").map(([, p]) => p);
@@ -31,7 +31,7 @@ describe("ConfigStore", () => {
   it("reads again and retries once when the config changed elsewhere", async () => {
     let gets = 0, patches = 0;
     const { engine } = engineWith((method) => {
-      if (method === "config.get") return { hash: `g${++gets}`, config: {}, valid: true };
+      if (method === "config.get") return patches === 2 ? { hash: "after", config: {}, valid: true } : { hash: `g${++gets}`, config: {}, valid: true };
       if (++patches === 1) throw new Error("config changed since last load; re-run config.get and retry");
       return { ok: true, hash: "after", config: {} };
     });
@@ -39,6 +39,19 @@ describe("ConfigStore", () => {
     await store.set("x", 1);
     expect(patches).toBe(2);
     expect(store.snap?.hash).toBe("after");
+  });
+
+  it("shows the committed default when the patch response still contains the old value", async () => {
+    let saved = false;
+    const { engine, calls } = engineWith((method) => {
+      if (method === "config.get") return { hash: saved ? "h2" : "h1", valid: true, config: { agents: { defaults: { model: saved ? "openai/gpt-6.1-sol" : "llama-cpp/qwen" } } } };
+      saved = true;
+      return { ok: true, hash: "h2", config: { agents: { defaults: { model: "llama-cpp/qwen" } } } };
+    });
+    const store = new ConfigStore(engine);
+    await store.set("agents.defaults.model.primary", "openai/gpt-6.1-sol");
+    expect(calls.filter(([method]) => method === "config.get")).toHaveLength(2);
+    expect(store.snap?.config?.agents).toEqual({ defaults: { model: "openai/gpt-6.1-sol" } });
   });
 
   it("refuses to save over a settings file with a problem", async () => {
