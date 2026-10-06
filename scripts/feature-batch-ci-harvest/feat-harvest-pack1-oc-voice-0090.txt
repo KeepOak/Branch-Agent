@@ -1,3 +1,6 @@
+engine:extensions/facetime/tests/call-lifecycle.test.ts
+engine:extensions/facetime/tests/outbound-call.test.ts
+engine:extensions/facetime/tests/talk-driver.test.ts
 engine:extensions/google-meet/index.create.test.ts
 engine:extensions/google-meet/index.test.ts
 engine:extensions/google-meet/node-host.test.ts
