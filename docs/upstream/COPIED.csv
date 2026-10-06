@@ -23,3 +23,7 @@ engine/src/infra/session-cost-usage.test.ts,OBSERVABILITY-0040,openclaw/openclaw
 engine/src/web-search/runtime.test.ts,RESEARCH-0001,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,src/web-search/runtime.test.ts,2026-10-06
 engine/src/web-search/runtime-autodetect-order.test.ts,RESEARCH-0001,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,src/web-search/runtime-autodetect-order.test.ts,2026-10-06
 engine/src/web-search/runtime-execution.test.ts,RESEARCH-0001,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,src/web-search/runtime-execution.test.ts,2026-10-06
+engine/extensions/brave/index.ts,RESEARCH-0002,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/brave/index.ts,2026-10-06
+engine/extensions/brave/src/brave-web-search-provider.runtime.ts,RESEARCH-0002,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,extensions/brave/src/brave-web-search-provider.runtime.ts,2026-10-06
+engine/extensions/brave/src/brave-image-search-tool.ts,RESEARCH-0002,bytedance/deer-flow,f840e843d3e2db1485cb65ceae73a5525aa80193,backend/packages/harness/deerflow/community/brave/tools.py,2026-10-06
+engine/extensions/brave/src/brave-image-search-tool.test.ts,RESEARCH-0002,bytedance/deer-flow,f840e843d3e2db1485cb65ceae73a5525aa80193,backend/tests/test_brave_tools.py,2026-10-06
