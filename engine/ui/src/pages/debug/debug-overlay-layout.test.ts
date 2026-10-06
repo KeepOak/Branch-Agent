@@ -1,3 +1,5 @@
+// From openclaw/openclaw@3d23bf9dd463f6cec1928cc65a7297c885a4529e:ui/src/pages/debug/debug-overlay-layout.test.ts (atlas OBSERVABILITY-0102). Changed for Branch: retain current upstream frame cleanup assertions and use its jsdom environment in Harvest CI.
+// @vitest-environment jsdom
 import { html, nothing, render } from "lit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStorageMock } from "../../test-helpers/storage.ts";

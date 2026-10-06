@@ -1,3 +1,5 @@
+// From openclaw/openclaw@3d23bf9dd463f6cec1928cc65a7297c885a4529e:ui/src/pages/debug/view.test.ts (atlas OBSERVABILITY-0102). Changed for Branch: retain current upstream overlay contracts and use jsdom and the real locale catalog in Harvest CI.
+// @vitest-environment jsdom
 import hljs from "highlight.js/lib/core";
 import { render, type LitElement } from "lit";
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +17,12 @@ import { createApplicationGateway } from "../../test-helpers/application-context
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
 import { createStorageMock } from "../../test-helpers/storage.ts";
 import { renderDebug } from "./view.ts";
+
+// Use the production catalog and translation memory in runners without the UI Vite plugin.
+vi.mock("../../i18n/locales/zh-CN.ts", async () => {
+  const { loadDebugTestLocale } = await import("./locale.test-support.ts");
+  return { zh_CN: loadDebugTestLocale() };
+});
 
 type DebugProps = Parameters<typeof renderDebug>[0];
 type TestDebugPage = HTMLElement & {
