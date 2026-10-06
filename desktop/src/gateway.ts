@@ -77,10 +77,10 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   return child;
 }
 
-export interface GatewayActivity { idle: boolean; activeRuns: number; userRuns: number; pendingReplies: number; totalActive: number }
+export interface GatewayActivity { idle: boolean; userIdle?: boolean; activeRuns: number; userRuns: number; pendingReplies: number; totalActive: number }
 let nextActivityId = 0;
 /** Query the engine's process-wide restart-drain inventory through its owned child channel. */
-export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" = false, timeoutMs = 5_000): Promise<GatewayActivity> {
+export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" | "drain-if-user-idle" = false, timeoutMs = 5_000): Promise<GatewayActivity> {
   if (!child.connected) return Promise.reject(new Error("The gateway activity channel is unavailable"));
   const id = ++nextActivityId;
   return new Promise((resolve, reject) => {
@@ -94,7 +94,7 @@ export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" = f
         typeof response.pendingReplies !== "number" || typeof response.totalActive !== "number") {
         reject(new Error("The gateway returned an invalid activity snapshot")); return;
       }
-      resolve({ idle: response.idle, activeRuns: response.activeRuns, userRuns: response.userRuns ?? response.activeRuns,
+      resolve({ idle: response.idle, userIdle: response.userIdle, activeRuns: response.activeRuns, userRuns: response.userRuns ?? response.activeRuns,
         pendingReplies: response.pendingReplies, totalActive: response.totalActive });
     };
     const onExit = () => { cleanup(); reject(new Error("The gateway exited during activity check")); };
@@ -102,7 +102,8 @@ export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" = f
     child.on("message", onMessage);
     child.once("exit", onExit);
     child.once("error", onError);
-    const type = stop === "drain" ? "branch-desktop:drain-stop" : stop ? "branch-desktop:stop-if-idle" : "branch-desktop:activity";
+    const type = stop === "drain" ? "branch-desktop:drain-stop" : stop === "drain-if-user-idle" ?
+      "branch-desktop:drain-if-user-idle" : stop ? "branch-desktop:stop-if-idle" : "branch-desktop:activity";
     child.send({ type, id }, error => { if (error) onError(error); });
   });
 }
@@ -141,6 +142,14 @@ export async function drainStopGateway(child: ChildProcess, timeoutMs = DRAIN_EX
     await waitForExit(child, 10_000).catch(() => undefined);
     return "killed";
   }
+}
+
+/** Atomic final gate for auto-apply: the engine tests user work and starts drain in one IPC turn. */
+export async function drainIfUserIdleGateway(child: ChildProcess, timeoutMs = DRAIN_EXIT_TIMEOUT_MS): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const result = await gatewayActivity(child, "drain-if-user-idle");
+  if (result.userIdle !== true) throw new Error("The gateway became busy before it could stop");
+  await waitForExit(child, timeoutMs);
 }
 
 /** The engine's own drain budget is 315 s ("shutdown budget at startup: drain=315000ms"); never cut a drain short. */

@@ -54,6 +54,7 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
         : <Hint>{work ? "No Trunks are working. Branch will check its remaining update conditions." : "Checking active Trunks…"}</Hint>}
       <Btn disabled={busy || !bridge.install} onClick={() => {
         if (!bridge.install) return;
+        if (work?.runs.length && !window.confirm(`Install now while ${work.runs.length} Trunk${work.runs.length === 1 ? " is" : "s are"} working? Their current work will be interrupted and resumed after the update.`)) return;
         setBusy(true); setError(null);
         void bridge.install().catch(caught => setError(caught instanceof Error ? caught.message : String(caught)))
           .finally(() => setBusy(false));

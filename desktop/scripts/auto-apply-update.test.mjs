@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import test from "node:test";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -8,6 +9,22 @@ const { createAutoApplyUpdate, AUTO_APPLY_POLL_MS, AUTO_APPLY_IDLE_MS } = await 
   pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "auto-apply-update.js"))
 );
 const { COMPONENT_UPDATE_CHECK_MS } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js")));
+const { drainIfUserIdleGateway } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+
+test("auto-apply requests an atomic user-idle drain and leaves a busy gateway running", async () => {
+  const child = new EventEmitter();
+  child.connected = true; child.exitCode = null; child.signalCode = null;
+  let request;
+  child.send = (message, callback) => {
+    request = message;
+    queueMicrotask(() => child.emit("message", { type: "branch-desktop:activity-result", id: message.id,
+      idle: false, userIdle: false, activeRuns: 1, pendingReplies: 0, totalActive: 1 }));
+    callback?.();
+  };
+  await assert.rejects(drainIfUserIdleGateway(child), /became busy/);
+  assert.equal(request.type, "branch-desktop:drain-if-user-idle");
+  assert.equal(child.exitCode, null);
+});
 
 function fixture() {
   let now = 0;

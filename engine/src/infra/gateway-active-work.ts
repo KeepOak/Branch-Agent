@@ -6,6 +6,7 @@ import { getActiveEmbeddedRunCount, isEmbeddedRunStopped, listActiveEmbeddedUser
 import { getActiveMediaGenerationRunCount } from "../agents/media-generation-activity.js";
 import { getTotalPendingReplies } from "../auto-reply/reply/dispatcher-registry.js";
 import { getActiveCronJobCount } from "../cron/active-jobs.js";
+import { getActiveUserCronJobCount } from "../cron/active-jobs.js";
 import { getSuspensionVisibleCronTaskRunCount } from "../cron/service/active-run-cancellation.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
 import {
@@ -74,13 +75,16 @@ export function createGatewayUpdateWorkSnapshot(activity = createGatewayActiveWo
     ...listActiveUserAgentRuns().filter((run) => !isEmbeddedRunStopped(run.runId)),
     ...listActiveEmbeddedUserRuns().filter((run) => {
       const context = getAgentRunContext(run.runId);
-      return context?.isHeartbeat !== true && context?.projectSessionActive !== false &&
-        !context?.cronRunsByJobId?.size;
+      return context?.isHeartbeat !== true && context?.projectSessionActive !== false;
     }),
-    ...listActiveAcpTurns().filter((run) => !run.sessionKey.includes(":cron:")),
+    ...listActiveAcpTurns(),
   ];
   const runs = [...new Map(candidates.map((run) => [run.runId, run] as const)).values()];
-  return { counts: activity.counts, runs, activeRuns: runs.length };
+  // Non-Trunk work has no run row to display but must still hold automatic installation.
+  // A cron marker may name a run already projected above, so do not sum those two inventories.
+  const activeRuns = Math.max(runs.length, getActiveUserCronJobCount()) + activity.counts.pendingReplies +
+    activity.counts.backgroundExecSessions + activity.counts.mediaRuns;
+  return { counts: activity.counts, runs, activeRuns };
 }
 
 type GatewayActiveWorkWaitResult = {

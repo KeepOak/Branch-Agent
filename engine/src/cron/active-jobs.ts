@@ -7,6 +7,8 @@ import {
 import type { CommandLaneTaskMarker } from "../process/command-queue.js";
 import type { PreparedEffectUse } from "../shared/effect-authority.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
+import { HEARTBEAT_DECLARATION_PREFIX, HEARTBEAT_TASK_DECLARATION_PREFIX,
+  SKILL_COLLECTION_REVIEW_DECLARATION_PREFIX } from "./system-owned-declaration.js";
 import type { CronStandingGrantAuthority } from "./standing-grant-authority.types.js";
 
 type CronActiveJobState = {
@@ -579,6 +581,16 @@ export function listCronHeartbeatWaitOwners(): {
 /** Returns the number of active cron runs in this process. */
 export function getActiveCronJobCount() {
   return getActiveCronJobCountForGeneration(getCronActiveJobState());
+}
+
+/** Operator-scheduled cron runs block automatic update; system housekeeping does not. */
+export function getActiveUserCronJobCount(): number {
+  const state = getCronActiveJobState();
+  return [...state.activeJobs.values()].filter((marker) =>
+    isMarkerActiveInGeneration(marker, state.generation) &&
+    ![HEARTBEAT_DECLARATION_PREFIX, HEARTBEAT_TASK_DECLARATION_PREFIX,
+      SKILL_COLLECTION_REVIEW_DECLARATION_PREFIX].some((prefix) => marker.declarationKey?.startsWith(prefix)),
+  ).length;
 }
 
 export async function waitForActiveCronJobs(timeoutMs: number): Promise<{

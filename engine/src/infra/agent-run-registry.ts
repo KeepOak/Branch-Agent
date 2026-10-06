@@ -542,7 +542,6 @@ export function listActiveUserAgentRuns(): Array<{ runId: string; sessionKey: st
       context.sessionKey &&
       context.projectSessionActive !== false &&
       context.isHeartbeat !== true &&
-      !context.cronRunsByJobId?.size &&
       getAgentRunRegistryState().owners.get(runId)?.clearRequested !== true &&
       hasAgentRunContextExecutionOwner(runId)
     ) {

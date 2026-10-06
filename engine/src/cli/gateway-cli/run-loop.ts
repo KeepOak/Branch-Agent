@@ -1101,17 +1101,20 @@ export async function runGatewayLoop(params: {
     const request = message as { type?: unknown; id?: unknown };
     if (typeof request.id !== "number" || !Number.isSafeInteger(request.id)) return;
     if (request.type !== "branch-desktop:activity" && request.type !== "branch-desktop:stop-if-idle"
-      && request.type !== "branch-desktop:drain-stop") return;
+      && request.type !== "branch-desktop:drain-stop" && request.type !== "branch-desktop:drain-if-user-idle") return;
     const snapshot = eagerLifecycleRuntime.createGatewayActiveWorkSnapshot();
     const updateWork = eagerLifecycleRuntime.createGatewayUpdateWorkSnapshot(snapshot);
     const counts = snapshot.counts;
-    process.send({ type: "branch-desktop:activity-result", id: request.id, idle: snapshot.idle,
+    const userIdle = updateWork.activeRuns === 0 && counts.pendingReplies === 0;
+    process.send({ type: "branch-desktop:activity-result", id: request.id, idle: snapshot.idle, userIdle,
       activeRuns: Math.max(counts.embeddedRuns, counts.agentRuns, counts.chatRuns, counts.acpRuns),
       userRuns: updateWork.activeRuns, pendingReplies: counts.pendingReplies, totalActive: counts.totalActive,
       counts });
     // drain-stop: the owner asked to update now. Stop admitting work and drain exactly as SIGTERM does;
     // runs the drain cannot finish are resumed by the next engine's restart recovery.
-    if (request.type === "branch-desktop:drain-stop" || request.type === "branch-desktop:stop-if-idle" && snapshot.idle) onSigterm();
+    if (request.type === "branch-desktop:drain-stop" ||
+      request.type === "branch-desktop:drain-if-user-idle" && userIdle ||
+      request.type === "branch-desktop:stop-if-idle" && snapshot.idle) onSigterm();
   };
   const onSigint = () => {
     observeSignal("SIGINT");

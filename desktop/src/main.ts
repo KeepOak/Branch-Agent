@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { drainStopGateway, gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady } from "./gateway";
+import { drainIfUserIdleGateway, drainStopGateway, gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady } from "./gateway";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident } from "./resident-window";
@@ -120,7 +120,7 @@ const engineRunning = (): boolean => Boolean(gateway && gateway.exitCode === nul
  * rollback, and the window either reconnects (engine-only) or swaps in its new build keeping route, scroll and drafts.
  * A staged desktop app is never applied here; it waits for the next natural launch.
  */
-async function swapEngineInPlace(label: string): Promise<void> {
+async function swapEngineInPlace(label: string, installNow = false): Promise<void> {
   if (!gateway || !win || engineRestartInProgress) throw new Error("The desktop is not ready to update");
   engineRestartInProgress = true;
   const windowBefore = windowBuild(servedWindowDir);
@@ -128,7 +128,8 @@ async function swapEngineInPlace(label: string): Promise<void> {
     if (!await candidatePassed(label)) return;
     const started = Date.now();
     win.webContents.send("branch-desktop:engine-update", "updating");
-    log(`update ${label}: old engine ${await drainStopGateway(gateway)}`);
+    if (installNow) log(`update ${label}: old engine ${await drainStopGateway(gateway)}`);
+    else { await drainIfUserIdleGateway(gateway); log(`update ${label}: old engine stopped after user-idle gate`); }
     const stopped = Date.now();
     servedWindowDir = cfg.windowDir;
     await waitForGatewayPort();
@@ -411,7 +412,7 @@ async function restartEngine(propagateError = false): Promise<void> {
   }
   const staged = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   log(`update requested (${staged ?? "rebuilt engine"}); old engine pid ${gateway.pid}`);
-  try { await swapEngineInPlace(staged ?? "rebuilt engine"); }
+  try { await swapEngineInPlace(staged ?? "rebuilt engine", true); }
   catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`update failed: ${msg}`);

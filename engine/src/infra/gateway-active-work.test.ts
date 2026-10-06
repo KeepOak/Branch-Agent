@@ -3,6 +3,7 @@ import { Value } from "typebox/value";
 import { afterEach, describe, expect, it } from "vitest";
 import { GatewaySuspendPrepareResultSchema } from "../../packages/gateway-protocol/src/index.js";
 import type { EmbeddedAgentQueueHandle } from "../agents/embedded-agent-runner/run-state.js";
+import { clearCronJobActive, markCronJobActive } from "../cron/active-jobs.js";
 import {
   abortEmbeddedAgentRun,
   clearActiveEmbeddedRun,
@@ -52,7 +53,7 @@ describe("waitForGatewayActiveWork", () => {
     } finally { releaseAgentRunContext(runId, claim); }
   });
 
-  it("excludes heartbeat, cron, and hidden maintenance from update blockers", () => {
+  it("excludes heartbeat and hidden maintenance but counts user cron", () => {
     const claims = [
       ["heartbeat", { sessionKey: "agent:main:heartbeat", isHeartbeat: true }],
       ["cron", { sessionKey: "agent:main:cron", cronRunsByJobId: new Map([["job", { pacingEnabled: false }]]) }],
@@ -60,9 +61,23 @@ describe("waitForGatewayActiveWork", () => {
     ] as const;
     const leases = claims.map(([runId, context]) => [runId, claimAgentRunContext(runId, context, { trackOwner: true })] as const);
     try {
-      expect(createGatewayUpdateWorkSnapshot().activeRuns).toBe(0);
+      expect(createGatewayUpdateWorkSnapshot().activeRuns).toBe(1);
       expect(createGatewayActiveWorkSnapshot().counts.agentRuns).toBe(3);
     } finally { for (const [runId, claim] of leases) releaseAgentRunContext(runId, claim); }
+  });
+
+  it("holds auto-apply for reply delivery, background exec, media, and user cron only", () => {
+    const counts = createGatewayActiveWorkSnapshot({ getPendingReplies: () => 1,
+      getBackgroundExecSessions: () => 1, getMediaRuns: () => 1 });
+    expect(createGatewayUpdateWorkSnapshot(counts).activeRuns).toBe(3);
+    const user = markCronJobActive("user-update-job");
+    const housekeeping = markCronJobActive("heartbeat-update-job", { declarationKey: "heartbeat:main" });
+    try {
+      expect(createGatewayUpdateWorkSnapshot(counts).activeRuns).toBe(4);
+    } finally {
+      clearCronJobActive("user-update-job", user);
+      clearCronJobActive("heartbeat-update-job", housekeeping);
+    }
   });
   it.each([
     { agentRuns: 1, acpRuns: 0, mediaRuns: 0, kind: "agent-run" },

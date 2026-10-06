@@ -48,7 +48,11 @@ it("shows each blocking Trunk and thread and Install now uses desktop drain", as
   await show();
   expect(request).toHaveBeenCalledWith("system.updateWork", {});
   expect(host.textContent).toContain("Builder Birch · Fix updates");
+  const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
   await click("Install now");
+  expect(install).not.toHaveBeenCalled();
+  await click("Install now");
+  expect(confirm).toHaveBeenCalledTimes(2);
   expect(install).toHaveBeenCalledTimes(1);
   expect(request).not.toHaveBeenCalledWith("update.run", {});
 });
