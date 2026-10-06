@@ -5,8 +5,34 @@ import type { Conversation } from "../connect/conversations";
 import type { RoomPick } from "../rooms/RoomFaces";
 import type { Actions } from "./conversation-actions";
 import type { ListPrefs, ListSection } from "./list-model";
+import type { Trunk } from "./engine-data";
 
 export type Contact = GatewayContact & { thread: Conversation | null; roomId?: string; offline?: boolean; roomPicks?: RoomPick[] };
+
+/** Trunks remain reachable until the gateway's contacts projection has loaded. */
+export function fallbackTrunkContacts(trunks: readonly Trunk[], sessions: readonly Conversation[], mainKey: string | null): GatewayContact[] {
+  const suffix = mainKey?.split(":").slice(2).join(":") || "main";
+  return trunks.map((trunk) => {
+    const threadKey = trunk.isDefault && mainKey ? mainKey : `agent:${trunk.id}:${suffix}`;
+    const thread = sessions.find((row) => row.key === threadKey);
+    return {
+      id: `trunk:${trunk.id}`, kind: "trunk", name: trunk.name, threadKey,
+      isDefault: trunk.isDefault, lastActivityAt: thread?.updatedAt ?? 0,
+      preview: { kind: "message", text: thread?.preview ?? "", at: thread?.updatedAt ?? 0 },
+      unreadTopics: 0, threadUnread: thread?.unread ?? false, needsYou: thread?.needsYou ?? false,
+      working: thread?.working ?? false, topicCount: 0,
+    };
+  });
+}
+
+/** An empty loaded roster is authoritative; only the first-run bootstrap owner is window-local. */
+export function contactRowsFor(gateway: readonly GatewayContact[], loaded: boolean, trunks: readonly Trunk[], sessions: readonly Conversation[], mainKey: string | null, firstRun: boolean, bootstrapDefault?: Trunk): GatewayContact[] {
+  const rows = loaded ? [...gateway] : firstRun ? fallbackTrunkContacts(trunks, sessions, mainKey) : [];
+  if (bootstrapDefault && !rows.some((row) => row.id === `trunk:${bootstrapDefault.id}`)) {
+    rows.push(...fallbackTrunkContacts([bootstrapDefault], sessions, mainKey));
+  }
+  return rows;
+}
 
 /** Join Gateway contacts to session rows only for existing row actions and detail. */
 export function projectContact(raw: readonly (GatewayContact & { roomId?: string; offline?: boolean; roomPicks?: RoomPick[] })[], sessions: readonly Conversation[]): Contact[] {
