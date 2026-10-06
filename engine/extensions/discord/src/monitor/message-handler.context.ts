@@ -29,6 +29,10 @@ import { truncateUtf16Safe } from "branch/plugin-sdk/text-utility-runtime";
 import { resolveDiscordConversationIdentity } from "../conversation-identity.js";
 import { ChannelType } from "../internal/discord.js";
 import { normalizeDiscordAllowList, normalizeDiscordSlug } from "./allow-list.js";
+import {
+  appendDiscordContext,
+  formatDiscordBotPlatformContext,
+} from "./discord-context-provider.js";
 import { resolveTimestampMs } from "./format.js";
 import {
   buildDiscordInboundAccessContext,
@@ -150,6 +154,24 @@ export async function buildDiscordMessageProcessContext(params: {
       isGuild: isGuildMessage,
       channelTopic: channelInfo?.topic,
     });
+  const discordContextPrompt = isGuildMessage
+    ? appendDiscordContext(
+        [groupSystemPrompt, formatDiscordBotPlatformContext()].filter(Boolean).join("\n\n"),
+        {
+          guild: {
+            id: guildInfo?.id ?? data.guild?.id ?? data.guild_id ?? "",
+            name: data.guild?.name,
+          },
+          channel: {
+            id: messageChannelId,
+            name: channelInfo?.name,
+            type: channelInfo?.type,
+            topic: channelInfo?.topic,
+          },
+          thread: threadChannel?.id ? { id: threadChannel.id, name: threadName } : undefined,
+        },
+      )
+    : undefined;
   const pinnedMainDmOwner = isDirectMessage
     ? resolvePinnedMainDmOwnerFromAllowlist({
         dmScope: cfg.session?.dmScope,
@@ -581,7 +603,7 @@ export async function buildDiscordMessageProcessContext(params: {
         label: threadLabel,
         senderAllowed: true,
       },
-      groupSystemPrompt: isGuildMessage ? groupSystemPrompt : undefined,
+      groupSystemPrompt: discordContextPrompt,
     },
     extra: {
       MessageSids: batchMessageIds,
