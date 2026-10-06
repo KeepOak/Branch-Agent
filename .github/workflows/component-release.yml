@@ -135,20 +135,18 @@ jobs:
           test -n "$BRANCH_MACOS_SIGNING_PASSWORD"
           keychain="$RUNNER_TEMP/branch-release-signing.keychain-db"
           p12="$RUNNER_TEMP/branch-release-signing.p12"
-          cert="$RUNNER_TEMP/branch-release-signing.pem"
           keychain_password="$(openssl rand -hex 32)"
           printf '%s' "$BRANCH_MACOS_SIGNING_P12" | base64 --decode > "$p12"
-          openssl pkcs12 -in "$p12" -clcerts -nokeys -out "$cert" -passin env:BRANCH_MACOS_SIGNING_PASSWORD
           security create-keychain -p "$keychain_password" "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security import "$p12" -k "$keychain" -P "$BRANCH_MACOS_SIGNING_PASSWORD" -T /usr/bin/codesign
-          security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$cert"
+          echo "Imported macOS signing identity"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
           security list-keychains -d user -s "$keychain"
           security default-keychain -d user -s "$keychain"
           security find-identity -v -p codesigning "$keychain" | grep -F "$BRANCH_MACOS_SIGNING_IDENTITY"
-          rm -f "$p12" "$cert"
+          rm -f "$p12"
       - name: Check release inventory regressions
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
