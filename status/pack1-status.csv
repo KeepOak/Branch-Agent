@@ -2,4 +2,4 @@ id,build_state,branch_files,upstream_tests_ported,named_test_command,result,note
 AGENT-LOOP-0001,in progress,,0/4,,,Inspect pinned OpenClaw and verify existing turn-loop tests.
 AGENT-LOOP-0002,blocked,docs/harvest/AGENT-LOOP-0002.md,0/3,not run,blocked before test port,Missing @lobechat/context-engine and @lobechat/types; no Branch operation-state/policy adapter with shared action authority; required DESIGN-SPEC.md DECISIONS.md and pack 1 page absent.
 AGENT-LOOP-0003,blocked,docs/harvest/AGENT-LOOP-0003.md,0/4,not run,blocked before test port,OpenHands frozen event union conversation-state/tool-registry and Python-to-TypeScript native-loop adapter absent; required DESIGN-SPEC.md DECISIONS.md and pack 1 page absent.
-AGENT-LOOP-0004,in progress,,0/3,,,Inspect the pinned workflow-step loop and its required evented engine.
+AGENT-LOOP-0004,blocked,docs/harvest/AGENT-LOOP-0004.md,0/3,not run,blocked before test port,Missing Mastra evented workflow engine pubsub/workers MessageList MastraModelOutput and internal AI SDK v5; durable native-loop/safety adapter unported; required design/decision and pack documents absent.
