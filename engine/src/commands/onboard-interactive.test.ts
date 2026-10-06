@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/commands/onboard-interactive.test.ts (atlas OPS-0323). Changed for Branch: retain current upstream explicit roster fixture; provenance recorded for Harvest with assertions preserved.
 // Interactive onboarding tests cover wizard cancellation, setup routing, and runtime output.
 import path from "node:path";
 import { PassThrough } from "node:stream";
