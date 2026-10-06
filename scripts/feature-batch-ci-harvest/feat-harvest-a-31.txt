@@ -11,3 +11,4 @@ engine:extensions/discord/src/monitor/native-command.command-arg.test.ts
 engine:extensions/discord/src/monitor/native-command.guild-guards.test.ts
 engine:extensions/discord/src/monitor/threading.auto-thread.test.ts
 engine:extensions/discord/src/monitor/thread-title.generate.test.ts
+engine:extensions/discord/src/pluralkit.test.ts
