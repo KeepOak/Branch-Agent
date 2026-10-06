@@ -946,6 +946,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           name,
           trunkName: trunkName(draftTopic?.agentId ?? openRow?.agentId),
           state: draftTopic ? "here" as const : faceNow,
+          activityState: draftTopic ? "idle" as const : agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now }),
           isDefaultTrunk: (draftTopic?.agentId ?? openRow?.agentId) === trunks.defaultId,
           role: trunks.list.find((t) => t.id === (draftTopic?.agentId ?? openRow?.agentId ?? trunks.defaultId))?.theme,
           workWords: draftTopic ? "" : workWords(s, now),

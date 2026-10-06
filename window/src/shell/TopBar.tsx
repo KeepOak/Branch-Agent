@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Pebble } from "../face/Pebble";
+import { STATE_LABEL, type AgentState } from "../face/agentState";
 import { useTrunkAppearance } from "../face/appearance";
 import { Icon } from "./icons";
 import { syncTitleBar } from "../connect/title-bar";
@@ -17,6 +18,7 @@ export type HeaderInfo = {
   name: string;
   trunkName: string;
   state: FaceState;
+  activityState?: AgentState;
   isDefaultTrunk: boolean;
   /** What the Trunk is for (its identity theme), the words before "· ready" (the preview's c.role). */
   role?: string;
@@ -123,6 +125,7 @@ export function HeaderRow({ header, onCharacter, tools }: { header: HeaderInfo; 
   return (
     <div className={`head-row${live ? " live" : ""}${tint ? " tinted" : ""}`} style={tint ? ({ "--tint": tint } as CSSProperties) : undefined}>
       <HeaderFace header={header} onCharacter={onCharacter} size={56} />
+      {!header.room ? <span className="head-status-announcement" role="status" aria-live="polite">{header.trunkName}: {header.activityState ? STATE_LABEL[header.activityState] : stateWords(header)}</span> : null}
       <div className="head-text">
         <HeadName h={header} />
         <span className={live ? "head-state live" : "head-state"} data-face-state={header.state}>

@@ -37,7 +37,10 @@
 .frame .search { border: 0; }
 .frame .side-top { padding: 1px 12px 6px; }
 .header-face { display: grid; place-items: center; padding: 0; border: 0; background: transparent; border-radius: 50%; cursor: pointer; }
-.character-panel { position: absolute; right: 18px; bottom: 96px; z-index: 30; display: flex; align-items: flex-end; gap: 4px; padding: 8px 8px 8px 10px; border-radius: 22px; background: color-mix(in srgb,var(--raise) 82%,transparent); backdrop-filter: blur(14px); border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0,0,0,.14); }
+.character-panel { position: fixed; right: 18px; bottom: 96px; z-index: 30; display: flex; align-items: flex-end; gap: 4px; padding: 8px 8px 8px 10px; border-radius: 22px; background: color-mix(in srgb,var(--raise) 82%,transparent); backdrop-filter: blur(14px); border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0,0,0,.14); cursor: grab; touch-action: none; user-select: none; }
+.character-panel.dragging { cursor: grabbing; }
+.character-panel-controls { cursor: auto; }
+.head-status-announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .character-panel-body { display: grid; justify-items: center; gap: 2px; }
 .character-panel-label { display: grid; justify-items: center; text-align: center; max-width: 150px; }
 .character-panel-label b { font-size: 12.5px; font-weight: 600; }
