@@ -1,2 +1,4 @@
 engine:src/commands/onboard-remote-gateway.test.ts
 engine:src/commands/onboard-remote.test.ts
+engine:src/commands/setup.doctor-recovery.test.ts
+engine:src/commands/setup.test.ts
