@@ -19,6 +19,9 @@ engine:src/plugin-state/plugin-state-store.namespace-independence.test.ts
 engine:src/plugin-state/plugin-state-store.retention.test.ts
 engine:src/plugin-state/plugin-state-store.test.ts
 engine:src/plugins/activation-planner.test.ts
+engine:src/plugins/bundle-commands.test.ts
+engine:src/plugins/bundle-manifest.test.ts
+engine:src/plugins/bundle-mcp.test.ts
 engine:src/plugins/clawhub.test.ts
 engine:src/plugins/discovery.path-inspection.test.ts
 engine:src/plugins/discovery.test.ts
