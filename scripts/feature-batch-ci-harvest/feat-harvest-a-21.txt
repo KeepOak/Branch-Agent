@@ -1,3 +1,4 @@
 engine:extensions/qa-channel/src/channel.test.ts
 engine:extensions/qa-channel/src/inbound.test.ts
 engine:extensions/qa-channel/src/outbound.test.ts
+engine:src/auto-reply/group-thread.test.ts
