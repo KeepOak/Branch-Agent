@@ -5,6 +5,7 @@ import { loadRoute } from "./places-nav/routes";
 import { WindowShell } from "./shell/WindowShell";
 import { PreConnect, type PreConnectState } from "./setup/PreConnect";
 import { LOCAL_ADDRESS, readTarget, saveTarget } from "./setup/pre-connect-state";
+import { Connecting } from "./setup/Connecting";
 import "./shell/shell.css";
 import "./shell/frame.css";
 import "./shell/controls.css";
@@ -77,9 +78,5 @@ function Window({ url, sharedToken, onConnect, onRetry }: WindowProps) {
     const state: PreConnectState = status.phase === "pairing" ? { kind: "pairing", requestId: status.requestId } : { kind: "failed", code: status.code, message: status.message };
     return <PreConnect local={LOCAL} address={url} state={state} busy={false} onConnect={onConnect} onRetry={onRetry} />;
   }
-  return (
-    <main className="connect" data-connection={status.phase}>
-      <p>Connecting to {url.replace(/^wss?:\/\//, "")}…</p>
-    </main>
-  );
+  return <Connecting url={url} status={status.phase} />;
 }

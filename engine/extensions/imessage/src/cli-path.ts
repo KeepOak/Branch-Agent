@@ -30,11 +30,15 @@ export function resolveIMessageHomeDir(): string | undefined {
 }
 
 export function expandIMessageUserPath(value: string): string {
-  if (!value.startsWith("~")) {
+  if (!/^~(?=$|[\\/])/.test(value)) {
     return value;
   }
   const home = resolveIMessageHomeDir();
-  return home ? value.replace(/^~(?=$|[\\/])/, () => home) : value;
+  if (!home) {
+    return value;
+  }
+  const pathForHome = process.platform === "win32" && home.startsWith("/") ? path.posix : path;
+  return pathForHome.join(home, value.slice(2));
 }
 
 function resolveIMessageExecutable(cliPath: string): string | undefined {

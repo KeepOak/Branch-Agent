@@ -406,7 +406,7 @@ export class SaplingSession {
     this.set({ pendingUser: text, doneAt: null, error: null });
     try {
       const roomId = roomIdOf(sessionKey);
-      if (roomId && extras && Object.keys(extras).length) throw new Error("Attachments are not supported in group chats yet.");
+      if (roomId && extras?.attachments?.length) throw new Error("Attachments are not supported in group chats yet.");
       const result = rec(await (roomId
         ? this.gateway.request("rooms.send", { roomId, message: text })
         : this.gateway.request("chat.send", { ...extras, sessionKey, message: text, idempotencyKey: crypto.randomUUID() })));

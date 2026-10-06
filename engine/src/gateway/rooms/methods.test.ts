@@ -128,4 +128,12 @@ describe("rooms methods", () => {
       { kind: "member.added", payload: { kind: "person", id: "ada" } },
     ]);
   });
+  it("records an outside agent joining itself as the actor", async () => {
+    const { room } = await call("rooms.create", { name: "Plan", members: [{ kind: "trunk", id: "scout", role: "lead" }] });
+    const outsideAgent = { id: "ledger", name: "Ledger", where: "Graft" };
+    await call("rooms.members.add", { roomId: room.roomId, kind: "a2a", id: "ledger", outsideAgent });
+    expect((await call("rooms.log", { roomId: room.roomId })).events.at(-1)).toMatchObject({
+      kind: "member.added", actorId: "a2a:ledger", payload: { kind: "a2a", id: "ledger", from: "Ledger" },
+    });
+  });
 });

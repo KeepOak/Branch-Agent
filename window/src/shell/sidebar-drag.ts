@@ -1,4 +1,4 @@
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent, type TouchEvent as ReactTouchEvent } from "react";
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent } from "react";
 
 export type DropZone = "before" | "after" | "onto";
 export type SidebarDrop = { source: string; target: string; zone: DropZone };
@@ -24,6 +24,7 @@ export function useSidebarPointerDrag(onDrop: (drop: SidebarDrop) => void, optio
   const active = useRef<{ id: number; source: string; x: number; y: number; lastX: number; lastY: number; moved: boolean; touch: boolean; far: number; timer?: number; capture?: HTMLElement } | null>(null);
   const scrollFrame = useRef<number | null>(null);
   const suppressClick = useRef(false);
+  const list = useRef<HTMLElement | null>(null);
   const marks = ["pin-drop-before", "pin-drop-after", "pin-drop-onto", "pin-drop-duplicate"];
   const clearMarks = () => document.querySelectorAll(marks.map((mark) => `.${mark}`).join(", ")).forEach((el) => el.classList.remove(...marks));
   const selector = `[${options.itemAttribute}]`;
@@ -114,7 +115,15 @@ export function useSidebarPointerDrag(onDrop: (drop: SidebarDrop) => void, optio
     window.addEventListener("keydown", escape, true);
     return () => { window.removeEventListener("keydown", escape, true); cancel(); };
   }, []);
+  useEffect(() => {
+    const element = list.current;
+    if (!element) return;
+    const preventActiveDragScroll = (event: TouchEvent) => { if (active.current?.moved) event.preventDefault(); };
+    element.addEventListener("touchmove", preventActiveDragScroll, { passive: false });
+    return () => element.removeEventListener("touchmove", preventActiveDragScroll);
+  }, []);
   return {
+    ref: list,
     onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
       cancel();
       suppressClick.current = false;
@@ -155,9 +164,7 @@ export function useSidebarPointerDrag(onDrop: (drop: SidebarDrop) => void, optio
     },
     onPointerCancel: cancel,
     onLostPointerCapture: cancel,
-    onTouchMoveCapture: (e: ReactTouchEvent<HTMLElement>) => { if (active.current?.moved) e.preventDefault(); },
     onContextMenuCapture: (e: ReactMouseEvent<HTMLElement>) => { if (active.current?.touch) { e.preventDefault(); e.stopPropagation(); } },
-    onKeyDownCapture: (e: ReactKeyboardEvent<HTMLElement>) => { if (e.key === "Escape" && active.current?.moved) { e.preventDefault(); e.stopPropagation(); suppressClick.current = true; cancel(); } },
     onClickCapture: (e: ReactMouseEvent<HTMLElement>) => {
       if (!suppressClick.current) return;
       suppressClick.current = false;

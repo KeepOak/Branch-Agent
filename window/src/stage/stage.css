@@ -23,8 +23,7 @@
 .st7-tabs button[aria-selected="true"] {background:var(--fill-2);color:var(--ink);font-weight:600;}
 .st7-tabs i {width:7px;height:7px;border-radius:50%;background:var(--line-2);}
 .st7-tabs i.on7 {background:var(--accent);animation:beat-st 1.2s ease-in-out infinite;}
-.st7-body {flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 340px;}
-.st7-body.nodock {grid-template-columns:minmax(0,1fr);}
+.st7-body {flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);}
 .st7-wrap {display:grid;place-items:center;min-width:0;min-height:0;overflow:hidden;container-type:size;background:radial-gradient(900px 500px at 50% 40%,var(--fill),transparent 70%);}
 .st7-screen {position:relative;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.55),0 0 0 1px var(--line-2);background:#0e1419;}
 /* The preview's fitStage: 18 px clear on each side, as wide as fits the wrap at 16:10. */
@@ -40,23 +39,12 @@
 .cell-note-st {position:absolute;inset:0;display:grid;place-items:center;color:#8899a6;font-size:12.5px;}
 .st7-cl {display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink);}
 .st7-cl em {font-style:normal;font-weight:400;color:var(--ink-3);margin-left:auto;font-size:12px;}
-.st7-dock {border-left:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;min-height:0;padding:12px;gap:10px;overflow:auto;}
-.dk7-h {display:flex;align-items:center;gap:8px;}
-.dk7-h b {font-size:14px;}
-.dk7-plan {list-style:none;margin:0;padding:10px 12px;border-radius:12px;background:var(--fill);display:grid;gap:7px;font-size:13px;}
-.dk7-plan li {display:flex;gap:8px;align-items:center;color:var(--ink-3);}
-.dk7-plan li.done {color:var(--ink-2);}
-.dk7-plan li.done .icon {color:var(--ok);}
-.dk7-plan li.now {color:var(--ink);font-weight:500;}
-.dk7-plan li.now .icon {color:var(--accent);}
-.dk7-msgs {flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:6px;justify-content:flex-end;}
 .dk7-m {font-size:13px;line-height:1.45;padding:8px 10px;border-radius:12px;background:var(--fill);max-width:92%;white-space:pre-wrap;overflow-wrap:anywhere;}
 .dk7-m.me7 {align-self:flex-end;background:var(--btn);color:var(--on-btn);}
 .dk7-in {display:flex;gap:6px;align-items:center;border:1px solid var(--line-2);border-radius:999px;padding:4px 4px 4px 12px;margin:0 0 14px;background:var(--raise);}
 .dk7-in input {flex:1;border:0;background:transparent;color:var(--ink);font:inherit;font-size:13px;outline:none;min-width:0;}
 .send-st {width:36px;height:36px;padding:0;border-radius:50%;border:0;display:grid;place-items:center;background:var(--accent);color:#fff;flex:none;box-shadow:0 4px 12px -4px color-mix(in srgb,var(--accent) 60%,transparent);}
 .send-st:active {transform:scale(.96);}
-.dk7-foot {margin:0;font-size:12px;color:var(--ink-3);line-height:1.5;}
 .st7-steps {display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--line);overflow-x:auto;scrollbar-width:none;background:var(--bg);flex:none;}
 .st7-chip {display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px 0 6px;border-radius:999px;border:1px solid var(--line);background:transparent;font:inherit;font-size:12.5px;color:var(--ink-3);white-space:nowrap;flex:0 0 auto;}
 .st7-chip em {width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--fill);font:600 11px var(--mono);font-style:normal;}
@@ -77,7 +65,7 @@
 @keyframes spin-st {to {transform:rotate(360deg);}}
 @keyframes beat-st {50% {opacity:.35;}}
 @media (prefers-reduced-motion: reduce) {.spin-st,.st7-tabs i.on7,.st7-chip.live7 i,.stage7 .pill.work i {animation:none;}}
-@media (max-width:900px) {.st7-body {grid-template-columns:minmax(0,1fr);} .st7-dock {display:none;} .st7-sw button {font-size:0;gap:0;}}
+@media (max-width:900px) {.st7-body {grid-template-columns:minmax(0,1fr);} .st7-sw button {font-size:0;gap:0;}}
 @media (max-width:760px) {.tlab-st {display:none;} .st7-chip.tool-st {padding:0 8px;} .tools-st {order:-1;margin-left:0;position:static;padding-left:0;} .st7-wrap {padding:8px;}}
 
 /* Picture-in-picture */
@@ -192,7 +180,7 @@
 @media (max-width:760px) {.tb-br span {display:none;} .drw-br {max-height:46vh;}}
 
 /* The computer card in the conversation: live (picture, Watch full size, Take over) and "Used … · N actions" */
-.card-st {max-width:520px;margin:0 0 0 38px;border:1px solid var(--hair17);border-radius:var(--r3-17,16px);background:var(--raise);overflow:hidden;font-size:13px;}
+.card-st {max-width:min(100%,82ch);margin:0 0 0 38px;border:1px solid var(--hair17);border-radius:var(--r3-17,16px);background:var(--raise);overflow:hidden;font-size:13px;}
 .comp-card-st {display:grid;gap:10px;padding:16px;}
 .card-h-st {display:flex;align-items:center;gap:8px;}
 .card-h-st b {display:inline-flex;align-items:center;gap:6px;font-size:13.5px;}
@@ -219,9 +207,3 @@
 .acts-list-st .grow {flex:1;min-width:0;display:grid;gap:1px;}
 .acts-list-st b {font-weight:500;font-size:13px;color:var(--ink);}
 .acts-list-st small {font-size:12px;color:var(--ink-3);line-height:1.45;overflow-wrap:anywhere;}
-
-/* A reply beside the stage reads as the thread does (Markdown), not as raw marks. */
-.dk7-m.dk7-md { white-space: normal; }
-.dk7-m.dk7-md p { margin: 0 0 6px; }
-.dk7-m.dk7-md p:last-child, .dk7-m.dk7-md ul:last-child { margin-bottom: 0; }
-.dk7-m.dk7-md ul { margin: 0 0 6px; padding-left: 18px; }

@@ -18,6 +18,8 @@ export type Conversation = {
   updatedAt: number;
   preview: string;
   working: boolean;
+  /** Run ids reported by sessions.list for a live conversation. */
+  activeRunIds?: string[];
   kind: string;
   system: boolean;
   automation: boolean;
@@ -98,7 +100,7 @@ export function projectConversation(raw: unknown, mainKey: string | null): Conve
   const key = str(r.key);
   const label = str(r.label) || undefined;
   const title = label || str(r.displayName) || str(r.derivedTitle) || "";
-  const activeRunIds = Array.isArray(r.activeRunIds) ? r.activeRunIds : [];
+  const activeRunIds = Array.isArray(r.activeRunIds) ? r.activeRunIds.filter((id): id is string => typeof id === "string" && Boolean(id)) : [];
   const classification = str(r.classification);
   const participants = Array.isArray(r.participants) ? r.participants : [];
   return {
@@ -115,6 +117,7 @@ export function projectConversation(raw: unknown, mainKey: string | null): Conve
     updatedAt: num(r.updatedAt),
     preview: str(r.lastMessagePreview).replace(/\s+/g, " ").trim(),
     working: r.hasActiveRun === true || activeRunIds.length > 0,
+    activeRunIds,
     kind: str(r.kind),
     system: classification === "system" || str(r.createdVia) === "system",
     automation: classification === "cron" || key.includes(":cron:"),

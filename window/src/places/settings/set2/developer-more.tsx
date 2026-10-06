@@ -9,6 +9,7 @@ import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Pill, Sec, Seg, Switch, Tabs, Val, useAsk, useConfig } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
+import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { CallLine, CopyBtn, Kv, bytes, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 import "./developer.css";
 
@@ -302,20 +303,21 @@ function LookInto() {
 }
 
 /** The bug-report summary: version, machine, gateway and the settings file path, no keys. */
-async function summary(engine: SettingsPageProps["engine"]): Promise<string> {
-  const [status, sys, cfg] = await Promise.all([engine.request<RecordValue>("status", {}), engine.request<RecordValue>("system.info", {}), engine.request<RecordValue>("config.get", {})]);
-  const s = rec(status); const i = rec(sys); const c = rec(cfg); const g = rec(rec(c.config).gateway);
-  return [`Branch ${str(s.runtimeVersion)}`.trim(), `${str(i.osLabel) || str(i.platform)} ${str(i.arch)} · Node ${str(i.nodeVersion)}`.trim(),
+async function summary(engine: SettingsPageProps["engine"], version: string): Promise<string> {
+  const [sys, cfg] = await Promise.all([engine.request<RecordValue>("system.info", {}), engine.request<RecordValue>("config.get", {})]);
+  const i = rec(sys); const c = rec(cfg); const g = rec(rec(c.config).gateway);
+  return [version ? `Branch ${versionParts(version).detail}` : "Branch version unavailable", `${str(i.osLabel) || str(i.platform)} ${str(i.arch)} · Node ${str(i.nodeVersion)}`.trim(),
     `Gateway ${str(g.bind) || "loopback"}:${str(g.port) || DEFAULT_PORT} · sign-in ${str(rec(g.auth).mode) || "token"} · process ${str(i.pid)}`,
     `Model ${shown(rec(rec(rec(c.config).agents).defaults).model)}`, `Settings file ${str(c.path)}${c.valid === false ? " (has problems)" : ""}`].join("\n");
 }
 
 export function TroubleMore(ctx: Ctx) {
+  const version = useBranchVersion(ctx.engine.gatewayUrl);
   const [dlg, setDlg] = useState<Dlg>("");
   const copy = useCall();
   const warn = useLive<RecordValue>(ctx.engine, "diagnostics.stability", { limit: 1000 }, []);
   const count = warningsOf(list(rec(warn.data).events)).length;
-  const go = () => void copy.run(async () => { await navigator.clipboard.writeText(await summary(ctx.engine)); return true; }, () => "Copied.");
+  const go = () => void copy.run(async () => { await navigator.clipboard.writeText(await summary(ctx.engine, version)); return true; }, () => "Copied.");
   return (
     <Sec title="Troubleshooting, more">
       <Ctl title="A summary for a bug report" sub={copy.error ?? copy.note ?? "Version, model, gateway, paths and settings file, on one paste."}><Btn sm disabled={copy.busy} onClick={go}>Copy</Btn></Ctl>
@@ -397,9 +399,10 @@ const APP_BTNS = ["Open the conversation store", "Show Branch in Explorer", "Sen
 
 export function Troubleshooting(ctx: Ctx) {
   const { engine } = ctx;
+  const version = useBranchVersion(engine.gatewayUrl);
   const [dlg, setDlg] = useState<Dlg>("");
   const support = useCall(); const open = useCall(); const cpu = useCall(); const heap = useCall(); const snap = useCall();
-  const copySupport = () => void support.run(async () => { await navigator.clipboard.writeText(await summary(engine)); return true; }, () => "Copied.");
+  const copySupport = () => void support.run(async () => { await navigator.clipboard.writeText(await summary(engine, version)); return true; }, () => "Copied.");
   const openFile = () => void open.run(() => engine.request<RecordValue>("config.openFile", {}), (r) => { if (rec(r).ok === false) throw new Error(str(rec(r).error)); return `Opened ${str(rec(r).path)}.`; });
   return (
     <Sec title="Troubleshooting">
