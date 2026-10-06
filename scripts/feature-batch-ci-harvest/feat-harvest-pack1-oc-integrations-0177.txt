@@ -25,6 +25,11 @@ engine:src/plugins/bundle-mcp.test.ts
 engine:src/plugins/clawhub.test.ts
 engine:src/plugins/discovery.path-inspection.test.ts
 engine:src/plugins/discovery.test.ts
+engine:src/plugins/hooks.before-agent-reply.test.ts
+engine:src/plugins/hooks.before-install.test.ts
+engine:src/plugins/hooks.before-tool-call.test.ts
+engine:src/plugins/hooks.correlation.test.ts
+engine:src/plugins/hooks.invocation.test.ts
 engine:src/plugins/loader.admission-contracts.test.ts
 engine:src/plugins/loader.bundle.test.ts
 engine:src/plugins/loader.capability-factory.test.ts
