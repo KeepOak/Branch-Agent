@@ -1,3 +1,6 @@
+engine:extensions/googlechat/src/approval-card-actions.test.ts
+engine:extensions/googlechat/src/approval-card-click.test.ts
+engine:extensions/googlechat/src/approval-native.test.ts
 engine:extensions/googlechat/src/auth.proof.test.ts
 engine:extensions/googlechat/src/monitor-durable.test.ts
 engine:extensions/googlechat/src/monitor-webhook.test.ts
