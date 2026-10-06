@@ -15,4 +15,5 @@ engine:src/image-generation/runtime.test.ts
 engine:src/media/pdf-extract.test.ts
 engine:src/video-generation/capabilities.test.ts
 engine:src/video-generation/capability-overlays.test.ts
+engine:src/video-generation/dashscope-compatible.test.ts
 engine:src/video-generation/runtime.test.ts
