@@ -1,5 +1,6 @@
-import type { StreamFn } from "branch/plugin-sdk/agent-core";
 // Branch behaviour test for AGENT-LOOP-0100, derived from aaif-goose/goose@bab8ff641039c9cd3331121cd84a5c6045f365ca:crates/goose-context-management/src/structured.rs and summarize.rs. Exercises the production summary pipeline and R-1696.
+
+import type { StreamFn } from "branch/plugin-sdk/agent-core";
 import { createAssistantMessageEventStream, type Model } from "branch/plugin-sdk/llm";
 import { expect, it } from "vitest";
 import { summarizeInStages } from "./compaction.js";
