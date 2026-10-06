@@ -877,7 +877,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   await waitForReady({ ...cfg, gatewayPort: port }, child, options.readyTimeoutMs ?? READY_TIMEOUT_MS);
   // Only a confirmed engine moves the live port: a rollback reboots on the port the window already uses.
   // A handoff's standby that is ready owns the state, channels and cron: a failed confirmation never rolls it back.
-  if (confirmUpdate) await confirmComponentUpdate(cfg).catch(error => {
+  if (confirmUpdate) await confirmComponentUpdate(cfg, error => log(`Confirmed update cleanup: ${String(error)}`)).catch(error => {
     if (!options.keepOnConfirmFailure) throw error;
     log(`the new engine serves but its update could not be confirmed (${String(error)}); keeping it`);
   });

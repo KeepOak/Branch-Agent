@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
 import { downloadComponent, move, replaceFile } from "./component-update-files";
@@ -90,14 +90,29 @@ export async function rollbackComponentUpdate(cfg: DesktopConfig): Promise<boole
   return true;
 }
 
-/** Call only after the newly selected engine actually reaches readyz. Old component folders remain available. */
-export async function confirmComponentUpdate(cfg: DesktopConfig): Promise<void> {
+/** Only release folders created directly under this data directory are owned by the component updater. */
+async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previous: string): Promise<void> {
+  const updates = join(cfg.dataDir, "updates");
+  const retained = new Set([current, previous].filter(engine => engine && basename(engine) === "engine").map(engine =>
+    resolve(dirname(engine))).filter(folder => dirname(folder) === resolve(updates)));
+  for (const entry of await readdir(updates, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^release-[\w.-]+-[A-Za-z0-9]{6}$/.test(entry.name)) continue;
+    const folder = resolve(updates, entry.name);
+    if (!retained.has(folder)) await rm(folder, { recursive: true, force: true });
+  }
+}
+
+/** Call only after the newly selected engine actually reaches readyz. Keep its predecessor for rollback. */
+export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFailure?: (error: unknown) => void): Promise<void> {
   const pending = await publication(cfg);
   if (!pending || pending.phase !== "pending") return;
   if (await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== pending.engineNext) throw new Error("Engine publication changed before update confirmation");
   await replaceFile(versionFile(cfg), `${pending.version}\n`);
   await rm(journalFile(cfg));
   await rm(timeoutFile(cfg), { force: true });
+  // Cleanup is maintenance, not a readiness failure: never roll back a healthy engine because a stale folder is locked.
+  try { await pruneConfirmedReleases(cfg, pending.engineNext, pending.enginePrevious); }
+  catch (error) { reportPruneFailure?.(error); }
 }
 
 export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> {

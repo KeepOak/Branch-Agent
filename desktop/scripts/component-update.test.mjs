@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile, rename } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, readlink, rm, stat, symlink, writeFile, rename } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createPortProbe } from "node:net";
 import { createRequire } from "node:module";
@@ -22,6 +22,7 @@ const { defaultDataDirectory } = await import(pathToFileURL(join(process.env.BRA
 const { readToken } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
 const { GatewayReadinessTimeoutError } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
 const { bootSelectedEngineWithRollback } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "boot-selected-engine.js")));
+const exists = async file => stat(file).then(() => true, error => { if (error.code === "ENOENT") return false; throw error; });
 
 async function fixture(run, modify = () => {}) {
   const parent = join(tmpdir(), "Codex-session-files", "resume-desktop-updater-20261003");
@@ -110,6 +111,26 @@ test("readiness confirmation records version and repeated poll avoids assets", a
   assert.equal(await source.refreshComponentUpdate(cfg, request), false);
   assert.equal(requests.length, 1);
   assert.equal(await source.rollbackComponentUpdate(cfg), false);
+}));
+
+test("confirmed update retains current and previous releases but prunes older updater folders", async () => fixture(async ({ cfg, request }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const previous = join(updates, "release-0.4.2-abcdef");
+  const stale = join(updates, "release-0.4.1-123abc");
+  const desktopStage = join(updates, "desktop-0.4.3-123abc");
+  for (const folder of [previous, stale, desktopStage]) {
+    await mkdir(join(folder, "engine"), { recursive: true });
+    await writeFile(join(folder, "engine", "branch.mjs"), "old engine");
+  }
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(previous, "engine") + "\n");
+  await source.refreshComponentUpdate(cfg, request);
+  const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  assert.equal(await exists(stale), true, "nothing is pruned before readiness confirmation");
+  await source.confirmComponentUpdate(cfg);
+  assert.equal(await exists(current), true);
+  assert.equal(await exists(previous), true, "the last healthy engine remains available for rollback");
+  assert.equal(await exists(stale), false);
+  assert.equal(await exists(desktopStage), true, "desktop staging is not an engine release");
 }));
 
 test("new per-user installation stages components and creates a stable local token", async () => fixture(async ({ cfg, request }) => {
