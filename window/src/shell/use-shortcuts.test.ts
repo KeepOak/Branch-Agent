@@ -30,6 +30,10 @@ describe("shortcutFor", () => {
     expect(shortcutFor(key("k"), false)).toBeNull();
     expect(shortcutFor(key("k", { ctrlKey: true, altKey: true }), false)).toBeNull();
   });
+  it("routes Ctrl+P to Past search instead of browser Print", () => {
+    expect(shortcutFor(key("p", { ctrlKey: true }), false)).toBe("focusPastSearch");
+    expect(shortcutFor(key("p", { metaKey: true }), true)).toBe("focusPastSearch");
+  });
 });
 
 describe("settable keys (§4.8.8)", () => {

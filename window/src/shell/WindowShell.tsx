@@ -884,6 +884,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     toggleList,
     inbox: () => openPlace("inbox"),
     focusSearch,
+    focusPastSearch: () => {
+      search.setChip("past");
+      focusSearch();
+    },
     talkBeside: () => {
       if (route.kind !== "chat") setTalk({ open: !talk.open });
     },
