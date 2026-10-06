@@ -1,8 +1,8 @@
 import type { GatewayWriteCustody } from "../../packages/gateway-protocol/src/schema/gateway-suspend.js";
 // Collects process activity shared by restart and host-suspension decisions.
-import { getActiveAcpTurnCount } from "../acp/control-plane/active-turns.js";
+import { getActiveAcpTurnCount, listActiveAcpTurns } from "../acp/control-plane/active-turns.js";
 import { getActiveBackgroundExecSessionCount } from "../agents/bash-process-registry.js";
-import { getActiveEmbeddedRunCount } from "../agents/embedded-agent-runner/active-run-projections.js";
+import { getActiveEmbeddedRunCount, isEmbeddedRunStopped, listActiveEmbeddedUserRuns } from "../agents/embedded-agent-runner/active-run-projections.js";
 import { getActiveMediaGenerationRunCount } from "../agents/media-generation-activity.js";
 import { getTotalPendingReplies } from "../auto-reply/reply/dispatcher-registry.js";
 import { getActiveCronJobCount } from "../cron/active-jobs.js";
@@ -16,7 +16,7 @@ import {
   getActiveSessionLifecycleMutationCount,
   getActiveSessionWorkAdmissionCount,
 } from "../sessions/session-lifecycle-admission.js";
-import { getActiveAgentRunContextCount } from "./agent-run-registry.js";
+import { getActiveAgentRunContextCount, getAgentRunContext, listActiveUserAgentRuns } from "./agent-run-registry.js";
 import { readLifecycleWriteCustody } from "./lifecycle-write-custody.js";
 
 type GatewayActiveWorkCounts = {
@@ -67,6 +67,21 @@ export type GatewayActiveWorkSnapshot = {
   blockers: GatewayActiveWorkBlocker[];
   writeCustody: GatewayWriteCustody;
 };
+
+/** The user-facing update gate is distinct from the full restart-drain inventory. */
+export function createGatewayUpdateWorkSnapshot(activity = createGatewayActiveWorkSnapshot()) {
+  const candidates = [
+    ...listActiveUserAgentRuns().filter((run) => !isEmbeddedRunStopped(run.runId)),
+    ...listActiveEmbeddedUserRuns().filter((run) => {
+      const context = getAgentRunContext(run.runId);
+      return context?.isHeartbeat !== true && context?.projectSessionActive !== false &&
+        !context?.cronRunsByJobId?.size;
+    }),
+    ...listActiveAcpTurns().filter((run) => !run.sessionKey.includes(":cron:")),
+  ];
+  const runs = [...new Map(candidates.map((run) => [run.runId, run] as const)).values()];
+  return { counts: activity.counts, runs, activeRuns: runs.length };
+}
 
 type GatewayActiveWorkWaitResult = {
   drained: boolean;

@@ -19,6 +19,7 @@ if (info) {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
       check: () => ipcRenderer.invoke("branch-desktop:component-update:check"),
       stage: () => ipcRenderer.invoke("branch-desktop:component-update:stage"),
+      install: () => ipcRenderer.invoke("branch-desktop:component-update:install"),
     },
     onAutoApplyProbe: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }>) => {
       const handler = (_event: Electron.IpcRendererEvent, id: number): void => {

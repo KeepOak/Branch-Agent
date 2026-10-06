@@ -4,15 +4,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import { GatewaySuspendPrepareResultSchema } from "../../packages/gateway-protocol/src/index.js";
 import type { EmbeddedAgentQueueHandle } from "../agents/embedded-agent-runner/run-state.js";
 import {
+  abortEmbeddedAgentRun,
   clearActiveEmbeddedRun,
   setActiveEmbeddedRun,
 } from "../agents/embedded-agent-runner/runs.js";
+import { claimAgentRunContext, releaseAgentRunContext } from "./agent-run-registry.js";
 import {
   resetGatewayWorkAdmission,
   tryBeginGatewayRootWorkAdmission,
 } from "../process/gateway-work-admission.js";
 import {
   createGatewayActiveWorkSnapshot,
+  createGatewayUpdateWorkSnapshot,
   waitForGatewayActiveWork,
 } from "./gateway-active-work.js";
 import { beginLifecycleWriteCustody } from "./lifecycle-write-custody.js";
@@ -28,6 +31,39 @@ afterEach(() => {
 });
 
 describe("waitForGatewayActiveWork", () => {
+  it("returns to zero user runs after an aborted handle is retained for cleanup", () => {
+    const sessionId = "update-abort-session";
+    const runId = "update-abort-run";
+    let aborted = false;
+    const handle: EmbeddedAgentQueueHandle = { runId, queueMessage: async () => {}, isStreaming: () => !aborted,
+      isCompacting: () => false, isAborted: () => aborted, abort: () => { aborted = true; } };
+    const claim = claimAgentRunContext(runId, { sessionKey: "agent:main:update-abort" }, { trackOwner: true });
+    if (!claim) throw new Error("run claim failed");
+    setActiveEmbeddedRun(sessionId, handle, "agent:main:update-abort");
+    activeRuns.set(sessionId, handle);
+    try {
+      expect(createGatewayUpdateWorkSnapshot().activeRuns).toBe(1);
+      expect(abortEmbeddedAgentRun(sessionId)).toBe(true);
+      expect(createGatewayUpdateWorkSnapshot().activeRuns).toBe(0);
+      clearActiveEmbeddedRun(sessionId, handle);
+      releaseAgentRunContext(runId, claim);
+      expect(createGatewayActiveWorkSnapshot().counts.embeddedRuns).toBe(0);
+      expect(createGatewayUpdateWorkSnapshot().activeRuns).toBe(0);
+    } finally { releaseAgentRunContext(runId, claim); }
+  });
+
+  it("excludes heartbeat, cron, and hidden maintenance from update blockers", () => {
+    const claims = [
+      ["heartbeat", { sessionKey: "agent:main:heartbeat", isHeartbeat: true }],
+      ["cron", { sessionKey: "agent:main:cron", cronRunsByJobId: new Map([["job", { pacingEnabled: false }]]) }],
+      ["hidden", { sessionKey: "agent:main:hidden", projectSessionActive: false }],
+    ] as const;
+    const leases = claims.map(([runId, context]) => [runId, claimAgentRunContext(runId, context, { trackOwner: true })] as const);
+    try {
+      expect(createGatewayUpdateWorkSnapshot().activeRuns).toBe(0);
+      expect(createGatewayActiveWorkSnapshot().counts.agentRuns).toBe(3);
+    } finally { for (const [runId, claim] of leases) releaseAgentRunContext(runId, claim); }
+  });
   it.each([
     { agentRuns: 1, acpRuns: 0, mediaRuns: 0, kind: "agent-run" },
     { agentRuns: 0, acpRuns: 1, mediaRuns: 0, kind: "acp-run" },

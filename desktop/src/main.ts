@@ -115,12 +115,12 @@ const engineRunning = (): boolean => Boolean(gateway && gateway.exitCode === nul
 
 /**
  * Applies a staged engine/window update, or a rebuilt engine, inside the running app: the app and its window stay
- * open. The old engine stops cleanly (auto-apply: only while idle; the owner's click: it drains, and the new
- * engine's restart recovery resumes interrupted runs), the new one starts on the same port with the readiness
+ * open. The old engine drains after the foreground-work gate; the new engine's restart recovery resumes
+ * interrupted runs. The new one starts on the same port with the readiness
  * rollback, and the window either reconnects (engine-only) or swaps in its new build keeping route, scroll and drafts.
  * A staged desktop app is never applied here; it waits for the next natural launch.
  */
-async function swapEngineInPlace(label: string, explicit: boolean): Promise<void> {
+async function swapEngineInPlace(label: string): Promise<void> {
   if (!gateway || !win || engineRestartInProgress) throw new Error("The desktop is not ready to update");
   engineRestartInProgress = true;
   const windowBefore = windowBuild(servedWindowDir);
@@ -128,8 +128,7 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     if (!await candidatePassed(label)) return;
     const started = Date.now();
     win.webContents.send("branch-desktop:engine-update", "updating");
-    if (explicit) log(`update ${label}: old engine ${await drainStopGateway(gateway)}`);
-    else await stopGatewayCleanly(gateway);
+    log(`update ${label}: old engine ${await drainStopGateway(gateway)}`);
     const stopped = Date.now();
     servedWindowDir = cfg.windowDir;
     await waitForGatewayPort();
@@ -180,10 +179,10 @@ const autoApply = createAutoApplyUpdate({
     // The approval RPCs themselves count as gateway work; sample after they settle.
     const window = await probeWindowState();
     const engine = await gatewayActivity(gateway);
-    return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window.pendingApprovals,
-      streaming: engine.pendingReplies > 0 || window.streaming, unsavedDraftFiles: window.unsavedDraftFiles };
+    return { activeRuns: engine.userRuns, pendingApprovals: window.pendingApprovals,
+      streaming: window.streaming, unsavedDraftFiles: window.unsavedDraftFiles };
   },
-  restart: version => swapEngineInPlace(version, false),
+  restart: version => swapEngineInPlace(version),
   log,
 });
 
@@ -302,6 +301,12 @@ async function start(): Promise<void> {
     e.returnValue = served ? { gatewayUrl: `ws://127.0.0.1:${cfg.gatewayPort}`, gatewayToken: token } : null;
   });
   ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, win?.webContents, windowUrl())) void restartEngine(); });
+  ipcMain.handle("branch-desktop:component-update:install", async (e, ...args) => {
+    if (!isOwnedComponentWindow(e, win?.webContents, windowUrl()) || args.length) {
+      throw new Error("Component updates require the owned served window");
+    }
+    await restartEngine(true);
+  });
   registerComponentUpdateIpc(ipcMain, () => win?.webContents, windowUrl(), componentUpdates);
   registerDesktopControlsIpc(ipcMain, () => win?.webContents, windowUrl(), controls);
   registerTitleBarIpc(ipcMain, () => win?.webContents, windowUrl(), (overlay) => win?.setTitleBarOverlay(overlay));
@@ -399,15 +404,19 @@ function watchUpdates(w: BrowserWindow): void {
 }
 
 /** The owner's Update click: applies a staged engine/window pair, or a rebuilt engine, in place. */
-async function restartEngine(): Promise<void> {
-  if (!gateway || !win || !componentsReady || engineRestartInProgress) return;
+async function restartEngine(propagateError = false): Promise<void> {
+  if (!gateway || !win || !componentsReady || engineRestartInProgress) {
+    if (propagateError) throw new Error("The desktop is not ready to install the update");
+    return;
+  }
   const staged = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   log(`update requested (${staged ?? "rebuilt engine"}); old engine pid ${gateway.pid}`);
-  try { await swapEngineInPlace(staged ?? "rebuilt engine", true); }
+  try { await swapEngineInPlace(staged ?? "rebuilt engine"); }
   catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`update failed: ${msg}`);
     if (!engineRunning() && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", msg);
+    if (propagateError) throw err;
   }
 }
 

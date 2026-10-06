@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { KeeperMark } from "../../../brand/KeeperMark";
 import { Btn, Ctl, Hint, Page, Sec, Status, Switch } from "../kit";
@@ -17,6 +17,20 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   const auto = useDesktopControls();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [work, setWork] = useState<{ runs: Array<{ runId: string; sessionKey: string; trunk: string; thread: string }> } | null>(null);
+  useEffect(() => {
+    if (data.status?.phase !== "staged") { setWork(null); return; }
+    let live = true;
+    const load = async () => {
+      try {
+        const next = await engine.request("system.updateWork", {}) as typeof work;
+        if (live) setWork(next);
+      } catch { if (live) setWork(null); }
+    };
+    void load();
+    const timer = setInterval(() => void load(), 5_000);
+    return () => { live = false; clearInterval(timer); };
+  }, [data.status?.phase, engine]);
   const run = async (method: "check" | "stage") => {
     if (!bridge || busy) return;
     setBusy(true); setError(null);
@@ -35,6 +49,17 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
         ? "Restart Branch when your work is ready. Your conversations and settings stay in place."
         : "Your conversations and settings stay in place." : current ? `You have Branch ${versionParts(current).detail}. Checks for a new verified Branch release.` : "Checks for a new verified Branch release."}
     </Status>
+    {data.status?.phase === "staged" ? <Sec title="What’s blocking this update">
+      {work?.runs?.length ? <ul>{work.runs.map(run => <li key={run.runId}><b>{run.trunk}</b> · {run.thread}</li>)}</ul>
+        : <Hint>{work ? "No Trunks are working. Branch will check its remaining update conditions." : "Checking active Trunks…"}</Hint>}
+      <Btn disabled={busy || !bridge.install} onClick={() => {
+        if (!bridge.install) return;
+        setBusy(true); setError(null);
+        void bridge.install().catch(caught => setError(caught instanceof Error ? caught.message : String(caught)))
+          .finally(() => setBusy(false));
+      }}>Install now</Btn>
+      {!bridge.install ? <Hint>Install now needs a newer Branch desktop app.</Hint> : null}
+    </Sec> : null}
     <Sec title="Updating">
       <Ctl title="Apply updates by themselves when no Trunk is working" off={auto.off}>
         <Switch label="Apply updates by themselves when no Trunk is working" checked={auto.state?.autoApplyUpdates ?? true}

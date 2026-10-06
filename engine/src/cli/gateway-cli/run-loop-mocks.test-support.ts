@@ -314,6 +314,7 @@ vi.mock("../../infra/restart-handoff.js", () => ({
 
 vi.mock("../../infra/gateway-active-work.js", () => ({
   createGatewayActiveWorkSnapshot: () => createGatewayActiveWorkSnapshot(),
+  createGatewayUpdateWorkSnapshot: (snapshot: GatewayActiveWorkSnapshot) => ({ counts: snapshot.counts, runs: [], activeRuns: 0 }),
   waitForGatewayActiveWork: (
     timeoutMs?: number,
     options?: { onSnapshot?: (snapshot: GatewayActiveWorkSnapshot) => void },

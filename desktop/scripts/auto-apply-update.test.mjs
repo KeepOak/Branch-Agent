@@ -38,6 +38,24 @@ test("staged update relaunches once after a sustained idle hold", async () => {
   assert.ok(f.logs.some(line => line.includes("restarting for 0.4.4-build-test")));
 });
 
+test("auto-apply proceeds when the last real run finishes after the idle hold", async () => {
+  let now = 0;
+  let probes = 0;
+  const restarts = [];
+  const controller = createAutoApplyUpdate({ pendingVersion: async () => "ready", enabled: () => true,
+    activity: async () => ({ activeRuns: ++probes === 2 ? 1 : 0, pendingApprovals: 0,
+      streaming: false, unsavedDraftFiles: false }), restart: async version => { restarts.push(version); },
+    log: () => {}, now: () => now });
+  await controller.tick();
+  now = AUTO_APPLY_IDLE_MS;
+  await controller.tick();
+  assert.deepEqual(restarts, []);
+  await controller.tick();
+  now += AUTO_APPLY_IDLE_MS;
+  await controller.tick();
+  assert.deepEqual(restarts, ["ready"]);
+});
+
 test("active runs, approvals, streams, and file drafts reset the idle hold", async () => {
   const f = fixture();
   await f.controller.tick();

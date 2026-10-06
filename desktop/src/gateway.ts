@@ -77,7 +77,7 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   return child;
 }
 
-export interface GatewayActivity { idle: boolean; activeRuns: number; pendingReplies: number; totalActive: number }
+export interface GatewayActivity { idle: boolean; activeRuns: number; userRuns: number; pendingReplies: number; totalActive: number }
 let nextActivityId = 0;
 /** Query the engine's process-wide restart-drain inventory through its owned child channel. */
 export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" = false, timeoutMs = 5_000): Promise<GatewayActivity> {
@@ -94,7 +94,8 @@ export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" = f
         typeof response.pendingReplies !== "number" || typeof response.totalActive !== "number") {
         reject(new Error("The gateway returned an invalid activity snapshot")); return;
       }
-      resolve({ idle: response.idle, activeRuns: response.activeRuns, pendingReplies: response.pendingReplies, totalActive: response.totalActive });
+      resolve({ idle: response.idle, activeRuns: response.activeRuns, userRuns: response.userRuns ?? response.activeRuns,
+        pendingReplies: response.pendingReplies, totalActive: response.totalActive });
     };
     const onExit = () => { cleanup(); reject(new Error("The gateway exited during activity check")); };
     const onError = (error: Error) => { cleanup(); reject(error); };

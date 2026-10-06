@@ -28,6 +28,7 @@ import { loadOrCreateProcessDeviceIdentityAsync } from "../../infra/device-ident
 import { publicKeyRawBase64UrlFromPem } from "../../infra/device-identity.js";
 import { tryReadDiskSpace } from "../../infra/disk-space.js";
 import { getLastHeartbeatEvent } from "../../infra/heartbeat-events.js";
+import { createGatewayUpdateWorkSnapshot } from "../../infra/gateway-active-work.js";
 import { requestHeartbeat, setHeartbeatsEnabled } from "../../infra/heartbeat-wake.js";
 import { getMachineDisplayName } from "../../infra/machine-name.js";
 import { resolveRuntimeOsLabel } from "../../infra/os-summary.js";
@@ -240,6 +241,19 @@ export const systemHandlers: GatewayRequestHandlers = {
       return;
     }
     respond(true, await collectSystemInfo(context), undefined);
+  },
+  "system.updateWork": ({ params, respond, context }) => {
+    if (!assertValidParams(params, validateSystemInfoParams, "system.updateWork", respond)) return;
+    const snapshot = createGatewayUpdateWorkSnapshot();
+    const runs = snapshot.runs.map((run) => {
+      let entry: ReturnType<typeof loadGatewaySessionEntryReadOnly>["entry"];
+      try { entry = loadGatewaySessionEntryReadOnly(run.sessionKey).entry; } catch { /* transient row read */ }
+      const agentId = resolveAgentIdFromSessionKey(run.sessionKey);
+      const agent = agentId ? context.getRuntimeConfig().agents?.entries?.[agentId] : undefined;
+      return { ...run, trunk: agent?.name ?? agentId ?? "Trunk",
+        thread: entry?.label ?? entry?.displayName ?? entry?.topicName ?? entry?.subject ?? "New conversation" };
+    });
+    respond(true, { ...snapshot, runs }, undefined);
   },
   "system-event": ({ params, respond, context }) => {
     if (!assertValidParams(params, validateSystemEventParams, "system-event", respond)) {

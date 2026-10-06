@@ -10,6 +10,7 @@ export type ComponentUpdates = {
   status(): Promise<ComponentUpdateStatus>;
   check(): Promise<ComponentUpdateStatus>;
   stage(): Promise<ComponentUpdateStatus>;
+  install?(): Promise<void>;
 };
 type Desktop = { gatewayUrl?: string; componentUpdates?: ComponentUpdates; unavailableReason?: string;
   onAutoApplyProbe?: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }>) => () => void };

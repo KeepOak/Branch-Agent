@@ -18,7 +18,7 @@ const desktopWindow = window as unknown as { branchDesktop?: unknown };
 beforeEach(() => {
   (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  request.mockClear(); localStorage.setItem("branch-draft", "unfinished input");
+  request.mockReset(); request.mockResolvedValue({}); localStorage.setItem("branch-draft", "unfinished input");
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); delete desktopWindow.branchDesktop; vi.restoreAllMocks(); });
 async function show() { await act(async () => root.render(<UpdatesPage page="updates" title="Updates & about" level="regular" engine={engine} />)); }
@@ -34,9 +34,23 @@ it("actual native Check now and Install buttons use component bridge and never g
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status, check, stage } };
   await show(); await click("Check now"); await click("Install when idle");
   expect(status).toHaveBeenCalledTimes(1); expect(check).toHaveBeenCalledTimes(1); expect(stage).toHaveBeenCalledTimes(1);
-  expect(request).not.toHaveBeenCalled();
+  expect(request).not.toHaveBeenCalledWith("update.run", {});
   expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
   expect(localStorage.getItem("branch-draft")).toBe("unfinished input");
+});
+
+it("shows each blocking Trunk and thread and Install now uses desktop drain", async () => {
+  const staged = { ...state, phase: "staged" as const, pendingVersion: "1.1" };
+  const install = vi.fn(async () => {});
+  request.mockResolvedValue({ runs: [{ runId: "run-1", sessionKey: "agent:main:thread", trunk: "Builder Birch", thread: "Fix updates" }] });
+  desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl,
+    componentUpdates: { status: async () => staged, check: async () => staged, stage: async () => staged, install } };
+  await show();
+  expect(request).toHaveBeenCalledWith("system.updateWork", {});
+  expect(host.textContent).toContain("Builder Birch · Fix updates");
+  await click("Install now");
+  expect(install).toHaveBeenCalledTimes(1);
+  expect(request).not.toHaveBeenCalledWith("update.run", {});
 });
 
 it("Updates toggle is on by default and staged updates wait for Trunks in Settings and version popover", async () => {

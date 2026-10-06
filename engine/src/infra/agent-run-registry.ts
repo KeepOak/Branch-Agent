@@ -534,6 +534,24 @@ export function getActiveAgentRunContextCount(): number {
   return count;
 }
 
+/** Execution-owned foreground runs, excluding background cadence and hidden maintenance. */
+export function listActiveUserAgentRuns(): Array<{ runId: string; sessionKey: string }> {
+  const runs: Array<{ runId: string; sessionKey: string }> = [];
+  for (const [runId, context] of getAgentRunRegistryState().contexts) {
+    if (
+      context.sessionKey &&
+      context.projectSessionActive !== false &&
+      context.isHeartbeat !== true &&
+      !context.cronRunsByJobId?.size &&
+      getAgentRunRegistryState().owners.get(runId)?.clearRequested !== true &&
+      hasAgentRunContextExecutionOwner(runId)
+    ) {
+      runs.push({ runId, sessionKey: context.sessionKey });
+    }
+  }
+  return runs.toSorted((a, b) => a.sessionKey.localeCompare(b.sessionKey));
+}
+
 /** Live display projection also includes a producer's active-session marker. */
 export function hasLiveAgentRunContext(runId: string): boolean {
   const state = getAgentRunRegistryState();

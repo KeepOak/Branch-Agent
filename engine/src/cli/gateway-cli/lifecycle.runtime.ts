@@ -49,6 +49,7 @@ export { detectGatewayRespawnSupervisorIdentity } from "../../infra/supervisor-m
 export { writeDiagnosticStabilityBundleForFailureSync } from "../../logging/diagnostic-stability-bundle.js";
 export {
   createGatewayActiveWorkSnapshot,
+  createGatewayUpdateWorkSnapshot,
   waitForGatewayActiveWork,
 } from "../../infra/gateway-active-work.js";
 export {

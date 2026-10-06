@@ -45,6 +45,11 @@ export function getActiveAcpTurnCount(): number {
   return getAcpActiveTurnState().activeTurnKeys.size;
 }
 
+export function listActiveAcpTurns(): Array<{ runId: string; sessionKey: string }> {
+  return [...getAcpActiveTurnState().activeTurnKeys]
+    .map(([runId, turn]) => ({ runId, sessionKey: turn.ownerSessionKey ?? turn.sessionKey }));
+}
+
 export function listActiveAcpSessionsForOwner(ownerSessionKey: string): string[] {
   return [...getAcpActiveTurnState().activeTurnKeys.values()]
     .filter((turn) => turn.ownerSessionKey === ownerSessionKey)

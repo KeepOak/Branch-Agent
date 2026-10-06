@@ -7,6 +7,7 @@ import {
 } from "../../auto-reply/reply/reply-run-registry.registry.js";
 import {
   ACTIVE_EMBEDDED_RUNS,
+  ACTIVE_EMBEDDED_RUNS_BY_RUN_ID,
   ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_KEY,
   ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_FILE,
 } from "./run-state.js";
@@ -20,6 +21,23 @@ export function getActiveEmbeddedRunCount(): number {
     }
   }
   return Math.max(activeCount, getActiveReplyRunCount());
+}
+
+/** An accepted Stop can retain its handle for terminal cleanup without remaining user work. */
+export function isEmbeddedRunStopped(runId: string): boolean {
+  const handle = ACTIVE_EMBEDDED_RUNS_BY_RUN_ID.get(runId);
+  return handle?.isAborted?.() === true || handle?.isStopped?.() === true;
+}
+
+export function listActiveEmbeddedUserRuns(): Array<{ runId: string; sessionKey: string }> {
+  const runs: Array<{ runId: string; sessionKey: string }> = [];
+  for (const [sessionKey, sessionId] of ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_KEY) {
+    const handle = ACTIVE_EMBEDDED_RUNS.get(sessionId);
+    if (handle?.runId && !handle.isAborted?.() && !handle.isStopped?.()) {
+      runs.push({ runId: handle.runId, sessionKey });
+    }
+  }
+  return runs;
 }
 
 /** Lists active embedded-run session keys from both embedded and auto-reply registries. */
