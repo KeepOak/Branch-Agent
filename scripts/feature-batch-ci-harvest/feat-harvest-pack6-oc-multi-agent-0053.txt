@@ -1,3 +1,4 @@
+engine:src/agents/agent-roles.test.ts
 engine:src/groves/cron-update.test.ts
 engine:src/groves/cron.test.ts
 engine:src/groves/mcp.test.ts
