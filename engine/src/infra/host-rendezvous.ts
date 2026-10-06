@@ -214,7 +214,7 @@ export async function probeHostOwner(
       port: record.gatewayPort,
       profiles: identity.ready ? (identity.profiles ?? []) : [],
       servedKnown: identity.ready === true,
-      standalone: false,
+      standalone: true,
     };
   } catch {
     return undefined;
@@ -315,6 +315,9 @@ export async function prepareHostRendezvous(params: {
     });
   if (live) {
     const decision = await decide(live);
+    if (decision.outcome === "start") {
+      return { decision };
+    }
     if (decision.outcome !== "replace-host") {
       return { decision };
     }

@@ -45,6 +45,11 @@ export async function decideHostAttach(params: {
       transient: true,
     };
   }
+  // Branch currently runs distinct profiles from distinct state directories.
+  // Until one process can serve both, keep Hermes' standalone coexistence path.
+  if (owner.servedKnown && owner.standalone) {
+    return { outcome: "start", message: "" };
+  }
   if (!owner.servedKnown && params.waitForOwner) {
     owner = await params.waitForOwner();
     if (!owner) {

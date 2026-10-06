@@ -142,4 +142,31 @@ describe("Hermes host rendezvous", () => {
       await first.close?.();
     }
   });
+
+  it("keeps another standalone profile on its own state owner", async () => {
+    const env = await isolatedEnv();
+    const first = await prepareHostRendezvous({
+      env,
+      profile: "default",
+      home: os.homedir(),
+      gatewayPort: 32124,
+      allowInTests: true,
+    });
+    try {
+      await first.markReady?.();
+      const second = await prepareHostRendezvous({
+        env,
+        profile: "work",
+        home: os.homedir(),
+        gatewayPort: 32125,
+        replace: true,
+        allowInTests: true,
+      });
+      expect(second.decision.outcome).toBe("start");
+      expect(second.markReady).toBeUndefined();
+      expect((await readHostRecord(env))?.gatewayPort).toBe(32124);
+    } finally {
+      await first.close?.();
+    }
+  });
 });
