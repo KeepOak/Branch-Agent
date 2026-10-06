@@ -22,3 +22,4 @@ engine/packages/agent-core/src/tool-error-feedback.ts,AGENT-LOOP-0090,bytedance/
 engine/packages/agent-core/src/tool-error-handling.test-support.ts,AGENT-LOOP-0090,bytedance/deer-flow,f840e843d3e2db1485cb65ceae73a5525aa80193,backend/tests/test_tool_error_handling_middleware.py,2026-10-06
 engine/packages/agent-core/src/tool-error-handling-middleware.test.ts,AGENT-LOOP-0090,bytedance/deer-flow,f840e843d3e2db1485cb65ceae73a5525aa80193,backend/tests/test_tool_error_handling_middleware.py,2026-10-06
 engine/packages/agent-core/src/tool-error-handling-subagent-stamp.test.ts,AGENT-LOOP-0090,bytedance/deer-flow,f840e843d3e2db1485cb65ceae73a5525aa80193,backend/tests/test_tool_error_handling_subagent_stamp.py,2026-10-06
+engine/packages/agent-core/src/agent-loop.test.ts,AGENT-LOOP-0089,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,packages/agent-core/src/agent-loop.test.ts,2026-10-06
