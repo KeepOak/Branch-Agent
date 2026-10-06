@@ -55,7 +55,7 @@ export const AgentsSchema = z
         message: "agents.defaultId must name a configured Trunk",
       });
     }
-    if (entries.length === 0) {
+    if (entries.length === 0 && !(value.ownership === "explicit" && value.entries === undefined)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["entries"],

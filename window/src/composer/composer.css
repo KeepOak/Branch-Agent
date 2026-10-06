@@ -1,15 +1,18 @@
 /* The composer, its dock row and its menus (DESIGN-SPEC §4.3, §5.1–§5.4, §2.6, §2.7). Tokens only. */
 .c-wrap {
   position: relative;
-  padding: 8px 24px 16px;
+  padding: 8px clamp(16px, 2.2cqi, 28px) 16px;
   container-type: inline-size;
 }
 @media (max-width: 760px) {
-  .c-wrap { padding: 8px 12px 12px; }
+  .c-wrap { padding: 8px 16px 12px; }
 }
-.c-wrap > * { max-width: var(--thread-w, 860px); margin-left: auto; margin-right: auto; }
+.c-wrap > * { max-width: none; margin-left: 0; margin-right: 0; }
 
 .c-wrap .composer {
+  max-width: none;
+  width: 100%;
+  box-sizing: border-box;
   position: relative;
   display: flex;
   align-items: flex-end;

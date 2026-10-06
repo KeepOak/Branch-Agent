@@ -76,7 +76,7 @@ export function ProjectsSection({ projects, rows, renderRows, onNew }: Props) {
             const isOpen = unfolded.includes(p.id);
             return (
               <div key={p.id} className="prj">
-                <button type="button" className="nav prj-row" aria-expanded={isOpen} onClick={() => setUnfolded(isOpen ? unfolded.filter((x) => x !== p.id) : [...unfolded, p.id])}>
+                <button type="button" className="prj-row" aria-expanded={isOpen} onClick={() => setUnfolded(isOpen ? unfolded.filter((x) => x !== p.id) : [...unfolded, p.id])}>
                   <Icon name={isOpen ? "down" : "chev"} size={11} />
                   <span className="prj-name">{p.name}</span>
                   <span className="prj-count">{mine.length}</span>

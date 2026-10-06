@@ -37,22 +37,24 @@ const READY = { sentinel: null, updateAvailable: { currentVersion: "1.0.0", late
 const RUNNING = { sessions: [{ key: "agent:main:a", agentId: "main", hasActiveRun: true, activeRunIds: ["r1"] }, { key: "agent:main:b", agentId: "main", hasActiveRun: false }] };
 
 describe("Settings › Updates & about", () => {
-  it("reads the version and the waiting update from the engine", async () => {
+  it("keeps the engine version out of the Branch Updates heading", async () => {
     const { engine } = engineWith({ "update.status": READY, status: { runtimeVersion: "1.0.0" }, "system.info": { platform: "win32" } });
     await show("updates", engine);
-    expect(document.body.textContent).toContain("Branch Agent 1.0.0 on Windows.");
-    expect(document.body.textContent).toContain("1.1.0 is ready to install");
+    expect(document.body.textContent).not.toContain("Branch Agent 1.0.0 on Windows.");
+    expect(document.body.textContent).toContain("Checking Branch’s version");
+    expect(document.body.textContent).toContain("A Branch update is ready");
+    expect(document.body.textContent).not.toContain("1.1.0");
   });
   it("says it is up to date when the engine reports no update", async () => {
     const { engine } = engineWith({ "update.status": { ...READY, updateAvailable: null }, status: { runtimeVersion: "1.0.0" } });
     await show("updates", engine);
     expect(document.body.textContent).toContain("Branch is up to date.");
-    expect(document.body.textContent).not.toContain("Install when nothing is running");
+    expect(document.body.textContent).not.toContain("Install when idle");
   });
   it("Let them finish first runs update.run without stopping anything", async () => {
     const { engine, request } = engineWith({ "update.status": READY, "sessions.list": RUNNING, "update.run": { ok: true, result: { status: "ok" } } });
     await show("updates", engine);
-    await click("Install when nothing is running");
+    await click("Install when idle");
     expect(document.body.textContent).toContain("1 task is working right now.");
     await click("Continue");
     expect(request.mock.calls.map(([m]) => m)).toContain("update.run");
@@ -62,7 +64,7 @@ describe("Settings › Updates & about", () => {
   it("Install now stops each running conversation, then runs update.run", async () => {
     const { engine, request } = engineWith({ "update.status": READY, "sessions.list": RUNNING, "sessions.abort": { ok: true }, "update.run": { ok: true } });
     await show("updates", engine);
-    await click("Install when nothing is running");
+    await click("Install when idle");
     await act(async () => button("Install nowStops them at a safe point. Afterwards you can pick each one up where it was.").click());
     await click("Continue");
     const methods = request.mock.calls.map(([m]) => m);
@@ -72,7 +74,7 @@ describe("Settings › Updates & about", () => {
   it("shows the engine's refusal instead of claiming it installs", async () => {
     const { engine } = engineWith({ "update.status": READY, "sessions.list": { sessions: [] }, "update.run": { ok: false, message: "Updates are managed by the package manager." } });
     await show("updates", engine);
-    await click("Install when nothing is running");
+    await click("Install when idle");
     await click("Continue");
     expect(document.body.textContent).toContain("Updates are managed by the package manager.");
   });
@@ -276,7 +278,7 @@ describe("Settings › Updates & about, an update the engine started", () => {
     const campaign = { id: "c1", state: "countdown", announcedAtMs: at, applyAtMs: at + 50_000, forceAtMs: at + 300_000, updatedAtMs: at };
     const { engine, request } = engineWith({ "update.status": { ...READY, schedule: { channel: "stable", autoEnabled: true, campaign } }, "update.hold": { ok: true, schedule: { channel: "stable", autoEnabled: true, campaign: { ...campaign, holdUntilMs: at + 3_600_000 } } } });
     await show("updates", engine);
-    expect(document.body.textContent).toContain("1.1.0 is installing by itself");
+    expect(document.body.textContent).toContain("A Branch update is installing by itself");
     expect(document.body.textContent).toMatch(/Updating in 0:\d\d/);
     await click("Hold for an hour");
     expect(request).toHaveBeenCalledWith("update.hold", {});
