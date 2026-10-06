@@ -19,4 +19,8 @@ engine:src/logging/log-file-path.test.ts
 engine:src/logging/log-file-size-cap.test.ts
 engine:src/logging/logger-env.test.ts
 engine:src/logging/logger-file-transport.test.ts
+engine:src/logging/redact-patterns.test.ts
+engine:src/logging/redact-performance.test.ts
+engine:src/logging/redact.test.ts
+engine:src/logging/redacting-stream.test.ts
 engine:src/logging/subsystem.test.ts

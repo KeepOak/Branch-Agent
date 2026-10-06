@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3e932a5937b529ae45b89c57a1b5db2078aa1407:src/logging/redacting-stream.test.ts (atlas OBSERVABILITY-0060). Changed for Branch: Rebranded with scripts/rebrand-map.json; current upstream tests preserve post-pin fixes.
 import { describe, expect, it, vi } from "vitest";
 import { createRedactingStreamWriter } from "./redacting-stream.js";
 
