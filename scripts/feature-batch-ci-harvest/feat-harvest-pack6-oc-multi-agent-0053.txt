@@ -3,6 +3,7 @@ engine:extensions/acpx/src/runtime.test.ts
 engine:extensions/canopy/browser/pages/canopy/canopy-page.test.ts
 engine:extensions/canopy/browser/pages/canopy/view-card-content.test.ts
 engine:extensions/canopy/browser/pages/canopy/view.test.ts
+engine:extensions/canopy/src/automation-nudge.behaviour.test.ts
 engine:extensions/canopy/src/cli.test.ts
 engine:extensions/canopy/src/command.test.ts
 engine:extensions/canopy/src/lifecycle-sync.cleanup-recovery.test.ts
