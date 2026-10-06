@@ -171,8 +171,11 @@ export async function publishWindowDependencies() {
 }
 
 export async function hostedChrome() {
-  assert.equal(process.platform, 'linux', 'The live browser fixture runs on hosted Ubuntu');
-  for (const file of ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/opt/google/chrome/chrome']) {
+  const candidates = process.platform === 'win32'
+    ? [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA]
+        .filter(Boolean).map(root => path.join(root, 'Google', 'Chrome', 'Application', 'chrome.exe'))
+    : ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/opt/google/chrome/chrome'];
+  for (const file of candidates) {
     try { await fs.access(file); return file; } catch {}
   }
   throw new Error('Hosted Chrome is required for the live browser fixture; it cannot be skipped');

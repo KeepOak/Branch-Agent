@@ -56,7 +56,9 @@ async function prepareBuildArtifacts() {
 async function featureTestEnv(scratch) {
   const env = { ...process.env, BRANCH_TEST_ARTIFACT_DIR: path.join(scratch, 'fixtures'),
     BRANCH_BROWSER_SNAPSHOT_E2E: process.platform === 'linux' ? '1' : '0' };
-  if (process.platform === 'linux') env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = await hostedChrome();
+  if (process.platform === 'linux' || process.platform === 'win32') {
+    env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = await hostedChrome();
+  }
   return env;
 }
 
@@ -88,8 +90,16 @@ async function runFeatureTests(scratch) {
       ? touchedTests(lane, await prChangedFiles()) : shardTests(namedTests(lane), shard);
     if (!tests.length) continue;
     console.log(`${lane}: ${tests.length} named test files in shard ${shard.index + 1}/${shard.total}`);
-    await run(process.execPath, [path.join(root, 'node_modules/vitest/vitest.mjs'),
-      'run', '--config', config, ...tests], root, env);
+    const browserTests = lane === 'engine' ? tests.filter(file => file.endsWith('.browser.test.ts')) : [];
+    const regularTests = tests.filter(file => !browserTests.includes(file));
+    if (regularTests.length) {
+      await run(process.execPath, [path.join(root, 'node_modules/vitest/vitest.mjs'),
+        'run', '--config', config, ...regularTests], root, env);
+    }
+    if (browserTests.length) {
+      await run(process.execPath, [path.join(root, 'node_modules/vitest/vitest.mjs'),
+        'run', '--config', path.join(engineRoot, 'test/vitest/vitest.ui-browser.config.ts'), ...browserTests], root, env);
+    }
   }
 }
 
