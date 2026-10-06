@@ -7,6 +7,10 @@ engine:extensions/googlechat/src/approval-native.test.ts
 engine:extensions/googlechat/src/auth.proof.test.ts
 engine:extensions/googlechat/src/monitor-durable.test.ts
 engine:extensions/googlechat/src/monitor-webhook.test.ts
+engine:extensions/irc/src/client.test.ts
+engine:extensions/irc/src/control-chars.test.ts
+engine:extensions/irc/src/monitor.test.ts
+engine:extensions/irc/src/protocol.test.ts
 engine:extensions/line/src/bot-handlers.test.ts
 engine:extensions/line/src/bot.test.ts
 engine:extensions/line/src/card-command.escapes.test.ts
