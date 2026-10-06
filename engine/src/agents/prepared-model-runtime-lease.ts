@@ -291,6 +291,33 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
             [Symbol.asyncDispose]: retainPreparedPluginGeneration(options.pluginGeneration),
           };
         }
+        if (options.rejoinSupersededPluginGeneration) {
+          // This flag is supplied only by a turn admitted under the historic generation.
+          // Join the configured successor directly; never let that generation publish a
+          // new dynamic owner over the Gateway's current publication.
+          const successor = configuredOwner.snapshot;
+          const generation = configuredOwner.pluginGeneration;
+          if (
+            !configuredOwner.needsRefresh &&
+            !configuredOwner.pending &&
+            successor?.isCurrent() &&
+            generation &&
+            preparedPluginGenerationSupportsSelections(generation, input)
+          ) {
+            assertAdmission();
+            return {
+              snapshot: successor,
+              pluginGeneration: generation,
+              [Symbol.asyncDispose]: retainPreparedPluginGeneration(generation),
+            };
+          }
+          supersededPublication ??= new PreparedModelRuntimePublicationSupersededError(
+            `prepared model runtime plugin generation was superseded for ${input.agentDir}`,
+          );
+          supersededSince ??= Date.now();
+          await racePromiseWithAbortSignal(delay(250), options.abortSignal);
+          continue;
+        }
         throw new PreparedModelRuntimeOwnerNotPublishedError(
           `prepared model runtime plugin generation was superseded for ${input.agentDir}`,
         );

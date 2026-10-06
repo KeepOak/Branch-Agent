@@ -9,9 +9,6 @@
   height: 100%;
   background: var(--bg);
 }
-.frame.list-hidden {
-  grid-template-columns: 0 minmax(0, 1fr);
-}
 .frame.focus {
   grid-template-rows: 34px minmax(0, 1fr) 0;
   grid-template-columns: 0 minmax(0, 1fr);
@@ -124,10 +121,6 @@
   background: var(--side);
   border-right: 1px solid var(--hair17);
   overflow: hidden;
-}
-.list-hidden .topbar-left {
-  padding: 0;
-  border: 0;
 }
 .topbar-right {
   display: flex;
@@ -350,96 +343,6 @@
   text-transform: uppercase;
   color: var(--ink-3);
   padding: 10px 10px 2px;
-}
-/* Places (the preview's .places-h14 + .side-nav.nav7): a ruled header, the rows, a rule under them */
-.places {
-  border-top: 1px solid var(--hair17);
-  border-bottom: 1px solid var(--hair17);
-  margin: 0 -8px 4px;
-  padding: 0 8px;
-}
-.places-h {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  border: 0;
-  background: transparent;
-  width: calc(100% + 16px);
-  margin: 0 -8px;
-  text-align: left;
-  padding: 10px 10px 2px;
-}
-.place-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 2px 0 8px;
-}
-.places.folded .place-rows {
-  flex-direction: row;
-  justify-content: space-between;
-  padding: 0 2px 4px;
-}
-.places.folded .nav-name,
-.places.folded .cnt {
-  display: none;
-}
-.places.folded .nav {
-  width: 34px;
-  justify-content: center;
-  padding: 0;
-}
-.nav {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 32px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--r-nav);
-  background: transparent;
-  color: var(--ink-2);
-  font-size: 13.5px;
-  text-align: left;
-  position: relative;
-  transition: background var(--t-colour) var(--ease17), color var(--t-colour) var(--ease17), box-shadow var(--t-colour) var(--ease17);
-}
-.nav .icon {
-  color: var(--ink-3);
-  flex: none;
-}
-.nav:hover {
-  background: var(--wash17);
-}
-.nav[aria-current="page"] {
-  background: var(--raise);
-  box-shadow: var(--sh1-17);
-  color: var(--ink);
-  font-weight: 600;
-}
-.nav[aria-current="page"] .icon {
-  color: var(--ink);
-}
-/* a place's count: the preview's .live6 (People) and, for Inbox, its accent .cnt */
-.cnt {
-  margin-left: auto;
-  min-width: 18px;
-  height: 18px;
-  font: 600 11px/18px var(--mono);
-  text-align: center;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: var(--wash17);
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
-}
-.cnt.attn {
-  height: auto;
-  min-width: 0;
-  font: 600 11px/1 var(--mono);
-  padding: 3px 7px;
-  background: var(--accent);
-  color: var(--on-accent);
 }
 .list {
   margin: 0 -8px;
@@ -694,7 +597,7 @@
   color: var(--ink-2);
 }
 
-/* the main column: placed explicitly, so a hidden sidebar never pulls it into the sidebar's column */
+/* The main column is placed explicitly in the second grid column. */
 .main {
   grid-column: 2;
   grid-row: 2;
@@ -742,40 +645,6 @@ button.sb[aria-expanded="true"] {
 }
 .sb-spacer {
   flex: 1;
-}
-.statusbar .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--line-2);
-}
-.statusbar .dot.on {
-  background: var(--ok);
-}
-.statusbar .dot.wait {
-  background: var(--warn);
-}
-.rdot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--line-2);
-}
-.rdot.on {
-  background: var(--accent);
-  animation: blink 1.4s ease-in-out infinite;
-}
-.meter {
-  display: inline-block;
-  width: 44px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--line-2);
-  overflow: hidden;
-}
-.meter span {
-  display: block;
-  height: 100%;
 }
 @keyframes blink {
   50% {
@@ -1296,7 +1165,11 @@ button.mi:focus-visible {
   scrollbar-color: var(--line-2) transparent;
 }
 
-/* The pet in the list (the preview's .keeper and .petbox, as its last rules leave them). */
+/* The pet's one visible home is the lane above the chat composer. */
+.pet-lane { position: relative; height: 44px; flex: none; margin: 0 auto; width: min(760px, calc(100% - 32px)); pointer-events: none; }
+.pet-lane.empty { height: 6px; }
+.pet-lane .keeper { position: absolute; inset: 0; height: 100%; border: 0; padding: 0; margin: 0; pointer-events: none; }
+.pet-lane .keeper .petbox { pointer-events: auto; }
 .keeper { position: relative; height: 66px; margin: 0 8px; padding: 4px; border-top: 1px solid var(--hair17); flex: none; }
 .keeper .petbox { position: absolute; bottom: 2px; left: 0; transition: transform 0.32s linear; }
 .keeper .pet-btn { display: block; padding: 0; border: 0; background: none; cursor: pointer; }
@@ -1306,7 +1179,6 @@ button.mi:focus-visible {
 .keeper .petbox.flip .pet-btn { transform: scaleX(-1); }
 .keeper .pet-say { position: absolute; bottom: 30px; left: 0; background: var(--raise); box-shadow: var(--pop); border-radius: 10px; padding: 6px 9px; font-size: 12px; line-height: 1.35; width: max-content; max-width: 190px; z-index: 3; }
 .keeper .pet-say::after { content: ""; position: absolute; left: 14px; bottom: -5px; width: 10px; height: 10px; background: var(--raise); transform: rotate(45deg); }
-.rail .keeper { display: none; }
 
 /* Inside the Branch app on Windows the top bar is the title bar (connect/title-bar.ts): drag it to move the window,
    double-click it to maximise. The app's minimise, maximise and close buttons sit over its top-right, so the bar keeps

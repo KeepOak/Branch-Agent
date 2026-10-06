@@ -9,6 +9,7 @@ import { hashConfigRaw } from "../config/io.read-helpers.js";
 import { isNixMode } from "../config/paths.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
+import { getPluginRegistryVersion } from "../plugins/runtime-state.js";
 import { getActiveGatewayRootWorkCount } from "../process/gateway-work-admission.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { getAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
@@ -143,6 +144,7 @@ export async function finishGatewayStartup(params: {
     getPluginNodeCapabilities,
   } = runtime;
   const startupPluginRuntimeClaim = kernel.pluginRuntimeGeneration.currentClaim();
+  const operatorAdmission = { open: false };
   const databaseStartupAdmission = getAgentDatabaseStartupAdmission();
   const databasePreparationReady = createDeferredCore();
   const activateAgentDatabases = () => {
@@ -188,6 +190,7 @@ export async function finishGatewayStartup(params: {
       browserRateLimiter: browserAuthRateLimiter,
       nodeReapprovalCoordinator,
       isStartupPending: isGatewayStartupPending,
+      isOperatorAdmissionPending: () => !operatorAdmission.open && isGatewayStartupPending(),
       isPendingWorkerNodeSetup: workerEnvironmentService?.hasPendingNodeEnrollmentSetup,
       admitsNodeSetupCompletion: workerEnvironmentService?.admitsNodeSetupCompletion,
       gatewayMethods: runtimeState.gatewayMethods,
@@ -207,6 +210,11 @@ export async function finishGatewayStartup(params: {
   kernel.setDispatchReady(true);
   startupTrace.mark("http.bound");
   activateAgentDatabases();
+  // The session projection is ready before bind: let operator clients connect now and read
+  // sessions and history while plugins, recovery and the model runtime finish. Every other
+  // startup method still answers retryable UNAVAILABLE until the sidecars are ready.
+  kernel.unlockEarlyStartupMethods();
+  operatorAdmission.open = true;
   // Health can answer as soon as the listener binds. Discovery, remote-skill
   // setup, and maintenance do not determine liveness, so keep them off that
   // critical path while still completing before usable readiness.
@@ -325,6 +333,9 @@ export async function finishGatewayStartup(params: {
               }
               startupState.pendingReason = "startup-sidecars";
               prepared.afterCommit();
+              broadcast("plugins.changed", {
+                generation: getPluginRegistryVersion(loaded.pluginRegistry),
+              });
               // Nodes can finish their handshake before deferred plugins attach.
               const nodeCapabilitySurfaces = indexPluginNodeCapabilitySurfaces(
                 getPluginNodeCapabilities(),
