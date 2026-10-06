@@ -1,5 +1,6 @@
 import path from "node:path";
 import { isRecord } from "@branch/normalization-core/record-coerce";
+import { resolveIdentityPathViaExistingAncestorSync } from "./boundary-path.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 
 export type AgentDatabaseReadCandidate = { path: string; scope?: "sibling-family" };
@@ -19,13 +20,20 @@ const readers = resolveGlobalSingleton(Symbol.for("branch.agentDatabaseReaders")
   deleted: new Map<string, string>(),
 }));
 
+function normalizeReaderPath(pathname: string): string {
+  const resolved = path.resolve(pathname);
+  return process.platform === "win32"
+    ? resolveIdentityPathViaExistingAncestorSync(resolved)
+    : resolved;
+}
+
 /** Match captured read custody without inspecting files or inferring their owners. */
 export function matchesAgentDatabaseReadCandidatePath(
   candidate: AgentDatabaseReadCandidate,
   pathname: string,
 ): boolean {
-  const capturedPath = path.resolve(candidate.path);
-  const resolvedPath = path.resolve(pathname);
+  const capturedPath = normalizeReaderPath(candidate.path);
+  const resolvedPath = normalizeReaderPath(pathname);
   if (capturedPath === resolvedPath) {
     return true;
   }
@@ -51,7 +59,7 @@ export function registerAgentDatabaseReaderCloser(closer: AgentDatabaseReaderClo
 
 /** A deleted agent's database stays closed in this isolate until the roster admits the agent again. */
 export function isDeletedAgentDatabasePath(pathname: string): boolean {
-  return readers.deleted.has(path.resolve(pathname));
+  return readers.deleted.has(normalizeReaderPath(pathname));
 }
 
 export function hasDeletedAgentDatabases(): boolean {
@@ -66,7 +74,7 @@ export function captureDeletedAgentDatabaseFences(): [string, string][] {
 export function installDeletedAgentDatabaseFences(fences: readonly [string, string][]): void {
   readers.deleted.clear();
   for (const [pathname, agentId] of fences) {
-    readers.deleted.set(pathname, agentId);
+    readers.deleted.set(normalizeReaderPath(pathname), agentId);
   }
 }
 
@@ -83,7 +91,7 @@ export async function applyAgentDatabaseReaderRequest(
   }
   if (request.deleted) {
     for (const candidate of request.candidates) {
-      readers.deleted.set(path.resolve(candidate.path), request.agentId);
+      readers.deleted.set(normalizeReaderPath(candidate.path), request.agentId);
     }
   }
   const results = await Promise.allSettled(

@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { createRetainedOperation } from "@branch/worker-runtime/lifecycle";
 import { describe, expect, it, vi } from "vitest";
@@ -17,6 +19,40 @@ const agentDir = path.resolve("/state/agents/alpha/agent");
 const databasePath = path.join(agentDir, "branch-agent.sqlite");
 
 describe("agent database reader requests", () => {
+  it.skipIf(process.platform !== "win32")(
+    "matches physical database aliases and fences both names after deletion",
+    async () => {
+      const base = await fs.mkdtemp(path.join(os.tmpdir(), "branch-agent-reader-alias-"));
+      try {
+        const physical = path.join(base, "physical");
+        const alias = path.join(base, "alias");
+        await fs.mkdir(physical);
+        await fs.symlink(physical, alias, "junction");
+        const physicalDatabase = path.join(physical, "branch-agent.sqlite");
+        const aliasDatabase = path.join(alias, "branch-agent.sqlite");
+        await fs.writeFile(physicalDatabase, "");
+
+        expect(
+          matchesAgentDatabaseReadCandidatePath(
+            { path: physicalDatabase },
+            aliasDatabase,
+          ),
+        ).toBe(true);
+        await applyAgentDatabaseReaderRequest({
+          kind: "close",
+          candidates: [{ path: physicalDatabase }],
+          deleted: true,
+          agentId: "alias-test",
+        });
+        expect(isDeletedAgentDatabasePath(aliasDatabase)).toBe(true);
+        await reviveAgentDatabases(["alias-test"]);
+        expect(isDeletedAgentDatabasePath(aliasDatabase)).toBe(false);
+      } finally {
+        await fs.rm(base, { recursive: true, force: true });
+      }
+    },
+  );
+
   it.each([
     { scope: undefined, target: "branch-agent.sqlite", matches: true },
     { scope: undefined, target: "branch-agent.memory.sqlite", matches: false },
