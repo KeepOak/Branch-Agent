@@ -390,7 +390,8 @@ test("a standby port taken before the engine binds it falls back to the live por
   const standby = (await starts())[1];
   await eventually(() => existsSync(join(root, `launch-${standby}.json`)));
   const { port } = JSON.parse(await readFile(join(root, `launch-${standby}.json`), "utf8"));
-  const squatter = createServer(); await new Promise(resolve => squatter.listen(port, "127.0.0.1", resolve));
+  // Readiness probes connect to the squatter too: drop them at once, so closing it never waits on a lingering socket.
+  const squatter = createServer(socket => socket.destroy()); await new Promise(resolve => squatter.listen(port, "127.0.0.1", resolve));
   try {
     await unlink(join(root, "hold-standby"));
     await eventually(() => swapped(root), 40_000);
