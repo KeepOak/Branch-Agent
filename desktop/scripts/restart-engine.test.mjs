@@ -55,7 +55,9 @@ starts.push(process.pid);fs.writeFileSync(file,JSON.stringify(starts));
 fs.writeFileSync(root+"/launch-"+process.pid+".json",JSON.stringify({port:Number(process.argv.at(-1)),standby:process.env.BRANCH_GATEWAY_STANDBY==="1",token:process.env.BRANCH_GATEWAY_TOKEN}));
 if(starts.length>1&&fs.existsSync(root+"/fail-next"))process.exit(1);
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/fail-standby"))process.exit(1);
-process.on("message",m=>{if(!String(m?.type).startsWith("branch-desktop:"))return;if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
+process.on("message",m=>{if(!String(m?.type).startsWith("branch-desktop:"))return;
+// late-drain-ack: a saturated first engine answers nothing, yet the drain request lands and it exits 12 s later.
+if(starts.length===1&&fs.existsSync(root+"/late-drain-ack")){if(m.type==="branch-desktop:drain-stop"&&!globalThis.draining){globalThis.draining=true;setTimeout(()=>{fs.writeFileSync(root+"/drained-"+process.pid,"1");process.exit(0);},12000);}return;}if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
 if(m.type==="branch-desktop:drain-stop"){fs.writeFileSync(root+"/drained-"+process.pid,"1");setTimeout(()=>process.exit(0),20);}
 if(m.type==="branch-desktop:stop-if-idle"&&!fs.existsSync(root+"/busy"))setTimeout(()=>process.exit(0),20);});
 const listener=http.createServer((q,r)=>{r.writeHead(starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end();});
@@ -66,7 +68,8 @@ if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
 // No EADDRINUSE retry: an engine listens once on the port the desktop gave it, so a standby on the live port fails.
 const listen=()=>listener.listen(Number(process.argv.at(-1)),"127.0.0.1");
 // As the real engine: a standby binds only after the old engine released state (here: once it drained).
-if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-binds-after-release")){const timer=setInterval(()=>{if(fs.existsSync(root+"/drained-"+starts[0])){clearInterval(timer);listen();}},10);}else listen();`;
+if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-exits-after-release")){const timer=setInterval(()=>{if(fs.existsSync(root+"/drained-"+starts[0])){clearInterval(timer);process.exit(1);}},10);}
+else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-binds-after-release")){const timer=setInterval(()=>{if(fs.existsSync(root+"/drained-"+starts[0])){clearInterval(timer);listen();}},10);}else listen();`;
   await writeFile(join(engine, "branch.mjs"), script); await writeFile(join(windowDir, "index.html"), "<html>fixture</html>");
   await writeFile(join(root, "gateway-token"), "isolated-fixture-token");
   await writeFile(join(root, "desktop.json"), JSON.stringify({ dataDir: root, engineDir: engine, windowDir,
@@ -253,8 +256,9 @@ test("a standby that fails to warm is stopped, the old engine keeps serving and 
   assert.equal(existsSync(join(root, `drained-${old}`)), false, "the serving engine was drained for a standby that never warmed");
   assert.equal((await fetch(`http://127.0.0.1:${gatewayPort}/readyz`)).status, 200);
   assert.equal(runtime.errors.length, 0, "the owner saw an error although the engine kept serving");
-  // Auto-apply waits for the owner's click after a failed standby, so the bar must not promise an automatic update.
-  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update").map(([, state]) => state).slice(-1), ["ready"]);
+  // Automatic updates fall back to the guarded swap after a failed standby, so "auto-wait" stays true.
+  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update").map(([, state]) => state).slice(-1), ["auto-wait"]);
+  assert.ok(sent.some(([channel]) => channel === "branch-desktop:engine-update-failed"), "the owner was not told the update failed");
   await unlink(join(root, "fail-next")); await writeFile(join(root, "release-ready"), "ready");
   restart(); await eventually(() => swapped(root));
   assert.equal((await starts()).length, 3, "the retry started more than one standby");
@@ -345,7 +349,7 @@ test("after two failed standbys the next Update uses the guarded stop/start swap
   restart(); await eventually(async () => await failures() === 2);
   assert.equal(alive(old), true, "a failed standby stopped the serving engine");
   restart(); await eventually(() => swapped(root));
-  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /the standby failed 2 times; using the guarded stop\/start swap/);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /the standby failed 2 time\(s\); using the guarded stop\/start swap/);
   const launched = await starts();
   assert.equal(launched.length, 4);
   assert.equal(JSON.parse(await readFile(join(root, `launch-${launched[3]}.json`), "utf8")).standby, false);
@@ -420,6 +424,38 @@ test("an update that fails after its standby answered /readyz rolls back on the 
   const serving = (await starts()).at(-1);
   assert.equal(alive(serving), true);
   assert.equal(JSON.parse(await readFile(join(root, `launch-${serving}.json`), "utf8")).port, gatewayPort);
+}, false, false, false, true));
+const servingOn = async (port) => (await originalFetch(`http://127.0.0.1:${port}/readyz`).then(response => response.status, () => 0)) === 200;
+test("an activity check that times out mid-update still leaves an engine serving within seconds", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  const old = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "late-drain-ack"), "1");
+  restart();
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update failed"), 30_000);
+  const failedAt = Date.now();
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /update failed: The gateway activity check timed out/);
+  assert.ok(sent.some(([channel, message]) => channel === "branch-desktop:engine-update-failed" && /timed out/.test(message)),
+    "the owner was not told the update failed");
+  // The drain still landed: the old engine exits, and the desktop must not be left with zero engines.
+  await eventually(() => !alive(old), 30_000);
+  await eventually(async () => { const latest = (await starts()).at(-1); return latest !== old && alive(latest) && await servingOn(gatewayPort); }, 30_000);
+  assert.ok(Date.now() - failedAt < 30_000, "no engine served for too long after the failed update");
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway recovered after unexpected exit"));
+}));
+test("a standby that fails after the old engine drained brings the previous build back", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const { gatewayPort, engineDir } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  const old = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "standby-exits-after-release"), "1");
+  restart();
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update failed"), 30_000);
+  const standby = (await starts())[1];
+  await eventually(async () => { const latest = (await starts()).at(-1); return ![old, standby].includes(latest) && alive(latest) && await servingOn(gatewayPort); }, 30_000);
+  assert.equal(alive(old), false); assert.equal(alive(standby), false);
+  const log = await readFile(join(root, "desktop.log"), "utf8");
+  assert.ok(log.lastIndexOf(`gateway started from ${engineDir}`) > log.indexOf("update failed"), "the previous build was not restarted");
+  assert.ok(sent.some(([channel]) => channel === "branch-desktop:engine-update-failed"));
 }, false, false, false, true));
 test("a new window build swaps in place after attached files are sent, keeping the engine", () => fixture(async ({ root, runtime, starts }) => {
   const main = runtime.window;

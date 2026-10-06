@@ -86,12 +86,10 @@ const gatewayUrl = (): string => `ws://127.0.0.1:${gatewayPort}`;
 let windowPort = cfg.gatewayPort;
 /** An update's warmed standby until it is promoted or stopped; quitting never leaves it behind. */
 let standby: PreparedGateway | undefined;
-/** Failed standbys per update label. Between the first failure and the guarded fallback, auto-apply waits for a click. */
+/** Failed standbys per update label: automatic updates fall back to the guarded swap after one, the owner's clicks after STANDBY_ATTEMPTS. */
 const standbyFailures = new Map<string, number>();
-const autoApplyWaitsForOwner = (label: string): boolean => {
-  const failures = standbyFailures.get(label) ?? 0;
-  return failures > 0 && failures < STANDBY_ATTEMPTS;
-};
+/** The engine build that last became ready: crash recovery and failed updates bring this one back. */
+let lastGoodEngineDir: string | undefined;
 /** `branch mcp serve` and the `branch` command read the live port from here (desktop.json keeps the configured one). */
 function writeGatewayPortFile(port: number): void {
   const file = join(cfg.dataDir, "gateway-port");
@@ -159,7 +157,8 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
       await waitForGatewayPort();
       // The selected pointer may already name a staged update. Recover the build that exited;
       // only the normal update path may validate and confirm the staged engine/window pair.
-      await bootEngine(readFileSync(join(cfg.dataDir, "engine-running.txt"), "utf8").trim(), false, undefined, await recoveryPort());
+      const engineDir = lastGoodEngineDir ?? readFileSync(join(cfg.dataDir, "engine-running.txt"), "utf8").trim();
+      await bootEngine(engineDir, false, undefined, await recoveryPort());
       handWindowToGateway();
       log("gateway recovered after unexpected exit");
     } catch (error) {
@@ -258,9 +257,16 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
   } catch (error) {
     if (standby) stopGateway(standby.child);
     standby = undefined;
-    // Still serving (the engine became busy before it stopped, or its standby failed): offer the update again.
-    const state = controls.settings().autoApplyUpdates && !autoApplyWaitsForOwner(label) ? "auto-wait" : "ready";
-    if (engineRunning()) sendToBranchWindows("branch-desktop:engine-update", state);
+    const message = error instanceof Error ? error.message : String(error);
+    sendToBranchWindows("branch-desktop:engine-update-failed", message);
+    // Never leave zero engines: with nothing serving, the crash supervisor brings back the build that last ran.
+    // An old engine still running may already be draining (a drain request whose answer timed out still lands);
+    // its supervision was resumed, so its exit restarts that build too.
+    if (!engineRunning()) gatewaySupervisor.recover(new Error(`the update failed with no engine serving: ${message}`));
+    else {
+      const state = controls.settings().autoApplyUpdates && !autoApplyWaitsForOwner(label) ? "auto-wait" : "ready";
+      sendToBranchWindows("branch-desktop:engine-update", state);
+    }
     throw error;
   } finally { engineRestartInProgress = false; }
 }
@@ -272,11 +278,12 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
  */
 async function prepareUpdateStandby(label: string, explicit: boolean): Promise<void> {
   if (freemem() < CANDIDATE_MIN_FREE_BYTES || !standbyProfileReady()) return;
-  if ((standbyFailures.get(label) ?? 0) >= STANDBY_ATTEMPTS) {
-    log(`update ${label}: the standby failed ${STANDBY_ATTEMPTS} times; using the guarded stop/start swap`);
+  const failures = standbyFailures.get(label) ?? 0;
+  // Automatic updates never wait for a click that may not be offered: one failed standby is enough to fall back.
+  if (failures >= STANDBY_ATTEMPTS || (!explicit && failures > 0)) {
+    log(`update ${label}: the standby failed ${failures} time(s); using the guarded stop/start swap`);
     return;
   }
-  if (!explicit && autoApplyWaitsForOwner(label)) throw new Error(`the standby for ${label} failed before; waiting for the owner's Update`);
   try {
     standby = await prepareStandbyGateway(cfg, resolveEngineDir(cfg), token, STANDBY_WARM_TIMEOUT_MS);
     standbyFailures.delete(label);
@@ -616,6 +623,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   // Only a confirmed engine moves the live port: a rollback reboots on the port the window already uses.
   if (confirmUpdate) await confirmComponentUpdate(cfg);
   adoptGatewayPort(port);
+  lastGoodEngineDir = engineDir;
   observed.ready();
   gatewayRecoveryError = undefined;
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
