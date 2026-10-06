@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import * as sessionAccessor from "../../config/sessions/session-accessor.js";
 import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import { callGateway } from "../../gateway/call.js";
@@ -7,6 +7,10 @@ import { createRecoveryRuntimeFixture } from "./main-session-recovery-runtime.te
 import { recoverRestartAbortedMainSessions } from "./main-session-restart-recovery-runtime.js";
 
 vi.mock("../../gateway/call.js", () => ({ callGateway: vi.fn() }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 it("does not dispatch a restart continuation for an expired pending mark", async () => {
   await withBranchTestState({ label: "recovery-expired-pending" }, async (state) => {

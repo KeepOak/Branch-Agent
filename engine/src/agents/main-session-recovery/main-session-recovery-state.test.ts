@@ -18,6 +18,7 @@ function recoveryState(
     cycleId: "cycle-1",
     revision: 1,
     chargedAttempts: 0,
+    interruptedAt: 100,
     ...overrides,
   };
 }
