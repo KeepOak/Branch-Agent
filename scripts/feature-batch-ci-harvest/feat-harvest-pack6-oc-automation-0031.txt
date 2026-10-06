@@ -2,6 +2,7 @@ engine:extensions/imap/src/prompt.test.ts
 engine:extensions/imap/src/sender-gate.test.ts
 engine:extensions/imap/src/state.test.ts
 engine:extensions/imap/src/watcher.test.ts
+engine:src/cron/active-jobs.test.ts
 engine:src/cron/delivery-plan.test.ts
 engine:src/cron/delivery-preview.current-origin.test.ts
 engine:src/cron/delivery-preview.test.ts
@@ -15,10 +16,12 @@ engine:src/cron/maintenance-scheduler.test.ts
 engine:src/cron/maintenance.test.ts
 engine:src/cron/session-reaper.test.ts
 engine:src/cron/webhook-url.test.ts
+engine:src/gateway/cron-creator-authority-grant.test.ts
 engine:src/gateway/hooks-mapping.fanout.test.ts
 engine:src/gateway/hooks-mapping.test.ts
 engine:src/gateway/hooks.test.ts
 engine:src/gateway/server-cron-primary-webhook.test.ts
+engine:src/gateway/server-methods/cron-reservation.authority.test.ts
 engine:src/gateway/server.hooks-admission.test.ts
 engine:src/gateway/server.hooks.test.ts
 engine:src/hooks/bundled/session-memory/capture.test.ts
