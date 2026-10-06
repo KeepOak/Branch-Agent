@@ -1,10 +1,10 @@
-import { Menu, Tray, type App, type BrowserWindow } from "electron";
+import { Menu, Tray, type App, type BrowserWindow, type NativeImage } from "electron";
 
 /** Closing the desktop window keeps its existing authenticated engine and drafts alive. */
 export function keepWindowResident(
   app: App,
   window: BrowserWindow,
-  icon: string,
+  icon: string | NativeImage,
   options: { hidden?: boolean; platform?: NodeJS.Platform; keepRunning?: () => boolean; onTrayClick?: () => void } = {},
 ): Tray | undefined {
   const platform = options.platform ?? process.platform;

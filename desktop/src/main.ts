@@ -1,5 +1,5 @@
 // Branch Agent desktop app: starts the engine gateway, serves the built window on 127.0.0.1 and shows it.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, session, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, screen, session, shell } from "electron";
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -31,6 +31,12 @@ const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRA
 const ICON = process.platform === "win32"
   ? join(__dirname, "..", "assets", "branch.ico")
   : join(__dirname, "..", "assets", "brand", "linux", "branch-48.png");
+const TRAY_ICON = (() => {
+  if (process.platform !== "darwin") return ICON;
+  const icon = nativeImage.createFromPath(join(__dirname, "..", "assets", "brand", "linux", "branch-16.png"));
+  icon.addRepresentation({ scaleFactor: 2, buffer: readFileSync(join(__dirname, "..", "assets", "brand", "linux", "branch-32.png")) });
+  return icon;
+})();
 const READY_TIMEOUT_MS = 600_000;
 /** Free memory a candidate check needs (6 GB, the shared load rule); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
 const CANDIDATE_MIN_FREE_BYTES = Number(process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB ?? 6144) * 2 ** 20;
@@ -254,7 +260,7 @@ function createWindow(): BrowserWindow {
   if (!HIDDEN && !QUIET && !TEST_COPY) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
   trackWindowState(w, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds);
   lockDown(w);
-  tray = keepWindowResident(app, w, ICON, {
+  tray = keepWindowResident(app, w, TRAY_ICON, {
     hidden: HIDDEN,
     keepRunning: () => controls.settings().keepWorking,
     // With the usage ring in the tray, a click opens the same list (Settings › Usage).
@@ -435,6 +441,13 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
+    if (win && !HIDDEN) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    }
+  });
+  app.on("activate", () => {
     if (win && !HIDDEN) {
       if (win.isMinimized()) win.restore();
       win.show();

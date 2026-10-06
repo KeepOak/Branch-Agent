@@ -104,6 +104,14 @@ test('actual second instance and tray Open reuse the same window, gateway and in
   assert.equal(Number(await readFile(join(root, 'gateway.pid'), 'utf8')), pid);
   assert.equal((await readFile(join(root, 'desktop.log'), 'utf8')).match(/gateway started from/g).length, 1);
 }));
+test('Dock activate restores the resident window without restarting its gateway or losing its draft', () => fixture(async ({ app, window, root, pid }) => {
+  window.draft = { text: 'private draft' }; const draft = window.draft;
+  const loads = window.loads.length; window.close(); window.minimized = true; app.emit('activate');
+  assert.equal(window.hidden, false); assert.equal(window.minimized, false); assert.equal(window.focused, true);
+  assert.equal(window.draft, draft); assert.equal(window.loads.length, loads);
+  assert.equal(Number(await readFile(join(root, 'gateway.pid'), 'utf8')), pid);
+  assert.equal((await readFile(join(root, 'desktop.log'), 'utf8')).match(/gateway started from/g).length, 1);
+}));
 test('tray Quit and session end perform normal owned-child shutdown', () => fixture(async ({ tray, window, pid }) => {
   assert.ok(tray); tray.menu.find(item => item.label === 'Quit Branch').click();
   assert.equal(window.destroyed, true); assert.equal(tray.destroyed, true);
