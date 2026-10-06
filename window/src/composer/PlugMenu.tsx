@@ -182,12 +182,13 @@ function Section({ title, on, children }: { title: string; on: number; children:
 }
 
 function ToolRow({ icon, name, line, here, children }: { icon: "globe" | "puzzle" | "plug"; name: string; line: string; here?: boolean; children: React.ReactNode }) {
+  const shortLine = line.length > 60 ? `${line.slice(0, 59)}…` : line;
   return (
     <div className="c-tool" data-testid="tool-row">
       <span className="c-tile"><Icon name={icon} size={15} /></span>
       <span className="c-tool-t">
         <b>{name}{here ? <span className="c-pill">Here only</span> : null}</b>
-        <small>{line}</small>
+        <small title={line}>{shortLine}</small>
       </span>
       {children}
     </div>
@@ -252,7 +253,7 @@ function AddRow({ onOpen, onClose }: { onOpen?: (t: OpenTarget) => void; onClose
   const kinds: Array<[string, "plug" | "puzzle" | "term" | "sliders"]> = [
     ["Connector", "plug"],
     ["Skill", "puzzle"],
-    ["CLI", "term"],
+    ["Command-line tool", "term"],
     ["Plugin", "sliders"],
   ];
   return (

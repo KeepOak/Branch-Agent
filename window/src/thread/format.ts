@@ -147,24 +147,6 @@ export function dayStamp(ms: number, now = Date.now()): string {
   return `${d.toLocaleDateString([], sameYear ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" })} ${time}`;
 }
 
-/** "Getting started words" (§4.2.5 Parity adds) for the run_status phases that say something the dots do not.
- *  Phases that only mean "working" (preparing_context, starting_model, waiting_for_state) show the dots alone (P47). */
-export const PHASE_WORDS: Record<string, string> = {
-  preparing_workspace: "Preparing the folder…",
-  naming_worktree: "Naming the separate copy…",
-  creating_worktree: "Making a separate copy…",
-  running_setup: "Running setup…",
-  provisioning_environment: "Getting its computer ready…",
-  memory_flushing: "Saving what it remembers…",
-};
-
-export function phaseWords(status: Extract<Block, { kind: "status" }>): string {
-  if (status.attempt && status.maxAttempts) {
-    return `Trying again… ${status.attempt} of ${status.maxAttempts}`;
-  }
-  return PHASE_WORDS[status.phase] ?? "";
-}
-
 /** The first sentence of an engine error, without the engine's own lead-in and warning sign. */
 export function shortReason(message: string): string {
   const plain = message

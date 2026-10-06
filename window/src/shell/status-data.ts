@@ -62,6 +62,15 @@ export type LimitPill = "Measured" | "Not published";
 export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string };
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
 
+/** Usage endpoints return diagnostic text; the status bar only shows human-facing status words. */
+export function usageStatusWords(error: unknown, provider: string): string {
+  const raw = str(error);
+  if (!raw) return `${provider} hasn't shared a limit with Branch.`;
+  if (/\b429\b|rate.?limit/i.test(raw)) return `${provider} didn't share what's left right now. Branch checks again in 5 min.`;
+  if (/\b401\b|\b403\b|unauthori[sz]ed|forbidden/i.test(raw)) return `${provider} needs you to sign in again to check usage.`;
+  return `${provider} couldn't share usage right now. Branch will try again.`;
+}
+
 function limitRow(p: Record<string, unknown>, updatedAt: number, now: number, accountNumber: number): LimitRow {
   const windows = list(p.windows).flatMap((w) => {
     const measured = readMeasuredPercent(w.usedPercent);
@@ -71,10 +80,10 @@ function limitRow(p: Record<string, unknown>, updatedAt: number, now: number, ac
   });
   const account = [str(p.accountEmail), str(p.plan)].filter(Boolean).join(" · ");
   const measured = windows.length > 0;
-  const line = str(p.error) || (measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) || "This service does not say what it allows.");
   const provider = str(p.provider);
   const service = str(p.displayName) || provider;
   const name = provider === "openai-codex" || /^ChatGPT plan$/i.test(service) ? `ChatGPT · Account ${accountNumber}` : service.replace(/\s+plan$/i, "");
+  const line = p.error === "Usage not reported" ? "Usage not reported" : p.error ? usageStatusWords(p.error, name) : measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, name);
   return { id: `${str(p.provider)}:${account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line };
 }
 

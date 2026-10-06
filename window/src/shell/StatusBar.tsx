@@ -25,8 +25,8 @@ type Props = StatusFacts & {
   /** Appearance › What's shown › The gateway in the status bar (on unless switched off). */
   gatewayShown?: boolean;
   usageShown?: boolean;
-  /** Paused Trunks and live calls (after "N running"), the graphics readout (after the spacer), the pet (before the version). */
-  extras?: { left?: ReactNode; gfx?: ReactNode; pet?: ReactNode };
+  /** Paused Trunks and live calls (after "N running"), and the graphics readout (after the spacer). */
+  extras?: { left?: ReactNode; gfx?: ReactNode };
 };
 
 /** The meter's colour by share used (§4.9.1 Room left): under 50% ok, 50–79% warn, 80–94% orange, 95% and over bad. */
@@ -120,7 +120,6 @@ export function StatusBar(p: Props) {
           </span>
         </button>
       )}
-      {p.extras?.pet}
       {p.version ? (
         <button type="button" className="sb status-symbol" title={`${branchVersionLabel(p.version)}${p.readyVersion ? ` · ${branchVersionDetail(p.readyVersion)} ready` : ""}${p.version.includes("-build-") ? ` · ${branchVersionDetail(p.version)}` : ""}`} aria-label={`${branchVersionLabel(p.version)}${p.readyVersion ? ` · ${branchVersionDetail(p.readyVersion)} ready` : ""}`} data-testid="sb-version" {...item("version")}>
           <StatusGlyph kind="update" />

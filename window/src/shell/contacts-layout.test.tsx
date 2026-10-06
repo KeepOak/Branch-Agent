@@ -37,6 +37,13 @@ async function show(rail = false) {
 }
 
 describe("contacts layout", () => {
+  it("registers touchmove as non-passive on the sidebar list", async () => {
+    const add = vi.spyOn(HTMLElement.prototype, "addEventListener");
+    const host = await show();
+    const side = host.querySelector(".side");
+    expect(add.mock.calls.some(([type, , options], index) => type === "touchmove" && options && typeof options === "object" && options.passive === false && add.mock.contexts[index] === side)).toBe(true);
+    add.mockRestore();
+  });
   it("snaps below 200 px to the rail, keeps 200 px full, and drags back out to at least 220 px", () => {
     expect(dragResult(199)).toEqual({ rail: true });
     expect(dragResult(200)).toEqual({ sideW: 220, rail: false });

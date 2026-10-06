@@ -131,7 +131,7 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
       {str(active.runId) ? (
         <Status tone="warn" title="Installing a Branch update">{PHASE[str(active.phase)] ?? "Working on it"}. Branch restarts by itself when it’s done; you can keep working.</Status>
       ) : failed ? (
-        <Status tone="bad" title="Branch update didn’t install">{str(last.reason) || "The update stopped before it finished."} {version ? `Branch ${versionParts(version).detail}` : "Your current Branch version"} keeps running.</Status>
+        <Status tone="bad" title="Branch update didn’t install">{str(last.reason) || "The update stopped before it finished."} {version ? `Branch ${versionParts(version).short}` : "Your current Branch version"} keeps running.</Status>
       ) : started ? (
         <Status tone={campaign.state === "applying" ? "warn" : "ok"} title="A Branch update is installing by itself">{campaignLine(campaign, now)}.</Status>
       ) : latest ? (
@@ -260,7 +260,7 @@ function Updating({ engine, level, data }: SettingsPageProps & { data: Data }) {
           <Seg label="If tasks are still running after" value="15" options={[{ id: "15", label: "15 minutes" }, { id: "never", label: "Never" }]} onChange={() => undefined} />
         </Ctl>
       ) : null}
-      <Ctl title="Undo the last update" sub={lastRun.status === "succeeded" && str(rec(lastRun.after).version) ? `${str(rec(lastRun.after).version)} installed ${day(lastRun.updatedAtMs)}.` : undefined} off={NO_UNDO}>
+      <Ctl title="Undo the last update" sub={lastRun.status === "succeeded" ? `Branch update installed ${day(lastRun.updatedAtMs)}.` : undefined} off={NO_UNDO}>
         <Btn sm disabled>Undo</Btn>
       </Ctl>
     </Sec>

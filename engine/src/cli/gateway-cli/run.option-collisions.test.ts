@@ -51,7 +51,11 @@ const waitForPortBindable = vi.fn(async (_port: number, _opts?: unknown) => 0);
 const findVerifiedGatewayListenerPidsOnPortSync = vi.fn((_port: number) => [] as number[]);
 const formatGatewayPidList = vi.fn((pids: number[]) => pids.join(", "));
 const isTerminalInteractive = vi.fn(() => true);
-const offerInvalidConfigRecovery = vi.fn(async () => ({ status: "declined" as const }));
+const offerInvalidConfigRecovery = vi.fn(
+  async (_options: { retry: () => Promise<void> }): Promise<{ status: "declined" | "recovered" }> => ({
+    status: "declined",
+  }),
+);
 const parkCurrentLaunchAgentForMaintenance = vi.fn(async () => false);
 const ensureDevGatewayConfig = vi.fn(async (_opts?: unknown) => {});
 type GatewayLoopStart = (params?: { startupStartedAt?: number }) => Promise<unknown>;
@@ -360,7 +364,8 @@ vi.mock("../terminal-interactivity.js", () => ({
 }));
 
 vi.mock("../invalid-config-recovery.js", () => ({
-  offerInvalidConfigRecovery: () => offerInvalidConfigRecovery(),
+  offerInvalidConfigRecovery: (options: { retry: () => Promise<void> }) =>
+    offerInvalidConfigRecovery(options),
 }));
 
 vi.mock("../ports.js", () => ({
@@ -1694,6 +1699,36 @@ describe("gateway run option collisions", () => {
 
     expect(offerInvalidConfigRecovery).not.toHaveBeenCalled();
     expect(startGatewayServer).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a caller-owned host rendezvous open across invalid-config recovery", async () => {
+    const { createInvalidConfigError } = await import("../../config/io.invalid-config.js");
+    const { runGatewayCommand } = await import("./run.js");
+    const config = { gateway: { mode: "local", auth: { mode: "none" } } };
+    configState.cfg = config;
+    configState.snapshot = configSnapshot(config);
+    const markStarting = vi.fn(async () => {});
+    const close = vi.fn(async () => {});
+    const preparedHost = {
+      decision: { outcome: "start" as const, message: "Host claimed" },
+      markStarting,
+      close,
+    };
+    startGatewayServer.mockRejectedValueOnce(
+      createInvalidConfigError("/tmp/branch.json", "gateway.mode: invalid"),
+    );
+    offerInvalidConfigRecovery.mockImplementationOnce(async (options) => {
+      expect(close).not.toHaveBeenCalled();
+      await options.retry();
+      return { status: "recovered" as const };
+    });
+
+    await runGatewayCommand({}, {}, undefined, preparedHost);
+
+    expect(offerInvalidConfigRecovery).toHaveBeenCalledOnce();
+    expect(startGatewayServer).toHaveBeenCalledTimes(2);
+    expect(markStarting).toHaveBeenCalledTimes(2);
+    expect(close).not.toHaveBeenCalled();
   });
 
   it("prints all supported modes on invalid --auth value", async () => {

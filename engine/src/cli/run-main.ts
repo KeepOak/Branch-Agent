@@ -153,6 +153,11 @@ async function tryRunGatewayRunFastPath(
     if (!shouldBootstrap) {
       return;
     }
+    if (process.env.BRANCH_GATEWAY_STANDBY === "1") {
+      // Loads code while another engine still owns state; every state step below runs after release.
+      const { waitInGatewayStandby } = await import("./gateway-cli/standby.js");
+      await startupTrace.measure("gateway-run-standby", () => waitInGatewayStandby(process.env));
+    }
     await startupTrace.measure("gateway-run-bootstrap", async () => {
       await ensureCliExecutionBootstrap({
         runtime: defaultRuntime,

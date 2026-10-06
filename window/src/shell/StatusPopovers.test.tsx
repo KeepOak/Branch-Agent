@@ -68,4 +68,15 @@ describe("status popovers", () => {
     expect(host.textContent).toContain("Branch 0.4.5 is ready");
     expect(host.textContent).not.toContain("-build-next");
   });
+  it("Version: install when idle is only available in the desktop app", async () => {
+    const update = { current: "1.0.0", latest: "1.1.0", notes: [], installing: false, waiting: null };
+    const install = vi.fn();
+    const host = await show(<VersionPopover above={above} onClose={() => {}} update={update} version="1.0.0" desktopInstall onWhatsNew={() => {}} onInstall={install} onRemind={() => {}} />);
+    expect(host.textContent).toContain("Installs by itself when nothing is running.");
+    await act(async () => button(host, "Install when idle").click());
+    expect(install).toHaveBeenCalledOnce();
+    await act(async () => root?.render(<VersionPopover above={above} onClose={() => {}} update={update} version="1.0.0" onWhatsNew={() => {}} onInstall={install} onRemind={() => {}} />));
+    expect(host.textContent).toContain("Ready to install on the computer running Branch: open Branch there to install it.");
+    expect(button(host, "Install when idle")).toBeUndefined();
+  });
 });

@@ -20,19 +20,20 @@ export function snoozeChoices(now: number): { label: string; until: number }[] {
     { label: "In 1 hour", until: now + 3_600_000 },
     { label: "In 3 hours", until: now + 3 * 3_600_000 },
   ];
-  const evening = at(0, 18);
-  if (evening - now > 3_600_000) {
-    choices.push({ label: "This evening", until: evening });
-  }
   choices.push({ label: "Tomorrow", until: at(1, 9) });
-  if (d.getDay() !== 0) {
-    const toMonday = ((8 - d.getDay()) % 7) || 7;
-    choices.push({ label: "Next week", until: at(toMonday, 9) });
-  }
+  const toMonday = ((8 - d.getDay()) % 7) || 7;
+  choices.push({ label: "Next week", until: at(toMonday, 9) });
   return choices;
 }
 
-/** The local 12-hour wake time for a snoozed conversation. */
+/** Compact time beside a Snooze choice (§2.10); its label already says Tomorrow or Next week. */
+export function snoozeTime(until: number, label: string): string {
+  const date = new Date(until);
+  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
+  return label === "Next week" ? `${date.toLocaleDateString([], { weekday: "short" })} ${time}` : time;
+}
+
+/** "18:00", "tomorrow 09:00" or "Mon 09:00" (§4.1.6 Snooze: the wake time). */
 export function wakeWords(until: number, now: number): string {
   const d = new Date(until);
   const hm = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });

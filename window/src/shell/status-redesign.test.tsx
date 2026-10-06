@@ -108,7 +108,7 @@ it("Gateway, Running, and Update actions use their live callbacks", async () => 
   expect(automations).toHaveBeenCalledOnce();
   await act(async () => root?.unmount()); root = undefined;
   const install = vi.fn(), whatsNew = vi.fn(), remind = vi.fn();
-  host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "0.19.5", latest: "0.20.0", notes: ["Groups can have rules"], installing: false, waiting: null }} version="0.19.5" onWhatsNew={whatsNew} onInstall={install} onRemind={remind} />);
+  host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "0.19.5", latest: "0.20.0", notes: ["Groups can have rules"], installing: false, waiting: null }} version="0.19.5" desktopInstall onWhatsNew={whatsNew} onInstall={install} onRemind={remind} />);
   expect(host.textContent).toContain("You have 0.19.5");
   await click(host, "ver-install"); await click(host, "ver-whatsnew"); await click(host, "ver-remind");
   expect(install).toHaveBeenCalledOnce(); expect(whatsNew).toHaveBeenCalledOnce(); expect(remind).toHaveBeenCalledOnce();
