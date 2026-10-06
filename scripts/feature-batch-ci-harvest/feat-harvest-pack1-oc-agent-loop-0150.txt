@@ -26,3 +26,6 @@ engine:src/cli/mcp-cli.oauth-integration.test.ts
 engine:src/cli/mcp-cli.oauth.test.ts
 engine:src/cli/mcp-cli.probe-exit.process.test.ts
 engine:src/cli/mcp-cli.test.ts
+engine:src/mcp/plugin-tools-handlers.cancel.test.ts
+engine:src/mcp/plugin-tools-registration.test.ts
+engine:src/mcp/plugin-tools-serve.test.ts

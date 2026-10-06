@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/mcp/plugin-tools-serve.test.ts (atlas INTEGRATIONS-0019). Changed for Branch: use the current keyed agent configuration while preserving all tool policy assertions (owner Branch adaptation rule 03 A1.2).
 // Plugin MCP serve tests cover serving plugin tools over MCP.
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
