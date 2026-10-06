@@ -65,6 +65,17 @@ describe("Settings › Permissions", () => {
     expect(patchOf(request)).toEqual({ tools: { exec: { mode: "ask", security: null, ask: null } } });
   });
 
+  it("turns on Lockdown globally and disables Access mode changes", async () => {
+    const { engine, request } = engineOf({
+      "config.patch": (params: unknown) => ({ ok: true, hash: "h2", config: JSON.parse((params as { raw: string }).raw) }),
+    });
+    await render(engine);
+    await act(async () => button("Turn Lockdown on").click());
+    expect(patchOf(request)).toEqual({ security: { lockdown: true } });
+    expect(button("Turn Lockdown off")).toBeTruthy();
+    expect(button("Ask first").disabled).toBe(true);
+  });
+
   it("Access arrows select a mode and show disabled reasons inline", async () => {
     const { engine, request } = engineOf();
     await render(engine);

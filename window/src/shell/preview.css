@@ -80,3 +80,21 @@
 .browser-stage {flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;background:#0e1419;}.browser-address {height:42px;background:var(--bg);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:6px 12px;}.browser-address > span {flex:1;min-width:0;color:var(--ink-3);font:12px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.browser-address select {max-width:220px;background:var(--raise);border:1px solid var(--line);border-radius:8px;padding:4px;color:var(--ink);font-size:12px;}.browser-screen {flex:1;min-height:0;position:relative;}.browser-screen canvas {height:100%;width:100%;object-fit:contain;display:block;outline:none;}.browser-screen canvas:focus-visible {outline:2px solid var(--accent);outline-offset:-2px;}.browser-input-error {position:absolute;bottom:8px;left:8px;right:8px;background:var(--bg);border:1px solid var(--line);padding:10px;color:var(--ink-3);font-size:12px;}
 
 @media(max-width:1100px) {.conversation-pane {position:absolute;top:0;right:0;bottom:0;width:min(var(--pane-w,352px),100%);z-index:30;box-shadow:var(--pop);}}
+.lockdown-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 20px;
+  background: var(--bad);
+  color: #fff;
+  font-size: 13px;
+}
+.lockdown-banner span { flex: 1; }
+.lockdown-banner button {
+  border: 1px solid rgb(255 255 255 / 60%);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}

@@ -4,6 +4,8 @@ import {
   GATEWAY_STARTUP_RETRY_AFTER_MS,
 } from "../../packages/gateway-protocol/src/startup-unavailable.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
+import { isLockdownOn } from "../config/lockdown.js";
+import { isLockdownSwitchPatch } from "../config/lockdown-policy.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
 import { getActivePluginRegistry } from "../plugins/runtime.js";
 import {
@@ -398,6 +400,16 @@ export async function handleGatewayRequest(
       entry?.assertOpen();
       if (authorization.error) {
         respond(false, undefined, authorization.error);
+        return;
+      }
+      if (
+        isLockdownOn() &&
+        methodRegistry.getScope(req.method) !== "operator.read" &&
+        req.method !== "chat.abort" &&
+        req.method !== "sessions.abort" &&
+        !(req.method === "config.patch" && isLockdownSwitchPatch(req.params))
+      ) {
+        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "Lockdown is on: this action is unavailable."));
         return;
       }
       const handler = methodRegistry.getHandler(req.method) as GatewayRequestHandler | undefined;

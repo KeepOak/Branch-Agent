@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { OVERVIEW_READS, OverviewData, people, runs, sessions, sharedConnections } from "./engine";
-import { OverviewPlace, LOCKDOWN_GAP, PAUSE_ALL_GAP } from "./index";
+import { OverviewPlace, PAUSE_ALL_GAP } from "./index";
 import { takeInboxHandoff } from "../inbox/handoff";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -27,6 +27,7 @@ function fixture(request: (method: string, params?: unknown) => Promise<unknown>
 
 const NOW = Date.now();
 const FX: Record<string, unknown> = {
+  "config.get": { hash: "h1", valid: true, config: {} },
   "sessions.list": { sessions: [
     { key: "agent:main:a", agentId: "main", label: "Sort the receipts", hasActiveRun: true, observerDigest: { headline: "Reading the folder" }, updatedAt: NOW, owner: { actor: { type: "human", id: "p1" } } },
     { key: "agent:main:b", agentId: "main", label: "Plan the week", updatedAt: NOW - 6e4, createdActor: { type: "human", id: "p1" } },
@@ -124,11 +125,15 @@ describe("Overview screen", () => {
     const now = [...host.querySelectorAll(".ov-now")].map(b => b.textContent);
     expect(now).toEqual(["RowanReading the folder"]);
   });
-  it("greys controls the engine cannot back, with their reasons", async () => {
-    const { host } = await render();
-    expect(button(host, "Lockdown")).toMatchObject({ disabled: true, title: "" });
+  it("switches Lockdown through the engine while leaving unsupported controls disabled", async () => {
+    const request = vi.fn(async (method: string) => method === "config.patch" ? { ok: true, hash: "h2", config: { security: { lockdown: true } } } : FX[method] ?? {});
+    const { host } = await render(request);
+    expect(button(host, "Lockdown")?.disabled).toBe(false);
+    await act(async () => button(host, "Lockdown")?.click());
+    expect(request).toHaveBeenCalledWith("config.patch", { raw: '{"security":{"lockdown":true}}', baseHash: "h1" });
+    expect(button(host, "Turn Lockdown off")).toBeTruthy();
     expect(button(host, "Pause all Trunks")).toMatchObject({ disabled: true, title: "" });
-    expect([LOCKDOWN_GAP, PAUSE_ALL_GAP].every(gap => gap.startsWith("Needs the engine"))).toBe(true);
+    expect(PAUSE_ALL_GAP.startsWith("Needs the engine")).toBe(true);
     expect(visibleDevNotes(host)).toEqual([]);
     expect(host.querySelector(".ov-badges")).not.toBeNull();
   });

@@ -3,13 +3,14 @@
 // Lockdown, Pinned settings, who may run commands outside the sandbox (tools.elevated.allowFrom) and connectors.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
+import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
 import { Icon } from "../../../shell/icons";
 import { MODE_ROWS, blockedReason, modeName, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { record, text, visible, type RecordValue } from "../adapter";
 import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg } from "../kit";
+import { useResource } from "../hooks";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
-import { shownWhy } from "../../../shell/shown-why";
 
 const svg = (d: ReactNode) => <svg className="i s" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
 const MIC = svg(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></>);
@@ -71,19 +72,22 @@ export async function saveMode(cfg: Cfg, mode: string, after: () => Promise<void
 const MODE_OPTS = MODE_ROWS.map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
 export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<void> }) {
   const selected = execMode(cfg, agents);
+  const lockdown = cfg.get("security.lockdown") === true;
   return (
     <Sec title="Access" hint="Every conversation starts here. A conversation can change its own.">
-      <div data-row="Access"><Seg layout="radio" label="Access" value={selected} options={MODE_OPTS} disabled={cfg.loading} onChange={(mode) => void saveMode(cfg, mode, reload)} /></div>
+      <div data-row="Access"><Seg layout="radio" label="Access" value={selected} options={MODE_OPTS} disabled={cfg.loading || lockdown} onChange={(mode) => void saveMode(cfg, mode, reload)} /></div>
     </Sec>
   );
 }
 export const modeLabel = (exec: string) => modeName(MODE_OF[exec]);
 
-export function Lockdown() {
+export function Lockdown({ cfg, engine }: { cfg: Cfg; engine: WindowEngine }) {
+  const support = useResource<unknown>(engine, "config.schema.lookup", { path: "security.lockdown" });
+  const on = cfg.get("security.lockdown") === true;
   return (
-    <div className="pm-danger" data-row="Lockdown" aria-disabled="true">
-      <div><b>Lockdown</b><p>One switch that stops every Trunk from sending, changing or spending anything.</p>{shownWhy(WHY.lock) ? <small className="why-k">{shownWhy(WHY.lock)}</small> : null}</div>
-      <Btn className="bad" disabled>Turn Lockdown on</Btn>
+    <div className="pm-danger" data-row="Lockdown">
+      <div><b>Lockdown</b><p>One switch that stops every Trunk from sending, changing or spending anything.</p></div>
+      <Btn className="bad" disabled={cfg.loading || !support.data} title={support.error ? "This engine has no Lockdown switch yet." : undefined} onClick={() => void cfg.set("security.lockdown", !on)}>{on ? "Turn Lockdown off" : "Turn Lockdown on"}</Btn>
     </div>
   );
 }

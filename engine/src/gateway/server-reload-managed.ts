@@ -11,6 +11,7 @@ import { getActiveSecretsRuntimeSnapshotRevisionState } from "../secrets/runtime
 import { runOutsideAsyncWorkScope } from "../shared/async-work-scope.js";
 import { resetSkillSnapshotConfigFingerprintCache } from "../skills/runtime/snapshot-config-fingerprint.js";
 import { invalidateConfigGetResponseCache } from "./config-get-response.js";
+import { abortChatRunById } from "./chat-abort.js";
 import {
   startGatewayConfigReloader,
   type GatewayConfigReloadTransactionOwnership,
@@ -337,6 +338,21 @@ export function startManagedGatewayConfigReloader(
       );
     },
     onRuntimeConfigCommitted: (plan, nextCommittedRuntimeConfig) => {
+      if (nextCommittedRuntimeConfig.security?.lockdown === true && committedRuntimeConfig.security?.lockdown !== true) {
+        const context = params.resolveGatewayContext?.();
+        if (context) {
+          for (const [runId, entry] of context.chatAbortControllers) {
+            abortChatRunById({
+              chatAbortControllers: context.chatAbortControllers,
+              chatRunState: context.chatRunState,
+              removeChatRun: context.removeChatRun,
+              agentRunSeq: context.agentRunSeq,
+              broadcast: context.broadcast,
+              nodeSendToSession: context.nodeSendToSession,
+            }, { runId, sessionKey: entry.sessionKey, stopReason: "Lockdown is on" });
+          }
+        }
+      }
       const sessionStoresChanged =
         committedRuntimeConfig.session?.store !== nextCommittedRuntimeConfig.session?.store ||
         plan.changedPaths.some((path) => path === "env" || path.startsWith("env."));
