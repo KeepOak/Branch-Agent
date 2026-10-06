@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/infra/widearea-dns.test.ts (atlas OPS-0153). Changed for Branch: explicitly establish the original fixture mode under restrictive umasks; retain the atomic replacement failure and mode-preservation assertions.
 // Tests wide-area DNS discovery parsing and timeout behavior.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -239,6 +240,7 @@ describe("wide-area DNS zone writes", () => {
       const previous = "; previous valid zone\n$ORIGIN branch.internal.\n";
       fs.mkdirSync(dnsDir);
       fs.writeFileSync(zonePath, previous, { mode: 0o640 });
+      fs.chmodSync(zonePath, 0o640);
 
       try {
         const moduleUrl = pathToFileURL(path.resolve("src/infra/widearea-dns.ts")).href;

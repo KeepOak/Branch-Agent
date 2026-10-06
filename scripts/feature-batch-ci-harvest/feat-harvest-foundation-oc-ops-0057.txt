@@ -11,6 +11,7 @@ engine:packages/gateway-protocol/src/schema/frames.worker-runs.test.ts
 engine:src/cli/completion-cli.aliases.test.ts
 engine:src/cli/completion-cli.bash.test.ts
 engine:src/cli/completion-cli.test.ts
+engine:src/cli/dns-cli.test.ts
 engine:src/cli/update-cli/cleanup.behaviour.test.ts
 engine:src/commands/doctor-session-sqlite-recovery-inventory.test.ts
 engine:src/fleet/backup.runtime.test.ts
@@ -24,4 +25,6 @@ engine:src/gateway/server-tls-renewal.test.ts
 engine:src/gateway/tls-fingerprint.test.ts
 engine:src/gateway/worker-environments/device-placement-selector.test.ts
 engine:src/gateway/worker-environments/placement-dispatch.test.ts
+engine:src/infra/widearea-dns.boundary.test.ts
+engine:src/infra/widearea-dns.test.ts
 engine:test/scripts/k8s-deploy.test.ts
