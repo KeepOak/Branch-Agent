@@ -1,3 +1,9 @@
 engine:src/agents/embedded-agent-runner/usage-accumulator.test.ts
+engine:src/agents/harvest-research-safety.behaviour.test.ts
+engine:src/agents/tools/web-search.redirect.test.ts
+engine:src/agents/tools/web-search.test.ts
 engine:src/agents/usage.test.ts
 engine:src/infra/session-cost-usage.test.ts
+engine:src/web-search/runtime-autodetect-order.test.ts
+engine:src/web-search/runtime-execution.test.ts
+engine:src/web-search/runtime.test.ts
