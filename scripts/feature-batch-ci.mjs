@@ -97,6 +97,11 @@ async function runFeatureTests(scratch) {
         'run', '--config', config, ...regularTests], root, env);
     }
     if (browserTests.length) {
+      if (process.platform === 'win32') {
+        await run(process.execPath, [path.join(engineRoot, 'node_modules/playwright/cli.js'),
+          'install', 'chromium'], root, env);
+        env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = await hostedChrome();
+      }
       // The engine wrapper applies the browser project's worker/bootstrap policy.
       await run(process.execPath, [path.join(engineRoot, 'scripts/run-vitest.mjs'),
         'run', ...browserTests], root, env);
