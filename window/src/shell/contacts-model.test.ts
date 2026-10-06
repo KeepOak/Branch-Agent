@@ -48,7 +48,7 @@ describe("Gateway contact projection", () => {
     const [contact] = projectContact([raw("oak", {
       lastActivityAt: 50, preview: { kind: "topic", topicKey: "agent:oak:topic", title: "Research", text: "Topic reply", at: 50 },
     })], [row("agent:oak:main", { updatedAt: 10, lastMessagePreview: "Main reply" })]);
-    expect(contactRow(contact)).toMatchObject({ key: "agent:oak:main", updatedAt: 50, preview: "Research: Topic reply" });
+    expect(contactRow(contact)).toMatchObject({ key: "agent:oak:main", updatedAt: 50, preview: "💬 Research: Topic reply" });
   });
 
   it("marks all unread under a contact with one contacts.markRead request", async () => {
