@@ -94,7 +94,10 @@ async function packageDesktop(scratch, output, identity) {
   await copyFile(join(resources, "app.asar"), join(asar, "app.asar"));
   const desktop = { app: asar, electronVersion: identity.electronVersion };
   if (identity.platform === "darwin") {
-    // The .app bundle's framework symlinks need the system tar; macOS takes Electron changes from this package.
+    // Packager signs before the bundled Node and icon revision are added. Sign the finished bundle,
+    // including its nested code, and use system tar to retain _CodeSignature and framework symlinks.
+    await run("codesign", ["--force", "--sign", "-", "--timestamp=none", join(resources, "node/node")]);
+    await run("codesign", ["--force", "--deep", "--sign", "-", "--timestamp=none", join(app, "Branch Agent.app")]);
     await run("tar", ["-czf", join(output, `branch-desktop-${identity.version}-${identity.platform}-${identity.arch}.tar.gz`), "-C", app, "."]);
   } else desktop.runtime = app;
   return { node, electron, electronVersion: identity.electronVersion, desktop,

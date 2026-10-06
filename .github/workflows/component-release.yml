@@ -153,6 +153,22 @@ jobs:
           else "$SYSTEMROOT/System32/tar.exe" -xf "$RUNNER_TEMP/shared-window.zip" -C "$SHARED_WINDOW"; fi
           touch "$BRANCH_RELEASE_WINDOW_READY"
           wait "$build"
+      - name: Verify extracted macOS app signature
+        if: matrix.target == 'darwin-arm64'
+        shell: bash
+        env:
+          RELEASE_ASSETS: ${{ runner.temp }}/release-assets
+        run: |
+          set -euo pipefail
+          extracted="$RUNNER_TEMP/verified-macos-app"
+          mkdir -p "$extracted"
+          tar -xzf "$RELEASE_ASSETS/branch-desktop-${BRANCH_RELEASE_VERSION}-darwin-arm64.tar.gz" -C "$extracted"
+          app="$extracted/Branch Agent.app"
+          test -f "$app/Contents/_CodeSignature/CodeResources"
+          test -L "$app/Contents/Frameworks/Electron Framework.framework/Versions/Current"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          # Ad-hoc signatures are not notarized; report Gatekeeper's assessment without failing the build.
+          spctl -a -vv "$app" || true
       - name: Check compiled startup and update rollback
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
