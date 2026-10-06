@@ -46,7 +46,7 @@ it.skipIf(process.platform !== "win32")(
         role: "operator",
         scopes: ["operator.admin", "operator.read", "operator.write"],
       });
-      const agentDir = await fs.realpath(resolveAgentDir(loadConfig(), agentId));
+      const agentDir = resolveAgentDir(loadConfig(), agentId);
       await client.request("sessions.create", {
         agentId,
         key: `agent:${agentId}:main`,
@@ -55,13 +55,14 @@ it.skipIf(process.platform !== "win32")(
       await expect(fs.stat(databasePath)).resolves.toBeDefined();
       const { db } = openBranchAgentDatabase({ agentId });
       expect(db.isOpen).toBe(true);
+      const canonicalAgentDir = await fs.realpath(agentDir);
 
       const deleted = await client.request<AgentsDeleteResult>("agents.delete", {
         agentId,
         deleteFiles: true,
       });
       expect(db.isOpen).toBe(false);
-      expect(deleted.removed).toContainEqual({ path: agentDir, method: "trash" });
+      expect(deleted.removed).toContainEqual({ path: canonicalAgentDir, method: "trash" });
       expect(deleted.removed).not.toContainEqual({ path: databasePath, method: "trash" });
       expect(deleted.failed).toEqual([]);
       await expect(fs.stat(agentDir)).rejects.toMatchObject({ code: "ENOENT" });

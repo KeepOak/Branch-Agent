@@ -26,6 +26,7 @@ import {
   retireAgentDeleteRuntime,
   type AgentDeleteDatabasePlan,
 } from "../../agents/agent-delete-databases.js";
+import { retryAgentDeleteTrashMove } from "../../agents/agent-delete-trash-retry.js";
 import {
   formatSharedAuthStoreOwnerDeleteError,
   isInheritedAuthStoreOwner,
@@ -78,10 +79,9 @@ import { createRuntimeConfigWriteApplication } from "../../config/runtime-write-
 import { purgeAgentSessionStoreEntries } from "../../config/sessions.js";
 import { resolveSessionTranscriptsDirForAgent } from "../../config/sessions/paths.js";
 import type { BranchConfig } from "../../config/types.branch.js";
-import { hasErrnoCode, isMissingPathError } from "../../infra/errors.js";
+import { isMissingPathError } from "../../infra/errors.js";
 import { withAgentExecApprovalsRemoved } from "../../infra/exec-approvals.js";
 import { isPathInside } from "../../infra/path-guards.js";
-import { retryAsync } from "../../infra/retry.js";
 import { movePathToTrash } from "../../plugin-sdk/browser-maintenance.js";
 import { captureGatewayRootWorkAdmissionContinuationScope } from "../../process/gateway-work-admission.js";
 import { normalizeAgentIdStrict } from "../../routing/session-key.js";
@@ -165,39 +165,25 @@ async function removeAgentPath(
   try {
     // fs-safe pins traversal and identity for validation; Trash has no fd-relative move API, so
     // replacement after this check and before its rename is the accepted residual race bound.
-    let trashFailure: unknown;
-    await retryAsync(
-      async () => {
-        trashFailure = undefined;
+    await retryAgentDeleteTrashMove({
+      prepare: async () => {
         assertCurrent();
         await statAgentCleanupPath(cleanupPath);
-        // Keep fs-safe's root and symlink fencing for every attempt.
-        try {
-          await movePathToTrash(trashPath, {
-            allowedRoots: [
-              ...trashAllowedRoots(
-                cleanupPath.sourcePaths,
-                cleanupPath.kind === "symlink" ? cleanupPath.canonicalPath : undefined,
-              ),
-              os.homedir(),
-              os.tmpdir(),
-            ],
-          });
-        } catch (error) {
-          trashFailure = error;
-          throw error;
-        }
       },
-      {
-        // A sharing violation may outlive the just-closed handle briefly; keep deletion bounded.
-        attempts: process.platform === "win32" ? 3 : 1,
-        minDelayMs: 250,
-        maxDelayMs: 5_000,
-        shouldRetry: (error) =>
-          error === trashFailure &&
-          ["EPERM", "EBUSY", "EACCES"].some((code) => hasErrnoCode(error, code)),
+      // Keep fs-safe's root and symlink fencing for every attempt.
+      move: async () => {
+        await movePathToTrash(trashPath, {
+          allowedRoots: [
+            ...trashAllowedRoots(
+              cleanupPath.sourcePaths,
+              cleanupPath.kind === "symlink" ? cleanupPath.canonicalPath : undefined,
+            ),
+            os.homedir(),
+            os.tmpdir(),
+          ],
+        });
       },
-    );
+    });
     return { removed: { path: pathname, method: "trash" } };
   } catch (error) {
     if (error instanceof AgentCleanupIdentityMismatchError) {

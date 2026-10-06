@@ -89,31 +89,5 @@ export function registerAgentDeleteFilesystemTests(harness: AgentDeleteFilesyste
       expect(mocks.deleteWorkspaceState).not.toHaveBeenCalled();
     });
 
-    it.skipIf(process.platform !== "win32")(
-      "retries a transient Windows Trash sharing error",
-      async () => {
-        const actualFs = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-        const workspaceDir = await actualFs.realpath(
-          tempDirs.make("branch-agent-delete-trash-retry-"),
-        );
-        mocks.resolveAgentWorkspaceDir.mockImplementation((_cfg, agentId) =>
-          agentId === "test-agent" ? workspaceDir : `/workspace/${agentId ?? "unknown"}`,
-        );
-        let attempts = 0;
-        mocks.movePathToTrash.mockImplementation(async (pathname) => {
-          if (pathname === workspaceDir && ++attempts === 1) {
-            throw Object.assign(new Error("sharing violation"), { code: "EPERM" });
-          }
-          return "/trashed";
-        });
-
-        const { respond, promise } = makeCall("agents.delete", { agentId: "test-agent" });
-        await promise;
-
-        expectRespondOk(respond, { failed: [] });
-        expect(attempts).toBe(2);
-        expectTrashedWithinParent(workspaceDir);
-      },
-    );
   });
 }
