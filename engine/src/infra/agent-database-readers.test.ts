@@ -25,11 +25,9 @@ describe("agent database reader requests", () => {
       const base = await fs.mkdtemp(path.join(os.tmpdir(), "branch-agent-reader-alias-"));
       try {
         const physical = path.join(base, "physical");
-        const alias = path.join(base, "alias");
         await fs.mkdir(physical);
-        await fs.symlink(physical, alias, "junction");
         const physicalDatabase = path.join(physical, "branch-agent.sqlite");
-        const aliasDatabase = path.join(alias, "branch-agent.sqlite");
+        const aliasDatabase = path.join(base.toUpperCase(), "PHYSICAL", "BRANCH-AGENT.SQLITE");
         await fs.writeFile(physicalDatabase, "");
 
         expect(
@@ -47,6 +45,31 @@ describe("agent database reader requests", () => {
         expect(isDeletedAgentDatabasePath(aliasDatabase)).toBe(true);
         await reviveAgentDatabases(["alias-test"]);
         expect(isDeletedAgentDatabasePath(aliasDatabase)).toBe(false);
+      } finally {
+        await fs.rm(base, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform !== "win32")(
+    "does not match a reader through a retargeted junction",
+    async () => {
+      const base = await fs.mkdtemp(path.join(os.tmpdir(), "branch-agent-reader-retarget-"));
+      try {
+        const original = path.join(base, "original");
+        const survivor = path.join(base, "survivor");
+        const alias = path.join(base, "alias");
+        await fs.mkdir(original);
+        await fs.mkdir(survivor);
+        await fs.symlink(original, alias, "junction");
+        const captured = { path: path.join(alias, "branch-agent.sqlite") };
+        const survivorDatabase = path.join(survivor, "branch-agent.sqlite");
+        await fs.writeFile(path.join(original, "branch-agent.sqlite"), "");
+        await fs.writeFile(survivorDatabase, "");
+
+        await fs.rename(alias, path.join(base, "old-alias"));
+        await fs.symlink(survivor, alias, "junction");
+        expect(matchesAgentDatabaseReadCandidatePath(captured, survivorDatabase)).toBe(false);
       } finally {
         await fs.rm(base, { recursive: true, force: true });
       }

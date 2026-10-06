@@ -1,3 +1,4 @@
+import { lstatSync } from "node:fs";
 import path from "node:path";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { resolveIdentityPathViaExistingAncestorSync } from "./boundary-path.js";
@@ -22,9 +23,27 @@ const readers = resolveGlobalSingleton(Symbol.for("branch.agentDatabaseReaders")
 
 function normalizeReaderPath(pathname: string): string {
   const resolved = path.resolve(pathname);
-  return process.platform === "win32"
-    ? resolveIdentityPathViaExistingAncestorSync(resolved)
-    : resolved;
+  if (process.platform !== "win32") {
+    return resolved;
+  }
+  // Short names and case aliases describe the same native path. A symlink or junction can
+  // be retargeted after a deletion candidate is captured, so never resolve those aliases
+  // into a different reader's physical database during a later close.
+  for (let cursor = resolved; ; cursor = path.dirname(cursor)) {
+    try {
+      if (lstatSync(cursor).isSymbolicLink()) {
+        return resolved;
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        return resolved;
+      }
+    }
+    if (path.dirname(cursor) === cursor) {
+      break;
+    }
+  }
+  return resolveIdentityPathViaExistingAncestorSync(resolved);
 }
 
 /** Match captured read custody without inspecting files or inferring their owners. */
