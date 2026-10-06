@@ -3,5 +3,10 @@ engine:extensions/comfy/workflow-runtime.header-secrets.integration.test.ts
 engine:src/agents/tools/image-generate-tool.test.ts
 engine:src/agents/tools/pdf-tool.model-config.test.ts
 engine:src/agents/tools/pdf-tool.test.ts
+engine:src/agents/tools/video-generate-tool.behaviour.test.ts
+engine:src/agents/tools/video-generate-tool.test.ts
 engine:src/image-generation/runtime.test.ts
 engine:src/media/pdf-extract.test.ts
+engine:src/video-generation/capabilities.test.ts
+engine:src/video-generation/capability-overlays.test.ts
+engine:src/video-generation/runtime.test.ts
