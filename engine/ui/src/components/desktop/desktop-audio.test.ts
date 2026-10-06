@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:ui/src/components/desktop/desktop-audio.test.ts (atlas UI-MOBILE-WEB-0114). Changed for Branch: preserve current-main PCM acknowledgment and stop-barrier regressions with the repository rename map.
 /* @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
