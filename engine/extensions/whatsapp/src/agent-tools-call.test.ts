@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/whatsapp/src/agent-tools-call.test.ts (atlas VOICE-0114). Changed for Branch: assert platform-specific setup commands on Windows and POSIX.
 // WhatsApp call tool tests cover requester binding, audio framing, and process cleanup.
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -95,6 +96,10 @@ function quotePosixShellArgForExpected(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
+function quotePowerShellArgForExpected(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
 describe("WhatsApp call tool", () => {
   let rootDir: string;
   let stateDir: string;
@@ -143,7 +148,10 @@ describe("WhatsApp call tool", () => {
       sessionStoreFound: false,
       accountId: "default",
       stateDir,
-      setupCommand: `mkdir -p ${quotePosixShellArgForExpected(stateDir)} && chmod 700 ${quotePosixShellArgForExpected(stateDir)} && meowcaller pair --store ${quotePosixShellArgForExpected(path.join(stateDir, "wa-voip.db"))}`,
+      setupCommand:
+        process.platform === "win32"
+          ? `meowcaller pair --store ${quotePowerShellArgForExpected(path.join(stateDir, "wa-voip.db"))}`
+          : `mkdir -p ${quotePosixShellArgForExpected(stateDir)} && chmod 700 ${quotePosixShellArgForExpected(stateDir)} && meowcaller pair --store ${quotePosixShellArgForExpected(path.join(stateDir, "wa-voip.db"))}`,
     });
     expect(JSON.stringify(tool?.parameters)).not.toContain('"to"');
   });

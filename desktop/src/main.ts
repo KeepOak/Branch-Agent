@@ -8,7 +8,7 @@ import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } fro
 import { drainStopGateway, gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady } from "./gateway";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
-import { keepWindowsWindowResident } from "./resident-window";
+import { keepWindowResident } from "./resident-window";
 import { confirmComponentUpdate, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
@@ -28,7 +28,13 @@ const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 const TEST_COPY = process.env.BRANCH_DESKTOP_TEST === "1";
 /** Started with Windows: open quietly in the tray (only where the tray exists). */
 const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRAY);
-const ICON = join(__dirname, "..", "assets", "branch.ico");
+const ICON = process.platform === "win32"
+  ? join(__dirname, "..", "assets", "branch.ico")
+  : join(__dirname, "..", "assets", "brand", "linux", "branch-48.png");
+// Electron loads branch-16@2x.png automatically for Retina menu bars.
+const TRAY_ICON = process.platform === "darwin"
+  ? join(__dirname, "..", "assets", "brand", "linux", "branch-16.png")
+  : ICON;
 const READY_TIMEOUT_MS = 600_000;
 /** Free memory a candidate check needs (6 GB, the shared load rule); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
 const CANDIDATE_MIN_FREE_BYTES = Number(process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB ?? 6144) * 2 ** 20;
@@ -252,7 +258,7 @@ function createWindow(): BrowserWindow {
   if (!HIDDEN && !QUIET && !TEST_COPY) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
   trackWindowState(w, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds);
   lockDown(w);
-  tray = keepWindowsWindowResident(app, w, ICON, {
+  tray = keepWindowResident(app, w, TRAY_ICON, {
     hidden: HIDDEN,
     keepRunning: () => controls.settings().keepWorking,
     // With the usage ring in the tray, a click opens the same list (Settings › Usage).
@@ -433,6 +439,13 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
+    if (win && !HIDDEN) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    }
+  });
+  app.on("activate", () => {
     if (win && !HIDDEN) {
       if (win.isMinimized()) win.restore();
       win.show();

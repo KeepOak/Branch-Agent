@@ -54,7 +54,9 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
       BRANCH_STATE_DIR: join(cfg.dataDir, "home", ".branch"),
       BRANCH_CONFIG_PATH: join(cfg.dataDir, "home", ".branch", "branch.json"),
     }),
-    BRANCH_SKIP_CHANNELS: "1",
+    // The desktop owns the live gateway: let it start every configured channel.
+    // Candidate and smoke gateways opt out separately.
+    BRANCH_SKIP_CHANNELS: undefined,
     BRANCH_GATEWAY_PORT: String(cfg.gatewayPort),
     BRANCH_GATEWAY_TOKEN: token,
     ...testProfile(),
