@@ -151,8 +151,8 @@ const MEMORY: SecSpec = { title: "Memory", lv: 1, rows: [
   { t: "Memory engine", lv: 2, draw: (c) => <MemoryEngine c={c} /> },
   { t: "Outside memory", s: "Off until you choose: it changes where your data goes.", kind: "seg", off: "This engine has none of these memory services.", opts: ["None", "Mem0", "Honcho", "Hindsight"].map((x) => ({ id: x, label: x })) },
   no("Keep a history in Git", "Every change to memory as a commit, on this computer."),
-  { t: "Recall before replying", s: "Before a reply about the past, a helper searches memory more deeply when the quick search found nothing strong. Off until you choose: it can add a model call before a reply.", plug: "active-memory" },
-  { t: "Memory wiki", s: "Keeps what Trunks know as linked pages, each fact with where it came from, readable as Markdown. Off until you choose: it adds a second, page-shaped copy of what Trunks know.", plug: "memory-wiki" },
+  { t: "Recall before replying", s: "Searches memory more deeply when quick recall finds nothing strong.", help: "Before a reply about the past, a helper searches memory more deeply. Off until you choose: it can add a model call before a reply.", plug: "active-memory" },
+  { t: "Memory wiki", s: "Keeps what Trunks know as linked Markdown pages.", help: "Each fact has its source. Off until you choose: it adds a second, page-shaped copy of what Trunks know.", plug: "memory-wiki" },
 ], after: () => <p className="hint s2advanced-addons">Add-ons work beside the memory engine, so any mix can run. <LinkBtn onClick={() => openPlace("customize", "plugins")}>Open Plugins</LinkBtn></p> };
 
 /* ---------- Automations ---------- */
@@ -183,7 +183,7 @@ const AUTOMATIONS: SecSpec = { title: "Automations", showHeading: false, lv: 1, 
   no("Reach webhooks from outside", "Off until you choose: it opens a door from the internet.", "seg", { opts: ["Off", "cloudflared", "ngrok", "Tailscale"].map((x) => ({ id: x, label: x })) }),
   no("Use what the trigger sent", "{{payload}} and {{field.path}} in the prompt."),
   sw("Checks before a run and event triggers", "Lets a trigger look first and start a Trunk only when there is news. Off stops every “Check first”, script and stream trigger without deleting them.", "cron.triggers.enabled", true),
-  sw("Tell me when an automation keeps failing", "After 2 failures in a row, at most once an hour, where the automation reports. On because it only tells you where that automation already sends; each automation can choose its own (When it fails…).", `${FA}.enabled`, true),
+  sw("Tell me when an automation keeps failing", "Alerts after 2 failures in a row, at most once an hour.", `${FA}.enabled`, true, { help: "The alert goes where the automation reports. It only tells you where that automation already sends; each automation can choose its own destination (When it fails…)." }),
   { t: "After failures in a row", k: `${FA}.after`, kind: "num", unit: "failures", def: 2, min: 1 },
   { t: "At most every", k: `${FA}.cooldownMs`, kind: "pick", read: (v) => String(typeof v === "number" ? v : 60 * MIN), write: (v) => Number(v), opts: [[15, "15 minutes"], [60, "1 hour"], [360, "6 hours"], [1440, "1 day"]].map(([m, label]) => ({ id: String(Number(m) * MIN), label: String(label) })) },
   sw("Count skipped runs", "", `${FA}.includeSkipped`, false),

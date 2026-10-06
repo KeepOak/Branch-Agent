@@ -5,7 +5,7 @@
 import type { Keep, Lv, Opt, RowEntry } from "../kit";
 
 export type Kind = "sw" | "seg" | "pick";
-export type RowSpec = { sec: string; group?: string; title: string; key: string; kind: Kind; def: string | boolean; sub?: string; opts?: Opt[]; lv?: Lv; keep?: Keep; off?: string };
+export type RowSpec = { sec: string; group?: string; title: string; key: string; kind: Kind; def: string | boolean; sub?: string; help?: string; opts?: Opt[]; lv?: Lv; keep?: Keep; off?: string };
 
 /** Only on parts the window draws with a right-click Hide this (shell/shown.ts HIDEABLE). */
 const SHOWN = "Right-click it anywhere to hide it too.";
@@ -28,15 +28,15 @@ export const ROWS: RowSpec[] = [
     opts: o([["none", "None"], ["painted", "Painted grove"], ["grove", "The grove"], ["oak3d", "The oak in 3D"], ["rings", "Growth rings"], ["own", "Your own"]], { own: "Branch can’t keep a file of your own as a background yet." }) },
   { sec: "Background", title: "Season", key: "season", kind: "seg", def: "auto", keep: "everywhere", sub: "Fireflies in summer, petals in spring, leaves in autumn, snow in winter.", opts: o([["auto", "By the date"], ["spring", "Spring"], ["summer", "Summer"], ["autumn", "Autumn"], ["winter", "Winter"]]) },
   { sec: "Reading", title: "Text size", key: "size", kind: "seg", def: "Regular", keep: "device", sub: "Changes every screen.", opts: o([["small", "Small"], ["Regular", "Regular"], ["large", "Large"], ["larger", "Larger"], ["largest", "Largest"]]) },
-  { sec: "The pet", title: "Pet sounds", key: "petSounds", kind: "sw", def: false, keep: "everywhere", sub: "A tiny sound when you pat it. Off until you turn it on." },
+  { sec: "The pet", title: "Pet sounds", key: "petSounds", kind: "sw", def: false, keep: "everywhere", sub: "A tiny sound when you pat it.", help: "Off until you turn it on." },
   { sec: "What’s shown", title: "The usage ring", key: "show.usage", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
   { sec: "What’s shown", title: "The gateway in the status bar", key: "show.gateway", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
-  { sec: "What’s shown", title: "Graphics and memory", key: "show.gfx", kind: "sw", def: false, keep: "everywhere", sub: "Off until you choose: it keeps checking this computer’s graphics card and memory." },
+  { sec: "What’s shown", title: "Graphics and memory", key: "show.gfx", kind: "sw", def: false, keep: "everywhere", sub: "Shows this computer’s graphics card and memory.", help: "Off until you choose: it keeps checking this computer’s graphics card and memory." },
   { sec: "What’s shown", title: "The pet", key: "show.pet", kind: "sw", def: true, keep: "everywhere" },
   { sec: "What’s shown", title: "Projects in the list", key: "show.projects", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
   { sec: "What’s shown", title: "What a working Trunk is doing, in the list", key: "show.live", kind: "sw", def: true, keep: "everywhere", sub: "The row’s preview shows its latest step while it works." },
   { sec: "What’s shown", title: "The whole status bar", key: "show.statusbar", kind: "sw", def: true, keep: "everywhere", sub: "Lockdown’s banner and Stop while a task runs can never be hidden." },
-  { sec: "What’s shown", title: "Keep things still", key: "still", kind: "sw", def: false, keep: "everywhere", sub: "Stops the pet moving, the working ring and the logo’s float. Off until you choose: it freezes every face, so none plays its action animations." },
+  { sec: "What’s shown", title: "Keep things still", key: "still", kind: "sw", def: false, keep: "everywhere", sub: "Stops the pet moving, the working ring and the logo’s float.", help: "Off until you choose: it freezes every face, so none plays its action animations." },
   { sec: "What’s shown", title: "Scenery behind the list", key: "scenery", kind: "sw", def: false, keep: "everywhere", sub: "A small pixel oak at the foot of the list." },
   { sec: READING_MORE, title: "Messages", key: "msgLook", kind: "seg", def: "bubbles", sub: "Full width reads like a document.", opts: o([["bubbles", "Chat bubbles"], ["full", "Full width"]]) },
   { sec: READING_MORE, title: "Text direction", key: "dir", kind: "seg", def: "auto", sub: "Arabic, Hebrew and Persian read right to left; the conversation follows.", opts: o([["auto", "Follow the language"], ["rtl", "Right to left"], ["ltr", "Left to right"]]) },
@@ -45,7 +45,7 @@ export const ROWS: RowSpec[] = [
   { sec: READING_MORE, title: "Code colours", key: "codeCol", kind: "pick", def: "theme", sub: "For code blocks and the terminal view.", opts: o([["theme", "Follow the theme"], ["github", "GitHub"], ["monokai", "Monokai"], ["solarized", "Solarized"], ["tm", "Your .tmTheme file"]], { tm: "Branch can’t read a .tmTheme file yet." }) },
   { sec: READING_MORE, title: "Inside an editor, follow its theme", key: "edTheme", kind: "sw", def: true, off: "Only when Branch runs inside VS Code or JetBrains; this window runs on its own.", sub: "In VS Code or JetBrains, the Branch panel wears the editor’s colours." },
   { sec: "Window", title: "Conversations as tabs", key: "tabs", kind: "sw", def: false, sub: "A tab row above the conversation for the ones you opened; close the ones you’re done with." },
-  { sec: "Window", title: "One full-screen window", key: "kiosk", kind: "sw", def: false, lv: 1, off: DESKTOP, sub: "For a computer that only runs Branch: no title bar, Trunks fill the screen. Off until you choose: it hides the rest of the computer." },
+  { sec: "Window", title: "One full-screen window", key: "kiosk", kind: "sw", def: false, lv: 1, off: DESKTOP, sub: "No title bar; Trunks fill the screen.", help: "For a computer that only runs Branch. Off until you choose: it hides the rest of the computer." },
   { sec: "Characters", group: "The Trunk beside the conversation", title: "Faces show feelings", key: "ch.feel", kind: "sw", def: true, lv: 1, off: "Needs the engine to send a Trunk’s feelings to the window; it sends none today.", sub: "The Trunk’s model may set a feeling for a moment, then it goes back." },
   { sec: "Characters", group: "The Trunk beside the conversation", title: "Acts out what it is doing", key: "ch.act", kind: "sw", def: true, lv: 1, sub: "Thinking, searching, reading, waiting for you, celebrating." },
   { sec: "Characters", group: "The Trunk beside the conversation", title: "Moves while it speaks", key: "ch.move", kind: "sw", def: true, lv: 1, sub: "Only while it talks; still at rest." },

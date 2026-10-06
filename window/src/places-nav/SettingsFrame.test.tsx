@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { SettingsFrame } from "./SettingsFrame";
-import { briefCopy, Ctl, KitProvider, Page, Sec } from "../places/settings/kit";
+import { Ctl, KitProvider, Page, Sec, Status } from "../places/settings/kit";
 import { SETTINGS_ROWS } from "../places/settings";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -43,14 +43,19 @@ describe("settings frame level", () => {
   it("keeps the page scroll position when changing its detail level", async () => {
     await open("general");
     const scroll = document.querySelector<HTMLElement>(".set-scroll")!;
-    scroll.scrollTop = 420;
+    let top = 420;
+    const writes: number[] = [];
+    Object.defineProperty(scroll, "scrollTop", { configurable: true, get: () => top, set: (value: number) => { top = value; writes.push(value); } });
     await act(async () => document.querySelector<HTMLButtonElement>('[data-level="advanced"]')!.click());
     expect(scroll.scrollTop).toBe(420);
+    expect(writes).toEqual([420]); // Restoration must be active; jsdom does not reset scroll on reflow.
     scroll.scrollTop = 310;
     await act(async () => document.querySelector<HTMLButtonElement>('[data-level="technical"]')!.click());
     expect(scroll.scrollTop).toBe(310);
+    expect(writes).toEqual([420, 310, 310]);
     await act(async () => document.querySelector<HTMLButtonElement>('[data-level="regular"]')!.click());
     expect(scroll.scrollTop).toBe(310);
+    expect(writes).toEqual([420, 310, 310, 310]);
   });
 
   it("a row found by search opens its page at the level that shows it", async () => {
@@ -143,34 +148,30 @@ describe("settings keyboard navigation", () => {
 });
 
 describe("settings page help", () => {
-  it("moves rationale tails and long descriptions into page help", async () => {
-    expect(briefCopy("Off until you choose: it sends usage data outside this computer.")).toEqual({
-      line: "", help: "Off until you choose: it sends usage data outside this computer.",
-    });
+  it("keeps operational messages visible and moves only explicit rationale into help", async () => {
     root = createRoot(document.body.appendChild(document.createElement("div")));
     await act(async () => root?.render(
       <KitProvider level={0} report={{ saving: vi.fn(), saved: vi.fn(), failed: vi.fn() }} scope={null}>
-        <Page title="Advanced" lede="Choose how Branch works.">
+        <Page title="Advanced" lede="Choose how Branch works, including settings needed after a restart.">
           <Sec title="Privacy">
-            <Ctl title="Share usage" sub="Counts features, never messages. Off until you choose: it sends counts outside this computer."><button>Change</button></Ctl>
-            <Ctl title="Memory wiki" sub="Keeps what Trunks know as linked pages, each fact with where it came from, readable as Markdown."><button>Change</button></Ctl>
-            <Ctl title="Usage ring" sub="Off until you choose: it changes the status bar."><button>Change</button></Ctl>
+            <Ctl title="Share usage" sub="Counts features, never messages." help="Off until you choose: it sends counts outside this computer."><button>Change</button></Ctl>
+            <Ctl title="Reconnect" sub="Run branch graft invite, then paste the new code into the other computer." off="Pairing was removed; reconnect before changing this setting."><button>Change</button></Ctl>
+            <Status tone="bad" title="Branch couldn't update">Download failed. Check the network, then retry the update.</Status>
           </Sec>
         </Page>
       </KitProvider>,
     ));
-    const descriptions = [...document.querySelectorAll<HTMLElement>(".ctl > small")];
-    expect(descriptions.every((line) => line.textContent!.length <= 70)).toBe(true);
-    expect(descriptions[0].textContent).toBe("Counts features, never messages.");
-    expect(descriptions[1].textContent).toContain("…");
-    expect(document.querySelector('[data-row="Usage ring"] > small')).toBeNull();
+    expect(document.querySelector(".lede")?.textContent).toContain("after a restart.");
+    expect(document.querySelector('[data-row="Share usage"] > small')?.textContent).toBe("Counts features, never messages.");
+    expect(document.querySelector('[data-row="Reconnect"]')?.textContent).toContain("branch graft invite, then paste the new code");
+    expect(document.querySelector('[data-row="Reconnect"]')?.textContent).toContain("Pairing was removed; reconnect before changing this setting.");
+    expect(document.querySelector('[role="status"]')?.textContent).toContain("Check the network, then retry the update.");
     await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
     const help = document.querySelector(".kit-help-pop")!;
     expect(help.textContent).toContain("Share usage");
     expect(help.textContent).toContain("Off until you choose: it sends counts outside this computer.");
-    expect(help.textContent).toContain("Memory wiki");
-    expect(help.textContent).toContain("readable as Markdown.");
-    expect(help.textContent).toContain("Off until you choose: it changes the status bar.");
+    expect(help.textContent).not.toContain("branch graft invite");
+    expect(help.textContent).not.toContain("Download failed");
   });
 
   it("keeps long explanations in help and asks from its final row", async () => {

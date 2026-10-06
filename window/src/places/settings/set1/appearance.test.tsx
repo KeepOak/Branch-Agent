@@ -51,6 +51,17 @@ const sw = (label: string) => host.querySelector<HTMLInputElement>(`input[aria-l
 const rows = () => [...host.querySelectorAll(".ctl > b")].map((b) => b.textContent);
 
 describe("Settings › Appearance", () => {
+  it("keeps pet-sound rationale in help without hiding the row description", async () => {
+    const { engine } = engineOf();
+    await render(engine);
+    const row = host.querySelector('[data-row="Pet sounds"]')!;
+    expect(row.querySelector("small")?.textContent).toContain("A tiny sound when you pat it.");
+    expect(row.textContent).not.toContain("Off until you turn it on.");
+    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
+    expect(document.querySelector(".kit-help-pop")?.textContent).toContain("Pet sounds");
+    expect(document.querySelector(".kit-help-pop")?.textContent).toContain("Off until you turn it on.");
+  });
+
   it("draws the theme, the gallery button and the mirrors from the engine", async () => {
     const { engine } = engineOf();
     await render(engine);

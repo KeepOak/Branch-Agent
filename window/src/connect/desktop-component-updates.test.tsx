@@ -66,11 +66,7 @@ it("Updates toggle is on by default and staged updates wait for Trunks in Settin
 it("legacy native bootstrap says it checks every ten minutes, greys Check now, and never falls back to update.run or update.status", async () => {
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1" };
   const updateCalls = () => request.mock.calls.filter((call: unknown[]) => String(call[0]).startsWith("update."));
-  await show();
-  expect(host.textContent).toContain("Branch checks for updates every 10 minutes");
-  expect(host.textContent).not.toContain("Branch checks for updates every 10 minutes and lets you know when one is ready to apply.");
-  await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
-  expect(document.querySelector(".kit-help-pop")?.textContent).toContain("Branch checks for updates every 10 minutes and lets you know when one is ready to apply.");
+  await show(); expect(host.textContent).toContain("Branch checks for updates every 10 minutes and lets you know when one is ready to apply.");
   expect(host.textContent).not.toContain("aren’t available");
   const check = [...host.querySelectorAll("button")].find(row => row.textContent === "Check now");
   expect(check?.disabled).toBe(true); expect(host.textContent).toContain("Update the Branch app to check by hand.");

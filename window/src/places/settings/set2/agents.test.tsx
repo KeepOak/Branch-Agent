@@ -89,10 +89,7 @@ describe("Settings › Grafts", () => {
     await flush();
     const row = document.querySelector('[data-testid="connected-agent"]')!;
     expect([...row.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("Reconnect");
-    expect(row.textContent).toContain("Its pairing was removed.");
-    expect(row.textContent).not.toContain("branch graft invite");
-    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
-    expect(document.querySelector(".kit-help-pop")?.textContent).toContain("branch graft invite");
+    expect(row.textContent).toContain("branch graft invite");
   });
 
   it("reads the engine's list defensively", () => {
