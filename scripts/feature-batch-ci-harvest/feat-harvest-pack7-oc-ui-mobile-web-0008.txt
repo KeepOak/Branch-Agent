@@ -1,6 +1,9 @@
 engine:src/agents/tools/theme-tool.test.ts
+engine:src/gateway/approval-web-push.test.ts
+engine:src/gateway/event-web-push.test.ts
 engine:ui/src/app/theme-catalog.test.ts
 engine:ui/src/app/theme.test.ts
+engine:ui/src/app/web-push.test.ts
 engine:ui/src/pages/config/config-page.test.ts
 engine:ui/src/pages/config/settings-search.test.ts
 engine:ui/src/pages/devices/capability-chips.test.ts

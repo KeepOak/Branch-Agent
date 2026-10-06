@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/gateway/approval-web-push.test.ts (atlas UI-MOBILE-WEB-0077). Changed for Branch: retained current upstream regression coverage and existing rebranding.
 import { expectDefined } from "@branch/normalization-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
