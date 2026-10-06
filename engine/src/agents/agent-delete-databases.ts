@@ -55,8 +55,17 @@ export async function retireAgentDeleteRuntime(
 }
 
 /** The purge can reopen an agent-local SQLite handle after the initial database plan closed it. */
-export async function closeAgentDeleteDirectoryHandles(agentDir: string): Promise<void> {
+export async function closeAgentDeleteDirectoryHandles(
+  agentDir: string,
+  agentId: string,
+  databasePaths: readonly string[] = [],
+): Promise<void> {
   await closeBranchAgentDatabasesAsync(agentDir);
+  // Windows may cache the same directory under both its short and long names. Close the
+  // captured exact database paths as well as handles selected by the canonical root.
+  for (const databasePath of databasePaths) {
+    await closeBranchAgentDatabaseByPathAsync(databasePath, agentId);
+  }
   closeAuthProfileReadPool({ kind: "root", rootPath: agentDir });
 }
 

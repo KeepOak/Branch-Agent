@@ -325,8 +325,9 @@ export async function agentsDeleteCommand(
       existingJournal ?? { agentId, agentDir, workspaceDir, sessionsDir, deleteFiles },
     );
     let rosterCommitted = !configured;
+    let databasePlan: Awaited<ReturnType<typeof prepareAgentDeleteDatabases>> | undefined;
     try {
-      await prepareAgentDeleteDatabases(cfg, agentId, agentDir);
+      databasePlan = await prepareAgentDeleteDatabases(cfg, agentId, agentDir);
       deletion.assertCurrent();
       const commitRoster = async () =>
         await withAgentExecApprovalsRemoved(agentId, async () => {
@@ -375,7 +376,11 @@ export async function agentsDeleteCommand(
       runDatabaseCleanup: deletion.runDatabaseCleanup,
     });
     if (deleteFiles && !purgeFailed) {
-      await closeAgentDeleteDirectoryHandles(agentDir);
+      await closeAgentDeleteDirectoryHandles(
+        agentDir,
+        agentId,
+        databasePlan?.registrationPaths,
+      );
     }
     deletion.assertCurrent();
     // Directory ownership is process-local; resolve survivors before the destructive recheck.

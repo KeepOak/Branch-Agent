@@ -30,3 +30,22 @@ it.skipIf(process.platform !== "win32")(
     expect(move).not.toHaveBeenCalled();
   },
 );
+
+it.skipIf(process.platform !== "win32")(
+  "allows an agent directory to outwait a transient SQLite sharing lock",
+  async () => {
+    const prepare = vi.fn();
+    const sharingError = Object.assign(new Error("sharing violation"), { code: "EPERM" });
+    const move = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(sharingError)
+      .mockRejectedValueOnce(sharingError)
+      .mockRejectedValueOnce(sharingError)
+      .mockResolvedValue(undefined);
+
+    await retryAgentDeleteTrashMove({ prepare, move, attempts: 8 });
+
+    expect(prepare).toHaveBeenCalledTimes(4);
+    expect(move).toHaveBeenCalledTimes(4);
+  },
+);

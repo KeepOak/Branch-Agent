@@ -149,6 +149,9 @@ function cleanupFailure(pathname: string, error: unknown): AgentDeletePathOutcom
 async function removeAgentPath(
   cleanupPath: AgentDeleteCleanupPath,
   assertCurrent: () => void,
+  options: {
+    agentDirectory?: { path: string; agentId: string; databasePaths: readonly string[] };
+  } = {},
 ): Promise<AgentDeletePathOutcome> {
   const pathname = cleanupPath.path;
   const trashPath = cleanupPath.trashPath;
@@ -166,8 +169,17 @@ async function removeAgentPath(
     // fs-safe pins traversal and identity for validation; Trash has no fd-relative move API, so
     // replacement after this check and before its rename is the accepted residual race bound.
     await retryAgentDeleteTrashMove({
+      // A directory rename can outlive the final SQLite/WAL close briefly on Windows.
+      attempts: options.agentDirectory ? 8 : undefined,
       prepare: async () => {
         assertCurrent();
+        if (options.agentDirectory) {
+          await closeAgentDeleteDirectoryHandles(
+            options.agentDirectory.path,
+            options.agentDirectory.agentId,
+            options.agentDirectory.databasePaths,
+          );
+        }
         await statAgentCleanupPath(cleanupPath);
       },
       // Keep fs-safe's root and symlink fencing for every attempt.
@@ -873,7 +885,11 @@ export const agentsHandlers: GatewayRequestHandlers = {
               resolveRegisteredAgentIdForDir(deleteResult.agentDir) === agentId &&
               unclaimedBySurvivor(deleteResult.agentDir);
             if (agentDirTrashEligible) {
-              await closeAgentDeleteDirectoryHandles(deleteResult.agentDir);
+              await closeAgentDeleteDirectoryHandles(
+                deleteResult.agentDir,
+                agentId,
+                databasePlan?.registrationPaths,
+              );
               await deletion.assertCurrentAsync();
             }
             const sessionsDirTrashEligible = unclaimedBySurvivor(deleteResult.sessionsDir);
@@ -1017,7 +1033,17 @@ export const agentsHandlers: GatewayRequestHandlers = {
               }
               const outcome = cleanupPath.preparationError
                 ? cleanupFailure(cleanupPath.path, cleanupPath.preparationError)
-                : await removeAgentPath(cleanupPath, deletion.assertCurrent);
+                : await removeAgentPath(cleanupPath, deletion.assertCurrent, {
+                    agentDirectory:
+                      cleanupPath.kind === "target" &&
+                      cleanupPath.sourcePaths.includes(path.resolve(deleteResult.agentDir))
+                        ? {
+                            path: deleteResult.agentDir,
+                            agentId,
+                            databasePaths: databasePlan?.registrationPaths ?? [],
+                          }
+                        : undefined,
+                  });
               if ("removed" in outcome) {
                 removed.push(outcome.removed);
                 markCleanupPathDone(cleanupPath);

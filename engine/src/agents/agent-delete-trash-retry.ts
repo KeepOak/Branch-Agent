@@ -5,6 +5,7 @@ import { retryAsync } from "../infra/retry.js";
 export async function retryAgentDeleteTrashMove(options: {
   prepare: () => void | Promise<void>;
   move: () => Promise<void>;
+  attempts?: number;
 }): Promise<void> {
   let trashFailure: unknown;
   await retryAsync(
@@ -19,9 +20,9 @@ export async function retryAgentDeleteTrashMove(options: {
       }
     },
     {
-      attempts: process.platform === "win32" ? 3 : 1,
+      attempts: process.platform === "win32" ? (options.attempts ?? 3) : 1,
       minDelayMs: 250,
-      maxDelayMs: 5_000,
+      maxDelayMs: 1_000,
       shouldRetry: (error) =>
         error === trashFailure &&
         ["EPERM", "EBUSY", "EACCES"].some((code) => hasErrnoCode(error, code)),
