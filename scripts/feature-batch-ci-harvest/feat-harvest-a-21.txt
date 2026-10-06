@@ -2,6 +2,8 @@ engine:extensions/qa-channel/src/channel.test.ts
 engine:extensions/qa-channel/src/inbound.test.ts
 engine:extensions/qa-channel/src/outbound.test.ts
 engine:extensions/telegram/src/doctor.test.ts
+engine:extensions/telegram/src/draft-stream.native-quote.test.ts
+engine:extensions/telegram/src/draft-stream.test.ts
 engine:extensions/telegram/src/monitor.webhook-identity.test.ts
 engine:extensions/telegram/src/polling-session.test.ts
 engine:extensions/telegram/src/probe.test.ts
