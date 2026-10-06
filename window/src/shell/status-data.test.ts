@@ -21,10 +21,9 @@ describe("usage.status (§4.9.4)", () => {
     ]);
     expect(l.rows[1]).toMatchObject({ pill: "Not published", line: "This service does not say what it allows." });
     expect(l.rows[2].line).toBe("Token expired");
-    expect(limitsSummary(l.rows)).toBe("1 of 3 connections report a limit. The other 2 do not publish one. Accounts are never added together.");
   });
   it("the ring shows the first account's five-hour reading, and nothing without a reading", () => {
-    expect(ringReading(readLimits(result, NOW))).toEqual({ name: "ChatGPT · Account 1", left: 12, reset: "resets at 6 pm", low: true });
+    expect(ringReading(readLimits(result, NOW))).toEqual({ name: "a@b.c", left: 12, reset: "resets at 6 pm", low: true });
     expect(ringReading(readLimits({ providers: [] }, NOW))).toBeNull();
     expect(ringReading(null)).toBeNull();
   });
@@ -33,14 +32,6 @@ describe("usage.status (§4.9.4)", () => {
     expect(windowName("Day")).toBe("Today");
     expect(windowName("Opus")).toBe("Opus");
     expect(resetWords(undefined, 0, NOW)).toBe("full");
-  });
-});
-
-describe("usage.cost this month", () => {
-  it("asks from the 1st to today and reads the total", () => {
-    expect(monthParams(new Date(2026, 9, 2))).toMatchObject({ startDate: "2026-10-01", endDate: "2026-10-02", mode: "specific", agentScope: "all" });
-    expect(readMonthSpend({ totals: { totalCost: 14.2 } })).toBe("$14.20");
-    expect(readMonthSpend({})).toBeNull();
   });
 });
 

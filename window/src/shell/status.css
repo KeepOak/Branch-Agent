@@ -23,7 +23,6 @@
 .sp-account-head .sp-email { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-account-head strong { min-width: 66px; text-align: right; font-variant-numeric: tabular-nums; }
 .sp-account-head > span:not(.sp-email), .sp-account small { color: var(--ink-3); }
-.sp-next { color: var(--accent); font-size: 11px; }
 .sp-account-track { display: block; height: 5px; border-radius: 3px; background: var(--fill-2); overflow: hidden; }
 .sp-account-track i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
 .lim-foot { display: grid !important; }
@@ -53,13 +52,6 @@
 .sp-seg[aria-disabled="true"] {
   opacity: 0.55;
 }
-.row-in.sp-ev {
-  display: block;
-}
-.row-in.sp-ev > span {
-  display: block;
-}
-.row-in.sp-ev small,
 .sp-off,
 .sp-note {
   display: block;
@@ -186,57 +178,6 @@
 .lims .ph {
   padding: 4px 6px 6px;
 }
-.lim {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 10px;
-  padding: 9px 6px;
-  border-radius: 10px;
-}
-.lim:hover {
-  background: var(--fill);
-}
-.lim-h {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  font-size: 13px;
-}
-.lim-h b {
-  font-weight: 600;
-}
-.lim-h .muted {
-  color: var(--ink-3);
-  font-size: 12px;
-}
-.lim-w {
-  display: grid;
-  grid-template-columns: 118px 1fr auto;
-  gap: 10px;
-  align-items: center;
-  font-size: 12px;
-  color: var(--ink-2);
-  margin-top: 5px;
-}
-.lim-bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--fill-2);
-  overflow: hidden;
-}
-.lim-bar i {
-  display: block;
-  height: 100%;
-  background: var(--ink-2);
-  border-radius: 3px;
-}
-.lim small {
-  display: block;
-  font-size: 11.5px;
-  color: var(--ink-3);
-  margin-top: 4px;
-}
 .lim-foot {
   display: flex;
   align-items: center;
@@ -323,14 +264,6 @@
   border-radius: 50%;
   background: var(--accent);
 }
-@media (max-width: 760px) {
-  .lim-w {
-    grid-template-columns: 90px 1fr;
-  }
-  .lim-w span:last-child {
-    grid-column: 1 / -1;
-  }
-}
 .pop .mi > span.sp-spin {
   flex: none;
 }
@@ -345,9 +278,6 @@
 }
 /* ≤520 px: the meter keeps its figure and drops its words; the computer's name shortens (preview at 520) */
 @media (max-width: 520px) {
-  .sb-room-w {
-    display: none;
-  }
   .statusbar > .sb:first-child {
     min-width: 0;
     flex-shrink: 1;

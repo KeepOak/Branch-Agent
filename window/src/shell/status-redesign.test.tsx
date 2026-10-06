@@ -6,6 +6,8 @@ import { StatusBar, type StatusItem } from "./StatusBar";
 import { GatewayPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
 import { machineMenuItems } from "./MachineMenu";
 import { readLimits, ringReading } from "./status-data";
+import { pauseAll, prepareBackground } from "./StatusLayer";
+import { loadDraft, safeStorage } from "../composer/drafts";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -38,7 +40,7 @@ it("status glyphs open all six popovers from live facts", async () => {
   expect(host.querySelector("[data-testid=sb-room]")?.getAttribute("aria-label")).toBe("Context left · 86%");
   expect(host.querySelector("[data-testid=sb-running]")?.getAttribute("aria-label")).toBe("3 running");
   expect(host.querySelector("[data-testid=sb-version]")?.getAttribute("title")).toBe("Branch 0.19.5 · 0.20.0 ready");
-  expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("ChatGPT · Account 1 · 77% left");
+  expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("you@example.com · 77% left");
 });
 
 it("usage ring folds after five seconds and still opens on one click", async () => {
@@ -98,7 +100,7 @@ it("Gateway, Running, and Update actions use their live callbacks", async () => 
   expect(settings).toHaveBeenCalledOnce();
   await act(async () => root?.unmount()); root = undefined;
   const open = vi.fn(), automations = vi.fn();
-  host = await show(<RunningPopover above={above} onClose={() => {}} request={vi.fn(async () => ({ jobs: [{ name: "Nightly check", enabled: true, state: { nextRunAtMs: Date.now() + 60_000 } }] })) as never} working={[{ key: "live", title: "Scout", line: "Reading" }]} onOpen={open} onAutomations={automations} />);
+  host = await show(<RunningPopover above={above} onClose={() => {}} request={vi.fn(async () => ({ jobs: [{ name: "Nightly check", enabled: true, state: { nextRunAtMs: Date.now() + 60_000 } }] })) as never} working={[{ key: "live", title: "Scout", line: "Reading", runIds: ["run-1"] }]} onOpen={open} onAutomations={automations} onBackground={() => {}} onPauseAll={() => {}} />);
   expect(host.textContent?.indexOf("Scout")).toBeLessThan(host.textContent!.indexOf("Nightly check"));
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Scout"))!.click());
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Open Automations"))!.click());
@@ -110,4 +112,28 @@ it("Gateway, Running, and Update actions use their live callbacks", async () => 
   expect(host.textContent).toContain("You have 0.19.5");
   await click(host, "ver-install"); await click(host, "ver-whatsnew"); await click(host, "ver-remind");
   expect(install).toHaveBeenCalledOnce(); expect(whatsNew).toHaveBeenCalledOnce(); expect(remind).toHaveBeenCalledOnce();
+});
+
+it("Pause all Trunks aborts each live run and refreshes the list", async () => {
+  const request = vi.fn(async () => ({}));
+  const refresh = vi.fn(async () => {});
+  await pauseAll({ session: { request } as never, list: { refresh } as never, working: [
+    { key: "agent:a:main", title: "A", line: "Working", runIds: ["run-a", "run-b"] },
+    { key: "agent:b:main", title: "B", line: "Working", runIds: ["run-c"] },
+  ] });
+  expect(request).toHaveBeenCalledTimes(3);
+  expect(request).toHaveBeenCalledWith("chat.abort", { sessionKey: "agent:a:main", runId: "run-a" });
+  expect(request).toHaveBeenCalledWith("chat.abort", { sessionKey: "agent:a:main", runId: "run-b" });
+  expect(request).toHaveBeenCalledWith("chat.abort", { sessionKey: "agent:b:main", runId: "run-c" });
+  expect(refresh).toHaveBeenCalledOnce();
+});
+
+it("Start something in the background opens the composer with /bg", () => {
+  const openConversation = vi.fn();
+  const compose = vi.fn();
+  window.addEventListener("branch:compose", compose, { once: true });
+  prepareBackground({ session: { getSnapshot: () => ({ mainKey: "agent:a:main" }) } as never, openRow: null, openConversation });
+  expect(loadDraft(safeStorage(), "agent:a:main")).toBe("/bg ");
+  expect(compose).toHaveBeenCalledOnce();
+  expect(openConversation).toHaveBeenCalledWith("agent:a:main");
 });

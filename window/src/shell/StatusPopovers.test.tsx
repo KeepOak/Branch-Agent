@@ -22,16 +22,21 @@ async function show(node: React.ReactNode) {
 const button = (host: HTMLElement, text: string) => [...host.querySelectorAll("button")].find((b) => b.textContent?.includes(text)) as HTMLButtonElement;
 
 describe("status popovers", () => {
-  it("Running: Coming up from cron.list; Pause all and /bg are greyed with a reason and run nothing", async () => {
+  it("Running: Coming up from cron.list; Pause all and /bg invoke their actions", async () => {
     const request = vi.fn(async () => ({ jobs: [{ name: "Morning brief", enabled: true, state: { nextRunAtMs: Date.now() + 30 * 60_000 } }] }));
     const opened = vi.fn();
-    const host = await show(<RunningPopover above={above} onClose={() => {}} request={request as never} working={[{ key: "k", title: "Sapling", line: "Report" }]} onOpen={opened} onAutomations={() => {}} />);
+    const background = vi.fn(), pauseAll = vi.fn();
+    const host = await show(<RunningPopover above={above} onClose={() => {}} request={request as never} working={[{ key: "k", title: "Sapling", line: "Report", runIds: ["run-1"] }]} onOpen={opened} onAutomations={() => {}} onBackground={background} onPauseAll={pauseAll} />);
     expect(request).toHaveBeenCalledWith("cron.list", { limit: 200 });
     expect(host.textContent).toContain("Morning brief");
     expect(host.textContent).toContain("in 30 min");
     const pause = button(host, "Pause all Trunks");
-    expect(pause.disabled).toBe(true);
-    expect(button(host, "Start something in the background").disabled).toBe(true);
+    expect(pause.disabled).toBe(false);
+    expect(button(host, "Start something in the background").disabled).toBe(false);
+    await act(async () => button(host, "Start something in the background").click());
+    await act(async () => pause.click());
+    expect(background).toHaveBeenCalledOnce();
+    expect(pauseAll).toHaveBeenCalledOnce();
     await act(async () => button(host, "Sapling").click());
     expect(opened).toHaveBeenCalledWith("k");
   });
@@ -56,7 +61,7 @@ describe("status popovers", () => {
   it("Version: up to date has no install item", async () => {
     const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "1.0.0", latest: null, notes: [], installing: false, waiting: null }} version="1.0.0" onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />);
     expect(host.textContent).toContain("Branch is up to date.");
-    expect(button(host, "Install when nothing is running")).toBeUndefined();
+    expect(button(host, "Install when idle")).toBeUndefined();
   });
   it("Version: ready label keeps the build id out of the popover", async () => {
     const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "0.4.4-build-current", latest: "0.4.5-build-next", notes: [], installing: false, waiting: null }} version="0.4.4-build-current" onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />);

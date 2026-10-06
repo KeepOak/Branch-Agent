@@ -1,7 +1,5 @@
 // The status bar's popovers (DESIGN-SPEC §4.9.3–§4.9.8): Gateway, What each connection has left, Room left,
-// Running in the background and the version menu. Each reads the engine; controls the engine has no method for are
-// drawn greyed with the reason (WINDOW-BUILD-BRIEF "Hands off").
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+// Running in the background and the version menu. Each reads live engine facts.
 import { useEffect, useState, type ReactNode } from "react";
 import type { Conversation } from "../connect/conversations";
 import type { Level } from "../places-nav/settings-nav";
@@ -76,8 +74,6 @@ export function GatewayPopover({ facts, level, onRestart, onSettings, ...base }:
         </span>
       </div>
       <OffLine reason="The desktop app starts and stops the gateway; this window can't change it yet." />
-      <div className="ph">Recent</div>
-      <p className="sp-note">Recent gateway events are not available in this window.</p>
       <p className="sp-health">{facts.health?.ok ? `Healthy · ${facts.health.durationMs != null ? `answered in ${facts.health.durationMs} ms` : "answered"}` : "Gateway has not answered yet"}</p>
       {level === "technical" && facts.health ? <p className="sp-note">Checked {ageWords(facts.health.checkedAt, Date.now())}</p> : null}
       <hr className="msep" />
@@ -96,7 +92,6 @@ export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & {
   const data = checked ?? limits;
   const rows = data?.rows ?? [];
   const groups = Array.from(new Set(rows.map((row) => row.name)));
-  const nextRowId = rows.find((row) => row.windows.some((window) => /5-hour/i.test(window.name)) || row.windows.length > 0)?.id;
   const check = () => {
     setChecking(true);
     setCheckError(null);
@@ -116,7 +111,7 @@ export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & {
             const fiveHour = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
             const week = row.windows.find((window) => /week/i.test(window.name));
             return <div className="sp-account" key={row.id}>
-              <div className="sp-account-head"><span className="sp-email">{row.email || row.account || row.name}</span><span>{row.plan}</span>{row.id === nextRowId ? <b className="sp-next">Next</b> : null}<strong>{fiveHour ? `${fiveHour.left}% left` : "Not published"}</strong></div>
+              <div className="sp-account-head"><span className="sp-email">{row.email || row.account || row.name}</span><span>{row.plan}</span><strong>{fiveHour ? `${fiveHour.left}% left` : "Not published"}</strong></div>
               {fiveHour ? <><span className="sp-account-track"><i style={{ width: `${fiveHour.left}%` }} /></span><small>5-hour {fiveHour.reset || "reset time unavailable"}{week ? ` · week ${week.left}% left` : ""}</small></> : <small>{row.line}</small>}
             </div>;
           })}
@@ -210,10 +205,10 @@ export function RoomPopover({ request, row, level, onTidy, ...base }: RoomProps)
   );
 }
 
-type RunningProps = Base & { request: Request; working: { key: string; title: string; line: string }[]; onOpen: (key: string) => void; onAutomations: () => void };
+type RunningProps = Base & { request: Request; working: { key: string; title: string; line: string; runIds?: string[] }[]; onOpen: (key: string) => void; onAutomations: () => void; onBackground: () => void; onPauseAll: () => void };
 
 /** Running now is exactly the live run rows; scheduled jobs are separate. */
-export function RunningPopover({ request, working, onOpen, onAutomations, ...base }: RunningProps) {
+export function RunningPopover({ request, working, onOpen, onAutomations, onBackground, onPauseAll, ...base }: RunningProps) {
   const jobs = useRead(request, "cron.list", { limit: 200 }, (r) => comingUp(Array.isArray(rec(r).jobs) ? (rec(r).jobs as unknown[]) : []));
   return (
     <Popover at={{ x: 0, y: 0 }} label="Running now" testid="pop-running" className="sp" {...base}>
@@ -238,16 +233,16 @@ export function RunningPopover({ request, working, onOpen, onAutomations, ...bas
         </>
       ) : null}
       <hr className="msep" />
-      <Item icon="plus" label="Start something in the background" hint={<kbd>/bg</kbd>} off="Starting work in the background needs the engine's /bg command, which it doesn't have yet." />
+      <Item icon="plus" label="Start something in the background" hint={<kbd>/bg</kbd>} onClick={onBackground} />
       <Item icon="clock" label="Open Automations…" onClick={onAutomations} />
-      <Item icon="pause" label="Pause all Trunks" off="Pausing every Trunk needs an engine method it doesn't have yet." />
+      <Item icon="pause" label="Pause all Trunks" onClick={onPauseAll} off={working.length ? undefined : "No Trunk is running."} />
     </Popover>
   );
 }
 
 type VersionProps = Base & { update: UpdateInfo | null; version: string; desktopPending?: string | null; autoApply?: boolean; onWhatsNew: () => void; onInstall: () => void; onRemind: () => void };
 
-/** §4.9.8 Version and update menu: what's ready, What's new, Install when nothing is running, Remind me tomorrow. */
+/** §4.9.8 Version and update menu: what's ready, What's new, Install when idle, Remind me tomorrow. */
 export function VersionPopover({ update, version, desktopPending, autoApply, onWhatsNew, onInstall, onRemind, ...base }: VersionProps) {
   const latest = update?.latest && update.latest !== version ? update.latest : null;
   return (

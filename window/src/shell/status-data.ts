@@ -1,5 +1,5 @@
 // What the status bar's popovers read from the engine (DESIGN-SPEC §4.9), as pure readers so they can be tested.
-// Sources: usage.status (infra/provider-usage.types.ts), usage.cost (infra/session-cost-usage.types.ts),
+// Sources: usage.status (infra/provider-usage.types.ts),
 // sessions.usage with includeContextWeight (config/sessions/session-system-prompt-report.ts, the way the Control UI's
 // usage/view-details.ts splits it), sessions.usage.timeseries, cron.list and update.status (gateway-protocol config.ts).
 import { readMeasuredPercent } from "./limit-window-reading";
@@ -83,49 +83,18 @@ export function readLimits(result: unknown, now = Date.now()): Limits {
   return { rows: list(r.providers).map((p) => limitRow(p, updatedAt, now)), updatedAt, refreshing: r.refreshing === true };
 }
 
-/** "N of M connections report a limit. The other K do not publish one. Accounts are never added together." */
-export function limitsSummary(rows: LimitRow[]): string {
-  const measured = rows.filter((r) => r.pill === "Measured").length;
-  const other = rows.length - measured;
-  const head = `${measured} of ${rows.length} connections report a limit.`;
-  return `${head}${other ? ` The other ${other} do not publish one.` : ""} Accounts are never added together.`;
-}
-
 export type RingReading = { name: string; left: number; reset: string; low: boolean };
 
-/** The bar and first account row use the same next account's 5-hour reading (FINAL-PASS C1). */
+/** The bar shows the first measured account's 5-hour reading (FINAL-PASS C1). */
 export function ringReading(limits: Limits | null): RingReading | null {
   const rows = limits?.rows ?? [];
   for (const row of rows) {
     const w = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
     if (w) {
-      const number = rows.slice(0, rows.indexOf(row) + 1).filter((account) => account.name === row.name).length;
-      return { name: `${row.name} · Account ${number}`, left: w.left, reset: w.reset, low: w.low };
+      return { name: row.email || row.account || row.name, left: w.left, reset: w.reset, low: w.low };
     }
   }
   return null;
-}
-
-/** usage.cost params for this calendar month on this computer's clock (as the Control UI's buildSessionUsageDateParams). */
-export function monthParams(now = new Date()): Record<string, unknown> {
-  const day = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const offset = -now.getTimezoneOffset();
-  const abs = Math.abs(offset);
-  const utcOffset = `UTC${offset >= 0 ? "+" : "-"}${Math.floor(abs / 60)}${abs % 60 ? `:${String(abs % 60).padStart(2, "0")}` : ""}`;
-  return {
-    startDate: day(new Date(now.getFullYear(), now.getMonth(), 1)),
-    endDate: day(now),
-    mode: "specific",
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    utcOffset,
-    agentScope: "all",
-  };
-}
-
-/** usage.cost: "$14.20", or null when the engine reports no cost. */
-export function readMonthSpend(result: unknown): string | null {
-  const totals = rec(rec(result).totals);
-  return typeof totals.totalCost === "number" ? `$${totals.totalCost.toFixed(2)}` : null;
 }
 
 /** "256K", "32K", "1.2M": the size of a model's window, in the words the spec uses for tokens. */

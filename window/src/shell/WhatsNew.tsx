@@ -1,6 +1,6 @@
 // What's new (DESIGN-SPEC §4.8.3, Q83): one dialog for every entry point. The installed version lists what this
 // window brought, each row opening its place; a version waiting to install lists the engine's own update notes
-// (update.status updateAvailable.commits) and offers "Install when nothing is running".
+// (update.status updateAvailable.commits) and offers "Install when idle".
 import { useState } from "react";
 import { versionParts } from "../connect/branch-version";
 import { Dialog } from "./Dialog";
