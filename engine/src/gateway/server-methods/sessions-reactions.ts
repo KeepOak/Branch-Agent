@@ -6,6 +6,7 @@ import {
   isReactionEmoji,
   validateSessionReactionsListParams,
   validateSessionReactionsSetParams,
+  validateSessionContextSetParams,
   type SessionReactionMirror,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { resolveChannelAccount } from "../../channels/account-resolution.js";
@@ -19,6 +20,8 @@ import {
   SessionReactionLimitError,
   SessionReactionMessageMissingError,
 } from "../../config/sessions/session-reaction-store.js";
+import { readActiveTranscriptEntryAnchor } from "../../config/sessions/session-accessor.sqlite-transcript-anchor.js";
+import { rewriteTranscriptMessageAtAnchor } from "../../config/sessions/session-accessor.sqlite-transcript-message-rewrite.js";
 import type { SessionReactionWrite } from "../../config/sessions/session-reaction-store.types.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { isConfiguredChannel } from "../../infra/outbound/channel-selection.js";
@@ -35,6 +38,7 @@ import {
   readSessionConversationBindingAsync,
 } from "../session-transcript-readers.js";
 import { gatewayClientSessionCreator } from "./gateway-client-identity.js";
+import { emitSessionsChanged } from "./session-change-event.js";
 import { withSessionReactionAccess } from "./sessions-reactions-access.js";
 import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 import { defineValidatedGatewayHandler } from "./validation.js";
@@ -234,6 +238,42 @@ async function mirrorReaction(params: {
 }
 
 export const sessionReactionHandlers: GatewayRequestHandlers = {
+  "session.context.set": defineValidatedGatewayHandler(
+    "session.context.set",
+    validateSessionContextSetParams,
+    async ({ params, respond, client, context, hasCurrentClientAuthority }) => {
+      await withSessionReactionAccess(
+        { ...params, client, context, respond, hasCurrentClientAuthority, write: true },
+        async ({ target, assertCurrent }) => {
+          const anchor = readActiveTranscriptEntryAnchor({
+            agentId: target.agentId,
+            sessionId: target.entry.sessionId,
+            sessionKey: target.storeKey,
+            storePath: target.storePath,
+            entryId: params.messageId,
+          });
+          assertCurrent();
+          if (!anchor) {
+            respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unknown message"));
+            return;
+          }
+          const changed = await rewriteTranscriptMessageAtAnchor(anchor, (value) => {
+            const message = asOptionalRecord(value);
+            if (!message || (message.role !== "user" && message.role !== "assistant")) return undefined;
+            const { excludeFromContext: _previous, ...rest } = message;
+            return params.exclude ? { ...rest, excludeFromContext: true } : rest;
+          });
+          assertCurrent();
+          if (!changed) {
+            respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "message changed; try again"));
+            return;
+          }
+          emitSessionsChanged(context, { sessionKey: target.canonicalKey, agentId: target.agentId, reason: "context" }, { accessChanged: false });
+          respond(true, { messageId: params.messageId, excluded: params.exclude });
+        },
+      );
+    },
+  ),
   "session.reactions.list": defineValidatedGatewayHandler(
     "session.reactions.list",
     validateSessionReactionsListParams,

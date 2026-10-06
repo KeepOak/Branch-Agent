@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import type { Block } from "../../thread/model";
 import type { Level } from "../../places-nav/settings-nav";
@@ -8,6 +8,7 @@ import { needsYou } from "../../thread/Helpers";
 import { Face } from "../../face/Face";
 import { SIcon } from "../stage-icons";
 import { activityRecordedAt, activityState, money } from "./pane-model";
+import { shortReason, stepLabel } from "../../thread/format";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -36,9 +37,9 @@ function useCanopyCard(engine: WindowEngine): { title: string; status: string } 
 }
 
 /** Each helper's model and provider (sessions.list rows) and its spend so far (sessions.usage). */
-function useHelperFacts(engine: WindowEngine, helpers: Helper[]): Map<string, { line: string; cost?: number }> {
-  const [facts, setFacts] = useState<{ owner: WindowEngine; signature: string; rows: Map<string, { line: string; cost?: number }> } | null>(null);
-  const signature = JSON.stringify(helpers.map((h) => [h.key, h.parent, h.status, h.model]));
+function useHelperFacts(engine: WindowEngine, helpers: Helper[]): Map<string, { line: string; cost?: number; job?: string; thinking?: string }> {
+  const [facts, setFacts] = useState<{ owner: WindowEngine; signature: string; rows: Map<string, { line: string; cost?: number; job?: string; thinking?: string }> } | null>(null);
+  const signature = JSON.stringify(helpers.map((h) => [h.key, h.parent, h.status, h.model, h.updatedAt]));
   useEffect(() => {
     let live = true;
     void Promise.all(
@@ -49,7 +50,12 @@ function useHelperFacts(engine: WindowEngine, helpers: Helper[]): Map<string, { 
         const row = (Array.isArray(rec(rows).sessions) ? (rec(rows).sessions as unknown[]) : []).map(rec).find((r) => r.key === h.key) ?? {};
         const provider = str(row.modelProvider);
         const line = [str(row.model) || h.model, PROVIDER[provider] ?? provider].filter(Boolean).join(" · ");
-        return [h.key, { line, ...(typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? { cost } : {}) }] as const;
+        const history = await engine.request("chat.history", { sessionKey: h.key, limit: 200 }).catch(() => null);
+        const messages = (Array.isArray(rec(history).messages) ? rec(history).messages as unknown[] : []).map(rec);
+        const contentText = (content: unknown, type: string) => typeof content === "string" && type === "text" ? content : (Array.isArray(content) ? content.map(rec).filter((part) => part.type === type).map((part) => str(type === "thinking" ? part.thinking : part.text)).filter(Boolean).join(" ") : "");
+        const job = messages.map((m) => m.role === "user" ? contentText(m.content, "text") : "").find(Boolean);
+        const thinking = messages.toReversed().map((m) => m.role === "assistant" ? contentText(m.content, "thinking") : "").find(Boolean);
+        return [h.key, { line, ...(typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? { cost } : {}), ...(job ? { job } : {}), ...(thinking ? { thinking } : {}) }] as const;
       }),
     ).then((list) => live && setFacts({ owner: engine, signature, rows: new Map(list) }));
     return () => {
@@ -61,15 +67,16 @@ function useHelperFacts(engine: WindowEngine, helpers: Helper[]): Map<string, { 
   return facts?.owner === engine && facts.signature === signature ? facts.rows : new Map();
 }
 
-function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: ApprovalDetails[]; facts?: { line: string; cost?: number }; onStop: () => void; onAnswer: (id: string, d: "allow-once" | "deny") => void }) {
+function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: ApprovalDetails[]; facts?: { line: string; cost?: number; job?: string; thinking?: string }; onStop: () => void; onAnswer: (id: string, d: "allow-once" | "deny") => void }) {
   const waiting = asks.length > 0;
   const working = h.status === "running" || h.status === "queued" || !h.status;
-  const pill = waiting ? "Waiting for you" : working ? "Working" : h.status === "done" ? "Done" : "Stopped";
+  const stalled = working && h.updatedAt && Date.now() - h.updatedAt > 10 * 60_000;
+  const pill = waiting ? "Waiting for you" : stalled ? "No recent update" : working ? "Working" : h.status === "done" ? "Done" : "Stopped";
   return (
     <div className="hp-card-pn" role="listitem">
       <div className="hp-top-pn">
-        <span className={`hp-mark-pn ${waiting ? "wait" : working ? "work" : h.status === "done" ? "done" : "stop"}`} aria-hidden="true">
-          <SIcon name={waiting ? "info" : working ? "spin" : h.status === "done" ? "check" : "x"} small className={working && !waiting ? "spin-st" : undefined} />
+        <span className={`hp-mark-pn ${waiting || stalled ? "wait" : working ? "work" : h.status === "done" ? "done" : "stop"}`} aria-hidden="true">
+          <SIcon name={waiting || stalled ? "info" : working ? "spin" : h.status === "done" ? "check" : "x"} small className={working && !waiting && !stalled ? "spin-st" : undefined} />
         </span>
         <span className="grow">
           <b>{h.name}</b>
@@ -87,8 +94,9 @@ function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: App
           ) : null}
         </span>
       </div>
-      {h.task ? <p className="hp-job-pn">{h.task}</p> : null}
-      {h.error ? <p className="err-st">{h.error}</p> : null}
+      {h.task || facts?.job ? <p className="hp-job-pn">Job: {h.task || facts?.job}</p> : null}
+      {facts?.thinking ? <details className="hp-think-pn"><summary>What it's thinking</summary><p>{facts.thinking}</p></details> : null}
+      {h.error ? <p className="err-st">{shortReason(h.error)}</p> : null}
       {asks.map((a) => (
         <div key={a.id} className="hp-ask-pn">
           <span className="grow">
@@ -111,8 +119,10 @@ function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: App
 }
 
 /** Activity: what it's doing now, the Canopy card it works on, its recent steps and its helpers. */
-export function ActivityTab({ engine, name, blocks, running, level, onError }: { engine: WindowEngine; name: string; blocks: Block[]; running: boolean; level: Level; onError: (m: string) => void }) {
+export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, onError }: { engine: WindowEngine; name: string; blocks: Block[]; running: boolean; level: Level; focusHelpers?: number; onError: (m: string) => void }) {
+  const helperSection = useRef<HTMLElement>(null);
   const { helpers } = useHelpers(engine);
+  useEffect(() => { if (focusHelpers && helpers.length) helperSection.current?.scrollIntoView?.({ block: "start" }); }, [focusHelpers, helpers.length]);
   const { details } = useApprovalDetails(engine);
   const card = useCanopyCard(engine);
   const facts = useHelperFacts(engine, helpers);
@@ -148,8 +158,8 @@ export function ActivityTab({ engine, name, blocks, running, level, onError }: {
             <li key={b.key} className={b.status}>
               <SIcon name={b.status === "ok" ? "check" : b.status === "running" ? "spin" : b.status === "denied" || b.status === "failed" ? "x" : "info"} small className={b.status === "running" ? "spin-st" : undefined} />
               <span>
-                {b.title}
-                {b.detail || level === "technical" ? <small>{level === "technical" ? [b.tool, b.detail].filter(Boolean).join(" · ") : b.detail}</small> : null}
+                {stepLabel(b)}
+                {b.detail && !/^\s*[\[{]/.test(b.detail) ? <small>{shortReason(b.detail)}</small> : null}
               </span>
               <time>{b.at ? new Date(b.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : `Step ${first + i + 1}`}</time>
             </li>
@@ -159,7 +169,7 @@ export function ActivityTab({ engine, name, blocks, running, level, onError }: {
         <p className="pane-empty">No steps yet. What {name} does shows here as it works.</p>
       )}
       {helpers.length ? (
-        <section className="hp-pn" aria-label="Helpers on this task">
+        <section ref={helperSection} className="hp-pn" aria-label="Helpers on this task">
           <div className="hph-pn">
             <h3>Helpers on this task</h3>
             <small>

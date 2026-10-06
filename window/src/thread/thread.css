@@ -737,7 +737,7 @@
 }
 
 .thread .hover-bar.on-user {
-  left: -6px;
+  right: 4px;
 }
 
 .thread .msg:hover > .hover-bar,
@@ -817,6 +817,12 @@
   background: var(--fill-2);
 }
 
+.thread .msg.left-out { opacity: .42; outline: 1px dashed var(--ink-3); outline-offset: 3px; }
+.thread .context-line { margin: 4px 0 8px 38px; color: var(--ink-3); font-size: 12px; }
+.thread .context-line button, .context-undo button { border: 0; background: none; color: var(--accent-ink); cursor: pointer; text-decoration: underline; }
+.thread .context-line button:disabled { color: var(--dim); cursor: not-allowed; }
+.context-undo { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 1001; padding: 10px 14px; border-radius: 10px; background: var(--raise); box-shadow: var(--pop); color: var(--ink); }
+
 /* Glass menus (§5.4) */
 .thread .pop {
   position: absolute;
@@ -842,6 +848,8 @@
 .thread .pop.left {
   left: 0;
 }
+.thread.menu-portal { margin: 0; padding: 0; display: block; }
+.thread.menu-portal .pop { position: static; width: 100%; max-height: min(460px, calc(100vh - 16px)); background: var(--raise); }
 
 @keyframes pop-in {
   from {
@@ -880,7 +888,8 @@
   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 70%, transparent);
 }
 
-.thread .mi:disabled {
+.thread .mi:disabled,
+.thread .mi[aria-disabled="true"] {
   opacity: 0.45;
   cursor: default;
 }

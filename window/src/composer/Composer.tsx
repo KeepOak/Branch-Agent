@@ -23,6 +23,7 @@ import { useBackground } from "./useBackground";
 import { hasNoModel, useConversation } from "./useConversation";
 import { safeStorage, saveDraft } from "./drafts";
 import { useConversationPrefs } from "../thread/prefs";
+import { shortReason } from "../thread/format";
 import { currentModelAccount, shortAccountEmail, useModelAccounts } from "./useModelAccount";
 import { vimKey, type VimMode } from "./vim";
 import { useDraft } from "./useDraft";
@@ -381,7 +382,21 @@ export function Composer(props: Props) {
   const stopMode = working && !hasDraft;
   // Sessions and history arrive before the engine finishes starting; sending waits for this Trunk.
   const ready = hasDraft && !disabled && draft.preparing === 0 && !isPreparationPending(conversationProblem) && (!noModel || draft.text.trim().startsWith("/"));
-  const cost = num(row.estimatedCostUsd);
+  // The session row's estimatedCostUsd is the latest run, not the conversation total.
+  const [usageCost, setUsageCost] = useState<{ key: string; value: number } | null>(null);
+  useEffect(() => {
+    const key = engine?.sessionKey;
+    if (!engine || !key) return;
+    let live = true;
+    const read = () => void engine.request("sessions.usage", { key }).then((result) => {
+      const value = num(rec(rec(result).totals).totalCost);
+      if (live && value !== undefined) setUsageCost({ key, value });
+    }).catch(() => undefined);
+    read();
+    const timer = working ? setInterval(read, 10_000) : null;
+    return () => { live = false; if (timer) clearInterval(timer); };
+  }, [engine, engine?.sessionKey, working, row.updatedAt]);
+  const cost = usageCost && usageCost.key === engine?.sessionKey ? usageCost.value : undefined;
   const temporary = props.draftTemporary === true || row.incognito === true;
 
   return (
@@ -398,9 +413,9 @@ export function Composer(props: Props) {
     >
       {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
       {noModel ? <NoModelLine onOpen={onOpen} /> : null}
-      {conversationProblem ? <p className={isPreparationPending(conversationProblem) ? "c-note" : "c-note bad"} role={isPreparationPending(conversationProblem) ? "status" : "alert"}>{isPreparationPending(conversationProblem) ? preparationLabel(trunkName) : conversationProblem}</p> : null}
-      {problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : problem}</p> : null}
-      {line.error ? <p className="c-note bad" role="alert">{isPreparationPending(line.error) ? preparationLabel(trunkName) : line.error}</p> : null}
+      {conversationProblem ? <p className={isPreparationPending(conversationProblem) ? "c-note" : "c-note bad"} role={isPreparationPending(conversationProblem) ? "status" : "alert"}>{isPreparationPending(conversationProblem) ? preparationLabel(trunkName) : shortReason(conversationProblem)}</p> : null}
+      {problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : shortReason(problem)}</p> : null}
+      {line.error ? <p className="c-note bad" role="alert">{isPreparationPending(line.error) ? preparationLabel(trunkName) : shortReason(line.error)}</p> : null}
       {draft.note ? <p className="c-note">{draft.note}</p> : null}
       {drawer.peopleError && view?.kind === "mention" ? <p className="c-note bad">{drawer.peopleError}</p> : null}
       {props.replyTo ? (

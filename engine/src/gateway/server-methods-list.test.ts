@@ -94,6 +94,7 @@ describe("listGatewayMethods", () => {
     "session.suggestions.list",
     "session.suggestions.resolve",
     "session.reactions.set",
+    "session.context.set",
     "session.reactions.list",
     "session.typing",
     "sessions.companion.ask",

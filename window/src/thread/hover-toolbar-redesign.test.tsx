@@ -24,6 +24,7 @@ async function mount(isReply: boolean) {
     reactDisabled: null,
     inspect: { run, disabled: null },
     branch: { run, disabled: null },
+    context: { run, disabled: null, excluded: false },
     read: { run, disabled: null, reading: false },
   };
   const host = document.body.appendChild(document.createElement("div"));
@@ -43,10 +44,10 @@ describe("P54 message toolbar", () => {
   it("groups reply actions under More and keeps working actions wired", async () => {
     const { host, run } = await mount(true);
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
-    expect([...host.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Reply tools", "Inspect", "Context", "Feedback", "Share"]);
-    const labels = [...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].map((x) => x.textContent);
+    expect([...document.body.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Reply tools", "Inspect", "Context", "Feedback", "Share"]);
+    const labels = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].map((x) => x.textContent);
     expect(labels).toEqual(["Try again", "Branch from here", "Ask another model", "Every step behind this reply", "Read aloud", "Leave out of context", "Good reply", "Bad reply", "Flag", "As a picture", "To a coding app", "Delete"]);
-    await act(async () => host.querySelector<HTMLButtonElement>('[role="menuitem"]')?.click());
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[role="menuitem"]')?.click());
     expect(run).toHaveBeenCalledOnce();
   });
 
@@ -60,8 +61,35 @@ describe("P54 message toolbar", () => {
   it("moves Edit into the user-message menu", async () => {
     const { host, run } = await mount(false);
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
-    expect(host.querySelector<HTMLButtonElement>('[role="menuitem"]')?.textContent).toBe("Edit");
-    await act(async () => host.querySelector<HTMLButtonElement>('[role="menuitem"]')?.click());
+    expect(document.body.querySelector<HTMLButtonElement>('[role="menuitem"]')?.textContent).toBe("Edit");
+    expect([...document.body.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Reply tools", "Context", "Share"]);
+    await act(async () => document.body.querySelector<HTMLButtonElement>('[role="menuitem"]')?.click());
     expect(run).toHaveBeenCalledOnce();
+  });
+
+  it("runs the context action and gives disabled actions a plain reason", async () => {
+    const { host, run } = await mount(true);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
+    const context = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.textContent === "Leave out of context");
+    await act(async () => context?.click());
+    expect(run).toHaveBeenCalledOnce();
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
+    const disabled = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.textContent === "Good reply");
+    expect(disabled?.getAttribute("aria-disabled")).toBe("true");
+    expect(disabled?.title).toBe("Reply feedback isn't available here yet.");
+  });
+
+  it("keeps the More menu inside the viewport near its lower edge", async () => {
+    const { host } = await mount(true);
+    const bar = host.querySelector<HTMLElement>(".hover-bar")!;
+    vi.spyOn(bar, "getBoundingClientRect").mockReturnValue({ left: 900, right: 940, top: 680, bottom: 708 } as DOMRect);
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 960 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 720 });
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
+    const portal = document.body.querySelector<HTMLElement>(".menu-portal")!;
+    expect(Number.parseInt(portal.style.left)).toBeGreaterThanOrEqual(8);
+    expect(Number.parseInt(portal.style.left) + Number.parseInt(portal.style.width)).toBeLessThanOrEqual(952);
+    expect(Number.parseInt(portal.style.top)).toBeGreaterThanOrEqual(8);
+    expect(Number.parseInt(portal.style.top) + 460).toBeLessThanOrEqual(712);
   });
 });

@@ -450,6 +450,7 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["session.suggestions.list", "sessions-suggestions", "operator.read", "2026.7"],
   ["session.suggestions.resolve", "sessions-suggestions", "operator.write", "2026.7"],
   ["session.reactions.set", "sessions-reactions", "operator.write", "2026.9"],
+  ["session.context.set", "sessions-reactions", "operator.write", "2026.10"],
   ["session.reactions.list", "sessions-reactions", "operator.read", "2026.9"],
   ["session.typing", "sessions-suggestions", "operator.write", "2026.7"],
   // Companion state is process-local and its runner is hard-restricted to

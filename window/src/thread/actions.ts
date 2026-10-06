@@ -80,7 +80,7 @@ export function toChips(list: unknown, selfId: string | null): Reaction[] {
       emoji: str(rec(r).emoji),
       count: Number(rec(r).count) || ids.length,
       mine: selfId !== null && ids.some((i) => str(i.id) === selfId),
-      names: ids.map((i) => str(i.label) || str(i.id)),
+      names: ids.map((i) => selfId && str(i.id) === selfId ? "You" : str(i.label) || str(i.id)),
     };
   });
 }

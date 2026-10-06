@@ -10,6 +10,7 @@ import type { BranchConfig } from "../../config/types.branch.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
 import type { MessageActionInput } from "../../infra/outbound/message-action-contracts.js";
 import { publishSystemEventStoreResolver } from "../../infra/system-event-ownership.js";
+import { readSessionMessageByIdAsync } from "../session-transcript-readers.js";
 import {
   drainSystemEventEntries,
   peekSystemEventEntries,
@@ -108,6 +109,18 @@ afterEach(() => {
 });
 
 describe("session reaction handlers", () => {
+  it("leaves a message out of model context and puts it back without removing its transcript entry", async () => {
+    await withReactionState(async () => {
+      await seedSession();
+      const messageId = await appendMessage();
+      const set = (exclude: boolean) => call("session.context.set", { sessionKey, messageId, exclude }, client("owner"));
+      expect(await set(true)).toMatchObject([true, { messageId, excluded: true }]);
+      const read = async () => (await readSessionMessageByIdAsync(transcriptScope, messageId, { currentOnly: true, maxBytes: Number.MAX_SAFE_INTEGER, allowResetArchiveFallback: false })).message as Record<string, unknown>;
+      expect((await read()).excludeFromContext).toBe(true);
+      expect(await set(false)).toMatchObject([true, { messageId, excluded: false }]);
+      expect((await read()).excludeFromContext).toBeUndefined();
+    });
+  });
   it("enforces session participation and operator caps before committing reactions", async () => {
     await withReactionState(async () => {
       const cases = [

@@ -93,6 +93,7 @@ export function readMeta(m: Message): MessageMeta {
     ...(readVia(branch) ? { via: readVia(branch) } : {}),
     ...(sender ? { sender } : {}),
     ...(readOwner(m) ? { owner: true } : {}),
+    ...(m.excludeFromContext === true ? { excluded: true } : {}),
     ...(m.usage
       ? { usage: { input: num(usage.input), output: num(usage.output), total: num(usage.totalTokens), cost: num(cost.total) } }
       : {}),
