@@ -1,5 +1,8 @@
 engine:extensions/imessage/src/actions.runtime.test.ts
 engine:extensions/imessage/src/actions.test.ts
+engine:extensions/imessage/src/approval-polls.test.ts
+engine:extensions/imessage/src/approval-reaction-poller.test.ts
+engine:extensions/imessage/src/approval-reactions.test.ts
 engine:extensions/imessage/src/client.test.ts
 engine:extensions/imessage/src/install-imsg.test.ts
 engine:extensions/imessage/src/monitor/remote-host.test.ts
