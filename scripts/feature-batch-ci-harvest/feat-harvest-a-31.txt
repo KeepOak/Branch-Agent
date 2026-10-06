@@ -1,0 +1,4 @@
+engine:extensions/discord/src/monitor/model-picker.test.ts
+engine:extensions/discord/src/monitor/model-picker-preferences.test.ts
+engine:extensions/discord/src/monitor/native-command.command-arg.test.ts
+engine:extensions/discord/src/monitor/native-command.guild-guards.test.ts
