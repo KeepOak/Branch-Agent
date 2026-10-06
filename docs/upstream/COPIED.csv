@@ -68,3 +68,4 @@ engine/src/cron/schedule.test.ts,AUTOMATION-0002,openclaw/openclaw,57e0aaa1c190f
 engine/src/cron/parse.test.ts,AUTOMATION-0002,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/parse.test.ts,2026-10-06
 engine/src/cron/validate-timestamp.test.ts,AUTOMATION-0002,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/validate-timestamp.test.ts,2026-10-06
 engine/src/cron/stagger.test.ts,AUTOMATION-0004,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/stagger.test.ts,2026-10-06
+engine/src/cron/service/run-recovery.test.ts,AUTOMATION-0008,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/service/run-recovery.test.ts,2026-10-06
