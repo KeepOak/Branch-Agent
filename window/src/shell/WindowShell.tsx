@@ -290,13 +290,13 @@ function useCharacterShown() {
 
 /** The character panel keeps its own one-second clock, so its talk, cheer and sleep faces change on time
  *  without re-rendering the whole shell every second. */
-function LiveCharacter({ name, snapshot: s, onClose, others }: { name: string; snapshot: SessionSnapshot; onClose: () => void; others?: string[] }) {
+function LiveCharacter({ name, snapshot: s, onClose, others, column }: { name: string; snapshot: SessionSnapshot; onClose: () => void; others?: string[]; column: HTMLElement | null }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
-  return <CharacterPanel name={name} state={agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now })} onClose={onClose} others={others} />;
+  return <CharacterPanel name={name} state={agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now })} onClose={onClose} others={others} column={column} />;
 }
 
 /** Engine reads the shell needs, in one place. */
@@ -388,6 +388,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [stageTakeOver, setStageTakeOver] = useState(false);
   const [guide, setGuide] = useState<"news" | "news-ready" | "tour" | null>(null);
   const [characterShown, setCharacterShown] = useCharacterShown();
+  const [conversationColumn, setConversationColumn] = useState<HTMLDivElement | null>(null);
   const [talk, setTalk] = useTalkLayout(); // the default Trunk beside a place or Settings page (§3.3)
   const shown = useShown(session.engine); // Appearance › What's shown
   useEffect(() => {
@@ -1085,7 +1086,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       },
     };
     main = draftTopic ? (
-      <div className="conversation-column" data-testid="new-topic-draft">
+      <div className="conversation-column" data-testid="new-topic-draft" ref={setConversationColumn}>
         {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} /> : null}
         <div className="conversation-empty" style={{ flex: 1 }} />
         <div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
@@ -1108,6 +1109,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     ) : (
       <>
         <StageConversation
+        columnRef={setConversationColumn}
         header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} /> : null}
         thread={<SplitFrame panes={panes} width={splitW} onWidth={setSplitW} side={
           <SplitPanes
@@ -1583,7 +1585,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       ) : null}
       {removingTrunk ? <RemoveTrunkDialog engine={session.engine} agentId={removingTrunk.agentId} name={removingTrunk.name} onClose={() => setRemovingTrunk(null)} /> : null}
       {route.kind === "chat" && characterShown ? (
-        <LiveCharacter name={trunkName(openRow?.agentId)} snapshot={s} onClose={() => setCharacterShown(false)} others={room.others} />
+        <LiveCharacter name={trunkName(openRow?.agentId)} snapshot={s} onClose={() => setCharacterShown(false)} others={room.others} column={conversationColumn} />
       ) : null}
       <NewGroupChatHost engine={ready ? session.engine : undefined} onOpen={openConversation} />
       {guide === "tour" ? <Walkthrough defaultName={defaultName} onClose={() => setGuide(null)} /> : null}

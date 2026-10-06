@@ -27,7 +27,7 @@ beforeEach(async () => {
   document.body.append(column);
   close = vi.fn<() => void>();
   root = createRoot(host);
-  await act(async () => root.render(<CharacterPanel name="Juniper" state="work" onClose={close} />));
+  await act(async () => root.render(<CharacterPanel name="Juniper" state="work" onClose={close} column={column} />));
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.replaceChildren(); vi.unstubAllGlobals(); });
 
@@ -66,6 +66,19 @@ it("reserves the agent window's height after the latest message", async () => {
   Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 166 });
   await act(async () => window.dispatchEvent(new Event("resize")));
   expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("190px");
+});
+
+it("reattaches clearance and observers when the conversation column is replaced", async () => {
+  const oldColumn = document.querySelector<HTMLElement>(".conversation-column")!;
+  const newColumn = oldColumn.cloneNode(true) as HTMLElement;
+  newColumn.getBoundingClientRect = oldColumn.getBoundingClientRect;
+  const panel = host.querySelector<HTMLElement>(".character-panel")!;
+  Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 166 });
+  oldColumn.replaceWith(newColumn);
+  await act(async () => root.render(<CharacterPanel name="Juniper" state="work" onClose={close} column={newColumn} />));
+  expect(host.querySelector(".character-panel")).toBe(panel);
+  expect(oldColumn.style.getPropertyValue("--agent-window-clearance")).toBe("");
+  expect(newColumn.style.getPropertyValue("--agent-window-clearance")).toBe("190px");
 });
 
 it("hides while the focused pane removes the conversation and restores its column position", async () => {

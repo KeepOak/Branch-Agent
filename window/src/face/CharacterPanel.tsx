@@ -8,8 +8,8 @@ import { AGENT_SIZE_PX, useLookPrefs } from "./look-prefs";
 import { PRIORITY } from "./cap";
 import { panelLimits, panelPlaceAt, panelPoint, readPanelPlace, savePanelPlace, USUAL_PLACE, type PanelBounds, type PanelPlace } from "./panel-position";
 
-export function CharacterPanel({ name, state, onClose, others = [] }: {
-  name: string; state: AgentState; onClose: () => void; others?: string[];
+export function CharacterPanel({ name, state, onClose, others = [], column }: {
+  name: string; state: AgentState; onClose: () => void; others?: string[]; column: HTMLElement | null;
 }) {
   const [small, setSmall] = useState(false);
   const { agentSize } = useLookPrefs();
@@ -22,7 +22,6 @@ export function CharacterPanel({ name, state, onClose, others = [] }: {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   const measure = useCallback(() => {
-    const column = document.querySelector<HTMLElement>(".conversation-column");
     const el = panel.current;
     if (!column || !el) return;
     const rect = column.getBoundingClientRect();
@@ -40,9 +39,8 @@ export function CharacterPanel({ name, state, onClose, others = [] }: {
     limits.current = next;
     column.style.setProperty("--agent-window-clearance", `${el.offsetHeight + 24}px`);
     setPoint(panelPoint(place.current, next));
-  }, []);
+  }, [column]);
   useLayoutEffect(() => {
-    const column = document.querySelector<HTMLElement>(".conversation-column");
     if (!column) return;
     const observer = new ResizeObserver(measure);
     observer.observe(column);
@@ -54,7 +52,7 @@ export function CharacterPanel({ name, state, onClose, others = [] }: {
     window.addEventListener("resize", measure);
     measure();
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); column.style.removeProperty("--agent-window-clearance"); };
-  }, [measure]);
+  }, [column, measure]);
 
   const moveTo = (next: PanelPlace, toast = false) => {
     place.current = next;
