@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3e932a5937b529ae45b89c57a1b5db2078aa1407:extensions/google-meet/index.test.ts (atlas VOICE-0105). Changed for Branch: Retained newer upstream assertions and Branch gateway adapters; separate virtual debounce from real database admission and assert no fallback warning.
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -3272,9 +3273,14 @@ describe("google-meet plugin", () => {
       callbacks.onTranscript?.("user", "Please include launch blockers.", true);
 
       await vi.advanceTimersByTimeAsync(TEST_TALKBACK_DEBOUNCE_MS);
-      await vi.waitFor(() => {
-        expect(runtime.agent.runEmbeddedAgent).toHaveBeenCalledTimes(1);
-      });
+      // Debounce is virtual; lifecycle admission and session forking use real database IO.
+      vi.useRealTimers();
+      await vi.waitFor(
+        () => {
+          expect(runtime.agent.runEmbeddedAgent).toHaveBeenCalledTimes(1);
+        },
+        { timeout: 10_000 },
+      );
       const consultArgs = requireRecord(
         (runtime.agent.runEmbeddedAgent.mock.calls as unknown[][])[0]?.[0],
         "default talk-back agent request",
@@ -3287,7 +3293,8 @@ describe("google-meet plugin", () => {
       expect(JSON.stringify(consultArgs)).toContain(
         "Are we still on track?\\nPlease include launch blockers.",
       );
-      expect(sendUserMessage).toHaveBeenCalledTimes(1);
+      expect(noopLogger.warn).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(sendUserMessage).toHaveBeenCalledTimes(1));
       const sentUserMessage: unknown = sendUserMessage.mock.calls[0]?.[0];
       expect(typeof sentUserMessage).toBe("string");
       expect(sentUserMessage).toContain(JSON.stringify("The launch is still on track."));
