@@ -67,7 +67,6 @@ export function UsageRing({ left, low }: { left: number | null; low: boolean }) 
 /** Health polling and socket connectivity are independent facts. */
 function GatewayStatus(p: Pick<Props, "gateway" | "open" | "onItem">) {
   const word = p.gateway === "offline" ? "stopped" : p.gateway === "checking" ? "checking" : "running";
-  const visible = p.gateway === "offline" ? "Offline · Gateway" : p.gateway === "checking" ? "Connecting · Gateway" : "Gateway";
   const colour = p.gateway === "on" ? "var(--ok)" : p.gateway === "checking" ? "var(--warn)" : "var(--bad)";
   return (
     <button type="button" className="sb status-symbol sb-gw" title={`Gateway · ${word}`}
@@ -75,7 +74,6 @@ function GatewayStatus(p: Pick<Props, "gateway" | "open" | "onItem">) {
       data-hide="gateway" data-state={p.gateway} aria-expanded={p.open === "gateway"} aria-haspopup="dialog"
       onClick={(e) => p.onItem("gateway", e)}>
       <StatusGlyph kind="gateway" colour={colour} />
-      <span className="status-label">{visible}</span>
     </button>
   );
 }
