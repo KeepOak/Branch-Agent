@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/infra/clawhub-client.test.ts (atlas INTEGRATIONS-0180). Changed for Branch: apply the Seedbank display-name rename from DECISIONS.md item 135 while preserving exact timeout and size assertions.
 // Verifies Seedbank client authentication, URL, retry, timeout, and body bounds.
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -449,7 +450,7 @@ describe("clawhub client", () => {
         timeoutMs: 5,
         fetchImpl: async () => stalled.response,
       }),
-    ).rejects.toThrow(/ClawHub \/api\/v1\/search response stalled after 5ms/);
+    ).rejects.toThrow(/Seedbank \/api\/v1\/search response stalled after 5ms/);
     expect(stalled.cancel).toHaveBeenCalledTimes(1);
     expect(stalled.cancel.mock.calls[0]?.[0]).toBeInstanceOf(Error);
   });
@@ -546,7 +547,7 @@ describe("clawhub client", () => {
         fetchImpl: async () => response,
       }),
     ).rejects.toThrow(
-      /ClawHub \/api\/v1\/skills\/weather\/install response exceeded 16777216 bytes/,
+      /Seedbank \/api\/v1\/skills\/weather\/install response exceeded 16777216 bytes/,
     );
     // Same bounded reader covers the sibling install-resolution JSON path so a
     // hostile install response cannot exhaust memory either.

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/plugins/clawhub.test.ts (atlas INTEGRATIONS-0180). Changed for Branch: apply DECISIONS.md item 135 display names and keep the exact sorted inventory assertion after the manifest filename rename.
 /** Verifies Seedbank plugin spec parsing and install metadata handling. */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -660,7 +661,7 @@ describe("installPluginFromClawHub", () => {
     expect(archiveDownloadCall().version).toBe("2026.3.22");
   });
 
-  it("rejects ClawPack artifacts when the download digest does not match version metadata", async () => {
+  it("rejects Seedpod artifacts when the download digest does not match version metadata", async () => {
     const mismatchedSha256 = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
     mockClawHubVersionMetadata({
       artifact: { kind: "npm-pack", format: "tgz", sha256: DEMO_CLAWPACK_SHA256 },
@@ -682,7 +683,7 @@ describe("installPluginFromClawHub", () => {
     const failure = expectInstallFailure(result);
     expect(failure.code).toBe(CLAWHUB_INSTALL_ERROR_CODE.ARCHIVE_INTEGRITY_MISMATCH);
     expect(failure.error).toBe(
-      `Seedbank ClawPack integrity mismatch for "demo@2026.3.22": expected ${DEMO_CLAWPACK_SHA256}, got ${mismatchedSha256}.`,
+      `Seedbank Seedpod integrity mismatch for "demo@2026.3.22": expected ${DEMO_CLAWPACK_SHA256}, got ${mismatchedSha256}.`,
     );
     expect(installPluginFromArchiveMock).not.toHaveBeenCalled();
     expect(archiveCleanupMock).toHaveBeenCalledTimes(1);
@@ -1310,7 +1311,7 @@ describe("installPluginFromClawHub", () => {
       DEMO_PLUGIN_ARCHIVE_ENTRIES["index.js"],
     );
     expect(logger.warn).toHaveBeenCalledWith(
-      'Seedbank package "demo@2026.3.22" is missing sha256hash; falling back to files[] verification. Validated files: index.js, nested/extra.txt, branch.plugin.json, package.json.',
+      'Seedbank package "demo@2026.3.22" is missing sha256hash; falling back to files[] verification. Validated files: branch.plugin.json, index.js, nested/extra.txt, package.json.',
     );
   });
 

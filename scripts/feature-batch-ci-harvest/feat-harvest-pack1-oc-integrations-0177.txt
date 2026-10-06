@@ -1,3 +1,6 @@
+engine:src/cli/clawhub-install-confirmation.test.ts
+engine:src/cli/plugins-cli.clawhub-install.harvest.test.ts
+engine:src/infra/clawhub-client.test.ts
 engine:src/plugin-activation-boundary.test.ts
 engine:src/plugin-sdk/api-baseline.test.ts
 engine:src/plugin-sdk/core.test.ts
@@ -7,6 +10,7 @@ engine:src/plugin-state/plugin-state-store.namespace-independence.test.ts
 engine:src/plugin-state/plugin-state-store.retention.test.ts
 engine:src/plugin-state/plugin-state-store.test.ts
 engine:src/plugins/activation-planner.test.ts
+engine:src/plugins/clawhub.test.ts
 engine:src/plugins/discovery.path-inspection.test.ts
 engine:src/plugins/discovery.test.ts
 engine:src/plugins/loader.admission-contracts.test.ts
