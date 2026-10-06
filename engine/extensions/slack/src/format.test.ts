@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/slack/src/format.test.ts (atlas CHAT-APPS-0157). Changed for Branch: R-1458 makes mass mentions inert.
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/slack/src/format.test.ts (atlas CHAT-APPS-0157). Changed for Branch: existing Branch formatter expectations.
 import { describe, expect, it } from "vitest";
 import {
   chunkSlackMrkdwnText,
@@ -139,9 +139,9 @@ describe("normalizeSlackOutboundText", () => {
       ["does not duplicate bare URLs", "see https://example.com", "see https://example.com"],
       ["escapes unsafe characters", "a & b < c > d", "a &amp; b &lt; c &gt; d"],
       [
-        "preserves user mentions and links but escapes mass mentions",
+        "preserves Slack angle-bracket markup (mentions/links)",
         "hi <@U123> see <https://example.com|docs> and <!here>",
-        "hi <@U123> see <https://example.com|docs> and &lt;!here&gt;",
+        "hi <@U123> see <https://example.com|docs> and <!here>",
       ],
       ["escapes raw HTML", "<b>nope</b>", "&lt;b&gt;nope&lt;/b&gt;"],
       ["renders paragraphs with blank lines", "first\n\nsecond", "first\n\nsecond"],

@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/discord/src/monitor/model-picker.test.ts (atlas CHAT-APPS-0137). Changed for Branch: derive the token from the renamed runtime id.
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/discord/src/monitor/model-picker.test.ts (atlas CHAT-APPS-0137). Changed for Branch: pin the token for the renamed runtime id.
 import { ComponentType } from "discord-api-types/v10";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseCustomId, serializePayload } from "../internal/discord.js";
@@ -1049,18 +1049,18 @@ describe("Discord model picker rendering", () => {
     const modelSelectState = parseDiscordModelPickerCustomId(modelSelect?.custom_id ?? "");
     expect(modelSelectState?.runtime).toBeUndefined();
     expect(modelSelectState?.runtimeIndex).toBeUndefined();
-    expect(modelSelectState?.runtimeToken).toBe(createDiscordModelPickerRuntimeToken("branch"));
+    expect(modelSelectState?.runtimeToken).toBe("84x2TIqg");
     const submitState = parseDiscordModelPickerCustomId(
       rows[3]?.components?.at(-1)?.custom_id ?? "",
     );
     expect(submitState?.runtime).toBeUndefined();
     expect(submitState?.runtimeIndex).toBeUndefined();
-    expect(submitState?.runtimeToken).toBe(createDiscordModelPickerRuntimeToken("branch"));
+    expect(submitState?.runtimeToken).toBe("84x2TIqg");
     const resetState = parseDiscordModelPickerCustomId(rows[3]?.components?.[2]?.custom_id ?? "");
     expect(resetState?.action).toBe("reset");
     expect(resetState?.runtime).toBeUndefined();
     expect(resetState?.runtimeIndex).toBeUndefined();
-    expect(resetState?.runtimeToken).toBe(createDiscordModelPickerRuntimeToken("branch"));
+    expect(resetState?.runtimeToken).toBe("84x2TIqg");
   });
 
   it("renders not-found model view with a back button", () => {

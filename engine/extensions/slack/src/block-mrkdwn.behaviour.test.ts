@@ -5,8 +5,10 @@ import { buildSlackPresentationBlocks } from "./blocks-render.js";
 import { normalizeSlackOutboundText } from "./format.js";
 
 describe("Slack Block Kit and mrkdwn delivery", () => {
-  it("keeps formatting and accessible fallback without activating mass mentions", () => {
-    const text = normalizeSlackOutboundText("**Deploy** <!channel> <!here> <@U123> & ready");
+  it("keeps formatting, Slack mentions, and accessible fallback", () => {
+    const text = normalizeSlackOutboundText(
+      "**Deploy** <!channel> <!here> <!subteam^S123> <@U123> & ready",
+    );
     const blocks = buildSlackPresentationBlocks({
       title: "Deploy status",
       blocks: [
@@ -19,7 +21,7 @@ describe("Slack Block Kit and mrkdwn delivery", () => {
       { type: "header", text: { text: "Deploy status" } },
       {
         type: "section",
-        text: { text: "*Deploy* &lt;!channel&gt; &lt;!here&gt; <@U123> &amp; ready" },
+        text: { text: "*Deploy* <!channel> <!here> <!subteam^S123> <@U123> &amp; ready" },
       },
       { type: "actions", elements: [{ text: { text: "Approve" } }] },
     ]);

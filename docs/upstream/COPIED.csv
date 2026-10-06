@@ -1,3 +1,7 @@
 branch_path,atlas_id,project,commit,upstream_path,date
 engine/extensions/telegram/src/webhook.host-floor.test.ts,CHAT-APPS-0119,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/telegram/src/webhook.host-floor.test.ts (changed: use Gateway-owned routes),2026-10-06
 engine/extensions/telegram/src/webhook.test.ts,CHAT-APPS-0119,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/telegram/src/webhook.test.ts (changed: expect assigned scratch Gateway port),2026-10-06
+engine/extensions/discord/src/monitor/model-picker.test.ts,CHAT-APPS-0137,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/discord/src/monitor/model-picker.test.ts (changed: pin Branch runtime token),2026-10-06
+engine/extensions/slack/src/progress-blocks.test.ts,CHAT-APPS-0156,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/slack/src/progress-blocks.test.ts (changed: Branch fixture path),2026-10-06
+engine/extensions/slack/src/format.test.ts,CHAT-APPS-0157,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/slack/src/format.test.ts (changed: existing Branch formatter expectations),2026-10-06
+engine/extensions/slack/src/format.ts,CHAT-APPS-0157,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/slack/src/format.ts (changed: existing Branch formatter adaptations),2026-10-06
