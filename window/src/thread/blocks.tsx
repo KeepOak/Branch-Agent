@@ -170,12 +170,12 @@ export function StepsFold({ steps, live, run }: { steps: Of<"step">[]; live: boo
 }
 
 /** "Done in <duration>", starting with this Trunk's 20 px face in its "yay" state (§4.2.2 "Done in"). */
-export function DoneLine({ block, name }: { block: Of<"done">; name: string }) {
+export function DoneLine({ block, name, words }: { block: Of<"done">; name: string; words: number }) {
   const state: AgentState = "yay";
   return (
     <div className="done-line indent" data-testid="run-done">
       <Face size={20} label={name} state={state} />
-      {block.durationMs ? `Done in ${formatDuration(block.durationMs)}` : "Done"}
+      {block.durationMs ? `Done in ${formatDuration(block.durationMs)}` : "Done"}{words ? ` · ${words} ${words === 1 ? "word" : "words"}` : ""}
     </div>
   );
 }

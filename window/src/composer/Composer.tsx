@@ -98,6 +98,7 @@ export function Composer(props: Props) {
   const draft = useDraft(props.draftAgentId ? null : engine?.sessionKey ?? null, engine?.attachmentPolicy);
   const [menu, setMenu] = useState<Menu>(null);
   const [nextAsJob, setNextAsJob] = useState(false);
+  useEffect(() => setNextAsJob(false), [engine?.sessionKey]);
   const [photo, setPhoto] = useState(false);
   const [picture, setPicture] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -559,7 +560,10 @@ export function Composer(props: Props) {
               setDismissed(null);
               requestAnimationFrame(() => box.current?.focus());
             }}
-            onBackground={() => draft.text.trim() ? void runBackground(draft.text) : (draft.setText("/bg "), box.current?.focus())}
+            onBackground={() => {
+              if (draft.text.trim()) void runBackground(draft.text);
+              else { draft.setText("/bg "); box.current?.focus(); }
+            }}
             onOpen={onOpen}
             temporary={temporary}
             onTemporary={props.onNewTopic ? () => void startTemporary() : undefined}

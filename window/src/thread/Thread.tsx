@@ -15,7 +15,7 @@ import { HelpersChip } from "./Helpers";
 import { HoverBar } from "./HoverBar";
 import { Rail } from "./Rail";
 import { Icon, ICONS } from "./icons";
-import { layout, shownApprovalIds, type Item } from "./layout";
+import { layout, shownApprovalIds, turnOf, type Item } from "./layout";
 import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
 import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
@@ -411,8 +411,11 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
       return <PlanCard card={{ sessionKey: "run", revision: 1, updatedAt: Date.now(), steps: block.steps }} />;
     case "approval":
       return view.grouped.has(block.approval.id) ? null : <ApprovalCard approval={block.approval} details={view.details.get(block.approval.id)} name={view.name} onAnswer={view.answer} />;
-    case "done":
-      return <DoneLine block={block} name={view.name} />;
+    case "done": {
+      const words = turnOf(view.all, index).filter((entry): entry is Extract<Block, { kind: "text" }> => entry.kind === "text")
+        .reduce((count, entry) => count + (entry.text.trim().match(/\S+/g)?.length ?? 0), 0);
+      return <DoneLine block={block} name={view.name} words={words} />;
+    }
     case "error":
       if (isPreparationPending(block.message)) return <div className="stamp" role="status">Branch retried a startup delay.</div>;
       return view.dismissed.has(block.key) ? null : <ErrorBlock block={block} onDismiss={() => view.setDismissed((s) => new Set(s).add(block.key))} />;
