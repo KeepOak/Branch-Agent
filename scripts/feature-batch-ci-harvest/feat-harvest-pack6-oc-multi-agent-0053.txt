@@ -1,5 +1,8 @@
 engine:extensions/acpx/src/process-reaper.test.ts
 engine:extensions/acpx/src/runtime.test.ts
+engine:extensions/canopy/browser/pages/canopy/canopy-page.test.ts
+engine:extensions/canopy/browser/pages/canopy/view-card-content.test.ts
+engine:extensions/canopy/browser/pages/canopy/view.test.ts
 engine:extensions/canopy/src/cli.test.ts
 engine:extensions/canopy/src/command.test.ts
 engine:src/acp/control-plane/manager.actor-epoch-fencing.test.ts
