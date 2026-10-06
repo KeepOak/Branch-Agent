@@ -87,6 +87,8 @@ async function packageDesktop(scratch, output, identity) {
   const app = folders[0];
   const resources = identity.platform === "darwin" ? join(app, "Branch Agent.app/Contents/Resources") : join(app, "resources");
   const node = await bundleNode(resources, undefined, identity);
+  // Outside app.asar so a fresh package can prove its executable already has the Keeper icon.
+  await writeFile(join(resources, "keeper-icon-revision"), "keeper-v1\n");
   // The desktop update component: app.asar alone, plus the whole app (the bootstrap package) for Electron changes.
   const asar = join(scratch, "desktop-asar"); await mkdir(asar);
   await copyFile(join(resources, "app.asar"), join(asar, "app.asar"));

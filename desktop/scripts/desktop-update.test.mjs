@@ -74,6 +74,18 @@ test("Keeper icon upgrade follows the first asar update with a same-release whol
   assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, install), false);
 }, { iconRuntime: true }));
 
+test("fresh Keeper package seeds its icon revision without downloading a runtime", { skip: process.platform !== "win32" }, () => fixture(async ({ cfg, install, release }) => {
+  await writeFile(join(install.resourcesDir, "keeper-icon-revision"), "keeper-v1\n");
+  await writeFile(join(install.resourcesDir, "app.asar"), "new desktop asar");
+  let requests = 0;
+  const request = () => { requests++; throw new Error("Fresh package must not download a component"); };
+  assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, install), false);
+  assert.equal(requests, 0);
+  assert.equal(await desktopUpdate.readDesktopJournal(cfg), undefined);
+  assert.equal((await readFile(join(cfg.dataDir, "desktop-icon-version.txt"), "utf8")).trim(), "keeper-v1");
+  assert.equal((await readFile(join(cfg.dataDir, "desktop-update-version.txt"), "utf8")).trim(), release.version);
+}, { iconRuntime: true }));
+
 test("desktop app.asar stages with the engine and window while the running app stays untouched", () => fixture(async ({ cfg, request, install, release }) => {
   assert.equal(await updater.refreshComponentUpdate(cfg, request, { desktop: install }), true);
   const journal = await desktopUpdate.readDesktopJournal(cfg);

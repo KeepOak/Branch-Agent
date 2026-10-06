@@ -44,6 +44,7 @@ const versionFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "desktop-u
 // its whole runtime from the same verified release so the executable and OS icon also change.
 const ICON_REVISION = "keeper-v1";
 const iconFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "desktop-icon-version.txt");
+const packagedIconFile = (install: DesktopInstall): string => join(install.resourcesDir, "keeper-icon-revision");
 const rejectedFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "desktop-update-rejected.json");
 const CONFIRM_TIMEOUT_MS = 90_000;
 /**
@@ -119,6 +120,10 @@ async function assertFile(file: string): Promise<void> {
 /** Downloads, verifies and extracts the release's desktop component; nothing in the running app changes. */
 export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, install?: DesktopInstall): Promise<boolean> {
   if (!install || await readDesktopJournal(cfg)) return false;
+  if (process.platform === "win32" && await readOrEmpty(packagedIconFile(install)) === ICON_REVISION
+    && await readOrEmpty(iconFile(cfg)) !== ICON_REVISION) {
+    await replaceFile(iconFile(cfg), `${ICON_REVISION}\n`);
+  }
   const iconUpgrade = process.platform === "win32" && Boolean(release.components.desktopRuntime)
     && await readOrEmpty(iconFile(cfg)) !== ICON_REVISION;
   if (!iconUpgrade && await readOrEmpty(versionFile(cfg)) === release.version) return false;
