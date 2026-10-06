@@ -19,9 +19,9 @@ export class BatchAtomicityProperty implements ViewProperty {
   manipulationIndices(view: ViewEvent[]): Set<number> {
     const indices = complete(view);
     for (let i = 1; i < view.length; i++) {
-      // The loop bounds guarantee both adjacent events exist.
-      const previous = view[i - 1]!;
-      const current = view[i]!;
+      const previous = view[i - 1];
+      const current = view[i];
+      if (!previous || !current) continue;
       if (previous.kind === "action" && current.kind === "action" && previous.llmResponseId === current.llmResponseId) indices.delete(i);
     }
     return indices;
