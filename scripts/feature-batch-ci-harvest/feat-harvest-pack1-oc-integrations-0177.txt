@@ -1,4 +1,6 @@
 engine:src/plugin-activation-boundary.test.ts
+engine:src/plugin-sdk/api-baseline.test.ts
+engine:src/plugin-sdk/core.test.ts
 engine:src/plugin-state/plugin-blob-store.eviction.test.ts
 engine:src/plugin-state/plugin-blob-store.test.ts
 engine:src/plugin-state/plugin-state-store.namespace-independence.test.ts
