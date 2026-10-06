@@ -5,3 +5,4 @@ engine/extensions/discord/src/monitor/model-picker.test.ts,CHAT-APPS-0137,opencl
 engine/extensions/slack/src/progress-blocks.test.ts,CHAT-APPS-0156,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/slack/src/progress-blocks.test.ts (changed: Branch fixture path),2026-10-06
 engine/extensions/slack/src/format.test.ts,CHAT-APPS-0157,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/slack/src/format.test.ts (changed: existing Branch formatter expectations),2026-10-06
 engine/extensions/slack/src/format.ts,CHAT-APPS-0157,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/slack/src/format.ts (changed: existing Branch formatter adaptations),2026-10-06
+engine/src/media-understanding/local-audio.test.ts,VOICE-0065,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/media-understanding/local-audio.test.ts (changed: platform-native expected model path),2026-10-06

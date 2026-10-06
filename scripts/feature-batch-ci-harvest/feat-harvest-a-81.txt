@@ -14,6 +14,9 @@ engine:src/channels/message-access/admission-evidence.test.ts
 engine:src/channels/message-access/message-access.test.ts
 engine:src/infra/exec-approval-forwarder.test.ts
 engine:src/infra/exec-approval-reply.test.ts
+engine:src/media-understanding/audio-preflight.test.ts
+engine:src/media-understanding/echo-transcript.test.ts
+engine:src/media-understanding/local-audio.test.ts
 engine:src/pairing/pairing-challenge.test.ts
 engine:src/pairing/pairing-store.test.ts
 engine:src/plugin-sdk/access-groups.test.ts
