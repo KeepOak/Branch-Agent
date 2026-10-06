@@ -3,6 +3,7 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SearchResultsView, useSearch } from "./Search";
+import { messagePaletteRows } from "./Palette";
 import { Thread } from "../thread/Thread";
 
 vi.mock("../face/Face", () => ({ Face: () => <span /> }));
@@ -43,6 +44,13 @@ describe("message search to conversation find", () => {
 });
 
 describe("live search results", () => {
+  it("opens a palette message hit with its query for in-conversation Find", () => {
+    const opened: [string, string][] = [];
+    const rows = messagePaletteRows([{ key: "agent:elm:main", role: "assistant", snippet: "Hartwell invoice", at: 1, messageId: "m" }],
+      "Hartwell invoice", () => "Elm's conversation", (key, query) => opened.push([key, query]));
+    rows[0]?.run();
+    expect(opened).toEqual([["agent:elm:main", "Hartwell invoice"]]);
+  });
   it("labels an assistant message with its own Trunk, not the default Trunk", async () => {
     const host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);

@@ -486,6 +486,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     return () => window.removeEventListener("keydown", key);
   }, [go]);
   const openConversation = useCallback((key: string) => go({ kind: "chat", key }), [go]);
+  const openSearchMessage = useCallback((key: string, query: string) => {
+    setSearchFind((current) => ({ key, query, nonce: (current?.nonce ?? 0) + 1 }));
+    openConversation(key);
+  }, [openConversation]);
   useEffect(() => {
     const removed = () => {
       const id = trunks.defaultId;
@@ -1289,8 +1293,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
               }}
               onOpenMessage={(key, query) => {
                 search.setQuery("");
-                setSearchFind((current) => ({ key, query, nonce: (current?.nonce ?? 0) + 1 }));
-                openConversation(key);
+                openSearchMessage(key, query);
               }}
               onLibrary={() => {
                 search.setQuery("");
@@ -1478,7 +1481,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         <Palette
           request={request}
           rowName={rowName}
-          onOpenConversation={openConversation}
+          onOpenMessage={openSearchMessage}
           onClose={() => setOverlay(null)}
           rows={paletteRows({
             conversations: [...contacts.map(contactRow), ...lists.rows.filter((r) => !r.isMain && !r.archived)],
