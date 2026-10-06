@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comingUp, dueWords, limitsSummary, monthParams, readLimits, readMonthSpend, readRoom, readRounds, resetWords, ringReading, sizeWords, uptimeWords, windowName } from "./status-data";
+import { comingUp, dueWords, readLimits, readRoom, readRounds, resetWords, ringReading, sizeWords, uptimeWords, windowName } from "./status-data";
 
 const NOW = new Date(2026, 9, 2, 12, 0).getTime();
 

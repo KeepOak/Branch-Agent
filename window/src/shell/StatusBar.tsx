@@ -122,7 +122,7 @@ export function StatusBar(p: Props) {
       )}
       {p.extras?.pet}
       {p.version ? (
-        <button type="button" className="sb status-symbol" title={`${branchVersionDetail(p.version)}${p.readyVersion ? ` · ${branchVersionDetail(p.readyVersion)} ready` : ""}`} aria-label={`${branchVersionLabel(p.version)}${p.readyVersion ? ` · ${branchVersionLabel(p.readyVersion)} ready` : ""}`} data-testid="sb-version" {...item("version")}>
+        <button type="button" className="sb status-symbol" title={`${branchVersionLabel(p.version)}${p.readyVersion ? ` · ${branchVersionDetail(p.readyVersion)} ready` : ""}${p.version.includes("-build-") ? ` · ${branchVersionDetail(p.version)}` : ""}`} aria-label={`${branchVersionLabel(p.version)}${p.readyVersion ? ` · ${branchVersionDetail(p.readyVersion)} ready` : ""}`} data-testid="sb-version" {...item("version")}>
           <StatusGlyph kind="update" />
         </button>
       ) : null}

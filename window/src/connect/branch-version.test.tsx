@@ -24,7 +24,7 @@ it("status bar shows Branch desktop version, not engine version", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false })));
   await act(async () => root.render(<Bar />));
   const button = host.querySelector<HTMLElement>('[data-testid="sb-version"]');
-  expect(button?.textContent).toBe("Branch 0.4.4");
+  expect(button?.getAttribute("aria-label")).toBe("Branch 0.4.4");
   expect(button?.title).toContain("0.4.4 · build a300a48d");
   expect(host.textContent).not.toContain("2026.9");
 });
@@ -44,5 +44,5 @@ it("Updates page uses the Branch desktop component version", async () => {
 it("browser-only status uses the shipped window stamp", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, text: async () => "0.4.4-build-a300a48dba2f\n" })));
   await act(async () => root.render(<Bar />));
-  expect(host.querySelector('[data-testid="sb-version"]')?.textContent).toBe("Branch 0.4.4");
+  expect(host.querySelector('[data-testid="sb-version"]')?.getAttribute("aria-label")).toBe("Branch 0.4.4");
 });
