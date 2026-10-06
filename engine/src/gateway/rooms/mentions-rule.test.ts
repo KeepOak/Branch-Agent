@@ -12,6 +12,13 @@ const mocks = vi.hoisted(() => ({
   roster: vi.fn(),
   authorize: vi.fn(),
   persist: vi.fn(),
+  outsideList: vi.fn(),
+  outsideRefusal: vi.fn(),
+}));
+vi.mock("../contacts/outside-agents.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../contacts/outside-agents.js")>()),
+  listOutsideAgents: mocks.outsideList,
+  outsideAgentRefusal: mocks.outsideRefusal,
 }));
 vi.mock("../../config/sessions/session-accessor.js", () => ({
   persistSessionTranscriptTurn: mocks.persist,
@@ -61,6 +68,8 @@ describe("rooms.send mention activation", () => {
       ],
     });
     mocks.authorize.mockReturnValue(undefined);
+    mocks.outsideList.mockReturnValue([]);
+    mocks.outsideRefusal.mockReturnValue(undefined);
     mocks.load.mockImplementation(() => ({
       entry: created ? { sessionId: "room-session" } : undefined,
       storePath: "room-store",
@@ -102,6 +111,7 @@ describe("rooms.send mention activation", () => {
     const target = await room("mentions");
     const result = await call("rooms.send", { roomId: target.roomId, message: "Status update" });
     expect(result).toMatchObject({ event: { kind: "message" }, runStarted: false });
+    expect(result.sessionKey).toBe(`agent:lead:room:${target.roomId}`);
     expect(mocks.create.mock.calls[0]![0].params).toEqual({
       key: `agent:lead:room:${target.roomId}`,
       agentId: "lead",
@@ -138,7 +148,7 @@ describe("rooms.send mention activation", () => {
     ).toEqual(["message", "turn.started"]);
   });
 
-  it.each(["TK, please review", "lead, please review", "@Scout, please review"])(
+  it.each(["TK, please review", "@lead, please review", "@Scout, please review"])(
     "starts the lead when the post names an enabled member: %s",
     async (message) => {
       const target = await room("mentions");
@@ -146,6 +156,42 @@ describe("rooms.send mention activation", () => {
       expect(mocks.persist).not.toHaveBeenCalled();
     },
   );
+
+  it("does not treat a plain mention of the lead's id as an activation", async () => {
+    mocks.roster.mockResolvedValue({ agents: [{ id: "main", name: "TK", kind: "agent" }] });
+    const target = (
+      await call("rooms.create", {
+        name: "Builders",
+        rule: "mentions",
+        members: [{ kind: "trunk", id: "main", role: "lead" }],
+      })
+    ).room;
+    const result = await call("rooms.send", { roomId: target.roomId, message: "the main issue" });
+    expect(result.runStarted).toBe(false);
+    expect(result.sessionKey).toBe(`agent:main:room:${target.roomId}`);
+  });
+
+  it("does not activate on an outside sender's own name", async () => {
+    const outside = { id: "claude-code", name: "Claude Code", where: "LEGION" };
+    mocks.outsideList.mockReturnValue([outside]);
+    const target = (
+      await call("rooms.create", {
+        name: "Builders",
+        rule: "mentions",
+        members: [
+          { kind: "trunk", id: "lead", role: "lead" },
+          { kind: "a2a", id: outside.id },
+        ],
+      })
+    ).room;
+    const result = await call("rooms.send", {
+      roomId: target.roomId,
+      message: "Claude Code has an update",
+      outsideAgent: outside,
+    });
+    expect(result.runStarted).toBe(false);
+    expect(mocks.persist).toHaveBeenCalledOnce();
+  });
 
   it("keeps the lead rule's turn-per-message behavior", async () => {
     const target = await room("lead");

@@ -76,6 +76,7 @@ function mentionsEnabledMember(
   message: string,
   room: Room,
   roster: Awaited<ReturnType<typeof listGatewayAgentsBasic>>,
+  outside?: OutsideSender,
 ) {
   // Follow OpenClaw's derived-name boundary policy in auto-reply/reply/mentions.ts:
   // a plain name or @name activates, but a name inside another word does not.
@@ -83,24 +84,18 @@ function mentionsEnabledMember(
   const outsideNames = new Map(listOutsideAgents().map((agent) => [agent.id, agent.name]));
   return room.members.some((member) => {
     if (!member.enabled) return false;
-    const candidates = [
-      member.id,
+    const name =
       member.kind === "trunk"
         ? names.get(member.id)
-        : member.kind === "a2a"
+        : member.kind === "a2a" && member.id !== outside?.id
           ? outsideNames.get(member.id)
-          : undefined,
-    ];
-    return candidates.some(
-      (candidate) =>
-        candidate &&
-        matchesMentionPatterns(message, [
-          new RegExp(
-            `(?:^|[^\\p{L}\\p{N}\\p{Pc}])@?${escapeRegExp(candidate)}(?![\\p{L}\\p{N}\\p{Pc}])`,
-            "iu",
-          ),
-        ]),
-    );
+          : undefined;
+    const boundary = "(?:^|[^\\p{L}\\p{N}\\p{Pc}])";
+    const ending = "(?![\\p{L}\\p{N}\\p{Pc}])";
+    return matchesMentionPatterns(message, [
+      new RegExp(`${boundary}@${escapeRegExp(member.id)}${ending}`, "iu"),
+      ...(name ? [new RegExp(`${boundary}@?${escapeRegExp(name)}${ending}`, "iu")] : []),
+    ]);
   });
 }
 
@@ -163,6 +158,7 @@ async function appendRoomPostWithoutTurn(
   );
   if (result.rejectedReason || result.messages.length !== 1)
     throw new Error(result.rejectedReason ?? "Room post was not written to the conversation");
+  return sessionKey;
 }
 
 /** Run one handler as an internal step of rooms.send and return what it answered. */
@@ -329,11 +325,16 @@ export const roomHandlers: GatewayRequestHandlers = {
       );
       if (room.rule === "mentions") {
         const roster = await listGatewayAgentsBasic(options.context.getRuntimeConfig());
-        if (!mentionsEnabledMember(options.params.message, room, roster)) {
+        if (!mentionsEnabledMember(options.params.message, room, roster, outside)) {
           try {
-            await appendRoomPostWithoutTurn(options, room, options.params.message, outside);
+            const sessionKey = await appendRoomPostWithoutTurn(
+              options,
+              room,
+              options.params.message,
+              outside,
+            );
             event(options, posted);
-            options.respond(true, { event: posted, runStarted: false });
+            options.respond(true, { event: posted, sessionKey, runStarted: false });
           } catch (error) {
             event(options, posted);
             failure(options.respond, error);
