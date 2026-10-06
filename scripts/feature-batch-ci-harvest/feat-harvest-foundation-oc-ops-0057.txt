@@ -13,7 +13,10 @@ engine:src/cli/completion-cli.bash.test.ts
 engine:src/cli/completion-cli.test.ts
 engine:src/cli/dns-cli.test.ts
 engine:src/cli/update-cli/cleanup.behaviour.test.ts
+engine:src/commands/cleanup-utils.test.ts
 engine:src/commands/doctor-session-sqlite-recovery-inventory.test.ts
+engine:src/commands/reset.sessions.test.ts
+engine:src/commands/reset.test.ts
 engine:src/fleet/backup.runtime.test.ts
 engine:src/fleet/containers.runtime.test.ts
 engine:src/fleet/service.runtime.test.ts
