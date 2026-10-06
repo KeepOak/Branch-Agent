@@ -129,8 +129,8 @@ describe("rooms.send mention activation", () => {
       (await call("rooms.log", { roomId: target.roomId })).events.map(
         (event: { kind: string }) => event.kind,
       ),
-    ).toEqual(["message"]);
-    expect(broadcast.mock.calls.map(([name]) => name)).toEqual(["rooms.changed", "rooms.event"]);
+    ).toEqual(["created", "message"]);
+    expect(broadcast.mock.calls.map(([name]) => name)).toEqual(["rooms.changed", "rooms.event", "rooms.event"]);
   });
 
   it("starts the lead for a case-insensitive name mention", async () => {
@@ -145,7 +145,7 @@ describe("rooms.send mention activation", () => {
       (await call("rooms.log", { roomId: target.roomId })).events.map(
         (event: { kind: string }) => event.kind,
       ),
-    ).toEqual(["message", "turn.started"]);
+    ).toEqual(["created", "message", "turn.started"]);
   });
 
   it.each(["TK, please review", "@lead, please review", "@Scout, please review"])(

@@ -126,7 +126,6 @@ export const windowTests = [
   'src/places/trunk/trunk.test.tsx',
   'src/setup/FirstTrunk.test.tsx',
   'src/setup/setup.test.tsx',
-  'src/shell/PetReaction.test.tsx',
   'src/shell/contact-row-routing.test.tsx',
   'src/shell/contact-topics.test.ts',
   'src/shell/contacts-model.test.ts',

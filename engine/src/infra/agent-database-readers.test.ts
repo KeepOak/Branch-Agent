@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { createRetainedOperation } from "@branch/worker-runtime/lifecycle";
 import { describe, expect, it, vi } from "vitest";
@@ -17,6 +19,63 @@ const agentDir = path.resolve("/state/agents/alpha/agent");
 const databasePath = path.join(agentDir, "branch-agent.sqlite");
 
 describe("agent database reader requests", () => {
+  it.skipIf(process.platform !== "win32")(
+    "matches physical database aliases and fences both names after deletion",
+    async () => {
+      const base = await fs.mkdtemp(path.join(os.tmpdir(), "branch-agent-reader-alias-"));
+      try {
+        const physical = path.join(base, "physical");
+        await fs.mkdir(physical);
+        const physicalDatabase = path.join(physical, "branch-agent.sqlite");
+        const aliasDatabase = path.join(base.toUpperCase(), "PHYSICAL", "BRANCH-AGENT.SQLITE");
+        await fs.writeFile(physicalDatabase, "");
+
+        expect(
+          matchesAgentDatabaseReadCandidatePath(
+            { path: physicalDatabase },
+            aliasDatabase,
+          ),
+        ).toBe(true);
+        await applyAgentDatabaseReaderRequest({
+          kind: "close",
+          candidates: [{ path: physicalDatabase }],
+          deleted: true,
+          agentId: "alias-test",
+        });
+        expect(isDeletedAgentDatabasePath(aliasDatabase)).toBe(true);
+        await reviveAgentDatabases(["alias-test"]);
+        expect(isDeletedAgentDatabasePath(aliasDatabase)).toBe(false);
+      } finally {
+        await fs.rm(base, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform !== "win32")(
+    "does not match a reader through a retargeted junction",
+    async () => {
+      const base = await fs.mkdtemp(path.join(os.tmpdir(), "branch-agent-reader-retarget-"));
+      try {
+        const original = path.join(base, "original");
+        const survivor = path.join(base, "survivor");
+        const alias = path.join(base, "alias");
+        await fs.mkdir(original);
+        await fs.mkdir(survivor);
+        await fs.symlink(original, alias, "junction");
+        const captured = { path: path.join(alias, "branch-agent.sqlite") };
+        const survivorDatabase = path.join(survivor, "branch-agent.sqlite");
+        await fs.writeFile(path.join(original, "branch-agent.sqlite"), "");
+        await fs.writeFile(survivorDatabase, "");
+
+        await fs.rename(alias, path.join(base, "old-alias"));
+        await fs.symlink(survivor, alias, "junction");
+        expect(matchesAgentDatabaseReadCandidatePath(captured, survivorDatabase)).toBe(false);
+      } finally {
+        await fs.rm(base, { recursive: true, force: true });
+      }
+    },
+  );
+
   it.each([
     { scope: undefined, target: "branch-agent.sqlite", matches: true },
     { scope: undefined, target: "branch-agent.memory.sqlite", matches: false },
