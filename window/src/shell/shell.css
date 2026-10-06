@@ -296,6 +296,17 @@
   gap: 12px;
   padding: 24px;
 }
+.connect-progress {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--line-2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: connect-turn 1.4s linear infinite;
+}
+@keyframes connect-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .connect-progress { animation: none; } }
+.connect-details { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
 .connect h1 {
   font-size: 17px;
   font-weight: 600;

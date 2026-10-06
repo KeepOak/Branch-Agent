@@ -9,6 +9,8 @@ import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from 
 import { Composer, VOICE_OFF } from "../composer/Composer";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
+import { useBranchVersion } from "../connect/branch-version";
+import { saveTargetName } from "../setup/pre-connect-state";
 import { Thread } from "../thread/Thread";
 import { stepLabel } from "../thread/format";
 import { PlaceView } from "../places-nav/PlaceView";
@@ -331,8 +333,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles() };
   }), [session]);
   const { s, ready, lists, list, contactRows, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  const branchVersion = useBranchVersion(url);
+  useEffect(() => {
+    if (ready && machine?.name) saveTargetName(url, machine.name);
+  }, [ready, machine?.name, url]);
   const people = useListPeople(session, ready);
-  const update = useUpdate(session, ready, machine?.version ?? "");
+  const update = useUpdate(session, ready, branchVersion);
   const projects = useProjects(session, ready);
   const [newProject, setNewProject] = useState(false);
   const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null);
@@ -1309,10 +1315,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         <StatusBar
           connection={ready ? "connected" : s.status.phase === "connecting" ? "connecting" : "offline"}
           gateway={!ready ? (s.status.phase === "connecting" ? "checking" : "offline") : gateway.health?.ok ? "on" : gateway.error || gateway.health ? "offline" : "checking"}
-          machineName={machine?.name ?? url.replace(/^wss?:\/\//, "")}
+          machineName={machine?.name || "this computer"}
           roomUsed={route.kind === "chat" ? roomUsed(openRow) : null}
           running={running}
-          version={machine?.version ?? ""}
+          version={branchVersion}
           usage={shown.usage ? ringReading(limits) : null}
           gatewayShown={shown.gateway}
           open={overlay?.kind === "status" ? overlay.item : overlay?.kind === "menu" && overlay.id === "machine-sb" ? "connection" : null}
@@ -1335,7 +1341,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             limits,
             gateway,
             update,
-            version: machine?.version ?? "",
+            version: branchVersion,
             openRow,
             working: lists.rows.filter((r) => r.working).map((r) => ({ key: r.key, title: trunkName(r.agentId), line: r.isMain ? "Working" : r.title || "New conversation" })),
             openSettings,
@@ -1384,7 +1390,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onReplay={() => firstRun.open(0)}
           onAddPerson={() => openSettings("people")}
           onLock={() => openSettings("permissions")}
-          updateTo={update?.latest && update.latest !== machine?.version && !remindedToday(update.latest) ? update.latest : null}
+          updateTo={update?.latest && update.latest !== branchVersion && !remindedToday(update.latest) ? update.latest : null}
           onUpdate={() => {
             const r = document.querySelector("[data-testid=sb-version]")?.getBoundingClientRect();
             const above = r && r.width ? { left: r.left, right: r.right, top: r.top, align: "right" as const } : { left: 8, right: 8, top: innerHeight - 40, align: "left" as const };
@@ -1499,7 +1505,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       {guide === "tour" ? <Walkthrough defaultName={defaultName} onClose={() => setGuide(null)} /> : null}
       {guide === "news" || guide === "news-ready" ? (
         <WhatsNew
-          version={machine?.version ?? ""}
+          version={branchVersion}
           update={update}
           startOnReady={guide === "news-ready"}
           installed={installedRows({ setup: () => firstRun.open(0), shortcuts: () => setOverlay({ kind: "shortcuts" }), palette: () => setOverlay({ kind: "palette" }), settings: openSettings })}
@@ -1511,7 +1517,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       {(firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded ? (
         <SetupFlow
           engine={session.engine}
-          version={machine?.version ?? ""}
+          version={branchVersion}
           trunkNames={trunks.list.map((t) => t.name)}
           defaultAgentId={trunks.defaultId}
           defaultName={defaultName}

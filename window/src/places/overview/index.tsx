@@ -41,7 +41,7 @@ function updateRow(value: unknown): { value: string; dot?: "good" | "warn" | "ba
   if (value === undefined) return null;
   const v = record(value), available = record(v.updateAvailable), active = record(v.activeRun), last = record(v.lastRun);
   if (Object.keys(active).length) return { value: "Updating", dot: "next" };
-  if (text(available.latestVersion)) return { value: `${text(available.latestVersion)} ready`, dot: "next" };
+  if (text(available.latestVersion)) return { value: "Branch update ready", dot: "next" };
   if (last.status === "failed" || last.status === "error") return { value: "Last update failed", dot: "bad" };
   return { value: "No update waiting", dot: "good" };
 }
