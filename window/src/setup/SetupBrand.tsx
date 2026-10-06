@@ -5,6 +5,7 @@ import point from "./art/branch-point.webp";
 import sleep from "./art/branch-sleep.webp";
 import think from "./art/branch-think.webp";
 import wave from "./art/branch-wave.webp";
+import { KeeperMark } from "../brand/KeeperMark";
 import work from "./art/branch-work.webp";
 import yay from "./art/branch-yay.webp";
 
@@ -14,7 +15,7 @@ const POSES: Record<number, string> = { 1: point, 2: think, 4: work, 5: mail, 6:
 export function SetupBrand() {
   return (
     <span className="ob-brand">
-      <img src="/branch-mark.png" alt="" width={26} height={26} />
+      <KeeperMark size={26} />
       <span>Set up Branch</span>
     </span>
   );
@@ -23,7 +24,7 @@ export function SetupBrand() {
 export function WelcomeHero() {
   return (
     <div className="ob-stage11">
-      <img className="pose11 ob-art11" src={wave} alt="" draggable={false} />
+      <KeeperMark size={180} />
     </div>
   );
 }

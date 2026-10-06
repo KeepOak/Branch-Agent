@@ -40,6 +40,10 @@ export interface DesktopJournal {
 
 const journalFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "desktop-update-pending.json");
 const versionFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "desktop-update-version.txt");
+// The first Keeper release reaches existing installs as app.asar. That new app then installs
+// its whole runtime from the same verified release so the executable and OS icon also change.
+const ICON_REVISION = "keeper-v1";
+const iconFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "desktop-icon-version.txt");
 const rejectedFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "desktop-update-rejected.json");
 const CONFIRM_TIMEOUT_MS = 90_000;
 /**
@@ -79,10 +83,10 @@ async function rejected(cfg: DesktopConfig, version: string, sha256: string): Pr
 }
 
 /** The archive to fetch: app.asar alone, or the whole packaged app when the release moves to another Electron. */
-function choose(release: ComponentRelease, install: DesktopInstall): { asset: DesktopAsset; kind: DesktopJournal["kind"] } | undefined {
+function choose(release: ComponentRelease, install: DesktopInstall, iconUpgrade = false): { asset: DesktopAsset; kind: DesktopJournal["kind"] } | undefined {
   const desktop = release.components.desktop;
   if (!desktop) return undefined;
-  if (desktop.electronVersion === install.electronVersion) return { asset: desktop, kind: "asar" };
+  if (desktop.electronVersion === install.electronVersion && !iconUpgrade) return { asset: desktop, kind: "asar" };
   const runtime = release.components.desktopRuntime;
   if (!runtime || runtime.electronVersion !== desktop.electronVersion) {
     throw new Error(`Release ${release.version} moves the desktop to Electron ${desktop.electronVersion}; install the new desktop package from the release page`);
@@ -114,10 +118,13 @@ async function assertFile(file: string): Promise<void> {
 
 /** Downloads, verifies and extracts the release's desktop component; nothing in the running app changes. */
 export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, install?: DesktopInstall): Promise<boolean> {
-  if (!install || await readOrEmpty(versionFile(cfg)) === release.version || await readDesktopJournal(cfg)) return false;
-  const choice = choose(release, install);
+  if (!install || await readDesktopJournal(cfg)) return false;
+  const iconUpgrade = process.platform === "win32" && Boolean(release.components.desktopRuntime)
+    && await readOrEmpty(iconFile(cfg)) !== ICON_REVISION;
+  if (!iconUpgrade && await readOrEmpty(versionFile(cfg)) === release.version) return false;
+  const choice = choose(release, install, iconUpgrade);
   if (!choice || await rejected(cfg, release.version, choice.asset.sha256)) return false;
-  if (await installedMatches(choice.asset, install)) {
+  if (!iconUpgrade && await installedMatches(choice.asset, install)) {
     await replaceFile(versionFile(cfg), `${release.version}
 `);
     return false;
@@ -159,6 +166,7 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
   const work = dirname(journal.kind === "asar" ? dirname(journal.staged) : journal.staged);
   if (await stagedMatchesInstalled(journal, install)) {
     // Nothing would change: no swap, no restart; the installed copy already is this release's desktop.
+    if (journal.kind === "runtime" && process.platform === "win32") await replaceFile(iconFile(cfg), ICON_REVISION);
     await replaceFile(versionFile(cfg), `${journal.version}
 `);
     await rm(journalFile(cfg), { force: true });
@@ -187,6 +195,7 @@ export async function confirmDesktopUpdate(cfg: DesktopConfig): Promise<string |
   const journal = await readDesktopJournal(cfg);
   if (!journal || journal.phase === "staged") return null;
   await replaceFile(versionFile(cfg), `${journal.version}\n`);
+  if (journal.kind === "runtime" && process.platform === "win32") await replaceFile(iconFile(cfg), ICON_REVISION);
   await rm(journalFile(cfg), { force: true });
   return journal.version;
 }
