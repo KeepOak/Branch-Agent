@@ -15,6 +15,8 @@ engine:src/commands/doctor-session-sqlite-recovery-inventory.test.ts
 engine:src/gateway/portals/portal-service.ingress.test.ts
 engine:src/gateway/portals/portal-service.test.ts
 engine:src/gateway/portals/portal-service.tls.test.ts
+engine:src/gateway/server-tls-renewal.test.ts
+engine:src/gateway/tls-fingerprint.test.ts
 engine:src/gateway/worker-environments/device-placement-selector.test.ts
 engine:src/gateway/worker-environments/placement-dispatch.test.ts
 engine:test/scripts/k8s-deploy.test.ts
