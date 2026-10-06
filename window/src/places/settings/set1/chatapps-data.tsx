@@ -7,7 +7,7 @@ import { list, record, text, visible, type RecordValue } from "../adapter";
 export type Acct = {
   accountId: string; name?: string; enabled?: boolean; configured?: boolean; linked?: boolean; running?: boolean; connected?: boolean;
   lastError?: string | null; healthState?: string; lastStartAt?: number | null; lastInboundAt?: number | null; lastProbeAt?: number | null;
-  lastTransportActivityAt?: number | null; reconnectAttempts?: number; mode?: string; tokenSource?: string; botTokenSource?: string; credentialSource?: string | null; allowFrom?: string[];
+  lastTransportActivityAt?: number | null; reconnectAttempts?: number; needsAttention?: boolean; retryingSince?: number; mode?: string; tokenSource?: string; botTokenSource?: string; credentialSource?: string | null; allowFrom?: string[];
 };
 export type Issue = { channel: string; accountId: string; kind: string; message: string; fix?: string };
 export type ChannelsStatus = {
@@ -61,6 +61,7 @@ export function ago(ms: number | null | undefined, now = Date.now()): string {
 /** One account's tone: an issue or error first, then the engine's health state, then running. */
 export function acctTone(a: Acct, issue?: Issue): Tone {
   if (a.enabled === false) return "bad";
+  if (a.needsAttention) return "bad";
   if (issue || (a.lastError && String(a.lastError).trim())) return "bad";
   if (a.healthState && BAD_STATES.has(a.healthState)) return "bad";
   if (a.healthState && GRACE_STATES.has(a.healthState)) return "work";
@@ -71,6 +72,7 @@ export function acctTone(a: Acct, issue?: Issue): Tone {
 /** What an account is doing, in a line: its issue or error, else its last update. */
 export function acctLine(a: Acct, name: string, issue?: Issue, now = Date.now()): string {
   if (a.enabled === false) return `Paused by you. Messages wait in ${name} and get no answer until you start it.`;
+  if (a.needsAttention) return `${name} needs attention. Reconnect attempts continue automatically.${a.lastError ? ` ${visible(a.lastError)}` : ""}`;
   const problem = issue?.message ?? (a.lastError ? String(a.lastError) : "");
   if (problem.trim()) return visible(problem);
   if (a.healthState && GRACE_STATES.has(a.healthState)) return "Connecting…";
@@ -88,7 +90,7 @@ export function appOf(s: ChannelsStatus | undefined, c: CatalogueApp, now = Date
   const issue = (s?.statusIssues ?? []).find((i) => i.channel === c.id);
   const tone = acctTone(main, issue);
   const running = accounts.some((a) => a.running === true || a.connected === true);
-  return { ...c, accounts, on: isOn(s, c.id), running, paused: main.enabled === false, tone, word: PILL_WORDS[tone], sub: acctLine(main, c.name, issue, now) };
+  return { ...c, accounts, on: isOn(s, c.id), running, paused: main.enabled === false, tone, word: main.needsAttention ? "Needs attention" : PILL_WORDS[tone], sub: acctLine(main, c.name, issue, now) };
 }
 
 export function connectedApps(s: ChannelsStatus | undefined): App[] {

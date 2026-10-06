@@ -88,6 +88,7 @@ const SESSIONS_PATCH_WRITE_SCOPE_MUTATIONS: ReadonlySet<string> = new Set([
   "icon",
   "color",
   "category",
+  "projectId",
   "boardFace",
   "boardPresentation",
   "pinned",

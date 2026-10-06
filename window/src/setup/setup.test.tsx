@@ -64,6 +64,20 @@ function engine(answers: Record<string, unknown>) {
 const params = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter((c) => c[0] === method).map((c) => c[1] as Record<string, unknown>);
 
 describe("setup flow", () => {
+  it("Models opens the shared account catalogue with one Claude choice and no setup-token menu", async () => {
+    const { engine: e, request } = engine({
+      "branch.setup.detect": { secretLogins: [{ id: "setup-token", brand: "anthropic", label: "Claude setup-token", hint: "Run a command" }], authOptions: [{ id: "claude-browser", label: "Claude sign-in" }], manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Claude setup-token" }] },
+      "models.authStatus": { providers: [], providerCapabilities: [{ provider: "anthropic", loginOptions: [{ id: "claude-browser", kind: "oauth", groupLabel: "Claude", label: "Sign in with Claude" }] }] },
+    });
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={2} onClose={() => {}} onLocalModel={() => {}} />);
+    await act(async () => byText(host, "Add an account").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const dialog = document.querySelector('[data-testid="add-account"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.querySelectorAll(".prov")).toHaveLength(1);
+    expect(dialog?.textContent).not.toContain("Run a command");
+    expect(params(request, "models.authStatus")).toEqual([{ agentId: "main" }]);
+  });
   it("Welcome holds Start until the promise is ticked and has no Skip", async () => {
     const { engine: e } = engine({});
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
@@ -217,7 +231,8 @@ describe("pre-connect screens", () => {
   it("say what went wrong in plain words, with the raw error folded", async () => {
     sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
     const host = await show(<PreConnect local="ws://127.0.0.1:18789" address="ws://127.0.0.1:18789" state={{ kind: "failed", code: "AUTH_TOKEN_MISSING", message: "token missing" }} busy={false} onConnect={() => {}} onRetry={() => {}} />);
-    expect(host.textContent).toContain("127.0.0.1:18789 needs its key");
+    expect(host.textContent).toContain("This computer needs its key");
+    expect(host.querySelector("details")?.textContent).toContain("127.0.0.1:18789");
     expect(host.textContent).not.toContain("VITE_GATEWAY_URL");
     expect(host.querySelector("details")?.textContent).toContain("token missing");
   });

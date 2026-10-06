@@ -38,6 +38,8 @@ export const OPERATOR_SCOPES = [
 export const CLIENT_CAPS = [GATEWAY_CLIENT_CAPS.TOOL_EVENTS, GATEWAY_CLIENT_CAPS.EXEC_APPROVALS];
 const CONNECT_FAILED_CLOSE_CODE = 4008;
 const PAIRING_RETRY_MS = 2000;
+/** The engine turns connects away while it starts; it says so with this reason. */
+const STARTING_RETRY_MS = 1000;
 
 export type GatewayStatus =
   | { phase: "connecting" }
@@ -74,6 +76,11 @@ function clientInfo(): ConnectParams["client"] {
     platform: navigator.platform || "web",
     mode: GATEWAY_CLIENT_MODES.WEBCHAT,
   };
+}
+
+/** True when the engine turned the connect away only because it is still starting. */
+export function isEngineStarting(details: unknown): boolean {
+  return typeof details === "object" && details !== null && (details as { reason?: unknown }).reason === "startup-sidecars";
 }
 
 function isPairingRequired(details: unknown): boolean {
@@ -115,6 +122,7 @@ export class BranchGateway {
         closeCode: CONNECT_FAILED_CLOSE_CODE,
         closeReason: "connect failed",
         ...(isPairingRequired(error.details) ? { reconnectDelayMs: PAIRING_RETRY_MS } : {}),
+        ...(isEngineStarting(error.details) ? { reconnectDelayMs: STARTING_RETRY_MS } : {}),
       }),
       resolveClose: (context) => this.resolveClose(context),
       onClose: (context, decision) => {
@@ -123,7 +131,9 @@ export class BranchGateway {
       },
       onEvent: (event) => opts.onEvent(event),
       handshake: { mode: "require-challenge", timeoutMs: 10_000 },
-      reconnect: { initialMs: 800, multiplier: 1.7, maxMs: 15_000 },
+      // The engine is local: while it restarts or updates, look again every few seconds at most,
+      // so the window is back within moments of the engine accepting connections.
+      reconnect: { initialMs: 800, multiplier: 1.7, maxMs: 3_000 },
     });
   }
 
@@ -165,6 +175,9 @@ export class BranchGateway {
     const details = (error as { details?: unknown } | undefined)?.details;
     if (isPairingRequired(details)) {
       return { retry: true, notify: true, reconnectDelayMs: PAIRING_RETRY_MS, pendingError: error };
+    }
+    if (isEngineStarting(details)) {
+      return { retry: true, notify: true, reconnectDelayMs: STARTING_RETRY_MS, pendingError: error };
     }
     return { retry: !shouldPauseGatewayReconnect({ details }), notify: true, pendingError: error };
   }

@@ -13,6 +13,7 @@ export type GatewayRunOpts = {
   tailscaleResetOnExit?: boolean;
   allowUnconfigured?: boolean;
   force?: boolean;
+  replace?: boolean;
   verbose?: boolean;
   cliBackendLogs?: boolean;
   /** @deprecated Use cliBackendLogs. */
@@ -53,6 +54,7 @@ const GATEWAY_RUN_BOOLEAN_KEYS = [
   "taskSupervisor",
   "updateCanary",
   "force",
+  "replace",
   "verbose",
   "cliBackendLogs",
   "claudeCliLogs",

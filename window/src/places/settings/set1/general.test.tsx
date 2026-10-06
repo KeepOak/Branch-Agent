@@ -138,7 +138,7 @@ describe("Settings › General", () => {
     expect(host.querySelector(".status")?.textContent ?? host.textContent).toContain("Branch runs while it’s open");
   });
 
-  it("in the Branch app on Windows, closing the window keeps it working in the tray", async () => {
+  it("in the Branch desktop app, closing the window keeps it working in the tray", async () => {
     const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
     Object.defineProperty(navigator, "platform", { value: "Win32", configurable: true });
     let state = { keepWorking: true, keepAwake: false, trayUsage: false, startWithWindows: false, branchOnPath: false };
@@ -165,6 +165,24 @@ describe("Settings › General", () => {
       delete (navigator as { platform?: string }).platform;
       if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
     }
+  });
+
+  it("shows the resident gateway on macOS and Linux desktop apps", async () => {
+    const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+    for (const name of ["MacIntel", "Linux x86_64"]) {
+      Object.defineProperty(navigator, "platform", { value: name, configurable: true });
+      (window as { branchDesktop?: unknown }).branchDesktop = {
+        controls: { get: async () => ({ keepWorking: true }), set: vi.fn() },
+      };
+      try {
+        const { engine } = engineOf();
+        await render(engine, 0);
+        expect(host.textContent).toContain("Branch waits in the tray");
+      } finally {
+        delete (window as { branchDesktop?: unknown }).branchDesktop;
+      }
+    }
+    if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
   });
 
   it("When you send while it works has its pin while it follows the engine's default", async () => {

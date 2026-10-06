@@ -154,19 +154,17 @@ export function usePendingApprovals(session: SaplingSession, ready: boolean): Ma
   }, [pending]);
 }
 
-export type MachineInfo = { name: string; version: string };
+export type MachineInfo = { name: string };
 
-/** This computer's name (system.info machineName) and the engine's version (hello.server.version). */
+/** This computer's name (system.info machineName). */
 export function useMachine(session: SaplingSession, ready: boolean): MachineInfo | null {
   const [info, setInfo] = useState<MachineInfo | null>(null);
   useEffect(() => {
     if (!ready) {
       return;
     }
-    const s = session.getSnapshot().status;
-    const version = s.phase === "connected" ? s.hello.server.version : "";
     session.request("system.info", {}).then(
-      (r) => setInfo({ name: str(rec(r).machineName) || str(rec(r).hostname), version }),
+      (r) => setInfo({ name: str(rec(r).machineName) || str(rec(r).hostname) }),
       (error: unknown) => console.warn("system.info failed", error),
     );
   }, [session, ready]);

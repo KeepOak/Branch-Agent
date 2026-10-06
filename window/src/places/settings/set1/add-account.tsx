@@ -28,10 +28,10 @@ const KIND_SUB: Record<Kind, string> = { plan: "your plan", key: "a key", local:
 function addSecretLogins(out: Service[], manual: RecordValue[], count: (id: string, key: boolean) => number): void {
   for (const o of manual.filter((x) => !/api-?key/i.test(text(x.id)))) {
     const brand = text(o.brandId ?? o.id);
-    const login = { ...o, kind: "setup-secret", featured: false };
+    const login: RecordValue = { ...o, kind: "setup-secret", featured: false };
     const plan = out.find((s) => s.kind === "plan" && s.brand === brand);
     if (plan) {
-      if (!plan.logins.some((l) => l.kind !== "setup-secret")) plan.logins.push(login);
+      if (!plan.logins.some((l) => l.kind === "setup-secret" && l.id === login.id)) plan.logins.push(login);
       continue;
     }
     out.push({ id: `plan:${brand}`, brand, name: serviceName(brand, o.groupLabel ?? o.label), kind: "plan", signedIn: count(brand, false), logins: [login] });
@@ -60,12 +60,17 @@ type Props = { engine: WindowEngine; start: AddStart; caps: RecordValue[]; provi
 export function AddAccountDialog({ engine, start, caps, providers, agent, onClose }: Props) {
   const detect = useResource<RecordValue>(engine, "branch.setup.detect", agent);
   const services = useMemo(() => servicesOf(caps, providers, detect.data), [caps, providers, detect.data]);
-  const first = start.provider ? services.find((s) => s.brand === start.provider && s.kind === "plan") ?? services.find((s) => s.brand === start.provider) : undefined;
+  const first = start.provider && !detect.loading ? services.find((s) => s.brand === start.provider && s.kind === "plan") ?? services.find((s) => s.brand === start.provider) : undefined;
   const [step, setStep] = useState<Step>(first ? { n: 2, svc: first } : { n: 1 });
+  useEffect(() => {
+    if (!start.provider || detect.loading) return;
+    const preferred = services.find((service) => service.brand === start.provider && service.kind === "plan") ?? services.find((service) => service.brand === start.provider);
+    if (preferred) setStep((current) => current.n === 1 || (current.n === 2 && !("run" in current) && current.svc.brand === start.provider && current.svc.kind === "key" && preferred.kind === "plan") ? { n: 2, svc: preferred } : current);
+  }, [detect.loading, services, start.provider]);
   const [added, setAdded] = useState(false);
   const ids = providers.flatMap((p) => p.profiles.map((a) => a.profileId));
   const signedIn = () => { setAdded(true); if (step.n === 2) setStep({ n: 3, svc: step.svc, before: ids }); };
-  const title = step.n === 1 ? "Add an account" : `Add a ${step.svc.name} account`;
+  const title = step.n === 1 ? "Add an account" : step.n === 2 && step.svc.brand === "anthropic" && step.svc.kind === "plan" ? "Sign in with Claude" : `Add a ${step.svc.name} account`;
   return (
     <Dialog title={title} wide={step.n === 1} onClose={() => onClose(added)} testid="add-account" footer={<StepFoot step={step} onBack={() => setStep({ n: 1 })} onClose={() => onClose(added)} />}>
       <div className="wiz-dots" aria-hidden="true">{[1, 2, 3].map((i) => <i key={i} className={i <= step.n ? "wz" : ""} />)}</div>
@@ -153,16 +158,17 @@ function SignIn({ engine, svc, agent, onRun, onKey }: SignInProps) {
   if (svc.kind === "key") return <KeyEntry engine={engine} svc={svc} agent={agent} onSaved={onKey} />;
   if (svc.kind === "local") return <Lead text={`Branch sets up ${svc.name} on this computer. It says what it will install before it does anything.`} action="Set it up" onGo={() => onRun({ method: "branch.setup.prepare.start", params: { authChoice: svc.choice, ...agent } })} />;
   if (svc.kind === "custom") return <Lead text={`Branch asks for the address and sign-in of ${svc.name}.`} action="Start" onGo={() => onRun({ method: "branch.setup.auth.start", params: { authChoice: svc.choice, ...agent } })} />;
-  const [main, ...rest] = [...svc.logins].sort((a, b) => Number(b.featured === true) - Number(a.featured === true));
+  const [main, ...rest] = [...svc.logins].sort((a, b) => Number(b.kind === "oauth") - Number(a.kind === "oauth") || Number(b.featured === true) - Number(a.featured === true));
   const go = (o: RecordValue) => onRun({ method: "models.authLogin", params: { authChoice: text(o.id), ...agent } });
   if (main?.kind === "setup-secret") return <SecretSignIn engine={engine} svc={svc} login={main} agent={agent} onRun={onRun} />;
   return (
     <>
       <div className="aa-card">
         <p>Branch opens {svc.name}’s own sign-in page in your browser. Sign in with the account you want to add, then come back here.</p>
-        <button type="button" className="btn pri sm" onClick={() => go(main)}>Open the sign-in page</button>
-        {rest.length ? <div className="acts">{rest.map((o) => <button key={text(o.id)} type="button" className="btn sm" title={o.hint ? visible(o.hint) : undefined} onClick={() => go(o)}>{o.kind === "device-code" ? "Sign in with a code instead" : visible(o.label)}</button>)}</div> : null}
+        <button type="button" className="btn pri sm" onClick={() => go(main)}>{svc.brand === "anthropic" ? "Sign in with Claude" : "Open the sign-in page"}</button>
+        {rest.filter((o) => o.kind !== "setup-secret").length ? <div className="acts">{rest.filter((o) => o.kind !== "setup-secret").map((o) => <button key={text(o.id)} type="button" className="btn sm" title={o.hint ? visible(o.hint) : undefined} onClick={() => go(o)}>{o.kind === "device-code" ? "Sign in with a code instead" : visible(o.label)}</button>)}</div> : null}
       </div>
+      {rest.filter((o) => o.kind === "setup-secret").map((o) => <details key={text(o.id)}><summary>Paste a token instead</summary><SecretSignIn engine={engine} svc={svc} login={o} agent={agent} onRun={onRun} /></details>)}
       <p className="hint">Branch never sees or stores your password.</p>
     </>
   );
@@ -190,8 +196,8 @@ export function freshTokenLabel(typed: string, taken: readonly string[], provide
 export const loginChoiceRef = (brand: string, id: string) => (id.includes("/") ? id : `${brand}/${id}`);
 
 /** A sign-in the service hands out as a token (Claude: `claude setup-token`). It is saved as its own account through
- *  the same credential-only wizard as the ChatGPT sign-in: models.authLogin {authChoice "anthropic/setup-token",
- *  profileLabel}, whose "Paste Anthropic setup-token" step is answered with the pasted token. That never changes the
+ *  the same credential-only wizard as the ChatGPT sign-in: models.authLogin with authChoice "anthropic/setup-token"
+ *  and an optional profileLabel. Its "Paste Anthropic setup-token" step is answered with the pasted token. That never changes the
  *  Trunk's model. Only the Trunk's very first model account goes through setup's activation
  *  (branch.setup.activate.start), which also makes it the Trunk's model. */
 function SecretSignIn({ engine, svc, login, agent, onRun }: { engine: WindowEngine; svc: Service; login: RecordValue; agent: { agentId?: string }; onRun: (r: WizardStart) => void }) {
@@ -208,7 +214,7 @@ function SecretSignIn({ engine, svc, login, agent, onRun }: { engine: WindowEngi
     if (!ready) return;
     if (first) return onRun({ method: "branch.setup.activate.start", params: { kind: "api-key", authChoice: text(login.id), apiKey: token.trim(), ...agent } });
     const secret = { value: token.trim(), match: (step: WizardStep) => !step.externalUrl && /setup-token|token/i.test(`${step.title ?? ""} ${step.message ?? ""}`) };
-    onRun({ method: "models.authLogin", params: { authChoice: loginChoiceRef(svc.brand, text(login.id)), profileLabel: label, ...agent }, secret });
+    onRun({ method: "models.authLogin", params: { authChoice: loginChoiceRef(svc.brand, text(login.id)), ...(!claude || name.trim() ? { profileLabel: label } : {}), ...agent }, secret });
   };
   return (
     <>
@@ -221,11 +227,12 @@ function SecretSignIn({ engine, svc, login, agent, onRun }: { engine: WindowEngi
             <li>Paste the token it prints below. It starts with <code>sk-ant-oat01-</code>.</li>
           </ol>
         ) : login.hint ? <p>{visible(login.hint)}</p> : null}
+        {claude ? <p>This creates a Claude subscription token for Branch. <a href="https://code.claude.com/docs/en/env-vars" target="_blank" rel="noreferrer">Claude’s token guide</a></p> : null}
         <label className="fld"><span>Token</span><input className="inp" type="password" autoComplete="off" aria-label="Token" value={token} onChange={(e) => setToken(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>
-        {first ? null : <label className="fld"><span>Call it</span><input className="inp" aria-label="Call it" placeholder={label} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>}
+        {first ? null : <label className="fld"><span>Call it</span><input className="inp" aria-label="Call it" placeholder={claude ? "Saved by email if blank" : label} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>}
         <div className="acts"><button type="button" className="btn pri sm" disabled={!ready} onClick={start}>Sign in</button></div>
       </div>
-      <p className="hint">{first ? "This is the Trunk’s first account, so Branch also starts using it." : `Saved as its own account, “${label}”. The Trunk keeps its model.`}</p>
+      <p className="hint">{first ? "This is the Trunk’s first account, so Branch also starts using it." : claude && !name.trim() ? "Saved as its own account by its email. The Trunk keeps its model." : `Saved as its own account, “${label}”. The Trunk keeps its model.`}</p>
     </>
   );
 }

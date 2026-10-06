@@ -13,6 +13,8 @@ export type PlaceProps = {
   openSettings?: (page: string) => void;
   /** Starts a new conversation with a Trunk (the shell's own "new conversation"), e.g. right after Add a Trunk. */
   startConversation?: (agentId?: string) => void;
+  /** Opens the shell's real New Trunk flow, including preview and first conversation. */
+  createTrunk?: () => void;
   /** "How much to show" (Settings): rows marked [A] show from Advanced, [T] only at Technical. */
   level: Level;
 };

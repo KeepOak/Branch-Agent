@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import type { DesktopConfig } from "./config";
+import { prepareNormalProfile } from "./profile-migration";
 
 export function readToken(cfg: DesktopConfig): string {
   mkdirSync(cfg.dataDir, { recursive: true });
@@ -43,16 +44,24 @@ function testProfile(): Record<string, string> {
 
 export function startGateway(cfg: DesktopConfig, engineDir: string, token: string): ChildProcess {
   const log = createWriteStream(join(cfg.dataDir, "gateway.log"), { flags: "a" });
+  const profile = prepareNormalProfile(join(cfg.dataDir, "home"));
+  if (profile.note) log.write(profile.note + "\n");
   const env = {
     ...process.env,
-    BRANCH_PROFILE: "dev",
+    BRANCH_PROFILE: profile.legacyDevMode ? "dev" : "default",
     BRANCH_HOME: join(cfg.dataDir, "home"),
-    BRANCH_SKIP_CHANNELS: "1",
+    ...(profile.legacyDevMode ? { BRANCH_STATE_DIR: undefined, BRANCH_CONFIG_PATH: undefined } : {
+      BRANCH_STATE_DIR: join(cfg.dataDir, "home", ".branch"),
+      BRANCH_CONFIG_PATH: join(cfg.dataDir, "home", ".branch", "branch.json"),
+    }),
+    // The desktop owns the live gateway: let it start every configured channel.
+    // Candidate and smoke gateways opt out separately.
+    BRANCH_SKIP_CHANNELS: undefined,
     BRANCH_GATEWAY_PORT: String(cfg.gatewayPort),
     BRANCH_GATEWAY_TOKEN: token,
     ...testProfile(),
   };
-  const args = ["branch.mjs", "gateway", "--dev", "--port", String(cfg.gatewayPort)];
+  const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(cfg.gatewayPort)];
   const child = spawn(cfg.nodePath, args, {
     cwd: engineDir,
     env,

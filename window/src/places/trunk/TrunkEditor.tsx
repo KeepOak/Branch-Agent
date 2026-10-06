@@ -8,6 +8,7 @@ import { notify } from "../../shell/notify";
 import type { Level } from "../../places-nav/level";
 import { saveTrunk, type Draft } from "./api";
 import { ComputersTab } from "./ComputersTab";
+import { AccountsTab } from "./AccountsTab";
 import { canWrite, loadTrunkData, useLoad, WRITE_WHY, type TrunkData } from "./data";
 import { COLOURS, EYES, LookTab, SHAPES, useNewLooks } from "./LookTab";
 import { readMay } from "./may";
@@ -19,8 +20,8 @@ import { TrunkFiles } from "./TrunkFiles";
 import { makeChiefOfStaff } from "./chief-of-staff";
 import "./trunk.css";
 
-export type EditorTab = "look" | "may" | "computers" | "instructions";
-const TABS: [EditorTab, string][] = [["look", "Look"], ["may", "What it may do"], ["computers", "Its computers"], ["instructions", "Instructions"]];
+export type EditorTab = "look" | "may" | "computers" | "accounts" | "instructions";
+const TABS: [EditorTab, string][] = [["look", "Look"], ["may", "What it may do"], ["computers", "Its computers"], ["accounts", "Accounts"], ["instructions", "Instructions"]];
 
 export type TrunkEditorProps = {
   engine: WindowEngine;
@@ -130,6 +131,7 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
             {tab === "may" && <MayTab engine={engine} agentId={agentId} name={initial.name} draft={draft} models={data.models} level={level} set={set} openSettings={openSettings} />}
             {tab === "computers" && <ComputersTab name={initial.name} draft={draft} computers={data.computers} set={set} openSettings={openSettings} />}
             {tab === "instructions" && <><button type="button" className="btn" disabled={busy || !write} title={write ? undefined : WRITE_WHY} onClick={() => void makeChief()}>Make this my Chief of Staff</button><TrunkFiles key={roleVersion} engine={engine} agentId={agentId} /></>}
+            {tab === "accounts" && <AccountsTab engine={engine} agentId={agentId} />}
           </div>
           {data.partial.map((p) => <p key={p} className="tk-hint" role="status">{p}</p>)}
           {error && <p className="tk-error" role="alert">{error}</p>}

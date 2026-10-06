@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { GROUP_REASONS, NewGroupChat, readChoices, startGroupChat, type GroupProgress } from "./NewGroupChat";
 import type { WindowEngine } from "../connect/engine";
+import { useShellRoom, type ShellRoom } from "./useShellRoom";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -24,6 +25,21 @@ const responses: Record<string, unknown> = {
 };
 
 describe("New group chat", () => {
+  it("renders a brand-new group before its lead session exists", async () => {
+    let shell: ShellRoom | undefined;
+    function Harness() {
+      shell = useShellRoom({ engine: undefined, rowKind: undefined, agentId: undefined, title: "Plan", ownTrunk: "Scout", history: [], trunks: [],
+        groupRoom: { roomId: "fresh", rule: "mentions", members: [{ kind: "trunk", id: "scout" }, { kind: "a2a", id: "ledger" }] },
+        memberName: (_kind, id) => ({ scout: "Scout", ledger: "Ledger" } as Record<string, string>)[id] ?? id });
+      return <>{shell.header?.faces(34)}<span>{shell.header?.line}</span></>;
+    }
+    const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+    await act(async () => root!.render(<Harness />));
+    expect(shell?.thread.isRoom).toBe(true);
+    expect(shell?.header).not.toBeNull();
+    expect(shell?.menu?.ruleWords).toBe("mentions only");
+    expect(host.textContent).toContain("Scout, Ledger and you");
+  });
   it("retries a failed member on the created conversation, retaining completed members", async () => {
     let fail = true;
     const request = vi.fn(async (method: string, params: unknown) => {

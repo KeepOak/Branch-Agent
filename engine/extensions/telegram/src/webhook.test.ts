@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/telegram/src/webhook.test.ts (atlas CHAT-APPS-0119). Changed for Branch: resolve the Gateway port selected by the test environment.
 import fs from "node:fs/promises";
 import os from "node:os";
 import nodePath from "node:path";
@@ -14,6 +15,7 @@ import {
   waitForDiagnosticEventsDrained,
 } from "branch/plugin-sdk/diagnostic-runtime";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
+import { resolveGatewayPort } from "branch/plugin-sdk/gateway-config-runtime";
 import {
   logWebhookReceived,
   startDiagnosticHeartbeat,
@@ -2356,7 +2358,7 @@ describe("startTelegramWebhook", () => {
             TELEGRAM_SECRET,
           );
           expect(runtimeLog).toHaveBeenCalledWith(
-            `telegram webhook Gateway route ${TELEGRAM_WEBHOOK_PATH} (port 18789)`,
+            `telegram webhook Gateway route ${TELEGRAM_WEBHOOK_PATH} (port ${resolveGatewayPort({ gateway: { publicOrigin: "https://gateway.example.test" } })})`,
           );
         },
       );

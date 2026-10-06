@@ -164,11 +164,11 @@ test("close policy and tray click follow the controls (mocked Electron, no windo
     return request === "electron" ? { Tray, Menu: { buildFromTemplate: v => v } } : originalLoad.call(this, request, ...rest);
   };
   try {
-    const { keepWindowsWindowResident } = require(join(dist, "resident-window.js"));
+    const { keepWindowResident } = require(join(dist, "resident-window.js"));
     const app = new EventEmitter(), win = new EventEmitter();
     Object.assign(win, { hidden: false, hide() { this.hidden = true; }, show() { this.hidden = false; }, focus() {}, isMinimized: () => false, restore() {} });
     let keep = true, clicks = 0;
-    keepWindowsWindowResident(app, win, "icon.ico", { platform: "win32", keepRunning: () => keep, onTrayClick: () => clicks++ });
+    keepWindowResident(app, win, "icon.ico", { platform: "win32", keepRunning: () => keep, onTrayClick: () => clicks++ });
     const close = () => { const e = { prevented: false, preventDefault() { this.prevented = true; } }; win.emit("close", e); return e.prevented; };
     assert.equal(close(), true, "on: closing hides to the tray");
     keep = false;
@@ -189,4 +189,3 @@ test("launch refreshes an existing branch command and never installs one", async
   assert.doesNotThrow(() => createDesktopControls(deps).apply());
   controls.dispose();
 }));
-

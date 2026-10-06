@@ -23,7 +23,7 @@ function menu(target: Conversation, current?: Contact) {
   const actions = { pin: vi.fn(), setUnread: vi.fn(), archive: vi.fn(), restore: vi.fn(), snooze: vi.fn() };
   const items = rowMenuItems(target, {
     actions: actions as never, now: 100, trunkName: "Oak", open: vi.fn(), rename, confirmDelete,
-    newWith: vi.fn(), level: "regular", ask: vi.fn(), editTrunk: vi.fn(), tidy: vi.fn(),
+    level: "regular", ask: vi.fn(), editTrunk: vi.fn(), tidy: vi.fn(),
     copyMarkdown: vi.fn(), copyText: vi.fn(), copyLink: vi.fn(), profile, contact: current,
     markContactRead: vi.fn(), pinContact: vi.fn(), whoItKnows: vi.fn(), toggleMute, removeTrunk,
   });
@@ -36,6 +36,17 @@ function menu(target: Conversation, current?: Contact) {
 }
 
 describe("contact and topic row menus", () => {
+  it("matches the final-pass row-menu changes without the duplicate new-conversation action", () => {
+    const main = row("agent:oak:main", { kind: "trunk", isMain: true });
+    const items = menu(main, contact("trunk", main, true)).items;
+    const labels = (entries: typeof items) => entries.map((item) => "label" in item ? item.label : null).filter(Boolean);
+    expect(labels(items)).toContain("What can Oak do?");
+    expect(labels(items)).toContain("Mark done");
+    expect(labels(items)).not.toContain("New conversation with Oak");
+    const topic = menu(row("agent:oak:topic")).items;
+    expect(labels(topic)).toContain("Snooze");
+    expect(labels(topic)).not.toContain("New conversation with Oak");
+  });
   it("only offers Remove on a non-default Trunk", () => {
     const main = row("agent:oak:main", { kind: "trunk", isMain: true });
     expect(menu(main, contact("trunk", main, true)).run("menu-delete")).toBeUndefined();
