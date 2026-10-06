@@ -7,6 +7,8 @@ import {
 } from "../../packages/normalization-core/src/string-coerce.js";
 import { normalizeStringEntries } from "../../packages/normalization-core/src/string-normalization.js";
 import { resolveEnvironmentValue } from "../infra/process-env.js";
+import { runtimeProcessEntrypoints } from "../infra/runtime-process-entrypoints.js";
+import { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
 
 /** Final execution strategy chosen for a Windows spawn command. */
 export type WindowsSpawnResolution =
@@ -404,5 +406,21 @@ export function materializeWindowsSpawnProgram(
     resolution: program.resolution,
     shell: program.shell,
     windowsHide: program.windowsHide,
+  };
+}
+
+/** Keep JSON-RPC pipes while giving a Windows console child a hidden inherited console. */
+export function withHiddenWindowsConsole(
+  invocation: WindowsSpawnInvocation,
+  platform: NodeJS.Platform = process.platform,
+): WindowsSpawnInvocation {
+  if (platform !== "win32") return invocation;
+  const worker = resolveRuntimeWorkerUrl(runtimeProcessEntrypoints.hiddenConsoleLauncher);
+  return {
+    ...invocation,
+    command: process.execPath,
+    argv: [...resolveRuntimeWorkerArgv(worker), invocation.shell ? "1" : "0", invocation.command, ...invocation.argv],
+    shell: false,
+    windowsHide: true,
   };
 }

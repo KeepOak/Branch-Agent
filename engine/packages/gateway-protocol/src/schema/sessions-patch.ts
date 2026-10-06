@@ -25,6 +25,8 @@ const SessionsPatchMutationProperties = {
   color: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   /** User-defined organization bucket ("category", not chat-group); null clears it. */
   category: Type.Optional(Type.Union([SessionLabelString, Type.Null()])),
+  /** The registered project this conversation belongs to; null clears it. */
+  projectId: Type.Optional(Type.Union([NonEmptyString, Type.Null()])),
   boardFace: Type.Optional(Type.Union([Type.Literal("chat"), Type.Literal("dashboard")])),
   /** Shared dashboard default; null restores the built-in split view. */
   boardPresentation: Type.Optional(

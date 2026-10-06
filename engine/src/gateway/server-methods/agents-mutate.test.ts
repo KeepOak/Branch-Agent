@@ -293,6 +293,7 @@ vi.mock("../../infra/exec-approvals.js", () => ({
 
 vi.mock("../../state/branch-agent-db.js", () => ({
   closeBranchAgentDatabaseByPath: mocks.closeBranchAgentDatabaseByPath,
+  closeBranchAgentDatabasesAsync: vi.fn(async () => undefined),
   closeBranchAgentDatabaseByPathAsync: async (pathname?: string, expectedAgentId?: string) =>
     mocks.closeBranchAgentDatabaseByPath(pathname, expectedAgentId),
   listBranchRegisteredAgentDatabases: mocks.listBranchRegisteredAgentDatabases,

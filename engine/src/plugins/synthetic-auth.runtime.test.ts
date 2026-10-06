@@ -53,6 +53,31 @@ import {
 } from "./synthetic-auth.runtime.js";
 
 describe("synthetic auth runtime refs", () => {
+  it("uses declared hook refs instead of a provider id that cannot prepare auth", () => {
+    const registry = createEmptyPluginRegistry();
+    registry.plugins.push({
+      id: "anthropic",
+      syntheticAuthRefs: ["claude-cli"],
+    } as (typeof registry.plugins)[number]);
+    registry.providers.push({
+      pluginId: "anthropic",
+      source: "fixture",
+      provider: {
+        id: "anthropic",
+        label: "Anthropic",
+        auth: [],
+        hookAliases: ["claude-cli"],
+        prepareSyntheticAuth: async ({ provider }) =>
+          provider === "claude-cli"
+            ? { apiKey: "native", source: "native", mode: "oauth" }
+            : undefined,
+      },
+    });
+    expect(
+      withPluginRuntimeGenerationRegistryScope(registry, resolveRuntimeSyntheticAuthProviderRefs),
+    ).toEqual(["claude-cli"]);
+  });
+
   it("keeps captured generation auth separate from the ambient registry", () => {
     const ambient = createEmptyPluginRegistry();
     ambient.providers.push({

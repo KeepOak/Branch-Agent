@@ -15,7 +15,7 @@ import { HelpersChip } from "./Helpers";
 import { HoverBar } from "./HoverBar";
 import { Rail } from "./Rail";
 import { Icon, ICONS } from "./icons";
-import { layout, shownApprovalIds, type Item } from "./layout";
+import { layout, shownApprovalIds, turnOf, type Item } from "./layout";
 import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
 import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
@@ -33,8 +33,11 @@ import { TalkedFold } from "../rooms/TalkedFold";
 import { RoomLine } from "../rooms/RoomLine";
 import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
+import { QueuedMessages, useOwnWaitingLine } from "./QueuedMessages";
+import type { QueuedMessage } from "../connect/session";
 import { dayStamp, formatDuration, fullTime, messageTime, modelName, stepLabel } from "./format";
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
+import { suggestionsFor } from "./suggestions";
 import type { EarlierPage } from "../shell/useContactSegments";
 
 type Props = {
@@ -44,6 +47,8 @@ type Props = {
   history: Block[];
   live: Block[];
   pendingUser: string | null;
+  /** Messages accepted but waiting for a turn (connect/session.ts queued). */
+  queued?: QueuedMessage[];
   running: boolean;
   /** When the live run started (engine time); the "Working" clock counts from it. */
   liveStartedAt?: number | null;
@@ -132,6 +137,11 @@ function pendingExtras(details: Map<string, ApprovalDetails>, shown: Set<string>
 /** The thread (DESIGN-SPEC §4.2.2): history from the engine, then the run that is going now. */
 export function Thread(props: Props) {
   const { name, history, live, pendingUser, running, engine, onToast } = props;
+  const ownLine = useOwnWaitingLine(props.sessionKey ?? engine?.sessionKey);
+  // A message from this window's waiting line that a turn picked up: its bubble says "Delivered" until history has it.
+  const lineTexts = useRef(new Set<string>());
+  for (const item of ownLine) lineTexts.current.add(item.text);
+  const pendingDelivered = pendingUser !== null && lineTexts.current.has(pendingUser);
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
   const prefs = useConversationPrefs(engine);
   const prefKey = JSON.stringify(prefs);
@@ -141,6 +151,7 @@ export function Thread(props: Props) {
   const { reactions, apply } = useReactions(engine, history.length);
   const { helpers } = useHelpers(engine);
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
+  const [usedSuggestion, setUsedSuggestion] = useState<string | null>(null);
   const all = useMemo(() => [...history, ...(running ? live : [])], [history, live, running]);
   const extras = pendingExtras(details, shownApprovalIds(all), engine?.sessionKey);
   const answer = useCallback(
@@ -159,12 +170,17 @@ export function Thread(props: Props) {
   useApprovalKeys(firstPending, answer);
   const { actionsFor, dialog } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, onStartTopic: props.onStartTopic, applyReaction: apply });
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
-  const signature = `${history.length}:${live.length}:${liveText}:${pendingUser ? 1 : 0}:${running ? 1 : 0}:${extras.length}`;
+  const waitingCount = (props.queued?.length ?? 0) + ownLine.length;
+  const signature = `${history.length}:${live.length}:${liveText}:${pendingUser ? 1 : 0}:${running ? 1 : 0}:${extras.length}:${waitingCount}`;
   const follow = useFollow(signature);
   const [finding, setFinding] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
   useFindKey(useCallback(() => setFinding(true), []));
-  const empty = !history.length && !pendingUser && !running && !props.questions?.length;
+  const empty = !history.length && !pendingUser && !running && !props.questions?.length && !waitingCount;
+  const lastReply = [...history].reverse().find((block) => block.kind === "text");
+  const suggestionKey = lastReply ? `${props.sessionKey ?? ""}:${lastReply.key}` : null;
+  const suggestions = props.onStart && !firstPending && suggestionKey !== usedSuggestion
+    ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
   const preparationError = [props.preparationError, props.earlierError].find(isPreparationPending);
   const anchors = anchorQuestions(history, props.questions ?? []);
   const items: RoomItem[] = props.room ? foldTalks(layout(history), props.room.ownAgentId) : layout(history);
@@ -248,8 +264,18 @@ export function Thread(props: Props) {
             ),
           )}
           {props.room ? <RoomLine history={history} room={props.room} ownName={name} /> : null}
-          {pendingUser ? <UserMessage block={{ kind: "user", key: "pending", text: pendingUser }} /> : null}
+          {pendingUser ? (
+            pendingDelivered ? (
+              <div className="queued-msg delivered" data-testid="queued-message" data-state="delivered">
+                <UserMessage block={{ kind: "user", key: "pending", text: pendingUser }} />
+                <span className="queue-mark mine">Delivered</span>
+              </div>
+            ) : (
+              <UserMessage block={{ kind: "user", key: "pending", text: pendingUser }} />
+            )
+          ) : null}
           {running ? <LiveRun view={view} offset={history.length} /> : null}
+          <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} />
           {(anchors.get(-1) ?? []).map((r) => <QuestionLine key={r.id} record={r} />)}
           {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} />)}
           {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} /> : null}
@@ -258,6 +284,9 @@ export function Thread(props: Props) {
               onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
           ) : null}
           {props.supplement}
+          {suggestions.length ? <div className="suggestion-row" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
+            {suggestions.map((text) => <button key={text} type="button" onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}>{text}</button>)}
+          </div> : null}
           {props.recoveryFailure === RESTART_NOT_RESUMED ? (
             <div className="pass-line restart-stop" role="status" data-testid="restart-stopped">Stopped by restart{recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Resume</button> : null}</div>
           ) : null}
@@ -344,14 +373,13 @@ function LiveRun({ view, offset }: { view: View; offset: number }) {
   }, [startedAt]);
   const usage = live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage");
   const waiting = live.some((b) => b.kind === "approval" && b.approval.state === "pending");
-  const status = live.find((b): b is Extract<Block, { kind: "status" }> => b.kind === "status") ?? null;
   const typing = !waiting && !live.some((b) => b.kind === "text" || (view.showThinking && b.kind === "thinking") || b.kind === "step" || b.kind === "preamble" || b.kind === "plan");
   return (
     <div className="live-run" data-streaming="true">
       {/* While only the dots show, nothing sits above them (P47); the clock comes with the first real activity. */}
       {typing ? null : <header className="live-run-head">Working{elapsed >= 1000 ? ` · ${formatDuration(elapsed)}` : ""}{usage?.total ? ` · ${usage.total.toLocaleString()} tokens` : ""}</header>}
       {layout(live.filter((b) => b.kind !== "status"), offset).map((item) => <ItemView key={keyOf(item)} item={item} view={view} live />)}
-      {typing ? <Typing name={name} status={status} /> : null}
+      {typing ? <Typing name={name} /> : null}
     </div>
   );
 }
@@ -402,8 +430,11 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
       return <PlanCard card={{ sessionKey: "run", revision: 1, updatedAt: Date.now(), steps: block.steps }} />;
     case "approval":
       return view.grouped.has(block.approval.id) ? null : <ApprovalCard approval={block.approval} details={view.details.get(block.approval.id)} name={view.name} onAnswer={view.answer} />;
-    case "done":
-      return <DoneLine block={block} name={view.name} />;
+    case "done": {
+      const words = turnOf(view.all, index).filter((entry): entry is Extract<Block, { kind: "text" }> => entry.kind === "text")
+        .reduce((count, entry) => count + (entry.text.trim().match(/\S+/g)?.length ?? 0), 0);
+      return <DoneLine block={block} name={view.name} words={words} />;
+    }
     case "error":
       if (isPreparationPending(block.message)) return <div className="stamp" role="status">Branch retried a startup delay.</div>;
       return view.dismissed.has(block.key) ? null : <ErrorBlock block={block} onDismiss={() => view.setDismissed((s) => new Set(s).add(block.key))} />;

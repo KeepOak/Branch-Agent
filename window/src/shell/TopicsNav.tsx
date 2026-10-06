@@ -98,6 +98,8 @@ export function TopicsNav(p: Props) {
       {compact ? <button type="button" className="topic-nav-tab" aria-current={selected} aria-label={topic.title} title={hint} onClick={() => p.onOpen(topic.key)}><span aria-hidden="true">{topic.emoji ?? "💬"}</span><span className="topic-nav-tab-label">{topic.title}</span>{topic.unread ? <i className="topic-nav-unread" aria-label="Unread" /> : null}</button> : <>
         <button type="button" className="topic-nav-emoji" aria-label={`Change the emoji for ${topic.title}`} onClick={() => { setChosen(topic); setQuery(""); setMenu("emoji"); }}>{topic.emoji ?? "💬"}</button>
         <button type="button" className="topic-nav-open" aria-current={selected} onClick={() => p.onOpen(topic.key)}><span className="topic-nav-line"><b>{topic.title}</b><time>{time(updatedAt)}</time></span><span className="topic-nav-preview"><span>{p.contactName}: </span>{preview || "No messages yet."}</span></button>
+        {topic.pinnedAt ? <span className="topic-nav-pin" title="Pinned" aria-label="Pinned">📌</span> : null}
+        {topic.muted ? <span className="topic-nav-mute" title="Muted" aria-label="Muted">🔕</span> : null}
         <button type="button" className="topic-nav-more" aria-label={`More for ${topic.title}`} onClick={() => { setChosen(topic); setMenu(menu === "topic" && chosen?.key === topic.key ? null : "topic"); }}>⋯</button>
       </>}
       {status ? <span className={`topic-nav-status ${topic.status}`}>{status}</span> : null}
