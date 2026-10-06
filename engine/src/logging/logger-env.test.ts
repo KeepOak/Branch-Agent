@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3e932a5937b529ae45b89c57a1b5db2078aa1407:src/logging/logger-env.test.ts (atlas OBSERVABILITY-0054). Changed for Branch: Rebranded with scripts/rebrand-map.json; current upstream tests preserve post-pin fixes.
 // Logger env tests cover log level and transport behavior from environment config.
 import os from "node:os";
 import path from "node:path";
