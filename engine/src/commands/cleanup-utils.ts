@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { hasNodeErrorCode, isPathInside } from "@openclaw/fs-safe/path";
 import type { AgentsDeleteResult } from "../../packages/gateway-protocol/src/schema/agents-models-skills.js";
+import { retryAgentDeleteTrashMove } from "../agents/agent-delete-trash-retry.js";
 import { listAgentIds, resolveAgentWorkspaceDir } from "../agents/agent-scope-config.js";
 import { resolveDefaultAgentWorkspaceDir } from "../agents/workspace-default.js";
 import {
@@ -82,9 +83,15 @@ export async function moveToTrashResult(
       [sourcePath],
       isSymbolicLink ? await fs.realpath(sourcePath).catch(() => undefined) : undefined,
     );
-    // Preparation can outlive its owner; revalidate immediately before Trash dispatch.
-    assertCurrent?.();
-    await movePathToTrash(sourcePath, { allowedRoots });
+    await retryAgentDeleteTrashMove({
+      prepare: () => {
+        // Preparation can outlive its owner; revalidate before each Trash dispatch.
+        assertCurrent?.();
+      },
+      move: async () => {
+        await movePathToTrash(sourcePath, { allowedRoots });
+      },
+    });
     runtime.log(`Moved to Trash: ${shortenHomePath(pathname)}`);
     return { removed: { path: pathname, method: "trash" } };
   } catch (error) {

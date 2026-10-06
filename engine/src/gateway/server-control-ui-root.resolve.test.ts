@@ -32,6 +32,7 @@ vi.mock("./control-ui-asset-retention.js", () => ({
 import {
   createGatewayControlUiRootLifecycle,
   readControlUiRootAsset,
+  requestControlUiRootPreparation,
 } from "./server-control-ui-root.js";
 
 function readyAssets(root = "/repo/dist/control-ui", publicAssetBuildId?: string) {
@@ -99,6 +100,20 @@ describe("createGatewayControlUiRootLifecycle", () => {
     await lifecycle.stop();
     expect(() => readControlUiRootAsset(root, "index.html", true)).toThrow();
     expect(read).not.toHaveBeenCalled();
+  });
+
+  test("prepares assets on the first control UI request, once", async () => {
+    controlUiAssetsMocks.resolveControlUiRootSync.mockReturnValue("/repo/dist/control-ui");
+    controlUiAssetsMocks.isPackageProvenControlUiRootSync.mockReturnValue(true);
+    const { lifecycle } = createLifecycle();
+
+    expect(retentionMocks.prepare).not.toHaveBeenCalled();
+    requestControlUiRootPreparation(lifecycle.state);
+    requestControlUiRootPreparation(lifecycle.state);
+    await lifecycle.start();
+
+    expect(retentionMocks.prepare).toHaveBeenCalledOnce();
+    await lifecycle.stop();
   });
 
   test("prepares retained generations for bundled roots without delaying construction", async () => {
