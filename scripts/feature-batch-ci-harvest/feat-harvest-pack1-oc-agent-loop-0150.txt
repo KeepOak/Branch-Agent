@@ -22,7 +22,6 @@ engine:src/agents/bundle-mcp-config.test.ts
 engine:src/agents/embedded-agent-block-chunker.test.ts
 engine:src/agents/embedded-agent-runner/thinking.test.ts
 engine:src/agents/mcp-auth-profile.test.ts
-engine:src/agents/mcp-content.test.ts
 engine:src/agents/mcp-oauth-fetch.test.ts
 engine:src/agents/mcp-oauth-provider.preparation.test.ts
 engine:src/agents/mcp-oauth-store.test.ts
@@ -38,9 +37,6 @@ engine:src/cli/mcp-cli.probe-exit.process.test.ts
 engine:src/cli/mcp-cli.test.ts
 engine:src/infra/device-identity.test.ts
 engine:src/infra/device-pairing-node.test.ts
-engine:src/mcp/channel-bridge.startup.test.ts
-engine:src/mcp/channel-bridge.test.ts
-engine:src/mcp/channel-server.test.ts
 engine:src/mcp/plugin-tools-handlers.cancel.test.ts
 engine:src/mcp/plugin-tools-registration.test.ts
 engine:src/mcp/plugin-tools-serve.test.ts
