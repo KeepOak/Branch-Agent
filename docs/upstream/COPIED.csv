@@ -24,3 +24,6 @@ engine/extensions/geolocation/src/database-store.test.ts,INTEGRATIONS-0144,openc
 engine/extensions/logbook/src/service.test.ts,INTEGRATIONS-0145,openclaw/openclaw,79354e397d15c03fe1f10cb02d8fcaf60347e565,extensions/logbook/src/service.test.ts (verified existing renamed file),2026-10-06
 engine/extensions/logbook/src/analyze.test.ts,INTEGRATIONS-0145,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/logbook/src/analyze.test.ts (verified existing renamed file),2026-10-06
 engine/extensions/logbook/src/store.test.ts,INTEGRATIONS-0145,openclaw/openclaw,79354e397d15c03fe1f10cb02d8fcaf60347e565,extensions/logbook/src/store.test.ts (verified existing renamed file),2026-10-06
+engine/extensions/team-reports/src/aggregate.test.ts,INTEGRATIONS-0146,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/team-reports/src/aggregate.test.ts (verified existing renamed file),2026-10-06
+engine/extensions/team-reports/src/periods.test.ts,INTEGRATIONS-0146,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/team-reports/src/periods.test.ts (verified existing renamed file),2026-10-06
+engine/extensions/team-reports/src/http.test.ts,INTEGRATIONS-0146,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/team-reports/src/http.test.ts (verified existing renamed file),2026-10-06

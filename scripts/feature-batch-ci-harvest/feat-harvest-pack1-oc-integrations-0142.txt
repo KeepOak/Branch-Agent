@@ -8,3 +8,6 @@ engine:extensions/linux-node/src/executables.test.ts
 engine:extensions/logbook/src/analyze.test.ts
 engine:extensions/logbook/src/service.test.ts
 engine:extensions/logbook/src/store.test.ts
+engine:extensions/team-reports/src/aggregate.test.ts
+engine:extensions/team-reports/src/http.test.ts
+engine:extensions/team-reports/src/periods.test.ts
