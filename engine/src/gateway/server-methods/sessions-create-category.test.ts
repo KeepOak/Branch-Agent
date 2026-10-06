@@ -93,6 +93,14 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
+test("persists a session project assignment patched by a writer", async () => {
+  const { storePath } = await createSessionStoreDir();
+  const key = "agent:main:dashboard:project-drop";
+  expect((await directSessionReq("sessions.create", { agentId: "main", key })).ok).toBe(true);
+  expect((await directSessionReq("sessions.patch", { key, agentId: "main", projectId: "branch" })).ok).toBe(true);
+  expect(loadSessionEntry({ agentId: "main", storePath, sessionKey: key })?.projectId).toBe("branch");
+});
+
 test("creates and patches first-use groups before publishing their invalidation", async () => {
   await createSessionStoreDir();
   const observedGroups: string[][] = [];

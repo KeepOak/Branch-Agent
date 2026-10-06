@@ -81,7 +81,7 @@ export type Block =
   | { kind: "approval"; key: string; approval: Approval }
   | { kind: "done"; key: string; runId: string; durationMs?: number }
   | { kind: "error"; key: string; runId?: string; message: string }
-  | { kind: "notice"; key: string; text: string }
+  | { kind: "notice"; key: string; text: string; at?: number }
   | { kind: "status"; key: string; phase: string; attempt?: number; maxAttempts?: number };
 
 const record = (value: unknown): Record<string, unknown> =>
