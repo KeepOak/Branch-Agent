@@ -1,3 +1,8 @@
+engine:extensions/feishu/src/bitable.test.ts
+engine:extensions/feishu/src/comment-handler.test.ts
+engine:extensions/feishu/src/docx.test.ts
+engine:extensions/feishu/src/drive.test.ts
+engine:extensions/feishu/src/wiki.test.ts
 engine:src/agents/agent-bundle-mcp-manager.lifecycle.test.ts
 engine:src/agents/agent-bundle-mcp-runtime.sse-recovery.test.ts
 engine:src/agents/agent-bundle-mcp-runtime.test.ts

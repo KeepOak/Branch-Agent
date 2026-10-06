@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/feishu/src/docx.ts (atlas INTEGRATIONS-0082). Changed for Branch: retain strict SDK request typing and small helper refactors and additional color-markup assertions (owner strict-TypeScript and small-function rules).
 import { resolve } from "node:path";
 import type * as Lark from "@larksuiteoapi/node-sdk";
 import { formatErrorMessage } from "branch/plugin-sdk/error-runtime";
