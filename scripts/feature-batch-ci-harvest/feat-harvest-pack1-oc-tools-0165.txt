@@ -1,5 +1,8 @@
 engine:extensions/document-extract/document-extractor.runtime.test.ts
 engine:extensions/document-extract/document-extractor.test.ts
+engine:extensions/elevenlabs/realtime-transcription-provider.test.ts
+engine:extensions/elevenlabs/speech-provider.test.ts
+engine:extensions/elevenlabs/tts.test.ts
 engine:extensions/file-transfer/src/node-host/file-fetch.binary.test.ts
 engine:extensions/file-transfer/src/shared/node-invoke-policy.test.ts
 engine:extensions/file-transfer/src/tools/dir-fetch-tool.test.ts
