@@ -1,5 +1,8 @@
 engine:packages/agent-core/src/agent-loop.test.ts
 engine:packages/agent-core/src/exit-on-error.behaviour.test.ts
+engine:packages/agent-core/src/history-repair/dangling-tool-call.test.ts
+engine:packages/agent-core/src/history-repair/provider-history.test.ts
+engine:packages/agent-core/src/history-repair/tool-call-metadata.test.ts
 engine:packages/agent-core/src/nonexistent-tool-handling.test.ts
 engine:packages/agent-core/src/tool-error-handling-middleware.test.ts
 engine:packages/agent-core/src/tool-error-handling-subagent-stamp.test.ts

@@ -1,9 +1,11 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/agent-stream-response.ts (atlas AGENT-LOOP-0092). Changed for Branch: repair tool history on every model request using the pinned DeerFlow port.
 import { isResponsesOutputLimitToolCallError } from "@branch/ai/diagnostics";
 import {
   createEmptyTransportUsage,
   replaceCompactionReplayOwnerContent,
 } from "@branch/ai/transports";
 import { PROVIDER_FAILURE_WITH_OUTPUT_ERROR_CODE } from "@branch/llm-core";
+import { repairProviderHistory } from "./history-repair/provider-history.js";
 import type {
   AssistantMessage,
   AssistantMessageEvent,
@@ -149,7 +151,7 @@ export async function streamAgentResponse(
     const transformed = config.transformContext
       ? await config.transformContext(messages, projectionSignal)
       : messages;
-    return config.convertToLlm(normalizeCoreContextMessages(transformed));
+    return repairProviderHistory(await config.convertToLlm(normalizeCoreContextMessages(transformed)));
   };
   const llmMessages = await convertMessages(sourceMessages);
   let requestPrefix: string | undefined;
