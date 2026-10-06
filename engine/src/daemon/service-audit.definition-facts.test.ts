@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/daemon/service-audit.definition-facts.test.ts (atlas OPS-0008). Changed for Branch: exercise the renamed service description (DECISIONS.md item 133) and assert fixture mutation.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -164,15 +165,18 @@ it.each([
 ])("reports unknown %s edits without exposing their values", async (kind) => {
   const description = kind === "description" || kind === "versioned-description";
   const fixture = await systemdFixture(
-    (unit) =>
-      description
-        ? unit.replace(
-            "Description=Branch Gateway",
-            `Description=${kind === "description" ? "operator-secret" : "Branch Agent Gateway (v2026.9.4)"}`,
-          )
-        : kind === "base"
-          ? unit.replace("[Service]", "[Service]\nExecStartPre=/private/operator-secret")
-          : unit,
+    (unit) => {
+      if (description) {
+        expect(unit).toContain("Description=Branch Agent Gateway\n");
+        return unit.replace(
+          "Description=Branch Agent Gateway",
+          `Description=${kind === "description" ? "operator-secret" : "Branch Agent Gateway (v2026.9.4)"}`,
+        );
+      }
+      return kind === "base"
+        ? unit.replace("[Service]", "[Service]\nExecStartPre=/private/operator-secret")
+        : unit;
+    },
     kind === "drop-in"
       ? "[Service]\nRestart=operator-secret\n"
       : kind === "drop-in-unknown"
