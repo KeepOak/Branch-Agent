@@ -339,6 +339,55 @@ describe("shared auth profile read-through", () => {
 });
 
 describe("configured auth inheritance owner", () => {
+  it("lets a second Trunk use signed-in accounts when setup left a stale empty main owner", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-stale-main-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: {
+            ownership: "explicit",
+            defaults: { systemAgent: { agentId: "juniper" }, authInheritance: { agentId: "main" } },
+            entries: { juniper: {}, tester: {} },
+          },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:juniper": keyCredential("openai", "juniper-key") }),
+          state.agentDir("juniper"),
+        );
+        const testerDir = state.agentDir("tester");
+        const store = ensureAuthProfileStore(testerDir, { allowKeychainPrompt: false, config: cfg });
+        expect(Object.keys(store.profiles)).toContain("openai:juniper");
+        expect(await resolveAuth({ provider: "openai", cfg, agentDir: testerDir })).toMatchObject({ apiKey: "juniper-key" });
+      },
+    );
+  });
+
+  it("keeps a non-roster main as owner when its legacy credentials exist", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-real-main-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: {
+            ownership: "explicit",
+            defaults: { systemAgent: { agentId: "juniper" }, authInheritance: { agentId: "main" } },
+            entries: { juniper: {}, tester: {} },
+          },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:main": keyCredential("openai", "main-key") }),
+          state.agentDir("main"),
+        );
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:juniper": keyCredential("openai", "juniper-key") }),
+          state.agentDir("juniper"),
+        );
+        const store = ensureAuthProfileStore(state.agentDir("tester"), { allowKeychainPrompt: false, config: cfg });
+        expect(Object.keys(store.profiles)).toContain("openai:main");
+        expect(Object.keys(store.profiles)).not.toContain("openai:juniper");
+      },
+    );
+  });
+
   it("lets every agent use the accounts of agents.defaults.authInheritance.agentId", async () => {
     await withBranchTestState(
       {
