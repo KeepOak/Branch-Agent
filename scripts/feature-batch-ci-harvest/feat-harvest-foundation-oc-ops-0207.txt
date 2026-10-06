@@ -3,6 +3,9 @@ engine:src/cli/config-cli.candidate-model-env.integration.test.ts
 engine:src/cli/config-cli.test.ts
 engine:src/commands/backup-git.test.ts
 engine:src/commands/backup-sqlite.test.ts
+engine:src/commands/configure.gateway.test.ts
+engine:src/commands/configure.wizard.gateway.test.ts
+engine:src/commands/configure.wizard.test.ts
 engine:src/commands/gateway-auth-token.test.ts
 engine:src/commands/onboard-interactive.test.ts
 engine:src/commands/onboard-non-interactive.gateway-auth-token.test.ts

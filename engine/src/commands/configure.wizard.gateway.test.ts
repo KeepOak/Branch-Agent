@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/commands/configure.wizard.gateway.test.ts (atlas OPS-0326). Changed for Branch: retain current wizard API and stronger trusted-proxy exposure coverage; provenance recorded for Harvest with assertions preserved.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../config/config.js";
 import { ExitError } from "../runtime.js";
