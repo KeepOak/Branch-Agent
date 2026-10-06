@@ -275,6 +275,8 @@ export type PreparedModelRuntimeOwner = {
 export type PreparedModelRuntimeReplacement = {
   degraded?: boolean;
   gateId: PreparedModelRuntimeReplacementGateId;
+  /** Undefined means a global publication; scoped readers outside this set keep their owner. */
+  agentIds?: ReadonlySet<string>;
   promise: Promise<void>;
   resolve: () => void;
   reject: (error: Error) => void;
