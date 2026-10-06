@@ -5,6 +5,9 @@ engine:packages/agent-core/src/history-repair/batch-atomicity.test.ts
 engine:packages/agent-core/src/history-repair/dangling-tool-call.test.ts
 engine:packages/agent-core/src/history-repair/message-manipulation-indices.test.ts
 engine:packages/agent-core/src/history-repair/observation-uniqueness.test.ts
+engine:packages/agent-core/src/history-repair/provider-compat/native-history.test.ts
+engine:packages/agent-core/src/history-repair/provider-compat/provider-history-compat.e2e.test.ts
+engine:packages/agent-core/src/history-repair/provider-compat/provider-history-compat.test.ts
 engine:packages/agent-core/src/history-repair/provider-history.test.ts
 engine:packages/agent-core/src/history-repair/tool-call-matching.test.ts
 engine:packages/agent-core/src/history-repair/tool-call-metadata.test.ts

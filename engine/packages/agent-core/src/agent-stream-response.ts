@@ -1,11 +1,10 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/agent-stream-response.ts (atlas AGENT-LOOP-0092). Changed for Branch: repair tool history on every model request using the pinned DeerFlow port.
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/agent-stream-response.ts (atlas AGENT-LOOP-0092). Changed for Branch: repair tool history and apply pinned DeerFlow/Mastra provider compatibility on every model request.
 import { isResponsesOutputLimitToolCallError } from "@branch/ai/diagnostics";
 import {
   createEmptyTransportUsage,
   replaceCompactionReplayOwnerContent,
 } from "@branch/ai/transports";
 import { PROVIDER_FAILURE_WITH_OUTPUT_ERROR_CODE } from "@branch/llm-core";
-import { repairProviderHistory } from "./history-repair/provider-history.js";
 import type {
   AssistantMessage,
   AssistantMessageEvent,
@@ -13,6 +12,8 @@ import type {
   ToolResultMessage,
 } from "@branch/llm-core";
 import { uuidv7 } from "./harness/session/uuid.js";
+import { compatibilityStream } from "./history-repair/provider-compat/compatibility-stream.js";
+import { repairProviderHistory } from "./history-repair/provider-history.js";
 import { copyInternalToolResultState } from "./internal-hooks.js";
 import {
   type AgentCoreStreamRuntimeDeps,
@@ -151,7 +152,9 @@ export async function streamAgentResponse(
     const transformed = config.transformContext
       ? await config.transformContext(messages, projectionSignal)
       : messages;
-    return repairProviderHistory(await config.convertToLlm(normalizeCoreContextMessages(transformed)));
+    return repairProviderHistory(
+      await config.convertToLlm(normalizeCoreContextMessages(transformed)),
+    );
   };
   const llmMessages = await convertMessages(sourceMessages);
   let requestPrefix: string | undefined;
@@ -162,7 +165,7 @@ export async function streamAgentResponse(
     tools: context.tools,
   };
 
-  const streamFunction = resolveAgentCoreStreamFn(runtime, streamFn);
+  const streamFunction = compatibilityStream(resolveAgentCoreStreamFn(runtime, streamFn));
 
   // Resolve API key (important for expiring tokens)
   const resolvedApiKey =
