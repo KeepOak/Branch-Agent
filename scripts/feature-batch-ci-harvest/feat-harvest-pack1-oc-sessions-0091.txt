@@ -4,6 +4,7 @@ engine:extensions/clickclack/src/discussions/tool.test.ts
 engine:extensions/discord/src/monitor/thread-bindings.acp-reconciliation.test.ts
 engine:extensions/discord/src/monitor/thread-bindings.authority.test.ts
 engine:extensions/discord/src/monitor/thread-bindings.creation.test.ts
+engine:extensions/llm-task/src/llm-task-tool.test.ts
 engine:src/agents/embedded-agent-runner/thinking-replay-repair.test.ts
 engine:src/agents/main-session-recovery/main-session-recovery-store.test.ts
 engine:src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts
