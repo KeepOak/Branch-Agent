@@ -41,6 +41,7 @@ import {
   runWithGatewayRootWorkReadmission,
 } from "./gateway-work-admission.js";
 import { CommandLane, SUBAGENT_LANE_PREFIX, SWARM_LANE_PREFIX } from "./lanes.js";
+import { waitForSessionHandoffLease } from "./session-handoff-lease-gate.js";
 export {
   GatewayDrainingError,
   isGatewayWorkAdmissionClosed as isGatewayDraining,
@@ -534,6 +535,15 @@ export function enqueueCommandInLane<T>(
   const queueState = getQueueState();
   if (isGatewaySubordinateWorkAdmissionClosed()) {
     return Promise.reject(new GatewayDrainingError());
+  }
+  // A session the previous engine still finishes after an in-place update is not touched until it is released.
+  const handoffLease = waitForSessionHandoffLease(normalizeLane(lane), opts?.abortSignal);
+  if (handoffLease) {
+    const resume = AsyncLocalStorage.snapshot();
+    opts?.onQueued?.();
+    const resumed = opts ? { ...opts } : undefined;
+    if (resumed) delete resumed.onQueued;
+    return handoffLease.then(() => resume(() => enqueueCommandInLane(lane, task, resumed)));
   }
   const runInAsyncContext = AsyncLocalStorage.snapshot();
   const { onWait, taskTimeoutProgressAtMs, taskTimeoutSubscribe } = opts ?? {};
