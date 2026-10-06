@@ -130,11 +130,11 @@ describe("Settings › Computer & browser", () => {
     try {
       const { engine, request } = engineWith(PAIRS);
       await show("computer", engine);
-      const allow = () => [...document.querySelectorAll("button")].filter((b) => b.textContent === "Allow");
-      expect(allow()[0].disabled).toBe(true);
+      const allow = () => document.querySelector<HTMLButtonElement>('[data-row="Desk Mac"].s2-req button.pri')!;
+      expect(allow().disabled).toBe(true);
       await act(async () => { vi.advanceTimersByTime(1600); });
-      expect(allow()[0].disabled).toBe(false);
-      await act(async () => allow()[1].click());
+      expect(allow().disabled).toBe(false);
+      await act(async () => allow().click());
       await flush();
       expect(request).toHaveBeenCalledWith("node.pair.approve", { requestId: "n1" });
     } finally { vi.useRealTimers(); }
@@ -142,7 +142,7 @@ describe("Settings › Computer & browser", () => {
   it("Don't allow asks first, then rejects", async () => {
     const { engine, request } = engineWith(PAIRS);
     await show("computer", engine);
-    await act(async () => [...document.querySelectorAll("button")].find((b) => b.textContent === "Don’t allow")!.click());
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-row="Studio laptop"].s2-req button')!.click());
     expect(document.body.textContent).toContain("Studio laptop has to ask again before it can connect.");
     expect(request).not.toHaveBeenCalledWith("device.pair.reject", expect.anything());
     await click("Turn it down");
