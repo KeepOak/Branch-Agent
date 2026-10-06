@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/cron/isolated-agent.session-identity.test.ts (atlas AUTOMATION-0033). Changed for Branch: rebranded through scripts/rebrand-map.json; retain current upstream regression coverage instead of older atlas tests.
 // Isolated agent session identity tests cover stable session ids for cron runs.
 import "./isolated-agent.mocks.js";
 import fs from "node:fs/promises";
