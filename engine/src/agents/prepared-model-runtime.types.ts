@@ -163,6 +163,8 @@ export type PreparedModelRuntimeLeaseOptions = {
   retainIdleRunOwner?: boolean;
   catalogMode?: PreparedModelRuntimeCatalogMode;
   pluginGeneration?: PreparedModelRuntimePluginGeneration;
+  /** An already-admitted turn may join a successor after its generation is retired. */
+  rejoinSupersededPluginGeneration?: boolean;
   pluginMetadataSnapshot?: PluginMetadataSnapshot;
   abortSignal?: AbortSignal;
   /** Pure planning against admitted facts; requested selections remain explicit and additive. */
