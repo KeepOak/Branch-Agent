@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/infra/dotenv.ts (atlas OPS-0195). Changed for Branch: keep external fs-safe interpreter controls blocked in untrusted workspace dotenv files.
 // Loads dotenv files while blocking unsafe workspace env keys.
 import path from "node:path";
 import {
@@ -108,6 +109,9 @@ const BLOCKED_PROVIDER_AUTH_WORKSPACE_DOTENV_KEYS = [
 ] as const;
 
 const BLOCKED_WORKSPACE_DOTENV_KEYS = new Set([
+  // These fs-safe package controls retain their upstream names after rebranding.
+  "OPENCLAW_PINNED_PYTHON",
+  "OPENCLAW_PINNED_WRITE_PYTHON",
   ...BLOCKED_PROVIDER_AUTH_WORKSPACE_DOTENV_KEYS,
   "ALL_PROXY",
   "BROWSER_EXECUTABLE_PATH",

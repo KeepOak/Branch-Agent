@@ -8,6 +8,11 @@ engine:src/gateway/github-user-identity.cache.test.ts
 engine:src/gateway/github-user-identity.oidc.test.ts
 engine:src/gateway/github-user-identity.test.ts
 engine:src/gateway/server-tailscale.test.ts
+engine:src/infra/dotenv-global.test.ts
+engine:src/infra/dotenv-homebrew.test.ts
+engine:src/infra/dotenv-workspace-blocklist.test.ts
+engine:src/infra/dotenv.behaviour.test.ts
+engine:src/infra/dotenv.test.ts
 engine:src/infra/ssh-client.test.ts
 engine:src/infra/ssh-client.windows.test.ts
 engine:src/infra/ssh-config.test.ts
