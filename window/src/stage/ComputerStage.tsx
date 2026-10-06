@@ -308,7 +308,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
           onState={onBrowserState}
         />
       ) : (
-      <div className="st7-body nodock">
+      <div className="st7-body">
         {picked === "grid" ? (
           <div className="st7-wrap gridwrap7">
             <div className="st7-grid">

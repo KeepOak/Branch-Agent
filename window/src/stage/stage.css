@@ -23,8 +23,7 @@
 .st7-tabs button[aria-selected="true"] {background:var(--fill-2);color:var(--ink);font-weight:600;}
 .st7-tabs i {width:7px;height:7px;border-radius:50%;background:var(--line-2);}
 .st7-tabs i.on7 {background:var(--accent);animation:beat-st 1.2s ease-in-out infinite;}
-.st7-body {flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 340px;}
-.st7-body.nodock {grid-template-columns:minmax(0,1fr);}
+.st7-body {flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);}
 .st7-wrap {display:grid;place-items:center;min-width:0;min-height:0;overflow:hidden;container-type:size;background:radial-gradient(900px 500px at 50% 40%,var(--fill),transparent 70%);}
 .st7-screen {position:relative;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.55),0 0 0 1px var(--line-2);background:#0e1419;}
 /* The preview's fitStage: 18 px clear on each side, as wide as fits the wrap at 16:10. */

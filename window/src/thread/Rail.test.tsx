@@ -20,14 +20,20 @@ const blocks: Block[] = [
   { kind: "text", key: "t1", text: "On it.", streaming: false },
   { kind: "user", key: "u2", text: "Show the invoice" },
   { kind: "text", key: "t2", text: "Here it is.", streaming: false },
+  { kind: "text", key: "t2b", text: "The total is $42.", streaming: false },
+  { kind: "user", key: "u3", text: "Check the due date" },
+  { kind: "approval", key: "a3", approval: { id: "a3", state: "pending" } } as Block,
+  { kind: "text", key: "t3", text: "Due Friday.", streaming: false },
+  { kind: "user", key: "u4", text: "Thanks" },
+  { kind: "text", key: "t4", text: "You're welcome.", streaming: false },
 ];
 
-it("makes one tick per message: yours short, the Trunk's long, labelled with the words", () => {
-  expect(railTicks(blocks).map(({ key, mine, label }) => ({ key, mine, label }))).toEqual([
-    { key: "u1", mine: true, label: "Find the Hartwell invoice" },
-    { key: "t1", mine: false, label: "On it." },
-    { key: "u2", mine: true, label: "Show the invoice" },
-    { key: "t2", mine: false, label: "Here it is." },
+it("makes one tick per user turn, even with multiple text blocks", () => {
+  expect(railTicks(blocks).map(({ key, mine, label, body, needs }) => ({ key, mine, label, body, needs }))).toEqual([
+    { key: "u1", mine: true, label: "Find the Hartwell invoice", body: "On it.", needs: false },
+    { key: "u2", mine: true, label: "Show the invoice", body: "Here it is.", needs: false },
+    { key: "u3", mine: true, label: "Check the due date", body: "Due Friday.", needs: true },
+    { key: "u4", mine: true, label: "Thanks", body: "You're welcome.", needs: false },
   ]);
 });
 
@@ -37,9 +43,9 @@ function Host({ size }: { size: [number, number] }) {
     <div className="conversation-column">
       <div ref={scroller} data-size={size.join("x")}>
         <div data-block-key="u1"><p>you</p></div>
-        <div data-block-key="t1"><p>reply</p></div>
         <div data-block-key="u2"><p>you</p></div>
-        <div data-block-key="t2"><p>reply</p></div>
+        <div data-block-key="u3"><p>you</p></div>
+        <div data-block-key="u4"><p>you</p></div>
       </div>
       <Rail scroller={scroller} blocks={blocks} sessionKey="test" />
     </div>
@@ -62,10 +68,10 @@ async function mount(size: [number, number], width = 1600) {
 it("shows on a roomy thread and jumps to the message a tick names", async () => {
   const container = await mount([1100, 600]);
   const ticks = container.querySelectorAll<HTMLButtonElement>(".rail .tick");
-  expect([...ticks].map((t) => t.getAttribute("aria-label"))).toEqual(["Find the Hartwell invoice", "On it.", "Show the invoice", "Here it is."]);
+  expect([...ticks].map((t) => t.getAttribute("aria-label"))).toEqual(["Find the Hartwell invoice", "Show the invoice", "Check the due date", "Thanks"]);
   expect(ticks[0]!.className).toContain("me");
   const into = vi.fn();
-  (container.querySelector('[data-block-key="t1"] > p') as HTMLElement).scrollIntoView = into;
+  (container.querySelector('[data-block-key="u2"] > p') as HTMLElement).scrollIntoView = into;
   vi.stubGlobal("matchMedia", () => ({ matches: true }));
   await act(async () => ticks[1]!.click());
   expect(into).toHaveBeenCalledWith({ block: "start", behavior: "auto" });
@@ -76,9 +82,21 @@ it("stays hidden on a phone viewport", async () => {
   expect(container.querySelector(".rail")).toBeNull();
 });
 
+it("stays hidden when a wide viewport leaves a narrow chat pane", async () => {
+  const container = await mount([380, 600], 1280);
+  expect(container.querySelector(".rail")).toBeNull();
+});
+
+it("renders the rail without ResizeObserver", async () => {
+  const container = await mount([1000, 600]);
+  vi.stubGlobal("ResizeObserver", undefined);
+  await act(async () => root!.render(<Host size={[1000, 600]} />));
+  expect(container.querySelectorAll(".rail .tick")).toHaveLength(4);
+});
+
 it.each([1600, 1280, 900, 700, 500])("responsive turn rail at %i px", async (width) => {
   const container = await mount([width - 300, 600], width);
-  expect(container.querySelectorAll(".rail .tick")).toHaveLength(width > 760 ? 4 : 0);
+  expect(container.querySelectorAll(".rail .tick")).toHaveLength(width - 300 > 760 ? 4 : 0);
 });
 
 it("previews and bookmarks a real turn, then restores it from storage", async () => {

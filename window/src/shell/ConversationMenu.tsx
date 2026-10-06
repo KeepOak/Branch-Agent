@@ -1,6 +1,6 @@
 // The header's ⋯ conversation menu and what its rows open (DESIGN-SPEC §4.2.7): the rows come from
 // conversation-menu.ts; this hook runs them against the engine and keeps the menu, popover and dialogs.
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { describePlacement, listComputers, placementComputer, type Computer, type Placement } from "../stage/computers";
 import { ComputerPicker } from "../stage/ComputerPicker";
 import { ReplayDialog } from "./Replay";
@@ -152,7 +152,8 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
   });
   let bookmarked: string[] = [];
   try { if (key) bookmarked = JSON.parse(localStorage.getItem(`branch:turn-bookmarks:${key}`) ?? "[]") as string[]; } catch { /* storage unavailable */ }
-  const bookmarkedTicks = railTicks(p.history).filter((tick) => bookmarked.includes(tick.key));
+  const ticks = useMemo(() => railTicks(p.history), [p.history]);
+  const bookmarkedTicks = ticks.filter((tick) => bookmarked.includes(tick.key));
   if (bookmarkedTicks.length && key) items.unshift({
     kind: "sub", label: "Bookmarks", items: [
       { kind: "head", label: "Bookmarks" },

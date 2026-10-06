@@ -14,7 +14,6 @@
   overflow: auto;
 }
 .thread {
-  max-width: var(--thread-w);
   margin: 0 auto;
   padding: 26px 24px 20px;
   display: flex;
@@ -235,7 +234,6 @@
 }
 
 .composer {
-  max-width: var(--thread-w);
   margin: 0 auto;
   display: flex;
   align-items: flex-end;

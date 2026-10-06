@@ -2,20 +2,29 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { Block } from "./model";
+import { turnOf } from "./layout";
 
 type Tick = { key: string; mine: boolean; label: string; title: string; body: string; time: string; needs: boolean };
 export function railTicks(blocks: readonly Block[]): Tick[] {
-  return blocks.flatMap((block, index) => {
-    if (block.kind !== "user" && block.kind !== "text") return [];
-    const owner = block.kind === "user" ? index : blocks.findLastIndex((b, at) => at <= index && b.kind === "user");
-    const question = owner >= 0 ? blocks[owner] : block;
-    const reply = blocks.slice(owner + 1).find((b) => b.kind === "text");
-    const stamp = (question.kind === "user" || question.kind === "text" ? question.meta?.timestamp : undefined) ?? block.meta?.timestamp;
-    return [{ key: block.key, mine: block.kind === "user", label: block.text.replace(/\s+/g, " ").trim().slice(0, 80),
-      title: question.kind === "user" || question.kind === "text" ? question.text : block.text,
-      body: reply?.kind === "text" ? reply.text : block.text, time: stamp ? new Date(stamp).toLocaleString() : "",
-      needs: blocks.slice(index + 1, index + 4).some((b) => b.kind === "approval" && b.approval.state === "pending") }];
-  });
+  const ticks: Tick[] = [];
+  for (let i = 0; i < blocks.length;) {
+    const turn = turnOf(blocks, i);
+    i += turn.length;
+    const question = turn[0]?.kind === "user" ? turn[0] : undefined;
+    let reply: Extract<Block, { kind: "text" }> | undefined;
+    let needs = false;
+    for (const block of turn) {
+      if (block.kind === "text" && !reply) reply = block;
+      if (block.kind === "approval" && block.approval.state === "pending") needs = true;
+    }
+    const anchor = question ?? reply;
+    if (!anchor || (anchor.kind !== "user" && anchor.kind !== "text")) continue;
+    const stamp = anchor.meta?.timestamp ?? reply?.meta?.timestamp;
+    ticks.push({ key: anchor.key, mine: anchor.kind === "user", label: anchor.text.replace(/\s+/g, " ").trim().slice(0, 80),
+      title: anchor.text, body: reply?.text ?? anchor.text, time: stamp ? new Date(stamp).toLocaleString() : "",
+      needs });
+  }
+  return ticks;
 }
 const target = (root: HTMLElement | null, key: string) =>
   root?.querySelector<HTMLElement>(`[data-block-key="${CSS.escape(key)}"]`)?.firstElementChild as HTMLElement | null | undefined;
@@ -29,7 +38,8 @@ function useRoomy(scroller: RefObject<HTMLDivElement | null>): boolean {
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const check = () => setRoomy(window.innerWidth > 760 && el.clientHeight > 360);
+    const check = () => setRoomy(el.clientWidth > 760 && el.clientHeight > 360);
+    if (typeof ResizeObserver !== "function") { check(); return; }
     const ro = new ResizeObserver(check);
     ro.observe(el);
     window.addEventListener("resize", check);

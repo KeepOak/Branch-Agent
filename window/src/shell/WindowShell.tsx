@@ -84,6 +84,7 @@ import { currentKeys, keyActions, readCustomKeys } from "./keymap";
 import { ComputerActivityCard } from "../thread/ComputerActivityCard";
 import { PlanCard, usePlanDismiss, usePlanRefresh, useProgressCard } from "../thread/PlanCard";
 import { ComputerStage, type PipTarget, type StageMode } from "../stage/ComputerStage";
+import { StageConversation } from "../stage/StageConversation";
 import { SidePane, type PaneTab } from "../stage/SidePane";
 import { StagePip } from "../stage/StagePip";
 import { AddComputer } from "../stage/AddComputer";
@@ -1034,9 +1035,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       </div>
     ) : (
       <>
-        <div className="conversation-column">
-        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} onList={toggleList} /> : null}
-        <SplitFrame panes={panes} width={splitW} onWidth={setSplitW} side={
+        <StageConversation
+        header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} onList={toggleList} /> : null}
+        thread={<SplitFrame panes={panes} width={splitW} onWidth={setSplitW} side={
           <SplitPanes
             panes={panes}
             rows={lists.rows}
@@ -1086,9 +1087,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           running={Boolean(s.liveRunId)}
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />
-        </SplitFrame>
-        {s.error && !isPreparationPending(s.error) ? <p className="notice indent">{s.error}</p> : null}
-        <Composer
+        </SplitFrame>}
+        notice={s.error && !isPreparationPending(s.error) ? <p className="notice indent">{s.error}</p> : null}
+        stage={stage ? (
+          <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
+        ) : null}
+        composer={<Composer
           {...composerProps}
           mainKey={mainKeySuffix}
           onNewTopic={startNew}
@@ -1111,8 +1115,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           }
           onSend={(text: string, extras?: SendExtras) => void session.send(text, extras)}
           onStop={() => void session.stopRun()}
+        />}
         />
-        </div>
         {pane && ready ? (
           <SidePane key={s.sessionKey} engine={session.engine} name={trunkName(openRow?.agentId)} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} cardError={progress.error} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={notify} title={name} onReload={() => void session.reload()}
             contactTopics={topicContact ? { items: topicItems, name: topicContact.name, onOpen: openTopic } : undefined} />
@@ -1285,9 +1289,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         ) : null}
         {main}
       </main>
-      {route.kind === "chat" && stage ? (
-        <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
-      ) : null}
       {addingComputer && ready ? <AddComputer engine={session.engine} onClose={() => setAddingComputer(false)} onAdded={computersChanged} /> : null}
       {route.kind === "chat" && pip && !stage ? (
         <StagePip key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} computer={pip} blocks={[...s.history, ...s.live]} onOpen={() => { setPip(null); setStage(pip.kind === "browser" ? "Browser" : "Computer"); }} onClose={() => setPip(null)} />
