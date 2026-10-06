@@ -1,0 +1,3 @@
+engine:src/agents/auth-profiles/anthropic-manual-migration.test.ts
+engine:src/plugins/provider-auth-token.anthropic.test.ts
+window:src/places/trunk/AccountsTab.test.tsx

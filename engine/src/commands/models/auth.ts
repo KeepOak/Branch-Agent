@@ -66,6 +66,7 @@ import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
 import { createClackPrompter } from "../../wizard/clack-prompter.js";
 import type { WizardPrompter } from "../../wizard/prompts.js";
 import { validateAnthropicSetupToken } from "../auth-token.js";
+import { resolveAnthropicTokenIdentity } from "../../plugins/provider-auth-token.js";
 import { repairModelSelectionRuntimePlugins } from "../runtime-plugin-install.js";
 import { saveModelProviderApiKey } from "./auth-api-key.js";
 import { tryImportProviderCredential } from "./auth-credential-import.js";
@@ -706,8 +707,7 @@ export async function modelsAuthPasteTokenCommand(
     );
   }
   const provider = normalizeManualAuthProvider(rawProvider);
-  const profileId =
-    normalizeOptionalString(opts.profileId) || resolveDefaultTokenProfileId(provider);
+  const requestedProfileId = normalizeOptionalString(opts.profileId);
 
   const validateTokenInput = (value: string | undefined): string | undefined => {
     const trimmed = value?.trim();
@@ -730,6 +730,8 @@ export async function modelsAuthPasteTokenCommand(
     provider === "anthropic"
       ? tokenInput.replaceAll(/\s+/g, "").trim()
       : (normalizeOptionalString(tokenInput) ?? "");
+  const identity = provider === "anthropic" ? await resolveAnthropicTokenIdentity(token) : undefined;
+  const profileId = identity?.profileId ?? requestedProfileId ?? resolveDefaultTokenProfileId(provider);
 
   const expires = resolveManualTokenExpiryMs(opts.expiresIn);
 
@@ -739,12 +741,13 @@ export async function modelsAuthPasteTokenCommand(
       type: "token",
       provider,
       token,
+      ...(identity?.email ? { email: identity.email } : {}),
       ...(expires ? { expires } : {}),
     },
     agentDir,
   });
 
-  await updateConfig((cfg) => applyAuthProfileConfig(cfg, { profileId, provider, mode: "token" }));
+  await updateConfig((cfg) => applyAuthProfileConfig(cfg, { profileId, provider, mode: "token", ...(identity?.email ? { email: identity.email } : {}) }));
 
   await refreshRunningGatewayAuthState(agentId, "login", runtime);
 

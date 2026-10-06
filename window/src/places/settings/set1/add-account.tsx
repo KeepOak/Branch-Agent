@@ -60,8 +60,13 @@ type Props = { engine: WindowEngine; start: AddStart; caps: RecordValue[]; provi
 export function AddAccountDialog({ engine, start, caps, providers, agent, onClose }: Props) {
   const detect = useResource<RecordValue>(engine, "branch.setup.detect", agent);
   const services = useMemo(() => servicesOf(caps, providers, detect.data), [caps, providers, detect.data]);
-  const first = start.provider ? services.find((s) => s.brand === start.provider && s.kind === "plan") ?? services.find((s) => s.brand === start.provider) : undefined;
+  const first = start.provider && !detect.loading ? services.find((s) => s.brand === start.provider && s.kind === "plan") ?? services.find((s) => s.brand === start.provider) : undefined;
   const [step, setStep] = useState<Step>(first ? { n: 2, svc: first } : { n: 1 });
+  useEffect(() => {
+    if (!start.provider || detect.loading) return;
+    const preferred = services.find((service) => service.brand === start.provider && service.kind === "plan") ?? services.find((service) => service.brand === start.provider);
+    if (preferred) setStep((current) => current.n === 1 || (current.n === 2 && !("run" in current) && current.svc.brand === start.provider && current.svc.kind === "key" && preferred.kind === "plan") ? { n: 2, svc: preferred } : current);
+  }, [detect.loading, services, start.provider]);
   const [added, setAdded] = useState(false);
   const ids = providers.flatMap((p) => p.profiles.map((a) => a.profileId));
   const signedIn = () => { setAdded(true); if (step.n === 2) setStep({ n: 3, svc: step.svc, before: ids }); };
@@ -208,7 +213,7 @@ function SecretSignIn({ engine, svc, login, agent, onRun }: { engine: WindowEngi
     if (!ready) return;
     if (first) return onRun({ method: "branch.setup.activate.start", params: { kind: "api-key", authChoice: text(login.id), apiKey: token.trim(), ...agent } });
     const secret = { value: token.trim(), match: (step: WizardStep) => !step.externalUrl && /setup-token|token/i.test(`${step.title ?? ""} ${step.message ?? ""}`) };
-    onRun({ method: "models.authLogin", params: { authChoice: loginChoiceRef(svc.brand, text(login.id)), profileLabel: label, ...agent }, secret });
+    onRun({ method: "models.authLogin", params: { authChoice: loginChoiceRef(svc.brand, text(login.id)), ...(claude ? {} : { profileLabel: label }), ...agent }, secret });
   };
   return (
     <>
@@ -222,10 +227,10 @@ function SecretSignIn({ engine, svc, login, agent, onRun }: { engine: WindowEngi
           </ol>
         ) : login.hint ? <p>{visible(login.hint)}</p> : null}
         <label className="fld"><span>Token</span><input className="inp" type="password" autoComplete="off" aria-label="Token" value={token} onChange={(e) => setToken(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>
-        {first ? null : <label className="fld"><span>Call it</span><input className="inp" aria-label="Call it" placeholder={label} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>}
+        {first || claude ? null : <label className="fld"><span>Call it</span><input className="inp" aria-label="Call it" placeholder={label} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>}
         <div className="acts"><button type="button" className="btn pri sm" disabled={!ready} onClick={start}>Sign in</button></div>
       </div>
-      <p className="hint">{first ? "This is the Trunk’s first account, so Branch also starts using it." : `Saved as its own account, “${label}”. The Trunk keeps its model.`}</p>
+      <p className="hint">{first ? "This is the Trunk’s first account, so Branch also starts using it." : claude ? "Branch saves this Claude account by its email when Anthropic provides it. The Trunk keeps its model." : `Saved as its own account, “${label}”. The Trunk keeps its model.`}</p>
     </>
   );
 }

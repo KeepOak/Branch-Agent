@@ -1315,8 +1315,8 @@ describe("anthropic provider replay hooks", () => {
   });
 
   it("stores setup-token expiry from a bounded duration", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1_000);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ account: { uuid: "fake-account", email: "owner@example.test" } }), { status: 200 })));
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
     try {
       const provider = await registerSingleProviderPlugin(anthropicPlugin);
       const setupTokenAuth = provider.auth.find((entry) => entry.id === "setup-token");
@@ -1338,7 +1338,8 @@ describe("anthropic provider replay hooks", () => {
         expires: 3_601_000,
       });
     } finally {
-      vi.useRealTimers();
+      now.mockRestore();
+      vi.unstubAllGlobals();
     }
   });
 
@@ -1393,8 +1394,8 @@ describe("anthropic provider replay hooks", () => {
   });
 
   it("omits setup-token expiry when duration overflows the Date range", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(8_640_000_000_000_000);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ account: { uuid: "fake-account", email: "owner@example.test" } }), { status: 200 })));
+    const now = vi.spyOn(Date, "now").mockReturnValue(8_640_000_000_000_000);
     try {
       const provider = await registerSingleProviderPlugin(anthropicPlugin);
       const setupTokenAuth = provider.auth.find((entry) => entry.id === "setup-token");
@@ -1413,9 +1414,11 @@ describe("anthropic provider replay hooks", () => {
         type: "token",
         provider: "anthropic",
         token: ANTHROPIC_SETUP_TOKEN,
+        email: "owner@example.test",
       });
     } finally {
-      vi.useRealTimers();
+      now.mockRestore();
+      vi.unstubAllGlobals();
     }
   });
 

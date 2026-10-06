@@ -501,6 +501,7 @@ describe("modelsAuthLoginCommand", () => {
   afterEach(() => {
     restoreStdin?.();
     restoreStdin = null;
+    vi.unstubAllGlobals();
   });
 
   function useCoderAgentConfig() {
@@ -1671,17 +1672,19 @@ describe("modelsAuthLoginCommand", () => {
   });
 
   it("writes pasted Anthropic setup-tokens and logs the preference note", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ account: { uuid: "fake-account", email: "owner@example.test" } }), { status: 200 })));
     const runtime = createRuntime();
     mocks.clackPassword.mockResolvedValue(`sk-ant-oat01-${"a".repeat(80)}`);
 
     await modelsAuthPasteTokenCommand({ provider: "anthropic" }, runtime);
 
     expect(mocks.upsertAuthProfileWithLock).toHaveBeenCalledWith({
-      profileId: "anthropic:manual",
+      profileId: "anthropic:owner@example.test",
       credential: {
         type: "token",
         provider: "anthropic",
         token: `sk-ant-oat01-${"a".repeat(80)}`,
+        email: "owner@example.test",
       },
       agentDir: "/tmp/branch/agents/main",
     });
