@@ -1,0 +1,3 @@
+engine:src/agents/tools/pdf-tool.model-config.test.ts
+engine:src/agents/tools/pdf-tool.test.ts
+engine:src/media/pdf-extract.test.ts
