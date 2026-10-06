@@ -97,8 +97,9 @@ async function runFeatureTests(scratch) {
         'run', '--config', config, ...regularTests], root, env);
     }
     if (browserTests.length) {
-      await run(process.execPath, [path.join(root, 'node_modules/vitest/vitest.mjs'),
-        'run', '--config', path.join(engineRoot, 'test/vitest/vitest.ui-browser.config.ts'), ...browserTests], root, env);
+      // The engine wrapper applies the browser project's worker/bootstrap policy.
+      await run(process.execPath, [path.join(engineRoot, 'scripts/run-vitest.mjs'),
+        'run', ...browserTests], root, env);
     }
   }
 }
