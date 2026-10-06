@@ -17,6 +17,9 @@ engine:extensions/matrix/src/matrix/sdk/recovery-key-store.test.ts
 engine:extensions/matrix/src/matrix/sdk/verification-manager.test.ts
 engine:extensions/msteams/src/approval-card-submit.test.ts
 engine:extensions/msteams/src/approval-card.test.ts
+engine:extensions/msteams/src/attachments/graph.test.ts
+engine:extensions/msteams/src/file-consent.test.ts
+engine:extensions/msteams/src/graph-upload.test.ts
 engine:extensions/msteams/src/monitor-handler/message-handler.authz.test.ts
 engine:extensions/msteams/src/monitor.lifecycle.test.ts
 engine:extensions/msteams/src/sdk.test.ts
