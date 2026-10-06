@@ -81,7 +81,7 @@ it.skipIf(process.platform !== "win32")(
           canonicalAgentDir,
           survivingDatabaseFilePaths,
         ),
-      }).toEqual({ registeredOwner: agentId, claimedBySurvivor: false });
+      }).toEqual({ registeredOwner: undefined, claimedBySurvivor: false });
       expect(deleted.removed).toContainEqual({ path: canonicalAgentDir, method: "trash" });
       expect(deleted.removed).not.toContainEqual({ path: databasePath, method: "trash" });
       await expect(fs.stat(agentDir)).rejects.toMatchObject({ code: "ENOENT" });
