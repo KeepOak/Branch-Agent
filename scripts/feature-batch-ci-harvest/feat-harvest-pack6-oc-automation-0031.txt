@@ -17,6 +17,7 @@ engine:src/cron/isolated-agent.session-identity.test.ts
 engine:src/cron/maintenance-scheduler.test.ts
 engine:src/cron/maintenance.test.ts
 engine:src/cron/session-reaper.test.ts
+engine:src/cron/trigger-script.mcp.test.ts
 engine:src/cron/webhook-url.test.ts
 engine:src/gateway/cron-creator-authority-grant.test.ts
 engine:src/gateway/hooks-mapping.fanout.test.ts
