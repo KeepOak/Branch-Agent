@@ -29,12 +29,14 @@ export async function handleRelayInbound(params: {
   const chatType = source.chat_type === "dm" || source.chat_type === "direct"
     ? "direct" as const
     : source.chat_type === "channel" ? "channel" as const : "group" as const;
-  const target = buildRelayTarget({ platform: source.platform, chatType, chatId: source.chat_id });
+  const peerTarget = buildRelayTarget({ platform: source.platform, chatType, chatId: source.chat_id });
+  const target = buildRelayTarget({ platform: source.platform, chatType, chatId: source.chat_id,
+    scopeId: source.scope_id, userId: source.user_id });
   const { route } = resolveChannelInboundRouteEnvelope({
     cfg: params.cfg,
     channel: CHAT_RELAY_CHANNEL_ID,
     accountId: params.account.accountId,
-    peer: { kind: chatType, id: target },
+    peer: { kind: chatType, id: peerTarget },
   });
   const isGroup = chatType !== "direct";
   const wasMentioned = isGroup

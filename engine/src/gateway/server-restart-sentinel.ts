@@ -55,6 +55,7 @@ import {
   mergeDeliveryContext,
   normalizeDeliveryContext,
 } from "../utils/delivery-context.shared.js";
+import { sessionDeliveryOrigin } from "../utils/delivery-context.read.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 import { deliverQueuedGeneratedMediaAgentTurn } from "./server-restart-sentinel-agent-delivery.js";
 import {
@@ -68,12 +69,14 @@ import {
 import {
   deliverRestartSentinelNotice,
   enqueueRestartSentinelNotice,
+  resolveGatewayLifecycleNoticeRoute,
 } from "./server-restart-sentinel-notice.js";
 import {
   readRestartSentinelStartupSnapshot,
   type PendingUpdateSentinelIdentity,
 } from "./server-restart-sentinel-snapshot.js";
 import { finalizeRestartUpdateRun } from "./server-restart-update-run.js";
+import { formatChatRestartComplete } from "./restart-complete-notice.js";
 import { recordLatestUpdateRestartSentinel } from "./server-update-sentinel.js";
 import { loadSessionEntry } from "./session-utils.js";
 import { runStartupTasks, type StartupTask } from "./startup-tasks.js";
@@ -380,7 +383,9 @@ async function loadRestartSentinelStartupTask(params: {
   let noticeMessage =
     payload.kind === "update"
       ? renderUpdateRunSummary(updateRun ?? updateRunReportInputFromSentinel(payload))
-      : message;
+      : payload.kind === "restart"
+        ? formatChatRestartComplete(payload.ts)
+        : message;
   const summary = summarizeRestartSentinel(payload);
   const wakeDeliveryContext = mergeDeliveryContext(
     payload.threadId != null
@@ -491,7 +496,7 @@ async function loadRestartSentinelStartupTask(params: {
     const continuation = sessionKey ? payload.continuation : undefined;
     const session = loadSessionEntry(routedSessionKey, { env });
     const { cfg, entry, canonicalKey } = session;
-    const target = await resolveUpdateRunNoticeTarget({
+    const resolvedTarget = await resolveUpdateRunNoticeTarget({
       cfg,
       sessionKey,
       session,
@@ -499,6 +504,31 @@ async function loadRestartSentinelStartupTask(params: {
       explicitDeliveryContext: sessionKey ? payload.deliveryContext : undefined,
       threadId: sessionKey ? payload.threadId : undefined,
     });
+    // /restart was admitted as an owner command before the old process stopped.
+    // A relay DM's logical sender cannot be reconstructed from its destination
+    // after boot; keep the exact route only for that owner-lookup miss. Other
+    // notice-policy failures must continue to suppress delivery.
+    const restartRoute =
+      payload.kind === "restart" &&
+      payload.deliveryContext?.channel === "chat-relay" &&
+      sessionKey &&
+      resolvedTarget.kind === "none" &&
+      resolvedTarget.reason === "target is not a current command owner"
+        ? resolveGatewayLifecycleNoticeRoute({
+            cfg,
+            deliveryContext: payload.deliveryContext,
+            threadId: payload.threadId ?? undefined,
+          })
+        : undefined;
+    const target = restartRoute
+      ? {
+          kind: "route" as const,
+          route: {
+            ...restartRoute,
+            chatType: sessionDeliveryOrigin(entry)?.chatType ?? ("direct" as const),
+          },
+        }
+      : resolvedTarget;
     if (target.kind === "none") {
       recordUpdateRunNoticeSkipped(updateRunId, target.reason, env);
       // A diagnostic wake would bypass the same owner-only notice decision.

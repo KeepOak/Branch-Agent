@@ -34,6 +34,8 @@ export async function sendRelayText(params: {
       metadata: {
         ...(params.threadId == null ? {} : { thread_id: String(params.threadId) }),
         ...scope,
+        ...(target.scopeId ? { scope_id: target.scopeId } : {}),
+        ...(target.userId ? { user_id: target.userId } : {}),
       },
     }, target.platform);
     if (result.success !== true) {
