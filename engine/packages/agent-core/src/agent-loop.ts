@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/agent-loop.ts (atlas AGENT-LOOP-0001). Changed for Branch: retain native continuation and steering integration; restore pinned preflight steering checks before tool side effects (shared safety layer).
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/agent-loop.ts (atlas AGENT-LOOP-0001). Changed for Branch: retain native continuation and steering integration; keep the newer executionStarted steering gate (never regress to the older pin).
 import type { AssistantMessage, ToolResultMessage } from "@branch/llm-core";
 import { coerceErrorMessage } from "@branch/normalization-core/error-coercion";
 import { createStreamedSteeringConfig, getSteeringAtCheckpoint } from "./agent-loop-steering.js";
@@ -558,7 +558,7 @@ async function executeToolCallGroups(
   let fatal: ExecutedToolCallBatch["fatal"];
 
   while (cursor < toolCalls.length) {
-    if (sequential && !batch.signal?.aborted) {
+    if (sequential && batch.toolPlan.executionStarted && !batch.signal?.aborted) {
       const steering = getSteeringAtCheckpoint(batch.config);
       steeringMessages = Array.isArray(steering) ? steering : await steering;
     }
@@ -587,7 +587,7 @@ async function executeToolCallGroups(
       }
 
       const hasReady = entries.some((entry) => "kind" in entry);
-      if (!batch.signal?.aborted && (!sequential || hasReady)) {
+      if (sequential && batch.toolPlan.executionStarted && hasReady && !batch.signal?.aborted) {
         const steering = getSteeringAtCheckpoint(batch.config);
         steeringMessages = Array.isArray(steering) ? steering : await steering;
       }
