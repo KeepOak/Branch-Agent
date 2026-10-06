@@ -1,3 +1,6 @@
+engine:extensions/azure-speech/speech-provider.test.ts
+engine:extensions/azure-speech/tts.test.ts
+engine:extensions/azure-speech/voices-timeout.test.ts
 engine:extensions/deepgram/audio-flux.test.ts
 engine:extensions/deepgram/audio.test.ts
 engine:extensions/deepgram/realtime-transcription-provider.test.ts
