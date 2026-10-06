@@ -127,6 +127,26 @@ describe("Settings › Accounts", () => {
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg button")].find((b) => b.textContent === "Add key")!.click());
     expect(request).toHaveBeenCalledWith("models.authSetApiKey", { provider: "mistral", apiKey: "sk-test" });
   });
+
+  it.each([
+    { name: "   ", profileLabel: undefined },
+    { name: "Work Account", profileLabel: "work-account" },
+  ])("Claude sign-in sends the right models.authLogin params for name '$name'", async ({ name, profileLabel }) => {
+    const { engine, request } = engineOf({ "branch.setup.detect": { manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Anthropic setup-token" }] } });
+    await render(engine);
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add a Claude account")!.click());
+    const input = document.querySelector<HTMLInputElement>('.dlg input[aria-label="Call it"]')!;
+    expect(input.placeholder).toBe("Saved by email if blank");
+    if (name) await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, name); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    if (!name.trim()) expect(document.querySelector(".dlg .hint")?.textContent).toContain("by its email");
+    const token = document.querySelector<HTMLInputElement>('.dlg input[aria-label="Token"]')!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(token, "sk-ant-oat01-test"); token.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg button")].find((b) => b.textContent === "Sign in")!.click());
+    const login = request.mock.calls.find(([method]) => method === "models.authLogin") as unknown as [string, Record<string, unknown>];
+    expect(login[1]).toMatchObject({ authChoice: "anthropic/setup-token", sessionId: expect.any(String) });
+    if (profileLabel) expect(login[1].profileLabel).toBe(profileLabel);
+    else expect(login[1]).not.toHaveProperty("profileLabel");
+  });
 });
 
 describe("Settings › Accounts on a partial engine reply", () => {
