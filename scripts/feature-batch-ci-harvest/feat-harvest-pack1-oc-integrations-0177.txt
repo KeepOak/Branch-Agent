@@ -1,3 +1,6 @@
+engine:extensions/migrate-hermes/mcp-policy.test.ts
+engine:extensions/migrate-hermes/provider.test.ts
+engine:extensions/migrate-hermes/secrets.test.ts
 engine:extensions/telegram/src/sticker-cache.selection.test.ts
 engine:extensions/telegram/src/sticker-cache.test.ts
 engine:src/cli/clawhub-install-confirmation.test.ts
