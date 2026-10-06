@@ -226,6 +226,7 @@
 .pa-root *::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .pa-root canvas { image-rendering: pixelated; }
 .pa-name {
+  font-family: Arial, sans-serif;
   color: #fff;
   background: rgba(16, 16, 28, 0.72);
   padding: 2px 5px 3px;

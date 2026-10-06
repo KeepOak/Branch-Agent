@@ -77,6 +77,16 @@ describe("Pixel office", () => {
     expect(officeRoster(agents, { sessions: [{ ...sessions.sessions[0], hasActiveRun: false, activeRunIds: [] }] }, contacts).agents[0]?.state).toBe("resting");
   });
 
+  it("shows a needs-you bubble for pending approvals even while the Trunk is working", () => {
+    const agents = { agents: [{ id: "oak", identity: { name: "Oak" } }] };
+    const sessions = { sessions: [{ key: "agent:oak:main", agentId: "oak", hasActiveRun: true }] };
+    const contacts = { contacts: [{ id: "trunk:oak", kind: "trunk", name: "Oak", threadKey: "agent:oak:main", needsYou: false }] };
+    const approval = { id: "approval-1", request: { sessionKey: "agent:oak:main" } };
+    const roster = officeRoster(agents, sessions, contacts, {}, new Map(), { items: [approval] });
+    expect(roster.agents[0]).toMatchObject({ state: "needs_you", needsYou: 1 });
+    expect(officeRoster(agents, sessions, contacts, {}, new Map(), { items: [{ ...approval, state: "allowed" }] }).agents[0]?.state).toBe("working");
+  });
+
   it("keeps the office as a main-pane route for back and forward history", () => {
     expect(parseRoute('{"kind":"place","place":"office"}')).toEqual({ kind: "place", place: "office" });
   });

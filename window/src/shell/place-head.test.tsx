@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PlaceHead } from "./TopBar";
+import { HeaderRow, PlaceHead } from "./TopBar";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -10,6 +10,18 @@ afterEach(async () => {
   if (root) await act(async () => root?.unmount());
   root = undefined;
   document.body.innerHTML = "";
+  vi.unstubAllGlobals();
+});
+
+it("announces the narrow header's shared Trunk state politely", async () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} });
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  await act(async () => root?.render(<HeaderRow header={{ name: "Fern", trunkName: "Fern", state: "oops", isDefaultTrunk: false, renaming: false, onRename: () => {} }} />));
+  expect(host.querySelector('[role="status"]')?.getAttribute("aria-live")).toBe("polite");
+  expect(host.querySelector('[role="status"]')?.textContent).toBe("Fern: Hit a snag");
+  expect(host.querySelector('.head-state[data-face-state="oops"]')?.textContent).toBe("Hit a snag");
 });
 
 describe("a place's narrow header row (preview placeHead)", () => {
