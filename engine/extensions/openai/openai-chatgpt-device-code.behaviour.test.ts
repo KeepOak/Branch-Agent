@@ -96,6 +96,127 @@ function requestBody(init: RequestInit | undefined): Record<string, unknown> {
   return JSON.parse(body) as Record<string, unknown>;
 }
 
+type TransportOptions = NonNullable<Parameters<typeof streamOpenAICodexResponses>[2]>;
+
+function inferenceFetch() {
+  return vi
+    .fn<typeof fetch>()
+    .mockResolvedValueOnce(
+      completedResponse([
+        {
+          type: "function_call",
+          id: "fc_lookup",
+          call_id: "call_lookup",
+          name: "lookup",
+          arguments: '{"path":"notes.txt"}',
+        },
+      ]),
+    )
+    .mockResolvedValueOnce(
+      completedResponse([
+        {
+          type: "message",
+          id: "msg_done",
+          role: "assistant",
+          content: [{ type: "output_text", text: "Read the notes." }],
+        },
+      ]),
+    );
+}
+
+const context: Context = {
+  messages: [{ role: "user", content: "Read notes.txt", timestamp: 1 }],
+  tools: [
+    {
+      name: "lookup",
+      description: "Read a file",
+      parameters: {
+        type: "object",
+        properties: { path: { type: "string" } },
+        required: ["path"],
+      },
+    },
+  ],
+};
+
+async function firstRound(options: TransportOptions) {
+  const first = await streamOpenAICodexResponses(model, context, options).result();
+  expect(first.stopReason).toBe("toolUse");
+  expect(first.content).toEqual([
+    {
+      type: "toolCall",
+      id: "call_lookup|fc_lookup",
+      name: "lookup",
+      arguments: { path: "notes.txt" },
+    },
+  ]);
+  return first;
+}
+
+async function secondRound(
+  first: Awaited<ReturnType<typeof firstRound>>,
+  options: TransportOptions,
+) {
+  const second = await streamOpenAICodexResponses(
+    model,
+    {
+      ...context,
+      messages: [
+        ...context.messages,
+        first,
+        {
+          role: "toolResult",
+          toolCallId: "call_lookup|fc_lookup",
+          toolName: "lookup",
+          content: [{ type: "text", text: "owner notes" }],
+          isError: false,
+          timestamp: 2,
+        },
+      ],
+    },
+    options,
+  ).result();
+  expect(second.stopReason).toBe("stop");
+  expect(second.content).toEqual([
+    expect.objectContaining({ type: "text", text: "Read the notes." }),
+  ]);
+}
+
+function verifyRequestHeaders(
+  inference: ReturnType<typeof inferenceFetch>,
+  access: string,
+  accountId: string,
+) {
+  expect(inference).toHaveBeenCalledTimes(2);
+  for (const [url, init] of inference.mock.calls) {
+    expect(url).toBe("https://chatgpt.test/backend-api/codex/responses");
+    const headers = new Headers(init?.headers);
+    expect(headers.get("authorization")).toBe(`Bearer ${access}`);
+    expect(headers.get("chatgpt-account-id")).toBe(accountId);
+    expect(requestBody(init)).toMatchObject({
+      reasoning: { effort: "medium" },
+      tools: [expect.objectContaining({ type: "function", name: "lookup" })],
+    });
+  }
+}
+
+function verifyToolReplay(inference: ReturnType<typeof inferenceFetch>) {
+  expect(requestBody(inference.mock.calls[1]?.[1]).input).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        type: "function_call",
+        call_id: "call_lookup",
+        name: "lookup",
+      }),
+      expect.objectContaining({
+        type: "function_call_output",
+        call_id: "call_lookup",
+        output: "owner notes",
+      }),
+    ]),
+  );
+}
+
 describe("ChatGPT subscription sign-in to the tool transport", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -107,107 +228,17 @@ describe("ChatGPT subscription sign-in to the tool transport", () => {
     "carries %s credentials through a tool call and its result without API-key auth",
     async (accountId) => {
       const credential = await signIn(accountId);
-      const inference = vi
-        .fn<typeof fetch>()
-        .mockResolvedValueOnce(
-          completedResponse([
-            {
-              type: "function_call",
-              id: "fc_lookup",
-              call_id: "call_lookup",
-              name: "lookup",
-              arguments: '{"path":"notes.txt"}',
-            },
-          ]),
-        )
-        .mockResolvedValueOnce(
-          completedResponse([
-            {
-              type: "message",
-              id: "msg_done",
-              role: "assistant",
-              content: [{ type: "output_text", text: "Read the notes." }],
-            },
-          ]),
-        );
+      const inference = inferenceFetch();
       vi.stubGlobal("fetch", inference);
-      const context: Context = {
-        messages: [{ role: "user", content: "Read notes.txt", timestamp: 1 }],
-        tools: [
-          {
-            name: "lookup",
-            description: "Read a file",
-            parameters: {
-              type: "object",
-              properties: { path: { type: "string" } },
-              required: ["path"],
-            },
-          },
-        ],
-      };
       const options = {
         apiKey: credential.access,
         transport: "sse" as const,
         reasoningEffort: "medium" as const,
       };
-      const first = await streamOpenAICodexResponses(model, context, options).result();
-      expect(first.stopReason).toBe("toolUse");
-      expect(first.content).toEqual([
-        {
-          type: "toolCall",
-          id: "call_lookup|fc_lookup",
-          name: "lookup",
-          arguments: { path: "notes.txt" },
-        },
-      ]);
-      const second = await streamOpenAICodexResponses(
-        model,
-        {
-          ...context,
-          messages: [
-            ...context.messages,
-            first,
-            {
-              role: "toolResult",
-              toolCallId: "call_lookup|fc_lookup",
-              toolName: "lookup",
-              content: [{ type: "text", text: "owner notes" }],
-              isError: false,
-              timestamp: 2,
-            },
-          ],
-        },
-        options,
-      ).result();
-      expect(second.stopReason).toBe("stop");
-      expect(second.content).toEqual([
-        expect.objectContaining({ type: "text", text: "Read the notes." }),
-      ]);
-      expect(inference).toHaveBeenCalledTimes(2);
-      for (const [url, init] of inference.mock.calls) {
-        expect(url).toBe("https://chatgpt.test/backend-api/codex/responses");
-        const headers = new Headers(init?.headers);
-        expect(headers.get("authorization")).toBe(`Bearer ${credential.access}`);
-        expect(headers.get("chatgpt-account-id")).toBe(accountId);
-        expect(requestBody(init)).toMatchObject({
-          reasoning: { effort: "medium" },
-          tools: [expect.objectContaining({ type: "function", name: "lookup" })],
-        });
-      }
-      expect(requestBody(inference.mock.calls[1]?.[1]).input).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            type: "function_call",
-            call_id: "call_lookup",
-            name: "lookup",
-          }),
-          expect.objectContaining({
-            type: "function_call_output",
-            call_id: "call_lookup",
-            output: "owner notes",
-          }),
-        ]),
-      );
+      const first = await firstRound(options);
+      await secondRound(first, options);
+      verifyRequestHeaders(inference, credential.access, accountId);
+      verifyToolReplay(inference);
     },
   );
 });
