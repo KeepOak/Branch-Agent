@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { createServer, request as httpRequest } from "node:http";
 import { getFreePort } from "../../test-utils/ports.js";
 import {
+  isStandbyPortPlaceholderHeld,
+  releaseStandbyPortPlaceholder,
+} from "../../infra/standby-port-placeholder.js";
+import {
   GATEWAY_STANDBY_READY_MESSAGE,
+  GATEWAY_STANDBY_TAKING_OVER_MESSAGE,
   listenGatewayStandbyPort,
   waitInGatewayStandby,
 } from "./standby.js";
@@ -27,9 +32,11 @@ describe("gateway standby", () => {
         sleep: async () => {},
         notify,
         launcherGone: () => false,
+        takeOverSignal: async () => {},
       },
     );
-    expect(order).toEqual(["warm", "notify", "poll", "poll", "poll"]);
+    // Ready, three polls until the owner released, then the taking-over notice.
+    expect(order).toEqual(["warm", "notify", "poll", "poll", "poll", "notify"]);
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({ type: GATEWAY_STANDBY_READY_MESSAGE, pid: process.pid }),
     );
@@ -47,10 +54,11 @@ describe("gateway standby", () => {
           sleep: async () => {},
           notify: () => {},
           launcherGone: () => true,
+          takeOverSignal: async () => {},
         },
       ),
     ).rejects.toThrow("launcher went away");
-    expect(hasLiveOwner).toHaveBeenCalledOnce();
+    expect(hasLiveOwner.mock.calls.length).toBeLessThanOrEqual(1);
   });
 
   it("never starts alone when its launcher quit after the owner was already gone", async () => {
@@ -63,6 +71,7 @@ describe("gateway standby", () => {
           sleep: async () => {},
           notify: () => {},
           launcherGone: () => true,
+          takeOverSignal: async () => {},
         },
       ),
     ).rejects.toThrow("launcher went away");
@@ -87,6 +96,7 @@ describe("gateway standby", () => {
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         notify,
         launcherGone: () => false,
+        takeOverSignal: async () => {},
       },
     );
     await vi.waitFor(() => expect(notify).toHaveBeenCalled());
@@ -101,7 +111,11 @@ describe("gateway standby", () => {
     expect(await readyz.json()).toEqual({ ready: false, failing: ["standby"] });
     release();
     await standby;
-    // The port is free again for the real gateway.
+    // Still held after the standby resolved: bootstrap, the lock and activation run before the real bind.
+    expect((await fetch(`http://127.0.0.1:${port}/healthz`)).status).toBe(200);
+    expect(isStandbyPortPlaceholderHeld(port)).toBe(true);
+    // The real gateway's listen helper frees it right before binding.
+    await releaseStandbyPortPlaceholder(port);
     const real = createServer();
     await new Promise<void>((resolve, reject) => {
       real.once("error", reject);
@@ -129,5 +143,73 @@ describe("gateway standby", () => {
     } finally {
       await listener.close();
     }
+  });
+
+  it("never takes over on a bare lock release, such as the owner restarting in place: only on the launcher's word", async () => {
+    let signal!: () => void;
+    const takeOver = new Promise<void>((resolve) => {
+      signal = resolve;
+    });
+    const polls: boolean[] = [];
+    const notify = vi.fn();
+    let done = false;
+    const standby = waitInGatewayStandby(
+      {},
+      {
+        warm: async () => {},
+        // The owner released the lock (restarting in place): no owner from the first poll on.
+        hasLiveOwner: async () => {
+          polls.push(false);
+          return false;
+        },
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        notify,
+        launcherGone: () => false,
+        takeOverSignal: () => takeOver,
+      },
+    ).then(() => {
+      done = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(done).toBe(false);
+    expect(notify).not.toHaveBeenCalledWith(expect.objectContaining({ type: GATEWAY_STANDBY_TAKING_OVER_MESSAGE }));
+    signal();
+    await standby;
+    expect(done).toBe(true);
+    expect(notify).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: GATEWAY_STANDBY_TAKING_OVER_MESSAGE, pid: process.pid }),
+    );
+  });
+
+  it("waits for the state to be free even after the launcher said to take over", async () => {
+    let owner = true;
+    const standby = waitInGatewayStandby(
+      {},
+      {
+        warm: async () => {},
+        hasLiveOwner: async () => owner,
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        notify: () => {},
+        launcherGone: () => false,
+        takeOverSignal: async () => {},
+      },
+    );
+    let done = false;
+    void standby.then(() => {
+      done = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(done).toBe(false);
+    owner = false;
+    await standby;
+  });
+
+  it("refuses to run as a standby without a launcher that can tell it to take over", async () => {
+    await expect(
+      waitInGatewayStandby(
+        {},
+        { warm: async () => {}, hasLiveOwner: async () => false, notify: () => {}, launchedWithChannel: false },
+      ),
+    ).rejects.toThrow(/IPC channel/);
   });
 });

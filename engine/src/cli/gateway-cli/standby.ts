@@ -1,15 +1,34 @@
 /**
  * Prepared standby for an engine handoff (BRANCH_GATEWAY_STANDBY=1).
  *
- * A standby engine loads the code a start needs while the current gateway still owns the state
- * directory, then waits for that owner to release it before any admission, migration or write.
- * Every state step afterwards runs unchanged, so the live-owner refusal still guards them.
+ * A standby engine loads the code a start needs and holds its own loopback port while the current gateway still
+ * owns the state directory. It takes over only when its launcher (the desktop) says so with
+ * `branch-desktop:take-over`, after the current gateway stepped down, and only once that owner has released the
+ * state. A bare lock release (the owner restarting in place, or crashing) is never a take-over. Every state step
+ * afterwards runs unchanged, so the live-owner refusal still guards them.
  */
 import { createServer } from "node:http";
 import { readActiveGatewayLockIdentity } from "../../infra/gateway-lock.js";
+import { holdStandbyPortPlaceholder } from "../../infra/standby-port-placeholder.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 
 export const GATEWAY_STANDBY_READY_MESSAGE = "branch-desktop:standby-ready";
+/** The launcher's go-ahead: the current gateway stepped down, so this standby may take the state over. */
+export const GATEWAY_STANDBY_TAKE_OVER_MESSAGE = "branch-desktop:take-over";
+/** Sent once the standby has the go-ahead and the state is free, as it starts the real gateway. */
+export const GATEWAY_STANDBY_TAKING_OVER_MESSAGE = "branch-desktop:taking-over";
+
+/** Resolves when the launcher sends the take-over message over this process's IPC channel. */
+function waitForTakeOverMessage(): Promise<void> {
+  return new Promise((resolve) => {
+    const onMessage = (message: unknown) => {
+      if ((message as { type?: unknown } | null)?.type !== GATEWAY_STANDBY_TAKE_OVER_MESSAGE) return;
+      process.off("message", onMessage);
+      resolve();
+    };
+    process.on("message", onMessage);
+  });
+}
 const OWNER_POLL_MS = 100;
 
 /** Code-only modules: importing them reads no state and opens no database. */
@@ -78,18 +97,22 @@ function standbyPort(env: NodeJS.ProcessEnv): number | undefined {
 
 export type GatewayStandbyDeps = {
   listen?: (port: number) => Promise<GatewayStandbyListener>;
+  /** Resolves when the launcher says to take over (default: the IPC message `branch-desktop:take-over`). */
+  takeOverSignal?: () => Promise<void>;
   warm?: () => Promise<void>;
   hasLiveOwner?: (env: NodeJS.ProcessEnv) => Promise<boolean>;
   sleep?: (ms: number) => Promise<void>;
-  notify?: (message: { type: string; pid: number; warmMs: number; port?: number }) => void;
+  notify?: (message: { type: string; pid: number; warmMs?: number; port?: number }) => void;
   now?: () => number;
   /** True once the launcher that asked for this standby is gone. */
   launcherGone?: () => boolean;
+  /** Whether this process was launched with an IPC channel (default: process.channel). */
+  launchedWithChannel?: boolean;
 };
 
 /**
- * Warms the start path and serves its own port (not ready), then resolves once no live gateway owns this state
- * directory: the predecessor stepping down releases it, and that release is the signal to take over.
+ * Warms the start path and serves its own port (not ready), then resolves once the launcher has said to take over
+ * and no live gateway owns this state directory. The port stays held until the real gateway binds it.
  */
 export async function waitInGatewayStandby(
   env: NodeJS.ProcessEnv,
@@ -99,23 +122,31 @@ export async function waitInGatewayStandby(
   const now = deps.now ?? (() => performance.now());
   const sleep = deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const hasLiveOwner = deps.hasLiveOwner ?? hasLiveStateOwner;
-  const launchedWithChannel = process.channel !== undefined;
+  const launchedWithChannel = deps.launchedWithChannel ?? process.channel !== undefined;
   const launcherGone = deps.launcherGone ?? (() => launchedWithChannel && !process.connected);
+  if (!deps.takeOverSignal && !launchedWithChannel) {
+    throw new Error("standby: only a launcher with an IPC channel can tell a standby to take over");
+  }
+  let takeOverRequested = false;
+  void (deps.takeOverSignal ?? waitForTakeOverMessage)().then(() => {
+    takeOverRequested = true;
+  });
   const started = now();
   await (deps.warm ?? warmGatewayStartModules)();
   const warmMs = now() - started;
   const port = standbyPort(env);
   // Holding the port from now on means nothing else can take it before the real gateway binds it.
   const listener = port === undefined ? undefined : await (deps.listen ?? listenGatewayStandbyPort)(port);
+  let handedOver = false;
   try {
     const notify =
       deps.notify ?? ((message: object) => (process.connected ? process.send?.(message) : undefined));
     notify({ type: GATEWAY_STANDBY_READY_MESSAGE, pid: process.pid, warmMs, ...(port ? { port } : {}) });
     log.info(
-      `standby: ready in ${Math.round(warmMs)}ms${port ? ` on port ${port}` : ""}; waiting for the current owner to release state`,
+      `standby: ready in ${Math.round(warmMs)}ms${port ? ` on port ${port}` : ""}; waiting for the launcher to hand over`,
     );
     const waitStarted = now();
-    while (await hasLiveOwner(env)) {
+    while (!takeOverRequested || (await hasLiveOwner(env))) {
       // A standby nobody will hand state to must not take over later on its own.
       if (launcherGone()) {
         throw new Error("standby: the launcher went away before the current owner released state");
@@ -127,10 +158,13 @@ export async function waitInGatewayStandby(
       throw new Error("standby: the launcher went away before the current owner released state");
     }
     const waitMs = now() - waitStarted;
-    log.info(`standby: state released after ${Math.round(waitMs)}ms; starting`);
+    log.info(`standby: told to take over and the state is free after ${Math.round(waitMs)}ms; starting`);
+    notify({ type: GATEWAY_STANDBY_TAKING_OVER_MESSAGE, pid: process.pid, ...(port ? { port } : {}) });
+    // Keep the port until the real gateway binds it (server/http-listen.ts releases the placeholder then).
+    if (listener) holdStandbyPortPlaceholder(listener);
+    handedOver = true;
     return { warmMs, waitMs };
   } finally {
-    // The real gateway binds the same port next (its listener also retries a port still closing).
-    await listener?.close();
+    if (!handedOver) await listener?.close();
   }
 }
