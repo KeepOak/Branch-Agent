@@ -217,7 +217,8 @@ describe("pre-connect screens", () => {
   it("say what went wrong in plain words, with the raw error folded", async () => {
     sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
     const host = await show(<PreConnect local="ws://127.0.0.1:18789" address="ws://127.0.0.1:18789" state={{ kind: "failed", code: "AUTH_TOKEN_MISSING", message: "token missing" }} busy={false} onConnect={() => {}} onRetry={() => {}} />);
-    expect(host.textContent).toContain("127.0.0.1:18789 needs its key");
+    expect(host.textContent).toContain("This computer needs its key");
+    expect(host.querySelector("details")?.textContent).toContain("127.0.0.1:18789");
     expect(host.textContent).not.toContain("VITE_GATEWAY_URL");
     expect(host.querySelector("details")?.textContent).toContain("token missing");
   });

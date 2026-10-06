@@ -1,6 +1,6 @@
 // The header's ⋯ conversation menu and what its rows open (DESIGN-SPEC §4.2.7): the rows come from
 // conversation-menu.ts; this hook runs them against the engine and keeps the menu, popover and dialogs.
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { describePlacement, listComputers, placementComputer, type Computer, type Placement } from "../stage/computers";
 import { ComputerPicker } from "../stage/ComputerPicker";
 import { ReplayDialog } from "./Replay";
@@ -10,6 +10,7 @@ import type { PlaceId } from "../places-nav/routes";
 import { copyText, ThreadContext } from "../thread/context";
 import { LookInside } from "../thread/dialogs";
 import { turnOf } from "../thread/layout";
+import { railTicks } from "../thread/Rail";
 import type { Block } from "../thread/model";
 import type { TranscriptExportFormat } from "../transcript-export/render";
 import { ExportDialog } from "../transcript-export/ExportDialog";
@@ -106,6 +107,12 @@ export function readDetail(raw: unknown): ConversationDetail {
 /** `open` shows the ⋯ menu, the only conversation-header control. */
 export function useConversationMenu(p: ConversationMenuProps): { open: (e: MouseEvent<HTMLElement>) => void; node: ReactNode; showThinking: boolean } {
   const [open, setOpen] = useState<Open>(null);
+  const [, setBookmarkVersion] = useState(0);
+  useEffect(() => {
+    const update = () => setBookmarkVersion((v) => v + 1);
+    window.addEventListener("branch:turn-bookmarks-changed", update);
+    return () => window.removeEventListener("branch:turn-bookmarks-changed", update);
+  }, []);
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const key = p.session.getSnapshot().sessionKey;
   useEffect(() => {
@@ -144,6 +151,19 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     room: p.room ? [...roomMenuItems({ ruleWords: p.room.ruleWords, canLeave: Boolean(p.row && !p.isMain), run: { rename: run.rename, rules: () => setOpen({ kind: "rules", at: menuAnchor() }), leave: run.archive, remove: run.remove } }),
       ...(p.room.members?.length ? [{ kind: "sub" as const, label: `Members · ${p.room.members.length}`, items: [{ kind: "head" as const, label: "Members" }, ...p.room.members.map((member) => ({ kind: "custom" as const, node: <div className="mi">{member}</div> }))] }] : [])] : null,
     run,
+  });
+  let bookmarked: string[] = [];
+  try { if (key) bookmarked = JSON.parse(localStorage.getItem(`branch:turn-bookmarks:${key}`) ?? "[]") as string[]; } catch { /* storage unavailable */ }
+  const ticks = useMemo(() => railTicks(p.history), [p.history]);
+  const bookmarkedTicks = ticks.filter((tick) => bookmarked.includes(tick.key));
+  if (bookmarkedTicks.length && key) items.unshift({
+    kind: "sub", label: "Bookmarks", items: [
+      { kind: "head", label: "Bookmarks" },
+      ...bookmarkedTicks.map((tick): MenuItem => ({ label: tick.title.slice(0, 48), run: () => {
+        close();
+        window.dispatchEvent(new CustomEvent("branch:turn-jump", { detail: { sessionKey: key, blockKey: tick.key } }));
+      } })),
+    ],
   });
   const show = (e: MouseEvent<HTMLElement>) => {
     e.preventDefault();

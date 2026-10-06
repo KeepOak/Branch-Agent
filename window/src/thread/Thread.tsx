@@ -219,7 +219,7 @@ export function Thread(props: Props) {
     <ThreadContext.Provider value={ctx}>
       <div className="thread-wrap" data-times={prefs.messageTimes} data-look={prefs.msgLook} data-scrollbars={prefs.scroll} dir={prefs.dir}>
       {finding ? <FindBar root={threadRef} name={name} signature={signature} onClose={() => setFinding(false)} /> : null}
-      <div className="scroll" ref={follow.scroller} onScroll={(event) => { follow.onScroll(); if (event.currentTarget.scrollTop < 80 && props.hasEarlierPages && !props.loadingEarlier) props.onLoadEarlier?.(); }} data-testid="thread-scroll">
+      <div className="scroll" ref={follow.scroller} tabIndex={-1} onScroll={(event) => { follow.onScroll(); if (event.currentTarget.scrollTop < 80 && props.hasEarlierPages && !props.loadingEarlier) props.onLoadEarlier?.(); }} data-testid="thread-scroll">
         <div className="thread" ref={threadRef}>
           {props.hasEarlierPages ? <button type="button" className="stamp segment-more" onClick={props.onLoadEarlier} disabled={props.loadingEarlier}>{props.loadingEarlier ? "Loading earlier pages…" : "Earlier pages"}</button> : null}
           {preparationError ? <div className="stamp preparation-status" role="status">
@@ -274,7 +274,7 @@ export function Thread(props: Props) {
           <div ref={follow.end} className="thread-end" />
         </div>
       </div>
-      <Rail scroller={follow.scroller} blocks={all} />
+      <Rail scroller={follow.scroller} blocks={all} sessionKey={props.sessionKey} />
       {follow.showLatest ? (
         <button type="button" className="to-latest" aria-label="Scroll to latest" title="Scroll to latest" onClick={follow.toEnd}>
           <Icon d={ICONS.down} size={16} />

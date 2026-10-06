@@ -2,6 +2,7 @@
 // window brought, each row opening its place; a version waiting to install lists the engine's own update notes
 // (update.status updateAvailable.commits) and offers "Install when nothing is running".
 import { useState } from "react";
+import { versionParts } from "../connect/branch-version";
 import { Dialog } from "./Dialog";
 import { Icon, type IconName } from "./icons";
 import type { UpdateInfo } from "./status-data";
@@ -70,14 +71,14 @@ export function WhatsNew(p: Props) {
       {ready ? (
         <span className="seg wn-seg" role="radiogroup" aria-label="Version" style={{ gridTemplateColumns: "repeat(2, auto)", ["--i" as string]: on === "ready" ? 1 : 0, ["--n" as string]: 2 }}>
           <button type="button" role="radio" aria-checked={on === "installed"} onClick={() => setOn("installed")}>
-            {p.version} · installed
+            Branch {versionParts(p.version).short} · installed
           </button>
           <button type="button" role="radio" aria-checked={on === "ready"} onClick={() => setOn("ready")}>
-            {ready} · ready
+            Branch {versionParts(ready).short} · ready
           </button>
         </span>
       ) : null}
-      <p className="hint wn-hint">{on === "ready" ? `What Branch ${ready} brings. It installs when nothing is running and keeps a safety copy first.` : `What Branch ${p.version} brought, and where each part lives.`}</p>
+      <p className="hint wn-hint">{on === "ready" && ready ? `What Branch ${versionParts(ready).short} brings. It installs when nothing is running and keeps a safety copy first.` : `What Branch ${versionParts(p.version).short} brought, and where each part lives.`}</p>
       {on === "ready" && !notes.length ? <p className="hint">The update didn't say what it changes.</p> : null}
       <Rows title="New" rows={groups.New} close={p.onClose} />
       <Rows title="Better" rows={groups.Better} close={p.onClose} />
