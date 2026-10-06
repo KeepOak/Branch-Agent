@@ -138,7 +138,10 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     engineUpdateReady = false;
     if (rolledBack) win.webContents.send("branch-desktop:engine-update", "kept");
     else if (windowBuild(cfg.windowDir) !== windowBefore) void hotSwapWindow();
-    else win.webContents.send("branch-desktop:engine-update", "updated");
+    else {
+      win.webContents.send("branch-desktop:engine-handoff", `ws://127.0.0.1:${cfg.gatewayPort}`);
+      win.webContents.send("branch-desktop:engine-update", "updated");
+    }
   } catch (error) {
     // Still serving (the engine became busy before it stopped): offer the update again.
     if (engineRunning()) win.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");

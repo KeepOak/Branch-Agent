@@ -12,8 +12,9 @@ interface DesktopInfo {
 // Null on any page other than the served window (for example the "Starting" page).
 const info = ipcRenderer.sendSync("branch-desktop:info") as DesktopInfo | null;
 if (info) {
+  let gatewayUrl = info.gatewayUrl;
   contextBridge.exposeInMainWorld("branchDesktop", {
-    gatewayUrl: info.gatewayUrl, gatewayToken: info.gatewayToken,
+    gatewayUrl: info.gatewayUrl, getGatewayUrl: () => gatewayUrl, gatewayToken: info.gatewayToken,
     clipboard: { writeText: (text: string) => ipcRenderer.invoke("branch-desktop:clipboard:write-text", text) },
     componentUpdates: {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
@@ -50,6 +51,14 @@ if (info) {
     restoreAfterSwap();
   });
   ipcRenderer.on("branch-desktop:engine-update", (_e, state: UpdateState) => showUpdateBar(state));
+  ipcRenderer.on("branch-desktop:engine-handoff", (_e, nextUrl: string) => {
+    try {
+      const target = new URL(nextUrl);
+      if (target.protocol !== "ws:" || target.hostname !== "127.0.0.1") return;
+      gatewayUrl = target.href;
+      window.dispatchEvent(new CustomEvent("branch:engine-handoff", { detail: { gatewayUrl } }));
+    } catch { /* a malformed target cannot redirect the desktop window */ }
+  });
   ipcRenderer.on("branch-desktop:prepare-swap", (_e, id: number) => {
     saveBeforeSwap();
     ipcRenderer.send("branch-desktop:swap-ready", id);

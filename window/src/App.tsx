@@ -52,13 +52,23 @@ type WindowProps = { url: string; sharedToken?: string; onConnect: (url: string,
 
 function Window({ url, sharedToken, onConnect, onRetry }: WindowProps) {
   const session = useMemo(() => new SaplingSession(url, sharedToken, savedConversation()), [url, sharedToken]);
+  const [activeUrl, setActiveUrl] = useState(url);
   useEffect(() => {
     session.start();
     // The desktop app updated the engine underneath this window; reconnect without waiting for the backoff.
     const engineReady = () => session.reconnectNow();
+    const engineHandoff = (event: Event) => {
+      const next = (event as CustomEvent<{ gatewayUrl?: unknown }>).detail?.gatewayUrl;
+      // Page scripts can dispatch CustomEvents too; only the isolated preload's current target is authoritative.
+      if (typeof next !== "string" || !/^ws:\/\/127\.0\.0\.1:\d+\/?$/.test(next) || next !== desktop?.getGatewayUrl?.()) return;
+      session.handoff(next, desktop?.gatewayToken);
+      setActiveUrl(next);
+    };
     window.addEventListener("branch:engine-ready", engineReady);
+    window.addEventListener("branch:engine-handoff", engineHandoff);
     return () => {
       window.removeEventListener("branch:engine-ready", engineReady);
+      window.removeEventListener("branch:engine-handoff", engineHandoff);
       session.stop();
     };
   }, [session]);
@@ -71,7 +81,7 @@ function Window({ url, sharedToken, onConnect, onRetry }: WindowProps) {
   }, [s.status.phase]);
   // Once connected, the frame stays up through reconnects; the status bar says "Offline" or "Connecting" (§3.5).
   if (everConnected || s.status.phase === "connected") {
-    return <WindowShell session={session} url={url} />;
+    return <WindowShell session={session} url={activeUrl} />;
   }
   const status = s.status;
   if (status.phase === "pairing" || status.phase === "failed") {

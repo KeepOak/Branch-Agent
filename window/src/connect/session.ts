@@ -44,7 +44,7 @@ export function roomIdOf(sessionKey: string): string {
 }
 
 export class SaplingSession {
-  readonly gatewayUrl: string;
+  gatewayUrl: string;
   private readonly eventListeners = new Set<GatewayEventListener>();
   private wanted: string | null;
   private snapshot: SessionSnapshot;
@@ -59,11 +59,15 @@ export class SaplingSession {
   private preparationRetry: ReturnType<typeof setTimeout> | null = null;
   private readonly preparationBackoff = new PreparationRetry();
   private stopped = false;
-  private readonly gateway: BranchGateway;
+  private gateway: BranchGateway;
+  private retiringGateway: BranchGateway | null = null;
+  private retiringRunId: string | null = null;
+  private sharedToken: string | undefined;
 
   /** `initialKey` reopens the conversation the window last showed (§3.3 "Reopen where you were"). */
   constructor(url: string, sharedToken: string | undefined, initialKey: string | null = null) {
     this.gatewayUrl = url;
+    this.sharedToken = sharedToken;
     this.wanted = initialKey;
     this.snapshot = {
       status: { phase: "connecting" },
@@ -79,12 +83,18 @@ export class SaplingSession {
       lastActivityAt: null,
       error: null,
     };
-    this.gateway = new BranchGateway({
+    this.gateway = this.createGateway(url, sharedToken);
+  }
+
+  private createGateway(url: string, sharedToken: string | undefined): BranchGateway {
+    let gateway: BranchGateway;
+    gateway = new BranchGateway({
       url,
       sharedToken,
-      onStatus: (status) => this.onStatus(status),
+      onStatus: (status) => { if (this.gateway === gateway) this.onStatus(status); },
       onEvent: (event) => this.onEvent(event),
     });
+    return gateway;
   }
 
   start(): void {
@@ -99,11 +109,28 @@ export class SaplingSession {
     this.preparationRetry = null;
     this.preparationBackoff.reset();
     this.gateway.stop();
+    this.retiringGateway?.stop();
+    this.retiringGateway = null;
+    this.retiringRunId = null;
   }
 
   /** The desktop swapped the engine in place: reconnect at once. */
   reconnectNow(): void {
     this.gateway.reconnectNow();
+  }
+
+  /** Move new requests to a ready successor without unmounting the composer or losing O's live events. */
+  handoff(url: string, sharedToken = this.sharedToken): void {
+    if (url === this.gatewayUrl) { this.reconnectNow(); return; }
+    this.retiringGateway?.stop();
+    this.retiringRunId = this.snapshot.liveRunId;
+    this.retiringGateway = this.retiringRunId || this.snapshot.pendingUser !== null ? this.gateway : null;
+    if (!this.retiringGateway) this.gateway.stop();
+    this.gatewayUrl = url;
+    this.sharedToken = sharedToken;
+    this.gateway = this.createGateway(url, sharedToken);
+    this.engineCache = null;
+    this.gateway.start();
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -192,9 +219,13 @@ export class SaplingSession {
     const sessionKey = this.wanted ?? mainKey;
     // Every hello is a fresh engine (a restart, or an update swapped in under this window): the runs this
     // window mirrored are gone with the old one. Clear them; chat.history's inFlightRun says what still runs.
-    this.runs.clear();
-    this.approvals.clear();
-    this.set({ sessionKey, mainKey, live: [], liveRunId: null, liveStartedAt: null, pendingUser: null });
+    if (!this.retiringGateway) {
+      this.runs.clear();
+      this.approvals.clear();
+      this.set({ sessionKey, mainKey, live: [], liveRunId: null, liveStartedAt: null, pendingUser: null });
+    } else {
+      this.set({ sessionKey, mainKey });
+    }
     void this.bootstrap(status, sessionKey);
   }
 
@@ -390,6 +421,11 @@ export class SaplingSession {
     try {
       await this.loadHistory();
     } finally {
+      if (this.retiringGateway && (!this.retiringRunId || this.retiringRunId === runId)) {
+        this.retiringGateway.stop();
+        this.retiringGateway = null;
+        this.retiringRunId = null;
+      }
       this.runs.drop(runId);
       const wasLive = this.snapshot.liveRunId === runId;
       this.set({
@@ -404,9 +440,10 @@ export class SaplingSession {
       return;
     }
     this.set({ pendingUser: text, doneAt: null, error: null });
+    const dispatchGateway = this.gateway;
     try {
       const result = rec(
-        await this.gateway.request("chat.send", {
+        await dispatchGateway.request("chat.send", {
           ...extras,
           sessionKey,
           message: text,
@@ -414,6 +451,7 @@ export class SaplingSession {
         }),
       );
       const runId = str(result.runId);
+      if (dispatchGateway === this.retiringGateway && runId) this.retiringRunId = runId;
       if (runId && !this.finished.has(runId)) {
         this.set({ liveRunId: runId, liveStartedAt: this.snapshot.liveRunId === runId ? this.snapshot.liveStartedAt : Date.now() });
         this.refreshLive();
