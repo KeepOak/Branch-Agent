@@ -6,7 +6,6 @@ import {
   buildPatchedMessages,
   record,
   type ReplayMessage,
-  type Call,
 } from "./dangling-tool-call.js";
 import { cloneAiMessageWithToolCalls } from "./tool-call-metadata.js";
 const SOURCE = Symbol("branch.history-repair.source");

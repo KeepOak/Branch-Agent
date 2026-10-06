@@ -1194,7 +1194,7 @@ export class ProviderHistoryCompat {
     messageList,
     retryCount,
   }: ProcessAPIErrorArgs): Promise<ProcessAPIErrorResult> {
-    if (retryCount > 0) return;
+    if (retryCount > 0) return undefined;
 
     const messages = messageList.get.all.db();
 
@@ -1207,5 +1207,6 @@ export class ProviderHistoryCompat {
         }
       }
     }
+    return undefined;
   }
 }

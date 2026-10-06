@@ -96,7 +96,8 @@ function normalizeToolCallIds(messages: ReplayMessage[]): ReplayMessage[] {
     if (msg.type !== "tool" || valid(msg.tool_call_id)) return msg;
     const compatible = open.map((c, i) => ({ c, i })).filter(({ c }) => c.original === (msg.tool_call_id ?? null) && (!valid(c.name) || !valid(msg.name) || c.name.trim() === msg.name.trim()));
     if (!compatible.length || (compatible.length > 1 && !positional)) return msg;
-    const claimed = open.splice(compatible[0].i, 1)[0];
+    // The nonempty compatible list contains indices from the unchanged open list.
+    const claimed = open.splice(compatible[0]!.i, 1)[0]!;
     return { ...msg, tool_call_id: claimed.synthetic };
   });
 }

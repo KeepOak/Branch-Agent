@@ -21,6 +21,7 @@ export function registerFixtures(fixtures: Fixture[]): void {
           for (const e of view.events) { const original = input.find(i => i.id === e.id); if (original) expect(e).toBe(original); }
         } else {
           const property = properties[fixture.property!];
+          if (!property) throw new Error(`Unknown fixture property: ${fixture.property}`);
           const result = fixture.op === "enforce" ? property.enforce(input, fixture.all ?? []) : property.manipulationIndices(input);
           expect([...result].sort((a, b) => typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b)))).toEqual(fixture.expected);
         }
