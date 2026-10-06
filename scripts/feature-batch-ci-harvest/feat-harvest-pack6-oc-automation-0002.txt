@@ -1,7 +1,10 @@
+engine:src/cron/cron-execution-diagnostics.e2e.test.ts
 engine:src/cron/delivery.failure-notify.test.ts
 engine:src/cron/failure-notification-text.test.ts
 engine:src/cron/parse.test.ts
 engine:src/cron/retry-hint.test.ts
+engine:src/cron/run-diagnostics.test.ts
+engine:src/cron/run-error-reason.test.ts
 engine:src/cron/schedule.test.ts
 engine:src/cron/service.failure-alert.test.ts
 engine:src/cron/service.failure-repair.test.ts
