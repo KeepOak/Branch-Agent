@@ -6,3 +6,4 @@ AGENT-LOOP-0028,blocked,0/5,Pinned AIRI transports require @xsai/stream-text and
 AGENT-LOOP-0029,blocked,0/3,32 existing Branch transport tests pass; pinned Codex startup Responses prewarm and configured retry-attempt assertions are not implemented/ported. Required owner transport safety mapping is unavailable.
 AGENT-LOOP-0030,covered by engine/packages/ai/src/providers/openai-chatgpt-responses.ts,1/1,Ported both request_compression.rs tests without dropping assertions; named request-compression.harvest.test.ts passes 2/2 and is registered for Harvest CI. Existing ChatGPT provider zstd-compresses HTTP requests; API-key Responses remain plain JSON.
 AGENT-LOOP-0031,blocked,0/3,Branch event bus lacks upstream typed send/abort/replay protocol; Gemini client/scheduler/approval-to-Branch harness mapping and all three suites remain unported. Required owner atlas/page-41 safety inputs absent.
+AGENT-LOOP-0032,in progress,0/4,
