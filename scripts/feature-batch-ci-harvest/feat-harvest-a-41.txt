@@ -1,3 +1,6 @@
 engine:extensions/slack/src/enterprise-user-route.test.ts
 engine:extensions/slack/src/monitor/enterprise-install.test.ts
+engine:extensions/slack/src/monitor/events/home.test.ts
 engine:extensions/slack/src/monitor/events/interactions.test.ts
+engine:extensions/slack/src/monitor/slash.menus.test.ts
+engine:extensions/slack/src/monitor/slash.test.ts
