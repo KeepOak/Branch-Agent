@@ -11,6 +11,12 @@ engine:src/daemon/schtasks.install.test.ts
 engine:src/daemon/schtasks.startup-fallback.test.ts
 engine:src/daemon/schtasks.startup-launch.test.ts
 engine:src/daemon/schtasks.test.ts
+engine:src/daemon/systemd-install-rollback.test.ts
+engine:src/daemon/systemd-system.test.ts
+engine:src/daemon/systemd-unit.test.ts
+engine:src/daemon/systemd.behaviour.test.ts
+engine:src/daemon/systemd.environment-preservation.test.ts
+engine:src/daemon/systemd.test.ts
 engine:src/gateway/gateway-http-route-contracts.test.ts
 engine:src/gateway/local-http-probe.test.ts
 engine:src/gateway/probe.auth.integration.test.ts
