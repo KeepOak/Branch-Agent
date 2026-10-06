@@ -63,7 +63,8 @@ async function fixture(run, holdStartup = false, fastSupervisor = false) {
   const previous = process.env.BRANCH_DESKTOP_DATA; process.env.BRANCH_DESKTOP_DATA = root;
   const runtime = electronFixture(), starts = async () => {
     try { return JSON.parse(await readFile(join(root, "starts.json"), "utf8")); }
-    catch (error) { if (error.code === "ENOENT") return []; throw error; }
+    // The fixture may be mid-write: an empty or partial file reads as "not yet", and eventually() polls again.
+    catch (error) { if (error.code === "ENOENT" || error instanceof SyntaxError) return []; throw error; }
   };
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
   Module._load = function(name, ...args) {
