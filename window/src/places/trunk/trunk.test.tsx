@@ -13,7 +13,7 @@ import { CHIEF_OF_STAFF_INSTRUCTIONS, makeChiefOfStaff } from "./chief-of-staff"
 import { createJob, JOBS } from "../customize/jobs-data";
 import { removeTrunk, setTrunkHidden, updateParams } from "./api";
 import { readMay } from "./may";
-import { LOOKS, lookOf, readConfig } from "./model";
+import { LOOKS, lookOf, readConfig, readRoster } from "./model";
 import { readFacts, scheduleText } from "./profile-data";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label, size }: { label?: string; size: number }) => <span role="img" aria-label={label} data-face-size={size} /> }));
@@ -96,8 +96,8 @@ describe("Trunk editor", () => {
     await click(document.querySelector('[aria-label="Tock"]'));
     await click(document.querySelector('[aria-label="Colour #56616B"]'));
     await click(byText("Save"));
-    expect(request).toHaveBeenCalledWith("agents.update", { agentId: "oak", name: "TK", avatar: "branch:tock" });
-    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { oak: { identity: { theme: "Builder lead", colour: "#56616B" }, description: "Coordinates builders" } } } }) });
+    expect(request).toHaveBeenCalledWith("agents.update", { agentId: "oak", name: "TK", avatar: "branch:tock", colour: "#56616B" });
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { entries: { oak: { identity: { theme: "Builder lead" }, description: "Coordinates builders" } } } }) });
   });
   it("opens the default Trunk's instruction files from its editor", async () => {
     const request = fake({ "agents.files.get": { file: { name: "SOUL.md", content: "# TK", hash: "s1" } } });
@@ -290,6 +290,11 @@ describe("Trunk profile and studio", () => {
     expect(request).toHaveBeenCalledWith("agents.create", { name: "Chief of Staff" });
     expect(request).toHaveBeenCalledWith("agents.files.set", expect.objectContaining({ agentId: "chief-of-staff", content: expect.stringContaining("sessions_send") }));
     expect(request).toHaveBeenCalledWith("config.patch", expect.objectContaining({ baseHash: "h1" }));
+  });
+  it("keeps the new Trunk preview's name and character for the Chief of Staff job", async () => {
+    const request = fake({ "agents.create": { ok: true, agentId: "chief-of-staff" }, "agents.files.get": { file: { name: "SOUL.md", missing: true } } });
+    await createJob(engine(request), JOBS.find((job) => job.name === "Chief of Staff")!, () => true, "branch:tock", "Coordinator");
+    expect(request).toHaveBeenCalledWith("agents.create", { name: "Coordinator", avatar: "branch:tock" });
   });
   it("opens blocked A2A paths for Chief of Staff without opening every inbound target", async () => {
     const request = fake({

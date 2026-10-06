@@ -11,8 +11,8 @@ it("names only a fresh implicit default Branch Agent and preserves an existing T
 });
 
 it("accepts hidden and colour on a configured default without changing routing ownership", () => {
-  const parsed = AgentsSchema.parse({ defaultId: "tk", entries: { tk: { name: "TK", hidden: true, identity: { color: "#56616B" } } } });
+  const parsed = AgentsSchema.parse({ defaultId: "tk", entries: { tk: { name: "TK", hidden: true, identity: { colour: "#56616B" } } } });
   expect(parsed?.defaultId).toBe("tk");
   expect(parsed?.entries?.tk?.hidden).toBe(true);
-  expect(parsed?.entries?.tk?.identity?.color).toBe("#56616B");
+  expect(parsed?.entries?.tk?.identity?.colour).toBe("#56616B");
 });

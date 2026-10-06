@@ -50,7 +50,7 @@ function Head({ row, data, isDefault, level }: { row: TrunkRow; data: ProfileDat
   const copy = () => navigator.clipboard?.writeText(row.id).then(() => notify(`Copied ${row.name}’s ID.`), (e: unknown) => notify(`Couldn’t copy: ${errorText(e)}`, { tone: "bad" }));
   return <>
     <div className="tk-pf-head">
-      <div className="tk-pf-face"><TrunkFace name={row.name} look={lookOf(row.avatar, row.name)} emoji={row.emoji} color={row.color} size={84} /></div>
+      <div className="tk-pf-face"><TrunkFace name={row.name} look={lookOf(row.avatar, row.name)} emoji={row.emoji} pebbleLook={row} size={84} /></div>
       <div className="tk-pf-who">
         <b>{row.name}{isDefault && <span className="tk-pill">Default</span>}</b>
         {row.theme && <span>{row.theme}</span>}
