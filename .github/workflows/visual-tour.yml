@@ -32,7 +32,7 @@ jobs:
       - run: npm install --global pnpm@12.5.1
       - run: pnpm install --frozen-lockfile && pnpm build
         env:
-          BRANCH_TSDOWN_MAX_OLD_SPACE_MB: '5120'
+          BRANCH_RUN_NODE_SKIP_DTS_BUILD: '1'
         working-directory: engine
       - run: pnpm install --frozen-lockfile && pnpm build
         working-directory: window
