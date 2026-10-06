@@ -8,6 +8,7 @@ import {
   logLaneEnqueue,
 } from "../logging/diagnostic-runtime.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
+import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import {
   applyCommandLaneCapacity,
   canAdmitInGroup,
@@ -53,6 +54,24 @@ export {
 } from "./gateway-work-admission.js";
 export type { CommandLaneTaskMarker } from "./command-queue.state.js";
 export type { CommandLaneSnapshot } from "./command-queue.types.js";
+const sessionLaneHandoff = resolveGlobalSingleton(Symbol.for("branch.sessionLaneHandoffEnqueue"), () => ({
+  hook: undefined as ((lane: string) => void) | undefined,
+}));
+
+/**
+ * A stepping-down engine's lease holder installs this: it sees every enqueue into a session lane before it runs, so
+ * it can lease the session or refuse it. One at a time; throws while another is installed.
+ */
+export function registerSessionLaneHandoffEnqueue(callback: (lane: string) => void): () => void {
+  if (sessionLaneHandoff.hook) {
+    throw new Error("Session handoff enqueue hook is already installed");
+  }
+  sessionLaneHandoff.hook = callback;
+  return () => {
+    if (sessionLaneHandoff.hook === callback) sessionLaneHandoff.hook = undefined;
+  };
+}
+
 export class CommandLaneClearedError extends Error {
   constructor(lane?: string) {
     super(lane ? `Command lane "${lane}" cleared` : "Command lane cleared");
@@ -540,8 +559,16 @@ export function enqueueCommandInLane<T>(
   if (isGatewaySubordinateWorkAdmissionClosed()) {
     return Promise.reject(new GatewayDrainingError());
   }
-  // A session the previous engine still finishes after an in-place update is not touched until it is released.
-  const handoffLease = waitForSessionHandoffLease(normalizeLane(lane), opts?.abortSignal);
+  const sessionLane = normalizeLane(lane);
+  if (sessionLaneHandoff.hook && sessionLane.startsWith("session:")) {
+    try {
+      sessionLaneHandoff.hook(sessionLane);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
+  // A session a previous engine still finishes after an in-place update is not touched until it is released.
+  const handoffLease = waitForSessionHandoffLease(sessionLane, opts?.abortSignal);
   if (handoffLease) {
     const resume = AsyncLocalStorage.snapshot();
     opts?.onQueued?.();

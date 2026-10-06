@@ -2,30 +2,43 @@
 //
 // An engine stepping down for its successor may still have runs in flight. It keeps a lease on each of those
 // session lanes, finishes and saves the runs, then releases each lease. The successor takes every other session at
-// once; work it queues in a leased session lane waits. Both engines are separate processes on the same state
-// directory, so a lease is a small file under <stateDir>/handoff/session-leases, written whole (temp, then rename).
+// once; work it queues in a leased session lane waits. Engines are separate processes on the same state directory,
+// so a lease is a small file under <stateDir>/handoff/session-leases, written whole (temp, then rename).
+//
+// Each holder writes its own file, <sha256(lane)[:32]>.<ownerId>.json, and only ever removes its own. A session can
+// have several holders at once (back-to-back updates: A still finishes a run while B steps down with a turn for the
+// same session parked behind A), and a successor waits until every holder of that session has released it.
 //
 // This gates the session's command lane. Session writes that do not run in that lane (session RPCs, compaction,
 // subagent and cron writers) are not gated here; the handoff wiring has to route or fence them.
 //
 // A lease is live only while its holder process is the same process (pid and start time) and it is younger than
-// the longest a handoff may keep a session; anything else is stale and is deleted on sight.
+// the longest a handoff may keep a session; anything else is stale and is deleted on sight. The format is version 2
+// (one file per holder); version 1 was never written by a released engine.
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/state-dir.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getFileLockProcessStartTime } from "../shared/pid-alive.js";
 
 /** Only session lanes (embedded-agent-runner/lanes.ts resolveSessionLane) are leased. */
 export const SESSION_LANE_PREFIX = "session:";
-/** The predecessor's own drain budget (315 s) plus margin; it releases every lease by then or is gone. */
+/**
+ * The longest a stepping-down engine may keep a session (its 315 s drain budget plus margin), and the longest a
+ * successor's turn waits for one. The holder's `deadline` fires at this age.
+ */
 export const SESSION_HANDOFF_LEASE_MAX_WAIT_MS = 330_000;
-/** A lease older than this guards nothing, whoever holds it. */
+/** A lease older than this guards nothing, whoever holds it: the successor runs the session from then on. */
 export const SESSION_HANDOFF_LEASE_MAX_AGE_MS = SESSION_HANDOFF_LEASE_MAX_WAIT_MS + 30_000;
 const START_TIME_TIMEOUT_MS = 1_000;
+const FILE_RETRIES = 3;
+const FILE_RETRY_DELAY_MS = 50;
+
+const log = createSubsystemLogger("gateway/handoff");
 
 export type SessionHandoffLease = {
-  version: 1;
+  version: 2;
   lane: string;
   pid: number;
   ownerId: string;
@@ -38,8 +51,13 @@ export function resolveSessionHandoffLeaseDir(env: NodeJS.ProcessEnv = process.e
   return path.join(resolveStateDir(env), "handoff", "session-leases");
 }
 
-export function sessionHandoffLeaseFile(dir: string, lane: string): string {
-  return path.join(dir, `${createHash("sha256").update(lane).digest("hex").slice(0, 32)}.json`);
+function laneHash(lane: string): string {
+  return createHash("sha256").update(lane).digest("hex").slice(0, 32);
+}
+
+/** The one file a holder writes for one session lane. */
+export function sessionHandoffLeaseFile(dir: string, lane: string, ownerId: string): string {
+  return path.join(dir, `${laneHash(lane)}.${ownerId}.json`);
 }
 
 /** The lease in `file`, or undefined when there is none (missing or not a lease this format understands). */
@@ -51,22 +69,25 @@ export function readSessionHandoffLease(file: string): SessionHandoffLease | und
     return undefined;
   }
   if (
-    value?.version !== 1 ||
+    value?.version !== 2 ||
     typeof value.lane !== "string" ||
     !value.lane.startsWith(SESSION_LANE_PREFIX) ||
     !Number.isSafeInteger(value.pid) ||
     (value.pid ?? 0) <= 0 ||
     typeof value.ownerId !== "string" ||
     typeof value.acquiredAt !== "number" ||
-    !(value.startTime === null || typeof value.startTime === "number")
+    !(value.startTime === null || typeof value.startTime === "number") ||
+    path.basename(file) !== `${laneHash(value.lane)}.${value.ownerId}.json`
   ) {
     return undefined;
   }
   return value as SessionHandoffLease;
 }
 
+/** Every lease in `dir`, or only those for `lane`. */
 export function listSessionHandoffLeases(
   dir: string,
+  lane?: string,
 ): Array<{ file: string; lease: SessionHandoffLease }> {
   let names: string[];
   try {
@@ -74,8 +95,9 @@ export function listSessionHandoffLeases(
   } catch {
     return [];
   }
+  const prefix = lane === undefined ? undefined : `${laneHash(lane)}.`;
   return names.flatMap((name) => {
-    if (!name.endsWith(".json")) return [];
+    if (!name.endsWith(".json") || (prefix && !name.startsWith(prefix))) return [];
     const file = path.join(dir, name);
     const lease = readSessionHandoffLease(file);
     return lease ? [{ file, lease }] : [];
@@ -92,8 +114,12 @@ export function isLeaseHolderAlive(pid: number): boolean {
   }
 }
 
+export function sessionHandoffLeaseExpiresAt(lease: SessionHandoffLease): number {
+  return lease.acquiredAt + SESSION_HANDOFF_LEASE_MAX_AGE_MS;
+}
+
 export function isSessionHandoffLeaseExpired(lease: SessionHandoffLease, now = Date.now()): boolean {
-  return now - lease.acquiredAt > SESSION_HANDOFF_LEASE_MAX_AGE_MS || lease.acquiredAt > now + 60_000;
+  return now >= sessionHandoffLeaseExpiresAt(lease) || lease.acquiredAt > now + 60_000;
 }
 
 /** Full liveness: not expired, holder alive, and the same process that wrote it (not a reused PID). */
@@ -104,38 +130,82 @@ export function isSessionHandoffLeaseLive(lease: SessionHandoffLease): boolean {
   return startTime === null || startTime === lease.startTime;
 }
 
-function removeFile(file: string): void {
+function isTransientFileError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "EPERM" || code === "EBUSY" || code === "EACCES";
+}
+
+function pauseSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** Antivirus or an indexer can hold a file for a moment on Windows: retry briefly before giving up. */
+function withFileRetries<T>(operation: () => T): T {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return operation();
+    } catch (error) {
+      if (attempt >= FILE_RETRIES || !isTransientFileError(error)) throw error;
+      pauseSync(FILE_RETRY_DELAY_MS);
+    }
+  }
+}
+
+/** Removes `file`; false (and logged) when it could not be removed, true when it is gone. */
+function removeFile(file: string): boolean {
   try {
-    fs.unlinkSync(file);
+    withFileRetries(() => fs.unlinkSync(file));
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    log.warn(`session handoff lease ${file} could not be removed: ${String(error)}`);
+    return false;
+  }
+}
+
+/** Removes a lease that guards nothing (expired, dead holder, reused PID); its file is that holder's alone. */
+export function removeStaleSessionHandoffLease(file: string): void {
+  removeFile(file);
+}
+
+/**
+ * Removes leftovers that are not leases: temp files from a crash between write and rename, and unreadable files,
+ * once they are older than any lease could be.
+ */
+export function sweepSessionHandoffLeaseLeftovers(dir: string, now = Date.now()): void {
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
   } catch {
-    // Already gone.
+    return;
+  }
+  for (const name of names) {
+    const file = path.join(dir, name);
+    if (name.endsWith(".json") && readSessionHandoffLease(file)) continue;
+    try {
+      if (now - fs.statSync(file).mtimeMs > SESSION_HANDOFF_LEASE_MAX_AGE_MS) removeFile(file);
+    } catch {
+      // Gone meanwhile.
+    }
   }
 }
 
-/** Removes a lease that guards nothing (expired, dead holder, reused PID) unless it changed meanwhile. */
-export function removeStaleSessionHandoffLease(file: string, lease: SessionHandoffLease): void {
-  if (readSessionHandoffLease(file)?.ownerId === lease.ownerId) removeFile(file);
-}
-
+/** Writes this process's own lease on `lane`. Another holder's lease is never read, replaced or refused. */
 export function writeSessionHandoffLease(dir: string, lane: string): { file: string; lease: SessionHandoffLease } {
-  const file = sessionHandoffLeaseFile(dir, lane);
-  const existing = readSessionHandoffLease(file);
-  if (existing && existing.pid !== process.pid && isSessionHandoffLeaseLive(existing)) {
-    throw new Error(`Session ${lane} is already leased by process ${existing.pid}`);
-  }
   const lease: SessionHandoffLease = {
-    version: 1,
+    version: 2,
     lane,
     pid: process.pid,
     ownerId: randomUUID(),
     acquiredAt: Date.now(),
     startTime: getFileLockProcessStartTime(process.pid, process.env, START_TIME_TIMEOUT_MS),
   };
+  const file = sessionHandoffLeaseFile(dir, lane, lease.ownerId);
   fs.mkdirSync(dir, { recursive: true });
-  const temp = `${file}.${lease.ownerId}.tmp`;
+  const temp = `${file}.tmp`;
   try {
     fs.writeFileSync(temp, JSON.stringify(lease));
-    fs.renameSync(temp, file);
+    withFileRetries(() => fs.renameSync(temp, file));
   } catch (error) {
     removeFile(temp);
     throw error;
@@ -143,8 +213,7 @@ export function writeSessionHandoffLease(dir: string, lane: string): { file: str
   return { file, lease };
 }
 
-/** Removes `file` only while it still holds `lease`, so a holder never deletes someone else's lease. */
-export function removeSessionHandoffLease(file: string, lease: SessionHandoffLease): void {
-  if (readSessionHandoffLease(file)?.ownerId !== lease.ownerId) return;
+/** Removes this holder's own lease file. */
+export function removeSessionHandoffLease(file: string, _lease?: SessionHandoffLease): void {
   removeFile(file);
 }
