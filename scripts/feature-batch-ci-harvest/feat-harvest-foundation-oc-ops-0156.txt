@@ -9,6 +9,9 @@ engine:src/config/env-substitution.test.ts
 engine:src/config/includes.test.ts
 engine:src/config/includes.top-level-key.test.ts
 engine:src/gateway/client.ssh.test.ts
+engine:src/gateway/config-reload.activation.integration.test.ts
+engine:src/gateway/config-reload.decisions.test.ts
+engine:src/gateway/config-reload.test.ts
 engine:src/gateway/github-user-identity.cache.test.ts
 engine:src/gateway/github-user-identity.oidc.test.ts
 engine:src/gateway/github-user-identity.test.ts

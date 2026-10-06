@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/gateway/config-reload.test.ts (atlas OPS-0204). Changed for Branch: preserve native test helpers and assert the newer MCP Apps hot-apply contract from d7d4c5d95 without restarting Trunks.
 // Gateway config reload tests cover changed-path detection, reload planning,
 // plugin registry refresh, skill snapshot invalidation, and watcher behavior.
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
@@ -157,11 +158,14 @@ describe("diffConfigPaths", () => {
   it.each([
     { prev: {}, next: { mcp: { apps: { enabled: true } } } },
     { prev: { mcp: { apps: { enabled: true } } }, next: {} },
-  ])("preserves the Apps restart boundary for whole MCP changes", ({ prev, next }) => {
+  ])("hot-applies the Apps enabled flag for whole MCP changes without restarting Trunks", ({ prev, next }) => {
     const changedPaths = diffGatewayReloadPaths(prev, next, listConfigReloadRefinementPrefixes());
     const plan = buildGatewayReloadPlan(changedPaths);
-    expect(plan.restartGateway).toBe(true);
-    expect(plan.restartReasons).toEqual(changedPaths);
+    expect(changedPaths).toEqual(["mcp.apps.enabled"]);
+    expect(plan.restartGateway).toBe(false);
+    expect(plan.restartReasons).toEqual([]);
+    expect(plan.hotReasons).toEqual(changedPaths);
+    expect(plan.disposeMcpRuntimes).toBe(true);
   });
 
   it("reloads only changed Talk speech owners", () => {
