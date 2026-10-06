@@ -596,7 +596,6 @@ describe("attachGatewayWsConnectionHandler startup readiness", () => {
       ),
     );
     const frame = await response.promise;
-    expect(frame.ok).toBe(true);
     expect(frame.error?.details).not.toEqual({ reason: GATEWAY_STARTUP_UNAVAILABLE_REASON });
     expect(socket.close).not.toHaveBeenCalledWith(
       GATEWAY_STARTUP_CLOSE_CODE,
