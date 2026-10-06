@@ -152,7 +152,10 @@ export async function buildDiscordMessageProcessContext(params: {
       sender: { id: sender.id, name: sender.name, tag: sender.tag },
       allowNameMatching: isDangerousNameMatchingEnabled(discordConfig),
       isGuild: isGuildMessage,
+      guildName: data.guild?.name,
+      channelName: channelInfo?.name,
       channelTopic: channelInfo?.topic,
+      threadName,
     });
   const discordContextPrompt = isGuildMessage
     ? appendDiscordContext(
@@ -160,15 +163,12 @@ export async function buildDiscordMessageProcessContext(params: {
         {
           guild: {
             id: guildInfo?.id ?? data.guild?.id ?? data.guild_id ?? "",
-            name: data.guild?.name,
           },
           channel: {
             id: messageChannelId,
-            name: channelInfo?.name,
             type: channelInfo?.type,
-            topic: channelInfo?.topic,
           },
-          thread: threadChannel?.id ? { id: threadChannel.id, name: threadName } : undefined,
+          thread: threadChannel?.id ? { id: threadChannel.id } : undefined,
         },
       )
     : undefined;

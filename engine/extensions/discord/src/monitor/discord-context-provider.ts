@@ -1,4 +1,4 @@
-// From lobehub/lobehub@4bcb808c608ed79497713ab20bcd03ac6d8713da:packages/context-engine/src/providers/DiscordContextProvider.ts and packages/prompts/src/prompts/discordContext/index.ts (atlas AGENT-LOOP-0164). Adapted to Branch's inbound system prompt.
+// From lobehub/lobehub@4bcb808c608ed79497713ab20bcd03ac6d8713da:packages/context-engine/src/providers/DiscordContextProvider.ts and packages/prompts/src/prompts/discordContext/index.ts (atlas AGENT-LOOP-0164). Adapted to Branch's inbound system prompt: human-authored names and topics belong in untrusted structured context.
 export interface DiscordContext {
   guild?: { id: string; name?: string };
   channel?: { id: string; name?: string; type?: number; topic?: string };
@@ -12,21 +12,15 @@ export function formatDiscordContext(context: DiscordContext): string | undefine
   }
   const parts: string[] = [];
   if (guild) {
-    const attrs = [`id="${guild.id}"`];
-    if (guild.name) attrs.push(`name="${guild.name}"`);
-    parts.push(`  <guild ${attrs.join(" ")} />`);
+    parts.push(`  <guild id="${guild.id}" />`);
   }
   if (channel) {
     const attrs = [`id="${channel.id}"`];
-    if (channel.name) attrs.push(`name="${channel.name}"`);
     if (channel.type !== undefined) attrs.push(`type="${channel.type}"`);
-    if (channel.topic) attrs.push(`topic="${channel.topic}"`);
     parts.push(`  <channel ${attrs.join(" ")} />`);
   }
   if (thread) {
-    const attrs = [`id="${thread.id}"`];
-    if (thread.name) attrs.push(`name="${thread.name}"`);
-    parts.push(`  <thread ${attrs.join(" ")} />`);
+    parts.push(`  <thread id="${thread.id}" />`);
   }
   return `<discord_context>\n${parts.join("\n")}\n</discord_context>`;
 }
