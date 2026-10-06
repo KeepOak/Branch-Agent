@@ -120,6 +120,30 @@ it("waits for reply-dispatch publication and then resumes the same session", asy
   }
 });
 
+it("resumes a recovered turn after model runtime publication is superseded", async () => {
+  const target = await addSession("oak");
+  vi.mocked(callGateway).mockRejectedValueOnce(
+    new Error("prepared model runtime publication was superseded for oak"),
+  );
+  const recovery = recoverRestartAbortedMainSessions({
+    cfg: config,
+    stateDir: tmpDir,
+    gatewayRuntime: runtime,
+  });
+  try {
+    await vi.waitFor(() => expect(callGateway).toHaveBeenCalledTimes(2), { timeout: 60_000 });
+    expect(await recovery).toMatchObject({ started: 1, failed: 0 });
+    expect(loadSessionEntry(target)).toMatchObject({
+      sessionId: "oak-session",
+      status: "running",
+      abortedLastRun: false,
+    });
+  } finally {
+    settlement.resolve();
+    await recovery;
+  }
+});
+
 it("reclaims a dead gateway PID's reservation and resumes", async () => {
   const target = await addSession("elm", {
     abortedLastRun: true,

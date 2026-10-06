@@ -30,6 +30,8 @@ export function contactRow(contact: Contact): Conversation {
     working: contact.working, needsYou: contact.needsYou, kind: contact.kind, system: false, automation: false,
     totalTokens: base?.totalTokens ?? 0, contextTokens: base?.contextTokens ?? 0,
     ...(base?.sessionId ? { sessionId: base.sessionId } : {}),
+    // The thread's last run error, so its restart notice shows on the Trunk's own conversation.
+    ...(base?.runError ? { runError: base.runError } : {}),
   };
 }
 

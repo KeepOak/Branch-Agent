@@ -1,0 +1,33 @@
+/** Startup admission is temporary; keep engine/doctor wording out of the conversation. */
+export function isPreparationPending(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /has not completed startup inspection and preparation|agent database startup preparation|prepared model runtime publication was superseded|prepared reply dispatch runtime owner was not published/i.test(message);
+}
+
+export function preparationLabel(name: string): string {
+  return `Getting ${name || "this Trunk"} ready…`;
+}
+
+export function preparationTimeoutLabel(name: string): string {
+  return `${name || "This Trunk"} is still starting up. Try again in a minute.`;
+}
+
+/** A single startup episode gets at most two minutes of increasingly spaced retries. */
+export class PreparationRetry {
+  private startedAt: number | null = null;
+  private attempts = 0;
+
+  nextDelay(now = Date.now()): number | null {
+    if (this.startedAt === null) this.startedAt = now;
+    const remaining = 120_000 - (now - this.startedAt);
+    if (remaining <= 0) return null;
+    const delay = Math.min(500 * 2 ** this.attempts, 5_000, remaining);
+    this.attempts += 1;
+    return delay;
+  }
+
+  reset(): void {
+    this.startedAt = null;
+    this.attempts = 0;
+  }
+}

@@ -208,8 +208,12 @@ export class ConversationList {
     }
   }
 
-  /** Subscribes to session changes and reads the first page. */
+  /** Subscribes to session changes and reads the first page. Each start is a new connection, so rows
+   * shown until that read lands claim no running work: the engine's live registry says what runs. */
   async start(): Promise<void> {
+    if (this.snapshot.rows.some((row) => row.working)) {
+      this.set({ rows: this.snapshot.rows.map((row) => (row.working ? { ...row, working: false } : row)) });
+    }
     try {
       const result = rec(await this.request("sessions.subscribe", LIST_PARAMS));
       await this.apply(result.list);

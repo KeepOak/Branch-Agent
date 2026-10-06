@@ -106,6 +106,7 @@ export function applyLook(s: Saved) {
   if (size === "Regular") root.removeAttribute("data-size"); else root.setAttribute("data-size", size);
   root.classList.toggle("contrast17", s.look.contrast === true);
   root.classList.toggle("still-k", s.look.still === true);
+  root.toggleAttribute("data-still", s.look.still === true);
   mirrorShell(s.look);
   window.dispatchEvent(new CustomEvent("branch:look-change", { detail: { look: s.look, device: s.device, prefs: s.prefs } }));
 }

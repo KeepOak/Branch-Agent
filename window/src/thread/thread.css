@@ -94,6 +94,10 @@
 }
 
 .thread .segment-more { border: 0; background: transparent; cursor: pointer; }
+.thread .preparation-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.thread .preparation-spinner { width: 12px; height: 12px; border: 2px solid var(--ink-3); border-right-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
+.thread .preparation-status details { width: 100%; text-align: center; }
+.thread .preparation-status code { display: block; max-width: 520px; white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; }
 .thread .segment-page { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .thread .segment-line { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 8px; background: var(--fill); white-space: pre-wrap; overflow-wrap: anywhere; }
 .thread .segment-line strong { font-size: 11px; color: var(--ink-2); }
@@ -1703,3 +1707,10 @@
 .topic-update small { display: block; flex-basis: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topic-update span { opacity: .7; }
 .topic-update .topic-new { opacity: 1; font-weight: 700; }
+
+.thread .pass-line.restart-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px 3px 10px;
+}

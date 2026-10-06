@@ -422,6 +422,9 @@ export const IdentitySchema = z
     theme: z.string().optional(),
     emoji: z.string().optional(),
     avatar: z.string().optional(),
+    colour: z.enum(["#2F8C86", "#1785AF", "#8A5AA8", "#5E8C4A", "#4F6FA8", "#C9982E", "#B84A6B", "#56616B"]).optional(),
+    shape: z.enum(["Circle", "Stone", "Leaf", "Acorn", "Shield"]).optional(),
+    eyes: z.enum(["Round", "Wide", "Sleepy"]).optional(),
   })
   .optional();
 

@@ -18,6 +18,7 @@ import { Icon, ICONS } from "./icons";
 import { layout, shownApprovalIds, type Item } from "./layout";
 import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
+import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
 import { QuestionLine } from "./QuestionCard";
 import { anchorQuestions, type QuestionRecord } from "./questions";
 import type { Approval, ApprovalDecision, Block } from "./model";
@@ -59,6 +60,7 @@ type Props = {
   questions?: QuestionRecord[];
   /** Sends a starter from the empty conversation (§4.2.9), the same way the composer sends. */
   onStart?: (text: string) => void;
+  /** The conversation's last run error (sessions.list lastRunError); restart recovery's own one shows "Stopped by restart". */
   recoveryFailure?: string;
   /** The Plan card; it goes after the turn that last updated it (planAnchor), else at the end (§4.2.2). */
   plan?: ReactNode;
@@ -71,10 +73,15 @@ type Props = {
   hasEarlierPages?: boolean;
   loadingEarlier?: boolean;
   earlierError?: string;
+  preparationError?: string | null;
+  advancedDiagnostics?: boolean;
   onLoadEarlier?: () => void;
 };
 
 /** Distance from the end that still counts as "at the end", and that shows "Scroll to latest" (§4.2.2). */
+/** The lastRunError the engine's restart recovery records when it could not carry a run on
+ * (engine main-session-restart-recovery-store.ts tombstoneMainRestartRecoveryWithNotice). */
+const RESTART_NOT_RESUMED = "Interrupted by a restart. Continue?";
 const NEAR_END_PX = 80;
 const LATEST_PX = 450;
 
@@ -156,6 +163,7 @@ export function Thread(props: Props) {
   const threadRef = useRef<HTMLDivElement>(null);
   useFindKey(useCallback(() => setFinding(true), []));
   const empty = !history.length && !pendingUser && !running && !props.questions?.length;
+  const preparationError = [props.preparationError, props.earlierError].find(isPreparationPending);
   const anchors = anchorQuestions(history, props.questions ?? []);
   const items: RoomItem[] = props.room ? foldTalks(layout(history), props.room.ownAgentId) : layout(history);
   const planWanted = props.plan ? planAnchor(history) : -1;
@@ -206,12 +214,16 @@ export function Thread(props: Props) {
       <div className="scroll" ref={follow.scroller} onScroll={(event) => { follow.onScroll(); if (event.currentTarget.scrollTop < 80 && props.hasEarlierPages && !props.loadingEarlier) props.onLoadEarlier?.(); }} data-testid="thread-scroll">
         <div className="thread" ref={threadRef}>
           {props.hasEarlierPages ? <button type="button" className="stamp segment-more" onClick={props.onLoadEarlier} disabled={props.loadingEarlier}>{props.loadingEarlier ? "Loading earlier pages…" : "Earlier pages"}</button> : null}
-          {props.earlierError ? <div className="stamp" role="status">Couldn't load earlier pages: {props.earlierError}</div> : null}
+          {preparationError ? <div className="stamp preparation-status" role="status">
+            <span className="preparation-spinner" aria-hidden="true" />{preparationLabel(name)}
+            {props.advancedDiagnostics ? <details><summary>Diagnostics</summary><code>{preparationError}</code></details> : null}
+          </div> : null}
+          {props.earlierError && !isPreparationPending(props.earlierError) ? <div className="stamp" role="status">Couldn't load earlier pages: {props.earlierError}</div> : null}
           {[...(props.earlierPages ?? [])].reverse().map((page) => <div key={page.sessionId} className="segment-page" aria-label="Earlier conversation segment">
             <div className="stamp">New start · {page.startedAt ? new Date(page.startedAt).toLocaleDateString() : "Earlier"}</div>
             {page.blocks.filter((block) => ["user", "text", "thinking", "step", "notice", "error"].includes(block.kind)).map((block) => <div key={block.key} className="segment-line">
               <strong>{block.kind === "user" ? "You" : block.kind === "text" ? name : block.kind === "step" ? block.tool : "Activity"}</strong>
-              <span>{block.kind === "user" || block.kind === "text" || block.kind === "thinking" || block.kind === "notice" ? block.text : block.kind === "step" ? `${block.title} · ${block.detail}` : block.kind === "error" ? block.message : block.kind === "status" ? block.phase : block.kind === "approval" ? block.approval.command : ""}</span>
+              <span>{block.kind === "user" || block.kind === "text" || block.kind === "thinking" || block.kind === "notice" ? block.text : block.kind === "step" ? `${block.title} · ${block.detail}` : block.kind === "error" ? isPreparationPending(block.message) ? "Branch retried a startup delay." : block.message : block.kind === "status" ? block.phase : block.kind === "approval" ? block.approval.command : ""}</span>
             </div>)}
           </div>)}
           {(props.earlierPages?.length || props.hasEarlierPages) ? <div className="stamp">New start · {props.currentStartedAt ? new Date(props.currentStartedAt).toLocaleDateString() : "Current"}</div> : null}
@@ -244,8 +256,8 @@ export function Thread(props: Props) {
               onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
           ) : null}
           {props.supplement}
-          {props.recoveryFailure === "Interrupted by a restart. Continue?" ? (
-            <div className="notice" role="alert">Interrupted by a restart. {recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Continue</button> : null}</div>
+          {props.recoveryFailure === RESTART_NOT_RESUMED ? (
+            <div className="pass-line restart-stop" role="status" data-testid="restart-stopped">Stopped by restart{recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Resume</button> : null}</div>
           ) : null}
           {planAt < 0 ? props.plan : null}
           <div ref={follow.end} className="thread-end" />
@@ -382,6 +394,7 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
     case "done":
       return <DoneLine block={block} name={view.name} />;
     case "error":
+      if (isPreparationPending(block.message)) return <div className="stamp" role="status">Branch retried a startup delay.</div>;
       return view.dismissed.has(block.key) ? null : <ErrorBlock block={block} onDismiss={() => view.setDismissed((s) => new Set(s).add(block.key))} />;
     case "notice":
       return <Notice block={block} />;
@@ -408,7 +421,7 @@ function MessageView({ block, index, firstReply, face, view, live }: { block: Ex
     return (
       <>
         {other ? (
-          <RoomMessage sender={other} text={block.text} attachments={block.attachments} entryId={block.meta?.entryId} where={other.kind === "agent" ? view.room?.whereRuns(other.id) : null}>{bar}</RoomMessage>
+          <RoomMessage sender={other} text={block.text} attachments={block.attachments} entryId={block.meta?.entryId} where={other.kind === "agent" ? view.room?.whereRuns(other.id) : null} online={other.kind === "agent" && view.room?.isOnline?.(other.id) === true}>{bar}</RoomMessage>
         ) : (
           <UserMessage block={block}>{bar}</UserMessage>
         )}

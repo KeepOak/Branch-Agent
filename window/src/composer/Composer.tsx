@@ -2,6 +2,7 @@
 // the dock row above it and the menus, all wired to the engine through the shared handle (connect/engine.ts).
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 import { PASTED_TEXT_CHIP_CHARS } from "./attachments";
+import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
 import { DockRow, type Goal } from "./DockRow";
 import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "./engine";
 import { Icon, StopMark } from "./icons";
@@ -21,6 +22,7 @@ import { useBackground } from "./useBackground";
 import { hasNoModel, useConversation } from "./useConversation";
 import { safeStorage, saveDraft } from "./drafts";
 import { useConversationPrefs } from "../thread/prefs";
+import { currentModelAccount, modelAccountTooltip, shortAccountEmail, useModelAccounts } from "./useModelAccount";
 import { vimKey, type VimMode } from "./vim";
 import { useDraft } from "./useDraft";
 import { useDrawer, type Pick } from "./useDrawer";
@@ -124,6 +126,9 @@ export function Composer(props: Props) {
   const row = conv.row;
   const currentRef = currentModelRef(row, conv.defaults);
   const current = conv.models.find((m) => m.ref === currentRef || m.id === currentRef);
+  const modelAccounts = useModelAccounts(engine, conv.trunkId, working);
+  const modelAccount = currentModelAccount(modelAccounts, current?.provider ?? currentRef.split("/")[0] ?? "", row);
+  const accountEmail = shortAccountEmail(modelAccount);
   const thinking = currentThinking(row, conv.defaults);
   // No model set up: the engine names a default model but none is connected (models.list has none usable), or none at all.
   const noModel = hasNoModel(conv, currentRef);
@@ -132,6 +137,7 @@ export function Composer(props: Props) {
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;
   const queueMode = str(row.effectiveQueueMode);
   const trunkName = conv.trunk?.name || name;
+  const conversationProblem = conv.error ?? (isPreparationPending(conv.modelsError) || conv.modelsError?.includes("is still starting up.") ? conv.modelsError : null);
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
 
   const deliver = useCallback(
@@ -374,8 +380,9 @@ export function Composer(props: Props) {
     >
       {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
       {noModel ? <NoModelLine onOpen={onOpen} /> : null}
-      {problem ? <p className="c-note bad" role="alert">{problem}</p> : null}
-      {line.error ? <p className="c-note bad" role="alert">{line.error}</p> : null}
+      {conversationProblem ? <p className={isPreparationPending(conversationProblem) ? "c-note" : "c-note bad"} role={isPreparationPending(conversationProblem) ? "status" : "alert"}>{isPreparationPending(conversationProblem) ? preparationLabel(trunkName) : conversationProblem}</p> : null}
+      {problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : problem}</p> : null}
+      {line.error ? <p className="c-note bad" role="alert">{isPreparationPending(line.error) ? preparationLabel(trunkName) : line.error}</p> : null}
       {draft.note ? <p className="c-note">{draft.note}</p> : null}
       {drawer.peopleError && view?.kind === "mention" ? <p className="c-note bad">{drawer.peopleError}</p> : null}
       {props.replyTo ? (
@@ -485,9 +492,9 @@ export function Composer(props: Props) {
           ) : null}
         </span>
         {engine && !noModel ? (
-          <button ref={anchors.model} type="button" className="c-chipb" data-testid="model-chip" aria-expanded={menu === "model"} title="Model and how long it thinks" onClick={() => setMenu(menu === "model" ? null : "model")}>
+          <button ref={anchors.model} type="button" className="c-chipb" data-testid="model-chip" aria-expanded={menu === "model"} title={modelAccountTooltip(modelAccount)} onClick={() => setMenu(menu === "model" ? null : "model")}>
             <Logo id={current?.provider ?? currentRef.split("/")[0] ?? ""} size={18} />
-            <span className="c-chipw">{chipLabel(current?.name ?? currentRef.split("/").pop() ?? "", thinking)}</span>
+            <span className="c-chipw">{chipLabel(current?.name ?? currentRef.split("/").pop() ?? "", thinking)}{accountEmail ? ` · ${accountEmail}` : ""}</span>
             {str(row.activeModel) && str(row.activeModel) !== str(row.model) ? (
               <span title={`${current?.name ?? str(row.model)} isn't answering, so ${str(row.activeModel)} is standing in.`}><Icon name="retry" size={13} /></span>
             ) : null}
@@ -566,7 +573,7 @@ export function Composer(props: Props) {
             onClose={() => setMenu(null)}
             models={conv.models}
             loading={conv.modelsLoading}
-            error={conv.modelsError}
+            error={isPreparationPending(conv.modelsError) ? preparationLabel(trunkName) : conv.modelsError}
             current={current}
             currentRef={current?.ref ?? currentRef}
             row={row}

@@ -1,0 +1,2 @@
+engine:src/mcp/hub-tools.scratch-engine.integration.test.ts
+engine:src/mcp/hub-tools.test.ts

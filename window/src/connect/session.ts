@@ -8,6 +8,7 @@ import { RunStreams, readRunEvent } from "./stream-order";
 import { withOwner } from "./agent-owner";
 import { projectRun, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, readApprovalRecords } from "../thread/history";
+import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "./preparation-status";
 
 export type SessionSnapshot = {
   status: GatewayStatus;
@@ -44,6 +45,9 @@ export class SaplingSession {
   private liveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   /** Only the newest `chat.history` read may land; an older one resolving later would bring back stale history. */
   private historyReads = 0;
+  private preparationRetry: ReturnType<typeof setTimeout> | null = null;
+  private readonly preparationBackoff = new PreparationRetry();
+  private stopped = false;
   private readonly gateway: BranchGateway;
 
   /** `initialKey` reopens the conversation the window last showed (§3.3 "Reopen where you were"). */
@@ -72,11 +76,16 @@ export class SaplingSession {
   }
 
   start(): void {
+    this.stopped = false;
     this.gateway.start();
   }
 
   stop(): void {
     if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
+    this.stopped = true;
+    if (this.preparationRetry) clearTimeout(this.preparationRetry);
+    this.preparationRetry = null;
+    this.preparationBackoff.reset();
     this.gateway.stop();
   }
 
@@ -136,7 +145,22 @@ export class SaplingSession {
   }
 
   private set(patch: Partial<SessionSnapshot>): void {
+    const preparationDelay = patch.error && isPreparationPending(patch.error) ? this.preparationBackoff.nextDelay() : null;
+    if (patch.error && isPreparationPending(patch.error) && preparationDelay === null) {
+      patch = { ...patch, error: preparationTimeoutLabel(this.snapshot.name) };
+    }
     this.snapshot = { ...this.snapshot, ...patch };
+    if (patch.error === null || (patch.status && patch.status.phase !== "connected")) {
+      if (this.preparationRetry) clearTimeout(this.preparationRetry);
+      this.preparationRetry = null;
+      this.preparationBackoff.reset();
+    } else if (!this.stopped && patch.error && isPreparationPending(patch.error) && !this.preparationRetry) {
+      this.preparationRetry = setTimeout(() => {
+        this.preparationRetry = null;
+        const { status, sessionKey } = this.snapshot;
+        if (status.phase === "connected" && sessionKey) void this.bootstrap(status, sessionKey);
+      }, preparationDelay ?? 500);
+    }
     for (const listener of this.listeners) {
       listener();
     }
@@ -149,11 +173,11 @@ export class SaplingSession {
     }
     const mainKey = readMainSessionKey(status.hello);
     const sessionKey = this.wanted ?? mainKey;
-    if (sessionKey !== this.snapshot.sessionKey) {
-      this.runs.clear();
-      this.approvals.clear();
-    }
-    this.set({ sessionKey, mainKey });
+    // Every hello is a fresh engine (a restart, or an update swapped in under this window): the runs this
+    // window mirrored are gone with the old one. Clear them; chat.history's inFlightRun says what still runs.
+    this.runs.clear();
+    this.approvals.clear();
+    this.set({ sessionKey, mainKey, live: [], liveRunId: null, pendingUser: null });
     void this.bootstrap(status, sessionKey);
   }
 
@@ -170,7 +194,7 @@ export class SaplingSession {
       this.set({ name: readAgentName(agents) });
       await this.backfillApprovals();
       await this.loadHistory();
-      this.set({ status });
+      this.set({ status, error: null });
     } catch (error) {
       this.set({ status, error: error instanceof Error ? error.message : String(error) });
     }

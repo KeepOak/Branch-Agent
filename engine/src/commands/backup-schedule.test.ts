@@ -266,6 +266,8 @@ describe("scheduled backups", () => {
           everyMs: 86_400_000,
           target: "/backups/git",
           enabled: true,
+          push: true,
+          excludeSecrets: true,
         },
       ]);
     },

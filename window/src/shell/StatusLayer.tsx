@@ -12,6 +12,8 @@ import { GatewayPopover, RoomPopover, RunningPopover, UsagePopover, VersionPopov
 import type { Limits, UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
 import { stageWindowUpdate } from "../connect/desktop-component-updates";
+import { useDesktopComponentStatus } from "../connect/desktop-component-updates";
+import { useDesktopControls } from "../connect/desktop-controls";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -145,6 +147,8 @@ export function KeepLastDialog({ onCancel, onKeep }: { onCancel: () => void; onK
 
 /** The open status-bar popover, and the confirm for "Keep only the last 400 lines…". */
 export function StatusPopover({ item, above, onClose, ctx }: Props) {
+  const desktopUpdate = useDesktopComponentStatus(ctx.session.gatewayUrl);
+  const desktopControls = useDesktopControls();
   const [confirm, setConfirm] = useState<Conversation | null>(null);
   const level = readLevel();
   const request = ctx.session.request.bind(ctx.session) as <T = unknown>(m: string, p?: unknown) => Promise<T>;
@@ -170,7 +174,9 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
     return <RunningPopover {...base} request={request} working={ctx.working} onOpen={(key) => (onClose(), ctx.openConversation(key))} onAutomations={close(ctx.openAutomations)} />;
   }
   if (item === "version") {
-    return <VersionPopover {...base} update={ctx.update} version={ctx.version} onWhatsNew={close(ctx.onWhatsNew)} onInstall={close(() => void install(ctx))} onRemind={close(() => (remindTomorrow(ctx.update?.latest ?? ctx.version), ctx.onReminded()))} />;
+    return <VersionPopover {...base} update={ctx.update} version={ctx.version}
+      desktopPending={desktopUpdate.status?.pendingVersion ?? null} autoApply={desktopControls.state?.autoApplyUpdates !== false}
+      onWhatsNew={close(ctx.onWhatsNew)} onInstall={close(() => void install(ctx))} onRemind={close(() => (remindTomorrow(ctx.update?.latest ?? ctx.version), ctx.onReminded()))} />;
   }
   return null;
 }

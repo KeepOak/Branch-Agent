@@ -479,6 +479,35 @@ async function discoverViaAvahi(
   return parseAvahiBrowse(browse.stdout).map((beacon) => Object.assign({}, beacon, { domain }));
 }
 
+/**
+ * Windows has neither `dns-sd` nor `avahi-browse`: browse with one mDNS query from Node instead
+ * (bonjour-mdns-browse.ts). The host is the advertised address when one came back, else the SRV target.
+ */
+async function discoverViaMdnsQuery(
+  domain: string,
+  timeoutMs: number,
+): Promise<GatewayBonjourBeacon[]> {
+  if (domain !== "local.") {
+    return [];
+  }
+  const { browseMdns } = await import("./bonjour-mdns-browse.js");
+  const services = await browseMdns(`${GATEWAY_SERVICE_TYPE}.local`, timeoutMs);
+  return services.map((service) => {
+    const txt = parseTxtTokens(service.txt);
+    const beacon: GatewayBonjourBeacon = {
+      instanceName: service.instance,
+      domain,
+      ...(service.address || service.host ? { host: service.address ?? service.host } : {}),
+      ...(service.port ? { port: service.port } : {}),
+      txt: Object.keys(txt).length ? txt : undefined,
+      displayName: txt.displayName ? decodeDnsSdEscapes(txt.displayName) : service.instance,
+      ...(txt.lanHost ? { lanHost: txt.lanHost } : {}),
+    };
+    applyBeaconTxt(beacon, txt);
+    return beacon;
+  });
+}
+
 export async function discoverGatewayBeacons(
   opts: GatewayBonjourDiscoverOpts = {},
 ): Promise<GatewayBonjourBeacon[]> {
@@ -493,7 +522,13 @@ export async function discoverGatewayBeacons(
   );
 
   const discover =
-    platform === "darwin" ? discoverViaDnsSd : platform === "linux" ? discoverViaAvahi : undefined;
+    platform === "darwin"
+      ? discoverViaDnsSd
+      : platform === "linux"
+        ? discoverViaAvahi
+        : platform === "win32"
+          ? discoverViaMdnsQuery
+          : undefined;
   if (!discover) {
     return [];
   }

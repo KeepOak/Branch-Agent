@@ -221,6 +221,7 @@
   align-items: center;
   gap: 4px;
   margin-left: auto;
+  min-width: 0;
 }
 /* the conversation's own tools, 11 px apart, then the window's small buttons (the preview's .head icon-btns, .tb-btn) */
 .global .conv-tools {
@@ -228,6 +229,15 @@
   align-items: center;
   gap: 11px;
   margin-right: 6px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.global .conv-tools > .contact-conversations-button {
+  width: auto;
+  padding: 0 8px;
+  white-space: nowrap;
 }
 .topbar .global > .ib.guide-btn,
 .topbar .global > [data-testid="theme"],
@@ -1250,6 +1260,9 @@ button.mi:focus-visible {
   display: flex;
   align-items: center;
   gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .head-row .head-text {
   min-width: 0;
@@ -1285,10 +1298,11 @@ button.mi:focus-visible {
 
 /* The pet in the list (the preview's .keeper and .petbox, as its last rules leave them). */
 .keeper { position: relative; height: 66px; margin: 0 8px; padding: 4px; border-top: 1px solid var(--hair17); flex: none; }
-.keeper .petbox { position: absolute; bottom: 2px; transition: left 0.32s linear; }
+.keeper .petbox { position: absolute; bottom: 2px; left: 0; transition: transform 0.32s linear; }
 .keeper .pet-btn { display: block; padding: 0; border: 0; background: none; cursor: pointer; }
 .keeper .pet-btn svg { width: 48px; height: 40px; display: block; image-rendering: pixelated; }
 .keeper .pet-btn img { display: block; margin-top: -8px; }
+.keeper .pet-btn video { display: block; margin-top: -8px; object-fit: contain; }
 .keeper .petbox.flip .pet-btn { transform: scaleX(-1); }
 .keeper .pet-say { position: absolute; bottom: 30px; left: 0; background: var(--raise); box-shadow: var(--pop); border-radius: 10px; padding: 6px 9px; font-size: 12px; line-height: 1.35; width: max-content; max-width: 190px; z-index: 3; }
 .keeper .pet-say::after { content: ""; position: absolute; left: 14px; bottom: -5px; width: 10px; height: 10px; background: var(--raise); transform: rotate(45deg); }

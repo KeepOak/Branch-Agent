@@ -7,6 +7,7 @@ import { resolveTimerTimeoutMs } from "@branch/normalization-core/number-coercio
 import { resolveForwardedExitCompilerArgs } from "../bootstrap/node-exit-safe-compilers.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getSpawnBroker } from "../process/spawn-broker/context.js";
+import { hiddenWindowsOptions } from "../process/windows-hidden-options.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import { hasErrnoCode } from "./errno.js";
 import { resolveNodeCompileCacheEnv } from "./node-compile-cache-env.js";
@@ -546,14 +547,14 @@ export function runOneShotSqliteInspection<T>(params: {
     const child = execFile(
       process.execPath,
       params.argv,
-      {
+      hiddenWindowsOptions({
         encoding: "utf8",
         env: params.env ?? resolveNodeCompileCacheEnv(),
         cwd: params.cwd,
         maxBuffer: SQLITE_READONLY_WORKER_MAX_BUFFER,
         timeout: params.deadlineStopsOwner || params.deadlineOwnedByCaller ? undefined : timeoutMs,
         killSignal: "SIGKILL",
-      },
+      }),
       (error, stdout, stderr) => {
         const timedOut = error?.killed && error.signal === "SIGKILL" && error.code == null;
         if (timedOut) {
@@ -630,13 +631,13 @@ export function runSqliteReadOnlyWorkerSync(
   const result = spawnSync(
     process.execPath,
     sqliteReadOnlyWorkerArgv(pathname, { mode, stagingRoot }).argv,
-    {
+    hiddenWindowsOptions({
       encoding: "utf8",
       env: resolveNodeCompileCacheEnv(),
       maxBuffer: SQLITE_READONLY_WORKER_MAX_BUFFER,
       timeout: timeoutMs,
       killSignal: "SIGKILL",
-    },
+    }),
   );
   if (started !== undefined) {
     log.trace(`SQLite read-only snapshot child durationMs=${performance.now() - started}`);

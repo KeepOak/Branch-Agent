@@ -5,6 +5,9 @@ import {
   validateContactsListParams,
   validateContactsTopicsParams,
   validateContactsMarkReadParams,
+  validateContactsOutsideHelloParams,
+  validateContactsOutsideListParams,
+  validateContactsOutsideSetParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { listAgentEntries } from "../../agents/agent-scope.js";
 import { resolveExistingAgentSessionStoreTargetsSync } from "../../config/sessions.js";
@@ -15,11 +18,28 @@ import {
 } from "../../config/sessions/session-accessor.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { listExistingAgentIdsFromDisk, listGatewayAgentsBasic } from "../agent-list.js";
+import {
+  assignOutsideAgentId,
+  graftDeviceId,
+  outsideAgentDeviceRefusal,
+  outsideAgentDeviceRows,
+  reclaimDeviceRow,
+  isOutsideAgentOnline,
+  listOutsideAgents,
+  outsideAgentPeers,
+  outsideAgentMayDriveWindow,
+  outsideAgentRefusal,
+  readOutsideAgentSettings,
+  recordOutsideAgent,
+  updateOutsideAgentSettings,
+} from "../contacts/outside-agents.js";
 import { projectContacts } from "../contacts/project.js";
 import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role-policy.js";
 import { createSessionListEntryFilter } from "../session-sharing.js";
 import { readSessionTitleFieldsFromTranscriptAsync } from "../session-transcript-title-reader.js";
 import { deriveSessionTitle } from "../session-utils-core.js";
+import { deviceHandlers } from "./devices.js";
+import { createVisibleActiveSessionRunProjector } from "./session-active-runs.js";
 import { emitSessionsChanged } from "./session-change-event.js";
 import type { GatewayRequestHandlers, GatewayRequestHandlerOptions } from "./types.js";
 import { assertValidParams } from "./validation.js";
@@ -86,8 +106,19 @@ async function readProjection({
     }
   }
   sessionMutationAuthorization?.assertCurrent();
+  // Working comes from the live run registry, as sessions.list's hasActiveRun does; the stored
+  // writer id outlives a restart.
+  const activeRun = createVisibleActiveSessionRunProjector(context);
   return {
     ...projectContacts({
+      isWorking: (row) =>
+        activeRun({
+          requestedKey: row.sessionKey,
+          canonicalKey: row.sessionKey,
+          sessionId: row.entry.sessionId,
+          agentId: parseAgentSessionKey(row.sessionKey)?.agentId ?? roster.defaultId,
+          defaultAgentId: roster.defaultId,
+        }).active,
       agents,
       defaultAgentId: roster.defaultId,
       mainKey: roster.mainKey,
@@ -96,15 +127,144 @@ async function readProjection({
       sessions: visible,
       previews,
       titles,
-      outsidePeers: listA2aPeers(cfg),
+      outsidePeers: withOutsideAgents(listA2aPeers(cfg)),
     }),
     sessionKeys: new Set(visible.map((row) => row.sessionKey)),
   };
 }
 
+/** Configured A2A peers plus the outside agents that said hello through `branch mcp serve`. */
+function withOutsideAgents<T extends ReturnType<typeof listA2aPeers>[number]>(configured: T[]) {
+  return [...configured, ...outsideAgentPeers(listOutsideAgents(), configured)];
+}
+
+/** Remove a grafted Branch's device pairing through upstream's own device.pair.remove handler (its authz check,
+ *  token invalidation, client disconnect and audit event). An already removed pairing is not an error. */
+async function removeGraftDevice(
+  options: GatewayRequestHandlerOptions,
+  deviceId: string,
+): Promise<{ ok: true } | { ok: false; error: ReturnType<typeof errorShape> }> {
+  return await new Promise((resolve) => {
+    void deviceHandlers["device.pair.remove"]!({
+      ...options,
+      params: { deviceId },
+      respond: (ok, _payload, error) => {
+        if (ok || /unknown deviceId/.test(error?.message ?? "")) resolve({ ok: true });
+        else
+          resolve({
+            ok: false,
+            error: error ?? errorShape(ErrorCodes.UNAVAILABLE, "remove failed"),
+          });
+      },
+    });
+  });
+}
+
 export const contactHandlers: GatewayRequestHandlers = {
   "a2a.peers.list": async ({ context, respond }) => {
-    respond(true, { peers: listA2aPeers(context.getRuntimeConfig()) });
+    const configured = listA2aPeers(context.getRuntimeConfig());
+    const records = new Map(listOutsideAgents().map((row) => [row.id, row]));
+    const outside = outsideAgentPeers([...records.values()], configured).map((peer) => ({
+      ...peer,
+      online: isOutsideAgentOnline(records.get(peer.name)!),
+    }));
+    respond(true, { peers: [...configured, ...outside] });
+  },
+  "contacts.outside.hello": async ({ params, respond, context, client }) => {
+    if (
+      !assertValidParams(
+        params,
+        validateContactsOutsideHelloParams,
+        "contacts.outside.hello",
+        respond,
+      )
+    )
+      return;
+    let settings = readOutsideAgentSettings();
+    const records = listOutsideAgents();
+    // A grafted Branch (a scoped paired device) keeps its own rows; it never takes another's. A goodbye keeps
+    // the id the session had; any other hello may get <id>-N while another session holds the id.
+    const deviceId = graftDeviceId(client);
+    const id =
+      deviceId || params.leaving ? params.agent.id : assignOutsideAgentId(params.agent, records);
+    const deviceRefusal = outsideAgentDeviceRefusal(
+      { ...params.agent, id },
+      deviceId,
+      records,
+      settings,
+    );
+    // Re-paired after Disconnect (a new code, approved): it takes its rows back.
+    if (!deviceRefusal && !params.leaving) {
+      settings = reclaimDeviceRow(id, deviceId, records) ?? settings;
+    }
+    const refusal = deviceRefusal ?? outsideAgentRefusal({ ...params.agent, id }, settings);
+    if (refusal) {
+      respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, refusal));
+      return;
+    }
+    const record = recordOutsideAgent({ ...params.agent, id }, Date.now(), undefined, {
+      leaving: params.leaving === true,
+      deviceId,
+    });
+    context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
+    respond(true, {
+      contact: { id: `a2a:${record.id}`, name: record.name, where: record.where ?? null },
+      mayDriveWindow: outsideAgentMayDriveWindow(record.id, settings),
+    });
+  },
+  "contacts.outside.list": async ({ params, respond }) => {
+    if (
+      !assertValidParams(
+        params,
+        validateContactsOutsideListParams,
+        "contacts.outside.list",
+        respond,
+      )
+    )
+      return;
+    const settings = readOutsideAgentSettings();
+    const agents = listOutsideAgents().map((row) => ({
+      ...row,
+      contactId: `a2a:${row.id}`,
+      online: isOutsideAgentOnline(row) && !outsideAgentRefusal(row, settings),
+      revoked: Boolean(outsideAgentRefusal(row, { ...settings, enabled: true })),
+      mayDriveWindow: outsideAgentMayDriveWindow(row.id, settings),
+    }));
+    respond(true, { enabled: settings.enabled, agents });
+  },
+  "contacts.outside.set": async (options) => {
+    const { params, respond, context } = options;
+    if (
+      !assertValidParams(params, validateContactsOutsideSetParams, "contacts.outside.set", respond)
+    )
+      return;
+    if ((params.revoked !== undefined || params.mayDriveWindow !== undefined) && !params.id) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Name the agent (id)"));
+      return;
+    }
+    // Disconnecting a grafted Branch (or one of its Trunks) disconnects the whole device: every row it said hello
+    // as, and its pairing, removed the way Settings › Devices removes one (device.pair.remove).
+    const device =
+      params.revoked === true ? outsideAgentDeviceRows(params.id!, listOutsideAgents()) : undefined;
+    if (device) {
+      const removed = await removeGraftDevice(options, device.deviceId);
+      if (!removed.ok) {
+        respond(false, undefined, removed.error);
+        return;
+      }
+    }
+    let settings = updateOutsideAgentSettings(params);
+    for (const other of device?.ids.filter((id) => id !== params.id) ?? []) {
+      settings = updateOutsideAgentSettings({ id: other, revoked: true });
+    }
+    context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
+    respond(true, settings);
+  },
+  // Branch-to-Branch: `branch graft join` saved a host while this gateway runs; start (or sync) its link.
+  "graft.links.sync": async ({ respond, context }) => {
+    const { ensureGraftLinks } = await import("../../mcp/graft-link.js");
+    const links = ensureGraftLinks((line) => context.logGateway.info(line));
+    respond(true, { links: links.states() });
   },
   "a2a.peers.refresh": async ({ context, respond }) => {
     respond(true, { peers: await refreshA2aPeerCards(context.getRuntimeConfig()) });

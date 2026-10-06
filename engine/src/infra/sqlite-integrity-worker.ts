@@ -209,6 +209,7 @@ function assertSqliteIntegrityWithProcess(
       execArgv: resolveRuntimeWorkerArgv(entry).slice(0, -1),
       serialization: "advanced",
       stdio: ["ignore", "ignore", "ignore", "ipc"],
+      windowsHide: true,
       timeout: scope || isSqliteInspectionDeadlineOwnedByCaller() ? undefined : timeoutMs,
       killSignal: "SIGKILL",
       ...(scope ? {} : { signal }),

@@ -6,6 +6,7 @@ import {
 } from "branch/plugin-sdk/agent-harness-runtime";
 import { appendSessionYieldContext } from "branch/plugin-sdk/session-transcript-runtime";
 import { classifyCodexModelCallFailureKind } from "./attempt-diagnostics.js";
+import { recordCodexAuthProfileOutcome } from "./auth-profile-usage.js";
 import {
   buildCodexAppServerPromptTimeoutOutcome,
   collectTerminalAssistantText,
@@ -682,6 +683,19 @@ export async function finalizeCodexAttempt(
         : {}),
       systemPromptReport,
     });
+    if (!usesSupervisionConnection && appServer.start.homeScope !== "user") {
+      await recordCodexAuthProfileOutcome({
+        authProfileId: resourceState.thread.authProfileId ?? startupAuthProfileId,
+        store: runtime.runtimeParams.authProfileStore,
+        agentDir,
+        modelId: resourceState.thread.model ?? effectiveRuntimeModelId,
+        runId: params.runId,
+        succeeded: turnSucceeded,
+        error: finalPromptError,
+        providerStarted: Boolean(activeTurnId),
+        stateMode: params.authProfileStateMode,
+      });
+    }
     if (turnSucceeded && toolState.yieldDetected && !runAbortController.signal.aborted) {
       resourceState.nativeHookRelay?.authorizeRetentionAfterSuccessfulYield();
     }

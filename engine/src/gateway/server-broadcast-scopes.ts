@@ -98,6 +98,8 @@ const EVENT_SCOPE_GUARDS: Record<string, string[]> = {
   "terminal.data": [ADMIN_SCOPE],
   "terminal.exit": [ADMIN_SCOPE],
   "portal.changed": [READ_SCOPE],
+  // Settings › Grafts and Contacts reload on it (an outside agent or grafted Branch said hello or was disconnected).
+  "contacts.changed": [READ_SCOPE],
 };
 
 const SESSION_CATALOG_INVALIDATIONS = new Set(["delete", "groups", "sharing", "profile-identity"]);

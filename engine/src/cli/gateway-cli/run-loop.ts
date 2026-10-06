@@ -152,6 +152,7 @@ export async function runGatewayLoop(params: {
     process.removeListener("SIGTERM", onSigterm);
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGUSR2", onRestartSignal);
+    process.removeListener("message", onDesktopStop);
     processLifetime?.port1.close();
     processLifetime?.port2.close();
   };
@@ -1093,6 +1094,20 @@ export async function runGatewayLoop(params: {
       request("stop", "SIGTERM");
     }
   };
+  // The packaged desktop owns this child over its private IPC channel. Unlike a
+  // Windows PID kill, this enters the same active-work drain as SIGTERM.
+  const onDesktopStop = (message: unknown) => {
+    if (!message || typeof message !== "object" || !process.send) return;
+    const request = message as { type?: unknown; id?: unknown };
+    if (typeof request.id !== "number" || !Number.isSafeInteger(request.id)) return;
+    if (request.type !== "branch-desktop:activity" && request.type !== "branch-desktop:stop-if-idle") return;
+    const snapshot = eagerLifecycleRuntime.createGatewayActiveWorkSnapshot();
+    const counts = snapshot.counts;
+    process.send({ type: "branch-desktop:activity-result", id: request.id, idle: snapshot.idle,
+      activeRuns: Math.max(counts.embeddedRuns, counts.agentRuns, counts.chatRuns, counts.acpRuns),
+      pendingReplies: counts.pendingReplies, totalActive: counts.totalActive });
+    if (request.type === "branch-desktop:stop-if-idle" && snapshot.idle) onSigterm();
+  };
   const onSigint = () => {
     observeSignal("SIGINT");
     gatewayLog.debug("signal SIGINT received");
@@ -1198,6 +1213,7 @@ export async function runGatewayLoop(params: {
   };
 
   process.on("SIGTERM", onSigterm);
+  if (process.send) process.on("message", onDesktopStop);
   process.on("SIGINT", onSigint);
   // SIGUSR1 belongs to Node's on-demand inspector; never register a listener for it.
   process.on("SIGUSR2", onRestartSignal);

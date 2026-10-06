@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { statSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import {
@@ -285,53 +286,64 @@ class AgentDatabaseStartupAdmission {
               readSqliteIntegrityFileIdentity(witness.pathname, witness.identity);
             }
           };
-          const assertNotDeleted = async () => {
+          const assertNotDeleted = async (signal: AbortSignal) => {
             assertCurrent();
-            const deletion = await readAgentDeletionJournalStatusInWorker(
-              agentId,
-              { env },
-              this.signal,
-            );
+            const deletion = await readAgentDeletionJournalStatusInWorker(agentId, { env }, signal);
             assertCurrent();
             if (deletion !== "absent") {
               throw new Error(`Agent ${agentId} was deleted during startup inspection`);
             }
           };
-          const preparationComplete = createDeferredCore();
-          let queued = false;
-          const attempt = () =>
-            withSqliteReadOnlyWorkerScope(
+          let activeAttempt: AbortController | undefined;
+          const attempt = () => {
+            const controller = new AbortController();
+            activeAttempt = controller;
+            const signal = AbortSignal.any([this.signal, controller.signal]);
+            const assertAttemptCurrent = () => {
+              signal.throwIfAborted();
+              assertCurrent();
+            };
+            return withSqliteReadOnlyWorkerScope(
               async () => {
-                await assertNotDeleted();
-                await preparePendingAgentDatabase(refusal, { env, assertCurrent }, async () => {
-                  const input = {
-                    agentId,
-                    paths,
-                    env,
-                    signal: this.signal,
-                    assertCurrent,
-                  };
-                  const release = await this.opening.acquire({ signal: this.signal });
-                  try {
-                    assertCurrent();
-                    await activation.openAgent(input);
-                  } finally {
-                    release?.();
-                  }
-                  // Keep the revision until admission publishes after its final journal check.
-                  // A superseded attempt retries while still holding its place in this order.
-                  if (!queued) {
-                    queued = true;
+                await assertNotDeleted(signal);
+                await preparePendingAgentDatabase(
+                  refusal,
+                  { env, assertCurrent: assertAttemptCurrent },
+                  async () => {
+                    const input = {
+                      agentId,
+                      paths,
+                      env,
+                      signal,
+                      assertCurrent: assertAttemptCurrent,
+                    };
+                    const release = await this.opening.acquire({ signal });
+                    try {
+                      assertAttemptCurrent();
+                      await activation.openAgent(input);
+                    } finally {
+                      release?.();
+                    }
+                    // A failed agent must release the preparation lane before its backoff;
+                    // otherwise one degraded agent blocks every sibling indefinitely.
+                    const completion = createDeferredCore();
                     const previous = this.preparation;
-                    this.preparation = preparationComplete.promise;
-                    await previous;
-                  }
-                  await activation.prepareAgent(input);
-                  await assertNotDeleted();
-                });
+                    this.preparation = completion.promise;
+                    try {
+                      await previous;
+                      await activation.prepareAgent(input);
+                      await assertNotDeleted(signal);
+                    } finally {
+                      completion.resolve();
+                    }
+                  },
+                );
               },
-              { signal: this.signal, deadlineOwnedByCaller: true },
-            );
+              { signal, deadlineOwnedByCaller: true },
+            ).finally(() => {
+              if (activeAttempt === controller) activeAttempt = undefined;
+            });
+          };
           try {
             assertCurrent();
             for (const result of results) {
@@ -352,18 +364,48 @@ class AgentDatabaseStartupAdmission {
                 );
               }
             }
-            for (;;) {
-              try {
-                await attempt();
-                break;
-              } catch (error) {
-                // A config reload during preparation must not leave the agent degraded.
-                if (!(error instanceof AgentDatabasePreparationSupersededError) || this.stopped) {
-                  throw error;
-                }
-                assertCurrent();
-                log.info("agent database startup preparation superseded; retrying", { agentId });
+            let retryDelayMs = 2_000;
+            const watchdog = setInterval(() => {
+              if (!this.stopped && this.pending.get(agentId) === refusal) {
+                log.warn(
+                  "agent database preparation watchdog: still pending; cancelling attempt for retry",
+                  {
+                    agentId,
+                    paths,
+                  },
+                );
+                activeAttempt?.abort(new Error(`Agent ${agentId} preparation watchdog expired`));
               }
+            }, 120_000);
+            watchdog.unref();
+            try {
+              for (;;) {
+                try {
+                  await attempt();
+                  break;
+                } catch (error) {
+                  if (this.stopped) {
+                    throw error;
+                  }
+                  assertCurrent();
+                  if (error instanceof AgentDatabasePreparationSupersededError) {
+                    log.info("agent database startup preparation superseded; retrying", {
+                      agentId,
+                    });
+                    continue;
+                  }
+                  log.warn("agent database startup preparation failed; retrying", {
+                    agentId,
+                    paths,
+                    reason: formatErrorMessage(error),
+                    retryDelayMs,
+                  });
+                  await delay(retryDelayMs, undefined, { signal: this.signal });
+                  retryDelayMs = Math.min(retryDelayMs * 2, 60_000);
+                }
+              }
+            } finally {
+              clearInterval(watchdog);
             }
             log.info("agent database recovered after background inspection and preparation", {
               agentId,
@@ -379,7 +421,6 @@ class AgentDatabaseStartupAdmission {
             if (this.pending.get(agentId) === refusal) {
               this.pending.delete(agentId);
             }
-            preparationComplete.resolve();
           }
         };
         await prepare();

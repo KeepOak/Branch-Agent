@@ -17,8 +17,8 @@ import { AccountsMore } from "./accounts-more";
 import { BulkBar, SelectBox, SelectLink } from "./accounts-select";
 import "./set1.css";
 
-export type Profile = { profileId: string; type: string; status: string; displayName?: string; email?: string; logoutSupported?: boolean; source?: string; reasonCode?: string; externallyManaged?: boolean; expiry?: { label?: string } };
-export type Provider = { provider: string; authProvider?: string; displayName: string; status: string; profiles: Profile[]; profileOrder?: string[]; profileOrderLocked?: string; usage?: { plan?: string } };
+export type Profile = { profileId: string; type: string; status: string; displayName?: string; email?: string; lastUsedAt?: number; logoutSupported?: boolean; source?: string; reasonCode?: string; externallyManaged?: boolean; expiry?: { label?: string } };
+export type Provider = { provider: string; authProvider?: string; displayName: string; status: string; profiles: Profile[]; profileOrder?: string[]; lastGoodProfileId?: string; profileOrderLocked?: string; usage?: { plan?: string; accountEmail?: string; windows?: Array<{ label?: string; usedPercent?: number }> } };
 /** models.authStatus providers, each with its accounts as a list even when the engine leaves them out. */
 export function providersOf(value: unknown): Provider[] {
   return list(value).map((p) => ({ ...p, profiles: list(p.profiles) }) as unknown as Provider);
