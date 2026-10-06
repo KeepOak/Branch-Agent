@@ -85,3 +85,6 @@ engine/src/cron/service.restart-catchup-pacing.test.ts,AUTOMATION-0023,openclaw/
 engine/src/infra/heartbeat-active-hours.test.ts,AUTOMATION-0025,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/infra/heartbeat-active-hours.test.ts,2026-10-06
 engine/src/infra/heartbeat-visibility.test.ts,AUTOMATION-0025,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/infra/heartbeat-visibility.test.ts,2026-10-06
 engine/src/infra/heartbeat-cooldown.test.ts,AUTOMATION-0025,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/infra/heartbeat-cooldown.test.ts,2026-10-06
+engine/src/cron/trigger-script.test.ts,AUTOMATION-0029,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/trigger-script.test.ts,2026-10-06
+engine/src/cron/service.trigger-eval.test.ts,AUTOMATION-0029,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/service.trigger-eval.test.ts,2026-10-06
+engine/src/cron/trigger-script.message.test.ts,AUTOMATION-0029,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/trigger-script.message.test.ts,2026-10-06
