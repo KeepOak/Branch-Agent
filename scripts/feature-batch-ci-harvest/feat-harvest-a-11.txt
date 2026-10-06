@@ -2,5 +2,7 @@ engine:extensions/telegram/src/poll-registry.test.ts
 engine:packages/markdown-core/src/ir.test.ts
 engine:packages/markdown-core/src/render-aware-chunking.test.ts
 engine:packages/markdown-core/src/tables.test.ts
+engine:src/auto-reply/chunk.test.ts
+engine:src/auto-reply/reply/block-streaming.test.ts
 engine:src/poll-params.test.ts
 engine:src/polls.test.ts
