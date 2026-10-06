@@ -1,3 +1,7 @@
+engine:extensions/discord/src/activities/http.test.ts
+engine:extensions/discord/src/activities/interaction.test.ts
+engine:extensions/discord/src/activities/presenter.test.ts
+engine:extensions/discord/src/activities/register.test.ts
 engine:extensions/discord/src/components.selects.test.ts
 engine:extensions/discord/src/components.test.ts
 engine:extensions/discord/src/monitor/agent-components.wildcard.test.ts
