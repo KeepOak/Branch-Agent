@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:ui/src/pages/devices/capability-chips.test.ts (atlas UI-MOBILE-WEB-0008). Changed for Branch: retained existing rebranding and assertions; registered for Harvest CI.
 /* @vitest-environment jsdom */
 import { render } from "lit";
 import { describe, expect, it } from "vitest";

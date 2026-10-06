@@ -1,0 +1,3 @@
+engine:ui/src/pages/devices/capability-chips.test.ts
+engine:ui/src/pages/devices/devices-page.test.ts
+engine:ui/src/pages/devices/view-pairing.test.ts
