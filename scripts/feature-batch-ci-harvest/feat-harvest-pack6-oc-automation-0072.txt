@@ -1,5 +1,8 @@
 engine:extensions/trellis/src/trellis-runner.test.ts
 engine:extensions/trellis/src/trellis-tool.test.ts
+engine:src/cli/cron-cli.test.ts
+engine:src/cli/cron-cli/register.cron-edit.test.ts
+engine:src/cli/cron-cli/register.cron-simple.test.ts
 engine:src/gateway/server-methods/cron-run-log-filters.test.ts
 engine:src/gateway/server-methods/cron.history.test.ts
 engine:src/gateway/server-methods/cron.list-compact.test.ts
