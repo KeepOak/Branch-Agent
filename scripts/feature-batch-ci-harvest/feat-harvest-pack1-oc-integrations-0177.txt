@@ -1,3 +1,5 @@
+engine:src/plugin-activation-boundary.test.ts
+engine:src/plugins/activation-planner.test.ts
 engine:src/plugins/discovery.path-inspection.test.ts
 engine:src/plugins/discovery.test.ts
 engine:src/plugins/loader.admission-contracts.test.ts
