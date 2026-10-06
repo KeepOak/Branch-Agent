@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
+import { relayChannelConfigSchema } from "./config-schema.js";
 import { RelayTransport, relayDialUrl } from "./transport.js";
 
 const descriptor = (platform: string) => ({
@@ -50,8 +51,25 @@ afterEach(async () => {
 describe("Hermes relay WebSocket contract", () => {
   it("normalizes HTTP connector base URLs to the relay dial path", () => {
     expect(relayDialUrl("https://relay.example/base/")).toBe("wss://relay.example/base/relay");
-    expect(relayDialUrl("ws://relay.example/relay")).toBe("ws://relay.example/relay");
+    expect(relayDialUrl("wss://relay.example/relay")).toBe("wss://relay.example/relay");
+    expect(relayDialUrl("ws://127.0.0.1/relay")).toBe("ws://127.0.0.1/relay");
   });
+
+  it.each(["http://relay.example", "ws://relay.example", "ftp://relay.example"])(
+    "rejects insecure or unsupported remote URL %s in config and at dial time",
+    (url) => {
+      expect(relayChannelConfigSchema.runtime?.safeParse({ url }).success).toBe(false);
+      expect(() => relayDialUrl(url)).toThrow();
+    },
+  );
+
+  it.each(["http://127.0.0.1:1234", "ws://localhost:1234", "http://[::1]:1234"])(
+    "allows loopback URL %s",
+    (url) => {
+      expect(relayChannelConfigSchema.runtime?.safeParse({ url }).success).toBe(true);
+      expect(relayDialUrl(url)).toMatch(/\/relay$/u);
+    },
+  );
 
   it("sends one hello per identity and tags outbound with its platform and bot id", async () => {
     const stub = await stubConnector();

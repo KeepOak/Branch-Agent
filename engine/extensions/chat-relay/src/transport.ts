@@ -22,7 +22,21 @@ export type RelayInboundEvent = {
   };
 };
 
+export function isAllowedRelayUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol === "https:" || url.protocol === "wss:") return true;
+    return (url.protocol === "http:" || url.protocol === "ws:") &&
+      (url.hostname === "localhost" || url.hostname === "[::1]" || url.hostname.startsWith("127."));
+  } catch {
+    return false;
+  }
+}
+
 export function relayDialUrl(url: string): string {
+  if (!isAllowedRelayUrl(url)) {
+    throw new Error("Chat relay URL requires HTTPS or WSS unless connecting to loopback");
+  }
   const base = url.trim().replace(/\/+$/u, "").replace(/^https:/u, "wss:").replace(/^http:/u, "ws:");
   return base.endsWith("/relay") ? base : `${base}/relay`;
 }

@@ -66,13 +66,11 @@ export async function handleRelayInbound(params: {
       inboundEventKind: "user_request",
     },
     mentionFacts: isGroup ? { canDetectMention: true, wasMentioned: Boolean(wasMentioned) } : undefined,
-    // An authenticated connector owns provider-side access. Operators can still
-    // restrict this channel locally without silently imposing a new default.
-    dmPolicy: "open",
-    groupPolicy: params.account.groupPolicy ?? "open",
-    policy: { activation: isGroup ? { requireMention: false, allowTextCommands: true } : undefined },
-    allowFrom: params.account.allowFrom ?? ["*"],
-    groupAllowFrom: params.account.groupAllowFrom ?? ["*"],
+    dmPolicy: "pairing",
+    groupPolicy: params.account.groupPolicy ?? "allowlist",
+    policy: { activation: isGroup ? { requireMention: true, allowTextCommands: true } : undefined },
+    allowFrom: params.account.allowFrom ?? [],
+    groupAllowFrom: params.account.groupAllowFrom ?? [],
   });
   if (access.ingress.admission !== "dispatch") return;
 
@@ -112,7 +110,7 @@ export async function handleRelayInbound(params: {
     message: { body, bodyForAgent: text, rawBody: text, commandBody: text },
     channelIngress: access,
     access: {
-      commands: { authorized: true },
+      commands: { authorized: access.commandAccess.authorized },
       mentions: { canDetectMention: isGroup, wasMentioned: Boolean(wasMentioned) },
     },
   });

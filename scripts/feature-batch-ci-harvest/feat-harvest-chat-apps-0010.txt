@@ -2,5 +2,6 @@ engine:extensions/chat-relay/src/auth.test.ts
 engine:extensions/chat-relay/src/channel.test.ts
 engine:extensions/chat-relay/src/descriptor.test.ts
 engine:extensions/chat-relay/src/gateway.test.ts
+engine:extensions/chat-relay/src/inbound.test.ts
 engine:extensions/chat-relay/src/transport.test.ts
 window:src/places/settings/set2/set2.test.tsx
