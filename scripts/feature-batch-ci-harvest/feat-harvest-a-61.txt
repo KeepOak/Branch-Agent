@@ -1,3 +1,5 @@
 engine:extensions/msteams/src/conversation-store.shared.test.ts
+engine:extensions/msteams/src/reply-stream-controller.sdk.test.ts
+engine:extensions/msteams/src/reply-stream-controller.test.ts
 engine:extensions/msteams/src/sdk-proactive.process.test.ts
 engine:extensions/msteams/src/sdk-proactive.test.ts
