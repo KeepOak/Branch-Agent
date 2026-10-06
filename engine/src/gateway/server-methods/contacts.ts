@@ -266,6 +266,24 @@ export const contactHandlers: GatewayRequestHandlers = {
     const links = ensureGraftLinks((line) => context.logGateway.info(line));
     respond(true, { links: links.states() });
   },
+  "graft.links.list": async ({ respond }) => {
+    const { readGraftLinks } = await import("../../mcp/graft-join.js");
+    respond(true, { links: readGraftLinks().map(({ url, name, joinedAt }) => ({ url, name, joinedAt })) });
+  },
+  "graft.join": async ({ params, respond }) => {
+    const input = params && typeof params === "object" ? params as Record<string, unknown> : {};
+    if (typeof input.code !== "string" || !input.code.trim() ||
+        (input.name !== undefined && typeof input.name !== "string")) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Enter a setup code and an optional name."));
+      return;
+    }
+    try {
+      const { joinGraftFromWindow } = await import("../graft-join-ui.js");
+      respond(true, await joinGraftFromWindow(input.code, typeof input.name === "string" ? input.name : undefined));
+    } catch (error) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, error instanceof Error ? error.message : String(error)));
+    }
+  },
   "a2a.peers.refresh": async ({ context, respond }) => {
     respond(true, { peers: await refreshA2aPeerCards(context.getRuntimeConfig()) });
   },

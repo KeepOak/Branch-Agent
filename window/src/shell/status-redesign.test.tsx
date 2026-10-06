@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { StatusBar, type StatusItem } from "./StatusBar";
 import { GatewayPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
 import { machineMenuItems } from "./MachineMenu";
+import { saveTargetName } from "../setup/pre-connect-state";
 import { readLimits, ringReading } from "./status-data";
 import { pauseAll, prepareBackground } from "./StatusLayer";
 import { loadDraft, safeStorage } from "../composer/drafts";
@@ -62,17 +63,25 @@ it("usage ring folds after five seconds and still opens on one click", async () 
   } finally { vi.useRealTimers(); }
 });
 
-it("computer popover lists the live computer and routes its three footer actions", () => {
+it("computer popover lists linked computers and routes its footer actions", () => {
   const openSettings = vi.fn();
+  const onLinkBranch = vi.fn(), onSwitch = vi.fn();
   const elsewhere = vi.fn();
   window.addEventListener("branch:connect-elsewhere", elsewhere, { once: true });
-  const rows = machineMenuItems({ machineName: "Studio Mac", online: true, level: "regular", roundTripMs: 4, openSettings });
+  localStorage.clear();
+  saveTargetName("wss://other.example.test", "Other computer");
+  const rows = machineMenuItems({ machineName: "Studio Mac", currentUrl: "ws://127.0.0.1:19031", homeUrl: "ws://127.0.0.1:19031", linkedHosts: [{ url: "wss://teammate.example.test" }], online: true, level: "regular", roundTripMs: 4, openSettings, onLinkBranch, onSwitch });
   expect(rows.find((row) => "label" in row && row.label === "Studio Mac")).toMatchObject({ sub: "Online · here", checked: true });
+  expect(rows.find((row) => "label" in row && row.label === "Other computer")).toMatchObject({ sub: "wss://other.example.test" });
+  expect(rows.find((row) => "label" in row && row.label === "teammate.example.test")).toMatchObject({ sub: "Linked teammate · Sign in to talk" });
   expect(rows.some((row) => "label" in row && row.label === "Workspace")).toBe(false);
   for (const row of rows) if ("run" in row && row.run) row.run();
   expect(openSettings).toHaveBeenCalledWith("computer");
   expect(openSettings).toHaveBeenCalledWith("gateway");
   expect(elsewhere).toHaveBeenCalledOnce();
+  expect(onLinkBranch).toHaveBeenCalledOnce();
+  expect(onSwitch).toHaveBeenCalledWith("wss://other.example.test");
+  expect(onSwitch).toHaveBeenCalledWith("wss://teammate.example.test");
 });
 
 it("Every account groups refreshed readings and checks again through usage.status", async () => {

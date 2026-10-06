@@ -71,6 +71,13 @@ const branchB = { id: "branch-b", name: "Branch B", kind: "branch" };
 const scout = { id: "branch-b--scout", name: "Scout", kind: "trunk", via: "branch-b" };
 
 describe("Branch-to-Branch graft on the host", () => {
+  it("exposes saved links and rejects malformed window join requests", async () => {
+    expect((await call("graft.links.list", {}, owner)).payload).toEqual({ links: [] });
+    const invalid = await call("graft.join", { code: "" }, owner);
+    expect(invalid.ok).toBe(false);
+    expect(invalid.error?.message).toContain("Enter a setup code");
+  });
+
   it("treats only non-admin device connections as grafted devices", () => {
     expect(graftDeviceId(device("dev-b"))).toBe("dev-b");
     expect(graftDeviceId(owner)).toBeUndefined();

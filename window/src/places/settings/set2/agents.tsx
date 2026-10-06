@@ -3,6 +3,8 @@
 // contacts.outside.list / contacts.outside.set; "may message" is each Trunk's agentToAgent deny list for a2a:<id>,
 // the same rule Who it knows writes (shell/who-it-knows-menu.tsx) and the gateway enforces on every send.
 import type { SettingsPageProps } from "../index";
+import { useState } from "react";
+import { BranchLinkDialog } from "../../../shell/BranchLinkDialog";
 import { Btn, Ctl, Empty, Page, Sec, Switch, useConfig, type RowEntry } from "../kit";
 import { RoomAvatar, a2aBadge } from "../../../rooms/RoomMessage";
 import { DesktopCtl } from "../desktop-ctl";
@@ -143,6 +145,7 @@ function AgentRow({ agent, trunks, props, reload, sessions, nested = [] }: { age
 }
 
 export function AgentsPage(props: SettingsPageProps) {
+  const [linking, setLinking] = useState(false);
   const live = useLive<unknown>(props.engine, "contacts.outside.list", {}, ["contacts.changed"]);
   const roster = useLive<unknown>(props.engine, "agents.list", {}, ["config.changed"]);
   const call = useCall();
@@ -159,10 +162,14 @@ export function AgentsPage(props: SettingsPageProps) {
       {agents.length ? groupAgents(agents).map(({ row, trunks: nested }) => <AgentRow key={row.id} agent={row} nested={nested} trunks={trunks} props={props} reload={reload} sessions={agents.map((x) => x.id)} />) : (
         <Sec title="Grafts"><Empty>No agent is grafted yet. Paste one of the lines below into it.</Empty></Sec>
       )}
+      <Sec title="Another Branch" hint="Link a teammate's computer with a one-time code or QR.">
+        <button type="button" className="btn" onClick={() => setLinking(true)}>Link another Branch</button>
+      </Sec>
       <Sec title="Graft an agent" hint="Each line is pasted once." help="Each line is pasted once. It runs the branch command, which always uses the Branch on this computer, so it keeps working after updates.">
         <DesktopCtl title="Type branch in any terminal" sub="Needed for these lines: adds the branch command." name="branchOnPath" />
         {CONNECT_LINES.map(([title, code]) => <CodeRow key={title} title={title} code={code} />)}
       </Sec>
+      {linking && <BranchLinkDialog engine={props.engine} onClose={() => setLinking(false)} onLinked={reload} />}
     </Page>
   );
 }
