@@ -81,6 +81,14 @@ describe("contacts layout", () => {
     expect(readLayout()).toMatchObject({ sideW: 320, rail: true });
     globalThis.matchMedia = originalMatchMedia;
   });
+  it("starts in the face rail at 1280 px and keeps the full list at 700 px", () => {
+    const originalMatchMedia = globalThis.matchMedia;
+    globalThis.matchMedia = vi.fn((query: string) => ({ matches: query.includes("min-width: 761px") })) as unknown as typeof matchMedia;
+    expect(readLayout().rail).toBe(true);
+    globalThis.matchMedia = vi.fn(() => ({ matches: false })) as unknown as typeof matchMedia;
+    expect(readLayout().rail).toBe(false);
+    globalThis.matchMedia = originalMatchMedia;
+  });
   it("shows pinned tiles and two-line contact rows without losing the scroll or selection on redraw", async () => {
     const host = await show();
     const scroll = host.querySelector<HTMLElement>(".side-scroll")!;

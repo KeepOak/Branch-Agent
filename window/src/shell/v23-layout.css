@@ -1,0 +1,47 @@
+.main.v23-layout { flex-direction: row; }
+.main.v23-layout .conversation-column { min-width: 0; }
+.v23-threads { position: relative; flex: 0 0 300px; min-width: 0; height: 100%; overflow-y: auto; background: var(--side); border-right: 1px solid var(--hair17); }
+.v23-threads-hidden { flex-basis: 42px; }
+.v23-threads-head { position: relative; display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 4px 8px; white-space: nowrap; }
+.v23-threads-head strong { overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.v23-threads-head small { color: var(--ink-3); font-size: 11px; }
+.v23-layout-button { border: 0; background: transparent; color: var(--ink-2); border-radius: 7px; cursor: pointer; width: 28px; height: 28px; }
+.v23-layout-button:hover { background: var(--fill); }
+.v23-threads-menu { position: absolute; top: 36px; left: 5px; z-index: var(--z-pop, 20); display: grid; width: 150px; padding: 5px; background: var(--raise); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--pop); }
+.v23-threads-menu button { border: 0; border-radius: 6px; background: transparent; color: var(--ink); text-align: left; padding: 7px; cursor: pointer; }
+.v23-threads-menu button[aria-checked="true"], .v23-threads-menu button:hover { background: var(--fill); }
+.v23-thread-row { display: flex; align-items: center; gap: 8px; width: calc(100% - 10px); min-height: 51px; margin: 2px 5px; padding: 6px 7px; border: 0; border-radius: 9px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.v23-thread-row:hover { background: var(--fill); }
+.v23-thread-row.current { background: var(--fill-2); }
+.v23-thread-copy { display: grid; gap: 3px; min-width: 0; flex: 1; }
+.v23-thread-copy b, .v23-thread-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v23-thread-copy b { font-size: 12px; }
+.v23-thread-copy small { color: var(--ink-3); font-size: 11px; }
+.v23-thread-row time { align-self: flex-start; color: var(--ink-3); font-size: 10px; }
+.v23-thread-icon { display: grid; place-items: center; width: 32px; height: 32px; flex: none; font-size: 18px; }
+.v23-thread-unread { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.v23-threads-toggle { width: 100%; border: 0; background: transparent; color: var(--ink-2); font: 600 11px inherit; text-align: left; padding: 12px 14px 5px; cursor: pointer; }
+.v23-threads-toggle:hover { color: var(--ink); }
+.v23-tower { flex: 0 0 316px; min-width: 0; height: 100%; overflow-y: auto; background: var(--side); border-left: 1px solid var(--hair17); color: var(--ink); }
+.v23-tower > header { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 3px 8px 3px 14px; }
+.v23-tower > header h2 { flex: 1; margin: 0; font-size: 13px; }
+.v23-tower-health { display: flex; align-items: center; gap: 7px; margin: 2px 12px 10px; padding: 7px 9px; border-radius: 8px; background: var(--fill); color: var(--ink-2); font-size: 11px; }
+.v23-tower-health i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.v23-tower section { padding: 10px 12px 12px; border-top: 1px solid var(--hair17); }
+.v23-tower h3 { display: flex; align-items: center; gap: 5px; margin: 0 0 8px; color: var(--ink-2); font-size: 11px; }
+.v23-tower h3 span { color: var(--ink-3); font-weight: 400; }
+.v23-tower p { margin: 0 0 6px; color: var(--ink-3); font-size: 11px; line-height: 1.35; }
+.v23-tower-row { display: flex; align-items: center; gap: 5px; width: 100%; min-height: 38px; padding: 4px 0; border: 0; background: transparent; color: inherit; text-align: left; }
+button.v23-tower-row { cursor: pointer; }
+button.v23-tower-row:hover { background: var(--fill); }
+.v23-tower-row-text { display: grid; flex: 1; gap: 2px; min-width: 0; border: 0; padding: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.v23-tower-row-text:disabled { cursor: default; }
+.v23-tower-row-text b, .v23-tower-row-text small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.v23-tower-row-text b { font-size: 11px; }
+.v23-tower-row-text small { color: var(--ink-3); font-size: 10px; }
+.v23-allow { flex: none; border: 0; border-radius: 12px; padding: 4px 8px; background: var(--btn); color: var(--on-btn); font: 600 10px inherit; cursor: pointer; }
+.v23-deny { flex: none; border: 0; background: transparent; color: var(--ink-3); cursor: pointer; }
+.v23-allow:disabled, .v23-deny:disabled { opacity: .45; cursor: default; }
+.v23-link { border: 0; padding: 5px 0; background: transparent; color: var(--accent); font: 600 11px inherit; cursor: pointer; }
+@media (max-width: 1100px) { .v23-tower { display: none; } }
+@media (max-width: 600px) { .v23-threads { display: none; } }

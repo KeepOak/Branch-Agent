@@ -91,6 +91,8 @@ import { PlanCard, usePlanDismiss, usePlanRefresh, useProgressCard } from "../th
 import { ComputerStage, type PipTarget, type StageMode } from "../stage/ComputerStage";
 import { StageConversation } from "../stage/StageConversation";
 import { SidePane, type PaneTab } from "../stage/SidePane";
+import { ThreadColumn } from "./ThreadColumn";
+import { ControlTower } from "./ControlTower";
 import { StagePip } from "../stage/StagePip";
 import { AddComputer } from "../stage/AddComputer";
 import { computersChanged } from "../stage/computers";
@@ -377,6 +379,22 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [replyTo, setReplyTo] = useState<{ entryId: string; name: string; text: string } | null>(null);
   const [stage, setStage] = useState<StageMode | null>(null);
   const [pane, setPane] = useState<PaneTab | null>(null);
+  const [towerOn, setTowerOn] = useState(() => {
+    try { return localStorage.getItem("branch.controlTower") !== "hidden"; }
+    catch { return true; }
+  });
+  useEffect(() => {
+    const toggle = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.key.toLowerCase() !== "t") return;
+      event.preventDefault();
+      setTowerOn((on) => {
+        try { localStorage.setItem("branch.controlTower", on ? "hidden" : "shown"); } catch { /* current window only */ }
+        return !on;
+      });
+    };
+    window.addEventListener("keydown", toggle);
+    return () => window.removeEventListener("keydown", toggle);
+  }, []);
   const [pip, setPip] = useState<PipTarget | null>(null);
   const [stageComputer, setStageComputer] = useState<string | null>(null);
   const [addingComputer, setAddingComputer] = useState(false);
@@ -727,6 +745,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   });
   const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
   const sections = buildContactSections(contacts, prefs, now);
+  // The main conversation is still navigable while contacts.list is loading (or unavailable).
+  if (!contacts.length && home && !prefs.trunk && prefs.status === "active") {
+    sections.find((section) => section.id === "recent")?.rows.push(home);
+  }
   const pinnedSection = sections.find((section) => section.id === "pinned");
   if (pinnedSection) pinnedSection.rows.sort((a, b) => {
     if (a.key === b.key) return 0;
@@ -1040,6 +1062,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const who = trunkName(openRow?.agentId);
   const conversationTools = (
     <>
+      <button type="button" className="ib" aria-label={towerOn ? "Hide the control tower" : "Show the control tower"} title="Control tower (Ctrl+Shift+T)" aria-pressed={towerOn} onClick={() => setTowerOn((on) => { try { localStorage.setItem("branch.controlTower", on ? "hidden" : "shown"); } catch { /* current window only */ } return !on; })}><Icon name="sidebar" /></button>
       {draftTopic ? null :
       <button type="button" className="ib" aria-label="Conversation menu" title={`More for ${openRow?.kind === "group" ? name : who}`} data-testid="conversation-menu-button" onClick={conversationMenu.open}>
         <Icon name="more" />
@@ -1217,7 +1240,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       </>
     );
   }
-  const mainClass = route.kind === "chat" ? (pane ? "main with-pane" : "main") : talkShown ? (talk.dock === "bottom" ? "main with-talk talk-bottom" : "main with-talk") : "main";
+  const threadGeneralKey = topicContact?.threadKey ?? (openRow?.isMain ? openKey : null);
+  const showThreadColumn = route.kind === "chat" && !layout.focus && !stage && !draftTopic && Boolean(threadGeneralKey);
+  const showTower = route.kind === "chat" && ready && towerOn && !pane && !layout.focus && !stage && !draftTopic;
+  const mainClass = route.kind === "chat" ? `main${pane ? " with-pane" : ""}${showThreadColumn || showTower ? " v23-layout" : ""}` : talkShown ? (talk.dock === "bottom" ? "main with-talk talk-bottom" : "main with-talk") : "main";
 
   return (
     <TrunkAppearances.Provider value={appearances}>
@@ -1365,7 +1391,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             Leave focus mode · Ctrl+.
           </button>
         ) : null}
+        {showThreadColumn && threadGeneralKey ? <ThreadColumn key={topicContact?.id ?? threadGeneralKey} name={topicContact?.name ?? defaultName} generalKey={threadGeneralKey} openKey={openKey} items={topicItems} onOpen={(key) => key === threadGeneralKey ? openConversation(key) : openTopic(key)} /> : null}
         {main}
+        {showTower ? <ControlTower engine={session.engine} rows={lists.rows} needsCount={needsYou} trunkName={trunkName} onOpen={openConversation} onInbox={() => openPlace("inbox")} onClose={() => { setTowerOn(false); try { localStorage.setItem("branch.controlTower", "hidden"); } catch { /* current window only */ } }} /> : null}
       </main>
       {addingComputer && ready ? <AddComputer engine={session.engine} onClose={() => setAddingComputer(false)} onAdded={computersChanged} /> : null}
       {route.kind === "chat" && pip && !stage ? (

@@ -7,7 +7,9 @@ export const SIDE_DEFAULT = 292;
 export const SIDE_MIN = 220;
 export const SIDE_MAX = 640;
 const KEY = "branch.layout";
-const defaultRail = () => typeof matchMedia === "function" && matchMedia("(min-width: 761px) and (max-width: 999px)").matches;
+// The thread column owns the space next to the face rail on desktop. Keep the
+// full contact list for narrower windows and for people who saved that choice.
+const defaultRail = () => typeof matchMedia === "function" && matchMedia("(min-width: 761px)").matches;
 
 export function readLayout(): Layout {
   try {
