@@ -2,3 +2,7 @@ engine:src/talk/agent-consult-tool.test.ts
 engine:src/talk/agent-talkback-runtime.test.ts
 engine:src/talk/fast-context-runtime.test.ts
 engine:src/talk/forced-consult-coordinator.test.ts
+engine:ui/src/pages/chat/talk/gateway-relay.test.ts
+engine:ui/src/pages/chat/talk/google-live.test.ts
+engine:ui/src/pages/chat/talk/session.test.ts
+engine:ui/src/pages/chat/talk/webrtc.test.ts
