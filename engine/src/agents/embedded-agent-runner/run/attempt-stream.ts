@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/run/attempt-stream.ts (atlas AGENT-LOOP-0098). Changed for Branch: inject target instructions at a mid-session model transition.
 import type { OpenAIResponsesCompactionRejection } from "@branch/ai/transports";
 import { resolveDiagnosticModelContentCapturePolicy } from "../../../infra/diagnostic-llm-content.js";
 import { DEFAULT_UNDICI_STREAM_TIMEOUT_MS } from "../../../infra/net/undici-global-dispatcher.js";
@@ -9,6 +10,7 @@ import {
   readRunOperatorAuthority,
 } from "../../admitted-run-context.js";
 import { shouldAllowProviderOwnedThinkingReplay } from "../../embedded-agent-helpers/turns.js";
+import { wrapStreamFnModelSwitchInstructions } from "../../model-switch-instructions.js";
 import { wrapStreamFnTextTransforms } from "../../plugin-text-transforms.js";
 import type { StreamFn } from "../../runtime/index.js";
 import { withSessionManagerWrite } from "../../sessions/session-manager-write-admission.js";
@@ -306,6 +308,7 @@ export function installEmbeddedAttemptStreamGuards(
     transcriptPolicy,
     attempt.provider,
   );
+  session.agent.streamFn = wrapStreamFnModelSwitchInstructions(session.agent.streamFn);
   session.agent.streamFn = wrapStreamFnPromoteStandaloneTextToolCalls(
     session.agent.streamFn,
     liveAllowedToolNames,

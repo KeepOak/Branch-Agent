@@ -36,7 +36,7 @@ async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
   await act(async () => root.render(<KitProvider level={level} report={report} scope={null}><GeneralPage page="general" title="General" level="regular" engine={engine} /></KitProvider>));
   await act(async () => { await configStore(engine).load(); });
 }
-const heads = () => [...host.querySelectorAll(".sec > h2")].map((h) => h.textContent);
+const heads = () => [...host.querySelectorAll(".sec > h2:not([hidden])")].map((h) => h.textContent);
 const row = (title: string) => host.querySelector<HTMLElement>(`.ctl[data-row="${title}"]`)!;
 const patchOf = (request: ReturnType<typeof engineOf>["request"]) => {
   const call = request.mock.calls.find(([m]) => m === "config.patch") as unknown as [string, { raw: string }];
@@ -52,9 +52,9 @@ describe("Settings › General", () => {
     await render(engine, 0);
     expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Cover the screen"]);
     await render(engine, 1);
-    expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Clipboard history", "Cover the screen", "Controllers", "The conversation", "Summaries of older turns", "This PC"]);
+    expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Clipboard history", "Cover the screen", "Controllers", "The conversation", "Summaries", "This computer"]);
     await render(engine, 2);
-    expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Clipboard history", "Cover the screen", "Controllers", "The conversation", "Summaries of older turns", "Summaries, technical", "This PC", "Waiting line", "Summaries, more"]);
+    expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Clipboard history", "Cover the screen", "Controllers", "The conversation", "Summaries", "This computer", "Waiting line"]);
   });
 
   it("every row the page draws is in the search list, with its exact title", async () => {
@@ -114,7 +114,7 @@ describe("Settings › General", () => {
   it("Trim old tool results reads the engine's pruning and writes its mode", async () => {
     const { engine, request } = engineOf({ "models.authStatus": { providers: [{ provider: "anthropic", profiles: [{ profileId: "a" }] }] } }, { agents: { defaults: { contextPruning: { mode: "cache-ttl", ttl: "1h" } } } });
     await render(engine, 2);
-    expect(row("Trim old tool results").textContent).toContain("On because a Claude account is connected.");
+    expect(row("Trim old tool results").textContent).toContain("Clears old tool output after the cache expires.");
     expect(row("Trim after").querySelector("input")!.value).toBe("60");
     await act(async () => row("Trim old tool results").querySelector<HTMLInputElement>("input")!.click());
     expect(patchOf(request)).toEqual({ agents: { defaults: { contextPruning: { mode: "off" } } } });
@@ -130,15 +130,15 @@ describe("Settings › General", () => {
       expect(row(t).querySelector(".why-k")?.textContent).toMatch(/window can’t/);
     }
     // In a plain browser the Branch app's own rows are greyed and say where they are changed.
-    for (const t of ["Start with Windows", "Keep working when the window closes"]) {
+    for (const t of ["Start with Windows"]) {
       expect(row(t).getAttribute("aria-disabled")).toBe("true");
       expect(row(t).querySelector(".why-k")?.textContent).toBe(IN_BROWSER);
     }
-    expect(row("Keep working when the window closes").querySelector<HTMLInputElement>("input")!.checked).toBe(false);
-    expect(host.querySelector(".status")?.textContent ?? host.textContent).toContain("Branch runs while it’s open");
+    expect(row("Keep working when the window closes")).toBeNull();
+    expect(host.querySelector(".status")).toBeNull();
   });
 
-  it("in the Branch desktop app, closing the window keeps it working in the tray", async () => {
+  it("keeps only startup controls in General", async () => {
     const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
     Object.defineProperty(navigator, "platform", { value: "Win32", configurable: true });
     let state = { keepWorking: true, keepAwake: false, trayUsage: false, startWithWindows: false, branchOnPath: false };
@@ -147,42 +147,18 @@ describe("Settings › General", () => {
     try {
       const { engine } = engineOf();
       await render(engine, 0);
-      const keep = row("Keep working when the window closes");
-      expect(keep.querySelector<HTMLInputElement>("input")!.checked).toBe(true);
-      expect(keep.getAttribute("aria-disabled")).toBeNull();
-      expect(host.textContent).toContain("Branch waits in the tray");
+      expect(row("Keep working when the window closes")).toBeNull();
       const start = () => row("Start with Windows").querySelector<HTMLInputElement>("input")!;
       expect(start().checked).toBe(false);
       expect(row("Start with Windows").getAttribute("aria-disabled")).toBeNull();
       await act(async () => start().click());
       expect(set).toHaveBeenCalledWith("startWithWindows", true);
       expect(start().checked).toBe(true);
-      await act(async () => keep.querySelector<HTMLInputElement>("input")!.click());
-      expect(set).toHaveBeenLastCalledWith("keepWorking", false);
-      expect(host.textContent).toContain("Closing the window quits Branch");
     } finally {
       delete (window as { branchDesktop?: unknown }).branchDesktop;
       delete (navigator as { platform?: string }).platform;
       if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
     }
-  });
-
-  it("shows the resident gateway on macOS and Linux desktop apps", async () => {
-    const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
-    for (const name of ["MacIntel", "Linux x86_64"]) {
-      Object.defineProperty(navigator, "platform", { value: name, configurable: true });
-      (window as { branchDesktop?: unknown }).branchDesktop = {
-        controls: { get: async () => ({ keepWorking: true }), set: vi.fn() },
-      };
-      try {
-        const { engine } = engineOf();
-        await render(engine, 0);
-        expect(host.textContent).toContain("Branch waits in the tray");
-      } finally {
-        delete (window as { branchDesktop?: unknown }).branchDesktop;
-      }
-    }
-    if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
   });
 
   it("When you send while it works has its pin while it follows the engine's default", async () => {

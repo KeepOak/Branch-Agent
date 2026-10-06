@@ -65,7 +65,7 @@ export function CatalogDialog({ mode, engine, close, ownServer, done }: { mode: 
   const install = (i: Item) => { if (i.install) void action.run(i.id, "plugins.install", { ...i.install, enable: true }, () => { browse.reload(); done(); }); };
   const tabs = mode === "connector" ? [{ id: "all", name: "All" }, ...cats] : [...INTENTS, ...cats];
   return <Dialog wide title={mode === "connector" ? "Add a connector" : "Plugins"} onClose={close} testid="catalog"
-    footer={mode === "connector" ? <><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn" onClick={ownServer}>Add your own server</button></> : <button type="button" className="btn" onClick={close}>Close</button>}>
+    footer={mode === "connector" ? <><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn" onClick={ownServer}>Add your own server</button></> : null}>
     <p className="dlg-p">{mode === "connector" ? "Connectors in curated groups, or add your own server." : "A plugin adds everything in it at once, and you can switch parts off afterwards."}</p>
     <div className="cz-top"><label className="cz-search"><Icon name="search" small /><input type="search" aria-label={mode === "connector" ? "Search connectors" : "Search plugins"} placeholder={mode === "connector" ? "Search connectors" : "Search plugins"} value={query} onChange={e => setQuery(e.target.value)} /></label>
       {mode === "connector" && <><Grey reason="Needs the engine's public registry search.">Public registry</Grey><Grey reason="Needs the engine's import from other apps.">Bring in from other apps</Grey></>}</div>

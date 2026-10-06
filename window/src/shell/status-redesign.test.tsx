@@ -40,7 +40,7 @@ it("status glyphs open all six popovers from live facts", async () => {
   expect(host.querySelector("[data-testid=sb-room]")?.getAttribute("aria-label")).toBe("Context left · 86%");
   expect(host.querySelector("[data-testid=sb-running]")?.getAttribute("aria-label")).toBe("3 running");
   expect(host.querySelector("[data-testid=sb-version]")?.getAttribute("title")).toBe("Branch 0.19.5 · 0.20.0 ready");
-  expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("you@example.com · 77% left");
+  expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("ChatGPT · Account 1 · 77% left");
 });
 
 it("usage ring folds after five seconds and still opens on one click", async () => {
@@ -75,16 +75,20 @@ it("computer popover lists the live computer and routes its three footer actions
   expect(elsewhere).toHaveBeenCalledOnce();
 });
 
-it("Every account groups gateway readings and checks again through usage.status", async () => {
-  const request = vi.fn(async () => ({ updatedAt: Date.now(), providers: [{ provider: "anthropic", displayName: "Claude", accountEmail: "new@example.com", plan: "Pro", windows: [{ label: "5h", usedPercent: 9 }] }] }));
+it("Every account groups refreshed readings and checks again through usage.status", async () => {
+  const request = vi.fn(async (method: string) => method === "usage.status" ? { updatedAt: Date.now(), providers: [
+    { provider: "openai-codex", displayName: "ChatGPT", accountEmail: "you@example.com", plan: "Plus", windows: [{ label: "5h", usedPercent: 23 }, { label: "Week", usedPercent: 41 }] },
+    { provider: "anthropic", displayName: "Claude", accountEmail: "new@example.com", plan: "Pro", windows: [{ label: "5h", usedPercent: 9 }] },
+  ] } : {});
   const open = vi.fn();
   const host = await show(<UsagePopover above={above} onClose={() => {}} limits={seeded} request={request as never} onOpenUsage={open} />);
+  expect(request).toHaveBeenCalledWith("usage.status", { refresh: true });
   expect(host.textContent).toContain("you@example.com");
   expect(host.textContent).toContain("77% left");
   expect(host.textContent).toContain("week 59% left");
   await click(host, "usage-check");
   expect(request).toHaveBeenCalledWith("models.authStatus", { refresh: true });
-  expect(request).toHaveBeenCalledWith("usage.status", {});
+  expect(request.mock.calls.filter(([method]) => method === "usage.status")).toHaveLength(2);
   expect(host.textContent).toContain("new@example.com");
   await click(host, "open-usage");
   expect(open).toHaveBeenCalledOnce();

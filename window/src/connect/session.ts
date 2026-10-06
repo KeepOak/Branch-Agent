@@ -20,6 +20,9 @@ export type SessionSnapshot = {
   history: Block[];
   live: Block[];
   pendingUser: string | null;
+  /** Messages the engine accepted but no turn has picked up yet (chat.history pendingInputs), then "delivered" until
+   *  the history shows them in place. A post by another Trunk or an outside agent waits here while a turn runs. */
+  queued: QueuedMessage[];
   liveRunId: string | null;
   /** When the live run started (engine time), so "Working · 3m 12s" counts from the real start, not from when this
    *  window opened it. */
@@ -35,6 +38,30 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const runStart = (v: Record<string, unknown>): number | null =>
   typeof v.startedAt === "number" && Number.isFinite(v.startedAt) && v.startedAt > 0 ? v.startedAt : null;
 
+export type QueuedMessage = { key: string; block: Extract<Block, { kind: "user" }>; state: "queued" | "delivered" };
+
+/** The engine's waiting inputs as user blocks, merged with what was shown: gone from the engine means a turn picked
+ *  it up ("delivered"); a full history read (`settled`) drops the delivered ones, since the history now has them. */
+export function mergeQueued(
+  shown: readonly QueuedMessage[],
+  pendingInputs: unknown,
+  sessionKey: string,
+  settled: boolean,
+): QueuedMessage[] {
+  const items = (Array.isArray(rec(pendingInputs).items) ? (rec(pendingInputs).items as unknown[]) : [])
+    .map(rec)
+    .filter((item) => item.state === "queued" && item.message && str(item.id));
+  const blocks = historyToBlocks(items.map((item) => item.message), [], sessionKey, null);
+  const waiting: QueuedMessage[] = [];
+  items.forEach((item, at) => {
+    const block = blocks.filter((b) => b.kind === "user")[at] as Extract<Block, { kind: "user" }> | undefined;
+    if (block) waiting.push({ key: `queued:${str(item.id)}`, block: { ...block, key: `queued:${str(item.id)}` }, state: "queued" });
+  });
+  const now = new Set(waiting.map((q) => q.key));
+  const delivered = settled ? [] : shown.filter((q) => !now.has(q.key)).map((q) => ({ ...q, state: "delivered" as const }));
+  return [...delivered, ...waiting];
+}
+
 export type GatewayEventListener = (event: string, payload: unknown) => void;
 
 
@@ -44,7 +71,7 @@ export function roomIdOf(sessionKey: string): string {
 }
 
 export class SaplingSession {
-  readonly gatewayUrl: string;
+  gatewayUrl: string;
   private readonly eventListeners = new Set<GatewayEventListener>();
   private wanted: string | null;
   private snapshot: SessionSnapshot;
@@ -59,11 +86,15 @@ export class SaplingSession {
   private preparationRetry: ReturnType<typeof setTimeout> | null = null;
   private readonly preparationBackoff = new PreparationRetry();
   private stopped = false;
-  private readonly gateway: BranchGateway;
+  private gateway: BranchGateway;
+  private retiringGateway: BranchGateway | null = null;
+  private retiringRunId: string | null = null;
+  private sharedToken: string | undefined;
 
   /** `initialKey` reopens the conversation the window last showed (§3.3 "Reopen where you were"). */
   constructor(url: string, sharedToken: string | undefined, initialKey: string | null = null) {
     this.gatewayUrl = url;
+    this.sharedToken = sharedToken;
     this.wanted = initialKey;
     this.snapshot = {
       status: { phase: "connecting" },
@@ -73,18 +104,25 @@ export class SaplingSession {
       history: [],
       live: [],
       pendingUser: null,
+      queued: [],
       liveRunId: null,
       liveStartedAt: null,
       doneAt: null,
       lastActivityAt: null,
       error: null,
     };
-    this.gateway = new BranchGateway({
+    this.gateway = this.createGateway(url, sharedToken);
+  }
+
+  private createGateway(url: string, sharedToken: string | undefined): BranchGateway {
+    let gateway: BranchGateway;
+    gateway = new BranchGateway({
       url,
       sharedToken,
-      onStatus: (status) => this.onStatus(status),
+      onStatus: (status) => { if (this.gateway === gateway) this.onStatus(status); },
       onEvent: (event) => this.onEvent(event),
     });
+    return gateway;
   }
 
   start(): void {
@@ -99,11 +137,28 @@ export class SaplingSession {
     this.preparationRetry = null;
     this.preparationBackoff.reset();
     this.gateway.stop();
+    this.retiringGateway?.stop();
+    this.retiringGateway = null;
+    this.retiringRunId = null;
   }
 
   /** The desktop swapped the engine in place: reconnect at once. */
   reconnectNow(): void {
     this.gateway.reconnectNow();
+  }
+
+  /** Move new requests to a ready successor without unmounting the composer or losing O's live events. */
+  handoff(url: string, sharedToken = this.sharedToken): void {
+    if (url === this.gatewayUrl) { this.reconnectNow(); return; }
+    this.retiringGateway?.stop();
+    this.retiringRunId = this.snapshot.liveRunId;
+    this.retiringGateway = this.retiringRunId || this.snapshot.pendingUser !== null ? this.gateway : null;
+    if (!this.retiringGateway) this.gateway.stop();
+    this.gatewayUrl = url;
+    this.sharedToken = sharedToken;
+    this.gateway = this.createGateway(url, sharedToken);
+    this.engineCache = null;
+    this.gateway.start();
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -152,7 +207,7 @@ export class SaplingSession {
     if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
     this.liveRefreshTimer = null;
     this.approvals.clear();
-    this.set({ sessionKey: key, history: [], live: [], pendingUser: null, liveRunId: null, liveStartedAt: null, doneAt: null, lastActivityAt: null, error: null });
+    this.set({ sessionKey: key, history: [], live: [], pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null, doneAt: null, lastActivityAt: null, error: null });
     try {
       await this.backfillApprovals();
       await this.loadHistory();
@@ -192,9 +247,13 @@ export class SaplingSession {
     const sessionKey = this.wanted ?? mainKey;
     // Every hello is a fresh engine (a restart, or an update swapped in under this window): the runs this
     // window mirrored are gone with the old one. Clear them; chat.history's inFlightRun says what still runs.
-    this.runs.clear();
-    this.approvals.clear();
-    this.set({ sessionKey, mainKey, live: [], liveRunId: null, liveStartedAt: null, pendingUser: null });
+    if (!this.retiringGateway) {
+      this.runs.clear();
+      this.approvals.clear();
+      this.set({ sessionKey, mainKey, live: [], liveRunId: null, liveStartedAt: null, pendingUser: null });
+    } else {
+      this.set({ sessionKey, mainKey });
+    }
     void this.bootstrap(status, sessionKey);
   }
 
@@ -251,6 +310,7 @@ export class SaplingSession {
     const info = rec(h.sessionInfo);
     this.set({
       history: blocks,
+      queued: mergeQueued(this.snapshot.queued, h.pendingInputs, sessionKey, true),
       lastActivityAt: typeof info.lastActivityAt === "number" ? info.lastActivityAt : null,
       ...(inFlightRunId ? { liveRunId: inFlightRunId, liveStartedAt: runStart(inFlight) } : {}),
     });
@@ -282,6 +342,10 @@ export class SaplingSession {
     const payload = rec(event.payload);
     if (event.event === "agent" || event.event === "session.tool") {
       this.onAgentEvent(payload);
+      // A turn starting in this conversation may have picked up a waiting message.
+      if (str(payload.sessionKey) === this.snapshot.sessionKey && str(payload.stream) === "lifecycle" && str(rec(payload.data).phase) === "start" && this.snapshot.queued.length) {
+        void this.loadQueued();
+      }
     } else if (event.event === "chat") {
       const state = str(payload.state);
       if (["final", "error", "aborted"].includes(state) && this.isOurs(payload)) {
@@ -378,7 +442,19 @@ export class SaplingSession {
     const settled = liveRunId ? this.finished.has(liveRunId) : pendingUser === null;
     if (settled) {
       this.loadHistory().catch((error: unknown) => this.set({ error: error instanceof Error ? error.message : String(error) }));
+    } else {
+      // A turn is running: the history waits for it to end, but what is waiting for a turn shows now.
+      void this.loadQueued();
     }
+  }
+
+  /** Only the waiting inputs (chat.history pendingInputs), read while a turn runs without touching the history. */
+  private async loadQueued(): Promise<void> {
+    const sessionKey = this.snapshot.sessionKey;
+    if (!sessionKey) return;
+    const history = await this.gateway.request("chat.history", { sessionKey, limit: 1 }).catch(() => null);
+    if (!history || sessionKey !== this.snapshot.sessionKey) return;
+    this.set({ queued: mergeQueued(this.snapshot.queued, rec(history).pendingInputs, sessionKey, false) });
   }
 
   /** The run ended: the engine's history becomes the record, replacing the live view in one step. */
@@ -390,6 +466,11 @@ export class SaplingSession {
     try {
       await this.loadHistory();
     } finally {
+      if (this.retiringGateway && (!this.retiringRunId || this.retiringRunId === runId)) {
+        this.retiringGateway.stop();
+        this.retiringGateway = null;
+        this.retiringRunId = null;
+      }
       this.runs.drop(runId);
       const wasLive = this.snapshot.liveRunId === runId;
       this.set({
@@ -404,13 +485,15 @@ export class SaplingSession {
       return;
     }
     this.set({ pendingUser: text, doneAt: null, error: null });
+    const dispatchGateway = this.gateway;
     try {
       const roomId = roomIdOf(sessionKey);
       if (roomId && extras?.attachments?.length) throw new Error("Attachments are not supported in group chats yet.");
       const result = rec(await (roomId
-        ? this.gateway.request("rooms.send", { roomId, message: text })
-        : this.gateway.request("chat.send", { ...extras, sessionKey, message: text, idempotencyKey: crypto.randomUUID() })));
+        ? dispatchGateway.request("rooms.send", { roomId, message: text })
+        : dispatchGateway.request("chat.send", { ...extras, sessionKey, message: text, idempotencyKey: crypto.randomUUID() })));
       const runId = str(result.runId);
+      if (dispatchGateway === this.retiringGateway && runId) this.retiringRunId = runId;
       if (runId && !this.finished.has(runId)) {
         this.set({ liveRunId: runId, liveStartedAt: this.snapshot.liveRunId === runId ? this.snapshot.liveStartedAt : Date.now() });
         this.refreshLive();

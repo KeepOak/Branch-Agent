@@ -30,7 +30,7 @@ import { useContacts, useConversations, useListPeople, useMachine, usePendingApp
 import { FilterButton, FilterSortPopover, readPrefs, savePrefs } from "./FilterSort";
 import { Icon } from "./icons";
 import { clearFilters, emptyLineFor, filterRows, filterSummary, hasFolders, homeRow, owners, roomUsed, type ListPrefs } from "./list-model";
-import { buildContactSections, contactRow, listContactTopics, markContactRead, missingConversation, openContactRow, pinContact, projectContact, type Contact } from "./contacts-model";
+import { buildContactSections, contactRow, contactRowsFor, listContactTopics, markContactRead, missingConversation, openContactRow, pinContact, projectContact, type Contact } from "./contacts-model";
 import { GroupDropPopover, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useGroupRooms, useRoomNotices, type GroupDrop } from "./group-drop";
 import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./AppSections";
 import { batchMenuItems } from "./batch-menu";
@@ -304,16 +304,17 @@ function useEngineReads(session: SaplingSession) {
   const s = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const ready = s.status.phase === "connected";
   const [lists, list] = useConversations(session, ready, s.mainKey);
-  const [contactRows, refreshContacts, contactsLoaded] = useContacts(session, ready);
+  const [gatewayContacts, refreshContacts, contactsLoaded] = useContacts(session, ready);
+  const trunks = useTrunks(session, ready);
   return {
     s,
     ready,
     lists,
     list,
-    contactRows,
+    gatewayContacts,
     refreshContacts,
     contactsLoaded,
-    trunks: useTrunks(session, ready),
+    trunks,
     pending: usePendingApprovals(session, ready),
     machine: useMachine(session, ready),
     limits: useLimits(session, ready),
@@ -335,7 +336,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     }, 0);
     return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles() };
   }), [session]);
-  const { s, ready, lists, list, contactRows, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  const { s, ready, lists, list, gatewayContacts, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
   const groupRooms = useGroupRooms(session, ready);
   const [groupDrop, setGroupDrop] = useState<GroupDrop | null>(null);
   const branchVersion = useBranchVersion(url);
@@ -347,6 +348,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const projects = useProjects(session, ready);
   const [newProject, setNewProject] = useState(false);
   const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null);
+  const contactRows = contactRowsFor(gatewayContacts, contactsLoaded, trunks.list, lists.rows, s.mainKey, firstRun.isFirstRun,
+    firstRun.isFirstRun && firstRun.requiresContact ? trunks.bootstrapDefault : undefined);
   const now = useNow(s.doneAt);
   const [layout, setLayout] = useLayout();
   const rail = layout.rail;
@@ -1142,6 +1145,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           recoveryFailure={openRow?.runError}
           plan={progress.card && !planDismiss.dismissed ? <PlanCard card={progress.card} onRefresh={planRefresh.refresh} refreshing={planRefresh.status} onDismiss={planDismiss.dismiss} /> : null}
           pendingUser={s.pendingUser}
+          queued={s.queued}
           running={Boolean(s.liveRunId)}
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />
@@ -1190,11 +1194,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       </>
     );
   } else {
-    main = <SettingsFrame page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} />;
+    main = <SettingsFrame page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} askName={defaultName} />;
   }
   const talkEntry: TalkEntry | null =
     route.kind === "chat" ? null : { name: defaultName, keys: currentKeys(keyActions(defaultName), readCustomKeys()).talkBeside, open: talk.open, onToggle: () => setTalk({ open: !talk.open }) };
-  const talkShown = talkEntry !== null && talk.open && !layout.focus;
+  const talkShown = talkEntry !== null && route.kind === "place" && talk.open && !layout.focus;
   if (route.kind !== "chat") {
     main = (
       <>
@@ -1238,7 +1242,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onCharacter={() => setCharacterShown((v) => !v)}
         onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
         conversationTools={conversationTools}
-        ask={talkEntry}
+        ask={route.kind === "settings" ? { name: defaultName, open: false, help: true, onToggle: () => window.dispatchEvent(new Event("branch-settings-help")) } : talkEntry}
         onSettings={route.kind === "place" ? () => openSettings("general") : undefined}
       />
       <Sidebar
@@ -1263,7 +1267,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             </span>
           ) : null
         }
-        emptyLine={emptyLineFor(prefs, shownCount)}
+        emptyLine={emptyLineFor(prefs, shownCount) ?? (contactsLoaded && trunks.loaded && contactRows.length === 0 ? "No contacts yet. Use + to create one." : null)}
         search={<SearchBox query={search.query} onQuery={search.setQuery} />}
         searchResults={
           search.query.trim() ? (
@@ -1608,8 +1612,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       ) : null}
       {route.kind === "chat" ? conversationMenu.node : null}
       {groupDrop ? <GroupDropPopover key={`${groupDrop.kind}:${groupDrop.source}:${groupDrop.target ?? groupDrop.roomId ?? ""}`} drop={groupDrop} contacts={contacts} rooms={groupRooms.rooms} defaultTrunk={trunks.defaultId ?? ""} session={session} onClose={() => setGroupDrop(null)} onPick={setGroupDrop} onOpen={(key) => { void groupRooms.reload(); openConversation(key); }} /> : null}
-      <BannerView onOpen={openConversation} />
-      <Toasts />
+      <BannerView onOpen={openConversation} setupOpen={(firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded} />
+      <Toasts setupOpen={(firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded} />
     </div>
     </TrunkEmojiFaces.Provider>
     </TrunkPebbleLooks.Provider>

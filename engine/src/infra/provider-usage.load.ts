@@ -9,7 +9,7 @@ import { trackAsyncWork } from "../shared/async-work-scope.js";
 import { formatErrorMessage } from "./errors.js";
 import { resolveFetch } from "./fetch.js";
 import { resolveProxyFetchFromEnv } from "./net/proxy-fetch.js";
-import { type ProviderAuth, resolveProviderAuths } from "./provider-usage.auth.js";
+import { type ProviderAuth, resolveProviderAuthsAll } from "./provider-usage.auth.js";
 import {
   PROVIDER_USAGE_TIMEOUT_MS,
   ignoredErrors,
@@ -33,6 +33,7 @@ type UsageSummaryOptions = {
   config?: BranchConfig;
   env?: NodeJS.ProcessEnv;
   fetch?: typeof fetch;
+  includeClaudeCode?: boolean;
 };
 
 /** Loads usage snapshots from configured provider auth and plugin-backed usage hooks. */
@@ -79,35 +80,36 @@ export async function loadProviderUsageSummary(
   let authStore = opts.authStore;
   const getAuthStore = () =>
     (authStore ??= ensureAuthProfileStore(opts.agentDir, { allowKeychainPrompt: false }));
-  const tasks = descriptors.map(({ provider }) => {
-    return raceUsageTimeout(
-      (signal) =>
-        trackAsyncWork(async () => {
-          let authError: unknown;
-          const auth =
-            opts.auth?.find((candidate) => candidate.provider === provider) ??
-            (
-              await resolveProviderAuths({
-                providers: [provider],
-                agentDir: opts.agentDir,
-                config,
-                env,
-                signal,
-                getStore: getAuthStore,
-                store: opts.authStore,
-                onError: (_provider, error) => {
-                  authError = error;
-                },
-              })
-            )[0];
-          signal.throwIfAborted();
-          if (authError) {
-            const message = formatErrorMessage(authError);
-            return failureSnapshot(provider, message.trim() || "Auth failed");
-          }
-          if (!auth) {
-            return undefined;
-          }
+  const tasks = descriptors.map(async ({ provider }) => {
+    let authError: unknown;
+    const auths = opts.auth?.filter((candidate) => candidate.provider === provider) ??
+      await raceUsageTimeout((signal) => trackAsyncWork(() => resolveProviderAuthsAll({
+        providers: [provider],
+        agentDir: opts.agentDir,
+        config,
+        env,
+        signal,
+        getStore: getAuthStore,
+        store: opts.authStore,
+        onError: (_provider, error) => { authError = error; },
+      })), timeoutMs, null);
+    if (auths === null) return [failureSnapshot(provider, "Timeout")];
+    if (authError) {
+      const message = formatErrorMessage(authError);
+      return [failureSnapshot(provider, message.trim() || "Auth failed")];
+    }
+    const seen = new Set<string>();
+    const unique = auths.filter((auth) => {
+      const key = `${provider}:${auth.email?.toLowerCase() ?? auth.accountId ?? auth.authProfileId ?? auth.token}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const firstProfileId = unique.find((auth) => auth.authProfileId)?.authProfileId;
+    return await Promise.all(unique.map((auth) => auth.authError
+      ? Promise.resolve({ ...failureSnapshot(provider, auth.authError), ...(auth.authProfileId ? { authProfileId: auth.authProfileId } : {}), ...(auth.email ? { accountEmail: auth.email } : {}), ...(auth.authProfileId === firstProfileId ? { inUse: true } : {}) })
+      : raceUsageTimeout(
+      (signal) => trackAsyncWork(async () => {
           const snapshot = await resolveProviderUsageSnapshotWithPlugin({
             provider: auth.hookProvider ?? auth.provider,
             config,
@@ -141,30 +143,44 @@ export async function loadProviderUsageSummary(
               },
             },
           });
-          return (
-            snapshot ?? {
+          return {
+            ...(snapshot ?? {
               provider: auth.provider,
               displayName: providerUsageLabel(auth.provider) ?? auth.provider,
               windows: [],
               error: "Unsupported provider",
-            }
-          );
+            }),
+            ...(auth.authProfileId ? { authProfileId: auth.authProfileId } : {}),
+            ...(auth.email && !snapshot?.accountEmail ? { accountEmail: auth.email } : {}),
+            ...(auth.authProfileId && auth.authProfileId === firstProfileId ? { inUse: true } : {}),
+          };
         }),
       timeoutMs,
-      failureSnapshot(provider, "Timeout"),
+      { ...failureSnapshot(provider, "Timeout"), ...(auth.authProfileId ? { authProfileId: auth.authProfileId } : {}), ...(auth.email ? { accountEmail: auth.email } : {}) },
     ).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      return failureSnapshot(provider, message.trim() || "Fetch failed");
-    });
+      return { ...failureSnapshot(provider, message.trim() || "Fetch failed"), ...(auth.authProfileId ? { authProfileId: auth.authProfileId } : {}), ...(auth.email ? { accountEmail: auth.email } : {}) };
+    })));
   });
 
   const snapshots = (await Promise.all(tasks))
-    .filter((snapshot): snapshot is ProviderUsageSnapshot => snapshot !== undefined)
+    .flat()
     .toSorted(
       (left, right) =>
         (providerOrder.get(left.provider) ?? Number.MAX_SAFE_INTEGER) -
         (providerOrder.get(right.provider) ?? Number.MAX_SAFE_INTEGER),
     );
+  const claudeCode = opts.includeClaudeCode
+    ? await raceUsageTimeout(
+        () => import("../../extensions/anthropic/usage-claude-code.js")
+          .then(({ readClaudeCodeUsage }) => readClaudeCodeUsage(env, now)).catch(() => null),
+        timeoutMs,
+        null,
+      )
+    : null;
+  if (claudeCode && !snapshots.some((entry) => entry.provider === "claude-code" && entry.accountEmail === claudeCode.accountEmail)) {
+    snapshots.push(claudeCode);
+  }
   const providers = snapshots.filter(
     (entry) =>
       entry.windows.length > 0 ||

@@ -50,6 +50,23 @@ function sameProcess(record: Pick<HostRecord, "pid" | "createTime">): boolean {
   return record.createTime === null || actual === null || actual === record.createTime;
 }
 
+function isHostLockOwner(value: unknown): value is Pick<HostRecord, "pid" | "createTime"> {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("pid" in value) || !("createTime" in value)) return false;
+  const { pid, createTime } = value;
+  return typeof pid === "number" && Number.isSafeInteger(pid) && pid > 0 &&
+    (createTime === null || (typeof createTime === "number" && Number.isFinite(createTime)));
+}
+
+function parseHostLockOwner(raw: string): Pick<HostRecord, "pid" | "createTime"> | null {
+  try {
+    const value: unknown = JSON.parse(raw);
+    return isHostLockOwner(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 function fingerprint(token: string): string {
   return createHash("sha256").update(token).digest("hex").slice(0, 16);
 }
@@ -342,11 +359,11 @@ export async function prepareHostRendezvous(params: {
       retry: { retries: 0 },
       staleRecovery: "remove-if-unchanged",
       payload: () => ({ pid: process.pid, createTime: processStart(process.pid) }),
-      parsePayload: (payload) => JSON.parse(payload) as { pid: number; createTime: number | null },
+      parsePayload: parseHostLockOwner,
       shouldReclaim: ({ payload }) =>
-        Boolean(payload && !sameProcess(payload as { pid: number; createTime: number | null })),
+        Boolean(isHostLockOwner(payload) && !sameProcess(payload)),
       shouldRemoveStaleLock: ({ payload }) =>
-        Boolean(payload && !sameProcess(payload as { pid: number; createTime: number | null })),
+        Boolean(isHostLockOwner(payload) && !sameProcess(payload)),
     });
   } catch (error) {
     if (!lockHeldByOther(error)) {

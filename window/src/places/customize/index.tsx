@@ -10,7 +10,7 @@ import { EverywhereTab } from "./everywhere";
 import "../library/places.css";
 import "./customize.css";
 
-const TABS = ["Trunks", "Tools", "Specialists", "Channels", "Everywhere"];
+const TABS = ["Trunks", "Tools", "Specialists", "Chat apps", "Everywhere"];
 const KINDS: string[] = KIND_LIST.map(k => k.id);
 /** "branch:place-tab" ({ place, tab }) opens a Customize tab, or Tools at one kind, from elsewhere in the window. */
 export function usePlaceTab(open: (tab: string, kind?: string) => void) {
@@ -52,10 +52,10 @@ export function CustomizePlace({ engine, facts, openConversation, openPlace, ope
     <div className="kp kp-customize"><PlaceTabs value={tab} onChange={setTab} trunkCount={trunks.data?.agents.length} />
       {tab === "Trunks" && <TrunksTab engine={engine} level={level} trunks={trunks} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={startConversation} />}</div>
     {tab !== "Trunks" && <div className="cz">
-      {tab === "Channels" ? <ChannelsTab engine={engine} openSettings={openSettings} />
+      {tab === "Chat apps" ? <ChannelsTab engine={engine} openSettings={openSettings} />
       : tab === "Specialists" ? <SpecialistsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} facts={facts} openAgents={() => { setKind("Agents"); setTab("Tools"); }} />
       : tab === "Tools" ? <ToolsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} openConversation={openConversation} />
-      : <EverywhereTab engine={engine} openChannels={() => setTab("Channels")} />}
+      : <EverywhereTab engine={engine} openChannels={() => setTab("Chat apps")} />}
     </div>}
   </PlaceFrame>;
 }

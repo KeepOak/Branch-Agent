@@ -744,6 +744,13 @@ button.mi:focus-visible {
   padding: 8px 10px 4px;
 }
 
+/* Final-pass headings use sentence case and the interface face throughout. */
+.frame.frame :is(h2, h3, .lh, .ph, .c-ph, .c-grp, .au-flabel, .au-sub, .cz-lh, .cz-grp, .cz-h2, .tk-h, .kp-section-title, .ib-day, .pp-grp, .pp-onl) {
+  font-family: var(--sans);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 /* §5.5 dialogs */
 .scrim {
   position: fixed;
@@ -936,9 +943,7 @@ button.mi:focus-visible {
   padding: 0 10px;
 }
 .grp {
-  font: 500 10.5px/1.2 var(--mono);
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  font: 600 12px/1.3 var(--sans);
   color: var(--ink-3);
   padding: 18px 10px 6px;
 }
@@ -972,10 +977,8 @@ button.mi:focus-visible {
   border-top: 1px solid var(--hair17);
 }
 .set-level-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--ink-3);
 }
 .set-level-line {
@@ -1030,8 +1033,16 @@ button.mi:focus-visible {
 }
 .set-col {
   max-width: 760px;
-  margin: 0 auto;
+  margin: 0;
   padding: 32px 32px 56px;
+}
+
+/* Choice groups keep their options on one line across the window. */
+:is(.c-seg, .cz-seg, .pp-seg, .tk-seg, .dlg .sseg) {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 /* §3.4 breakpoints */

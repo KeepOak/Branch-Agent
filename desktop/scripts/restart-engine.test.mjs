@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
-import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -30,7 +31,7 @@ function electronFixture() {
         reload: () => { this.reloads++; this.webContents.emit("did-finish-load"); } }); }
     async loadURL(url) { this.url = url; this.webContents.mainFrame.url = url; this.webContents.emit("did-finish-load"); }
     setMenuBarVisibility() {} show() {} focus() {} hide() {} isMinimized() { return false; }
-    maximize() {} isMaximized() { return false; } isDestroyed() { return false; } getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; }
+    maximize() {} isMaximized() { return false; } isVisible() { return true; } isDestroyed() { return false; } getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; }
   }
   class Tray extends EventEmitter { setToolTip() {} setContextMenu() {} destroy() {} }
   return { app, ipcMain, errors, get window() { return window; }, electron: { app, BrowserWindow, Tray,
@@ -49,23 +50,52 @@ const starts=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[];
 starts.push(process.pid);fs.writeFileSync(file,JSON.stringify(starts));
 if(starts.length>1&&fs.existsSync(root+"/fail-next"))process.exit(1);
 process.on("message",m=>{if(!String(m?.type).startsWith("branch-desktop:"))return;if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
-if(m.type==="branch-desktop:drain-stop"){fs.writeFileSync(root+"/drained-"+process.pid,"1");setTimeout(()=>process.exit(0),20);}});
+if(m.type==="branch-desktop:drain-stop"){fs.writeFileSync(root+"/drained-"+process.pid,"1");setTimeout(()=>process.exit(0),20);}
+if(m.type==="branch-desktop:stop-if-idle"&&!fs.existsSync(root+"/busy"))setTimeout(()=>process.exit(0),20);});
 http.createServer((q,r)=>{r.writeHead(starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end();}).listen(Number(process.argv.at(-1)),"127.0.0.1");`;
   await writeFile(join(engine, "branch.mjs"), script); await writeFile(join(windowDir, "index.html"), "<html>fixture</html>");
   await writeFile(join(root, "gateway-token"), "isolated-fixture-token");
   await writeFile(join(root, "desktop.json"), JSON.stringify({ dataDir: root, engineDir: engine, windowDir,
     nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() }));
 }
-async function fixture(run, holdStartup = false) {
+async function fixture(run, holdStartup = false, fastSupervisor = false, holdCandidate = false) {
   const scratch = join(tmpdir(), "Codex-session-files"); await mkdir(scratch, { recursive: true });
   const root = await mkdtemp(join(scratch, "branch-restart-")); await createFixtureFiles(root);
-  const previous = process.env.BRANCH_DESKTOP_DATA; process.env.BRANCH_DESKTOP_DATA = root;
+  const previous = process.env.BRANCH_DESKTOP_DATA;
+  const previousCandidateMin = process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB;
+  process.env.BRANCH_DESKTOP_DATA = root;
+  if (holdCandidate) process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = "0";
   const runtime = electronFixture(), starts = async () => {
     try { return JSON.parse(await readFile(join(root, "starts.json"), "utf8")); }
-    catch (error) { if (error.code === "ENOENT") return []; throw error; }
+    // The fixture may be mid-write: an empty or partial file reads as "not yet", and eventually() polls again.
+    catch (error) { if (error.code === "ENOENT" || error instanceof SyntaxError) return []; throw error; }
   };
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
-  Module._load = function(name, ...args) { return name === "electron" ? runtime.electron : originalLoad.call(this, name, ...args); };
+  let onStaged;
+  Module._load = function(name, ...args) {
+    if (name === "electron") return runtime.electron;
+    if (fastSupervisor && name === "./gateway-supervisor") {
+      const source = originalLoad.call(this, name, ...args);
+      return { createGatewayCrashSupervisor: options => source.createGatewayCrashSupervisor({ ...options,
+        policy: typeof fastSupervisor === "object" ? fastSupervisor :
+          { maxAttempts: 1, initialDelayMs: 10, maxDelayMs: 10, stableAfterMs: 60_000 } }) };
+    }
+    if (name === "./component-update") {
+      const source = originalLoad.call(this, name, ...args);
+      return { ...source, watchComponentUpdates: (cfg, log, options) => {
+        onStaged = options.onStaged;
+        return source.watchComponentUpdates(cfg, log, options);
+      } };
+    }
+    if (holdCandidate && name === "./candidate-check") {
+      const source = originalLoad.call(this, name, ...args);
+      return { ...source, checkCandidateBeside: async () => {
+        while (!existsSync(join(root, "release-candidate"))) await pause(5);
+        return "exited";
+      } };
+    }
+    return originalLoad.call(this, name, ...args);
+  };
   globalThis.fetch = (url, options) => String(url).startsWith("https://github.com/") ? Promise.resolve(new Response("", { status: 404 })) : originalFetch(url, options);
   // Fresh main.js per test: compare normalized paths (CI passes a mixed-slash workspace path on Windows).
   const dist = resolve(process.env.BRANCH_DESKTOP_TEST_DIST).replaceAll("\\", "/").toLowerCase();
@@ -74,17 +104,109 @@ async function fixture(run, holdStartup = false) {
   try {
     require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js"));
     if (!holdStartup) await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway ready"));
-    await run({ root, runtime, starts, restart });
+    await run({ root, runtime, starts, restart, offerStaged: () => onStaged() });
   } finally {
     await writeFile(join(root, "release-ready"), "ready"); await pause(600);
     runtime.app.emit("will-quit");
     await eventually(async () => (await starts()).every(pid => !alive(pid)));
     Module._load = originalLoad; globalThis.fetch = originalFetch;
     previous === undefined ? delete process.env.BRANCH_DESKTOP_DATA : process.env.BRANCH_DESKTOP_DATA = previous;
+    previousCandidateMin === undefined ? delete process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB : process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = previousCandidateMin;
     await rm(root, { recursive: true, force: true });
   }
 }
 const swapped = async (root, count = 1) => (await readFile(join(root, "desktop.log"), "utf8")).split("engine swapped in place").length - 1 >= count;
+async function stageFixtureUpdate(root) {
+  const { engineDir, windowDir } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  const stagedEngine = join(root, "staged-engine"), previousWindow = join(root, "previous-window");
+  await mkdir(join(stagedEngine, "dist"), { recursive: true });
+  await copyFile(join(engineDir, "branch.mjs"), join(stagedEngine, "branch.mjs"));
+  await copyFile(join(engineDir, "dist", "build-info.json"), join(stagedEngine, "dist", "build-info.json"));
+  await rename(windowDir, previousWindow);
+  await mkdir(windowDir);
+  await writeFile(join(windowDir, "index.html"), "<html>staged window</html>");
+  await writeFile(join(root, "engine-current.txt"), `${stagedEngine}\n`);
+  await writeFile(join(root, "component-update-pending.json"), JSON.stringify({ version: "fixture-next", phase: "pending",
+    enginePrevious: "", engineNext: stagedEngine, windowPrevious: previousWindow, windowExisted: true,
+    identity: { version: "fixture-next", engineSha256: "engine", windowSha256: "window" } }));
+  return { engineDir, stagedEngine, previousWindow, windowDir };
+}
+test("a crashed ready gateway restarts without closing or reloading the window", () => fixture(async ({ root, runtime, starts }) => {
+  const first = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready");
+  process.kill(first, "SIGTERM");
+  await eventually(async () => (await starts()).length === 2);
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway recovered after unexpected exit"));
+  assert.equal(alive((await starts())[1]), true);
+  assert.equal(runtime.window.reloads, 0);
+  assert.equal(runtime.errors.length, 0);
+}));
+test("crash recovery keeps the running engine and staged engine/window update pending", () => fixture(async ({ root, runtime, starts, offerStaged }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const { engineDir, stagedEngine, previousWindow, windowDir } = await stageFixtureUpdate(root);
+  offerStaged();
+  await eventually(() => sent.some(([channel, value]) => channel === "branch-desktop:engine-update" && value === "auto-wait"));
+  const first = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready");
+  process.kill(first, "SIGTERM");
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway recovered after unexpected exit"));
+  const log = await readFile(join(root, "desktop.log"), "utf8");
+  assert.equal(log.split(`gateway started from ${engineDir}, pid`).length - 1, 2);
+  assert.equal((await starts()).length, 2, "Recovery started the staged engine");
+  assert.equal((await readFile(join(root, "engine-current.txt"), "utf8")).trim(), stagedEngine);
+  assert.equal(JSON.parse(await readFile(join(root, "component-update-pending.json"), "utf8")).phase, "pending");
+  assert.equal(await readFile(join(previousWindow, "index.html"), "utf8"), "<html>fixture</html>");
+  assert.equal(await readFile(join(windowDir, "index.html"), "utf8"), "<html>staged window</html>");
+  const { windowPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  assert.equal(await (await fetch(`http://127.0.0.1:${windowPort}/`)).text(), "<html>fixture</html>");
+  assert.equal(sent.filter(([channel, value]) => channel === "branch-desktop:engine-update" && value === "updated").length, 0);
+  assert.equal(runtime.window.reloads, 0);
+}));
+test("a crash retry during candidate rejection restarts the dead engine after the swap guard clears", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  await stageFixtureUpdate(root);
+  restart();
+  await eventually(() => sent.some(([channel, value]) => channel === "branch-desktop:engine-update" && value === "preparing"));
+  await writeFile(join(root, "release-ready"), "ready");
+  process.kill((await starts())[0], "SIGTERM");
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway restart attempt 2/4"));
+  await writeFile(join(root, "release-candidate"), "release");
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway recovered after unexpected exit"));
+  assert.equal((await starts()).length, 2);
+  assert.equal(sent.some(([channel]) => channel === "branch-desktop:gateway-recovery-failed"), false);
+  assert.equal((await readFile(join(root, "desktop.log"), "utf8")).includes("gateway restart attempt 2/4"), true);
+}, false, { maxAttempts: 4, initialDelayMs: 10, maxDelayMs: 80, stableAfterMs: 60_000 }, true));
+test("an Update click cancels a pending crash restart without starting a second gateway", () => fixture(async ({ root, runtime, starts, restart }) => {
+  await writeFile(join(root, "release-ready"), "ready");
+  process.kill((await starts())[0], "SIGTERM");
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway restart attempt"));
+  restart();
+  await eventually(() => swapped(root));
+  await pause(1200);
+  assert.equal((await starts()).length, 2, "The supervisor started another gateway after Update");
+  assert.equal(runtime.errors.length, 0);
+}));
+test("a clean quit closes supervision before stopping the gateway", () => fixture(async ({ root, runtime, starts }) => {
+  let deferred = false;
+  runtime.app.emit("will-quit", { preventDefault() { deferred = true; } });
+  assert.equal(deferred, true);
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway stopped cleanly for quit"));
+  assert.equal((await starts()).every(pid => !alive(pid)), true);
+  const log = await readFile(join(root, "desktop.log"), "utf8");
+  assert.match(log, /gateway stopped cleanly for quit/);
+  assert.doesNotMatch(log, /gateway restart attempt|gateway recovery stopped/);
+}));
+test("exhausted crash recovery notifies the window and shows a visible-window error", () => fixture(async ({ root, runtime, starts }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  await writeFile(join(root, "fail-next"), "fail");
+  process.kill((await starts())[0], "SIGTERM");
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:gateway-recovery-failed"));
+  const notification = sent.find(([channel]) => channel === "branch-desktop:gateway-recovery-failed")[1];
+  assert.match(notification, /couldn't restart the engine after repeated attempts/);
+  assert.match(notification, /Restart Branch Agent to try again/);
+  assert.equal(runtime.errors.length, 1);
+  assert.equal(runtime.errors[0][0], "Branch couldn't restart the engine");
+}, false, true));
 test("a second update click preserves the gateway already starting", () => fixture(async ({ root, runtime, starts, restart }) => {
   restart(); await eventually(async () => (await starts()).length === 2);
   const candidate = (await starts())[1]; restart();

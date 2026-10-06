@@ -75,11 +75,16 @@ jobs:
         run: node scripts/feature-batch-ci.mjs capabilities
 
   slices:
-    name: Exact feature slices on macos-latest
+    name: Exact feature slices on macos-latest (${{ matrix.shard }}/2)
     runs-on: macos-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     env:
       CI: 'true'
+      FEATURE_SLICE_SHARD: ${{ matrix.shard }}/2
       NODE_OPTIONS: '--max-old-space-size=1024'
       GOMEMLIMIT: '2GiB'
       GOMAXPROCS: '2'

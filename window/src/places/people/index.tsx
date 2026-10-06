@@ -20,7 +20,7 @@ import "./people.css";
 export type TabId = "live" | "people" | "groups" | "shared" | "agents" | "activity" | "usage" | "rules" | "signin";
 /** The optional-team banner shows on these tabs only (§4.6.5 shared header parts). */
 const BANNER: TabId[] = ["live", "agents", "activity", "usage", "rules"];
-const TAB_NAMES: [TabId, string][] = [["live", "Live now"], ["people", "People"], ["groups", "Groups"], ["shared", "Shared"], ["agents", "Teams of specialists"], ["activity", "Activity"], ["usage", "Usage"], ["rules", "Rules"], ["signin", "Signing in"]];
+const TAB_NAMES: [TabId, string][] = [["live", "Live now"], ["people", "People"], ["groups", "Access groups"], ["shared", "Shared"], ["agents", "Teams"], ["activity", "Activity"], ["usage", "Usage"], ["rules", "Rules"], ["signin", "Signing in"]];
 
 export function PeoplePlace({ engine, openConversation, openSettings, level }: PlaceProps) {
   const [tab, setTab] = useState<TabId>("live");
