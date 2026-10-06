@@ -1,3 +1,4 @@
+// From openclaw/openclaw@785548984b28147f15cc792174ba7a6e32802ca9:src/tts/tts-core.summary-agent.test.ts (atlas VOICE-0059). Changed for Branch: use Branch config names and agents.entries fixtures; all upstream assertions retained.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../config/types.branch.js";
 import type { SpeechModelOverridePolicy } from "./provider-types.js";
