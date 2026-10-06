@@ -101,6 +101,11 @@ export class SaplingSession {
     this.gateway.stop();
   }
 
+  /** The desktop swapped the engine in place: reconnect at once. */
+  reconnectNow(): void {
+    this.gateway.reconnectNow();
+  }
+
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

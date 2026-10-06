@@ -103,6 +103,12 @@ const EVENT_SCOPE_GUARDS: Record<string, string[]> = {
   "portal.changed": [READ_SCOPE],
   // Settings › Grafts and Contacts reload on it (an outside agent or grafted Branch said hello or was disconnected).
   "contacts.changed": [READ_SCOPE],
+  // Lists the window keeps open reload on these (server-methods/change-events.ts); payloads name only the method.
+  "agents.changed": [READ_SCOPE],
+  "users.changed": [READ_SCOPE],
+  "worktrees.changed": [READ_SCOPE],
+  "environments.changed": [READ_SCOPE],
+  "memory.changed": [READ_SCOPE],
 };
 
 const SESSION_CATALOG_INVALIDATIONS = new Set(["delete", "groups", "sharing", "profile-identity"]);

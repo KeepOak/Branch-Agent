@@ -105,6 +105,8 @@ jobs:
         include:
           - os: windows-latest
             target: win32-x64
+          - os: macos-15
+            target: darwin-arm64
           - os: ubuntu-latest
             target: linux-x64
     env:
@@ -161,103 +163,8 @@ jobs:
           path: ${{ runner.temp }}/release-assets/
           if-no-files-found: error
           retention-days: 3
-  # macOS splits the engine build from packaging: on the 3-core macOS runner the engine bundle alone
-  # takes ~6 minutes and the combined job crossed the 15-minute cap (run 37385705608).
-  macos-engine:
-    needs: identity
-    runs-on: macos-15
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    env:
-      BRANCH_RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
-      BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
-      BRANCH_RELEASE_TARGET: darwin-arm64
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ needs.identity.outputs.commit }}
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '24.19.0'
-          package-manager-cache: false
-      - name: Build the runtime engine package on the target host
-        run: node desktop/scripts/release-build.mjs engine-dist "${{ runner.temp }}/engine-dist"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: release-engine-dist-darwin-arm64
-          path: ${{ runner.temp }}/engine-dist/engine-dist.tgz
-          if-no-files-found: error
-          retention-days: 1
-  native-macos:
-    needs: [identity, macos-engine]
-    runs-on: macos-15
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      actions: read
-    env:
-      BRANCH_RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
-      BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
-      BRANCH_RELEASE_TARGET: darwin-arm64
-      BRANCH_RELEASE_ENGINE_DIST: ${{ runner.temp }}/engine-dist/engine-dist.tgz
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ needs.identity.outputs.commit }}
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '24.19.0'
-          package-manager-cache: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
-        with:
-          name: release-engine-dist-darwin-arm64
-          path: ${{ runner.temp }}/engine-dist
-      - name: Check release inventory regressions
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
-        run: |
-          node "${{ github.workspace }}/desktop/scripts/prepare-release-layout-tests.mjs"
-          node --test desktop/scripts/release-inventory.test.mjs desktop/scripts/production-engine-smoke.test.mjs desktop/scripts/release-source-freeze.test.mjs desktop/scripts/release-production-layout.test.mjs
-      - name: Verify source slices and package native production components
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_ASSETS: ${{ runner.temp }}/release-assets
-          SHARED_WINDOW: ${{ runner.temp }}/shared-window
-          BRANCH_RELEASE_WINDOW_READY: ${{ runner.temp }}/shared-window.ready
-        run: |
-          set -euo pipefail
-          node desktop/scripts/release-build.mjs components "$RELEASE_ASSETS" "$SHARED_WINDOW" &
-          build=$!
-          artifact=""
-          for attempt in $(seq 1 120); do
-            artifact="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '.artifacts[] | select(.name == "release-shared-window") | .id')"
-            [ -n "$artifact" ] && break
-            sleep 5
-          done
-          if [ -z "$artifact" ]; then kill "$build"; echo "The shared renderer artifact never arrived" >&2; exit 1; fi
-          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > "$RUNNER_TEMP/shared-window.zip"
-          mkdir -p "$SHARED_WINDOW"
-          if command -v unzip > /dev/null; then unzip -q "$RUNNER_TEMP/shared-window.zip" -d "$SHARED_WINDOW"
-          else "$SYSTEMROOT/System32/tar.exe" -xf "$RUNNER_TEMP/shared-window.zip" -C "$SHARED_WINDOW"; fi
-          touch "$BRANCH_RELEASE_WINDOW_READY"
-          wait "$build"
-      - name: Check compiled startup and update rollback
-        env:
-          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
-        run: node --max-old-space-size=96 --test desktop/scripts/component-update.test.mjs desktop/scripts/desktop-update.test.mjs desktop/scripts/gateway-ready.test.mjs
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: release-native-darwin-arm64
-          path: ${{ runner.temp }}/release-assets/
-          if-no-files-found: error
-          retention-days: 3
   publish:
-    needs: [identity, native, native-macos]
+    needs: [identity, native]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
