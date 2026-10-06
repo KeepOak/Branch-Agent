@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { SettingsFrame } from "./SettingsFrame";
-import { Ctl, KitProvider, Page, Sec } from "../places/settings/kit";
+import { briefCopy, Ctl, KitProvider, Page, Sec } from "../places/settings/kit";
 import { SETTINGS_ROWS } from "../places/settings";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -143,6 +143,36 @@ describe("settings keyboard navigation", () => {
 });
 
 describe("settings page help", () => {
+  it("moves rationale tails and long descriptions into page help", async () => {
+    expect(briefCopy("Off until you choose: it sends usage data outside this computer.")).toEqual({
+      line: "", help: "Off until you choose: it sends usage data outside this computer.",
+    });
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(
+      <KitProvider level={0} report={{ saving: vi.fn(), saved: vi.fn(), failed: vi.fn() }} scope={null}>
+        <Page title="Advanced" lede="Choose how Branch works.">
+          <Sec title="Privacy">
+            <Ctl title="Share usage" sub="Counts features, never messages. Off until you choose: it sends counts outside this computer."><button>Change</button></Ctl>
+            <Ctl title="Memory wiki" sub="Keeps what Trunks know as linked pages, each fact with where it came from, readable as Markdown."><button>Change</button></Ctl>
+            <Ctl title="Usage ring" sub="Off until you choose: it changes the status bar."><button>Change</button></Ctl>
+          </Sec>
+        </Page>
+      </KitProvider>,
+    ));
+    const descriptions = [...document.querySelectorAll<HTMLElement>(".ctl > small")];
+    expect(descriptions.every((line) => line.textContent!.length <= 70)).toBe(true);
+    expect(descriptions[0].textContent).toBe("Counts features, never messages.");
+    expect(descriptions[1].textContent).toContain("…");
+    expect(document.querySelector('[data-row="Usage ring"] > small')).toBeNull();
+    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
+    const help = document.querySelector(".kit-help-pop")!;
+    expect(help.textContent).toContain("Share usage");
+    expect(help.textContent).toContain("Off until you choose: it sends counts outside this computer.");
+    expect(help.textContent).toContain("Memory wiki");
+    expect(help.textContent).toContain("readable as Markdown.");
+    expect(help.textContent).toContain("Off until you choose: it changes the status bar.");
+  });
+
   it("keeps long explanations in help and asks from its final row", async () => {
     const ask = vi.fn();
     root = createRoot(document.body.appendChild(document.createElement("div")));

@@ -73,7 +73,29 @@ export function useConfig(engine: WindowEngine) {
 type HelpEntry = { label: string; text: string };
 const HelpContext = createContext<((key: string, entry?: HelpEntry) => void) | null>(null);
 
-/** Long explanations are supplied explicitly, never inferred from display copy. */
+/** Keep the row's useful first fact in view; put rationale and overflow in page help. */
+export function briefCopy(source: string): { line: string; help?: string } {
+  const original = source.trim();
+  const rationale = /\b(?:Off until you choose|Off until you turn it on|Off out of the box|On because|Turns on when|Right-click it anywhere to hide it too)\b/i;
+  const match = rationale.exec(original);
+  let line = match ? original.slice(0, match.index).trim() : original;
+  if (line.length > 70) {
+    const sentence = line.match(/^.{1,70}?[.!?](?=\s|$)/)?.[0];
+    if (sentence) line = sentence;
+    else {
+      const words = line.slice(0, 69).replace(/\s+\S*$/, "").trimEnd();
+      line = `${words || line.slice(0, 69)}…`;
+    }
+  }
+  return { line, help: line === original ? undefined : original };
+}
+
+function helpText(explicit: string | undefined, overflow: string | undefined): string | undefined {
+  if (!overflow) return explicit;
+  return explicit && !explicit.includes(overflow) ? `${explicit} ${overflow}` : explicit ?? overflow;
+}
+
+/** Long explanations register with the page-help popover under their row label. */
 function useHelpEntry(key: string, label: string, help?: string): void {
   const register = useContext(HelpContext);
   useEffect(() => {
@@ -86,6 +108,8 @@ function useHelpEntry(key: string, label: string, help?: string): void {
 /** A page head with one help affordance and the original ask action inside it. */
 export function Page({ title, lede, help, children, top }: { title: string; lede: ReactNode; help?: string; children?: ReactNode; top?: ReactNode }) {
   const { ask, askName } = useContext(KitContext);
+  const ledeCopy = typeof lede === "string" ? briefCopy(lede) : null;
+  const pageHelp = helpText(help, ledeCopy?.help);
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<Record<string, HelpEntry>>({});
   const helpRef = useRef<HTMLDivElement>(null);
@@ -129,13 +153,13 @@ export function Page({ title, lede, help, children, top }: { title: string; lede
         {open ? <div className="kit-help-pop" role="dialog" aria-label="Help for this page" style={helpPosition}>
           <b>About {title}</b>
           <div className="kit-help-body">
-            {help ? <div><strong>{title}</strong><p>{help}</p></div> : null}
+            {pageHelp ? <div><strong>{title}</strong><p>{pageHelp}</p></div> : null}
             {Object.values(entries).map((entry) => <div key={`${entry.label}-${entry.text}`}><strong>{entry.label}</strong><p>{entry.text}</p></div>)}
           </div>
           <button type="button" className="kit-help-ask" disabled={!ask} title={ask ? undefined : "Set up a model to ask about this page"} onClick={() => { setOpen(false); ask?.(`Tell me about Settings › ${title}.`); }}>Ask {askName ?? "your Trunk"} about this page</button>
         </div> : null}
       </div></div>
-      <p className="lede">{lede}</p>
+      {(ledeCopy?.line ?? lede) ? <p className="lede">{ledeCopy?.line ?? lede}</p> : null}
       <HelpContext.Provider value={register}>{children}</HelpContext.Provider>
     </div>
   );
@@ -145,13 +169,14 @@ export function Page({ title, lede, help, children, top }: { title: string; lede
 export function Sec({ title, group, showHeading = true, hint, help, right, children, id, personal }: { title: string; group?: string; showHeading?: boolean; hint?: ReactNode; help?: string; right?: ReactNode; children?: ReactNode; id?: string; personal?: boolean }) {
   const locked = useContext(LockContext);
   const helpKey = useId();
-  useHelpEntry(helpKey, title, help);
+  const hintCopy = typeof hint === "string" ? briefCopy(hint) : null;
+  useHelpEntry(helpKey, title, helpText(help, hintCopy?.help));
   const heading = group ?? title;
   if (personal && locked) return <SetupLock locked={false}><Sec title={title} group={group} showHeading={showHeading} hint={hint} help={help} right={right} id={id}>{children}</Sec></SetupLock>;
   return (
     <div className="sec" data-sec={title || undefined} id={id}>
       {showHeading && (title || right) ? <h2 tabIndex={-1}>{heading}{right}</h2> : null}
-      {hint ? <p className="hint">{hint}</p> : null}
+      {(hintCopy?.line ?? hint) ? <p className="hint">{hintCopy?.line ?? hint}</p> : null}
       {children}
     </div>
   );
@@ -185,14 +210,16 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   const name = typeof title === "string" ? title : id;
   const shown = shownWhy(why);
   const line = sub ?? shown;
-  useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", help);
+  const copy = typeof line === "string" ? briefCopy(line) : null;
+  const displayLine = copy?.line ?? line;
+  useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", helpText(help, copy?.help));
   const kept = keep && level >= 1 ? KEEP_LINE[keep] : null;
   return (
     <div className={`ctl${why ? " off-k" : ""}${stack ? " stack-k" : ""}`} data-row={name} aria-disabled={why ? true : undefined}>
       <b>{icon}{title}</b>
       {typeof title === "string" && !noPin ? <PinBtn title={title} /> : null}
       {children ? <span className="right" inert={why ? true : undefined}>{children}</span> : null}
-      {line || kept ? <small>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
+      {displayLine || kept ? <small>{displayLine}{displayLine && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
       {shown && sub ? <small className="why-k">{shown}</small> : null}
       {after}
     </div>
@@ -286,13 +313,14 @@ export type Tone = "ok" | "warn" | "bad" | "idle";
 /** The status box at the top of a page: a dot, a bold line and what it means. */
 export function Status({ tone = "ok", title, help, children, action }: { tone?: Tone; title: ReactNode; help?: string; children?: ReactNode; action?: ReactNode }) {
   const helpKey = useId();
-  useHelpEntry(helpKey, typeof title === "string" ? title : "Status", help);
+  const copy = typeof children === "string" ? briefCopy(children) : null;
+  useHelpEntry(helpKey, typeof title === "string" ? title : "Status", helpText(help, copy?.help));
   return (
     <div className={`status${tone === "bad" ? " bad-k" : ""}`} role="status">
       <span className={`sdot ${tone === "ok" ? "" : tone}`} />
       <div className="grow">
         <b>{title}</b>
-        {children ? <p>{children}</p> : null}
+        {(copy?.line ?? children) ? <p>{copy?.line ?? children}</p> : null}
       </div>
       {action}
     </div>
@@ -305,11 +333,12 @@ export function Plist({ children }: { children: ReactNode }) {
 }
 export function Prow({ icon, title, sub, help, children }: { icon?: ReactNode; title: ReactNode; sub?: ReactNode; help?: string; children?: ReactNode }) {
   const helpKey = useId();
-  useHelpEntry(helpKey, typeof title === "string" ? title : "Row", help);
+  const copy = typeof sub === "string" ? briefCopy(sub) : null;
+  useHelpEntry(helpKey, typeof title === "string" ? title : "Row", helpText(help, copy?.help));
   return (
     <div className="prow" data-row={typeof title === "string" ? title : undefined}>
       {icon}
-      <span className="grow"><b>{title}</b>{sub ? <small>{sub}</small> : null}</span>
+      <span className="grow"><b>{title}</b>{(copy?.line ?? sub) ? <small>{copy?.line ?? sub}</small> : null}</span>
       {children}
     </div>
   );

@@ -36,7 +36,7 @@ export const ROWS: RowSpec[] = [
   { sec: "What’s shown", title: "Projects in the list", key: "show.projects", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
   { sec: "What’s shown", title: "What a working Trunk is doing, in the list", key: "show.live", kind: "sw", def: true, keep: "everywhere", sub: "The row’s preview shows its latest step while it works." },
   { sec: "What’s shown", title: "The whole status bar", key: "show.statusbar", kind: "sw", def: true, keep: "everywhere", sub: "Lockdown’s banner and Stop while a task runs can never be hidden." },
-  { sec: "What’s shown", title: "Keep things still", key: "still", kind: "sw", def: false, keep: "everywhere", sub: "Stops the pet moving, the working ring and the logo’s float. Off until you choose: it freezes every face, so none plays its action animations (rule 7)." },
+  { sec: "What’s shown", title: "Keep things still", key: "still", kind: "sw", def: false, keep: "everywhere", sub: "Stops the pet moving, the working ring and the logo’s float. Off until you choose: it freezes every face, so none plays its action animations." },
   { sec: "What’s shown", title: "Scenery behind the list", key: "scenery", kind: "sw", def: false, keep: "everywhere", sub: "A small pixel oak at the foot of the list." },
   { sec: READING_MORE, title: "Messages", key: "msgLook", kind: "seg", def: "bubbles", sub: "Full width reads like a document.", opts: o([["bubbles", "Chat bubbles"], ["full", "Full width"]]) },
   { sec: READING_MORE, title: "Text direction", key: "dir", kind: "seg", def: "auto", sub: "Arabic, Hebrew and Persian read right to left; the conversation follows.", opts: o([["auto", "Follow the language"], ["rtl", "Right to left"], ["ltr", "Left to right"]]) },
