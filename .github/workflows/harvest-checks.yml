@@ -1,0 +1,131 @@
+name: Harvest checks
+
+on:
+  pull_request:
+    paths:
+      - 'engine/**'
+      - 'window/**'
+      - 'scripts/feature-batch-ci-harvest/**'
+      - 'scripts/feature-batch-ci-harvest*'
+      - '.github/workflows/harvest-checks.yml'
+  schedule:
+    - cron: '41 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harvest-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: pick
+        env:
+          HARVEST_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ '${{ github.event_name }}' = 'pull_request' ]; then mode=pr; else mode=nightly; fi
+          echo "matrix=$(node scripts/feature-batch-ci-harvest.mjs "$mode")" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: select
+    if: needs.select.outputs.matrix != '{"include":[]}'
+    name: Harvest ${{ matrix.lane }} ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 10 || 15 }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Install pinned dependencies
+        env:
+          HARVEST_LANE: ${{ matrix.lane }}
+        run: node scripts/feature-batch-ci-harvest.mjs install
+      - name: Prepare shared test artifacts
+        run: node scripts/feature-batch-ci-harvest.mjs prepare
+      - name: Run Harvest shard
+        env:
+          CI: '1'
+          HARVEST_SCOPE: ${{ github.event_name == 'pull_request' && 'pr' || 'nightly' }}
+          HARVEST_BASE: ${{ github.event.pull_request.base.sha }}
+          HARVEST_LANE: ${{ matrix.lane }}
+          HARVEST_SHARD: ${{ matrix.shard }}
+        run: node scripts/feature-batch-ci-harvest.mjs run
+      - name: Upload nightly result even on failure
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: harvest-${{ matrix.lane }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/harvest-*.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  report-nightly:
+    if: always() && github.event_name != 'pull_request' && needs.select.result == 'success'
+    needs: [select, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        continue-on-error: true
+        with:
+          pattern: harvest-*
+          path: harvest-results
+          merge-multiple: true
+      - name: Open or refresh one failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TEST_RESULT: ${{ needs.test.result }}
+          EXPECTED_MATRIX: ${{ needs.select.outputs.matrix }}
+        run: |
+          python3 - <<'PY'
+          import glob, json, os, subprocess
+          failures = []
+          result_files = glob.glob('harvest-results/*.json')
+          for file in result_files:
+              with open(file, encoding='utf-8') as stream:
+                  failures.extend(json.load(stream)['failures'])
+          expected = len(json.loads(os.environ['EXPECTED_MATRIX'])['include'])
+          if len(result_files) < expected:
+              failures.append(f'{expected - len(result_files)} shard(s) failed before test results were written; see workflow run.')
+          if os.environ['TEST_RESULT'] != 'success' and not failures:
+              failures = ['Shard failed before test results were written; see workflow run.']
+          repo = os.environ['REPO']
+          issues = json.loads(subprocess.check_output(['gh', 'issue', 'list', '--repo', repo, '--state', 'open', '--label', 'harvest-nightly', '--json', 'number']))
+          if not failures:
+              print('Nightly Harvest passed.')
+              for issue in issues:
+                  subprocess.run(['gh', 'issue', 'close', str(issue['number']), '--repo', repo, '--comment', 'Harvest passed: ' + os.environ['RUN_URL']], check=True)
+              raise SystemExit(0)
+          title = 'Harvest nightly failures'
+          body = 'Nightly run: ' + os.environ['RUN_URL'] + '\n\nFailing test files:\n' + ''.join('- `' + f + '`\n' for f in sorted(set(failures)))
+          subprocess.run(['gh', 'label', 'create', 'harvest-nightly', '--repo', repo, '--color', 'B60205', '--force'], check=True)
+          if issues:
+              subprocess.run(['gh', 'issue', 'edit', str(issues[0]['number']), '--repo', repo, '--title', title, '--body', body], check=True)
+          else:
+              subprocess.run(['gh', 'issue', 'create', '--repo', repo, '--title', title, '--label', 'harvest-nightly', '--body', body], check=True)
+          PY
