@@ -1,10 +1,10 @@
-# AGENT-LOOP-0032 — blocked
+# AGENT-LOOP-0032 — blocked after retry
 
 Source: `letta-ai/letta-code@3687ea51f6d11eabc4ad7a7b163c649d023801ba`.
 Filtered clone `/tmp/upstream/letta-ai-letta-code` is checked out at the pin.
 
-The headless entry executes noninteractive agent turns with bidirectional input queueing, multimodal payloads, approval response eligibility, sender attribution, and backend-mediated startup/recovery. Its four cited suites test queued-message content/wiring, single-use approval-response reuse, launch reminders, and backend lifecycle routing, including interactive/resume/memory paths referenced by the source assertions.
+Dependency installation and adapters are now authorized; the pinned Letta client resolves at 1.10.2, so the previous frozen-dependency reason is withdrawn. The remaining gap is the actual headless backend lifecycle asserted by the source: attributed remote startup resolves agent/conversation resources; approval responses have single-use eligibility; input queueing and multimodal messages feed the live sender; backend recovery and launch routing reach the real run path. Branch's CLI agent command and headless code-mode facility do not provide that Letta agent/conversation/approval protocol. Porting the small state/sender helpers alone would leave them outside production execution. The four cited suites remain unported (0/4); the 4,780-line headless runtime and backend integration are not selectively implemented here.
 
-The pinned entry is a 4,780-line runtime using Letta's backend, agent/conversation/message/approval schema, child launch attribution, and tool executor. Branch has a headless code-mode facility and CLI agent command, but they are not the Letta backend/queue/approval lifecycle asserted by those suites. `@letta-ai/letta-client` and that backend contract are absent from Branch's frozen dependency graph. The task prohibits lockfile edits and vendoring the whole backend/runtime tree.
+The attachment supplies the row entry. The checkout has no external atlas INDEX/data rows or owner DESIGN-SPEC/DECISIONS/page-41 guide; their absence is recorded as missing context, not as a dependency-installation prohibition or a request for new permission.
 
-Porting only the small sender/response-state helpers would leave them outside Branch's production run path. The required owner atlas and shared safety-layer instructions for the command/tool/backend mapping are unavailable. No disconnected helper, duplicate permission layer, or fake backend was added. 0/4 cited test files ported; no test command run.
+No row-specific named test run is claimed. See status/pack1-status.csv.
