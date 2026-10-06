@@ -14,3 +14,6 @@ engine:src/gateway/server-restart-sentinel.test.ts
 engine:src/gateway/worker-environments/placement-idle-sweep.test.ts
 engine:src/infra/gateway-suspend-coordinator.handoff.test.ts
 engine:src/infra/gateway-suspend-coordinator.test.ts
+engine:src/infra/update-candidate-canary.cleanup.test.ts
+engine:src/infra/update-candidate-canary.exit.process.test.ts
+engine:src/infra/update-candidate-canary.test.ts
