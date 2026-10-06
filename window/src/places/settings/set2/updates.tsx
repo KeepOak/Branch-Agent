@@ -12,6 +12,7 @@ import { CallLine, CodeRow, Kv, Tile, day, lvOf, openPlace, rec, str, useCall, u
 import { Ico } from "./icons";
 import { componentDesktop } from "../../../connect/desktop-component-updates";
 import { DesktopUpdatesPage } from "./desktop-updates";
+import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -55,9 +56,9 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
   const status = useLive<RecordValue>(props.engine, "update.status", {}, UPDATE_EVENTS);
   const info = useLive<RecordValue>(props.engine, "status", {}, []);
   const sys = useLive<RecordValue>(props.engine, "system.info", {}, []);
-  const version = str(rec(info.data).runtimeVersion) || str(rec(rec(status.data).updateAvailable).currentVersion);
+  const version = useBranchVersion(props.engine.gatewayUrl);
   const os = OS[str(rec(sys.data).platform)] ?? str(rec(sys.data).osLabel);
-  const lede = version ? `Branch ${version}${os ? ` on ${os}` : ""}.` : props.title;
+  const lede = version ? `Branch ${versionParts(version).short}${os ? ` on ${os}` : ""}.` : props.title;
   const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => void status.reload() };
   return (
     <Page title={props.title} lede={lede}>
@@ -69,7 +70,7 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
       <About />
       <RemoveBranch />
       <Reports />
-      <BeforeInstall data={data} />
+      <BeforeInstall />
       {lvOf(props.level) >= 1 ? <Editors gatewayUrl={props.engine.gatewayUrl} /> : null}
       <Privacy openSettings={props.openSettings} />
       {lvOf(props.level) >= 1 ? <HelpMore {...props} data={data} version={version} /> : null}
@@ -122,20 +123,20 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
       {latest ? (
         <div className="s2-rn">
           <Ico name="doc" />
-          <span className="grow">{`You have ${version || str(available.currentVersion)}. See what it has, and what ${latest} adds.`}</span>
+          <span className="grow">{version ? `You have Branch ${versionParts(version).short}. See what the update adds.` : "Checking Branch’s version. See what the update adds."}</span>
           <Btn sm onClick={() => setDialog("notes")}>What’s new</Btn>
         </div>
       ) : null}
       {str(active.runId) ? (
-        <Status tone="warn" title={`Installing ${str(rec(active.target).version) || latest || "the update"}`}>{PHASE[str(active.phase)] ?? "Working on it"}. Branch restarts by itself when it’s done; you can keep working.</Status>
+        <Status tone="warn" title="Installing a Branch update">{PHASE[str(active.phase)] ?? "Working on it"}. Branch restarts by itself when it’s done; you can keep working.</Status>
       ) : failed ? (
-        <Status tone="bad" title={`${str(rec(last.target).version) || latest || "The update"} didn’t install`}>{str(last.reason) || "The update stopped before it finished."} {version || str(rec(last.before).version)} keeps running.</Status>
+        <Status tone="bad" title="Branch update didn’t install">{str(last.reason) || "The update stopped before it finished."} {version ? `Branch ${versionParts(version).detail}` : "Your current Branch version"} keeps running.</Status>
       ) : started ? (
-        <Status tone={campaign.state === "applying" ? "warn" : "ok"} title={`${latest || "An update"} is installing by itself`}>{campaignLine(campaign, now)}.</Status>
+        <Status tone={campaign.state === "applying" ? "warn" : "ok"} title="A Branch update is installing by itself">{campaignLine(campaign, now)}.</Status>
       ) : latest ? (
-        <Status title={`${latest} is ready to install`}>It waits for running tasks, up to the update deadline, and keeps a safety copy first.</Status>
+        <Status title="A Branch update is ready">It waits for running tasks, up to the update deadline, and keeps a safety copy first.</Status>
       ) : (
-        <Status title="Branch is up to date.">{`You have ${version || str(available.currentVersion) || "the newest version"}.`}</Status>
+        <Status title="Branch is up to date.">{version ? `You have Branch ${versionParts(version).detail}.` : "You have the newest version."}</Status>
       )}
       {latest && !str(active.runId) ? (
         <Acts>
@@ -193,7 +194,7 @@ function NotesDialog({ available, version, onClose, onInstall }: { available: Re
   const behind = typeof available.commitsBehind === "number" ? available.commitsBehind : undefined;
   return (
     <Dialog title="What’s new" wide onClose={onClose} footer={<><Btn ghost disabled title={NO_SKIP}>Skip this version</Btn><Btn pri onClick={onInstall}>Install when nothing is running</Btn></>}>
-      <p className="hint">What {str(available.latestVersion)} changes from {version || str(available.currentVersion)}.</p>
+      <p className="hint">{version ? `What this update changes from Branch ${versionParts(version).detail}.` : "What this Branch update changes."}</p>
       {commits.length ? (
         <div className="rows">{commits.map((c) => <Prow key={str(c.sha)} title={str(c.subject)} sub={str(c.sha).slice(0, 7)} />)}</div>
       ) : <p className="hint">The engine has no release notes for this version yet.</p>}
@@ -358,19 +359,18 @@ function Reports() {
 }
 
 /** Before you install: the plan (what this engine's update.run does, in order). */
-function BeforeInstall({ data }: { data: Data }) {
+function BeforeInstall() {
   const [open, setOpen] = useState(false);
-  const latest = str(rec(data.status.updateAvailable).latestVersion);
   return (
     <Sec title="Before you install">
-      <Ctl title="See the plan" sub={latest ? `What ${latest} changes and how each part restarts.` : "What an update changes and how each part restarts."}><Btn sm onClick={() => setOpen(true)}>See the plan</Btn></Ctl>
+      <Ctl title="See the plan" sub="What a Branch update changes and how each part restarts."><Btn sm onClick={() => setOpen(true)}>See the plan</Btn></Ctl>
       <Ctl title="Window fixes without reinstalling" sub="Small window fixes arrive automatically." help="Small fixes to the window arrive on their own, checked like any update." off="Small window fixes arrive with the Branch app’s updater."><Switch label="Window fixes without reinstalling" checked={false} onChange={() => undefined} /></Ctl>
       <Ctl title="Window changes" sub="Replaces the window while preserving your draft and place." help="The new window takes the old one’s place while you aren’t typing or reading a reply; your draft, place and replies carry over." off="Swapping the window in place is done by the Branch app.">
         <Seg label="Window changes" value="idle" options={[{ id: "idle", label: "When I’m not typing" }, { id: "ask", label: "Ask me" }]} onChange={() => undefined} />
       </Ctl>
       <Ctl title="Update work stays out of the way" sub="Downloads and verifies updates in the background." help="Downloads and checks run in the background, pause while you type or a task works, and never build anything on this computer."><span className="val-k">Low priority</span></Ctl>
       {open ? (
-        <Dialog title={latest ? `The plan for ${latest}` : "The plan for an update"} onClose={() => setOpen(false)}>
+        <Dialog title="The plan for a Branch update" onClose={() => setOpen(false)}>
           <p className="hint">Nothing changes until you install. This is what would happen.</p>
           <ol className="s2-ol">
             <li><b>One update at a time.</b> Another updater (the terminal’s or the window’s) waits for this one.</li>

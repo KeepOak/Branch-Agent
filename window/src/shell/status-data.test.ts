@@ -14,16 +14,16 @@ describe("usage.status (§4.9.4)", () => {
   };
   it("one row per account with the spec's window words and pills", () => {
     const l = readLimits(result, NOW);
-    expect(l.rows[0]).toMatchObject({ name: "ChatGPT", account: "a@b.c · Plus", pill: "Measured", line: "as of 4 min ago" });
+    expect(l.rows[0]).toMatchObject({ name: "ChatGPT · Account 1", account: "a@b.c · Plus", pill: "Measured", line: "as of 4 min ago" });
     expect(l.rows[0].windows).toEqual([
-      { name: "This 5-hour window", left: 12, reset: "resets at 6 pm", low: true },
-      { name: "This week", left: 64, reset: "resets Monday", low: false },
+      { name: "This 5-hour window", left: 12, reset: "resets 6 PM", low: true },
+      { name: "This week", left: 64, reset: "resets 9 AM Mon", low: false },
     ]);
     expect(l.rows[1]).toMatchObject({ pill: "Not published", line: "This service does not say what it allows." });
     expect(l.rows[2].line).toBe("Token expired");
   });
   it("the ring shows the first account's five-hour reading, and nothing without a reading", () => {
-    expect(ringReading(readLimits(result, NOW))).toEqual({ name: "a@b.c", left: 12, reset: "resets at 6 pm", low: true });
+    expect(ringReading(readLimits(result, NOW))).toEqual({ name: "ChatGPT · Account 1", left: 12, reset: "resets 6 PM", low: true });
     expect(ringReading(readLimits({ providers: [] }, NOW))).toBeNull();
     expect(ringReading(null)).toBeNull();
   });
@@ -31,7 +31,7 @@ describe("usage.status (§4.9.4)", () => {
     expect(windowName("3h")).toBe("This 3-hour window");
     expect(windowName("Day")).toBe("Today");
     expect(windowName("Opus")).toBe("Opus");
-    expect(resetWords(undefined, 0, NOW)).toBe("full");
+    expect(resetWords(undefined, 0, NOW)).toBe("not used yet");
   });
 });
 

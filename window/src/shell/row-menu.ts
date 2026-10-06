@@ -89,7 +89,7 @@ export function rowMenuItems(row: Conversation, c: Ctx): MenuItem[] {
     row.unread
       ? { label: "Mark as read", letter: "u", run: () => void c.actions.setUnread(row, false), testid: "menu-unread", ...ic("chat") }
       : { label: "Mark as unread", letter: "u", run: () => void c.actions.setUnread(row, true), testid: "menu-unread", ...ic("chat") },
-    row.isMain || row.parentKey ? null : { label: row.pinned ? "Unpin" : "Pin to top", letter: "p", run: () => void c.actions.pin(row), testid: "menu-pin", ...ic("pin") },
+    row.isMain || row.parentKey ? null : { label: row.pinned ? "Unpin" : "Pin", letter: "p", run: () => void c.actions.pin(row), testid: "menu-pin", ...ic("pin") },
     { label: "Rename", letter: "r", run: () => c.rename(row), testid: "menu-rename", ...ic("edit") },
     { label: "Open in its own window", run: () => undefined, disabled: WINDOW_OFF, ...ic("panel") },
     { label: "Copy into a new conversation", letter: "f", run: () => undefined, disabled: FORK_OFF, ...ic("copy") },

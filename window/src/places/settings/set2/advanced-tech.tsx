@@ -5,6 +5,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
+import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { Btn, Ctl, Empty, Hint, Pill, Prow, Sec, usePinsKit, type Lv } from "../kit";
 import { Icon } from "../../../shell/icons";
 import { errorText, list } from "../adapter";
@@ -264,6 +265,7 @@ export function EverythingElse({ c }: { c: Ctx }) {
 
 /* ---------- health readouts ---------- */
 export function HealthDialog({ engine, onClose }: { engine: WindowEngine; onClose: () => void }) {
+  const version = useBranchVersion(engine.gatewayUrl);
   const status = useLive<RecordValue>(engine, "status", {}, []);
   const health = useLive<RecordValue>(engine, "health", { probe: false }, []);
   const lanes = useLive<RecordValue>(engine, "diagnostics.lanes", {}, []);
@@ -271,7 +273,7 @@ export function HealthDialog({ engine, onClose }: { engine: WindowEngine; onClos
   const snaps: [string, { data?: unknown; error?: string }][] = [["Status", status], ["Health", health], ["Stability", stab]];
   return (
     <Dialog title="Health" wide onClose={onClose} footer={<><Btn ghost onClick={() => { void status.reload(); void health.reload(); void lanes.reload(); void stab.reload(); }}>Check again</Btn></>}>
-      <Kv rows={[["Engine", str(rec(status.data).runtimeVersion)], ["Process", str(rec(status.data).pid)], ["Health check", rec(health.data).ok === true ? `Answered ${when(rec(health.data).ts)}` : str(health.error)], ["Stability events", str(rec(stab.data).count)]]} />
+      <Kv rows={[["Branch version", version ? versionParts(version).detail : "Unavailable"], ["Process", str(rec(status.data).pid)], ["Health check", rec(health.data).ok === true ? `Answered ${when(rec(health.data).ts)}` : str(health.error)], ["Stability events", str(rec(stab.data).count)]]} />
       <h3 className="s2-h3">Snapshots</h3>
       {snaps.map(([t, r]) => <details key={t} className="s2advanced-snap"><summary>{t}</summary>{r.error ? <p className="hint s2-err">{r.error}</p> : <pre className="s2-pre">{JSON.stringify(r.data ?? null, null, 2)}</pre>}</details>)}
       <h3 className="s2-h3">Lanes</h3>
