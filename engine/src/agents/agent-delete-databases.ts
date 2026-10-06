@@ -11,6 +11,7 @@ import { invalidateRegisteredAgentDatabasesMemo } from "../state/branch-agent-db
 import { unregisterBranchAgentDatabase } from "../state/branch-agent-db-registry.js";
 import {
   closeBranchAgentDatabaseByPathAsync,
+  closeBranchAgentDatabasesAsync,
   inspectBranchAgentDatabaseOwner,
   listBranchRegisteredAgentDatabases,
   resolveIncognitoBranchAgentSqlitePath,
@@ -51,6 +52,12 @@ export async function retireAgentDeleteRuntime(
   await deletion.assertCurrentAsync();
   await closeActiveMemorySearchManagerCore({ cfg, agentId });
   await deletion.assertCurrentAsync();
+}
+
+/** The purge can reopen an agent-local SQLite handle after the initial database plan closed it. */
+export async function closeAgentDeleteDirectoryHandles(agentDir: string): Promise<void> {
+  await closeBranchAgentDatabasesAsync(agentDir);
+  closeAuthProfileReadPool({ kind: "root", rootPath: agentDir });
 }
 
 export async function finishAgentDeleteDatabases(params: {
