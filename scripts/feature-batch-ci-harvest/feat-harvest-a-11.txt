@@ -1,3 +1,5 @@
+engine:extensions/discord/src/monitor/auto-presence.test.ts
+engine:extensions/discord/src/monitor/presence.test.ts
 engine:extensions/signal/src/approval-reactions.test.ts
 engine:extensions/signal/src/question-reactions.test.ts
 engine:extensions/telegram/src/poll-registry.test.ts
