@@ -8,6 +8,9 @@ engine:extensions/telegram/src/draft-stream.test.ts
 engine:extensions/telegram/src/monitor.webhook-identity.test.ts
 engine:extensions/telegram/src/polling-session.test.ts
 engine:extensions/telegram/src/probe.test.ts
+engine:extensions/telegram/src/rich-blocks-html.test.ts
+engine:extensions/telegram/src/rich-blocks.test.ts
+engine:extensions/telegram/src/rich-plain-fallback.test.ts
 engine:extensions/telegram/src/security-audit.test.ts
 engine:extensions/telegram/src/telegram-ingress-spool.test.ts
 engine:extensions/telegram/src/telegram-ingress-worker.deadline.test.ts
