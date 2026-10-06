@@ -103,3 +103,4 @@ const icnsHeader = Buffer.alloc(8); icnsHeader.write("icns"); icnsHeader.writeUI
 writeFileSync(join(root, "assets/branch.icns"), Buffer.concat([icnsHeader, ...icns]));
 const linux = join(brand, "linux"); mkdirSync(linux, { recursive: true });
 for (const size of [16, 24, 32, 48, 64, 128, 256, 512]) writeFileSync(join(linux, `branch-${size}.png`), png(size));
+writeFileSync(join(linux, "branch-16@2x.png"), png(32));
