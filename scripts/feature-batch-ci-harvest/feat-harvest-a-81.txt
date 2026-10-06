@@ -11,3 +11,5 @@ engine:extensions/sms/src/twilio.test.ts
 engine:extensions/sms/src/webhook.test.ts
 engine:src/infra/exec-approval-forwarder.test.ts
 engine:src/infra/exec-approval-reply.test.ts
+engine:src/pairing/pairing-challenge.test.ts
+engine:src/pairing/pairing-store.test.ts
