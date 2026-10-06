@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/gateway/worker-environments/placement-dispatch.test.ts (atlas OPS-0127). Changed for Branch: retain asynchronous placement database APIs and phase-specific recovery assertions.
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
