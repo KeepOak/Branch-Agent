@@ -54,7 +54,8 @@ test("a prepared standby reports warm without replacing the live gateway pid", a
     assert.equal(await readFile(join(root, "gateway.pid"), "utf8"), "12345");
   } finally {
     if (child) stopGateway(child);
-    await rm(root, { recursive: true, force: true });
+    // Windows can hold a just-killed child's working directory for a moment.
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });
 
@@ -75,7 +76,8 @@ async function standbyFixture(script, run) {
       gateway.stopGateway(child);
       if (!exited(child)) await new Promise(resolve => child.once("exit", resolve));
     }
-    await rm(root, { recursive: true, force: true });
+    // Windows can hold a just-killed child's working directory for a moment.
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 }
 
@@ -137,7 +139,8 @@ test("the owned desktop gateway starts configured channels even when the launche
     if (child) stopGateway(child);
     if (prior === undefined) delete process.env.BRANCH_SKIP_CHANNELS;
     else process.env.BRANCH_SKIP_CHANNELS = prior;
-    await rm(root, { recursive: true, force: true });
+    // Windows can hold a just-killed child's working directory for a moment.
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });
 
@@ -165,6 +168,7 @@ test("owned gateway shutdown also reaps its spawned child", async () => {
   } finally {
     if (child) stopGateway(child);
     if (descendant && alive(descendant)) process.kill(descendant, "SIGTERM");
-    await rm(root, { recursive: true, force: true });
+    // Windows can hold a just-killed child's working directory for a moment.
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });
