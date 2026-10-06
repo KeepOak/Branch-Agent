@@ -312,7 +312,7 @@ describe("branch mcp serve Trunk tools", () => {
     await call(client, "room_post", { room_id: "builders", text: "Hello from Claude Code" });
     expect(calls[0]).toEqual({
       method: "rooms.members.add",
-      params: { roomId: "builders", kind: "a2a", id: "claude-code" },
+      params: { roomId: "builders", kind: "a2a", id: "claude-code", outsideAgent: claude },
     });
     expect(calls[1]).toEqual({
       method: "rooms.send",

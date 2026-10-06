@@ -1,4 +1,8 @@
 import { ErrorCodes, errorShape } from "../../packages/gateway-protocol/src/index.js";
+import {
+  gatewayStartupUnavailableDetails,
+  GATEWAY_STARTUP_RETRY_AFTER_MS,
+} from "../../packages/gateway-protocol/src/startup-unavailable.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
 import { getActivePluginRegistry } from "../plugins/runtime.js";
@@ -362,7 +366,19 @@ export async function handleGatewayRequest(
       }
       const handler = methodRegistry.getHandler(req.method) as GatewayRequestHandler | undefined;
       if (!handler) {
-        const error = errorShape(ErrorCodes.INVALID_REQUEST, `unknown method: ${req.method}`);
+        // Operators connect before plugins load: a plugin-owned method is not unknown yet.
+        const error =
+          (context.unavailableGatewayMethods?.size ?? 0) > 0
+            ? errorShape(
+                ErrorCodes.UNAVAILABLE,
+                `${req.method} unavailable during gateway startup`,
+                {
+                  retryable: true,
+                  retryAfterMs: GATEWAY_STARTUP_RETRY_AFTER_MS,
+                  details: { ...gatewayStartupUnavailableDetails(), method: req.method },
+                },
+              )
+            : errorShape(ErrorCodes.INVALID_REQUEST, `unknown method: ${req.method}`);
         respond(false, undefined, error);
         return;
       }

@@ -212,7 +212,11 @@ function resolveOwnerAllowFromList(
   for (const trimmed of normalizeStringEntries(raw.map((entry) => entry ?? ""))) {
     const separatorIndex = trimmed.indexOf(":");
     const prefix = trimmed.slice(0, separatorIndex);
-    const channel = separatorIndex > 0 ? normalizeAnyChannelId(prefix) : undefined;
+    // Bundled channel owner entries must normalize even when a context builder runs
+    // without a globally published plugin registry (e.g. host ingress tests).
+    const channel = separatorIndex > 0
+      ? (normalizeAnyChannelId(prefix) ?? normalizeChatChannelId(prefix))
+      : undefined;
     if (!channel) {
       filtered.push(trimmed);
       continue;

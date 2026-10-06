@@ -147,22 +147,35 @@ async function prepareStartupConfig(
         read = persisted.snapshotRead;
       }
     }
-    const { HISTORICAL_WEBHOOK_CHANNELS, recordUnwrittenWebhookCompletion } =
+    const {
+      HISTORICAL_WEBHOOK_CHANNELS,
+      applyHistoricalWebhookPins,
+      recordUnwrittenWebhookCompletion,
+    } =
       await import("./doctor/shared/legacy-webhook-pins.js");
     const webhookCompletion = read.snapshot.sourceConfig.meta?.migrations?.webhookListeners;
     if (
       webhookCompletion !== true &&
       !HISTORICAL_WEBHOOK_CHANNELS.every((id) => Object.hasOwn(webhookCompletion ?? {}, id))
     ) {
-      const { applyPluginDoctorCompatibilityMigrations } =
-        await import("../plugins/doctor-contract-registry.js");
-      const migration = applyPluginDoctorCompatibilityMigrations(read.snapshot.sourceConfig, {
-        config: read.snapshot.sourceConfig,
-        env,
-        pluginIds: HISTORICAL_WEBHOOK_CHANNELS,
-        historicalWebhookListeners: true,
-        startup: true,
-      });
+      // A fresh state has no historical listeners to pin. Record the same
+      // completion marker without loading Doctor contracts for every old
+      // webhook plugin; existing state still takes the full migration path.
+      const initial = applyHistoricalWebhookPins(
+        { config: read.snapshot.sourceConfig, changes: [] },
+        undefined,
+        { env, startup: true },
+      );
+      const migration = initial.config.meta?.migrations?.webhookListeners === true
+        ? initial
+        : (await import("../plugins/doctor-contract-registry.js"))
+            .applyPluginDoctorCompatibilityMigrations(read.snapshot.sourceConfig, {
+              config: read.snapshot.sourceConfig,
+              env,
+              pluginIds: HISTORICAL_WEBHOOK_CHANNELS,
+              historicalWebhookListeners: true,
+              startup: true,
+            });
       if (migration.warnings?.length) {
         throw new Error(migration.warnings.join("\n"));
       }

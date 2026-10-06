@@ -1,0 +1,67 @@
+/* Ported from old Branch Agent's finished dracula palette. */
+:root[data-theme="dracula"] {
+  --bg: #282a36;
+  --bg-accent: #393c4c;
+  --bg-elevated: #45485a;
+  --text: #f8f8f2;
+  --muted-strong: #ecece7;
+  --muted: #cddafe;
+  --border: #43454e;
+  --accent: #bd93f9;
+  --primary: #bd93f9;
+  --primary-foreground: #1a1a1a;
+  --ring: #bd93f9;
+  --accent-muted: #bd93f9;
+  --accent-hover: #CCACFD;
+  --accent-foreground: #1a1a1a;
+  --card: #45485a;
+  --card-foreground: #f8f8f2;
+  --popover: #45485a;
+  --popover-foreground: #f8f8f2;
+  --panel: #282a36;
+  --panel-strong: #45485a;
+  --panel-hover: #373843;
+  --secondary: #393c4c;
+  --secondary-foreground: #f8f8f2;
+  --muted-foreground: #cddafe;
+  --input: #43454e;
+  --destructive: #ffdbd7;
+  --destructive-foreground: #1a1a1a;
+  --chat-text: #f8f8f2;
+  --text-strong: #f8f8f2;
+  --chrome: #282a36;
+  --chrome-strong: #282a36;
+}
+:root[data-theme="dracula-light"] {
+  --bg: #f1eff6;
+  --bg-accent: #f9f8fb;
+  --bg-elevated: #fdfdfe;
+  --text: #1c1921;
+  --muted-strong: #47444c;
+  --muted: #5d5963;
+  --border: #d5d3da;
+  --accent: #855bbc;
+  --primary: #855bbc;
+  --primary-foreground: #ffffff;
+  --ring: #855bbc;
+  --accent-muted: #855bbc;
+  --accent-hover: #946ACD;
+  --accent-foreground: #ffffff;
+  --card: #fdfdfe;
+  --card-foreground: #1c1921;
+  --popover: #fdfdfe;
+  --popover-foreground: #1c1921;
+  --panel: #f1eff6;
+  --panel-strong: #fdfdfe;
+  --panel-hover: #e2e0e7;
+  --secondary: #f9f8fb;
+  --secondary-foreground: #1c1921;
+  --muted-foreground: #5d5963;
+  --input: #d5d3da;
+  --destructive: #9d3532;
+  --destructive-foreground: #ffffff;
+  --chat-text: #1c1921;
+  --text-strong: #1c1921;
+  --chrome: #f1eff6;
+  --chrome-strong: #f1eff6;
+}

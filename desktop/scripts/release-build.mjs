@@ -81,11 +81,14 @@ async function packageDesktop(scratch, output, identity) {
   const { packager } = require("@electron/packager");
   const folders = await packager({ dir: appDirectory, name: "Branch Agent", platform: identity.platform, arch: identity.arch,
     electronVersion: identity.electronVersion, asar: true, out: join(scratch, "desktop-packaged"), prune: false,
-    appVersion: packageJson.version, ...(identity.platform === "win32" ? { icon: join(desktopRoot, "assets/branch.ico") } : {}) });
+    appVersion: packageJson.version, ...({ win32: { icon: join(desktopRoot, "assets/branch.ico") },
+      darwin: { icon: join(desktopRoot, "assets/branch.icns") }, linux: { icon: join(desktopRoot, "assets/brand/linux/branch-512.png") } }[identity.platform] ?? {}) });
   assert.equal(folders.length, 1, "Expected one native desktop package");
   const app = folders[0];
   const resources = identity.platform === "darwin" ? join(app, "Branch Agent.app/Contents/Resources") : join(app, "resources");
   const node = await bundleNode(resources, undefined, identity);
+  // Outside app.asar so a fresh package can prove its executable already has the Keeper icon.
+  await writeFile(join(resources, "keeper-icon-revision"), "keeper-v1\n");
   // The desktop update component: app.asar alone, plus the whole app (the bootstrap package) for Electron changes.
   const asar = join(scratch, "desktop-asar"); await mkdir(asar);
   await copyFile(join(resources, "app.asar"), join(asar, "app.asar"));

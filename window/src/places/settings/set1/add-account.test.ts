@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { freshTokenLabel, loginChoiceRef, servicesOf, tokenProfileName } from "./add-account";
+import { tokenLabel } from "./accounts";
 
 describe("servicesOf", () => {
   const caps = [
@@ -39,5 +40,10 @@ describe("a new Claude sign-in's label", () => {
   it("starts the engine's sign-in by its plugin/choice ref", () => {
     expect(loginChoiceRef("anthropic", "setup-token")).toBe("anthropic/setup-token");
     expect(loginChoiceRef("openai", "openai/openai-device-code")).toBe("openai/openai-device-code");
+  });
+
+  it("does not show a generated hash id as a name", () => {
+    expect(tokenLabel({ profileId: "anthropic:id-123456abcdef", type: "token" })).toBeUndefined();
+    expect(tokenLabel({ profileId: "anthropic:work", type: "token" })).toBe("work");
   });
 });

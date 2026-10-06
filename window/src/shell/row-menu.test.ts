@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Conversation } from "../connect/conversations";
 import type { Contact } from "./contacts-model";
-import { rowMenuItems, TRUNK_DELETE_OFF } from "./row-menu";
+import { rowMenuItems } from "./row-menu";
 
 const row = (key: string, extra: Partial<Conversation> = {}): Conversation => ({
   key, title: "Oak", agentId: "oak", isMain: false, pinned: false, archived: false, unread: false,
@@ -19,28 +19,43 @@ function menu(target: Conversation, current?: Contact) {
   const confirmDelete = vi.fn();
   const profile = vi.fn();
   const toggleMute = vi.fn();
+  const removeTrunk = vi.fn();
   const actions = { pin: vi.fn(), setUnread: vi.fn(), archive: vi.fn(), restore: vi.fn(), snooze: vi.fn() };
   const items = rowMenuItems(target, {
     actions: actions as never, now: 100, trunkName: "Oak", open: vi.fn(), rename, confirmDelete,
-    newWith: vi.fn(), level: "regular", ask: vi.fn(), editTrunk: vi.fn(), tidy: vi.fn(),
+    level: "regular", ask: vi.fn(), editTrunk: vi.fn(), tidy: vi.fn(),
     copyMarkdown: vi.fn(), copyText: vi.fn(), copyLink: vi.fn(), profile, contact: current,
-    markContactRead: vi.fn(), pinContact: vi.fn(), whoItKnows: vi.fn(), toggleMute,
+    markContactRead: vi.fn(), pinContact: vi.fn(), whoItKnows: vi.fn(), toggleMute, removeTrunk,
   });
   const run = (id: string) => {
     const item = items.find((candidate) => "testid" in candidate && candidate.testid === id);
     if (item && "run" in item && !item.disabled) item.run();
     return item;
   };
-  return { items, run, rename, confirmDelete, profile, actions, toggleMute };
+  return { items, run, rename, confirmDelete, profile, actions, toggleMute, removeTrunk };
 }
 
 describe("contact and topic row menus", () => {
-  it("never offers delete on the default Trunk and greys non-default Trunk delete", () => {
+  it("matches the final-pass row-menu changes without the duplicate new-conversation action", () => {
+    const main = row("agent:oak:main", { kind: "trunk", isMain: true });
+    const items = menu(main, contact("trunk", main, true)).items;
+    const labels = (entries: typeof items) => entries.map((item) => "label" in item ? item.label : null).filter(Boolean);
+    expect(labels(items)).toContain("What can Oak do?");
+    expect(labels(items)).toContain("Mark done");
+    expect(labels(items)).not.toContain("New conversation with Oak");
+    const topic = menu(row("agent:oak:topic")).items;
+    expect(labels(topic)).toContain("Snooze");
+    expect(labels(topic)).not.toContain("New conversation with Oak");
+  });
+  it("only offers Remove on a non-default Trunk", () => {
     const main = row("agent:oak:main", { kind: "trunk", isMain: true });
     expect(menu(main, contact("trunk", main, true)).run("menu-delete")).toBeUndefined();
+    expect(menu(main, contact("trunk", main, true)).run("menu-remove-trunk")).toBeUndefined();
     const other = row("agent:elm:main", { agentId: "elm", kind: "trunk" });
     const m = menu(other, contact("trunk", other));
-    expect(m.run("menu-delete")).toMatchObject({ disabled: TRUNK_DELETE_OFF });
+    expect(m.run("menu-delete")).toBeUndefined();
+    expect(m.run("menu-remove-trunk")).toMatchObject({ label: "Remove Oak…" });
+    expect(m.removeTrunk).toHaveBeenCalledWith("elm", "Oak");
     expect(m.confirmDelete).not.toHaveBeenCalled();
     m.run("menu-rename");
     expect(m.profile).toHaveBeenCalledWith("elm");

@@ -29,11 +29,11 @@ describe("status and layout", () => {
     expect(roomColour(0.85)).toBe("#E8912F");
     expect(roomColour(0.97)).toBe("var(--bad)");
   });
-  it("sidebar drag: hide, rail or width", () => {
-    expect(dragResult(20)).toEqual({ hidden: true });
+  it("sidebar drag: rail or width", () => {
+    expect(dragResult(20)).toEqual({ rail: true });
     expect(dragResult(100)).toEqual({ rail: true });
-    expect(dragResult(170)).toEqual({ sideW: 180, rail: false, hidden: false });
-    expect(dragResult(900)).toEqual({ sideW: 640, rail: false, hidden: false });
+    expect(dragResult(170)).toEqual({ rail: true });
+    expect(dragResult(900)).toEqual({ sideW: 640, rail: false });
   });
   it("notify keeps the newest and dismisses by id", () => {
     const ids = [notify("a"), notify("b"), notify("c"), notify("d")];
