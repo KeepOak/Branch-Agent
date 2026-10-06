@@ -1,0 +1,2 @@
+engine:packages/ai/src/providers/openai-chatgpt-responses.cache.test.ts
+engine:packages/ai/src/transports/openai-responses-websocket.test.ts
