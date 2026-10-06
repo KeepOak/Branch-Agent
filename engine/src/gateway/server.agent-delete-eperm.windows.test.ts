@@ -3,11 +3,8 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import type { AgentsDeleteResult } from "../../packages/gateway-protocol/src/schema/agents-models-skills.js";
 import { resolveAgentDir } from "../agents/agent-scope-config.js";
-import {
-  acquireAuthProfileReadDatabase,
-  closeAuthProfileReadPool,
-} from "../agents/auth-profiles/sqlite-read-pool.js";
 import { loadConfig, writeConfigFile } from "../config/config.js";
+import { openBranchAgentDatabase } from "../state/branch-agent-db.js";
 import { resolveBranchAgentSqlitePath } from "../state/branch-agent-db.paths.js";
 import { acquireTestPortBlock } from "../test-utils/port-claims.js";
 import type { GatewayClient } from "./client.js";
@@ -42,7 +39,6 @@ it.skipIf(process.platform !== "win32")(
       controlUiEnabled: false,
     });
     let client: GatewayClient | undefined;
-    let databasePath = "";
     try {
       client = await connectGatewayClient({
         url: `ws://127.0.0.1:${portClaim.port}`,
@@ -55,14 +51,10 @@ it.skipIf(process.platform !== "win32")(
         agentId,
         key: `agent:${agentId}:main`,
       });
-      databasePath = resolveBranchAgentSqlitePath({ agentId });
+      const databasePath = resolveBranchAgentSqlitePath({ agentId });
       await expect(fs.stat(databasePath)).resolves.toBeDefined();
-      const reader = acquireAuthProfileReadDatabase(databasePath);
-      expect(reader.status).toBe("readable");
-      if (reader.status !== "readable") {
-        throw new Error("the agent database did not open");
-      }
-      expect(reader.db.isOpen).toBe(true);
+      const { db } = openBranchAgentDatabase({ agentId });
+      expect(db.isOpen).toBe(true);
 
       const deleted = await client.request<AgentsDeleteResult>("agents.delete", {
         agentId,
@@ -70,12 +62,9 @@ it.skipIf(process.platform !== "win32")(
       });
       expect(deleted.failed).toEqual([]);
       expect(deleted.removed).toContainEqual({ path: agentDir, method: "trash" });
-      expect(reader.db.isOpen).toBe(false);
+      expect(db.isOpen).toBe(false);
       await expect(fs.stat(agentDir)).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
-      if (databasePath) {
-        closeAuthProfileReadPool({ kind: "database", databasePath });
-      }
       if (client) {
         await disconnectGatewayClient(client);
       }
