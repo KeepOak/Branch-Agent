@@ -359,6 +359,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [slideOpen, setSlideOpen] = useState(false);
   const [route, setRoute] = useState<Route>(loadRoute);
   const [searchFind, setSearchFind] = useState<{ key: string; query: string; nonce: number } | null>(null);
+  const searchFindNonce = useRef(0);
   const routeRef = useRef(route);
   routeRef.current = route;
   const [draftTopic, setDraftTopic] = useState<{ agentId: string; nonce: string; options: Record<string, unknown> } | null>(null);
@@ -490,7 +491,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   }, [go]);
   const openConversation = useCallback((key: string) => go({ kind: "chat", key }), [go]);
   const openSearchMessage = useCallback((key: string, query: string) => {
-    setSearchFind((current) => ({ key, query, nonce: (current?.nonce ?? 0) + 1 }));
+    setSearchFind({ key, query, nonce: ++searchFindNonce.current });
     openConversation(key);
   }, [openConversation]);
   useEffect(() => {

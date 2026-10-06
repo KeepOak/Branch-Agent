@@ -119,7 +119,7 @@ describe("modal shortcut scope (§3.6)", () => {
     const noop = () => {};
     function Harness() {
       useShortcuts({ palette, escape, newConversation: noop, settings: noop, sidePanel: noop, quickAsk: noop,
-        focusMode: noop, toggleList: noop, inbox: noop, focusSearch: noop,
+        focusMode: noop, toggleList: noop, inbox: noop, focusSearch: noop, focusPastSearch: noop,
         archiveOpen: noop, talkBeside: noop, talkLive: noop, stop: noop, nextConversation: noop,
         shortcuts: noop });
       return null;

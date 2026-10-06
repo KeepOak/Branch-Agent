@@ -44,6 +44,20 @@ describe("message search to conversation find", () => {
 });
 
 describe("live search results", () => {
+  it("keeps Past selected when the first character is typed after Ctrl P", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    let search!: ReturnType<typeof useSearch>;
+    const request = (async () => ({})) as <T = unknown>(method: string, params?: unknown) => Promise<T>;
+    function Probe() {
+      search = useSearch(request, [], () => "Sapling");
+      return <span>{search.query}:{search.chip}</span>;
+    }
+    await act(async () => root!.render(<Probe />));
+    await act(async () => search.setChip("past"));
+    await act(async () => search.setQuery("n"));
+    expect(host.textContent).toBe("n:past");
+  });
   it("restores All when Clear or Escape empties a filtered search", async () => {
     const host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
