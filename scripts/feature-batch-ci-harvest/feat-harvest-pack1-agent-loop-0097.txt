@@ -1,3 +1,1 @@
-engine:src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.test.ts
-engine:src/agents/historical-tool-call-args.providers.test.ts
-engine:src/agents/historical-tool-call-args.test.ts
+engine:src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.test.tsengine:src/agents/historical-tool-call-args.providers.test.tsengine:src/agents/historical-tool-call-args.test.tsengine:src/agents/model-switch-instructions.integration.test.tsengine:src/agents/model-switch-instructions.test.ts
