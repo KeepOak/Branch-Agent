@@ -1675,7 +1675,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onClose={() => setGuide(null)}
         />
       ) : null}
-      {!dedicated && (firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded ? (
+      {!dedicated && firstRun.step !== null && ready && trunks.loaded ? (
         <SetupFlow
           engine={session.engine}
           version={branchVersion}
@@ -1704,8 +1704,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       ) : null}
       {route.kind === "chat" ? conversationMenu.node : null}
       {groupDrop ? <GroupDropPopover key={`${groupDrop.kind}:${groupDrop.source}:${groupDrop.target ?? groupDrop.roomId ?? ""}`} drop={groupDrop} contacts={contacts} rooms={groupRooms.rooms} defaultTrunk={trunks.defaultId ?? ""} session={session} onClose={() => setGroupDrop(null)} onPick={setGroupDrop} onOpen={(key) => { void groupRooms.reload(); openConversation(key); }} /> : null}
-      <BannerView onOpen={openConversation} setupOpen={(firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded} />
-      <Toasts setupOpen={(firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded} />
+      <BannerView onOpen={openConversation} setupOpen={firstRun.step !== null && ready && trunks.loaded} />
+      <Toasts setupOpen={firstRun.step !== null && ready && trunks.loaded} />
     </div>
     </TrunkEmojiFaces.Provider>
     </TrunkPebbleLooks.Provider>

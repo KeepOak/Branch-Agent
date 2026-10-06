@@ -76,14 +76,10 @@ function useChoices() {
 export function SetupFlow(p: Props) {
   const [contact, setContact] = useState<{ id: string; name: string } | null>(null);
   const [needsContact] = useState(() => !p.trunkNames.length);
-  // The design opens on Welcome; a Branch with no contact Trunk names its first one right after Start.
-  const gate = needsContact && !contact
-    ? <FirstTrunk engine={p.engine} onCreated={(id, name) => { setContact({ id, name }); p.onContactCreated?.(); }} />
-    : null;
-  return <SetupFlowBody {...p} gate={gate} defaultAgentId={contact?.id ?? p.defaultAgentId} defaultName={contact?.name ?? p.defaultName} trunkNames={contact ? [...p.trunkNames, contact.name] : p.trunkNames} />;
+  return <SetupFlowBody {...p} needsContact={needsContact && !contact} onFirstTrunkCreated={(id, name) => { setContact({ id, name }); p.onContactCreated?.(); }} defaultAgentId={contact?.id ?? p.defaultAgentId} defaultName={contact?.name ?? p.defaultName} trunkNames={contact ? [...p.trunkNames, contact.name] : p.trunkNames} />;
 }
 
-function SetupFlowBody(p: Props & { gate: ReactNode }) {
+function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: (id: string, name: string) => void }) {
   const [choices, setChoices] = useChoices();
   const [step, setStep] = useState(p.startAt ?? 0);
   const [test, setTest] = useState<TestResult | "testing" | null>(null);
@@ -195,8 +191,8 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
       )}
     </>
   );
-  if (p.gate && step === 4) {
-    return <>{p.gate}</>;
+  if (p.needsContact && step === 4) {
+    return <FirstTrunk engine={p.engine} onCreated={p.onFirstTrunkCreated} onBack={setStep} onSkip={() => void close(false)} />;
   }
   const dialogs = (
     <>

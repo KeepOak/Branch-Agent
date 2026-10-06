@@ -30,8 +30,11 @@ it("requires first-contact creation before setup/chat and retries failed default
   await act(async () => root!.render(<SetupFlow engine={engine} version="1" trunkNames={[]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={4} onClose={onClose} onLocalModel={() => {}} />));
   expect(host.textContent).toContain("Create your first Trunk");
   expect(host.querySelector('[data-testid="setup-finish"]')).toBeNull();
-  expect(host.querySelector('[data-testid="setup-skip"]')).toBeNull();
+  expect(host.querySelector('[data-testid="setup-skip"]')).not.toBeNull();
+  expect([...host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")].slice(0, 4).every((button) => !button.disabled)).toBe(true);
+  expect([...host.querySelectorAll("button")].some((button) => button.textContent === "Back")).toBe(true);
   const input = host.querySelector("input")!;
+  expect(input.labels?.[0]?.htmlFor).toBe(input.id);
   expect(input.labels?.[0]?.textContent).toContain("Name your Trunk");
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Fern"); input.dispatchEvent(new Event("input", { bubbles: true })); });
   const click = async () => { await act(async () => (host.querySelector('[data-testid="first-trunk-create"]') as HTMLButtonElement).click()); };
@@ -69,7 +72,7 @@ it("supports form submission and ignores repeated submissions while creation is 
   });
   const onCreated = vi.fn();
   const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
-  await act(async () => root!.render(<FirstTrunk engine={{ request } as unknown as WindowEngine} onCreated={onCreated} />));
+  await act(async () => root!.render(<FirstTrunk engine={{ request } as unknown as WindowEngine} onCreated={onCreated} onBack={() => {}} onSkip={() => {}} />));
   const input = host.querySelector("input")!;
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Fern");
@@ -82,6 +85,7 @@ it("supports form submission and ignores repeated submissions while creation is 
   });
   expect(request.mock.calls.filter(([method]) => method === "agents.create")).toHaveLength(1);
   expect(form.getAttribute("aria-busy")).toBe("true");
+  expect(host.querySelector('[role="status"]')?.textContent).toBe("Creating your Trunk…");
   expect(onCreated).not.toHaveBeenCalled();
   await act(async () => release({ ok: true, agentId: "fern" }));
   expect(onCreated).toHaveBeenCalledExactlyOnceWith("fern", "Fern");
@@ -110,7 +114,7 @@ it.each(["agents.create", "agents.list", "config.get", "config.patch"])("blocks 
   const engine = { request } as unknown as WindowEngine;
   const onCreated = vi.fn(() => expect(persistedDefault).toBe("fern"));
   const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
-  await act(async () => root!.render(<FirstTrunk engine={engine} onCreated={onCreated} />));
+  await act(async () => root!.render(<FirstTrunk engine={engine} onCreated={onCreated} onBack={() => {}} onSkip={() => {}} />));
   const input = host.querySelector("input")!;
   expect((host.querySelector("button[data-testid=first-trunk-create]") as HTMLButtonElement).disabled).toBe(true);
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, " Fern "); input.dispatchEvent(new Event("input", { bubbles: true })); });

@@ -89,6 +89,14 @@ describe("setup flow", () => {
     await act(async () => new Promise((r) => setTimeout(r, 750)));
     expect(host.querySelector('[data-testid="step"]')?.textContent).toBe("0");
   });
+  it("does not reopen in another browser profile after the gateway records completion", async () => {
+    const session = { request: vi.fn(async () => ({ config: { wizard: { lastRunAt: "2026-10-06T00:00:00Z" } } })) } as unknown as SaplingSession;
+    function Probe() { const first = useFirstRun(session, true, () => false); return <span data-testid="step">{first.step ?? "closed"}</span>; }
+    const host = await show(<Probe />);
+    await act(async () => new Promise((r) => setTimeout(r, 750)));
+    expect(host.querySelector('[data-testid="step"]')?.textContent).toBe("closed");
+    expect(session.request).toHaveBeenCalledWith("config.get", {});
+  });
   it("Models opens the shared account catalogue with one Claude choice and no setup-token menu", async () => {
     const { engine: e, request } = engine({
       "branch.setup.detect": { secretLogins: [{ id: "setup-token", brand: "anthropic", label: "Claude setup-token", hint: "Run a command" }], authOptions: [{ id: "claude-browser", label: "Claude sign-in" }], manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Claude setup-token" }] },
@@ -115,6 +123,22 @@ describe("setup flow", () => {
     await act(async () => tid(host, "setup-next").click());
     expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
   });
+  it("visits steps 2–4 before first-contact creation, then allows Back and Skip", async () => {
+    const { engine: e, request } = engine({ "config.get": { hash: "h", config: {} }, "config.patch": { ok: true } });
+    const closed = vi.fn();
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={[]} defaultAgentId="bootstrap" defaultName="Branch" onClose={closed} onLocalModel={() => {}} />);
+    await act(async () => tid(host, "setup-promise").click());
+    for (const heading of ["Where should Branch run?", "Which models should answer?", "Make it yours", "Create your first Trunk"]) {
+      await act(async () => tid(host, "setup-next").click());
+      expect(host.querySelector("h2")?.textContent).toBe(heading);
+    }
+    await act(async () => byText(host, "Back").click());
+    expect(host.querySelector("h2")?.textContent).toBe("Make it yours");
+    await act(async () => tid(host, "setup-next").click());
+    await act(async () => tid(host, "setup-skip").click());
+    expect(closed).toHaveBeenCalledWith(false);
+    expect(JSON.parse(String(params(request, "config.patch")[0]?.raw)).wizard.lastRunAt).toBeTruthy();
+  });
   it("shows an existing default Trunk without creating a duplicate", async () => {
     const { engine: e, request } = engine({});
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["C3-PO"]} defaultAgentId="c3po" defaultName="C3-PO" requireContact startAt={4} onClose={() => {}} onLocalModel={() => {}} />);
@@ -123,6 +147,8 @@ describe("setup flow", () => {
     expect(host.querySelector(".ob-default-trunk")?.textContent).toContain("C3-PO");
     await act(async () => byText(host, "Edit").click());
     const input = host.querySelector<HTMLInputElement>('.ob-default-trunk input')!;
+    expect(input.labels?.[0]?.htmlFor).toBe(input.id);
+    expect(input.labels?.[0]?.textContent).toContain("Name your Trunk");
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Scout"); input.dispatchEvent(new Event("input", { bubbles: true })); });
     await act(async () => byText(host, "Save").click());
     expect(params(request, "agents.update")).toEqual([{ agentId: "c3po", name: "Scout" }]);

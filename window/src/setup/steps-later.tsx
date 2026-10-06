@@ -1,5 +1,5 @@
 // Setup steps 4–11 (DESIGN-SPEC §4.8.1.4–§4.8.1.11). Controls the engine can't back yet are greyed with their reason.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { KeeperMark } from "../brand/KeeperMark";
 import { shownWhy } from "../shell/shown-why";
@@ -67,6 +67,7 @@ export function YoursBody({ look, onLook }: { look: Look; onLook: (l: Look) => v
 }
 
 function DefaultTrunkCard({ engine, id, initialName }: { engine: WindowEngine; id: string; initialName: string }) {
+  const nameId = useId();
   const [name, setName] = useState(initialName);
   const [draft, setDraft] = useState(initialName);
   const [editing, setEditing] = useState(false);
@@ -88,7 +89,7 @@ function DefaultTrunkCard({ engine, id, initialName }: { engine: WindowEngine; i
   return <div className="ob-default-trunk">
     <KeeperMark size={36} />
     <span className="grow">
-      {editing ? <label className="fld"><span>Name your Trunk</span><input className="inp" value={draft} onChange={(e) => setDraft(e.target.value)} disabled={busy} /></label> : <b>{name} <small>default Trunk · Chief of Staff</small></b>}
+      {editing ? <label className="fld" htmlFor={nameId}><span>Name your Trunk</span><input id={nameId} className="inp" value={draft} onChange={(e) => setDraft(e.target.value)} disabled={busy} /></label> : <b>{name} <small>default Trunk · Chief of Staff</small></b>}
       <small>Answers anything not sent to another Trunk and routes jobs.</small>
       {error ? <small role="alert">{error}</small> : null}
     </span>
