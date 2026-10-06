@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/compaction.ts (atlas AGENT-LOOP-0099). Changed for Branch: Goose middle-out tool response retry (AGENT-LOOP-0100); existing runtime adapters and owner-context safeguards; upstream assertions retained.
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/compaction.ts (atlas AGENT-LOOP-0099). Changed for Branch: Hermes summary-input tool pruning protecting 40k recent tokens (AGENT-LOOP-0102); Goose middle-out tool response retry (AGENT-LOOP-0100); existing runtime adapters and owner-context safeguards; upstream assertions retained.
 import {
   CompactionError,
   SummaryOutputBudgetError,
@@ -19,6 +19,7 @@ import {
 } from "./compaction-planning-worker.js";
 import { DEFAULT_CONTEXT_TOKENS } from "./defaults.js";
 import { isTimeoutError } from "./failover-error.js";
+import { pruneBeforeSummarizing } from "./proactive-tool-result-pruning.js";
 import type {
   AgentMessage,
   CompactionSummaryPrompt,
@@ -107,7 +108,7 @@ async function summarizeChunks(params: CompactionSummaryParams): Promise<string>
   }
 
   const chunks = await buildSummaryChunksWithWorker({
-    messages: params.messages,
+    messages: await pruneBeforeSummarizing(params.messages),
     maxChunkTokens: params.maxChunkTokens,
     signal: params.signal,
   });

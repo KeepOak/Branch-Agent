@@ -46,3 +46,8 @@ engine/packages/agent-core/src/harness/compaction/summarization-prompts.ts,AGENT
 engine/src/auto-reply/commands-registry.shared.ts,AGENT-LOOP-0101,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/auto-reply/commands-registry.shared.ts (changed: Cline compact aliases),2026-10-06
 engine/src/auto-reply/reply/commands-compact.ts,AGENT-LOOP-0101,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/auto-reply/reply/commands-compact.ts (changed: Cline compact aliases),2026-10-06
 engine/src/auto-reply/reply/commands-compact.harvest.test.ts,AGENT-LOOP-0101,cline/cline,0809928ab28783c0d2b41c1e56edaf0951dadcab,apps/vscode/src/core/controller/slash/condense.test.ts,2026-10-06
+engine/src/agents/proactive-tool-result-pruning.ts,AGENT-LOOP-0102,NousResearch/hermes-agent,18d125cc1bd9d0e26188ab49bb325427d5945fa2,agent/context_compressor.py,2026-10-06
+engine/src/agents/proactive-tool-result-pruning.test.ts,AGENT-LOOP-0102,NousResearch/hermes-agent,18d125cc1bd9d0e26188ab49bb325427d5945fa2,tests/agent/test_proactive_tool_result_pruning.py,2026-10-06
+engine/src/agents/proactive-tool-result-pruning.test-support.ts,AGENT-LOOP-0102,NousResearch/hermes-agent,18d125cc1bd9d0e26188ab49bb325427d5945fa2,tests/agent/test_proactive_tool_result_pruning.py,2026-10-06
+engine/src/agents/proactive-prune-config.test.ts,AGENT-LOOP-0102,NousResearch/hermes-agent,18d125cc1bd9d0e26188ab49bb325427d5945fa2,tests/agent/test_proactive_prune_config.py,2026-10-06
+engine/src/agents/proactive-prune-rearm-threshold.test.ts,AGENT-LOOP-0102,NousResearch/hermes-agent,18d125cc1bd9d0e26188ab49bb325427d5945fa2,tests/agent/test_proactive_prune_rearm_threshold.py,2026-10-06

@@ -11,6 +11,9 @@ engine:src/agents/historical-tool-call-args.providers.test.ts
 engine:src/agents/historical-tool-call-args.test.ts
 engine:src/agents/model-switch-instructions.integration.test.ts
 engine:src/agents/model-switch-instructions.test.ts
+engine:src/agents/proactive-prune-config.test.ts
+engine:src/agents/proactive-prune-rearm-threshold.test.ts
+engine:src/agents/proactive-tool-result-pruning.test.ts
 engine:src/agents/structured-summary-retry.test.ts
 engine:src/agents/structured-summary.integration.test.ts
 engine:src/auto-reply/commands-registry.test.ts
