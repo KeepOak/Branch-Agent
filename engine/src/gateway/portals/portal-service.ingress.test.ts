@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/gateway/portals/portal-service.ingress.test.ts (atlas OPS-0128). Changed for Branch: retain combined private Serve claim and partitioned-cookie proofs plus unpublished-resource rollback cases.
 import { request, type Server } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/gateway/portals/portal-service.test.ts (atlas OPS-0128). Changed for Branch: retain worker owner-epoch fencing and resource-lifetime assertions.
 import { request, type Server } from "node:http";
 import type { Duplex } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";

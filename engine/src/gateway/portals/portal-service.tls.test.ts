@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/gateway/portals/portal-service.tls.test.ts (atlas OPS-0128). Changed for Branch: retain certificate-valid LAN and configured-host coverage.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { request } from "node:https";
