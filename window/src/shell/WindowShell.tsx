@@ -48,6 +48,7 @@ import { Face } from "../face/Face";
 import { TalkSetup, type TalkHandle } from "../setup/TalkSetup";
 import { NewTrunkCard, type NewTrunk } from "./NewTrunkFlow";
 import { createReadyTrunk } from "../places/trunk/api";
+import { RemoveTrunkDialog, TRUNK_REMOVED_EVENT } from "../places/trunk/RemoveTrunk";
 import { NewTrunkPreview, type TrunkChoice } from "../places/trunk/NewTrunkPreview";
 import type { Roster } from "../places/trunk/model";
 import { readRoster } from "../places/trunk/model";
@@ -352,6 +353,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Conversation | null>(null);
   const [deletingMany, setDeletingMany] = useState<Conversation[] | null>(null);
+  const [removingTrunk, setRemovingTrunk] = useState<{ agentId: string; name: string } | null>(null);
   const [panes, setPanes] = useState<Pane[]>([]);
   const [splitW, setSplitW] = useState(50);
   const [reading, setReading] = useState<{ thread: CatalogThread; label: string; remove?: boolean } | null>(null);
@@ -441,6 +443,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     }
   }, [session]);
   const openConversation = useCallback((key: string) => go({ kind: "chat", key }), [go]);
+  useEffect(() => {
+    const removed = () => {
+      const id = trunks.defaultId;
+      if (id) openConversation(contactRows.find((contact) => contact.id === `trunk:${id}`)?.threadKey ?? `agent:${id}:${mainKeySuffix}`);
+    };
+    window.addEventListener(TRUNK_REMOVED_EVENT, removed);
+    return () => window.removeEventListener(TRUNK_REMOVED_EVENT, removed);
+  }, [trunks.defaultId, contactRows, mainKeySuffix, openConversation]);
   const openTopic = (key: string) => {
     if (topicContact) setTopicReturnKey(topicContact.threadKey);
     openConversation(key);
@@ -762,6 +772,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       markContactRead: markReadContact,
       pinContact: toggleContactPin,
       profile: openTrunkProfile,
+      removeTrunk: (agentId, name) => setRemovingTrunk({ agentId, name }),
       whoItKnows: (contact) => {
         openConversation(contact.threadKey);
         requestAnimationFrame(() => document.querySelector<HTMLButtonElement>("[data-testid=who-it-knows-button]")?.click());
@@ -1468,6 +1479,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           }}
         />
       ) : null}
+      {removingTrunk ? <RemoveTrunkDialog engine={session.engine} agentId={removingTrunk.agentId} name={removingTrunk.name} onClose={() => setRemovingTrunk(null)} /> : null}
       {route.kind === "chat" && characterShown ? (
         <LiveCharacter name={trunkName(openRow?.agentId)} snapshot={s} onClose={() => setCharacterShown(false)} others={room.others} />
       ) : null}
