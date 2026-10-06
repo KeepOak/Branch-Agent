@@ -1,3 +1,6 @@
+engine:extensions/clickclack/src/discussions/naming.test.ts
+engine:extensions/clickclack/src/discussions/service.test.ts
+engine:extensions/clickclack/src/discussions/tool.test.ts
 engine:extensions/discord/src/monitor/thread-bindings.acp-reconciliation.test.ts
 engine:extensions/discord/src/monitor/thread-bindings.authority.test.ts
 engine:extensions/discord/src/monitor/thread-bindings.creation.test.ts
