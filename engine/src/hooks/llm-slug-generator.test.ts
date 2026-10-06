@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/hooks/llm-slug-generator.test.ts (atlas AUTOMATION-0071). Changed for Branch: rebranded through scripts/rebrand-map.json; retain current upstream regression coverage instead of older atlas tests.
 // LLM slug generator tests cover generated hook names and collision behavior.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../config/types.branch.js";

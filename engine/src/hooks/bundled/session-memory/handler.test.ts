@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/hooks/bundled/session-memory/handler.test.ts (atlas AUTOMATION-0071). Changed for Branch: rebranded through scripts/rebrand-map.json; retain current upstream regression coverage instead of older atlas tests.
 // Session memory hook tests cover captured transcript summaries.
 import fs from "node:fs/promises";
 import os from "node:os";

@@ -15,7 +15,10 @@ engine:src/gateway/hooks.test.ts
 engine:src/gateway/server-cron-primary-webhook.test.ts
 engine:src/gateway/server.hooks-admission.test.ts
 engine:src/gateway/server.hooks.test.ts
+engine:src/hooks/bundled/session-memory/capture.test.ts
+engine:src/hooks/bundled/session-memory/handler.test.ts
 engine:src/hooks/frontmatter.test.ts
 engine:src/hooks/internal-hooks.test.ts
+engine:src/hooks/llm-slug-generator.test.ts
 engine:src/hooks/loader.test.ts
 engine:src/hooks/policy.test.ts
