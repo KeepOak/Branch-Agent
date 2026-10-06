@@ -18,7 +18,7 @@ export function platformName(): string {
 }
 export function matchPlatformLabel(): string {
   const platform = platformName();
-  return platform === "macOS" ? "Match this Mac" : platform === "Windows" ? "Match Windows" : "Match this computer";
+  return platform === "macOS" ? "Match macOS" : platform === "Windows" ? "Match Windows" : "Match this computer";
 }
 const LOOKS: { id: Look; name: string }[] = [
   { id: "system", name: "" },

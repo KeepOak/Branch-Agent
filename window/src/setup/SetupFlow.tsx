@@ -75,7 +75,7 @@ function useChoices() {
 
 export function SetupFlow(p: Props) {
   const [contact, setContact] = useState<{ id: string; name: string } | null>(null);
-  const [needsContact] = useState(() => !p.trunkNames.length);
+  const [needsContact] = useState(() => p.requireContact || !p.trunkNames.length);
   return <SetupFlowBody {...p} needsContact={needsContact && !contact} onFirstTrunkCreated={(id, name) => { setContact({ id, name }); p.onContactCreated?.(); }} defaultAgentId={contact?.id ?? p.defaultAgentId} defaultName={contact?.name ?? p.defaultName} trunkNames={contact ? [...p.trunkNames, contact.name] : p.trunkNames} />;
 }
 
@@ -121,7 +121,8 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
   }, [step, p.engine, apps]);
   const latest = useRef({ choices, autoUpdate, boot });
   latest.current = { choices, autoUpdate, boot };
-  const close = async (finished: boolean) => {
+  const close = async (finished: boolean, contactReady = false) => {
+    if (p.needsContact && !contactReady) { setStep(4); return; }
     setBusy(true);
     const { choices, autoUpdate, boot } = latest.current;
     try {
@@ -192,7 +193,7 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
     </>
   );
   if (p.needsContact && step === 4) {
-    return <FirstTrunk engine={p.engine} onCreated={p.onFirstTrunkCreated} onBack={setStep} onSkip={() => void close(false)} />;
+    return <FirstTrunk engine={p.engine} onCreated={p.onFirstTrunkCreated} onBack={setStep} onSkip={() => void close(false, true)} />;
   }
   const dialogs = (
     <>

@@ -10,6 +10,7 @@ import { SetupFlow } from "./SetupFlow";
 import { useFirstRun } from "./use-first-run";
 import type { SaplingSession } from "../connect/session";
 import { readChatApps, recordSetup, testModel } from "./use-setup-engine";
+import { matchPlatformLabel } from "./steps-later";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -97,6 +98,13 @@ describe("setup flow", () => {
     expect(host.querySelector('[data-testid="step"]')?.textContent).toBe("closed");
     expect(session.request).toHaveBeenCalledWith("config.get", {});
   });
+  it("reopens first-Trunk setup for a completed setup with no usable Trunks", async () => {
+    const session = { request: vi.fn(async () => ({ config: { wizard: { lastRunAt: "2026-10-06T00:00:00Z" } } })) } as unknown as SaplingSession;
+    function Probe() { const first = useFirstRun(session, true, () => false, 0); return <span data-testid="step">{first.step ?? "closed"}</span>; }
+    const host = await show(<Probe />);
+    await act(async () => new Promise((r) => setTimeout(r, 750)));
+    expect(host.querySelector('[data-testid="step"]')?.textContent).toBe("4");
+  });
   it("Models opens the shared account catalogue with one Claude choice and no setup-token menu", async () => {
     const { engine: e, request } = engine({
       "branch.setup.detect": { secretLogins: [{ id: "setup-token", brand: "anthropic", label: "Claude setup-token", hint: "Run a command" }], authOptions: [{ id: "claude-browser", label: "Claude sign-in" }], manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Claude setup-token" }] },
@@ -124,7 +132,7 @@ describe("setup flow", () => {
     expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
   });
   it("visits steps 2–4 before first-contact creation, then allows Back and Skip", async () => {
-    const { engine: e, request } = engine({ "config.get": { hash: "h", config: {} }, "config.patch": { ok: true } });
+    const { engine: e, request } = engine({ "config.get": { hash: "h", config: {} }, "config.patch": { ok: true }, "agents.create": { ok: true, agentId: "branch" }, "agents.list": { agents: [{ id: "branch", name: "Branch" }] } });
     const closed = vi.fn();
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={[]} defaultAgentId="bootstrap" defaultName="Branch" onClose={closed} onLocalModel={() => {}} />);
     await act(async () => tid(host, "setup-promise").click());
@@ -137,11 +145,38 @@ describe("setup flow", () => {
     await act(async () => tid(host, "setup-next").click());
     await act(async () => tid(host, "setup-skip").click());
     expect(closed).toHaveBeenCalledWith(false);
-    expect(JSON.parse(String(params(request, "config.patch")[0]?.raw)).wizard.lastRunAt).toBeTruthy();
+    expect(request).toHaveBeenCalledWith("agents.create", { name: "Branch" });
+    expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h", raw: JSON.stringify({ agents: { defaultId: "branch" } }) });
+    expect(params(request, "config.patch").some((patch) => Boolean(JSON.parse(String(patch.raw)).wizard?.lastRunAt))).toBe(true);
+  });
+  it("routes an early Skip to default-Trunk creation before setup can close", async () => {
+    const { engine: e, request } = engine({});
+    const closed = vi.fn();
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={[]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={2} onClose={closed} onLocalModel={() => {}} />);
+    await act(async () => tid(host, "setup-skip").click());
+    expect(host.querySelector("h2")?.textContent).toBe("Create your first Trunk");
+    expect(closed).not.toHaveBeenCalled();
+    expect(params(request, "config.patch")).toHaveLength(0);
+  });
+  it("keeps setup open when Skip cannot save the default Trunk", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "agents.create") return { ok: true, agentId: "branch" };
+      if (method === "agents.list") return { agents: [{ id: "branch", name: "Branch" }] };
+      if (method === "config.get") return { hash: "h", config: {} };
+      if (method === "config.patch") return { ok: false, error: { message: "Could not save default" } };
+      return {};
+    });
+    const e = { request, onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"] } as unknown as WindowEngine;
+    const closed = vi.fn();
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={[]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={4} onClose={closed} onLocalModel={() => {}} />);
+    await act(async () => tid(host, "setup-skip").click());
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Could not save default");
+    expect(closed).not.toHaveBeenCalled();
+    expect(request.mock.calls.filter(([method]) => method === "config.patch")).toHaveLength(1);
   });
   it("shows an existing default Trunk without creating a duplicate", async () => {
     const { engine: e, request } = engine({});
-    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["C3-PO"]} defaultAgentId="c3po" defaultName="C3-PO" requireContact startAt={4} onClose={() => {}} onLocalModel={() => {}} />);
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["C3-PO"]} defaultAgentId="c3po" defaultName="C3-PO" startAt={4} onClose={() => {}} onLocalModel={() => {}} />);
     expect(host.querySelector("h2")?.textContent).toBe("Your first Trunks");
     expect(host.textContent).not.toContain("Create your first Trunk");
     expect(host.querySelector(".ob-default-trunk")?.textContent).toContain("C3-PO");
@@ -170,6 +205,12 @@ describe("setup flow", () => {
     } finally {
       if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
     }
+  });
+  it("names the system appearance choice for macOS", () => {
+    const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+    Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => "MacIntel" });
+    try { expect(matchPlatformLabel()).toBe("Match macOS"); }
+    finally { if (platform) Object.defineProperty(Navigator.prototype, "platform", platform); }
   });
   it("uses plain copy for empty tools, chat apps, and access", async () => {
     sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));

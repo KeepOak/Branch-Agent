@@ -359,7 +359,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const update = useUpdate(session, ready, branchVersion);
   const projects = useProjects(session, ready);
   const [newProject, setNewProject] = useState(false);
-  const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null);
+  const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null, trunks.loaded ? trunks.list.length : null);
   const contactRows = contactRowsFor(gatewayContacts, contactsLoaded, trunks.list, lists.rows, s.mainKey, firstRun.isFirstRun,
     firstRun.isFirstRun && firstRun.requiresContact ? trunks.bootstrapDefault : undefined);
   const now = useNow(s.doneAt);

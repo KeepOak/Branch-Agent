@@ -46,7 +46,7 @@ it("requires first-contact creation before setup/chat and retries failed default
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("Configuration changed");
   expect(onClose).not.toHaveBeenCalled();
   // agents.changed may update the shell before config.patch succeeds; the gate must stay pinned.
-  await act(async () => root!.render(<SetupFlow engine={engine} version="1" trunkNames={[]} defaultAgentId="bootstrap" defaultName="Branch" startAt={4} onClose={onClose} onLocalModel={() => {}} />));
+  await act(async () => root!.render(<SetupFlow engine={engine} version="1" trunkNames={["Fern"]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={4} onClose={onClose} onLocalModel={() => {}} />));
   expect(host.textContent).toContain("Create your first Trunk");
   defaultFailed = false;
   await click();
@@ -60,6 +60,25 @@ it("requires first-contact creation before setup/chat and retries failed default
 it("does not mistake system workers for user contact Trunks", () => {
   expect(readTrunks({ defaultId: "bootstrap", agents: [{ id: "bootstrap", kind: "system" }, { id: "helper", kind: "system" }] }).list).toEqual([]);
   expect(readTrunks({ defaultId: "branch", agents: [{ id: "branch", kind: "agent" }, { id: "helper", kind: "system" }, { id: "legacy" }, {}] }).list.map(a => a.id)).toEqual(["branch", "legacy"]);
+});
+
+it("offers the existing Trunk when a name is taken instead of showing the raw engine error", async () => {
+  const request = vi.fn(async (method: string) => {
+    if (method === "agents.create") return { ok: false, error: { message: "agent already exists" } };
+    if (method === "agents.list") return { agents: [{ id: "fern", identity: { name: "Fern" } }] };
+    if (method === "config.get") return { hash: "h", config: {} };
+    return { ok: true };
+  });
+  const onCreated = vi.fn();
+  const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+  await act(async () => root!.render(<FirstTrunk engine={{ request } as unknown as WindowEngine} onCreated={onCreated} onBack={() => {}} onSkip={() => {}} />));
+  const input = host.querySelector("input")!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Fern"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await act(async () => (host.querySelector('[data-testid="first-trunk-create"]') as HTMLButtonElement).click());
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("Use that Trunk or choose another name");
+  expect(host.textContent).not.toContain("agent already exists");
+  await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Use existing Fern Trunk")!.click());
+  expect(onCreated).toHaveBeenCalledWith("fern", "Fern");
 });
 
 it("supports form submission and ignores repeated submissions while creation is pending", async () => {
