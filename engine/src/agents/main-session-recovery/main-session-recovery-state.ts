@@ -411,7 +411,9 @@ export function transitionMainSessionRecovery(
       }
       let state = entry.mainRestartRecovery;
       if (state && entry.abortedLastRun === true) {
-        state.interruptedAt ??= Date.now();
+        if (typeof state.interruptedAt !== "number" || !Number.isFinite(state.interruptedAt)) {
+          state = updateRecoveryState(entry, state, { interruptedAt: Date.now() });
+        }
       }
       if (
         state?.foregroundClaims &&

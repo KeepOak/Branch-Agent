@@ -125,6 +125,7 @@ it("preserves an existing interruption mark on a repeat startup scan", async () 
       cycleId: "shutdown-timeout-cycle",
       interruptedAt,
     });
+    expect(loadSessionEntry({ sessionKey })?.abortedLastRun).toBe(true);
   });
 });
 
