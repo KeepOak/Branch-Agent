@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/agents/tools/sessions-history-tool.test.ts (atlas SESSIONS-0026). Changed for Branch: retain newer upstream tests for the existing Branch sync; all assertions preserved.
 // sessions_history tool tests cover recall redaction and input validation for
 // session transcript history returned to models.
 import fs from "node:fs";
