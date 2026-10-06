@@ -1,5 +1,7 @@
+engine:extensions/signal/src/approval-reactions.test.ts
 engine:extensions/signal/src/question-reactions.test.ts
 engine:extensions/telegram/src/poll-registry.test.ts
+engine:extensions/whatsapp/src/approval-reactions.test.ts
 engine:extensions/whatsapp/src/question-reactions.test.ts
 engine:packages/markdown-core/src/ir.test.ts
 engine:packages/markdown-core/src/render-aware-chunking.test.ts
