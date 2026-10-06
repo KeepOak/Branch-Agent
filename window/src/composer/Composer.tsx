@@ -45,6 +45,7 @@ type Props = {
   onReload?: () => void;
   onToast?: (text: string) => void;
   onOpen?: (target: OpenTarget) => void;
+  emptyConversation?: boolean;
   onOpenConversation?: (key: string) => void;
   lastUserEntryId?: string;
   replyTo?: Reply | null;
@@ -397,7 +398,7 @@ export function Composer(props: Props) {
       onDrop={onDrop}
     >
       {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
-      {noModel ? <NoModelLine onOpen={onOpen} /> : null}
+      {noModel && !props.emptyConversation ? <NoModelLine onOpen={onOpen} /> : null}
       {conversationProblem ? <p className={isPreparationPending(conversationProblem) ? "c-note" : "c-note bad"} role={isPreparationPending(conversationProblem) ? "status" : "alert"}>{isPreparationPending(conversationProblem) ? preparationLabel(trunkName) : conversationProblem}</p> : null}
       {problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : problem}</p> : null}
       {line.error ? <p className="c-note bad" role="alert">{isPreparationPending(line.error) ? preparationLabel(trunkName) : line.error}</p> : null}
@@ -676,7 +677,7 @@ function ToolButton({ refEl, icon, label, tip, open, onClick, disabled, testId }
 }
 
 /** The no-model line (DESIGN-SPEC §4.2.9, §4.3.1 States; DECISIONS.md item 36), with its two links. */
-function NoModelLine({ onOpen }: { onOpen?: (target: OpenTarget) => void }) {
+export function NoModelLine({ onOpen }: { onOpen?: (target: OpenTarget) => void }) {
   return (
     <p className="c-nomodel" data-testid="no-model">
       Please{" "}

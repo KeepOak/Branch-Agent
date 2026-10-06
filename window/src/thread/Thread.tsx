@@ -10,6 +10,7 @@ import { ThreadContext, type ThreadContextValue } from "./context";
 import { ReactionChips } from "./dialogs";
 import { DoneCheer } from "./DoneCheer";
 import { EmptyState } from "./EmptyState";
+import type { OpenTarget } from "../composer/nav";
 import { FindBar, useFindKey } from "./FindBar";
 import { HelpersChip } from "./Helpers";
 import { HoverBar } from "./HoverBar";
@@ -63,6 +64,7 @@ type Props = {
   questions?: QuestionRecord[];
   /** Sends a starter from the empty conversation (§4.2.9), the same way the composer sends. */
   onStart?: (text: string) => void;
+  onOpen?: (target: OpenTarget) => void;
   /** The conversation's last run error (sessions.list lastRunError); restart recovery's own one shows "Stopped by restart". */
   recoveryFailure?: string;
   /** The Plan card; it goes after the turn that last updated it (planAnchor), else at the end (§4.2.2). */
@@ -235,7 +237,7 @@ export function Thread(props: Props) {
             </div>)}
           </div>)}
           {(props.earlierPages?.length || props.hasEarlierPages) ? <div className="stamp">New start · {props.currentStartedAt ? new Date(props.currentStartedAt).toLocaleDateString() : "Current"}</div> : null}
-          {empty ? <EmptyState onOpenSession={props.onOpenSession} onStart={props.onStart} /> : null}
+          {empty ? <EmptyState onOpenSession={props.onOpenSession} onStart={props.onStart} onOpen={props.onOpen} /> : null}
           {renderTopicEvents(-1)}
           {items.map((item) =>
             item.type === "talk" ? (

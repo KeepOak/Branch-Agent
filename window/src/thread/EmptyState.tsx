@@ -3,6 +3,8 @@
 // so it shows once, on every conversation, not twice on an empty one.
 import { useEffect, useState } from "react";
 import { currentModelRef } from "../composer/model";
+import { NoModelLine } from "../composer/Composer";
+import type { OpenTarget } from "../composer/nav";
 import { hasNoModel, useConversation } from "../composer/useConversation";
 import { Face } from "../face/Face";
 import { useThread } from "./context";
@@ -48,10 +50,11 @@ export function startersFor(theme: string, isDefault: boolean): string[] {
 }
 
 /** The four starters, once a model is set up; with none, the composer's no-model line says what to do instead. */
-function Starters({ onStart }: { onStart: (text: string) => void }) {
+function Starters({ onStart, onOpen }: { onStart: (text: string) => void; onOpen?: (target: OpenTarget) => void }) {
   const { engine } = useThread();
   const conv = useConversation(engine);
-  if (!conv.loaded || hasNoModel(conv, currentModelRef(conv.row, conv.defaults))) return null;
+  if (!conv.loaded) return null;
+  if (hasNoModel(conv, currentModelRef(conv.row, conv.defaults))) return <NoModelLine onOpen={onOpen} />;
   const trunk = conv.trunk;
   const list = startersFor(trunk?.theme ?? "", !trunk || trunk.id === conv.defaultTrunkId);
   return (
@@ -66,14 +69,27 @@ function Starters({ onStart }: { onStart: (text: string) => void }) {
   );
 }
 
-export function EmptyState({ onOpenSession, onStart }: { onOpenSession?: (key: string) => void; onStart?: (text: string) => void }) {
+function useEmptyFaceSize(): number {
+  const [small, setSmall] = useState(() => typeof matchMedia === "function" && matchMedia("(max-width: 760px)").matches);
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const media = matchMedia("(max-width: 760px)");
+    const changed = () => setSmall(media.matches);
+    media.addEventListener("change", changed);
+    return () => media.removeEventListener("change", changed);
+  }, []);
+  return small ? 120 : 150;
+}
+
+export function EmptyState({ onOpenSession, onStart, onOpen }: { onOpenSession?: (key: string) => void; onStart?: (text: string) => void; onOpen?: (target: OpenTarget) => void }) {
   const { name } = useThread();
   const recent = useRecent(Boolean(onOpenSession));
+  const faceSize = useEmptyFaceSize();
   return (
     <div className="empty" data-testid="empty-state">
-      <Face size={150} label={name} state="idle" reactive />
+      <Face size={faceSize} label={name} state="idle" reactive />
       <h1 className="empty-title">What should {name} do?</h1>
-      {onStart ? <Starters onStart={onStart} /> : null}
+      {onStart ? <Starters onStart={onStart} onOpen={onOpen} /> : null}
       {onOpenSession && recent.length ? (
         <div className="recent">
           <div className="section-label">Recent</div>

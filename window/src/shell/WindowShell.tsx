@@ -7,11 +7,14 @@ import { roomIdOf, type SaplingSession, type SessionSnapshot } from "../connect/
 import { withOwner } from "../connect/agent-owner";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { Composer, VOICE_OFF } from "../composer/Composer";
+import type { OpenTarget } from "../composer/nav";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
 import { useBranchVersion } from "../connect/branch-version";
 import { saveTargetName } from "../setup/pre-connect-state";
 import { Thread } from "../thread/Thread";
+import { EmptyState } from "../thread/EmptyState";
+import { ThreadContext } from "../thread/context";
 import { stepLabel } from "../thread/format";
 import { PlaceView } from "../places-nav/PlaceView";
 import { handleOfficeNavigation } from "../places/office/navigation";
@@ -1047,6 +1050,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onManageComputers: () => openSettings("computer"),
     room: room.menu ? { ...room.menu, members: room.members } : null,
   });
+  const openTarget = (target: OpenTarget) => {
+    if (target.startsWith("settings/")) openSettings(target.slice("settings/".length));
+    else if (target === "customize/tools") openPlace("customize");
+    else if (target === "local-model-setup") openSettings("local");
+  };
   const areaProps = {
     engine: session.engine,
     sessionKey: s.sessionKey,
@@ -1054,6 +1062,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onToast: (text: string) => notify(text),
     onOpenSession: openConversation,
     onReply: (target: { entryId: string; name: string; text: string }) => setReplyTo(target),
+    onOpen: openTarget,
   };
   const sideWidth = liveW ?? (rail ? 68 : layout.sideW);
   const frameClass = ["frame", rail ? "rail" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
@@ -1084,24 +1093,21 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         const host = new URL(url).hostname;
         return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]" ? "this computer" : machine?.name || host;
       })(),
-      onOpen: (target: string) => {
-        if (target.startsWith("settings/")) {
-          openSettings(target.slice("settings/".length));
-        } else if (target === "customize/tools") {
-          openPlace("customize");
-        } else if (target === "local-model-setup") {
-          openSettings("local");
-        }
-      },
+      emptyConversation: !s.history.length && !s.pendingUser && !s.liveRunId && !questions.list.length,
     };
     main = draftTopic ? (
       <div className="conversation-column" data-testid="new-topic-draft">
         {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
-        <div className="conversation-empty" style={{ flex: 1 }} />
+        <div className="conversation-empty scroll" style={{ flex: 1, overflowY: "auto" }}>
+          <ThreadContext.Provider value={{ engine: draftEngine, sessionKey: draftEngine?.sessionKey, name: trunkName(draftTopic.agentId), toast: notify, running: false }}>
+            <div className="thread"><EmptyState onOpenSession={openConversation} onStart={(text) => void sendNew(text)} onOpen={openTarget} /></div>
+          </ThreadContext.Provider>
+        </div>
         <div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
         <Composer
           key={draftTopic.nonce}
           {...composerProps}
+          emptyConversation
           engine={draftEngine}
           name={trunkName(draftTopic.agentId)}
           draftAgentId={draftTopic.agentId}
