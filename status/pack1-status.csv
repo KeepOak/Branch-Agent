@@ -1,2 +1,2 @@
 id,build_state,upstream_tests_ported,notes
-AGENT-LOOP-0025,in progress,0/1,
+AGENT-LOOP-0025,blocked,0/1,Pinned ToolLoopAgent conversion imports @internal/ai-v6 and the Mastra Agent/processor runtime; Branch has no ai or @ai-sdk packages in its manifests or frozen lockfile. Required atlas INDEX/data rows and owner safety guide are also absent. No standalone compatibility stub added.
