@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/imap/src/watcher.test.ts (atlas AUTOMATION-0055). Changed for Branch: rebranded through scripts/rebrand-map.json; retain current upstream regression coverage instead of older atlas tests.
 import { once } from "node:events";
 import { createServer, type Server, type Socket } from "node:net";
 import type { BranchPluginServiceContextV2 } from "branch/plugin-sdk/plugin-entry";
