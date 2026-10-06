@@ -3,6 +3,7 @@
 // (update.status updateAvailable.commits) and offers "Install when nothing is running".
 import { useState } from "react";
 import { versionParts } from "../connect/branch-version";
+import { installOnComputer } from "../connect/desktop-component-updates";
 import { Dialog } from "./Dialog";
 import { Icon, type IconName } from "./icons";
 import type { UpdateInfo } from "./status-data";
@@ -21,6 +22,8 @@ type Props = {
   onClose: () => void;
   /** Open on the waiting version (the version menu's "What's new"). */
   startOnReady?: boolean;
+  desktopInstall?: boolean;
+  computerName?: string;
 };
 
 function Rows({ title, rows, close }: { title: string; rows: NewRow[]; close: () => void }) {
@@ -56,7 +59,7 @@ export function WhatsNew(p: Props) {
   const groups = on === "ready" ? waiting : p.installed;
   const footer = (
     <>
-      {on === "ready" ? (
+      {on === "ready" && p.desktopInstall ? (
         <button type="button" className="btn" data-testid="wn-install" disabled={p.update?.installing} onClick={() => (p.onClose(), p.onInstall())}>
           Install when nothing is running
         </button>
@@ -78,7 +81,7 @@ export function WhatsNew(p: Props) {
           </button>
         </span>
       ) : null}
-      <p className="hint wn-hint">{on === "ready" && ready ? `What Branch ${versionParts(ready).short} brings. It installs when nothing is running and keeps a safety copy first.` : `What Branch ${versionParts(p.version).short} brought, and where each part lives.`}</p>
+      <p className="hint wn-hint">{on === "ready" && ready ? p.desktopInstall ? `What Branch ${versionParts(ready).short} brings. It installs when nothing is running and keeps a safety copy first.` : installOnComputer(p.computerName ?? "") : `What Branch ${versionParts(p.version).short} brought, and where each part lives.`}</p>
       {on === "ready" && !notes.length ? <p className="hint">The update didn't say what it changes.</p> : null}
       <Rows title="New" rows={groups.New} close={p.onClose} />
       <Rows title="Better" rows={groups.Better} close={p.onClose} />

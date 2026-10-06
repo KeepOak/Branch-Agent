@@ -1342,6 +1342,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             gateway,
             update,
             version: branchVersion,
+            computerName: machine?.name ?? "",
             openRow,
             working: lists.rows.filter((r) => r.working).map((r) => ({ key: r.key, title: trunkName(r.agentId), line: r.isMain ? "Working" : r.title || "New conversation" })),
             openSettings,
@@ -1507,6 +1508,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         <WhatsNew
           version={branchVersion}
           update={update}
+          desktopInstall={Boolean(componentDesktop(session.gatewayUrl)?.componentUpdates)}
+          computerName={machine?.name ?? ""}
           startOnReady={guide === "news-ready"}
           installed={installedRows({ setup: () => firstRun.open(0), shortcuts: () => setOverlay({ kind: "shortcuts" }), palette: () => setOverlay({ kind: "palette" }), settings: openSettings })}
           onOpenUpdates={() => openSettings("updates")}

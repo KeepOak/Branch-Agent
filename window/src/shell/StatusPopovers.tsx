@@ -13,6 +13,7 @@ import type { GatewayFacts } from "./use-status";
 import "./status.css";
 import { shownWhy } from "./shown-why";
 import { versionParts } from "../connect/branch-version";
+import { installOnComputer } from "../connect/desktop-component-updates";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 type Base = { above: Above; onClose: () => void };
@@ -272,10 +273,10 @@ export function RunningPopover({ request, working, onOpen, onAutomations, ...bas
   );
 }
 
-type VersionProps = Base & { update: UpdateInfo | null; version: string; desktopPending?: string | null; autoApply?: boolean; onWhatsNew: () => void; onInstall: () => void; onRemind: () => void };
+type VersionProps = Base & { update: UpdateInfo | null; version: string; desktopPending?: string | null; autoApply?: boolean; desktopInstall?: boolean; computerName?: string; onWhatsNew: () => void; onInstall: () => void; onRemind: () => void };
 
 /** §4.9.8 Version and update menu: what's ready, What's new, Install when nothing is running, Remind me tomorrow. */
-export function VersionPopover({ update, version, desktopPending, autoApply, onWhatsNew, onInstall, onRemind, ...base }: VersionProps) {
+export function VersionPopover({ update, version, desktopPending, autoApply, desktopInstall, computerName = "", onWhatsNew, onInstall, onRemind, ...base }: VersionProps) {
   const latest = update?.latest && update.latest !== version ? update.latest : null;
   return (
     <Popover at={{ x: 0, y: 0 }} label="Version and updates" testid="pop-version" className="sp" {...base}>
@@ -283,7 +284,7 @@ export function VersionPopover({ update, version, desktopPending, autoApply, onW
       {latest ? (
         <>
           <div className="pt">Branch {versionParts(latest).short} is ready</div>
-          <p className="pp">{update?.waiting ?? "Installs when nothing is running and keeps a safety copy first."}</p>
+          <p className="pp">{desktopInstall ? update?.waiting ?? "Installs when nothing is running and keeps a safety copy first." : installOnComputer(computerName)}</p>
           {update?.notes.length ? (
             <ul className="steps-list sp-notes">
               {update.notes.map((n, i) => (
@@ -292,7 +293,7 @@ export function VersionPopover({ update, version, desktopPending, autoApply, onW
             </ul>
           ) : null}
           <Item icon="book" label="What’s new" testid="ver-whatsnew" onClick={onWhatsNew} />
-          <Item icon="check" label="Install when nothing is running" testid="ver-install" onClick={onInstall} off={update?.installing ? update.waiting ?? "Installing now." : undefined} />
+          {desktopInstall ? <Item icon="check" label="Install when nothing is running" testid="ver-install" onClick={onInstall} off={update?.installing ? update.waiting ?? "Installing now." : undefined} /> : null}
           <Item icon="clock" label="Remind me tomorrow" testid="ver-remind" onClick={onRemind} />
         </>
       ) : (
