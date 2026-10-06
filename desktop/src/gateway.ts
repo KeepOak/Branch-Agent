@@ -42,7 +42,7 @@ function testProfile(): Record<string, string> {
   };
 }
 
-export function startGateway(cfg: DesktopConfig, engineDir: string, token: string): ChildProcess {
+export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false): ChildProcess {
   const log = createWriteStream(join(cfg.dataDir, "gateway.log"), { flags: "a" });
   const profile = prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => log.write(message + "\n"));
   if (profile.note) log.write(profile.note + "\n");
@@ -59,6 +59,7 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     BRANCH_SKIP_CHANNELS: undefined,
     BRANCH_GATEWAY_PORT: String(cfg.gatewayPort),
     BRANCH_GATEWAY_TOKEN: token,
+    BRANCH_GATEWAY_STANDBY: standby ? "1" : undefined,
     ...testProfile(),
   };
   const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(cfg.gatewayPort)];
@@ -71,10 +72,29 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   });
   child.stdout?.pipe(log);
   child.stderr?.pipe(log);
-  if (child.pid !== undefined) {
+  if (!standby && child.pid !== undefined) {
     writeFileSync(join(cfg.dataDir, "gateway.pid"), String(child.pid));
   }
   return child;
+}
+
+/** Wait for the new engine's code-only warmup while the current gateway keeps serving. */
+export function waitForGatewayStandby(child: ChildProcess, timeoutMs: number): Promise<void> {
+  if (!child.connected) return Promise.reject(new Error("The standby activity channel is unavailable"));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { cleanup(); reject(new Error("The standby did not warm in time")); }, timeoutMs);
+    const cleanup = () => { clearTimeout(timer); child.off("message", onMessage); child.off("exit", onExit); child.off("error", onError); };
+    const onMessage = (value: unknown) => {
+      const message = value as { type?: unknown; pid?: unknown };
+      if (message?.type !== "branch-desktop:standby-ready" || message.pid !== child.pid) return;
+      cleanup(); resolve();
+    };
+    const onExit = () => { cleanup(); reject(new Error("The standby exited before warming")); };
+    const onError = (error: Error) => { cleanup(); reject(error); };
+    child.on("message", onMessage);
+    child.once("exit", onExit);
+    child.once("error", onError);
+  });
 }
 
 export interface GatewayActivity { idle: boolean; activeRuns: number; pendingReplies: number; totalActive: number }

@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { drainStopGateway, gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady } from "./gateway";
+import { drainStopGateway, gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForGatewayStandby, waitForReady } from "./gateway";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
@@ -182,8 +182,21 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
   engineRestartInProgress = true;
   gatewaySupervisor.cancelPending();
   const windowBefore = windowBuild(servedWindowDir);
+  let standby: ChildProcess | undefined;
   try {
     if (!await candidatePassed(label)) return;
+    if (freemem() >= CANDIDATE_MIN_FREE_BYTES) {
+      const engineDir = resolveEngineDir(cfg);
+      try {
+        standby = startGateway(cfg, engineDir, token, true);
+        await waitForGatewayStandby(standby, READY_TIMEOUT_MS);
+        log(`update ${label}: standby engine ${standby.pid} prepared while the current engine kept serving`);
+      } catch (error) {
+        if (standby) stopGateway(standby);
+        standby = undefined;
+        log(`update ${label}: standby preparation failed; using the normal guarded swap: ${String(error)}`);
+      }
+    }
     const started = Date.now();
     sendToBranchWindows("branch-desktop:engine-update", "updating");
     const priorGateway = gateway;
@@ -198,7 +211,9 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     const stopped = Date.now();
     servedWindowDir = cfg.windowDir;
     await waitForGatewayPort();
-    const rolledBack = await bootSelectedEngine();
+    const selectedStandby = standby;
+    standby = undefined;
+    const rolledBack = await bootSelectedEngine(selectedStandby);
     log(`update ${label}: engine ${rolledBack ? "rolled back" : "swapped"} in place; stop ${stopped - started} ms, start ${Date.now() - stopped} ms, app and window kept open`);
     engineUpdateReady = false;
     if (rolledBack) sendToBranchWindows("branch-desktop:engine-update", "kept");
@@ -208,6 +223,7 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
       sendToBranchWindows("branch-desktop:engine-update", "updated");
     }
   } catch (error) {
+    if (standby) stopGateway(standby);
     // Still serving (the engine became busy before it stopped): offer the update again.
     if (engineRunning()) sendToBranchWindows("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
     throw error;
@@ -514,9 +530,10 @@ async function waitForGatewayPort(): Promise<void> {
 }
 
 /** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
-async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = true): Promise<void> {
+async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = true, prepared?: ChildProcess): Promise<void> {
   const started = Date.now();
-  const child = startGateway(cfg, engineDir, token);
+  const child = prepared ?? startGateway(cfg, engineDir, token);
+  if (prepared?.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prepared.pid));
   gateway = child;
   const observed = gatewaySupervisor.observe(child);
   log(`gateway started from ${engineDir}, pid ${child.pid}`);
@@ -546,10 +563,14 @@ function watchEngine(): void {
 }
 
 /** A failed newly published build restores the prior pointer/window before booting the retained engine. */
-async function bootSelectedEngine(): Promise<boolean> {
+async function bootSelectedEngine(prepared?: ChildProcess): Promise<boolean> {
   const selectedEngine = resolveEngineDir(cfg);
   return bootSelectedEngineWithRollback({
-    boot: bootEngine,
+    boot: () => {
+      const child = prepared;
+      prepared = undefined;
+      return bootEngine(resolveEngineDir(cfg), true, child);
+    },
     stopFailedGateway: () => { if (gateway) stopGateway(gateway); },
     recordTimeout: () => recordComponentUpdateTimeout(cfg, selectedEngine),
     rejectExited: () => rejectFailedComponentUpdate(cfg, selectedEngine),
