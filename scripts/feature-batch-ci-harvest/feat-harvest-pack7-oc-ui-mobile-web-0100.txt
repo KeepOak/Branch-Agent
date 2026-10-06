@@ -8,11 +8,13 @@
 # UI-MOBILE-WEB-0104: Telegram Mini App dashboard (existing production implementation).
 # UI-MOBILE-WEB-0110: Inline HTML widgets (existing production implementation).
 # UI-MOBILE-WEB-0111: Session dashboards of live widgets (existing production implementation).
+# UI-MOBILE-WEB-0113: Agent screen tool (existing production implementation).
 engine:extensions/canvas/src/a2ui-jsonl.test.ts
 engine:extensions/canvas/src/board-widget.test.ts
 engine:extensions/canvas/src/host/a2ui.test.ts
 engine:extensions/telegram/src/miniapp/init-data.test.ts
 engine:extensions/telegram/src/miniapp/routes.test.ts
+engine:src/agents/tools/screen-tool.test.ts
 engine:src/canvas/widget-script-syntax.test.ts
 engine:src/canvas/widget-tool.test.ts
 engine:src/canvas/wrap.test.ts
