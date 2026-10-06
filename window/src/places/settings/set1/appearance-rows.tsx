@@ -7,8 +7,6 @@ import type { Keep, Lv, Opt, RowEntry } from "../kit";
 export type Kind = "sw" | "seg" | "pick";
 export type RowSpec = { sec: string; group?: string; title: string; key: string; kind: Kind; def: string | boolean; sub?: string; help?: string; opts?: Opt[]; lv?: Lv; keep?: Keep; off?: string };
 
-/** Only on parts the window draws with a right-click Hide this (shell/shown.ts HIDEABLE). */
-const SHOWN = "Right-click it anywhere to hide it too.";
 /** Things only the Branch desktop app or the computer itself can do. */
 export const DESKTOP = "Needs the Branch desktop app.";
 const o = (pairs: [string, string][], off: Record<string, string> = {}): Opt[] => pairs.map(([id, label]) => ({ id, label, ...(off[id] ? { off: off[id] } : {}) }));
@@ -29,14 +27,14 @@ export const ROWS: RowSpec[] = [
   { sec: "Background", title: "Season", key: "season", kind: "seg", def: "auto", keep: "everywhere", sub: "Fireflies in summer, petals in spring, leaves in autumn, snow in winter.", opts: o([["auto", "By the date"], ["spring", "Spring"], ["summer", "Summer"], ["autumn", "Autumn"], ["winter", "Winter"]]) },
   { sec: "Reading", title: "Text size", key: "size", kind: "seg", def: "Regular", keep: "device", sub: "Changes every screen.", opts: o([["small", "Small"], ["Regular", "Regular"], ["large", "Large"], ["larger", "Larger"], ["largest", "Largest"]]) },
   { sec: "The pet", title: "Pet sounds", key: "petSounds", kind: "sw", def: false, keep: "everywhere", sub: "A tiny sound when you pat it.", help: "Off until you turn it on." },
-  { sec: "What’s shown", title: "The usage ring", key: "show.usage", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
-  { sec: "What’s shown", title: "The gateway in the status bar", key: "show.gateway", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
+  { sec: "What’s shown", title: "The usage ring", key: "show.usage", kind: "sw", def: true, keep: "everywhere" },
+  { sec: "What’s shown", title: "The gateway in the status bar", key: "show.gateway", kind: "sw", def: true, keep: "everywhere" },
   { sec: "What’s shown", title: "Graphics and memory", key: "show.gfx", kind: "sw", def: false, keep: "everywhere", sub: "Shows this computer’s graphics card and memory.", help: "Off until you choose: it keeps checking this computer’s graphics card and memory." },
   { sec: "What’s shown", title: "The pet", key: "show.pet", kind: "sw", def: true, keep: "everywhere" },
-  { sec: "What’s shown", title: "Projects in the list", key: "show.projects", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
+  { sec: "What’s shown", title: "Projects in the list", key: "show.projects", kind: "sw", def: true, keep: "everywhere" },
   { sec: "What’s shown", title: "What a working Trunk is doing, in the list", key: "show.live", kind: "sw", def: true, keep: "everywhere", sub: "The row’s preview shows its latest step while it works." },
   { sec: "What’s shown", title: "The whole status bar", key: "show.statusbar", kind: "sw", def: true, keep: "everywhere", sub: "Lockdown’s banner and Stop while a task runs can never be hidden." },
-  { sec: "What’s shown", title: "Keep things still", key: "still", kind: "sw", def: false, keep: "everywhere", sub: "Stops the pet moving, the working ring and the logo’s float.", help: "Off until you choose: it freezes every face, so none plays its action animations." },
+  { sec: "What’s shown", title: "Keep things still", key: "still", kind: "sw", def: false, keep: "everywhere", sub: "Stops the pet, the working ring and face animations.", help: "Off until you choose: it freezes every face, so none plays its action animations." },
   { sec: "What’s shown", title: "Scenery behind the list", key: "scenery", kind: "sw", def: false, keep: "everywhere", sub: "A small pixel oak at the foot of the list." },
   { sec: READING_MORE, title: "Messages", key: "msgLook", kind: "seg", def: "bubbles", sub: "Full width reads like a document.", opts: o([["bubbles", "Chat bubbles"], ["full", "Full width"]]) },
   { sec: READING_MORE, title: "Text direction", key: "dir", kind: "seg", def: "auto", sub: "Arabic, Hebrew and Persian read right to left; the conversation follows.", opts: o([["auto", "Follow the language"], ["rtl", "Right to left"], ["ltr", "Left to right"]]) },

@@ -62,6 +62,16 @@ describe("Settings › Appearance", () => {
     expect(document.querySelector(".kit-help-pop")?.textContent).toContain("Off until you turn it on.");
   });
 
+  it("shows right-click guidance once in help and uses the specified stillness copy", async () => {
+    const { engine } = engineOf();
+    await render(engine);
+    expect(host.textContent).not.toContain("Right-click it anywhere to hide it too.");
+    expect(host.querySelector('[data-row="Keep things still"] small')?.textContent).toBe("Stops the pet, the working ring and face animations.");
+    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
+    const help = document.querySelector(".kit-help-pop")?.textContent ?? "";
+    expect(help.split("Right-click it anywhere to hide it too.")).toHaveLength(2);
+  });
+
   it("draws the theme, the gallery button and the mirrors from the engine", async () => {
     const { engine } = engineOf();
     await render(engine);
