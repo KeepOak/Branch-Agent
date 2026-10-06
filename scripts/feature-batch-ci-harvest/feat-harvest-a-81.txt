@@ -10,6 +10,7 @@ engine:extensions/sms/src/delivery-observations.test.ts
 engine:extensions/sms/src/send.test.ts
 engine:extensions/sms/src/twilio.test.ts
 engine:extensions/sms/src/webhook.test.ts
+engine:extensions/whatsapp/src/agent-tools-call.test.ts
 engine:src/channels/message-access/admission-evidence.test.ts
 engine:src/channels/message-access/message-access.test.ts
 engine:src/infra/exec-approval-forwarder.test.ts
