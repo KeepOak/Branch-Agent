@@ -3,6 +3,9 @@ engine:src/channels/transport/stall-watchdog.test.ts
 engine:src/cli/gateway-cli/task-supervisor.test.ts
 engine:src/commands/channels.status.command-flow.test.ts
 engine:src/commands/gateway-status.test.ts
+engine:src/daemon/launchd-plist.native.test.ts
+engine:src/daemon/launchd-plist.test.ts
+engine:src/daemon/launchd.test.ts
 engine:src/daemon/schtasks.env-case.real.test.ts
 engine:src/daemon/schtasks.install.test.ts
 engine:src/daemon/schtasks.startup-fallback.test.ts
