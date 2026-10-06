@@ -94,10 +94,12 @@ async function packageDesktop(scratch, output, identity) {
   await copyFile(join(resources, "app.asar"), join(asar, "app.asar"));
   const desktop = { app: asar, electronVersion: identity.electronVersion };
   if (identity.platform === "darwin") {
+    const signingIdentity = process.env.BRANCH_MACOS_SIGNING_IDENTITY;
+    assert.match(signingIdentity ?? "", /^[A-F0-9]{40}$/, "macOS releases require a stable code-signing identity");
     // Packager signs before the bundled Node and icon revision are added. Sign the finished bundle,
     // including its nested code, and use system tar to retain _CodeSignature and framework symlinks.
-    await run("codesign", ["--force", "--sign", "-", "--timestamp=none", join(resources, "node/node")]);
-    await run("codesign", ["--force", "--deep", "--sign", "-", "--timestamp=none", join(app, "Branch Agent.app")]);
+    await run("codesign", ["--force", "--sign", signingIdentity, "--timestamp=none", join(resources, "node/node")]);
+    await run("codesign", ["--force", "--deep", "--sign", signingIdentity, "--timestamp=none", join(app, "Branch Agent.app")]);
     await run("tar", ["-czf", join(output, `branch-desktop-${identity.version}-${identity.platform}-${identity.arch}.tar.gz`), "-C", app, "."]);
   } else desktop.runtime = app;
   return { node, electron, electronVersion: identity.electronVersion, desktop,

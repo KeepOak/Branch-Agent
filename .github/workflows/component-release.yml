@@ -113,6 +113,7 @@ jobs:
       BRANCH_RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
       BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
       BRANCH_RELEASE_TARGET: ${{ matrix.target }}
+      BRANCH_MACOS_SIGNING_IDENTITY: 30BBF0B68236AE05E063465C39DEA6C5B396B11C
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -122,6 +123,32 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Import stable macOS release signing identity
+        if: matrix.target == 'darwin-arm64'
+        shell: bash
+        env:
+          BRANCH_MACOS_SIGNING_P12: ${{ secrets.BRANCH_MACOS_SIGNING_P12 }}
+          BRANCH_MACOS_SIGNING_PASSWORD: ${{ secrets.BRANCH_MACOS_SIGNING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$BRANCH_MACOS_SIGNING_P12"
+          test -n "$BRANCH_MACOS_SIGNING_PASSWORD"
+          keychain="$RUNNER_TEMP/branch-release-signing.keychain-db"
+          p12="$RUNNER_TEMP/branch-release-signing.p12"
+          cert="$RUNNER_TEMP/branch-release-signing.pem"
+          keychain_password="$(openssl rand -hex 32)"
+          printf '%s' "$BRANCH_MACOS_SIGNING_P12" | base64 --decode > "$p12"
+          openssl pkcs12 -in "$p12" -clcerts -nokeys -out "$cert" -passin env:BRANCH_MACOS_SIGNING_PASSWORD
+          security create-keychain -p "$keychain_password" "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security import "$p12" -k "$keychain" -P "$BRANCH_MACOS_SIGNING_PASSWORD" -T /usr/bin/codesign
+          security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$cert"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security default-keychain -d user -s "$keychain"
+          security find-identity -v -p codesigning "$keychain" | grep -F "$BRANCH_MACOS_SIGNING_IDENTITY"
+          rm -f "$p12" "$cert"
       - name: Check release inventory regressions
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
@@ -167,7 +194,11 @@ jobs:
           test -f "$app/Contents/_CodeSignature/CodeResources"
           test -L "$app/Contents/Frameworks/Electron Framework.framework/Versions/Current"
           codesign --verify --deep --strict --verbose=2 "$app"
-          # Ad-hoc signatures are not notarized; report Gatekeeper's assessment without failing the build.
+          (cd "$extracted" && codesign -d --extract-certificates "$app" 2>/dev/null)
+          fingerprint="$(openssl x509 -inform DER -in "$extracted/codesign0" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)"
+          test "$fingerprint" = "$BRANCH_MACOS_SIGNING_IDENTITY"
+          codesign -dr - "$app"
+          # The self-signed identity is stable but not notarized; report Gatekeeper's assessment.
           spctl -a -vv "$app" || true
       - name: Check compiled startup and update rollback
         env:
