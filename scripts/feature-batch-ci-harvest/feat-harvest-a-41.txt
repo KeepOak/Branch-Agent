@@ -1,3 +1,6 @@
+engine:extensions/imessage/src/client.test.ts
+engine:extensions/imessage/src/install-imsg.test.ts
+engine:extensions/imessage/src/monitor/remote-host.test.ts
 engine:extensions/signal/src/client-container.test.ts
 engine:extensions/signal/src/client-container.websocket.test.ts
 engine:extensions/signal/src/client-unix.test.ts
