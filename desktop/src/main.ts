@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { drainStopGateway, gatewayActivity, portIsFree, prepareStandbyGateway, readToken, setEnginePriority, sendStandbyTakeOver, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, setEnginePriority, sendStandbyTakeOver, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, waitForGatewayExit, waitForReady, type PreparedGateway } from "./gateway";
 import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
@@ -265,22 +265,26 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     const started = Date.now();
     sendToBranchWindows("branch-desktop:engine-update", "updating");
     const resumeSupervision = gatewaySupervisor.expectExit(priorGateway);
-    try {
-      if (explicit) log(`update ${label}: old engine ${await drainStopGateway(priorGateway)}`);
-      else await stopGatewayCleanly(priorGateway);
-    } catch (error) {
-      resumeSupervision();
-      throw error;
-    }
+    const handoff = standby ? await stepDownForStandby(label, priorGateway, resumeSupervision) : "drain";
+    let rolledBack = handoff === "kept";
     const stopped = Date.now();
-    stillOpen();
-    servedWindowDir = cfg.windowDir;
-    await waitForGatewayPort();
-    stillOpen();
-    const selectedStandby = standby;
-    standby = undefined;
-    const rolledBack = await bootSelectedEngine(selectedStandby);
-    log(`update ${label}: engine ${rolledBack ? "rolled back" : "swapped"} in place; stop ${stopped - started} ms, start ${Date.now() - stopped} ms, app and window kept open`);
+    if (handoff === "drain") {
+      try {
+        if (explicit) log(`update ${label}: old engine ${await drainStopGateway(priorGateway)}`);
+        else await stopGatewayCleanly(priorGateway);
+      } catch (error) {
+        resumeSupervision();
+        throw error;
+      }
+      stillOpen();
+      servedWindowDir = cfg.windowDir;
+      await waitForGatewayPort();
+      stillOpen();
+      const selectedStandby = standby;
+      standby = undefined;
+      rolledBack = await bootSelectedEngine(selectedStandby);
+    }
+    log(`update ${label}: engine ${rolledBack ? "rolled back" : "swapped"} in place${handoff === "drain" ? "" : " by handoff"}; stop ${stopped - started} ms, start ${Date.now() - stopped} ms, app and window kept open`);
     engineUpdateReady = false;
     if (rolledBack) {
       sendToBranchWindows("branch-desktop:engine-update", "kept");
@@ -298,9 +302,9 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     if (quitting) throw error;
     const message = error instanceof Error ? error.message : String(error);
     sendToBranchWindows("branch-desktop:engine-update-failed", message);
-    // Still serving only if the engine from before the update is the one running: a new engine that failed may
-    // not have exited yet, and it never became ready.
-    if (gateway === priorGateway && engineRunning()) {
+    // Still serving only if the engine from before the update is the one running (and not retiring): a new engine
+    // that failed may not have exited yet, and it never became ready.
+    if (gateway === priorGateway && engineRunning() && !retiring.has(priorGateway)) {
       recoveryDeferred = false;
       const state = controls.settings().autoApplyUpdates ? "auto-wait" : "ready";
       sendToBranchWindows("branch-desktop:engine-update", state);
@@ -323,6 +327,69 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
       gatewaySupervisor.recover(new Error(exitedDuring ? "the engine exited during an update" : "the update ended with no engine serving"));
     }
   }
+}
+
+/** Old engines finishing their kept sessions after a handoff; they stop by themselves, or on quit. */
+const retiring = new Set<ChildProcess>();
+function retireGateway(label: string, child: ChildProcess): void {
+  retiring.add(child);
+  child.once("exit", () => { retiring.delete(child); log(`update ${label}: old engine ${child.pid} finished its kept sessions and stopped`); });
+  // drain-stop after a step-down finishes the kept sessions (bounded by their lease deadline), then stops.
+  gatewayActivity(child, "drain", 30_000).catch(error => log(`update ${label}: old engine retire request: ${String(error)}`));
+}
+
+/**
+ * The seamless path. The old engine steps down without exiting: it refuses new work, stops channels and cron, keeps
+ * every session with a run in flight until that run finishes and saves, and releases the state. The warm standby
+ * takes the state over on its own port; once it answers /readyz the window is handed to it and the old engine is
+ * told to finish its kept sessions and stop. A standby that fails gives control back to the old engine.
+ * "drain": the old engine cannot step down (a build from before the handoff, or no answer in time).
+ */
+async function stepDownForStandby(label: string, prior: ChildProcess, resumeSupervision: () => void): Promise<"swapped" | "kept" | "drain"> {
+  const selected = standby;
+  if (!selected) return "drain";
+  const stepped = await deactivateGateway(prior);
+  if (stepped === "unsupported") { log(`update ${label}: the old engine did not step down; draining it instead`); return "drain"; }
+  if (stepped === "refused") { resumeSupervision(); throw new Error("the running engine could not step down for the update and kept serving"); }
+  standby = undefined;
+  log(`update ${label}: old engine ${prior.pid} stepped down; standby ${selected.child.pid} takes over on port ${selected.port}`);
+  servedWindowDir = cfg.windowDir;
+  try {
+    await bootEngine(resolveEngineDir(cfg), true, selected);
+  } catch (error) {
+    await takeControlBack(label, prior, selected, resumeSupervision, error);
+    return "kept";
+  }
+  retireGateway(label, prior);
+  return "swapped";
+}
+
+/** A standby that failed after the old engine stepped down: stop it and let the old engine reclaim the state. */
+async function takeControlBack(label: string, prior: ChildProcess, selected: PreparedGateway, resumeSupervision: () => void, error: unknown): Promise<void> {
+  log(`update ${label}: the standby failed (${error instanceof Error ? error.message : String(error)}); giving control back to the old engine`);
+  stopGateway(selected.child);
+  await waitForGatewayExit(selected.child, 15_000).catch(() => undefined);
+  const failedEngine = resolveEngineDir(cfg);
+  // Something else took the standby's spare port before it could bind: not the release's fault.
+  const portClash = selected.child.exitCode !== null && !await portIsFree(selected.port);
+  try {
+    if (portClash) log(`update ${label}: standby port ${selected.port} was taken before the standby could bind it; the release stays eligible`);
+    else if (error instanceof GatewayReadinessTimeoutError) await recordComponentUpdateTimeout(cfg, failedEngine);
+    else await rejectFailedComponentUpdate(cfg, failedEngine);
+  } catch (recordError) { log(`update ${label}: failure could not be recorded: ${String(recordError)}`); }
+  await rollbackComponentUpdate(cfg).catch(rollbackError => log(`update ${label}: component rollback: ${String(rollbackError)}`));
+  servedWindowDir = cfg.windowDir;
+  gateway = prior;
+  if (!await rollbackGateway(prior)) {
+    // It can no longer serve new work: let it finish its kept sessions and stop; recovery restarts the last good
+    // build once it has exited.
+    retireGateway(label, prior);
+    resumeSupervision();
+    throw new Error(`the update failed and the old engine could not take control back: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  await waitForReady({ ...cfg, gatewayPort }, prior, READY_TIMEOUT_MS);
+  resumeSupervision();
+  log(`update ${label}: the old engine took control back on port ${gatewayPort}`);
 }
 
 /**
@@ -816,6 +883,7 @@ function shutdown(): void {
   controls.dispose();
   stopCandidate();
   stopWarmingStandby();
+  for (const child of retiring) stopGateway(child);
   if (standby) stopGateway(standby.child);
   standby = undefined;
   if (gateway) stopGateway(gateway);

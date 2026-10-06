@@ -218,6 +218,47 @@ export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" = f
   return within(request.reply, timeoutMs, "The gateway activity check timed out").finally(() => request.cancel());
 }
 
+/** Sends one handoff request over the owned child channel; resolves with the engine's `ok`, or "unanswered". */
+function gatewayHandoffRequest(child: ChildProcess, type: "deactivate" | "rollback", timeoutMs: number): Promise<boolean | "unanswered"> {
+  if (!child.connected) return Promise.resolve("unanswered");
+  const id = ++nextActivityId;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { cleanup(); resolve("unanswered"); }, timeoutMs);
+    const cleanup = () => { clearTimeout(timer); child.off("message", onMessage); child.off("exit", onExit); };
+    const onMessage = (value: unknown) => {
+      const response = value as { type?: unknown; id?: unknown; ok?: unknown };
+      if (response?.type !== `branch-desktop:${type}-result` || response.id !== id) return;
+      cleanup(); resolve(response.ok === true);
+    };
+    const onExit = () => { cleanup(); resolve(false); };
+    child.on("message", onMessage);
+    child.once("exit", onExit);
+    child.send({ type: `branch-desktop:${type}`, id }, error => { if (error) { cleanup(); resolve("unanswered"); } });
+  });
+}
+
+/**
+ * Asks the old engine to step down for its standby without exiting: it refuses new work, stops channels and cron,
+ * keeps a lease on every session with a run in flight and releases the state, so the standby takes over at once.
+ * "unsupported": an engine from before the handoff (or one too busy to answer); the caller drains it instead.
+ */
+export async function deactivateGateway(child: ChildProcess, timeoutMs = HANDOFF_TIMEOUT_MS): Promise<"deactivated" | "refused" | "unsupported"> {
+  const answer = await gatewayHandoffRequest(child, "deactivate", timeoutMs);
+  return answer === "unanswered" ? "unsupported" : answer ? "deactivated" : "refused";
+}
+
+/** Takes control back after a failed standby: the old engine reacquires the state and restarts in place. */
+export async function rollbackGateway(child: ChildProcess, timeoutMs = HANDOFF_TIMEOUT_MS): Promise<boolean> {
+  return await gatewayHandoffRequest(child, "rollback", timeoutMs) === true;
+}
+
+/**
+ * Stepping down stops channels and cron before it answers. An engine from before the handoff never answers, so this
+ * also bounds how long such an update waits before draining instead; a late answer is harmless (a drain request
+ * after a step-down finishes the kept sessions, then stops).
+ */
+const HANDOFF_TIMEOUT_MS = 20_000;
+
 /**
  * Ask the owned engine to drain cleanly, but only while it is idle at the gateway. Short post-ready and background
  * work makes it answer "busy" for a few seconds, so the request repeats every 2 s for up to `busyRetryMs`.
