@@ -29,9 +29,17 @@
   gap: 16px;
 }
 
+/* Leave the latest message above the floating agent window when scrolled to the end. */
+.thread-wrap .thread-end {
+  min-height: var(--agent-window-clearance, 0px);
+}
+
 @media (max-width: 760px) {
   .thread-wrap .thread {
     padding: 18px 16px;
+  }
+  .thread-wrap .thread-end {
+    min-height: 0;
   }
 }
 

@@ -39,6 +39,13 @@ function backend(initialCost: unknown) {
 }
 
 describe("actual Activity helper measured facts", () => {
+  it("shows one helpers section with status marks instead of helper faces", async () => {
+    await render(backend(0.1).engine);
+    expect(container.querySelectorAll('section[aria-label="Helpers on this task"]')).toHaveLength(1);
+    expect(container.querySelectorAll(".hp-card-pn")).toHaveLength(1);
+    expect(container.querySelector(".hp-card-pn .hp-mark-pn svg")).not.toBeNull();
+    expect(container.querySelector(".hp-card-pn .character-face, .hp-card-pn .pebble")).toBeNull();
+  });
   it("refreshes measured spend when the same helper key finishes", async () => {
     const fixture = backend(0.1);
     await render(fixture.engine);
