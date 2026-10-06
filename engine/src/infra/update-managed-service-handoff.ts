@@ -301,6 +301,8 @@ function runServiceCommand(command, args, onSpawn, deadline, timeoutCap) {
     const child = spawn(command, args, {
       env: params.serviceManagerEnv,
       stdio: ["ignore", "pipe", "pipe"],
+      // The detached helper has no console, so each unhidden command would open one.
+      windowsHide: true,
       killSignal: "SIGKILL",
       timeout: Math.min(timeoutCap ?? remaining, remaining),
     });
@@ -1492,6 +1494,7 @@ async function spawnManagedServiceUpdateHandoff(
       cwd: dir,
       env,
       detached: true,
+      windowsHide: true,
       stdio: ["pipe", "pipe", "ignore"],
     });
     owner.launcher = child;

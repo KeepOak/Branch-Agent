@@ -2,13 +2,14 @@
 // contact classification and unread rollup; this file only adapts it to rows.
 import type { Contact as GatewayContact, Topic } from "@branch/gateway-protocol";
 import type { Conversation } from "../connect/conversations";
+import type { RoomPick } from "../rooms/RoomFaces";
 import type { Actions } from "./conversation-actions";
 import type { ListPrefs, ListSection } from "./list-model";
 
-export type Contact = GatewayContact & { thread: Conversation | null };
+export type Contact = GatewayContact & { thread: Conversation | null; roomId?: string; offline?: boolean; roomPicks?: RoomPick[] };
 
 /** Join Gateway contacts to session rows only for existing row actions and detail. */
-export function projectContact(raw: readonly GatewayContact[], sessions: readonly Conversation[]): Contact[] {
+export function projectContact(raw: readonly (GatewayContact & { roomId?: string; offline?: boolean; roomPicks?: RoomPick[] })[], sessions: readonly Conversation[]): Contact[] {
   const byKey = new Map(sessions.map((row) => [row.key, row]));
   return raw.map((contact) => ({
     ...contact,
@@ -23,13 +24,17 @@ export function contactRow(contact: Contact): Conversation {
     ? `${contact.preview.title}: ${contact.preview.text}`
     : contact.preview.text;
   return {
-    key: contact.threadKey, title: contact.name, agentId: base?.agentId ?? (contact.kind === "trunk" ? contact.id.slice(6) : undefined),
+    key: contact.threadKey, title: contact.name, agentId: base?.agentId ?? (contact.kind === "trunk" ? contact.id.slice(6) : contact.roomId ? contact.threadKey.split(":")[1] : undefined),
     isMain: contact.kind === "trunk", pinned: Boolean(contact.pinnedAt), archived: Boolean(contact.archivedAt),
     unread: contact.threadUnread || contact.unreadTopics > 0, snoozedUntil: base?.snoozedUntil ?? null,
+    ...(base?.projectId ? { projectId: base.projectId } : {}),
+    ...(contact.roomPicks ? { roomPicks: contact.roomPicks } : {}),
     createdAt: base?.createdAt ?? 0, updatedAt: contact.preview.at, preview,
     working: contact.working, needsYou: contact.needsYou, kind: contact.kind, system: false, automation: false,
     totalTokens: base?.totalTokens ?? 0, contextTokens: base?.contextTokens ?? 0,
     ...(base?.sessionId ? { sessionId: base.sessionId } : {}),
+    // The thread's last run error, so its restart notice shows on the Trunk's own conversation.
+    ...(base?.runError ? { runError: base.runError } : {}),
   };
 }
 
@@ -61,9 +66,11 @@ export function buildContactSections(contacts: Contact[], prefs: ListPrefs, now:
     return prefs.status === "all" || (!c.archivedAt && !(c.thread?.snoozedUntil && c.thread.snoozedUntil > now));
   }).sort((a, b) => b.lastActivityAt - a.lastActivityAt || a.name.localeCompare(b.name));
   const pinned = shown.filter((c) => c.pinnedAt).map(contactRow);
-  const recent = shown.filter((c) => !c.pinnedAt).map(contactRow);
+  const groups = shown.filter((c) => !c.pinnedAt && Boolean(c.roomId)).map(contactRow);
+  const recent = shown.filter((c) => !c.pinnedAt && !c.roomId).map(contactRow);
   return [
     ...(pinned.length || prefs.hideEmpty === "never" ? [{ id: "pinned", label: "Pinned", rows: pinned }] : []),
+    ...(groups.length ? [{ id: "groups", label: "Groups", rows: groups }] : []),
     { id: "recent", label: "Recent", rows: recent },
   ];
 }

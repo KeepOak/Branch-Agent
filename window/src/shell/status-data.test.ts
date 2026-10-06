@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comingUp, dueWords, limitsSummary, monthParams, readLimits, readMonthSpend, readRoom, readRounds, readUpdate, resetWords, ringReading, sizeWords, uptimeWords, windowName } from "./status-data";
+import { comingUp, dueWords, readLimits, readRoom, readRounds, resetWords, ringReading, sizeWords, uptimeWords, windowName } from "./status-data";
 
 const NOW = new Date(2026, 9, 2, 12, 0).getTime();
 
@@ -14,17 +14,16 @@ describe("usage.status (§4.9.4)", () => {
   };
   it("one row per account with the spec's window words and pills", () => {
     const l = readLimits(result, NOW);
-    expect(l.rows[0]).toMatchObject({ name: "ChatGPT plan", account: "a@b.c · Plus", pill: "Measured", line: "as of 4 min ago" });
+    expect(l.rows[0]).toMatchObject({ name: "ChatGPT", account: "a@b.c · Plus", pill: "Measured", line: "as of 4 min ago" });
     expect(l.rows[0].windows).toEqual([
       { name: "This 5-hour window", left: 12, reset: "resets at 6 pm", low: true },
       { name: "This week", left: 64, reset: "resets Monday", low: false },
     ]);
     expect(l.rows[1]).toMatchObject({ pill: "Not published", line: "This service does not say what it allows." });
     expect(l.rows[2].line).toBe("Token expired");
-    expect(limitsSummary(l.rows)).toBe("1 of 3 connections report a limit. The other 2 do not publish one. Accounts are never added together.");
   });
-  it("the ring shows the window with the least left, and nothing without a reading", () => {
-    expect(ringReading(readLimits(result, NOW))).toEqual({ name: "ChatGPT plan", left: 12, reset: "resets at 6 pm", low: true });
+  it("the ring shows the first account's five-hour reading, and nothing without a reading", () => {
+    expect(ringReading(readLimits(result, NOW))).toEqual({ name: "a@b.c", left: 12, reset: "resets at 6 pm", low: true });
     expect(ringReading(readLimits({ providers: [] }, NOW))).toBeNull();
     expect(ringReading(null)).toBeNull();
   });
@@ -33,14 +32,6 @@ describe("usage.status (§4.9.4)", () => {
     expect(windowName("Day")).toBe("Today");
     expect(windowName("Opus")).toBe("Opus");
     expect(resetWords(undefined, 0, NOW)).toBe("full");
-  });
-});
-
-describe("usage.cost this month", () => {
-  it("asks from the 1st to today and reads the total", () => {
-    expect(monthParams(new Date(2026, 9, 2))).toMatchObject({ startDate: "2026-10-01", endDate: "2026-10-02", mode: "specific", agentScope: "all" });
-    expect(readMonthSpend({ totals: { totalCost: 14.2 } })).toBe("$14.20");
-    expect(readMonthSpend({})).toBeNull();
   });
 });
 
@@ -91,16 +82,6 @@ describe("Running and version", () => {
     ];
     expect(comingUp(jobs, NOW)).toEqual([{ name: "soon", when: "in 12 min" }, { name: "late", when: "in 3 days" }]);
     expect(dueWords(NOW - 5, NOW)).toBe("due");
-  });
-  it("update.status: the waiting version and its commits", () => {
-    expect(readUpdate({ updateAvailable: { currentVersion: "1.0.0", latestVersion: "1.1.0", channel: "stable", commits: [{ sha: "a", subject: "Faster start" }] } }, "1.0.0")).toEqual({
-      current: "1.0.0",
-      latest: "1.1.0",
-      notes: ["Faster start"],
-      installing: false,
-      waiting: null,
-    });
-    expect(readUpdate({ updateAvailable: null }, "1.0.0").latest).toBeNull();
   });
   it("uptime words", () => {
     expect(uptimeWords((3 * 24 + 4) * 3_600_000)).toBe("3 days, 4 hours");

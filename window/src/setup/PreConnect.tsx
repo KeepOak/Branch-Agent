@@ -2,8 +2,8 @@
 // here, "Hi, I'm Branch." then "Where should Branch run?", with the address and key, the approval wait and the
 // connect problems in plain words (DESIGN-SPEC §4.8.1.1–2, "Can't connect: reason and fix steps").
 import { useState } from "react";
-import { connectProblem, hostOf } from "./connect-problems";
-import { readPreConnect, savePreConnect } from "./pre-connect-state";
+import { connectProblem } from "./connect-problems";
+import { isLocalTarget, readPreConnect, readTargetName, savePreConnect } from "./pre-connect-state";
 import { SetupShell } from "./SetupShell";
 import { WelcomeHero } from "./SetupBrand";
 import { RemoteForm, WelcomeBody, WhereBody } from "./steps-early";
@@ -18,7 +18,7 @@ export type PreConnectState =
 /** `local`: this computer's gateway address (the desktop app's, the build's, or the engine's default). */
 type Props = { local: string; address: string | null; state: PreConnectState; busy: boolean; startAtWhere?: boolean; onConnect: (url: string, key: string) => void; onRetry: () => void };
 
-function Pairing({ host, onRetry }: { host: string; onRetry: () => void }) {
+function Pairing({ host, address, onRetry }: { host: string; address: string; onRetry: () => void }) {
   return (
     <div className="ob-status-box" data-testid="setup-pairing">
       <span className="sdot warn" />
@@ -31,6 +31,7 @@ function Pairing({ host, onRetry }: { host: string; onRetry: () => void }) {
           <li>Once approved, choose Connect.</li>
         </ol>
         <p className="hint">Waiting for approval… this connects by itself once approved.</p>
+        <details className="ob-raw"><summary>Details</summary><code>{address}</code></details>
         <button type="button" className="btn sm" onClick={onRetry}>
           Check now
         </button>
@@ -39,7 +40,7 @@ function Pairing({ host, onRetry }: { host: string; onRetry: () => void }) {
   );
 }
 
-function Failed({ host, code, message }: { host: string; code?: string; message: string }) {
+function Failed({ host, address, code, message }: { host: string; address: string; code?: string; message: string }) {
   const p = connectProblem(code, host);
   return (
     <div className="ob-status-box" data-testid="setup-problem">
@@ -53,8 +54,8 @@ function Failed({ host, code, message }: { host: string; code?: string; message:
           ))}
         </ol>
         <details className="ob-raw">
-          <summary>Raw error</summary>
-          <code>{message}</code>
+          <summary>Details</summary>
+          <code>{address}</code><br /><code>{message}</code>
         </details>
       </div>
     </div>
@@ -62,6 +63,8 @@ function Failed({ host, code, message }: { host: string; code?: string; message:
 }
 
 export function PreConnect({ local, address, state, busy, startAtWhere, onConnect, onRetry }: Props) {
+  const target = address ?? local;
+  const host = isLocalTarget(target) ? "This computer" : readTargetName(target) ?? "That computer";
   const saved = readPreConnect();
   const [promise, setPromise] = useState(saved?.promise ?? false);
   const [where, setWhere] = useState<Where>(startAtWhere ? "remote" : (saved?.where ?? (address && address !== local ? "remote" : "this")));
@@ -104,8 +107,8 @@ export function PreConnect({ local, address, state, busy, startAtWhere, onConnec
       ) : (
         <>
           <WhereBody where={where} onWhere={(w) => (setWhere(w), remember({ where: w }))} />
-          {state.kind === "pairing" ? <Pairing host={hostOf(address ?? local)} onRetry={onRetry} /> : null}
-          {state.kind === "failed" ? <Failed host={hostOf(address ?? local)} code={state.code} message={state.message} /> : null}
+          {state.kind === "pairing" ? <Pairing host={host} address={target} onRetry={onRetry} /> : null}
+          {state.kind === "failed" ? <Failed host={host} address={target} code={state.code} message={state.message} /> : null}
           {state.kind !== "pairing" ? form : null}
         </>
       )}

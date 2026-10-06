@@ -11,7 +11,9 @@ import { sessions as readSessions } from "../../overview/engine";
 import { CallLine, CodeRow, Kv, Tile, day, lvOf, openPlace, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
 import { componentDesktop } from "../../../connect/desktop-component-updates";
+import { KeeperMark } from "../../../brand/KeeperMark";
 import { DesktopUpdatesPage } from "./desktop-updates";
+import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -41,7 +43,7 @@ export const ROWS: RowEntry[] = [
   ["VS Code", "In your editors and notes", 1], ["JetBrains", "In your editors and notes", 1], ["Emacs", "In your editors and notes", 1], ["Obsidian", "In your editors and notes", 1],
   ["Folders to keep in sync", "In your editors and notes", 1], ["Search with Branch from your browser", "In your editors and notes", 1], ["Install from a terminal", "In your editors and notes", 1],
   ["The handbook", "Help and updates, more", 1], ["If an update fails", "Help and updates, more", 1],
-  ["Update history", "Help and updates, more", 1], ["The engine", "Help and updates, more", 1],
+  ["Update history", "Help and updates, more", 1], ["Branch service", "Help and updates, more", 1],
   ["Update status for scripts", "Help and updates, more", 2],
 ].map(([title, sec, lv]) => ({ page: "updates", title: String(title), sec: String(sec), lv: lv as 0 | 1 | 2 }));
 
@@ -55,9 +57,9 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
   const status = useLive<RecordValue>(props.engine, "update.status", {}, UPDATE_EVENTS);
   const info = useLive<RecordValue>(props.engine, "status", {}, []);
   const sys = useLive<RecordValue>(props.engine, "system.info", {}, []);
-  const version = str(rec(info.data).runtimeVersion) || str(rec(rec(status.data).updateAvailable).currentVersion);
+  const version = useBranchVersion(props.engine.gatewayUrl);
   const os = OS[str(rec(sys.data).platform)] ?? str(rec(sys.data).osLabel);
-  const lede = version ? `Branch Agent ${version}${os ? ` on ${os}` : ""}.` : props.title;
+  const lede = version ? `Branch ${versionParts(version).short}${os ? ` on ${os}` : ""}.` : props.title;
   const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => void status.reload() };
   return (
     <Page title={props.title} lede={lede}>
@@ -69,7 +71,7 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
       <About />
       <RemoveBranch />
       <Reports />
-      <BeforeInstall data={data} />
+      <BeforeInstall />
       {lvOf(props.level) >= 1 ? <Editors gatewayUrl={props.engine.gatewayUrl} /> : null}
       <Privacy openSettings={props.openSettings} />
       {lvOf(props.level) >= 1 ? <HelpMore {...props} data={data} version={version} /> : null}
@@ -122,31 +124,31 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
       {latest ? (
         <div className="s2-rn">
           <Ico name="doc" />
-          <span className="grow">{`You have ${version || str(available.currentVersion)}. See what it has, and what ${latest} adds.`}</span>
+          <span className="grow">{version ? `You have Branch ${versionParts(version).short}. See what the update adds.` : "Checking Branch’s version. See what the update adds."}</span>
           <Btn sm onClick={() => setDialog("notes")}>What’s new</Btn>
         </div>
       ) : null}
       {str(active.runId) ? (
-        <Status tone="warn" title={`Installing ${str(rec(active.target).version) || latest || "the update"}`}>{PHASE[str(active.phase)] ?? "Working on it"}. Branch restarts by itself when it’s done; you can keep working.</Status>
+        <Status tone="warn" title="Installing a Branch update">{PHASE[str(active.phase)] ?? "Working on it"}. Branch restarts by itself when it’s done; you can keep working.</Status>
       ) : failed ? (
-        <Status tone="bad" title={`${str(rec(last.target).version) || latest || "The update"} didn’t install`}>{str(last.reason) || "The update stopped before it finished."} {version || str(rec(last.before).version)} keeps running.</Status>
+        <Status tone="bad" title="Branch update didn’t install">{str(last.reason) || "The update stopped before it finished."} {version ? `Branch ${versionParts(version).short}` : "Your current Branch version"} keeps running.</Status>
       ) : started ? (
-        <Status tone={campaign.state === "applying" ? "warn" : "ok"} title={`${latest || "An update"} is installing by itself`}>{campaignLine(campaign, now)}.</Status>
+        <Status tone={campaign.state === "applying" ? "warn" : "ok"} title="A Branch update is installing by itself">{campaignLine(campaign, now)}.</Status>
       ) : latest ? (
-        <Status title={`${latest} is ready to install`}>It waits for running tasks, up to the update deadline, and keeps a safety copy first.</Status>
+        <Status title="A Branch update is ready">It waits for running tasks, up to the update deadline, and keeps a safety copy first.</Status>
       ) : (
-        <Status title="Branch is up to date.">{`You have ${version || str(available.currentVersion) || "the newest version"}.`}</Status>
+        <Status title="Branch is up to date.">{version ? `You have Branch ${versionParts(version).detail}.` : "You have the newest version."}</Status>
       )}
       {latest && !str(active.runId) ? (
         <Acts>
-          <Btn pri disabled={call.busy} onClick={() => setDialog("install")}>{failed ? "Try again" : "Install when nothing is running"}</Btn>
+          <Btn pri disabled={call.busy} onClick={() => setDialog("install")}>{failed ? "Try again" : "Install when idle"}</Btn>
           {started && campaign.state !== "applying" && !(Number(campaign.holdUntilMs) > now) ? <Btn ghost disabled={hold.busy} onClick={holdIt}>Hold for an hour</Btn> : null}
           {failed ? <Btn ghost onClick={() => setDialog("report")}>Report the failure</Btn> : <Btn ghost disabled title={NO_SKIP}>Skip this version</Btn>}
         </Acts>
       ) : null}
       <CallLine call={call} />
       <CallLine call={hold} />
-      {dialog === "install" ? <InstallDialog engine={engine} latest={latest} call={call} onClose={() => { setDialog(""); data.reload(); }} /> : null}
+      {dialog === "install" ? <InstallDialog engine={engine} call={call} onClose={() => { setDialog(""); data.reload(); }} /> : null}
       {dialog === "notes" ? <NotesDialog available={available} version={version} onClose={() => setDialog("")} onInstall={() => setDialog("install")} /> : null}
       {dialog === "report" ? <ReportDialog engine={engine} run={last} onClose={() => setDialog("")} /> : null}
     </>
@@ -157,7 +159,7 @@ type Call = ReturnType<typeof useCall>;
 
 /** Install: with tasks running, "Let them finish first" (update.run waits for them, up to the deadline) or
  *  "Install now" (each running conversation is stopped with sessions.abort, then update.run). */
-function InstallDialog({ engine, latest, call, onClose }: Pick<SettingsPageProps, "engine"> & { latest: string; call: Call; onClose: () => void }) {
+function InstallDialog({ engine, call, onClose }: Pick<SettingsPageProps, "engine"> & { call: Call; onClose: () => void }) {
   const running = useLive<RecordValue>(engine, "sessions.list", { includeGlobal: true, includeUnknown: true }, []);
   const working = readSessions(running.data).filter((s) => s.working);
   const [pick, setPick] = useState<"wait" | "now">("wait");
@@ -173,7 +175,7 @@ function InstallDialog({ engine, latest, call, onClose }: Pick<SettingsPageProps
   };
   const n = working.length;
   return (
-    <Dialog title={`Install ${latest}`} onClose={onClose} footer={<><Btn ghost onClick={onClose}>Not now</Btn><Btn pri disabled={running.loading} onClick={() => void go()}>Continue</Btn></>}>
+    <Dialog title="Install Branch update" onClose={onClose} footer={<><Btn ghost onClick={onClose}>Not now</Btn><Btn pri disabled={running.loading} onClick={() => void go()}>Continue</Btn></>}>
       {running.loading ? <p>Checking what’s running…</p> : n === 0 ? <p>Nothing is running right now. Branch keeps a safety copy first.</p> : (
         <>
           <p>{n === 1 ? "1 task is" : `${n} tasks are`} working right now. Branch keeps a safety copy either way.</p>
@@ -192,8 +194,8 @@ function NotesDialog({ available, version, onClose, onInstall }: { available: Re
   const commits = list(available.commits);
   const behind = typeof available.commitsBehind === "number" ? available.commitsBehind : undefined;
   return (
-    <Dialog title="What’s new" wide onClose={onClose} footer={<><Btn ghost disabled title={NO_SKIP}>Skip this version</Btn><Btn onClick={onClose}>Close</Btn><Btn pri onClick={onInstall}>Install when nothing is running</Btn></>}>
-      <p className="hint">What {str(available.latestVersion)} changes from {version || str(available.currentVersion)}.</p>
+    <Dialog title="What’s new" wide onClose={onClose} footer={<><Btn ghost disabled title={NO_SKIP}>Skip this version</Btn><Btn onClick={onClose}>Close</Btn><Btn pri onClick={onInstall}>Install when idle</Btn></>}>
+      <p className="hint">{version ? `What this update changes from Branch ${versionParts(version).detail}.` : "What this Branch update changes."}</p>
       {commits.length ? (
         <div className="rows">{commits.map((c) => <Prow key={str(c.sha)} title={str(c.subject)} sub={str(c.sha).slice(0, 7)} />)}</div>
       ) : <p className="hint">The engine has no release notes for this version yet.</p>}
@@ -251,7 +253,7 @@ function Updating({ engine, level, data }: SettingsPageProps & { data: Data }) {
           <Seg label="If tasks are still running after" value="15" options={[{ id: "15", label: "15 minutes" }, { id: "never", label: "Never" }]} onChange={() => undefined} />
         </Ctl>
       ) : null}
-      <Ctl title="Undo the last update" sub={lastRun.status === "succeeded" && str(rec(lastRun.after).version) ? `${str(rec(lastRun.after).version)} installed ${day(lastRun.updatedAtMs)}.` : undefined} off={NO_UNDO}>
+      <Ctl title="Undo the last update" sub={lastRun.status === "succeeded" ? `Branch update installed ${day(lastRun.updatedAtMs)}.` : undefined} off={NO_UNDO}>
         <Btn sm disabled>Undo</Btn>
       </Ctl>
     </Sec>
@@ -298,9 +300,10 @@ function Devices({ lv }: { lv: number }) {
   );
 }
 
-function About() {
+export function About() {
   return (
     <Sec title="About">
+      <div className="s2-keeper"><KeeperMark size={64} /></div>
       <Ctl title="Open-source licences" sub="The software Branch is built on, with each licence." off="The list comes with the Branch app on your computer."><Btn sm disabled>Show</Btn></Ctl>
     </Sec>
   );
@@ -351,19 +354,18 @@ function Reports() {
 }
 
 /** Before you install: the plan (what this engine's update.run does, in order). */
-function BeforeInstall({ data }: { data: Data }) {
+function BeforeInstall() {
   const [open, setOpen] = useState(false);
-  const latest = str(rec(data.status.updateAvailable).latestVersion);
   return (
     <Sec title="Before you install">
-      <Ctl title="See the plan" sub={latest ? `What ${latest} changes and how each part restarts.` : "What an update changes and how each part restarts."}><Btn sm onClick={() => setOpen(true)}>See the plan</Btn></Ctl>
+      <Ctl title="See the plan" sub="What a Branch update changes and how each part restarts."><Btn sm onClick={() => setOpen(true)}>See the plan</Btn></Ctl>
       <Ctl title="Window fixes without reinstalling" sub="Small fixes to the window arrive on their own, checked like any update." off="Small window fixes arrive with the Branch app’s updater."><Switch label="Window fixes without reinstalling" checked={false} onChange={() => undefined} /></Ctl>
       <Ctl title="Window changes" sub="The new window takes the old one’s place while you aren’t typing or reading a reply; your draft, place and replies carry over." off="Swapping the window in place is done by the Branch app.">
         <Seg label="Window changes" value="idle" options={[{ id: "idle", label: "When I’m not typing" }, { id: "ask", label: "Ask me" }]} onChange={() => undefined} />
       </Ctl>
       <Ctl title="Update work stays out of the way" sub="Downloads and checks run in the background, pause while you type or a task works, and never build anything on this computer."><span className="val-k">Low priority</span></Ctl>
       {open ? (
-        <Dialog title={latest ? `The plan for ${latest}` : "The plan for an update"} onClose={() => setOpen(false)} footer={<Btn onClick={() => setOpen(false)}>Close</Btn>}>
+        <Dialog title="The plan for a Branch update" onClose={() => setOpen(false)} footer={<Btn onClick={() => setOpen(false)}>Close</Btn>}>
           <p className="hint">Nothing changes until you install. This is what would happen.</p>
           <ol className="s2-ol">
             <li><b>One update at a time.</b> Another updater (the terminal’s or the window’s) waits for this one.</li>
@@ -399,7 +401,7 @@ function Privacy({ openSettings }: Pick<SettingsPageProps, "openSettings">) {
   );
 }
 
-/** Help and updates, more (Advanced): the last attempt, every update (update.runs.list) and the engine's version. */
+/** Help and updates, more (Advanced): the last attempt, every update and Branch's version. */
 function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: Data; version: string }) {
   const [history, setHistory] = useState(false);
   const last = rec(data.status.lastRun);
@@ -411,15 +413,14 @@ function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: 
       <h3 className="s2-h3">Last update attempt</h3>
       {str(last.runId) ? (
         <Kv rows={[
-          ["When", when(last.createdAtMs)], ["From", str(rec(last.before).version)],
-          ["To", last.status === "succeeded" ? str(rec(last.after).version) || str(rec(last.target).version) : "Didn’t change"],
+          ["When", when(last.createdAtMs)], ["Result", last.status === "succeeded" ? "Installed" : "Didn’t change"],
           ["Install type", INSTALL[kind] ?? ""], ["What failed", last.status === "failed" ? str(last.reason) : ""],
           ...(lvOf(level) >= 2 ? [["Reason code", str(last.reason) || "none"] as [string, string]] : []),
         ]} />
       ) : <Empty>No update has been tried yet.</Empty>}
       <Ctl title="Update history" sub="Every update, who started it and how it went."><Btn sm onClick={() => setHistory(true)}>See all</Btn></Ctl>
-      <Ctl title="The engine" sub={version ? "The engine is installed and answering." : undefined}>
-        <span className="val-k">{version ? `Installed ${version}` : ""}</span>
+      <Ctl title="Branch service" sub={version ? "Branch is installed and answering." : undefined}>
+        <span className="val-k">{version ? `Installed Branch ${versionParts(version).detail}` : ""}</span>
         <Btn sm disabled title={APP_ONLY}>Repair</Btn>
         <Btn sm ghost onClick={data.reload}>Check again</Btn>
       </Ctl>
@@ -436,7 +437,7 @@ function HistoryDialog({ engine, onClose }: Pick<SettingsPageProps, "engine"> & 
   const runs = useLive<RecordValue>(engine, "update.runs.list", { limit: 50 }, UPDATE_EVENTS);
   const [open, setOpen] = useState<RecordValue | null>(null);
   const rows = list(rec(runs.data).runs);
-  const title = (r: RecordValue) => `${str(rec(r.before).version) || "?"} → ${str(rec(r.after).version) || str(rec(r.target).version) || "?"}`;
+  const title = (r: RecordValue) => r.status === "succeeded" ? "Branch update installed" : r.status === "failed" ? "Branch update failed" : "Branch update attempt";
   return (
     <Dialog title="Update history" wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
       {runs.error ? <p className="s2-err" role="alert">{runs.error}</p> : null}
@@ -471,7 +472,7 @@ function Technical({ data, version }: { data: Data; version: string }) {
   return (
     <Sec title="Technical">
       <Kv rows={[
-        ["Version", version], ["Engine version", version], ["Commit", str(git.currentSha).slice(0, 9)],
+        ["Version", version ? versionParts(version).detail : "Unavailable"], ["Commit", str(git.currentSha).slice(0, 9)],
         ["Installed", day(git.installedAtMs)], ["Last commit", day(git.commitAtMs)], ["Install type", INSTALL[str(install.kind)] ?? ""],
         ["Channel", str(data.status.effectiveChannel)],
       ]} />

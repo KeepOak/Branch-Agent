@@ -1100,13 +1100,16 @@ export async function runGatewayLoop(params: {
     if (!message || typeof message !== "object" || !process.send) return;
     const request = message as { type?: unknown; id?: unknown };
     if (typeof request.id !== "number" || !Number.isSafeInteger(request.id)) return;
-    if (request.type !== "branch-desktop:activity" && request.type !== "branch-desktop:stop-if-idle") return;
+    if (request.type !== "branch-desktop:activity" && request.type !== "branch-desktop:stop-if-idle"
+      && request.type !== "branch-desktop:drain-stop") return;
     const snapshot = eagerLifecycleRuntime.createGatewayActiveWorkSnapshot();
     const counts = snapshot.counts;
     process.send({ type: "branch-desktop:activity-result", id: request.id, idle: snapshot.idle,
       activeRuns: Math.max(counts.embeddedRuns, counts.agentRuns, counts.chatRuns, counts.acpRuns),
       pendingReplies: counts.pendingReplies, totalActive: counts.totalActive });
-    if (request.type === "branch-desktop:stop-if-idle" && snapshot.idle) onSigterm();
+    // drain-stop: the owner asked to update now. Stop admitting work and drain exactly as SIGTERM does;
+    // runs the drain cannot finish are resumed by the next engine's restart recovery.
+    if (request.type === "branch-desktop:drain-stop" || request.type === "branch-desktop:stop-if-idle" && snapshot.idle) onSigterm();
   };
   const onSigint = () => {
     observeSignal("SIGINT");

@@ -91,7 +91,7 @@ function isAuthRelevantAgentSubfield(
   );
 }
 
-function isProviderAuthRelevantReloadPath(path: string): boolean {
+export function isProviderAuthRelevantReloadPath(path: string): boolean {
   const segments = path.split(".");
   const [head = "", second, third, fourth] = segments;
   if (PROVIDER_AUTH_RELEVANT_CONFIG_ROOTS.has(head)) {

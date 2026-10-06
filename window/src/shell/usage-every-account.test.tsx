@@ -26,7 +26,7 @@ it("shows three ChatGPT accounts and refreshes on open and Check now", async () 
   expect(host.textContent).toContain("oak@example.test");
   expect(host.textContent).toContain("used next");
   expect(request).toHaveBeenCalledWith("usage.status", { refresh: true });
-  await act(async () => { (Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Check now") as HTMLButtonElement).click(); });
+  await act(async () => { (Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Check every account now") as HTMLButtonElement).click(); });
   expect(request.mock.calls.filter(([method]) => method === "usage.status")).toHaveLength(2);
   await act(async () => root.unmount());
   host.remove();

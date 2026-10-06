@@ -100,7 +100,7 @@ export async function prepareGatewayServerBootstrap(input: {
   if (startupElapsedMs > 0) {
     startupTrace.mark("process.bootstrap");
   }
-  const startupConfigSnapshotRead = await withArtifactPreservingStateReads(async () => {
+  let startupConfigSnapshotRead = await withArtifactPreservingStateReads(async () => {
     if (!resumeGatewayRestartTraceFromEnv(process.env, [["source", "env"]])) {
       const restartHandoff = readGatewayRestartHandoffSync();
       resumeGatewayRestartTraceFromHandoff(restartHandoff?.restartTrace, [
@@ -174,6 +174,18 @@ export async function prepareGatewayServerBootstrap(input: {
       });
     }
   });
+  if (!opts.updateCanary) {
+    try {
+      const { migrateLegacyClaudeProfilesAtStartup } =
+        await import("../agents/auth-profiles/anthropic-manual-migration.js");
+      if (await migrateLegacyClaudeProfilesAtStartup(startupConfigSnapshotRead.snapshot.config)) {
+        startupConfigSnapshotRead = await readConfigFileSnapshotWithPluginMetadata({ observe: false });
+        log.info("Claude account profile migrated from legacy manual ID.");
+      }
+    } catch (error) {
+      log.warn(`Claude account profile migration deferred: ${formatErrorMessage(error)}`);
+    }
+  }
   const { ensureGlobalUndiciEnvProxyDispatcher } = await startupTrace.measure(
     "runtime.network-imports",
     () => import("../infra/net/undici-global-dispatcher.js"),

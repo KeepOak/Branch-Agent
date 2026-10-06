@@ -156,7 +156,8 @@ export async function createStdioTransport(
       detached: process.platform !== "win32" && !isHostedGateway,
       shell: invocation.shell,
       stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: invocation.windowsHide,
+      // Native codex.exe also spawns console tools (PowerShell, git) for turns.
+      windowsHide: invocation.windowsHide ?? (process.platform === "win32"),
     });
   } catch (error) {
     throw recordCodexAppServerSpawnFailure(error, invocation.command, launchKey);

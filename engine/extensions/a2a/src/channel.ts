@@ -29,7 +29,6 @@ const a2aChannelMessageAdapter = defineChannelMessageAdapter({
         accountId: ctx.accountId,
         to: ctx.to,
         text: ctx.text,
-        agentId: ctx.agentId,
         assertDirectAdapterHandoff: ctx.assertDirectAdapterHandoff,
       });
       return {

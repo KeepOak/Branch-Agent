@@ -8,7 +8,7 @@ import { ComputerSettings, GatewaySettings, remainingPercent, UsageSettings } fr
 const props = (request: ReturnType<typeof vi.fn>) => ({ page: "usage", title: "Data & usage", level: "regular" as const, engine: { request: request as WindowEngine["request"], sessionKey: null, agentId:"sapling", scopes: [], onEvent: () => () => {} } });
 let host: HTMLDivElement; let root: Root;
 beforeEach(() => { (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true; host = document.createElement("div"); document.body.append(host); root = createRoot(host); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 it("does not invent unknown allowance percentages", () => {
   expect(remainingPercent(12)).toBe(88); expect(remainingPercent(100)).toBe(0); expect(remainingPercent(0)).toBe(100);
   for (const missing of [undefined, null, "10", -1, 101, NaN, Infinity]) expect(remainingPercent(missing)).toBeUndefined();
@@ -31,10 +31,11 @@ it("renders available computer actions and node presence without claiming pendin
   expect(host.textContent).toContain("Waiting for your yes"); expect(host.textContent).toContain("Waiting for approval"); expect(host.textContent).toContain("Laptop"); expect(host.textContent).toContain("Online"); expect(host.textContent).toContain("Browser actions are available");
 });
 it("reports actual gateway health fields and hides technical process data at Regular", async () => {
-  const request = vi.fn(async (method:string) => method === "health" ? {ok:true,ts:1,durationMs:4,channels:{}} : {pid:4321,runtimeVersion:"1.2.3",processMemory:{rssBytes:10485760}});
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, text: async () => "0.4.4-build-a300a48dba2f" })));
+  const request = vi.fn(async (method:string) => method === "health" ? {ok:true,ts:1,durationMs:4,channels:{}} : {pid:4321,runtimeVersion:"2026.9.8",processMemory:{rssBytes:10485760}});
   const settings = props(request);
   await act(async () => root.render(<GatewaySettings {...settings} />));
-  expect(host.textContent).toContain("Health check answered in 4 ms"); expect(host.textContent).toContain("1.2.3"); expect(host.textContent).not.toContain("4321");
+  expect(host.textContent).toContain("Health check answered in 4 ms"); expect(host.textContent).toContain("0.4.4 · build a300a48d"); expect(host.textContent).not.toContain("2026.9.8"); expect(host.textContent).not.toContain("4321");
   await act(async () => root.render(<GatewaySettings {...settings} level="technical" />));
   expect(host.textContent).toContain("4321"); expect(host.textContent).toContain("10.0 MB");
 });

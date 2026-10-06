@@ -12,6 +12,7 @@ import { shows, useLevel } from "../places-nav/level";
 import { shownWhy } from "../shell/shown-why";
 
 type Props = {
+  embedded?: boolean;
   anchor: RefObject<HTMLElement | null>;
   onClose: () => void;
   mode: EngineMode | null;
@@ -35,6 +36,7 @@ const ROLES = [
   ["Code", "Writes and changes code"],
   ["Debug", "Finds the cause of a problem first"],
   ["Orchestrator", "Splits big work between helpers"],
+  ["Release notes", "Summarizes what changed for a release"],
 ] as const;
 const ELEVATED = [
   { id: "off", label: "Off" },
@@ -56,11 +58,11 @@ export function ModeMenu(p: Props) {
       }
     } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
+      e.stopPropagation();
       moveFocus(body.current, e.key === "ArrowDown" ? 1 : -1);
     }
   };
-  return (
-    <Popover anchor={p.anchor} onClose={p.onClose} label="How much may it do in this conversation?" className="c-mode">
+  const content = (
       <div ref={body} onKeyDown={onKey}>
         <div className="c-pt">How much may it do in this conversation?</div>
         <MenuItem
@@ -68,7 +70,7 @@ export function ModeMenu(p: Props) {
           top
           icon="gear"
           label={p.asSet ? `As set · ${modeName(p.asSet)}` : "As set"}
-          sub="Use the mode from Settings › Permissions."
+          sub="From Settings › Permissions"
           checked={p.mode === null}
           onClick={() => p.onPick(null)}
         />
@@ -135,6 +137,6 @@ export function ModeMenu(p: Props) {
         <MenuItem icon="up" label="Export your roles…" disabled reason={ROLE_GAP} />
         <MenuItem icon="down" label="Import roles…" disabled reason={ROLE_GAP} />
       </div>
-    </Popover>
   );
+  return p.embedded ? content : <Popover anchor={p.anchor} onClose={p.onClose} label="How much may it do in this conversation?" className="c-mode">{content}</Popover>;
 }

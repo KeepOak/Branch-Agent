@@ -579,6 +579,8 @@ const ChannelAccountSnapshotSchema = Type.Object(
     running: Type.Optional(Type.Boolean()),
     connected: Type.Optional(Type.Boolean()),
     reconnectAttempts: Type.Optional(Type.Integer({ minimum: 0 })),
+    needsAttention: Type.Optional(Type.Boolean()),
+    retryingSince: Type.Optional(Type.Integer({ minimum: 0 })),
     lastConnectedAt: Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()])),
     lastError: Type.Optional(Type.Union([Type.String(), Type.Null()])),
     healthState: Type.Optional(Type.String()),

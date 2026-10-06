@@ -442,7 +442,11 @@ async function maybeWriteGatewayStartupFailureBundle(
   gatewayLog.warn(result.message);
 }
 
-async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRuntimeHooks = {}) {
+async function runGatewayCommandOnce(
+  opts: GatewayRunOpts,
+  hooks: GatewayRunRuntimeHooks = {},
+  preparedHost?: import("../../infra/host-rendezvous.js").HostRendezvous,
+) {
   // Reparenting can hide the running service from the ancestor walk.
   // Preserve its inherited PID before config env rebuilding overwrites it.
   const inheritedGatewayServicePid = parseStrictPositiveInteger(
@@ -542,6 +546,20 @@ async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRunt
   }
 
   gatewayLog.info("loading configuration…");
+  if (!opts.updateCanary && !devMode) {
+    try {
+      const { removeSeededDevAgentAtStartup } = await import("../../gateway/dev-agent-startup.js");
+      await removeSeededDevAgentAtStartup();
+    } catch (error) {
+      gatewayLog.warn(`Could not migrate the seeded dev Trunk: ${String(error)}`);
+    }
+  }
+  // Assign legacy Trunk faces before the startup snapshot is captured, so the
+  // gateway and the published config both see the same one-time migration.
+  if (!opts.updateCanary) {
+    const { assignTrunkCharactersAtStartup } = await import("../../gateway/trunk-character-startup.js");
+    await assignTrunkCharactersAtStartup();
+  }
   const { cfg, lowerPrecedenceEnv, snapshot, startupConfigSnapshotRead } =
     await readGatewayStartupConfigWithShellEnv({
       startupTrace,
@@ -958,6 +976,24 @@ async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRunt
     completeGatewayBootLifecycle(activeBootId, completion, process.env);
     activeBootId = undefined;
   };
+  const hostRendezvous =
+    preparedHost ??
+    (await (await import("../../infra/host-rendezvous.js")).prepareHostRendezvous({
+      profile: process.env.BRANCH_PROFILE?.trim() || "default",
+      home: process.env.BRANCH_HOME?.trim() || (await import("node:os")).homedir(),
+      gatewayPort: port,
+      force: opts.force,
+      replace: opts.replace,
+    }));
+  if (hostRendezvous.decision.outcome !== "start") {
+    if (hostRendezvous.decision.outcome === "attach") {
+      gatewayLog.info(hostRendezvous.decision.message);
+      return;
+    }
+    defaultRuntime.error(hostRendezvous.decision.message);
+    defaultRuntime.exit(hostRendezvous.decision.transient ? 75 : 78);
+    return;
+  }
   const startLoop = async (lifecycleLockDeadlineMs?: number) =>
     await runGatewayLoop({
       runtime: defaultRuntime,
@@ -969,10 +1005,11 @@ async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRunt
       completeBoot,
       onRestartStartupFailure: triageStartupFailure,
       start: async ({ requestHotReloadRecovery, ...startupOptions } = {}) => {
+        await hostRendezvous.markStarting?.();
         const snapshotPreparation = await import("../../config/io.snapshot-preparation.js");
         const startupConfigSnapshotReadForThisStart = startupConfigSnapshotReadForNextStart;
         startupConfigSnapshotReadForNextStart = undefined;
-        return await startGatewayServer(port, {
+        const started = await startGatewayServer(port, {
           bind,
           ...(opts.updateCanary ? { updateCanary: true } : {}),
           ...(activeBootId ? { bootId: activeBootId } : {}),
@@ -987,6 +1024,13 @@ async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRunt
           ...(channelAutostartSuppression ? { tryRecoverChannelAutostartSuppression } : {}),
           ambientEnvTriggers,
         });
+        try {
+          await hostRendezvous.markReady?.(port);
+        } catch (error) {
+          await started.close({ reason: "host rendezvous publication failed" });
+          throw error;
+        }
+        return started;
       },
     });
 
@@ -1038,6 +1082,10 @@ async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRunt
     );
     await triageStartupFailure(err);
     defaultRuntime.exit(resolveGatewayStartupFailureExitCode(err));
+  } finally {
+    if (!preparedHost) {
+      await hostRendezvous.close?.();
+    }
   }
 }
 
@@ -1046,6 +1094,7 @@ export async function runGatewayCommand(
   opts: GatewayRunOpts,
   hooks: GatewayRunRuntimeHooks = {},
   recoveryDeps?: InvalidConfigRecoveryDeps,
+  preparedHost?: import("../../infra/host-rendezvous.js").HostRendezvous,
 ) {
   if (opts.taskSupervisor) {
     const { runWindowsGatewayTaskSupervisor } = await import("./task-supervisor.js");
@@ -1053,7 +1102,7 @@ export async function runGatewayCommand(
     return;
   }
   try {
-    await runGatewayCommandOnce(opts, hooks);
+    await runGatewayCommandOnce(opts, hooks, preparedHost);
   } catch (error) {
     if (!isInvalidConfigError(error)) {
       rethrowStartupConfigFailure(error);
@@ -1067,7 +1116,7 @@ export async function runGatewayCommand(
     const recovery = await offerInvalidConfigRecovery({
       runtime: defaultRuntime,
       deps: recoveryDeps,
-      retry: async () => await runGatewayCommandOnce(opts, hooks),
+      retry: async () => await runGatewayCommandOnce(opts, hooks, preparedHost),
     });
     if (recovery.status === "recovered") {
       return;

@@ -4,6 +4,7 @@ import { sliceUtf16Safe } from "@branch/normalization-core/utf16-slice";
 import { BrokerChild } from "../process/spawn-broker/child.js";
 import type { SpawnBrokerHost } from "../process/spawn-broker/host.js";
 import { recordChildProcessSpawn } from "../process/spawn-diagnostics.js";
+import { hiddenWindowsOptions } from "../process/windows-hidden-options.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import type { RuntimeWorkerGeneration } from "./runtime-worker-generation.js";
@@ -83,12 +84,12 @@ export function createSqliteReadOnlyWorkerSession(
       : { kind: "native" };
   const capturedLaunch = { env, cwd, transport, runtimeGeneration: host.runtimeGeneration };
   const argv = [...host.argv];
-  const spawnOptions: SpawnOptions = {
+  const spawnOptions: SpawnOptions = hiddenWindowsOptions({
     env,
     // Inheriting the current directory avoids a redundant chdir that can fail under sudo -u.
     ...(transport.kind === "native" && cwd === tryProcessCwd() ? {} : { cwd }),
     stdio: ["ignore", "pipe", "pipe", "ipc"],
-  };
+  });
   const child: ChildProcess =
     transport.kind === "broker"
       ? transport.owner.spawn(executable, argv, spawnOptions)

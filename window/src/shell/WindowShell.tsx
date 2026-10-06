@@ -3,16 +3,21 @@ import type { Conversation } from "../connect/conversations";
 import type { Topic } from "@branch/gateway-protocol";
 import type { TopicUpdate } from "../thread/TopicCard";
 import type { SendExtras } from "../connect/engine";
-import type { SaplingSession, SessionSnapshot } from "../connect/session";
+import { roomIdOf, type SaplingSession, type SessionSnapshot } from "../connect/session";
 import { withOwner } from "../connect/agent-owner";
+import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { Composer, VOICE_OFF } from "../composer/Composer";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
+import { useBranchVersion } from "../connect/branch-version";
+import { saveTargetName } from "../setup/pre-connect-state";
 import { Thread } from "../thread/Thread";
+import { stepLabel } from "../thread/format";
 import { PlaceView } from "../places-nav/PlaceView";
+import { handleOfficeNavigation } from "../places/office/navigation";
 import { SettingsFrame } from "../places-nav/SettingsFrame";
 import { lookStore } from "../places/settings/set1/appearance-store";
-import { loadRoute, saveRoute, windowTitle, PLACES, type PlaceId, type Route } from "../places-nav/routes";
+import { loadRoute, parseRoute, saveRoute, windowTitle, PLACES, type PlaceId, type Route } from "../places-nav/routes";
 import { pageName } from "../places-nav/settings-nav";
 import { effectiveDark, readThemeChoice, setThemeChoice, toggleTheme, type ThemeChoice } from "../theme/theme";
 import { BannerView, raiseBanner } from "./Banner";
@@ -26,6 +31,7 @@ import { FilterButton, FilterSortPopover, readPrefs, savePrefs } from "./FilterS
 import { Icon } from "./icons";
 import { clearFilters, emptyLineFor, filterRows, filterSummary, hasFolders, homeRow, owners, roomUsed, type ListPrefs } from "./list-model";
 import { buildContactSections, contactRow, listContactTopics, markContactRead, missingConversation, openContactRow, pinContact, projectContact, type Contact } from "./contacts-model";
+import { GroupDropPopover, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useGroupRooms, useRoomNotices, type GroupDrop } from "./group-drop";
 import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./AppSections";
 import { batchMenuItems } from "./batch-menu";
 import { colourHue, iconColourItem } from "./row-look";
@@ -45,7 +51,10 @@ import { CanDoDialog } from "./CanDo";
 import { Face } from "../face/Face";
 import { TalkSetup, type TalkHandle } from "../setup/TalkSetup";
 import { NewTrunkCard, type NewTrunk } from "./NewTrunkFlow";
-import { createReadyTrunk, newTrunkName } from "../places/trunk/api";
+import { createReadyTrunk } from "../places/trunk/api";
+import { RemoveTrunkDialog, TRUNK_REMOVED_EVENT } from "../places/trunk/RemoveTrunk";
+import { NewTrunkPreview, type TrunkChoice } from "../places/trunk/NewTrunkPreview";
+import type { Roster } from "../places/trunk/model";
 import { readRoster } from "../places/trunk/model";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
@@ -72,18 +81,20 @@ import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
 import { HeaderRow, PlaceHead, TopBar, type FaceState } from "./TopBar";
 import { useLayout } from "./use-layout";
+import { usePinOrder } from "./use-pin-order";
 import { hideMenuItems, hideTarget, HIDEABLE, usePetLook, useShown } from "./shown";
-import { StatusGfx, StatusLeftExtras, StatusPet } from "./StatusExtras";
+import { StatusGfx, StatusLeftExtras } from "./StatusExtras";
 import { paneKeyFor, useShortcuts } from "./use-shortcuts";
 import { currentKeys, keyActions, readCustomKeys } from "./keymap";
 import { ComputerActivityCard } from "../thread/ComputerActivityCard";
 import { PlanCard, usePlanDismiss, usePlanRefresh, useProgressCard } from "../thread/PlanCard";
 import { ComputerStage, type PipTarget, type StageMode } from "../stage/ComputerStage";
+import { StageConversation } from "../stage/StageConversation";
 import { SidePane, type PaneTab } from "../stage/SidePane";
 import { StagePip } from "../stage/StagePip";
 import { AddComputer } from "../stage/AddComputer";
 import { computersChanged } from "../stage/computers";
-import { TrunkAppearances, trunkAppearance, type Appearance } from "../face/appearance";
+import { TrunkAppearances, TrunkPebbleLooks, TrunkEmojiFaces, trunkAppearance, type Appearance } from "../face/appearance";
 import { CharacterPanel } from "../face/CharacterPanel";
 import { useShellRoom } from "../rooms/useShellRoom";
 import { NewGroupChatHost } from "../rooms/NewGroupChat";
@@ -111,8 +122,9 @@ function workWords(s: SessionSnapshot, now: number): string {
   if (step?.kind === "step" && step.status === "running" && /browser|computer|screen|desktop/i.test(step.tool)) {
     return "Working · using the computer";
   }
+  if (step?.kind === "step" && step.status === "running") return [stepLabel(step), step.title].filter(Boolean).join(" · ");
   const state = agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now });
-  return state === "work" || state === "idle" ? "Working on it" : STATE_LABEL[state];
+  return state === "work" || state === "idle" ? "Thinking" : STATE_LABEL[state];
 }
 
 function faceState(s: SessionSnapshot, now: number): FaceState {
@@ -324,17 +336,27 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles() };
   }), [session]);
   const { s, ready, lists, list, contactRows, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  const groupRooms = useGroupRooms(session, ready);
+  const [groupDrop, setGroupDrop] = useState<GroupDrop | null>(null);
+  const branchVersion = useBranchVersion(url);
+  useEffect(() => {
+    if (ready && machine?.name) saveTargetName(url, machine.name);
+  }, [ready, machine?.name, url]);
   const people = useListPeople(session, ready);
-  const update = useUpdate(session, ready, machine?.version ?? "");
+  const update = useUpdate(session, ready, branchVersion);
   const projects = useProjects(session, ready);
   const [newProject, setNewProject] = useState(false);
   const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null);
   const now = useNow(s.doneAt);
   const [layout, setLayout] = useLayout();
+  const rail = layout.rail;
+  const pinOrder = usePinOrder(session, ready);
   const [liveW, setLiveW] = useState<number | null>(null);
   const isNarrow = useNarrow();
   const [slideOpen, setSlideOpen] = useState(false);
   const [route, setRoute] = useState<Route>(loadRoute);
+  const routeRef = useRef(route);
+  routeRef.current = route;
   const [draftTopic, setDraftTopic] = useState<{ agentId: string; nonce: string; options: Record<string, unknown> } | null>(null);
   const [topicReturnKey, setTopicReturnKey] = useState<string | null>(null);
   const draftTopicRef = useRef(draftTopic);
@@ -347,6 +369,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Conversation | null>(null);
   const [deletingMany, setDeletingMany] = useState<Conversation[] | null>(null);
+  const [removingTrunk, setRemovingTrunk] = useState<{ agentId: string; name: string } | null>(null);
   const [panes, setPanes] = useState<Pane[]>([]);
   const [splitW, setSplitW] = useState(50);
   const [reading, setReading] = useState<{ thread: CatalogThread; label: string; remove?: boolean } | null>(null);
@@ -387,7 +410,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const trunkName = useCallback((id: string | undefined) => trunks.list.find((t) => t.id === id)?.name || s.name || "Sapling", [trunks, s.name]);
   const defaultName = trunkName(trunks.defaultId ?? undefined);
   const appearances = useMemo(
-    () => Object.fromEntries(trunks.list.map((t) => [t.name, trunkAppearance(t.avatar, t.name)]).filter((entry): entry is [string, Appearance] => Boolean(entry[1]))),
+    () => Object.fromEntries(trunks.list.map((t) => [t.name, trunkAppearance(t.avatar, t.name, t.colour)]).filter((entry): entry is [string, Appearance] => Boolean(entry[1]))),
     [trunks],
   );
   const openKey = s.sessionKey;
@@ -425,6 +448,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const search = useSearch(request, lists.rows, trunkName);
 
   const go = useCallback((next: Route) => {
+    if (JSON.stringify(routeRef.current) !== JSON.stringify(next)) {
+      const index = Number(history.state?.branchIndex) || 0;
+      history.pushState({ branchRoute: next, branchIndex: index + 1 }, "");
+    }
     draftTopicRef.current = null;
     setDraftTopic(null);
     setStage(null);
@@ -435,7 +462,37 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       void session.open(next.key);
     }
   }, [session]);
+  useEffect(() => {
+    history.replaceState({ branchRoute: routeRef.current, branchIndex: Number(history.state?.branchIndex) || 0 }, "");
+    const pop = (event: PopStateEvent) => {
+      const next = parseRoute(JSON.stringify(event.state?.branchRoute));
+      if (!next) return;
+      setDraftTopic(null);
+      setStage(null);
+      setRoute(next);
+      setSlideOpen(false);
+      saveRoute(next);
+      if (next.kind === "chat" && next.key) void session.open(next.key);
+    };
+    window.addEventListener("popstate", pop);
+    return () => window.removeEventListener("popstate", pop);
+  }, [session]);
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      handleOfficeNavigation(event, routeRef.current.kind === "place" && routeRef.current.place === "office", () => go({ kind: "place", place: "overview" }));
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [go]);
   const openConversation = useCallback((key: string) => go({ kind: "chat", key }), [go]);
+  useEffect(() => {
+    const removed = () => {
+      const id = trunks.defaultId;
+      if (id) openConversation(contactRows.find((contact) => contact.id === `trunk:${id}`)?.threadKey ?? `agent:${id}:${mainKeySuffix}`);
+    };
+    window.addEventListener(TRUNK_REMOVED_EVENT, removed);
+    return () => window.removeEventListener(TRUNK_REMOVED_EVENT, removed);
+  }, [trunks.defaultId, contactRows, mainKeySuffix, openConversation]);
   const openTopic = (key: string) => {
     if (topicContact) setTopicReturnKey(topicContact.threadKey);
     openConversation(key);
@@ -450,7 +507,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       if (!previous.has(contact.id) || contact.lastActivityAt <= previous.get(contact.id)! || (!contact.threadUnread && contact.unreadTopics === 0)) continue;
       const alert = contactAlert(contact, mutedContacts.has(contact.id));
       if (!alert) continue;
-      const notification = new Notification(alert.title, { body: alert.body });
+      const notification = new Notification(alert.title, { body: alert.body, icon: "/favicon.ico" });
       notification.onclick = () => {
         window.focus();
         setFocusTopic(null);
@@ -591,7 +648,20 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     try {
       const threadKey = contactRows.find((contact) => contact.id === `trunk:${draftTopic.agentId}`)?.threadKey;
       const mainKey = threadKey?.slice(`agent:${draftTopic.agentId}:`.length) || mainKeySuffix;
-      const key = await createTopic(request, draftTopic.agentId, mainKey, text, { ...draftTopic.options, ...extras });
+      const backoff = new PreparationRetry();
+      let key: string;
+      while (true) {
+        if (draftTopicRef.current?.nonce !== draftTopic.nonce) return false;
+        try {
+          key = await createTopic(request, draftTopic.agentId, mainKey, text, { ...draftTopic.options, ...extras });
+          break;
+        } catch (error) {
+          if (!isPreparationPending(error)) throw error;
+          const delay = backoff.nextDelay();
+          if (delay === null) throw new Error(preparationTimeoutLabel(trunkName(draftTopic.agentId)));
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
       await list.refresh();
       if (draftTopicRef.current?.nonce === draftTopic.nonce && draftTopicRef.current.agentId === draftTopic.agentId) openConversation(key);
       return true;
@@ -605,22 +675,36 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   // + new › New Trunk (the artifact's newTrunkC18): make the Trunk, open a conversation with it, ask its two questions.
   const [newTrunkFlow, setNewTrunkFlow] = useState<NewTrunk | null>(null);
+  const [newTrunkRoster, setNewTrunkRoster] = useState<Roster | null>(null);
+  const [makingTrunk, setMakingTrunk] = useState(false);
   const newTrunk = useCallback(async () => {
     try {
-      const agentId = await createReadyTrunk(session.engine, newTrunkName(readRoster(await session.request("agents.list", {}))));
+      setNewTrunkRoster(readRoster(await session.request("agents.list", {})));
+    } catch (e) {
+      notify(`Couldn't prepare the Trunk: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" });
+    }
+  }, [session]);
+  const confirmNewTrunk = async (choice: TrunkChoice) => {
+    setMakingTrunk(true);
+    try {
+      const agentId = await createReadyTrunk(session.engine, choice.name, () => true, choice.avatar);
       const key = await actions.create(agentId);
       if (!key) return;
-      setNewTrunkFlow({ agentId, sessionKey: key });
+      setNewTrunkFlow({ agentId, sessionKey: key, name: choice.name });
+      setNewTrunkRoster(null);
       openConversation(key);
     } catch (e) {
       notify(`Couldn't make the Trunk: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" });
+    } finally {
+      setMakingTrunk(false);
     }
-  }, [session, actions, openConversation]);
+  };
 
-  const contacts = projectContact(contactRows, lists.rows);
+  const contacts = projectContact([...contactRows.map((contact) => contact.kind === "outside" && groupRooms.peerOnline.has(contact.id.slice(4)) ? { ...contact, offline: groupRooms.peerOnline.get(contact.id.slice(4)) === false } : contact), ...groupRooms.rooms.map((room) => roomContact(room, contactRows)).filter((c): c is NonNullable<typeof c> => Boolean(c))], lists.rows);
+  const roomNotices = useRoomNotices(session, openKey, contacts);
   // A saved conversation that is neither a session nor a contact thread reopens the default Trunk.
   useEffect(() => {
-    if (!draftTopic && lists.loaded && s.mainKey && missingConversation(openKey, s.mainKey, contactsLoaded, contacts, lists.rows)) {
+    if (!draftTopic && !roomIdOf(openKey ?? "") && lists.loaded && s.mainKey && missingConversation(openKey, s.mainKey, contactsLoaded, contacts, lists.rows)) {
       openConversation(s.mainKey);
     }
   }, [draftTopic, lists, contactsLoaded, contactRows, openKey, s.mainKey, openConversation]);
@@ -643,6 +727,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   });
   const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
   const sections = buildContactSections(contacts, prefs, now);
+  const pinnedSection = sections.find((section) => section.id === "pinned");
+  if (pinnedSection) pinnedSection.rows.sort((a, b) => {
+    if (a.key === b.key) return 0;
+    if (a.key === home?.key) return -1;
+    if (b.key === home?.key) return 1;
+    const ar = pinOrder.order.indexOf(a.key), br = pinOrder.order.indexOf(b.key);
+    return (ar < 0 ? Number.MAX_SAFE_INTEGER : ar) - (br < 0 ? Number.MAX_SAFE_INTEGER : br);
+  });
   const markReadContact = (contact: Contact) => {
     void markContactRead(contact, request).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark ${contact.name} read: ${e instanceof Error ? e.message : String(e)}.`, { tone: "bad" }));
   };
@@ -652,7 +744,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const shownCount = sections.reduce((n, x) => n + x.rows.length, 0);
   const level = readLevel();
   const selection = useSelection(useCallback(() => sections.flatMap((x) => x.rows), [sections]));
-  const rowCard = useRowCard(!layout.rail);
+  const rowCard = useRowCard(!rail);
   const catalogs = useCatalogs(request, ready);
   const personName = useCallback((id: string) => people.names.get(id) ?? lists.rows.find((r) => r.ownerId === id)?.ownerName ?? id, [people, lists.rows]);
   const openRow = openContactRow(openKey, contacts, lists.rows) ?? (openKey === s.mainKey ? home : null);
@@ -662,7 +754,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const ckptOn = useCkptOn(session.engine);
   const [setupTalk, setSetupTalk] = useState<TalkHandle | null>(null);
   const name = draftTopic ? `New conversation with ${trunkName(draftTopic.agentId)}` : activeContact?.name ?? (openRow?.isMain ? trunkName(openRow.agentId) : openRow?.title || defaultName);
-  const room = useShellRoom({ engine: session.engine, rowKind: openRow?.kind, agentId: openRow?.agentId, title: name, ownTrunk: trunkName(openRow?.agentId), history: s.history, trunks: trunks.list });
+  const room = useShellRoom({ engine: session.engine, rowKind: openRow?.kind, agentId: openRow?.agentId, title: name, ownTrunk: trunkName(openRow?.agentId), history: s.history, trunks: trunks.list,
+    groupRoom: groupRooms.rooms.find((candidate) => candidate.roomId === roomIdOf(openKey ?? "")),
+    memberName: (kind, id) => kind === "person" ? people.names.get(id) ?? id : contacts.find((contact) => contact.id === `${kind === "a2a" ? "a2a" : "trunk"}:${id}`)?.name ?? id,
+  });
   const rowName = (key: string) => {
     const contact = contacts.find((c) => c.threadKey === key);
     if (contact) return contact.name;
@@ -685,14 +780,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       void session.open(key).then(() => session.send(text));
     },
   });
-  const pageTitle = route.kind === "chat" ? name : route.kind === "place" ? PLACES.find((p) => p.id === route.place)?.name ?? "" : pageName(route.page);
+  const pageTitle = route.kind === "chat" ? name : route.kind === "place" ? route.place === "office" ? "Grove" : PLACES.find((p) => p.id === route.place)?.name ?? "" : pageName(route.page);
   useEffect(() => {
     document.title = windowTitle(pageTitle, needsYou, !ready);
   }, [pageTitle, needsYou, ready]);
 
   const narrow = () => isNarrow;
   const compact = isNarrow || layout.focus;
-  const toggleList = () => (narrow() ? setSlideOpen((o) => !o) : setLayout({ hidden: !(layout.hidden || layout.rail), rail: false }));
+  const toggleList = () => (narrow() ? setSlideOpen((o) => !o) : setLayout({ rail: !rail }));
   const showMenu = (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string, upward = false) => {
     e.preventDefault();
     e.stopPropagation();
@@ -728,9 +823,15 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       : showMenu(e, `row:${row.key}`, rowMenuItems(row, {
       actions,
       contact: contacts.find((c) => c.threadKey === row.key),
+      archiveRoom: (contact) => { if (contact.roomId) void session.request("rooms.archive", { roomId: contact.roomId }).then(() => groupRooms.reload(), (error: unknown) => notify(`Couldn't archive ${contact.name}: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" })); },
+      moveToGroup: (contact) => {
+        const anchor = document.querySelector<HTMLElement>(`[data-drag-key="${CSS.escape(contact.threadKey)}"]`)?.getBoundingClientRect();
+        if (anchor) setGroupDrop({ kind: "pick", source: contact.threadKey, anchor });
+      },
       markContactRead: markReadContact,
       pinContact: toggleContactPin,
       profile: openTrunkProfile,
+      removeTrunk: (agentId, name) => setRemovingTrunk({ agentId, name }),
       whoItKnows: (contact) => {
         openConversation(contact.threadKey);
         requestAnimationFrame(() => document.querySelector<HTMLButtonElement>("[data-testid=who-it-knows-button]")?.click());
@@ -745,7 +846,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         setRenaming(r.key);
       },
       confirmDelete: (r) => (askBeforeDelete() ? setDeleting(r) : void actions.remove(r)),
-      newWith: (agentId) => void startNew(agentId),
       level: readLevel(),
       ask: (r) => {
         openConversation(r.key);
@@ -764,8 +864,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     savePrefs(p);
   };
   const focusSearch = () => {
-    if (layout.rail || layout.hidden) {
-      setLayout({ rail: false, hidden: false });
+    if (rail) {
+      setLayout({ rail: false });
     }
     if (narrow()) {
       setSlideOpen(true);
@@ -858,7 +958,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     paused: pausedTrunks.map((t) => ({ id: t.id, name: t.name })),
     allPaused: pausedTrunks.length > 0 && pausedTrunks.length === trunks.list.length,
     gfx: shown.gfx,
-    pet,
     onMenu: (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string) => showMenu(e, id, items, label, true),
     onSettings: openSettings,
   };
@@ -904,6 +1003,17 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onShowCharacter: () => setCharacterShown(true),
     talkOff: voiceReady.live ? null : VOICE_OFF,
     onTalk: () => window.dispatchEvent(new Event(TALK_EVENT)),
+    onSearch: () => window.dispatchEvent(new Event(FIND_EVENT)),
+    onSidePanel: () => setPane((value) => value ? null : "Activity"),
+    onList: toggleList,
+    onTheme: () => setTheme(toggleTheme(theme)),
+    onComputer: () => setStage("Computer"),
+    onBrowser: () => setStage("Browser"),
+    onGuide: () => { const rect = document.querySelector<HTMLElement>("[data-testid=conversation-menu-button]")?.getBoundingClientRect(); setOverlay({ kind: "menu", id: "guide", at: { x: rect?.left ?? 8, y: (rect?.bottom ?? 48) + 4 }, items: guideItems(), label: "Guide" }); },
+    hasContactReturn: Boolean(topicReturnKey && (draftTopic || openKey !== topicReturnKey)),
+    onBackToContact: () => { if (topicReturnKey) { const key = topicReturnKey; setTopicReturnKey(null); openConversation(key); } },
+    hasContactConversations: Boolean(topicContact && !draftTopic),
+    onConversations: () => setPane((value) => value === "Conversations" ? null : "Conversations"),
     besideOpen: panes.length > 0,
     // The first time, the pane opens straight away with its own chooser (the artifact's pane); after that the menu
     // changes which conversation sits beside this one.
@@ -911,7 +1021,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onSplit: split,
     onAddComputer: () => setAddingComputer(true),
     onManageComputers: () => openSettings("computer"),
-    room: room.menu,
+    room: room.menu ? { ...room.menu, members: room.members } : null,
   });
   const areaProps = {
     engine: session.engine,
@@ -921,38 +1031,20 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onOpenSession: openConversation,
     onReply: (target: { entryId: string; name: string; text: string }) => setReplyTo(target),
   };
-  const sideWidth = liveW ?? (layout.hidden ? 0 : layout.rail ? 68 : layout.sideW);
-  const frameClass = ["frame", layout.hidden ? "list-hidden" : "", layout.rail ? "rail" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
+  const sideWidth = liveW ?? (rail ? 68 : layout.sideW);
+  const frameClass = ["frame", rail ? "rail" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
   const summary = filterSummary(prefs, trunkName, personName);
   const dark = theme === "system" ? systemDark : effectiveDark(theme);
   const filterOpen = overlay?.kind === "filter";
 
-  const usingComputer = workWords(s, now) === "Working · using the computer";
   const who = trunkName(openRow?.agentId);
   const conversationTools = (
     <>
-      {topicReturnKey && (draftTopic || openKey !== topicReturnKey) ? <button type="button" className="ib" aria-label="Back to contact thread" title="Back to contact thread" onClick={() => { const key = topicReturnKey; setTopicReturnKey(null); openConversation(key); }}><Icon name="back" /></button> : null}
-      {topicContact && !draftTopic ? <button type="button" className="ib contact-conversations-button" aria-label={`Conversations · ${topicContact.topicCount}`} aria-pressed={pane === "Conversations"} onClick={() => setPane((value) => value === "Conversations" ? null : "Conversations")}>Conversations · {topicContact.topicCount}</button> : null}
-      {draftTopic ? null : <>
-      {openRow?.kind === "group" || openRow?.kind === "channel" ? null : (
-        <button type="button" className="ib" aria-label={`New conversation with ${trunkName(openRow?.agentId)}`} title={`New conversation with ${trunkName(openRow?.agentId)}`} onClick={() => startNew(openRow?.agentId)}><Icon name="plus" /></button>
-      )}
-      <button type="button" className="ib" aria-label="Computer" title={`Its computer · ${machine?.name ?? "This computer"}`} data-live={usingComputer || undefined} onClick={() => setStage("Computer")}>
-        <Icon name="monitor" />
-        {usingComputer ? <i className="live-dot" aria-hidden="true" /> : null}
-      </button>
-      <button type="button" className="ib" aria-label="Browser" title="Open the browser full size" onClick={() => setStage("Browser")}><Icon name="globe" /></button>
-      <button type="button" className="ib" aria-label="Side panel" title="Side panel: Activity, Dashboard, Timeline, Plan, Files, Memory, Terminal (Ctrl+Shift+K)" aria-pressed={pane !== null} onClick={() => setPane((v) => (v ? null : "Activity"))}><Icon name="panel" /></button>
-      {openRow?.kind === "group" || openRow?.kind === "channel" ? null : (
-        <button type="button" className="ib" aria-label={`Who ${who} knows and may talk to`} title={`Who ${who} knows and may talk to`} data-testid="who-it-knows-button" onClick={conversationMenu.whoItKnows}><Icon name="users" /></button>
-      )}
-      {room.menu ? <button type="button" className="ib" aria-label="Room rules" onClick={(e) => showMenu(e, "room-rules-header", room.menu!.rules(), "Room rules")}><Icon name="gear" /></button> : null}
-      {room.members.length ? <button type="button" className="ib" aria-label={`Members · ${room.members.length}`} onClick={(e) => showMenu(e, "room-members-header", [{ kind: "head", label: "Members" }, ...room.members.map((member) => ({ kind: "custom" as const, node: <div className="mi">{member}</div> }))], "Members")}><Icon name="users" /></button> : null}
-      <button type="button" className="ib" aria-label="Find in this conversation" title="Find in this conversation (Ctrl+F)" onClick={() => window.dispatchEvent(new Event(FIND_EVENT))}><Icon name="search" /></button>
+      {draftTopic ? null :
       <button type="button" className="ib" aria-label="Conversation menu" title={`More for ${openRow?.kind === "group" ? name : who}`} data-testid="conversation-menu-button" onClick={conversationMenu.open}>
         <Icon name="more" />
       </button>
-      </>}
+      }
     </>
   );
   let main: ReactNode;
@@ -962,7 +1054,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       replyTo,
       onClearReply: () => setReplyTo(null),
       onOpenConversation: openConversation,
+      lastUserEntryId: [...s.history].reverse().find((block) => block.kind === "user")?.meta?.entryId,
       offline: !ready,
+      connectionTarget: (() => {
+        const host = new URL(url).hostname;
+        return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]" ? "this computer" : machine?.name || host;
+      })(),
       onOpen: (target: string) => {
         if (target.startsWith("settings/")) {
           openSettings(target.slice("settings/".length));
@@ -975,8 +1072,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     };
     main = draftTopic ? (
       <div className="conversation-column" data-testid="new-topic-draft">
-        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} onList={toggleList} /> : null}
+        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} /> : null}
         <div className="conversation-empty" style={{ flex: 1 }} />
+        <div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
         <Composer
           key={draftTopic.nonce}
           {...composerProps}
@@ -995,9 +1093,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       </div>
     ) : (
       <>
-        <div className="conversation-column">
-        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} onList={toggleList} /> : null}
-        <SplitFrame panes={panes} width={splitW} onWidth={setSplitW} side={
+        <StageConversation
+        header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} /> : null}
+        thread={<SplitFrame panes={panes} width={splitW} onWidth={setSplitW} side={
           <SplitPanes
             panes={panes}
             rows={lists.rows}
@@ -1020,6 +1118,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           hasEarlierPages={segments.hasEarlier}
           loadingEarlier={segments.loading}
           earlierError={segments.error}
+          preparationError={s.error}
+          advancedDiagnostics={level !== "regular"}
           onLoadEarlier={segments.loadEarlier}
           onOpenSession={openTopic}
           onStartTopic={activeContact?.kind === "trunk" ? startFromMessage : undefined}
@@ -1032,8 +1132,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             </>
           }
           name={trunkName(openRow?.agentId)}
+          showThinking={conversationMenu.showThinking}
+          liveStartedAt={s.liveStartedAt}
           room={room.thread}
-          history={s.history}
+          history={mergeRoomNotices(s.history, roomNotices)}
           live={s.live}
           questions={questions.list}
           onStart={(text: string) => void session.send(text)}
@@ -1043,9 +1145,13 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           running={Boolean(s.liveRunId)}
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />
-        </SplitFrame>
-        {s.error ? <p className="notice indent">{s.error}</p> : null}
-        <Composer
+        </SplitFrame>}
+        notice={s.error && !isPreparationPending(s.error) ? <p className="notice indent">{s.error}</p> : null}
+        stage={stage ? (
+          <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
+        ) : null}
+        pet={<div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={(() => { const w = lists.rows.find((r) => rowState(r).waiting); return w ? trunkName(w.agentId) : null; })()} /></div>}
+        composer={<Composer
           {...composerProps}
           mainKey={mainKeySuffix}
           onNewTopic={startNew}
@@ -1060,16 +1166,16 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             ) : setupTalk ? (
               <TalkSetup handle={setupTalk} />
             ) : newTrunkFlow && newTrunkFlow.sessionKey === openKey ? (
-              <NewTrunkCard engine={session.engine} flow={newTrunkFlow} onDone={(name) => { setNewTrunkFlow(null); notify(`All set. I’m “${name}” for now; change my name, colour and face from the ⋯ menu. What’s the first job?`); }} />
-            ) : ready && !s.history.length && !s.pendingUser && !s.liveRunId ? (
+              <NewTrunkCard engine={session.engine} flow={newTrunkFlow} onDone={(name) => { setNewTrunkFlow(null); notify(`${name} is ready. What’s the first job?`); }} />
+            ) : ready && !roomNotices.length && !s.history.length && !s.pendingUser && !s.liveRunId ? (
               <WhereChips key={s.sessionKey} engine={session.engine} row={openRow} trunkName={trunkName(openRow?.agentId)} advanced={level !== "regular"}
                 projectName={projects.projects.find((x) => x.id === openRow?.projectId)?.name ?? null} onStartTopic={(options) => startNew(openRow?.agentId, options)} />
             ) : null
           }
           onSend={(text: string, extras?: SendExtras) => void session.send(text, extras)}
           onStop={() => void session.stopRun()}
+        />}
         />
-        </div>
         {pane && ready ? (
           <SidePane key={s.sessionKey} engine={session.engine} name={trunkName(openRow?.agentId)} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} cardError={progress.error} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={notify} title={name} onReload={() => void session.reload()}
             contactTopics={topicContact ? { items: topicItems, name: topicContact.name, onOpen: openTopic } : undefined} />
@@ -1080,7 +1186,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     main = (
       <>
         {isNarrow ? <PlaceHead onList={toggleList} onSettings={() => openSettings("general")} /> : null}
-        <PlaceView place={route.place} engine={session.engine} facts={{ running, waiting: waitingTotal }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={(agentId) => void startNew(agentId)} />
+        <PlaceView place={route.place} engine={session.engine} facts={{ running, waiting: waitingTotal }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={(agentId) => void startNew(agentId)} createTrunk={() => void newTrunk()} />
       </>
     );
   } else {
@@ -1115,6 +1221,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   return (
     <TrunkAppearances.Provider value={appearances}>
+    <TrunkPebbleLooks.Provider value={Object.fromEntries(trunks.list.map((t) => [t.name, { colour: t.colour, shape: t.shape, eyes: t.eyes }]))}>
+    <TrunkEmojiFaces.Provider value={Object.fromEntries(trunks.list.map((t) => [t.name, t.emoji ?? ""]))}>
     <div className={frameClass} data-connection={ready ? "ready" : s.status.phase} data-route={route.kind} style={{ ["--side-w" as string]: `${sideWidth}px` }}>
       <a className="skip" href="#main">
         {route.kind === "chat" ? "Skip to the conversation" : "Skip to the page"}
@@ -1124,7 +1232,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         machine={<MachineSwitcher online={ready} connecting={s.status.phase === "connecting"} onOpen={(e) => machineMenu(e, "machine")} />}
         header={header}
         dark={dark}
-        listHidden={layout.hidden || layout.rail}
+        listHidden={rail}
         onTheme={() => setTheme(toggleTheme(theme))}
         onToggleList={toggleList}
         onCharacter={() => setCharacterShown((v) => !v)}
@@ -1134,7 +1242,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onSettings={route.kind === "place" ? () => openSettings("general") : undefined}
       />
       <Sidebar
-        pet={<SidebarPet pet={pet} still={reducedMotion} waiting={(() => { const w = lists.rows.find((r) => rowState(r).waiting); return w ? trunkName(w.agentId) : null; })()} />}
+        home={home}
         sections={sections}
         openKey={route.kind === "chat" ? openKey : null}
         currentPlace={route.kind === "place" ? route.place : null}
@@ -1142,8 +1250,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         showPreview={prefs.preview}
         rowState={rowState}
         trunkName={trunkName}
-        inboxCount={needsYou}
-        runningCount={running}
         personName={person}
         hasUnread={contacts.some((contact) => (contact.threadUnread && contact.threadKey !== openKey) || contact.unreadTopics > 0)}
         filterSlot={<FilterButton prefs={prefs} open={filterOpen} onOpen={(e) => (filterOpen ? setOverlay(null) : setOverlay({ kind: "filter", at: below(e) }))} />}
@@ -1180,7 +1286,22 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             />
           ) : null
         }
-        rail={layout.rail}
+        rail={rail}
+        onReorderPins={(drop, visible) => { if (drop.source !== home?.key) void pinOrder.move(drop, visible); }}
+        dropHint={(drop) => drop.target.startsWith("project:") ? (contacts.find((c) => c.threadKey === drop.source)?.thread ? `Move to ${projects.projects.find((p) => p.id === drop.target.slice(8))?.name ?? "project"}` : "") : groupHint(drop, contacts, groupRooms.rooms)}
+        onGroupDrop={(drop, anchor) => {
+          if (drop.target.startsWith("project:")) {
+            const contact = contacts.find((candidate) => candidate.threadKey === drop.source);
+            if (contact?.thread) void moveContactToProject(session, contact.threadKey, drop.target.slice(8)).then(() => list.refresh(), (error: unknown) => notify(`Couldn't move ${contact.name}: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+            return;
+          }
+          const kind = groupPlan(drop, contacts, groupRooms.rooms);
+          if (kind === "new" || kind === "add") {
+            const source = contacts.find((c) => c.threadKey === drop.source);
+            const target = contacts.find((c) => c.threadKey === drop.target);
+            setGroupDrop({ kind, source: drop.source, target: drop.target, roomId: target?.roomId ?? source?.roomId, anchor });
+          }
+        }}
         onRailSearch={focusSearch}
         onOpen={(key) => {
           selection.clear();
@@ -1189,11 +1310,17 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           setFocusTopic(contact?.preview.kind === "topic" ? { key: contact.preview.topicKey, nonce: Date.now() } : null);
           openConversation(key);
         }}
-        onPlace={openPlace}
-        onNew={(e) => showMenu(e, "new", newMenuItems({ newConversation: () => startNew(), newWith: (id) => startNew(id), trunks: trunks.list, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }), "New")}
+        onNew={(e) => showMenu(e, "new", [
+          ...newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }),
+          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => setLayout({ rail: false }) }] : []),
+        ], "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
-        onArchive={(r) => void (r.archived ? actions.restore(r) : actions.archive(r))}
+        onArchive={(r) => {
+          const roomId = contacts.find((contact) => contact.threadKey === r.key)?.roomId;
+          if (roomId) void session.request("rooms.archive", { roomId }).then(() => groupRooms.reload(), (error: unknown) => notify(`Couldn't archive ${r.title}: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+          else void (r.archived ? actions.restore(r) : actions.archive(r));
+        }}
         onMarkAllRead={() => void Promise.all(contacts.map((contact) => markContactRead(contact, request))).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark all read: ${e instanceof Error ? e.message : String(e)}.`, { tone: "bad" }))}
         onPerson={(e) => (overlay?.kind === "person" ? setOverlay(null) : setOverlay({ kind: "person", at: above(e), from: statusAnchor(e, "connection") }))}
         onSettings={() => openSettings("general")}
@@ -1240,9 +1367,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         ) : null}
         {main}
       </main>
-      {route.kind === "chat" && stage ? (
-        <ComputerStage key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} mode={stage} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} initialComputer={stageComputer} initialControl={stageTakeOver} onMode={setStage} onClose={() => { setStage(null); setStageComputer(null); setStageTakeOver(false); }} onChooseComputer={() => openSettings("computer")} onPip={(computer) => { setPip(computer); setStage(null); }} />
-      ) : null}
       {addingComputer && ready ? <AddComputer engine={session.engine} onClose={() => setAddingComputer(false)} onAdded={computersChanged} /> : null}
       {route.kind === "chat" && pip && !stage ? (
         <StagePip key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} computer={pip} blocks={[...s.history, ...s.live]} onOpen={() => { setPip(null); setStage(pip.kind === "browser" ? "Browser" : "Computer"); }} onClose={() => setPip(null)} />
@@ -1252,17 +1376,18 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         <StatusBar
           connection={ready ? "connected" : s.status.phase === "connecting" ? "connecting" : "offline"}
           gateway={!ready ? (s.status.phase === "connecting" ? "checking" : "offline") : gateway.health?.ok ? "on" : gateway.error || gateway.health ? "offline" : "checking"}
-          machineName={machine?.name ?? url.replace(/^wss?:\/\//, "")}
+          machineName={machine?.name || "this computer"}
           roomUsed={route.kind === "chat" ? roomUsed(openRow) : null}
           running={running}
-          version={machine?.version ?? ""}
+          version={branchVersion}
+          readyVersion={update?.latest}
           usage={shown.usage ? ringReading(limits) : null}
+          usageShown={shown.usage}
           gatewayShown={shown.gateway}
           open={overlay?.kind === "status" ? overlay.item : overlay?.kind === "menu" && overlay.id === "machine-sb" ? "connection" : null}
           extras={{
             left: <StatusLeftExtras {...statusExtras} />,
             gfx: <StatusGfx {...statusExtras} />,
-            pet: <StatusPet pet={statusExtras.pet} />,
           }}
           onItem={statusItem}
         />
@@ -1278,9 +1403,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             limits,
             gateway,
             update,
-            version: machine?.version ?? "",
+            version: branchVersion,
+            computerName: machine?.name ?? "",
             openRow,
-            working: lists.rows.filter((r) => r.working).map((r) => ({ key: r.key, title: trunkName(r.agentId), line: r.isMain ? "Working" : r.title || "New conversation" })),
+            working: lists.rows.filter((r) => r.working).map((r) => ({ key: r.key, title: trunkName(r.agentId), line: r.isMain ? "Working" : r.title || "New conversation", runIds: r.activeRunIds })),
             openSettings,
             openAutomations: () => openPlace("automations"),
             openConversation,
@@ -1327,7 +1453,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onReplay={() => firstRun.open(0)}
           onAddPerson={() => openSettings("people")}
           onLock={() => openSettings("permissions")}
-          updateTo={update?.latest && update.latest !== machine?.version && !remindedToday(update.latest) ? update.latest : null}
+          updateTo={update?.latest && update.latest !== branchVersion && !remindedToday(update.latest) ? update.latest : null}
           onUpdate={() => {
             const r = document.querySelector("[data-testid=sb-version]")?.getBoundingClientRect();
             const above = r && r.width ? { left: r.left, right: r.right, top: r.top, align: "right" as const } : { left: 8, right: 8, top: innerHeight - 40, align: "left" as const };
@@ -1375,6 +1501,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         />
       ) : null}
       {overlay?.kind === "studio" ? <TrunkStudio engine={session.engine} onClose={() => setOverlay(null)} openTrunk={openTrunkProfile} /> : null}
+      {newTrunkRoster ? <NewTrunkPreview roster={newTrunkRoster} busy={makingTrunk} onClose={() => setNewTrunkRoster(null)} onConfirm={(choice) => void confirmNewTrunk(choice)} /> : null}
       {overlay?.kind === "shortcuts" ? <ShortcutsDialog defaultName={defaultName} onClose={() => setOverlay(null)} /> : null}
       {overlay?.kind === "cando" ? <CanDoDialog onClose={() => setOverlay(null)} onGo={(g) => {
         setOverlay(g.kind === "pair" ? { kind: "pair" } : null);
@@ -1433,6 +1560,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           }}
         />
       ) : null}
+      {removingTrunk ? <RemoveTrunkDialog engine={session.engine} agentId={removingTrunk.agentId} name={removingTrunk.name} onClose={() => setRemovingTrunk(null)} /> : null}
       {route.kind === "chat" && characterShown ? (
         <LiveCharacter name={trunkName(openRow?.agentId)} snapshot={s} onClose={() => setCharacterShown(false)} others={room.others} />
       ) : null}
@@ -1440,8 +1568,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       {guide === "tour" ? <Walkthrough defaultName={defaultName} onClose={() => setGuide(null)} /> : null}
       {guide === "news" || guide === "news-ready" ? (
         <WhatsNew
-          version={machine?.version ?? ""}
+          version={branchVersion}
           update={update}
+          desktopInstall={Boolean(componentDesktop(session.gatewayUrl)?.componentUpdates)}
+          computerName={machine?.name ?? ""}
           startOnReady={guide === "news-ready"}
           installed={installedRows({ setup: () => firstRun.open(0), shortcuts: () => setOverlay({ kind: "shortcuts" }), palette: () => setOverlay({ kind: "palette" }), settings: openSettings })}
           onOpenUpdates={() => openSettings("updates")}
@@ -1452,7 +1582,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       {(firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded ? (
         <SetupFlow
           engine={session.engine}
-          version={machine?.version ?? ""}
+          version={branchVersion}
           trunkNames={trunks.list.map((t) => t.name)}
           defaultAgentId={trunks.defaultId}
           defaultName={defaultName}
@@ -1477,9 +1607,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         />
       ) : null}
       {route.kind === "chat" ? conversationMenu.node : null}
+      {groupDrop ? <GroupDropPopover key={`${groupDrop.kind}:${groupDrop.source}:${groupDrop.target ?? groupDrop.roomId ?? ""}`} drop={groupDrop} contacts={contacts} rooms={groupRooms.rooms} defaultTrunk={trunks.defaultId ?? ""} session={session} onClose={() => setGroupDrop(null)} onPick={setGroupDrop} onOpen={(key) => { void groupRooms.reload(); openConversation(key); }} /> : null}
       <BannerView onOpen={openConversation} />
       <Toasts />
     </div>
+    </TrunkEmojiFaces.Provider>
+    </TrunkPebbleLooks.Provider>
     </TrunkAppearances.Provider>
   );
 }

@@ -50,17 +50,33 @@ export function buildDiscordGroupSystemPrompt(
 
 function buildDiscordChannelStructuredContext(params: {
   isGuild: boolean;
+  guildName?: string;
+  channelName?: string;
   channelTopic?: string;
+  threadName?: string;
 }): MsgContext["ChannelStructuredContext"] | undefined {
-  if (!params.isGuild || typeof params.channelTopic !== "string" || !params.channelTopic.trim()) {
+  if (!params.isGuild) {
     return undefined;
   }
+  const guildName = params.guildName?.trim();
+  const channelName = params.channelName?.trim();
+  const topic = params.channelTopic?.trim();
+  const threadName = params.threadName?.trim();
+  if (!guildName && !channelName && !topic && !threadName) {
+    return undefined;
+  }
+  const payload = {
+    ...(guildName ? { guild_name: guildName } : {}),
+    ...(channelName ? { channel_name: channelName } : {}),
+    ...(topic ? { topic } : {}),
+    ...(threadName ? { thread_name: threadName } : {}),
+  };
   return [
     {
       label: "Discord channel metadata",
       source: "discord",
       type: "channel_metadata",
-      payload: { topic: params.channelTopic.trim() },
+      payload,
     },
   ];
 }
@@ -75,7 +91,10 @@ export function buildDiscordInboundAccessContext(params: {
   };
   allowNameMatching?: boolean;
   isGuild: boolean;
+  guildName?: string;
+  channelName?: string;
   channelTopic?: string;
+  threadName?: string;
 }) {
   return {
     groupSystemPrompt: params.isGuild
@@ -83,7 +102,10 @@ export function buildDiscordInboundAccessContext(params: {
       : undefined,
     channelStructuredContext: buildDiscordChannelStructuredContext({
       isGuild: params.isGuild,
+      guildName: params.guildName,
+      channelName: params.channelName,
       channelTopic: params.channelTopic,
+      threadName: params.threadName,
     }),
     ownerAllowFrom: resolveDiscordOwnerAllowFrom({
       channelConfig: params.channelConfig,

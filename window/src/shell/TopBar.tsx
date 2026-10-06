@@ -117,16 +117,11 @@ function HeaderFace({ header, onCharacter, size = 32 }: { header: HeaderInfo; on
 }
 
 /** The conversation header as its own row in the main column (narrow windows and focus mode, §3.2). */
-export function HeaderRow({ header, onCharacter, tools, onList }: { header: HeaderInfo; onCharacter?: () => void; tools?: ReactNode; onList?: () => void }) {
+export function HeaderRow({ header, onCharacter, tools }: { header: HeaderInfo; onCharacter?: () => void; tools?: ReactNode }) {
   const live = !header.room && (header.state === "working" || header.state === "waiting");
   const tint = useHeaderTint(header);
   return (
     <div className={`head-row${live ? " live" : ""}${tint ? " tinted" : ""}`} style={tint ? ({ "--tint": tint } as CSSProperties) : undefined}>
-      {onList ? (
-        <button type="button" className="ib" aria-label="Conversations" title="Conversations" data-testid="head-list" onClick={onList}>
-          <Icon name="menu" />
-        </button>
-      ) : null}
       <HeaderFace header={header} onCharacter={onCharacter} size={56} />
       <div className="head-text">
         <HeadName h={header} />

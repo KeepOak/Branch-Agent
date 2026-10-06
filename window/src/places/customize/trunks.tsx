@@ -14,7 +14,8 @@ import type { PlaceProps } from "../../places-nav/PlaceFrame";
 import type { useResource, Trunks } from "../library/data";
 import { Status } from "../library/ui";
 import { RequestGeneration } from "../library/data";
-import { createReadyTrunk, defaultBlock, makeDefault, newTrunkName } from "../trunk/api";
+import { createReadyTrunk, defaultBlock, makeDefault } from "../trunk/api";
+import { NewTrunkPreview, type TrunkChoice } from "../trunk/NewTrunkPreview";
 import { canWrite, WRITE_WHY } from "../trunk/data";
 import { errorText, readRoster, type Roster, type TrunkRow } from "../trunk/model";
 import { RemoveTrunkDialog } from "../trunk/RemoveTrunk";
@@ -33,7 +34,7 @@ type Props = Pick<PlaceProps, "engine" | "level" | "openConversation" | "openSet
 };
 
 
-function TrunkRowView({ row, roster, open, menu, knows }: { row: TrunkRow; roster: Roster; open: (o: Open) => void; menu: (e: ReactMouseEvent, row: TrunkRow) => void; knows: (e: ReactMouseEvent, row: TrunkRow) => void }) {
+function TrunkRowView({ row, roster, write, open, menu, knows }: { row: TrunkRow; roster: Roster; write: boolean; open: (o: Open) => void; menu: (e: ReactMouseEvent, row: TrunkRow) => void; knows: (e: ReactMouseEvent, row: TrunkRow) => void }) {
   return (
     <div className="tk-row" onContextMenu={(e) => menu(e, row)} onKeyDown={(e) => { if ((e.key === "F10" && e.shiftKey) || e.key === "ContextMenu") menu(e as unknown as ReactMouseEvent, row); }}>
       <button type="button" className="tk-row-who" aria-label={`${row.name}: profile`} onClick={() => open({ kind: "profile", id: row.id })}>
@@ -43,6 +44,7 @@ function TrunkRowView({ row, roster, open, menu, knows }: { row: TrunkRow; roste
       <button type="button" className="btn ghost sm" onClick={(e) => knows(e, row)}>Who it knows</button>
       <button type="button" className="btn sm" onClick={() => open({ kind: "edit", id: row.id })}>Edit</button>
       <button type="button" className="btn ghost sm" disabled title={shownWhy(PAUSE_WHY)}>Pause</button>
+      <button type="button" className="btn ghost sm" disabled={row.id === roster.defaultId || !write} title={row.id === roster.defaultId ? "The default Trunk cannot be removed." : write ? undefined : WRITE_WHY} onClick={() => open({ kind: "remove", id: row.id })}>Remove</button>
     </div>
   );
 }
@@ -54,6 +56,7 @@ export function TrunksTab(props: Props) {
   const [menu, setMenu] = useState<{ at: MenuAnchor; row: TrunkRow } | null>(null);
   const [known, setKnown] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pending = useRef(false);
   const generation = useRef(new RequestGeneration());
@@ -65,14 +68,15 @@ export function TrunksTab(props: Props) {
     return () => { guard.retire(); pending.current = false; };
   }, [engine]);
   const write = canWrite(engine);
-  const add = async () => {
+  const add = async (choice: TrunkChoice) => {
     if (!roster || pending.current) return;
     pending.current = true;
     const current = generation.current.next();
     setBusy(true); setError(null);
     try {
-      const name = newTrunkName(roster), id = await createReadyTrunk(engine, name, current);
+      const name = choice.name, id = await createReadyTrunk(engine, name, current, choice.avatar);
       if (!current()) return;
+      setAdding(false);
       trunks.reload();
       // Its first conversation opens through the shell, which knows the new conversation once its list has it.
       // Without that hand-over the new Trunk's profile opens here, so the person sees what was made.
@@ -98,12 +102,13 @@ export function TrunksTab(props: Props) {
   };
   return <div className="tk-tab-root">
     <div className="tk-toolbar">
-      <button type="button" className="btn pri" disabled={busy || !roster || !write} title={write ? undefined : WRITE_WHY} onClick={() => void add()}><Icon name="plus" small />{busy ? "Making…" : "A new Trunk"}</button>
+      <button type="button" className="btn pri" disabled={busy || !roster || !write} title={write ? undefined : WRITE_WHY} onClick={() => setAdding(true)}><Icon name="plus" small />{busy ? "Making…" : "A new Trunk"}</button>
       <button type="button" className="btn" onClick={openNewGroupChat}><Icon name="users" small />New group chat</button>
     </div>
     <Status {...trunks} />
     {error && <p role="alert" className="tk-error">{error}</p>}
-    {roster && <div className="tk-list">{roster.agents.map((row) => <TrunkRowView key={row.id} row={row} roster={roster} open={setOpen} menu={showMenu} knows={(e, trunk) => void showKnown(e, trunk)} />)}</div>}
+    {roster && <div className="tk-list">{roster.agents.map((row) => <TrunkRowView key={row.id} row={row} roster={roster} write={write} open={setOpen} menu={showMenu} knows={(e, trunk) => void showKnown(e, trunk)} />)}</div>}
+    {adding && roster && <NewTrunkPreview roster={roster} busy={busy} onClose={() => setAdding(false)} onConfirm={(choice) => void add(choice)} />}
     <Jobs engine={engine} reload={trunks.reload} />
     {shows(level, "technical") && <TrunkDefaults engine={engine} />}
     {menu && roster && <Menu at={menu.at} label={`${menu.row.name} menu`} onClose={() => setMenu(null)} items={rowMenu(props, roster, menu.row, setOpen, setError)} />}
@@ -120,6 +125,6 @@ function rowMenu(p: Props, roster: Roster, row: TrunkRow, setOpen: (o: Open) => 
   return [
     row.id === roster.defaultId ? { kind: "info", label: `${row.name} is your default Trunk.` } : { label: "Make default", run: () => void toDefault(), disabled: block || (write ? undefined : WRITE_WHY) },
     { kind: "sep" },
-    { label: `Remove ${row.name}…`, danger: true, run: () => setOpen({ kind: "remove", id: row.id }), disabled: last ? "Branch needs at least one Trunk." : write ? undefined : WRITE_WHY },
+    { label: `Remove ${row.name}…`, danger: true, run: () => setOpen({ kind: "remove", id: row.id }), disabled: row.id === roster.defaultId ? "The default Trunk cannot be removed." : last ? "Branch needs at least one Trunk." : write ? undefined : WRITE_WHY },
   ];
 }

@@ -15,6 +15,9 @@ export type TrunkRow = {
   theme: string;
   emoji: string;
   avatar: string;
+  colour: string;
+  shape: string;
+  eyes: string;
   model: string;
   workspace: string;
   createdVia: string;
@@ -31,6 +34,9 @@ function readRow(a: Rec): TrunkRow {
     theme: str(identity.theme),
     emoji: str(identity.emoji),
     avatar: str(identity.avatar),
+    colour: str(identity.colour),
+    shape: str(identity.shape),
+    eyes: str(identity.eyes),
     model: str(rec(a.model).primary),
     workspace: str(a.workspace),
     createdVia: str(a.createdVia),
@@ -58,6 +64,7 @@ const LOOK_ORDER = ["ember", "tock", "kite", "morel", "pebble", "wisp", "lumen",
 export type Look = { id: string; name: string; still: string | null; later: boolean };
 export const LOOKS: Look[] = [
   { id: "classic", name: "Classic pebble", still: null, later: false },
+  { id: "branch", name: "Branch", still: "/assets/branch-wave.webp", later: false },
   ...LOOK_ORDER.filter((id) => CHARACTERS.includes(id) || EXTRA.includes(id)).map((id) => ({
     id,
     name: LOOK_NAMES[id] ?? id,
@@ -69,6 +76,7 @@ export const EMOJI = ["🦊", "🦉", "🐢", "🍄", "🌿", "🐝", "🦔", "�
 
 /** The look a Trunk wears now: the character its avatar names (or the window's default for it), else the pebble. */
 export function lookOf(avatar: string, name: string): string {
+  if (avatar === "branch:branch") return "branch";
   const still = trunkAppearance(avatar || undefined, name)?.still ?? "";
   const id = /\/agents\/([^/]+)\/still\.webp$/.exec(still)?.[1];
   return id && LOOKS.some((l) => l.id === id) ? id : "classic";

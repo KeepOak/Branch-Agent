@@ -25,7 +25,8 @@ export function createComponentUpdateController(cfg: DesktopConfig, options: {
   let activeKind: "checking" | "staging" | undefined;
   let reading: Promise<ComponentUpdateStatus> | undefined;
   const status = (): Promise<ComponentUpdateStatus> => {
-    reading ??= readComponentUpdateStatus(cfg).then(value => {
+    reading ??= readComponentUpdateStatus(cfg).then(({ currentVersion, pendingVersion }) => {
+      const value = { currentVersion, pendingVersion };
       const phase = value.pendingVersion ? "staged" : state.phase === "staged"
         ? state.latestVersion === value.currentVersion ? "current" : "unchecked" : state.phase;
       state = { ...state, ...value, phase, ...(value.pendingVersion ? { latestVersion: value.pendingVersion } : {}) };

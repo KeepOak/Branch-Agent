@@ -55,6 +55,10 @@ const isSourceCheckoutLauncher = () =>
   existsSync(new URL("./.git", import.meta.url)) ||
   existsSync(new URL("./src/entry.ts", import.meta.url));
 
+// The launcher executes the built dist entry even from a source checkout. Node
+// invalidates bytecode when its source changes, so the same cache is safe here.
+const usesBuiltEntry = () => existsSync(new URL("./dist/entry.js", import.meta.url));
+
 const { detectCurrentSqliteCapabilities, nodeRuntimeFailure, nodeRuntimeNote } =
   await import("./node-sqlite.mjs");
 
@@ -142,7 +146,7 @@ const resolveCompileCacheRespawnLauncher = () => {
 };
 
 const respawnWithoutCompileCacheIfNeeded = () => {
-  if (!isSourceCheckoutLauncher()) {
+  if (!isSourceCheckoutLauncher() || usesBuiltEntry()) {
     return false;
   }
   if (process.env[COMPILE_CACHE_DISABLED_RESPAWNED_ENV] === "1") {
@@ -165,7 +169,7 @@ const respawnWithoutCompileCacheIfNeeded = () => {
 };
 
 const respawnWithPackagedCompileCacheIfNeeded = () => {
-  if (isSourceCheckoutLauncher() || isNodeCompileCacheDisabled()) {
+  if ((isSourceCheckoutLauncher() && !usesBuiltEntry()) || isNodeCompileCacheDisabled()) {
     return false;
   }
   if (process.env.BRANCH_PACKAGED_COMPILE_CACHE_RESPAWNED === "1") {
@@ -293,6 +297,22 @@ const buildMissingEntryErrorMessage = async () => {
   lines.push("For releases, use `npm install -g branch@latest`.");
   return lines.join("\n");
 };
+
+/** `branch graft` and `branch mcp serve` start Graft's MCP server without the full CLI when the gateway is known
+ *  (dist/graft/entry.js, src/mcp/graft-fast.ts). Resolves false to run the full CLI. */
+async function tryGraftFastStart(argv) {
+  const args = argv.slice(2);
+  const graft = args[0] === "graft" || (args[0] === "mcp" && args[1] === "serve");
+  if (!graft || args.includes("--help") || args.includes("-h")) {
+    return false;
+  }
+  const entry = new URL("./dist/graft/entry.js", import.meta.url);
+  if (!existsSync(entry)) {
+    return false;
+  }
+  const { runGraftFast } = await import(entry.href);
+  return await runGraftFast(argv);
+}
 
 const isBareRootHelpInvocation = (argv) =>
   argv.length === 3 && (argv[2] === "--help" || argv[2] === "-h");
@@ -736,7 +756,7 @@ if (isBrowserNativeHostInvocation) {
     !waitingForCompileCacheRespawn &&
     module.enableCompileCache &&
     !isNodeCompileCacheDisabled() &&
-    !isSourceCheckoutLauncher()
+    (!isSourceCheckoutLauncher() || usesBuiltEntry())
   ) {
     try {
       const directory = resolvePackagedCompileCacheDirectory();
@@ -767,7 +787,9 @@ if (isBrowserNativeHostInvocation) {
       // OK
     } else {
       await installProcessWarningFilter();
-      if (await tryImport("./dist/entry.js")) {
+      if (await tryGraftFastStart(process.argv)) {
+        // OK: Graft is serving MCP; the full CLI is not loaded.
+      } else if (await tryImport("./dist/entry.js")) {
         // OK
       } else if (await tryImport("./dist/entry.mjs")) {
         // OK

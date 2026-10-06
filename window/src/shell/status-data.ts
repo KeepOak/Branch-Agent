@@ -1,5 +1,5 @@
 // What the status bar's popovers read from the engine (DESIGN-SPEC §4.9), as pure readers so they can be tested.
-// Sources: usage.status (infra/provider-usage.types.ts), usage.cost (infra/session-cost-usage.types.ts),
+// Sources: usage.status (infra/provider-usage.types.ts),
 // sessions.usage with includeContextWeight (config/sessions/session-system-prompt-report.ts, the way the Control UI's
 // usage/view-details.ts splits it), sessions.usage.timeseries, cron.list and update.status (gateway-protocol config.ts).
 import { readMeasuredPercent } from "./limit-window-reading";
@@ -59,7 +59,7 @@ export function ageWords(at: number, now: number): string {
 
 export type LimitWindow = { name: string; left: number; reset: string; low: boolean };
 export type LimitPill = "Measured" | "Not published";
-export type LimitRow = { id: string; name: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse: boolean };
+export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean };
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
 
 function limitRow(p: Record<string, unknown>, updatedAt: number, now: number): LimitRow {
@@ -72,8 +72,8 @@ function limitRow(p: Record<string, unknown>, updatedAt: number, now: number): L
   const account = [str(p.accountEmail), str(p.plan)].filter(Boolean).join(" · ");
   const measured = windows.length > 0;
   const line = str(p.error) || (measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) || "This service does not say what it allows.");
-  const name = str(p.displayName) || str(p.provider);
-  return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true };
+  const name = (str(p.displayName) || str(p.provider)).replace(/\s+plan$/i, "");
+  return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true };
 }
 
 /** usage.status: one row per connection and account, never added together (§4.9.4 rule 1). */
@@ -83,30 +83,21 @@ export function readLimits(result: unknown, now = Date.now()): Limits {
   return { rows: list(r.providers).map((p) => limitRow(p, updatedAt, now)), updatedAt, refreshing: r.refreshing === true };
 }
 
-/** "N of M connections report a limit. The other K do not publish one. Accounts are never added together." */
-export function limitsSummary(rows: LimitRow[]): string {
-  const measured = rows.filter((r) => r.pill === "Measured").length;
-  const other = rows.length - measured;
-  const head = `${measured} of ${rows.length} connections report a limit.`;
-  return `${head}${other ? ` The other ${other} do not publish one.` : ""} Accounts are never added together.`;
-}
-
 export type RingReading = { name: string; left: number; reset: string; low: boolean };
 
-/** The bar's ring and label: the measured window with the least left (§4.9.1 item 8). */
+/** The bar shows the first measured account's 5-hour reading (FINAL-PASS C1). */
 export function ringReading(limits: Limits | null): RingReading | null {
-  let best: RingReading | null = null;
-  for (const row of limits?.rows ?? []) {
-    for (const w of row.windows) {
-      if (!best || w.left < best.left) {
-        best = { name: row.name, left: w.left, reset: w.reset, low: w.low };
-      }
+  const rows = limits?.rows ?? [];
+  for (const row of rows) {
+    const w = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
+    if (w) {
+      return { name: row.email || row.account || row.name, left: w.left, reset: w.reset, low: w.low };
     }
   }
-  return best;
+  return null;
 }
 
-/** usage.cost params for this calendar month on this computer's clock (as the Control UI's buildSessionUsageDateParams). */
+/** usage.cost params for this calendar month on this computer's clock. */
 export function monthParams(now = new Date()): Record<string, unknown> {
   const day = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const offset = -now.getTimezoneOffset();
@@ -204,22 +195,6 @@ export function comingUp(jobs: unknown[], now = Date.now()): { name: string; whe
 }
 
 export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null; statusMessage?: string };
-
-/** update.status (or hello's snapshot.updateAvailable): the version waiting and what it adds (§4.9.8). */
-export function readUpdate(result: unknown, current: string): UpdateInfo {
-  const r = rec(result);
-  const available = rec(r.updateAvailable);
-  const latest = str(available.latestVersion) || null;
-  const campaign = rec(rec(r.schedule).campaign);
-  const state = str(campaign.state);
-  return {
-    current: str(available.currentVersion) || current,
-    latest,
-    notes: list(available.commits).map((c) => str(c.subject)).filter(Boolean),
-    installing: Boolean(rec(r.activeRun).runId) || state === "applying",
-    waiting: state === "waiting-for-idle" ? "Waiting for running tasks" : null,
-  };
-}
 
 /** "3 days, 4 hours" (§4.9.3 "Up <uptime>"). */
 export function uptimeWords(ms: number): string {

@@ -6,7 +6,7 @@ import "./menu.css";
 // submenu, Left or Escape closes; focus returns to what opened it.
 export type MenuItem =
   | { kind?: "item"; label: string; run: () => void; letter?: string; hint?: string; danger?: boolean; disabled?: string; testid?: string; icon?: ReactNode; sub?: string; checked?: boolean }
-  | { kind: "sub"; label: string; items: MenuItem[]; letter?: string; testid?: string; icon?: ReactNode }
+  | { kind: "sub"; label: string; items: MenuItem[]; letter?: string; hint?: string; testid?: string; icon?: ReactNode }
   | { kind: "sep" }
   | { kind: "head"; label: string }
   | { kind: "info"; label: string; sub?: string; checked?: boolean; icon?: ReactNode }
@@ -73,6 +73,10 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       moveFocus(ref.current, e.key === "ArrowDown" ? 1 : -1);
+    } else if (e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      const list = focusables(ref.current);
+      (e.key === "Home" ? list[0] : list.at(-1))?.focus();
     } else if (e.key === "Escape" || e.key === "ArrowLeft") {
       e.preventDefault();
       e.stopPropagation();
@@ -132,11 +136,12 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
   if (it.kind === "sub") {
     return (
       <button key={i} type="button" role="menuitem" aria-haspopup="menu" aria-expanded={subOpen} className="mi" data-index={i} data-testid={it.testid}
+        onMouseEnter={(e) => openSub(i, e.currentTarget)}
         onClick={(e) => openSub(i, e.currentTarget)}
         onKeyDown={(e) => e.key === "ArrowRight" && (e.preventDefault(), openSub(i, e.currentTarget))}>
         {it.icon ? <i className="mi-ico" aria-hidden="true">{it.icon}</i> : null}
         <span>{it.label}</span>
-        <span className="mi-hint">›</span>
+        <span className="mi-hint">{it.hint ? `${it.hint} ` : ""}›</span>
       </button>
     );
   }

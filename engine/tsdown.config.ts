@@ -420,11 +420,7 @@ function shouldAlwaysBundleDependency(id: string): boolean {
     id.startsWith("@branch/worker-runtime/") ||
     id === "@branch/media-core" ||
     id.startsWith("@branch/media-core/") ||
-    [
-      "@branch/acp-core",
-      "@branch/session-url-contract",
-      "@branch/canopy-contract",
-    ].includes(id) ||
+    ["@branch/acp-core", "@branch/session-url-contract", "@branch/canopy-contract"].includes(id) ||
     id.startsWith("@branch/acp-core/") ||
     id === "zod" ||
     id.startsWith("zod/")
@@ -934,6 +930,18 @@ const configs: UserConfig[] = [
       entry: { "native-hook-relay/entry": "src/cli/native-hook-relay-entry.ts" },
       deps: unifiedDeps,
       outputOptions: { chunkFileNames: "native-hook-relay/[name]-[hash].mjs" },
+      plugins: [createStateSchemaInlinePlugin()],
+    },
+    false,
+  ),
+  nodeBuildConfig(
+    {
+      name: TSDOWN_UNIFIED_CONFIG_GROUP,
+      // Graft (branch graft / mcp serve) must answer an MCP client within its startup timeout: its own lean
+      // chunk graph, never the full CLI's, as the native hook relay does.
+      entry: { "graft/entry": "src/mcp/graft-entry.ts" },
+      deps: unifiedDeps,
+      outputOptions: { chunkFileNames: "graft/[name]-[hash].mjs" },
       plugins: [createStateSchemaInlinePlugin()],
     },
     false,

@@ -61,9 +61,20 @@ export async function markRead(engine: WindowEngine, list: Session[]): Promise<v
 export type Needs = {
   approvals: Row[]; proposals: Row[]; pairing: Row[]; ownerSet: boolean; devices: Row[]; nodes: Row[]; questions: Row[]; mentions: Row[];
   failed: Row[]; expired: Row[]; channels: { channel: string; label: string; account: Row }[];
-  sessions: Session[]; agents: { defaultId: string; mainKey: string; list: Agent[] }; errors: string[];
+  sessions: Session[]; authByAgent: Record<string, Row>; agents: { defaultId: string; mainKey: string; list: Agent[] }; errors: string[];
   modelUpgradeNotice?: string;
 };
+
+/** Only auth failures can be retired by a later sign-in; other failed runs need a successful run. */
+export const isSignInFailure = (error: string): boolean => /re.authenticat|sign.in|login|oauth|credential|auth(?:entication|orization)?\s+(?:expired|failed|required)/i.test(error);
+
+export function signInRecovered(error: string, status: Row | undefined): boolean {
+  if (!isSignInFailure(error) || !status || rec(status.unavailable).code) return false;
+  const providers = rows(status.providers);
+  const named = providers.filter(p => [str(p.provider), str(p.displayName)].some(name => name && error.toLowerCase().includes(name.toLowerCase())));
+  const relevant = named.length ? named : providers;
+  return relevant.length > 0 && relevant.every(p => p.status === "ok" || p.status === "static");
+}
 
 const settle = async <T,>(label: string, errors: string[], read: () => Promise<T>, empty: T): Promise<T> => {
   try { return await read(); } catch (e) { errors.push(`${label}: ${errorText(e)}`); return empty; }
@@ -94,12 +105,19 @@ export async function loadNeeds(engine: WindowEngine): Promise<Needs> {
     settle("Trunks", errors, () => engine.request("agents.list", {}), {}),
     settle("Model upgrade", errors, () => engine.request("usage.status", {}), {}),
   ]);
+  const listedSessions = sessions({ sessions: list });
+  const failedAgents = [...new Set(listedSessions.filter(s => s.status === "failed" && s.lastRunError && isSignInFailure(s.lastRunError)).map(s => s.agentId))];
+  const authByAgent: Record<string, Row> = {};
+  await Promise.all(failedAgents.map(async agentId => {
+    try { authByAgent[agentId] = rec(await engine.request("models.authStatus", { agentId })); }
+    catch { /* Keep the failure visible until sign-in status can be checked. */ }
+  }));
   return {
     approvals: queue.items, proposals: rows(rec(proposals).proposals).filter(p => p.status === "pending"), pairing: rows(rec(pairing).requests), ownerSet: rec(pairing).commandOwnerConfigured === true,
     devices: rows(rec(devices).pending), nodes: rows(rec(nodes).pending),
     questions: rows(rec(questions).questions).filter(q => q.status === "pending"), mentions: rows(rec(mentions).items),
     failed, expired: rows(rec(auth).providers).filter(p => p.status === "expired"), channels: stoppedChannels(channels),
-    sessions: sessions({ sessions: list }), agents: agents(trunks), errors: [...queue.errors, ...errors],
+    sessions: listedSessions, authByAgent, agents: agents(trunks), errors: [...queue.errors, ...errors],
     ...(str(rec(usage).modelUpgradeNotice) ? { modelUpgradeNotice: str(rec(usage).modelUpgradeNotice) } : {}),
   };
 }

@@ -176,6 +176,7 @@ if (!isEntryMain) {
   if (!waitingForCompileCacheRespawn) {
     enableBranchCompileCache({
       installRoot,
+      entryFile,
     });
 
     if (shouldForceReadOnlyAuthStore(process.argv)) {

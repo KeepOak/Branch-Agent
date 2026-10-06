@@ -444,6 +444,9 @@ export async function listAgentsForGateway(
           theme: normalizeOptionalString(entry.identity.theme),
           emoji: normalizeOptionalString(entry.identity.emoji),
           avatar: httpAvatar ?? avatar,
+          colour: entry.identity.colour,
+          shape: entry.identity.shape,
+          eyes: entry.identity.eyes,
           avatarUrl,
         }
       : undefined;

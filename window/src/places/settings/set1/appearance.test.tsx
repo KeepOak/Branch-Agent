@@ -5,12 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
 import { AppearancePage, APPEARANCE_ROWS } from "./appearance";
-import { contrast, fromPalette, SLATE, toPalette } from "./appearance-look";
+import { BUILTIN, contrast, fromPalette, SLATE, toPalette } from "./appearance-look";
+import { LEGACY_THEMES } from "./appearance-legacy";
 import { forgetLookStore, lookStore } from "./appearance-store";
 import { readThemeCode, themeCode } from "./appearance-themes";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-const THEMES = [["grove", "Grove"], ["knot", "Knot"], ["tide", "Tide"]].map(([id, name]) => ({ id, name, description: `${name}.`, source: "builtin", modes: ["light", "dark"] }));
+const THEMES = [["grove", "Grove"], ["paper", "Paper"], ["dracula", "Dracula"]].map(([id, name]) => ({ id, name, description: `${name}.`, source: "builtin", modes: ["light", "dark"] }));
 
 let root: Root;
 let host: HTMLDivElement;
@@ -25,13 +26,13 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; });
 
-function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; current?: string; conflicts?: number } = {}) {
+function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; current?: string; conflicts?: number; themes?: typeof THEMES; themesResponse?: Promise<unknown> } = {}) {
   const prefs: Record<string, unknown> = { ...opts.prefs };
   let conflicts = opts.conflicts ?? 0;
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
     if (method === "users.prefs.get") return opts.profile === false ? { status: "no_durable_identity" } : { status: "ok", entries: { ...prefs } };
     if (method === "users.prefs.set") { if (conflicts-- > 0) return { status: "conflict" }; Object.assign(prefs, params?.entries); return { status: "ok" }; }
-    if (method === "themes.list") return { current: { id: opts.current ?? "grove", mode: "system", scope: "profile", overrides: {} }, theme: THEMES[0], themes: THEMES };
+    if (method === "themes.list") return opts.themesResponse ?? { current: { id: opts.current ?? "grove", mode: "system", scope: "profile", overrides: {} }, theme: THEMES[0], themes: opts.themes ?? THEMES };
     if (method === "agents.list") return { defaultId: "main", agents: [{ id: "main", name: "Birch" }] };
     if (method === "config.get") return { hash: "h1", valid: true, config: {} };
     if (method === "models.list") return { models: [] };
@@ -57,6 +58,21 @@ describe("Settings › Appearance", () => {
     expect(button("Browse all 3 themes")).toBeTruthy();
     expect([...host.querySelectorAll(".mirror b")].map((b) => b.textContent)).toEqual(["Light · live mirror of Birch", "Dark · live mirror of Birch", "Match this computer"]);
     expect(host.querySelectorAll(".pet-c12").length).toBe(43);
+  });
+
+  it("shows 46 themes once loaded and never 0 while themes exist", async () => {
+    const catalog = [["grove", "Grove"], ["paper", "Paper"], ...LEGACY_THEMES.map((t) => [t.id, t.name])].map(([id, name]) => ({ id, name, description: `${name}.`, source: "builtin" as const, modes: ["light", "dark"] as ("light" | "dark")[] }));
+    let resolveThemes!: (value: unknown) => void;
+    const themesResponse = new Promise<unknown>((resolve) => { resolveThemes = resolve; });
+    const { engine } = engineOf({ themesResponse });
+    await render(engine);
+    expect(button("Browse themes")).toBeTruthy();
+    expect(host.textContent).not.toContain("Browse all 0 themes");
+    await act(async () => resolveThemes({ current: { id: "grove", mode: "system" }, themes: catalog }));
+    expect(button("Browse all 46 themes")).toBeTruthy();
+    expect(host.textContent).not.toContain("Browse all 0 themes");
+    await act(async () => button("Browse all 46 themes").click());
+    expect(document.querySelectorAll(".dlg .theme6-b")).toHaveLength(46);
   });
 
   it("a switch saves the person's look to users.prefs at once", async () => {
@@ -88,17 +104,31 @@ describe("Settings › Appearance", () => {
     const { engine, request } = engineOf();
     await render(engine);
     await act(async () => button("Browse all 3 themes").click());
-    await act(async () => document.querySelector<HTMLButtonElement>('.dlg .theme6-b[aria-label="Knot"]')!.click());
-    expect(request).toHaveBeenCalledWith("themes.set", { id: "knot", appearance: { accent: null, fontUi: null, fontChat: null } });
+    await act(async () => document.querySelector<HTMLButtonElement>('.dlg .theme6-b[aria-label="Dracula"]')!.click());
+    expect(request).toHaveBeenCalledWith("themes.set", { id: "dracula", appearance: { accent: null, fontUi: null, fontChat: null } });
   });
 
   it("the chosen theme's colours reach the window in both modes", async () => {
-    const { engine } = engineOf({ current: "knot" });
+    const { engine } = engineOf({ current: "dracula" });
     await render(engine);
     const css = document.getElementById("branch-look")?.textContent ?? "";
-    expect(css).toContain(":root:root{--bg:#f9f9fb");
-    expect(css).toContain(':root:root[data-theme="dark"]{--bg:#080808');
-    expect(host.querySelector(".theme-now .grow > b")?.textContent).toBe("Knot");
+    expect(css).toContain(":root:root{--bg:#f1eff6");
+    expect(css).toContain(':root:root[data-theme="dark"]{--bg:#282a36');
+    expect(host.querySelector(".theme-now .grow > b")?.textContent).toBe("Dracula");
+  });
+
+  it("browses the 46 classic themes by group and previews Dracula in both modes", async () => {
+    const catalog = [["grove", "Grove"], ["paper", "Paper"], ...LEGACY_THEMES.map((t) => [t.id, t.name])].map(([id, name]) => ({ id, name, description: `${name}.`, source: "builtin", modes: ["light", "dark"] }));
+    const { engine } = engineOf({ themes: catalog });
+    await render(engine);
+    await act(async () => button("Browse all 46 themes").click());
+    expect(document.querySelectorAll(".dlg .theme6-b")).toHaveLength(46);
+    await act(async () => button("Editors & terminals", document).click());
+    expect(document.querySelectorAll(".dlg .theme6-b")).toHaveLength(25);
+    expect(document.querySelector<HTMLButtonElement>('.dlg .theme6-b[aria-label="Dracula"]')).toBeTruthy();
+    await act(async () => button("Daylight", document).click());
+    expect(BUILTIN.dracula.light.bg).toBe("#f1eff6");
+    expect(BUILTIN.dracula.dark.bg).toBe("#282a36");
   });
 
   it("Make your own imports the colours as the person's theme", async () => {

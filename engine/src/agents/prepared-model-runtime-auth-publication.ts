@@ -107,19 +107,22 @@ export class PreparedModelRuntimeAuthPublicationOwner {
     return this.#transaction === transaction;
   }
 
-  adopt(gateId: PreparedModelRuntimeReplacementGateId): void {
+  adopt(gateId: PreparedModelRuntimeReplacementGateId): readonly PreparedModelRuntimeOwner[] {
     if (this.#transaction) {
       this.#transaction.adoptedBy = gateId;
     }
+    return [...(this.#transaction?.ownerGates.keys() ?? [])];
   }
 
   adoptTransaction(
     transaction: PreparedModelRuntimeAuthTransaction,
     gateId: PreparedModelRuntimeReplacementGateId,
-  ): void {
+  ): readonly PreparedModelRuntimeOwner[] {
     if (this.#transaction === transaction) {
       transaction.adoptedBy = gateId;
+      return [...transaction.ownerGates.keys()];
     }
+    return [];
   }
 
   prepareAdoptedCommit(
