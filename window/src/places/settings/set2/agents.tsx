@@ -14,6 +14,8 @@ const LEDE = "Agents grafted onto Branch: coding agents on your computers that w
 export type OutsideAgentRow = {
   id: string; name: string; version?: string; where?: string; project?: string; activity?: string; activityAt?: number;
   lastSeenAt: number; online: boolean; revoked: boolean; mayDriveWindow: boolean;
+  /** "branch": another Branch grafted in as a device; "trunk": one of its Trunks (via = that Branch's id). */
+  kind?: "branch" | "trunk"; via?: string;
 };
 
 export function readAgents(result: unknown): { enabled: boolean; agents: OutsideAgentRow[] } {
@@ -22,8 +24,17 @@ export function readAgents(result: unknown): { enabled: boolean; agents: Outside
     id: str(a.id), name: str(a.name), version: str(a.version) || undefined, where: str(a.where) || undefined, project: str(a.project) || undefined,
     activity: str(a.activity) || undefined, activityAt: typeof a.activityAt === "number" ? a.activityAt : undefined,
     lastSeenAt: typeof a.lastSeenAt === "number" ? a.lastSeenAt : 0, online: a.online === true, revoked: a.revoked === true, mayDriveWindow: a.mayDriveWindow === true,
+    ...(a.kind === "branch" || a.kind === "trunk" ? { kind: a.kind as "branch" | "trunk" } : {}), ...(str(a.via) ? { via: str(a.via) } : {}),
   }));
   return { enabled: r.enabled !== false, agents: agents.toSorted((x, y) => Number(y.online) - Number(x.online) || y.lastSeenAt - x.lastSeenAt) };
+}
+
+/** Grafted Branches with their Trunks nested under them; every other agent (and a Trunk whose Branch row is
+ *  missing) stays a row of its own. */
+export function groupAgents(agents: readonly OutsideAgentRow[]): { row: OutsideAgentRow; trunks: OutsideAgentRow[] }[] {
+  const branches = new Set(agents.filter((a) => a.kind === "branch").map((a) => a.id));
+  const nested = (a: OutsideAgentRow) => a.kind === "trunk" && !!a.via && branches.has(a.via);
+  return agents.filter((a) => !nested(a)).map((row) => ({ row, trunks: row.kind === "branch" ? agents.filter((a) => nested(a) && a.via === row.id) : [] }));
 }
 
 /** The lines an agent's owner pastes once. `branch` is the desktop's shim: it always runs the current engine. */
@@ -74,7 +85,8 @@ function trunksOf(result: unknown): Trunk[] {
     .map((a) => ({ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) }));
 }
 
-function AgentRow({ agent, trunks, props, reload, sessions }: { agent: OutsideAgentRow; trunks: Trunk[]; props: SettingsPageProps; reload: () => void; sessions: string[] }) {
+function AgentRow({ agent, trunks, props, reload, sessions, nested = [] }: { agent: OutsideAgentRow; trunks: Trunk[]; props: SettingsPageProps; reload: () => void; sessions: string[]; nested?: OutsideAgentRow[] }) {
+  const isBranch = agent.kind === "branch";
   const config = useConfig(props.engine);
   const call = useCall();
   const set = (change: Record<string, unknown>) => void call.run(async () => { await props.engine.request("contacts.outside.set", { id: agent.id, ...change }); reload(); });
@@ -89,13 +101,25 @@ function AgentRow({ agent, trunks, props, reload, sessions }: { agent: OutsideAg
   const seen = agent.online ? "Online now" : agent.lastSeenAt ? `Last seen ${when(agent.lastSeenAt)}` : "Not seen yet";
   const doing = agent.activity ? ` · ${agent.activity}${agent.activityAt ? ` (${when(agent.activityAt)})` : ""}` : "";
   return (
-    <div className="sec" data-testid="connected-agent" data-agent={agent.id}>
+    <div className="sec" data-testid="connected-agent" data-agent={agent.id} data-kind={agent.kind}>
       <h3 className="ca-head">
         <RoomAvatar id={agent.id} name={agent.name} size={28} online={agent.online} />
         <span className="ca-name">{agentTitle(agent)}</span>
+        {isBranch ? <span className="ca-badge" data-testid="branch-badge">Branch</span> : null}
         <span className="rm-tag">{a2aBadge(agent.where ?? null)}</span>
       </h3>
       <p className="hint">{agent.revoked ? "Disconnected" : seen}{doing}{agent.version ? ` · version ${agent.version}` : ""}</p>
+      {nested.length ? (
+        <ul className="ca-trunks" aria-label={`${agent.name}'s Trunks`}>
+          {nested.map((t) => (
+            <li key={t.id} className="ca-trunk" data-testid="grafted-trunk" data-agent={t.id}>
+              <RoomAvatar id={t.id} name={t.name} size={20} online={t.online && !agent.revoked} />
+              <span className="ca-name">{t.name}</span>
+              <span className="hint">{agent.revoked || t.revoked ? "Disconnected" : t.online ? "Online now" : t.lastSeenAt ? `Last seen ${when(t.lastSeenAt)}` : "Not seen yet"}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {trunks.map((t) => (
         <Ctl key={t.id} id={`${agent.id}-${t.id}`} title={`May message ${t.name}`} noPin>
           <Switch label={`${agent.name} may message ${t.name}`} checked={!denied(t.id)} disabled={config.loading} onChange={(on) => allow(t.id, on)} />
@@ -104,9 +128,15 @@ function AgentRow({ agent, trunks, props, reload, sessions }: { agent: OutsideAg
       <Ctl id={`${agent.id}-window`} title="May use your Branch window" sub="Also needs Branch itself › Let agents use this window. Without it the agent gets its own test Branch." noPin>
         <Switch label={`${agent.name} may use your Branch window`} checked={agent.mayDriveWindow} disabled={call.busy} onChange={(on) => set({ mayDriveWindow: on })} />
       </Ctl>
-      <Ctl id={`${agent.id}-connection`} title={agent.revoked ? "Let it connect again" : "Disconnect"} sub={agent.revoked ? "It can work with your Trunks again the next time it connects." : "It stops working with Branch within a minute, until you let it back."} noPin>
-        <Btn sm disabled={call.busy} onClick={() => set({ revoked: !agent.revoked })}>{agent.revoked ? "Reconnect" : "Disconnect"}</Btn>
-      </Ctl>
+      {isBranch ? (
+        <Ctl id={`${agent.id}-connection`} title={agent.revoked ? "Disconnected" : "Disconnect"} sub={agent.revoked ? "Its pairing was removed. To bring it back, give it a new setup code (branch graft invite) and run branch graft join on it." : "Removes this Branch's pairing and its Trunks from your contacts. It needs a new setup code to join again."} noPin>
+          {agent.revoked ? null : <Btn sm disabled={call.busy} onClick={() => set({ revoked: true })}>Disconnect</Btn>}
+        </Ctl>
+      ) : (
+        <Ctl id={`${agent.id}-connection`} title={agent.revoked ? "Let it connect again" : "Disconnect"} sub={agent.revoked ? "It can work with your Trunks again the next time it connects." : "It stops working with Branch within a minute, until you let it back."} noPin>
+          <Btn sm disabled={call.busy} onClick={() => set({ revoked: !agent.revoked })}>{agent.revoked ? "Reconnect" : "Disconnect"}</Btn>
+        </Ctl>
+      )}
       {call.error ? <p className="hint" role="alert">{call.error}</p> : null}
     </div>
   );
@@ -126,7 +156,7 @@ export function AgentsPage(props: SettingsPageProps) {
           <Switch label="Let other agents work with Branch" checked={enabled} disabled={live.loading || call.busy} onChange={(on) => void call.run(async () => { await props.engine.request("contacts.outside.set", { enabled: on }); reload(); })} />
         </Ctl>
       </Sec>
-      {agents.length ? agents.map((a) => <AgentRow key={a.id} agent={a} trunks={trunks} props={props} reload={reload} sessions={agents.map((x) => x.id)} />) : (
+      {agents.length ? groupAgents(agents).map(({ row, trunks: nested }) => <AgentRow key={row.id} agent={row} nested={nested} trunks={trunks} props={props} reload={reload} sessions={agents.map((x) => x.id)} />) : (
         <Sec title="Grafts"><Empty>No agent is grafted yet. Paste one of the lines below into it.</Empty></Sec>
       )}
       <Sec title="Graft an agent" hint="Each line is pasted once. It runs the branch command, which always uses the Branch on this computer, so it keeps working after updates.">

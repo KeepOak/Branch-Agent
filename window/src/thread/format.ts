@@ -36,19 +36,64 @@ export function clockLeft(ms: number): string {
 
 type Step = Extract<Block, { kind: "step" }>;
 
+type Words = { now: string; done: string };
+
+/** Tools that run a shell command, and tools that change files (Codex reports its kinds "command" and "patch"). */
+const COMMAND_TOOLS = new Set(["exec", "process", "bash", "command", "shell", "terminal", "gateway_process"]);
+const EDIT_TOOLS = new Set(["apply_patch", "patch", "edit", "write", "file_change"]);
+
+/** Plain words for the other tools a Trunk uses; ids never show (P7: "Used apply_patch" was the bug). */
+const TOOL_WORDS: Record<string, Words> = {
+  read: { now: "Reading a file", done: "Read a file" },
+  sessions_spawn: { now: "Starting a helper", done: "Started a helper" },
+  agents_wait: { now: "Waiting for its helpers", done: "Waited for its helpers" },
+  web_search: { now: "Searching the web", done: "Searched the web" },
+  search: { now: "Searching the web", done: "Searched the web" },
+  web_fetch: { now: "Reading a web page", done: "Read a web page" },
+  browser: { now: "Using the browser", done: "Used the browser" },
+  computer: { now: "Using the computer", done: "Used the computer" },
+  code_execution: { now: "Running code", done: "Ran code" },
+  memory_search: { now: "Searching its memory", done: "Searched its memory" },
+  memory_get: { now: "Checking its memory", done: "Checked its memory" },
+  image: { now: "Looking at an image", done: "Looked at an image" },
+  view_image: { now: "Looking at an image", done: "Looked at an image" },
+  pdf: { now: "Reading a PDF", done: "Read a PDF" },
+  message: { now: "Sending a message", done: "Sent a message" },
+  sessions_send: { now: "Sending a message", done: "Sent a message" },
+  conversations_send: { now: "Sending a message", done: "Sent a message" },
+  sessions_history: { now: "Reading a past conversation", done: "Read a past conversation" },
+  sessions_search: { now: "Searching past conversations", done: "Searched past conversations" },
+  skills_search: { now: "Looking for a skill", done: "Looked for a skill" },
+  skills_read: { now: "Reading a skill", done: "Read a skill" },
+  update_plan: { now: "Updating the plan", done: "Updated the plan" },
+  ask_user: { now: "Asking you", done: "Asked you" },
+};
+
+/** "mcp__github__create_issue" or "github.create-issue" → "create issue". */
+function plainToolName(tool: string): string {
+  const last = tool.split(/__|\./).filter(Boolean).pop() ?? tool;
+  return last.replace(/[_-]+/g, " ").trim().toLowerCase() || "a tool";
+}
+
+function editedFiles(step: Step): number {
+  return step.changes?.length || 1;
+}
+
+function stepWords(step: Step): Words {
+  if (COMMAND_TOOLS.has(step.tool)) return { now: "Running a command", done: "Ran a command" };
+  if (EDIT_TOOLS.has(step.tool)) {
+    const n = editedFiles(step);
+    return n === 1 ? { now: "Editing a file", done: "Edited a file" } : { now: `Editing ${n} files`, done: `Edited ${n} files` };
+  }
+  const name = plainToolName(step.tool);
+  return TOOL_WORDS[step.tool] ?? { now: `Using ${name}`, done: `Used ${name}` };
+}
+
 /** The step line's words (Hermes-style: what it is doing now, what it did once done). */
 export function stepLabel(step: Step): string {
-  const running = step.status === "running";
-  if (step.tool === "exec" || step.tool === "process") {
-    return running ? "Running a command" : step.status === "denied" ? "Command not run" : "Ran a command";
-  }
-  if (step.tool === "read") {
-    return running ? "Reading a file" : "Read a file";
-  }
-  if (step.tool === "sessions_spawn") {
-    return running ? "Starting a helper" : "Started a helper";
-  }
-  return running ? `Using ${step.tool}` : `Used ${step.tool}`;
+  if (step.status === "denied") return COMMAND_TOOLS.has(step.tool) ? "Command not run" : `Not allowed: ${stepWords(step).now.toLowerCase()}`;
+  const words = stepWords(step);
+  return step.status === "running" ? words.now : words.done;
 }
 
 function counted(n: number, one: string, many: string): string {
@@ -71,13 +116,16 @@ export function stepsSummary(steps: readonly Step[], run?: { title: string; dura
   if (run?.title) {
     return [run.title, steps.length > 1 ? `${steps.length} steps` : "1 step", run.durationMs ? formatDuration(run.durationMs) : ""].filter(Boolean).join(" · ");
   }
-  const commands = steps.filter((s) => s.tool === "exec" || s.tool === "process").length;
+  const commands = steps.filter((s) => COMMAND_TOOLS.has(s.tool)).length;
   const reads = steps.filter((s) => s.tool === "read").length;
-  const others = [...new Set(steps.filter((s) => !["exec", "process", "read"].includes(s.tool)).map((s) => s.tool))];
+  const edited = steps.filter((s) => EDIT_TOOLS.has(s.tool)).reduce((n, s) => n + editedFiles(s), 0);
+  const counts = new Set([...COMMAND_TOOLS, ...EDIT_TOOLS, "read"]);
+  const others = [...new Set(steps.filter((s) => !counts.has(s.tool)).map((s) => stepWords(s).done.toLowerCase()))];
   const parts = [
     ...(commands ? [counted(commands, "ran a command", "ran # commands")] : []),
     ...(reads ? [counted(reads, "read a file", "read # files")] : []),
-    ...others.map((tool) => `used ${tool}`),
+    ...(edited ? [counted(edited, "edited a file", "edited # files")] : []),
+    ...others,
   ];
   const text = joinWords(parts);
   const times = steps.map((s) => s.at).filter((at): at is number => typeof at === "number");
@@ -97,26 +145,6 @@ export function dayStamp(ms: number, now = Date.now()): string {
   if (d.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
   const sameYear = d.getFullYear() === today.getFullYear();
   return `${d.toLocaleDateString([], sameYear ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" })} ${time}`;
-}
-
-/** "Getting started words" (§4.2.5 Parity adds) for the engine's run_status phases. */
-export const PHASE_WORDS: Record<string, string> = {
-  waiting_for_state: "Waiting for a reply…",
-  preparing_workspace: "Preparing the folder…",
-  naming_worktree: "Naming the separate copy…",
-  creating_worktree: "Making a separate copy…",
-  running_setup: "Running setup…",
-  provisioning_environment: "Getting its computer ready…",
-  preparing_context: "Preparing this turn…",
-  memory_flushing: "Saving what it remembers…",
-  starting_model: "Preparing this turn…",
-};
-
-export function phaseWords(status: Extract<Block, { kind: "status" }>): string {
-  if (status.attempt && status.maxAttempts) {
-    return `Trying again… ${status.attempt} of ${status.maxAttempts}`;
-  }
-  return PHASE_WORDS[status.phase] ?? "";
 }
 
 /** The first sentence of an engine error, without the engine's own lead-in and warning sign. */

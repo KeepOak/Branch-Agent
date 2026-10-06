@@ -28,9 +28,9 @@ function sidebar(contacts: ReturnType<typeof projectContact>, onOpen: (key: stri
   return {
     sections: buildContactSections(contacts, DEFAULT_PREFS, 100), openKey: null, currentPlace: null,
     now: 100, showPreview: true, rowState: () => ({ waiting: false, working: false }),
-    trunkName: (id) => id ?? "", inboxCount: 0, runningCount: 0, personName: "Owner", hasUnread: false,
+    trunkName: (id) => id ?? "", personName: "Owner", hasUnread: false,
     filterSlot: null, summary: null, emptyLine: null, search: null, searchResults: null,
-    rail: false, onRailSearch: () => {}, onOpen, onPlace: () => {}, onNew: () => {}, onMenu: () => {},
+    rail: false, onRailSearch: () => {}, onOpen, onNew: () => {}, onMenu: () => {},
     onPin: () => {}, onArchive: () => {}, onMarkAllRead: () => {}, onPerson: () => {}, onSettings: () => {},
   };
 }
@@ -69,12 +69,12 @@ it("offers Pin but not Archive or Delete on the default Trunk's conversation men
   const [contact] = projectContact([raw("tk", 10)], []);
   const items = conversationMenuItems({
     row: openContactRow(contact.threadKey, [contact], []), isMain: true, trunkName: "TK",
-    ownTrunk: false, canRemoveTrunk: false, level: "regular", online: true, now: 100,
-    hasReply: false, talkOff: null, detail: null, fileManager: "Show in File Explorer",
+    ownTrunk: false, canRemoveTrunk: false, online: true, now: 100,
+    hasReply: false, talkOff: null,
     run: new Proxy({}, { get: () => vi.fn() }) as ConversationMenuRun,
   });
-  expect(items.some((item) => item.kind === undefined && item.label === "Pin to top")).toBe(true);
-  expect(items.some((item) => item.kind === undefined && (item.label === "Archive" || item.label === "Delete…"))).toBe(false);
+  expect(items.some((item) => item.kind === undefined && item.label === "Pin")).toBe(true);
+  expect(items.some((item) => item.kind === undefined && (item.label === "Archive" || item.label === "Delete this conversation…"))).toBe(false);
 });
 
 it("orders TK by activity and moves it through Pinned on menu pin and unpin", async () => {
@@ -97,11 +97,11 @@ it("orders TK by activity and moves it through Pinned on menu pin and unpin", as
     return rowMenuItems(openContactRow(contact.threadKey, [contact], [])!, {
       actions, contact, pinContact: toggle,
       now: 100, trunkName: "TK", level: "regular", open: () => {}, rename: () => {}, confirmDelete: () => {},
-      newWith: () => {}, ask: () => {}, editTrunk: () => {}, tidy: () => {}, copyMarkdown: () => {},
+      ask: () => {}, editTrunk: () => {}, tidy: () => {}, copyMarkdown: () => {},
       copyText: () => {}, copyLink: () => {},
     });
   };
-  for (const [label, expectedPinned] of [["Pin to top", true], ["Unpin", false]] as const) {
+  for (const [label, expectedPinned] of [["Pin", true], ["Unpin", false]] as const) {
     const item = menu().find((candidate) => candidate.kind === undefined && candidate.testid === "menu-pin");
     expect(item).toMatchObject({ label });
     if (!item || item.kind !== undefined) throw new Error("Pin action is missing");

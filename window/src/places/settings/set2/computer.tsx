@@ -41,7 +41,7 @@ export const ROWS: RowEntry[] = [
   { page: "computer", title: "Keep this computer awake", sec: "Computers they may use", lv: 0 }, { page: "computer", title: "Which Trunk uses which", lv: 0 },
 ];
 
-type Req = { id: string; kind: "device" | "node"; name: string; plat: string; access: string[]; more: boolean; ts: number; deviceId: string; ip: string; version: string; engine: string };
+type Req = { id: string; kind: "device" | "node"; name: string; plat: string; access: string[]; more: boolean; ts: number; deviceId: string; ip: string; version: string };
 
 function accessOf(words: unknown): string[] {
   return [...new Set((Array.isArray(words) ? words : []).map((w) => ACCESS[String(w)] ?? "").filter(Boolean))];
@@ -55,12 +55,12 @@ function requests(devices: RecordValue, nodes: RecordValue): Req[] {
   const fromDevices = list(devices.pending).map((r): Req => ({
     id: str(r.requestId), kind: "device", name: str(r.displayName) || str(r.clientId) || "A device", plat: osOf(r.platform),
     access: accessOf(r.scopes), more: pairedDevices.has(str(r.deviceId)) || r.isRepair === true, ts: Number(r.ts) || 0,
-    deviceId: str(r.deviceId), ip: str(r.remoteIp), version: "", engine: "",
+    deviceId: str(r.deviceId), ip: str(r.remoteIp), version: "",
   }));
   const fromNodes = list(nodes.pending).map((r): Req => ({
     id: str(r.requestId), kind: "node", name: str(r.displayName) || "A computer", plat: osOf(r.platform),
     access: accessOf(r.commands), more: pairedNodes.has(str(r.nodeId)), ts: Number(r.ts) || 0,
-    deviceId: str(r.nodeId), ip: str(r.remoteIp), version: str(r.uiVersion) || str(r.version), engine: str(r.coreVersion),
+    deviceId: str(r.nodeId), ip: str(r.remoteIp), version: str(r.uiVersion) || str(r.version),
   }));
   return [...fromDevices, ...fromNodes].filter((r) => r.id).sort((a, b) => b.ts - a.ts);
 }
@@ -126,7 +126,7 @@ function RequestRow({ r, lv, busy, onAllow, onRefuse }: { r: Req; lv: number; bu
           {r.access.length ? <> · {r.access.map((a, i) => <span key={a} className={RISKY.has(a) ? "s2-warn" : undefined}>{i ? ", " : ""}{a}</span>)}</> : null}
         </small>
         {r.more ? <small className="s2-note">Asks for more access than before</small> : null}
-        {lv >= 2 ? <details className="s2-det"><summary>Details</summary><Kv rows={[["Device ID", r.deviceId], ["Address it came from", r.ip], ["App", r.version], ["Engine", r.engine]]} /></details> : null}
+        {lv >= 2 ? <details className="s2-det"><summary>Details</summary><Kv rows={[["Device ID", r.deviceId], ["Address it came from", r.ip], ["App", r.version]]} /></details> : null}
       </span>
       <Btn sm ghost disabled={busy} onClick={onRefuse}>Don’t allow</Btn>
       <Btn sm pri disabled={busy || !ready} title={ready ? undefined : "Allow is ready in a moment"} onClick={onAllow}>Allow</Btn>
@@ -178,7 +178,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
 /** In the cloud: KeepOak's own card (greyed until keepoak.com has a sign-in) and a cloud computer from a profile the
  *  engine has (environments.list, environments.create). */
 function InTheCloud({ engine }: Pick<SettingsPageProps, "engine">) {
-  const envs = useLive<RecordValue>(engine, "environments.list", {}, ["node", "environments", "worker"]);
+  const envs = useLive<RecordValue>(engine, "environments.list", {}, ["node", "environments"]);
   const [open, setOpen] = useState(false);
   const profiles = list(rec(envs.data).profiles);
   return (

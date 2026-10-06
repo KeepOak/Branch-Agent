@@ -1,6 +1,7 @@
 /** Lifecycle-owned auth/model discovery snapshots for agent runs. */
 import { toStringifiedError } from "@branch/normalization-core/error-coercion";
 import type { BranchConfig } from "../config/types.branch.js";
+import { normalizeAgentId } from "../routing/session-key.js";
 import { runOutsideSqliteReadOnlyWorkerScope } from "../infra/sqlite-readonly-worker-context.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { registerRuntimeAuthProfileStoreMutationListener } from "./auth-profiles/runtime-snapshots.js";
@@ -118,7 +119,41 @@ const modelRuntimeDrain = createPreparedModelRuntimePluginDrain(
 const authPublication = new PreparedModelRuntimeAuthPublicationOwner();
 const getBlockingReplacement = () =>
   pendingModelRuntimeReplacement?.degraded ? undefined : pendingModelRuntimeReplacement;
+const getPassiveReplacement = (agentId?: string) => {
+  const replacement = getBlockingReplacement();
+  return replacement && (!replacement.agentIds || !agentId || replacement.agentIds.has(normalizeAgentId(agentId)))
+    ? replacement
+    : undefined;
+};
 const getAdmissionReplacement = () => modelRuntimeDrain.pending ?? getBlockingReplacement();
+
+function widenReplacementForAdoptedAuth(
+  replacement: PreparedModelRuntimeReplacement,
+  adoptedOwners: readonly PreparedModelRuntimeOwner[],
+): void {
+  if (!replacement.agentIds) {
+    return;
+  }
+  const agentIds = new Set(replacement.agentIds);
+  for (const owner of adoptedOwners) {
+    if (owner.provenance === "standalone" || !owner.input.agentId) {
+      replacement.agentIds = undefined;
+      return;
+    }
+    agentIds.add(normalizeAgentId(owner.input.agentId));
+  }
+  replacement.agentIds = agentIds;
+}
+
+function adoptAuthTransaction(
+  replacement: PreparedModelRuntimeReplacement,
+  transaction?: Parameters<PreparedModelRuntimeAuthPublicationOwner["adoptTransaction"]>[0],
+): void {
+  const adoptedOwners = transaction
+    ? authPublication.adoptTransaction(transaction, replacement.gateId)
+    : authPublication.adopt(replacement.gateId);
+  widenReplacementForAdoptedAuth(replacement, adoptedOwners);
+}
 
 const replyDispatchPublication = new PreparedReplyDispatchPublicationOwner({
   isGatewayLifecycleActive: () => gatewayLifecycleActive,
@@ -230,12 +265,12 @@ export async function acquireAgentRuntimeCleanupRegistries(agentDir: string) {
 export function getPreparedModelRuntimeSnapshot(
   rawInput: PreparedModelRuntimeInput,
 ): PreparedModelRuntimeSnapshot | undefined {
-  return getBlockingReplacement() ? undefined : readPublishedModelRuntimeSnapshot(owners, rawInput);
+  return getPassiveReplacement(rawInput.agentId) ? undefined : readPublishedModelRuntimeSnapshot(owners, rawInput);
 }
 
 /** Reads the owner-held publication barrier without starting catalog acquisition. */
-export function getPendingPreparedModelRuntimeReplacement(): Promise<void> | undefined {
-  return getBlockingReplacement()?.promise;
+export function getPendingPreparedModelRuntimeReplacement(agentId?: string): Promise<void> | undefined {
+  return getPassiveReplacement(agentId)?.promise;
 }
 
 /** Fence new execution while plugin work drains, without withdrawing the active catalog. */
@@ -362,7 +397,7 @@ const preparedModelRuntimeLeaseContext = {
 };
 const publishedModelRuntime = createPublishedModelRuntimeAccess(
   preparedModelRuntimeLeaseContext,
-  getBlockingReplacement,
+  getPassiveReplacement,
 );
 /** Retains the selected publication without activating an unpublished owner. */
 export const acquirePreparedModelRuntimeSnapshot = publishedModelRuntime.acquire;
@@ -421,7 +456,10 @@ export function markPreparedModelRuntimeSnapshotsStale(
   if (options.waitForReplacement) {
     const superseded = pendingModelRuntimeReplacement;
     pendingModelRuntimeReplacement = createPreparedModelRuntimeReplacement();
-    authPublication.adopt(pendingModelRuntimeReplacement.gateId);
+    pendingModelRuntimeReplacement.agentIds = options.agentIds
+      ? new Set([...options.agentIds].map(normalizeAgentId))
+      : undefined;
+    adoptAuthTransaction(pendingModelRuntimeReplacement);
     // Superseded readers retry against the newer replacement gate.
     superseded?.resolve();
   } else if (!options.preserveReplacementWait && pendingModelRuntimeReplacement) {
@@ -585,6 +623,12 @@ export function refreshPreparedModelRuntimeSnapshots(
       publicationAgentIds = forceFullRefresh
         ? undefined
         : resolveSafeRefreshAgentIds(currentConfig, options, owners);
+      if (replacement) {
+        replacement.agentIds = publicationAgentIds
+          ? new Set([...publicationAgentIds].map(normalizeAgentId))
+          : undefined;
+        adoptAuthTransaction(replacement);
+      }
       retainedGatewayRunOwners.clear(owners);
       gatewayLifecycleActive ||= options.gatewayLifecycle === true;
       await configuredRefresh.refreshPreparedModelRuntimeSnapshotsNow(
@@ -670,7 +714,7 @@ function invalidateForAuthMutation(event: PreparedModelRuntimeAuthMutation): voi
   if (getBlockingReplacement()) {
     // The active config transaction drains this event before its atomic dispatch commit. Retire
     // the superseded build gate; queuing another task would make this commit depend on future work.
-    authPublication.adoptTransaction(transaction, getBlockingReplacement()!.gateId);
+    adoptAuthTransaction(getBlockingReplacement()!, transaction);
     notifyPreparedModelRuntimePublication({ phase: "invalidated" });
     return;
   }
@@ -684,13 +728,13 @@ function invalidateForAuthMutation(event: PreparedModelRuntimeAuthMutation): voi
     // dispatch publication. Rebuilding here would revive stale owners with the old config or
     // throw on them, emitting a spurious failed/published event that wedges chat metadata.
     if (getBlockingReplacement()) {
-      authPublication.adoptTransaction(transaction, getBlockingReplacement()!.gateId);
+      adoptAuthTransaction(getBlockingReplacement()!, transaction);
       return;
     }
     await drainPendingAuthMutations(() => {
       // Admission waits only for static publication; account discovery owns a separate lifetime.
       if (getBlockingReplacement()) {
-        authPublication.adoptTransaction(transaction, getBlockingReplacement()!.gateId);
+        adoptAuthTransaction(getBlockingReplacement()!, transaction);
         return;
       }
       if (!authPublication.resolve(transaction, owners)) {
@@ -717,7 +761,7 @@ function invalidateForAuthMutation(event: PreparedModelRuntimeAuthMutation): voi
       return;
     }
     if (getBlockingReplacement()) {
-      authPublication.adoptTransaction(transaction, getBlockingReplacement()!.gateId);
+      adoptAuthTransaction(getBlockingReplacement()!, transaction);
       return;
     }
     if (error instanceof PreparedModelRuntimePublicationSupersededError) {

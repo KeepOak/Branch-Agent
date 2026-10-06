@@ -72,6 +72,8 @@ export type GatewayWsMessageHandlerParams = {
   browserRateLimiter?: AuthRateLimiter;
   nodeReapprovalCoordinator?: NodeReapprovalCoordinator;
   isStartupPending?: () => boolean;
+  /** Operator connects are admitted once this is false, which can be before startup finishes. */
+  isOperatorAdmissionPending?: () => boolean;
   isPendingWorkerNodeSetup?: (setupId: string, deviceId: string) => boolean;
   admitsNodeSetupCompletion?: (setup: CloudWorkerSetupMutationAdmission) => boolean;
   gatewayMethods: string[];
