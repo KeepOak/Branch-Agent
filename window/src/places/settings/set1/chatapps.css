@@ -40,7 +40,7 @@
 .dlg .row-ca > span { display: grid; gap: 2px; }
 .dlg .dlg-p-ca { margin: 0; font-size: 13.5px; color: var(--ink-2); }
 .dlg .fld-ca { display: grid; justify-items: start; gap: 8px; }
-.dlg .fld-ca > span:first-child { font: 500 10.5px/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.dlg .fld-ca > span:first-child { font: 600 12px/1.3 var(--sans); color: var(--ink-3); }
 .dlg .fld-ca .link-k { justify-self: center; }
 .set-col .list-ca { margin: 2px 0 6px; }
 .set-col .list-ca .prow, .dlg .list-ca .prow { padding: 10px 4px; }
@@ -54,7 +54,7 @@
 .dlg .box-ca .ctl:last-of-type { border-bottom: 0; }
 .dlg .box-h-ca { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .dlg .box-h-ca small { font-size: 12.5px; color: var(--ink-2); }
-.dlg .mg-ca h3 { margin: 18px 0 4px; font: 500 10.5px var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+.dlg .mg-ca h3 { margin: 18px 0 4px; font: 600 12px var(--sans); color: var(--ink-3); }
 .dlg .grp-ca { flex-wrap: wrap; }
 .dlg .grp-ca select.inp { height: 30px; max-width: 160px; }
 .dlg .mini-ca { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); }

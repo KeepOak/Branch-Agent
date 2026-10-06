@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +26,19 @@ async function open(page: string, onPage = vi.fn()) {
 }
 
 describe("settings frame level", () => {
+  it("keeps Settings headings and labels in sentence case", () => {
+    const root = join(process.cwd(), "src/places/settings");
+    const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((item) => {
+      const path = join(dir, item.name);
+      return item.isDirectory() ? files(path) : item.name.endsWith(".css") ? [path] : [];
+    });
+    const styles = [...files(root), join(process.cwd(), "src/places-nav/settings-frame.css")];
+    const uppercase = styles.flatMap((file) => readFileSync(file, "utf8").split(/\r?\n/)
+      .filter((line) => /text-transform:\s*uppercase/i.test(line) && !/\.(?:s2cm-code|code-ca input|hexin)\b/.test(line))
+      .map((line) => `${file}: ${line.trim()}`));
+    expect(uppercase).toEqual([]);
+  });
+
   it("opening an Advanced page at Regular raises the level and shows that page", async () => {
     localStorage.setItem("branch.level", "regular");
     const onPage = await open("advanced");
