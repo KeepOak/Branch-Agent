@@ -1,3 +1,5 @@
 # VOICE-0025: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
+# VOICE-0026: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
 engine:extensions/gradium/speech-provider.test.ts
 engine:extensions/gradium/tts.test.ts
+engine:extensions/senseaudio/media-understanding-provider.test.ts
