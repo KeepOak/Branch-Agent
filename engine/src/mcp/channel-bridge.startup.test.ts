@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/mcp/channel-bridge.startup.test.ts (atlas INTEGRATIONS-0020). Changed for Branch: retain Graft conversation tools and device-auth preparation before startup and the MCP handshake ordering; preserve bridge policy assertions (shared safety layer 41 and owner included-features rule 03 A1.4).
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { resolveGatewayClientBootstrap } from "../gateway/client-bootstrap.js";
 

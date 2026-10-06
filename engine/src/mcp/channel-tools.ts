@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/mcp/channel-tools.ts (atlas INTEGRATIONS-0020). Changed for Branch: retain Graft conversation tools and device-auth preparation before startup and the MCP handshake ordering; preserve bridge policy assertions (shared safety layer 41 and owner included-features rule 03 A1.4).
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { BranchChannelBridge } from "./channel-bridge.js";
