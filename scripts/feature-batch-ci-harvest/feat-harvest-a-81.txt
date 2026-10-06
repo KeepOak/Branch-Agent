@@ -1,0 +1,4 @@
+engine:extensions/clickclack/src/command-menu.test.ts
+engine:extensions/clickclack/src/gateway.test.ts
+engine:extensions/clickclack/src/inbound.mention-gating.test.ts
+engine:extensions/clickclack/src/inbound.test.ts
