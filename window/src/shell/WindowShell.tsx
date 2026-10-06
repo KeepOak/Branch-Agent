@@ -359,7 +359,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const update = useUpdate(session, ready, branchVersion);
   const projects = useProjects(session, ready);
   const [newProject, setNewProject] = useState(false);
-  const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null, trunks.loaded ? trunks.list.length : null);
+  const [route, setRoute] = useState<Route>(loadRoute);
+  const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null, trunks.loaded ? trunks.list.length : null, route.kind === "settings");
   const contactRows = contactRowsFor(gatewayContacts, contactsLoaded, trunks.list, lists.rows, s.mainKey, firstRun.isFirstRun,
     firstRun.isFirstRun && firstRun.requiresContact ? trunks.bootstrapDefault : undefined);
   const now = useNow(s.doneAt);
@@ -369,7 +370,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [liveW, setLiveW] = useState<number | null>(null);
   const isNarrow = useNarrow();
   const [slideOpen, setSlideOpen] = useState(false);
-  const [route, setRoute] = useState<Route>(loadRoute);
   const [searchFind, setSearchFind] = useState<{ key: string; query: string; nonce: number } | null>(null);
   const searchFindNonce = useRef(0);
   const routeRef = useRef(route);
@@ -1697,7 +1697,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             }
           }}
           onLocalModel={() => {
-            firstRun.close();
+            firstRun.leaveForLocalModel();
             openSettings("local");
           }}
         />

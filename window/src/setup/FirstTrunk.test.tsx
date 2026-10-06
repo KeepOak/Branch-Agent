@@ -85,7 +85,8 @@ it("uses IDs for duplicate names and explains reserved and invalid names plainly
   const request = vi.fn(async (method: string, args?: unknown) => {
     if (method === "agents.create") {
       const name = (args as { name: string }).name;
-      if (name === "Branch") return { ok: false, error: { message: '"branch" is reserved' } };
+      const id = name.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+      if (id === "branch" || id === "crestodian") return { ok: false, error: { message: `"${id}" is reserved` } };
       if (name === "!!!") return { ok: false, error: { message: "Agent name has no valid id characters" } };
       return { ok: false, error: { message: "agent already exists" } };
     }
@@ -99,13 +100,32 @@ it("uses IDs for duplicate names and explains reserved and invalid names plainly
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, name); input.dispatchEvent(new Event("input", { bubbles: true })); });
     await act(async () => (host.querySelector('[data-testid="first-trunk-create"]') as HTMLButtonElement).click());
   };
-  await enter("Branch");
+  await enter("Branch!");
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("Choose another Trunk name");
   expect(host.textContent).not.toContain('"branch" is reserved');
+  await enter("crestodian");
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("Choose another Trunk name");
   await enter("!!!");
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("at least one letter or number");
   await enter("Fern");
   expect(host.textContent).toContain("Use existing Not Fern Trunk");
+});
+
+it("Skip uses an existing Branch Agent and closes setup after saving it as default", async () => {
+  const request = vi.fn(async (method: string) => {
+    if (method === "agents.create") return { ok: false, error: { message: "agent already exists" } };
+    if (method === "agents.list") return { agents: [{ id: "branch-agent", name: "Branch Agent" }] };
+    if (method === "config.get") return { hash: "h", config: {} };
+    return { ok: true };
+  });
+  const onCreated = vi.fn();
+  const onSkip = vi.fn();
+  const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+  await act(async () => root!.render(<FirstTrunk engine={{ request } as unknown as WindowEngine} onCreated={onCreated} onBack={() => {}} onSkip={onSkip} />));
+  await act(async () => (host.querySelector('[data-testid="setup-skip"]') as HTMLButtonElement).click());
+  expect(onCreated).toHaveBeenCalledExactlyOnceWith("branch-agent", "Branch Agent");
+  expect(onSkip).toHaveBeenCalledOnce();
+  expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h", raw: JSON.stringify({ agents: { defaultId: "branch-agent" } }) });
 });
 
 it("supports form submission and ignores repeated submissions while creation is pending", async () => {

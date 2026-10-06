@@ -38,12 +38,17 @@ export function FirstTrunk({ engine, onCreated, onBack, onSkip }: { engine: Wind
           if (/already exists/i.test(e instanceof Error ? e.message : String(e))) {
             const roster = await loadRoster(engine);
             const match = roster.agents.find((agent) => agent.id === idForName(chosenName));
-            if (match) setExisting({ id: match.id, name: match.name });
-            setError(match ? `A Trunk named ${match.name} already exists. Use that Trunk or choose another name.` : "That Trunk name is already taken. Choose another name.");
+            if (useDefault && match) {
+              contact = { id: match.id, name: match.name };
+            } else {
+              if (match) setExisting({ id: match.id, name: match.name });
+              setError(match ? `A Trunk named ${match.name} already exists. Use that Trunk or choose another name.` : "That Trunk name is already taken. Choose another name.");
+              return;
+            }
+          } else {
+            setError(creationProblem(e));
             return;
           }
-          setError(creationProblem(e));
-          return;
         }
       }
       if (!contact) return;

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
@@ -77,7 +77,8 @@ describe("setup model", () => {
 });
 function engine(answers: Record<string, unknown>) {
   const request = vi.fn(async (method: string, args?: unknown) => {
-    if (method === "agents.create" && (args as { name?: string })?.name?.trim().toLowerCase() === "branch") throw new Error('"branch" is reserved');
+    const agentId = (args as { name?: string })?.name?.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+    if (method === "agents.create" && (agentId === "branch" || agentId === "crestodian")) throw new Error(`"${agentId}" is reserved`);
     return answers[method] ?? {};
   });
   const e = { request: request as unknown as WindowEngine["request"], onEvent: () => () => {}, sessionKey: "k", scopes: ["operator.admin"], agentId: "main" } as WindowEngine;
@@ -107,6 +108,23 @@ describe("setup flow", () => {
     function Probe() { const first = useFirstRun(session, true, () => false, 0); return <span data-testid="step">{first.step ?? "closed"}</span>; }
     const host = await show(<Probe />);
     await act(async () => new Promise((r) => setTimeout(r, 750)));
+    expect(host.querySelector('[data-testid="step"]')?.textContent).toBe("4");
+  });
+  it("resumes first-Trunk setup in the same session after local-model Settings when no Trunk exists", async () => {
+    const session = { request: vi.fn(async () => ({ config: {} })) } as unknown as SaplingSession;
+    function Probe() {
+      const [inSettings, setInSettings] = useState(false);
+      const first = useFirstRun(session, true, () => false, 0, inSettings);
+      return <><span data-testid="step">{first.step ?? "closed"}</span>
+        <button onClick={() => { first.leaveForLocalModel(); setInSettings(true); }}>Set up local model</button>
+        <button onClick={() => setInSettings(false)}>Back from Settings</button></>;
+    }
+    const host = await show(<Probe />);
+    await act(async () => new Promise((r) => setTimeout(r, 750)));
+    expect(host.querySelector('[data-testid="step"]')?.textContent).toBe("0");
+    await act(async () => byText(host, "Set up local model").click());
+    expect(host.querySelector('[data-testid="step"]')?.textContent).toBe("closed");
+    await act(async () => byText(host, "Back from Settings").click());
     expect(host.querySelector('[data-testid="step"]')?.textContent).toBe("4");
   });
   it("keeps a zero-Trunk reopen on first-Trunk creation after config prefill", async () => {
@@ -315,15 +333,23 @@ describe("setup flow", () => {
     expect(JSON.parse(raw).wizard.lastRunAt).toBeTruthy();
     expect(closed).toHaveBeenCalledWith(false);
   });
-  it("Finish by talking ends talk mode and records setup", async () => {
-    const { engine: e, request } = engine({ "config.get": { hash: "h", config: {} }, "config.patch": { ok: true } });
+  it("Finish by talking reaches the required first Trunk, then records setup", async () => {
+    const { engine: e, request } = engine({ "config.get": { hash: "h", config: {} }, "config.patch": { ok: true }, "agents.create": { ok: true, agentId: "fern" }, "agents.list": { agents: [{ id: "fern", name: "Fern" }] } });
     const onTalk = vi.fn();
     const closed = vi.fn();
-    const host = await show(<SetupFlow engine={e} version="1" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={3} onTalk={onTalk} onClose={closed} onLocalModel={() => {}} />);
+    const host = await show(<SetupFlow engine={e} version="1" trunkNames={[]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={3} onTalk={onTalk} onClose={closed} onLocalModel={() => {}} />);
     await act(async () => tid(host, "setup-talk").click());
     expect(host.querySelector("h2")).toBeNull();
     const handle = onTalk.mock.calls.find(([value]) => value)?.[0] as TalkHandle;
     await act(async () => handle.finish());
+    expect(host.querySelector("h2")?.textContent).toBe("Create your first Trunk");
+    expect(closed).not.toHaveBeenCalled();
+    const input = host.querySelector("input")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Fern"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => tid(host, "first-trunk-create").click());
+    await act(async () => tid(host, "setup-talk").click());
+    const resumed = onTalk.mock.calls.filter(([value]) => value).at(-1)?.[0] as TalkHandle;
+    await act(async () => resumed.finish());
     expect(closed).toHaveBeenCalledWith(true);
     expect(onTalk).toHaveBeenLastCalledWith(null);
     expect(params(request, "config.patch").some((patch) => Boolean(JSON.parse(String(patch.raw)).wizard?.lastRunAt))).toBe(true);

@@ -6,12 +6,21 @@ import type { SaplingSession } from "../connect/session";
 import { needsFirstContact, setupDone } from "./setup-model";
 
 /** The step setup is open at, or null; `open(step)` reopens it by hand (Guide › Set up Branch, Replay the first run). */
-export function useFirstRun(session: SaplingSession, ready: boolean, busy: () => boolean, usableTrunks: number | null = null) {
+export function useFirstRun(session: SaplingSession, ready: boolean, busy: () => boolean, usableTrunks: number | null = null, inSettings = false) {
   const [step, setStep] = useState<number | null>(null);
   const [requiresContact, setRequiresContact] = useState(true);
   const [isFirstRun, setIsFirstRun] = useState(false);
   const closed = useRef(false);
-  useEffect(() => { closed.current = false; }, [session]);
+  const returningFromLocalModel = useRef(false);
+  useEffect(() => { closed.current = false; returningFromLocalModel.current = false; }, [session]);
+  useEffect(() => {
+    if (!returningFromLocalModel.current || inSettings || usableTrunks === null) return;
+    returningFromLocalModel.current = false;
+    if (usableTrunks === 0) {
+      closed.current = false;
+      setStep(4);
+    }
+  }, [inSettings, usableTrunks]);
   useEffect(() => {
     if (!ready) {
       return;
@@ -44,5 +53,5 @@ export function useFirstRun(session: SaplingSession, ready: boolean, busy: () =>
     // Once per connection; `busy` is read when the timer fires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, ready, usableTrunks]);
-  return { step, requiresContact, isFirstRun, contactCreated: () => setRequiresContact(false), open: (at = 0) => { closed.current = false; setStep(at); }, close: () => { closed.current = true; setStep(null); } };
+  return { step, requiresContact, isFirstRun, contactCreated: () => setRequiresContact(false), open: (at = 0) => { returningFromLocalModel.current = false; closed.current = false; setStep(at); }, close: () => { returningFromLocalModel.current = false; closed.current = true; setStep(null); }, leaveForLocalModel: () => { returningFromLocalModel.current = true; closed.current = true; setStep(null); } };
 }
