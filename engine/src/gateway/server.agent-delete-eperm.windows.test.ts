@@ -68,6 +68,21 @@ it.skipIf(process.platform !== "win32")(
         deleteFiles: true,
       });
       expect(db.isOpen).toBe(false);
+      if (deleted.failed.length > 0) {
+        const probes: Record<string, string> = {};
+        for (const entry of await fs.readdir(agentDir)) {
+          const source = path.join(agentDir, entry);
+          const destination = `${source}.delete-probe-${process.pid}`;
+          try {
+            await fs.rename(source, destination);
+            await fs.rename(destination, source);
+            probes[entry] = "rename succeeded";
+          } catch (error) {
+            probes[entry] = error instanceof Error ? error.message : String(error);
+          }
+        }
+        throw new Error(`Agent directory Trash failed: ${JSON.stringify({ failed: deleted.failed, probes })}`);
+      }
       expect(deleted.failed).toEqual([]);
       const survivingDatabaseFilePaths = resolveSurvivingDatabaseFilePaths(
         readAgentDeleteDatabaseRegistry(),
