@@ -23,6 +23,10 @@ engine:src/agents/local-model-lean.test.ts
 engine:src/agents/provider-local-service.linux-oom.test.ts
 engine:src/agents/provider-local-service.readiness.test.ts
 engine:src/agents/provider-local-service.test.ts
+engine:src/agents/subagents/spawn/subagent-spawn.authority.test.ts
+engine:src/agents/subagents/spawn/subagent-spawn.depth-limits.test.ts
+engine:src/agents/tools/sessions-spawn-tool.test.ts
+engine:src/agents/tools/subagents-tool.test.ts
 engine:src/cli/capability-cli.help.test.ts
 engine:src/cli/capability-cli.test.ts
 engine:src/decisions/runtime.admission.test.ts
