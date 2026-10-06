@@ -1,0 +1,7 @@
+# UI-MOBILE-WEB-0100 Wear OS app: blocked (0/2 upstream test files).
+# Source: openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3.
+# Branch omits the Android phone app and Wear / wear-shared Gradle modules.
+# The watch depends on the phone Data Layer relay and matching package/signature;
+# no Android SDK is installed and Harvest CI accepts only engine/window Vitest files.
+# The cited Kotlin suites cannot run here; isolated controller copies would not
+# deliver a working watch app. Restore the native phone/watch build and test lane.
