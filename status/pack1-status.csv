@@ -2,7 +2,7 @@ id,build_state,branch_files,upstream_tests_ported,named_test_command,result,note
 AGENT-LOOP-0009,blocked,,0/3,,not run,Required atlas INDEX.md and data/rows entries; DECISIONS.md; docs/design/DESIGN-SPEC.md; and page 41 shared safety-layer specification are absent from this checkout. Their location was requested. Mastra DurableAgent requires its workflow snapshot storage and tool-approval authority adapter; no port was completed or tested.
 AGENT-LOOP-0010,blocked,,0/2,,not run,Depends on blocked AGENT-LOOP-0009. Mastra WorkflowEventProcessor and the split-transport snapshot/approval adapter are not wired into Branch; no port was completed or tested.
 AGENT-LOOP-0011,blocked,,0/1,,not run,Required atlas INDEX.md and data/rows entries; DECISIONS.md; docs/design/DESIGN-SPEC.md; and page 41 shared safety-layer specification are absent from this checkout. Their location was requested. DeerFlow factory depends on LangGraph state/checkpointers and ordered executable middleware; Branch AgentOptions alone does not establish upstream factory parity. No port was completed or tested.
-AGENT-LOOP-0012,upstream,,,,,
+AGENT-LOOP-0012,in progress,,,,,
 AGENT-LOOP-0013,upstream,,,,,
 AGENT-LOOP-0014,upstream,,,,,
 AGENT-LOOP-0015,upstream,,,,,
