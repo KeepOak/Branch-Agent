@@ -25,7 +25,6 @@ engine:src/agents/proactive-prune-rearm-threshold.test.ts
 engine:src/agents/proactive-tool-result-pruning.test.ts
 engine:src/agents/structured-summary-retry.test.ts
 engine:src/agents/structured-summary.integration.test.ts
-engine:src/auto-reply/commands-registry.test.ts
 engine:src/auto-reply/reply/commands-compact-context-budget.test.ts
 engine:src/auto-reply/reply/commands-compact.harvest.test.ts
 engine:src/auto-reply/reply/commands-compact.lifecycle.test.ts
