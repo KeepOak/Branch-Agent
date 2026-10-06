@@ -35,3 +35,6 @@ engine/src/groves/cron.test.ts,MULTI-AGENT-0053,openclaw/openclaw,8177060846209e
 engine/src/groves/cron-update.test.ts,MULTI-AGENT-0053,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/claws/cron-update.test.ts (verified existing Branch coverage),2026-10-06
 engine/src/groves/mcp.test.ts,MULTI-AGENT-0053,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/claws/mcp.test.ts (verified existing Branch coverage),2026-10-06
 engine/src/agents/agent-roles.test.ts,MULTI-AGENT-0054,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/agents/agent-roles.test.ts (verified existing Branch coverage),2026-10-06
+engine/extensions/acpx/src/runtime.test.ts,MULTI-AGENT-0083,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,extensions/acpx/src/runtime.test.ts (verified existing Branch coverage),2026-10-06
+engine/extensions/acpx/src/process-reaper.test.ts,MULTI-AGENT-0083,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,extensions/acpx/src/process-reaper.test.ts (verified existing Branch coverage),2026-10-06
+engine/src/agents/subagents/spawn/acp-spawn.test.ts,MULTI-AGENT-0083,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/subagents/spawn/acp-spawn.test.ts (verified existing Branch coverage),2026-10-06
