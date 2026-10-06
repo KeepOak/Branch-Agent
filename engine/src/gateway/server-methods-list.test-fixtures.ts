@@ -13,7 +13,7 @@ exec.approval.request exec.approval.waitDecision exec.approval.resolve exec.appr
 exec.approval.grants.revoke question.request question.waitAnswer question.resolve question.get
 question.list plugin.approval.list plugin.approval.request plugin.approval.waitDecision
 plugin.approval.resolve plugins.uiDescriptors plugins.sessionAction branch.chat
-branch.chat.history branch.changes.list branch.approval.list branch.setup.detect
+branch.chat.history branch.changes.list branch.approval.list branch.setup.detect branch.setup.codingApps
 branch.setup.activate branch.setup.activate.start branch.setup.auth.start
 branch.setup.prepare.start wizard.start wizard.next wizard.cancel wizard.status talk.catalog
 talk.config talk.client.create talk.client.transcript talk.client.close talk.client.toolCall

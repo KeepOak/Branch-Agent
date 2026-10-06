@@ -223,6 +223,16 @@ export const SystemAgentSetupDetectParamsSchema = closedObject({
   agentId: Type.Optional(NonEmptyString),
 });
 
+/** Lightweight local CLI check for Settings, independent of provider setup discovery. */
+export const SystemAgentCodingAppsParamsSchema = closedObject({});
+export const SystemAgentCodingAppsResultSchema = closedObject({
+  apps: Type.Array(closedObject({
+    kind: Type.Union([Type.Literal("claude-cli"), Type.Literal("codex-cli"), Type.Literal("gemini-cli")]),
+    installed: Type.Boolean(),
+    credentials: Type.Optional(Type.Boolean()),
+  })),
+});
+
 const ProviderAutoSetupInferenceKind = Type.TemplateLiteral("provider-auto:${string}", {
   pattern: "^provider-auto:.+$",
 });
@@ -467,6 +477,7 @@ export type SystemChangeSource = Static<typeof SystemChangeSourceSchema>;
 export type SystemChangesListParams = Static<typeof SystemChangesListParamsSchema>;
 export type SystemChangesListResult = Static<typeof SystemChangesListResultSchema>;
 export type SystemAgentSetupDetectParams = Static<typeof SystemAgentSetupDetectParamsSchema>;
+export type SystemAgentCodingAppsResult = Static<typeof SystemAgentCodingAppsResultSchema>;
 export type SystemAgentSetupDetectResult = Static<typeof SystemAgentSetupDetectResultSchema>;
 export type SystemAgentSetupActivateParams = Static<typeof SystemAgentSetupActivateParamsSchema>;
 export type SystemAgentSetupActivateResult = Static<typeof SystemAgentSetupActivateResultSchema>;

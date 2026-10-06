@@ -70,6 +70,7 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["branch.changes.list", "system-changes", "operator.admin", "<=2026.7"],
   ["branch.approval.list", "system-agent-approvals", "operator.approvals", "<=2026.7"],
   ["branch.setup.detect", "system-agent", "operator.admin", "<=2026.7"],
+  ["branch.setup.codingApps", "system-agent", "operator.admin", "2026.8"],
   // Failed activation candidates are non-mutating probes. Keep this admin-only
   // without the shared three-write budget so the automatic ladder can finish.
   ["branch.setup.activate", "system-agent", "operator.admin", "<=2026.7"],

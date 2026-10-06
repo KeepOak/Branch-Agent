@@ -40,6 +40,19 @@ async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
 }
 
 describe("Settings › Accounts", () => {
+  it("checks coding apps separately from setup discovery and distinguishes installed from signed in", async () => {
+    const { engine, request } = engineOf({ "branch.setup.codingApps": { apps: [
+      { kind: "claude-cli", installed: true },
+      { kind: "codex-cli", installed: false },
+      { kind: "gemini-cli", installed: true, credentials: true },
+    ] } });
+    await render(engine);
+    expect(request).toHaveBeenCalledWith("branch.setup.codingApps", {});
+    const text = host.textContent ?? "";
+    expect(text).toContain("Claude CodeInstalled");
+    expect(text).toContain("CodexNot detected");
+    expect(text).toContain("Gemini CLIModels ready");
+  });
   it("lists each provider's accounts in the engine's order, one list across providers", () => {
     const all = accountsOf(PROVIDERS);
     expect(all.map((a) => a.a.profileId)).toEqual(["openai:b", "openai:a", "anthropic:c"]);

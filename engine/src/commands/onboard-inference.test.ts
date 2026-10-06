@@ -8,8 +8,22 @@ import type { LocalCommandProbe } from "../system-agent/probes.js";
 import {
   ANTHROPIC_API_DEFAULT_MODEL_REF,
   CLAUDE_CLI_DEFAULT_MODEL_REF,
+  codingAppsOf,
   detectInferenceBackends,
 } from "./onboard-inference.js";
+
+it("maps only local coding apps and keeps unverified sign-in distinct", () => {
+  const candidates = [
+    { kind: "claude-cli", modelRef: "x/y", label: "Claude Code", detail: "installed" },
+    { kind: "gemini-cli", modelRef: "x/y", label: "Gemini CLI", detail: "installed", credentials: true },
+    { kind: "openai-api-key", modelRef: "x/y", label: "API key", detail: "configured", credentials: true },
+  ] as Parameters<typeof codingAppsOf>[0];
+  expect(codingAppsOf(candidates)).toEqual([
+    { kind: "claude-cli", installed: true },
+    { kind: "codex-cli", installed: false },
+    { kind: "gemini-cli", installed: true, credentials: true },
+  ]);
+});
 
 const emptyPluginMetadataSnapshot = vi.hoisted(() => ({
   policyHash: "onboard-inference-test-empty-plugin-policy",
