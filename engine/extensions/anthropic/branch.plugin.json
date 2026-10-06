@@ -445,6 +445,19 @@
   "providerAuthChoices": [
     {
       "provider": "anthropic",
+      "method": "browser",
+      "choiceId": "claude-browser",
+      "credentialOnly": true,
+      "appGuidedAuth": "oauth",
+      "choiceLabel": "Sign in with Claude",
+      "choiceHint": "Sign in to your Claude subscription in the browser",
+      "assistantPriority": -30,
+      "groupId": "anthropic",
+      "groupLabel": "Claude",
+      "onboardingFeatured": true
+    },
+    {
+      "provider": "anthropic",
       "method": "cli",
       "choiceId": "anthropic-cli",
       "deprecatedChoiceIds": ["claude-cli"],

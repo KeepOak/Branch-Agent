@@ -31,8 +31,6 @@ export type SidebarProps = {
   emptyLine: string | null;
   search: ReactNode;
   searchResults: ReactNode | null;
-  /** The pet walking above the person's row (Appearance › The pet › Where it walks: The list). */
-  pet?: ReactNode;
   rail: boolean;
   onReorderPins?: (drop: SidebarDrop, visible: readonly string[]) => void;
   onGroupDrop?: (drop: SidebarDrop, anchor: DOMRect) => void;
@@ -276,7 +274,6 @@ export function Sidebar(p: SidebarProps) {
         </div>
       )}
       {!p.rail ? <CommunityInvite /> : null}
-      {p.pet}
       <div className="owner">
         <button type="button" className="me" title="Who is using Branch, look, lock" aria-label={p.personName} data-testid="person" onClick={p.onPerson}>
           <span className="initial" aria-hidden="true">
