@@ -63,9 +63,10 @@ export function readModels(result: unknown): ModelChoice[] {
 }
 
 /** The model this conversation uses: the session row's, else the engine's default for new conversations. */
-export function currentModelRef(row: Rec, defaults: Rec): string {
-  const provider = str(row.modelProvider) || str(defaults.modelProvider);
-  const model = str(row.model) || str(defaults.model);
+export function currentModelRef(row: Rec, defaults: Rec, trunkModel?: string): string {
+  const override = str(row.modelOverride);
+  const provider = str(row.providerOverride) || str(row.modelProvider) || str(defaults.modelProvider);
+  const model = override || trunkModel || str(row.model) || str(defaults.model);
   if (!model) {
     return "";
   }
