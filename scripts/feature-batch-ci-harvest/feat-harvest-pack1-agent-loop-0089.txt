@@ -15,4 +15,5 @@ engine:packages/agent-core/src/nonexistent-tool-handling.test.ts
 engine:packages/agent-core/src/tool-error-handling-middleware.test.ts
 engine:packages/agent-core/src/tool-error-handling-subagent-stamp.test.ts
 engine:packages/agent-core/src/tool-validation-error-message.test.ts
+engine:src/agents/api-compliance/run-compliance.behaviour.test.ts
 engine:src/agents/embedded-agent-runner/history.test.ts

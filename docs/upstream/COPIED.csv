@@ -54,3 +54,8 @@ engine/packages/agent-core/src/history-repair/observation-uniqueness.fixtures.ts
 engine/packages/agent-core/src/history-repair/observation-uniqueness.test.ts,AGENT-LOOP-0093,OpenHands/software-agent-sdk,0a9abc87641ad7ffe02e2dadf5e2cb3976b35217,tests/sdk/context/view/properties/test_observation_uniqueness.py,2026-10-06
 engine/packages/agent-core/src/harness/compaction/compaction.ts,AGENT-LOOP-0093,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,packages/agent-core/src/harness/compaction/compaction.ts,2026-10-06
 engine/src/agents/embedded-agent-runner/history.ts,AGENT-LOOP-0093,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/embedded-agent-runner/history.ts,2026-10-06
+engine/src/agents/api-compliance/base.ts,AGENT-LOOP-0094,OpenHands/software-agent-sdk,0a9abc87641ad7ffe02e2dadf5e2cb3976b35217,tests/integration/api_compliance/base.py,2026-10-06
+engine/src/agents/api-compliance/result.ts,AGENT-LOOP-0094,OpenHands/software-agent-sdk,0a9abc87641ad7ffe02e2dadf5e2cb3976b35217,tests/integration/api_compliance/result.py,2026-10-06
+engine/src/agents/api-compliance/a01_unmatched_tool_use.ts,AGENT-LOOP-0094,OpenHands/software-agent-sdk,0a9abc87641ad7ffe02e2dadf5e2cb3976b35217,tests/integration/tests/a01_unmatched_tool_use.py,2026-10-06
+engine/src/agents/api-compliance/a08_parallel_wrong_order.ts,AGENT-LOOP-0094,OpenHands/software-agent-sdk,0a9abc87641ad7ffe02e2dadf5e2cb3976b35217,tests/integration/tests/a08_parallel_wrong_order.py,2026-10-06
+engine/src/agents/api-compliance/run-compliance.ts,AGENT-LOOP-0094,OpenHands/software-agent-sdk,0a9abc87641ad7ffe02e2dadf5e2cb3976b35217,tests/integration/api_compliance/run_compliance.py,2026-10-06
