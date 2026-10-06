@@ -21,6 +21,9 @@ export type SessionSnapshot = {
   live: Block[];
   pendingUser: string | null;
   liveRunId: string | null;
+  /** When the live run started (engine time), so "Working · 3m 12s" counts from the real start, not from when this
+   *  window opened it. */
+  liveStartedAt: number | null;
   doneAt: number | null;
   lastActivityAt: number | null;
   error: string | null;
@@ -28,6 +31,9 @@ export type SessionSnapshot = {
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
+/** A run's start time, as the engine reports it on its in-flight snapshot or lifecycle start. */
+const runStart = (v: Record<string, unknown>): number | null =>
+  typeof v.startedAt === "number" && Number.isFinite(v.startedAt) && v.startedAt > 0 ? v.startedAt : null;
 
 export type GatewayEventListener = (event: string, payload: unknown) => void;
 
@@ -46,6 +52,8 @@ export class SaplingSession {
   private readonly runs = new RunStreams();
   private readonly approvals = new Map<string, Approval>();
   private readonly finished = new Set<string>();
+  /** Codex emits many updates per item. Keep raw events off React's render path between frames. */
+  private liveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   /** Only the newest `chat.history` read may land; an older one resolving later would bring back stale history. */
   private historyReads = 0;
   private preparationRetry: ReturnType<typeof setTimeout> | null = null;
@@ -66,6 +74,7 @@ export class SaplingSession {
       live: [],
       pendingUser: null,
       liveRunId: null,
+      liveStartedAt: null,
       doneAt: null,
       lastActivityAt: null,
       error: null,
@@ -84,11 +93,17 @@ export class SaplingSession {
   }
 
   stop(): void {
+    if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
     this.stopped = true;
     if (this.preparationRetry) clearTimeout(this.preparationRetry);
     this.preparationRetry = null;
     this.preparationBackoff.reset();
     this.gateway.stop();
+  }
+
+  /** The desktop swapped the engine in place: reconnect at once. */
+  reconnectNow(): void {
+    this.gateway.reconnectNow();
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -134,8 +149,10 @@ export class SaplingSession {
     }
     this.wanted = key;
     this.runs.clear();
+    if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
+    this.liveRefreshTimer = null;
     this.approvals.clear();
-    this.set({ sessionKey: key, history: [], live: [], pendingUser: null, liveRunId: null, doneAt: null, lastActivityAt: null, error: null });
+    this.set({ sessionKey: key, history: [], live: [], pendingUser: null, liveRunId: null, liveStartedAt: null, doneAt: null, lastActivityAt: null, error: null });
     try {
       await this.backfillApprovals();
       await this.loadHistory();
@@ -177,7 +194,7 @@ export class SaplingSession {
     // window mirrored are gone with the old one. Clear them; chat.history's inFlightRun says what still runs.
     this.runs.clear();
     this.approvals.clear();
-    this.set({ sessionKey, mainKey, live: [], liveRunId: null, pendingUser: null });
+    this.set({ sessionKey, mainKey, live: [], liveRunId: null, liveStartedAt: null, pendingUser: null });
     void this.bootstrap(status, sessionKey);
   }
 
@@ -235,15 +252,24 @@ export class SaplingSession {
     this.set({
       history: blocks,
       lastActivityAt: typeof info.lastActivityAt === "number" ? info.lastActivityAt : null,
-      ...(inFlightRunId ? { liveRunId: inFlightRunId } : {}),
+      ...(inFlightRunId ? { liveRunId: inFlightRunId, liveStartedAt: runStart(inFlight) } : {}),
     });
     if (inFlightRunId) {
-      this.adoptInFlight(inFlightRunId, str(inFlight.text));
+      this.adoptInFlight(inFlightRunId, str(inFlight.text), inFlight);
     }
   }
 
-  private adoptInFlight(runId: string, text: string): void {
-    if (text && !this.runs.has(runId)) {
+  private adoptInFlight(runId: string, text: string, snapshot: Record<string, unknown>): void {
+    const events = Array.isArray(snapshot.events) ? snapshot.events : [];
+    for (const raw of events) {
+      const event = readRunEvent(raw);
+      if (event?.runId === runId) this.runs.accept(event);
+    }
+    if (!this.runs.events(runId).some((event) => event.stream === "plan")) {
+      const plan = rec(snapshot.plan);
+      if (Array.isArray(plan.steps)) this.runs.accept({ runId, seq: -1, stream: "plan", ts: 0, data: { steps: plan.steps } });
+    }
+    if (text && !this.runs.events(runId).some((event) => event.stream === "assistant")) {
       this.runs.accept({ runId, seq: 0, stream: "assistant", ts: 0, data: { delta: text } });
     }
     this.refreshLive();
@@ -254,7 +280,7 @@ export class SaplingSession {
       listener(event.event, event.payload);
     }
     const payload = rec(event.payload);
-    if (event.event === "agent") {
+    if (event.event === "agent" || event.event === "session.tool") {
       this.onAgentEvent(payload);
     } else if (event.event === "chat") {
       const state = str(payload.state);
@@ -289,12 +315,13 @@ export class SaplingSession {
     if (!event || !this.isOurs(payload) || this.finished.has(event.runId)) {
       return;
     }
-    this.runs.accept(event);
+    if (this.runs.accept(event) === "stale") return;
     if (!this.snapshot.liveRunId) {
-      this.set({ liveRunId: event.runId, doneAt: null });
+      this.set({ liveRunId: event.runId, liveStartedAt: runStart(event.data) ?? (event.ts || Date.now()), doneAt: null });
     }
     if (event.runId === this.snapshot.liveRunId) {
-      this.refreshLive();
+      if (event.stream === "lifecycle" && (event.data.phase === "end" || event.data.phase === "error")) this.refreshLive();
+      else this.scheduleLiveRefresh();
     }
     if (event.stream === "lifecycle" && (event.data.phase === "end" || event.data.phase === "error")) {
       void this.finishRun(event.runId);
@@ -331,8 +358,14 @@ export class SaplingSession {
   }
 
   private refreshLive(): void {
+    if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
+    this.liveRefreshTimer = null;
     const runId = this.snapshot.liveRunId;
     this.set({ live: runId ? projectRun(this.runs.events(runId), this.approvals) : [] });
+  }
+
+  private scheduleLiveRefresh(): void {
+    if (!this.liveRefreshTimer) this.liveRefreshTimer = setTimeout(() => this.refreshLive(), 100);
   }
 
   /**
@@ -360,7 +393,7 @@ export class SaplingSession {
       this.runs.drop(runId);
       const wasLive = this.snapshot.liveRunId === runId;
       this.set({
-        ...(wasLive ? { liveRunId: null, live: [], pendingUser: null, doneAt: Date.now() } : {}),
+        ...(wasLive ? { liveRunId: null, liveStartedAt: null, live: [], pendingUser: null, doneAt: Date.now() } : {}),
       });
     }
   }
@@ -382,7 +415,7 @@ export class SaplingSession {
       );
       const runId = str(result.runId);
       if (runId && !this.finished.has(runId)) {
-        this.set({ liveRunId: runId });
+        this.set({ liveRunId: runId, liveStartedAt: this.snapshot.liveRunId === runId ? this.snapshot.liveStartedAt : Date.now() });
         this.refreshLive();
       }
     } catch (error) {

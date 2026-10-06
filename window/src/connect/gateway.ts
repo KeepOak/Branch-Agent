@@ -92,6 +92,8 @@ export class BranchGateway {
   private readonly auth: GatewayBrowserDeviceAuthLifecycle;
   private readonly opts: Options;
 
+  private connected = false;
+
   constructor(opts: Options) {
     this.opts = opts;
     this.auth = new GatewayBrowserDeviceAuthLifecycle({
@@ -112,7 +114,10 @@ export class BranchGateway {
         }),
       buildConnectParams: (plan) => this.connectParams(plan),
       onConnectHello: (hello, context) => this.auth.acceptHello(hello, context.plan),
-      onHello: (hello) => opts.onStatus({ phase: "connected", hello }),
+      onHello: (hello) => {
+        this.connected = true;
+        opts.onStatus({ phase: "connected", hello });
+      },
       onConnectFailure: (error) => ({
         closeCode: CONNECT_FAILED_CLOSE_CODE,
         closeReason: "connect failed",
@@ -120,7 +125,10 @@ export class BranchGateway {
         ...(isEngineStarting(error.details) ? { reconnectDelayMs: STARTING_RETRY_MS } : {}),
       }),
       resolveClose: (context) => this.resolveClose(context),
-      onClose: (context, decision) => this.reportClose(context, decision.retry),
+      onClose: (context, decision) => {
+        this.connected = false;
+        this.reportClose(context, decision.retry);
+      },
       onEvent: (event) => opts.onEvent(event),
       handshake: { mode: "require-challenge", timeoutMs: 10_000 },
       // The engine is local: while it restarts or updates, look again every few seconds at most,
@@ -136,6 +144,13 @@ export class BranchGateway {
 
   stop(): void {
     this.client.stop();
+  }
+
+  /** The engine came back (the desktop swapped it in place): try now instead of at the next backoff step. */
+  reconnectNow(): void {
+    if (this.connected) return;
+    this.client.stop();
+    this.start();
   }
 
   request<T = unknown>(method: string, params?: unknown): Promise<T> {

@@ -178,7 +178,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
 /** In the cloud: KeepOak's own card (greyed until keepoak.com has a sign-in) and a cloud computer from a profile the
  *  engine has (environments.list, environments.create). */
 function InTheCloud({ engine }: Pick<SettingsPageProps, "engine">) {
-  const envs = useLive<RecordValue>(engine, "environments.list", {}, ["node", "environments", "worker"]);
+  const envs = useLive<RecordValue>(engine, "environments.list", {}, ["node", "environments"]);
   const [open, setOpen] = useState(false);
   const profiles = list(rec(envs.data).profiles);
   return (
