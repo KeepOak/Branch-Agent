@@ -123,7 +123,7 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
-      - name: Import stable macOS release signing identity
+      - name: Prepare stable macOS release signing identity
         if: matrix.target == 'darwin-arm64'
         shell: bash
         env:
@@ -133,20 +133,18 @@ jobs:
           set -euo pipefail
           test -n "$BRANCH_MACOS_SIGNING_P12"
           test -n "$BRANCH_MACOS_SIGNING_PASSWORD"
-          keychain="$RUNNER_TEMP/branch-release-signing.keychain-db"
           p12="$RUNNER_TEMP/branch-release-signing.p12"
-          keychain_password="$(openssl rand -hex 32)"
+          password="$RUNNER_TEMP/branch-release-signing-password"
           printf '%s' "$BRANCH_MACOS_SIGNING_P12" | base64 --decode > "$p12"
-          security create-keychain -p "$keychain_password" "$keychain"
-          security unlock-keychain -p "$keychain_password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security import "$p12" -k "$keychain" -P "$BRANCH_MACOS_SIGNING_PASSWORD" -T /usr/bin/codesign
-          echo "Imported macOS signing identity"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
-          security list-keychains -d user -s "$keychain"
-          security default-keychain -d user -s "$keychain"
-          security find-identity -v -p codesigning "$keychain" | grep -F "$BRANCH_MACOS_SIGNING_IDENTITY"
-          rm -f "$p12"
+          printf '%s' "$BRANCH_MACOS_SIGNING_PASSWORD" > "$password"
+          chmod 600 "$p12" "$password"
+          archive="$RUNNER_TEMP/apple-codesign-0.29.0-aarch64-apple-darwin.tar.gz"
+          curl -fsSL 'https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-aarch64-apple-darwin.tar.gz' -o "$archive"
+          echo "d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a  $archive" | shasum -a 256 -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          echo "BRANCH_MACOS_SIGNING_P12_FILE=$p12" >> "$GITHUB_ENV"
+          echo "BRANCH_MACOS_SIGNING_PASSWORD_FILE=$password" >> "$GITHUB_ENV"
+          echo "BRANCH_MACOS_RCODESIGN=$RUNNER_TEMP/apple-codesign-0.29.0-aarch64-apple-darwin/rcodesign" >> "$GITHUB_ENV"
       - name: Check release inventory regressions
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
