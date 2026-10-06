@@ -36,3 +36,4 @@ engine/src/gateway/tools-invoke-http.abort.test.ts,INTEGRATIONS-0151,openclaw/op
 engine/src/gateway/tools-invoke-http.cron-regression.test.ts,INTEGRATIONS-0151,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/gateway/tools-invoke-http.cron-regression.test.ts (verified existing renamed file),2026-10-06
 engine/extensions/admin-http-rpc/src/handler.test.ts,INTEGRATIONS-0152,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/admin-http-rpc/src/handler.test.ts (verified existing renamed file),2026-10-06
 engine/extensions/admin-http-rpc/index.test.ts,INTEGRATIONS-0152,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/admin-http-rpc/index.test.ts (verified existing renamed file),2026-10-06
+engine/extensions/codex/src/conversation-binding.test.ts,INTEGRATIONS-0166,openclaw/openclaw,79354e397d15c03fe1f10cb02d8fcaf60347e565,extensions/codex/src/conversation-binding.test.ts (verified existing renamed file),2026-10-06
