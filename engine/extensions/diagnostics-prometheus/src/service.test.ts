@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3e932a5937b529ae45b89c57a1b5db2078aa1407:extensions/diagnostics-prometheus/src/service.test.ts (atlas OBSERVABILITY-0007). Changed for Branch: Rebranded with scripts/rebrand-map.json; current upstream tests preserve post-pin fixes.
 import { expectDefined } from "@branch/normalization-core";
 import type { DiagnosticEventPrivateData } from "branch/plugin-sdk/diagnostic-runtime";
 import { describe, expect, it, vi } from "vitest";
