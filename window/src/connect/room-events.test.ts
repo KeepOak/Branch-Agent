@@ -10,6 +10,7 @@ const fake = vi.hoisted(() => ({
   options: null as Options | null,
   transcript: [] as Record<string, unknown>[],
   historyReads: 0,
+  sends: [] as { method: string; params: unknown }[],
 }));
 
 vi.mock("./gateway", () => ({
@@ -19,7 +20,8 @@ vi.mock("./gateway", () => ({
     }
     start(): void {}
     stop(): void {}
-    async request(method: string): Promise<unknown> {
+    async request(method: string, params?: unknown): Promise<unknown> {
+      if (method === "rooms.send") { fake.sends.push({ method, params }); return {}; }
       switch (method) {
         case "chat.history":
           fake.historyReads += 1;
@@ -66,9 +68,23 @@ afterEach(() => {
   fake.options = null;
   fake.transcript = [];
   fake.historyReads = 0;
+  fake.sends = [];
 });
 
 describe("a group chat post shows in the open room without a reload", () => {
+  it("sends mentions, queued messages and replies but rejects real attachments", async () => {
+    const session = await openRoom();
+    for (const extras of [{ mentions: [{ id: "lead" }] }, { queueMode: "followup" }, { replyToId: "message-1" }]) {
+      await session.send("Hello @Lead", extras);
+      expect(session.getSnapshot().error).toBeNull();
+    }
+    expect(fake.sends).toHaveLength(3);
+    expect(fake.sends[0]?.params).toEqual({ roomId: "room-1", message: "Hello @Lead" });
+    await session.send("file", { attachments: [{ id: "file-1" }] });
+    expect(session.getSnapshot().error).toMatch(/Attachments are not supported/);
+    expect(fake.sends).toHaveLength(3);
+    session.stop();
+  });
   it("reads the room id from the lead conversation's key", () => {
     expect(roomIdOf(ROOM_KEY)).toBe("room-1");
     expect(roomIdOf("agent:lead:main")).toBe("");

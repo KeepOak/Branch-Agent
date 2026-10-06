@@ -36,7 +36,10 @@ import type { RestartRecoveryCandidate } from "./chat-abort.js";
 import { prepareControlUiSessionPrRead } from "./control-ui-session-pr-read.js";
 import { createControlUiSessionPullRequestSubscriptions } from "./control-ui-session-pr-subscriptions.js";
 import { retireDeviceTokenClients } from "./device-token-client-lifecycle.js";
-import { STARTUP_UNAVAILABLE_GATEWAY_METHODS } from "./methods/core-method-policy.js";
+import {
+  EARLY_STARTUP_GATEWAY_METHODS,
+  STARTUP_UNAVAILABLE_GATEWAY_METHODS,
+} from "./methods/core-method-policy.js";
 import { startNodeConnectionNotifications } from "./node-connection-notifications.js";
 import { waitForNodeWorkerSupervisor } from "./node-registry-private.js";
 import { clearNodeWakeState } from "./node-wake-state.js";
@@ -255,6 +258,11 @@ export async function prepareGatewayLifecycle(params: {
     },
     markSidecarsReady: () => {
       startupState.sidecarsReady = true;
+    },
+    unlockEarlyStartupMethods: () => {
+      for (const method of EARLY_STARTUP_GATEWAY_METHODS) {
+        unavailableGatewayMethods.delete(method);
+      }
     },
     unlockStartupMethods: () => {
       for (const method of STARTUP_UNAVAILABLE_GATEWAY_METHODS) {

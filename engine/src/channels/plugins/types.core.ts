@@ -152,6 +152,9 @@ export type ChannelAccountSnapshot = SchemaContract<
 > & {
   statusState?: string;
   restartPending?: boolean;
+  /** Continuous retry failure requires operator attention; automatic retries continue. */
+  needsAttention?: boolean;
+  retryingSince?: number;
   lastDisconnect?:
     | string
     | {

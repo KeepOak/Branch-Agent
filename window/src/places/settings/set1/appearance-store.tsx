@@ -3,7 +3,7 @@
 //   engine's own keys hold the accent and fonts ("ui.accent", "ui.fontUi", "ui.fontChat", shared with the Control UI),
 //   and "ui.window.themeExtra" keeps the Good and Careful colours of your own themes (the engine palette has no key).
 // - The chosen theme is the engine's (themes.list current); its colours come from the built-in table or themes.get.
-// - "This device only" rows (text size, conversation width) stay in this window's storage.
+// - "This device only" rows (text size) stay in this window's storage.
 // - A copy is kept in this window's storage so the look is there before the engine answers; with no signed-in
 //   profile (users.prefs says no_durable_identity) that copy is where everything is kept.
 // - The look reaches the window as one <style> element (both modes, so the light/dark button keeps working), the
@@ -16,7 +16,7 @@ import { accentVars, BUILTIN, DEFAULT_THEME, isHex, pairOfDefinition, varsOf, ty
 export const LOOK_PREF = "ui.window.look";
 export const ENGINE_PREFS = { accent: "ui.accent", fontUi: "ui.fontUi", fontChat: "ui.fontChat", themeExtra: "ui.window.themeExtra" } as const;
 export type EngineKey = keyof typeof ENGINE_PREFS;
-export const DEVICE_KEYS = ["size", "width"] as const;
+export const DEVICE_KEYS = ["size"] as const;
 const LOCAL = "branch.look";
 const STYLE_ID = "branch-look";
 
@@ -59,9 +59,8 @@ function fontStack(id: string | undefined): string | null {
 
 const block = (sel: string, vars: Record<string, string>) => `${sel}{${Object.entries(vars).map(([k, v]) => `${k}:${v}`).join(";")}}`;
 const DARK_SELS = ['@media (prefers-color-scheme: dark){:root:root:not([data-theme="light"])', ':root:root[data-theme="dark"]'];
-const WIDTHS: Record<string, string> = { comfortable: "720px", full: "100%" };
 
-/** The window's <style> for a look: the theme in both modes, the accent, fonts, text sizes, width and stillness. */
+/** The window's <style> for a look: the theme in both modes, the accent, fonts, text sizes and stillness. */
 export function lookCss(s: Saved): string {
   const out: string[] = [];
   const accent = isHex(s.prefs.accent) ? s.prefs.accent : null;
@@ -76,8 +75,6 @@ export function lookCss(s: Saved): string {
   const chat = fontStack(typeof s.prefs.fontChat === "string" ? s.prefs.fontChat : s.palette?.font);
   if (ui) out.push(`:root:root{--sans:${ui}}`);
   if (chat) out.push(`:root:root{--chat-font:${chat}}`, ".thread{font-family:var(--chat-font)}");
-  const width = WIDTHS[String(s.device.width)];
-  if (width) out.push(`:root:root{--thread-w:${width}}`);
   out.push(':root[data-size="larger"] body{font-size:17.5px}', ':root[data-size="largest"] body{font-size:19.6px}');
   out.push(":root.still-k *,:root.still-k *::before,:root.still-k *::after{animation-play-state:paused!important}");
   return out.join("\n");

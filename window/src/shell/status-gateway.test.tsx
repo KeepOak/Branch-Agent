@@ -31,21 +31,19 @@ async function mountStatus(connection: ConnectionPhase, gateway: GatewayPhase) {
 describe("independent gateway status", () => {
   it.each(["connected", "offline"] as const)("shows a genuine health check while the socket is %s", async (connection) => {
     const gateway = await mountStatus(connection, "checking");
-    expect(gateway.textContent).toBe("CheckingGateway");
-    expect(gateway.querySelector("i")?.className).toBe("dot wait");
+    expect(gateway.getAttribute("aria-label")).toBe("Gateway · checking");
+    expect(gateway.querySelector("svg")).toBeTruthy();
     expect(gateway.dataset.state).toBe("checking");
   });
 
   it("shows a healthy gateway while a separate socket reconnects", async () => {
     const gateway = await mountStatus("connecting", "on");
-    expect(gateway.textContent).toBe("Gateway");
-    expect(gateway.querySelector("i")?.className).toBe("dot on");
+    expect(gateway.getAttribute("aria-label")).toBe("Gateway · running");
   });
 
   it("keeps failed health offline even when the socket is connected", async () => {
     const gateway = await mountStatus("connected", "offline");
-    expect(gateway.textContent).toBe("OfflineGateway");
-    expect(gateway.querySelector("i")?.className).toBe("dot");
+    expect(gateway.getAttribute("aria-label")).toBe("Gateway · stopped");
   });
 
   it("opens the gateway item through the existing status callback", async () => {
@@ -63,7 +61,7 @@ describe("paused Trunks", () => {
     const host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
     await act(async () => root?.render(<StatusLeftExtras session={{ request } as unknown as SaplingSession} ready={false}
-      paused={[{ id: "a", name: "Rowan" }]} allPaused={false} gfx={false} pet={null}
+      paused={[{ id: "a", name: "Rowan" }]} allPaused={false} gfx={false}
       onMenu={(_e, _id, next) => { items = next; }} onSettings={() => {}} />));
     await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=sb-paused]")!.click());
     await act(async () => root?.render(<Menu at={{ x: 0, y: 0 }} items={items} onClose={() => {}} label="Paused Trunks" />));

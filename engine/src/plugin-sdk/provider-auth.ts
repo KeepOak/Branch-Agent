@@ -57,6 +57,7 @@ export {
 export { normalizeApiKeyConfig } from "../agents/models-config.providers.secret-helpers.js";
 export {
   buildTokenProfileId,
+  resolveAnthropicTokenIdentity,
   validateAnthropicSetupToken,
 } from "../plugins/provider-auth-token.js";
 export {

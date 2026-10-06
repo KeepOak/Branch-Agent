@@ -126,7 +126,6 @@ export const windowTests = [
   'src/places/trunk/trunk.test.tsx',
   'src/setup/FirstTrunk.test.tsx',
   'src/setup/setup.test.tsx',
-  'src/shell/PetReaction.test.tsx',
   'src/shell/contact-row-routing.test.tsx',
   'src/shell/contact-topics.test.ts',
   'src/shell/contacts-model.test.ts',
@@ -510,6 +509,60 @@ export function namedTests(lane) {
     throw new Error(`Feature test "${lane}:${bad}" must be a repository-relative *.test.ts or *.test.tsx file`);
   }
   return targets;
+}
+
+const HARVEST_DIR = new URL('./feature-batch-ci-harvest/', import.meta.url);
+export function harvestTestFiles(lane, only) {
+  if (!['engine', 'window'].includes(lane)) throw new Error('Unknown Harvest test lane');
+  let names = [];
+  try {
+    names = readdirSync(HARVEST_DIR).filter(name => name.endsWith('.txt') && (!only || only.includes(name))).sort();
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  const files = [];
+  for (const name of names) {
+    for (const raw of readFileSync(new URL(name, HARVEST_DIR), 'utf8').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const match = /^(engine|window):(.+)$/.exec(line);
+      if (!match) throw new Error(`scripts/feature-batch-ci-harvest/${name}: expected engine:<file> or window:<file>, got "${line}"`);
+      if (match[1] === lane) files.push(match[2].trim());
+    }
+  }
+  return files;
+}
+
+export function harvestTests(lane) {
+  const targets = [...new Set(harvestTestFiles(lane))].sort();
+  const bad = targets.find(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'));
+  if (bad) throw new Error(`Harvest test "${lane}:${bad}" must be repository-relative *.test.ts or *.test.tsx`);
+  return targets;
+}
+
+export function touchedHarvestTests(lane, changedFiles) {
+  const prefix = `${lane}/`;
+  const changed = new Set(changedFiles.filter(file => file.startsWith(prefix)).map(file => file.slice(prefix.length)));
+  const listed = new Set(harvestTestFiles(lane, changedFiles
+    .filter(file => file.startsWith('scripts/feature-batch-ci-harvest/'))
+    .map(file => file.slice('scripts/feature-batch-ci-harvest/'.length))));
+  return harvestTests(lane).filter(file => changed.has(file) || listed.has(file));
+}
+
+// The pilot added roughly 4.7 minutes to two named shards (about 11 files each).
+// Four files per PR shard stay below ten minutes; eight nightly files retain
+// headroom under fifteen minutes while extending the GitHub matrix growth ceiling.
+export const harvestFilesPerShard = { pr: 4, nightly: 8 };
+export function harvestMatrix(changedFiles) {
+  const matrix = [];
+  for (const lane of ['engine', 'window']) {
+    const files = changedFiles ? touchedHarvestTests(lane, changedFiles) : harvestTests(lane);
+    const total = Math.ceil(files.length / harvestFilesPerShard[changedFiles ? 'pr' : 'nightly']);
+    for (let index = 0; index < total; index++) {
+      matrix.push({ lane, shard: `${index + 1}/${total}` });
+    }
+  }
+  return matrix;
 }
 
 export function capabilityTests() {

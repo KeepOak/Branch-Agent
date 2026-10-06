@@ -528,6 +528,7 @@ function registerRoomTools(server: McpServer, gw: TrunkGateway, opts: TrunkTools
         roomId: room_id,
         kind: "a2a",
         id: agent.id,
+        outsideAgent: agent,
       });
       return ok("joined", { result });
     },
@@ -535,7 +536,7 @@ function registerRoomTools(server: McpServer, gw: TrunkGateway, opts: TrunkTools
 
   server.tool(
     "room_post",
-    "Post a message to a group chat; its lead Trunk answers. The message is shown as this agent's.",
+    "Post a message to a group chat; its lead Trunk answers when mentioned. The message is shown as this agent's.",
     { room_id: z.string().min(1), text: z.string().min(1) },
     async ({ room_id, text }) => {
       opts.activity?.(`Posting in group chat ${room_id}`);

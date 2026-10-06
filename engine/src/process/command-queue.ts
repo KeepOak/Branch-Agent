@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/process/command-queue.ts (atlas AGENT-LOOP-0013). Changed for Branch: preserve existing Branch rebranding and enqueue-context task/lifecycle callbacks; retained under the Harvest rule that test assertions keep or strengthen upstream behavior.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { clampPositiveTimerTimeoutMs } from "@branch/normalization-core/number-coercion";
 import { formatErrorMessage, readErrorName, toErrorObject } from "../infra/errors.js";
