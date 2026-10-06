@@ -1,0 +1,2 @@
+window:src/thread/hover-toolbar-redesign.test.tsx
+window:src/thread/suggestions-redesign.test.tsx

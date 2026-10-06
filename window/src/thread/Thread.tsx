@@ -35,6 +35,7 @@ import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
 import { dayStamp, formatDuration, fullTime, messageTime, modelName, stepLabel } from "./format";
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
+import { suggestionsFor } from "./suggestions";
 import type { EarlierPage } from "../shell/useContactSegments";
 
 type Props = {
@@ -141,6 +142,7 @@ export function Thread(props: Props) {
   const { reactions, apply } = useReactions(engine, history.length);
   const { helpers } = useHelpers(engine);
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
+  const [usedSuggestion, setUsedSuggestion] = useState<string | null>(null);
   const all = useMemo(() => [...history, ...(running ? live : [])], [history, live, running]);
   const extras = pendingExtras(details, shownApprovalIds(all), engine?.sessionKey);
   const answer = useCallback(
@@ -165,6 +167,10 @@ export function Thread(props: Props) {
   const threadRef = useRef<HTMLDivElement>(null);
   useFindKey(useCallback(() => setFinding(true), []));
   const empty = !history.length && !pendingUser && !running && !props.questions?.length;
+  const lastReply = [...history].reverse().find((block) => block.kind === "text");
+  const suggestionKey = lastReply ? `${props.sessionKey ?? ""}:${lastReply.key}` : null;
+  const suggestions = props.onStart && !firstPending && suggestionKey !== usedSuggestion
+    ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
   const preparationError = [props.preparationError, props.earlierError].find(isPreparationPending);
   const anchors = anchorQuestions(history, props.questions ?? []);
   const items: RoomItem[] = props.room ? foldTalks(layout(history), props.room.ownAgentId) : layout(history);
@@ -258,6 +264,9 @@ export function Thread(props: Props) {
               onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
           ) : null}
           {props.supplement}
+          {suggestions.length ? <div className="suggestion-row" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
+            {suggestions.map((text) => <button key={text} type="button" onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}>{text}</button>)}
+          </div> : null}
           {props.recoveryFailure === RESTART_NOT_RESUMED ? (
             <div className="pass-line restart-stop" role="status" data-testid="restart-stopped">Stopped by restart{recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Resume</button> : null}</div>
           ) : null}
