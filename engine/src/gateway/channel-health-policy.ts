@@ -178,7 +178,7 @@ export function evaluateChannelHealth(
 }
 
 export function resolveChannelRestartReason(
-  snapshot: ChannelHealthSnapshot,
+  _snapshot: ChannelHealthSnapshot,
   evaluation: ChannelHealthEvaluation,
 ): ChannelRestartReason {
   // Restart reasons are intentionally coarse: downstream logs/UI need stable
