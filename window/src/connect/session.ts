@@ -5,6 +5,7 @@ import type { EventFrame, HelloOk } from "@branch/gateway-client/browser";
 import { BranchGateway, type GatewayStatus } from "./gateway";
 import type { SendExtras, WindowEngine } from "./engine";
 import { RunStreams, readRunEvent } from "./stream-order";
+import { storedOperatorToken } from "./device-token-store";
 import { withOwner } from "./agent-owner";
 import { projectRun, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, readApprovalRecords } from "../thread/history";
@@ -90,6 +91,10 @@ export class SaplingSession {
   private retiringGateway: BranchGateway | null = null;
   private retiringRunId: string | null = null;
   private sharedToken: string | undefined;
+  /** The credential the engine's HTTP routes accept from this window: the shared token, else the paired device's. */
+  get httpToken(): string | null {
+    return this.sharedToken || storedOperatorToken(this.gatewayUrl);
+  }
 
   /** `initialKey` reopens the conversation the window last showed (§3.3 "Reopen where you were"). */
   constructor(url: string, sharedToken: string | undefined, initialKey: string | null = null) {
@@ -533,6 +538,7 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
     onEvent: (listener) => session.onGatewayEvent((event, payload) => listener({ event, payload })),
     sessionKey,
     ...(agentId ? { agentId } : {}),
+    mediaUrl: (source) => (sessionKey ? assistantMediaUrl(session.gatewayUrl, source, sessionKey, agentId, session.httpToken) : null),
     scopes: hello ? [...hello.auth.scopes] : [],
     ...(attachments ? { attachmentPolicy: { maxBytes: attachments.maxBytes, maxImageBytes: attachments.maxImageBytes } } : {}),
   };
@@ -562,4 +568,22 @@ function readAgentName(result: unknown): string {
     return "";
   }
   return str(rec(agent.identity).name) || str(agent.name) || str(agent.id);
+}
+
+/**
+ * The engine's assistant-media address for a file on the Trunk's computer (engine gateway/control-ui.ts, method
+ * `assistant.media.get`): same host as the gateway, over http(s). The window is served from another origin, so it
+ * can't send a header with a picture request; the route takes the credential as `token` for plain GETs, and the
+ * picture is requested with no referrer.
+ */
+export function assistantMediaUrl(gatewayUrl: string, source: string, sessionKey: string, agentId: string | undefined, token: string | null): string | null {
+  let base: URL;
+  try {
+    base = new URL(gatewayUrl);
+  } catch {
+    return null;
+  }
+  base.protocol = base.protocol === "wss:" ? "https:" : "http:";
+  const params = new URLSearchParams({ source, sessionKey, ...(agentId ? { agentId } : {}), ...(token ? { token } : {}) });
+  return `${base.origin}/__branch__/assistant-media?${params.toString()}`;
 }

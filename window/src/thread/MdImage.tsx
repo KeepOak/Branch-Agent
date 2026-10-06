@@ -1,12 +1,11 @@
 // A picture a reply names in its text (DESIGN-SPEC §4.2.2 "Pictures in messages"): `![alt](src)`, or a link to an
-// image file. A web or data address shows as is; a path on the Trunk's computer (a screenshot it saved) is read
-// through the conversation's file access (`sessions.files.get`, base64 for images) and shown as a picture card.
-import { useEffect, useState } from "react";
+// image file. A path on the Trunk's computer (a screenshot it saved) shows inline, read through the engine's
+// assistant-media route (`assistant.media.get`), which serves pictures of any real size. A `data:` picture shows as
+// is. A picture on the web is never fetched by itself: a reply can be steered by a page the Trunk read, and an
+// image address can carry data out, so it stays a link the person can choose to open.
+import { useState } from "react";
 import { Attachments } from "./Attachments";
 import { useThread } from "./context";
-
-const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
-const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
 
@@ -15,68 +14,55 @@ export function isLocalPath(src: string): boolean {
   return /^(\/(?!\/)|~[\\/]|[A-Za-z]:[\\/]|file:)/.test(src.trim());
 }
 
-/** Whether a link's target is a picture (by its file type), so it shows as one instead of as a link. */
+/** Whether a link's target is a picture (by its file type). */
 export function isImageTarget(src: string): boolean {
   return IMAGE_EXT.test(src.trim().replace(/[?#].*$/, ""));
 }
+
+/** A picture whose bytes are already in the reply. */
+const isDataPicture = (src: string): boolean => /^data:image\//i.test(src.trim());
 
 function fileName(src: string): string {
   return src.replace(/[?#].*$/, "").split(/[\\/]/).filter(Boolean).at(-1) || "Picture";
 }
 
-type Loaded = { src: string } | { error: string } | null;
-
-function reasonOf(error: unknown): string {
-  const details = rec(rec(error).details);
-  return str(details.reason) === "outside_session_boundary" ? "Outside allowed folders" : "Picture unavailable";
-}
-
-/** Reads a local picture as a data address, or says why it can't show. */
-function useLocalPicture(src: string, tick: number): Loaded {
+/** Where a picture shows from, or null when it doesn't show by itself (a web address, or nothing to read it with). */
+function useShownSource(src: string, tick: number): string | null {
   const { engine } = useThread();
-  const [loaded, setLoaded] = useState<Loaded>(null);
-  useEffect(() => {
-    if (!isLocalPath(src)) return;
-    if (!engine?.sessionKey) {
-      setLoaded({ error: "Picture unavailable" });
-      return;
-    }
-    let live = true;
-    setLoaded(null);
-    const path = src.trim().replace(/^file:\/\//i, "");
-    engine.request("sessions.files.get", { sessionKey: engine.sessionKey, path, ...(engine.agentId ? { agentId: engine.agentId } : {}) }).then(
-      (result) => {
-        const file = rec(rec(result).file);
-        const mime = str(file.mimeType);
-        if (!live) return;
-        if (file.contentEncoding === "base64" && mime.startsWith("image/") && str(file.content)) setLoaded({ src: `data:${mime};base64,${str(file.content)}` });
-        else setLoaded({ error: file.missing === true ? "Picture not found" : "Picture unavailable" });
-      },
-      (error: unknown) => live && setLoaded({ error: reasonOf(error) }),
-    );
-    return () => {
-      live = false;
-    };
-  }, [engine, src, tick]);
-  return isLocalPath(src) ? loaded : { src };
+  if (isDataPicture(src)) return src.trim();
+  if (!isLocalPath(src)) return null;
+  const url = engine?.mediaUrl?.(src.trim().replace(/^file:\/\//i, ""));
+  return url ? (tick ? `${url}&try=${tick}` : url) : null;
 }
 
-export function MdImage({ src, alt }: { src: string; alt: string }) {
+/** Whether a reply's picture shows inline; others stay links (see the file comment). */
+export function showsInline(src: string): boolean {
+  return isDataPicture(src) || isLocalPath(src);
+}
+
+export function MdImage({ src, alt, inline = false }: { src: string; alt: string; inline?: boolean }) {
   const [tick, setTick] = useState(0);
-  const loaded = useLocalPicture(src, tick);
+  const [failed, setFailed] = useState(false);
+  const shown = useShownSource(src, tick);
   const name = alt.trim() || fileName(src);
-  if (!loaded) return <span className="md-picture-loading" role="img" aria-label={`Loading ${name}`} data-testid="picture-loading" />;
-  if ("error" in loaded) {
+  if (!shown) {
+    if (/^https?:\/\//i.test(src.trim())) return <a href={src.trim()} target="_blank" rel="noopener noreferrer" data-testid="picture-link">{name}</a>;
+    return <span className="md-path" title={src}>{name}</span>;
+  }
+  if (failed) {
     return (
       <span className="file-chip gone md-picture-gone" data-testid="picture-unavailable" title={src}>
         <span className="file-tile">IMG</span>
         <span className="file-text">
           <b>{name}</b>
-          <small>{loaded.error}</small>
+          <small>Picture unavailable</small>
         </span>
-        {loaded.error === "Picture unavailable" ? <button type="button" className="btn ghost sm" onClick={() => setTick((t) => t + 1)}>Try again</button> : null}
+        <button type="button" className="btn ghost sm" onClick={() => { setFailed(false); setTick((t) => t + 1); }}>Try again</button>
       </span>
     );
   }
-  return <Attachments items={[{ kind: "image", name, src: loaded.src, kept: true }]} />;
+  if (inline) {
+    return <img className="md-inline-picture" src={shown} alt={name} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
+  }
+  return <Attachments items={[{ kind: "image", name, src: shown, kept: true }]} onError={() => setFailed(true)} />;
 }

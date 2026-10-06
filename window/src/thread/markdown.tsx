@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { CodeBlock } from "./CodeBlock";
 import { useThread } from "./context";
 import { INLINE_MATH, MathTex, readInlineMath } from "./math";
-import { isImageTarget, isLocalPath, MdImage } from "./MdImage";
+import { isImageTarget, isLocalPath, MdImage, showsInline } from "./MdImage";
 
 export type MdBlock =
   | { type: "p"; text: string }
@@ -34,8 +34,11 @@ function readFence(lines: string[], i: number, out: MdBlock[]): number {
   const lang = lines[i].trim().slice(3).trim();
   const body: string[] = [];
   let j = i + 1;
+  // A fence under a list item is indented with it; its lines lose that indent, not their own.
+  const indent = /^\s*/.exec(lines[i])?.[0].length ?? 0;
   while (j < lines.length && !lines[j].trim().startsWith("```")) {
-    body.push(lines[j]);
+    const lead = /^\s*/.exec(lines[j])?.[0].length ?? 0;
+    body.push(lines[j].slice(Math.min(lead, indent)));
     j += 1;
   }
   out.push({ type: "code", lang, text: body.join("\n") });
@@ -53,6 +56,12 @@ function readList(lines: string[], i: number, out: MdBlock[]): number {
   const first = LIST.exec(lines[i])!;
   const ordered = /^\d/.test(first[1]);
   const indent = indentOf(lines[i]);
+  // A code block, maths, a quote or a table under an item stays a block of its own (the list ends there; the next
+  // item keeps counting from its own number).
+  const ownBlock = (at: number) => {
+    const t = lines[at]?.trimStart() ?? "";
+    return t.startsWith("```") || /^(\$\$|\\\[)/.test(t) || t.startsWith(">") || (t.includes("|") && /^\s*\|?\s*:?-{3,}/.test(lines[at + 1] ?? ""));
+  };
   const sameList = (line: string | undefined) => {
     const m = line === undefined ? null : LIST.exec(line);
     return Boolean(m && indentOf(line!) <= indent && /^\d/.test(m[1]) === ordered);
@@ -66,13 +75,13 @@ function readList(lines: string[], i: number, out: MdBlock[]): number {
       const task = TASK.exec(text);
       items.push(task ? { text: task[2], task: true, done: task[1] !== " " } : { text });
       j += 1;
-    } else if (line.trim() && indentOf(line) > indent) {
+    } else if (line.trim() && indentOf(line) > indent && !ownBlock(j)) {
       items[items.length - 1]!.text += `\n${line.trim()}`;
       j += 1;
     } else if (!line.trim()) {
       let next = j + 1;
       while (next < lines.length && !lines[next].trim()) next += 1;
-      if (next >= lines.length || !(sameList(lines[next]) || indentOf(lines[next]) > indent)) break;
+      if (next >= lines.length || !(sameList(lines[next]) || (indentOf(lines[next]) > indent && !ownBlock(next)))) break;
       j = next;
     } else break;
   }
@@ -84,7 +93,7 @@ function readList(lines: string[], i: number, out: MdBlock[]): number {
 const IMAGE_LINE = /^\s*(!?)\[([^\]\n]*)\]\(<?([^)\s>]+)>?\)\s*$/;
 function readImageLine(line: string): Extract<MdBlock, { type: "image" }> | null {
   const m = IMAGE_LINE.exec(line);
-  return m && (m[1] === "!" || isImageTarget(m[3])) ? { type: "image", alt: m[2], src: m[3] } : null;
+  return m && (m[1] === "!" || isImageTarget(m[3])) && showsInline(m[3]) ? { type: "image", alt: m[2], src: m[3] } : null;
 }
 
 function readTable(lines: string[], i: number, out: MdBlock[]): number {
@@ -102,8 +111,8 @@ function readTable(lines: string[], i: number, out: MdBlock[]): number {
 function readQuote(lines: string[], i: number, out: MdBlock[]): number {
   const body: string[] = [];
   let j = i;
-  while (j < lines.length && lines[j].startsWith(">")) {
-    body.push(lines[j].replace(/^>\s?/, ""));
+  while (j < lines.length && lines[j].trimStart().startsWith(">")) {
+    body.push(lines[j].trimStart().replace(/^>\s?/, ""));
     j += 1;
   }
   out.push({ type: "quote", text: body.join("\n") });
@@ -166,7 +175,7 @@ export function parseMarkdown(text: string): MdBlock[] {
       i += 1;
     } else if (LIST.test(line)) i = readList(lines, i, out);
     else if (line.includes("|") && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1] ?? "")) i = readTable(lines, i, out);
-    else if (line.startsWith(">")) i = readQuote(lines, i, out);
+    else if (line.trimStart().startsWith(">")) i = readQuote(lines, i, out);
     else i = readParagraph(lines, i, out);
   }
   return out;
@@ -194,7 +203,8 @@ export function inline(text: string, math = false): ReactNode[] {
     if (part.startsWith("*") || part.startsWith("_")) return <em key={i}>{part.slice(1, -1)}</em>;
     const md = /^(!?)\[([^\]]*)\]\(([^)]+)\)$/.exec(part);
     if (!md) return link(part, part, i);
-    if (md[1] === "!" || isImageTarget(md[3])) return <MdImage key={i} src={md[3]} alt={md[2]} />;
+    // A picture inside a sentence shows small and inline; one on the web stays a link (MdImage: never fetched by itself).
+    if (md[1] === "!" || isImageTarget(md[3])) return <MdImage key={i} src={md[3]} alt={md[2]} inline />;
     // A path on the Trunk's computer is not an address this window can open: its name, with the path on hover.
     if (isLocalPath(md[3])) return <span key={i} className="md-path" title={md[3]}>{md[2]}</span>;
     return link(md[3], md[2], i);

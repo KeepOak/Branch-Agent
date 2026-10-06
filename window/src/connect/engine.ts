@@ -7,6 +7,9 @@ export type WindowEngine = {
   onEvent(listener: (e: { event: string; payload?: unknown }) => void): () => void;
   sessionKey: string | null;
   agentId?: string;
+  /** The address of a picture on the Trunk's computer, read through the engine's assistant-media route
+   *  (`assistant.media.get`) for the open conversation. */
+  mediaUrl?: (source: string) => string | null;
   scopes: string[];
   attachmentPolicy?: { maxBytes?: number; maxImageBytes?: number };
 };
