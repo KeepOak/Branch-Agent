@@ -45,7 +45,7 @@ export function ManageDialog(p: ManageProps) {
       {p.app.tone === "ok" ? null : <SetupSteps done={false} />}
       <div className="fld-ca"><span>Who answers in {p.app.name}</span><WhoSeg app={p.app} cfg={p.cfg} trunks={p.trunks} defaultId={p.defaultId} /><LinkBtn onClick={p.onPerChat}>Choose per chat</LinkBtn></div>
       <Ctl title="Who may message it" sub="Everyone else gets no answer.">
-        <Seg label="Who may message it" value={WHO.find((w) => w.policy === policy)?.id ?? ""} options={WHO.map((w) => ({ id: w.id, label: w.label, off: w.id === "me" && !allow.filter((a) => a !== "*").length ? "Add yourself below first." : w.off }))} disabled={p.cfg.loading} onChange={setWho} />
+        <Seg layout="radio" label="Who may message it" value={WHO.find((w) => w.policy === policy)?.id ?? ""} options={WHO.map((w) => ({ id: w.id, label: w.label, off: w.id === "me" && !allow.filter((a) => a !== "*").length ? "Add yourself below first." : w.off }))} disabled={p.cfg.loading} onChange={setWho} />
       </Ctl>
       {policy === "pairing" || policy === "allowlist" ? <Approved {...p} base={base} allow={allow} /> : null}
       {policy === "pairing" ? <AskingHere {...p} /> : null}
