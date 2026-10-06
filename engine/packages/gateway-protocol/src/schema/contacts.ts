@@ -10,6 +10,7 @@ export const ContactPreviewSchema = Type.Union([
     kind: Type.Literal("topic"),
     topicKey: NonEmptyString,
     title: NonEmptyString,
+    emoji: Type.Optional(NonEmptyString),
     text: Type.String(),
     at: Timestamp,
   }),
@@ -58,6 +59,9 @@ export const TopicSchema = closedObject({
   key: NonEmptyString,
   contactId: NonEmptyString,
   title: NonEmptyString,
+  emoji: Type.Optional(NonEmptyString),
+  emojiSaved: Type.Optional(Type.Boolean()),
+  muted: Type.Optional(Type.Boolean()),
   anchor: Type.Optional(
     closedObject({
       threadKey: NonEmptyString,

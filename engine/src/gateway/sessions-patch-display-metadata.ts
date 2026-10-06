@@ -54,6 +54,8 @@ export function applySessionsPatchDisplayMetadata(params: {
     next.color = color;
   }
 
+  if (patch.topicMuted !== undefined) next.topicMuted = patch.topicMuted;
+
   if (patch.category === null) {
     delete next.category;
   } else if (patch.category !== undefined) {
