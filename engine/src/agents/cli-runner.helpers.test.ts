@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/cli-runner.helpers.test.ts (atlas MODELS-ACCOUNTS-0032). Changed for Branch: retain Branch hydration suppression and stale workspace-image cleanup assertions.
 /** Tests CLI runner prompt/image/system-prompt helper utilities. */
 import fs from "node:fs/promises";
 import path from "node:path";

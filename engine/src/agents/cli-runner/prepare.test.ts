@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/cli-runner/prepare.test.ts (atlas MODELS-ACCOUNTS-0032). Changed for Branch: retain Branch current-turn guidance and account selection assertions.
 // Exercises CLI preparation, auth, prompt hooks, MCP setup, and session reuse.
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/cli-runner.test-helpers.ts (atlas MODELS-ACCOUNTS-0032). Changed for Branch: derive the exact attribution label with the repository rename map (decision 133); retain prompt-boundary assertions.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -72,7 +73,9 @@ export function createCliRepositorySkillFixture(dir: string, taskDir: string, ma
 }
 
 export function wrappedPluginSystemContext(text: string) {
-  return `---\n\nBranch plugin-injected system context. This block is not workspace file content.\n\n${text}\n\n---`;
+  const header =
+    "Branch Agent plugin-injected system context. This block is not workspace file content.";
+  return `---\n\n${header}\n\n${text}\n\n---`;
 }
 
 export function captureModelCallDiagnostics(runId: string) {

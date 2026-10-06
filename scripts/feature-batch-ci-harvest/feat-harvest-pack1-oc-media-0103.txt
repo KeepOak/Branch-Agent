@@ -15,6 +15,10 @@ engine:extensions/openrouter/oauth.test.ts
 engine:extensions/openrouter/usage.test.ts
 engine:packages/ai/src/providers/openai-chatgpt-responses-protocol.test.ts
 engine:packages/ai/src/providers/openai-chatgpt-responses.test.ts
+engine:src/agents/cli-backends.test.ts
+engine:src/agents/cli-runner.helpers.test.ts
+engine:src/agents/cli-runner/bundle-mcp.test.ts
+engine:src/agents/cli-runner/prepare.test.ts
 engine:src/agents/tools/nodes-tool-ptz.test.ts
 engine:src/agents/tools/nodes-tool.test.ts
 engine:src/cli/nodes-camera.test.ts
