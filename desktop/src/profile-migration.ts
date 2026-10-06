@@ -4,10 +4,12 @@ import { join } from "node:path";
 const MARKER = ".normal-profile-migrated.json";
 
 function mergeMissing(source: string, destination: string, created: string[], afterCopy?: () => void): void {
+  const existing = new Set(readdirSync(destination));
   for (const entry of readdirSync(source, { withFileTypes: true })) {
     const from = join(source, entry.name);
     const to = join(destination, entry.name);
     if (entry.name === "branch.json" && source.endsWith(".branch-dev")) continue;
+    if (entry.isFile() && /-(?:wal|shm)$/.test(entry.name) && existing.has(entry.name.replace(/-(?:wal|shm)$/, ""))) continue;
     if (entry.isSymbolicLink() || (!entry.isFile() && !entry.isDirectory())) {
       throw new Error("Profile migration cannot copy a non-regular entry");
     }
@@ -34,6 +36,8 @@ export function prepareNormalProfile(home: string, afterCopy?: () => void): { le
   const marker = join(normal, MARKER);
   const config = join(normal, "branch.json");
   const created: string[] = [];
+  let backup: string | undefined;
+  let backupCreated = false;
   let archive: string | undefined;
   try {
     if (!existsSync(normal)) {
@@ -45,18 +49,17 @@ export function prepareNormalProfile(home: string, afterCopy?: () => void): { le
     if (!existsSync(marker) && existsSync(dev)) {
       if (!lstatSync(dev).isDirectory()) throw new Error("Legacy profile root is not a directory");
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const backup = join(home, `.migration-backup-${stamp}`);
+      backup = join(home, `.migration-backup-${stamp}`);
       archive = join(home, `.branch-dev.migrated-${stamp}`);
       if (existsSync(backup) || existsSync(archive)) throw new Error("Profile migration destination already exists");
       mkdirSync(backup);
+      backupCreated = true;
       cpSync(dev, join(backup, ".branch-dev"), { recursive: true, errorOnExist: true, force: false });
       // The desktop's --dev flag selected this workspace, but its config and live
       // databases already lived under .branch. Preserve any separate dev-profile
       // files without replacing the normal profile's newer files.
       mergeMissing(dev, normal, created, afterCopy);
       renameSync(dev, archive);
-      writeFileSync(marker, JSON.stringify({ archive, backup }) + "\n", { flag: "wx" });
-      created.push(marker);
     }
     if (!existsSync(config)) {
       writeFileSync(config, JSON.stringify({
@@ -65,10 +68,15 @@ export function prepareNormalProfile(home: string, afterCopy?: () => void): { le
       }, null, 2) + "\n", { flag: "wx" });
       created.push(config);
     }
+    if (!existsSync(marker)) {
+      writeFileSync(marker, JSON.stringify({ archive, backup }) + "\n", { flag: "wx" });
+      created.push(marker);
+    }
     return { legacyDevMode: false };
   } catch {
     if (archive && existsSync(archive) && !existsSync(dev)) renameSync(archive, dev);
     for (const pathname of created.reverse()) rmSync(pathname, { recursive: true, force: true });
+    if (backupCreated && backup) rmSync(backup, { recursive: true, force: true });
     return { legacyDevMode: true, note: "Profile migration failed; retaining the previous gateway layout." };
   }
 }

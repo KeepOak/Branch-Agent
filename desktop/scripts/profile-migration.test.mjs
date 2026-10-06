@@ -28,6 +28,12 @@ test("fresh desktop install starts without dev profile or C3-PO", async () => ho
   assert.deepEqual(Object.keys(config.agents), ["ownership", "defaults"]);
   assert.ok(!JSON.stringify(config).includes("C3-PO"));
   assert.equal((await readdir(home)).includes(".branch-dev"), false);
+  assert.ok((await readdir(join(home, ".branch"))).includes(".normal-profile-migrated.json"));
+  await mkdir(join(home, ".branch-dev", "workspace"), { recursive: true });
+  await writeFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"), "intentional dev profile");
+  assert.equal(prepareNormalProfile(home).legacyDevMode, false);
+  assert.equal((await readdir(home)).some((name) => name.startsWith(".branch-dev.migrated-")), false);
+  assert.equal(await readFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"), "utf8"), "intentional dev profile");
 }));
 
 test("owner-shaped dev workspace migrates once with backup and normal files preserved", async () => homeFixture(async (_root, home) => {
@@ -68,4 +74,17 @@ test("mid-migration failure rolls back original files byte-identically", async (
   assert.deepEqual(await readFile(join(home, ".branch-dev", "workspace", "IDENTITY.md")), beforeWorkspace);
   assert.equal((await readdir(join(home, ".branch"))).includes("workspace"), false);
   assert.equal((await readdir(join(home, ".branch"))).includes(".normal-profile-migrated.json"), false);
+  assert.equal((await readdir(home)).some((name) => name.startsWith(".migration-backup-")), false);
+}));
+
+test("keeps a normal SQLite database separate from legacy sidecars", async () => homeFixture(async (_root, home) => {
+  await mkdir(join(home, ".branch", "state"), { recursive: true });
+  await mkdir(join(home, ".branch-dev", "state"), { recursive: true });
+  await writeFile(join(home, ".branch", "state", "store.sqlite"), "normal database");
+  await writeFile(join(home, ".branch-dev", "state", "store.sqlite"), "legacy database");
+  await writeFile(join(home, ".branch-dev", "state", "store.sqlite-wal"), "legacy WAL");
+  await writeFile(join(home, ".branch-dev", "state", "store.sqlite-shm"), "legacy SHM");
+  assert.equal(prepareNormalProfile(home).legacyDevMode, false);
+  assert.deepEqual(await readdir(join(home, ".branch", "state")), ["store.sqlite"]);
+  assert.equal(await readFile(join(home, ".branch", "state", "store.sqlite"), "utf8"), "normal database");
 }));

@@ -108,7 +108,7 @@ export async function listGatewayAgentsBasic(cfg: BranchConfig): Promise<
 
   for (const id of await listExistingAgentIdsFromDisk()) {
     diskIds.add(id);
-    agentIds.add(id);
+    if (!firstContactBootstrap) agentIds.add(id);
   }
 
   const allowedIds = configuredById.size > 0 ? configuredById : null;
@@ -124,7 +124,7 @@ export async function listGatewayAgentsBasic(cfg: BranchConfig): Promise<
     defaultId && visibleIds.includes(defaultId)
       ? [defaultId, ...visibleIds.filter((id) => id !== defaultId)]
       : visibleIds;
-  if (mainKey && !orderedIds.includes(mainKey) && (!allowedIds || allowedIds.has(mainKey))) {
+  if (mainKey && !firstContactBootstrap && !orderedIds.includes(mainKey) && (!allowedIds || allowedIds.has(mainKey))) {
     orderedIds.push(mainKey);
   }
 

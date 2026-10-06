@@ -1,1 +1,2 @@
+engine:src/gateway/agent-list.test.ts
 engine:src/gateway/dev-agent-startup.test.ts

@@ -55,6 +55,22 @@ describe("P11 dev-profile migration", () => {
     expect(migrateDevAgentConfig(noDefault)?.agents?.defaults?.heartbeat?.agentId).toBeUndefined();
   });
 
+  it("keeps a sole Trunk on the inherited workspace root", () => {
+    const sole = structuredClone(ownerConfig);
+    delete sole.agents!.defaultId;
+    delete sole.agents!.entries!.dev;
+    const migrated = migrateDevAgentConfig(sole)!;
+    expect(migrated.agents?.entries?.oak?.workspace).toBe(path.join("C:", "owner", ".branch", "workspace"));
+  });
+
+  it("keeps a normalized default dev Trunk instead of removing its entry", () => {
+    const selected = structuredClone(ownerConfig);
+    selected.agents!.defaultId = "DEV";
+    const migrated = migrateDevAgentConfig(selected)!;
+    expect(migrated.agents?.entries?.dev).toBeDefined();
+    expect(BranchSchema.safeParse(migrated).success).toBe(true);
+  });
+
   it("turns a stock-only dev roster into a valid contactless first run", () => {
     const stockOnly = structuredClone(ownerConfig);
     delete stockOnly.agents!.defaultId;

@@ -1,10 +1,11 @@
 import { constants } from "node:fs";
 import { copyFile } from "node:fs/promises";
-import path from "node:path";
+import { resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { characterId } from "../agents/trunk-characters.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { readConfigFileSnapshotForWrite, transformConfigFileWithRetry } from "../config/config.js";
 import { resolveIsConfigReadOnly } from "../config/paths.js";
+import { normalizeAgentId } from "../routing/session-key.js";
 
 const seedIdentity = { name: "C3-PO", theme: "protocol droid", emoji: "🤖" };
 
@@ -21,7 +22,7 @@ function isSeededDevEntry(value: unknown, characterAssignmentVersion: number | u
   return Object.keys(entry).sort().join(",") === "identity,workspace" &&
     (untouchedIdentity || assignedIdentity) &&
     face.name === seedIdentity.name && face.theme === seedIdentity.theme &&
-    typeof entry.workspace === "string" && /-dev[\\/]workspace[\\/]?$/.test(entry.workspace);
+    typeof entry.workspace === "string" && /\.branch-dev[\\/]workspace[\\/]?$/.test(entry.workspace);
 }
 
 function normalWorkspace(workspace: string | undefined): string | undefined {
@@ -33,18 +34,16 @@ export function migrateDevAgentConfig(config: BranchConfig): BranchConfig | unde
   const agents = config.agents;
   const seed = agents?.entries?.dev;
   if (!agents) return undefined;
-  const removeSeed = agents.defaultId !== "dev" && isSeededDevEntry(seed, agents.characterAssignmentVersion);
+  const removeSeed = normalizeAgentId(agents.defaultId ?? "") !== "dev" && isSeededDevEntry(seed, agents.characterAssignmentVersion);
   const formerDefaultWorkspace = agents.defaults?.workspace;
   const migratedDefaultWorkspace = normalWorkspace(formerDefaultWorkspace);
-  const entries = Object.fromEntries(Object.entries(agents.entries ?? {}).map(([id, entry]) => [
-    id,
-    (entry.workspace && normalWorkspace(entry.workspace) !== entry.workspace) ||
-    (!entry.workspace && migratedDefaultWorkspace !== formerDefaultWorkspace)
-      ? { ...entry, workspace: entry.workspace
-          ? normalWorkspace(entry.workspace)
-          : path.join(migratedDefaultWorkspace!, id) }
-      : entry,
-  ]));
+  const entries = Object.fromEntries(Object.entries(agents.entries ?? {}).map(([id, entry]) => {
+    const oldWorkspace = resolveAgentWorkspaceDir(config, id);
+    const migratedWorkspace = normalWorkspace(oldWorkspace);
+    return [id, migratedWorkspace !== oldWorkspace
+      ? { ...entry, workspace: migratedWorkspace }
+      : entry];
+  }));
   if (removeSeed) delete entries.dev;
   const defaults = { ...agents.defaults };
   defaults.workspace = migratedDefaultWorkspace;
