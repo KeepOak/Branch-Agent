@@ -51,7 +51,7 @@ export function tokenLabel(a: Pick<Profile, "profileId" | "type">): string | und
 
 export function accountName({ p, a, n }: Pick<Account, "p" | "a" | "n">): string {
   const svc = serviceName(p.provider, p.displayName, a.type === "api_key");
-  const fallback = a.type === "api_key" ? `Key ${n}` : isToken(a) ? `Subscription ${n}` : `Account ${n}`;
+  const fallback = a.type === "api_key" ? `Key ${n}` : `Account ${n}`;
   return `${svc} · ${p.provider === "anthropic" ? a.email ?? a.displayName ?? tokenLabel(a) ?? fallback : a.displayName ?? a.email ?? tokenLabel(a) ?? fallback}`;
 }
 

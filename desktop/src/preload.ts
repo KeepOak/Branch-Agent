@@ -50,6 +50,7 @@ if (info) {
     restoreAfterSwap();
   });
   ipcRenderer.on("branch-desktop:engine-update", (_e, state: UpdateState) => showUpdateBar(state));
+  ipcRenderer.on("branch-desktop:gateway-recovery-failed", (_e, message: string) => showRecoveryError(message));
   ipcRenderer.on("branch-desktop:prepare-swap", (_e, id: number) => {
     saveBeforeSwap();
     ipcRenderer.send("branch-desktop:swap-ready", id);
@@ -119,8 +120,31 @@ function showToast(message: string): void {
   if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
 }
 
+/** A persistent alert: the engine is down and the owner may need to use Update or restart the app. */
+function showRecoveryError(message: string): void {
+  const show = () => {
+    let alert = document.getElementById("branch-desktop-recovery-error");
+    if (!alert) {
+      alert = document.createElement("div");
+      alert.id = "branch-desktop-recovery-error";
+      alert.setAttribute("role", "alert");
+      alert.dataset.testid = "desktop-recovery-error";
+      alert.style.cssText = [
+        "position:fixed", "left:50%", "bottom:16px", "transform:translateX(-50%)", "z-index:2147483647",
+        "max-width:min(560px,calc(100vw - 32px))", "padding:12px 16px", "border-radius:10px",
+        "background:#7f1d1d", "color:#fff", "font:13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif",
+        "box-shadow:0 6px 24px rgba(15,23,42,.28)",
+      ].join(";");
+      document.body.appendChild(alert);
+    }
+    alert.textContent = message;
+  };
+  if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
+}
+
 /** A small bar at the bottom of the window while an update waits or applies. The app and window stay open throughout. */
 function showUpdateBar(state: UpdateState): void {
+  if (state === "updated") document.getElementById("branch-desktop-recovery-error")?.remove();
   if (state === "kept") {
     // The new engine did not start; Branch keeps running the version it had.
     window.dispatchEvent(new Event("branch:engine-ready"));

@@ -24,6 +24,16 @@ function startOptions(command: string): CodexAppServerStartOptions {
   };
 }
 
+function spawnedTarget(): [string, string[]] {
+  const [command, argv] = spawnMock.mock.calls[0] as unknown as [string, string[]];
+  if (process.platform !== "win32") return [command, argv];
+  expect(command).toBe(process.execPath);
+  expect(argv.some((part) => part.includes("windows-hidden-console-launcher"))).toBe(true);
+  const marker = argv.findIndex((part) => part === "0" || part === "1");
+  expect(marker).toBeGreaterThanOrEqual(0);
+  return [argv[marker + 1]!, argv.slice(marker + 2)];
+}
+
 describe("createStdioTransport", () => {
   it("does not let a missing working directory poison another launch of the same executable", async () => {
     const options = startOptions("/installed/cwd-fixture/codex");
@@ -45,11 +55,7 @@ describe("createStdioTransport", () => {
       { ...startOptions(command), commandSource: "resolved-managed" },
       { PATH: "/wrong-architecture/bin" },
     );
-    expect(spawnMock).toHaveBeenCalledWith(
-      process.execPath,
-      [command, "app-server", "--listen", "stdio://"],
-      expect.any(Object),
-    );
+    expect(spawnedTarget()).toEqual([process.execPath, [command, "app-server", "--listen", "stdio://"]]);
   });
 
   it.each([
@@ -114,9 +120,8 @@ describe("createStdioTransport", () => {
         { BRANCH_GATEWAY_HOST_LIFELINE: lifeline },
       );
 
-      expect(spawnMock).toHaveBeenCalledWith(
-        "codex",
-        ["app-server", "--listen", "stdio://"],
+      expect(spawnedTarget()[1].slice(-3)).toEqual(["app-server", "--listen", "stdio://"]);
+      expect(spawnMock.mock.calls[0]?.[2]).toEqual(
         expect.objectContaining({
           cwd: "/srv/codex-project",
           detached: process.platform !== "win32" && detached,
@@ -139,9 +144,7 @@ describe("createStdioTransport", () => {
     ];
     await createStdioTransport({ ...startOptions("node"), args });
 
-    expect(spawnMock).toHaveBeenCalledWith(
-      "node",
-      [
+    const expectedArgs = [
         "/wrapper.js",
         ...overrides,
         "--profile",
@@ -150,16 +153,15 @@ describe("createStdioTransport", () => {
         "app-server",
         "--listen",
         "stdio://",
-      ],
-      expect.any(Object),
-    );
+      ];
+    expect(spawnedTarget()[1].slice(-expectedArgs.length)).toEqual(expectedArgs);
     expect(args[1]).toBe("-c");
   });
 
   it("does not reinterpret a wrapper's positional arguments after --", async () => {
     const args = ["/wrapper.js", "--", "-c", "opaque", "app-server"];
     await createStdioTransport({ ...startOptions("node"), args });
-    expect(spawnMock).toHaveBeenCalledWith("node", args, expect.any(Object));
+    expect(spawnedTarget()[1].slice(-args.length)).toEqual(args);
   });
 
   it("preserves a subcommand-shaped socket value", async () => {
@@ -167,10 +169,10 @@ describe("createStdioTransport", () => {
       ...startOptions("codex"),
       args: ["app-server", "proxy", "--sock", "app-server", "-c", "model_reasoning_effort=high"],
     });
-    expect(spawnMock.mock.calls[0]?.slice(0, 2)).toEqual([
-      "codex",
-      ["-c", "model_reasoning_effort=high", "app-server", "proxy", "--sock", "app-server"],
-    ]);
+    const expectedArgs = [
+      "-c", "model_reasoning_effort=high", "app-server", "proxy", "--sock", "app-server",
+    ];
+    expect(spawnedTarget()[1].slice(-expectedArgs.length)).toEqual(expectedArgs);
   });
 });
 

@@ -61,7 +61,7 @@ describe("paused Trunks", () => {
     const host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
     await act(async () => root?.render(<StatusLeftExtras session={{ request } as unknown as SaplingSession} ready={false}
-      paused={[{ id: "a", name: "Rowan" }]} allPaused={false} gfx={false} pet={null}
+      paused={[{ id: "a", name: "Rowan" }]} allPaused={false} gfx={false}
       onMenu={(_e, _id, next) => { items = next; }} onSettings={() => {}} />));
     await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=sb-paused]")!.click());
     await act(async () => root?.render(<Menu at={{ x: 0, y: 0 }} items={items} onClose={() => {}} label="Paused Trunks" />));

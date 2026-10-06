@@ -17,10 +17,43 @@ import {
   validateAnthropicSetupToken,
 } from "branch/plugin-sdk/provider-auth";
 import { upsertAuthProfileWithLockOrThrow } from "branch/plugin-sdk/provider-auth-api-key";
+import { buildOauthProviderAuthResult } from "branch/plugin-sdk/provider-auth-result";
+import { loginAnthropicOAuth } from "branch/plugin-sdk/provider-oauth-runtime";
 import * as claudeCliAuth from "./cli-auth-seam.js";
 import { buildAnthropicCliMigrationResult } from "./cli-migration.js";
 
 const PROVIDER_ID = "anthropic";
+
+export async function runAnthropicBrowserAuth(
+  ctx: ProviderAuthContext,
+  defaultModel: string,
+): Promise<ProviderAuthResult> {
+  const progress = ctx.prompter.progress("Opening Claude sign-in…");
+  try {
+    const credentials = await loginAnthropicOAuth({
+      onAuth: ({ url }) => { void ctx.openUrl(url); },
+      onPrompt: ({ message, placeholder }) => ctx.prompter.text({ message, placeholder, sensitive: true }),
+      ...(ctx.isRemote && !ctx.oauth.authorize ? { onManualCodeInput: () => ctx.prompter.text({ message: "Paste the Claude sign-in redirect URL", sensitive: true }) } : {}),
+      onProgress: (message) => progress.update(message),
+      signal: ctx.signal,
+    });
+    ctx.assertCurrent?.();
+    const identity = await resolveAnthropicTokenIdentity(credentials.access);
+    progress.stop("Claude sign-in complete");
+    return buildOauthProviderAuthResult({
+      providerId: PROVIDER_ID,
+      defaultModel,
+      access: credentials.access,
+      refresh: credentials.refresh,
+      expires: credentials.expires,
+      email: identity.email,
+      profileName: identity.email ?? identity.profileId.slice("anthropic:".length),
+    });
+  } catch (error) {
+    progress.stop("Claude sign-in did not finish");
+    throw error;
+  }
+}
 
 type ProviderAuthMethodNonInteractiveValidationContext = Parameters<
   NonNullable<ProviderAuthMethod["validateNonInteractive"]>

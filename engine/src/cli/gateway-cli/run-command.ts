@@ -49,6 +49,7 @@ export function addGatewayRunCommand(cmd: Command, hooks: GatewayRunCommandHooks
     .addOption(new Option(`${WINDOWS_TASK_SUPERVISOR_CHILD_FLAG} <restart-code>`).hideHelp())
     .addOption(new Option("--update-canary").hideHelp())
     .option("--force", "Kill any existing listener on the target port before starting", false)
+    .option("--replace", "Replace a live host gateway that serves this profile", false)
     .option("--verbose", "Verbose logging to stdout/stderr", false)
     .option(
       "--cli-backend-logs",
@@ -62,22 +63,52 @@ export function addGatewayRunCommand(cmd: Command, hooks: GatewayRunCommandHooks
     .option("--raw-stream-path <path>", "Raw stream jsonl path")
     .action(async (opts, command) => {
       const resolved = resolveGatewayRunOptions(opts, command);
+      // Resolve the host before CLI bootstrap tries to migrate state. A second
+      // launch otherwise fails the state-owner guard before it can attach.
+      const host =
+        resolved.taskSupervisor || resolved.reset
+          ? undefined
+          : await (await import("../../infra/host-rendezvous.js")).prepareHostRendezvous({
+              profile: process.env.BRANCH_PROFILE?.trim() || "default",
+              home: process.env.BRANCH_HOME?.trim() || (await import("node:os")).homedir(),
+              gatewayPort: 0,
+              force: resolved.force,
+              replace: resolved.replace,
+            });
+      if (host && host.decision.outcome !== "start") {
+        const { defaultRuntime } = await import("../../runtime.js");
+        if (host.decision.outcome === "attach") {
+          defaultRuntime.log(host.decision.message);
+        } else {
+          defaultRuntime.error(host.decision.message);
+          defaultRuntime.exit(host.decision.transient ? 75 : 78);
+        }
+        return;
+      }
       const { withAgentDatabaseStartupAdmission } =
         await import("../../state/agent-database-startup.js");
-      return withAgentDatabaseStartupAdmission(
-        async () => {
-          try {
-            await hooks.beforeRun?.(resolved);
-            const { runGatewayCommand } = await import("./run.js");
-            await runGatewayCommand(resolved, getGatewayRunRuntimeHooks());
-          } catch (error) {
-            const { handleGatewayStartupMaintenance } = await import("./startup-maintenance.js");
-            if (!(await handleGatewayStartupMaintenance(error))) {
-              throw error;
+      try {
+        return await withAgentDatabaseStartupAdmission(
+          async () => {
+            try {
+              await hooks.beforeRun?.(resolved);
+              const { runGatewayCommand } = await import("./run.js");
+              if (host?.close) {
+                await runGatewayCommand(resolved, getGatewayRunRuntimeHooks(), undefined, host);
+              } else {
+                await runGatewayCommand(resolved, getGatewayRunRuntimeHooks());
+              }
+            } catch (error) {
+              const { handleGatewayStartupMaintenance } = await import("./startup-maintenance.js");
+              if (!(await handleGatewayStartupMaintenance(error))) {
+                throw error;
+              }
             }
-          }
-        },
-        { deferInspections: !resolved.updateCanary },
-      );
+          },
+          { deferInspections: !resolved.updateCanary },
+        );
+      } finally {
+        await host?.close?.();
+      }
     });
 }
