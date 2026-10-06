@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/process/command-queue.scoped-lanes.test.ts (atlas AGENT-LOOP-0013). Changed for Branch: preserve the existing Branch command-queue singleton namespace in assertions; retained under the Harvest rule that test assertions keep or strengthen upstream behavior.
 // Regression coverage for lifecycle-owned cleanup of ephemeral command lanes.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
