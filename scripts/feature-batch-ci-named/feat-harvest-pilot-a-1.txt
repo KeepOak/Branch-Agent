@@ -7,6 +7,8 @@ engine:src/channels/join-intro/join-intro-prompt.test.ts
 engine:src/channels/join-intro/report-channel-room-join.test.ts
 engine:src/channels/mention-gating.test.ts
 engine:src/channels/message/outbound-echo.test.ts
+engine:src/link-understanding/detect.test.ts
+engine:src/link-understanding/runner.test.ts
 engine:src/plugin-sdk/channel-inbound.test.ts
 engine:src/plugin-sdk/channel-ingress-runtime.test.ts
 engine:src/plugin-sdk/channel-outbound.reply-pipeline.test.ts
