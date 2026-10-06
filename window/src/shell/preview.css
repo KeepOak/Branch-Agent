@@ -58,7 +58,7 @@
 
 .community-invite { margin:6px 8px; padding:12px 14px; display:grid; gap:6px; border:1px solid var(--line); border-radius:14px; background:var(--raise); }
 .community-invite b {font-size:14px;}.community-invite small {font-size:12px; color:var(--ink-3);line-height:1.5;}.community-invite > div {display:flex;flex-wrap:wrap;gap:6px;}.rail .community-invite {display:none;}
-.conversation-column {display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;height:100%;container:chat-pane / inline-size;}.main.with-pane {display:flex;flex-direction:row;}.main.with-pane .thread {width:100%;max-width:none;}
+.conversation-column {display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;height:100%;}.main.with-pane {display:flex;flex-direction:row;}.main.with-pane .thread {width:100%;max-width:none;}
 @media (min-width:1101px) {
   .frame:has(.stage7) .main { margin-right:var(--stage-w, min(58vw, calc(100vw - 672px))); }
   .frame:has(.stage7) .character-panel { display:none; }

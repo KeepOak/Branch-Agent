@@ -52,9 +52,9 @@ function Host({ size }: { size: [number, number] }) {
   );
 }
 
-async function mount(size: [number, number], width = 1600) {
+async function mount(size: [number, number], width = 1600, resizeObserver = true) {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
-  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  vi.stubGlobal("ResizeObserver", resizeObserver ? class { observe() {} disconnect() {} } : undefined);
   for (const [prop, i] of [["clientWidth", 0], ["clientHeight", 1]] as const) {
     Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get() { return Number((this as HTMLElement).dataset.size?.split("x")[i] ?? 0); } });
   }
@@ -88,9 +88,7 @@ it("stays hidden when a wide viewport leaves a narrow chat pane", async () => {
 });
 
 it("renders the rail without ResizeObserver", async () => {
-  const container = await mount([1000, 600]);
-  vi.stubGlobal("ResizeObserver", undefined);
-  await act(async () => root!.render(<Host size={[1000, 600]} />));
+  const container = await mount([1000, 600], 1600, false);
   expect(container.querySelectorAll(".rail .tick")).toHaveLength(4);
 });
 
