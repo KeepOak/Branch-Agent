@@ -7,7 +7,7 @@ import {
 import { SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.js";
 import { prepareCronRootSessionGeneration } from "../../config/sessions/session-delivery-generation.js";
 import type { BranchConfig } from "../../config/types.branch.js";
-import { assertLockdownOff } from "../../config/lockdown.js";
+import { lockdownRefusal } from "../../config/lockdown.js";
 import { revokeMessageActionTurnCapability } from "../../gateway/message-action-turn-capability.js";
 import {
   assertAgentRunLifecycleGenerationCurrent,
@@ -112,7 +112,8 @@ const EMPTY_EMBEDDED_AGENT_CONFIG: BranchConfig = Object.freeze({});
 export function runEmbeddedAgent(
   internalParamsInput: RunEmbeddedAgentInternalParams,
 ): Promise<EmbeddedAgentRunResult> {
-  assertLockdownOff();
+  const refused = lockdownRefusal();
+  if (refused) return refused;
   const config = resolveEmbeddedRunConfig(internalParamsInput);
   const lifecycleGeneration =
     internalParamsInput.lifecycleGeneration ??

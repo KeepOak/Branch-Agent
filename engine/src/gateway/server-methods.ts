@@ -4,8 +4,6 @@ import {
   GATEWAY_STARTUP_RETRY_AFTER_MS,
 } from "../../packages/gateway-protocol/src/startup-unavailable.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
-import { isLockdownOn } from "../config/lockdown.js";
-import { isLockdownSwitchPatch } from "../config/lockdown-policy.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
 import { getActivePluginRegistry } from "../plugins/runtime.js";
 import {
@@ -27,6 +25,7 @@ import {
 } from "./control-plane-rate-limit.js";
 import { errorShapeFromError } from "./error-shape.js";
 import { createExpectedProfileBinding } from "./expected-profile.js";
+import { lockdownAdmissionError } from "./lockdown-admission.js";
 import { ADMIN_SCOPE } from "./method-scopes.js";
 import {
   createCoreGatewayMethodDescriptors,
@@ -402,14 +401,14 @@ export async function handleGatewayRequest(
         respond(false, undefined, authorization.error);
         return;
       }
-      if (
-        isLockdownOn() &&
-        methodRegistry.getScope(req.method) !== "operator.read" &&
-        req.method !== "chat.abort" &&
-        req.method !== "sessions.abort" &&
-        !(req.method === "config.patch" && isLockdownSwitchPatch(req.params))
-      ) {
-        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "Lockdown is on: this action is unavailable."));
+      const lockdownError = lockdownAdmissionError({
+        method: req.method,
+        params: req.params,
+        scope: methodRegistry.getScope(req.method),
+        client,
+      });
+      if (lockdownError) {
+        respond(false, undefined, lockdownError);
         return;
       }
       const handler = methodRegistry.getHandler(req.method) as GatewayRequestHandler | undefined;

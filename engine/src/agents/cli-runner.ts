@@ -1,5 +1,5 @@
 import { isSilentReplyPayloadText } from "../auto-reply/tokens.js";
-import { assertLockdownOff } from "../config/lockdown.js";
+import { lockdownRefusal } from "../config/lockdown.js";
 import { runWithCliHistoryWriter } from "../config/sessions/cli-history-boundary.js";
 import { prepareCronRootSessionGeneration } from "../config/sessions/session-delivery-generation.js";
 import { buildGenericCliContextEngineHostSupport } from "../context-engine/host-compat.js";
@@ -114,7 +114,8 @@ export async function isCliBindingFlushed(
 }
 
 export function runCliAgent(paramsInput: RunCliAgentParams): Promise<EmbeddedAgentRunResult> {
-  assertLockdownOff();
+  const refused = lockdownRefusal();
+  if (refused) return refused;
   const lifecycleGeneration =
     paramsInput.lifecycleGeneration ?? captureAgentRunLifecycleGeneration(paramsInput.runId);
   const params = {
