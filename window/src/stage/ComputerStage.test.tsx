@@ -63,6 +63,14 @@ const environment = {
 };
 const observed = { wsPath: "/desktop/one", control: false, transport: "rfb", expiresAtMs: 1000 };
 describe("conversation computer lifecycle", () => {
+  it.each(["Computer", "Browser"] as const)("shows only the main composer beside the %s stage", async (mode) => {
+    const request = vi.fn(async () => ({ session: { key: "agent:scout:one" } }));
+    await render(engine(request as WindowEngine["request"]), mode);
+    await flush();
+    expect(container.querySelector(".st7-dock")).toBeNull();
+    expect(container.querySelector(".dk7-in")).toBeNull();
+    expect(container.querySelector('[aria-label="Show the conversation"]')).toBeNull();
+  });
   it("shows placement lookup failures and retries instead of claiming no placement", async () => {
     let failed = true;
     const request = vi.fn(async (method: string) => {
