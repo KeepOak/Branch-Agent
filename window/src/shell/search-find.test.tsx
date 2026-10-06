@@ -43,6 +43,15 @@ describe("message search to conversation find", () => {
 });
 
 describe("live search results", () => {
+  it("labels an assistant message with its own Trunk, not the default Trunk", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(<SearchResultsView query="report" chip="all" now={1}
+      trunkName={(id) => id === "elm" ? "Elm" : "Sapling"} rowName={() => "A conversation"}
+      results={{ chats: [], past: [], files: [], messages: [{ key: "agent:elm:main", role: "assistant", snippet: "report ready", at: 1, messageId: "m" }] }}
+      onChip={() => {}} onOpen={() => {}} onOpenMessage={() => {}} onLibrary={() => {}} />));
+    expect(host.querySelector(".sr-from")?.textContent).toBe("Elm: ");
+  });
   it("does not show old message or file hits while a new query is pending", async () => {
     vi.useFakeTimers();
     const host = document.body.appendChild(document.createElement("div"));

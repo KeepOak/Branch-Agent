@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Conversation } from "../connect/conversations";
+import { agentIdOf } from "../connect/session";
 import { Pebble } from "../face/Pebble";
 import { Icon } from "./icons";
 import { rowTime } from "./list-model";
@@ -162,14 +163,14 @@ export function SearchResultsView(p: ResultsProps) {
       {show("messages")
         ? results.messages.map((m) => (
             <button key={m.messageId || `${m.key}:${m.at}`} type="button" className="sr" data-testid="search-result" data-key={m.key} onClick={() => p.onOpenMessage(m.key, query)}>
-              <Pebble size={34} label={p.trunkName(undefined)} />
+              <Pebble size={34} label={p.trunkName(agentIdOf(m.key))} />
               <span className="sr-body">
                 <b className="sr-title">
                   <span>{p.rowName(m.key)}</span>
                   <time>{rowTime(m.at, p.now)}</time>
                 </b>
                 <span className="sr-snip">
-                  <span className="sr-from">{m.role === "user" ? "You:" : `${p.trunkName(undefined)}:`} </span>
+                  <span className="sr-from">{m.role === "user" ? "You:" : `${p.trunkName(agentIdOf(m.key))}:`} </span>
                   <Marked text={cutAround(m.snippet, query)} q={query} />
                 </span>
               </span>
