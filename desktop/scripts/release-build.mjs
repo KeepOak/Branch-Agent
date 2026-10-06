@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -48,9 +48,19 @@ async function prepareWindow(pnpm) {
   await run(process.execPath, [join(windowRoot, "node_modules/vite/bin/vite.js"), "build"], windowRoot);
 }
 
-async function deployEngine(pnpm, scratch, identity) {
+async function buildEnginePackage(pnpm) {
   // Runtime-only package build: the engine component never loads declarations, which were ~75% of build time.
   await run(pnpm, ["build:package"], engineRoot, { ...process.env, BRANCH_RUN_NODE_SKIP_DTS_BUILD: "1" });
+}
+
+async function deployEngine(pnpm, scratch, identity) {
+  // macOS builds the engine in its own job (the 3-core runner's tsdown alone takes ~6 minutes) and
+  // packages from that job's dist archive, so each job stays under the 15-minute cap.
+  const prebuilt = process.env.BRANCH_RELEASE_ENGINE_DIST;
+  if (prebuilt) {
+    await rm(join(engineRoot, "dist"), { recursive: true, force: true });
+    await run("tar", ["-xzf", prebuilt, "-C", engineRoot]);
+  } else await buildEnginePackage(pnpm);
   const metadata = JSON.parse(await readFile(join(engineRoot, "dist/build-info.json"), "utf8"));
   assert.equal(metadata.commit, identity.commit, "Engine build metadata differs from source freeze");
   const deployment = join(scratch, "production-engine");
@@ -109,7 +119,7 @@ async function waitForSharedWindow() {
 }
 
 export async function buildRelease(mode, output, windowDirectory) {
-  assert(["window", "components"].includes(mode), "Usage: release-build.mjs window|components output [built-window]");
+  assert(["window", "engine-dist", "components"].includes(mode), "Usage: release-build.mjs window|engine-dist|components output [built-window]");
   const identity = await releaseIdentity();
   const scratch = await scratchRoot();
   const pnpm = await preparePnpm(scratch);
@@ -118,6 +128,13 @@ export async function buildRelease(mode, output, windowDirectory) {
     await prepareWindow(pnpm);
     await writeFile(join(windowRoot, "dist/branch-build.txt"), `${identity.version}\n`);
     await run(process.execPath, ["--input-type=module", "-e", 'import { cp } from "node:fs/promises"; await cp(process.argv[1], process.argv[2], { recursive: true });', join(windowRoot, "dist"), output]);
+  } else if (mode === "engine-dist") {
+    await prepareEngine(pnpm);
+    await buildEnginePackage(pnpm);
+    const metadata = JSON.parse(await readFile(join(engineRoot, "dist/build-info.json"), "utf8"));
+    assert.equal(metadata.commit, identity.commit, "Engine build metadata differs from source freeze");
+    // tar keeps file modes, which an Actions artifact zip would drop.
+    await run("tar", ["-czf", join(output, "engine-dist.tgz"), "-C", engineRoot, "dist"]);
   } else {
     assert(windowDirectory, "Components require the shared tested renderer build");
     // The named feature suites already gate every pull request and main push (feature-batch-checks.yml).

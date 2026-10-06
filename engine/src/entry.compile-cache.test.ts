@@ -77,7 +77,8 @@ describe("entry compile cache", () => {
 
   beforeEach(() => {
     root = tempDirs.make("branch-compile-cache-");
-    entryFile = path.join(root, "dist", "entry.js");
+    // Respawns only apply to source runs; a built dist entry keeps its compile cache.
+    entryFile = path.join(root, "src", "entry.ts");
     argv = [process.execPath, entryFile, "status", "--json"];
     envSnapshot = captureEnv([
       "NODE_COMPILE_CACHE",
@@ -134,6 +135,17 @@ describe("entry compile cache", () => {
       expect(enableCompileCache).toHaveBeenCalledTimes(kind === "package" ? 1 : 0);
     },
   );
+
+  it("enables compile cache for a built dist entry in a source checkout", async () => {
+    await markSourceCheckout();
+    const builtEntry = path.join(root, "dist", "entry.js");
+    enableBranchCompileCache({ env: {}, installRoot: root, entryFile: builtEntry });
+    expect(enableCompileCache).toHaveBeenCalledOnce();
+    await expect(
+      respawnWithoutBranchCompileCacheIfNeeded({ currentFile: builtEntry, installRoot: root }),
+    ).resolves.toBe(false);
+    expect(spawn).not.toHaveBeenCalled();
+  });
 
   it("skips cache activation with a warning when Windows TEMP makes the path too long", () => {
     vi.spyOn(os, "tmpdir").mockReturnValue(path.join(root, "x".repeat(200)));

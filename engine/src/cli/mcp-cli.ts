@@ -47,6 +47,7 @@ import { runTasksWithConcurrency } from "../utils/run-with-concurrency.js";
 import { formatCliCommand } from "./command-format.js";
 import { formatCliJsonFailure } from "./failure-output.js";
 import { resolveGatewayAuthOptions } from "./gateway-secret-options.js";
+import { registerGraftBranchCommands } from "./graft-cli.js";
 import { requestExitAfterOneShotOutput } from "./one-shot-exit.js";
 import { collectOption } from "./program/helpers.js";
 import { applyParentDefaultHelpAction } from "./program/parent-default-help.js";
@@ -700,6 +701,10 @@ function registerGraftServe(command: Command): void {
       "auto",
     )
     .option("-v, --verbose", "Verbose logging to stderr", false)
+    .option(
+      "--host [url]",
+      "Work with another Branch this one joined (branch graft join), as its paired device",
+    )
     .action(async (opts) => {
       try {
         const { gatewayToken, gatewayPassword } = resolveGatewayAuthOptions(opts);
@@ -714,6 +719,15 @@ function registerGraftServe(command: Command): void {
           throw new Error('Invalid --claude-channel-mode value. Use "auto", "on", or "off".');
         }
         const { serveBranchChannelMcp } = await import("../mcp/channel-server.js");
+        if (opts.host !== undefined) {
+          const { graftHostOptions } = await import("../mcp/graft-join.js");
+          await serveBranchChannelMcp({
+            graftHost: await graftHostOptions(opts.host === true ? "" : String(opts.host)),
+            claudeChannelMode,
+            verbose: Boolean(opts.verbose),
+          });
+          return;
+        }
         const { resolveDesktopGateway } = await import("../mcp/desktop-gateway.js");
         // With no auth named, use the Branch Agent desktop app's loopback gateway and token file.
         const desktop = resolveDesktopGateway({
@@ -1378,5 +1392,7 @@ export function registerMcpCli(program: Command) {
 
 /** `branch graft`: the primary name of `branch mcp serve`. */
 export function registerGraftCli(program: Command) {
-  registerGraftServe(program.command("graft").description(GRAFT_DESCRIPTION));
+  const graft = program.command("graft").description(GRAFT_DESCRIPTION);
+  registerGraftServe(graft);
+  registerGraftBranchCommands(graft);
 }

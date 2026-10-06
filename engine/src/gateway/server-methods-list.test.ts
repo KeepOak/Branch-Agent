@@ -297,6 +297,7 @@ describe("listGatewayMethods", () => {
       "contacts.outside.hello",
       "contacts.outside.list",
       "contacts.outside.set",
+      "graft.links.sync",
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
@@ -403,6 +404,7 @@ describe("listGatewayMethods", () => {
       "contacts.outside.hello",
       "contacts.outside.list",
       "contacts.outside.set",
+      "graft.links.sync",
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
@@ -469,7 +471,13 @@ describe("listGatewayMethods", () => {
   it("classifies cron mutations as control-plane writes", () => {
     const descriptors = createCoreGatewayMethodDescriptors(coreGatewayHandlers);
 
-    for (const method of ["cron.add", "cron.update", "cron.remove", "cron.run", "groves.monitors"]) {
+    for (const method of [
+      "cron.add",
+      "cron.update",
+      "cron.remove",
+      "cron.run",
+      "groves.monitors",
+    ]) {
       expect(descriptors.find((descriptor) => descriptor.name === method)).toMatchObject({
         name: method,
         scope: "operator.admin",
@@ -637,6 +645,7 @@ describe("listGatewayMethods", () => {
       "contacts.outside.hello",
       "contacts.outside.list",
       "contacts.outside.set",
+      "graft.links.sync",
       "backup.schedule.set",
       "backup.schedule.clear",
       "backup.run",
