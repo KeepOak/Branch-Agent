@@ -15,13 +15,17 @@ afterEach(async () => {
 });
 
 async function mount() {
-  const request = vi.fn(async (method: string) => {
+  let row: Record<string, unknown> = { model: "openai/test", permissionMode: "ask", estimatedCostUsd: 0.5 };
+  const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
     if (method === "agents.list") return { defaultId: "research", agents: [{ id: "research", name: "Research" }] };
-    if (method === "sessions.describe") return { session: { model: "openai/test", permissionMode: "ask", estimatedCostUsd: 0.5 } };
+    if (method === "sessions.describe") return { session: { ...row } };
     if (method === "sessions.list") return { defaults: { model: "openai/test" }, sessions: [] };
-    if (method === "models.list") return { models: [{ id: "test", provider: "openai", name: "Test Model", available: true }] };
+    if (method === "models.list") return { models: [{ id: "test", provider: "openai", name: "Test Model", available: true }, { id: "gpt-6.1-sol", provider: "openai", name: "GPT-6.1-Sol", available: true }] };
     if (method === "models.authStatus") return { providers: [] };
-    if (method === "sessions.patch") return {};
+    if (method === "sessions.patch") {
+      row = { ...row, ...params };
+      return {};
+    }
     if (method === "sessions.create") return { key: "agent:research:job" };
     if (method === "sessions.fork") return { sessionKey: "agent:research:fork" };
     return {};
@@ -66,5 +70,22 @@ describe("P54 one composer symbol", () => {
     await act(async () => branch?.click());
     expect(request).toHaveBeenCalledWith("sessions.fork", { sessionKey: "agent:research:main", entryId: "entry-1" });
     expect(conversation).toHaveBeenCalledWith("agent:research:fork");
+  });
+
+  it("updates the model label after a pick and returns access to As set", async () => {
+    const { host, request } = await mount();
+    const tune = host.querySelector<HTMLButtonElement>('[data-testid="tune-button"]')!;
+    await act(async () => tune.click());
+    const model = [...host.querySelectorAll<HTMLButtonElement>('[data-testid="model-option"]')].find((button) => button.textContent?.includes("GPT-6.1 Sol"))!;
+    await act(async () => model.click());
+    expect(tune.getAttribute("aria-label")).toContain("GPT-6.1 Sol");
+    expect(request).toHaveBeenCalledWith("sessions.patch", { key: "agent:research:main", model: "openai/gpt-6.1-sol", thinkingLevel: null });
+    await act(async () => tune.click());
+    await act(async () => tune.click());
+    const asSet = [...host.querySelectorAll<HTMLButtonElement>('[data-testid="mode-option"]')].find((button) => button.textContent?.includes("As set"))!;
+    await act(async () => asSet.click());
+    expect(request).toHaveBeenCalledWith("sessions.patch", { key: "agent:research:main", permissionMode: null });
+    await act(async () => tune.click());
+    expect(host.querySelector('[data-testid="mode-option"][aria-checked="true"]')?.textContent).toContain("As set");
   });
 });

@@ -35,6 +35,8 @@ describe("thread words", () => {
     expect(formatDuration(90_000)).toBe("1m 30s");
     expect(clockLeft(125_000)).toBe("2:05");
     expect(modelName("ollama/qwen3:14b")).toBe("qwen3:14b");
+    expect(modelName("openai/gpt-6.1-sol")).toBe("GPT-6.1 Sol");
+    expect(modelName("openai/GPT-6.1-Sol")).toBe("GPT-6.1 Sol");
   });
 
   it("shortens an engine error to its first sentence without the lead-in", () => {

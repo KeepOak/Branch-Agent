@@ -113,6 +113,7 @@ jobs:
       BRANCH_RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
       BRANCH_RELEASE_VERSION: ${{ needs.identity.outputs.version }}
       BRANCH_RELEASE_TARGET: ${{ matrix.target }}
+      BRANCH_MACOS_SIGNING_IDENTITY: 30BBF0B68236AE05E063465C39DEA6C5B396B11C
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -122,6 +123,28 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Prepare stable macOS release signing identity
+        if: matrix.target == 'darwin-arm64'
+        shell: bash
+        env:
+          BRANCH_MACOS_SIGNING_P12: ${{ secrets.BRANCH_MACOS_SIGNING_P12 }}
+          BRANCH_MACOS_SIGNING_PASSWORD: ${{ secrets.BRANCH_MACOS_SIGNING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$BRANCH_MACOS_SIGNING_P12"
+          test -n "$BRANCH_MACOS_SIGNING_PASSWORD"
+          p12="$RUNNER_TEMP/branch-release-signing.p12"
+          password="$RUNNER_TEMP/branch-release-signing-password"
+          printf '%s' "$BRANCH_MACOS_SIGNING_P12" | base64 --decode > "$p12"
+          printf '%s' "$BRANCH_MACOS_SIGNING_PASSWORD" > "$password"
+          chmod 600 "$p12" "$password"
+          archive="$RUNNER_TEMP/apple-codesign-0.29.0-aarch64-apple-darwin.tar.gz"
+          curl -fsSL 'https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-aarch64-apple-darwin.tar.gz' -o "$archive"
+          echo "d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a  $archive" | shasum -a 256 -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          echo "BRANCH_MACOS_SIGNING_P12_FILE=$p12" >> "$GITHUB_ENV"
+          echo "BRANCH_MACOS_SIGNING_PASSWORD_FILE=$password" >> "$GITHUB_ENV"
+          echo "BRANCH_MACOS_RCODESIGN=$RUNNER_TEMP/apple-codesign-0.29.0-aarch64-apple-darwin/rcodesign" >> "$GITHUB_ENV"
       - name: Check release inventory regressions
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
@@ -153,6 +176,26 @@ jobs:
           else "$SYSTEMROOT/System32/tar.exe" -xf "$RUNNER_TEMP/shared-window.zip" -C "$SHARED_WINDOW"; fi
           touch "$BRANCH_RELEASE_WINDOW_READY"
           wait "$build"
+      - name: Verify extracted macOS app signature
+        if: matrix.target == 'darwin-arm64'
+        shell: bash
+        env:
+          RELEASE_ASSETS: ${{ runner.temp }}/release-assets
+        run: |
+          set -euo pipefail
+          extracted="$RUNNER_TEMP/verified-macos-app"
+          mkdir -p "$extracted"
+          tar -xzf "$RELEASE_ASSETS/branch-desktop-${BRANCH_RELEASE_VERSION}-darwin-arm64.tar.gz" -C "$extracted"
+          app="$extracted/Branch Agent.app"
+          test -f "$app/Contents/_CodeSignature/CodeResources"
+          test -L "$app/Contents/Frameworks/Electron Framework.framework/Versions/Current"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          (cd "$extracted" && codesign -d --extract-certificates "$app" 2>/dev/null)
+          fingerprint="$(openssl x509 -inform DER -in "$extracted/codesign0" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)"
+          test "$fingerprint" = "$BRANCH_MACOS_SIGNING_IDENTITY"
+          codesign -dr - "$app" 2>&1 | grep -Fx 'designated => identifier "com.electron.branch-agent" and certificate root = H"30bbf0b68236ae05e063465c39dea6c5b396b11c"'
+          # The self-signed identity is stable but not notarized; report Gatekeeper's assessment.
+          spctl -a -vv "$app" || true
       - name: Check compiled startup and update rollback
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist

@@ -18,6 +18,13 @@
 .frame.focus .topbar-left {
   display: none;
 }
+.frame.list-hidden .side,
+.frame.list-hidden .topbar-left {
+  display: none;
+}
+.frame.list-hidden .topbar {
+  grid-template-columns: minmax(0, 1fr);
+}
 /* Appearance › What's shown › The whole status bar, off: its row folds away (the class is on the root). */
 :root.no-status {
   --status-h: 0px;

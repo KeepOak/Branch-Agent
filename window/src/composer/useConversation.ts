@@ -138,6 +138,15 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
       try {
         await engine.request("sessions.patch", { key, ...fields });
         await readRow();
+        if (live.current === key) {
+          // The patch is authoritative even when sessions.describe momentarily reflects an
+          // older worker snapshot. Keep the controls in sync with the accepted selection.
+          setState((s) => ({ ...s, row: { ...s.row, ...fields,
+            ...(typeof fields.model === "string" && fields.model.includes("/")
+              ? { providerOverride: fields.model.split("/")[0], modelOverride: fields.model.slice(fields.model.indexOf("/") + 1) }
+              : {}),
+          } }));
+        }
         return null;
       } catch (error) {
         return errorText(error);

@@ -39,7 +39,7 @@ function PlaceTabs({ value, onChange, trunkCount }: { value: string; onChange: (
     event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
   };
   return <div className="kp-tabs" role="tablist" aria-label="Customize">{TABS.map((t, i) => <button key={t} type="button" role="tab" aria-selected={t === value} tabIndex={t === value ? 0 : -1}
-    data-count={t === "Trunks" && trunkCount !== undefined ? String(trunkCount) : undefined} aria-label={t === "Trunks" && trunkCount !== undefined ? `Trunks, ${trunkCount}` : undefined}
+    data-count={t === "Trunks" && trunkCount ? String(trunkCount) : undefined} aria-label={t === "Trunks" && trunkCount ? `Trunks, ${trunkCount}` : undefined}
     onKeyDown={e => move(e, i)} onClick={() => onChange(t)}>{t}</button>)}</div>;
 }
 

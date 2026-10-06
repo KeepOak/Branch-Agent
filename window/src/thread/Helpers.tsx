@@ -8,6 +8,7 @@ import { Popover } from "./Dialog";
 import { Icon, ICONS } from "./icons";
 import type { ApprovalDecision } from "./model";
 import type { ApprovalDetails, Helper } from "./useEngineData";
+import { modelName } from "./format";
 
 type Mark = "working" | "done" | "waiting" | "stopped";
 
@@ -54,7 +55,7 @@ function Row({ h, depth, props }: { h: Helper; depth: number; props: TreeProps }
         <span className={`hmark ${mark}`} aria-hidden="true"><Icon d={MARK_ICON[mark]} /></span>
         <span className="helper-name">
           {props.onOpenSession ? <button type="button" className="btn sm ghost" onClick={() => props.onOpenSession?.(h.key)}>{h.name}</button> : <b>{h.name}</b>}
-          {h.model ? <small>{h.model}</small> : null}
+          {h.model ? <small>{modelName(h.model)}</small> : null}
         </span>
         <span className={`pill ${mark === "done" ? "ok" : mark === "stopped" ? "bad" : "wait"}`}>{pillWords(h, mark)}</span>
         {mark === "working" || mark === "waiting" ? (

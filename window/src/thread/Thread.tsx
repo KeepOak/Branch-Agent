@@ -186,7 +186,9 @@ export function Thread(props: Props) {
   useEffect(() => {
     if (!props.findRequest) return;
     setFinding(true);
-    setFindRequest({ query: props.findRequest.query, nonce: props.findRequest.nonce });
+    const query = props.findRequest.query;
+    // Always remount the Find bar: the shell's nonce and this thread's own Ctrl+F count separately and can collide.
+    setFindRequest((current) => ({ query, nonce: current.nonce + 1 }));
     props.onFindRequestHandled?.(props.findRequest.nonce);
   }, [props.findRequest?.nonce]);
   const empty = !history.length && !pendingUser && !running && !props.questions?.length && !waitingCount;
