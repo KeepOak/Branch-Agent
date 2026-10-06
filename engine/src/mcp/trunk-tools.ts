@@ -528,6 +528,7 @@ function registerRoomTools(server: McpServer, gw: TrunkGateway, opts: TrunkTools
         roomId: room_id,
         kind: "a2a",
         id: agent.id,
+        outsideAgent: agent,
       });
       return ok("joined", { result });
     },
