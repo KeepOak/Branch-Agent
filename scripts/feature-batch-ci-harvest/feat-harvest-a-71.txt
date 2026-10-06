@@ -7,6 +7,8 @@ engine:extensions/nostr/src/nostr-ingress.test.ts
 engine:extensions/nostr/src/nostr-profile-http.test.ts
 engine:extensions/nostr/src/nostr-profile-import.test.ts
 engine:extensions/nostr/src/nostr-profile.test.ts
+engine:extensions/raft/src/channel.test.ts
+engine:extensions/raft/src/gateway.test.ts
 engine:extensions/synology-chat/src/client.test.ts
 engine:extensions/synology-chat/src/webhook-handler.test.ts
 engine:extensions/synology-chat/src/webhook-ingress.test.ts
