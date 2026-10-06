@@ -72,7 +72,16 @@ export function Popover({ anchor, onClose, label, className, align = "left", chi
   }, [anchor, onClose]);
 
   return (
-    <div ref={ref} className={`c-pop in17 ${className ?? ""}`} role="dialog" aria-label={label} style={pos}>
+    <div ref={ref} className={`c-pop in17 ${className ?? ""}`} role="dialog" aria-label={label} style={pos} onKeyDown={(event) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      const buttons = [...ref.current?.querySelectorAll<HTMLButtonElement>("button:not([disabled])") ?? []].filter((button) => button.offsetParent !== null || button.getClientRects().length > 0);
+      if (!buttons.length) return;
+      event.preventDefault();
+      const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[next]?.focus();
+    }}>
       {children}
     </div>
   );

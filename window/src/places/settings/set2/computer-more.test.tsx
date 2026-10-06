@@ -137,7 +137,7 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
       expect(waiting?.textContent).toContain("Studio laptop wants to connect");
       expect(waiting?.textContent).toContain("Garage box wants to connect");
       expect(waiting?.textContent).toContain("Run commands");
-      expect(waiting?.textContent).toContain("0.19.4");
+      expect(waiting?.textContent).not.toContain("0.19.4");
       const allow = row("Studio laptop")!.querySelector("button.pri, button:last-of-type") as HTMLButtonElement;
       expect(allow.disabled).toBe(true);
       await act(async () => { vi.advanceTimersByTime(1600); });

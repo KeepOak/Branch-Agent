@@ -84,7 +84,9 @@ describe("update compatibility isolated entry graphs", () => {
     "excludes the isolated %s graph when the runtime binding is %s",
     async (directory, runtime) => {
       const inventory = recordFixture();
-      const root = createTempDir("update-compat-isolated-graph-");
+      // macOS temp dirs sit behind the /var -> /private/var symlink; import both modules through the
+      // real path so the bridge and the declaration resolve to one module instance.
+      const root = fsSync.realpathSync(createTempDir("update-compat-isolated-graph-"));
       candidate(root);
       const current = path.join(root, "dist/current.mjs");
       write(root, `dist/${directory}/inspect.mjs`, fsSync.readFileSync(current, "utf8"));

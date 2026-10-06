@@ -28,6 +28,8 @@ const previousConfig: BranchConfig = {
   bindings: [{ agentId: "oak", match: { channel: "telegram" } }],
   mcp: { servers: { docs: { command: "npx", args: ["docs-mcp"] } } },
   skills: { entries: { summarize: { enabled: true } } },
+  plugins: { entries: { "voice-call": { enabled: false } } },
+  auth: { order: { openai: ["openai:default"] } },
 };
 
 function edit(mutate: (config: BranchConfig) => void): BranchConfig {
@@ -88,6 +90,21 @@ const changes: { kind: string; next: BranchConfig; agentIds: string[] }[] = [
       c.logging = { level: "debug" };
     }),
     agentIds: ["elm", "oak"],
+  },
+];
+
+const generationChanges = [
+  {
+    kind: "plugin change",
+    next: edit((c) => {
+      c.plugins!.entries!["voice-call"]!.enabled = true;
+    }),
+  },
+  {
+    kind: "account auth order change",
+    next: edit((c) => {
+      c.auth!.order!.openai = ["openai:work"];
+    }),
   },
 ];
 
@@ -162,6 +179,32 @@ describe("hot-applied config keeps another Trunk's admitted run", () => {
       const admitted = await admitElmRun();
       mocks.configuredAgentIds = agentIds;
       await applyHotReload(next, "every agent");
+
+      await expect(
+        acquireAgentRunPreparedModelRuntime(elmRunInput(previousConfig), {
+          catalogMode: "static",
+          pluginGeneration: admitted.pluginGeneration,
+        }),
+      ).rejects.toThrow("plugin generation was superseded");
+    },
+  );
+
+  it.each(generationChanges)(
+    "rejoins the successor publication for an admitted run after $kind",
+    async ({ next }) => {
+      const admitted = await admitElmRun();
+      await applyHotReload(next, "planned");
+
+      const resumed = await acquireAgentRunPreparedModelRuntime(elmRunInput(previousConfig), {
+        catalogMode: "static",
+        pluginGeneration: admitted.pluginGeneration,
+        rejoinSupersededPluginGeneration: true,
+      });
+      expect(resumed.pluginGeneration).not.toBe(admitted.pluginGeneration);
+      expect(resumed.snapshot.config).toBe(next);
+      await resumed[Symbol.asyncDispose]();
+      const republished = await loadPublishedGatewayReplyDispatchRuntime({ agentId: "elm" });
+      expect(resumed.pluginGeneration).toBe(republished?.pluginGeneration);
 
       await expect(
         acquireAgentRunPreparedModelRuntime(elmRunInput(previousConfig), {

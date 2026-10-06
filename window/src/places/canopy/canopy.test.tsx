@@ -284,11 +284,24 @@ describe("Canopy states", () => {
     await mount(fx(), "advanced");
     await act(async () => emit("session.tool", { runId: "r9", seq: 1, stream: "tool", sessionKey: "agent:b:main", data: { phase: "start", name: "read_file", toolCallId: "t1", args: { path: "x", limit: 2 } } }));
     const steps = host.querySelector("[aria-label='Every step, live']")!;
-    expect(steps.textContent).toContain("read_file");
+    expect(steps.textContent).toContain("Using read file");
+    expect(steps.textContent).not.toContain("read_file");
     expect(steps.textContent).toContain("2 details hidden");
     expect(steps.textContent).not.toContain("\"path\"");
     await act(async () => emit("session.tool", { runId: "r9", seq: 2, stream: "tool", sessionKey: "agent:b:main", data: { phase: "result", name: "read_file", toolCallId: "t1", result: { content: "ok" } } }));
     expect(steps.textContent).toContain("Done");
+  });
+  it("names Every step, live rows in plain words, never by raw tool id [A]", async () => {
+    await mount(fx(), "advanced");
+    const changes = [{ path: "a.ts", stat: { added: 1, removed: 0 } }, { path: "b.ts", stat: { added: 2, removed: 1 } }];
+    await act(async () => emit("session.tool", { runId: "r8", seq: 1, stream: "tool", sessionKey: "agent:b:main", data: { phase: "start", name: "apply_patch", toolCallId: "p1", args: { changes } } }));
+    await act(async () => emit("session.tool", { runId: "r8", seq: 2, stream: "tool", sessionKey: "agent:b:main", data: { phase: "start", name: "bash", toolCallId: "c1", args: { command: "ls" } } }));
+    const steps = host.querySelector("[aria-label='Every step, live']")!;
+    expect(steps.textContent).toContain("Editing 2 files");
+    expect(steps.textContent).toContain("Running a command");
+    await act(async () => emit("session.tool", { runId: "r8", seq: 3, stream: "tool", sessionKey: "agent:b:main", data: { phase: "result", name: "apply_patch", toolCallId: "p1", result: { content: "ok" } } }));
+    expect(steps.textContent).toContain("Edited 2 files");
+    expect(steps.textContent).not.toMatch(/apply_patch|bash/);
   });
 });
 
