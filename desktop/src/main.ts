@@ -1,5 +1,5 @@
 // Branch Agent desktop app: starts the engine gateway, serves the built window on 127.0.0.1 and shows it.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, screen, session, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, session, shell } from "electron";
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -31,12 +31,10 @@ const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRA
 const ICON = process.platform === "win32"
   ? join(__dirname, "..", "assets", "branch.ico")
   : join(__dirname, "..", "assets", "brand", "linux", "branch-48.png");
-const TRAY_ICON = (() => {
-  if (process.platform !== "darwin") return ICON;
-  const icon = nativeImage.createFromPath(join(__dirname, "..", "assets", "brand", "linux", "branch-16.png"));
-  icon.addRepresentation({ scaleFactor: 2, buffer: readFileSync(join(__dirname, "..", "assets", "brand", "linux", "branch-32.png")) });
-  return icon;
-})();
+// Electron loads branch-16@2x.png automatically for Retina menu bars.
+const TRAY_ICON = process.platform === "darwin"
+  ? join(__dirname, "..", "assets", "brand", "linux", "branch-16.png")
+  : ICON;
 const READY_TIMEOUT_MS = 600_000;
 /** Free memory a candidate check needs (6 GB, the shared load rule); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
 const CANDIDATE_MIN_FREE_BYTES = Number(process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB ?? 6144) * 2 ** 20;

@@ -37,9 +37,10 @@ test("desktop window, tray, shortcuts and packager use the approved icon; update
     assert.equal(png.readUInt32BE(16), size);
     assert.equal(png.readUInt32BE(20), size);
   }
-  assert.match(main, /process\.platform !== "darwin"/);
+  assert.deepEqual(bytes("assets/brand/linux/branch-16@2x.png"), bytes("assets/brand/linux/branch-32.png"));
+  assert.match(main, /process\.platform === "darwin"/);
   assert.match(main, /branch-16\.png/);
-  assert.match(main, /scaleFactor: 2, buffer: readFileSync\([^)]+branch-32\.png/);
+  assert.match(text("scripts/build-brand-icons.mjs"), /branch-16@2x\.png/);
   assert.match(shortcuts, /IconLocation = "\$executable,0"/);
   assert.match(release, /assets\/branch\.ico/);
   assert.match(release, /assets\/branch\.icns/);
