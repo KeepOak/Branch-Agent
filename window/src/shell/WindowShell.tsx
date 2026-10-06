@@ -355,6 +355,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const isNarrow = useNarrow();
   const [slideOpen, setSlideOpen] = useState(false);
   const [route, setRoute] = useState<Route>(loadRoute);
+  const [searchFind, setSearchFind] = useState<{ key: string; query: string; nonce: number } | null>(null);
   const routeRef = useRef(route);
   routeRef.current = route;
   const [draftTopic, setDraftTopic] = useState<{ agentId: string; nonce: string; options: Record<string, unknown> } | null>(null);
@@ -1113,6 +1114,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         }>
         <Thread
           {...areaProps}
+          findRequest={searchFind?.key === openKey ? searchFind : null}
+          onFindRequestHandled={(nonce) => setSearchFind((current) => current?.nonce === nonce ? null : current)}
           earlierPages={segments.pages}
           currentStartedAt={segments.currentStartedAt}
           hasEarlierPages={segments.hasEarlier}
@@ -1278,6 +1281,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
               onChip={search.setChip}
               onOpen={(key) => {
                 search.setQuery("");
+                openConversation(key);
+              }}
+              onOpenMessage={(key, query) => {
+                search.setQuery("");
+                setSearchFind((current) => ({ key, query, nonce: (current?.nonce ?? 0) + 1 }));
                 openConversation(key);
               }}
               onLibrary={() => {
