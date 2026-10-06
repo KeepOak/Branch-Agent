@@ -253,7 +253,7 @@ async function hotSwapWindow(): Promise<void> {
 }
 
 const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(
-  "<!doctype html><title>Branch Agent</title><body style=\"-webkit-app-region:drag;font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f8;color:#333\">Starting Branch Agent…</body>",
+  "<!doctype html><title>Branch Agent</title><body style=\"-webkit-app-region:drag;font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f8;color:#333\">Starting Branch…</body>",
 )}`;
 
 function createWindow(): BrowserWindow {

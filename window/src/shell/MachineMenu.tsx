@@ -1,4 +1,3 @@
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { MouseEvent } from "react";
 import { Icon } from "./icons";
 import type { MenuItem } from "./Menu";
@@ -24,17 +23,12 @@ export function MachineSwitcher({ online, connecting, onOpen }: { online: boolea
 
 type Ctx = { machineName: string; online: boolean; level: Level; roundTripMs: number | null; openSettings: (page: string) => void };
 
-/** The machine menu (§4.1.3, §4.9.2): the workspace, the computer this window talks to, and where to add or change it.
- *  The team workspace needs keepoak.com, which the engine can't connect yet, so its row says so. */
+/** The computer menu shows only the selected, gateway-backed computer and navigation actions. */
 export function machineMenuItems(c: Ctx): MenuItem[] {
-  const status = c.online ? "Online · you are here" : "Offline · Open the connection settings to fix it.";
+  const status = c.online ? "Online · here" : "Offline";
   const trip = c.level === "technical" && c.online && c.roundTripMs !== null ? ` · ${c.roundTripMs} ms` : "";
   return [
-    { kind: "head", label: "Workspace" },
-    { kind: "info", label: "Personal", sub: "Just you and this household", checked: true },
-    { label: "Your team · Connect keepoak.com to see your team", run: () => undefined, disabled: "Connecting keepoak.com isn't in the engine yet." },
-    { kind: "sep" },
-    { kind: "head", label: "Talk to the assistant on…" },
+    { kind: "head", label: "Talk to Branch on" },
     { kind: "info", label: c.machineName || "This computer", sub: `${status}${trip}`, checked: true },
     { kind: "sep" },
     { label: "Add a computer or phone…", run: () => c.openSettings("computer"), testid: "machine-add" },

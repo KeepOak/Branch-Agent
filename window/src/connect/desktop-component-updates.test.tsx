@@ -32,7 +32,7 @@ it("actual native Check now and Install buttons use component bridge and never g
   const status = vi.fn(async () => state); const check = vi.fn(async () => state);
   const stage = vi.fn(async () => ({ ...state, phase: "staged", pendingVersion: "1.1" }));
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status, check, stage } };
-  await show(); await click("Check now"); await click("Install when nothing is running");
+  await show(); await click("Check now"); await click("Install when idle");
   expect(status).toHaveBeenCalledTimes(1); expect(check).toHaveBeenCalledTimes(1); expect(stage).toHaveBeenCalledTimes(1);
   expect(request).not.toHaveBeenCalled();
   expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
@@ -54,7 +54,8 @@ it("Updates toggle is on by default and staged updates wait for Trunks in Settin
   if (!toggle) throw new Error("missing auto-apply toggle");
   await act(async () => toggle.click());
   expect(set).toHaveBeenCalledWith("autoApplyUpdates", false);
-  expect(host.textContent).toContain("1.1 is ready; restart to finish");
+  expect(host.textContent).toContain("A Branch update is ready; restart to finish");
+  expect(host.textContent).not.toContain("1.1 is ready");
   await act(async () => root.unmount()); root = createRoot(host);
   const session = { engine, gatewayUrl: engine.gatewayUrl, request } as unknown as SaplingSession;
   const ctx = { session, update: null, version: "1.0", onWhatsNew: vi.fn(), onReminded: vi.fn() } as unknown as StatusContext;

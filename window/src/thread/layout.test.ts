@@ -39,5 +39,6 @@ describe("layout", () => {
 
   it("finds a block's turn", () => {
     expect(turnOf(blocks, 3).map((b) => b.key)).toEqual(["s1", "s2", "t1", "t2"]);
+    expect(turnOf(blocks, 0).map((b) => b.key)).toEqual(["u1", "s1", "s2", "t1", "t2"]);
   });
 });

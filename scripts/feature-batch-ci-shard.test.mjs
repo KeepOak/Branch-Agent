@@ -1,7 +1,7 @@
 // node --test scripts/feature-batch-ci-shard.test.mjs
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { namedTests, shardOf, shardTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
+import { harvestMatrix, harvestTestFiles, harvestTests, namedTests, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
 
 test('no FEATURE_SHARD runs everything in one job', () => {
   assert.deepEqual(shardOf(''), { index: 0, total: 1 });
@@ -29,4 +29,20 @@ test('Windows PR scope runs touched named tests plus the smoke set, never unlist
   assert.deepEqual([...picked].sort(), [...new Set([touched, ...windowsSmokeTests.engine])].sort());
   for (const file of windowsSmokeTests.engine) assert.ok(engine.includes(file), `${file} must be a named test`);
   assert.deepEqual(touchedTests('window', ['engine/src/x.ts']), []);
+});
+
+test('Harvest lists stay out of named tests and PRs select touched lists and test files', () => {
+  const all = harvestTests('engine');
+  const pilot = harvestTestFiles('engine', ['feat-harvest-pilot-a-1.txt']);
+  assert.equal(pilot.length, 21);
+  assert.ok(all.every(file => !namedTests('engine').includes(file)));
+  const list = 'scripts/feature-batch-ci-harvest/feat-harvest-pilot-a-1.txt';
+  assert.deepEqual(touchedHarvestTests('engine', [list]), [...pilot].sort());
+  assert.deepEqual(touchedHarvestTests('engine', [`engine/${all[0]}`]), [all[0]]);
+  assert.deepEqual(touchedHarvestTests('engine', ['engine/src/unlisted.test.ts']), []);
+  assert.deepEqual(touchedHarvestTests('window', [list]), []);
+  const shards = harvestMatrix([list]).filter(item => item.lane === 'engine');
+  assert.equal(shards.length, Math.ceil(pilot.length / 4));
+  assert.deepEqual(shards.flatMap(item => shardTests([...pilot].sort(), shardOf(item.shard))).sort(), [...pilot].sort());
+  assert.equal(harvestMatrix().filter(item => item.lane === 'engine').length, Math.ceil(all.length / 8));
 });

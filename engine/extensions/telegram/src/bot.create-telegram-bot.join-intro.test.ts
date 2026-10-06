@@ -1,6 +1,11 @@
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createEmptyPluginRegistry,
+  resetPluginRuntimeStateForTest,
+  setActivePluginRegistry,
+} from "branch/plugin-sdk/plugin-test-runtime";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { telegramBotInfoForTest } from "./bot.create-telegram-bot.test-support.js";
 
 type ReportChannelRoomJoin =
@@ -64,7 +69,12 @@ async function registerJoinHandler(config: BranchConfig) {
 
 describe("Telegram group join introductions", () => {
   beforeEach(() => {
+    setActivePluginRegistry(createEmptyPluginRegistry());
     reportChannelRoomJoinMock.mockClear();
+  });
+
+  afterEach(() => {
+    resetPluginRuntimeStateForTest();
   });
 
   it("reports the bot's native group join with metadata-only room context", async () => {
