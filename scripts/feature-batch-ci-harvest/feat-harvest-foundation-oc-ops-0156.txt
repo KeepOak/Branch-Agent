@@ -1,3 +1,8 @@
+engine:src/gateway/client.ssh.test.ts
 engine:src/gateway/server-tailscale.test.ts
+engine:src/infra/ssh-client.test.ts
+engine:src/infra/ssh-client.windows.test.ts
+engine:src/infra/ssh-config.test.ts
+engine:src/infra/ssh-tunnel.test.ts
 engine:src/infra/tailscale.claim.test.ts
 engine:src/infra/tailscale.test.ts
