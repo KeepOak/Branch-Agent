@@ -10,6 +10,7 @@ import { money, runLength, whenWord } from "./format";
 import { PersonRow, type PersonLine } from "./People";
 import { RecBar } from "./RecBar";
 import { FinishSetup } from "./Setup";
+import { openInboxWith } from "../inbox/handoff";
 import "./overview.css";
 
 export const PAUSE_ALL_GAP = "Needs the engine's pause-all method.";
@@ -112,7 +113,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
         {status("sessions", "recent activity")}
         {recent.map(({ row, length }) => <button key={row.key} type="button" className="ov-recent" onClick={() => openConversation(row.key)}><Face size={20} label={agentName(trunks.list, row.agentId)} /><span className="ov-recent-t">{row.title}</span><span className="ov-mono">{length}</span></button>)}
         {tiles.sessions.value !== undefined && !rows.length ? <p>Nothing has run yet.</p> : null}
-        <div className="ov-acts"><button type="button" className="btn sm" onClick={() => { openPlace("inbox"); setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "inbox", tab: "History" } })), 0); }}>All history</button></div>
+        <div className="ov-acts"><button type="button" className="btn sm" onClick={() => { openInboxWith({ tab: "history" }); openPlace("inbox"); }}>All history</button></div>
       </Tile>
       <Tile title="Controls">
         <p>Mode: <b>{mode || "As each Trunk is set"}</b> · <button type="button" className="ov-link ov-inline" disabled={!openSettings} onClick={() => openSettings?.("permissions")}>change</button></p>
