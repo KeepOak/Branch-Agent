@@ -14,7 +14,6 @@ type Ctx = {
   open: (key: string) => void;
   rename: (row: Conversation) => void;
   confirmDelete: (row: Conversation) => void;
-  newWith: (agentId: string | undefined) => void;
   level: Level;
   /** "What can <Trunk> do?": opens its conversation and asks. */
   ask: (row: Conversation) => void;
@@ -106,7 +105,6 @@ export function rowMenuItems(row: Conversation, c: Ctx): MenuItem[] {
     row.parentKey ? null : { label: "Move to project", run: () => undefined, disabled: MOVE_OFF, ...ic("folder") },
     c.level === "regular" ? null : c.lookItem ?? null,
     tidyItem(row, c),
-    { label: `New conversation with ${c.trunkName}`, run: () => c.newWith(row.agentId), ...ic("plus") },
     row.isMain ? { label: `What can ${c.trunkName} do?`, run: () => c.ask(row), testid: "menu-ask", ...ic("info") } : null,
     row.isMain ? { label: "Pause", run: () => undefined, disabled: PAUSE_OFF, ...ic("pause") } : null,
     row.isMain ? { label: "Edit Trunk…", run: () => c.editTrunk(row.agentId), testid: "menu-edit-trunk", ...ic("sliders") } : null,

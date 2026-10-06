@@ -1,29 +1,30 @@
-// The saved layout (DESIGN-SPEC §3.3): sidebar width, rail and hidden, kept on this computer.
+// The saved layout (DESIGN-SPEC §3.3): sidebar width and rail, kept on this computer.
 import { useCallback, useEffect, useState } from "react";
 
-export type Layout = { sideW: number; rail: boolean; hidden: boolean; focus: boolean };
+export type Layout = { sideW: number; rail: boolean; focus: boolean };
 
 export const SIDE_DEFAULT = 292;
 export const SIDE_MIN = 220;
 export const SIDE_MAX = 640;
 const KEY = "branch.layout";
+const defaultRail = () => typeof matchMedia === "function" && matchMedia("(min-width: 761px) and (max-width: 999px)").matches;
 
 export function readLayout(): Layout {
   try {
     const r = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Layout>;
     const w = typeof r.sideW === "number" ? r.sideW : SIDE_DEFAULT;
-    return { sideW: Math.min(SIDE_MAX, Math.max(SIDE_MIN, w)), rail: r.rail === true, hidden: r.hidden === true, focus: false };
+    return { sideW: Math.min(SIDE_MAX, Math.max(SIDE_MIN, w)), rail: r.rail === true || (localStorage.getItem(KEY) === null && defaultRail()), focus: false };
   } catch {
-    return { sideW: SIDE_DEFAULT, rail: false, hidden: false, focus: false }; // storage blocked or damaged
+    return { sideW: SIDE_DEFAULT, rail: defaultRail(), focus: false }; // storage blocked or damaged
   }
 }
 
 /** Below 200 px the list snaps to the face rail; it never sits at a truncated intermediate width. */
-export function dragResult(width: number): Pick<Layout, "sideW" | "rail" | "hidden"> | { hidden: true } | { rail: true } {
+export function dragResult(width: number): { sideW: number; rail: false } | { rail: true } {
   if (width < 200) {
     return { rail: true };
   }
-  return { sideW: Math.min(SIDE_MAX, Math.max(SIDE_MIN, Math.round(width))), rail: false, hidden: false };
+  return { sideW: Math.min(SIDE_MAX, Math.max(SIDE_MIN, Math.round(width))), rail: false };
 }
 
 export function useLayout() {

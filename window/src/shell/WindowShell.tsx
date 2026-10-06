@@ -76,7 +76,7 @@ import { useGatewayFacts, useLimits, useUpdate } from "./use-status";
 import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
 import { HeaderRow, PlaceHead, TopBar, type FaceState } from "./TopBar";
-import { readLayout, useLayout } from "./use-layout";
+import { useLayout } from "./use-layout";
 import { usePinOrder } from "./use-pin-order";
 import { hideMenuItems, hideTarget, HIDEABLE, usePetLook, useShown } from "./shown";
 import { StatusGfx, StatusLeftExtras, StatusPet } from "./StatusExtras";
@@ -338,14 +338,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null);
   const now = useNow(s.doneAt);
   const [layout, setLayout] = useLayout();
-  const [autoRail, setAutoRail] = useState(() => matchMedia("(min-width: 761px) and (max-width: 999px)").matches && !readLayout().rail && !readLayout().hidden);
-  useEffect(() => {
-    const medium = matchMedia("(min-width: 761px) and (max-width: 999px)");
-    const onResize = () => setAutoRail(medium.matches && !layout.rail && !layout.hidden);
-    medium.addEventListener("change", onResize);
-    return () => medium.removeEventListener("change", onResize);
-  }, [layout.rail, layout.hidden]);
-  const rail = layout.rail || autoRail;
+  const rail = layout.rail;
   const pinOrder = usePinOrder(session, ready);
   const [liveW, setLiveW] = useState<number | null>(null);
   const isNarrow = useNarrow();
@@ -751,7 +744,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   const narrow = () => isNarrow;
   const compact = isNarrow || layout.focus;
-  const toggleList = () => (narrow() ? setSlideOpen((o) => !o) : (setAutoRail(false), setLayout({ hidden: false, rail: !(layout.hidden || rail) })));
+  const toggleList = () => (narrow() ? setSlideOpen((o) => !o) : setLayout({ rail: !rail }));
   const showMenu = (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string, upward = false) => {
     e.preventDefault();
     e.stopPropagation();
@@ -805,7 +798,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         setRenaming(r.key);
       },
       confirmDelete: (r) => (askBeforeDelete() ? setDeleting(r) : void actions.remove(r)),
-      newWith: (agentId) => void startNew(agentId),
       level: readLevel(),
       ask: (r) => {
         openConversation(r.key);
@@ -824,9 +816,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     savePrefs(p);
   };
   const focusSearch = () => {
-    if (rail || layout.hidden) {
-      setAutoRail(false);
-      setLayout({ rail: false, hidden: false });
+    if (rail) {
+      setLayout({ rail: false });
     }
     if (narrow()) {
       setSlideOpen(true);
@@ -982,8 +973,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onOpenSession: openConversation,
     onReply: (target: { entryId: string; name: string; text: string }) => setReplyTo(target),
   };
-  const sideWidth = liveW ?? (layout.hidden ? 0 : rail ? 68 : layout.sideW);
-  const frameClass = ["frame", layout.hidden ? "list-hidden" : "", rail ? "rail" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
+  const sideWidth = liveW ?? (rail ? 68 : layout.sideW);
+  const frameClass = ["frame", rail ? "rail" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
   const summary = filterSummary(prefs, trunkName, personName);
   const dark = theme === "system" ? systemDark : effectiveDark(theme);
   const filterOpen = overlay?.kind === "filter";
@@ -1188,7 +1179,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         machine={<MachineSwitcher online={ready} connecting={s.status.phase === "connecting"} onOpen={(e) => machineMenu(e, "machine")} />}
         header={header}
         dark={dark}
-        listHidden={layout.hidden || rail}
+        listHidden={rail}
         onTheme={() => setTheme(toggleTheme(theme))}
         onToggleList={toggleList}
         onCharacter={() => setCharacterShown((v) => !v)}
@@ -1244,7 +1235,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           ) : null
         }
         rail={rail}
-        onReorderPins={(drop, visible) => { if (drop.source !== home?.key) void pinOrder.move(drop.target === home?.key ? { ...drop, after: true } : drop, visible); }}
+        onReorderPins={(drop, visible) => { if (drop.source !== home?.key) void pinOrder.move(drop.target === home?.key ? { ...drop, zone: "after" } : drop, visible); }}
         onRailSearch={focusSearch}
         onOpen={(key) => {
           selection.clear();
@@ -1255,7 +1246,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         }}
         onNew={(e) => showMenu(e, "new", [
           ...newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }),
-          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { setAutoRail(false); setLayout({ rail: false, hidden: false }); } }] : []),
+          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => setLayout({ rail: false }) }] : []),
         ], "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
@@ -1296,7 +1287,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           extras={rowExtras(rowCard.card.row)}
         />
       ) : null}
-      {layout.focus ? null : <SideResizer layout={{ ...layout, rail }} onLayout={(patch) => { setAutoRail(false); setLayout(patch); }} onLive={setLiveW} />}
+      {layout.focus ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
       {slideOpen ? <div className="slide-scrim" onClick={() => setSlideOpen(false)} /> : null}
       <main className={mainClass} id="main">
         {layout.focus ? (

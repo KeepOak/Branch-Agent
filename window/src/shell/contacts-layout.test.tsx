@@ -7,7 +7,7 @@ import type { SaplingSession } from "../connect/session";
 import { Sidebar, type SidebarProps } from "./Sidebar";
 import { SideResizer } from "./Resizer";
 import { dragResult, readLayout } from "./use-layout";
-import { reorderedPins } from "./sidebar-drag";
+import { dropZoneAt, reorderedPins } from "./sidebar-drag";
 import { usePinOrder } from "./use-pin-order";
 
 vi.mock("../face/Face", () => ({ Face: ({ size }: { size: number }) => <span className="test-face" style={{ width: size, height: size }} /> }));
@@ -39,14 +39,14 @@ async function show(rail = false) {
 describe("contacts layout", () => {
   it("snaps below 200 px to the rail, keeps 200 px full, and drags back out to at least 220 px", () => {
     expect(dragResult(199)).toEqual({ rail: true });
-    expect(dragResult(200)).toEqual({ sideW: 220, rail: false, hidden: false });
-    expect(dragResult(240)).toEqual({ sideW: 240, rail: false, hidden: false });
-    expect(dragResult(68 + 180)).toEqual({ sideW: 248, rail: false, hidden: false });
+    expect(dragResult(200)).toEqual({ sideW: 220, rail: false });
+    expect(dragResult(240)).toEqual({ sideW: 240, rail: false });
+    expect(dragResult(68 + 180)).toEqual({ sideW: 248, rail: false });
   });
   it("drags the real resize handle through 320, 240, 200, 199 and out from the rail", async () => {
     const commits: unknown[] = [];
     const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
-    const render = async (rail: boolean) => act(async () => root!.render(<SideResizer layout={{ sideW: 320, rail, hidden: false, focus: false }} onLayout={(patch) => commits.push(patch)} onLive={() => {}} />));
+    const render = async (rail: boolean) => act(async () => root!.render(<SideResizer layout={{ sideW: 320, rail, focus: false }} onLayout={(patch) => commits.push(patch)} onLive={() => {}} />));
     const drag = async (from: number, to: number) => {
       const handle = host.querySelector<HTMLElement>("[role=separator]")!;
       Object.defineProperty(handle, "setPointerCapture", { value: () => {}, configurable: true });
@@ -57,18 +57,22 @@ describe("contacts layout", () => {
     await render(false);
     for (const width of [320, 240, 200, 199]) await drag(320, width);
     expect(commits).toEqual([
-      { sideW: 320, rail: false, hidden: false }, { sideW: 240, rail: false, hidden: false },
-      { sideW: 220, rail: false, hidden: false }, { rail: true, hidden: false },
+      { sideW: 320, rail: false }, { sideW: 240, rail: false },
+      { sideW: 220, rail: false }, { rail: true },
     ]);
     await render(true);
     await drag(68, 320);
-    expect(commits.at(-1)).toEqual({ sideW: 320, rail: false, hidden: false });
+    expect(commits.at(-1)).toEqual({ sideW: 320, rail: false });
   });
   it("reload keeps both the saved full width and rail state", () => {
+    const originalMatchMedia = globalThis.matchMedia;
+    globalThis.matchMedia = vi.fn(() => ({ matches: true })) as unknown as typeof matchMedia;
+    expect(readLayout()).toMatchObject({ rail: true });
     localStorage.setItem("branch.layout", JSON.stringify({ sideW: 320, rail: false }));
     expect(readLayout()).toMatchObject({ sideW: 320, rail: false });
     localStorage.setItem("branch.layout", JSON.stringify({ sideW: 320, rail: true }));
     expect(readLayout()).toMatchObject({ sideW: 320, rail: true });
+    globalThis.matchMedia = originalMatchMedia;
   });
   it("shows pinned tiles and two-line contact rows without losing the scroll or selection on redraw", async () => {
     const host = await show();
@@ -94,8 +98,8 @@ describe("contacts layout", () => {
     expect(host.querySelector('[data-key="Oak"] .test-face')?.getAttribute("style")).toContain("width: 40px");
   });
   it("reorders Pinned at either edge and reloads the per-person engine preference", async () => {
-    expect(reorderedPins(["Oak", "Elm", "Ash"], "Ash", "Oak", false)).toEqual(["Ash", "Oak", "Elm"]);
-    expect(reorderedPins(["Oak", "Elm", "Ash"], "Oak", "Elm", true)).toEqual(["Elm", "Oak", "Ash"]);
+    expect(reorderedPins(["Oak", "Elm", "Ash"], "Ash", "Oak", "before")).toEqual(["Ash", "Oak", "Elm"]);
+    expect(reorderedPins(["Oak", "Elm", "Ash"], "Oak", "Elm", "after")).toEqual(["Elm", "Oak", "Ash"]);
     const prefs: Record<string, unknown> = {};
     const request = vi.fn(async (method: string, params?: { keys?: string[]; entries?: Record<string, unknown> }) => {
       if (method === "users.prefs.get") return { status: "ok", entries: { ...prefs } };
@@ -107,11 +111,41 @@ describe("contacts layout", () => {
     function Probe() { pin = usePinOrder(engine, true); return <span>{pin.order.join(",")}</span>; }
     const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
     await act(async () => root!.render(<Probe />));
-    await act(async () => pin!.move({ source: "Elm", target: "Oak", after: false }, ["Oak", "Elm"]));
+    await act(async () => pin!.move({ source: "Elm", target: "Oak", zone: "before" }, ["Oak", "Elm"]));
     expect(host.textContent).toBe("Elm,Oak");
     expect(request).toHaveBeenCalledWith("users.prefs.set", { entries: { "ui.window.contactPinOrder": ["Elm", "Oak"] } });
     await act(async () => root!.unmount()); root = createRoot(host);
     await act(async () => root!.render(<Probe />));
     expect(host.textContent).toBe("Elm,Oak");
+  });
+  it("divides vertical or horizontal contact targets into before, onto and after zones", () => {
+    const zones = ["before", "onto", "after"] as const;
+    expect(dropZoneAt(105, 100, 90, zones)).toBe("before");
+    expect(dropZoneAt(145, 100, 90, zones)).toBe("onto");
+    expect(dropZoneAt(185, 100, 90, zones)).toBe("after");
+    expect(dropZoneAt(145, 100, 90, ["before", "after"])).toBe("after");
+  });
+  it("captures a started pin drag and clears it when a new pointerdown is not on a pin", async () => {
+    const open = vi.fn();
+    const p = props(); p.onOpen = open;
+    const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+    await act(async () => root!.render(<Sidebar {...p} />));
+    const side = host.querySelector<HTMLElement>(".side")!;
+    const pin = host.querySelector<HTMLElement>(".pin-open")!;
+    const recent = host.querySelector<HTMLElement>('[data-key="Birch"] .row-open')!;
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => pin });
+    const capture = vi.fn();
+    Object.defineProperty(side, "setPointerCapture", { value: capture });
+    Object.defineProperty(side, "hasPointerCapture", { value: () => false });
+    const pointer = async (el: Element, type: string, x: number) => act(async () => {
+      el.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, pointerType: "mouse", button: 0, clientX: x }));
+    });
+    await pointer(pin, "pointerdown", 10);
+    await pointer(pin, "pointermove", 20);
+    expect(capture).toHaveBeenCalledWith(1);
+    await pointer(recent, "pointerdown", 20);
+    await pointer(recent, "pointerup", 20);
+    await act(async () => recent.click());
+    expect(open).toHaveBeenCalledWith("Birch");
   });
 });

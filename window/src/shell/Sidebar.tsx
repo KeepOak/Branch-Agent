@@ -1,4 +1,4 @@
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { Pebble } from "../face/Pebble";
 import { CommunityInvite } from "./CommunityInvite";
 import type { Conversation } from "../connect/conversations";
@@ -146,8 +146,8 @@ function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row:
 
 const seenPinned = new Set<string>();
 function PinnedTile({ p, row }: { p: SidebarProps; row: Conversation }) {
-  const fresh = !seenPinned.has(row.key);
-  seenPinned.add(row.key);
+  const [fresh] = useState(() => !seenPinned.has(row.key));
+  useEffect(() => { seenPinned.add(row.key); }, [row.key]);
   const state = p.rowState(row);
   const current = row.key === p.openKey && p.currentPlace === null;
   const role = row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : row.key === p.home?.key ? "Chief of Staff" : "Trunk";
@@ -207,7 +207,10 @@ function SectionLabel({ p, s, label, lead }: { p: SidebarProps; s: ListSection; 
 export function Sidebar(p: SidebarProps) {
   const kids = useKids();
   const visiblePins = p.sections.find((section) => section.id === "pinned")?.rows.map((row) => row.key) ?? [];
-  const drag = useSidebarPointerDrag((drop) => p.onReorderPins?.(drop, visiblePins), p.rail);
+  const drag = useSidebarPointerDrag((drop) => p.onReorderPins?.(drop, visiblePins), {
+    itemAttribute: "data-pin-key", ignoreSelector: ".pin-more, [data-pin-fixed=true]",
+    axis: p.rail ? "y" : "x", dropZones: ["before", "after"],
+  });
   return (
     <aside className={p.rail ? "side rail" : "side"} aria-label="Conversations" data-testid="sidebar" {...drag}>
       {p.machine ? <div className="side-machine">{p.machine}</div> : null}
@@ -229,7 +232,6 @@ export function Sidebar(p: SidebarProps) {
       {p.searchResults && !p.rail ? p.searchResults : (
         <div className="side-scroll">
           <div className="list" data-testid="conversation-list">
-            {!p.rail && p.projects && p.onNewProject ? <ProjectsSection projects={p.projects} rows={p.allRows ?? []} renderRows={(rows) => <Rows p={p} rows={rows} kids={kids} />} onNew={p.onNewProject} /> : null}
             {p.sections.map((s, i) => {
               // The Filter and sort button sits on the "Recent" label row, or on the first row when there is no "Recent".
               const lead = s.id === "recent" || (i === 0 && !p.sections.some((x) => x.id === "recent"));
@@ -242,6 +244,7 @@ export function Sidebar(p: SidebarProps) {
                 </section>
               );
             })}
+            {!p.rail && p.projects && p.onNewProject ? <ProjectsSection projects={p.projects} rows={p.allRows ?? []} renderRows={(rows) => <Rows p={p} rows={rows} kids={kids} />} onNew={p.onNewProject} /> : null}
             {p.emptyLine ? (
               <p className="list-empty">
                 {p.emptyLine}

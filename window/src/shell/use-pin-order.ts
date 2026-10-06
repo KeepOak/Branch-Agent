@@ -34,7 +34,7 @@ export function usePinOrder(engine: SaplingSession, ready: boolean) {
       return;
     }
     const all = [...order.filter((key) => visible.includes(key)), ...visible.filter((key) => !order.includes(key))];
-    const next = reorderedPins(all, drop.source, drop.target, drop.after);
+    const next = reorderedPins(all, drop.source, drop.target, drop.zone);
     if (next.every((key, i) => key === all[i])) return;
     setOrder(next);
     try {

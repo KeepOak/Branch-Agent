@@ -97,7 +97,7 @@ it("orders TK by activity and moves it through Pinned on menu pin and unpin", as
     return rowMenuItems(openContactRow(contact.threadKey, [contact], [])!, {
       actions, contact, pinContact: toggle,
       now: 100, trunkName: "TK", level: "regular", open: () => {}, rename: () => {}, confirmDelete: () => {},
-      newWith: () => {}, ask: () => {}, editTrunk: () => {}, tidy: () => {}, copyMarkdown: () => {},
+      ask: () => {}, editTrunk: () => {}, tidy: () => {}, copyMarkdown: () => {},
       copyText: () => {}, copyLink: () => {},
     });
   };
