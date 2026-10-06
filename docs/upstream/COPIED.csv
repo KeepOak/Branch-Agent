@@ -43,3 +43,7 @@ engine/src/agents/tools/sessions-search-tool.test.ts,SESSIONS-0025,openclaw/open
 engine/src/agents/tools/sessions-search-tool.matching.test.ts,SESSIONS-0025,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,src/agents/tools/sessions-search-tool.matching.test.ts,2026-10-06
 engine/src/agents/tools/sessions-history-tool.test.ts,SESSIONS-0026,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,src/agents/tools/sessions-history-tool.test.ts,2026-10-06
 engine/src/agents/tools/sessions-send-tool.a2a.test.ts,SESSIONS-0026,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,src/agents/tools/sessions-send-tool.a2a.test.ts,2026-10-06
+engine/extensions/anthropic/session-catalog.test.ts,SESSIONS-0057,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,extensions/anthropic/session-catalog.test.ts,2026-10-06
+engine/extensions/codex/src/session-catalog-adoption.test.ts,SESSIONS-0057,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,extensions/codex/src/session-catalog-adoption.test.ts,2026-10-06
+engine/src/sessions/session-upstream-monitor.test.ts,SESSIONS-0057,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,src/sessions/session-upstream-monitor.test.ts,2026-10-06
+engine/extensions/opencode/test-fixtures/opencode-command.sh,SESSIONS-0057,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/opencode/test-fixtures/opencode-command.sh (restored upstream executable mode),2026-10-06

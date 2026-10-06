@@ -1,13 +1,16 @@
+engine:extensions/anthropic/session-catalog.test.ts
 engine:extensions/brave/src/brave-image-search-tool.test.ts
 engine:extensions/brave/src/brave-web-search-provider.merge.test.ts
 engine:extensions/brave/src/brave-web-search-provider.preflight.test.ts
 engine:extensions/brave/src/brave-web-search-provider.test.ts
+engine:extensions/codex/src/session-catalog-adoption.test.ts
 engine:extensions/exa/src/exa-web-search-provider.test.ts
 engine:extensions/firecrawl/src/firecrawl-cache.test.ts
 engine:extensions/firecrawl/src/firecrawl-client.test.ts
 engine:extensions/firecrawl/src/firecrawl-search-results.test.ts
 engine:extensions/firecrawl/src/firecrawl-tools.test.ts
 engine:extensions/memory-core/src/session-search-visibility.test.ts
+engine:extensions/opencode/session-catalog.test.ts
 engine:extensions/searxng/src/searxng-client.test.ts
 engine:extensions/searxng/src/searxng-client.transport.test.ts
 engine:extensions/searxng/src/searxng-search-provider.test.ts
@@ -31,6 +34,7 @@ engine:src/agents/usage.test.ts
 engine:src/infra/session-cost-usage.test.ts
 engine:src/sessions/session-state-events.test.ts
 engine:src/sessions/session-state-notices.test.ts
+engine:src/sessions/session-upstream-monitor.test.ts
 engine:src/talk/client-voice-confirmation-lifecycle.test.ts
 engine:src/talk/client-voice-confirmation.test.ts
 engine:src/web-search/runtime-autodetect-order.test.ts
