@@ -8,7 +8,10 @@ engine:src/cron/run-error-reason.test.ts
 engine:src/cron/schedule.test.ts
 engine:src/cron/service.failure-alert.test.ts
 engine:src/cron/service.failure-repair.test.ts
+engine:src/cron/service/agent-watchdog.test.ts
 engine:src/cron/service/restart-recovery.behaviour.test.ts
 engine:src/cron/service/run-recovery.test.ts
+engine:src/cron/service/timeout-policy.test.ts
+engine:src/cron/service/timer.timeout-watchdog.test.ts
 engine:src/cron/stagger.test.ts
 engine:src/cron/validate-timestamp.test.ts

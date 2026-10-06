@@ -77,3 +77,6 @@ engine/src/cron/retry-hint.test.ts,AUTOMATION-0011,openclaw/openclaw,57e0aaa1c19
 engine/src/cron/run-diagnostics.test.ts,AUTOMATION-0013,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/cron/run-diagnostics.test.ts,2026-10-06
 engine/src/cron/run-error-reason.test.ts,AUTOMATION-0013,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/run-error-reason.test.ts,2026-10-06
 engine/src/cron/cron-execution-diagnostics.e2e.test.ts,AUTOMATION-0013,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/cron/cron-execution-diagnostics.e2e.test.ts,2026-10-06
+engine/src/cron/service/agent-watchdog.test.ts,AUTOMATION-0015,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/service/agent-watchdog.test.ts,2026-10-06
+engine/src/cron/service/timeout-policy.test.ts,AUTOMATION-0015,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/service/timeout-policy.test.ts,2026-10-06
+engine/src/cron/service/timer.timeout-watchdog.test.ts,AUTOMATION-0015,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/service/timer.timeout-watchdog.test.ts,2026-10-06
