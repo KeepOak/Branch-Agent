@@ -1,3 +1,6 @@
+engine:extensions/discord/src/components.selects.test.ts
+engine:extensions/discord/src/components.test.ts
+engine:extensions/discord/src/monitor/agent-components.wildcard.test.ts
 engine:extensions/discord/src/monitor/model-picker.test.ts
 engine:extensions/discord/src/monitor/model-picker-preferences.test.ts
 engine:extensions/discord/src/monitor/native-command.command-arg.test.ts
