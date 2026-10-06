@@ -49,6 +49,12 @@ const REGULAR_OWN = [
 ];
 
 describe("conversationMenuItems", () => {
+  it("offers Pin to top on a Trunk's main conversation (every Trunk row in the list is one; P2)", () => {
+    const main = row({ key: "agent:main:main", agentId: "main", isMain: true, pinned: false, title: "" });
+    expect(shape(conversationMenuItems(ctx("regular", false, { row: main })))).toContain("Pin to top");
+    expect(shape(conversationMenuItems(ctx("regular", false, { row: { ...main, pinned: true } })))).toContain("Unpin");
+  });
+
   it("draws a Trunk's conversation at Regular in the preview's order", () => {
     expect(shape(conversationMenuItems(ctx("regular", true)))).toEqual(REGULAR_OWN);
   });
@@ -60,9 +66,9 @@ describe("conversationMenuItems", () => {
     expect(tech.slice(tech.indexOf("Start over…"), tech.indexOf("Start over…") + 5)).toEqual(["Start over…", "[off] Open the raw file", "Export its steps", "Export conversation", "About this conversation"]);
   });
 
-  it("leaves pin, archive, snooze, delete and the Trunk-only rows off the default Trunk's main conversation", () => {
+  it("leaves archive, snooze, delete and the Trunk-only rows off the default Trunk's main conversation", () => {
     const main = shape(conversationMenuItems(ctx("regular", false)));
-    for (const label of ["Archive", "Snooze ›", "Unpin", "Pin to top", "Delete…", "Remove Trunk…", "[off] Pause this Trunk", "[off] Make default", "[off] Show it how, once"]) {
+    for (const label of ["Archive", "Snooze ›", "Delete…", "Remove Trunk…", "[off] Pause this Trunk", "[off] Make default", "[off] Show it how, once"]) {
       expect(main).not.toContain(label);
     }
     expect(main).toContain("Sapling’s profile");
@@ -117,7 +123,7 @@ describe("conversationMenuItems", () => {
 describe("the menu's engine reads", () => {
   it("reads step updates, thinking and the folder from sessions.describe", () => {
     expect(readDetail({ session: { verboseLevel: "full", reasoningLevel: "on", worktree: { path: "/w" } } })).toEqual({ verboseLevel: "full", showThinking: true, workspace: "/w" });
-    expect(readDetail({ session: {} })).toEqual({ verboseLevel: "off", showThinking: false, workspace: null });
+    expect(readDetail({ session: {} })).toEqual({ verboseLevel: "off", showThinking: true, workspace: null });
   });
 
   it("builds the conversation link on the window's own address and the public link on the engine's", () => {

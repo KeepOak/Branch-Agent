@@ -4,13 +4,21 @@ import { useEffect, useRef, useState } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import { shows } from "../../places-nav/level";
 import { Icon } from "../../shell/icons";
-import { resultText } from "../../thread/model";
+import { stepLabel } from "../../thread/format";
+import { readFileChanges, resultText, type Block, type FileChange } from "../../thread/model";
 import { rec, str, type Row } from "../automations/runtime";
 import { isRunning, sessionTitle, trunkName } from "./data";
 import { anchorOf, ChoiceMenu, clock, Pill, TrunkFace, type Ctx } from "./ui";
 import type { MenuAnchor } from "../../shell/Menu";
 
-type Step = { key: string; session: string; tool: string; hidden: number; st: "Running" | "Done" | "Error"; out: string; at: number };
+type Step = { key: string; session: string; tool: string; changes: FileChange[]; hidden: number; st: "Running" | "Done" | "Error"; out: string; at: number };
+const STATUS = { Running: "running", Done: "ok", Error: "failed" } as const;
+
+/** What a step did, in the thread's plain words ("Edited 2 files", "Ran a command"), never its tool id. */
+function said(s: Pick<Step, "key" | "tool" | "changes" | "st">): string {
+  const step: Extract<Block, { kind: "step" }> = { kind: "step", key: s.key, tool: s.tool, title: "", detail: "", status: STATUS[s.st], changes: s.changes };
+  return stepLabel(step);
+}
 const KEEP = 100;
 
 /** Tool steps from every conversation as they arrive, from the moment this view opens (the list starts again when Canopy closes).
@@ -23,7 +31,7 @@ function useSteps(ctx: Ctx) {
     if ((event !== "agent" && event !== "session.tool") || p.stream !== "tool" || ["tool_call", "tool_search", "tool_describe"].includes(str(d.name))) return;
     const key = str(d.toolCallId) || `${str(p.runId)}:${String(p.seq)}`;
     setSteps(list => {
-      if (d.phase === "start") return [{ key, session: str(p.sessionKey), tool: str(d.name) || "step", hidden: Object.keys(rec(d.args)).length, st: "Running" as const, out: "", at: Date.now() }, ...list.filter(s => s.key !== key)].slice(0, KEEP);
+      if (d.phase === "start") return [{ key, session: str(p.sessionKey), tool: str(d.name) || "step", changes: readFileChanges(d.args), hidden: Object.keys(rec(d.args)).length, st: "Running" as const, out: "", at: Date.now() }, ...list.filter(s => s.key !== key)].slice(0, KEEP);
       if (d.phase !== "result" || !list.some(x => x.key === key)) return list;
       return list.map(s => s.key === key ? { ...s, st: d.isError ? "Error" as const : "Done" as const, out: resultText(d.result).slice(0, 120) } : s);
     });
@@ -38,7 +46,7 @@ export function EveryStep({ ctx }: { ctx: Ctx }) {
   const box = useRef<HTMLDivElement>(null);
   const title = (s: Step) => sessionTitle(ctx.d.sessions.find(x => str(x.key) === s.session) ?? {});
   const agent = (s: Step) => trunkName(ctx.d, str(ctx.d.sessions.find(x => str(x.key) === s.session)?.agentId) || s.session.split(":")[1] || "");
-  const list = steps.filter(s => (!tool || s.tool === tool) && (!st.length || st.includes(s.st)) && (!q || [s.tool, s.out, title(s), agent(s)].some(x => x.toLowerCase().includes(q.toLowerCase()))));
+  const list = steps.filter(s => (!tool || s.tool === tool) && (!st.length || st.includes(s.st)) && (!q || [said(s), s.tool, s.out, title(s), agent(s)].some(x => x.toLowerCase().includes(q.toLowerCase()))));
   useEffect(() => { if (follow && box.current) box.current.scrollTop = 0; }, [steps, follow]);
   const tools = [...new Set(steps.map(s => s.tool))];
   return (
@@ -46,7 +54,7 @@ export function EveryStep({ ctx }: { ctx: Ctx }) {
       <h2>Every step, live</h2>
       <div className="cn-stf">
         <input className="inp" value={q} onChange={e => setQ(e.target.value)} placeholder="Filter by step, summary, run or conversation" aria-label="Filter by step, summary, run or conversation" />
-        <button className="btn sm" type="button" aria-haspopup="menu" onClick={e => setMenu(menu ? null : anchorOf(e.currentTarget))}>{tool || "All tools"}<Icon name="down" /></button>
+        <button className="btn sm" type="button" aria-haspopup="menu" onClick={e => setMenu(menu ? null : anchorOf(e.currentTarget))}>{tool ? said({ key: tool, tool, changes: [], st: "Done" }) : "All tools"}<Icon name="down" /></button>
         {(["Running", "Done", "Error"] as const).map(s => <button key={s} className="btn sm cn-chipb" type="button" aria-pressed={st.includes(s)} onClick={() => setSt(st.includes(s) ? st.filter(x => x !== s) : [...st, s])}>{s}</button>)}
         <label className="cn-sw"><button type="button" role="switch" className="switch" aria-checked={follow} aria-label="Follow" onClick={() => setFollow(!follow)} /><b>Follow</b></label>
         <button className="btn ghost sm" type="button" onClick={() => setOpen(Object.fromEntries(steps.map(s => [s.key, true])))}>Open all</button>
@@ -54,11 +62,11 @@ export function EveryStep({ ctx }: { ctx: Ctx }) {
         <button className="btn ghost sm" type="button" title="Clears this list only; nothing stops." onClick={() => setSteps([])}>Clear</button>
       </div>
       {menu ? <ChoiceMenu at={menu} label="Tool" head="Tool" radio onClose={() => setMenu(null)} onPick={id => { setTool(id); setMenu(null); }}
-        options={[{ id: "", label: "All tools", checked: !tool }, ...tools.map(t => ({ id: t, label: t, checked: tool === t }))]} /> : null}
+        options={[{ id: "", label: "All tools", checked: !tool }, ...tools.map(t => ({ id: t, label: said({ key: t, tool: t, changes: [], st: "Done" }), checked: tool === t }))]} /> : null}
       {list.length ? <div className="cn-rows cn-stlist" ref={box}>{list.map(s => (
         <div className="cn-prow" key={s.key}>
           <span className="cn-tile"><Icon name="search" /></span>
-          <span className="cn-grow"><b><code>{s.tool}</code> <TrunkFace name={agent(s)} size={20} /> {agent(s)}</b>
+          <span className="cn-grow"><b>{said(s)} <TrunkFace name={agent(s)} size={20} /> {agent(s)}</b>
             <small>{title(s)} · {s.hidden} {s.hidden === 1 ? "detail" : "details"} hidden</small>
             {open[s.key] ? <small className="cn-stout">{s.out ? `${s.out} · Shortened and cleaned.` : "No preview."}</small> : null}</span>
           <Pill tone={s.st === "Running" ? "wait" : s.st === "Error" ? "bad" : "ok"}>{s.st}</Pill>
