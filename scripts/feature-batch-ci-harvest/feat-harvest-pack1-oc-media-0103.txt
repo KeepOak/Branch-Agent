@@ -1,3 +1,4 @@
+engine:src/agents/tools/nodes-tool-ptz.test.ts
 engine:src/cli/nodes-camera.test.ts
 engine:src/media/audio-transcode.test.ts
 engine:src/media/ffmpeg-exec.test.ts
