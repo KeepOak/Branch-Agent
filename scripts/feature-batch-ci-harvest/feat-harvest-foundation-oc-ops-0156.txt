@@ -1,3 +1,4 @@
+engine:src/cli/connect-cli.test.ts
 engine:src/gateway/client.ssh.test.ts
 engine:src/gateway/server-tailscale.test.ts
 engine:src/infra/ssh-client.test.ts
