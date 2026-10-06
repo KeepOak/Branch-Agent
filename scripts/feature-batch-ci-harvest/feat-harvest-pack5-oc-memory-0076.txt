@@ -1,0 +1,3 @@
+# MEMORY-0076 Standing intents
+engine:extensions/memory-core/src/standing-intents.async.test.ts
+engine:extensions/memory-core/src/standing-intents.test.ts
