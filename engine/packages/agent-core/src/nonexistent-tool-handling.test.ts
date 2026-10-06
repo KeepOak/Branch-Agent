@@ -27,12 +27,12 @@ it("test_nonexistent_tool_error_includes_available_tools", async () => {
 });
 it("test_conversation_continues_after_tool_error", async () => {
   const executed: string[] = []; const requests: Message[][] = [];
-  const run = captureAgentLoop([user()], { systemPrompt: "", messages: [], tools: [makeTool("finish", executed)] }, config, undefined,
+  const run = captureAgentLoop([user()], { systemPrompt: "", messages: [], tools: [{ ...makeTool("finish", executed), execute: async () => { executed.push("finish"); return { content: [{ type: "text", text: "Task completed." }], details: {}, terminate: true }; } }] }, config, undefined,
     createTurnSequenceStream([[makeCall("bad_tool", "call_1")], [makeCall("finish", "finish-call-1")], [{ type: "text", text: "Task completed." }]], requests));
   const messages = await run.result;
   expect(messages.filter(m => m.role === "toolResult" && m.isError)).toHaveLength(1);
   expect(executed).toEqual(["finish"]);
   expect(run.events.filter(e => e.type === "tool_execution_start" && e.toolName === "finish")).toHaveLength(1);
-  expect(messages.at(-1)).toMatchObject({ role: "assistant", stopReason: "stop" });
-  expect(requests).toHaveLength(3);
+  expect(run.events.at(-1)).toMatchObject({ type: "agent_end" });
+  expect(requests).toHaveLength(2);
 });

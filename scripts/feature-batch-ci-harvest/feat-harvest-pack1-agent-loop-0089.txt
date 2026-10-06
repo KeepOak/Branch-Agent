@@ -1,2 +1,4 @@
 engine:packages/agent-core/src/nonexistent-tool-handling.test.ts
+engine:packages/agent-core/src/tool-error-handling-middleware.test.ts
+engine:packages/agent-core/src/tool-error-handling-subagent-stamp.test.ts
 engine:packages/agent-core/src/tool-validation-error-message.test.ts
