@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/compaction.ts (atlas AGENT-LOOP-0099). Changed for Branch: Hermes summary-input tool pruning protecting 40k recent tokens (AGENT-LOOP-0102); Goose middle-out tool response retry (AGENT-LOOP-0100); existing runtime adapters and owner-context safeguards; upstream assertions retained.
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/compaction.ts (atlas AGENT-LOOP-0099). Changed for Branch: OpenHands overflow scaling and R-1541 oldest-item recovery (AGENT-LOOP-0104); Hermes summary-input tool pruning protecting 40k recent tokens (AGENT-LOOP-0102); Goose middle-out tool response retry (AGENT-LOOP-0100); existing runtime adapters and owner-context safeguards; upstream assertions retained.
 import {
   CompactionError,
   SummaryOutputBudgetError,
@@ -12,6 +12,7 @@ import { sleepWithAbort } from "../infra/backoff.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { retryAsync } from "../infra/retry.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { summarizeWithCompactionOverflowRetry } from "./compaction-overflow-retry.js";
 import {
   buildOversizedFallbackPlanWithWorker,
   buildStageSplitPlanWithWorker,
@@ -121,21 +122,26 @@ async function summarizeChunks(params: CompactionSummaryParams): Promise<string>
     try {
       summary = await retryAsync(
         () =>
-          summarizeWithToolResponseRemoval(chunk, (messages) =>
-            generateSummary(
-              messages,
-              params.model,
-              params.reserveTokens,
-              params.apiKey,
-              params.headers,
-              params.signal,
-              effectiveInstructions,
-              summary,
-              params.thinkingLevel,
-              params.streamFn,
-              params.usageSink,
-              params.summaryPrompt,
-            ),
+          summarizeWithCompactionOverflowRetry(
+            chunk,
+            (candidate) =>
+              summarizeWithToolResponseRemoval(candidate, (messages) =>
+                generateSummary(
+                  messages,
+                  params.model,
+                  params.reserveTokens,
+                  params.apiKey,
+                  params.headers,
+                  params.signal,
+                  effectiveInstructions,
+                  summary,
+                  params.thinkingLevel,
+                  params.streamFn,
+                  params.usageSink,
+                  params.summaryPrompt,
+                ),
+              ),
+            { signal: params.signal },
           ),
         {
           attempts: 3,
