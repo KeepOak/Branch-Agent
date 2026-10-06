@@ -59,7 +59,7 @@ export function ageWords(at: number, now: number): string {
 
 export type LimitWindow = { name: string; left: number; reset: string; low: boolean };
 export type LimitPill = "Measured" | "Not published";
-export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string };
+export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean };
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
 
 /** Usage endpoints return diagnostic text; the status bar only shows human-facing status words. */
@@ -84,7 +84,7 @@ function limitRow(p: Record<string, unknown>, updatedAt: number, now: number, ac
   const service = str(p.displayName) || provider;
   const name = provider === "openai-codex" || /^ChatGPT plan$/i.test(service) ? `ChatGPT · Account ${accountNumber}` : service.replace(/\s+plan$/i, "");
   const line = p.error === "Usage not reported" ? "Usage not reported" : p.error ? usageStatusWords(p.error, name) : measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, name);
-  return { id: `${str(p.provider)}:${account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line };
+  return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true };
 }
 
 /** usage.status: one row per connection and account, never added together (§4.9.4 rule 1). */
@@ -113,6 +113,28 @@ export function ringReading(limits: Limits | null): RingReading | null {
     }
   }
   return null;
+}
+
+/** usage.cost params for this calendar month on this computer's clock. */
+export function monthParams(now = new Date()): Record<string, unknown> {
+  const day = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const offset = -now.getTimezoneOffset();
+  const abs = Math.abs(offset);
+  const utcOffset = `UTC${offset >= 0 ? "+" : "-"}${Math.floor(abs / 60)}${abs % 60 ? `:${String(abs % 60).padStart(2, "0")}` : ""}`;
+  return {
+    startDate: day(new Date(now.getFullYear(), now.getMonth(), 1)),
+    endDate: day(now),
+    mode: "specific",
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    utcOffset,
+    agentScope: "all",
+  };
+}
+
+/** usage.cost: "$14.20", or null when the engine reports no cost. */
+export function readMonthSpend(result: unknown): string | null {
+  const totals = rec(rec(result).totals);
+  return typeof totals.totalCost === "number" ? `$${totals.totalCost.toFixed(2)}` : null;
 }
 
 /** "256K", "32K", "1.2M": the size of a model's window, in the words the spec uses for tokens. */
