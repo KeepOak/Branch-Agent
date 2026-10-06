@@ -14,3 +14,6 @@ engine:src/hooks/bundled/boot-md/handler.test.ts
 engine:src/hooks/bundled/bootstrap-extra-files/handler.test.ts
 engine:src/hooks/bundled/command-logger/handler.behaviour.test.ts
 engine:src/hooks/bundled/compaction-notifier/handler.behaviour.test.ts
+engine:src/routing/bindings.test.ts
+engine:src/routing/resolve-route.test.ts
+engine:src/routing/session-key.test.ts

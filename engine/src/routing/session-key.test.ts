@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/routing/session-key.test.ts (atlas MULTI-AGENT-0044). Changed for Branch: names mapped with scripts/rebrand-map.json; retain current-main explicit roster defaults and routing fixtures.
 import { describe, expect, it, vi } from "vitest";
 
 vi.unmock("./session-key.js");

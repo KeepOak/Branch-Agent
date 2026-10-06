@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/routing/resolve-route.test.ts (atlas MULTI-AGENT-0044). Changed for Branch: names mapped with scripts/rebrand-map.json; retain current-main explicit roster defaults and routing fixtures.
 // Route resolution tests cover resolving channel route targets from input.
 import { describe, expect, test } from "vitest";
 import { AgentSelectionRequiredError, resolveAgentConfig } from "../agents/agent-scope-config.js";
