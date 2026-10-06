@@ -35,7 +35,6 @@ import {
   restartRecoveryStoreTargetKey,
   type RestartRecoveryStoreTarget,
 } from "./main-session-restart-recovery-diagnostics.js";
-import { isFreshRestartInterruption } from "./main-session-restart-recovery-freshness.js";
 import {
   discoverRestartRecoveryStoreTargets,
   mainSessionRecoveryLog,
