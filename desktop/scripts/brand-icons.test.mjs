@@ -27,9 +27,20 @@ test("packaged Keeper icon contains all seven Windows sizes and the approved 256
 
 test("desktop window, tray, shortcuts and packager use the approved icon; updater refreshes Windows cache", () => {
   const main = text("src/main.ts"), release = text("scripts/release-build.mjs"), shortcuts = text("scripts/shortcuts.ps1");
-  assert.match(main, /const ICON = join\(__dirname, "\.\.", "assets", "branch\.ico"\)/);
+  assert.match(main, /process\.platform === "win32"/);
+  assert.match(main, /join\(__dirname, "\.\.", "assets", "branch\.ico"\)/);
+  assert.match(main, /join\(__dirname, "\.\.", "assets", "brand", "linux", "branch-48\.png"\)/);
   assert.match(main, /icon: ICON/);
-  assert.match(main, /keepWindowsWindowResident\(app, w, ICON/);
+  assert.match(main, /keepWindowResident\(app, w, TRAY_ICON/);
+  for (const size of [16, 32]) {
+    const png = bytes(`assets/brand/linux/branch-${size}.png`);
+    assert.equal(png.readUInt32BE(16), size);
+    assert.equal(png.readUInt32BE(20), size);
+  }
+  assert.deepEqual(bytes("assets/brand/linux/branch-16@2x.png"), bytes("assets/brand/linux/branch-32.png"));
+  assert.match(main, /process\.platform === "darwin"/);
+  assert.match(main, /branch-16\.png/);
+  assert.match(text("scripts/build-brand-icons.mjs"), /branch-16@2x\.png/);
   assert.match(shortcuts, /IconLocation = "\$executable,0"/);
   assert.match(release, /assets\/branch\.ico/);
   assert.match(release, /assets\/branch\.icns/);

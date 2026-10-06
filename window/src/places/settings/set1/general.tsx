@@ -36,11 +36,10 @@ export function GeneralPage(props: SettingsPageProps) {
   );
 }
 
-/** The Branch app on Windows hides its window to the tray on close and keeps the engine running
- *  (desktop/src/resident-window.ts); elsewhere closing the window ends it. */
+/** The Branch desktop app hides its window to the tray on close and keeps the engine running. */
 export function staysInTray(): boolean {
   const w = window as { branchDesktop?: unknown };
-  return Boolean(w.branchDesktop) && typeof navigator !== "undefined" && /^Win/.test(navigator.platform);
+  return Boolean(w.branchDesktop);
 }
 
 /** What starting up and closing the window do, as the Branch app on this computer has them. */
