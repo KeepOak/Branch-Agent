@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/tools/theme-tool.test.ts (atlas UI-MOBILE-WEB-0071). Changed for Branch: retained existing rebranding and assertions; registered for Harvest CI.
 import { Value } from "typebox/value";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
