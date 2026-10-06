@@ -2,6 +2,7 @@ engine:extensions/brave/src/brave-image-search-tool.test.ts
 engine:extensions/brave/src/brave-web-search-provider.merge.test.ts
 engine:extensions/brave/src/brave-web-search-provider.preflight.test.ts
 engine:extensions/brave/src/brave-web-search-provider.test.ts
+engine:extensions/exa/src/exa-web-search-provider.test.ts
 engine:extensions/tavily/src/config.test.ts
 engine:extensions/tavily/src/tavily-client.test.ts
 engine:extensions/tavily/src/tavily-crawl-tool.test.ts
