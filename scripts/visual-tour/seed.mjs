@@ -1,5 +1,6 @@
 // Seed through the same gateway RPCs the window calls. All names and credentials are fixtures.
 import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
 
@@ -28,6 +29,7 @@ const notes = [
   ['visual-roadmap', 'October roadmap', 'Draft milestones for the next release.'],
   ['visual-design', 'Design review', 'Compare the Grove with the preview.'],
 ];
+const researchKey = `agent:${agents[0]}:visual-research`;
 for (const [index, [suffix, title, message]] of notes.entries()) {
   const agentId = agents[index];
   call('sessions.create', { key: `agent:${agentId}:${suffix}`, agentId, displayName: title, message });
@@ -47,4 +49,11 @@ for (const provider of ['anthropic', 'openai']) {
       : `visual-tour-fixture-${provider}-never-valid`,
   });
 }
+const config = call('config.get');
+if (!config.hash) throw new Error('config.get did not return a revision for fixture setup');
+call('config.patch', {
+  baseHash: config.hash,
+  raw: JSON.stringify({ wizard: { lastRunAt: new Date().toISOString(), lastRunCommand: 'window', lastRunMode: 'local' } }),
+});
+writeFileSync(resolve(process.env.VISUAL_OUT ?? 'visual-tour-output', 'fixture.json'), JSON.stringify({ researchKey }));
 console.log(`Seeded ${agents.length} Trunks, ${notes.length} conversations, one group, and two fake accounts.`);

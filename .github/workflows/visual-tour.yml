@@ -151,12 +151,13 @@ jobs:
           if [ -f visual-shots/report.md ]; then cat visual-shots/report.md >> /tmp/visual-tour-publish/body.md; fi
           if compgen -G 'visual-shots/*.png' >/dev/null; then
             git fetch origin visual-tour:refs/remotes/origin/visual-tour || true
-            if git show-ref --verify --quiet refs/remotes/origin/visual-tour; then git switch -c visual-tour --track origin/visual-tour; else git switch --orphan visual-tour; git rm -rf . >/dev/null; fi
+            if git show-ref --verify --quiet refs/remotes/origin/visual-tour; then git switch -c visual-tour --track origin/visual-tour; else git switch --orphan visual-tour; fi
             dest="pr-$PR_NUMBER/run-$GITHUB_RUN_ID"
             mkdir -p "$dest"
             cp visual-shots/*.png "$dest/"
             git add "$dest"
             git -c user.name='Branch CI' -c user.email='ci@users.noreply.github.com' commit -m "ci: visual tour for PR $PR_NUMBER run $GITHUB_RUN_ID"
+            gh auth setup-git
             for attempt in 1 2 3 4 5; do
               if git push origin visual-tour; then break; fi
               if [ "$attempt" -eq 5 ]; then echo 'Could not push screenshots after 5 attempts'; exit 1; fi

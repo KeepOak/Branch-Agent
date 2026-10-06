@@ -8,6 +8,7 @@ const require = createRequire(new URL('../../engine/package.json', import.meta.u
 const { chromium } = require('playwright-core');
 const screens = await readScreens(new URL('./screens.json', import.meta.url));
 const out = resolve(process.env.VISUAL_OUT ?? 'visual-tour-output');
+const fixture = JSON.parse(await readFile(resolve(out, 'fixture.json'), 'utf8'));
 const token = (await readFile(process.env.VISUAL_TOKEN_FILE, 'utf8')).trim();
 const gateway = `ws://127.0.0.1:${process.env.VISUAL_GATEWAY_PORT}`;
 const windowUrl = `http://127.0.0.1:${process.env.VISUAL_WINDOW_PORT}`;
@@ -39,9 +40,17 @@ try {
       try {
         await page.goto(windowUrl, { waitUntil: 'domcontentloaded' });
         await page.locator('[data-connection=ready]').waitFor({ timeout: 60000 });
-        await page.evaluate((route) => localStorage.setItem('branch.route', JSON.stringify(route)), screen.route ?? { kind: 'chat', key: null });
+        const route = screen.route?.key === '$research'
+          ? { ...screen.route, key: fixture.researchKey }
+          : screen.route ?? { kind: 'chat', key: null };
+        await page.evaluate((value) => localStorage.setItem('branch.route', JSON.stringify(value)), route);
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.locator('[data-connection=ready]').waitFor({ timeout: 60000 });
+        await page.getByText('Researcher', { exact: true }).first().waitFor({ state: 'attached', timeout: 30000 });
+        if (width === 700 && ['main-chat', 'new-menu', 'settings-general', 'settings-accounts', 'add-claude-account', 'settings-updates', 'group-chat', 'topics'].includes(screen.id)) {
+          const list = page.getByTestId('list-toggle');
+          if (await list.getAttribute('aria-pressed') === 'false') await list.click();
+        }
         for (const step of screen.steps) await checkedStep(page, step, locate);
         await page.screenshot({ path: resolve(out, `${stem}.png`) });
         shots.push(`${stem}.png`);
