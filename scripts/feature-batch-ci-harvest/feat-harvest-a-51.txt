@@ -8,6 +8,8 @@ engine:extensions/imessage/src/install-imsg.test.ts
 engine:extensions/imessage/src/monitor/remote-host.test.ts
 engine:extensions/imessage/src/private-api-status.bridge-stall.test.ts
 engine:extensions/matrix/src/matrix/device-health.test.ts
+engine:extensions/matrix/src/matrix/draft-stream.test.ts
+engine:extensions/matrix/src/matrix/monitor/handler-draft-controller.visibility.test.ts
 engine:extensions/matrix/src/matrix/sdk/crypto-bootstrap.test.ts
 engine:extensions/matrix/src/matrix/sdk/recovery-key-store.test.ts
 engine:extensions/matrix/src/matrix/sdk/verification-manager.test.ts
