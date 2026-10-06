@@ -107,18 +107,27 @@ function MoreMenu({ actions, isReply, onClose }: { actions: HoverActions; isRepl
       {item("Branch from here", actions.branch)}
       {actions.startConversation ? item("Start a conversation from here", actions.startConversation) : null}
       {isReply ? item("Ask another model", null, NO_COMPARE) : null}
-      <hr className="msep" />
-      <div className="pop-head">Inspect</div>
-      {isReply ? item("Every step behind this reply", actions.inspect ?? null) : null}
-      {isReply && actions.read ? item(actions.read.reading ? "Stop reading" : "Read aloud", actions.read) : null}
+      {/* Inspect and Feedback hold only reply actions: on your own message the groups go, not just their items. */}
+      {isReply ? (
+        <>
+          <hr className="msep" />
+          <div className="pop-head">Inspect</div>
+          {item("Every step behind this reply", actions.inspect ?? null)}
+          {actions.read ? item(actions.read.reading ? "Stop reading" : "Read aloud", actions.read) : null}
+        </>
+      ) : null}
       <hr className="msep" />
       <div className="pop-head">Context</div>
       {item("Leave out of context", null, NO_LEAVE_OUT)}
-      <hr className="msep" />
-      <div className="pop-head">Feedback</div>
-      {isReply ? item("Good reply", null, NO_GOOD) : null}
-      {isReply ? item("Bad reply", null, NO_BAD) : null}
-      {isReply ? item("Flag", null, NO_FLAG) : null}
+      {isReply ? (
+        <>
+          <hr className="msep" />
+          <div className="pop-head">Feedback</div>
+          {item("Good reply", null, NO_GOOD)}
+          {item("Bad reply", null, NO_BAD)}
+          {item("Flag", null, NO_FLAG)}
+        </>
+      ) : null}
       <hr className="msep" />
       <div className="pop-head">Share</div>
       {item("As a picture", null, NO_PICTURE)}

@@ -50,6 +50,13 @@ describe("P54 message toolbar", () => {
     expect(run).toHaveBeenCalledOnce();
   });
 
+  it("leaves out groups with nothing for your own message (no empty Inspect or Feedback heading)", async () => {
+    const { host } = await mount(false);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
+    expect([...host.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Reply tools", "Context", "Share"]);
+    expect(host.querySelectorAll(".msep")).toHaveLength(3);
+  });
+
   it("moves Edit into the user-message menu", async () => {
     const { host, run } = await mount(false);
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
