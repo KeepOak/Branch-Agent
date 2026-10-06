@@ -5,6 +5,8 @@ engine:extensions/canopy/browser/pages/canopy/view-card-content.test.ts
 engine:extensions/canopy/browser/pages/canopy/view.test.ts
 engine:extensions/canopy/src/cli.test.ts
 engine:extensions/canopy/src/command.test.ts
+engine:extensions/canopy/src/sessions-board.test.ts
+engine:extensions/canopy/src/store.sessions-board.test.ts
 engine:src/acp/control-plane/manager.actor-epoch-fencing.test.ts
 engine:src/acp/control-plane/manager.backend-failover.test.ts
 engine:src/acp/control-plane/spawn.test.ts
