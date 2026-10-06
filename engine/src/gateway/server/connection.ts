@@ -74,6 +74,8 @@ export type GatewayConnectionOptions = {
   nodeReapprovalCoordinator?: NodeReapprovalCoordinator;
   preauthHandshakeTimeoutMs?: number;
   isStartupPending?: () => boolean;
+  /** Operator connects are admitted once this is false, which can be before startup finishes. */
+  isOperatorAdmissionPending?: () => boolean;
   isPendingWorkerNodeSetup?: (setupId: string, deviceId: string) => boolean;
   admitsNodeSetupCompletion?: (setup: CloudWorkerSetupMutationAdmission) => boolean;
   gatewayMethods: string[];
@@ -100,6 +102,7 @@ type GatewayConnectionLifecycle = Pick<
   | "connectionWork"
   | "connId"
   | "isStartupPending"
+  | "isOperatorAdmissionPending"
   | "send"
   | "close"
   | "isClosed"
@@ -157,6 +160,7 @@ export function attachGatewayConnection(params: AttachGatewayConnectionParams) {
     browserRateLimiter,
     nodeReapprovalCoordinator,
     isStartupPending,
+    isOperatorAdmissionPending,
     isPendingWorkerNodeSetup,
     admitsNodeSetupCompletion,
     gatewayMethods,
@@ -594,6 +598,7 @@ export function attachGatewayConnection(params: AttachGatewayConnectionParams) {
     connectionWork,
     connId,
     isStartupPending,
+    isOperatorAdmissionPending,
     send,
     close,
     isClosed: () => closed,

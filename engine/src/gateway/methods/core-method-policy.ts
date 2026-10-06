@@ -29,6 +29,15 @@ export const STARTUP_UNAVAILABLE_GATEWAY_METHODS = CORE_GATEWAY_METHOD_SPEC_LIST
   (spec) => spec.startup === true,
 ).map((spec) => spec.name);
 
+/**
+ * Read-only startup methods served as soon as the listener binds: the session projection and
+ * transcripts are ready by then, and neither needs plugins, the model runtime or recovery.
+ * The window paints its contact list and history from these while the rest of startup finishes.
+ */
+export const EARLY_STARTUP_GATEWAY_METHODS = ["sessions.list", "sessions.subscribe", "chat.history"].filter((method) =>
+  STARTUP_UNAVAILABLE_GATEWAY_METHODS.includes(method),
+);
+
 /** Returns the core methods that should be advertised to external gateway clients. */
 export function listCoreAdvertisedGatewayMethodNames(): string[] {
   return CORE_GATEWAY_METHOD_SPEC_LIST.filter((spec) => spec.advertise !== false).map(
