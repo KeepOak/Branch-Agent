@@ -1,0 +1,2 @@
+id,build_state,branch_files,upstream_tests_ported,named_test_command,result,notes
+AGENT-LOOP-0001,in progress,,0/4,,,Inspect pinned OpenClaw and verify existing turn-loop tests.
