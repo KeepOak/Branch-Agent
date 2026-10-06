@@ -26,12 +26,12 @@ import {
   retireAgentDeleteRuntime,
   type AgentDeleteDatabasePlan,
 } from "../../agents/agent-delete-databases.js";
-import { retryAgentDeleteTrashMove } from "../../agents/agent-delete-trash-retry.js";
 import {
   formatSharedAuthStoreOwnerDeleteError,
   isInheritedAuthStoreOwner,
   isSharedAuthStoreOwner,
 } from "../../agents/agent-delete-safety.js";
+import { retryAgentDeleteTrashMove } from "../../agents/agent-delete-trash-retry.js";
 import {
   normalizeAgentDirRegistryPath,
   resolveRegisteredAgentIdForDir,
@@ -450,6 +450,17 @@ export const agentsHandlers: GatewayRequestHandlers = {
       await reviveAgentDatabasesAfterConfigCommit([result.agentId], (message) =>
         context.logGateway.warn(message),
       );
+      // A newly created Trunk is usually messaged immediately. Prepare the
+      // session discovery and database workers while creation is still pending,
+      // so their first native startup cannot stall reply admission.
+      const { loadSessionEntryForAdmission } =
+        await import("../../config/sessions/session-accessor.sqlite-entry.js");
+      const warmAdmission = await loadSessionEntryForAdmission({
+        agentId: result.agentId,
+        sessionKey: `agent:${result.agentId}:main`,
+        readConsistency: "latest",
+      });
+      await warmAdmission.databaseClaim.release();
       respond(
         true,
         {
@@ -903,10 +914,7 @@ export const agentsHandlers: GatewayRequestHandlers = {
               (pathname) =>
                 unclaimedBySurvivor(pathname) &&
                 (!agentDirTrashEligible ||
-                  !isPathInside(
-                    agentDirRegistryPath,
-                    normalizeAgentDirRegistryPath(pathname),
-                  )),
+                  !isPathInside(agentDirRegistryPath, normalizeAgentDirRegistryPath(pathname))),
             );
             const eligibleSourcePaths = new Set(
               [

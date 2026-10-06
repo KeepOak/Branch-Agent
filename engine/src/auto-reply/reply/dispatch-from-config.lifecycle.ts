@@ -18,6 +18,7 @@ import {
   type SessionWorkerPlacementContext,
 } from "../../gateway/worker-environments/session-placement-lifecycle.js";
 import { logVerbose } from "../../globals.js";
+import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
 import { getPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
 import {
   runExclusiveSessionLifecycleMutation,
@@ -286,14 +287,18 @@ export function createDispatchReplyOperationCoordinator(params: {
   ): Promise<DispatchReplyOperationAcquisition> => {
     // Archive restoration belongs to pre-dispatch ownership resolution. Later calls only upgrade admission.
     if (phase === "pre_dispatch") {
-      params.operationSessionStoreEntry.entry = await restoreArchivedDispatchSession({
-        ctx: params.ctx,
-        entry: params.operationSessionStoreEntry.entry,
-        hasPluginOwnedBinding,
-        placementContext: params.sessionWorkerPlacementContext,
-        sessionKey: params.dispatchOperationSessionKey,
-        storePath: params.operationSessionStoreEntry.storePath,
-      });
+      params.operationSessionStoreEntry.entry = await measureDiagnosticsTimelineSpan(
+        "reply.admission.restore_archive",
+        () =>
+          restoreArchivedDispatchSession({
+            ctx: params.ctx,
+            entry: params.operationSessionStoreEntry.entry,
+            hasPluginOwnedBinding,
+            placementContext: params.sessionWorkerPlacementContext,
+            sessionKey: params.dispatchOperationSessionKey,
+            storePath: params.operationSessionStoreEntry.storePath,
+          }),
+      );
       ({
         resetTriggered: dispatchResetTriggered,
         allowRestartTombstoneParentFork,

@@ -5,11 +5,16 @@ import type { BranchConfig } from "../../config/types.branch.js";
 const mocks = vi.hoisted(() => ({
   createAgent: vi.fn(),
   reviveAgentDatabases: vi.fn(async () => {}),
+  warmAdmission: vi.fn(async () => ({ databaseClaim: { release: async () => {} } })),
 }));
 
 vi.mock("../../agents/agent-create.js", () => ({ createAgent: mocks.createAgent }));
 vi.mock("../server-reload-agent-databases.js", () => ({
   reviveAgentDatabasesAfterConfigCommit: mocks.reviveAgentDatabases,
+}));
+vi.mock("../../config/sessions/session-accessor.sqlite-entry.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../config/sessions/session-accessor.sqlite-entry.js")>()),
+  loadSessionEntryForAdmission: mocks.warmAdmission,
 }));
 vi.mock("../session-utils.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../session-utils.js")>()),
@@ -68,6 +73,11 @@ it("resolves the new agent for agents.list when create returns", async () => {
   runtimeConfig = { agents: { entries: { main: {}, "new-agent": {} } } };
   claim!.settle("applied");
   await created.promise;
+  expect(mocks.warmAdmission).toHaveBeenCalledWith({
+    agentId: "new-agent",
+    sessionKey: "agent:new-agent:main",
+    readConsistency: "latest",
+  });
   expect(created.respond).toHaveBeenCalledWith(
     true,
     expect.objectContaining({ agentId: "new-agent" }),
