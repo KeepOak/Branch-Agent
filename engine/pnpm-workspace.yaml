@@ -21,6 +21,13 @@ minimumReleaseAgeExclude:
   - "@openclaw/fs-safe-linux-x64-gnu@0.23.0"
   - "@openclaw/fs-safe-linux-x64-musl@0.23.0"
   - "@openclaw/fs-safe-win32-x64-msvc@0.23.0"
+  # Reviewed mail stack and Node types already locked on main (integrity-checked in CI by
+  # verifiedExceptionFlags); without these, a plain frozen install in a new worktree fails.
+  # Remove after 2026-10-08T22:39:22Z, when the newest of them is older than minimumReleaseAge.
+  - "@types/mailparser@3.9.0"
+  - "@types/node@26.6.4"
+  - "mailparser@3.9.33"
+  - "nodemailer@10.0.13"
 
 # Isolated installs let pnpm reuse whole-package APFS clones instead of relinking every file.
 nodeLinker: isolated
