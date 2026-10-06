@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:extensions/ollama/src/provider-models.test.ts (atlas MODELS-ACCOUNTS-0013). Changed for Branch: retained current upstream guarded discovery and metadata assertions.
 // Ollama tests cover provider models plugin behavior.
 import { once } from "node:events";
 import { readFileSync } from "node:fs";

@@ -1,3 +1,7 @@
+engine:extensions/ollama/provider-discovery.test.ts
+engine:extensions/ollama/src/provider-models.test.ts
+engine:extensions/ollama/src/setup-pull.test.ts
+engine:extensions/ollama/src/wsl2-crash-loop-check.test.ts
 engine:extensions/openrouter/index.test.ts
 engine:extensions/openrouter/models.test.ts
 engine:extensions/openrouter/oauth.test.ts
