@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { statSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
+import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import {
   sameFileMutationFingerprint,
@@ -94,6 +95,14 @@ function matchesInspectionPath(
       return false;
     }
   });
+}
+
+const DEFAULT_PREPARATION_ATTEMPT_MS = 120_000;
+const MAX_PREPARATION_ATTEMPT_MS = 600_000;
+
+function preparationAttemptLimitMs(env: NodeJS.ProcessEnv): number {
+  const configured = Number(env.BRANCH_AGENT_PREPARATION_ATTEMPT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_PREPARATION_ATTEMPT_MS;
 }
 
 const log = createSubsystemLogger("state/agent-admission");
@@ -294,10 +303,12 @@ class AgentDatabaseStartupAdmission {
               throw new Error(`Agent ${agentId} was deleted during startup inspection`);
             }
           };
-          let activeAttempt: AbortController | undefined;
+          // Each attempt gets its own time limit, counted from when it holds the preparation lane
+          // (never while it waits behind a sibling), doubled after each expiry so a slow machine
+          // still finishes. An expired attempt releases the lane even if its work ignores the abort.
+          let attemptLimitMs = preparationAttemptLimitMs(env);
           const attempt = () => {
             const controller = new AbortController();
-            activeAttempt = controller;
             const signal = AbortSignal.any([this.signal, controller.signal]);
             const assertAttemptCurrent = () => {
               signal.throwIfAborted();
@@ -331,8 +342,21 @@ class AgentDatabaseStartupAdmission {
                     this.preparation = completion.promise;
                     try {
                       await previous;
-                      await activation.prepareAgent(input);
-                      await assertNotDeleted(signal);
+                      const timer = setTimeout(() => {
+                        log.warn("agent database preparation watchdog: attempt expired; retrying", {
+                          agentId,
+                          paths,
+                          attemptLimitMs,
+                        });
+                        controller.abort(new Error(`Agent ${agentId} preparation watchdog expired`));
+                      }, attemptLimitMs);
+                      timer.unref?.();
+                      try {
+                        await racePromiseWithAbortSignal(activation.prepareAgent(input), signal);
+                        await assertNotDeleted(signal);
+                      } finally {
+                        clearTimeout(timer);
+                      }
                     } finally {
                       completion.resolve();
                     }
@@ -340,8 +364,11 @@ class AgentDatabaseStartupAdmission {
                 );
               },
               { signal, deadlineOwnedByCaller: true },
-            ).finally(() => {
-              if (activeAttempt === controller) activeAttempt = undefined;
+            ).catch((error: unknown) => {
+              if (controller.signal.aborted && !this.signal.aborted) {
+                attemptLimitMs = Math.min(attemptLimitMs * 2, MAX_PREPARATION_ATTEMPT_MS);
+              }
+              throw error;
             });
           };
           try {
@@ -365,47 +392,30 @@ class AgentDatabaseStartupAdmission {
               }
             }
             let retryDelayMs = 2_000;
-            const watchdog = setInterval(() => {
-              if (!this.stopped && this.pending.get(agentId) === refusal) {
-                log.warn(
-                  "agent database preparation watchdog: still pending; cancelling attempt for retry",
-                  {
-                    agentId,
-                    paths,
-                  },
-                );
-                activeAttempt?.abort(new Error(`Agent ${agentId} preparation watchdog expired`));
-              }
-            }, 120_000);
-            watchdog.unref();
-            try {
-              for (;;) {
-                try {
-                  await attempt();
-                  break;
-                } catch (error) {
-                  if (this.stopped) {
-                    throw error;
-                  }
-                  assertCurrent();
-                  if (error instanceof AgentDatabasePreparationSupersededError) {
-                    log.info("agent database startup preparation superseded; retrying", {
-                      agentId,
-                    });
-                    continue;
-                  }
-                  log.warn("agent database startup preparation failed; retrying", {
-                    agentId,
-                    paths,
-                    reason: formatErrorMessage(error),
-                    retryDelayMs,
-                  });
-                  await delay(retryDelayMs, undefined, { signal: this.signal });
-                  retryDelayMs = Math.min(retryDelayMs * 2, 60_000);
+            for (;;) {
+              try {
+                await attempt();
+                break;
+              } catch (error) {
+                if (this.stopped) {
+                  throw error;
                 }
+                assertCurrent();
+                if (error instanceof AgentDatabasePreparationSupersededError) {
+                  log.info("agent database startup preparation superseded; retrying", {
+                    agentId,
+                  });
+                  continue;
+                }
+                log.warn("agent database startup preparation failed; retrying", {
+                  agentId,
+                  paths,
+                  reason: formatErrorMessage(error),
+                  retryDelayMs,
+                });
+                await delay(retryDelayMs, undefined, { signal: this.signal });
+                retryDelayMs = Math.min(retryDelayMs * 2, 60_000);
               }
-            } finally {
-              clearInterval(watchdog);
             }
             log.info("agent database recovered after background inspection and preparation", {
               agentId,

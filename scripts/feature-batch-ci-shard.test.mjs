@@ -1,7 +1,7 @@
 // node --test scripts/feature-batch-ci-shard.test.mjs
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { namedTests, shardOf, shardTests } from './feature-batch-ci-targets.mjs';
+import { namedTests, shardOf, shardTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
 
 test('no FEATURE_SHARD runs everything in one job', () => {
   assert.deepEqual(shardOf(''), { index: 0, total: 1 });
@@ -20,4 +20,13 @@ test('the shards split the named list with nothing lost or run twice', () => {
 
 test('a malformed shard is an error, not a silent skip', () => {
   for (const bad of ['0/2', '3/2', '1', 'a/b', '1/0']) assert.throws(() => shardOf(bad));
+});
+
+test('Windows PR scope runs touched named tests plus the smoke set, never unlisted files', () => {
+  const engine = namedTests('engine');
+  const touched = engine.find((file) => !windowsSmokeTests.engine.includes(file));
+  const picked = touchedTests('engine', [`engine/${touched}`, 'engine/src/not-a-test.ts', 'window/src/x.ts']);
+  assert.deepEqual([...picked].sort(), [...new Set([touched, ...windowsSmokeTests.engine])].sort());
+  for (const file of windowsSmokeTests.engine) assert.ok(engine.includes(file), `${file} must be a named test`);
+  assert.deepEqual(touchedTests('window', ['engine/src/x.ts']), []);
 });

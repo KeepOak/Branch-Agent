@@ -49,11 +49,35 @@ export type Attachment = {
   kept: boolean;
 };
 
+export type FileChange = { path: string; added: number; removed: number; diff?: string };
+const fullOutputs = new Map<string, string>();
+/** Keep large command output outside React snapshots until someone opens it. The block keeps the last 2,000
+ *  characters, so the default view shows the real final lines (where failures and summaries are). */
+export function keepOutput(key: string, value: string): string {
+  if (value.length <= 2_000) { fullOutputs.delete(key); return value; }
+  fullOutputs.delete(key);
+  fullOutputs.set(key, value);
+  if (fullOutputs.size > 100) fullOutputs.delete(fullOutputs.keys().next().value!);
+  return `…\n${value.slice(-2_000)}`;
+}
+export function fullOutput(key: string): string | undefined { return fullOutputs.get(key); }
+export function readFileChanges(args: unknown): FileChange[] {
+  const changes = record(args).changes;
+  if (!Array.isArray(changes)) return [];
+  return changes.map(record).filter((change) => str(change.path)).map((change) => ({
+    path: str(change.path), added: Number(record(change.stat).added) || 0, removed: Number(record(change.stat).removed) || 0,
+    ...(str(change.diff) ? { diff: str(change.diff) } : {}),
+  }));
+}
+
 export type Block =
   | { kind: "user"; key: string; text: string; meta?: MessageMeta; attachments?: Attachment[] }
   | { kind: "text"; key: string; text: string; streaming: boolean; meta?: MessageMeta; attachments?: Attachment[] }
   | { kind: "thinking"; key: string; text: string; live: boolean }
-  | { kind: "step"; key: string; tool: string; title: string; detail: string; status: StepStatus; output?: string; browser?: BrowserPresentation; at?: number }
+  | { kind: "preamble"; key: string; text: string }
+  | { kind: "plan"; key: string; steps: { step: string; status: "pending" | "in_progress" | "completed" }[] }
+  | { kind: "usage"; key: string; input: number; output: number; total: number }
+  | { kind: "step"; key: string; outputKey?: string; tool: string; title: string; detail: string; status: StepStatus; input?: string; output?: string; changes?: FileChange[]; browser?: BrowserPresentation; at?: number }
   | { kind: "approval"; key: string; approval: Approval }
   | { kind: "done"; key: string; runId: string; durationMs?: number }
   | { kind: "error"; key: string; runId?: string; message: string }
@@ -70,7 +94,7 @@ export function recordedAt(value: unknown): { at?: number } {
 }
 
 /** One line that says what a tool call does, for the step line. */
-export function describeToolCall(name: string, args: unknown): string {
+export function describeToolCall(_name: string, args: unknown): string {
   const a = record(args);
   const nested = record(a.args);
   const command = str(a.command) || str(nested.command);
@@ -78,8 +102,18 @@ export function describeToolCall(name: string, args: unknown): string {
     return command;
   }
   const path = str(a.path) || str(a.file_path) || str(a.filePath);
+  const changes = Array.isArray(a.changes) ? a.changes.map((change) => str(record(change).path)).filter(Boolean) : [];
+  if (changes.length) return changes.join(", ");
   const query = str(a.query) || str(a.url) || str(a.task) || str(a.label);
-  return path || query || name;
+  const first = Object.values(a).find((value): value is string => typeof value === "string" && value.trim().length > 0 && value.length <= 120);
+  return path || query || first || "";
+}
+
+/** A tool call's whole input, for the step's expanded view, when the one-line title can't carry it. */
+export function toolInput(args: unknown): string | undefined {
+  const a = record(args);
+  if (!Object.keys(a).length || str(a.command) || str(record(a.args).command) || Array.isArray(a.changes)) return undefined;
+  return JSON.stringify(a, null, 2);
 }
 
 /** Reads whether a tool result means "the person said no". */
@@ -106,7 +140,7 @@ export function readApproval(payload: Record<string, unknown>): Approval | null 
   };
 }
 
-type Builder = { blocks: Block[]; steps: Map<string, number>; text: number | null; thinking: number | null };
+type Builder = { blocks: Block[]; steps: Map<string, number>; items: Map<string, number>; text: number | null; thinking: number | null; plan: number | null };
 
 function addText(b: Builder, runId: string, seq: number, delta: string): void {
   if (b.text === null) {
@@ -130,10 +164,10 @@ function addThinking(b: Builder, event: RunEvent): void {
   b.blocks[b.thinking] = { ...block, text: text || block.text + delta };
 }
 
-function startStep(b: Builder, id: string, name: string, args: unknown, at: number): void {
+function startStep(b: Builder, id: string, name: string, args: unknown, at: number, runId: string): void {
   b.text = null;
   b.thinking = null;
-  b.blocks.push({ kind: "step", key: id, tool: name, title: describeToolCall(name, args), detail: "", status: "running", ...recordedAt(at) });
+  b.blocks.push({ kind: "step", key: id, outputKey: `${runId}:${id}`, tool: name, title: describeToolCall(name, args), detail: "", status: "running", input: toolInput(args), changes: readFileChanges(args), ...recordedAt(at) });
   b.steps.set(id, b.blocks.length - 1);
 }
 
@@ -145,7 +179,12 @@ function onTool(b: Builder, event: RunEvent): void {
     return; // Tool Search controls; the nested real tool gets its own step line.
   }
   if (d.phase === "start") {
-    startStep(b, id, name, d.args, event.ts);
+    if (!b.steps.has(id)) startStep(b, id, name, d.args, event.ts, event.runId);
+    else {
+      const at = b.steps.get(id)!;
+      const step = b.blocks[at] as Extract<Block, { kind: "step" }>;
+      b.blocks[at] = { ...step, tool: name || step.tool, title: describeToolCall(name, d.args) || step.title, input: toolInput(d.args), changes: readFileChanges(d.args) };
+    }
     return;
   }
   const at = b.steps.get(id);
@@ -155,20 +194,79 @@ function onTool(b: Builder, event: RunEvent): void {
   const step = b.blocks[at] as Extract<Block, { kind: "step" }>;
   if (d.phase === "update") {
     const output = resultText(d.partialResult);
-    b.blocks[at] = output ? { ...step, output, ...recordedAt(event.ts) } : step;
+    b.blocks[at] = output ? { ...step, output: keepOutput(step.outputKey ?? id, output), ...recordedAt(event.ts) } : step;
     return;
   }
   if (d.phase !== "result") {
     return;
   }
-  const text = resultText(d.result);
-  const status: StepStatus = isDeniedResultText(text) ? "denied" : d.isError ? "failed" : "ok";
-  b.blocks[at] = { ...step, status, detail: text.slice(0, 400), output: text, browser: status === "ok" ? readBrowserPresentation(d.result, step.tool, id) : undefined, ...recordedAt(event.ts) };
+  const text = str(record(d.result).output) || resultText(d.result);
+  const exitCode = record(d.result).exitCode;
+  const status: StepStatus = isDeniedResultText(text) ? "denied" : d.isError || (typeof exitCode === "number" && exitCode !== 0) ? "failed" : "ok";
+  b.blocks[at] = { ...step, status, detail: typeof exitCode === "number" ? `Exit ${exitCode}` : text.slice(0, 400), output: text ? keepOutput(step.outputKey ?? id, text) : step.output, browser: status === "ok" ? readBrowserPresentation(d.result, step.tool, id) : undefined, ...recordedAt(event.ts) };
 }
+
+/** Codex's item stream supplies the ordered shell of activity; its tool stream adds inputs/results. */
+function onItem(b: Builder, event: RunEvent): void {
+  const d = event.data;
+  const kind = str(d.kind);
+  const id = str(d.toolCallId) || str(d.itemId) || `${event.runId}:${event.seq}`;
+  if (kind === "answer_candidate") return;
+  if (kind === "analysis") {
+    const value = str(d.text) || str(d.progressText);
+    if (value || !b.blocks.some((block) => block.kind === "thinking")) addThinking(b, { ...event, data: { text: value } });
+    return;
+  }
+  if (kind === "preamble") {
+    const value = str(d.progressText);
+    if (!value) return;
+    const at = b.items.get(id);
+    if (at === undefined) {
+      b.blocks.push({ kind: "preamble", key: `preamble:${id}`, text: value });
+      b.items.set(id, b.blocks.length - 1);
+    } else b.blocks[at] = { kind: "preamble", key: `preamble:${id}`, text: value };
+    b.text = null;
+    return;
+  }
+  if (!["tool", "command", "patch", "search"].includes(kind)) return;
+  const name = str(d.name) || kind;
+  const at = b.steps.get(id);
+  if (at === undefined) {
+    startStep(b, id, name, {}, event.ts, event.runId);
+  }
+  const position = b.steps.get(id)!;
+  const step = b.blocks[position] as Extract<Block, { kind: "step" }>;
+  const meta = str(d.meta);
+  const title = meta || step.title;
+  const status: StepStatus = d.status === "failed" || d.status === "blocked" ? "failed" : d.phase === "end" ? "ok" : "running";
+  // A result already said "failed" or "denied" (not allowed); the item's own end must not turn it back into "ok".
+  const settled = step.status === "failed" || step.status === "denied";
+  b.blocks[position] = { ...step, tool: name, title, status: settled ? step.status : status, ...recordedAt(event.ts) };
+}
+
+function onPlan(b: Builder, event: RunEvent): void {
+  const raw = event.data.steps;
+  if (!Array.isArray(raw)) return;
+  const steps = raw.map((value) => record(value)).filter((value) => str(value.step)).map((value) => ({
+    step: str(value.step),
+    status: value.status === "completed" ? "completed" as const : value.status === "in_progress" ? "in_progress" as const : "pending" as const,
+  }));
+  const block: Block = { kind: "plan", key: `${event.runId}:plan`, steps };
+  if (b.plan === null) {
+    b.blocks.push(block);
+    b.plan = b.blocks.length - 1;
+  } else b.blocks[b.plan] = block;
+}
+
+/** Result fields that describe how a call ended, not what it printed. */
+const RESULT_METADATA = new Set(["status", "exitCode", "exit_code", "durationMs", "duration", "isError", "success", "output"]);
 
 /** The visible text of a tool result: its text blocks, joined. */
 export function resultText(result: unknown): string {
-  const content = record(result).content;
+  if (typeof result === "string") return result;
+  const value = record(result);
+  if (typeof value.text === "string") return value.text;
+  const content = value.content;
   if (typeof content === "string") {
     return content;
   }
@@ -178,7 +276,8 @@ export function resultText(result: unknown): string {
       .map((c) => str(record(c).text))
       .join("\n");
   }
-  return "";
+  const shown = Object.keys(value).filter((key) => !RESULT_METADATA.has(key));
+  return shown.length ? JSON.stringify(value, null, 2) : "";
 }
 
 function onLifecycle(b: Builder, event: RunEvent, approvals: ReadonlyMap<string, Approval>): void {
@@ -238,7 +337,7 @@ function settle(blocks: Block[]): Block[] {
  * `approvals` holds the cards from `exec.approval.requested`, keyed by approval id.
  */
 export function projectRun(events: readonly RunEvent[], approvals: ReadonlyMap<string, Approval>): Block[] {
-  const b: Builder = { blocks: [], steps: new Map(), text: null, thinking: null };
+  const b: Builder = { blocks: [], steps: new Map(), items: new Map(), text: null, thinking: null, plan: null };
   let ended = false;
   for (const event of events) {
     if (event.stream === "assistant") {
@@ -248,6 +347,20 @@ export function projectRun(events: readonly RunEvent[], approvals: ReadonlyMap<s
       addThinking(b, event);
     } else if (event.stream === "tool") {
       onTool(b, event);
+    } else if (event.stream === "item") {
+      onItem(b, event);
+    } else if (event.stream === "plan") {
+      onPlan(b, event);
+    } else if (event.stream === "usage") {
+      const data = event.data;
+      const input = Number(data.inputTokens ?? data.input) || 0;
+      const output = Number(data.outputTokens ?? data.output) || 0;
+      const total = Number(data.totalTokens ?? data.total) || input + output;
+      const key = `${event.runId}:usage`;
+      const at = b.blocks.findIndex((block) => block.key === key);
+      const block: Block = { kind: "usage", key, input, output, total };
+      if (at < 0) b.blocks.push(block);
+      else b.blocks[at] = block;
     } else if (event.stream === "lifecycle") {
       onLifecycle(b, event, approvals);
       ended ||= event.data.phase === "end" || event.data.phase === "error";

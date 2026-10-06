@@ -244,7 +244,21 @@ describe("cron trigger script evaluator", () => {
           },
         },
       };
-      const evaluate = createCronScriptRuntime({ config }).evaluateTrigger;
+      const runtime = createCronScriptRuntime({ config });
+      if (host === "auto") {
+        // A cold test transform of the exec graph alone can pass the 30 s trigger wall clock on a
+        // loaded runner. Load it once under the payload budget so the assertion times only the trigger.
+        await runtime.executePayload({
+          jobId: "job-canonical-pinned-exec-warm",
+          script: 'await exec({ command: "echo branch-warm" }); return {};',
+          state: null,
+          toolsAllow: ["exec", "process"],
+          scheduledToolPolicy: { version: 1, mode: "trusted" },
+          execTarget: { version: 1, host: "gateway" },
+          timeoutSeconds: 300,
+        });
+      }
+      const evaluate = runtime.evaluateTrigger;
 
       await expect(
         evaluate({

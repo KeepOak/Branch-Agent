@@ -24,8 +24,8 @@ async function closeDatabases() {
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 afterEach(closeDatabases);
 
-async function startDeferredPreparation(prepareAgent: () => Promise<void>) {
-  const env = { BRANCH_STATE_DIR: tempDirs.make("branch-startup-superseded-") };
+async function startDeferredPreparation(prepareAgent: () => Promise<void>, extraEnv: Record<string, string> = {}) {
+  const env = { BRANCH_STATE_DIR: tempDirs.make("branch-startup-superseded-"), ...extraEnv };
   const agentId = "tk";
   const path = openBranchAgentDatabase({ agentId, env }).path;
   await closeDatabases();
@@ -88,6 +88,29 @@ describe("agent database startup preparation", () => {
       );
       expect(prepareAgent).toHaveBeenCalledTimes(2);
       expect(started.openAgent).toHaveBeenCalledTimes(2);
+    } finally {
+      await started.stop();
+    }
+  });
+  it("expires only an attempt that hangs while holding the lane, then retries and admits the agent", async () => {
+    // A hang that ignores the abort (as a stuck secret resolution did on the owner's app) must not
+    // hold the preparation lane or keep the agent pending.
+    const prepareAgent = vi
+      .fn<() => Promise<void>>()
+      .mockImplementationOnce(() => new Promise<void>(() => {}))
+      .mockResolvedValue(undefined);
+    const started = await startDeferredPreparation(prepareAgent, {
+      BRANCH_AGENT_PREPARATION_ATTEMPT_MS: "200",
+    });
+    try {
+      await vi.waitFor(
+        () =>
+          expect(
+            readAgentDatabaseAdmissionRefusal(started.agentId, { env: started.env }),
+          ).toBeUndefined(),
+        { timeout: 15000 },
+      );
+      expect(prepareAgent).toHaveBeenCalledTimes(2);
     } finally {
       await started.stop();
     }
