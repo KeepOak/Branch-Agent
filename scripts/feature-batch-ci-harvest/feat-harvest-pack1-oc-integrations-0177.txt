@@ -1,5 +1,7 @@
 engine:src/cli/clawhub-install-confirmation.test.ts
 engine:src/cli/plugins-cli.clawhub-install.harvest.test.ts
+engine:src/commands/migrate.resources.test.ts
+engine:src/commands/migrate.test.ts
 engine:src/infra/clawhub-client.test.ts
 engine:src/plugin-activation-boundary.test.ts
 engine:src/plugin-sdk/api-baseline.test.ts
