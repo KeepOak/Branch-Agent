@@ -1,7 +1,25 @@
 import type { BranchConfig } from "../../config/types.branch.js";
-import type { AuthProfileStore } from "./types.js";
+import type { AuthProfileCredential, AuthProfileStore } from "./types.js";
 
 export const LEGACY_CLAUDE_PROFILE_ID = "anthropic:manual";
+
+export function sameClaudeTokenCredential(
+  left: AuthProfileCredential,
+  right: AuthProfileCredential,
+): boolean {
+  return (
+    ((left.type === "token" &&
+      right.type === "token" &&
+      (left.token || right.token
+        ? Boolean(left.token && left.token === right.token)
+        : Boolean(left.tokenRef && JSON.stringify(left.tokenRef) === JSON.stringify(right.tokenRef)))) ||
+      (left.type === "api_key" &&
+        right.type === "api_key" &&
+        (left.key || right.key
+          ? Boolean(left.key && left.key === right.key)
+          : Boolean(left.keyRef && JSON.stringify(left.keyRef) === JSON.stringify(right.keyRef)))))
+  );
+}
 
 function replaceId(ids: string[], oldId: string, nextId: string): string[] {
   return [...new Set(ids.map((id) => (id === oldId ? nextId : id)))];
@@ -29,16 +47,14 @@ export function copyClaudeProfile(
   if (
     legacy &&
     store.profiles[nextId] &&
-    (store.profiles[nextId].type !== "token" ||
-      legacy.type !== "token" ||
-      store.profiles[nextId].token !== legacy.token)
+    !sameClaudeTokenCredential(store.profiles[nextId], legacy)
   ) {
     return false;
   }
   let changed = false;
   if (legacy && !store.profiles[nextId]) {
     const credential =
-      legacy.type === "token"
+      legacy.type === "token" || legacy.type === "api_key"
         ? (() => {
             const {
               identityLookupRetryAt: _retryAt,

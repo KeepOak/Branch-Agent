@@ -107,14 +107,6 @@ export function normalizeRawCredentialEntry(
     if (tokenRef) {
       normalized.tokenRef = structuredClone(tokenRef);
     }
-    const retryAt = entry.identityLookupRetryAt;
-    if (typeof retryAt === "number" && Number.isFinite(retryAt) && retryAt > 0) {
-      normalized.identityLookupRetryAt = retryAt;
-    }
-    const failures = entry.identityLookupFailures;
-    if (typeof failures === "number" && Number.isSafeInteger(failures) && failures > 0) {
-      normalized.identityLookupFailures = failures;
-    }
   } else if (normalized.type === "oauth") {
     if (isLegacyOAuthRef(entry.oauthRef)) {
       normalized.oauthRef = structuredClone(entry.oauthRef);
@@ -129,6 +121,16 @@ export function normalizeRawCredentialEntry(
       if (value !== undefined) {
         normalized[field] = value;
       }
+    }
+  }
+  if (normalized.type === "token" || normalized.type === "api_key") {
+    const retryAt = entry.identityLookupRetryAt;
+    if (typeof retryAt === "number" && Number.isFinite(retryAt) && retryAt > 0) {
+      normalized.identityLookupRetryAt = retryAt;
+    }
+    const failures = entry.identityLookupFailures;
+    if (typeof failures === "number" && Number.isSafeInteger(failures) && failures > 0) {
+      normalized.identityLookupFailures = failures;
     }
   }
   if (normalized.type === "token" || normalized.type === "oauth") {

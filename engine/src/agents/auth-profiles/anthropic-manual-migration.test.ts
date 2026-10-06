@@ -245,4 +245,191 @@ describe("legacy Claude account migration", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("migrates a reference-only manual credential without persisting its resolved token", async () => {
+    mocks.stores.clear();
+    mocks.writeConfig.mockClear();
+    const token = "sk-ant-oat01-" + "f".repeat(80);
+    const ref = { source: "env" as const, provider: "default", id: "CLAUDE_MIGRATION_TEST_TOKEN" };
+    vi.stubEnv(ref.id, token);
+    mocks.stores.set("owner", {
+      version: 1,
+      profiles: { "anthropic:manual": { type: "token", provider: "anthropic", tokenRef: ref } },
+      order: { anthropic: ["anthropic:manual"] },
+    });
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      expect(await migrateLegacyClaudeProfilesAtStartup({})).toBe(true);
+      const store = mocks.stores.get("owner")!;
+      const [hashId] = Object.keys(store.profiles);
+      expect(hashId).toMatch(/^anthropic:id-[a-f0-9]{12}$/);
+      expect(store.profiles[hashId]).toMatchObject({ tokenRef: ref });
+      expect(store.profiles[hashId]).not.toHaveProperty("token");
+      expect(store.order?.anthropic).toEqual([hashId]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("migrates an owner-shaped API-key setup token and retains its cooldown across starts", async () => {
+    mocks.stores.clear();
+    mocks.writeConfig.mockClear();
+    const key = "sk-ant-oat01-" + "j".repeat(95);
+    const originalConfig: BranchConfig = {
+      auth: {
+        profiles: { "anthropic:manual": { provider: "anthropic", mode: "api_key" } },
+        order: { anthropic: ["anthropic:manual"] },
+      },
+    };
+    mocks.stores.set("owner", {
+      version: 1,
+      profiles: { "anthropic:manual": { type: "api_key", provider: "anthropic", key } },
+      order: { anthropic: ["anthropic:manual"] },
+    });
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 429, headers: { "Retry-After": "3600" } }))
+      .mockResolvedValue(new Response(JSON.stringify({ account: { email: "owner@example.test" } }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      expect(await migrateLegacyClaudeProfilesAtStartup(originalConfig)).toBe(true);
+      const store = mocks.stores.get("owner")!;
+      const [hashId] = Object.keys(store.profiles);
+      expect(hashId).toMatch(/^anthropic:id-[a-f0-9]{12}$/);
+      expect(store.profiles[hashId]).toMatchObject({ type: "api_key", key, identityLookupRetryAt: 4_600_000 });
+      expect(normalizeRawCredentialEntry(store.profiles[hashId] as unknown as Record<string, unknown>))
+        .toMatchObject({ type: "api_key", key, identityLookupRetryAt: 4_600_000, identityLookupFailures: 1 });
+      const hashConfig = mocks.writeConfig.mock.calls[0][0] as BranchConfig;
+      expect(hashConfig.auth?.profiles?.[hashId]?.mode).toBe("api_key");
+      expect(await migrateLegacyClaudeProfilesAtStartup(hashConfig)).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      now.mockReturnValue(4_600_001);
+      expect(await migrateLegacyClaudeProfilesAtStartup(hashConfig)).toBe(true);
+      expect(store.profiles[hashId]).toBeUndefined();
+      expect(store.profiles["anthropic:owner@example.test"]).toMatchObject({ type: "api_key", key });
+      expect(store.order?.anthropic).toEqual(["anthropic:owner@example.test"]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("leaves an ordinary Anthropic API key in its manual slot", async () => {
+    mocks.stores.clear();
+    mocks.stores.set("owner", {
+      version: 1,
+      profiles: { "anthropic:manual": { type: "api_key", provider: "anthropic", key: "sk-ant-api03-fixture" } },
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      expect(await migrateLegacyClaudeProfilesAtStartup({})).toBe(false);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("rewrites reference-only Trunks when promoting a hash to email", async () => {
+    mocks.stores.clear();
+    mocks.writeConfig.mockClear();
+    const oldId = "anthropic:id-abcdef123456";
+    const nextId = "anthropic:owner@example.test";
+    const token = "sk-ant-oat01-" + "g".repeat(80);
+    mocks.stores.set("owner", {
+      version: 1,
+      profiles: { [oldId]: { type: "token", provider: "anthropic", token } },
+    });
+    mocks.stores.set("trunk", {
+      version: 1,
+      profiles: {},
+      order: { anthropic: [oldId] },
+      lastGood: { anthropic: oldId },
+      usageStats: { [oldId]: { lastUsed: 42 } },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ account: { email: "owner@example.test" } }), { status: 200 }),
+      ),
+    );
+    try {
+      expect(await migrateLegacyClaudeProfilesAtStartup({})).toBe(true);
+      const trunk = mocks.stores.get("trunk")!;
+      expect(trunk.profiles).toEqual({});
+      expect(trunk.order?.anthropic).toEqual([nextId]);
+      expect(trunk.lastGood?.anthropic).toBe(nextId);
+      expect(trunk.usageStats?.[nextId]?.lastUsed).toBe(42);
+      expect(trunk.usageStats?.[oldId]).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("backs off a hash lookup when the email slot holds a different token", async () => {
+    mocks.stores.clear();
+    mocks.writeConfig.mockClear();
+    const oldId = "anthropic:id-abcdef123456";
+    const nextId = "anthropic:owner@example.test";
+    mocks.stores.set("owner", {
+      version: 1,
+      profiles: {
+        [oldId]: { type: "token", provider: "anthropic", token: "token-one" },
+        [nextId]: { type: "token", provider: "anthropic", token: "token-two" },
+      },
+    });
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ account: { email: "owner@example.test" } }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      expect(await migrateLegacyClaudeProfilesAtStartup({})).toBe(false);
+      expect(mocks.stores.get("owner")?.profiles[oldId]).toMatchObject({
+        identityLookupFailures: 1,
+        identityLookupRetryAt: 1_300_000,
+      });
+      expect(await migrateLegacyClaudeProfilesAtStartup({})).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      now.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps an occupied email slot and moves a different manual token to its own hash", async () => {
+    mocks.stores.clear();
+    mocks.writeConfig.mockClear();
+    const token = "sk-ant-oat01-" + "h".repeat(80);
+    const emailId = "anthropic:owner@example.test";
+    mocks.stores.set("owner", {
+      version: 1,
+      profiles: {
+        "anthropic:manual": { type: "token", provider: "anthropic", token },
+        [emailId]: { type: "token", provider: "anthropic", token: "different-token" },
+      },
+      order: { anthropic: ["anthropic:manual", emailId] },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ account: { email: "owner@example.test" } }), { status: 200 }),
+      ),
+    );
+    try {
+      expect(await migrateLegacyClaudeProfilesAtStartup({})).toBe(true);
+      const store = mocks.stores.get("owner")!;
+      const hashId = Object.keys(store.profiles).find((id) => id.startsWith("anthropic:id-"))!;
+      expect(store.profiles[emailId]).toMatchObject({ token: "different-token" });
+      expect(store.profiles[hashId]).toMatchObject({ token, email: "owner@example.test" });
+      expect(store.profiles["anthropic:manual"]).toBeUndefined();
+      expect(store.order?.anthropic).toEqual([hashId, emailId]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
