@@ -8,7 +8,6 @@ import { isEngineMode, modeName } from "../../composer/mode";
 import { OverviewData, agentName, agents, number, people, personFrom, record, records, runMs, runs, sessions, sharedConnections, text, type Agent, type Resource, type Run, type Session } from "./engine";
 import { money, runLength, whenWord } from "./format";
 import { PersonRow, type PersonLine } from "./People";
-import { RecBar } from "./RecBar";
 import { FinishSetup } from "./Setup";
 import "./overview.css";
 
@@ -98,7 +97,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   if (shared.length) lines.push({ ...personFrom("shared", "Shared owner", "", shared), shared: true });
   const status = (key: keyof typeof tiles, label: string) => <ResourceStatus resource={tiles[key]} label={label} retry={() => void data.refresh([key])} />;
   const recent = recentActivity(rows, runList);
-  return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />} before={<><RecBar /><button type="button" className="btn sm" onClick={() => openPlace("office")}>Grove</button></>}>
+  return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />} before={<button type="button" className="btn sm" onClick={() => openPlace("office")}>Grove</button>}>
     <div className="ov-grid">
       <Tile title="Now" action={<button type="button" className="ov-link" onClick={() => openPlace("canopy")}>Open Canopy</button>}>
         {status("sessions", "running conversations")}

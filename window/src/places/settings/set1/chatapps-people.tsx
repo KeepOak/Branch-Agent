@@ -37,7 +37,7 @@ function Owners({ apps, cfg }: PCtx) {
   const entries = ownerEntries(cfg.get("commands.ownerAllowFrom"));
   const put = (e: Entry[]) => void cfg.set("commands.ownerAllowFrom", e.length ? e.map(([a, n]) => (a === "*" ? n : `${a}:${n}`)) : null);
   return (
-    <Ctl title="Owners in chat apps" sub="Owners answer approvals and run owner commands from chat apps, and can export a conversation.">
+    <Ctl title="Owners in chat apps" sub="Owners answer requests and run owner commands in chat apps." help="Owners answer approvals and run owner commands from chat apps, and can export a conversation.">
       <Btn sm onClick={() => setOpen(true)}>{entries.length ? `${entries.length} ${entries.length === 1 ? "person" : "people"}` : "Edit"}</Btn>
       {open ? <Dialog title="Owners in chat apps" onClose={() => setOpen(false)} testid="chatapps-owners" footer={<button type="button" className="btn pri" onClick={() => setOpen(false)}>Done</button>}>
         <PeopleList apps={apps} entries={entries} onChange={put} ph="Their ID or @name" />
@@ -55,7 +55,7 @@ function CmdWho({ apps, cfg }: PCtx) {
   const put = (e: Entry[]) => { const next: Record<string, string[]> = {}; for (const [a, n] of e) (next[a] ??= []).push(n); void cfg.set("commands.allowFrom", e.length ? next : null); };
   return (
     <>
-      <Ctl title="Who may use commands" sub="Commands follow each app’s “Who may message it” unless you name people here.">
+      <Ctl title="Who may use commands" sub="Commands use each app’s messaging permissions by default." help="Commands follow each app’s “Who may message it” unless you name people here.">
         <Seg label="Who may use commands" value={set ? "only" : "same"} options={[{ id: "same", label: "Same as who may message it" }, { id: "only", label: "Only these people" }]} disabled={cfg.loading} onChange={(v) => (v === "same" ? void cfg.set("commands.allowFrom", null) : setOpen(true))} />
       </Ctl>
       {set ? <Ctl title="These people" sub={entries.length ? entries.map(([a, n]) => `${appName(apps, a)} · ${visible(n)}`).join(", ") : "No one yet."}><Btn sm onClick={() => setOpen(true)}>Edit</Btn></Ctl> : null}

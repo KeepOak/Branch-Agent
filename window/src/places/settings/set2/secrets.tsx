@@ -24,7 +24,7 @@ export const ROWS: RowEntry[] = [
   ["List the keys", "Keys Branch holds", 2], ["Set a key", "Keys Branch holds", 2], ["Remove a key", "Keys Branch holds", 2],
   ["Bring in a .env file", "Keys Branch holds", 2], ["Reload keys", "Keys, technical", 2], ["Keys written in plain text", "Keys, technical", 2],
   ["Move keys out of settings", "Keys, technical", 2], ["The settings file", "Keys, technical", 2],
-].map(([title, sec, lv]) => ({ page: "secrets", title: String(title), sec: String(sec), lv: lv as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "secrets", title: String(title), sec: String(sec), group: ({ "Where passwords come from": "Keys", "Keys Branch holds": "Keys", "Keys, technical": "Keys" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
 export function SecretsPage(props: SettingsPageProps) {
   const lv = lvOf(props.level);
@@ -40,7 +40,7 @@ export function SecretsPage(props: SettingsPageProps) {
         <Empty>{onePassword ? "Filling website sign-ins needs the engine’s list of sign-ins Branch may fill." : "Nothing to fill until a password manager is connected. Pick one at Advanced: How much to show › Advanced, then “Where passwords come from”."}</Empty>
       </Sec>
       <Sec title="Narrow keys">
-        <Ctl title="Make narrow keys for services" sub="Vercel, Supabase and others: a key that can do only what a Trunk needs, replaced on a schedule." off="Needs the engine to make keys with each service."><Btn sm disabled>Choose a service</Btn></Ctl>
+        <Ctl title="Make narrow keys for services" sub="Creates limited keys for services such as Vercel." help="Vercel, Supabase and others: a key that can do only what a Trunk needs, replaced on a schedule." off="Needs the engine to make keys with each service."><Btn sm disabled>Choose a service</Btn></Ctl>
       </Sec>
       {lv >= 1 ? <Where engine={props.engine} onePassword={onePassword} config={config} /> : null}
       {lv >= 1 ? <Keys engine={props.engine} lv={lv} store={store} /> : null}
@@ -59,15 +59,15 @@ function Where({ onePassword, config }: Pick<SettingsPageProps, "engine"> & { on
     await config.set("secrets.providers.onepassword", ONEPASSWORD);
   };
   return (
-    <Sec title="Where passwords come from">
+    <Sec title="Where passwords come from" group="Keys">
       <Ctl title="Password manager" sub={onePassword ? "1Password gives Branch a key only where a setting points to it; Branch never shows it." : "Pick the one you use. Branch never sees your passwords."}>
         <Seg label="Password manager" value={onePassword ? "onepassword" : ""} disabled={config.loading} onChange={(id) => void choose(id)}
           options={[{ id: "bitwarden", label: "Bitwarden", off: "Bitwarden needs its engine plugin." }, { id: "onepassword", label: "1Password" }, { id: "windows", label: "Windows", off: "Windows Credential Manager needs its engine plugin." }]} />
       </Ctl>
-      <Ctl title="Keys kept apart from settings" sub="Keys live in a locker only the engine reads, so sharing your settings never shares a key.">
+      <Ctl title="Keys kept apart from settings" sub="Keys stay in a locker only the engine can read." help="Keys live in a locker only the engine reads, so sharing your settings never shares a key.">
         <Btn sm onClick={() => document.getElementById("s2-keys")?.scrollIntoView({ block: "start" })}>Show where</Btn>
       </Ctl>
-      <Ctl title="Sign-in tokens" sub="Tokens from “sign in with…” are encrypted, refreshed before they expire, and revoked when removed." off="Checking them needs the engine’s token report."><Btn sm>Check them</Btn></Ctl>
+      <Ctl title="Sign-in tokens" sub="Sign-in tokens are encrypted, refreshed and revoked." help="Tokens from “sign in with…” are encrypted, refreshed before they expire, and revoked when removed." off="Checking them needs the engine’s token report."><Btn sm>Check them</Btn></Ctl>
     </Sec>
   );
 }
@@ -81,7 +81,7 @@ function Keys({ engine, lv, store }: Pick<SettingsPageProps, "engine"> & { lv: n
   const entries = list(rec(store.data).entries);
   const close = (changed: boolean) => { setDlg(null); if (changed) void store.reload(); };
   return (
-    <Sec title="Keys Branch holds" hint="Which keys are set, who changed them and when; a protected key is never shown." id="s2-keys">
+    <Sec title="Keys Branch holds" showHeading={false} group="Keys" hint="See which keys are set, who changed them and when." help="Which keys are set, who changed them and when; a protected key is never shown." id="s2-keys">
       <Acts><Btn sm ghost onClick={() => setDlg({ kind: "several" })}>Add several</Btn><Btn sm onClick={() => setDlg({ kind: "add" })}><Icon name="plus" small />Add a key</Btn></Acts>
       {store.error ? <p className="hint s2-err" role="alert">{store.error}</p> : null}
       {store.data && !entries.length ? <Empty>No keys yet. Keys you add here, and keys from accounts and connectors, show here.</Empty> : null}
@@ -89,9 +89,9 @@ function Keys({ engine, lv, store }: Pick<SettingsPageProps, "engine"> & { lv: n
       {lv >= 2 ? (
         <>
           <CodeRow title="List the keys" code="branch secrets store list" sub="From a terminal on the Gateway’s computer." />
-          <CodeRow title="Set a key" code="branch secrets store set NAME" sub="The value comes from a pipe, a file or a hidden prompt, never typed on the command line." />
+          <CodeRow title="Set a key" code="branch secrets store set NAME" sub="Read a key from a pipe, file or hidden prompt." help="The value comes from a pipe, a file or a hidden prompt, never typed on the command line." />
           <CodeRow title="Remove a key" code="branch secrets store rm NAME" />
-          <CodeRow title="Bring in a .env file" code="branch secrets store import --from .env" sub="After a change from the terminal while the Gateway runs: Reload keys (Keys, technical)." />
+          <CodeRow title="Bring in a .env file" code="branch secrets store import --from .env" sub="Reloads keys changed from a terminal." help="After a change from the terminal while the Gateway runs: Reload keys (Keys, technical)." />
         </>
       ) : null}
       {dlg?.kind === "add" || dlg?.kind === "edit" ? <KeyDialog engine={engine} entry={dlg.kind === "edit" ? dlg.entry : undefined} onClose={close} /> : null}
@@ -223,12 +223,12 @@ function KeysTechnical({ engine, store, config }: Pick<SettingsPageProps, "engin
   const found = findings(config.cfg, names);
   const sources = Object.entries(rec(config.get("secrets.providers")));
   return (
-    <Sec title="Keys, technical">
+    <Sec title="Keys, technical" showHeading={false} group="Keys">
       <Ctl title="Reload keys" sub={reload.note ?? reload.error ?? "Reads every key source again, without a restart."}>
         <Btn sm disabled={reload.busy} onClick={() => void reload.run(() => engine.request<RecordValue>("secrets.reload", {}), (r) => `Keys reloaded${Number(r.warningCount) ? ` with ${str(r.warningCount)} warnings` : ""}.`)}>Reload</Btn>
       </Ctl>
       <Ctl title="Keys written in plain text" sub="Settings and .env files that hold a key outright, or point to nothing."><Btn sm onClick={() => setDlg("plain")}>Check</Btn></Ctl>
-      <Ctl title="Move keys out of settings" sub="Moves plain-text keys into the key store and points the settings at them."><Btn sm onClick={() => setDlg("plan")}>Make a plan</Btn></Ctl>
+      <Ctl title="Move keys out of settings" sub="Moves plain-text keys into the protected store." help="Moves plain-text keys into the key store and points the settings at them."><Btn sm onClick={() => setDlg("plan")}>Make a plan</Btn></Ctl>
       <h3 className="s2-h3">Where keys can come from</h3>
       <Hint>Settings can point to a key in any of these sources.</Hint>
       <Plist>
@@ -249,7 +249,7 @@ const SOURCE_WORD: Record<string, string> = { env: "Environment", file: "A file"
 
 function FindingsDialog({ title, found, plan, onClose }: { title: string; found: Finding[]; plan?: boolean; onClose: () => void }) {
   return (
-    <Dialog title={title} onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title={title} onClose={onClose}>
       <p>{found.length ? `${found.length} ${found.length === 1 ? "finding" : "findings"}` : "Nothing found. Every key is in the key store or a source."}</p>
       {found.length ? <div className="rows">{found.map((f) => <Prow key={f.path} title={f.what} sub={`${f.path}${f.note ? ` → ${f.note}` : ""}`} />)}</div> : null}
       {plan && found.length ? <><p className="hint">The values stay hidden from this window, so the move runs on the Gateway’s computer:</p><CodeRow title="Make and apply the plan" code="branch secrets configure" /></> : null}
@@ -290,7 +290,7 @@ function leaves(value: unknown, path = ""): [string, string][] {
 function SettingsFileDialog({ config, onClose }: { config: RecordValue; onClose: () => void }) {
   const rows = leaves(config);
   return (
-    <Dialog title="The settings file" wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title="The settings file" wide onClose={onClose}>
       {rows.length ? <div className="rows">{rows.map(([path, value]) => <Prow key={path} title={<code>{path}</code>} sub={value === "" ? "Hidden." : value} />)}</div> : <p className="hint">The settings file is empty: Branch runs on its defaults.</p>}
     </Dialog>
   );

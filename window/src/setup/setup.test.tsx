@@ -7,7 +7,7 @@ import { connectProblem } from "./connect-problems";
 import { PreConnect } from "./PreConnect";
 import { freshChoices, readDetected, readTest, setupDone, setupRecord, STEPS } from "./setup-model";
 import { SetupFlow } from "./SetupFlow";
-import { readChatApps } from "./use-setup-engine";
+import { readChatApps, recordSetup } from "./use-setup-engine";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -95,6 +95,12 @@ describe("setup flow", () => {
     const raw = String(params(request, "config.patch")[0]?.raw);
     expect(JSON.parse(raw).wizard.lastRunAt).toBeTruthy();
     expect(closed).toHaveBeenCalledWith(false);
+  });
+  it("writes the same Install updates setting as Updates & about", async () => {
+    const { engine: e, request } = engine({ "config.get": { hash: "h", config: { update: { checkOnStart: false } } }, "config.patch": { ok: true } });
+    await recordSetup(e, freshChoices("system"), "1.0", false);
+    const raw = JSON.parse(String(params(request, "config.patch")[0]?.raw));
+    expect(raw.update).toEqual({ auto: { enabled: false }, checkOnStart: null });
   });
   it("the health check shows real answers, then finishing makes the picked Trunks", async () => {
     const { engine: e, request } = engine({

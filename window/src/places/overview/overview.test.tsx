@@ -6,8 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { OVERVIEW_READS, OverviewData, people, runs, sessions, sharedConnections } from "./engine";
 import { OverviewPlace, LOCKDOWN_GAP, PAUSE_ALL_GAP } from "./index";
-import { KEEP_RUNNING_GAP, resetRecommendation } from "./RecBar";
-const KEEP_RUNNING_IS_NOTE = KEEP_RUNNING_GAP.includes("doesn");
 import { takeInboxHandoff } from "../inbox/handoff";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -49,7 +47,7 @@ const FX: Record<string, unknown> = {
 };
 
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; resetRecommendation(); localStorage.clear(); });
+afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
 
 async function render(request = vi.fn(async (method: string) => FX[method] ?? {})) {
   const openPlace = vi.fn(), openSettings = vi.fn(), openConversation = vi.fn();
@@ -132,20 +130,12 @@ describe("Overview screen", () => {
     expect(button(host, "Pause all Trunks")).toMatchObject({ disabled: true, title: "" });
     expect([LOCKDOWN_GAP, PAUSE_ALL_GAP].every(gap => gap.startsWith("Needs the engine"))).toBe(true);
     expect(visibleDevNotes(host)).toEqual([]);
-    expect(button(host, "Yes")).toMatchObject({ disabled: true, title: "" });
-    expect(host.querySelector(".ov-badges")).not.toBeNull(); expect(KEEP_RUNNING_IS_NOTE).toBe(true);
+    expect(host.querySelector(".ov-badges")).not.toBeNull();
   });
 
-  it("hides the recommendation on Not now, and keeps it hidden after Don't ask again", async () => {
-    const first = await render();
-    await act(async () => button(first.host, "Not now")!.click());
-    expect(first.host.textContent).not.toContain("Keep your Trunks running");
-    await act(async () => root?.unmount()); root = undefined; resetRecommendation();
-    const second = await render();
-    await act(async () => button(second.host, "Don’t ask again")!.click());
-    await act(async () => root?.unmount()); root = undefined; resetRecommendation();
-    const third = await render();
-    expect(third.host.textContent).not.toContain("Keep your Trunks running");
+  it("does not recommend changing a gateway mode the window cannot read or set", async () => {
+    const { host } = await render();
+    expect(host.textContent).not.toContain("Keep your Trunks running");
   });
 
   it("counts a person's open and running conversations without helpers, and adds the shared owner", async () => {

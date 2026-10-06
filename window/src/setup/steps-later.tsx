@@ -36,7 +36,7 @@ export function YoursBody({ look, onLook }: { look: Look; onLook: (l: Look) => v
         </div>
       </div>
       <div className="ob-q15">
-        <b>How much it asks</b>
+        <b>Access</b>
         <div className="ob-pick15 col15x">
           {MODE_ROWS.map((m) => (
             <button key={m.name} type="button" className="ob-row15" aria-pressed={m.engine === "full"} aria-disabled={m.engine === "full" ? undefined : true} title={m.engine === "full" ? undefined : m.gap ?? MODE_GAP}>
@@ -196,8 +196,8 @@ export function ToolsBody() {
         />
       </div>
       <div className="lendPF18">
-        <Ctl title="What Trunks may use on this computer">
-          <SegOf label="What Trunks may use on this computer" options={["Read only", "Standard", "Everything"]} value="" off={LEND_OFF} />
+        <Ctl title="Abilities on this computer">
+          <SegOf label="Abilities on this computer" options={["Read only", "Standard", "Everything"]} value="" off={LEND_OFF} />
         </Ctl>
       </div>
     </>
