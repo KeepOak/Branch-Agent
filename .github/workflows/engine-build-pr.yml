@@ -66,6 +66,10 @@ jobs:
         with:
           name: engine-seed
       - run: tar -xf engine-seed.tar
+      # Asset hooks create source-side manifests and bundles that declaration
+      # signatures also see during the final full build.
+      - run: pnpm plugins:assets:build
+        working-directory: engine
       - run: node --import ./scripts/tsx.mjs scripts/ci-seed-unified-declaration.ts '${{ matrix.group }}'
         working-directory: engine
       - name: Pack declaration cache
