@@ -7,7 +7,7 @@ import type { WindowEngine } from "../connect/engine";
 import { patchConfig, readConfig, readRoster } from "../places/trunk/model";
 import "../thread/questions.css";
 
-export type NewTrunk = { agentId: string; sessionKey: string };
+export type NewTrunk = { agentId: string; sessionKey: string; name: string };
 type Opt = { label: string; line?: string };
 
 export const FIRST_JOB: Opt[] = [
@@ -47,7 +47,7 @@ const KEYS = "ABCDE";
 
 export function NewTrunkCard({ engine, flow, onDone }: { engine: WindowEngine; flow: NewTrunk; onDone: (name: string) => void }) {
   const [step, setStep] = useState<1 | 2>(1);
-  const [line, setLine] = useState("Hi, I’m your new Trunk. I’ll get a proper name once we know what I’m for.");
+  const [line, setLine] = useState(`Hi, I’m ${flow.name}. What should I take on first?`);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,8 +65,7 @@ export function NewTrunkCard({ engine, flow, onDone }: { engine: WindowEngine; f
   const care = (i: number) => run(async () => {
     ok(await engine.request("sessions.patch", { key: flow.sessionKey, permissionMode: CARE[i].mode }));
     const roster = readRoster(await engine.request("agents.list", {}));
-    const name = nextTrunkName(roster.agents.filter((a) => a.id !== flow.agentId).map((a) => a.name));
-    ok(await engine.request("agents.update", { agentId: flow.agentId, name }));
+    const name = roster.agents.find((a) => a.id === flow.agentId)?.name ?? flow.agentId;
     onDone(name);
   });
   const opts = step === 1 ? FIRST_JOB : CARE;

@@ -81,6 +81,9 @@ export class BranchChannelBridge {
       gatewayUrl?: string;
       gatewayToken?: string;
       gatewayPassword?: string;
+      /** Branch-to-Branch: connect to a host Branch as this Branch's paired device (its stored device token and
+       *  only the scopes the host granted), not with this Branch's own gateway auth. */
+      graftDevice?: { url: string; tlsFingerprint?: string; scopes: string[] };
       claudeChannelMode: ClaudeChannelMode;
       verbose: boolean;
     },
@@ -102,25 +105,55 @@ export class BranchChannelBridge {
     this.started = true;
     const [
       { resolveGatewayClientBootstrap },
-      { GatewayClient: GatewayClientCtor },
+      { GatewayClient: GatewayClientCtor, prepareGatewayClientDeviceAuth },
+      { loadOrCreateDeviceIdentity },
       { startGatewayClientWhenEventLoopReady },
       { ADMIN_SCOPE, APPROVALS_SCOPE, READ_SCOPE, WRITE_SCOPE },
       { GATEWAY_CLIENT_CAPS, GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES },
     ] = await Promise.all([
       import("../gateway/client-bootstrap.js"),
       import("../gateway/client.js"),
+      import("../infra/device-identity.js"),
       import("../../packages/gateway-client/src/readiness.js"),
       import("../gateway/method-scopes.js"),
       import("../../packages/gateway-protocol/src/client-info.js"),
     ]);
-    const bootstrap = await resolveGatewayClientBootstrap({
-      config: this.cfg,
-      gatewayUrl: this.params.gatewayUrl,
-      explicitAuth: {
-        token: this.params.gatewayToken,
-        password: this.params.gatewayPassword,
-      },
-      env: process.env,
+    const device = this.params.graftDevice;
+    const bootstrap: Pick<
+      Awaited<ReturnType<typeof resolveGatewayClientBootstrap>>,
+      | "url"
+      | "auth"
+      | "tlsFingerprint"
+      | "deviceAuthScope"
+      | "sshTunnel"
+      | "preauthHandshakeTimeoutMs"
+    > = device
+      ? { url: device.url, auth: {}, tlsFingerprint: device.tlsFingerprint }
+      : await resolveGatewayClientBootstrap({
+          config: this.cfg,
+          gatewayUrl: this.params.gatewayUrl,
+          explicitAuth: {
+            token: this.params.gatewayToken,
+            password: this.params.gatewayPassword,
+          },
+          env: process.env,
+        });
+    if (this.closed) {
+      this.readiness.resolve();
+      return;
+    }
+
+    // The first device-auth read creates this process's state store, which takes seconds on a fresh state dir.
+    // Done after the socket opens, it runs inside the gateway's 15 s pre-connect budget and the gateway closes the
+    // socket ("connect timeout"); prepare it first, as one-shot gateway calls do (gateway/call.ts).
+    const deviceIdentity = loadOrCreateDeviceIdentity();
+    await prepareGatewayClientDeviceAuth({
+      url: bootstrap.url,
+      token: bootstrap.auth.token,
+      password: bootstrap.auth.password,
+      tlsFingerprint: bootstrap.tlsFingerprint,
+      deviceAuthScope: bootstrap.deviceAuthScope,
+      deviceIdentity,
     });
     if (this.closed) {
       this.readiness.resolve();
@@ -129,6 +162,7 @@ export class BranchChannelBridge {
 
     this.gateway = new GatewayClientCtor({
       url: bootstrap.url,
+      deviceIdentity,
       deviceAuthScope: bootstrap.deviceAuthScope,
       ...(bootstrap.sshTunnel ? { sshTunnel: bootstrap.sshTunnel } : {}),
       token: bootstrap.auth.token,
@@ -141,7 +175,8 @@ export class BranchChannelBridge {
       mode: GATEWAY_CLIENT_MODES.CLI,
       caps: [GATEWAY_CLIENT_CAPS.APPROVALS],
       // Admin lets the Trunk tools create Trunks (agents.create), as the owner's own window can.
-      scopes: [READ_SCOPE, WRITE_SCOPE, APPROVALS_SCOPE, ADMIN_SCOPE],
+      // A grafted Branch asks only for what its host granted; asking for more is a scope upgrade the host must approve.
+      scopes: device?.scopes ?? [READ_SCOPE, WRITE_SCOPE, APPROVALS_SCOPE, ADMIN_SCOPE],
       requestTimeoutMs: 180_000,
       onEvent: (event) => {
         void this.dispatchGatewayEvent(event);

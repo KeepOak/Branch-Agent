@@ -47,6 +47,10 @@ const AgentCreatedViaSchema = Type.Union([
   Type.Literal("grove"),
 ]);
 
+const AgentColourSchema = Type.Union([Type.Literal("#2F8C86"), Type.Literal("#1785AF"), Type.Literal("#8A5AA8"), Type.Literal("#5E8C4A"), Type.Literal("#4F6FA8"), Type.Literal("#C9982E"), Type.Literal("#B84A6B"), Type.Literal("#56616B")]);
+const AgentShapeSchema = Type.Union([Type.Literal("Circle"), Type.Literal("Stone"), Type.Literal("Leaf"), Type.Literal("Acorn"), Type.Literal("Shield")]);
+const AgentEyesSchema = Type.Union([Type.Literal("Round"), Type.Literal("Wide"), Type.Literal("Sleepy")]);
+
 /** Condensed agent record returned by list APIs. */
 export const AgentSummarySchema = closedObject({
   id: NonEmptyString,
@@ -65,6 +69,9 @@ export const AgentSummarySchema = closedObject({
       theme: Type.Optional(NonEmptyString),
       emoji: Type.Optional(NonEmptyString),
       avatar: Type.Optional(NonEmptyString),
+      colour: Type.Optional(AgentColourSchema),
+      shape: Type.Optional(AgentShapeSchema),
+      eyes: Type.Optional(AgentEyesSchema),
       avatarUrl: Type.Optional(NonEmptyString),
     }),
   ),
@@ -109,6 +116,9 @@ export const AgentsCreateParamsSchema = closedObject({
   model: Type.Optional(NonEmptyString),
   emoji: Type.Optional(Type.String()),
   avatar: Type.Optional(Type.String()),
+  colour: Type.Optional(AgentColourSchema),
+  shape: Type.Optional(AgentShapeSchema),
+  eyes: Type.Optional(AgentEyesSchema),
 });
 
 /** Result returned after creating an agent. */
@@ -130,6 +140,9 @@ export const AgentsUpdateParamsSchema = closedObject({
   agentRuntime: Type.Optional(NonEmptyString),
   emoji: Type.Optional(Type.String()),
   avatar: Type.Optional(Type.String()),
+  colour: Type.Optional(AgentColourSchema),
+  shape: Type.Optional(AgentShapeSchema),
+  eyes: Type.Optional(AgentEyesSchema),
 });
 
 /** Result returned after updating an agent. */

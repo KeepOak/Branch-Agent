@@ -164,11 +164,11 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     const which = sec("Which Trunk uses which");
     expect(which?.querySelector(".hint")?.textContent).toBe("A Trunk can use several computers side by side.");
     expect([...which!.querySelectorAll(".prow b")].map((b) => b.textContent)).toEqual(["Scout", "Sapling"]);
-    const { engine, request } = engineWith({ ...CONFIG, "agents.list": agents, "config.get": { hash: "h", valid: true, config: { agents: { list: [{ id: "scout" }] } } }, "node.list": { nodes: [{ nodeId: "n1", displayName: "Desk", connected: true }] } });
+    const { engine, request } = engineWith({ ...CONFIG, "agents.list": agents, "config.get": { hash: "h", valid: true, config: { agents: { entries: { scout: {} } } } }, "node.list": { nodes: [{ nodeId: "n1", displayName: "Desk", connected: true }] } });
     await show(engine, "regular");
     const chip = [...sec("Which Trunk uses which")!.querySelectorAll<HTMLButtonElement>("[aria-label='Computers Scout uses'] button")].find((b) => b.textContent === "Desk")!;
     await click(chip);
-    expect(patches(request)).toContainEqual({ agents: { list: [{ id: "scout", tools: { exec: { node: "n1" } } }] } });
+    expect(patches(request)).toContainEqual({ agents: { entries: { scout: { tools: { exec: { node: "n1" } } } } } });
   });
 
   it("saves Most spares at once with Save and adds an extra folder from its dialog", async () => {

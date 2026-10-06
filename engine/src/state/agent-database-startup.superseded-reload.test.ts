@@ -72,23 +72,22 @@ describe("agent database startup preparation", () => {
     }
   });
 
-  it("keeps the agent degraded when preparation fails for another reason", async () => {
+  it("retries a degraded preparation with backoff and admits the agent", async () => {
     const prepareAgent = vi
       .fn<() => Promise<void>>()
-      .mockRejectedValue(new Error("Agent tk model preparation has not published"));
+      .mockRejectedValueOnce(new Error("Agent tk model preparation has not published"))
+      .mockResolvedValue(undefined);
     const started = await startDeferredPreparation(prepareAgent);
     try {
       await vi.waitFor(
         () =>
           expect(
             readAgentDatabaseAdmissionRefusal(started.agentId, { env: started.env }),
-          ).toMatchObject({
-            code: "agent-database-inspection-failed",
-            reason: expect.stringContaining("model preparation has not published"),
-          }),
+          ).toBeUndefined(),
         { timeout: 10000 },
       );
-      expect(prepareAgent).toHaveBeenCalledTimes(1);
+      expect(prepareAgent).toHaveBeenCalledTimes(2);
+      expect(started.openAgent).toHaveBeenCalledTimes(2);
     } finally {
       await started.stop();
     }

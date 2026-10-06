@@ -20,11 +20,17 @@ export type OutsideAgent = {
   activity?: string;
   /** A random tag of the running client process. */
   instance?: string;
+  /** "branch": another Branch grafted in as a device; "trunk": one of that Branch's Trunks. */
+  kind?: "branch" | "trunk";
+  /** For a "trunk": the id of the grafted Branch it lives on. */
+  via?: string;
 };
 export type OutsideAgentRecord = OutsideAgent & {
   firstSeenAt: number;
   lastSeenAt: number;
   activityAt?: number;
+  /** The paired device that said hello (a grafted Branch); unset for owner-level connections. */
+  deviceId?: string;
 };
 /** Settings › Grafts: the master switch, disconnected agents, and who may drive the window. */
 export type OutsideAgentSettings = {
@@ -35,6 +41,7 @@ export type OutsideAgentSettings = {
 
 /** A client that said hello within this window is shown online. `branch mcp serve` says hello every minute. */
 export const OUTSIDE_AGENT_ONLINE_MS = 3 * 60_000;
+const SESSION_ROW_TTL_MS = 24 * 60 * 60_000;
 // Outside-agent rows are a Branch store with no upstream limit; this only bounds the file.
 const MAX_RECORDS = 512;
 
@@ -113,6 +120,7 @@ export function recordOutsideAgent(
   agent: OutsideAgent,
   now = Date.now(),
   env?: NodeJS.ProcessEnv,
+  opts: { leaving?: boolean; deviceId?: string } = {},
 ): OutsideAgentRecord {
   const all = listOutsideAgents(env);
   // The product-wide row from before per-session ids folds into the first session that says hello.
@@ -127,15 +135,22 @@ export function recordOutsideAgent(
     ...(agent.where ? { where: agent.where } : {}),
     ...(agent.project ? { project: agent.project } : {}),
     ...(agent.instance ? { instance: agent.instance } : {}),
+    ...(agent.kind ? { kind: agent.kind } : {}),
+    ...(agent.via ? { via: agent.via } : {}),
+    ...(opts.deviceId ? { deviceId: opts.deviceId } : {}),
     ...(agent.activity
       ? { activity: agent.activity, activityAt: now }
       : previous?.activity
         ? { activity: previous.activity, activityAt: previous.activityAt }
         : {}),
     firstSeenAt: previous?.firstSeenAt ?? now,
-    lastSeenAt: now,
+    // A goodbye marks it offline now, so the next session of the same agent gets this id back.
+    lastSeenAt: opts.leaving ? now - OUTSIDE_AGENT_ONLINE_MS : now,
   };
-  const next = [record, ...rows]
+  // Extra-session rows (<id>-2, -3, ...) that have been offline for a day carry nothing worth keeping.
+  const stale = (row: OutsideAgentRecord) =>
+    /-[0-9a-f]{6}-\d+$/.test(row.id) && now - row.lastSeenAt > SESSION_ROW_TTL_MS;
+  const next = [record, ...rows.filter((row) => !stale(row))]
     .toSorted((a, b) => b.lastSeenAt - a.lastSeenAt)
     .slice(0, MAX_RECORDS);
   writeJson(registryFile(env), next);
@@ -241,6 +256,86 @@ export function outsideAgentPeers(
         fetchedAt: row.lastSeenAt,
       },
     }));
+}
+
+/**
+ * A grafted Branch is a scoped device: what it says hello as stays bound to its device. It may not take a row
+ * another device or an owner-level client holds, and its Trunks must sit under its own Branch row. Owner-level
+ * connections (no deviceId) may not take a device's rows either.
+ */
+export function outsideAgentDeviceRefusal(
+  agent: Pick<OutsideAgent, "id" | "name" | "via">,
+  deviceId: string | undefined,
+  records: readonly OutsideAgentRecord[],
+  settings: OutsideAgentSettings = { enabled: true, revoked: [], mayDriveWindow: [] },
+): string | undefined {
+  const row = records.find((candidate) => candidate.id === agent.id);
+  if (row && row.deviceId !== deviceId && !(deviceId && releasedDeviceRow(row, settings))) {
+    return `${agent.name} is already connected from another device.`;
+  }
+  if (agent.via && (!deviceId || records.find((r) => r.id === agent.via)?.deviceId !== deviceId)) {
+    return `${agent.name} must say hello through its own grafted Branch.`;
+  }
+  return undefined;
+}
+
+/**
+ * A grafted Branch's row after Disconnect: its pairing was removed with it (contacts.outside.set revokes device
+ * rows only once device.pair.remove succeeded), so only a new setup code the owner approved can bring a device
+ * back. Such a row is released: the next paired device that says hello as it takes it over and un-revokes it.
+ */
+export function releasedDeviceRow(
+  row: OutsideAgentRecord,
+  settings: OutsideAgentSettings,
+): boolean {
+  return Boolean(row.deviceId) && settings.revoked.includes(row.id);
+}
+
+/** Rows a re-paired grafted Branch takes back on hello: un-revoked, so its new pairing works without manual steps. */
+export function reclaimDeviceRow(
+  id: string,
+  deviceId: string | undefined,
+  records: readonly OutsideAgentRecord[],
+  env?: NodeJS.ProcessEnv,
+): OutsideAgentSettings | undefined {
+  const settings = readOutsideAgentSettings(env);
+  const row = records.find((candidate) => candidate.id === id);
+  if (!deviceId || !row || !releasedDeviceRow(row, settings)) return undefined;
+  return updateOutsideAgentSettings({ id, revoked: false }, env);
+}
+
+/** The paired device behind a scoped (non-owner) connection: a grafted Branch. Owner-level connections (admin
+ *  scope, as the owner's window and the owner's own Graft have) return undefined. */
+export function graftDeviceId(
+  client: { connect?: { scopes?: readonly string[]; device?: { id?: string } } } | null | undefined,
+): string | undefined {
+  const scopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
+  if (scopes.includes("operator.admin")) return undefined;
+  return client?.connect?.device?.id || undefined;
+}
+
+/** Why a grafted Branch may not send this message: it speaks only as itself or one of its Trunks. Other scoped
+ *  devices (a paired phone) have no rows here and keep upstream's rules. */
+export function graftSendRefusal(
+  outsideId: string | undefined,
+  deviceId: string | undefined,
+  records: readonly OutsideAgentRecord[] = listOutsideAgents(),
+): string | undefined {
+  if (!deviceId || !records.some((row) => row.deviceId === deviceId)) return undefined;
+  const row = outsideId ? records.find((candidate) => candidate.id === outsideId) : undefined;
+  return row?.deviceId === deviceId
+    ? undefined
+    : "A grafted Branch sends only as itself or one of its Trunks.";
+}
+
+/** The device ids and every row they said hello as, for a Disconnect of a grafted Branch or one of its Trunks. */
+export function outsideAgentDeviceRows(
+  id: string,
+  records: readonly OutsideAgentRecord[],
+): { deviceId: string; ids: string[] } | undefined {
+  const deviceId = records.find((row) => row.id === id)?.deviceId;
+  if (!deviceId) return undefined;
+  return { deviceId, ids: records.filter((row) => row.deviceId === deviceId).map((row) => row.id) };
 }
 
 export function isOutsideAgentOnline(record: OutsideAgentRecord, now = Date.now()): boolean {

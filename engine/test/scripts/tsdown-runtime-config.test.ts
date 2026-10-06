@@ -249,6 +249,7 @@ describe("tsdown config", () => {
       expectDefined(handoffGraph, "managed handoff graph"),
       expectDefined(activationGraph, "package activation graph"),
       requireNativeHookRelayGraph(),
+      requireStandaloneRuntimeGraph("graft/entry"),
       requireStandaloneRuntimeGraph("infra/sqlite-readonly-location.worker"),
       requireStandaloneRuntimeGraph("infra/sqlite-source-revision.worker"),
       requireStandaloneRuntimeGraph("state/branch-state-read.worker"),
@@ -269,6 +270,14 @@ describe("tsdown config", () => {
         executableGraphs.has(config) ? 1 : 0,
       );
     }
+  });
+
+  it("starts Graft from its own lean graph, never the full CLI's chunks", async () => {
+    const graft = requireStandaloneRuntimeGraph("graft/entry");
+    expect(entrySources(graft)).toEqual({ "graft/entry": "src/mcp/graft-entry.ts" });
+    expect(graft).not.toBe(requireUnifiedDistGraph());
+    expect(graft.dts).toBe(false);
+    expect(graft.outputOptions?.chunkFileNames).toBe("graft/[name]-[hash].mjs");
   });
 
   it("isolates relay startup from shared runtime chunks while retaining lazy fallback", async () => {

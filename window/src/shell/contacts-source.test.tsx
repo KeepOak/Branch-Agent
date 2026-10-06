@@ -22,7 +22,7 @@ describe("contacts.list source", () => {
     expect(container.textContent).toBe("Oak");
     expect(request).toHaveBeenCalledWith("contacts.list", { includeArchived: true });
     name = "Elm";
-    await act(async () => { event?.("contacts.changed"); });
+    await act(async () => { event?.("contacts.changed"); await new Promise((resolve) => setTimeout(resolve, 200)); });
     expect(container.textContent).toBe("Elm");
     expect(request).toHaveBeenCalledTimes(2);
   });

@@ -1,4 +1,5 @@
 /** Agent-run lease admission for lifecycle-owned prepared model runtimes. */
+import { setTimeout as delay } from "node:timers/promises";
 import { createAbortError, racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { withPluginMetadataSnapshotScope } from "../plugins/current-plugin-metadata-snapshot.js";
 import { resolvePluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.js";
@@ -116,7 +117,11 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
   let lastExternalPublication: Promise<unknown> | undefined;
   let previousAttempt: readonly unknown[] | undefined;
   let supersededPublication: PreparedModelRuntimePublicationSupersededError | undefined;
+  let supersededSince: number | undefined;
   for (;;) {
+    if (supersededPublication && Date.now() - (supersededSince ?? Date.now()) >= 120_000) {
+      throw supersededPublication;
+    }
     admission.release();
     assertAdmission();
     // Replacement owns publication from synchronous staling through atomic generation commit.
@@ -133,8 +138,14 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
       currentOwner?.needsRefresh,
       lastExternalPublication,
     ];
-    if (previousAttempt?.every((value, index) => value === attempt[index])) {
-      // Failed construction can retire its owner, hiding supersession from this checkpoint.
+    const unchanged = previousAttempt?.every((value, index) => value === attempt[index]);
+    if (unchanged) {
+      // A retired build can settle before its replacement is queued. Give the successor
+      // publication time to appear rather than failing the turn at that transient gap.
+      if (supersededPublication && Date.now() - (supersededSince ?? Date.now()) < 120_000) {
+        await racePromiseWithAbortSignal(delay(250), options.abortSignal);
+        continue;
+      }
       throw (
         supersededPublication ??
         new PreparedModelRuntimeOwnerNotPublishedError(
@@ -143,11 +154,19 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
       );
     }
     previousAttempt = attempt;
-    supersededPublication = undefined;
     if (replacement) {
       lastExternalPublication = replacement.promise;
       assertPreparedModelRuntimeAdmissionCanWait();
-      await racePromiseWithAbortSignal(replacement.promise, options.abortSignal);
+      try {
+        await racePromiseWithAbortSignal(replacement.promise, options.abortSignal);
+      } catch (error) {
+        if (error instanceof PreparedModelRuntimePublicationSupersededError) {
+          supersededPublication = error;
+          supersededSince ??= Date.now();
+          continue;
+        }
+        throw error;
+      }
       if (context.getPendingReplacement()) {
         continue;
       }
@@ -161,6 +180,11 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
       try {
         input = rebindInputToCommittedConfiguredOwner(context.owners, input);
       } catch (error) {
+        if (error instanceof PreparedModelRuntimePublicationSupersededError) {
+          supersededPublication = error;
+          supersededSince ??= Date.now();
+          continue;
+        }
         if (replacement || !isPreparedModelRuntimeMissingOwnerError(error)) {
           throw error;
         }
@@ -179,7 +203,15 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
                 resolveConfiguredOwner(context.owners, input),
               );
               lastExternalPublication = configuredOwner.pending;
-              await racePromiseWithAbortSignal(configuredOwner.pending, options.abortSignal);
+              try {
+                await racePromiseWithAbortSignal(configuredOwner.pending, options.abortSignal);
+              } catch (pendingError) {
+                if (!(pendingError instanceof PreparedModelRuntimePublicationSupersededError)) {
+                  throw pendingError;
+                }
+                supersededPublication = pendingError;
+                supersededSince ??= Date.now();
+              }
               continue;
             }
             throw error;
@@ -375,6 +407,7 @@ export async function acquirePreparedModelRuntimeLeaseFromOwners(
       admission.release();
       if (error instanceof PreparedModelRuntimePublicationSupersededError) {
         supersededPublication = error;
+        supersededSince ??= Date.now();
         continue;
       }
       if (context.getPendingReplacement() && isPreparedModelRuntimePluginLifecycleFailure(error)) {

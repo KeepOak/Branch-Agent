@@ -2,6 +2,7 @@
 // the dock row above it and the menus, all wired to the engine through the shared handle (connect/engine.ts).
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 import { PASTED_TEXT_CHIP_CHARS } from "./attachments";
+import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
 import { DockRow, type Goal } from "./DockRow";
 import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "./engine";
 import { Icon, StopMark } from "./icons";
@@ -136,6 +137,7 @@ export function Composer(props: Props) {
   const asSet = isEngineMode(conv.trunk?.defaultMode) ? (conv.trunk?.defaultMode as EngineMode) : null;
   const queueMode = str(row.effectiveQueueMode);
   const trunkName = conv.trunk?.name || name;
+  const conversationProblem = conv.error ?? (isPreparationPending(conv.modelsError) || conv.modelsError?.includes("is still starting up.") ? conv.modelsError : null);
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
 
   const deliver = useCallback(
@@ -378,8 +380,9 @@ export function Composer(props: Props) {
     >
       {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
       {noModel ? <NoModelLine onOpen={onOpen} /> : null}
-      {problem ? <p className="c-note bad" role="alert">{problem}</p> : null}
-      {line.error ? <p className="c-note bad" role="alert">{line.error}</p> : null}
+      {conversationProblem ? <p className={isPreparationPending(conversationProblem) ? "c-note" : "c-note bad"} role={isPreparationPending(conversationProblem) ? "status" : "alert"}>{isPreparationPending(conversationProblem) ? preparationLabel(trunkName) : conversationProblem}</p> : null}
+      {problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : problem}</p> : null}
+      {line.error ? <p className="c-note bad" role="alert">{isPreparationPending(line.error) ? preparationLabel(trunkName) : line.error}</p> : null}
       {draft.note ? <p className="c-note">{draft.note}</p> : null}
       {drawer.peopleError && view?.kind === "mention" ? <p className="c-note bad">{drawer.peopleError}</p> : null}
       {props.replyTo ? (
@@ -570,7 +573,7 @@ export function Composer(props: Props) {
             onClose={() => setMenu(null)}
             models={conv.models}
             loading={conv.modelsLoading}
-            error={conv.modelsError}
+            error={isPreparationPending(conv.modelsError) ? preparationLabel(trunkName) : conv.modelsError}
             current={current}
             currentRef={current?.ref ?? currentRef}
             row={row}

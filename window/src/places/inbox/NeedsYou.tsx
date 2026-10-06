@@ -8,7 +8,7 @@ import type { Level } from "../../places-nav/level";
 import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
 import { agentName } from "../overview/engine";
-import { canApprove, has, num, rec, resolveApproval, rows, str, type Needs, type Row } from "./data";
+import { canApprove, has, isSignInFailure, num, rec, resolveApproval, rows, signInRecovered, str, type Needs, type Row } from "./data";
 import { ChatRequest, DeviceRequest, NodeRequest } from "./Requests";
 import { InboxRow, StatusCard, Tile, minutesAgo, minutesLeft } from "./Rows";
 import { whenWord } from "../overview/format";
@@ -19,6 +19,14 @@ export type NeedsProps = { engine: WindowEngine; data: Needs; busy: boolean; act
 
 export const FULL_ACCESS_GAP = "Needs the window’s connection to take the upgraded device key (device.scopes.requestUpgrade).";
 const DAY = 864e5;
+const DISMISSED_KEY = "branch:inbox-dismissed-failures";
+function savedDismissals(): string[] {
+  try { const value: unknown = JSON.parse(localStorage.getItem(DISMISSED_KEY) || "[]"); return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []; }
+  catch { return []; }
+}
+function failureContext(title: string, name: string): string {
+  return !title || /^(untitled conversation|main|new conversation)$/i.test(title) || title === name ? "its main chat" : `“${title}”`;
+}
 
 /** Puts a drafted message into a conversation's composer (window event "branch:compose"), then opens it. */
 export function draftTo(sessionKey: string, text: string, open: (key: string) => void): void {
@@ -33,10 +41,15 @@ export function needsCount(data: Needs | null): number {
 export const approvalTitle = (item: Row) => { const r = rec(item.request); return str(r.title) || str(r.commandPreview) || str(r.command) || str(r.description) || "A Trunk needs your answer"; };
 
 function Cards({ data, engine, busy, act, openConversation, openPlace, openSettings }: NeedsProps) {
-  const [gone, setGone] = useState<string[]>([]);
+  const [gone, setGone] = useState<string[]>(savedDismissals);
+  const dismiss = (keys: string[]) => setGone(previous => {
+    const next = [...new Set([...previous, ...keys])];
+    try { localStorage.setItem(DISMISSED_KEY, JSON.stringify(next)); } catch { /* The current view still dismisses it. */ }
+    return next;
+  });
   const ask = data.agents.list.find(a => a.id === data.agents.defaultId) ?? data.agents.list[0];
   const askBtn = (text: string, ghost = false) => ask ? <button type="button" className={ghost ? "btn ghost sm" : "btn sm"} onClick={() => draftTo(`agent:${ask.id}:${data.agents.mainKey}`, text, openConversation)}>Ask {ask.name}</button> : null;
-  const stopped = data.sessions.filter(s => s.status === "failed" && s.lastRunError && !s.helper && !s.automation && Date.now() - (s.updatedAt ?? 0) < DAY);
+  const stopped = data.sessions.filter(s => s.status === "failed" && s.lastRunError && !s.helper && !s.automation && Date.now() - (s.updatedAt ?? 0) < DAY && !signInRecovered(s.lastRunError, data.authByAgent[s.agentId]) && !gone.includes(`session:${s.key}:${s.lastRunId || s.lastRunError}`));
   const failed = data.failed.filter(j => !gone.includes(`${str(j.id)}:${num(rec(j.state).lastRunAtMs) ?? ""}`));
   const one = failed[0], oneState = rec(one?.state);
   const names = data.expired.map(p => str(p.displayName) || str(p.provider));
@@ -46,10 +59,16 @@ function Cards({ data, engine, busy, act, openConversation, openPlace, openSetti
       <button type="button" className="btn ghost sm" disabled={busy || !has(engine, "operator.admin")} onClick={() => void act(() => engine.request("channels.stop", { channel, accountId: str(account.accountId) }), `${label} is off.`)}>Turn {label} off</button>
       <button type="button" className="btn pri sm" onClick={() => openPlace("customize")}>Set it up again</button>
     </StatusCard>)}
-    {stopped.map(s => <StatusCard key={s.key} icon="chat" lead={<Face size={34} label={agentName(data.agents.list, s.agentId)} />} title={`${agentName(data.agents.list, s.agentId)} stopped: ${s.title}`} sub={s.lastRunError}><button type="button" className="btn pri sm" onClick={() => openConversation(s.key)}>What it needs</button></StatusCard>)}
+    {stopped.map(s => {
+      const name = agentName(data.agents.list, s.agentId), signIn = isSignInFailure(s.lastRunError);
+      return <StatusCard key={s.key} icon="chat" lead={<Face size={34} label={name} />} title={signIn ? `${name} couldn't reach a model: its sign-in had expired.` : `${name} couldn't finish a run.`} sub={`In ${failureContext(s.title, name)}.`}>
+        {signIn ? <button type="button" className="btn pri sm" disabled={!openSettings} onClick={() => openSettings?.("accounts")}>Sign in again</button> : <button type="button" className="btn pri sm" onClick={() => openConversation(s.key)}>Open conversation</button>}
+        <button type="button" className="ib-x" aria-label={`Dismiss ${name} failure`} title="Dismiss" onClick={() => dismiss([`session:${s.key}:${s.lastRunId || s.lastRunError}`])}><Icon name="x" /></button>
+      </StatusCard>;
+    })}
     {one ? <StatusCard tone="warn" icon="clock" title={failed.length > 1 ? `${failed.length} automations need a look` : `${str(one.name) || "An automation"} failed`} sub={failed.length > 1 ? failed.map(j => str(j.name)).join(" · ") : ["Failed", num(oneState.lastRunAtMs) !== undefined ? whenWord(num(oneState.lastRunAtMs)!) : "", str(oneState.lastError)].filter(Boolean).join(" · ")}>
       {askBtn(`These automations failed: ${failed.map(j => `${str(j.name)} (${str(rec(j.state).lastError) || "no error recorded"})`).join("; ")}. Explain why and how to fix them.`)}<button type="button" className="btn sm" onClick={() => openPlace("automations")}>Open</button>
-      <button type="button" className="ib-x" aria-label="Dismiss" title="Dismiss" onClick={() => setGone([...gone, ...failed.map(j => `${str(j.id)}:${num(rec(j.state).lastRunAtMs) ?? ""}`)])}><Icon name="x" /></button>
+      <button type="button" className="ib-x" aria-label="Dismiss" title="Dismiss" onClick={() => dismiss(failed.map(j => `${str(j.id)}:${num(rec(j.state).lastRunAtMs) ?? ""}`))}><Icon name="x" /></button>
     </StatusCard> : null}
     {names.length ? <StatusCard tone="warn" icon="key" title={names.length > 1 ? `Sign-ins expired: ${names.join(", ")}` : `Your ${names[0]} sign-in expired`} sub={`${expiredAt !== undefined ? `Expired ${minutesAgo(expiredAt)}. ` : ""}Trunks that use it stop until you sign in again.`}>
       {askBtn(`These sign-ins expired: ${names.join(", ")}. Explain what stops working and how to sign in again.`, true)}<button type="button" className="btn pri sm" disabled={!openSettings} onClick={() => openSettings?.("accounts")}>Sign in again</button>
