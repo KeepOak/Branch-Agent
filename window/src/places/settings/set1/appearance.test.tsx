@@ -62,6 +62,17 @@ describe("Settings › Appearance", () => {
     expect(document.querySelector(".kit-help-pop")?.textContent).toContain("Off until you turn it on.");
   });
 
+  it("draws a selected painted scene behind readable glass panels and previews it", async () => {
+    const { engine } = engineOf();
+    await render(engine);
+    await act(async () => { await lookStore(engine).set("bg", "painted"); await lookStore(engine).set("scene", "night17-lake"); });
+    expect(document.documentElement.hasAttribute("data-scene")).toBe(true);
+    expect(document.head.querySelector("#branch-look")?.textContent).toContain("/assets/art17/bg/lake-night.webp");
+    await act(async () => button("See it clearly").click());
+    expect(host.querySelector(".scene-preview")).not.toBeNull();
+    await act(async () => (host.querySelector(".scene-preview") as HTMLButtonElement).click());
+    expect(host.querySelector(".scene-preview")).toBeNull();
+  });
   it("draws the theme, the gallery button and the mirrors from the engine", async () => {
     const { engine } = engineOf();
     await render(engine);
