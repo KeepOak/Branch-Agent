@@ -1,4 +1,4 @@
-// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/gateway/config-reload.test.ts (atlas OPS-0204). Changed for Branch: preserve native test helpers and assert the newer MCP Apps hot-apply contract from d7d4c5d95 without restarting Trunks.
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/gateway/config-reload.test.ts (atlas OPS-0204). Changed for Branch: preserve native test helpers and assert the newer MCP Apps hot-apply contract from d7d4c5d95 without restarting Trunks.
 // Gateway config reload tests cover changed-path detection, reload planning,
 // plugin registry refresh, skill snapshot invalidation, and watcher behavior.
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
