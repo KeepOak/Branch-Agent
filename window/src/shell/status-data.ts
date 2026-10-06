@@ -81,7 +81,7 @@ function limitRow(p: Record<string, unknown>, updatedAt: number, now: number): L
   const account = [str(p.accountEmail), str(p.plan)].filter(Boolean).join(" · ");
   const measured = windows.length > 0;
   const name = (str(p.displayName) || str(p.provider)).replace(/\s+plan$/i, "");
-  const line = p.error ? usageStatusWords(p.error, name) : measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, name);
+  const line = p.error === "Usage not reported" ? "Usage not reported" : p.error ? usageStatusWords(p.error, name) : measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, name);
   return { id: `${str(p.provider)}:${account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line };
 }
 

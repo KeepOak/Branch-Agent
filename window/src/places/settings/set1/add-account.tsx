@@ -227,7 +227,7 @@ function SecretSignIn({ engine, svc, login, agent, onRun }: { engine: WindowEngi
             <li>Paste the token it prints below. It starts with <code>sk-ant-oat01-</code>.</li>
           </ol>
         ) : login.hint ? <p>{visible(login.hint)}</p> : null}
-        {claude ? <p className="hint">This creates a Claude subscription token for Branch. <a href="https://code.claude.com/docs/en/env-vars" target="_blank" rel="noreferrer">Claude’s token guide</a></p> : null}
+        {claude ? <p>This creates a Claude subscription token for Branch. <a href="https://code.claude.com/docs/en/env-vars" target="_blank" rel="noreferrer">Claude’s token guide</a></p> : null}
         <label className="fld"><span>Token</span><input className="inp" type="password" autoComplete="off" aria-label="Token" value={token} onChange={(e) => setToken(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>
         {first ? null : <label className="fld"><span>Call it</span><input className="inp" aria-label="Call it" placeholder={claude ? "Saved by email if blank" : label} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>}
         <div className="acts"><button type="button" className="btn pri sm" disabled={!ready} onClick={start}>Sign in</button></div>
