@@ -38,3 +38,4 @@ engine/extensions/tavily/src/tavily-client.ts,RESEARCH-0003,mastra-ai/mastra,486
 engine/extensions/tavily/src/tavily-client.ts,RESEARCH-0003,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,integrations/tavily/src/map.ts (adapted to guarded Tavily transport),2026-10-06
 engine/extensions/firecrawl/src/firecrawl-tools.test.ts,RESEARCH-0005,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,extensions/firecrawl/src/firecrawl-tools.test.ts,2026-10-06
 engine/extensions/firecrawl/src/firecrawl-search-results.test.ts,RESEARCH-0005,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,extensions/firecrawl/src/firecrawl-search-results.test.ts,2026-10-06
+engine/src/sessions/session-state-events.test.ts,SESSIONS-0005,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,src/sessions/session-state-events.test.ts,2026-10-06
