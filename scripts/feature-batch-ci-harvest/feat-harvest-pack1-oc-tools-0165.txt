@@ -11,3 +11,4 @@ engine:extensions/oc-path/src/oc-path/tests/scenarios/jsonc-byte-fidelity.test.t
 engine:extensions/oc-path/src/oc-path/tests/scenarios/security-and-limits.test.ts
 engine:extensions/signal/src/send-reactions.test.ts
 engine:src/channels/plugins/actions/reaction-message-id.test.ts
+engine:src/skills/library/service.test.ts
