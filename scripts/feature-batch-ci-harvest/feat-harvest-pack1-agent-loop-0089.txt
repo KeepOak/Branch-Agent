@@ -19,7 +19,6 @@ engine:packages/agent-core/src/nonexistent-tool-handling.test.ts
 engine:packages/agent-core/src/tool-error-handling-middleware.test.ts
 engine:packages/agent-core/src/tool-error-handling-subagent-stamp.test.ts
 engine:packages/agent-core/src/tool-validation-error-message.test.ts
-engine:packages/ai/src/providers/google-shared.test.ts
 engine:packages/ai/src/providers/history-hardening-native.test.ts
 engine:packages/ai/src/providers/history-hardening.test.ts
 engine:src/agents/api-compliance/run-compliance.behaviour.test.ts
