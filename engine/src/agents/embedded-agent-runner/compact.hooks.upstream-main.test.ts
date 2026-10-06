@@ -1,4 +1,5 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/compact.hooks.test.ts (atlas AGENT-LOOP-0099). Changed for Branch: existing runtime adapters and owner-context safeguards; upstream assertions retained.
+// From openclaw/openclaw@c656ee5227cdfc8930c6eff095937e53e0516886:src/agents/embedded-agent-runner/compact.hooks.test.ts (atlas AGENT-LOOP-0099). Upstream-main cases added per task addendum; imports and product names adapted without replacing Branch code or existing assertions.
+
 // Hook integration coverage for direct and queued embedded compaction.
 
 import { mkdtemp, realpath } from "node:fs/promises";
@@ -876,10 +877,7 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
             origin: "workspace",
             rootDir: join(TEST_WORKSPACE_DIR, "workspace/profiled-plugin"),
             source: join(TEST_WORKSPACE_DIR, "workspace/profiled-plugin/index.js"),
-            manifestPath: join(
-              TEST_WORKSPACE_DIR,
-              "workspace/profiled-plugin/branch.plugin.json",
-            ),
+            manifestPath: join(TEST_WORKSPACE_DIR, "workspace/profiled-plugin/branch.plugin.json"),
             contracts: { tools: [toolName] },
             toolMetadata: { [toolName]: { profiles: ["coding"] } },
           },

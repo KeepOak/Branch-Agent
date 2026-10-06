@@ -1,4 +1,5 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/harness/compaction/compaction.test.ts (atlas AGENT-LOOP-0099). Changed for Branch: existing runtime adapters and owner-context safeguards; upstream assertions retained.
+// From openclaw/openclaw@c656ee5227cdfc8930c6eff095937e53e0516886:packages/agent-core/src/harness/compaction/compaction.test.ts (atlas AGENT-LOOP-0099). Upstream-main cases added per task addendum; imports and product names adapted without replacing Branch code or existing assertions.
+
 import { describe, expect, it, vi } from "vitest";
 import { createAssistantMessageEventStream } from "../../llm.js";
 import type { AssistantMessage, Model, StreamFn, Usage } from "../../llm.js";
