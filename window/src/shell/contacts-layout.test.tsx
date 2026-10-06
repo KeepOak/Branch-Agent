@@ -9,6 +9,8 @@ import { SideResizer } from "./Resizer";
 import { dragResult, readLayout, toggleListLayout, useLayout } from "./use-layout";
 import { dropZoneAt, reorderedPins } from "./sidebar-drag";
 import { usePinOrder } from "./use-pin-order";
+import { useShortcuts } from "./use-shortcuts";
+import { TopBar } from "./TopBar";
 
 vi.mock("../face/Face", () => ({ Face: ({ size }: { size: number }) => <span className="test-face" style={{ width: size, height: size }} /> }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -85,12 +87,21 @@ describe("contacts layout", () => {
     localStorage.setItem("branch.layout", JSON.stringify({ sideW: 320, rail: true, hidden: false }));
     let layout!: ReturnType<typeof useLayout>[0];
     let update!: ReturnType<typeof useLayout>[1];
-    function Probe() { [layout, update] = useLayout(); return <span>{layout.hidden ? "hidden" : layout.rail ? "rail" : "full"}</span>; }
+    function Probe() {
+      [layout, update] = useLayout();
+      const noop = () => {};
+      useShortcuts({ palette: noop, newConversation: noop, settings: noop, sidePanel: noop, quickAsk: noop,
+        focusMode: noop, toggleList: () => update(toggleListLayout(layout)), inbox: noop, focusSearch: noop, focusPastSearch: noop,
+        archiveOpen: noop, talkBeside: noop, talkLive: noop, stop: noop, nextConversation: noop,
+        shortcuts: noop, escape: () => false });
+      return <span>{layout.hidden ? "hidden" : layout.rail ? "rail" : "full"}</span>;
+    }
+    const pressCtrlB = async () => act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "b", code: "KeyB", ctrlKey: true, bubbles: true })));
     const host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
     await act(async () => root!.render(<Probe />));
     expect(host.textContent).toBe("rail");
-    await act(async () => update(toggleListLayout(layout)));
+    await pressCtrlB();
     expect(host.textContent).toBe("full");
     expect(readLayout()).toMatchObject({ sideW: 320, rail: false, hidden: false });
     await act(async () => update({ hidden: true }));
@@ -100,11 +111,32 @@ describe("contacts layout", () => {
     root = createRoot(host);
     await act(async () => root!.render(<Probe />));
     expect(host.textContent).toBe("hidden");
-    await act(async () => update(toggleListLayout(layout)));
+    await pressCtrlB();
     expect(host.textContent).toBe("full");
     expect(readLayout()).toMatchObject({ sideW: 320, rail: false, hidden: false });
-    await act(async () => update(toggleListLayout(layout)));
+    await pressCtrlB();
     expect(host.textContent).toBe("rail");
+  });
+  it("keeps the computer switcher and Mac Find/New actions when the list is hidden", async () => {
+    const platform = Object.getOwnPropertyDescriptor(navigator, "platform");
+    Object.defineProperty(navigator, "platform", { configurable: true, value: "MacIntel" });
+    const find = vi.fn(), create = vi.fn();
+    const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+    try {
+      await act(async () => root!.render(<TopBar compact={false} machine={<button>Computer</button>} header={null} dark={false}
+        listHidden sideHidden onTheme={() => {}} onToggleList={() => {}} onFind={find} onNew={create} />));
+      expect(host.querySelector(".topbar-left")?.textContent).toContain("Computer");
+      await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Find anything"]')!.click());
+      await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="New conversation"]')!.click());
+      expect(find).toHaveBeenCalledOnce();
+      expect(create).toHaveBeenCalledOnce();
+      await act(async () => root!.render(<TopBar compact={false} machine={<button>Computer</button>} header={null} dark={false}
+        listHidden={false} sideHidden={false} onTheme={() => {}} onToggleList={() => {}} onFind={find} onNew={create} />));
+      expect(host.querySelector('[aria-label="Find anything"]')).toBeNull();
+    } finally {
+      if (platform) Object.defineProperty(navigator, "platform", platform);
+      else Reflect.deleteProperty(navigator, "platform");
+    }
   });
   it("shows pinned tiles and two-line contact rows without losing the scroll or selection on redraw", async () => {
     const host = await show();

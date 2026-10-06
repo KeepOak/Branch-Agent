@@ -18,12 +18,11 @@
 .frame.focus .topbar-left {
   display: none;
 }
-.frame.list-hidden .side,
-.frame.list-hidden .topbar-left {
+.frame.list-hidden .side {
   display: none;
 }
-.frame.list-hidden .topbar {
-  grid-template-columns: minmax(0, 1fr);
+.frame.list-hidden:not(.focus) .topbar {
+  grid-template-columns: 250px minmax(0, 1fr);
 }
 /* Appearance › What's shown › The whole status bar, off: its row folds away (the class is on the root). */
 :root.no-status {
@@ -129,6 +128,7 @@
   border-right: 1px solid var(--hair17);
   overflow: hidden;
 }
+.mac-hidden-actions { display: inline-flex; gap: 2px; align-items: center; margin-left: auto; flex: none; }
 .topbar-right {
   display: flex;
   align-items: center;

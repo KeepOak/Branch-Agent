@@ -1249,8 +1249,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         header={header}
         dark={dark}
         listHidden={isNarrow ? !slideOpen : rail || layout.hidden}
+        sideHidden={!isNarrow && layout.hidden}
         onTheme={() => setTheme(toggleTheme(theme))}
         onToggleList={toggleList}
+        onFind={() => setOverlay((o) => (o?.kind === "palette" ? null : { kind: "palette" }))}
+        onNew={() => void startNew()}
         onCharacter={() => setCharacterShown((v) => !v)}
         onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
         conversationTools={conversationTools}

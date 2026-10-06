@@ -39,8 +39,11 @@ type Props = {
   header: HeaderInfo | null;
   dark: boolean;
   listHidden: boolean;
+  sideHidden: boolean;
   onTheme: () => void;
   onToggleList: () => void;
+  onFind: () => void;
+  onNew: () => void;
   onCharacter?: () => void;
   onGuide?: (event: MouseEvent<HTMLElement>) => void;
   conversationTools?: ReactNode;
@@ -159,14 +162,20 @@ export function useHeaderTint(header: Pick<HeaderInfo, "colour" | "trunkName" | 
 }
 
 /** The merged 52 px top bar (DESIGN-SPEC §3.2): the machine switcher over the sidebar, the conversation header, the global buttons. */
-export function TopBar({ compact, machine, header, dark, listHidden, onTheme, onToggleList, onCharacter, onGuide, conversationTools, ask, onSettings }: Props) {
+export function TopBar({ compact, machine, header, dark, listHidden, sideHidden, onTheme, onToggleList, onFind, onNew, onCharacter, onGuide, conversationTools, ask, onSettings }: Props) {
   const live = header !== null && !header.room && (header.state === "working" || header.state === "waiting");
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   const tint = useHeaderTint(compact ? null : header);
   // The app's window buttons sit over this bar's top-right; keep their colours and height matched to it.
   useEffect(syncTitleBar, [dark, compact, listHidden]);
   return (
     <header className={tint ? "topbar tinted" : "topbar"} style={tint ? ({ "--tint": tint } as CSSProperties) : undefined}>
-      <div className="topbar-left">{machine}</div>
+      <div className="topbar-left">{machine}
+        {mac && sideHidden ? <span className="mac-hidden-actions">
+          <button type="button" className="ib" aria-label="Find anything" title="Find anything ⌘K" onClick={onFind}><Icon name="search" small /></button>
+          <button type="button" className="ib" aria-label="New conversation" title="New conversation ⌘N" onClick={onNew}><Icon name="edit" small /></button>
+        </span> : null}
+      </div>
       <div className="topbar-right">
         {compact ? (
           <span className="head" />
