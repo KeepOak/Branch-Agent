@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/claws/update-plan.test.ts (atlas MULTI-AGENT-0052). Changed for Branch: names mapped with scripts/rebrand-map.json; retain current-main agent roster and package ownership fixtures.
 import { createHash } from "node:crypto";
 import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";

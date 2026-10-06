@@ -10,6 +10,9 @@ engine:src/cli/cron-cli/register.cron-simple.test.ts
 engine:src/gateway/server-methods/cron-run-log-filters.test.ts
 engine:src/gateway/server-methods/cron.history.test.ts
 engine:src/gateway/server-methods/cron.list-compact.test.ts
+engine:src/groves/package-update.test.ts
+engine:src/groves/update-apply.test.ts
+engine:src/groves/update-plan.test.ts
 engine:src/hooks/bundled/boot-md/handler.gateway-startup.integration.test.ts
 engine:src/hooks/bundled/boot-md/handler.test.ts
 engine:src/hooks/bundled/bootstrap-extra-files/handler.test.ts
