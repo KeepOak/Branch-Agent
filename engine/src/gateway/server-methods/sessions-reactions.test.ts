@@ -126,9 +126,10 @@ describe("session reaction handlers", () => {
       const key = "agent:main:context-suggest";
       const scope = await seedSession({ visibility: "suggest", sessionId: "context-suggest" }, key);
       const messageId = await appendMessage(undefined, scope);
+      expect((await call("session.reactions.set", { sessionKey: key, messageId, emoji: "👍" }, client("viewer"), context(roleConfig("suggest"))))[0]).toBe(true);
       const result = await call("session.context.set", { sessionKey: key, messageId, exclude: true }, client("viewer"), context(roleConfig("suggest")));
       expect(result[0]).toBe(false);
-      expect(result[2]).toMatchObject({ code: "FORBIDDEN" });
+      expect(result[2]).toMatchObject({ code: "INVALID_REQUEST", details: { code: "SESSION_PARTICIPATION_REQUIRED" } });
       const read = await readSessionMessageByIdAsync(scope, messageId, { currentOnly: true, maxBytes: Number.MAX_SAFE_INTEGER, allowResetArchiveFallback: false });
       expect((read.message as Record<string, unknown>).excludeFromContext).toBeUndefined();
     });
