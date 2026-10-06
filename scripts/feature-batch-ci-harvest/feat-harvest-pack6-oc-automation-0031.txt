@@ -4,6 +4,8 @@ engine:src/cron/delivery-preview.test.ts
 engine:src/cron/delivery-routing.behaviour.test.ts
 engine:src/cron/delivery-target-validation.test.ts
 engine:src/cron/delivery.test.ts
+engine:src/gateway/hooks-mapping.fanout.test.ts
+engine:src/gateway/hooks-mapping.test.ts
 engine:src/gateway/hooks.test.ts
 engine:src/gateway/server.hooks-admission.test.ts
 engine:src/gateway/server.hooks.test.ts
