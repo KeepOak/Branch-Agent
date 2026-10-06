@@ -1,6 +1,9 @@
 engine:src/cli/gateway-cli/run.option-collisions.test.ts
 engine:src/cli/gateway-cli/run.supervised-lock.test.ts
 engine:src/cli/gateway-cli/suspend-cli.test.ts
+engine:src/cli/update-cli.admission-ledger.test.ts
+engine:src/cli/update-cli.already-current.test.ts
+engine:src/cli/update-cli.test.ts
 engine:src/cli/update-cli/update-command-report.test.ts
 engine:src/daemon/service-audit.definition-facts.test.ts
 engine:src/daemon/service-audit.systemd-timeout.test.ts
