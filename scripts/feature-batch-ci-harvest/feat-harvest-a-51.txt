@@ -15,6 +15,8 @@ engine:extensions/matrix/src/matrix/monitor/handler-draft-controller.visibility.
 engine:extensions/matrix/src/matrix/sdk/crypto-bootstrap.test.ts
 engine:extensions/matrix/src/matrix/sdk/recovery-key-store.test.ts
 engine:extensions/matrix/src/matrix/sdk/verification-manager.test.ts
+engine:extensions/msteams/src/approval-card-submit.test.ts
+engine:extensions/msteams/src/approval-card.test.ts
 engine:extensions/msteams/src/monitor-handler/message-handler.authz.test.ts
 engine:extensions/msteams/src/monitor.lifecycle.test.ts
 engine:extensions/msteams/src/sdk.test.ts
