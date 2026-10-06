@@ -11,6 +11,7 @@ engine:extensions/logbook/src/store.test.ts
 engine:extensions/team-reports/src/aggregate.test.ts
 engine:extensions/team-reports/src/http.test.ts
 engine:extensions/team-reports/src/periods.test.ts
+engine:src/gateway/embeddings-http.test.ts
 engine:src/gateway/openresponses-http.server.file-only.test.ts
 engine:src/gateway/openresponses-http.test.ts
 engine:src/gateway/openresponses-session-store.test.ts
