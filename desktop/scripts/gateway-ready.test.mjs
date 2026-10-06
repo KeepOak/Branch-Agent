@@ -37,6 +37,33 @@ test("child exit and signal termination fail readiness immediately", async () =>
   await assert.rejects(waitForReady(cfg, { exitCode: null, signalCode: "SIGTERM" }, 1000), /exited/);
 }));
 
+test("the owned desktop gateway starts configured channels even when the launcher environment skips them", async () => {
+  const { mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { startGateway, stopGateway } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const root = await mkdtemp(join(tmpdir(), "branch-gateway-channels-"));
+  const cfg = { dataDir: root, nodePath: process.execPath, gatewayPort: 0 };
+  const prior = process.env.BRANCH_SKIP_CHANNELS;
+  let child;
+  try {
+    await writeFile(join(root, "branch.mjs"), 'import {writeFileSync} from "node:fs"; writeFileSync("channel-env.txt", process.env.BRANCH_SKIP_CHANNELS ?? "<unset>"); setInterval(()=>{},1000);');
+    process.env.BRANCH_SKIP_CHANNELS = "1";
+    child = startGateway(cfg, root, "isolated-fixture-token");
+    const deadline = Date.now() + 3000;
+    let value;
+    while (value === undefined && Date.now() < deadline) {
+      try { value = await readFile(join(root, "channel-env.txt"), "utf8"); } catch {}
+      if (value === undefined) await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    assert.equal(value, "<unset>");
+  } finally {
+    if (child) stopGateway(child);
+    if (prior === undefined) delete process.env.BRANCH_SKIP_CHANNELS;
+    else process.env.BRANCH_SKIP_CHANNELS = prior;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("owned gateway shutdown also reaps its spawned child", async () => {
   const { mkdir, mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");

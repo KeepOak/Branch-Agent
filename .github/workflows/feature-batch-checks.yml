@@ -18,6 +18,8 @@ on:
       - 'scripts/feature-batch-ci-window-tooling/**'
       - 'scripts/feature-batch-ci-named/**'
       - '.github/workflows/feature-batch-checks.yml'
+  schedule:
+    - cron: '23 7 * * *'
   workflow_dispatch:
 
 permissions:
@@ -25,25 +27,32 @@ permissions:
 
 concurrency:
   group: feature-batch-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   feature-batch:
-    name: Named feature tests on ${{ matrix.os }}
+    name: Named feature tests on ${{ matrix.os }} (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 6
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        # PRs: Linux runs the full named suite in two shards; Windows runs only the named tests the PR
+        # touches plus a fixed Windows smoke set (the full Windows suite takes ~14 minutes, over the cap).
+        # Main after merge and nightly: the full suite on all three systems. macOS for PRs touching
+        # OS-specific code is in os-specific-checks.yml.
+        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"os":"ubuntu-latest","shard":"1/2","label":"1/2","scope":"all"},{"os":"ubuntu-latest","shard":"2/2","label":"2/2","scope":"all"},{"os":"windows-latest","shard":"1/1","label":"touched","scope":"touched"}]' || '[{"os":"ubuntu-latest","shard":"1/2","label":"1/2","scope":"all"},{"os":"ubuntu-latest","shard":"2/2","label":"2/2","scope":"all"},{"os":"windows-latest","shard":"1/2","label":"1/2","scope":"all"},{"os":"windows-latest","shard":"2/2","label":"2/2","scope":"all"},{"os":"macos-latest","shard":"1/2","label":"1/2","scope":"all"},{"os":"macos-latest","shard":"2/2","label":"2/2","scope":"all"}]') }}
     env:
       CI: 'true'
+      FEATURE_SHARD: ${{ matrix.shard }}
+      FEATURE_SCOPE: ${{ matrix.scope }}
     steps:
       - name: Check out the feature commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          fetch-depth: 1
+          # Two commits so a PR's merge commit can be diffed against its base (HEAD^1).
+          fetch-depth: ${{ matrix.scope == 'touched' && 2 || 1 }}
           persist-credentials: false
       - name: Set up reviewed Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7

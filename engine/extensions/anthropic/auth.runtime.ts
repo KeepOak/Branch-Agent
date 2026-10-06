@@ -9,8 +9,8 @@ import type {
 import {
   applyAuthProfileConfig,
   type AuthProfileStore,
-  buildTokenProfileId,
   listProfilesForProvider,
+  resolveAnthropicTokenIdentity,
   type BranchConfig as ProviderAuthConfig,
   type ProviderAuthResult,
   suggestOAuthProfileIdForLegacyDefault,
@@ -35,19 +35,6 @@ const ANTHROPIC_SETUP_TOKEN_NOTE_LINES = [
 
 function normalizeAnthropicSetupTokenInput(value: string): string {
   return value.replaceAll(/\s+/g, "");
-}
-
-function resolveAnthropicSetupTokenProfileId(rawProfileId?: unknown): string {
-  if (typeof rawProfileId === "string") {
-    const trimmed = rawProfileId.trim();
-    if (trimmed.length > 0) {
-      if (trimmed.startsWith(`${PROVIDER_ID}:`)) {
-        return trimmed;
-      }
-      return buildTokenProfileId({ provider: PROVIDER_ID, name: trimmed });
-    }
-  }
-  return `${PROVIDER_ID}:default`;
 }
 
 function resolveAnthropicSetupTokenExpiry(rawExpiresIn?: unknown): number | undefined {
@@ -80,7 +67,9 @@ export async function runAnthropicSetupTokenAuth(
     throw new Error(tokenError);
   }
 
-  const profileId = resolveAnthropicSetupTokenProfileId(ctx.opts?.tokenProfileId);
+  const identity = await resolveAnthropicTokenIdentity(token);
+  const profileId = typeof ctx.opts?.tokenProfileId === "string" && ctx.opts.tokenProfileId.trim()
+    ? ctx.opts.tokenProfileId.trim() : identity.profileId;
   const expires = resolveAnthropicSetupTokenExpiry(ctx.opts?.tokenExpiresIn);
 
   return {
@@ -91,6 +80,7 @@ export async function runAnthropicSetupTokenAuth(
           type: "token",
           provider: PROVIDER_ID,
           token,
+          ...(identity.email ? { email: identity.email } : {}),
           ...(expires ? { expires } : {}),
         },
       },
@@ -143,7 +133,9 @@ export async function runAnthropicSetupTokenNonInteractive(
     return null;
   }
 
-  const profileId = resolveAnthropicSetupTokenProfileId(ctx.opts.tokenProfileId);
+  const identity = await resolveAnthropicTokenIdentity(rawToken);
+  const profileId = typeof ctx.opts.tokenProfileId === "string" && ctx.opts.tokenProfileId.trim()
+    ? ctx.opts.tokenProfileId.trim() : identity.profileId;
   const expires = resolveAnthropicSetupTokenExpiry(ctx.opts.tokenExpiresIn);
   await upsertAuthProfileWithLockOrThrow({
     profileId,
@@ -151,6 +143,7 @@ export async function runAnthropicSetupTokenNonInteractive(
       type: "token",
       provider: PROVIDER_ID,
       token: rawToken,
+      ...(identity.email ? { email: identity.email } : {}),
       ...(expires ? { expires } : {}),
     },
     agentDir: ctx.agentDir,
@@ -163,6 +156,7 @@ export async function runAnthropicSetupTokenNonInteractive(
     profileId,
     provider: PROVIDER_ID,
     mode: "token",
+    ...(identity.email ? { email: identity.email } : {}),
   });
   const existingModelConfig =
     withProfile.agents?.defaults?.model && typeof withProfile.agents.defaults.model === "object"

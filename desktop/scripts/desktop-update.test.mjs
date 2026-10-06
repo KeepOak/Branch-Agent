@@ -24,7 +24,7 @@ async function eventually(predicate, ms = 20_000) {
 const exists = file => readFile(file).then(() => true, () => false);
 
 /** A release with engine, window and desktop components served over real loopback HTTP; an installed app beside it. */
-async function fixture(run, { runtime = false } = {}) {
+async function fixture(run, { runtime = false, iconRuntime = false } = {}) {
   const parent = join(tmpdir(), "Codex-session-files"); await mkdir(parent, { recursive: true });
   const root = await mkdtemp(join(parent, "desktop-update-"));
   const engine = join(root, "engine"), window = join(root, "window"), asar = join(root, "new-asar"), app = join(root, "new-app");
@@ -37,7 +37,7 @@ async function fixture(run, { runtime = false } = {}) {
   await writeFile(join(app, "Branch Agent.exe"), "new runtime"); await writeFile(join(app, "resources/app.asar"), "new desktop asar");
   await writeFile(join(cfg.windowDir, "index.html"), "old window"); await writeFile(join(dataDir, "engine-current.txt"), cfg.engineDir + "\n");
   await writeFile(join(installed, "Branch Agent.exe"), "old runtime"); await writeFile(join(installed, "resources/app.asar"), "old desktop asar");
-  const desktop = { app: asar, electronVersion: runtime ? "45.0.0" : ELECTRON, ...(runtime ? { runtime: app } : {}) };
+  const desktop = { app: asar, electronVersion: runtime ? "45.0.0" : ELECTRON, ...(runtime || iconRuntime ? { runtime: app } : {}) };
   const release = await makeComponentRelease({ version: "0.4.5", tag: "v0.4.5", engine, window, desktop, output: join(root, "release") });
   const server = createServer((request, response) => {
     const name = request.url.slice(1);
@@ -62,6 +62,29 @@ test("manifest accepts a targeted desktop component and rejects one without its 
   const old = structuredClone(release); delete old.components.desktop;
   assert.equal(parseComponentRelease(old).components.desktop, undefined);
 }));
+
+test("Keeper icon upgrade follows the first asar update with a same-release whole runtime", { skip: process.platform !== "win32" }, () => fixture(async ({ cfg, request, install, release }) => {
+  await writeFile(join(cfg.dataDir, "desktop-update-version.txt"), `${release.version}\n`);
+  assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, install), true);
+  const journal = await desktopUpdate.readDesktopJournal(cfg);
+  assert.equal(journal.kind, "runtime");
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({ ...journal, phase: "applied" }));
+  assert.equal(await desktopUpdate.confirmDesktopUpdate(cfg), release.version);
+  assert.equal((await readFile(join(cfg.dataDir, "desktop-icon-version.txt"), "utf8")).trim(), "keeper-v1");
+  assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, install), false);
+}, { iconRuntime: true }));
+
+test("fresh Keeper package seeds its icon revision without downloading a runtime", { skip: process.platform !== "win32" }, () => fixture(async ({ cfg, install, release }) => {
+  await writeFile(join(install.resourcesDir, "keeper-icon-revision"), "keeper-v1\n");
+  await writeFile(join(install.resourcesDir, "app.asar"), "new desktop asar");
+  let requests = 0;
+  const request = () => { requests++; throw new Error("Fresh package must not download a component"); };
+  assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, install), false);
+  assert.equal(requests, 0);
+  assert.equal(await desktopUpdate.readDesktopJournal(cfg), undefined);
+  assert.equal((await readFile(join(cfg.dataDir, "desktop-icon-version.txt"), "utf8")).trim(), "keeper-v1");
+  assert.equal((await readFile(join(cfg.dataDir, "desktop-update-version.txt"), "utf8")).trim(), release.version);
+}, { iconRuntime: true }));
 
 test("desktop app.asar stages with the engine and window while the running app stays untouched", () => fixture(async ({ cfg, request, install, release }) => {
   assert.equal(await updater.refreshComponentUpdate(cfg, request, { desktop: install }), true);

@@ -128,7 +128,6 @@ export const windowTests = [
   'src/places/trunk/trunk.test.tsx',
   'src/setup/FirstTrunk.test.tsx',
   'src/setup/setup.test.tsx',
-  'src/shell/PetReaction.test.tsx',
   'src/shell/contact-row-routing.test.tsx',
   'src/shell/contact-topics.test.ts',
   'src/shell/contacts-model.test.ts',
@@ -478,10 +477,10 @@ export const windowStrictFiles = [
 // lists above, so parallel PRs never conflict on them.
 const NAMED_DIR = new URL('./feature-batch-ci-named/', import.meta.url);
 
-export function namedTestFiles(lane) {
+export function namedTestFiles(lane, only) {
   let names = [];
   try {
-    names = readdirSync(NAMED_DIR).filter(name => name.endsWith('.txt')).sort();
+    names = readdirSync(NAMED_DIR).filter(name => name.endsWith('.txt') && (!only || only.includes(name))).sort();
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
@@ -504,12 +503,68 @@ export function namedTests(lane) {
   if (listed.some((file, index) => index > 0 && listed[index - 1] >= file)) {
     throw new Error(`Keep ${lane}Tests sorted: insert new test files in code-point (plain string) order`);
   }
-  const targets = [...listed, ...namedTestFiles(lane)];
-  if (!targets.length || new Set(targets).size !== targets.length
-    || targets.some(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'))) {
-    throw new Error('Explicit unique repository-relative test files are required');
+  // Several PRs may name the same test in their own scripts/feature-batch-ci-named/*.txt; run it once.
+  const targets = [...new Set([...listed, ...namedTestFiles(lane)])];
+  if (!targets.length) throw new Error(`No ${lane} feature test files are listed`);
+  const bad = targets.find(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'));
+  if (bad) {
+    throw new Error(`Feature test "${lane}:${bad}" must be a repository-relative *.test.ts or *.test.tsx file`);
   }
   return targets;
+}
+
+const HARVEST_DIR = new URL('./feature-batch-ci-harvest/', import.meta.url);
+export function harvestTestFiles(lane, only) {
+  if (!['engine', 'window'].includes(lane)) throw new Error('Unknown Harvest test lane');
+  let names = [];
+  try {
+    names = readdirSync(HARVEST_DIR).filter(name => name.endsWith('.txt') && (!only || only.includes(name))).sort();
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  const files = [];
+  for (const name of names) {
+    for (const raw of readFileSync(new URL(name, HARVEST_DIR), 'utf8').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const match = /^(engine|window):(.+)$/.exec(line);
+      if (!match) throw new Error(`scripts/feature-batch-ci-harvest/${name}: expected engine:<file> or window:<file>, got "${line}"`);
+      if (match[1] === lane) files.push(match[2].trim());
+    }
+  }
+  return files;
+}
+
+export function harvestTests(lane) {
+  const targets = [...new Set(harvestTestFiles(lane))].sort();
+  const bad = targets.find(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'));
+  if (bad) throw new Error(`Harvest test "${lane}:${bad}" must be repository-relative *.test.ts or *.test.tsx`);
+  return targets;
+}
+
+export function touchedHarvestTests(lane, changedFiles) {
+  const prefix = `${lane}/`;
+  const changed = new Set(changedFiles.filter(file => file.startsWith(prefix)).map(file => file.slice(prefix.length)));
+  const listed = new Set(harvestTestFiles(lane, changedFiles
+    .filter(file => file.startsWith('scripts/feature-batch-ci-harvest/'))
+    .map(file => file.slice('scripts/feature-batch-ci-harvest/'.length))));
+  return harvestTests(lane).filter(file => changed.has(file) || listed.has(file));
+}
+
+// The pilot added roughly 4.7 minutes to two named shards (about 11 files each).
+// Four files per PR shard stay below ten minutes; eight nightly files retain
+// headroom under fifteen minutes while extending the GitHub matrix growth ceiling.
+export const harvestFilesPerShard = { pr: 4, nightly: 8 };
+export function harvestMatrix(changedFiles) {
+  const matrix = [];
+  for (const lane of ['engine', 'window']) {
+    const files = changedFiles ? touchedHarvestTests(lane, changedFiles) : harvestTests(lane);
+    const total = Math.ceil(files.length / harvestFilesPerShard[changedFiles ? 'pr' : 'nightly']);
+    for (let index = 0; index < total; index++) {
+      matrix.push({ lane, shard: `${index + 1}/${total}` });
+    }
+  }
+  return matrix;
 }
 
 export function capabilityTests() {
@@ -519,4 +574,42 @@ export function capabilityTests() {
     throw new Error('Explicit unique repository-relative capability test files are required');
   }
   return targets;
+}
+
+/** FEATURE_SHARD="<n>/<total>" (the workflow matrix): this job runs every total-th named test from the n-th.
+ *  The named list grows with each PR; one serial job per OS passed the 15-minute cap (733 s of engine tests on
+ *  Windows for #220), so the list is split across jobs instead of raising the cap. */
+// Pull requests run the full named suite on Linux. Windows runs only the named tests whose test file,
+// or whose own scripts/feature-batch-ci-named/*.txt list, the PR touches, plus this fixed Windows smoke
+// set; the full Windows suite runs after merge and nightly (about 14 minutes on Windows, over the cap).
+export const windowsSmokeTests = {
+  engine: [
+    'extensions/codex/src/app-server/windows-shell-guidance.test.ts',
+    'src/process/windows-hidden-launch.test.ts',
+    'src/process/windows-hidden-spawn-sites.test.ts',
+    'src/process/windows-worker-launch.test.ts',
+  ],
+  window: [],
+};
+
+export function touchedTests(lane, changedFiles) {
+  const prefix = `${lane}/`;
+  const changed = new Set(changedFiles.filter(file => file.startsWith(prefix)).map(file => file.slice(prefix.length)));
+  const listedByPr = new Set(namedTestFiles(lane, changedFiles
+    .filter(file => file.startsWith('scripts/feature-batch-ci-named/'))
+    .map(file => file.slice('scripts/feature-batch-ci-named/'.length))));
+  const all = namedTests(lane);
+  return all.filter(file => changed.has(file) || listedByPr.has(file) || windowsSmokeTests[lane].includes(file));
+}
+
+export function shardOf(value = process.env.FEATURE_SHARD) {
+  if (!value) return { index: 0, total: 1 };
+  const match = /^(\d+)\/(\d+)$/.exec(value);
+  const [n, total] = match ? [Number(match[1]), Number(match[2])] : [0, 0];
+  if (!total || n < 1 || n > total) throw new Error(`FEATURE_SHARD must be <n>/<total>, got ${value}`);
+  return { index: n - 1, total };
+}
+
+export function shardTests(tests, shard) {
+  return tests.filter((_, i) => i % shard.total === shard.index);
 }

@@ -32,12 +32,31 @@ type Args = {
   ownTrunk: string;
   history: readonly Block[];
   trunks: readonly { id: string; name: string }[];
+  groupRoom?: { roomId: string; rule?: "lead" | "everyone" | "mentions"; members: readonly { kind: "trunk" | "person" | "a2a"; id: string }[] };
+  memberName?: (kind: "trunk" | "person" | "a2a", id: string) => string;
 };
 
 export function useShellRoom(a: Args): ShellRoom {
   const room = useRoom(a.engine, a.rowKind, a.history);
   const trunkName = useMemo(() => (id: string) => a.trunks.find((t) => t.id === id)?.name || id, [a.trunks]);
-  const thread: ThreadRoom = { isRoom: room.isRoom, selfId: room.selfId, ownAgentId: a.agentId ?? room.ownAgentId, trunkName, whereRuns: room.whereRuns };
+  const thread: ThreadRoom = { isRoom: room.isRoom, selfId: room.selfId, ownAgentId: a.agentId ?? room.ownAgentId, trunkName, whereRuns: room.whereRuns, isOnline: room.isOnline };
+  if (a.groupRoom) {
+    const all = a.groupRoom.members.map((member) => ({ ...member, name: a.memberName?.(member.kind, member.id) ?? member.id }));
+    const names = all.map((member) => member.name).filter((name, index, list) => name && list.indexOf(name) === index);
+    const picks = all.slice(0, 2).map((member) => member.kind === "trunk" ? { kind: "trunk" as const, name: member.name } : { kind: "person" as const, id: member.id, name: member.name });
+    const rule = a.groupRoom.rule === "everyone" ? "always" : a.groupRoom.rule === "mentions" ? "mention" : null;
+    const choose = (next: "mention" | "always") => void a.engine?.request("rooms.rule.set", { roomId: a.groupRoom!.roomId, rule: next === "mention" ? "mentions" : "everyone" }).then(
+      () => notify(ruleToast(next, a.title)),
+      (error: unknown) => notify(error instanceof Error ? error.message : String(error), { tone: "bad" }),
+    );
+    return {
+      thread: { ...thread, isRoom: true }, placeholder: ROOM_PLACEHOLDER,
+      header: { faces: (size) => <RoomFaces picks={picks} size={Math.min(size, 34)} />, line: `${names.join(", ")} and you` },
+      menu: { ruleWords: rule ? RULE_WORDS[rule] : null, rules: () => roomRulesItems({ chatApp: false, rule, choose }) },
+      others: all.filter((member) => member.kind === "trunk" && member.id !== a.agentId).map((member) => member.name),
+      members: [...names, "you"],
+    };
+  }
   if (!room.isRoom) return { thread, header: null, menu: null, others: [], members: [] };
   const picks = roomPicks(a.ownTrunk, room.members, trunkName);
   const choose = (rule: "mention" | "always") =>

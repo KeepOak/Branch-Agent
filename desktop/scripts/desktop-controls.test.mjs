@@ -8,7 +8,7 @@ import test from "node:test";
 
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 if (!dist) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to current strict-compiled source");
-const { createDesktopControls, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, DOWNLOAD_PAGES } =
+const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, DOWNLOAD_PAGES } =
   await import(pathToFileURL(join(dist, "desktop-controls.js")));
 
 async function fixture(run) {
@@ -29,9 +29,18 @@ async function fixture(run) {
   try { await run({ root, deps, calls, state }); } finally { await rm(root, { recursive: true, force: true }); }
 }
 
-test("defaults keep working on close, keep awake off, tray ring off", async () => fixture(async ({ deps }) => {
+test("defaults keep working and auto-apply on, keep awake and tray ring off", async () => fixture(async ({ deps }) => {
   const controls = createDesktopControls(deps);
-  assert.deepEqual(await controls.get(), { keepWorking: true, keepAwake: false, trayUsage: false, startWithWindows: false, branchOnPath: false });
+  assert.deepEqual(await controls.get(), { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: true, agentControl: false, startWithWindows: false, branchOnPath: false });
+}));
+
+test("letting agents use the window is off by default, saved, and read at the next launch", async () => fixture(async ({ deps, calls }) => {
+  const controls = createDesktopControls(deps);
+  assert.equal((await controls.set("agentControl", true)).agentControl, true);
+  assert.deepEqual(calls, []);
+  assert.equal(readSettings(deps.settingsFile).agentControl, true);
+  await controls.set("agentControl", false);
+  assert.equal(readSettings(deps.settingsFile).agentControl, false);
 }));
 
 test("Start with Windows goes to the login item, not the settings file", async () => fixture(async ({ deps, calls, state }) => {
@@ -155,11 +164,11 @@ test("close policy and tray click follow the controls (mocked Electron, no windo
     return request === "electron" ? { Tray, Menu: { buildFromTemplate: v => v } } : originalLoad.call(this, request, ...rest);
   };
   try {
-    const { keepWindowsWindowResident } = require(join(dist, "resident-window.js"));
+    const { keepWindowResident } = require(join(dist, "resident-window.js"));
     const app = new EventEmitter(), win = new EventEmitter();
     Object.assign(win, { hidden: false, hide() { this.hidden = true; }, show() { this.hidden = false; }, focus() {}, isMinimized: () => false, restore() {} });
     let keep = true, clicks = 0;
-    keepWindowsWindowResident(app, win, "icon.ico", { platform: "win32", keepRunning: () => keep, onTrayClick: () => clicks++ });
+    keepWindowResident(app, win, "icon.ico", { platform: "win32", keepRunning: () => keep, onTrayClick: () => clicks++ });
     const close = () => { const e = { prevented: false, preventDefault() { this.prevented = true; } }; win.emit("close", e); return e.prevented; };
     assert.equal(close(), true, "on: closing hides to the tray");
     keep = false;
@@ -168,3 +177,15 @@ test("close policy and tray click follow the controls (mocked Electron, no windo
     assert.equal(clicks, 1);
   } finally { Module._load = originalLoad; }
 });
+
+test("launch refreshes an existing branch command and never installs one", async () => fixture(async ({ deps, calls }) => {
+  let refreshed = 0;
+  deps.cli.refresh = () => { refreshed++; calls.push(["cli-refresh"]); };
+  const controls = createDesktopControls(deps);
+  controls.apply();
+  assert.equal(refreshed, 1);
+  assert.ok(!calls.some(([name]) => name === "cli-install"));
+  deps.cli.refresh = () => { throw new Error("locked"); };
+  assert.doesNotThrow(() => createDesktopControls(deps).apply());
+  controls.dispose();
+}));

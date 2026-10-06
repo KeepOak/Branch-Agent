@@ -542,6 +542,20 @@ async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRunt
   }
 
   gatewayLog.info("loading configuration…");
+  if (!opts.updateCanary && !devMode) {
+    try {
+      const { removeSeededDevAgentAtStartup } = await import("../../gateway/dev-agent-startup.js");
+      await removeSeededDevAgentAtStartup();
+    } catch (error) {
+      gatewayLog.warn(`Could not migrate the seeded dev Trunk: ${String(error)}`);
+    }
+  }
+  // Assign legacy Trunk faces before the startup snapshot is captured, so the
+  // gateway and the published config both see the same one-time migration.
+  if (!opts.updateCanary) {
+    const { assignTrunkCharactersAtStartup } = await import("../../gateway/trunk-character-startup.js");
+    await assignTrunkCharactersAtStartup();
+  }
   const { cfg, lowerPrecedenceEnv, snapshot, startupConfigSnapshotRead } =
     await readGatewayStartupConfigWithShellEnv({
       startupTrace,

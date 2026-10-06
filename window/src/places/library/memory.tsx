@@ -2,7 +2,7 @@
 // the memory list with Forget, then the sections below (memory-more.tsx). Data: MEMORY.md through agents.files.*,
 // memory.search, doctor.memory.*, config.get for the start-of-conversation limit.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useCallback, useState, type FormEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
@@ -39,6 +39,12 @@ export function MemoryTab(props: MemoryProps) {
   const scoped = files?.filter(f => !scope || f.agentId === scope) ?? null;
   const raw = useResource<unknown>(engine, "doctor.memory.status", { ...(scope ? { agentId: scope } : {}), ...(probe ? { probe: true } : {}) });
   const status = { ...raw, data: raw.data === null ? null : statusOf(raw.data) };
+  // A Trunk's memory files or the memory index changed (the engine's agents.changed / memory.changed): show it now.
+  const { reload } = raw;
+  const { reloadFiles } = props;
+  useEffect(() => engine.onEvent(({ event }) => {
+    if (event === "memory.changed" || event === "agents.changed") { reload(); reloadFiles(); }
+  }), [engine, reload, reloadFiles]);
   const check = () => { if (probe) status.reload(); else setProbe(true); };
   const scopeName = trunks.find(t => t.id === scope);
   return <div className="lib-mem">

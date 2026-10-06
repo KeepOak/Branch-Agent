@@ -20,6 +20,8 @@ const { createComponentUpdateController } = await import(pathToFileURL(join(proc
 const { parseComponentRelease } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-manifest.js")));
 const { defaultDataDirectory } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "config.js")));
 const { readToken } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+const { GatewayReadinessTimeoutError } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+const { bootSelectedEngineWithRollback } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "boot-selected-engine.js")));
 
 async function fixture(run, modify = () => {}) {
   const parent = join(tmpdir(), "Codex-session-files", "resume-desktop-updater-20261003");
@@ -203,17 +205,18 @@ async function freePort() {
   const port = probe.address().port; await new Promise(resolve => probe.close(resolve)); return port;
 }
 
-test("actual desktop caller retains running engine until explicit restart and rolls back a failed new build", async () => fixture(async ({ cfg, request }) => {
+test("actual desktop caller retains running engine and checks a failing engine beside it, keeping the running one without restarting the app", async () => fixture(async ({ cfg, request }) => {
   const require = createRequire(import.meta.url); const Module = require("node:module");
   const load = Module._load; const previousFetch = globalThis.fetch;
   const previousData = process.env.BRANCH_DESKTOP_DATA; const previousHidden = process.env.BRANCH_DESKTOP_HIDDEN;
   const desktop = { ...cfg, nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() };
   await mkdir(join(cfg.engineDir, "dist"), { recursive: true });
   await writeFile(join(cfg.engineDir, "dist", "build-info.json"), '{"version":"old"}');
-  await writeFile(join(cfg.engineDir, "branch.mjs"), 'import http from "node:http"; setTimeout(()=>http.createServer((_req,res)=>res.writeHead(200).end()).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1"),1000);');
+  await writeFile(join(cfg.engineDir, "branch.mjs"), 'import http from "node:http"; process.on("message", m => { if(m.type?.startsWith("branch-desktop:")){ process.send({type:"branch-desktop:activity-result",id:m.id,idle:true,activeRuns:0,pendingReplies:0,totalActive:0}); if(m.type==="branch-desktop:stop-if-idle"||m.type==="branch-desktop:drain-stop")setTimeout(()=>process.exit(0),20); }}); setTimeout(()=>http.createServer((_req,res)=>res.writeHead(200).end()).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1"),1000);');
   await writeFile(join(cfg.dataDir, "desktop.json"), JSON.stringify(desktop));
+  let relaunches = 0;
   const app = new EventEmitter(); Object.assign(app, { getVersion: () => "fixture", setPath: () => {}, setAppUserModelId: () => {},
-    requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(), quit: () => app.emit("will-quit") });
+    requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(), relaunch: () => { relaunches++; }, quit: () => app.emit("will-quit") });
   const ipcMain = Object.assign(new EventEmitter(), { handle() {} });
   let servedAt, ownerWindow, reloads = 0; const launchedAt = Date.now();
   class BrowserWindow extends EventEmitter {
@@ -225,7 +228,7 @@ test("actual desktop caller retains running engine until explicit restart and ro
   }
   const electron = { app, BrowserWindow, ipcMain, screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) }, dialog: { showErrorBox: () => assert.fail("Unexpected native caller error") },
     session: { defaultSession: { setPermissionRequestHandler: () => {} } }, shell: { openExternal: () => {} } };
-  process.env.BRANCH_DESKTOP_DATA = cfg.dataDir; process.env.BRANCH_DESKTOP_HIDDEN = "1";
+  process.env.BRANCH_DESKTOP_DATA = cfg.dataDir; process.env.BRANCH_DESKTOP_HIDDEN = "1"; process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = "0";
   Module._load = function(name, ...args) { return name === "electron" ? electron : load.call(this, name, ...args); };
   globalThis.fetch = (url, options) => String(url).startsWith("https://github.com/") ? request(url, options) : previousFetch(url, options);
   delete require.cache[require.resolve(join(process.env.BRANCH_DESKTOP_TEST_DIST, "config.js"))];
@@ -242,17 +245,21 @@ test("actual desktop caller retains running engine until explicit restart and ro
     await new Promise(resolve => setTimeout(resolve, 3200));
     assert.equal(reloads, 0, "component staging must not reload the renderer before owned engine activation");
     assert.equal(ownerWindow.draft, "unfinished component-update draft");
+    const served = await (await previousFetch(`http://127.0.0.1:${desktop.windowPort}/index.html`)).text();
+    assert.equal(served, "old window", "until the swap, the window server keeps the build the running engine started with");
     ownerWindow.webContents.mainFrame = { url: ownerWindow.url };
     ipcMain.emit("branch-desktop:restart-engine", { sender: { ...ownerWindow.webContents }, senderFrame: ownerWindow.webContents.mainFrame });
     assert.doesNotThrow(() => process.kill(oldPid, 0), "foreign restart sender cannot stop the owned child");
     ipcMain.emit("branch-desktop:restart-engine", { sender: ownerWindow.webContents, senderFrame: ownerWindow.webContents.mainFrame });
-    await eventually(async () => {
-      const pointer = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
-      const pid = Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8"));
-      if (pointer !== cfg.engineDir || pid === oldPid) return false;
-      try { const response = await previousFetch(`http://127.0.0.1:${desktop.gatewayPort}/readyz`); await response.body?.cancel(); return response.status === 200; } catch { return false; }
-    });
-    await unchanged(cfg);
+    await eventually(async () => (await readFile(join(cfg.dataDir, "desktop.log"), "utf8")).includes("kept the running engine; nothing was stopped"));
+    assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /candidate check beside the running engine exited/);
+    assert.equal(relaunches, 0, "an update never relaunches the app");
+    assert.equal(reloads, 0, "the retained window build stays loaded");
+    assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), cfg.engineDir, "the failed publication is rolled back");
+    assert.equal(await readFile(join(cfg.windowDir, "index.html"), "utf8"), "old window");
+    assert.match(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"), /"reason":"exit"/);
+    assert.doesNotThrow(() => process.kill(oldPid, 0), "the running engine was never stopped");
+    assert.equal(Number(await readFile(join(cfg.dataDir, "gateway.pid"), "utf8")), oldPid);
   } finally {
     app.emit("will-quit"); Module._load = load; globalThis.fetch = previousFetch;
     if (previousData === undefined) delete process.env.BRANCH_DESKTOP_DATA; else process.env.BRANCH_DESKTOP_DATA = previousData;
@@ -263,6 +270,14 @@ test("actual desktop caller retains running engine until explicit restart and ro
   await writeFile(join(engine, "branch.mjs"), "process.exit(31);\n");
   for (const file of await readdir(output)) await rm(join(output, file));
   Object.assign(release, await makeComponentRelease({ version: "0.4.3", tag: "v0.4.3", engine, window: join(engine, "..", "source-window"), output }));
+}));
+
+test("a staged desktop app alone waits for the next launch and offers no in-place update", async () => fixture(async ({ cfg }) => {
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({ phase: "staged", version: "0.4.5", kind: "asar", staged: join(cfg.dataDir, "x", "app.asar") }));
+  const status = await source.readComponentUpdateStatus(cfg);
+  assert.equal(status.pendingVersion, "0.4.5", "Settings still shows the staged desktop app");
+  assert.equal(status.componentsPendingVersion, null, "auto-apply and the Update click never restart the app for it");
+  assert.equal(status.previousWindowDir, null);
 }));
 
 test("release maker assembles distinct Windows/macOS descriptors sharing only an identical renderer", async () => fixture(async ({ root, engine, window }) => {
@@ -411,7 +426,7 @@ test("cold rollback retains renderer and engine while the failed latest stays on
     await unchanged(cfg);
     assert.equal(await readFile(join(cfg.dataDir, "component-update-version.txt"), "utf8"), "0.4.2\n");
     const rejected = JSON.parse(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"));
-    assert.deepEqual(rejected, { version: release.version, engineSha256: release.components.engine.sha256, windowSha256: release.components.window.sha256 });
+    assert.deepEqual(rejected, { version: release.version, engineSha256: release.components.engine.sha256, windowSha256: release.components.window.sha256, reason: "exit" });
     assert.equal(await source.refreshComponentUpdate(cfg, request), false);
     await new Promise(resolve => setTimeout(resolve, 100));
     await unchanged(cfg);
@@ -450,6 +465,72 @@ test("explicit retry bypasses only the exact failed identity without marking it 
   assert.equal(await source.refreshComponentUpdate(cfg, request), false);
   assert.equal(await source.refreshComponentUpdate(cfg, request, { retryRejected: true }), true);
   assert.equal(await readFile(join(cfg.dataDir, "component-update-version.txt"), "utf8"), "0.4.2\n");
+}));
+
+test("an exited staged engine records exit and is not automatically retried", async () => fixture(async ({ cfg, request }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  let runningEngine;
+  await bootSelectedEngineWithRollback({
+    boot: async () => {
+      const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+      if (current === selected) throw new Error("gateway exited");
+      runningEngine = current;
+    },
+    stopFailedGateway: () => {},
+    recordTimeout: () => source.recordComponentUpdateTimeout(cfg, selected),
+    rejectExited: () => source.rejectFailedComponentUpdate(cfg, selected),
+    rollback: () => source.rollbackComponentUpdate(cfg),
+    waitForPortRelease: async () => {},
+    log: () => {},
+  });
+  assert.equal(runningEngine, cfg.engineDir);
+  const rejected = JSON.parse(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"));
+  assert.equal(rejected.reason, "exit");
+  assert.equal(await source.refreshComponentUpdate(cfg, request), false);
+}));
+
+async function bootTimedOutRelease(cfg) {
+  const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  let stoppedPid;
+  let runningEngine;
+  const restored = await bootSelectedEngineWithRollback({
+    boot: async () => {
+      const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+      if (current === selected) throw new GatewayReadinessTimeoutError();
+      runningEngine = current;
+    },
+    stopFailedGateway: () => { stoppedPid = 12345; },
+    recordTimeout: () => source.recordComponentUpdateTimeout(cfg, selected),
+    rejectExited: () => source.rejectFailedComponentUpdate(cfg, selected),
+    rollback: () => source.rollbackComponentUpdate(cfg),
+    waitForPortRelease: async () => assert.equal(stoppedPid, 12345),
+    log: () => {},
+  });
+  assert.equal(restored, true);
+  assert.equal(stoppedPid, 12345, "timed-out selected gateway was stopped before the prior boot");
+  assert.equal(runningEngine, cfg.engineDir, "previous engine booted after rollback");
+  await unchanged(cfg);
+}
+
+test("a first readiness timeout stops the selected gateway and boots previous components without rejection", async () => fixture(async ({ cfg, request }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  await bootTimedOutRelease(cfg);
+  await assert.rejects(readFile(join(cfg.dataDir, "component-update-rejected.json")), { code: "ENOENT" });
+  const timeout = JSON.parse(await readFile(join(cfg.dataDir, "component-update-timeouts.json"), "utf8"));
+  assert.equal(timeout.attempts, 1);
+  assert.equal(await source.refreshComponentUpdate(cfg, request), true);
+}));
+
+test("a second readiness timeout rejects its release and auto-apply does not restage it", async () => fixture(async ({ cfg, request }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  await bootTimedOutRelease(cfg);
+  assert.equal(await source.refreshComponentUpdate(cfg, request), true);
+  await bootTimedOutRelease(cfg);
+  const rejected = JSON.parse(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"));
+  assert.equal(rejected.reason, "timeout");
+  assert.equal(rejected.timeoutAttempts, 2);
+  assert.equal(await source.refreshComponentUpdate(cfg, request), false);
 }));
 
 test("prepared interruption and unrelated engines do not reject a release", async () => fixture(async ({ cfg, request }) => {

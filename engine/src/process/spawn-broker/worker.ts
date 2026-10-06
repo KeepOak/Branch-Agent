@@ -5,6 +5,7 @@ import { isRecord } from "@branch/normalization-core/record-coerce";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { killProcessTree } from "../kill-tree.js";
 import { spawnWithInheritedOomScore } from "../linux-oom-score.js";
+import { hiddenWindowsOptions } from "../windows-hidden-options.js";
 import { GRACEFUL_CANCEL_TIMEOUT_MS } from "../supervisor/cancellation-policy.js";
 import { hasLiveOwnedProcessGroupMembers } from "../supervisor/service-child-group-ownership.js";
 import { serializeExecaError } from "./execa-protocol.js";
@@ -206,7 +207,7 @@ async function launch(
       const child =
         execa?.child ??
         (message.type !== "spawn-execa"
-          ? spawnWithInheritedOomScore(message.argv[0]!, message.argv.slice(1), message.options)
+          ? spawnWithInheritedOomScore(message.argv[0]!, message.argv.slice(1), hiddenWindowsOptions(message.options))
           : undefined);
       spawnedChild = child;
       if (!child) {

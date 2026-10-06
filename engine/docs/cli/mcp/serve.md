@@ -7,8 +7,9 @@ read_when:
   - Debugging bridge events, Claude notifications, or missing conversations
 ---
 
-This page covers the `branch mcp serve` path: Branch Agent acting as an MCP
-server over stdio, its tools, its event model, and its limits.
+This page covers Graft, `branch graft`: Branch Agent acting as an MCP server
+over stdio, its tools, its event model, and its limits. `branch graft` is the
+same command as `branch mcp serve`, the upstream name, which keeps working.
 
 ## Branch Agent as an MCP server
 
@@ -189,17 +190,17 @@ terminal" is on. It always runs the current engine.
 
 ```bash
 # Claude Code (all projects)
-claude mcp add --scope user branch -- branch mcp serve
+claude mcp add --scope user branch -- branch graft
 
 # Codex
-codex mcp add branch -- branch mcp serve
+codex mcp add branch -- branch graft
 
 # Gemini CLI
-gemini mcp add branch branch mcp serve
+gemini mcp add branch branch graft
 ```
 
 If the `branch` command isn't installed, run the engine directly:
-`node "<Branch data>/updates/<release>/engine/branch.mjs" mcp serve`. The path
+`node "<Branch data>/updates/<release>/engine/branch.mjs" graft`. The path
 changes with each release, so prefer the `branch` command.
 
 For any other client, use the stdio server `branch` with the arguments
@@ -224,6 +225,97 @@ A typical round trip: `trunks_list`, then `trunk_send` with
 `agent_id: "builder-oak"`, then `run_wait` with the returned `run_id` and
 `thread_key`.
 
+#### Hub tools: shared documents, memory, board and activity
+
+Everyone improving Branch (several Claude Code accounts, Codex, Hermes and the
+builder Trunks) works through the same Branch. These tools keep coordination,
+memory and documents inside it instead of in private repos or markdown boards.
+
+A **project** is a Trunk's workspace (Branch lists each one as a project). Pass
+`project` with the Trunk's id; without it the tools use the `branch-project` Trunk ("Branch project"); a
+Branch without one asks for `project` (a Trunk's own Library is never used as a shared project by accident).
+
+| Tool                   | What it does                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `docs_list`            | The project's Library documents with size, last change and how many versions each has.                               |
+| `docs_read`            | A document's text, its version, who wrote that version and when, and its hash. `version` reads an older one.          |
+| `docs_write`           | Creates or updates a markdown document (up to 240 KiB; split bigger ones into parts). Each write is a new version.     |
+| `docs_search`          | Lines in the project's documents that contain every word of `query`.                                                  |
+| `project_instructions` | Reads the project's instructions (its Trunk's AGENTS.md), or replaces them when `text` is given.                      |
+| `memory_search`        | Searches the project Trunk's memory.                                                                                |
+| `memory_write`         | Adds a dated line, signed with the agent's name, to the project Trunk's MEMORY.md.                                   |
+| `board_list`           | Board cards with status, owner, linked PRs and recent comments (`board` defaults to `branch`).                       |
+| `board_create`         | Creates a card. With `key` (for example `P12`) the same key never makes a second card. `pr_urls` links PRs.           |
+| `board_claim`          | Claims a card for this agent and returns the claim token.                                                           |
+| `board_update`         | Changes status, title, notes or labels, or links a PR with `pr_url`.                                                 |
+| `board_comment`        | Comments on a card; the comment starts with the agent's name.                                                       |
+| `activity_feed`        | "X is working on Y" lines for every working Trunk (with run ids), every connected agent, then recent work.            |
+
+How they are stored:
+
+- Documents live in the project Trunk's Library (`Documents/<name>`), so the
+  owner reads them in Library. The first line of each document is a hidden
+  comment saying which version it is, who wrote it and when. Before an update
+  the previous text is kept as the hidden document `.<name>.v<N>.md`; Library
+  doesn't show hidden documents, `docs_read` with `version` does. Pass the
+  `hash` from `docs_read` as `expected_hash` so a write never overwrites a change
+  someone made after you read it.
+- Memory is the project Trunk's MEMORY.md, so its Trunk and memory search see it.
+- Cards are Canopy cards. Canopy is a plugin that is off until it's turned on
+  (`plugins.entries.canopy.enabled`); the board tools say so when it's off.
+
+A builder's loop: `activity_feed` to see who is on what, `board_list` and
+`board_claim` a card, `docs_read` the spec, work, `board_update` with the PR
+link, `board_comment` the result, `memory_write` anything the next agent must
+know.
+
+#### See and use the Branch window (self-testing)
+
+The `ui_*` tools let an agent test the Branch window the way the owner uses it.
+If an agent can't find or use a control, the window needs fixing.
+
+| Tool                                                   | What it does                                                                 |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `ui_open`, `ui_close`                                  | Open or close the window the tools drive. `target: "test"` is the default.     |
+| `ui_snapshot`                                          | The accessibility tree, with a ref per control. Lists controls that have no name. |
+| `ui_screenshot`                                        | A PNG of the window, or of one control.                                       |
+| `ui_click`, `ui_type`, `ui_press`, `ui_hover`, `ui_scroll` | Act on a control by its ref or its accessible name.                       |
+| `ui_wait_for`                                          | Wait for text to appear or go away.                                           |
+| `ui_navigate`                                          | Click through a path such as `Settings › Usage`, or `reload`.                 |
+
+By default the tools start a separate **test Branch** the first time one is
+used. It runs a scratch engine with its own home, profile and state, so it never
+touches your accounts or conversations. It listens on a free loopback port and
+opens the window in Edge or Chrome without showing it. Set
+`BRANCH_UI_HEADED=1` to watch it. `ui_open` with `first_run: true` starts on
+first-run setup instead. `ui_close` stops it.
+
+Driving your own window needs two switches:
+
+- Settings › Branch itself › "Let agents use this window" (takes effect when
+  Branch restarts);
+- Settings › Grafts › the agent › "May use your Branch window".
+
+While an agent drives a window, the window shows "An agent is controlling this
+window" with a Stop button. After Stop, every `ui_*` call is refused.
+
+A builder's self-test loop: `ui_open`, `ui_navigate` to the page you changed,
+`ui_snapshot` (fix anything listed as having no name), `ui_click` or
+`ui_type` through the change, `ui_screenshot` for the PR, then `ui_close`.
+
+#### Settings › Grafts (agents grafted onto Branch)
+
+Every connected agent shows here with its face, the computer and project it
+runs from, what it is doing, and when it was last seen. Each Claude Code,
+Codex or Hermes session is its own agent, so sixteen sessions are sixteen
+rows.
+
+- "Let other agents work with Branch" turns every agent away when it's off.
+- For each agent, you choose which Trunks it may message, whether it may use
+  your window, and whether to Disconnect it. A disconnected agent stops working
+  with Branch within a minute.
+- "Graft an agent" has the lines above, ready to copy.
+
 #### The agent appears in Branch as itself
 
 When the MCP client connects, it names itself in the MCP handshake (for
@@ -239,6 +331,51 @@ it connected in the last few minutes.
   the name in lowercase with dashes, such as `a2a:claude-code`.
 - **Group chats:** `room_join` adds the agent as a member. It can only post in
   group chats it belongs to. The lead Trunk is told who wrote each message.
+
+#### Another Branch grafted in (Branch-to-Branch)
+
+A second Branch, on this computer or another one, can graft into this one as a
+scoped device. It uses the same setup-code pairing a phone uses.
+
+1. On the host Branch, `branch graft invite` prints a one-time setup code. While
+   the gateway is bound to loopback (the default), the code carries
+   `ws://127.0.0.1:<port>`, so only a Branch on the same computer can use it.
+   When the owner opens the gateway to the network (`gateway.bind: lan`), the
+   code carries the LAN address instead.
+2. With network access on and Bonjour discovery turned on
+   (`plugins.entries.bonjour.enabled`; on by default only on macOS), the other
+   Branch finds the host with `branch gateway discover`. On Windows it browses
+   with its own mDNS query, since Windows has no `dns-sd` or `avahi-browse`.
+3. On the joining Branch, run `branch graft join <setup-code> --name "Studio Laptop"`.
+   It connects with the joining Branch's own device identity and asks for
+   `operator.read` and `operator.write` only. It never asks for admin, approvals
+   or pairing. Plain `ws://` to a LAN address needs a TLS gateway (`wss://`), or
+   `BRANCH_ALLOW_INSECURE_PRIVATE_WS=1` on the joining Branch for a trusted
+   private network.
+4. The host approves it like any device. A Branch on the same computer is
+   approved silently, unless `gateway.nodes.pairing.autoApproveLocal` is
+   `false`. Otherwise run `branch devices approve <requestId>`; `join` prints
+   the command and waits until it's approved.
+5. From then on the joining Branch's own gateway keeps the link. It reconnects
+   by itself and says hello as the Branch and its Trunks every minute, so they
+   stay online on the host. It also starts the link whenever the gateway starts
+   and a host is saved.
+6. Settings › Grafts on the host shows the joining Branch as one row with a
+   Branch badge, with its Trunks nested under it. Each Trunk is also a contact
+   (`a2a:branch-studio-laptop--<trunk>`).
+7. On the joining Branch, `branch graft --host <url>` is Graft working with the
+   host as that device. Use it to register Graft with an agent. Messages it
+   sends to the host's Trunks are attributed to the joining Branch.
+
+The host binds everything to the device:
+- A grafted Branch can only say hello as itself and its own Trunks.
+- It can only send messages as one of those.
+- Another device or client can't take its rows.
+
+Disconnect on the Branch row removes the device's pairing through
+`device.pair.remove` and disconnects its Trunks too. The joining Branch's link
+stops and forgets the host. To bring it back, give it a new setup code: after
+the owner approves the new pairing, its rows come back by themselves.
 
 ### Event model
 
@@ -375,6 +512,9 @@ For broader testing context, see [Testing](/help/testing).
 ### Troubleshooting
 
 <AccordionGroup>
+  <Accordion title="The agent says the branch server is not connected">
+    Starting the server can take several seconds on a busy PC (the full CLI path loads the whole engine), and Claude Code gives a server 30 seconds by default. Start Claude Code with a longer startup time, for example `MCP_TIMEOUT=90000 claude`, or run `/mcp` to reconnect.
+  </Accordion>
   <Accordion title="No conversations returned">
     Usually means the Gateway session is not already routable. Confirm that the underlying session has stored channel/provider, recipient, and optional account/thread route metadata.
   </Accordion>

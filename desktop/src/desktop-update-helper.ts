@@ -47,9 +47,24 @@ async function move(source: string, target: string, attempts = 120): Promise<voi
 function launch(plan: HelperPlan): number | undefined {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
+  // This relaunches the Branch GUI, whose first ShowWindow must remain visible.
   const child = spawn(plan.relaunch.command, plan.relaunch.args, { detached: true, stdio: "ignore", windowsHide: false, env });
   child.unref();
   return child.pid;
+}
+
+/** Windows caches executable icons by shortcut. Re-save only links that already target this app. */
+function refreshWindowsIcon(plan: HelperPlan, log: (line: string) => void): void {
+  if (process.platform !== "win32" || process.env.BRANCH_DESKTOP_TEST_DIST) return;
+  const exe = plan.relaunch.command;
+  const quoted = exe.replaceAll("'", "''");
+  const script = `$exe='${quoted}'; $shell=New-Object -ComObject WScript.Shell; foreach($dir in @([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'))) { if(!$dir) { continue }; $path=Join-Path $dir 'Branch Agent.lnk'; if(!(Test-Path -LiteralPath $path)) { continue }; $link=$shell.CreateShortcut($path); if($link.TargetPath -ieq $exe) { $link.IconLocation="$exe,0"; $link.Save() } }`;
+  const errors: string[] = [];
+  try { execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { windowsHide: true, stdio: "ignore", timeout: 15_000 }); }
+  catch (error) { errors.push(`shortcuts: ${String(error)}`); }
+  try { execFileSync("ie4uinit.exe", ["-show"], { windowsHide: true, stdio: "ignore", timeout: 15_000 }); }
+  catch (error) { errors.push(`cache: ${String(error)}`); }
+  if (errors.length) log(`desktop icon refresh failed (${errors.join("; ")})`);
 }
 
 /** Stops the relaunched app and its own child processes, by its PID only. */
@@ -113,7 +128,10 @@ export async function runHelper(plan: HelperPlan): Promise<"applied" | "kept" | 
   log(`desktop update ${journal.version}: ${journal.kind} swapped in; relaunching`);
   const pid = launch(plan);
   for (const end = Date.now() + plan.confirmTimeoutMs; Date.now() < end; await sleep(250)) {
-    if (!existsSync(plan.journal)) { log(`desktop update ${journal.version}: confirmed by the new app`); return "applied"; }
+    if (!existsSync(plan.journal)) {
+      if (journal.kind === "runtime") refreshWindowsIcon(plan, log);
+      log(`desktop update ${journal.version}: confirmed by the new app`); return "applied";
+    }
   }
   log(`desktop update ${journal.version}: the new app did not confirm its start; restoring the previous copy`);
   await rollback(plan, journal, previous, pid);

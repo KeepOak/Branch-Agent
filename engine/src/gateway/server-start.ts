@@ -9,6 +9,7 @@ import { createGatewayHttpTransport } from "./server-runtime-state.js";
 import { rethrowGatewayStartupError, runGatewayCloseSteps } from "./server-shutdown.js";
 import { finishGatewayStartup } from "./server-startup-finish.js";
 import { beginMacOSSystemCaWarmupOnce } from "./system-ca-warmup.js";
+import { assignTrunkCharactersAtStartup } from "./trunk-character-startup.js";
 
 const { log, logTailscale, logChannels, logHealth, logCron, logReload, logHooks, logWsControl } =
   gatewayKernelLogs;
@@ -29,6 +30,7 @@ async function startGatewayServerWithSdkHost(
   opts: GatewayServerOptions,
   sdkResourceHost: LegacyPluginSdkResourceHost,
 ): Promise<GatewayServer> {
+  if (!opts.startupConfigSnapshotRead && !opts.updateCanary) await assignTrunkCharactersAtStartup();
   const { promise: postReadyWorkBarrier, resolve: releasePostReadyWork } = createDeferredCore();
   const gatewayKernel = await createGatewayKernel(port, opts, {
     deferEarlyRuntime: true,

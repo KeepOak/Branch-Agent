@@ -286,6 +286,12 @@
       "to": "beetle",
       "notIn": "^(?!engine/ui/src/(?:components/trellis-pet|styles/trellis-pet|e2e/trellis-pet))",
       "key": "crab"
+    },
+    {
+      "why": "the MCP server people connect coding agents to is called Graft (owner, 2026-10-05): upstream's `mcp serve` description becomes Graft's, and `branch graft` is its primary name (Branch code in engine/src/cli/mcp-cli.ts registerGraftCli)",
+      "re": "Expose (?:OpenClaw|Branch Agent) channels over MCP stdio",
+      "to": "Graft: work with Branch (Trunks, group chats, the window and channels over MCP stdio)",
+      "key": "channels over MCP stdio"
     }
   ],
   "proposed": {

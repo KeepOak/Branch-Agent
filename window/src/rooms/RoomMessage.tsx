@@ -9,11 +9,12 @@ import type { Sender } from "./sender";
 import "./rooms.css";
 
 /** A person's or outside agent's round initial, on a steady colour from their id. */
-export function RoomAvatar({ id, name, size, src }: { id: string; name: string; size: number; src?: string }) {
+export function RoomAvatar({ id, name, size, src, online }: { id: string; name: string; size: number; src?: string; online?: boolean }) {
   const style = { ["--c" as string]: personColour(id), width: size, height: size, fontSize: Math.round(size * 0.38) };
   return (
     <span className="rm-av" style={style} aria-hidden="true">
       {src ? <img src={src} alt="" /> : initials(name)}
+      {online ? <i className="rm-st rm-st-online" /> : null}
     </span>
   );
 }
@@ -41,16 +42,17 @@ type Props = {
   text: string;
   attachments?: Attachment[];
   where?: string | null;
+  online?: boolean;
   entryId?: string;
   children?: ReactNode;
 };
 
-export function RoomMessage({ sender, text, attachments, where = null, entryId, children }: Props) {
+export function RoomMessage({ sender, text, attachments, where = null, online = false, entryId, children }: Props) {
   const agent = sender.kind === "agent";
   return (
     <div className={agent ? "msg rm-msg rm-ext" : "msg rm-msg"} data-entry={entryId}>
       {children}
-      <RoomAvatar id={sender.id} name={sender.name} size={32} src={sender.kind === "person" ? sender.avatarUrl : undefined} />
+      <RoomAvatar id={sender.id} name={sender.name} size={32} src={sender.kind === "person" ? sender.avatarUrl : undefined} online={agent && online} />
       <div className="rm-bubble" data-testid="message" data-role={agent ? "agent" : "person"}>
         <b>
           {sender.name}

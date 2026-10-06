@@ -10,6 +10,7 @@ import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Num, Page, Pick, Sec, Seg, Status, Switch, Val, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
+import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { CallLine, CodeRow, Kv, bytes, lvOf, rec, span, str, useCall, useLive, when, type RecordValue } from "./common";
 import { Icon } from "../../../shell/icons";
 import { DesktopCtl } from "../desktop-ctl";
@@ -71,6 +72,7 @@ export const ROWS: RowEntry[] = [
   ["Set up the Gateway again", "", 0],
   ...rows("What Branch may change about itself", 0, ["Its own settings", "Loosening what it may do", "The gateway’s timings", "Restarting its own engine", "Updating itself", "Its own program and your saved work", "Work on its own code in a separate copy"]),
   ["Type branch in any terminal", "", 1],
+  ["Let agents use this window", "", 1],
   ...rows("Learning", 0, LEARNING.map(([t]) => t)), ...rows("Learning", 1, [...LEARNING_MORE.map(([t]) => t), "What it adopts", "Learn overnight on"]),
   ...rows("Working on its own code", 1, ["Pull requests", "Reaching the app", "Build a missing setting when you ask", "Ask for a change"]),
   ["Export a copy without secrets", "A copy of your setup", 0],
@@ -92,7 +94,7 @@ export function SelfPage(props: SettingsPageProps) {
     <Page title={props.title} lede={LEDE}>
       <Running {...ctx} />
       <MayChange {...ctx} />
-      {lv >= 1 ? <Sec title=""><DesktopCtl title="Type branch in any terminal" sub="Adds the branch command, so the terminal view and scripts work anywhere." name="branchOnPath" /></Sec> : null}
+      {lv >= 1 ? <Sec title=""><DesktopCtl title="Type branch in any terminal" sub="Adds the branch command, so the terminal view and scripts work anywhere." name="branchOnPath" /><DesktopCtl title="Let agents use this window" sub="Grafted coding agents (Settings › Grafts) may see and click this window. A bar with Stop shows while one does. Takes effect the next time Branch starts." name="agentControl" /></Sec> : null}
       <NeverDies />
       <Changes {...ctx} />
       <Learning lv={lv} />
@@ -116,13 +118,13 @@ function OffSwitches({ items }: { items: Off[] }) {
 
 /** The running status and its actions. Reload is this window's own reload; nothing running stops. */
 function Running({ engine, lv }: Ctx) {
+  const version = useBranchVersion(engine.gatewayUrl);
   const health = useLive<RecordValue>(engine, "health", { probe: false }, ["health"]);
   const sys = rec(useLive<RecordValue>(engine, "system.info", {}, []).data);
-  const status = rec(useLive<RecordValue>(engine, "status", {}, []).data);
   const restart = useCall();
   const [check, setCheck] = useState<"" | "fix" | "only">("");
   const up = span(sys.uptimeMs);
-  const facts = lv >= 2 ? [str(status.runtimeVersion) ? `Engine ${str(status.runtimeVersion)}` : "", sys.pid ? `process ${str(sys.pid)}` : "", rec(sys.processMemory).rssBytes ? bytes(rec(sys.processMemory).rssBytes) : ""].filter(Boolean) : [];
+  const facts = lv >= 2 ? [version ? `Branch ${versionParts(version).detail}` : "", sys.pid ? `process ${str(sys.pid)}` : "", rec(sys.processMemory).rssBytes ? bytes(rec(sys.processMemory).rssBytes) : ""].filter(Boolean) : [];
   return (
     <>
       {health.error ? <Status tone="bad" title="The engine isn’t answering">{health.error}</Status>

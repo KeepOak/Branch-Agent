@@ -41,7 +41,7 @@ export const ROWS: RowEntry[] = [
   { page: "computer", title: "Keep this computer awake", sec: "Computers they may use", lv: 0 }, { page: "computer", title: "Which Trunk uses which", lv: 0 },
 ];
 
-type Req = { id: string; kind: "device" | "node"; name: string; plat: string; access: string[]; more: boolean; ts: number; deviceId: string; ip: string; version: string; engine: string };
+type Req = { id: string; kind: "device" | "node"; name: string; plat: string; access: string[]; more: boolean; ts: number; deviceId: string; ip: string; version: string };
 
 function accessOf(words: unknown): string[] {
   return [...new Set((Array.isArray(words) ? words : []).map((w) => ACCESS[String(w)] ?? "").filter(Boolean))];
@@ -55,12 +55,12 @@ function requests(devices: RecordValue, nodes: RecordValue): Req[] {
   const fromDevices = list(devices.pending).map((r): Req => ({
     id: str(r.requestId), kind: "device", name: str(r.displayName) || str(r.clientId) || "A device", plat: osOf(r.platform),
     access: accessOf(r.scopes), more: pairedDevices.has(str(r.deviceId)) || r.isRepair === true, ts: Number(r.ts) || 0,
-    deviceId: str(r.deviceId), ip: str(r.remoteIp), version: "", engine: "",
+    deviceId: str(r.deviceId), ip: str(r.remoteIp), version: "",
   }));
   const fromNodes = list(nodes.pending).map((r): Req => ({
     id: str(r.requestId), kind: "node", name: str(r.displayName) || "A computer", plat: osOf(r.platform),
     access: accessOf(r.commands), more: pairedNodes.has(str(r.nodeId)), ts: Number(r.ts) || 0,
-    deviceId: str(r.nodeId), ip: str(r.remoteIp), version: str(r.uiVersion) || str(r.version), engine: str(r.coreVersion),
+    deviceId: str(r.nodeId), ip: str(r.remoteIp), version: str(r.uiVersion) || str(r.version),
   }));
   return [...fromDevices, ...fromNodes].filter((r) => r.id).sort((a, b) => b.ts - a.ts);
 }
@@ -126,7 +126,7 @@ function RequestRow({ r, lv, busy, onAllow, onRefuse }: { r: Req; lv: number; bu
           {r.access.length ? <> · {r.access.map((a, i) => <span key={a} className={RISKY.has(a) ? "s2-warn" : undefined}>{i ? ", " : ""}{a}</span>)}</> : null}
         </small>
         {r.more ? <small className="s2-note">Asks for more access than before</small> : null}
-        {lv >= 2 ? <details className="s2-det"><summary>Details</summary><Kv rows={[["Device ID", r.deviceId], ["Address it came from", r.ip], ["App", r.version], ["Engine", r.engine]]} /></details> : null}
+        {lv >= 2 ? <details className="s2-det"><summary>Details</summary><Kv rows={[["Device ID", r.deviceId], ["Address it came from", r.ip], ["App", r.version]]} /></details> : null}
       </span>
       <Btn sm ghost disabled={busy} onClick={onRefuse}>Don’t allow</Btn>
       <Btn sm pri disabled={busy || !ready} title={ready ? undefined : "Allow is ready in a moment"} onClick={onAllow}>Allow</Btn>
@@ -147,7 +147,8 @@ function usersOf(node: Node, agents: RecordValue, cfgAgents: RecordValue[]): str
 function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: number; nodes: Res; agents: RecordValue }) {
   const status = useLive<RecordValue>(engine, "computer.status", {}, []);
   const config = useConfig(engine);
-  const cfgAgents = list(config.get("agents.list"));
+  // Each Trunk's own entry, keyed by id in agents.entries.
+  const cfgAgents = Object.entries(rec(config.get("agents.entries"))).map(([id, entry]) => ({ ...rec(entry), id }));
   const [find, setFind] = useState({ q: "", sort: "Online first", show: "All" });
   const paired = list(rec(nodes.data).nodes).filter((n) => n.approvalState !== "pending-approval" && n.approvalState !== "unapproved");
   const all = lv >= 1 ? arrange(paired, find) : paired;
@@ -177,7 +178,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
 /** In the cloud: KeepOak's own card (greyed until keepoak.com has a sign-in) and a cloud computer from a profile the
  *  engine has (environments.list, environments.create). */
 function InTheCloud({ engine }: Pick<SettingsPageProps, "engine">) {
-  const envs = useLive<RecordValue>(engine, "environments.list", {}, ["node", "environments", "worker"]);
+  const envs = useLive<RecordValue>(engine, "environments.list", {}, ["node", "environments"]);
   const [open, setOpen] = useState(false);
   const profiles = list(rec(envs.data).profiles);
   return (
@@ -354,29 +355,22 @@ function RemoveDialog({ engine, node, onClose }: Pick<SettingsPageProps, "engine
   );
 }
 
-/** Which Trunk uses which: a Trunk pinned to a computer runs its commands there (agents.list[].tools.exec.node). */
+/** Which Trunk uses which: a Trunk pinned to a computer runs its commands there (agents.entries.<id>.tools.exec.node). */
 function WhichTrunk({ engine, nodes, agents, defaultId }: SettingsPageProps & { nodes: Node[]; agents: RecordValue[]; defaultId: unknown }) {
   const config = useConfig(engine);
-  const entries = list(config.get("agents.list"));
+  const entries = rec(config.get("agents.entries"));
   const usable = nodes.filter((n) => n.approvalState !== "pending-approval" && n.approvalState !== "unapproved");
   if (!agents.length) return null;
   const main = str(defaultId);
   const ordered = [...agents.filter((a) => str(a.id) !== main), ...agents.filter((a) => str(a.id) === main)];
-  const pin = (agentId: string, nodeId: string | null) => {
-    const next = entries.map((a) => {
-      if (str(a.id) !== agentId) return a;
-      const tools = rec(a.tools); const exec = { ...rec(tools.exec) };
-      if (nodeId) exec.node = nodeId; else delete exec.node;
-      return { ...a, tools: { ...tools, exec } };
-    });
-    void config.set("agents.list", next);
-  };
+  // One Trunk's own entry only (a hot-applied, single-Trunk change; null puts the default back).
+  const pin = (agentId: string, nodeId: string | null) => void config.set(`agents.entries.${agentId}.tools.exec.node`, nodeId);
   return (
     <Sec title="Which Trunk uses which" hint="A Trunk can use several computers side by side.">
       <Plist>
         {ordered.map((a) => {
           const id = str(a.id); const name = str(rec(a.identity).name) || str(a.name) || id;
-          const entry = entries.find((e) => str(e.id) === id);
+          const entry = id in entries ? rec(entries[id]) : undefined;
           const pinned = str(rec(rec(entry?.tools).exec).node);
           return (
             <div key={id} className="prow s2-percomp" data-row={name}>

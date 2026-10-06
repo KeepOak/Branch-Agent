@@ -11,10 +11,12 @@ export type ComponentUpdates = {
   check(): Promise<ComponentUpdateStatus>;
   stage(): Promise<ComponentUpdateStatus>;
 };
-type Desktop = { gatewayUrl?: string; componentUpdates?: ComponentUpdates; unavailableReason?: string };
+type Desktop = { gatewayUrl?: string; componentUpdates?: ComponentUpdates; unavailableReason?: string;
+  onAutoApplyProbe?: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }>) => () => void };
 /** An older Branch Agent app has no Check now bridge, but it still checks every hour and stages updates itself. */
 export const MANUAL_UPDATE_UNSUPPORTED = "Checking by hand needs a newer Branch Agent app.";
-export const DESKTOP_CHECKS_HOURLY = "Branch checks for updates every hour and lets you know when one is ready to restart into.";
+export const DESKTOP_CHECKS_HOURLY = "Branch checks for updates every 10 minutes and lets you know when one is ready to apply.";
+export const installOnComputer = (name: string) => `Ready to install on ${name || "the computer running Branch"}: open Branch there to install it.`;
 const TARGET_UNVERIFIED = "Branch is connected to a different computer’s engine. Reconnect to this computer to check for updates.";
 export function componentDesktop(gatewayUrl?: string): Desktop | undefined {
   const desktop = (window as unknown as { branchDesktop?: Desktop }).branchDesktop;

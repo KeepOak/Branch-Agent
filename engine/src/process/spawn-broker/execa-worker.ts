@@ -3,6 +3,7 @@ import { Socket } from "node:net";
 import type { Transform } from "node:stream";
 import { execa } from "execa";
 import { setProcessTimeout } from "../process-deadline.js";
+import { hiddenWindowsOptions } from "../windows-hidden-options.js";
 import { createExecaOutput } from "./execa-output.js";
 import {
   serializeExecaError,
@@ -48,7 +49,7 @@ export async function startBrokerExeca(
     }
     assertCurrent();
     const { encoding, executionDeadlineMs, ...processOptions } = options;
-    const spawnOptions = {
+    const spawnOptions = hiddenWindowsOptions({
       ...processOptions,
       ...(outputs.has(1)
         ? { stdout: { transform: outputs.get(1)!.transform, objectMode: false as const } }
@@ -57,7 +58,7 @@ export async function startBrokerExeca(
         ? { stderr: { transform: outputs.get(2)!.transform, objectMode: false as const } }
         : {}),
       cancelSignal: controller.signal,
-    };
+    });
     // Execa separates its text and binary option contracts at the encoding discriminant.
     const start = () =>
       encoding === undefined || encoding === "utf8" || encoding === "utf16le"

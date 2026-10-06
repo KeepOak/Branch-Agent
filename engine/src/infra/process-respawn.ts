@@ -126,7 +126,9 @@ export function respawnGatewayProcessForUpdate(
     ];
     const child = spawn(process.execPath, args, {
       env: opts.env ? { ...process.env, ...opts.env } : process.env,
-      detached: true,
+      // A detached win32 child gets no console, so its own children would each open one;
+      // win32 children already outlive their parent, so share the hidden console instead.
+      ...(process.platform === "win32" ? { windowsHide: true } : { detached: true }),
       stdio: "inherit",
     });
     // Register before unref: late detached-spawn failures must not crash the parent.

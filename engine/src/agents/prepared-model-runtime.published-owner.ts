@@ -71,7 +71,7 @@ export function retainPublishedModelRuntimeOwner(
 
 type PublishedModelRuntimeContext = {
   captureLifetime(): () => void;
-  getPendingReplacement(): PreparedModelRuntimeReplacement | undefined;
+  getPendingReplacement(agentId?: string): PreparedModelRuntimeReplacement | undefined;
   owners: Map<string, PreparedModelRuntimeOwner>;
 };
 
@@ -154,7 +154,7 @@ async function projectPublishedModelRuntimeOwner<T>(
   project: (owner: PreparedModelRuntimeOwner, snapshot: PreparedModelRuntimeSnapshot) => T,
 ): Promise<T> {
   const assertLifetime = context.captureLifetime();
-  const replacement = context.getPendingReplacement();
+  const replacement = context.getPendingReplacement(rawInput.agentId);
   if (replacement) {
     // Individual owners may finish before a multi-owner publication commits. The lifecycle gate
     // makes the generation visible atomically only after every owner and auth mutation is ready.

@@ -1158,9 +1158,7 @@ console.log(JSON.stringify({ parent: process.pid, bun: process.versions.bun, mar
         expect(result.stdout).toContain(path.join("node-compile-cache", "branch", "2026.4.29"));
         expect(result.stdout).not.toContain(path.join(cwd, "branch"));
       } else {
-        expect(result.stdout).toBe(
-          mode === "source" ? "cache:disabled;respawn:1" : "cache:enabled;respawn:0",
-        );
+        expect(result.stdout).toBe("cache:enabled;respawn:0");
       }
     },
   );

@@ -29,14 +29,16 @@ export class FacePlayer {
   onError: (error: Error) => void = () => undefined;
 
   private readonly canvas: HTMLCanvasElement;
+  private readonly look: { colour?: string; shape?: number; eyes?: string };
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, look: { colour?: string; shape?: number; eyes?: string } = {}) {
     this.canvas = canvas;
+    this.look = look;
   }
 
   /** Draws the still once it has loaded. */
   async showStill(): Promise<void> {
-    this.still ??= await loadLayers("still");
+    this.still ??= await loadLayers("still", this.look.shape, this.look.eyes);
     if (!this.play) {
       this.paint(this.still, -1);
     }
@@ -94,7 +96,7 @@ export class FacePlayer {
     const play: Play = { sheet, once, started: performance.now(), stopping: false, layers: null };
     this.play = play;
     this.onPlaying(true);
-    loadLayers(sheet)
+    loadLayers(sheet, this.look.shape, this.look.eyes)
       .then((layers) => {
         play.layers = layers;
         play.started = performance.now();
@@ -147,6 +149,6 @@ export class FacePlayer {
   }
 
   private paint(layers: Layers, frame: number): void {
-    paintFrame(this.canvas, layers, frame, inkColour(this.canvas));
+    paintFrame(this.canvas, layers, frame, this.look.colour || inkColour(this.canvas));
   }
 }

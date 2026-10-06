@@ -13,6 +13,11 @@ export interface DesktopSettings {
   keepAwake: boolean;
   /** The tray icon shows the usage ring instead of the Branch icon. */
   trayUsage: boolean;
+  /** Apply verified releases after a sustained idle period. */
+  autoApplyUpdates: boolean;
+  /** Outside agents (branch mcp serve ui_* tools) may see and operate this window over loopback remote
+   *  debugging. Off until the owner chooses; read once at launch, so it takes effect on the next start. */
+  agentControl: boolean;
 }
 export interface ControlsState extends DesktopSettings {
   startWithWindows: boolean;
@@ -20,7 +25,7 @@ export interface ControlsState extends DesktopSettings {
 }
 export type ControlName = keyof ControlsState;
 
-export const DEFAULT_SETTINGS: DesktopSettings = { keepWorking: true, keepAwake: false, trayUsage: false };
+export const DEFAULT_SETTINGS: DesktopSettings = { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: true, agentControl: false };
 
 /** The engine's own app links (engine/ui/src/pages/apps/view.ts); desktops come from Branch's releases. */
 const DESKTOP_RELEASES = `https://github.com/${RELEASE_REPOSITORY}/releases/latest`;
@@ -37,9 +42,14 @@ export interface ControlDeps {
   settingsFile: string;
   login: { get(): boolean; set(on: boolean): void };
   awake: { start(): number; stop(id: number): void };
-  cli: { installed(): Promise<boolean>; install(): Promise<void>; uninstall(): Promise<void> };
+  cli: {
+    installed(): Promise<boolean>; install(): Promise<void>; uninstall(): Promise<void>;
+    /** Rewrites shims that exist with this launch's node and engine paths (never creates one, never touches PATH). */
+    refresh?(): void;
+  };
   tray: { usage(left: number | null, on: boolean): void };
   openExternal(url: string): Promise<void>;
+  onChange?: (settings: DesktopSettings) => void;
 }
 
 export interface DesktopControls {
@@ -53,11 +63,11 @@ export interface DesktopControls {
   dispose(): void;
 }
 
-function readSettings(file: string): DesktopSettings {
+export function readSettings(file: string): DesktopSettings {
   try {
     const saved = JSON.parse(readFileSync(file, "utf8")) as Partial<DesktopSettings>;
     const pick = (key: keyof DesktopSettings) => typeof saved[key] === "boolean" ? saved[key] : DEFAULT_SETTINGS[key];
-    return { keepWorking: pick("keepWorking"), keepAwake: pick("keepAwake"), trayUsage: pick("trayUsage") };
+    return { keepWorking: pick("keepWorking"), keepAwake: pick("keepAwake"), trayUsage: pick("trayUsage"), autoApplyUpdates: pick("autoApplyUpdates"), agentControl: pick("agentControl") };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -80,11 +90,12 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
     if (typeof on !== "boolean") throw new Error("A desktop control takes on or off");
     if (name === "startWithWindows") deps.login.set(on);
     else if (name === "branchOnPath") await (on ? deps.cli.install() : deps.cli.uninstall());
-    else if (name === "keepWorking" || name === "keepAwake" || name === "trayUsage") {
+    else if (name === "keepWorking" || name === "keepAwake" || name === "trayUsage" || name === "autoApplyUpdates" || name === "agentControl") {
       saved = { ...saved, [name]: on };
       save();
       if (name === "keepAwake") holdAwake(on);
       if (name === "trayUsage") deps.tray.usage(lastLeft, on);
+      deps.onChange?.({ ...saved });
     } else throw new Error(`Unknown desktop control: ${String(name)}`);
     return get();
   };
@@ -99,7 +110,11 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
       lastLeft = typeof left === "number" && Number.isFinite(left) ? Math.max(0, Math.min(100, left)) : null;
       deps.tray.usage(lastLeft, saved.trayUsage);
     },
-    apply: () => holdAwake(saved.keepAwake),
+    apply: () => {
+      holdAwake(saved.keepAwake);
+      // An update can move the bundled node; the branch command (and agents registered with it) must keep working.
+      try { deps.cli.refresh?.(); } catch { /* a locked or read-only shim keeps its old copy */ }
+    },
     dispose: () => holdAwake(false),
   };
 }
@@ -162,8 +177,10 @@ export function branchShim(o: { dataDir: string; engineDir: string; nodePath: st
     `set "ENGINE=${o.engineDir}"`,
     `if exist "%BRANCH_DATA%\\engine-current.txt" set /p ENGINE=<"%BRANCH_DATA%\\engine-current.txt"`,
     `if exist "%BRANCH_DATA%\\gateway-token" set /p BRANCH_GATEWAY_TOKEN=<"%BRANCH_DATA%\\gateway-token"`,
-    `set "BRANCH_PROFILE=dev"`,
+    `set "BRANCH_PROFILE=default"`,
     `set "BRANCH_HOME=%BRANCH_DATA%\\home"`,
+    `set "BRANCH_STATE_DIR=%BRANCH_HOME%\\.branch"`,
+    `set "BRANCH_CONFIG_PATH=%BRANCH_STATE_DIR%\\branch.json"`,
     `set "BRANCH_GATEWAY_PORT=${o.gatewayPort}"`,
     `"${o.nodePath}" "%ENGINE%\\branch.mjs" %*`,
     "",
@@ -181,8 +198,8 @@ export function branchShShim(o: { dataDir: string; engineDir: string; nodePath: 
     `engine=${q(o.engineDir)}`,
     `if [ -f "$data/engine-current.txt" ]; then engine=$(head -n 1 "$data/engine-current.txt" | tr -d '\\r'); fi`,
     `if [ -f "$data/gateway-token" ]; then BRANCH_GATEWAY_TOKEN=$(head -n 1 "$data/gateway-token" | tr -d '\\r'); export BRANCH_GATEWAY_TOKEN; fi`,
-    `BRANCH_PROFILE=dev; BRANCH_HOME=${q(`${o.dataDir}\\home`)}; BRANCH_GATEWAY_PORT=${o.gatewayPort}`,
-    "export BRANCH_PROFILE BRANCH_HOME BRANCH_GATEWAY_PORT",
+    `BRANCH_PROFILE=default; BRANCH_HOME=${q(`${o.dataDir}\\home`)}; BRANCH_STATE_DIR=${q(`${o.dataDir}\\home\\.branch`)}; BRANCH_CONFIG_PATH=${q(`${o.dataDir}\\home\\.branch\\branch.json`)}; BRANCH_GATEWAY_PORT=${o.gatewayPort}`,
+    "export BRANCH_PROFILE BRANCH_HOME BRANCH_STATE_DIR BRANCH_CONFIG_PATH BRANCH_GATEWAY_PORT",
     `exec ${q(slash(o.nodePath))} "$engine/branch.mjs" "$@"`,
     "",
   ].join("\n");

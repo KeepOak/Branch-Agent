@@ -1,7 +1,7 @@
 // The model menu (DESIGN-SPEC §4.3.4 and its Parity adds): which model answers here, how long it thinks, its speed,
 // its room to plan, and what is shown here. Every choice is a sessions.patch on this conversation, read back after.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { str, type Rec } from "./engine";
 import { accountLine, capitalize, groupModels, thinkingChoices, type ModelChoice } from "./model";
 import { ModelAccessInfo } from "./ModelAccessInfo";
@@ -11,12 +11,14 @@ import { Popover, moveFocus } from "./Popover";
 import { Head, MenuItem, Segmented, Sep } from "./ui";
 import { Icon, type IconName } from "./icons";
 import { Logo, serviceName as brandName } from "../places/settings/set1/service";
-import { accountName, accountsOf, providersOf, type Account } from "../places/settings/set1/accounts";
+import { accountName, type Account } from "../places/settings/set1/accounts";
 import { shows, useLevel } from "../places-nav/level";
 import type { WindowEngine } from "./engine";
 import { NOT_ON_PLAN, offPlan, planOrder, runsOnCodex, useCodexPlan } from "./codex-plan";
+import { useModelAccounts } from "./useModelAccount";
 
 type Props = {
+  embedded?: boolean;
   anchor: RefObject<HTMLElement | null>;
   onClose: () => void;
   models: ModelChoice[];
@@ -40,22 +42,6 @@ type Props = {
 
 const NO_PICK_ACCOUNT = "Picking one account for a single conversation isn't in the engine yet. Change the order in Accounts.";
 
-/** Every model account, in the order Branch uses them (models.authStatus). */
-function useAccounts(engine: WindowEngine | undefined): Account[] {
-  const [all, setAll] = useState<Account[]>([]);
-  useEffect(() => {
-    if (!engine) return;
-    let live = true;
-    engine.request("models.authStatus", {}).then(
-      (r) => live && setAll(accountsOf(providersOf((r as Rec | null)?.providers))),
-      () => live && setAll([]),
-    );
-    return () => {
-      live = false;
-    };
-  }, [engine]);
-  return all;
-}
 const accountsFor = (all: Account[], provider: string | undefined) => (provider ? all.filter((a) => a.p.provider === provider || a.p.authProvider === provider) : []);
 const UNAVAILABLE_LABELS: Record<AvailabilityReason, string> = {
   "missing-auth": "sign-in needed", "auth-failed": "sign-in needs attention",
@@ -100,7 +86,7 @@ export function ModelMenu(p: Props) {
   const shown = locked ? p.models.filter((m) => m.ref === p.currentRef) : p.models;
   const groups = groupModels(shown, query);
   const advanced = shows(useLevel(), "advanced");
-  const allAccounts = useAccounts(p.engine);
+  const allAccounts = useModelAccounts(p.engine, p.trunkId ?? "", false);
   const plan = useCodexPlan(p.engine, p.trunkId, p.models.some(runsOnCodex));
   const accounts = accountsFor(allAccounts, p.current?.provider);
   const levels = thinkingChoices(p.current);
@@ -109,13 +95,13 @@ export function ModelMenu(p: Props) {
     p.onClose();
     p.onOpen?.(target);
   };
-  return (
-    <Popover anchor={p.anchor} onClose={p.onClose} label="Model and how long it thinks" className="c-model">
+  const content = (
       <div
         ref={body}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
+            e.stopPropagation();
             moveFocus(body.current, e.key === "ArrowDown" ? 1 : -1);
           }
         }}
@@ -180,16 +166,16 @@ export function ModelMenu(p: Props) {
         ) : null}
         <Sep />
         <ModelSettings {...p} levels={levels} speeds={speeds} advanced={advanced} />
-        <ModelAccessInfo model={p.current} />
-        <p className="c-pp c-pp-end">
+        {!p.embedded ? <ModelAccessInfo model={p.current} /> : null}
+        {!p.embedded ? <p className="c-pp c-pp-end">
           Thinking options depend on the model.
           {accounts.length > 1 ? ` When ${accountName(accounts[0])} runs out, Branch moves to ${accountName(accounts[1])}.` : ""}
-        </p>
-        <LinkRow icon="users" label="Accounts and order…" target="settings/accounts" onOpen={p.onOpen} open={open} />
-        <LinkRow icon="sliders" label="Manage models…" target="settings/models" onOpen={p.onOpen} open={open} />
+        </p> : null}
+        {!p.embedded ? <LinkRow icon="users" label="Accounts and order…" target="settings/accounts" onOpen={p.onOpen} open={open} /> : null}
+        {!p.embedded ? <LinkRow icon="sliders" label="Manage models…" target="settings/models" onOpen={p.onOpen} open={open} /> : null}
       </div>
-    </Popover>
   );
+  return p.embedded ? content : <Popover anchor={p.anchor} onClose={p.onClose} label="Model and how long it thinks" className="c-model">{content}</Popover>;
 }
 
 function ModelSettings(p: Props & { levels: { id: string; label: string }[]; speeds: { id: string; label: string }[]; advanced: boolean }) {

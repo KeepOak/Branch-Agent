@@ -11,7 +11,11 @@ import type { StatusItem } from "./StatusBar";
 import { GatewayPopover, RoomPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
 import type { Limits, UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
-import { stageWindowUpdate } from "../connect/desktop-component-updates";
+import { componentDesktop, stageWindowUpdate } from "../connect/desktop-component-updates";
+import { useDesktopComponentStatus } from "../connect/desktop-component-updates";
+import { useDesktopControls } from "../connect/desktop-controls";
+import { COMPOSE_EVENT } from "../composer/Composer";
+import { safeStorage, saveDraft } from "../composer/drafts";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -64,8 +68,9 @@ export type StatusContext = {
   gateway: GatewayFacts;
   update: UpdateInfo | null;
   version: string;
+  computerName: string;
   openRow: Conversation | null;
-  working: { key: string; title: string; line: string }[];
+  working: { key: string; title: string; line: string; runIds?: string[] }[];
   openSettings: (page: string) => void;
   openAutomations: () => void;
   openConversation: (key: string) => void;
@@ -121,6 +126,39 @@ async function install(ctx: StatusContext): Promise<void> {
   }
 }
 
+/** Stop each run the live sessions list reports, including runs in other Trunks. */
+export async function pauseAll(ctx: Pick<StatusContext, "session" | "list" | "working">): Promise<void> {
+  const entries = await Promise.all(ctx.working.map(async (row) => {
+    if (row.runIds?.length) return row.runIds.map((runId) => ({ sessionKey: row.key, runId }));
+    try {
+      const history = rec(await ctx.session.request("chat.history", { sessionKey: row.key }));
+      const runId = rec(history.inFlightRun).runId;
+      return typeof runId === "string" && runId ? [{ sessionKey: row.key, runId }] : [];
+    } catch { return []; }
+  }));
+  const runs = entries.flat();
+  if (!runs.length) {
+    notify("No live run could be paused.", { tone: "bad" });
+    return;
+  }
+  const results = await Promise.allSettled(runs.map((run) => ctx.session.request("chat.abort", run)));
+  void ctx.list.refresh();
+  const failed = results.filter((result) => result.status === "rejected").length;
+  notify(failed ? `Couldn't pause ${failed} of ${runs.length} runs.` : `Paused ${runs.length} run${runs.length === 1 ? "" : "s"}.`, failed ? { tone: "bad" } : undefined);
+}
+
+/** Fill the active Trunk's composer with the same /bg command its menu uses. */
+export function prepareBackground(ctx: Pick<StatusContext, "session" | "openRow" | "openConversation">): void {
+  const key = ctx.openRow?.key ?? ctx.session.getSnapshot().mainKey;
+  if (!key) {
+    notify("Open a Trunk before starting background work.", { tone: "bad" });
+    return;
+  }
+  saveDraft(safeStorage(), key, "/bg ");
+  window.dispatchEvent(new CustomEvent(COMPOSE_EVENT, { detail: { sessionKey: key, text: "/bg " } }));
+  ctx.openConversation(key);
+}
+
 export function KeepLastDialog({ onCancel, onKeep }: { onCancel: () => void; onKeep: () => void }) {
   return (
     <Dialog
@@ -145,6 +183,8 @@ export function KeepLastDialog({ onCancel, onKeep }: { onCancel: () => void; onK
 
 /** The open status-bar popover, and the confirm for "Keep only the last 400 lines…". */
 export function StatusPopover({ item, above, onClose, ctx }: Props) {
+  const desktopUpdate = useDesktopComponentStatus(ctx.session.gatewayUrl);
+  const desktopControls = useDesktopControls();
   const [confirm, setConfirm] = useState<Conversation | null>(null);
   const level = readLevel();
   const request = ctx.session.request.bind(ctx.session) as <T = unknown>(m: string, p?: unknown) => Promise<T>;
@@ -167,10 +207,14 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
     return <RoomPopover {...base} request={request} row={row} level={level} onTidy={(keepLast) => (keepLast ? setConfirm(row) : (onClose(), void tidy(ctx, row, false)))} />;
   }
   if (item === "running") {
-    return <RunningPopover {...base} request={request} working={ctx.working} onOpen={(key) => (onClose(), ctx.openConversation(key))} onAutomations={close(ctx.openAutomations)} />;
+    return <RunningPopover {...base} request={request} working={ctx.working} onOpen={(key) => (onClose(), ctx.openConversation(key))} onAutomations={close(ctx.openAutomations)}
+      onBackground={close(() => prepareBackground(ctx))} onPauseAll={close(() => void pauseAll(ctx))} />;
   }
   if (item === "version") {
-    return <VersionPopover {...base} update={ctx.update} version={ctx.version} onWhatsNew={close(ctx.onWhatsNew)} onInstall={close(() => void install(ctx))} onRemind={close(() => (remindTomorrow(ctx.update?.latest ?? ctx.version), ctx.onReminded()))} />;
+    return <VersionPopover {...base} update={ctx.update} version={ctx.version}
+      desktopPending={desktopUpdate.status?.pendingVersion ?? null} autoApply={desktopControls.state?.autoApplyUpdates !== false}
+      desktopInstall={Boolean(componentDesktop(ctx.session.gatewayUrl)?.componentUpdates)} computerName={ctx.computerName}
+      onWhatsNew={close(ctx.onWhatsNew)} onInstall={close(() => void install(ctx))} onRemind={close(() => (remindTomorrow(ctx.update?.latest ?? ctx.version), ctx.onReminded()))} />;
   }
   return null;
 }
