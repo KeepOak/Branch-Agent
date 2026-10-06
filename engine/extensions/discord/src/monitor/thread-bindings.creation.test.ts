@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/discord/src/monitor/thread-bindings.creation.test.ts (atlas SESSIONS-0103). Changed for Branch: restore pinned parent normalization coverage while preserving Branch assertions.
 import { getSessionBindingService } from "branch/plugin-sdk/conversation-runtime";
 import { setRuntimeConfigSnapshot } from "branch/plugin-sdk/runtime-config-snapshot";
 import { describe, expect, it } from "vitest";
@@ -173,5 +174,25 @@ describe("thread binding creation", () => {
     ).toHaveLength(1);
     expect(a.getByThreadId("thread-1")).toBeUndefined();
     expect(b.getByThreadId("thread-1")?.targetSessionKey).toBe("agent:main:subagent:b");
+  });
+
+  it("normalizes a prefixed parent before creating a child", async () => {
+    await createTestThreadBindingManager();
+    const binding = await service.bind({
+      targetSessionKey: "agent:codex:acp:child",
+      targetKind: "session",
+      conversation: {
+        ...conversation,
+        conversationId: "channel:1491611525914558668",
+        parentConversationId: "channel:1491611525914558667",
+      },
+      placement: "child",
+      metadata: { agentId: "codex", label: "ACP bind test", threadName: "ACP bind test" },
+    });
+    expect(binding).toMatchObject({
+      conversation: { ...conversation, conversationId: "thread-created" },
+    });
+    expectThreadCreate("1491611525914558667", { accountId: "default" });
+    expect(hoisted.restGet).not.toHaveBeenCalled();
   });
 });
