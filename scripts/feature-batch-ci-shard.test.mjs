@@ -1,7 +1,14 @@
 // node --test scripts/feature-batch-ci-shard.test.mjs
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { namedTests, shardOf, shardTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
+import { harvestTests, namedTests, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
+
+test('Harvest list is separate and PR scope selects its own manifest', () => {
+  const engine = harvestTests('engine');
+  assert.ok(engine.includes('src/gateway/server-channels.test.ts'));
+  assert.deepEqual(touchedHarvestTests('engine', ['scripts/feature-batch-ci-harvest/feat-harvest-chat-apps-0005.txt']), engine);
+  assert.deepEqual(touchedHarvestTests('window', ['engine/src/gateway/server-channels.test.ts']), []);
+});
 
 test('no FEATURE_SHARD runs everything in one job', () => {
   assert.deepEqual(shardOf(''), { index: 0, total: 1 });

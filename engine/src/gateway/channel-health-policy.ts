@@ -191,7 +191,7 @@ export function resolveChannelRestartReason(
     return evaluation.reason;
   }
   if (evaluation.reason === "not-running") {
-    return snapshot.reconnectAttempts && snapshot.reconnectAttempts >= 10 ? "gave-up" : "stopped";
+    return "stopped";
   }
   return "stuck";
 }

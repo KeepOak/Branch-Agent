@@ -475,25 +475,45 @@ export const windowStrictFiles = [
 // `engine:<file>` or `window:<file>` per line (# comments allowed), instead of editing the shared
 // lists above, so parallel PRs never conflict on them.
 const NAMED_DIR = new URL('./feature-batch-ci-named/', import.meta.url);
+const HARVEST_DIR = new URL('./feature-batch-ci-harvest/', import.meta.url);
 
-export function namedTestFiles(lane, only) {
+function listedTestFiles(dir, lane, only) {
   let names = [];
   try {
-    names = readdirSync(NAMED_DIR).filter(name => name.endsWith('.txt') && (!only || only.includes(name))).sort();
+    names = readdirSync(dir).filter(name => name.endsWith('.txt') && (!only || only.includes(name))).sort();
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
   const files = [];
   for (const name of names) {
-    for (const raw of readFileSync(new URL(name, NAMED_DIR), 'utf8').split(/\r?\n/)) {
+    for (const raw of readFileSync(new URL(name, dir), 'utf8').split(/\r?\n/)) {
       const line = raw.trim();
       if (!line || line.startsWith('#')) continue;
       const match = /^(engine|window):(.+)$/.exec(line);
-      if (!match) throw new Error(`scripts/feature-batch-ci-named/${name}: expected engine:<file> or window:<file>, got "${line}"`);
+      if (!match) throw new Error(`${dir.pathname}${name}: expected engine:<file> or window:<file>, got "${line}"`);
       if (match[1] === lane) files.push(match[2].trim());
     }
   }
   return files;
+}
+
+export function namedTestFiles(lane, only) { return listedTestFiles(NAMED_DIR, lane, only); }
+export function harvestTestFiles(lane, only) { return listedTestFiles(HARVEST_DIR, lane, only); }
+
+export function harvestTests(lane) {
+  if (!['engine', 'window'].includes(lane)) throw new Error('Unknown Harvest test lane');
+  const tests = [...new Set(harvestTestFiles(lane))].sort();
+  const bad = tests.find(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'));
+  if (bad) throw new Error(`Invalid Harvest test ${lane}:${bad}`);
+  return tests;
+}
+
+export function touchedHarvestTests(lane, changedFiles) {
+  const listedByPr = new Set(harvestTestFiles(lane, changedFiles
+    .filter(file => file.startsWith('scripts/feature-batch-ci-harvest/'))
+    .map(file => file.slice('scripts/feature-batch-ci-harvest/'.length))));
+  const changed = new Set(changedFiles.filter(file => file.startsWith(`${lane}/`)).map(file => file.slice(lane.length + 1)));
+  return harvestTests(lane).filter(file => listedByPr.has(file) || changed.has(file));
 }
 
 export function namedTests(lane) {

@@ -18,7 +18,7 @@ const log = createSubsystemLogger("gateway/health-monitor");
 const DEFAULT_CHECK_INTERVAL_MS = 5 * 60_000;
 const DEFAULT_MONITOR_STARTUP_GRACE_MS = 60_000;
 const DEFAULT_COOLDOWN_CYCLES = 2;
-const DEFAULT_MAX_RESTARTS_PER_HOUR = 10;
+const DEFAULT_MAX_RESTARTS_PER_HOUR = Number.POSITIVE_INFINITY;
 const CHANNEL_HEALTH_MONITOR_HANDOFF_TIMEOUT_MS = 5_000;
 const ONE_HOUR_MS = 60 * 60_000;
 
@@ -40,6 +40,7 @@ type ChannelHealthMonitorDeps = {
   checkIntervalMs?: number;
   timing?: Partial<ChannelHealthTimingPolicy>;
   cooldownCycles?: number;
+  /** Optional operator limit; automatic recovery has no retry ceiling by default. */
   maxRestartsPerHour?: number;
   abortSignal?: AbortSignal;
 };
@@ -179,7 +180,7 @@ export function startChannelHealthMonitor(deps: ChannelHealthMonitorDeps): Chann
           // restartPending; the next monitor pass must finish that same recovery
           // instead of waiting behind this monitor's fresh-restart cooldown.
           // Only one continuation is free: an account stuck in restartPending
-          // rejoins cooldown + hourly budget so it cannot thrash forever (#105189).
+          // rejoins cooldown so it cannot thrash faster than the retry cadence.
           const continuingPendingRestart =
             pendingRestartState && record.pendingContinuationUsed !== true;
 
@@ -191,14 +192,16 @@ export function startChannelHealthMonitor(deps: ChannelHealthMonitorDeps): Chann
             continue;
           }
 
-          record.restartsThisHour = record.restartsThisHour.filter(
-            (r) => !isFutureDateTimestampMs(r.at, { nowMs: now }) && now - r.at < ONE_HOUR_MS,
-          );
-          if (!continuingPendingRestart && record.restartsThisHour.length >= maxRestartsPerHour) {
-            log.warn(
-              `[${channelId}:${accountId}] health-monitor: hit ${maxRestartsPerHour} restarts/hour limit, skipping`,
+          if (Number.isFinite(maxRestartsPerHour)) {
+            record.restartsThisHour = record.restartsThisHour.filter(
+              (r) => !isFutureDateTimestampMs(r.at, { nowMs: now }) && now - r.at < ONE_HOUR_MS,
             );
-            continue;
+            if (!continuingPendingRestart && record.restartsThisHour.length >= maxRestartsPerHour) {
+              log.warn(
+                `[${channelId}:${accountId}] health-monitor: hit ${maxRestartsPerHour} restarts/hour limit, skipping`,
+              );
+              continue;
+            }
           }
 
           const reason = resolveChannelRestartReason(status, health);
@@ -209,7 +212,9 @@ export function startChannelHealthMonitor(deps: ChannelHealthMonitorDeps): Chann
             record.pendingContinuationUsed = true;
           } else {
             record.lastRestartAt = now;
-            record.restartsThisHour.push({ at: now });
+            if (Number.isFinite(maxRestartsPerHour)) {
+              record.restartsThisHour.push({ at: now });
+            }
           }
           restartRecords.set(key, record);
 

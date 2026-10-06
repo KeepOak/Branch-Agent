@@ -462,7 +462,7 @@ describe("resolveChannelHealthState", () => {
 });
 
 describe("resolveChannelRestartReason", () => {
-  it("maps not-running + high reconnect attempts to gave-up", () => {
+  it("keeps high reconnect attempts retryable instead of reporting gave-up", () => {
     const reason = resolveChannelRestartReason(
       {
         running: false,
@@ -470,7 +470,7 @@ describe("resolveChannelRestartReason", () => {
       },
       { healthy: false, reason: "not-running" },
     );
-    expect(reason).toBe("gave-up");
+    expect(reason).toBe("stopped");
   });
 
   it("maps dead ingress to its own reason instead of stuck", () => {

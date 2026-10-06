@@ -89,17 +89,9 @@ const hoisted = vi.hoisted(() => {
 
 vi.mock("../../packages/retry/src/index.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../packages/retry/src/index.js")>();
-  class TestRetrySupervisor extends actual.RetrySupervisor {
-    constructor(
-      _policy: ConstructorParameters<typeof actual.RetrySupervisor>[0],
-      maxAttempts?: number,
-    ) {
-      super({ initialMs: 10, maxMs: 10, factor: 1, jitter: 0 }, maxAttempts);
-    }
-  }
   return {
     ...actual,
-    RetrySupervisor: TestRetrySupervisor,
+    computeBackoff: (_policy: unknown, _attempt: number) => 10,
   };
 });
 
@@ -537,19 +529,107 @@ describe("server-channels auto restart", () => {
 
     await advanceTimersUntil(
       () => startAccount.mock.calls.length >= 11,
-      "expected crash-loop restarts to reach the maximum attempt cap",
+      "expected crash-loop restarts to continue past the old attempt cap",
       { stepMs: 10, maxMs: 500 },
     );
 
-    expect(manager.isAutoRestartScheduled("discord", DEFAULT_ACCOUNT_ID)).toBe(false);
-    expect(startAccount).toHaveBeenCalledTimes(11);
+    expect(manager.isAutoRestartScheduled("discord", DEFAULT_ACCOUNT_ID)).toBe(true);
     expect(readAccount(manager)).toMatchObject({
       running: false,
-      reconnectAttempts: 11,
+      reconnectAttempts: expect.any(Number),
       lastError: "channel exited without an error",
     });
     await vi.advanceTimersByTimeAsync(200);
-    expect(startAccount).toHaveBeenCalledTimes(11);
+    expect(startAccount.mock.calls.length).toBeGreaterThan(11);
+  });
+
+  // Ported from Hermes test_platform_reconnect.py: retryable failures keep
+  // reconnecting after the old budget and attention never pauses the queue.
+  it("flags continuous reconnect failures for attention without stopping retries", async () => {
+    const startAccount = vi.fn(async () => {});
+    installTestRegistry(createTestPlugin({ startAccount }));
+    const manager = createManager();
+
+    await manager.startChannels();
+    await flushMicrotasks();
+    const retryingSince = readAccount(manager)?.retryingSince;
+    expect(retryingSince).toEqual(expect.any(Number));
+    expect(readAccount(manager)?.needsAttention).toBe(false);
+
+    vi.setSystemTime((retryingSince ?? 0) + 2 * 60 * 60_000 + 1);
+    await advanceTimersUntil(
+      () => readAccount(manager)?.needsAttention === true,
+      "expected continuous failures to raise needs-attention",
+      { stepMs: 10, maxMs: 500 },
+    );
+    const startsAtAttention = startAccount.mock.calls.length;
+    expect(readAccount(manager)).toMatchObject({
+      restartPending: true,
+      needsAttention: true,
+      retryingSince,
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(startAccount.mock.calls.length).toBeGreaterThan(startsAtAttention);
+  });
+
+  // Ported from Hermes test_reconnect_attention_profile_scope.py: an older
+  // failing profile cannot escalate a later profile before its own threshold.
+  it("scopes reconnect attention to each account retry episode", async () => {
+    const startAccount = vi.fn(async () => {});
+    installTestRegistry(createTestPlugin({
+      startAccount,
+      listAccountIds: () => ["early", "late"],
+    }));
+    const manager = createManager();
+    await manager.startChannel("discord", "early");
+    await flushMicrotasks();
+    const earlySince = readAccount(manager, "early")?.retryingSince;
+    expect(earlySince).toEqual(expect.any(Number));
+
+    vi.setSystemTime((earlySince ?? 0) + 60 * 60_000);
+    await manager.startChannel("discord", "late");
+    await flushMicrotasks();
+    const lateSince = readAccount(manager, "late")?.retryingSince;
+    expect(lateSince).toEqual(expect.any(Number));
+
+    vi.setSystemTime((earlySince ?? 0) + 2 * 60 * 60_000 + 1);
+    await advanceTimersUntil(
+      () => readAccount(manager, "early")?.needsAttention === true,
+      "expected only the early retry episode to escalate",
+      { stepMs: 10, maxMs: 500 },
+    );
+    expect(readAccount(manager, "late")?.needsAttention).toBe(false);
+    expect(readAccount(manager, "late")?.retryingSince).toBe(lateSince);
+  });
+
+  it("clears needs-attention after a proven reconnect", async () => {
+    let recovered = false;
+    const startAccount = vi.fn(async (ctx: ChannelGatewayContext<TestAccount>) => {
+      if (!recovered) {
+        return;
+      }
+      ctx.setStatus({ accountId: DEFAULT_ACCOUNT_ID, running: true, connected: true, lifecycle: "ready" });
+      await waitForAbort(ctx.abortSignal);
+    });
+    installTestRegistry(createTestPlugin({ startAccount }));
+    const manager = createManager();
+    await manager.startChannels();
+    await flushMicrotasks();
+    const since = readAccount(manager)?.retryingSince ?? 0;
+    vi.setSystemTime(since + 2 * 60 * 60_000 + 1);
+    await advanceTimersUntil(
+      () => readAccount(manager)?.needsAttention === true,
+      "expected the failed retry episode to need attention",
+      { stepMs: 10, maxMs: 500 },
+    );
+    recovered = true;
+    await advanceTimersUntil(
+      () => readAccount(manager)?.connected === true,
+      "expected a later reconnect to recover",
+      { stepMs: 10, maxMs: 500 },
+    );
+    expect(readAccount(manager)).toMatchObject({ needsAttention: false, lifecycle: "ready" });
+    expect(readAccount(manager)?.retryingSince).toBeUndefined();
   });
 
   it("binds and rebinds a channel port after concurrent native SDK imports", async () => {
