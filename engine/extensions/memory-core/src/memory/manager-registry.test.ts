@@ -219,6 +219,25 @@ describe("memory index", () => {
     });
   });
 
+  it("reports a probed status manager's provider without a cached writer", async () => {
+    const cfg = createCfg({ provider: "local" });
+    const status = await RuntimeMemoryIndexManager.get({ cfg, agentId: "main", purpose: "status" });
+    if (!status) {
+      throw new Error("Expected a status memory manager");
+    }
+    trackManager(status);
+
+    expect(status.status()).toMatchObject({
+      provider: "local",
+      custom: { searchMode: "hybrid" },
+    });
+    await expect(status.probeEmbeddingAvailability()).resolves.toEqual({ ok: true });
+    expect(status.status()).toMatchObject({
+      provider: "mock",
+      custom: { searchMode: "hybrid" },
+    });
+  });
+
   it("retires the prior builtin manager when an agent workspace changes", async () => {
     const firstCfg = createCfg({ model: "workspace-model" });
     const secondCfg = createCfg({ model: "workspace-model" });

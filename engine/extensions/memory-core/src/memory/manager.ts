@@ -532,7 +532,8 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
 
   private publishedStatus(): MemoryProviderStatus {
     // Status managers own a separate read-only connection. Project runtime state
-    // from the current writer for the same agent/store, never from this sidecar.
+    // from the current writer for the same agent/store when one exists; otherwise
+    // use this manager's own provider state (for example, after a CLI probe).
     const active =
       this.purpose === "status"
         ? this.managerRegistry.findCachedDefault(
@@ -541,7 +542,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
               manager.settings.store.databasePath === this.settings.store.databasePath &&
               !manager.closing &&
               !manager.closed,
-          )
+          ) ?? this
         : this;
     if (this.embeddingBootstrapFailure) {
       this.refreshKeywordFallbackIndexIdentity();
@@ -565,9 +566,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     const providerInfo = resolveStatusProviderInfo({
       provider: active?.embeddingBootstrapFailure ? null : (active?.provider ?? null),
       providerInitialized:
-        this.purpose === "status" ||
-        active?.embeddingBootstrapFailure !== undefined ||
-        active?.providerInitialized === true,
+        active.embeddingBootstrapFailure !== undefined || active.providerInitialized,
       requestedProvider: this.settings.provider,
       resolveConfiguredModel: () =>
         this.resolveConfiguredIndexIdentity()?.provider.model || this.settings.model,
