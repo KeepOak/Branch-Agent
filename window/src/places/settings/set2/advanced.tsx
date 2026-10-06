@@ -7,7 +7,6 @@ import { useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import { Btn, Ctl, LinkBtn, Page, Pick, Sec, Seg, Switch, useConfig, useScope, type Opt, type RowEntry } from "../kit";
 import { list } from "../adapter";
-import { Dialog } from "../../../shell/Dialog";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { CallLine, CodeRow, Kv, bytes, lvOf, openPlace, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 import {
@@ -152,8 +151,8 @@ const MEMORY: SecSpec = { title: "Memory", lv: 1, rows: [
   { t: "Memory engine", lv: 2, draw: (c) => <MemoryEngine c={c} /> },
   { t: "Outside memory", s: "Off until you choose: it changes where your data goes.", kind: "seg", off: "This engine has none of these memory services.", opts: ["None", "Mem0", "Honcho", "Hindsight"].map((x) => ({ id: x, label: x })) },
   no("Keep a history in Git", "Every change to memory as a commit, on this computer."),
-  { t: "Recall before replying", s: "Before a reply about the past, a helper searches memory more deeply when the quick search found nothing strong. Off until you choose: it can add a model call before a reply.", plug: "active-memory" },
-  { t: "Memory wiki", s: "Keeps what Trunks know as linked pages, each fact with where it came from, readable as Markdown. Off until you choose: it adds a second, page-shaped copy of what Trunks know.", plug: "memory-wiki" },
+  { t: "Recall before replying", s: "Searches memory more deeply when quick recall finds nothing strong.", help: "Before a reply about the past, a helper searches memory more deeply. Off until you choose: it can add a model call before a reply.", plug: "active-memory" },
+  { t: "Memory wiki", s: "Keeps what Trunks know as linked Markdown pages.", help: "Each fact has its source. Off until you choose: it adds a second, page-shaped copy of what Trunks know.", plug: "memory-wiki" },
 ], after: () => <p className="hint s2advanced-addons">Add-ons work beside the memory engine, so any mix can run. <LinkBtn onClick={() => openPlace("customize", "plugins")}>Open Plugins</LinkBtn></p> };
 
 /* ---------- Automations ---------- */
@@ -184,7 +183,7 @@ const AUTOMATIONS: SecSpec = { title: "Automations", showHeading: false, lv: 1, 
   no("Reach webhooks from outside", "Off until you choose: it opens a door from the internet.", "seg", { opts: ["Off", "cloudflared", "ngrok", "Tailscale"].map((x) => ({ id: x, label: x })) }),
   no("Use what the trigger sent", "{{payload}} and {{field.path}} in the prompt."),
   sw("Checks before a run and event triggers", "Lets a trigger look first and start a Trunk only when there is news. Off stops every “Check first”, script and stream trigger without deleting them.", "cron.triggers.enabled", true),
-  sw("Tell me when an automation keeps failing", "After 2 failures in a row, at most once an hour, where the automation reports. On because it only tells you where that automation already sends; each automation can choose its own (When it fails…).", `${FA}.enabled`, true),
+  sw("Tell me when an automation keeps failing", "Alerts after 2 failures in a row, at most once an hour.", `${FA}.enabled`, true, { help: "The alert goes where the automation reports. It only tells you where that automation already sends; each automation can choose its own destination (When it fails…)." }),
   { t: "After failures in a row", k: `${FA}.after`, kind: "num", unit: "failures", def: 2, min: 1 },
   { t: "At most every", k: `${FA}.cooldownMs`, kind: "pick", read: (v) => String(typeof v === "number" ? v : 60 * MIN), write: (v) => Number(v), opts: [[15, "15 minutes"], [60, "1 hour"], [360, "6 hours"], [1440, "1 day"]].map(([m, label]) => ({ id: String(Number(m) * MIN), label: String(label) })) },
   sw("Count skipped runs", "", `${FA}.includeSkipped`, false),
@@ -218,27 +217,20 @@ function WebSearchPick({ c }: { c: Ctx }) {
     </Ctl>
   );
 }
-const HOW: Record<string, [string, string]> = {
-  decision: ["Skip tools on plain chat", "Before each turn, the decision model (Settings › Models › Decision models) judges whether the message needs tools; for plain conversation the optional tools are left out of that turn. Not the same as “A second look before approvals” in Permissions."],
-  code: ["Code mode", "On means Auto: models Branch has tested can make several tool calls as one short script instead of one round each; other models are unchanged. Off turns the default off. A per-model choice lives in Settings › Models at Technical. Applies to the next task."],
-};
-function HowLink({ id }: { id: string }) {
-  const [open, setOpen] = useState(false);
-  const [title, body] = HOW[id];
-  return <> <LinkBtn onClick={() => setOpen(true)}>How it works</LinkBtn>{open ? <Dialog title={title} onClose={() => setOpen(false)}><p className="s2advanced-how">{body}</p></Dialog> : null}</>;
-}
+const DECISION_HELP = "Before each turn, the decision model (Settings › Models › Decision models) judges whether the message needs tools; for plain conversation the optional tools are left out of that turn. Not the same as “A second look before approvals” in Permissions. Off until you choose: it’s an early feature and can leave out a tool a turn needed.";
+const CODE_HELP = "On means Auto: models Branch has tested can make several tool calls as one short script instead of one round each; other models are unchanged. Off turns the default off. A per-model choice lives in Settings › Models at Technical. Applies to the next task.";
 function CodeMode({ c }: { c: Ctx }) {
   const raw = c.config.get("tools.codeMode");
   const on = raw === undefined ? true : typeof raw === "object" && raw !== null ? (rec(raw).enabled ?? false) !== false : raw !== false;
   const set = (x: boolean) => void c.config.set(typeof raw === "object" && raw !== null ? "tools.codeMode.enabled" : "tools.codeMode", x ? "auto" : false);
   return (
-    <Ctl title="Code mode" sub={<>Several tool calls in one short script, for models that handle it well.<HowLink id="code" /></>}>
+    <Ctl title="Code mode" sub="Several tool calls in one short script, for models that handle it well." help={CODE_HELP}>
       <Switch label="Code mode" checked={on} disabled={c.config.loading} onChange={set} />
     </Ctl>
   );
 }
 const TRY: SecSpec = { title: "Try early", lv: 1, hint: "Early features. They may change or go away in a later version.", rows: [
-  sw("Skip tools on plain chat", "", "agents.defaults.experimental.decisionAssistance", false, { s: <>The decision model checks whether a turn needs tools, and plain chat goes without them. Off until you choose: it’s an early feature and can leave out a tool a turn needed.<HowLink id="decision" /></> }),
+  sw("Skip tools on plain chat", "The decision model skips tools for plain chat.", "agents.defaults.experimental.decisionAssistance", false, { help: DECISION_HELP }),
   { t: "Code mode", draw: (c) => <CodeMode c={c} /> },
 ] };
 

@@ -17,7 +17,7 @@ export function SpecRow({ r, look, disabled }: { r: RowSpec; look: Look; disable
   const set = (x: unknown) => void save(() => look.store.set(r.key, x === r.def ? null : x));
   const off = Boolean(r.off) || disabled;
   return (
-    <Ctl title={r.title} sub={r.sub} keep={r.keep} off={r.off}>
+    <Ctl title={r.title} sub={r.sub} help={r.help} keep={r.keep} off={r.off}>
       {r.kind === "sw" ? <Switch checked={v === true} label={r.title} disabled={off} onChange={set} /> : null}
       {r.kind === "seg" ? <Seg value={String(v)} options={r.opts ?? []} label={r.title} disabled={off} onChange={set} /> : null}
       {r.kind === "pick" ? <Pick value={String(v)} options={r.opts ?? []} label={r.title} disabled={off} onChange={set} /> : null}

@@ -14,7 +14,7 @@ export type Ctx = SettingsPageProps & { config: Config; lv: Lv; agent: string; p
 
 /** One row. `k` is the config path it reads (and writes, unless `w` says where); `off` greys it with why. */
 export type Spec = {
-  t: string; s?: ReactNode; lv?: Lv; k?: ConfigPath; w?: ConfigPath;
+  t: string; s?: ReactNode; help?: string; lv?: Lv; k?: ConfigPath; w?: ConfigPath;
   kind?: "sw" | "num" | "seg" | "pick" | "text" | "list" | "btn" | "none";
   def?: unknown; opts?: Opt[]; unit?: string; ph?: string; min?: number; max?: number;
   /** Stored value → shown value, and back (MB ↔ bytes, inverted switches). */
@@ -47,10 +47,10 @@ export function Section({ spec, c }: { spec: SecSpec; c: Ctx }) {
 
 export function Row({ r, c }: { r: Spec; c: Ctx }) {
   if (r.draw) return <>{r.draw(c)}</>;
-  if (r.off) return <Ctl title={r.t} sub={r.s} off={r.off}>{greyControl(r)}</Ctl>;
+  if (r.off) return <Ctl title={r.t} sub={r.s} help={r.help} off={r.off}>{greyControl(r)}</Ctl>;
   if (r.plug) return <PlugRow r={r} c={c} />;
   const hold = r.hold?.(c);
-  return <Ctl title={r.t} sub={hold ?? r.s} after={r.kind === "list" ? <ListEditor r={r} c={c} /> : undefined}>{r.kind === "list" ? null : <Control r={r} c={c} disabled={Boolean(hold)} />}</Ctl>;
+  return <Ctl title={r.t} sub={hold ?? r.s} help={r.help} after={r.kind === "list" ? <ListEditor r={r} c={c} /> : undefined}>{r.kind === "list" ? null : <Control r={r} c={c} disabled={Boolean(hold)} />}</Ctl>;
 }
 
 /** The control a greyed row draws (inert), showing the engine's default where there is one. */
@@ -112,9 +112,9 @@ function PlugRow({ r, c }: { r: Spec; c: Ctx }) {
   const id = r.plug as string;
   const entry = c.plugins.find((p) => p.id === id);
   const saved = c.config.get(["plugins", "entries", id, "enabled"]);
-  if (!entry && saved === undefined) return <Ctl title={r.t} sub={r.s} off="Its plugin isn’t installed in this engine."><Switch label={r.t} checked={false} onChange={() => undefined} /></Ctl>;
+  if (!entry && saved === undefined) return <Ctl title={r.t} sub={r.s} help={r.help} off="Its plugin isn’t installed in this engine."><Switch label={r.t} checked={false} onChange={() => undefined} /></Ctl>;
   const on = typeof saved === "boolean" ? saved : entry?.enabled === true;
-  return <Ctl title={r.t} sub={r.s}><Switch label={r.t} checked={on} disabled={c.config.loading} onChange={(x) => void c.config.set(["plugins", "entries", id, "enabled"], x)} /></Ctl>;
+  return <Ctl title={r.t} sub={r.s} help={r.help}><Switch label={r.t} checked={on} disabled={c.config.loading} onChange={(x) => void c.config.set(["plugins", "entries", id, "enabled"], x)} /></Ctl>;
 }
 
 /** The search-index rows of a list of sections. */
@@ -136,10 +136,10 @@ export const SEEING: SecSpec = { title: "Seeing more", lv: 1, rows: [
   sw("Show tool steps", "Each reply keeps a folded list of the tools it used. The ⋯ › View row overrides it for one window.", "agents.defaults.verboseDefault", false, { read: onOff, write: (on) => (on ? "on" : "off") }),
   no("Keep progress notes", "The short notes a Trunk writes between steps stay after it finishes. The ⋯ › View row overrides it for one window."),
   sw("Keep an activity log", "Every step, kept for 30 days on this computer.", "logging.audit.enabled", true),
-  sw("Record who ran each task", "Keeps who started each run, from where, and what allowed it, for “What happened in this run”. Off until you choose: it records more about each person. Takes effect after the gateway restarts; records already kept stay readable until they are 30 days old.", "logging.audit.executionIdentity", false, { hold: auditOff }),
+  sw("Record who ran each task", "Records who started each run and what allowed it. Takes effect after the gateway restarts; records already kept stay readable until they are 30 days old.", "logging.audit.executionIdentity", false, { hold: auditOff, help: "Off until you choose: it records more about each person." }),
   { t: "Record messages", s: "Who sent what to whom and when, never the text. Takes effect after the gateway restarts.", k: "logging.audit.messages", def: "off", kind: "seg", hold: auditOff, opts: [{ id: "off", label: "Off" }, { id: "direct", label: "Direct messages" }, { id: "all", label: "All" }] },
-  { t: "Send crash reports", s: "Only the error, never your conversations. Off until you choose: it sends the error outside this computer.", kind: "sw", off: "The engine doesn’t send crash reports." },
-  sw("Share anonymous feature counts", "Counts only, never messages or names: once a day, with the update check, which chat apps and model services are on, how many plugins, and how many conversations were started. It stays off whenever DO_NOT_TRACK=1 is set on this computer. Off until you choose: it sends counts outside this computer.", "telemetry.enabled", false),
+  { t: "Send crash reports", s: "Only the error, never your conversations.", help: "Off until you choose: it sends the error outside this computer.", kind: "sw", off: "The engine doesn’t send crash reports." },
+  sw("Share anonymous feature counts", "Counts features once a day, never messages or names.", "telemetry.enabled", false, { help: "With the update check, it counts which chat apps and model services are on, how many plugins, and how many conversations were started. It stays off whenever DO_NOT_TRACK=1 is set on this computer. Off until you choose: it sends counts outside this computer." }),
   { t: "Report for a bug", s: "A zip of status, health, recent log lines, the shape of your settings and the stability record. Passwords, keys and message text are left out. It stays on this computer until you share it. Not the same as “Send crash reports”, which sends only errors.", kind: "btn", btn: "Make a report", off: "Made from a terminal: branch gateway diagnostics export." },
   sw("Keep a stability record", "A small record of stalls and crashes, without message text, kept on this computer.", "diagnostics.enabled", true, { lv: 2 }),
 ] };
