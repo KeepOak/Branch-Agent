@@ -373,6 +373,7 @@ async function runEmbeddedAgentInternal(
                   // available through the snapshot's lazy control-plane loader.
                   catalogMode: "static",
                   ...(params.pluginGeneration ? { pluginGeneration: params.pluginGeneration } : {}),
+                  ...(params.pluginGeneration ? { rejoinSupersededPluginGeneration: true } : {}),
                   abortSignal: laneController.abortSignal,
                 })
           ).finally(() => {
@@ -387,6 +388,7 @@ async function runEmbeddedAgentInternal(
             throwIfAborted();
             if (
               params.pluginGeneration &&
+              preparedModelRuntimeLease.pluginGeneration === params.pluginGeneration &&
               preparedModelRuntimeOwnerSnapshot.metadataSnapshot !==
                 params.pluginGeneration.pluginMetadataSnapshot
             ) {
