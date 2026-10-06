@@ -42,7 +42,7 @@ export function talkQuestion(step: number, part: number, s: TalkState): TalkQues
     }
     case "Keep it running":
       return q("Should Branch keep itself up to date?", [
-        { label: "Yes, by itself", line: "It waits until no task is working and keeps a safety copy", value: "yes" },
+        { label: "Yes, by itself", line: "Installs updates automatically and keeps a safety copy", value: "yes" },
         { label: "No, I’ll update it", value: "no" },
       ]);
     case "People":

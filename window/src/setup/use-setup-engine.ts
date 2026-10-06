@@ -8,7 +8,11 @@ import { firstOn, knownSetup, readDetected, readTest, setupRecord, type Check, t
 import type { ChatApp } from "./steps-later";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const modelProblem = (error: string) => /no agent model|branch onboard|not configured/i.test(error)
+  ? "No model connected yet"
+  : /auth|sign.?in|token|credential|unauthorized/i.test(error)
+    ? "Sign in to the model account again."
+    : "The model didn’t answer. Try again.";
 
 export function useDetected(engine: WindowEngine) {
   const [detected, setDetected] = useState<Detected | null>(null);
@@ -17,7 +21,7 @@ export function useDetected(engine: WindowEngine) {
     setError(null);
     engine.request("branch.setup.detect", engine.agentId ? { agentId: engine.agentId } : {}).then(
       (r) => setDetected(readDetected(r)),
-      (e: unknown) => setError(`Couldn't look for models: ${message(e)}`),
+      () => setError("Couldn’t look for models. Try again."),
     );
   }, [engine]);
   useEffect(load, [load]);
@@ -48,12 +52,13 @@ export async function testModel(engine: WindowEngine, detected: Detected, off: s
   }
   try {
     if (!pick || pick.kind === "existing-model") {
-      return readTest(await engine.request("branch.setup.verify", agent));
+      const result = readTest(await engine.request("branch.setup.verify", agent));
+      return result.ok ? result : { ...result, error: modelProblem(result.error) };
     }
     const result = readTest(await engine.request("branch.setup.activate", { ...agent, kind: pick.kind, modelRef: pick.modelRef }));
-    return result.ok ? { ...result, madeDefault: true } : result;
+    return result.ok ? { ...result, madeDefault: true } : { ...result, error: modelProblem(result.error) };
   } catch (e) {
-    return { ok: false, error: message(e) };
+    return { ok: false, error: modelProblem(e instanceof Error ? e.message : String(e)) };
   }
 }
 
@@ -99,22 +104,22 @@ export function runChecks(engine: WindowEngine, apps: ChatApp[], onRow: (i: numb
   const health = engine.request("health", { probe: false }).then(rec);
   health.then(
     (h) => set("The engine", { state: "ok", line: typeof h.durationMs === "number" ? `answering in ${h.durationMs} ms` : "answering" }),
-    (e: unknown) => set("The engine", { state: "bad", line: message(e) }),
+    () => set("The engine", { state: "bad", line: "not answering its health check" }),
   );
   health.then(
     (h) => set("The gateway", h.ok === true ? { state: "ok", line: "on" } : { state: "bad", line: "not answering its health check" }),
-    (e: unknown) => set("The gateway", { state: "bad", line: message(e) }),
+    () => set("The gateway", { state: "bad", line: "not answering its health check" }),
   );
   engine.request("branch.setup.verify", engine.agentId ? { agentId: engine.agentId } : {}).then(
     (r) => {
       const t = readTest(r);
-      set("The model", t.ok ? { name: t.modelRef, state: "ok", line: `answered in ${t.seconds} s` } : { state: "bad", line: /no agent model|branch onboard|not configured/i.test(t.error) ? "No model connected yet" : t.error });
+      set("The model", t.ok ? { name: t.modelRef, state: "ok", line: `answered in ${t.seconds} s` } : { state: "bad", line: modelProblem(t.error) });
     },
-    (e: unknown) => set("The model", { state: "bad", line: /no agent model|branch onboard|not configured/i.test(message(e)) ? "No model connected yet" : message(e) }),
+    (e: unknown) => set("The model", { state: "bad", line: modelProblem(e instanceof Error ? e.message : String(e)) }),
   );
   engine.request("system.info", {}).then(
     (r) => set("Disk", typeof rec(r).diskAvailableBytes === "number" ? { state: "ok", line: gb(rec(r).diskAvailableBytes as number) } : { state: "bad", line: "this computer didn't report its disk" }),
-    (e: unknown) => set("Disk", { state: "bad", line: message(e) }),
+    () => set("Disk", { state: "bad", line: "couldn’t check this computer’s disk" }),
   );
   return rows;
 }
@@ -135,8 +140,8 @@ export async function makeTrunks(engine: WindowEngine, picked: number[], existin
     }
     try {
       await createJob(engine, job);
-    } catch (e) {
-      failed.push(`${job.name}: ${message(e)}`);
+    } catch {
+      failed.push(`${job.name} couldn’t be created.`);
     }
   }
   return failed;

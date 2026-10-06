@@ -39,11 +39,11 @@ it("requires first-contact creation before setup/chat and retries failed default
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Fern"); input.dispatchEvent(new Event("input", { bubbles: true })); });
   const click = async () => { await act(async () => (host.querySelector('[data-testid="first-trunk-create"]') as HTMLButtonElement).click()); };
   await click();
-  expect(host.querySelector('[role="alert"]')?.textContent).toContain("Workspace creation failed");
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("Couldn’t create your Trunk");
   expect(onClose).not.toHaveBeenCalled();
   createFailed = false;
   await click();
-  expect(host.querySelector('[role="alert"]')?.textContent).toContain("Configuration changed");
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("Couldn’t save your default Trunk");
   expect(onClose).not.toHaveBeenCalled();
   // agents.changed may update the shell before config.patch succeeds; the gate must stay pinned.
   await act(async () => root!.render(<SetupFlow engine={engine} version="1" trunkNames={["Fern"]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={4} onClose={onClose} onLocalModel={() => {}} />));
@@ -79,6 +79,33 @@ it("offers the existing Trunk when a name is taken instead of showing the raw en
   expect(host.textContent).not.toContain("agent already exists");
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Use existing Fern Trunk")!.click());
   expect(onCreated).toHaveBeenCalledWith("fern", "Fern");
+});
+
+it("uses IDs for duplicate names and explains reserved and invalid names plainly", async () => {
+  const request = vi.fn(async (method: string, args?: unknown) => {
+    if (method === "agents.create") {
+      const name = (args as { name: string }).name;
+      if (name === "Branch") return { ok: false, error: { message: '"branch" is reserved' } };
+      if (name === "!!!") return { ok: false, error: { message: "Agent name has no valid id characters" } };
+      return { ok: false, error: { message: "agent already exists" } };
+    }
+    if (method === "agents.list") return { agents: [{ id: "fern", name: "Not Fern" }] };
+    return { ok: true };
+  });
+  const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+  await act(async () => root!.render(<FirstTrunk engine={{ request } as unknown as WindowEngine} onCreated={() => {}} onBack={() => {}} onSkip={() => {}} />));
+  const input = host.querySelector("input")!;
+  const enter = async (name: string) => {
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, name); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => (host.querySelector('[data-testid="first-trunk-create"]') as HTMLButtonElement).click());
+  };
+  await enter("Branch");
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("Choose another Trunk name");
+  expect(host.textContent).not.toContain('"branch" is reserved');
+  await enter("!!!");
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("at least one letter or number");
+  await enter("Fern");
+  expect(host.textContent).toContain("Use existing Not Fern Trunk");
 });
 
 it("supports form submission and ignores repeated submissions while creation is pending", async () => {
@@ -139,7 +166,7 @@ it.each(["agents.create", "agents.list", "config.get", "config.patch"])("blocks 
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, " Fern "); input.dispatchEvent(new Event("input", { bubbles: true })); });
   const click = async () => { await act(async () => (host.querySelector('[data-testid="first-trunk-create"]') as HTMLButtonElement).click()); };
   await click();
-  expect(host.querySelector('[role="alert"]')?.textContent).toContain("Refused");
+  expect(host.querySelector('[role="alert"]')?.textContent).toMatch(/Couldn’t (create your|save your default) Trunk/);
   expect(onCreated).not.toHaveBeenCalled();
   expect(persistedDefault).toBe("bootstrap");
   failed = false;

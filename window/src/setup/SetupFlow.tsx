@@ -107,7 +107,7 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
     setPrefilled(true);
     // An already set-up Branch starts with only the Trunks it has; a fresh one keeps the spec's two picks.
     setChoices((c) => ({ ...c, promise: c.promise || known.promise, jobs: known.model || known.jobs.length ? known.jobs : c.jobs }));
-    if (known.where && step === (p.startAt ?? 0)) {
+    if (p.startAt === undefined && known.where && step === 0) {
       setStep(firstUndone(doneSteps(known, false), 0));
     }
   }, [known, prefilled, setChoices, step, p.startAt]);
@@ -140,7 +140,7 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
       }
       p.onClose(finished);
     } catch (e) {
-      notify(`Couldn't save setup: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" });
+      notify("Couldn’t save setup. Try again.", { tone: "bad" });
       setBusy(false);
     }
   };
@@ -160,7 +160,7 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
       done: (i) => done.has(i),
       answer,
       steps: (i) => { setTalking(false); setStep(i); p.onTalk?.(null); },
-      finish: () => { p.onTalk?.(null); void close(true); },
+      finish: () => { setTalking(false); p.onTalk?.(null); void close(true); },
     });
     // Published once when talking starts; the card keeps its own place from there.
     // eslint-disable-next-line react-hooks/exhaustive-deps

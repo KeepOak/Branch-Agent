@@ -80,11 +80,11 @@ function DefaultTrunkCard({ engine, id, initialName }: { engine: WindowEngine; i
     try {
       if (draft.trim() !== name) {
         const result = await engine.request<{ ok?: boolean; error?: string }>("agents.update", { agentId: id, name: draft.trim() });
-        if (result.ok === false) throw new Error(result.error || "Couldn’t rename this Trunk.");
+        if (result.ok === false) throw new Error("Couldn’t rename this Trunk.");
         setName(draft.trim());
       }
       setEditing(false);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+    } catch { setError("Couldn’t rename this Trunk. Try again."); } finally { setBusy(false); }
   };
   return <div className="ob-default-trunk">
     <KeeperMark size={36} />
@@ -271,7 +271,7 @@ export function KeepBody({ autoUpdate, onAutoUpdate, boot = null, onBoot }: {
         </Ctl>
       ) : sw(`Start with ${platformName()}`, "Quietly, in the tray.", "startWithWindows")}
       {sw("Type branch in any terminal", "Adds the branch command, so the terminal view and scripts work anywhere.", "branchOnPath")}
-      <Ctl title="Keep Branch up to date by itself" sub="It waits until no task is working and keeps a safety copy.">
+      <Ctl title="Keep Branch up to date by itself" sub="Installs updates automatically and keeps a safety copy.">
         <button type="button" role="switch" aria-checked={autoUpdate} aria-label="Keep Branch up to date by itself" className="switch" data-testid="setup-autoupdate" onClick={() => onAutoUpdate(!autoUpdate)} />
       </Ctl>
     </>

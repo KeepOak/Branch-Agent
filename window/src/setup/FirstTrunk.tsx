@@ -3,6 +3,15 @@ import type { WindowEngine } from "../connect/engine";
 import { createTrunk, loadRoster, makeDefault } from "../places/trunk/api";
 import { SetupShell } from "./SetupShell";
 
+// Match the engine's normalizeAgentIdStrict when locating an existing Trunk by its ID.
+const idForName = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+const creationProblem = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/reserved/i.test(message)) return "That name is kept for Branch. Choose another Trunk name.";
+  if (/invalid|no valid id characters/i.test(message)) return "Use a name with at least one letter or number.";
+  return "Couldn’t create your Trunk. Try again.";
+};
+
 /** A usable default Trunk is required before leaving onboarding, even when a technical owner exists. */
 export function FirstTrunk({ engine, onCreated, onBack, onSkip }: { engine: WindowEngine; onCreated: (id: string, name: string) => void; onBack: (step: number) => void; onSkip: () => void }) {
   const formId = useId();
@@ -22,18 +31,19 @@ export function FirstTrunk({ engine, onCreated, onBack, onSkip }: { engine: Wind
       setProgress(created || useExisting ? "Saving your default Trunk…" : "Creating your Trunk…");
       let contact = created ?? (useExisting ? existing : null);
       if (!contact) {
-        const chosenName = useDefault ? "Branch" : name.trim();
+        const chosenName = useDefault ? "Branch Agent" : name.trim();
         try {
           contact = { id: await createTrunk(engine, chosenName), name: chosenName };
         } catch (e) {
           if (/already exists/i.test(e instanceof Error ? e.message : String(e))) {
             const roster = await loadRoster(engine);
-            const match = roster.agents.find((agent) => agent.name.toLowerCase() === chosenName.toLowerCase());
+            const match = roster.agents.find((agent) => agent.id === idForName(chosenName));
             if (match) setExisting({ id: match.id, name: match.name });
             setError(match ? `A Trunk named ${match.name} already exists. Use that Trunk or choose another name.` : "That Trunk name is already taken. Choose another name.");
             return;
           }
-          throw e;
+          setError(creationProblem(e));
+          return;
         }
       }
       if (!contact) return;
@@ -43,7 +53,7 @@ export function FirstTrunk({ engine, onCreated, onBack, onSkip }: { engine: Wind
       onCreated(contact.id, contact.name);
       if (useDefault) onSkip();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError("Couldn’t save your default Trunk. Try again.");
     } finally {
       submitting.current = false;
       setBusy(false);
