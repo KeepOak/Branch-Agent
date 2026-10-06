@@ -189,9 +189,8 @@ async function removeAgentPath(
         }
       },
       {
-        // Match the established Windows directory-rename policy; file cleanup must stay bounded.
-        attempts:
-          process.platform !== "win32" ? 1 : cleanupPath.trashCoversDescendants ? 16 : 3,
+        // A sharing violation may outlive the just-closed handle briefly; keep deletion bounded.
+        attempts: process.platform === "win32" ? 3 : 1,
         minDelayMs: 250,
         maxDelayMs: 5_000,
         shouldRetry: (error) =>

@@ -15,7 +15,7 @@ installGatewayTestHooks();
 
 it.skipIf(process.platform !== "win32")(
   "moves an agent with an open database to Trash without failed paths",
-  { timeout: 240_000 },
+  { timeout: 180_000 },
   async () => {
     const token = "agent-delete-open-database-test-token";
     const agentId = "delete-open-database";
