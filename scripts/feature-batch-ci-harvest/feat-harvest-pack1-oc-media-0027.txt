@@ -7,6 +7,8 @@ engine:extensions/vydra/image-generation-provider.test.ts
 engine:extensions/vydra/speech-provider.test.ts
 engine:extensions/vydra/video-generation-provider.test.ts
 engine:src/agents/tools/image-generate-tool.test.ts
+engine:src/agents/tools/media-generate-background-retention.test.ts
+engine:src/agents/tools/media-generate-background.test.ts
 engine:src/agents/tools/music-generate-tool.test.ts
 engine:src/agents/tools/pdf-tool.model-config.test.ts
 engine:src/agents/tools/pdf-tool.test.ts
