@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/bootstrap-files.ts (atlas AGENT-LOOP-0150). Changed for Branch: use the shared SQLite workspace state and current agent configuration; retain host mutation guards and preparation lifecycle coverage (owner rules 03 A2 and shared safety layer 41).
 import path from "node:path";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
 import type { ChatType } from "../channels/chat-type.js";

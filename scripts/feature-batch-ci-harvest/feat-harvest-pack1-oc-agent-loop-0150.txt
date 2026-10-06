@@ -1,0 +1,4 @@
+engine:src/agents/bootstrap-files.personal.test.ts
+engine:src/agents/bootstrap-files.test.ts
+engine:src/agents/workspace-templates.test.ts
+engine:src/agents/workspace.test.ts
