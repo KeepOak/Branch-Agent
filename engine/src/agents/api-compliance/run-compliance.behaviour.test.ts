@@ -163,4 +163,22 @@ describe("malformed-history API compliance", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+  it("scrubs provider response secrets through the shared redactor before saving", async () => {
+    const report = await runComplianceTests({
+      modelIds: ["gpt-5.5"],
+      create: () => async () => ({ api_key: "secret-response-token", answer: "visible" }),
+    });
+    const dir = await mkdtemp(path.join(tmpdir(), "history-compliance-redaction-"));
+    try {
+      const text = await readFile(await saveReport(report, dir), "utf8");
+      expect(text).not.toContain("secret-response-token");
+      expect(text).toContain("visible");
+      expect(report.results[0]?.results[0]?.raw_response).toEqual({
+        api_key: "secret-response-token",
+        answer: "visible",
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

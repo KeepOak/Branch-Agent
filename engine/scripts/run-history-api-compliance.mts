@@ -29,7 +29,10 @@ if (values["list-models"]) {
   });
   const file = await saveReport(
     report,
-    path.join(values["output-dir"], `run_${timestamp(new Date())}`),
+    path.join(
+      values["output-dir"] ?? "tests/integration/api_compliance/outputs",
+      `run_${timestamp(new Date())}`,
+    ),
   );
   console.log(`Report saved to: ${file}`);
 }

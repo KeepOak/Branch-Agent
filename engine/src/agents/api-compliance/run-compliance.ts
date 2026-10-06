@@ -1,6 +1,7 @@
 // From OpenHands/software-agent-sdk@0a9abc87641ad7ffe02e2dadf5e2cb3976b35217:tests/integration/api_compliance/run_compliance.py (atlas AGENT-LOOP-0094). Converted to strict TypeScript; uses the native OpenAI-compatible diagnostic transport.
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { redactSecrets } from "../../logging/redact.js";
 import { UnmatchedToolUseTest } from "./a01_unmatched_tool_use.js";
 import { ParallelWrongOrderTest } from "./a08_parallel_wrong_order.js";
 import { runSingleTest, type ComplianceModel, type Completion } from "./base.js";
@@ -112,6 +113,7 @@ export function generateMarkdownReport(report: ComplianceReport): string {
   return lines.join("\n");
 }
 export async function saveReport(report: ComplianceReport, outputDir: string): Promise<string> {
+  report = redactSecrets(report);
   await mkdir(outputDir, { recursive: true });
   const jsonPath = path.join(outputDir, "compliance_report.json");
   await writeFile(jsonPath, JSON.stringify(report, null, 2));

@@ -1,6 +1,8 @@
 // From OpenHands/software-agent-sdk@0a9abc87641ad7ffe02e2dadf5e2cb3976b35217:tests/integration/api_compliance/base.py (atlas AGENT-LOOP-0094). Converted to strict TypeScript; uses the native OpenAI-compatible diagnostic transport.
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.js";
+import type { Model } from "../../llm/types.js";
+import { buildGuardedModelFetch } from "../provider-transport-fetch.js";
 import type { ComplianceTestResult } from "./result.js";
 export interface CompliancePattern {
   pattern_name: string;
@@ -34,14 +36,29 @@ export function extractProvider(model: string): string {
 }
 export function createTestLlm(env: NodeJS.ProcessEnv = process.env): Completion {
   if (!env.LLM_API_KEY) throw new Error("LLM_API_KEY environment variable not set");
-  const client = new OpenAI({
-    apiKey: env.LLM_API_KEY,
-    baseURL: env.LLM_BASE_URL,
-    timeout: 60_000,
-    maxRetries: 0,
-  });
-  return (model, messages) =>
-    client.chat.completions.create({
+  return (model, messages) => {
+    const baseUrl = env.LLM_BASE_URL ?? "https://api.openai.com/v1";
+    const route: Model = {
+      id: model.model,
+      name: model._display,
+      provider: "api-compliance",
+      api: "openai-completions",
+      baseUrl,
+      reasoning: false,
+      input: ["text"],
+      contextWindow: 0,
+      maxTokens: 0,
+      // Diagnostics do not estimate cost or impose model token limits; the provider owns those facts.
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    };
+    const client = new OpenAI({
+      apiKey: env.LLM_API_KEY,
+      baseURL: baseUrl,
+      fetch: buildGuardedModelFetch(route, 60_000, { sanitizeSse: false }),
+      timeout: 60_000,
+      maxRetries: 0,
+    });
+    return client.chat.completions.create({
       model: model.model.replace(/^litellm_proxy\//, ""),
       messages,
       ...(model.temperature === undefined ? {} : { temperature: model.temperature }),
@@ -60,6 +77,7 @@ export function createTestLlm(env: NodeJS.ProcessEnv = process.env): Completion 
         },
       ],
     });
+  };
 }
 function errorResult(
   error: unknown,
