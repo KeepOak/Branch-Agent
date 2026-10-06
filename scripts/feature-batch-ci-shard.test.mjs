@@ -11,7 +11,7 @@ test('no FEATURE_SHARD runs everything in one job', () => {
 test('the shards split the named list with nothing lost or run twice', () => {
   for (const lane of ['engine', 'window']) {
     const all = namedTests(lane);
-    for (const total of [2, 3, 5]) {
+    for (const total of [2, 3, 4, 5]) {
       const parts = Array.from({ length: total }, (_, index) => shardTests(all, shardOf(`${index + 1}/${total}`)));
       assert.deepEqual(parts.flat().sort(), [...all].sort());
       assert.equal(new Set(parts.flat()).size, all.length);
