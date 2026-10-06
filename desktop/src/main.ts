@@ -86,12 +86,18 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
     if (!HIDDEN && win?.isVisible()) dialog.showErrorBox("Branch couldn't restart the engine", error.message);
   },
   restart: async () => {
-    if (engineRestartInProgress || engineRunning()) return;
+    if (engineRestartInProgress) throw new Error("engine update still in progress");
+    if (engineRunning()) return;
     engineRestartInProgress = true;
     try {
       await waitForGatewayPort();
-      const rolledBack = await bootSelectedEngine();
-      log(`gateway recovered after unexpected exit${rolledBack ? " with the retained engine" : ""}`);
+      // The selected pointer may already name a staged update. Recover the build that exited;
+      // only the normal update path may validate and confirm the staged engine/window pair.
+      await bootEngine(readFileSync(join(cfg.dataDir, "engine-running.txt"), "utf8").trim(), false);
+      log("gateway recovered after unexpected exit");
+    } catch (error) {
+      if (gateway) stopGateway(gateway);
+      throw error;
     } finally {
       engineRestartInProgress = false;
     }
@@ -366,9 +372,8 @@ async function waitForGatewayPort(): Promise<void> {
 }
 
 /** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
-async function bootEngine(): Promise<void> {
+async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = true): Promise<void> {
   const started = Date.now();
-  const engineDir = resolveEngineDir(cfg);
   const child = startGateway(cfg, engineDir, token);
   gateway = child;
   const observed = gatewaySupervisor.observe(child);
@@ -377,11 +382,11 @@ async function bootEngine(): Promise<void> {
   writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
 `);
   await waitForReady(cfg, child, READY_TIMEOUT_MS);
-  await confirmComponentUpdate(cfg);
+  if (confirmUpdate) await confirmComponentUpdate(cfg);
   observed.ready();
   gatewayRecoveryError = undefined;
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
-  engineUpdateReady = false;
+  if (confirmUpdate) engineUpdateReady = false;
   watchEngine();
 }
 
