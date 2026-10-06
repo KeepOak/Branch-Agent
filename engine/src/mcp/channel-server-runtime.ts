@@ -5,9 +5,15 @@ import { VERSION } from "../version.js";
 import { BranchChannelBridge } from "./channel-bridge.js";
 import { ClaudePermissionRequestSchema, type ClaudeChannelMode } from "./channel-shared.js";
 import { getChannelMcpCapabilities, registerChannelMcpTools } from "./channel-tools.js";
+import {
+  GRAFT_DEVICE_SCOPES,
+  graftBranchIdentity,
+  graftTrunkIdentity,
+  type GraftLink,
+} from "./graft-join.js";
 import { registerHubMcpTools } from "./hub-tools.js";
 import { outsideAgentFromClient, OutsidePresence } from "./outside-presence.js";
-import { registerTrunkMcpTools } from "./trunk-tools.js";
+import { registerTrunkMcpTools, type OutsideAgentIdentity } from "./trunk-tools.js";
 import { registerUiMcpTools, UiSession } from "./ui-tools.js";
 
 /** Settings › Grafts applies to every tool (channel, Trunk and window tools alike): each handler
@@ -42,6 +48,9 @@ export async function createChannelMcpRuntime(
     config?: BranchConfig;
     claudeChannelMode?: ClaudeChannelMode;
     verbose?: boolean;
+    /** Branch-to-Branch: work with a host Branch this Branch joined, as its paired device. Its own Trunks
+     *  appear on the host as contacts, and what its tools send is attributed to this Branch. */
+    graftHost?: { link: GraftLink; trunks: { id: string; name?: string }[] };
   } = {},
 ): Promise<{
   server: McpServer;
@@ -60,6 +69,15 @@ export async function createChannelMcpRuntime(
     gatewayUrl: opts.gatewayUrl,
     gatewayToken: opts.gatewayToken,
     gatewayPassword: opts.gatewayPassword,
+    ...(opts.graftHost
+      ? {
+          graftDevice: {
+            url: opts.graftHost.link.url,
+            tlsFingerprint: opts.graftHost.link.tlsFingerprint,
+            scopes: GRAFT_DEVICE_SCOPES,
+          },
+        }
+      : {}),
     claudeChannelMode,
     verbose: opts.verbose ?? false,
   });
@@ -81,9 +99,16 @@ export async function createChannelMcpRuntime(
     (line) => opts.verbose && process.stderr.write(`branch mcp: ${line}${os.EOL}`),
     (agent) => bridge.request("contacts.outside.hello", { agent, leaving: true }),
   );
-  server.server.oninitialized = () => {
-    presence.start(outsideAgentFromClient(server.server.getClientVersion()));
-  };
+  const hello = (agent: OutsideAgentIdentity) =>
+    bridge.request("contacts.outside.hello", { agent });
+  const trunkPresences: OutsidePresence[] = [];
+  const graftBranch = opts.graftHost ? graftBranchIdentity(opts.graftHost.link.name) : undefined;
+  // A grafted Branch speaks as itself, whatever MCP client drives it (its hello starts once connected).
+  if (!graftBranch) {
+    server.server.oninitialized = () => {
+      presence.start(outsideAgentFromClient(server.server.getClientVersion()));
+    };
+  }
   gateEveryTool(server, () => presence.assertAllowed());
   registerChannelMcpTools(server, bridge);
 
@@ -113,9 +138,21 @@ export async function createChannelMcpRuntime(
     bridge,
     start: async () => {
       await bridge.start();
+      if (!graftBranch || !opts.graftHost) return;
+      presence.start(graftBranch);
+      // Its Trunks say hello once the host knows the Branch they live on.
+      await presence.identity();
+      for (const trunk of opts.graftHost.trunks) {
+        const trunkPresence = new OutsidePresence(hello);
+        trunkPresence.start(graftTrunkIdentity(graftBranch, trunk));
+        trunkPresences.push(trunkPresence);
+      }
     },
     close: async () => {
-      await presence.leave();
+      // A grafted Branch's presence belongs to its gateway's link, which keeps saying hello; no goodbye here.
+      if (graftBranch) presence.stop();
+      else await presence.leave();
+      for (const trunkPresence of trunkPresences) trunkPresence.stop();
       await ui.close().catch(() => undefined);
       // Both lifecycle owners must always close; one failure cannot strand the other.
       const results = await Promise.allSettled([bridge.close(), server.close()]);
