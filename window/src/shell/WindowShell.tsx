@@ -3,7 +3,7 @@ import type { Conversation } from "../connect/conversations";
 import type { Topic } from "@branch/gateway-protocol";
 import type { TopicUpdate } from "../thread/TopicCard";
 import type { SendExtras } from "../connect/engine";
-import type { SaplingSession, SessionSnapshot } from "../connect/session";
+import { roomIdOf, type SaplingSession, type SessionSnapshot } from "../connect/session";
 import { withOwner } from "../connect/agent-owner";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { Composer, VOICE_OFF } from "../composer/Composer";
@@ -30,7 +30,8 @@ import { useContacts, useConversations, useListPeople, useMachine, usePendingApp
 import { FilterButton, FilterSortPopover, readPrefs, savePrefs } from "./FilterSort";
 import { Icon } from "./icons";
 import { clearFilters, emptyLineFor, filterRows, filterSummary, hasFolders, homeRow, owners, roomUsed, type ListPrefs } from "./list-model";
-import { buildContactSections, contactRow, fallbackTrunkContacts, listContactTopics, markContactRead, missingConversation, openContactRow, pinContact, projectContact, type Contact } from "./contacts-model";
+import { buildContactSections, contactRow, contactRowsFor, listContactTopics, markContactRead, missingConversation, openContactRow, pinContact, projectContact, type Contact } from "./contacts-model";
+import { GroupDropPopover, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useGroupRooms, useRoomNotices, type GroupDrop } from "./group-drop";
 import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./AppSections";
 import { batchMenuItems } from "./batch-menu";
 import { colourHue, iconColourItem } from "./row-look";
@@ -305,15 +306,14 @@ function useEngineReads(session: SaplingSession) {
   const [lists, list] = useConversations(session, ready, s.mainKey);
   const [gatewayContacts, refreshContacts, contactsLoaded] = useContacts(session, ready);
   const trunks = useTrunks(session, ready);
-  const contactRows = gatewayContacts.length ? gatewayContacts : fallbackTrunkContacts(trunks.list, lists.rows, s.mainKey);
   return {
     s,
     ready,
     lists,
     list,
-    contactRows,
+    gatewayContacts,
     refreshContacts,
-    contactsLoaded: contactsLoaded || Boolean(trunks.loaded),
+    contactsLoaded,
     trunks,
     pending: usePendingApprovals(session, ready),
     machine: useMachine(session, ready),
@@ -336,7 +336,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     }, 0);
     return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles() };
   }), [session]);
-  const { s, ready, lists, list, contactRows, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  const { s, ready, lists, list, gatewayContacts, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  const groupRooms = useGroupRooms(session, ready);
+  const [groupDrop, setGroupDrop] = useState<GroupDrop | null>(null);
   const branchVersion = useBranchVersion(url);
   useEffect(() => {
     if (ready && machine?.name) saveTargetName(url, machine.name);
@@ -346,6 +348,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const projects = useProjects(session, ready);
   const [newProject, setNewProject] = useState(false);
   const firstRun = useFirstRun(session, ready, () => document.querySelector(".scrim, .pop, [data-testid=setup]") !== null);
+  const contactRows = contactRowsFor(gatewayContacts, contactsLoaded, trunks.list, lists.rows, s.mainKey, firstRun.isFirstRun,
+    firstRun.isFirstRun && firstRun.requiresContact ? trunks.bootstrapDefault : undefined);
   const now = useNow(s.doneAt);
   const [layout, setLayout] = useLayout();
   const rail = layout.rail;
@@ -699,10 +703,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     }
   };
 
-  const contacts = projectContact(contactRows, lists.rows);
+  const contacts = projectContact([...contactRows.map((contact) => contact.kind === "outside" && groupRooms.peerOnline.has(contact.id.slice(4)) ? { ...contact, offline: groupRooms.peerOnline.get(contact.id.slice(4)) === false } : contact), ...groupRooms.rooms.map((room) => roomContact(room, contactRows)).filter((c): c is NonNullable<typeof c> => Boolean(c))], lists.rows);
+  const roomNotices = useRoomNotices(session, openKey, contacts);
   // A saved conversation that is neither a session nor a contact thread reopens the default Trunk.
   useEffect(() => {
-    if (!draftTopic && lists.loaded && s.mainKey && missingConversation(openKey, s.mainKey, contactsLoaded, contacts, lists.rows)) {
+    if (!draftTopic && !roomIdOf(openKey ?? "") && lists.loaded && s.mainKey && missingConversation(openKey, s.mainKey, contactsLoaded, contacts, lists.rows)) {
       openConversation(s.mainKey);
     }
   }, [draftTopic, lists, contactsLoaded, contactRows, openKey, s.mainKey, openConversation]);
@@ -752,7 +757,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const ckptOn = useCkptOn(session.engine);
   const [setupTalk, setSetupTalk] = useState<TalkHandle | null>(null);
   const name = draftTopic ? `New conversation with ${trunkName(draftTopic.agentId)}` : activeContact?.name ?? (openRow?.isMain ? trunkName(openRow.agentId) : openRow?.title || defaultName);
-  const room = useShellRoom({ engine: session.engine, rowKind: openRow?.kind, agentId: openRow?.agentId, title: name, ownTrunk: trunkName(openRow?.agentId), history: s.history, trunks: trunks.list });
+  const room = useShellRoom({ engine: session.engine, rowKind: openRow?.kind, agentId: openRow?.agentId, title: name, ownTrunk: trunkName(openRow?.agentId), history: s.history, trunks: trunks.list,
+    groupRoom: groupRooms.rooms.find((candidate) => candidate.roomId === roomIdOf(openKey ?? "")),
+    memberName: (kind, id) => kind === "person" ? people.names.get(id) ?? id : contacts.find((contact) => contact.id === `${kind === "a2a" ? "a2a" : "trunk"}:${id}`)?.name ?? id,
+  });
   const rowName = (key: string) => {
     const contact = contacts.find((c) => c.threadKey === key);
     if (contact) return contact.name;
@@ -818,6 +826,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       : showMenu(e, `row:${row.key}`, rowMenuItems(row, {
       actions,
       contact: contacts.find((c) => c.threadKey === row.key),
+      archiveRoom: (contact) => { if (contact.roomId) void session.request("rooms.archive", { roomId: contact.roomId }).then(() => groupRooms.reload(), (error: unknown) => notify(`Couldn't archive ${contact.name}: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" })); },
+      moveToGroup: (contact) => {
+        const anchor = document.querySelector<HTMLElement>(`[data-drag-key="${CSS.escape(contact.threadKey)}"]`)?.getBoundingClientRect();
+        if (anchor) setGroupDrop({ kind: "pick", source: contact.threadKey, anchor });
+      },
       markContactRead: markReadContact,
       pinContact: toggleContactPin,
       profile: openTrunkProfile,
@@ -1124,7 +1137,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           showThinking={conversationMenu.showThinking}
           liveStartedAt={s.liveStartedAt}
           room={room.thread}
-          history={s.history}
+          history={mergeRoomNotices(s.history, roomNotices)}
           live={s.live}
           questions={questions.list}
           onStart={(text: string) => void session.send(text)}
@@ -1155,7 +1168,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
               <TalkSetup handle={setupTalk} />
             ) : newTrunkFlow && newTrunkFlow.sessionKey === openKey ? (
               <NewTrunkCard engine={session.engine} flow={newTrunkFlow} onDone={(name) => { setNewTrunkFlow(null); notify(`${name} is ready. What’s the first job?`); }} />
-            ) : ready && !s.history.length && !s.pendingUser && !s.liveRunId ? (
+            ) : ready && !roomNotices.length && !s.history.length && !s.pendingUser && !s.liveRunId ? (
               <WhereChips key={s.sessionKey} engine={session.engine} row={openRow} trunkName={trunkName(openRow?.agentId)} advanced={level !== "regular"}
                 projectName={projects.projects.find((x) => x.id === openRow?.projectId)?.name ?? null} onStartTopic={(options) => startNew(openRow?.agentId, options)} />
             ) : null
@@ -1252,7 +1265,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             </span>
           ) : null
         }
-        emptyLine={emptyLineFor(prefs, shownCount) ?? (contactsLoaded && trunks.loaded && contactRows.length === 0 ? "No Trunks yet. Use + to create one." : null)}
+        emptyLine={emptyLineFor(prefs, shownCount) ?? (contactsLoaded && trunks.loaded && contactRows.length === 0 ? "No contacts yet. Use + to create one." : null)}
         search={<SearchBox query={search.query} onQuery={search.setQuery} />}
         searchResults={
           search.query.trim() ? (
@@ -1277,6 +1290,20 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         }
         rail={rail}
         onReorderPins={(drop, visible) => { if (drop.source !== home?.key) void pinOrder.move(drop, visible); }}
+        dropHint={(drop) => drop.target.startsWith("project:") ? (contacts.find((c) => c.threadKey === drop.source)?.thread ? `Move to ${projects.projects.find((p) => p.id === drop.target.slice(8))?.name ?? "project"}` : "") : groupHint(drop, contacts, groupRooms.rooms)}
+        onGroupDrop={(drop, anchor) => {
+          if (drop.target.startsWith("project:")) {
+            const contact = contacts.find((candidate) => candidate.threadKey === drop.source);
+            if (contact?.thread) void moveContactToProject(session, contact.threadKey, drop.target.slice(8)).then(() => list.refresh(), (error: unknown) => notify(`Couldn't move ${contact.name}: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+            return;
+          }
+          const kind = groupPlan(drop, contacts, groupRooms.rooms);
+          if (kind === "new" || kind === "add") {
+            const source = contacts.find((c) => c.threadKey === drop.source);
+            const target = contacts.find((c) => c.threadKey === drop.target);
+            setGroupDrop({ kind, source: drop.source, target: drop.target, roomId: target?.roomId ?? source?.roomId, anchor });
+          }
+        }}
         onRailSearch={focusSearch}
         onOpen={(key) => {
           selection.clear();
@@ -1291,7 +1318,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         ], "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
-        onArchive={(r) => void (r.archived ? actions.restore(r) : actions.archive(r))}
+        onArchive={(r) => {
+          const roomId = contacts.find((contact) => contact.threadKey === r.key)?.roomId;
+          if (roomId) void session.request("rooms.archive", { roomId }).then(() => groupRooms.reload(), (error: unknown) => notify(`Couldn't archive ${r.title}: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+          else void (r.archived ? actions.restore(r) : actions.archive(r));
+        }}
         onMarkAllRead={() => void Promise.all(contacts.map((contact) => markContactRead(contact, request))).then(refreshContacts).catch((e: unknown) => notify(`Couldn't mark all read: ${e instanceof Error ? e.message : String(e)}.`, { tone: "bad" }))}
         onPerson={(e) => (overlay?.kind === "person" ? setOverlay(null) : setOverlay({ kind: "person", at: above(e), from: statusAnchor(e, "connection") }))}
         onSettings={() => openSettings("general")}
@@ -1579,6 +1610,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         />
       ) : null}
       {route.kind === "chat" ? conversationMenu.node : null}
+      {groupDrop ? <GroupDropPopover key={`${groupDrop.kind}:${groupDrop.source}:${groupDrop.target ?? groupDrop.roomId ?? ""}`} drop={groupDrop} contacts={contacts} rooms={groupRooms.rooms} defaultTrunk={trunks.defaultId ?? ""} session={session} onClose={() => setGroupDrop(null)} onPick={setGroupDrop} onOpen={(key) => { void groupRooms.reload(); openConversation(key); }} /> : null}
       <BannerView onOpen={openConversation} />
       <Toasts />
     </div>

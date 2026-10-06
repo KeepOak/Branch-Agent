@@ -1,7 +1,7 @@
 import type { Contact as GatewayContact } from "@branch/gateway-protocol";
 import { describe, expect, it, vi } from "vitest";
 import { projectConversation } from "../connect/conversations";
-import { buildContactSections, contactRow, fallbackTrunkContacts, listContactTopics, markContactRead, projectContact } from "./contacts-model";
+import { buildContactSections, contactRow, contactRowsFor, fallbackTrunkContacts, listContactTopics, markContactRead, projectContact } from "./contacts-model";
 import { DEFAULT_PREFS } from "./list-model";
 import { contactAlert, contactAlertTarget } from "./notify";
 
@@ -13,6 +13,13 @@ const raw = (id: string, extra: Partial<GatewayContact> = {}): GatewayContact =>
 });
 
 describe("Gateway contact projection", () => {
+  it("does not fall back to Trunks when contacts.list has loaded an empty roster", () => {
+    const trunk = { id: "main", name: "Main", isDefault: true };
+    expect(contactRowsFor([], true, [trunk], [], "agent:main:main", true)).toEqual([]);
+    expect(contactRowsFor([], false, [trunk], [], "agent:main:main", false)).toEqual([]);
+    expect(contactRowsFor([], false, [trunk], [], "agent:main:main", true).map((c) => c.id)).toEqual(["trunk:main"]);
+    expect(contactRowsFor([], true, [], [], "agent:main:main", true, trunk).map((c) => c.id)).toEqual(["trunk:main"]);
+  });
   it("shows each Trunk as a contact before its first conversation or contacts projection", () => {
     const fallback = fallbackTrunkContacts([
       { id: "main", name: "Main", isDefault: true },
