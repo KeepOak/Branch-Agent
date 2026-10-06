@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/skills/loading/workspace-skill-snapshot.test.ts (atlas OPS-0299). Changed for Branch: retain current upstream entries roster skill inheritance coverage; provenance recorded for Harvest with assertions preserved.
 // Workspace snapshot tests cover serialized snapshots of workspace skill state.
 import fs from "node:fs/promises";
 import path from "node:path";

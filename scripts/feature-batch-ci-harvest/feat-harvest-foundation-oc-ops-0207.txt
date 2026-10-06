@@ -10,6 +10,8 @@ engine:src/config/redact-snapshot.matrix-accounts.test.ts
 engine:src/config/redact-snapshot.private-fields.test.ts
 engine:src/config/redact-snapshot.test.ts
 engine:src/config/validation-field-help.behaviour.test.ts
+engine:src/skills/loading/skill-path-containment.test.ts
+engine:src/skills/loading/workspace-skill-snapshot.test.ts
 engine:src/storage/encryption.test.ts
 engine:src/storage/filesystem.test.ts
 engine:src/storage/locations.test.ts
