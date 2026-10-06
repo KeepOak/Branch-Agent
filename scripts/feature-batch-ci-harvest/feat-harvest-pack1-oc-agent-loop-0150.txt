@@ -1,10 +1,17 @@
+engine:src/agents/agent-bundle-mcp-manager.lifecycle.test.ts
+engine:src/agents/agent-bundle-mcp-runtime.sse-recovery.test.ts
+engine:src/agents/agent-bundle-mcp-runtime.test.ts
+engine:src/agents/agent-bundle-mcp-schema.test.ts
+engine:src/agents/agent-bundle-mcp-tools.materialize.test.ts
 engine:src/agents/bootstrap-files.personal.test.ts
 engine:src/agents/bootstrap-files.test.ts
 engine:src/agents/btw.cli-lifecycle.test.ts
 engine:src/agents/btw.images.test.ts
 engine:src/agents/btw.test.ts
+engine:src/agents/bundle-mcp-config.test.ts
 engine:src/agents/embedded-agent-block-chunker.test.ts
 engine:src/agents/embedded-agent-runner/thinking.test.ts
+engine:src/agents/mcp-content.test.ts
 engine:src/agents/model-thinking-default.test.ts
 engine:src/agents/thinking-runtime.test.ts
 engine:src/agents/workspace-templates.test.ts

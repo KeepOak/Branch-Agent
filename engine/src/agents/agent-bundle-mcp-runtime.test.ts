@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/agent-bundle-mcp-runtime.test.ts (atlas INTEGRATIONS-0013). Changed for Branch: retain session lifetime and plugin ownership guards and shipped MCP app metadata; schema assertions also live in agent-bundle-mcp-schema.test.ts (shared safety layer 41 and owner included-features rule 03 A1.4).
 /** Tests session-scoped MCP runtime catalog, transport, validation, and lifecycle behavior. */
 import fs from "node:fs/promises";
 import http from "node:http";
