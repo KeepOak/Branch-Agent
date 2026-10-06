@@ -34,7 +34,7 @@ export type HostRecord = {
 export type HostRendezvous = {
   decision: HostAttachDecision;
   markStarting?: () => Promise<void>;
-  markReady?: () => Promise<void>;
+  markReady?: (gatewayPort?: number) => Promise<void>;
   close?: () => Promise<void>;
 };
 
@@ -299,7 +299,8 @@ export async function prepareHostRendezvous(params: {
   replace?: boolean;
   allowInTests?: boolean;
 }): Promise<HostRendezvous> {
-  const env = params.env ?? process.env;
+  // Gateway bootstrap may rebuild process.env after the early host claim.
+  const env = { ...(params.env ?? process.env) };
   if (params.force || (!params.allowInTests && (env.VITEST || env.NODE_ENV === "test"))) {
     return { decision: { outcome: "start", message: "" } };
   }
@@ -429,8 +430,11 @@ export async function prepareHostRendezvous(params: {
       record.updatedAt = new Date().toISOString();
       await publishRecord(record, token, env);
     },
-    markReady: async () => {
+    markReady: async (gatewayPort) => {
       ready = true;
+      if (gatewayPort !== undefined) {
+        record.gatewayPort = gatewayPort;
+      }
       record.profiles = [params.profile];
       record.updatedAt = new Date().toISOString();
       await publishRecord(record, token, env);

@@ -1,3 +1,4 @@
+engine:src/cli/run-main.test.ts
 engine:src/infra/host-attach.test.ts
 engine:src/infra/host-rendezvous.test.ts
 engine:src/infra/host-rendezvous.windows.test.ts
