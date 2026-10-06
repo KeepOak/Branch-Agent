@@ -37,11 +37,13 @@ const READY = { sentinel: null, updateAvailable: { currentVersion: "1.0.0", late
 const RUNNING = { sessions: [{ key: "agent:main:a", agentId: "main", hasActiveRun: true, activeRunIds: ["r1"] }, { key: "agent:main:b", agentId: "main", hasActiveRun: false }] };
 
 describe("Settings › Updates & about", () => {
-  it("reads the version and the waiting update from the engine", async () => {
+  it("keeps the engine version out of the Branch Updates heading", async () => {
     const { engine } = engineWith({ "update.status": READY, status: { runtimeVersion: "1.0.0" }, "system.info": { platform: "win32" } });
     await show("updates", engine);
-    expect(document.body.textContent).toContain("Branch Agent 1.0.0 on Windows.");
-    expect(document.body.textContent).toContain("1.1.0 is ready to install");
+    expect(document.body.textContent).not.toContain("Branch Agent 1.0.0 on Windows.");
+    expect(document.body.textContent).toContain("Checking Branch’s version");
+    expect(document.body.textContent).toContain("A Branch update is ready");
+    expect(document.body.textContent).not.toContain("1.1.0");
   });
   it("says it is up to date when the engine reports no update", async () => {
     const { engine } = engineWith({ "update.status": { ...READY, updateAvailable: null }, status: { runtimeVersion: "1.0.0" } });
@@ -276,7 +278,7 @@ describe("Settings › Updates & about, an update the engine started", () => {
     const campaign = { id: "c1", state: "countdown", announcedAtMs: at, applyAtMs: at + 50_000, forceAtMs: at + 300_000, updatedAtMs: at };
     const { engine, request } = engineWith({ "update.status": { ...READY, schedule: { channel: "stable", autoEnabled: true, campaign } }, "update.hold": { ok: true, schedule: { channel: "stable", autoEnabled: true, campaign: { ...campaign, holdUntilMs: at + 3_600_000 } } } });
     await show("updates", engine);
-    expect(document.body.textContent).toContain("1.1.0 is installing by itself");
+    expect(document.body.textContent).toContain("A Branch update is installing by itself");
     expect(document.body.textContent).toMatch(/Updating in 0:\d\d/);
     await click("Hold for an hour");
     expect(request).toHaveBeenCalledWith("update.hold", {});

@@ -12,6 +12,7 @@ import { comingUp, limitsSummary, readMonthSpend, readRoom, readRounds, sizeWord
 import type { GatewayFacts } from "./use-status";
 import "./status.css";
 import { shownWhy } from "./shown-why";
+import { versionParts } from "../connect/branch-version";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 type Base = { above: Above; onClose: () => void };
@@ -278,10 +279,10 @@ export function VersionPopover({ update, version, desktopPending, autoApply, onW
   const latest = update?.latest && update.latest !== version ? update.latest : null;
   return (
     <Popover at={{ x: 0, y: 0 }} label="Version and updates" testid="pop-version" className="sp" {...base}>
-      {desktopPending && autoApply ? <><div className="pt">Update ready, applying when your Trunks finish</div><p className="pp">Branch {desktopPending}</p></> : null}
+      {desktopPending && autoApply ? <><div className="pt">Update ready, applying when your Trunks finish</div><p className="pp">Branch {versionParts(desktopPending).short}</p></> : null}
       {latest ? (
         <>
-          <div className="pt">Branch {latest} is ready</div>
+          <div className="pt">Branch {versionParts(latest).short} is ready</div>
           <p className="pp">{update?.waiting ?? "Installs when nothing is running and keeps a safety copy first."}</p>
           {update?.notes.length ? (
             <ul className="steps-list sp-notes">
@@ -297,7 +298,7 @@ export function VersionPopover({ update, version, desktopPending, autoApply, onW
       ) : (
         <>
           <div className="pt">{update?.statusMessage ?? "Branch is up to date."}</div>
-          <p className="pp">Branch {version}</p>
+          <p className="pp">Branch {versionParts(version).detail}</p>
           <Item icon="book" label="What’s new" testid="ver-whatsnew" onClick={onWhatsNew} />
         </>
       )}

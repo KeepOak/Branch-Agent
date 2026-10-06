@@ -59,4 +59,9 @@ describe("status popovers", () => {
     expect(host.textContent).toContain("Branch is up to date.");
     expect(button(host, "Install when nothing is running")).toBeUndefined();
   });
+  it("Version: ready label keeps the build id out of the popover", async () => {
+    const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "0.4.4-build-current", latest: "0.4.5-build-next", notes: [], installing: false, waiting: null }} version="0.4.4-build-current" onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />);
+    expect(host.textContent).toContain("Branch 0.4.5 is ready");
+    expect(host.textContent).not.toContain("-build-next");
+  });
 });

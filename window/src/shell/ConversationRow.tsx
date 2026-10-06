@@ -38,6 +38,9 @@ type Props = {
   depth?: number;
   child?: boolean;
   selected?: boolean;
+  pinDraggable?: boolean;
+  pinFixed?: boolean;
+  fallbackLine?: string;
   onOpen: (event: MouseEvent<HTMLElement>) => void;
   onMenu: (event: MouseEvent<HTMLElement>) => void;
   onPin?: () => void;
@@ -116,8 +119,8 @@ export function ConversationRow(p: Props) {
   const mark = row.runMark ? MARKS[row.runMark] : null;
   const line = secondLine(row, state, p.extras);
   // One line unless previews are on, or it waits for you or failed (the preview's rowPA18).
-  const twoLine = p.showPreview || state.working || Boolean(line && (line.tone === "attn" || line.tone === "bad"));
-  const text = line ?? (p.showPreview ? { text: row.preview, word: "", tone: "" } : null);
+  const twoLine = ["trunk", "chatGroup", "outside"].includes(row.kind) || p.showPreview || state.working || Boolean(line && (line.tone === "attn" || line.tone === "bad"));
+  const text = line ?? (twoLine ? { text: row.preview || p.fallbackLine || "", word: "", tone: "" } : null);
   const hue = colourHue(row.color);
   const classes = ["row", current ? "current" : "", twoLine ? "" : "one", p.dimmed ? "dim" : "", p.child ? "child" : "", p.selected ? "sel" : ""].filter(Boolean).join(" ");
   const badges = badgeList(row, p.extras);
@@ -133,6 +136,8 @@ export function ConversationRow(p: Props) {
         className={classes}
         data-testid="conversation-row"
         data-key={row.key}
+        data-pin-key={p.pinDraggable ? row.key : undefined}
+        data-pin-fixed={p.pinFixed ? "true" : undefined}
         data-main={row.isMain ? "true" : undefined}
         style={hue ? { ["--clr" as string]: hue } : undefined}
         onContextMenu={(e) => {
@@ -142,10 +147,12 @@ export function ConversationRow(p: Props) {
         onPointerEnter={(e) => card(e.currentTarget)}
         onPointerLeave={() => card(null)}
       >
-        <button type="button" className="row-open" aria-current={current ? "true" : undefined} aria-selected={p.selected ? true : undefined} onClick={p.onOpen}
+        <button type="button" className="row-open" aria-current={current ? "true" : undefined} aria-selected={p.selected ? true : undefined} title={name} onClick={p.onOpen}
+          onKeyDown={(e) => { if (e.key === "F10" && e.shiftKey) { e.preventDefault(); p.onMenu(e as unknown as MouseEvent<HTMLElement>); } }}
           onFocus={(e) => e.currentTarget.matches(":focus-visible") && card(e.currentTarget.parentElement)} onBlur={() => card(null)}>
           <span className={state.working ? "row-av working-ring" : "row-av"} data-working={state.working ? "true" : undefined}>
             <Pebble size={twoLine ? 40 : 28} label={row.kind === "chatGroup" || row.kind === "outside" ? row.title : p.trunkName} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />
+            {row.unread && !current ? <i className="rail-unread" aria-label="Unread" /> : null}
             {state.waiting ? <i className="needs-you" aria-label="Waiting for you" /> : null}
             {p.selected ? <span className="sel-tick" aria-hidden="true"><Icon name="tick" size={11} /></span> : null}
           </span>
