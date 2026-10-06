@@ -120,7 +120,7 @@ function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row:
         selected={p.selected?.has(row.key)}
         pinDraggable={p.rail && row.pinned}
         pinFixed={row.key === p.home?.key}
-        fallbackLine={row.key === p.home?.key ? "Chief of Staff" : row.kind === "group" || row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : row.kind === "trunk" ? "Trunk" : undefined}
+        fallbackLine={row.kind === "group" || row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : row.kind === "trunk" ? "Trunk" : undefined}
         onOpen={(e) => {
           if ((e.altKey || e.shiftKey) && p.onSelect?.(row, e)) return;
           p.onOpen(row.key);
@@ -152,7 +152,7 @@ function PinnedTile({ p, row }: { p: SidebarProps; row: Conversation }) {
   useEffect(() => { seenPinned.add(row.key); }, [row.key]);
   const state = p.rowState(row);
   const current = row.key === p.openKey && p.currentPlace === null;
-  const role = row.kind === "group" || row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : row.key === p.home?.key ? "Chief of Staff" : "Trunk";
+  const role = row.kind === "group" || row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : "Trunk";
   return <div className={fresh ? "pin-tile pin-new" : "pin-tile"} role="listitem" data-pin-key={row.key} data-drag-key={row.key} data-pin-fixed={row.key === p.home?.key ? "true" : undefined}>
     <button type="button" className="pin-open" aria-current={current ? "true" : undefined} aria-selected={p.selected?.has(row.key) || undefined}
       aria-label={`${row.title}, ${role}${row.unread ? ", unread" : ""}${state.working ? ", working" : ""}`}

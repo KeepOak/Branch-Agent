@@ -25,7 +25,7 @@ export function foundState(app: App, detect: RecordValue | undefined): Found {
 const PILL: Record<Found["state"], [string, string]> = { ready: ["ok", "Models ready"], signin: ["warn", "Sign-in needed"], missing: ["idle", "Not found"] };
 
 function sub(app: App, f: Found, on: boolean): string {
-  if (f.state === "missing") return f.reason ?? `Install and sign in to ${app.name} on this PC, then check again.`;
+  if (f.state === "missing") return f.reason ?? `Install and sign in to ${app.name} on this computer, then check again.`;
   if (f.state === "signin") return `Open ${app.name} and check its sign-in, then check again.`;
   return on ? `On because ${app.name} is connected on this computer.` : `${app.name} is connected on this computer. Turn it on to use its models.`;
 }

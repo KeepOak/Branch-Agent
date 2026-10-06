@@ -7,7 +7,7 @@ import { useLook } from "./appearance-store";
 
 const MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 /** The computer's own name for itself, as the preview words its rows. */
-export const OS = MAC ? "macOS" : "Windows";
+export const OS = MAC ? "macOS" : typeof navigator !== "undefined" && /Linux/.test(navigator.platform) ? "Linux" : "Windows";
 export const NO_KEY = "Branch has no setting for this yet.";
 const noop = () => undefined;
 

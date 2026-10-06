@@ -1429,14 +1429,14 @@
   align-items: center;
   gap: 18px;
   max-width: 640px;
-  margin: 0 auto;
-  padding: 12vh 24px 24px;
+  margin: -24px auto 0;
+  padding: 32px 24px 24px;
   text-align: center;
 }
 
 @media (max-width: 760px) {
   .thread .empty {
-    padding-top: 6vh;
+    padding-top: 0;
   }
 }
 
