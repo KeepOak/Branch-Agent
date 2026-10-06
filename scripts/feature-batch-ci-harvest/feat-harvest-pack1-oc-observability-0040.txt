@@ -7,6 +7,7 @@ engine:extensions/firecrawl/src/firecrawl-cache.test.ts
 engine:extensions/firecrawl/src/firecrawl-client.test.ts
 engine:extensions/firecrawl/src/firecrawl-search-results.test.ts
 engine:extensions/firecrawl/src/firecrawl-tools.test.ts
+engine:extensions/memory-core/src/session-search-visibility.test.ts
 engine:extensions/searxng/src/searxng-client.test.ts
 engine:extensions/searxng/src/searxng-client.transport.test.ts
 engine:extensions/searxng/src/searxng-search-provider.test.ts
@@ -19,6 +20,8 @@ engine:extensions/tavily/src/tavily-search.cache.test.ts
 engine:extensions/tavily/src/tavily-tools.test.ts
 engine:src/agents/embedded-agent-runner/usage-accumulator.test.ts
 engine:src/agents/harvest-research-safety.behaviour.test.ts
+engine:src/agents/tools/sessions-search-tool.matching.test.ts
+engine:src/agents/tools/sessions-search-tool.test.ts
 engine:src/agents/tools/web-search.redirect.test.ts
 engine:src/agents/tools/web-search.test.ts
 engine:src/agents/usage.test.ts

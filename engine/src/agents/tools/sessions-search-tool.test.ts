@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/agents/tools/sessions-search-tool.test.ts (atlas SESSIONS-0025). Changed for Branch: retain newer upstream tests for the existing Branch sync; all assertions preserved.
 /** sessions_search visibility, bounds, redaction, and input tests. */
 import path from "node:path";
 import { Value } from "typebox/value";
