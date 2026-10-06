@@ -12,6 +12,7 @@ import {
 } from "branch/plugin-sdk/core";
 import { createChannelDirectoryAdapter } from "branch/plugin-sdk/directory-runtime";
 import { channelReadyPatch } from "branch/plugin-sdk/gateway-runtime";
+import { buildComputedAccountStatusSnapshot } from "branch/plugin-sdk/status-helpers";
 import { runReefChannelLifecycle } from "./channel-lifecycle.js";
 import {
   ReefChannelConfigSchema,
@@ -228,17 +229,16 @@ export const reefPlugin: ChannelPlugin<ReefAccount, unknown, unknown, 2> = {
   },
   status: {
     defaultRuntime: { accountId: "default", enabled: true, configured: false },
-    buildAccountSnapshot: ({ account, runtime }) => ({
-      accountId: "default",
-      enabled: account.enabled,
-      configured: account.configured,
-      running: runtime?.running ?? false,
-      connected: runtime?.connected ?? false,
-      lifecycle: runtime?.lifecycle,
-      lastConnectedAt: runtime?.lastConnectedAt ?? null,
-      lastError: runtime?.lastError ?? null,
-      extra: { handle: account.config.handle },
-    }),
+    buildAccountSnapshot: ({ account, runtime }) =>
+      buildComputedAccountStatusSnapshot(
+        {
+          accountId: "default",
+          enabled: account.enabled,
+          configured: account.configured,
+          runtime,
+        },
+        { extra: { handle: account.config.handle } },
+      ),
   },
   gateway: {
     apiVersion: 2,

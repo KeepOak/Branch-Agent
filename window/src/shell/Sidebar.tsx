@@ -1,5 +1,6 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { Pebble } from "../face/Pebble";
+import { RoomFaces } from "../rooms/RoomFaces";
 import { CommunityInvite } from "./CommunityInvite";
 import type { Conversation } from "../connect/conversations";
 import type { PlaceId } from "../places-nav/routes";
@@ -32,6 +33,9 @@ export type SidebarProps = {
   searchResults: ReactNode | null;
   rail: boolean;
   onReorderPins?: (drop: SidebarDrop, visible: readonly string[]) => void;
+  onGroupDrop?: (drop: SidebarDrop, anchor: DOMRect) => void;
+  dropHint?: (drop: SidebarDrop) => string;
+  onMoveToGroup?: (key: string, anchor: DOMRect) => void;
   onRailSearch: () => void;
   onOpen: (key: string) => void;
   onNew: (event: MouseEvent<HTMLElement>) => void;
@@ -95,7 +99,7 @@ function useKids() {
 type Kids = ReturnType<typeof useKids>;
 
 function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row: Conversation; kids: Kids; depth?: number; child?: boolean }) {
-  const mine = child || row.isMain || ["trunk", "chatGroup", "outside"].includes(row.kind) ? [] : childrenOf(p.allRows ?? [], row.key);
+  const mine = child || row.isMain || ["trunk", "group", "chatGroup", "outside"].includes(row.kind) ? [] : childrenOf(p.allRows ?? [], row.key);
   const isOpen = kids.open.has(row.key);
   const shown = isOpen ? shownChildren(mine, kids.all.has(row.key), (c) => p.rowState(c).waiting) : [];
   return (
@@ -116,13 +120,13 @@ function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row:
         selected={p.selected?.has(row.key)}
         pinDraggable={p.rail && row.pinned}
         pinFixed={row.key === p.home?.key}
-        fallbackLine={row.key === p.home?.key ? "Chief of Staff" : row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : row.kind === "trunk" ? "Trunk" : undefined}
+        fallbackLine={row.key === p.home?.key ? "Chief of Staff" : row.kind === "group" || row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : row.kind === "trunk" ? "Trunk" : undefined}
         onOpen={(e) => {
           if ((e.altKey || e.shiftKey) && p.onSelect?.(row, e)) return;
           p.onOpen(row.key);
         }}
         onMenu={(e) => p.onMenu(row, e)}
-        onPin={() => p.onPin(row)}
+        onPin={row.kind === "group" ? undefined : () => p.onPin(row)}
         onArchive={row.isMain || row.kind === "trunk" ? undefined : () => p.onArchive(row)}
         onCard={p.onCard ? (el) => p.onCard?.(row, el) : undefined}
       />
@@ -148,14 +152,14 @@ function PinnedTile({ p, row }: { p: SidebarProps; row: Conversation }) {
   useEffect(() => { seenPinned.add(row.key); }, [row.key]);
   const state = p.rowState(row);
   const current = row.key === p.openKey && p.currentPlace === null;
-  const role = row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : row.key === p.home?.key ? "Chief of Staff" : "Trunk";
-  return <div className={fresh ? "pin-tile pin-new" : "pin-tile"} role="listitem" data-pin-key={row.key} data-pin-fixed={row.key === p.home?.key ? "true" : undefined}>
+  const role = row.kind === "group" || row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : row.key === p.home?.key ? "Chief of Staff" : "Trunk";
+  return <div className={fresh ? "pin-tile pin-new" : "pin-tile"} role="listitem" data-pin-key={row.key} data-drag-key={row.key} data-pin-fixed={row.key === p.home?.key ? "true" : undefined}>
     <button type="button" className="pin-open" aria-current={current ? "true" : undefined} aria-selected={p.selected?.has(row.key) || undefined}
       aria-label={`${row.title}, ${role}${row.unread ? ", unread" : ""}${state.working ? ", working" : ""}`}
       title={row.title} onClick={(e) => { if ((e.altKey || e.shiftKey) && p.onSelect?.(row, e)) return; p.onOpen(row.key); }}
       onContextMenu={(e) => { e.preventDefault(); p.onMenu(row, e); }}
       onKeyDown={(e) => { if (e.key === "F10" && e.shiftKey) { e.preventDefault(); p.onMenu(row, e as unknown as MouseEvent<HTMLElement>); } }}>
-      <span className="pin-face"><Pebble size={60} label={row.kind === "chatGroup" || row.kind === "outside" ? row.title : p.trunkName(row.agentId)} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />
+      <span className="pin-face">{row.roomPicks ? <RoomFaces picks={row.roomPicks} size={60} /> : <Pebble size={60} label={row.kind === "group" || row.kind === "chatGroup" || row.kind === "outside" ? row.title : p.trunkName(row.agentId)} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />}
         {row.unread && !current ? <i className="pin-unread" aria-label="Unread" /> : null}
         {state.waiting ? <i className="needs-you" aria-label="Waiting for you" /> : null}
       </span>
@@ -205,9 +209,18 @@ function SectionLabel({ p, s, label, lead }: { p: SidebarProps; s: ListSection; 
 export function Sidebar(p: SidebarProps) {
   const kids = useKids();
   const visiblePins = p.sections.find((section) => section.id === "pinned")?.rows.map((row) => row.key) ?? [];
-  const drag = useSidebarPointerDrag((drop) => p.onReorderPins?.(drop, visiblePins), {
-    itemAttribute: "data-pin-key", ignoreSelector: ".pin-more, [data-pin-fixed=true]",
-    axis: p.rail ? "y" : "x", dropZones: ["before", "after"],
+  const drag = useSidebarPointerDrag((drop) => {
+    if (drop.zone !== "onto" && visiblePins.includes(drop.source) && visiblePins.includes(drop.target) && drop.source !== p.home?.key) p.onReorderPins?.(drop, visiblePins);
+    else {
+      const target = document.querySelector<HTMLElement>(`[data-drag-key="${CSS.escape(drop.target)}"]`);
+      if (target) p.onGroupDrop?.(drop, target.getBoundingClientRect());
+    }
+  }, {
+    itemAttribute: "data-drag-key", ignoreSelector: ".pin-more, .row-acts, .chv, .prj-row, input, [data-pin-fixed=true]",
+    axis: p.rail ? "y" : "x", dropZones: ["onto"],
+    zonesFor: (source, target, element) => visiblePins.includes(source) && visiblePins.includes(target) && source !== p.home?.key && element.hasAttribute("data-pin-key") ? ["before", "onto", "after"] : ["onto"],
+    hint: (drop) => p.dropHint?.(drop) ?? "",
+    onLongPress: (key) => { const item = document.querySelector<HTMLElement>(`[data-drag-key="${CSS.escape(key)}"] .pin-more, [data-drag-key="${CSS.escape(key)}"] [data-testid="row-more"]`); item?.click(); },
   });
   return (
     <aside className={p.rail ? "side rail" : "side"} aria-label="Conversations" data-testid="sidebar" {...drag}>

@@ -211,6 +211,7 @@ export function projectSafeChannelAccountSnapshotFields(
     "running",
     "connected",
     "restartPending",
+    "needsAttention",
     "terminalDisconnect",
     "busy",
     "allowUnmentionedGroups",
@@ -219,6 +220,7 @@ export function projectSafeChannelAccountSnapshotFields(
   }
   for (const key of [
     "reconnectAttempts",
+    "retryingSince",
     "lastInboundAt",
     "lastTransportActivityAt",
     "activeRuns",

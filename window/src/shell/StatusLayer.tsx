@@ -11,7 +11,7 @@ import type { StatusItem } from "./StatusBar";
 import { GatewayPopover, RoomPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
 import type { Limits, UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
-import { stageWindowUpdate } from "../connect/desktop-component-updates";
+import { componentDesktop, stageWindowUpdate } from "../connect/desktop-component-updates";
 import { useDesktopComponentStatus } from "../connect/desktop-component-updates";
 import { useDesktopControls } from "../connect/desktop-controls";
 import { COMPOSE_EVENT } from "../composer/Composer";
@@ -68,6 +68,7 @@ export type StatusContext = {
   gateway: GatewayFacts;
   update: UpdateInfo | null;
   version: string;
+  computerName: string;
   openRow: Conversation | null;
   working: { key: string; title: string; line: string; runIds?: string[] }[];
   openSettings: (page: string) => void;
@@ -212,6 +213,7 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
   if (item === "version") {
     return <VersionPopover {...base} update={ctx.update} version={ctx.version}
       desktopPending={desktopUpdate.status?.pendingVersion ?? null} autoApply={desktopControls.state?.autoApplyUpdates !== false}
+      desktopInstall={Boolean(componentDesktop(ctx.session.gatewayUrl)?.componentUpdates)} computerName={ctx.computerName}
       onWhatsNew={close(ctx.onWhatsNew)} onInstall={close(() => void install(ctx))} onRemind={close(() => (remindTomorrow(ctx.update?.latest ?? ctx.version), ctx.onReminded()))} />;
   }
   return null;

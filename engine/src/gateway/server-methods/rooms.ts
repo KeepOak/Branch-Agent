@@ -266,7 +266,9 @@ export const roomHandlers: GatewayRequestHandlers = {
           enabled: member.enabled ?? true,
         })),
       });
+      const started = appendRoomEvent(room.roomId, "created", "owner", { members: room.members.map(({ kind, id }) => ({ kind, id })) });
       changed(options, room);
+      event(options, started);
       options.respond(true, { room });
     } catch (error) {
       failure(options.respond, error);
@@ -389,7 +391,13 @@ export const roomHandlers: GatewayRequestHandlers = {
     try {
       if (options.params.kind === "trunk") await checkTrunks(options, [options.params.id]);
       const room = addRoomMember(options.params.roomId, options.params);
+      const outside = options.params.outsideAgent;
+      const actorId = outside && options.params.kind === "a2a" && options.params.id === outside.id
+        ? `a2a:${outside.id}`
+        : (options.client?.authenticatedUserProfile?.profileId ?? "owner");
+      const added = appendRoomEvent(room.roomId, "member.added", actorId, { kind: options.params.kind, id: options.params.id, ...(outside ? { from: outside.name } : {}) });
       changed(options, room);
+      event(options, added);
       options.respond(true, { room });
     } catch (error) {
       failure(options.respond, error);

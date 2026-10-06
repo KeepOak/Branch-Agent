@@ -67,6 +67,42 @@ describe("Settings › Chat apps", () => {
     expect(button("All 3 chat apps")).toBeTruthy();
   });
 
+  it("shows reconnect needs-attention while automatic retries continue", async () => {
+    const status = {
+      ...STATUS,
+      channelAccounts: {
+        ...STATUS.channelAccounts,
+        telegram: [{
+          ...STATUS.channelAccounts.telegram[0],
+          needsAttention: true,
+          restartPending: true,
+          reconnectAttempts: 24,
+        }],
+      },
+    };
+    const { engine } = engineOf({ "channels.status": status });
+    await render(engine);
+    const row = [...host.querySelectorAll(".prow")].find((element) =>
+      element.textContent?.includes("Telegram"),
+    );
+    expect(row?.querySelector(".pill")?.textContent).toBe("Needs attention");
+    expect(row?.textContent).toContain("Reconnect attempts continue automatically");
+  });
+
+  it("opens the real watchdog log from Technical chat-app settings", async () => {
+    const { engine, request } = engineOf({
+      "logs.tail": {
+        file: "branch.log",
+        cursor: 1,
+        lines: ["gateway/health-monitor: [telegram:default] restarting (reason: disconnected)"],
+      },
+    });
+    await render(engine, 2);
+    await act(async () => button("Open watchdog log").click());
+    expect(request).toHaveBeenCalledWith("logs.tail", { limit: 500 });
+    expect(document.querySelector(".dlg")?.textContent).toContain("restarting (reason: disconnected)");
+  });
+
   it("says no chat app is connected yet, and hides Asking and Who answers", async () => {
     const { engine } = engineOf({ "channels.status": { ...STATUS, channels: {}, channelAccounts: {} } });
     await render(engine);
