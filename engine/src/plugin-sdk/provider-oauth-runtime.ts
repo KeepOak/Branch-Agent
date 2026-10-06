@@ -7,7 +7,6 @@ import {
   resolveTimerTimeoutMs,
 } from "../../packages/normalization-core/src/number-coercion.js";
 import type { Model } from "../llm/types.js";
-import { anthropicOAuthProvider } from "../llm/utils/oauth/anthropic.js";
 import { generatePkceVerifierChallenge } from "./oauth-utils.js";
 export { oauthErrorHtml, oauthSuccessHtml } from "../shared/oauth-page.js";
 
@@ -117,7 +116,8 @@ export interface OAuthProviderInterface {
 
 /** The built-in Claude subscription browser login, shared with the Anthropic provider plugin. */
 export async function loginAnthropicOAuth(callbacks: OAuthLoginCallbacks): Promise<OAuthCredentials> {
-  return anthropicOAuthProvider.login(callbacks);
+  const { login } = await import("./provider-anthropic-login.js");
+  return login(callbacks);
 }
 
 /** @deprecated Use OAuthProviderInterface instead. */
