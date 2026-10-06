@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/memory-wiki/src/obsidian.test.ts (atlas MEMORY-0078). Changed for Branch: assert the exact configured Branch Agent vault name after the product rename.
 import { describe, expect, it } from "vitest";
 import { resolveMemoryWikiConfig } from "./config.js";
 import { OBSIDIAN_ACTIONS, runObsidianAction } from "./obsidian.js";
@@ -47,7 +48,7 @@ describe("runObsidianAction", () => {
       expect(calls).toEqual([
         {
           command: "/usr/local/bin/obsidian",
-          argv: ["vault=Branch Wiki", ...expectedArgv],
+          argv: ["vault=Branch Agent Wiki", ...expectedArgv],
           options: { logOutput: false, timeoutMs: 10_000 },
         },
       ]);
