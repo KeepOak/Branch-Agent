@@ -19,7 +19,7 @@ async function mountResizer() {
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root?.render(
-    <SideResizer layout={{ sideW: 292, rail: false, focus: false }}
+    <SideResizer layout={{ sideW: 292, rail: false, hidden: false, focus: false }}
       onLayout={(patch) => committed.push(patch)} onLive={(width) => live.push(width)} />,
   ));
   const separator = host.querySelector<HTMLElement>("[role=separator]")!;

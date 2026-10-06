@@ -80,7 +80,7 @@ import { useGatewayFacts, useLimits, useUpdate } from "./use-status";
 import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
 import { HeaderRow, PlaceHead, TopBar, type FaceState } from "./TopBar";
-import { useLayout } from "./use-layout";
+import { toggleListLayout, useLayout } from "./use-layout";
 import { usePinOrder } from "./use-pin-order";
 import { hideMenuItems, hideTarget, HIDEABLE, usePetLook, useShown } from "./shown";
 import { StatusGfx, StatusLeftExtras } from "./StatusExtras";
@@ -787,7 +787,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   const narrow = () => isNarrow;
   const compact = isNarrow || layout.focus;
-  const toggleList = () => (narrow() ? setSlideOpen((o) => !o) : setLayout({ rail: !rail }));
+  const toggleList = () => (narrow() ? setSlideOpen((o) => !o) : setLayout(toggleListLayout(layout)));
   const showMenu = (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string, upward = false) => {
     e.preventDefault();
     e.stopPropagation();
@@ -864,8 +864,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     savePrefs(p);
   };
   const focusSearch = () => {
-    if (rail) {
-      setLayout({ rail: false });
+    if (rail || layout.hidden) {
+      setLayout({ rail: false, hidden: false });
     }
     if (narrow()) {
       setSlideOpen(true);
@@ -1031,8 +1031,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onOpenSession: openConversation,
     onReply: (target: { entryId: string; name: string; text: string }) => setReplyTo(target),
   };
-  const sideWidth = liveW ?? (rail ? 68 : layout.sideW);
-  const frameClass = ["frame", rail ? "rail" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
+  const sideWidth = layout.hidden && !isNarrow ? 0 : liveW ?? (rail ? 68 : layout.sideW);
+  const frameClass = ["frame", rail ? "rail" : "", layout.hidden && !isNarrow ? "list-hidden" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
   const summary = filterSummary(prefs, trunkName, personName);
   const dark = theme === "system" ? systemDark : effectiveDark(theme);
   const filterOpen = overlay?.kind === "filter";
@@ -1233,7 +1233,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         machine={<MachineSwitcher online={ready} connecting={s.status.phase === "connecting"} onOpen={(e) => machineMenu(e, "machine")} />}
         header={header}
         dark={dark}
-        listHidden={rail}
+        listHidden={isNarrow ? !slideOpen : rail || layout.hidden}
         onTheme={() => setTheme(toggleTheme(theme))}
         onToggleList={toggleList}
         onCharacter={() => setCharacterShown((v) => !v)}
@@ -1358,7 +1358,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           extras={rowExtras(rowCard.card.row)}
         />
       ) : null}
-      {layout.focus ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
+      {layout.focus || layout.hidden ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
       {slideOpen ? <div className="slide-scrim" onClick={() => setSlideOpen(false)} /> : null}
       <main className={mainClass} id="main">
         {layout.focus ? (
