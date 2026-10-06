@@ -1,14 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../../config/types.branch.js";
+import {
+  copyLegacyClaudeProfile,
+  migrateLegacyClaudeConfig,
+} from "./anthropic-manual-migration-core.js";
 import { migrateLegacyClaudeProfilesAtStartup } from "./anthropic-manual-migration.js";
-import { copyLegacyClaudeProfile, migrateLegacyClaudeConfig } from "./anthropic-manual-migration-core.js";
+import { normalizeRawCredentialEntry } from "./persisted-credential.js";
 import type { AuthProfileStore } from "./types.js";
 
-const mocks = vi.hoisted(() => ({ stores: new Map<string, AuthProfileStore>(), writeConfig: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  stores: new Map<string, AuthProfileStore>(),
+  writeConfig: vi.fn(),
+}));
 vi.mock("./candidate-stores.js", () => ({
-  listCandidateAuthProfileStores: async () => [...mocks.stores.keys()].map((agentId) => ({ agentId, databasePath: `missing-${agentId}.db` })),
-  loadCandidateAuthProfileStore: (candidate: { agentId: string }) => mocks.stores.get(candidate.agentId),
-  updateCandidateAuthProfileStore: ({ candidate, updater }: { candidate: { agentId: string }; updater: (store: AuthProfileStore) => boolean }) => {
+  listCandidateAuthProfileStores: async () =>
+    [...mocks.stores.keys()].map((agentId) => ({ agentId, databasePath: `missing-${agentId}.db` })),
+  loadCandidateAuthProfileStore: (candidate: { agentId: string }) =>
+    mocks.stores.get(candidate.agentId),
+  updateCandidateAuthProfileStore: ({
+    candidate,
+    updater,
+  }: {
+    candidate: { agentId: string };
+    updater: (store: AuthProfileStore) => boolean;
+  }) => {
     const store = mocks.stores.get(candidate.agentId)!;
     return { changed: updater(store), store };
   },
@@ -27,10 +42,18 @@ describe("legacy Claude account migration", () => {
       lastGood: { anthropic: legacy },
       usageStats: { [legacy]: { lastUsed: 42 } },
     };
-    const cfg: BranchConfig = { auth: { profiles: { [legacy]: { provider: "anthropic", mode: "token" } }, order: { anthropic: [legacy, ...extra] } } };
+    const cfg: BranchConfig = {
+      auth: {
+        profiles: { [legacy]: { provider: "anthropic", mode: "token" } },
+        order: { anthropic: [legacy, ...extra] },
+      },
+    };
     expect(copyLegacyClaudeProfile(store, next, "owner@example.test")).toBe(true);
     expect(store.profiles[legacy]).toBeDefined();
-    expect(store.profiles[next]).toMatchObject({ token: "fake-token", email: "owner@example.test" });
+    expect(store.profiles[next]).toMatchObject({
+      token: "fake-token",
+      email: "owner@example.test",
+    });
     expect(store.order?.anthropic).toEqual([next, ...extra]);
     expect(store.order?.anthropic).toHaveLength(12);
     expect(store.lastGood?.anthropic).toBe(next);
@@ -44,8 +67,14 @@ describe("legacy Claude account migration", () => {
   });
 
   it("rewrites a Trunk's local order without adding a credential it does not own", () => {
-    const store: AuthProfileStore = { version: 1, profiles: {}, order: { anthropic: ["anthropic:manual", "anthropic:work"] } };
-    expect(copyLegacyClaudeProfile(store, "anthropic:owner@example.test", "owner@example.test")).toBe(true);
+    const store: AuthProfileStore = {
+      version: 1,
+      profiles: {},
+      order: { anthropic: ["anthropic:manual", "anthropic:work"] },
+    };
+    expect(
+      copyLegacyClaudeProfile(store, "anthropic:owner@example.test", "owner@example.test"),
+    ).toBe(true);
     expect(store.profiles).toEqual({});
     expect(store.order?.anthropic).toEqual(["anthropic:owner@example.test", "anthropic:work"]);
   });
@@ -55,35 +84,165 @@ describe("legacy Claude account migration", () => {
     mocks.writeConfig.mockClear();
     const tokenA = "sk-ant-oat01-" + "a".repeat(80);
     const tokenB = "sk-ant-oat01-" + "b".repeat(80);
-    for (const [agentId, token] of [["a", tokenA], ["b", tokenB]]) {
-      mocks.stores.set(agentId, { version: 1, profiles: { "anthropic:manual": { type: "token", provider: "anthropic", token } }, order: { anthropic: ["anthropic:manual"] } });
+    for (const [agentId, token] of [
+      ["a", tokenA],
+      ["b", tokenB],
+    ]) {
+      mocks.stores.set(agentId, {
+        version: 1,
+        profiles: { "anthropic:manual": { type: "token", provider: "anthropic", token } },
+        order: { anthropic: ["anthropic:manual"] },
+      });
     }
-    vi.stubGlobal("fetch", vi.fn(async (_url: string, options: { headers: { Authorization: string } }) =>
-      new Response(JSON.stringify({ account: { email: options.headers.Authorization.includes(tokenA) ? "a@example.test" : "b@example.test" } }), { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (_url: string, options: { headers: { Authorization: string } }) =>
+          new Response(
+            JSON.stringify({
+              account: {
+                email: options.headers.Authorization.includes(tokenA)
+                  ? "a@example.test"
+                  : "b@example.test",
+              },
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
     try {
       expect(await migrateLegacyClaudeProfilesAtStartup({})).toBe(true);
-      expect(mocks.stores.get("a")?.profiles["anthropic:a@example.test"]).toMatchObject({ token: tokenA });
-      expect(mocks.stores.get("b")?.profiles["anthropic:b@example.test"]).toMatchObject({ token: tokenB });
+      expect(mocks.stores.get("a")?.profiles["anthropic:a@example.test"]).toMatchObject({
+        token: tokenA,
+      });
+      expect(mocks.stores.get("b")?.profiles["anthropic:b@example.test"]).toMatchObject({
+        token: tokenB,
+      });
       expect(mocks.stores.get("a")?.profiles["anthropic:manual"]).toBeUndefined();
       expect(mocks.stores.get("b")?.profiles["anthropic:manual"]).toBeUndefined();
       expect(mocks.stores.get("b")?.order?.anthropic).toEqual(["anthropic:b@example.test"]);
-    } finally { vi.unstubAllGlobals(); }
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("migrates a token without an email to its stable hash fallback", async () => {
     mocks.stores.clear();
     mocks.writeConfig.mockClear();
     const token = "sk-ant-oat01-" + "c".repeat(80);
-    mocks.stores.set("c", { version: 1, profiles: { "anthropic:manual": { type: "token", provider: "anthropic", token } } });
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 403 })));
+    mocks.stores.set("c", {
+      version: 1,
+      profiles: { "anthropic:manual": { type: "token", provider: "anthropic", token } },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 403 })),
+    );
     try {
-      expect(await migrateLegacyClaudeProfilesAtStartup({ auth: { profiles: { "anthropic:manual": { provider: "anthropic", mode: "token" } } } })).toBe(true);
+      expect(
+        await migrateLegacyClaudeProfilesAtStartup({
+          auth: { profiles: { "anthropic:manual": { provider: "anthropic", mode: "token" } } },
+        }),
+      ).toBe(true);
       const ids = Object.keys(mocks.stores.get("c")!.profiles);
       expect(ids).toHaveLength(1);
       expect(ids[0]).toMatch(/^anthropic:id-[a-f0-9]{12}$/);
       expect(mocks.stores.get("c")?.profiles[ids[0]]).toMatchObject({ token });
       expect(mocks.stores.get("c")?.profiles[ids[0]]).not.toHaveProperty("email");
       expect(mocks.writeConfig).toHaveBeenCalled();
-    } finally { vi.unstubAllGlobals(); }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("migrates on 429, honors Retry-After across starts, then promotes the ID to email once", async () => {
+    mocks.stores.clear();
+    mocks.writeConfig.mockClear();
+    const token = "sk-ant-oat01-" + "d".repeat(80);
+    const originalConfig: BranchConfig = {
+      auth: {
+        profiles: { "anthropic:manual": { provider: "anthropic", mode: "token" } },
+        order: { anthropic: ["anthropic:manual"] },
+      },
+    };
+    mocks.stores.set("d", {
+      version: 1,
+      profiles: { "anthropic:manual": { type: "token", provider: "anthropic", token } },
+      order: { anthropic: ["anthropic:manual"] },
+      lastGood: { anthropic: "anthropic:manual" },
+    });
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(null, { status: 429, headers: { "Retry-After": "3600" } }),
+      )
+      .mockResolvedValue(
+        new Response(JSON.stringify({ account: { email: "Owner@Example.test" } }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      expect(await migrateLegacyClaudeProfilesAtStartup(originalConfig)).toBe(true);
+      const store = mocks.stores.get("d")!;
+      const [hashId] = Object.keys(store.profiles);
+      expect(hashId).toMatch(/^anthropic:id-[a-f0-9]{12}$/);
+      expect(store.profiles["anthropic:manual"]).toBeUndefined();
+      expect(store.profiles[hashId]).toMatchObject({ token, identityLookupRetryAt: 4_600_000 });
+      expect(
+        normalizeRawCredentialEntry(store.profiles[hashId] as unknown as Record<string, unknown>),
+      ).toMatchObject({ identityLookupRetryAt: 4_600_000, identityLookupFailures: 1 });
+      expect(store.order?.anthropic).toEqual([hashId]);
+      const hashConfig = mocks.writeConfig.mock.calls[0][0] as BranchConfig;
+      expect(await migrateLegacyClaudeProfilesAtStartup(hashConfig)).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      now.mockReturnValue(4_600_001);
+      expect(await migrateLegacyClaudeProfilesAtStartup(hashConfig)).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(store.profiles[hashId]).toBeUndefined();
+      expect(store.profiles["anthropic:owner@example.test"]).toMatchObject({
+        token,
+        email: "owner@example.test",
+      });
+      expect(store.order?.anthropic).toEqual(["anthropic:owner@example.test"]);
+      expect(store.lastGood?.anthropic).toBe("anthropic:owner@example.test");
+      const emailConfig = mocks.writeConfig.mock.calls[1][0] as BranchConfig;
+      expect(emailConfig.auth?.order?.anthropic).toEqual(["anthropic:owner@example.test"]);
+      expect(await migrateLegacyClaudeProfilesAtStartup(emailConfig)).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("backs off after network failures instead of looking up on each start", async () => {
+    mocks.stores.clear();
+    mocks.writeConfig.mockClear();
+    const token = "sk-ant-oat01-" + "e".repeat(80);
+    mocks.stores.set("e", {
+      version: 1,
+      profiles: { "anthropic:manual": { type: "token", provider: "anthropic", token } },
+    });
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const fetchMock = vi.fn().mockRejectedValue(new Error("network unavailable"));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      expect(await migrateLegacyClaudeProfilesAtStartup({})).toBe(true);
+      const store = mocks.stores.get("e")!;
+      const [hashId] = Object.keys(store.profiles);
+      expect(store.profiles[hashId]).toMatchObject({ identityLookupRetryAt: 1_300_000 });
+      expect(await migrateLegacyClaudeProfilesAtStartup({})).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      now.mockReturnValue(1_300_001);
+      expect(await migrateLegacyClaudeProfilesAtStartup({})).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(store.profiles[hashId]).toMatchObject({
+        identityLookupFailures: 2,
+        identityLookupRetryAt: 1_900_001,
+      });
+    } finally {
+      now.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 });

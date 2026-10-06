@@ -55,6 +55,9 @@ export const inlineAuthProfileCredentialSchema = z.discriminatedUnion("type", [
     token: normalizedSecretSchema,
     /** Optional expiry timestamp (ms since epoch). */
     expires: z.number().positive().optional(),
+    /** Startup-only Claude identity lookup cooldown, persisted across restarts. */
+    identityLookupRetryAt: z.number().positive().optional(),
+    identityLookupFailures: z.number().int().positive().optional(),
   }),
   z.strictObject({
     ...commonCredentialFields,
