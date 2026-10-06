@@ -14,3 +14,7 @@ engine:extensions/twitch/src/twitch-client.test.ts
 engine:extensions/zalo/src/monitor.polling-lifecycle.test.ts
 engine:extensions/zalo/src/monitor.webhook.test.ts
 engine:extensions/zalo/src/webhook-spool.test.ts
+engine:extensions/zalouser/src/qr-temp-file.test.ts
+engine:extensions/zalouser/src/text-styles.test.ts
+engine:extensions/zalouser/src/zalo-js.listener.test.ts
+engine:extensions/zalouser/src/zca-client.test.ts
