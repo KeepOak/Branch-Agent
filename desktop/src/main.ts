@@ -15,13 +15,14 @@ import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
-import { registerTitleBarIpc, titleBarOptions } from "./title-bar";
+import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate } from "./auto-apply-update";
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
 import { freemem } from "node:os";
+import { createHash } from "node:crypto";
 import type { Tray } from "electron";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
@@ -72,6 +73,24 @@ if (readSettings(join(cfg.dataDir, "desktop-settings.json")).agentControl) {
 let gateway: ChildProcess | undefined;
 let server: Server | undefined;
 let win: BrowserWindow | undefined;
+const conversationWindows = new Map<string, BrowserWindow>();
+const ownedWebContents = (sender: unknown) => {
+  const owner = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents === sender);
+  return owner && (owner === win || [...conversationWindows.values()].includes(owner)) ? owner.webContents : undefined;
+};
+let quitting = false;
+const conversationWindowFile = join(cfg.dataDir, "conversation-windows.json");
+const conversationStateFile = (key: string): string => `conversation-window-${createHash("sha256").update(key).digest("hex").slice(0, 20)}.json`;
+function saveConversationWindows(): void {
+  try { writeFileSync(conversationWindowFile, JSON.stringify([...conversationWindows.keys()])); } catch { /* a window remains usable without persistence */ }
+  win?.webContents.send("branch-desktop:conversation-windows", [...conversationWindows.keys()]);
+}
+function savedConversationKeys(): string[] {
+  try {
+    const value: unknown = JSON.parse(readFileSync(conversationWindowFile, "utf8"));
+    return Array.isArray(value) ? value.filter((key): key is string => typeof key === "string" && Boolean(key.trim())) : [];
+  } catch { return []; }
+}
 let token = "";
 let engineUpdateReady = false;
 let stopEngineWatch: (() => void) | undefined;
@@ -307,6 +326,46 @@ function createWindow(): BrowserWindow {
   return w;
 }
 
+/** A conversation gets its own frame and URL, while sharing the running engine with the main window. */
+function openConversationWindow(key: string): void {
+  const existing = conversationWindows.get(key);
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    if (!HIDDEN) { existing.show(); existing.focus(); }
+    return;
+  }
+  const url = new URL(windowUrl());
+  url.searchParams.set("conversation", key);
+  const saved = readWindowState(cfg.dataDir, conversationStateFile(key));
+  const place = saved ? placeWindow(saved, screen.getAllDisplays()) : undefined;
+  const mainWidth = win?.getBounds().width ?? 1280;
+  const child = new BrowserWindow({
+    title: TEST_COPY ? "Test — Branch Agent" : "Branch Agent",
+    width: Math.max(560, mainWidth - 292),
+    height: win?.getBounds().height ?? 760,
+    ...(place?.bounds ?? {}),
+    show: false,
+    icon: ICON,
+    ...titleBarOptions(),
+    webPreferences: {
+      preload: join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true,
+      backgroundThrottling: !HIDDEN,
+    },
+  });
+  conversationWindows.set(key, child);
+  saveConversationWindows();
+  child.on("closed", () => { if (conversationWindows.get(key) === child) { conversationWindows.delete(key); if (!quitting) saveConversationWindows(); } });
+  if (place?.maximized) child.once("show", () => child.maximize());
+  trackWindowState(child, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds, conversationStateFile(key));
+  child.setMenuBarVisibility(false);
+  lockDown(child);
+  if (!HIDDEN) child.once("ready-to-show", () => child.show());
+  void child.loadURL(url.toString()).catch((error: unknown) => {
+    log(`conversation window failed to load: ${String(error)}`);
+    child.destroy();
+  });
+}
+
 /** The window may only show the served window's origin; links open in the default browser. */
 function lockDown(w: BrowserWindow): void {
   const origin = `http://127.0.0.1:${cfg.windowPort}`;
@@ -338,14 +397,53 @@ async function start(): Promise<void> {
   token = readToken(cfg);
   // Registered before any page loads: the preload asks for it synchronously.
   ipcMain.on("branch-desktop:info", (e) => {
-    const served = e.sender.getURL().startsWith(windowUrl());
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const served = Boolean(owner && (owner === win || [...conversationWindows.values()].includes(owner)) && e.senderFrame === e.sender.mainFrame && e.sender.getURL().startsWith(windowUrl()));
     e.returnValue = served ? { gatewayUrl: `ws://127.0.0.1:${cfg.gatewayPort}`, gatewayToken: token } : null;
   });
-  ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, win?.webContents, windowUrl())) void restartEngine(); });
-  registerComponentUpdateIpc(ipcMain, () => win?.webContents, windowUrl(), componentUpdates);
-  registerDesktopControlsIpc(ipcMain, () => win?.webContents, windowUrl(), controls);
+  ipcMain.handle("branch-desktop:open-conversation", (e, key: unknown) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner || (owner !== win && ![...conversationWindows.values()].includes(owner)) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
+      throw new Error("Only a Branch window can open a conversation window");
+    }
+    if (typeof key !== "string" || !key.trim()) throw new Error("A conversation key is required");
+    openConversationWindow(key);
+  });
+  ipcMain.handle("branch-desktop:conversation-windows", (e) => {
+    if (!isOwnedComponentWindow(e, win?.webContents, windowUrl())) throw new Error("Only the main Branch window can list conversation windows");
+    return [...conversationWindows.keys()];
+  });
+  ipcMain.handle("branch-desktop:open-main-route", (e, route: unknown) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner || ![...conversationWindows.values()].includes(owner) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
+      throw new Error("Only a conversation window can open the main window");
+    }
+    if (!route || typeof route !== "object" || !["chat", "place", "settings"].includes(String((route as { kind?: unknown }).kind))) {
+      throw new Error("Invalid destination");
+    }
+    if (!win || win.isDestroyed()) throw new Error("The main window is not available");
+    if (win.isMinimized()) win.restore();
+    win.show(); win.focus();
+    win.webContents.send("branch-desktop:open-main-route", route);
+  });
+  ipcMain.handle("branch-desktop:close-conversation-window", (e) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner || ![...conversationWindows.values()].includes(owner) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
+      throw new Error("Only a conversation window can close itself");
+    }
+    owner.close();
+  });
+  ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void restartEngine(); });
+  registerComponentUpdateIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), componentUpdates);
+  registerDesktopControlsIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), controls);
   registerTitleBarIpc(ipcMain, () => win?.webContents, windowUrl(), (overlay) => win?.setTitleBarOverlay(overlay));
-  registerClipboardIpc(ipcMain, () => win?.webContents, windowUrl(), clipboard);
+  ipcMain.on("branch-desktop:title-bar", (event, value) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    if (!owner || ![...conversationWindows.values()].includes(owner) || !isOwnedComponentWindow(event, owner.webContents, windowUrl())) return;
+    const overlay = parseTitleBarOverlay(value);
+    if (overlay) owner.setTitleBarOverlay(overlay);
+  });
+  registerClipboardIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), clipboard);
   controls.apply();
   win = createWindow();
   await win.loadURL(STARTING);
@@ -368,6 +466,7 @@ async function start(): Promise<void> {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");
   }
+  for (const key of savedConversationKeys()) openConversationWindow(key);
   watchUpdates(win);
   componentsReady = true;
   autoApply.start();
@@ -485,6 +584,7 @@ if (!app.requestSingleInstanceLock()) {
   log("another Branch Agent window is open; quitting");
   app.quit();
 } else {
+  app.on("before-quit", () => { quitting = true; });
   app.on("second-instance", () => {
     if (win && !HIDDEN) {
       if (win.isMinimized()) win.restore();
