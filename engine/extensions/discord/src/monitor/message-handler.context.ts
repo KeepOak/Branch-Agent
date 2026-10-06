@@ -8,6 +8,7 @@ import {
   toInboundMediaFactsWithMetadata,
 } from "branch/plugin-sdk/channel-inbound";
 import { resolveChannelContextVisibilityMode } from "branch/plugin-sdk/context-visibility-runtime";
+import { resolveChannelMessageSourceReplyDeliveryMode } from "branch/plugin-sdk/channel-outbound";
 import { resolvePinnedMainDmOwnerFromAllowlist } from "branch/plugin-sdk/conversation-runtime";
 import { isDangerousNameMatchingEnabled } from "branch/plugin-sdk/dangerous-name-runtime";
 import { formatAudioTranscriptForAgent } from "branch/plugin-sdk/media-understanding-runtime";
@@ -159,7 +160,18 @@ export async function buildDiscordMessageProcessContext(params: {
     });
   const discordContextPrompt = isGuildMessage
     ? appendDiscordContext(
-        [groupSystemPrompt, formatDiscordBotPlatformContext()].filter(Boolean).join("\n\n"),
+        [
+          groupSystemPrompt,
+          resolveChannelMessageSourceReplyDeliveryMode({
+            cfg,
+            ctx: {
+              ChatType: "channel",
+              InboundEventKind: ctx.inboundEventKind,
+            },
+          }) === "automatic"
+            ? formatDiscordBotPlatformContext()
+            : undefined,
+        ].filter(Boolean).join("\n\n"),
         {
           guild: {
             id: guildInfo?.id ?? data.guild?.id ?? data.guild_id ?? "",
