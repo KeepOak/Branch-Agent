@@ -3,6 +3,8 @@ engine:extensions/signal/src/client-container.websocket.test.ts
 engine:extensions/signal/src/client-unix.test.ts
 engine:extensions/signal/src/format.chunking.test.ts
 engine:extensions/signal/src/format.test.ts
+engine:extensions/signal/src/monitor/event-handler.control-lane.test.ts
+engine:extensions/signal/src/monitor/event-handler.mention-gating.test.ts
 engine:extensions/signal/src/sse-reconnect.test.ts
 engine:extensions/slack/src/enterprise-user-route.test.ts
 engine:extensions/slack/src/monitor/enterprise-install.test.ts
