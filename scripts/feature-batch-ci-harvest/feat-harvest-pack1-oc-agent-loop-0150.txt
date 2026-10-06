@@ -1,5 +1,8 @@
 engine:src/agents/bootstrap-files.personal.test.ts
 engine:src/agents/bootstrap-files.test.ts
+engine:src/agents/btw.cli-lifecycle.test.ts
+engine:src/agents/btw.images.test.ts
+engine:src/agents/btw.test.ts
 engine:src/agents/embedded-agent-runner/thinking.test.ts
 engine:src/agents/model-thinking-default.test.ts
 engine:src/agents/thinking-runtime.test.ts
