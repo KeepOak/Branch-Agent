@@ -175,6 +175,12 @@ export async function hostedChrome() {
     ? [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA]
         .filter(Boolean).map(root => path.join(root, 'Google', 'Chrome', 'Application', 'chrome.exe'))
     : ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/opt/google/chrome/chrome'];
+  if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
+    const browsers = path.join(process.env.LOCALAPPDATA, 'ms-playwright');
+    for (const entry of (await fs.readdir(browsers).catch(() => [])).filter(name => /^chromium-\d+$/.test(name)).sort()) {
+      candidates.unshift(path.join(browsers, entry, 'chrome-win64', 'chrome.exe'));
+    }
+  }
   for (const file of candidates) {
     try { await fs.access(file); return file; } catch {}
   }

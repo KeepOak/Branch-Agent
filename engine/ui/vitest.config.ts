@@ -88,7 +88,11 @@ const systemChromiumExecutableCandidates = [
 ] as const;
 
 function canRunChromiumExecutable(executablePath: string): boolean {
-  const result = spawnSync(executablePath, ["--version"], { stdio: "ignore" });
+  const result = spawnSync(executablePath, ["--version"], {
+    stdio: "ignore",
+    windowsHide: true,
+    timeout: 5_000,
+  });
   return result.status === 0;
 }
 
