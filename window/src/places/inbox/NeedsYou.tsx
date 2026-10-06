@@ -1,6 +1,6 @@
 // Inbox › Needs you (DESIGN-SPEC §4.6.2.1; preview renderInbox + 41-placesap p20-inbox): status cards above the
 // approvals card, the approvals and requests, the questions, then Mentions.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import type { PlaceId } from "../../places-nav/routes";
@@ -14,8 +14,6 @@ import { ChatRequest, DeviceRequest, NodeRequest } from "./Requests";
 import { InboxRow, StatusCard, Tile, minutesAgo, minutesLeft } from "./Rows";
 import { whenWord } from "../overview/format";
 import { ChatLogo } from "../settings/set1/chatapps-logo";
-import { failedLines, WAITING_LINE_EVENT } from "../../composer/queue";
-import { safeStorage } from "../../composer/drafts";
 
 type Act = (operation: () => Promise<unknown>, message: string) => Promise<boolean>;
 export type NeedsProps = { engine: WindowEngine; data: Needs; busy: boolean; act: Act; level: Level; loading: boolean; openConversation: (key: string) => void; openPlace: (place: PlaceId) => void; openSettings?: (page: string) => void };
@@ -45,12 +43,6 @@ export const approvalTitle = (item: Row) => { const r = rec(item.request); retur
 
 function Cards({ data, engine, busy, act, openConversation, openPlace, openSettings }: NeedsProps) {
   const [gone, setGone] = useState<string[]>(savedDismissals);
-  const [notSent, setNotSent] = useState(() => failedLines(safeStorage()));
-  useEffect(() => {
-    const refresh = () => setNotSent(failedLines(safeStorage()));
-    window.addEventListener(WAITING_LINE_EVENT, refresh);
-    return () => window.removeEventListener(WAITING_LINE_EVENT, refresh);
-  }, []);
   const dismiss = (keys: string[]) => setGone(previous => {
     const next = [...new Set([...previous, ...keys])];
     try { localStorage.setItem(DISMISSED_KEY, JSON.stringify(next)); } catch { /* The current view still dismisses it. */ }
@@ -64,14 +56,6 @@ function Cards({ data, engine, busy, act, openConversation, openPlace, openSetti
   const names = data.expired.map(p => str(p.displayName) || str(p.provider));
   const expiredAt = data.expired.flatMap(p => num(rec(p.expiry).expiresAt) ?? [])[0];
   return <div className="ib-cards">
-    {notSent.map(({ sessionKey, item }) => {
-      const uncertain = /not confirmed|uncertain|may have/i.test(item.error ?? "");
-      const conversation = data.sessions.find(s => s.key === sessionKey)?.title || "Conversation";
-      const when = item.createdAt ? new Date(item.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
-      return <StatusCard key={`${sessionKey}:${item.id}`} icon="chat" tone="warn" title={uncertain ? "Your message may not have arrived" : "Your message wasn’t sent"} sub={[conversation, when, "Open the conversation to check before trying again."].filter(Boolean).join(" · ")}>
-        <button type="button" className="btn sm" onClick={() => openConversation(sessionKey)}>Review in the conversation</button>
-      </StatusCard>;
-    })}
     {data.modelUpgradeNotice ? <StatusCard icon="check" title="Model update" sub={data.modelUpgradeNotice} /> : null}
     {data.channels.map(({ channel, label, account }) => <StatusCard key={`${channel}:${str(account.accountId)}`} tone="bad" icon="chat" lead={<ChatLogo id={channel} name={label} size={34} />} title={`${label} stopped: ${str(account.lastError)}`} sub={`Messages sent to ${str(account.name) || label}${num(account.lastStopAt) !== undefined ? ` since ${whenWord(num(account.lastStopAt)!)}` : ""} haven’t reached Branch.`}>
       <button type="button" className="btn ghost sm" disabled={busy || !has(engine, "operator.admin")} onClick={() => void act(() => engine.request("channels.stop", { channel, accountId: str(account.accountId) }), `${label} is off.`)}>Turn {label} off</button>

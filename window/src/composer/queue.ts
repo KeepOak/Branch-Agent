@@ -68,22 +68,6 @@ export function loadLine(storage: Storage | undefined, sessionKey: string): Queu
   return (parsed as QueueItem[]).map((item) => (item.state === "sending" ? { ...item, state: "failed", error: "Delivery not confirmed" } : item));
 }
 
-/** Failed messages across this window's persisted waiting lines, for the Inbox status cards. */
-export function failedLines(storage: Storage | undefined): { sessionKey: string; item: QueueItem }[] {
-  if (!storage) return [];
-  const found: { sessionKey: string; item: QueueItem }[] = [];
-  for (let i = 0; i < storage.length; i++) {
-    const key = storage.key(i);
-    if (!key?.startsWith(KEY)) continue;
-    try {
-      for (const item of loadLine(storage, key.slice(KEY.length))) {
-        if (item.state === "failed") found.push({ sessionKey: key.slice(KEY.length), item });
-      }
-    } catch { /* An unreadable line should not hide other failures. */ }
-  }
-  return found;
-}
-
 /** Fired on the window after the waiting line of a conversation changes, so the thread shows it as queued. */
 export const WAITING_LINE_EVENT = "branch:waiting-line";
 
