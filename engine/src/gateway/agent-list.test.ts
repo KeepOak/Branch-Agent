@@ -107,7 +107,7 @@ describe("listGatewayAgentsBasic", () => {
     });
     expect(result).toMatchObject({ defaultId: "main", selectionRequired: true });
     expect(result.agents).toEqual([
-      { id: "main", kind: "agent", name: undefined },
+      { id: "main", kind: "system", name: undefined },
       { id: "branch", kind: "system", name: undefined },
     ]);
   });
