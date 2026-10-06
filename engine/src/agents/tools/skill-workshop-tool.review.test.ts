@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/agents/tools/skill-workshop-tool.review.test.ts (atlas SELF-IMPROVEMENT-0054). Changed for Branch: apply the Branch rename map and retain the current-main configured agent identity fixture.
 // skill_workshop review-mode tests cover the proposal-only reviewer surface:
 // mutation budgets, read receipts, and patch/update drafting for live skills.
 import { writeFileSync } from "node:fs";
