@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/auth-profiles/oauth-manager.test.ts (atlas MODELS-ACCOUNTS-0051). Changed for Branch: canonical rename map; retain canonical account replacement and configured refresh peers; join SQLite retirement before corrupting the test database.
 /**
  * Tests OAuth manager store and refresh behavior.
  * Covers identity safety, main-store adoption, refresh persistence, fallback
@@ -10,7 +11,10 @@ import { MAX_DATE_TIMESTAMP_MS } from "@branch/normalization-core/number-coercio
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { formatErrorMessage } from "../../infra/errors.js";
-import { closeBranchAgentDatabasesForTest } from "../../state/branch-agent-db.js";
+import {
+  closeBranchAgentDatabasesAsync,
+  closeBranchAgentDatabasesForTest,
+} from "../../state/branch-agent-db.js";
 import { closeBranchStateDatabaseForTest } from "../../state/branch-state-db.js";
 import {
   connectUserModelAccount,
@@ -748,6 +752,7 @@ describe("createOAuthManager", () => {
         canRefreshCredential: async () => true,
         refreshCredential: vi.fn(async () => {
           clearRuntimeAuthProfileStoreSnapshots();
+          await closeBranchAgentDatabasesAsync(tempRoot);
           closeBranchAgentDatabasesForTest(tempRoot);
           await fs.writeFile(resolveAuthProfileDatabasePath(agentDir), "not a sqlite database");
           throw initiatingError;

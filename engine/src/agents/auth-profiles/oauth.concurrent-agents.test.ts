@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/auth-profiles/oauth.concurrent-agents.test.ts (atlas MODELS-ACCOUNTS-0051). Changed for Branch: canonical rename map; retain canonical account replacement and configured refresh peers; join SQLite retirement before corrupting the test database.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";

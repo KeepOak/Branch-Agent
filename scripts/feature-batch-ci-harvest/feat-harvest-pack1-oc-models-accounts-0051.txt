@@ -1,0 +1,4 @@
+engine:src/agents/auth-profiles/oauth-manager.lock-cancel.test.ts
+engine:src/agents/auth-profiles/oauth-manager.test.ts
+engine:src/agents/auth-profiles/oauth-refresh-fence.test.ts
+engine:src/agents/auth-profiles/oauth.concurrent-agents.test.ts
