@@ -17,7 +17,7 @@ concurrency:
 jobs:
   merge-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - name: Wait for the PR's other checks
         env:
@@ -28,7 +28,7 @@ jobs:
           set -euo pipefail
           # Give path-filtered workflows time to register their runs.
           sleep 30
-          for attempt in $(seq 1 110); do
+          for attempt in $(seq 1 190); do
             runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
               --jq '[.check_runs[] | select(.name != "merge-gate")]')
             pending=$(jq '[.[] | select(.status != "completed")] | length' <<<"$runs")

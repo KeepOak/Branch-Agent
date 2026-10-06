@@ -139,6 +139,8 @@ jobs:
           name: visual-tour-shots
           path: visual-shots
       - name: Publish screenshot grid and sticky report
+        # A convenience only: a failed push or comment must never block a merge.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
