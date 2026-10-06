@@ -68,3 +68,5 @@ engine/src/commands/onboard-remote.test.ts,OPS-0327,openclaw/openclaw,57e0aaa1c1
 engine/src/commands/onboard-remote-gateway.test.ts,OPS-0327,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/onboard-remote-gateway.test.ts,2026-10-06
 engine/src/commands/setup.test.ts,OPS-0328,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/commands/setup.test.ts,2026-10-06
 engine/src/commands/setup.doctor-recovery.test.ts,OPS-0328,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/setup.doctor-recovery.test.ts,2026-10-06
+engine/src/commands/channels/add-wizard.owner.test.ts,OPS-0331,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/channels/add-wizard.owner.test.ts,2026-10-06
+engine/src/channels/plugins/setup-wizard.test.ts,OPS-0331,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/channels/plugins/setup-wizard.test.ts,2026-10-06
