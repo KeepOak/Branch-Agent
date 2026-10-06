@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/compaction.ts (atlas AGENT-LOOP-0099). Changed for Branch: existing runtime adapters and owner-context safeguards; upstream assertions retained.
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/compaction.ts (atlas AGENT-LOOP-0099). Changed for Branch: Goose middle-out tool response retry (AGENT-LOOP-0100); existing runtime adapters and owner-context safeguards; upstream assertions retained.
 import {
   CompactionError,
   SummaryOutputBudgetError,
@@ -28,6 +28,10 @@ import type {
 import type { SessionModelUsageSink } from "./sessions/compaction/runtime.js";
 import type { ExtensionContext } from "./sessions/index.js";
 import { generateSummary } from "./sessions/index.js";
+import {
+  SummaryRemovalExhaustedError,
+  summarizeWithToolResponseRemoval,
+} from "./structured-summary-retry.js";
 export { estimateMessagesTokens, SUMMARIZATION_OVERHEAD_TOKENS } from "./compaction-planning.js";
 
 const log = createSubsystemLogger("compaction");
@@ -116,19 +120,21 @@ async function summarizeChunks(params: CompactionSummaryParams): Promise<string>
     try {
       summary = await retryAsync(
         () =>
-          generateSummary(
-            chunk,
-            params.model,
-            params.reserveTokens,
-            params.apiKey,
-            params.headers,
-            params.signal,
-            effectiveInstructions,
-            summary,
-            params.thinkingLevel,
-            params.streamFn,
-            params.usageSink,
-            params.summaryPrompt,
+          summarizeWithToolResponseRemoval(chunk, (messages) =>
+            generateSummary(
+              messages,
+              params.model,
+              params.reserveTokens,
+              params.apiKey,
+              params.headers,
+              params.signal,
+              effectiveInstructions,
+              summary,
+              params.thinkingLevel,
+              params.streamFn,
+              params.usageSink,
+              params.summaryPrompt,
+            ),
           ),
         {
           attempts: 3,
@@ -144,6 +150,7 @@ async function summarizeChunks(params: CompactionSummaryParams): Promise<string>
           shouldRetry: (err) =>
             !params.signal.aborted &&
             !(err instanceof SummaryOutputBudgetError) &&
+            !(err instanceof SummaryRemovalExhaustedError) &&
             (isAbortError(err) || !isTimeoutError(err)),
         },
       );
