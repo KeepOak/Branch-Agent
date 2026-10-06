@@ -2,6 +2,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { expect, it } from "vitest";
 import type { AgentsDeleteResult } from "../../packages/gateway-protocol/src/schema/agents-models-skills.js";
+import {
+  isPathOwnedBySurvivingAgent,
+  readAgentDeleteDatabaseRegistry,
+  resolveSurvivingDatabaseFilePaths,
+} from "../agents/agent-delete-databases.js";
+import { resolveRegisteredAgentIdForDir } from "../agents/agent-dir-registry.js";
 import { resolveAgentDir } from "../agents/agent-scope-config.js";
 import { loadConfig, writeConfigFile } from "../config/config.js";
 import { openBranchAgentDatabase } from "../state/branch-agent-db.js";
@@ -61,6 +67,19 @@ it.skipIf(process.platform !== "win32")(
         deleteFiles: true,
       });
       expect(db.isOpen).toBe(false);
+      const survivingDatabaseFilePaths = resolveSurvivingDatabaseFilePaths(
+        readAgentDeleteDatabaseRegistry(),
+        agentId,
+      );
+      expect({
+        registeredOwner: resolveRegisteredAgentIdForDir(agentDir),
+        claimedBySurvivor: isPathOwnedBySurvivingAgent(
+          loadConfig(),
+          agentId,
+          agentDir,
+          survivingDatabaseFilePaths,
+        ),
+      }).toEqual({ registeredOwner: agentId, claimedBySurvivor: false });
       expect(deleted.removed).toContainEqual({ path: agentDir, method: "trash" });
       expect(deleted.failed).toEqual([]);
       await expect(fs.stat(agentDir)).rejects.toMatchObject({ code: "ENOENT" });
