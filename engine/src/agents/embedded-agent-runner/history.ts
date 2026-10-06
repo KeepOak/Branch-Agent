@@ -1,3 +1,5 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/history.ts (atlas AGENT-LOOP-0093). Changed for Branch: preserve atomic tool loops when limiting history.
+import { safeHistoryStart } from "../../../packages/agent-core/src/history-repair/message-manipulation-indices.js";
 import { normalizeProviderId } from "@branch/model-catalog-core/provider-id";
 import { asOptionalRecord } from "@branch/normalization-core/record-coerce";
 import { normalizeOptionalLowercaseString } from "@branch/normalization-core/string-coerce";
@@ -66,7 +68,7 @@ export function limitHistoryTurns(
   );
   return [
     ...messages.slice(0, conversationStart),
-    ...messages.slice(firstKeptIndex < 0 ? messages.length : firstKeptIndex),
+    ...messages.slice(Math.max(conversationStart, safeHistoryStart(messages, firstKeptIndex < 0 ? messages.length : firstKeptIndex))),
   ];
 }
 
