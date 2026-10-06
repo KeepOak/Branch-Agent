@@ -2,7 +2,6 @@ import type { BigIntStats } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import { normalizeOptionalString as resolveOptionalStringParam } from "@branch/normalization-core/string-coerce";
 import { resolvePathPrefixSync } from "@openclaw/fs-safe/advanced";
 import {
@@ -82,6 +81,7 @@ import type { BranchConfig } from "../../config/types.branch.js";
 import { hasErrnoCode, isMissingPathError } from "../../infra/errors.js";
 import { withAgentExecApprovalsRemoved } from "../../infra/exec-approvals.js";
 import { isPathInside } from "../../infra/path-guards.js";
+import { retryAsync } from "../../infra/retry.js";
 import { movePathToTrash } from "../../plugin-sdk/browser-maintenance.js";
 import { captureGatewayRootWorkAdmissionContinuationScope } from "../../process/gateway-work-admission.js";
 import { normalizeAgentIdStrict } from "../../routing/session-key.js";
@@ -165,36 +165,39 @@ async function removeAgentPath(
   try {
     // fs-safe pins traversal and identity for validation; Trash has no fd-relative move API, so
     // replacement after this check and before its rename is the accepted residual race bound.
-    for (let attempt = 0; ; attempt++) {
-      assertCurrent();
-      try {
-        // statAgentCleanupPath verified the declared parent; fs-safe's default roots (home/tmp)
-        // alone refuse every path of a volume-backed state dir. Keep those defaults so the
-        // directory behind a workspace symlink stays fenced exactly as shipped, while the link
-        // itself may always move (accepted edge: a link target beside its link is trashed too).
-        await movePathToTrash(trashPath, {
-          allowedRoots: [
-            ...trashAllowedRoots(
-              cleanupPath.sourcePaths,
-              cleanupPath.kind === "symlink" ? cleanupPath.canonicalPath : undefined,
-            ),
-            os.homedir(),
-            os.tmpdir(),
-          ],
-        });
-        break;
-      } catch (error) {
-        if (
-          process.platform !== "win32" ||
-          attempt >= 2 ||
-          !["EPERM", "EBUSY", "EACCES"].some((code) => hasErrnoCode(error, code))
-        ) {
+    let trashFailure: unknown;
+    await retryAsync(
+      async () => {
+        trashFailure = undefined;
+        assertCurrent();
+        await statAgentCleanupPath(cleanupPath);
+        // Keep fs-safe's root and symlink fencing for every attempt.
+        try {
+          await movePathToTrash(trashPath, {
+            allowedRoots: [
+              ...trashAllowedRoots(
+                cleanupPath.sourcePaths,
+                cleanupPath.kind === "symlink" ? cleanupPath.canonicalPath : undefined,
+              ),
+              os.homedir(),
+              os.tmpdir(),
+            ],
+          });
+        } catch (error) {
+          trashFailure = error;
           throw error;
         }
-        await delay(attempt === 0 ? 50 : 150);
-        await statAgentCleanupPath(cleanupPath);
-      }
-    }
+      },
+      {
+        // Match the established Windows rename policy: AV/indexer handles can linger for a minute.
+        attempts: process.platform === "win32" ? 16 : 1,
+        minDelayMs: 250,
+        maxDelayMs: 5_000,
+        shouldRetry: (error) =>
+          error === trashFailure &&
+          ["EPERM", "EBUSY", "EACCES"].some((code) => hasErrnoCode(error, code)),
+      },
+    );
     return { removed: { path: pathname, method: "trash" } };
   } catch (error) {
     if (error instanceof AgentCleanupIdentityMismatchError) {
