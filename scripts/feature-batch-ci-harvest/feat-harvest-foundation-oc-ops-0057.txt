@@ -1,2 +1,8 @@
+engine:extensions/qa-lab/src/bus-server.test.ts
+engine:extensions/qa-lab/src/lab-server.test.ts
+engine:extensions/qa-lab/src/report.test.ts
+engine:extensions/qa-lab/src/scenario-flow-runner.behaviour.test.ts
+engine:extensions/qa-lab/src/scenario-flow-runner.test.ts
+engine:extensions/qa-lab/src/suite.test.ts
 engine:src/cli/update-cli/cleanup.behaviour.test.ts
 engine:src/commands/doctor-session-sqlite-recovery-inventory.test.ts
