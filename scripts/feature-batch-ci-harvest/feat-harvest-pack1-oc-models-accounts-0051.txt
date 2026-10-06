@@ -7,6 +7,9 @@ engine:src/agents/auth-profiles/session-override.rotation.test.ts
 engine:src/agents/auth-profiles/usage-state.test.ts
 engine:src/agents/auth-profiles/usage.test.ts
 engine:src/agents/decision-assistance.test.ts
+engine:src/agents/embedded-agent-runner/google-prompt-cache.failures.test.ts
+engine:src/agents/embedded-agent-runner/google-prompt-cache.test.ts
+engine:src/agents/embedded-agent-runner/prompt-cache-retention.test.ts
 engine:src/agents/failover-policy.test.ts
 engine:src/agents/failover/classify.legacy-provider-predicates.test.ts
 engine:src/agents/failover/classify.test.ts
