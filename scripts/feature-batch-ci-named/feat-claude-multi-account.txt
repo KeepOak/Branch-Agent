@@ -1,3 +1,6 @@
+engine:extensions/anthropic/index.test.ts
 engine:src/agents/auth-profiles/anthropic-manual-migration.test.ts
+engine:src/commands/models/auth.test.ts
 engine:src/plugins/provider-auth-token.anthropic.test.ts
+window:src/places/settings/set1/add-account.test.ts
 window:src/places/trunk/AccountsTab.test.tsx

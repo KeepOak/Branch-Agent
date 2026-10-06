@@ -1343,6 +1343,16 @@ describe("anthropic provider replay hooks", () => {
     }
   });
 
+  it("honors the explicit setup-token profile id before the email", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ account: { email: "owner@example.test" } }), { status: 200 })));
+    try {
+      const provider = await registerSingleProviderPlugin(anthropicPlugin);
+      const method = provider.auth.find((entry) => entry.id === "setup-token");
+      const result = await method?.run({ opts: { token: ANTHROPIC_SETUP_TOKEN, tokenProfileId: "anthropic:work" } } as never);
+      expect(result?.profiles[0]?.profileId).toBe("anthropic:work");
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it.each([
     {
       name: "preflights non-interactive setup-token input without writing credentials",

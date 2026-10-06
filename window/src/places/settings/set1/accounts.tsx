@@ -46,7 +46,7 @@ const isToken = (a: Pick<Profile, "type">) => a.type === "token";
 export function tokenLabel(a: Pick<Profile, "profileId" | "type">): string | undefined {
   if (!isToken(a)) return undefined;
   const name = a.profileId.slice(a.profileId.indexOf(":") + 1);
-  return name && name !== "default" && !name.startsWith("setup-") ? name : undefined;
+  return name && name !== "default" && !name.startsWith("setup-") && !/^id-[a-f0-9]{12}$/.test(name) ? name : undefined;
 }
 
 export function accountName({ p, a, n }: Pick<Account, "p" | "a" | "n">): string {
@@ -55,7 +55,7 @@ export function accountName({ p, a, n }: Pick<Account, "p" | "a" | "n">): string
   return `${svc} · ${p.provider === "anthropic" ? a.email ?? a.displayName ?? tokenLabel(a) ?? fallback : a.displayName ?? a.email ?? tokenLabel(a) ?? fallback}`;
 }
 
-const STATUS_WORDS: Record<string, string> = { ok: "", expiring: "Signing in again soon", expired: "Signed out · sign in again", missing: "Sign-in missing", static: "" };
+export const STATUS_WORDS: Record<string, string> = { ok: "", expiring: "Signing in again soon", expired: "Signed out · sign in again", missing: "Sign-in missing", static: "" };
 function accountSub(acc: Account): string {
   const plan = acc.p.usage?.plan ? visible(acc.p.usage.plan) : acc.a.type === "api_key" ? "Key" : isToken(acc.a) ? "Subscription" : "";
   const email = acc.a.email && acc.a.displayName && acc.a.email !== acc.a.displayName ? visible(acc.a.email) : "";

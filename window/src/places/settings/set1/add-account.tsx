@@ -213,7 +213,7 @@ function SecretSignIn({ engine, svc, login, agent, onRun }: { engine: WindowEngi
     if (!ready) return;
     if (first) return onRun({ method: "branch.setup.activate.start", params: { kind: "api-key", authChoice: text(login.id), apiKey: token.trim(), ...agent } });
     const secret = { value: token.trim(), match: (step: WizardStep) => !step.externalUrl && /setup-token|token/i.test(`${step.title ?? ""} ${step.message ?? ""}`) };
-    onRun({ method: "models.authLogin", params: { authChoice: loginChoiceRef(svc.brand, text(login.id)), ...(claude ? {} : { profileLabel: label }), ...agent }, secret });
+    onRun({ method: "models.authLogin", params: { authChoice: loginChoiceRef(svc.brand, text(login.id)), profileLabel: label, ...agent }, secret });
   };
   return (
     <>
@@ -227,10 +227,10 @@ function SecretSignIn({ engine, svc, login, agent, onRun }: { engine: WindowEngi
           </ol>
         ) : login.hint ? <p>{visible(login.hint)}</p> : null}
         <label className="fld"><span>Token</span><input className="inp" type="password" autoComplete="off" aria-label="Token" value={token} onChange={(e) => setToken(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>
-        {first || claude ? null : <label className="fld"><span>Call it</span><input className="inp" aria-label="Call it" placeholder={label} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>}
+        {first ? null : <label className="fld"><span>Call it</span><input className="inp" aria-label="Call it" placeholder={label} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>}
         <div className="acts"><button type="button" className="btn pri sm" disabled={!ready} onClick={start}>Sign in</button></div>
       </div>
-      <p className="hint">{first ? "This is the Trunk’s first account, so Branch also starts using it." : claude ? "Branch saves this Claude account by its email when Anthropic provides it. The Trunk keeps its model." : `Saved as its own account, “${label}”. The Trunk keeps its model.`}</p>
+      <p className="hint">{first ? "This is the Trunk’s first account, so Branch also starts using it." : `Saved as its own account, “${label}”. The Trunk keeps its model.`}</p>
     </>
   );
 }

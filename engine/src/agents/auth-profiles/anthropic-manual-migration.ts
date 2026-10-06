@@ -31,42 +31,59 @@ async function backupCandidate(candidate: CandidateAuthProfileStore): Promise<vo
 export async function migrateLegacyClaudeProfilesAtStartup(config: BranchConfig): Promise<boolean> {
   const candidates = await listCandidateAuthProfileStores({ cfg: config });
   const stores = candidates.map((candidate) => ({ candidate, store: loadCandidateAuthProfileStore(candidate) }));
-  const owned = stores.find(({ store }) => store?.profiles[LEGACY_ID]?.type === "token");
-  const credential = owned?.store?.profiles[LEGACY_ID];
-  if (!credential || credential.type !== "token" || !credential.token) return false;
-  const identity = credential.email
-    ? { profileId: `anthropic:${credential.email.trim().toLowerCase()}`, email: credential.email.trim().toLowerCase() }
-    : await resolveAnthropicTokenIdentity(credential.token);
-  if (!identity.email) return false;
-  const email = identity.email;
-  const nextId = identity.profileId;
-  if (stores.some(({ store }) => store?.profiles[nextId] && store.profiles[nextId]?.type === "token" && store.profiles[nextId]?.token !== credential.token)) {
-    return false;
+  const identities = new Map<string, Awaited<ReturnType<typeof resolveAnthropicTokenIdentity>>>();
+  for (const { store } of stores) {
+    const credential = store?.profiles[LEGACY_ID];
+    if (credential?.type !== "token" || !credential.token || identities.has(credential.token)) continue;
+    identities.set(credential.token, credential.email
+      ? { profileId: `anthropic:${credential.email.trim().toLowerCase()}`, email: credential.email.trim().toLowerCase() }
+      : await resolveAnthropicTokenIdentity(credential.token));
   }
+  if (!identities.size) return false;
+  const primaryStore = stores.find(({ store }) => {
+    const credential = store?.profiles[LEGACY_ID];
+    if (credential?.type !== "token" || !credential.token) return false;
+    const identity = identities.get(credential.token)!;
+    const existing = store?.profiles[identity.profileId];
+    return !existing || (existing.type === "token" && existing.token === credential.token);
+  });
+  if (!primaryStore) return false;
+  const primaryCredential = primaryStore.store!.profiles[LEGACY_ID];
+  if (primaryCredential?.type !== "token" || !primaryCredential.token) return false;
+  const primary = identities.get(primaryCredential.token)!;
   const affected = stores.filter(({ store }) => store && (
     store.profiles[LEGACY_ID] || store.usageStats?.[LEGACY_ID] ||
     Object.values(store.order ?? {}).some((ids) => ids.includes(LEGACY_ID)) ||
     Object.values(store.lastGood ?? {}).includes(LEGACY_ID)
-  ));
+  )).map(({ candidate, store }) => {
+    const credential = store!.profiles[LEGACY_ID];
+    const identity = credential?.type === "token" && credential.token
+      ? identities.get(credential.token)
+      : primary;
+    if (!identity || (credential && credential.type !== "token")) return null;
+    const existing = store!.profiles[identity.profileId];
+    if (existing && (existing.type !== "token" || existing.token !== (credential?.type === "token" ? credential.token : primaryCredential.token))) return null;
+    return { candidate, identity };
+  }).filter((entry) => entry !== null);
   // SQLite online backups capture WAL state, including each Trunk's local order.
   for (const { candidate } of affected) await backupCandidate(candidate);
-  for (const { candidate } of affected) {
+  for (const { candidate, identity } of affected) {
     updateCandidateAuthProfileStore({
       candidate,
-      profileId: nextId,
+      profileId: identity.profileId,
       preserveProfileState: true,
-      updater: (store) => copyLegacyClaudeProfile(store, nextId, email),
+      updater: (store) => copyLegacyClaudeProfile(store, identity.profileId, identity.email),
     });
   }
-  const nextConfig = migrateLegacyClaudeConfig(config, nextId, email);
+  const nextConfig = migrateLegacyClaudeConfig(config, primary.profileId, primary.email);
   if (JSON.stringify(nextConfig) !== JSON.stringify(config)) await writeConfigFile(nextConfig);
-  for (const { candidate } of affected) {
+  for (const { candidate, identity } of affected) {
     updateCandidateAuthProfileStore({
       candidate,
-      profileId: nextId,
+      profileId: identity.profileId,
       preserveProfileState: true,
       updater: (store) => {
-        if (!store.profiles[nextId] && store.profiles[LEGACY_ID]) return false;
+        if (!store.profiles[identity.profileId] && store.profiles[LEGACY_ID]) return false;
         const hadLegacy = Boolean(store.profiles[LEGACY_ID] || store.usageStats?.[LEGACY_ID]);
         delete store.profiles[LEGACY_ID];
         if (store.usageStats) delete store.usageStats[LEGACY_ID];

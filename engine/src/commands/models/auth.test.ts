@@ -403,6 +403,7 @@ describe("modelsAuthLoginCommand", () => {
   let runProviderAuth: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    vi.stubEnv("BRANCH_PROFILE", "");
     vi.clearAllMocks();
     restoreStdin = withInteractiveStdin();
     currentConfig = {};
@@ -502,6 +503,7 @@ describe("modelsAuthLoginCommand", () => {
     restoreStdin?.();
     restoreStdin = null;
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   function useCoderAgentConfig() {
@@ -1697,6 +1699,13 @@ describe("modelsAuthLoginCommand", () => {
     expect(runtime.log).toHaveBeenCalledWith(
       "Anthropic staff told us this Branch Agent path is allowed again.",
     );
+  });
+
+  it("honors an explicit Anthropic profile id before email identity", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ account: { email: "owner@example.test" } }), { status: 200 })));
+    mocks.clackPassword.mockResolvedValue(`sk-ant-oat01-${"a".repeat(80)}`);
+    await modelsAuthPasteTokenCommand({ provider: "anthropic", profileId: "anthropic:work" }, createRuntime());
+    expect(mocks.upsertAuthProfileWithLock).toHaveBeenCalledWith(expect.objectContaining({ profileId: "anthropic:work" }));
   });
 
   it("writes pasted tokens to the requested agent store", async () => {

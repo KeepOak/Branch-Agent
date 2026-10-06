@@ -68,7 +68,8 @@ export async function runAnthropicSetupTokenAuth(
   }
 
   const identity = await resolveAnthropicTokenIdentity(token);
-  const profileId = identity.profileId;
+  const profileId = typeof ctx.opts?.tokenProfileId === "string" && ctx.opts.tokenProfileId.trim()
+    ? ctx.opts.tokenProfileId.trim() : identity.profileId;
   const expires = resolveAnthropicSetupTokenExpiry(ctx.opts?.tokenExpiresIn);
 
   return {
@@ -133,7 +134,8 @@ export async function runAnthropicSetupTokenNonInteractive(
   }
 
   const identity = await resolveAnthropicTokenIdentity(rawToken);
-  const profileId = identity.profileId;
+  const profileId = typeof ctx.opts.tokenProfileId === "string" && ctx.opts.tokenProfileId.trim()
+    ? ctx.opts.tokenProfileId.trim() : identity.profileId;
   const expires = resolveAnthropicSetupTokenExpiry(ctx.opts.tokenExpiresIn);
   await upsertAuthProfileWithLockOrThrow({
     profileId,

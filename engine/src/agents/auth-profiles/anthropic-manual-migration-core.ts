@@ -8,7 +8,7 @@ function replaceId(ids: string[], nextId: string): string[] {
 }
 
 /** Copy first, keeping the legacy credential usable until the config commit succeeds. */
-export function copyLegacyClaudeProfile(store: AuthProfileStore, nextId: string, email: string): boolean {
+export function copyLegacyClaudeProfile(store: AuthProfileStore, nextId: string, email?: string): boolean {
   const legacy = store.profiles[LEGACY_CLAUDE_PROFILE_ID];
   if (legacy && legacy.provider !== "anthropic") return false;
   if (legacy && store.profiles[nextId] && (
@@ -17,7 +17,7 @@ export function copyLegacyClaudeProfile(store: AuthProfileStore, nextId: string,
   )) return false;
   let changed = false;
   if (legacy && !store.profiles[nextId]) {
-    store.profiles[nextId] = { ...legacy, email };
+    store.profiles[nextId] = { ...legacy, ...(email ? { email } : {}) };
     changed = true;
   }
   if (store.usageStats?.[LEGACY_CLAUDE_PROFILE_ID] && !store.usageStats[nextId]) {
@@ -39,10 +39,10 @@ export function copyLegacyClaudeProfile(store: AuthProfileStore, nextId: string,
   return changed;
 }
 
-export function migrateLegacyClaudeConfig(config: BranchConfig, nextId: string, email: string): BranchConfig {
+export function migrateLegacyClaudeConfig(config: BranchConfig, nextId: string, email?: string): BranchConfig {
   const legacy = config.auth?.profiles?.[LEGACY_CLAUDE_PROFILE_ID];
   const profiles = { ...config.auth?.profiles };
-  if (legacy && !profiles[nextId]) profiles[nextId] = { ...legacy, email };
+  if (legacy && !profiles[nextId]) profiles[nextId] = { ...legacy, ...(email ? { email } : {}) };
   delete profiles[LEGACY_CLAUDE_PROFILE_ID];
   const order = Object.fromEntries(Object.entries(config.auth?.order ?? {}).map(([provider, ids]) => [provider, replaceId(ids, nextId)]));
   return { ...config, auth: { ...config.auth, profiles, order } };

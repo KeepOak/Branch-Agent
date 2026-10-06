@@ -731,7 +731,7 @@ export async function modelsAuthPasteTokenCommand(
       ? tokenInput.replaceAll(/\s+/g, "").trim()
       : (normalizeOptionalString(tokenInput) ?? "");
   const identity = provider === "anthropic" ? await resolveAnthropicTokenIdentity(token) : undefined;
-  const profileId = identity?.profileId ?? requestedProfileId ?? resolveDefaultTokenProfileId(provider);
+  const profileId = requestedProfileId ?? identity?.profileId ?? resolveDefaultTokenProfileId(provider);
 
   const expires = resolveManualTokenExpiryMs(opts.expiresIn);
 

@@ -65,7 +65,7 @@ describe("Trunk Accounts", () => {
       }] };
       return {};
     });
-    const engine = { request } as unknown as WindowEngine;
+    const engine = { request, scopes: ["operator.admin"] } as unknown as WindowEngine;
     await act(async () => root.render(<AccountsTab engine={engine} agentId="oak" />));
     const rows = () => [...host.querySelectorAll<HTMLLIElement>(".tk-accounts-list li")];
     await act(async () => { rows()[0].dispatchEvent(new Event("dragstart", { bubbles: true })); });
@@ -78,5 +78,22 @@ describe("Trunk Accounts", () => {
     });
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Use any")!.click());
     expect(request).toHaveBeenCalledWith("models.authOrderSet", { provider: "anthropic", agentId: "oak" });
+  });
+
+  it("disables locked and read-only controls and hides raw static status", async () => {
+    const provider = { provider: "anthropic", displayName: "Claude", status: "ok", profileOrderStored: true,
+      profileOrder: ["anthropic:id-123456abcdef"], profileOrderLocked: "config",
+      profiles: [{ profileId: "anthropic:id-123456abcdef", type: "token", status: "static" },
+        { profileId: "anthropic:other", type: "token", status: "static" }] };
+    const request = vi.fn(async () => ({ providers: [provider] }));
+    const engine = { request, scopes: [] } as unknown as WindowEngine;
+    await act(async () => root.render(<AccountsTab engine={engine} agentId="oak" />));
+    expect([...host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].every((input) => input.disabled)).toBe(true);
+    const useAny = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Use any")!;
+    expect(useAny.disabled).toBe(true);
+    expect(useAny.title).toContain("settings file");
+    expect(host.textContent).not.toContain("static");
+    expect(host.textContent).toContain("Claude · Subscription 1");
+    expect(request).not.toHaveBeenCalledWith("models.authOrderSet", expect.anything());
   });
 });
