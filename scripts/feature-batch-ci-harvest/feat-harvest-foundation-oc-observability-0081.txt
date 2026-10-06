@@ -6,5 +6,8 @@ engine:src/gateway/gateway-http-route-contracts.test.ts
 engine:src/gateway/local-http-probe.test.ts
 engine:src/gateway/probe.auth.integration.test.ts
 engine:src/gateway/probe.test.ts
+engine:src/logging/diagnostic-session-attention.test.ts
 engine:src/logging/diagnostic-stability-bundle.test.ts
 engine:src/logging/diagnostic-stability.test.ts
+engine:src/logging/diagnostic-stuck-session-recovery.integration.test.ts
+engine:src/logging/diagnostic-stuck-session-recovery.runtime.test.ts
