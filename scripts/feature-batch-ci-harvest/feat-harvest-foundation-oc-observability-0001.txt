@@ -14,5 +14,8 @@ engine:src/agents/embedded-agent-runner/prompt-cache-observability.test.ts
 engine:src/infra/provider-usage.fetch.claude.test.ts
 engine:src/infra/provider-usage.fetch.codex.test.ts
 engine:src/logging/levels.test.ts
+engine:src/logging/log-file-path.test.ts
+engine:src/logging/log-file-size-cap.test.ts
 engine:src/logging/logger-env.test.ts
+engine:src/logging/logger-file-transport.test.ts
 engine:src/logging/subsystem.test.ts
