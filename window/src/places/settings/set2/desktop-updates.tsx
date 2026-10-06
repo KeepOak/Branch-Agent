@@ -41,14 +41,14 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
           disabled={auto.busy !== null} onChange={on => void auto.set("autoApplyUpdates", on)} />
       </Ctl>
       <Ctl title="Check for updates"><Btn sm disabled={busy} onClick={() => void run("check")}>{busy ? "Working…" : "Check now"}</Btn></Ctl>
-      {data.status?.phase === "available" ? <Ctl title={`Install ${data.status.latestVersion}`}><Btn disabled={busy} onClick={() => void run("stage")}>Install when nothing is running</Btn></Ctl> : null}
+      {data.status?.phase === "available" ? <Ctl title="Install Branch update"><Btn disabled={busy} onClick={() => void run("stage")}>Install when nothing is running</Btn></Ctl> : null}
       <Hint>Branch checks when it starts and every 10 minutes. A downloaded update applies after your Trunks finish.</Hint>
     </Sec>
   </Page>;
 }
 
 /** An older Branch Agent app has no Check now bridge, but it still checks every hour and stages updates by itself.
- *  Only this state reads the engine (its version, read-only); a window connected elsewhere keeps its own reason. */
+ *  The page still uses Branch's version; a window connected elsewhere keeps its own reason. */
 function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title" | "engine"> & { reason?: string }) {
   const version = useBranchVersion(engine.gatewayUrl);
   const sys = useLive<RecordValue>(engine, "system.info", {}, []);
@@ -68,10 +68,10 @@ function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title
 
 function statusLine(status: ComponentUpdateStatus | null, autoApply: boolean): string {
   if (!status) return "Reading desktop update status…";
-  if (status.phase === "staged") return autoApply ? "Update ready, applying when your Trunks finish" : `${status.pendingVersion} is ready; restart to finish`;
-  if (status.phase === "available") return `${status.latestVersion} is ready to install`;
+  if (status.phase === "staged") return autoApply ? "Update ready, applying when your Trunks finish" : "A Branch update is ready; restart to finish";
+  if (status.phase === "available") return "A Branch update is ready";
   if (status.phase === "current") return "Branch is up to date.";
   if (status.phase === "checking") return "Checking for updates…";
   if (status.phase === "staging") return "Downloading and checking the update…";
-  return status.currentVersion ? `Branch ${status.currentVersion}` : "Check for updates";
+  return status.currentVersion ? `Branch ${versionParts(status.currentVersion).short}` : "Check for updates";
 }

@@ -70,10 +70,12 @@ export function useUpdate(session: SaplingSession, ready: boolean, version: stri
     const status = native.status;
     const available = status?.phase === "available" || status?.phase === "staged";
     return { current: status?.currentVersion ?? version, latest: available ? status.latestVersion : null, notes: [],
-      installing: status?.phase === "staging" || status?.phase === "staged", waiting: status?.phase === "staged" ? "Downloaded. Restart Branch when your work is ready." : "Downloading and checking the update.",
+      installing: status?.phase === "staging" || status?.phase === "staged",
+      waiting: status?.phase === "staged" ? "Downloaded. Restart Branch when your work is ready."
+        : status?.phase === "staging" ? "Downloading and checking the update." : null,
       statusMessage: !desktop.componentUpdates ? desktop.unavailableReason ?? MANUAL_UPDATE_UNSUPPORTED : native.error ??
         (status?.phase === "current" ? undefined : "Check for updates in Updates & about.") };
   }
   return { current: version, latest: null, notes: [], installing: false, waiting: null,
-    statusMessage: "Check for Branch updates in the desktop app." };
+    statusMessage: "Check for updates in Updates & about." };
 }

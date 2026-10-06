@@ -205,22 +205,6 @@ export function comingUp(jobs: unknown[], now = Date.now()): { name: string; whe
 
 export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null; statusMessage?: string };
 
-/** update.status (or hello's snapshot.updateAvailable): the version waiting and what it adds (§4.9.8). */
-export function readUpdate(result: unknown, current: string): UpdateInfo {
-  const r = rec(result);
-  const available = rec(r.updateAvailable);
-  const latest = str(available.latestVersion) || null;
-  const campaign = rec(rec(r.schedule).campaign);
-  const state = str(campaign.state);
-  return {
-    current: str(available.currentVersion) || current,
-    latest,
-    notes: list(available.commits).map((c) => str(c.subject)).filter(Boolean),
-    installing: Boolean(rec(r.activeRun).runId) || state === "applying",
-    waiting: state === "waiting-for-idle" ? "Waiting for running tasks" : null,
-  };
-}
-
 /** "3 days, 4 hours" (§4.9.3 "Up <uptime>"). */
 export function uptimeWords(ms: number): string {
   const min = Math.floor(ms / 60_000);

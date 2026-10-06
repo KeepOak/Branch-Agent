@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comingUp, dueWords, limitsSummary, monthParams, readLimits, readMonthSpend, readRoom, readRounds, readUpdate, resetWords, ringReading, sizeWords, uptimeWords, windowName } from "./status-data";
+import { comingUp, dueWords, limitsSummary, monthParams, readLimits, readMonthSpend, readRoom, readRounds, resetWords, ringReading, sizeWords, uptimeWords, windowName } from "./status-data";
 
 const NOW = new Date(2026, 9, 2, 12, 0).getTime();
 
@@ -91,16 +91,6 @@ describe("Running and version", () => {
     ];
     expect(comingUp(jobs, NOW)).toEqual([{ name: "soon", when: "in 12 min" }, { name: "late", when: "in 3 days" }]);
     expect(dueWords(NOW - 5, NOW)).toBe("due");
-  });
-  it("update.status: the waiting version and its commits", () => {
-    expect(readUpdate({ updateAvailable: { currentVersion: "1.0.0", latestVersion: "1.1.0", channel: "stable", commits: [{ sha: "a", subject: "Faster start" }] } }, "1.0.0")).toEqual({
-      current: "1.0.0",
-      latest: "1.1.0",
-      notes: ["Faster start"],
-      installing: false,
-      waiting: null,
-    });
-    expect(readUpdate({ updateAvailable: null }, "1.0.0").latest).toBeNull();
   });
   it("uptime words", () => {
     expect(uptimeWords((3 * 24 + 4) * 3_600_000)).toBe("3 days, 4 hours");
