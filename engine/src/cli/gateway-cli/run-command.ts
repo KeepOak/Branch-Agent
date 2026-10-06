@@ -49,6 +49,7 @@ export function addGatewayRunCommand(cmd: Command, hooks: GatewayRunCommandHooks
     .addOption(new Option(`${WINDOWS_TASK_SUPERVISOR_CHILD_FLAG} <restart-code>`).hideHelp())
     .addOption(new Option("--update-canary").hideHelp())
     .option("--force", "Kill any existing listener on the target port before starting", false)
+    .option("--replace", "Replace a live host gateway that serves this profile", false)
     .option("--verbose", "Verbose logging to stdout/stderr", false)
     .option(
       "--cli-backend-logs",

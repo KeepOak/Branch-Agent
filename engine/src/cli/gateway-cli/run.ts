@@ -972,6 +972,23 @@ async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRunt
     completeGatewayBootLifecycle(activeBootId, completion, process.env);
     activeBootId = undefined;
   };
+  const { prepareHostRendezvous } = await import("../../infra/host-rendezvous.js");
+  const hostRendezvous = await prepareHostRendezvous({
+    profile: process.env.BRANCH_PROFILE?.trim() || "default",
+    home: process.env.BRANCH_HOME?.trim() || (await import("node:os")).homedir(),
+    gatewayPort: port,
+    force: opts.force,
+    replace: opts.replace,
+  });
+  if (hostRendezvous.decision.outcome !== "start") {
+    if (hostRendezvous.decision.outcome === "attach") {
+      gatewayLog.info(hostRendezvous.decision.message);
+      return;
+    }
+    defaultRuntime.error(hostRendezvous.decision.message);
+    defaultRuntime.exit(hostRendezvous.decision.transient ? 75 : 78);
+    return;
+  }
   const startLoop = async (lifecycleLockDeadlineMs?: number) =>
     await runGatewayLoop({
       runtime: defaultRuntime,
@@ -983,10 +1000,11 @@ async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRunt
       completeBoot,
       onRestartStartupFailure: triageStartupFailure,
       start: async ({ requestHotReloadRecovery, ...startupOptions } = {}) => {
+        await hostRendezvous.markStarting?.();
         const snapshotPreparation = await import("../../config/io.snapshot-preparation.js");
         const startupConfigSnapshotReadForThisStart = startupConfigSnapshotReadForNextStart;
         startupConfigSnapshotReadForNextStart = undefined;
-        return await startGatewayServer(port, {
+        const started = await startGatewayServer(port, {
           bind,
           ...(opts.updateCanary ? { updateCanary: true } : {}),
           ...(activeBootId ? { bootId: activeBootId } : {}),
@@ -1001,6 +1019,13 @@ async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRunt
           ...(channelAutostartSuppression ? { tryRecoverChannelAutostartSuppression } : {}),
           ambientEnvTriggers,
         });
+        try {
+          await hostRendezvous.markReady?.();
+        } catch (error) {
+          await started.close({ reason: "host rendezvous publication failed" });
+          throw error;
+        }
+        return started;
       },
     });
 
@@ -1052,6 +1077,8 @@ async function runGatewayCommandOnce(opts: GatewayRunOpts, hooks: GatewayRunRunt
     );
     await triageStartupFailure(err);
     defaultRuntime.exit(resolveGatewayStartupFailureExitCode(err));
+  } finally {
+    await hostRendezvous.close?.();
   }
 }
 
