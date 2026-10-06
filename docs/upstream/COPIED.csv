@@ -67,3 +67,4 @@ engine/src/agents/tools/presence-tool.test.ts,INTEGRATIONS-0131,openclaw/opencla
 engine/src/cron/schedule.test.ts,AUTOMATION-0002,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/schedule.test.ts,2026-10-06
 engine/src/cron/parse.test.ts,AUTOMATION-0002,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/parse.test.ts,2026-10-06
 engine/src/cron/validate-timestamp.test.ts,AUTOMATION-0002,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/validate-timestamp.test.ts,2026-10-06
+engine/src/cron/stagger.test.ts,AUTOMATION-0004,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/stagger.test.ts,2026-10-06
