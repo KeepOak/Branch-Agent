@@ -30,6 +30,8 @@ type RuntimeLifecycleSnapshot = {
   connected?: boolean | null;
   restartPending?: boolean | null;
   reconnectAttempts?: number | null;
+  needsAttention?: boolean | null;
+  retryingSince?: number | null;
   lastConnectedAt?: number | null;
   lastDisconnect?:
     | string
@@ -355,6 +357,12 @@ export function buildRuntimeAccountStatusSnapshot<TExtra extends StatusSnapshotE
       : {}),
     ...(typeof runtime?.reconnectAttempts === "number"
       ? { reconnectAttempts: runtime.reconnectAttempts }
+      : {}),
+    ...(typeof runtime?.needsAttention === "boolean"
+      ? { needsAttention: runtime.needsAttention }
+      : {}),
+    ...(typeof runtime?.retryingSince === "number"
+      ? { retryingSince: runtime.retryingSince }
       : {}),
     ...(typeof runtime?.lastConnectedAt === "number"
       ? { lastConnectedAt: runtime.lastConnectedAt }
