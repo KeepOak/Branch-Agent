@@ -1,0 +1,2 @@
+window:src/setup/keep-body.test.tsx
+window:src/setup/talk-setup.test.ts
