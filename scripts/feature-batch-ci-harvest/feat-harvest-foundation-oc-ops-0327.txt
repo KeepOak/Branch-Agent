@@ -10,3 +10,6 @@ engine:src/commands/onboard-remote-gateway.test.ts
 engine:src/commands/onboard-remote.test.ts
 engine:src/commands/setup.doctor-recovery.test.ts
 engine:src/commands/setup.test.ts
+engine:src/commands/triage-prompt.test.ts
+engine:src/commands/triage-update.test.ts
+engine:src/commands/triage.test.ts

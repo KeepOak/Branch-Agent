@@ -76,3 +76,6 @@ engine/src/commands/doctor-lint.crabbox.test.ts,OPS-0335,openclaw/openclaw,57e0a
 engine/src/commands/doctor-disk-space.test.ts,OPS-0336,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/doctor-disk-space.test.ts,2026-10-06
 engine/src/commands/doctor-db-bloat.read.test.ts,OPS-0337,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/doctor-db-bloat.read.test.ts,2026-10-06
 engine/src/commands/doctor-db-bloat.worker.test.ts,OPS-0337,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/commands/doctor-db-bloat.worker.test.ts (changed: retain current vacuum-mode coverage and assert the protected upstream documentation URL),2026-10-06
+engine/src/commands/triage.test.ts,OPS-0339,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/commands/triage.test.ts,2026-10-06
+engine/src/commands/triage-prompt.test.ts,OPS-0339,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/triage-prompt.test.ts,2026-10-06
+engine/src/commands/triage-update.test.ts,OPS-0339,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/commands/triage-update.test.ts,2026-10-06
