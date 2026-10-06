@@ -7,6 +7,9 @@ engine:extensions/firecrawl/src/firecrawl-cache.test.ts
 engine:extensions/firecrawl/src/firecrawl-client.test.ts
 engine:extensions/firecrawl/src/firecrawl-search-results.test.ts
 engine:extensions/firecrawl/src/firecrawl-tools.test.ts
+engine:extensions/searxng/src/searxng-client.test.ts
+engine:extensions/searxng/src/searxng-client.transport.test.ts
+engine:extensions/searxng/src/searxng-search-provider.test.ts
 engine:extensions/tavily/src/config.test.ts
 engine:extensions/tavily/src/tavily-client.test.ts
 engine:extensions/tavily/src/tavily-crawl-tool.test.ts
