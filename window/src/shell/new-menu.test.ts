@@ -85,9 +85,10 @@ describe("new conversation drafts", () => {
     const request = vi.fn(async () => ({ key: "agent:oak:topic-2" }));
     const anchor = { threadKey: "agent:oak:main", afterMessageId: "entry-1" };
     expect(await createTopic(request, "oak", "main", "Follow up here", { contactAnchor: anchor })).toBe("agent:oak:topic-2");
-    expect(request).toHaveBeenCalledExactlyOnceWith("sessions.create", {
+    expect(request).toHaveBeenNthCalledWith(1, "sessions.create", {
       agentId: "oak", parentSessionKey: "agent:oak:main", message: "Follow up here",
       displayName: "Follow up here", titleSource: "Follow up here", contactAnchor: anchor,
     });
+    expect(request).toHaveBeenNthCalledWith(2, "sessions.describe", { key: "agent:oak:main" });
   });
 });
