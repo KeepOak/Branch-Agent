@@ -1,0 +1,5 @@
+engine:extensions/file-transfer/src/node-host/file-fetch.binary.test.ts
+engine:extensions/file-transfer/src/shared/node-invoke-policy.test.ts
+engine:extensions/file-transfer/src/tools/dir-fetch-tool.test.ts
+engine:extensions/file-transfer/src/tools/file-fetch-tool.test.ts
+engine:extensions/file-transfer/src/tools/file-write-tool.test.ts
