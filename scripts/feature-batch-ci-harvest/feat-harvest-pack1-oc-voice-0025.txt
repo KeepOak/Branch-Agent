@@ -3,8 +3,11 @@
 # VOICE-0049 blocked: needs macOS on Apple silicon: MLXAudio/MLX speech helper and native TalkMLXSpeechSynthesizer are absent from Branch; Linux has no Swift/AppKit/AVFoundation or Metal runtime.
 # Upstream 57e0aaa1c190f1abe16e597008fbcc14f5e609e3: apps/macos-mlx-tts/Tests/OpenClawMLXTTSRuntimeTests/MLXTTSHelperServiceTests.swift.
 # VOICE-0059: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
+# VOICE-0064: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
 engine:extensions/gradium/speech-provider.test.ts
 engine:extensions/gradium/tts.test.ts
 engine:extensions/senseaudio/media-understanding-provider.test.ts
+engine:src/tts/directive-number.test.ts
+engine:src/tts/directives.test.ts
 engine:src/tts/tts-core.summary-agent.test.ts
 engine:src/tts/tts-summary.test.ts
