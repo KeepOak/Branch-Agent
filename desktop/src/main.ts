@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { drainStopGateway, gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForGatewayStandby, waitForReady } from "./gateway";
+import { drainStopGateway, gatewayActivity, portIsFree, prepareStandbyGateway, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady, type PreparedGateway } from "./gateway";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
@@ -37,6 +37,8 @@ const TRAY_ICON = process.platform === "darwin"
   ? join(__dirname, "..", "assets", "brand", "linux", "branch-16.png")
   : ICON;
 const READY_TIMEOUT_MS = 600_000;
+/** A standby only loads code before it reports warm; one that takes longer is stopped and the plain swap runs. */
+const STANDBY_WARM_TIMEOUT_MS = 120_000;
 /** Free memory a candidate check needs (6 GB, the shared load rule); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
 const CANDIDATE_MIN_FREE_BYTES = Number(process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB ?? 6144) * 2 ** 20;
 const cfg: DesktopConfig = loadConfig();
@@ -70,6 +72,14 @@ if (readSettings(join(cfg.dataDir, "desktop-settings.json")).agentControl) {
 }
 
 let gateway: ChildProcess | undefined;
+/**
+ * The loopback port the serving engine listens on. It starts as the configured port; an update's standby comes up on
+ * its own spare port, and once it is ready this follows it (in memory only) until the next launch.
+ */
+let gatewayPort = cfg.gatewayPort;
+const gatewayUrl = (): string => `ws://127.0.0.1:${gatewayPort}`;
+/** An update's warmed standby until it is promoted or stopped; quitting never leaves it behind. */
+let standby: PreparedGateway | undefined;
 let server: Server | undefined;
 let win: BrowserWindow | undefined;
 let token = "";
@@ -145,8 +155,11 @@ const engineRunning = (): boolean => Boolean(gateway && gateway.exitCode === nul
 /**
  * Applies a staged engine/window update, or a rebuilt engine, inside the running app: the app and its window stay
  * open. The old engine stops cleanly (auto-apply: only while idle; the owner's click: it drains, and the new
- * engine's restart recovery resumes interrupted runs), the new one starts on the same port with the readiness
- * rollback, and the window either reconnects (engine-only) or swaps in its new build keeping route, scroll and drafts.
+ * engine's restart recovery resumes interrupted runs), the new one starts with the readiness rollback, and the window
+ * either is handed the new engine's address (engine-only) or swaps in its new build keeping route, scroll and drafts.
+ * With room for it, the new engine first warms as a standby on its own spare port while the old one still serves;
+ * only a standby that warmed is promoted, and the window follows it once it answers /readyz on that port. The
+ * engine's state lock means the standby can only bind and become ready after the old engine has released state.
  * A staged desktop app is never applied here; it waits for the next natural launch.
  */
 async function swapEngineInPlace(label: string, explicit: boolean): Promise<void> {
@@ -154,18 +167,14 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
   engineRestartInProgress = true;
   gatewaySupervisor.cancelPending();
   const windowBefore = windowBuild(servedWindowDir);
-  let standby: ChildProcess | undefined;
   try {
     if (!await candidatePassed(label)) return;
     if (freemem() >= CANDIDATE_MIN_FREE_BYTES) {
-      const engineDir = resolveEngineDir(cfg);
+      // The live engine keeps its port while the standby warms on a spare one; a failed standby is already stopped.
       try {
-        standby = startGateway(cfg, engineDir, token, true);
-        await waitForGatewayStandby(standby, READY_TIMEOUT_MS);
-        log(`update ${label}: standby engine ${standby.pid} prepared while the current engine kept serving`);
+        standby = await prepareStandbyGateway(cfg, resolveEngineDir(cfg), token, STANDBY_WARM_TIMEOUT_MS);
+        log(`update ${label}: standby engine ${standby.child.pid} prepared on port ${standby.port} while the current engine kept serving`);
       } catch (error) {
-        if (standby) stopGateway(standby);
-        standby = undefined;
         log(`update ${label}: standby preparation failed; using the normal guarded swap: ${String(error)}`);
       }
     }
@@ -191,11 +200,13 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     if (rolledBack) win.webContents.send("branch-desktop:engine-update", "kept");
     else if (windowBuild(cfg.windowDir) !== windowBefore) void hotSwapWindow();
     else {
-      win.webContents.send("branch-desktop:engine-handoff", `ws://127.0.0.1:${cfg.gatewayPort}`);
+      // The engine may now serve on the standby's port: hand the resident window the address it answered /readyz on.
+      win.webContents.send("branch-desktop:engine-handoff", gatewayUrl());
       win.webContents.send("branch-desktop:engine-update", "updated");
     }
   } catch (error) {
-    if (standby) stopGateway(standby);
+    if (standby) stopGateway(standby.child);
+    standby = undefined;
     // Still serving (the engine became busy before it stopped): offer the update again.
     if (engineRunning()) win.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
     throw error;
@@ -355,7 +366,7 @@ async function start(): Promise<void> {
   // Registered before any page loads: the preload asks for it synchronously.
   ipcMain.on("branch-desktop:info", (e) => {
     const served = e.sender.getURL().startsWith(windowUrl());
-    e.returnValue = served ? { gatewayUrl: `ws://127.0.0.1:${cfg.gatewayPort}`, gatewayToken: token } : null;
+    e.returnValue = served ? { gatewayUrl: gatewayUrl(), gatewayToken: token } : null;
   });
   ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, win?.webContents, windowUrl())) void restartEngine(); });
   registerComponentUpdateIpc(ipcMain, () => win?.webContents, windowUrl(), componentUpdates);
@@ -393,21 +404,24 @@ async function start(): Promise<void> {
 }
 
 async function waitForGatewayPort(): Promise<void> {
-  for (let i = 0; i < 40 && !(await portIsFree(cfg.gatewayPort)); i++) await pause(250);
+  for (let i = 0; i < 40 && !(await portIsFree(gatewayPort)); i++) await pause(250);
 }
 
 /** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
-async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = true, prepared?: ChildProcess): Promise<void> {
+async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = true, prepared?: PreparedGateway): Promise<void> {
   const started = Date.now();
-  const child = prepared ?? startGateway(cfg, engineDir, token);
-  if (prepared?.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prepared.pid));
+  const port = prepared?.port ?? gatewayPort;
+  const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port);
+  if (prepared?.child.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prepared.child.pid));
   gateway = child;
   const observed = gatewaySupervisor.observe(child);
-  log(`gateway started from ${engineDir}, pid ${child.pid}`);
+  log(`gateway started from ${engineDir}, pid ${child.pid}, port ${port}`);
   // publish-engine.sh never removes the folder named here.
   writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
 `);
-  await waitForReady(cfg, child, READY_TIMEOUT_MS);
+  // Ready means listening on its own port and answering /readyz there; only then does the window follow it.
+  await waitForReady({ ...cfg, gatewayPort: port }, child, READY_TIMEOUT_MS);
+  gatewayPort = port;
   if (confirmUpdate) await confirmComponentUpdate(cfg);
   observed.ready();
   gatewayRecoveryError = undefined;
@@ -430,7 +444,7 @@ function watchEngine(): void {
 }
 
 /** A failed newly published build restores the prior pointer/window before booting the retained engine. */
-async function bootSelectedEngine(prepared?: ChildProcess): Promise<boolean> {
+async function bootSelectedEngine(prepared?: PreparedGateway): Promise<boolean> {
   const selectedEngine = resolveEngineDir(cfg);
   return bootSelectedEngineWithRollback({
     boot: () => {
@@ -498,6 +512,7 @@ function shutdown(): void {
   stopWindowWatch?.();
   controls.dispose();
   stopCandidate();
+  if (standby) stopGateway(standby.child);
   if (gateway) stopGateway(gateway);
   server?.close();
 }

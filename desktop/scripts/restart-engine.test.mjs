@@ -48,15 +48,17 @@ async function createFixtureFiles(root) {
 const root=${JSON.stringify(root)}, file=root+"/starts.json";
 const starts=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[];
 starts.push(process.pid);fs.writeFileSync(file,JSON.stringify(starts));
+fs.writeFileSync(root+"/launch-"+process.pid+".json",JSON.stringify({port:Number(process.argv.at(-1)),standby:process.env.BRANCH_GATEWAY_STANDBY==="1",token:process.env.BRANCH_GATEWAY_TOKEN}));
 if(starts.length>1&&fs.existsSync(root+"/fail-next"))process.exit(1);
 process.on("message",m=>{if(!String(m?.type).startsWith("branch-desktop:"))return;if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
 if(m.type==="branch-desktop:drain-stop"){fs.writeFileSync(root+"/drained-"+process.pid,"1");setTimeout(()=>process.exit(0),20);}
 if(m.type==="branch-desktop:stop-if-idle"&&!fs.existsSync(root+"/busy"))setTimeout(()=>process.exit(0),20);});
 const listener=http.createServer((q,r)=>{r.writeHead(starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end();});
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
-  process.send?.({type:"branch-desktop:standby-ready",pid:process.pid});
-  listener.on("error",error=>{if(error.code==="EADDRINUSE")setTimeout(()=>listener.listen(Number(process.argv.at(-1)),"127.0.0.1"),20);else throw error;});
+  const announce=()=>process.send?.({type:"branch-desktop:standby-ready",pid:process.pid});
+  if(fs.existsSync(root+"/hold-standby")){const timer=setInterval(()=>{if(!fs.existsSync(root+"/hold-standby")){clearInterval(timer);announce();}},10);}else announce();
 }
+// No EADDRINUSE retry: an engine listens once on the port the desktop gave it, so a standby on the live port fails.
 listener.listen(Number(process.argv.at(-1)),"127.0.0.1");`;
   await writeFile(join(engine, "branch.mjs"), script); await writeFile(join(windowDir, "index.html"), "<html>fixture</html>");
   await writeFile(join(root, "gateway-token"), "isolated-fixture-token");
@@ -238,6 +240,51 @@ test("an update click swaps the engine in place: the app and window stay open an
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update").map(([, state]) => state), ["updating", "updated"]);
   assert.equal(alive((await starts())[1]), true);
 }));
+test("standby takes a separate loopback port before desktop hands the resident window to it", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  const old = (await starts())[0];
+  await writeFile(join(root, "hold-standby"), "wait");
+  await writeFile(join(root, "release-ready"), "ready");
+  restart();
+  try {
+    await eventually(async () => (await starts()).length === 2);
+    const standby = (await starts())[1];
+    await eventually(() => existsSync(join(root, `launch-${standby}.json`)));
+    const launch = JSON.parse(await readFile(join(root, `launch-${standby}.json`), "utf8"));
+    assert.equal(launch.standby, true, "desktop did not start a standby before stopping the old engine");
+    assert.notEqual(launch.port, gatewayPort, "standby tried to claim the old engine's live port");
+    assert.equal(alive(old), true, "old engine stopped before standby was ready");
+    assert.equal((await fetch(`http://127.0.0.1:${gatewayPort}/readyz`)).status, 200);
+  } finally {
+    await unlink(join(root, "hold-standby")).catch(() => undefined);
+  }
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:engine-handoff"), 40_000);
+  const successor = (await starts())[1];
+  const launch = JSON.parse(await readFile(join(root, `launch-${successor}.json`), "utf8"));
+  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-handoff"),
+    [["branch-desktop:engine-handoff", `ws://127.0.0.1:${launch.port}`]]);
+  assert.equal(runtime.window.reloads, 0);
+  assert.ok(await readFile(join(root, `drained-${old}`), "utf8"), "old engine did not complete its drain");
+}, false, false, false, true));
+test("after a standby handoff the window and the next swap follow the live port; the configured port is untouched", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  const info = () => { const event = { sender: runtime.window.webContents }; runtime.ipcMain.emit("branch-desktop:info", event); return event.returnValue; };
+  await writeFile(join(root, "release-ready"), "ready");
+  restart(); await eventually(() => swapped(root));
+  const first = JSON.parse(await readFile(join(root, `launch-${(await starts())[1]}.json`), "utf8"));
+  assert.equal(first.token, "isolated-fixture-token", "the standby did not share the window's token");
+  assert.deepEqual(info(), { gatewayUrl: `ws://127.0.0.1:${first.port}`, gatewayToken: "isolated-fixture-token" });
+  assert.equal(JSON.parse(await readFile(join(root, "desktop.json"), "utf8")).gatewayPort, gatewayPort);
+  restart(); await eventually(() => swapped(root, 2));
+  const second = JSON.parse(await readFile(join(root, `launch-${(await starts())[2]}.json`), "utf8"));
+  assert.notEqual(second.port, first.port, "the second standby tried to claim the live engine's port");
+  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-handoff").map(([, url]) => url),
+    [`ws://127.0.0.1:${first.port}`, `ws://127.0.0.1:${second.port}`]);
+  assert.equal(info().gatewayUrl, `ws://127.0.0.1:${second.port}`);
+  assert.equal((await starts()).length, 3);
+}, false, false, false, true));
 test("a busy engine from before drain-stop is never killed by an update click; the update is offered again", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const old = (await starts())[0]; await writeFile(join(root, "older-engine"), "1"); await writeFile(join(root, "busy"), "a Trunk is working");

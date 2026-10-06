@@ -4,10 +4,9 @@
 // caught here with nothing stopped, and the candidate's start warms the OS file cache for the real one.
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { createServer } from "node:net";
 import { join } from "node:path";
 import type { DesktopConfig } from "./config";
-import { stopGateway, waitForReady } from "./gateway";
+import { freeLoopbackPort, stopGateway, waitForReady } from "./gateway";
 
 export type CandidateResult = "ready" | "exited" | "slow";
 
@@ -15,17 +14,6 @@ let running: ChildProcess | undefined;
 /** Quitting during a check must not leave the candidate engine behind. */
 export function stopCandidate(): void {
   if (running) stopGateway(running);
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const port = (probe.address() as { port: number }).port;
-      probe.close(() => resolve(port));
-    });
-  });
 }
 
 function startCandidate(cfg: DesktopConfig, engineDir: string, token: string, port: number): ChildProcess {
@@ -41,7 +29,7 @@ function startCandidate(cfg: DesktopConfig, engineDir: string, token: string, po
 
 /** Starts the candidate on a spare port, waits for its readiness, then stops it. The running engine is untouched. */
 export async function checkCandidateBeside(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number): Promise<CandidateResult> {
-  const port = await freePort();
+  const port = await freeLoopbackPort();
   const child = startCandidate(cfg, engineDir, token, port);
   running = child;
   try {
