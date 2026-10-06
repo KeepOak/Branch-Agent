@@ -41,7 +41,7 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
           disabled={auto.busy !== null} onChange={on => void auto.set("autoApplyUpdates", on)} />
       </Ctl>
       <Ctl title="Check for updates"><Btn sm disabled={busy} onClick={() => void run("check")}>{busy ? "Working…" : "Check now"}</Btn></Ctl>
-      {data.status?.phase === "available" ? <Ctl title="Install Branch update"><Btn disabled={busy} onClick={() => void run("stage")}>Install when nothing is running</Btn></Ctl> : null}
+      {data.status?.phase === "available" ? <Ctl title="Install Branch update"><Btn disabled={busy} onClick={() => void run("stage")}>Install when idle</Btn></Ctl> : null}
       <Hint>Branch checks when it starts and every 10 minutes. A downloaded update applies after your Trunks finish.</Hint>
     </Sec>
   </Page>;

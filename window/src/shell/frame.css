@@ -646,40 +646,6 @@ button.sb[aria-expanded="true"] {
 .sb-spacer {
   flex: 1;
 }
-.statusbar .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--line-2);
-}
-.statusbar .dot.on {
-  background: var(--ok);
-}
-.statusbar .dot.wait {
-  background: var(--warn);
-}
-.rdot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--line-2);
-}
-.rdot.on {
-  background: var(--accent);
-  animation: blink 1.4s ease-in-out infinite;
-}
-.meter {
-  display: inline-block;
-  width: 44px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--line-2);
-  overflow: hidden;
-}
-.meter span {
-  display: block;
-  height: 100%;
-}
 @keyframes blink {
   50% {
     opacity: 0.3;
