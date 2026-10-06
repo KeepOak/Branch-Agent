@@ -20,3 +20,6 @@ engine:src/infra/update-candidate-canary.cleanup.test.ts
 engine:src/infra/update-candidate-canary.exit.process.test.ts
 engine:src/infra/update-candidate-canary.test.ts
 engine:src/infra/update-check.test.ts
+engine:src/node-host/auto-update-compatibility.test.ts
+engine:src/node-host/auto-update-install.test.ts
+engine:src/node-host/auto-update.test.ts
