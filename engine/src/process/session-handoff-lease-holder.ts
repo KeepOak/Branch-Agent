@@ -23,12 +23,12 @@ const POLL_MS = 100;
  * The default test of "still in flight": a task runs in the session's lane or waits for it. A caller that knows more
  * about a run's last writes (for example the gateway's terminal persistence) passes its own `isBusy`.
  */
-function isSessionLaneBusy(lane: string): boolean {
+export function isSessionLaneBusy(lane: string): boolean {
   const snapshot = getCommandLaneSnapshot(lane);
   return snapshot.activeCount + snapshot.queuedCount > 0;
 }
 
-function listBusySessionLanes(): string[] {
+export function listBusySessionLanes(): string[] {
   return listCommandLaneTotals()
     .filter(({ lane, activeCount, queuedCount }) => lane.startsWith(SESSION_LANE_PREFIX) && activeCount + queuedCount > 0)
     .map(({ lane }) => lane);
@@ -66,9 +66,16 @@ export function holdSessionHandoffLeases(
     process.off("exit", releaseSync);
     resolveReleased();
   };
+  const stillBusy = (lane: string) => {
+    try {
+      return isBusy(lane);
+    } catch {
+      return true; // An unanswerable busy test keeps the session until the lease ages out.
+    }
+  };
   const poll = () => {
     for (const [lane, { file, lease }] of held) {
-      if (isBusy(lane)) continue;
+      if (stillBusy(lane)) continue;
       removeSessionHandoffLease(file, lease);
       held.delete(lane);
     }

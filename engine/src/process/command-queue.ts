@@ -41,7 +41,11 @@ import {
   runWithGatewayRootWorkReadmission,
 } from "./gateway-work-admission.js";
 import { CommandLane, SUBAGENT_LANE_PREFIX, SWARM_LANE_PREFIX } from "./lanes.js";
-import { waitForSessionHandoffLease } from "./session-handoff-lease-gate.js";
+import {
+  countSessionHandoffLeaseWaiters,
+  listSessionHandoffLeaseWaiters,
+  waitForSessionHandoffLease,
+} from "./session-handoff-lease-gate.js";
 export {
   GatewayDrainingError,
   isGatewayWorkAdmissionClosed as isGatewayDraining,
@@ -612,7 +616,7 @@ export function enqueueCommandInLane<T>(
 export function getQueueSize(lane: string = CommandLane.Main) {
   const resolved = normalizeLane(lane);
   const state = getQueueState().lanes.get(resolved);
-  return state ? getLaneDepth(state) : 0;
+  return (state ? getLaneDepth(state) : 0) + countSessionHandoffLeaseWaiters(resolved);
 }
 
 export function getCommandLaneSnapshot(lane: string = CommandLane.Main): CommandLaneSnapshot {
@@ -620,7 +624,8 @@ export function getCommandLaneSnapshot(lane: string = CommandLane.Main): Command
   const state = getQueueState().lanes.get(resolved);
   const snapshot: CommandLaneSnapshot = {
     lane: state?.lane ?? resolved,
-    queuedCount: state?.queue.length ?? 0,
+    // Turns parked behind a previous engine's session lease are queued work too.
+    queuedCount: (state?.queue.length ?? 0) + countSessionHandoffLeaseWaiters(resolved),
     activeCount: state?.activeTaskIds.size ?? 0,
     maxConcurrent: state?.maxConcurrent ?? getDefaultLaneConcurrency(resolved),
     draining: state?.draining ?? false,
@@ -644,11 +649,18 @@ export function listCommandLaneTotals(): Array<{
   activeCount: number;
   queuedCount: number;
 }> {
-  return [...getQueueState().lanes.values()].map((state) => ({
-    lane: state.lane,
-    activeCount: state.activeTaskIds.size,
-    queuedCount: state.queue.length,
-  }));
+  const totals = new Map(
+    [...getQueueState().lanes.values()].map((state) => [
+      state.lane,
+      { lane: state.lane, activeCount: state.activeTaskIds.size, queuedCount: state.queue.length },
+    ]),
+  );
+  for (const { lane, waiters } of listSessionHandoffLeaseWaiters()) {
+    const entry = totals.get(lane) ?? { lane, activeCount: 0, queuedCount: 0 };
+    entry.queuedCount += waiters;
+    totals.set(lane, entry);
+  }
+  return [...totals.values()];
 }
 
 /**
@@ -673,6 +685,9 @@ export function getTotalQueueSize() {
   let total = 0;
   for (const s of getQueueState().lanes.values()) {
     total += getLaneDepth(s);
+  }
+  for (const { waiters } of listSessionHandoffLeaseWaiters()) {
+    total += waiters;
   }
   return total;
 }

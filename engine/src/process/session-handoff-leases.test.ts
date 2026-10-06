@@ -3,12 +3,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
-import { enqueueCommandInLane } from "./command-queue.js";
+import { getFileLockProcessStartTime } from "../shared/pid-alive.js";
+import { enqueueCommandInLane, getCommandLaneSnapshot, getTotalQueueSize } from "./command-queue.js";
 import { resetCommandQueueStateForTest } from "./command-queue.test-support.js";
 import {
+  readSessionHandoffLease,
   resolveSessionHandoffLeaseDir,
+  SESSION_HANDOFF_LEASE_MAX_AGE_MS,
   sessionHandoffLeaseFile,
   writeSessionHandoffLease,
 } from "./session-handoff-lease-files.js";
@@ -17,7 +20,7 @@ import {
   resetSessionHandoffLeaseGateForTest,
   SessionHandoffLeaseTimeoutError,
 } from "./session-handoff-lease-gate.js";
-import { holdSessionHandoffLeases } from "./session-handoff-lease-holder.js";
+import { holdSessionHandoffLeases, isSessionLaneBusy } from "./session-handoff-lease-holder.js";
 
 const LEASED = "session:agent:main:leased";
 const OTHER = "session:agent:main:other";
@@ -54,11 +57,14 @@ async function liveProcess(): Promise<ChildProcess> {
   return child;
 }
 
-/** A lease file exactly as the previous engine would write it, held by `pid`. */
-function leaseFor(lane: string, pid: number): string {
+/** A lease file exactly as the previous engine would write it, held by `pid` (its real start time by default). */
+function leaseFor(lane: string, pid: number, overrides: Record<string, unknown> = {}): string {
   const dir = resolveSessionHandoffLeaseDir();
   const { file, lease } = writeSessionHandoffLease(dir, lane);
-  fs.writeFileSync(file, JSON.stringify({ ...lease, pid }));
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ ...lease, pid, startTime: getFileLockProcessStartTime(pid), ...overrides }),
+  );
   return file;
 }
 
@@ -131,6 +137,62 @@ describe("session handoff leases", () => {
     expect(ran).toBe(true);
   });
 
+  it("deletes and ignores a stale lease: too old, or a reused PID that is another process now", async () => {
+    const other = await liveProcess();
+    const expired = leaseFor(LEASED, other.pid!, { acquiredAt: Date.now() - SESSION_HANDOFF_LEASE_MAX_AGE_MS - 1_000 });
+    const reused = leaseFor(OTHER, other.pid!, { startTime: 12_345 });
+    refreshSessionHandoffLeases();
+    await expect(enqueueCommandInLane(LEASED, async () => "ran")).resolves.toBe("ran");
+    await expect(enqueueCommandInLane(OTHER, async () => "ran")).resolves.toBe("ran");
+    expect(fs.existsSync(expired)).toBe(false);
+    expect(fs.existsSync(reused)).toBe(false);
+    // A stale lease never blocks the next step-down either.
+    leaseFor(LEASED, other.pid!, { startTime: 12_345 });
+    expect(() => writeSessionHandoffLease(resolveSessionHandoffLeaseDir(), LEASED)).not.toThrow();
+  });
+
+  it("frees waiting work when a held lease outlives any handoff", async () => {
+    const holder = await liveProcess();
+    leaseFor(LEASED, holder.pid!, { acquiredAt: Date.now() - SESSION_HANDOFF_LEASE_MAX_AGE_MS + 400 });
+    refreshSessionHandoffLeases();
+    const started = Date.now();
+    await expect(enqueueCommandInLane(LEASED, async () => "ran")).resolves.toBe("ran");
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it("counts turns parked behind a lease as queued work", async () => {
+    const holder = await liveProcess();
+    const file = leaseFor(LEASED, holder.pid!);
+    refreshSessionHandoffLeases();
+    const parked = [enqueueCommandInLane(LEASED, async () => {}), enqueueCommandInLane(LEASED, async () => {})];
+    expect(getCommandLaneSnapshot(LEASED).queuedCount).toBe(2);
+    expect(getTotalQueueSize()).toBe(2);
+    fs.unlinkSync(file);
+    await Promise.all(parked);
+    expect(getCommandLaneSnapshot(LEASED).queuedCount).toBe(0);
+  });
+
+  it("keeps a session leased until a run's last write after its lane task ended", async () => {
+    let persisting = true;
+    const transcript: string[] = [];
+    await enqueueCommandInLane(LEASED, async () => {
+      transcript.push("run done");
+    });
+    // The run's final transcript write is still pending outside its lane task.
+    const hold = holdSessionHandoffLeases({
+      lanes: [LEASED],
+      isBusy: (lane) => isSessionLaneBusy(lane) || persisting,
+    });
+    const file = sessionHandoffLeaseFile(resolveSessionHandoffLeaseDir(), LEASED);
+    await pause(250);
+    expect(readSessionHandoffLease(file)?.lane).toBe(LEASED);
+    transcript.push("final transcript saved");
+    persisting = false;
+    await hold.released;
+    expect(fs.existsSync(file)).toBe(false);
+    expect(transcript).toEqual(["run done", "final transcript saved"]);
+  });
+
   it("keeps a lease only on sessions with work in flight and releases each when its lane drains", async () => {
     const finish = createDeferred();
     const transcript: string[] = [];
@@ -164,29 +226,39 @@ describe("session handoff leases", () => {
 import { enqueueCommandInLane } from ${JSON.stringify(queueUrl)};
 import { holdSessionHandoffLeases } from ${JSON.stringify(holderUrl)};
 const run = enqueueCommandInLane(${JSON.stringify(LEASED)}, async () => {
-  await new Promise((resolve) => setTimeout(resolve, 1500));
+  await new Promise((resolve) => setTimeout(resolve, 3000));
   fs.appendFileSync(process.env.TRANSCRIPT, "old run final\\n");
 });
 const hold = holdSessionHandoffLeases();
 process.stdout.write(JSON.stringify(hold.lanes) + "\\n");
 await run;
-await hold.released;`;
+await hold.released;
+process.stdout.write("released\\n");
+// Stay alive after releasing: the successor must be freed by the release itself, not by this process dying.
+await new Promise((resolve) => process.stdin.once("end", resolve).resume());`;
     const previous = spawn(process.execPath, ["--import", "./scripts/tsx.mjs", "--input-type=module", "--eval", code], {
       cwd: process.cwd(),
       env: { ...process.env, BRANCH_STATE_DIR: stateDir, TRANSCRIPT: transcript },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
     children.push(previous);
+    let stdout = "";
+    previous.stdout!.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
     let stderr = "";
     previous.stderr!.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
     });
-    const held = await new Promise<string>((resolve, reject) => {
-      previous.stdout!.once("data", (chunk: Buffer) => resolve(chunk.toString()));
-      previous.once("exit", (code) => reject(new Error(`previous engine exited ${code}: ${stderr}`)));
-    });
-    expect(JSON.parse(held)).toEqual([LEASED]);
+    await vi.waitFor(
+      () => {
+        if (previous.exitCode !== null) throw new Error(`previous engine exited: ${stderr}`);
+        expect(stdout).toContain("\n");
+      },
+      { timeout: 30_000, interval: 20 },
+    );
+    expect(JSON.parse(stdout.split("\n")[0]!)).toEqual([LEASED]);
     const exited = new Promise<number | null>((resolve) => previous.once("exit", resolve));
 
     // The new engine takes over the state now.
@@ -198,6 +270,10 @@ await hold.released;`;
     expect(fs.readFileSync(transcript, "utf8")).toBe("");
     await nextTurn;
     expect(fs.readFileSync(transcript, "utf8")).toBe("old run final\nnew turn\n");
+    // Freed by the release while the previous engine was still running.
+    expect(stdout).toContain("released");
+    expect(previous.exitCode).toBeNull();
+    previous.stdin!.end();
     await expect(exited).resolves.toBe(0);
   }, 60_000);
 });
