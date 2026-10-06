@@ -13,18 +13,37 @@ function registry(): { reg: HighlightRegistry; Highlight: HighlightCtor } | null
   return css?.highlights && Highlight ? { reg: css.highlights, Highlight } : null;
 }
 
-/** Every case-insensitive match of `query` in the thread's text, as ranges in reading order. */
+/** Every case-insensitive match in a message, including phrases split by inline Markdown elements. */
 export function findRanges(root: HTMLElement, query: string): Range[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
+  const blocks = [...root.querySelectorAll<HTMLElement>(".blk, .segment-line")]
+    .filter((block) => !block.parentElement?.closest(".blk, .segment-line"));
+  const scopes = blocks.length ? blocks : [root];
   const ranges: Range[] = [];
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const text = (node.textContent ?? "").toLowerCase();
-    for (let at = text.indexOf(q); at >= 0; at = text.indexOf(q, at + q.length)) {
+  for (const scope of scopes) {
+    const pieces: { node: Text; start: number; end: number }[] = [];
+    let text = "";
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        return node.parentElement?.closest('button, [aria-hidden="true"], script, style')
+          ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const content = node.textContent ?? "";
+      if (!content) continue;
+      pieces.push({ node: node as Text, start: text.length, end: text.length + content.length });
+      text += content;
+    }
+    const lower = text.toLowerCase();
+    for (let at = lower.indexOf(q); at >= 0; at = lower.indexOf(q, at + q.length)) {
+      const first = pieces.find((piece) => piece.end > at);
+      const last = pieces.find((piece) => piece.end >= at + q.length);
+      if (!first || !last) continue;
       const range = document.createRange();
-      range.setStart(node, at);
-      range.setEnd(node, at + q.length);
+      range.setStart(first.node, at - first.start);
+      range.setEnd(last.node, at + q.length - last.start);
       ranges.push(range);
     }
   }
