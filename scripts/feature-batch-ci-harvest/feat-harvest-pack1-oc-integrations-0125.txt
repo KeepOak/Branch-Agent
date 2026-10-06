@@ -1,5 +1,6 @@
 engine:src/agents/tools/nodes-tool-invoke-policy.test.ts
 engine:src/agents/tools/nodes-tool.test.ts
+engine:src/agents/tools/presence-tool.test.ts
 engine:src/cli/qr-cli.test.ts
 engine:src/gateway/node-command-policy.authority.test.ts
 engine:src/gateway/node-command-policy.test.ts
