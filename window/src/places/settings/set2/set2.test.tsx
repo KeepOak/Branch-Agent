@@ -37,10 +37,11 @@ const READY = { sentinel: null, updateAvailable: { currentVersion: "1.0.0", late
 const RUNNING = { sessions: [{ key: "agent:main:a", agentId: "main", hasActiveRun: true, activeRunIds: ["r1"] }, { key: "agent:main:b", agentId: "main", hasActiveRun: false }] };
 
 describe("Settings › Updates & about", () => {
-  it("reads the version and the waiting update from the engine", async () => {
+  it("keeps the engine version out of the Branch Updates heading", async () => {
     const { engine } = engineWith({ "update.status": READY, status: { runtimeVersion: "1.0.0" }, "system.info": { platform: "win32" } });
     await show("updates", engine);
-    expect(document.body.textContent).toContain("Branch Agent 1.0.0 on Windows.");
+    expect(document.body.textContent).not.toContain("Branch Agent 1.0.0 on Windows.");
+    expect(document.body.textContent).toContain("Checking Branch’s version");
     expect(document.body.textContent).toContain("1.1.0 is ready to install");
   });
   it("says it is up to date when the engine reports no update", async () => {

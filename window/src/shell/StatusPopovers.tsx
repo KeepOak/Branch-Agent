@@ -12,6 +12,7 @@ import { comingUp, limitsSummary, readMonthSpend, readRoom, readRounds, sizeWord
 import type { GatewayFacts } from "./use-status";
 import "./status.css";
 import { shownWhy } from "./shown-why";
+import { versionParts } from "../connect/branch-version";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 type Base = { above: Above; onClose: () => void };
@@ -297,7 +298,7 @@ export function VersionPopover({ update, version, desktopPending, autoApply, onW
       ) : (
         <>
           <div className="pt">{update?.statusMessage ?? "Branch is up to date."}</div>
-          <p className="pp">Branch {version}</p>
+          <p className="pp">Branch {versionParts(version).detail}</p>
           <Item icon="book" label="What’s new" testid="ver-whatsnew" onClick={onWhatsNew} />
         </>
       )}
