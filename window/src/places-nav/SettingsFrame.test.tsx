@@ -40,6 +40,19 @@ describe("settings frame level", () => {
     expect(onPage).toHaveBeenCalledWith("general");
   });
 
+  it("keeps the page scroll position when changing its detail level", async () => {
+    await open("general");
+    const scroll = document.querySelector<HTMLElement>(".set-scroll")!;
+    scroll.scrollTop = 420;
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="advanced"]')!.click());
+    expect(scroll.scrollTop).toBe(420);
+    scroll.scrollTop = 310;
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="technical"]')!.click());
+    expect(scroll.scrollTop).toBe(310);
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="regular"]')!.click());
+    expect(scroll.scrollTop).toBe(310);
+  });
+
   it("a row found by search opens its page at the level that shows it", async () => {
     localStorage.setItem("branch.level", "regular");
     const onPage = await open("general");
