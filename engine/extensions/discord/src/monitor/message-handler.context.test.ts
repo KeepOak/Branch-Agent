@@ -126,12 +126,13 @@ describe("discord message context", () => {
     },
   );
 
-  it("preserves bot sender scope and live owner authority through the host builder", async () => {
+  it.each(["raw", "prefixed"] as const)("preserves bot sender scope and live owner authority through the host builder (%s owner)", async (ownerForm) => {
     await withBranchTestState({ scenario: "minimal" }, async (state) => {
       const senderId = "123456789012345678";
+      const ownerId = ownerForm === "prefixed" ? `discord:${senderId}` : senderId;
       const cfg: BranchConfig = {
         session: { store: state.path("sessions.json") },
-        commands: { ownerAllowFrom: [senderId] },
+        commands: { ownerAllowFrom: [ownerId] },
       };
       await withRegisteredChannelIngress(
         { plugin: discordPlugin, config: cfg, setRuntime: setDiscordRuntime },
@@ -159,6 +160,7 @@ describe("discord message context", () => {
               accountId: ctx.accountId,
               cfg,
               sender: { id: senderId, authorKind: "bot" },
+              // Channel admission uses Discord-native IDs; command ownership uses cfg.commands.
               ownerAllowFrom: [senderId],
               memberAccessConfigured: true,
               memberAllowed: true,
@@ -186,6 +188,8 @@ describe("discord message context", () => {
             cfg,
             commandAuthorized: true,
           });
+          expect(authorization.ownerList).toContain(senderId);
+          expect(authorization.senderIsOwner).toBe(true);
           expect(authorization.assertOwnerCurrent).toBeTypeOf("function");
           expect(() => authorization.assertOwnerCurrent?.()).not.toThrow();
           cfg.commands = { ownerAllowFrom: [] };
