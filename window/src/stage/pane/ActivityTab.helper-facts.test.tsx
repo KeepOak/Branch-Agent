@@ -37,7 +37,7 @@ function backend(initialCost: unknown) {
   });
   const engine: WindowEngine = { sessionKey: "agent:main:main", scopes: [], request,
     onEvent: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; } };
-  return { engine, state, changed: () => listeners.forEach((listener) => listener({ event: "sessions.changed", payload: { session: { key: "agent:main:subagent:helper", spawnedBy: "agent:main:main" } } })) };
+  return { engine, request, state, changed: () => listeners.forEach((listener) => listener({ event: "sessions.changed", payload: { session: { key: "agent:main:subagent:helper", spawnedBy: "agent:main:main" } } })) };
 }
 
 describe("actual Activity helper measured facts", () => {
@@ -67,6 +67,7 @@ describe("actual Activity helper measured facts", () => {
     const fixture = backend(0.1);
     await render(fixture.engine);
     expect(container.querySelector(".hp-m-pn")?.textContent).toBe("$0.10");
+    expect(fixture.request).toHaveBeenCalledWith("sessions.usage", { key: "agent:main:subagent:helper", range: "all" });
     expect(container.querySelector(".hp-job-pn")?.textContent).toContain("Read the latest brief");
     expect(container.querySelector(".hp-think-pn summary")?.textContent).toBe("What it's thinking");
     fixture.state.status = "done";

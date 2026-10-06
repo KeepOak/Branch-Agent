@@ -44,7 +44,7 @@ function useHelperFacts(engine: WindowEngine, helpers: Helper[]): Map<string, { 
     let live = true;
     void Promise.all(
       helpers.map(async (h) => {
-        const usage = await engine.request("sessions.usage", { key: h.key }).catch(() => null);
+        const usage = await engine.request("sessions.usage", { key: h.key, range: "all" }).catch(() => null);
         const cost = rec(rec(usage).totals).totalCost;
         const rows = await engine.request("sessions.list", { spawnedBy: h.parent, limit: 200 }).catch(() => null);
         const row = (Array.isArray(rec(rows).sessions) ? (rec(rows).sessions as unknown[]) : []).map(rec).find((r) => r.key === h.key) ?? {};

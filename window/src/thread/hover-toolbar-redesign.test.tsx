@@ -11,6 +11,7 @@ afterEach(async () => {
   if (root) await act(async () => root?.unmount());
   root = undefined;
   document.body.innerHTML = "";
+  vi.restoreAllMocks();
 });
 
 async function mount(isReply: boolean) {
@@ -54,8 +55,8 @@ describe("P54 message toolbar", () => {
   it("leaves out groups with nothing for your own message (no empty Inspect or Feedback heading)", async () => {
     const { host } = await mount(false);
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
-    expect([...host.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Reply tools", "Context", "Share"]);
-    expect(host.querySelectorAll(".msep")).toHaveLength(3);
+    expect([...document.body.querySelectorAll(".pop-head")].map((x) => x.textContent)).toEqual(["Reply tools", "Context", "Share"]);
+    expect(document.body.querySelectorAll(".msep")).toHaveLength(3);
   });
 
   it("moves Edit into the user-message menu", async () => {
@@ -83,6 +84,7 @@ describe("P54 message toolbar", () => {
     const { host } = await mount(true);
     const bar = host.querySelector<HTMLElement>(".hover-bar")!;
     vi.spyOn(bar, "getBoundingClientRect").mockReturnValue({ left: 900, right: 940, top: 680, bottom: 708 } as DOMRect);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ height: 300 } as DOMRect);
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 960 });
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 720 });
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More"]')?.click());
@@ -90,6 +92,6 @@ describe("P54 message toolbar", () => {
     expect(Number.parseInt(portal.style.left)).toBeGreaterThanOrEqual(8);
     expect(Number.parseInt(portal.style.left) + Number.parseInt(portal.style.width)).toBeLessThanOrEqual(952);
     expect(Number.parseInt(portal.style.top)).toBeGreaterThanOrEqual(8);
-    expect(Number.parseInt(portal.style.top) + 460).toBeLessThanOrEqual(712);
+    expect(Number.parseInt(portal.style.top) + 300).toBe(674);
   });
 });

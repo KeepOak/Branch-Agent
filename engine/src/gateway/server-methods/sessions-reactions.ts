@@ -243,7 +243,7 @@ export const sessionReactionHandlers: GatewayRequestHandlers = {
     validateSessionContextSetParams,
     async ({ params, respond, client, context, hasCurrentClientAuthority }) => {
       await withSessionReactionAccess(
-        { ...params, client, context, respond, hasCurrentClientAuthority, write: true },
+        { ...params, client, context, respond, hasCurrentClientAuthority, write: true, contextChange: true },
         async ({ target, assertCurrent }) => {
           const anchor = readActiveTranscriptEntryAnchor({
             agentId: target.agentId,

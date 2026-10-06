@@ -121,6 +121,18 @@ describe("session reaction handlers", () => {
       expect((await read()).excludeFromContext).toBeUndefined();
     });
   });
+  it("refuses a suggest-only member changing model context", async () => {
+    await withReactionState(async () => {
+      const key = "agent:main:context-suggest";
+      const scope = await seedSession({ visibility: "suggest", sessionId: "context-suggest" }, key);
+      const messageId = await appendMessage(undefined, scope);
+      const result = await call("session.context.set", { sessionKey: key, messageId, exclude: true }, client("viewer"), context(roleConfig("suggest")));
+      expect(result[0]).toBe(false);
+      expect(result[2]).toMatchObject({ code: "FORBIDDEN" });
+      const read = await readSessionMessageByIdAsync(scope, messageId, { currentOnly: true, maxBytes: Number.MAX_SAFE_INTEGER, allowResetArchiveFallback: false });
+      expect((read.message as Record<string, unknown>).excludeFromContext).toBeUndefined();
+    });
+  });
   it("enforces session participation and operator caps before committing reactions", async () => {
     await withReactionState(async () => {
       const cases = [

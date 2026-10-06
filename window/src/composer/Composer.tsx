@@ -388,7 +388,7 @@ export function Composer(props: Props) {
     const key = engine?.sessionKey;
     if (!engine || !key) return;
     let live = true;
-    const read = () => void engine.request("sessions.usage", { key }).then((result) => {
+    const read = () => void engine.request("sessions.usage", { key, range: "all" }).then((result) => {
       const value = num(rec(rec(result).totals).totalCost);
       if (live && value !== undefined) setUsageCost({ key, value });
     }).catch(() => undefined);
