@@ -54,6 +54,7 @@ export function useSidebarPointerDrag(onDrop: (drop: SidebarDrop) => void, optio
     const r = el.getBoundingClientRect();
     const source = active.current?.source ?? "";
     const zones = options.zonesFor?.(source, target, el) ?? options.dropZones;
+    if (gap && !(zones.includes("before") && zones.includes("after"))) return null;
     const zone = gap && zones.includes("before") && zones.includes("after")
       ? ((options.axis === "y" ? y < r.top + r.height / 2 : x < r.left + r.width / 2) ? "before" : "after")
       : dropZoneAt(options.axis === "y" ? y : x, options.axis === "y" ? r.top : r.left,

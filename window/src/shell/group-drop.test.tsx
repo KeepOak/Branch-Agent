@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { readFileSync } from "node:fs";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SaplingSession } from "../connect/session";
 import type { Conversation } from "../connect/conversations";
+import type { Block } from "../thread/model";
 import { Sidebar, type SidebarProps } from "./Sidebar";
 import { buildContactSections, projectContact } from "./contacts-model";
 import { readPrefs } from "./FilterSort";
 import { rowMenuItems } from "./row-menu";
-import { GroupDropPopover, createDroppedGroup, groupHint, groupPlan, moveContactToProject, roomContact, type GroupContact, type GroupRoom } from "./group-drop";
+import { GroupDropPopover, createDroppedGroup, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useRoomNotices, type GroupContact, type GroupRoom } from "./group-drop";
 import type { SidebarDrop } from "./sidebar-drag";
 
 vi.mock("../face/Face", () => ({ Face: ({ size }: { size: number }) => <span style={{ width: size, height: size }} /> }));
@@ -71,6 +73,31 @@ describe("drag to group", () => {
     expect(groupHint(drop(scout, contacts[3]!), contacts, [room])).toBe("Already in this group");
     expect(groupPlan(drop(hermes, contacts[3]!), contacts, [room])).toBe("add");
     expect(groupHint(drop(hermes, contacts[3]!), contacts, [room])).toBe("Add Hermes to Supplier quotes");
+  });
+  it("rejects a chat-group contact as the person added to a room", () => {
+    const chatGroup: GroupContact = { ...hermes, id: "chatGroup:team", kind: "chatGroup", threadKey: "agent:scout:chat-group:team", name: "Other group" };
+    const rows = [...contacts, chatGroup];
+    expect(groupPlan(drop(chatGroup, contacts[3]!), rows, [room])).toBeNull();
+    expect(groupPlan(drop(contacts[3]!, chatGroup), rows, [room])).toBeNull();
+    expect(groupHint(drop(chatGroup, contacts[3]!), rows, [room])).toBe("");
+  });
+  it("places created and member-added notices at their event times in conversation history", async () => {
+    const request = vi.fn(async () => ({ events: [
+      { seq: 1, kind: "created", payload: { members: room.members }, createdAt: 100 },
+      { seq: 2, kind: "member.added", payload: { kind: "a2a", id: "hermes" }, createdAt: 300 },
+    ] }));
+    const session = { request, onGatewayEvent: () => () => {} } as unknown as SaplingSession;
+    const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+    let notices: Block[] = [];
+    function Probe() { notices = useRoomNotices(session, contacts[3]!.threadKey, contacts); return null; }
+    await act(async () => root!.render(<Probe />));
+    const history: Block[] = [
+      { kind: "user", key: "first", text: "First", meta: { timestamp: 200 } },
+      { kind: "text", key: "reply", text: "Reply", streaming: false },
+      { kind: "user", key: "second", text: "Second", meta: { timestamp: 400 } },
+    ];
+    expect(mergeRoomNotices(history, notices).map((block) => block.key)).toEqual(["room:r1:1", "first", "reply", "room:r1:2", "second"]);
+    expect(notices[1]).toMatchObject({ text: "You added Hermes", at: 300 });
   });
   it("creates a real room with both contacts and a lead Trunk through rooms.create", async () => {
     const { session, request } = fakeSession();
@@ -156,6 +183,44 @@ describe("drag to group", () => {
     await ui.pointer(source, "pointermove", "mouse", 130, 130);
     await ui.pointer(source, "pointerup", "mouse", 130, 130);
     expect(ui.onGroupDrop).toHaveBeenCalledWith({ source: ledger.threadKey, target: scout.threadKey, zone: "onto" }, expect.anything());
+  });
+  it("does not turn the Pinned label or empty space into a contact-on-contact drop", async () => {
+    const ui = await sidebar(true);
+    const source = ui.host.querySelector<HTMLElement>(`.pin-tile[data-drag-key="${ledger.threadKey}"] .pin-open`)!;
+    const label = ui.host.querySelector<HTMLElement>('.list-sec[data-section="pinned"]')!;
+    const tile = ui.host.querySelector<HTMLElement>(`.pin-tile[data-drag-key="${scout.threadKey}"]`)!;
+    Object.defineProperty(tile, "getBoundingClientRect", { value: () => ({ left: 100, top: 100, width: 60, height: 70, right: 160, bottom: 170 }) });
+    Object.defineProperty(ui.target, "getBoundingClientRect", { value: () => ({ left: 170, top: 100, width: 60, height: 70, right: 230, bottom: 170 }) });
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => label });
+    await ui.pointer(source, "pointerdown", "mouse", 180, 130);
+    await ui.pointer(source, "pointermove", "mouse", 96, 130);
+    await ui.pointer(source, "pointerup", "mouse", 96, 130);
+    expect(ui.onGroupDrop).not.toHaveBeenCalled();
+    expect(ui.onReorderPins).toHaveBeenCalledTimes(1);
+    await act(async () => root!.unmount()); root = undefined;
+    const ui2 = await sidebar(false);
+    const empty = ui2.host.querySelector<HTMLElement>('.list-sec[data-section="pinned"]')!;
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => empty });
+    const recent = ui2.target.querySelector<HTMLElement>(".row-open")!;
+    await ui2.pointer(recent, "pointerdown", "mouse", 10, 10);
+    await ui2.pointer(recent, "pointermove", "mouse", 130, 60);
+    await ui2.pointer(recent, "pointerup", "mouse", 130, 60);
+    expect(ui2.onGroupDrop).not.toHaveBeenCalled();
+  });
+  it("allows a quick touch swipe from a row to scroll the sidebar", async () => {
+    const ui = await sidebar();
+    const scroll = ui.host.querySelector<HTMLElement>(".side-scroll")!;
+    const css = readFileSync("src/shell/group-drop.css", "utf8");
+    expect(css).not.toMatch(/\[data-drag-key\]\s*\{\s*touch-action:\s*none/);
+    scroll.scrollTop = 10;
+    await ui.pointer(ui.source, "pointerdown", "touch", 10, 10);
+    await ui.pointer(ui.source, "pointermove", "touch", 10, 50);
+    const move = new Event("touchmove", { bubbles: true, cancelable: true });
+    ui.source.dispatchEvent(move);
+    if (!move.defaultPrevented) scroll.scrollTop += 40;
+    expect(move.defaultPrevented).toBe(false);
+    expect(scroll.scrollTop).toBe(50);
+    expect(document.getElementById("sidebar-drag-ghost")).toBeNull();
   });
   it("requires a 350 ms touch hold, leaves a quick swipe alone, and Esc cancels a drag", async () => {
     vi.useFakeTimers();

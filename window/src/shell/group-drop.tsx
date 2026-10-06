@@ -26,7 +26,7 @@ export function groupPlan(drop: SidebarDrop, contacts: readonly GroupContact[], 
   const room = rooms.find((r) => r.roomId === (target.roomId ?? source.roomId));
   const person = target.roomId ? source : target;
   if (source.roomId && target.roomId) return null;
-  if (room) return hasMember(room, person) ? "duplicate" : "add";
+  if (room) return !memberOf(person) ? null : hasMember(room, person) ? "duplicate" : "add";
   return memberOf(source) && memberOf(target) ? "new" : null;
 }
 export function groupHint(drop: SidebarDrop, contacts: readonly GroupContact[], rooms: readonly GroupRoom[]): string {
@@ -74,7 +74,7 @@ export function roomContact(room: GroupRoom, contacts: readonly GatewayContact[]
 
 export function useRoomNotices(session: SaplingSession, key: string | null, contacts: readonly GroupContact[]): Block[] {
   const roomId = /^agent:[^:]+:room:([^:]+)$/.exec(key ?? "")?.[1];
-  const [events, setEvents] = useState<{ seq: number; kind: string; actorId?: string; payload: unknown }[]>([]);
+  const [events, setEvents] = useState<{ seq: number; kind: string; actorId?: string; payload: unknown; createdAt: number }[]>([]);
   useEffect(() => {
     if (!roomId) { setEvents([]); return; }
     let live = true;
@@ -94,9 +94,9 @@ export function useRoomNotices(session: SaplingSession, key: string | null, cont
     };
     void load();
     const off = session.onGatewayEvent((event, payload) => {
-      const value = payload as { roomId?: string; seq?: number; kind?: string; actorId?: string; payload?: unknown };
+      const value = payload as { roomId?: string; seq?: number; kind?: string; actorId?: string; payload?: unknown; createdAt?: number };
       if (event === "rooms.event" && value?.roomId === roomId && typeof value.seq === "number" && (value.kind === "created" || value.kind === "member.added")) {
-        setEvents((current) => current.some((row) => row.seq === value.seq) ? current : [...current, { seq: value.seq!, kind: value.kind!, actorId: value.actorId, payload: value.payload }]);
+        setEvents((current) => current.some((row) => row.seq === value.seq) ? current : [...current, { seq: value.seq!, kind: value.kind!, actorId: value.actorId, payload: value.payload, createdAt: value.createdAt ?? 0 }]);
       }
     });
     return () => { live = false; off(); };
@@ -110,11 +110,25 @@ export function useRoomNotices(session: SaplingSession, key: string | null, cont
     if (event.kind === "created") {
       const members = data.members ?? [];
       const shown = members.length > 2 ? members.slice(0, 2) : members;
-      return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `You started a group with ${shown.map(named).join(" and ")}` }];
+      return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `You started a group with ${shown.map(named).join(" and ")}`, at: event.createdAt }];
     }
-    if (event.kind === "member.added" && data.kind && data.id) return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `${event.actorId?.startsWith("a2a:") ? (data.from ?? event.actorId.slice(4)) : "You"} added ${named({ kind: data.kind, id: data.id })}` }];
+    if (event.kind === "member.added" && data.kind && data.id) return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `${event.actorId?.startsWith("a2a:") ? (data.from ?? event.actorId.slice(4)) : "You"} added ${named({ kind: data.kind, id: data.id })}`, at: event.createdAt }];
     return [];
   });
+}
+
+/** Keep untimed blocks attached to their preceding message while placing room events by recorded time. */
+export function mergeRoomNotices(history: readonly Block[], notices: readonly Block[]): Block[] {
+  const noticeAt = (block: Block) => block.kind === "notice" ? block.at ?? 0 : 0;
+  const ordered = [...notices].sort((a, b) => noticeAt(a) - noticeAt(b));
+  const merged: Block[] = [];
+  let next = 0;
+  for (const block of history) {
+    const at = block.kind === "user" || block.kind === "text" ? block.meta?.timestamp : undefined;
+    if (at !== undefined) while (next < ordered.length && noticeAt(ordered[next]!) <= at) merged.push(ordered[next++]!);
+    merged.push(block);
+  }
+  return [...merged, ...ordered.slice(next)];
 }
 
 export async function createDroppedGroup(session: SaplingSession, contacts: readonly GroupContact[], ids: readonly string[], name: string, defaultTrunk: string): Promise<GroupRoom> {
