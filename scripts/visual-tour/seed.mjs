@@ -28,8 +28,9 @@ const notes = [
   ['visual-roadmap', 'October roadmap', 'Draft milestones for the next release.'],
   ['visual-design', 'Design review', 'Compare the Grove with the preview.'],
 ];
-for (const [suffix, title, message] of notes) {
-  call('sessions.create', { key: `agent:main:${suffix}`, agentId: 'main', displayName: title, message });
+for (const [index, [suffix, title, message]] of notes.entries()) {
+  const agentId = agents[index];
+  call('sessions.create', { key: `agent:${agentId}:${suffix}`, agentId, displayName: title, message });
 }
 const roomResponse = call('rooms.create', { name: 'Planning circle', members: [
   { kind: 'trunk', id: agents[0], role: 'lead' }, { kind: 'trunk', id: agents[1] },
