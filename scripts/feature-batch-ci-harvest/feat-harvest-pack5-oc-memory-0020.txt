@@ -26,3 +26,7 @@ engine:extensions/memory-wiki/src/import-insights.test.ts
 engine:packages/memory-host-sdk/src/host/memory-schema-fts.test.ts
 engine:src/agents/memory-write-provenance.test.ts
 engine:src/memory/memory-artifact-provenance.test.ts
+engine:src/transcripts/library.search.test.ts
+engine:src/transcripts/library.test.ts
+engine:src/transcripts/store.test.ts
+engine:src/transcripts/summary.test.ts

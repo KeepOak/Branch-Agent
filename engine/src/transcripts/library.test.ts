@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/transcripts/library.test.ts (atlas MEMORY-0075). Changed for Branch: retain Branch agent configuration and streamed snapshot checks.
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
