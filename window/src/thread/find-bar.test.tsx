@@ -20,14 +20,14 @@ describe("find in this conversation", () => {
     root.innerHTML = '<div class="segment-page"><div class="segment-line">earlier</div><div class="segment-line">message</div></div>'
       + '<div class="queued-msg"><span>queued needle</span></div>'
       + '<div class="approval-card"><p>approve needle</p><button>Allow needle</button><textarea>typed needle</textarea></div>'
-      + '<div class="msg"><div class="msg-acts">copy needle</div></div>'
+      + '<div class="msg"><div class="hover-bar"><span class="hb-time">time needle</span></div></div>'
       + '<div class="question-line">question needle</div>'
       + '<div class="user-message">sent needle</div>';
     document.body.append(root);
     for (const phrase of ["queued needle", "approve needle", "question needle", "sent needle"]) {
       expect(findRanges(root, phrase)).toHaveLength(1);
     }
-    for (const phrase of ["allow needle", "typed needle", "copy needle"]) {
+    for (const phrase of ["allow needle", "typed needle", "time needle"]) {
       expect(findRanges(root, phrase)).toHaveLength(0);
     }
     expect(findRanges(root, "earliermessage")).toHaveLength(0);
