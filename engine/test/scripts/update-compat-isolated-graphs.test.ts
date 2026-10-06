@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fsSync from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -82,10 +83,10 @@ describe("update compatibility isolated entry graphs", () => {
     ["graft", "missing"],
   ])(
     "excludes the isolated %s graph when the runtime binding is %s",
-    async (directory, runtime) => {
+    (directory, runtime) => {
       const inventory = recordFixture();
-      // macOS temp dirs sit behind the /var -> /private/var symlink; import both modules through the
-      // real path so the bridge and the declaration resolve to one module instance.
+      // macOS temp dirs sit behind the /var -> /private/var symlink; use the real path for both
+      // imports so the bridge and the declaration resolve to one module instance.
       const root = fsSync.realpathSync(createTempDir("update-compat-isolated-graph-"));
       candidate(root);
       const current = path.join(root, "dist/current.mjs");
@@ -100,10 +101,23 @@ describe("update compatibility isolated entry graphs", () => {
         return;
       }
       writeUpdateCompatibilityChunks(options);
-      const bridge = await import(pathToFileURL(path.join(root, "dist/service-abcdefgh.js")).href);
-      const declaration = await import(pathToFileURL(current).href);
-      expect(bridge.mode).toBe(declaration.y);
-      expect(bridge.runner).toBe(declaration.x);
+      const bridgeUrl = pathToFileURL(path.join(root, "dist/service-abcdefgh.js")).href;
+      const declarationUrl = pathToFileURL(current).href;
+      // Vitest's module runner can load the direct import separately from the bridge's native ESM
+      // re-export. Check identity in Node's actual module graph instead.
+      execFileSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `import assert from "node:assert/strict";
+const bridge = await import(${JSON.stringify(bridgeUrl)});
+const declaration = await import(${JSON.stringify(declarationUrl)});
+assert.strictEqual(bridge.mode, declaration.y);
+assert.strictEqual(bridge.runner, declaration.x);`,
+        ],
+        { windowsHide: true },
+      );
     },
   );
 });
