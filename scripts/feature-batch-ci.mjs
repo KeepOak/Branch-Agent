@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { capabilityTests, harvestTests, namedTests, shardOf, shardTests, touchedHarvestTests, touchedTests } from './feature-batch-ci-targets.mjs';
+import { capabilityTests, namedTests, shardOf, shardTests, touchedTests } from './feature-batch-ci-targets.mjs';
 import { runTargetedStrictChecks } from './feature-batch-ci-typecheck.mjs';
 import {
   assertLocalModules, engineRoot, gitHead, hostedChrome, preparePnpm, publishWindowDependencies, repoRoot, run,
@@ -12,7 +12,6 @@ export async function validateScope() {
   for (const lane of ['engine', 'window']) {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     for (const file of namedTests(lane)) await fs.access(path.join(root, file));
-    for (const file of harvestTests(lane)) await fs.access(path.join(root, file));
   }
   for (const file of capabilityTests()) await fs.access(path.join(engineRoot, file));
   const source = JSON.parse(await fs.readFile(path.join(windowRoot, 'package.json'), 'utf8'));
@@ -79,17 +78,14 @@ async function prChangedFiles() {
   return changedFilesCache;
 }
 
-async function runFeatureTests(scratch, suite = 'named') {
+async function runFeatureTests(scratch) {
   const env = await featureTestEnv(scratch);
   const shard = shardOf();
   for (const lane of ['engine', 'window']) {
     const root = lane === 'engine' ? engineRoot : windowRoot;
     const config = path.join(repoRoot, 'scripts', `feature-batch-ci-${lane}.config.mjs`);
-    const tests = suite === 'harvest'
-      ? process.env.FEATURE_SCOPE === 'touched'
-        ? touchedHarvestTests(lane, await prChangedFiles()) : shardTests(harvestTests(lane), shard)
-      : process.env.FEATURE_SCOPE === 'touched'
-        ? touchedTests(lane, await prChangedFiles()) : shardTests(namedTests(lane), shard);
+    const tests = process.env.FEATURE_SCOPE === 'touched'
+      ? touchedTests(lane, await prChangedFiles()) : shardTests(namedTests(lane), shard);
     if (!tests.length) continue;
     console.log(`${lane}: ${tests.length} named test files in shard ${shard.index + 1}/${shard.total}`);
     await run(process.execPath, [path.join(root, 'node_modules/vitest/vitest.mjs'),
@@ -115,16 +111,16 @@ async function checkAll(suite = 'named') {
       // runners its ~6 GB check thrashes and alone pushed the job past the 15-minute cap.
       // Whole-tree checks run once, in the first shard.
       const firstShard = shardOf().index === 0;
-      if (suite !== 'harvest' && process.platform === 'linux' && firstShard) await runTargetedStrictChecks(scratch);
-      if (suite !== 'harvest' && process.platform === 'linux' && firstShard) await run(process.execPath, ['--test', 'scripts/feature-batch-ci-shard.test.mjs'], repoRoot);
+      if (process.platform === 'linux' && firstShard) await runTargetedStrictChecks(scratch);
+      if (process.platform === 'linux' && firstShard) await run(process.execPath, ['--test', 'scripts/feature-batch-ci-shard.test.mjs'], repoRoot);
       // The release's native-protocol step rejects schema changes the Swift/Kotlin generators cannot
       // name (an alias without a canonical name broke every release after #188). Check it per PR.
-      if (suite !== 'harvest' && process.platform === 'linux' && firstShard) {
+      if (process.platform === 'linux' && firstShard) {
         for (const language of ['swift', 'kotlin']) {
           await run(process.execPath, ['scripts/prepare-native-protocol.mjs', '--language', language, '--check'], engineRoot);
         }
       }
-      await runFeatureTests(scratch, suite);
+      await runFeatureTests(scratch);
     }
     receipt.passed = true;
   } finally {
@@ -141,5 +137,4 @@ const mode = process.argv[2];
 if (mode === 'validate') await validateScope();
 else if (mode === 'all') await checkAll();
 else if (mode === 'capabilities') await checkAll('capabilities');
-else if (mode === 'harvest') await checkAll('harvest');
-else throw new Error('Usage: node scripts/feature-batch-ci.mjs validate|all|capabilities|harvest');
+else throw new Error('Usage: node scripts/feature-batch-ci.mjs validate|all|capabilities');

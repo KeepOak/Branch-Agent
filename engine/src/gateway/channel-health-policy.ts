@@ -45,7 +45,6 @@ export function resolveChannelHealthState(
 }
 
 type ChannelRestartReason =
-  | "gave-up"
   | "stopped"
   | "stale-socket"
   | "stuck"
@@ -178,7 +177,6 @@ export function evaluateChannelHealth(
 }
 
 export function resolveChannelRestartReason(
-  _snapshot: ChannelHealthSnapshot,
   evaluation: ChannelHealthEvaluation,
 ): ChannelRestartReason {
   // Restart reasons are intentionally coarse: downstream logs/UI need stable

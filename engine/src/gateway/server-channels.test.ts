@@ -72,7 +72,9 @@ import { createGatewayPluginRequestHandler } from "./server/plugins-http.js";
 const hoisted = vi.hoisted(() => {
   const sleepWithAbort = vi.fn((ms: number, abortSignal?: AbortSignal) => {
     return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => resolve(), ms);
+      // Keep the supervisor's real backoff calculation observable without
+      // making lifecycle tests wait through minutes of virtual time.
+      const timer = setTimeout(() => resolve(), Math.min(ms, 10));
       abortSignal?.addEventListener(
         "abort",
         () => {
@@ -85,14 +87,6 @@ const hoisted = vi.hoisted(() => {
   });
   const startChannelApprovalHandlerBootstrap = vi.fn(async () => async () => {});
   return { sleepWithAbort, startChannelApprovalHandlerBootstrap };
-});
-
-vi.mock("../../packages/retry/src/index.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../packages/retry/src/index.js")>();
-  return {
-    ...actual,
-    computeBackoff: (_policy: unknown, _attempt: number) => 10,
-  };
 });
 
 vi.mock("../infra/backoff.js", async (importOriginal) => {
@@ -541,6 +535,23 @@ describe("server-channels auto restart", () => {
     });
     await vi.advanceTimersByTimeAsync(200);
     expect(startAccount.mock.calls.length).toBeGreaterThan(11);
+  });
+
+  it("uses Hermes reconnect delays through the 300-second cap", async () => {
+    const startAccount = vi.fn(async () => {});
+    installTestRegistry(createTestPlugin({ startAccount }));
+    const manager = createManager();
+
+    await manager.startChannels();
+    await advanceTimersUntil(
+      () => hoisted.sleepWithAbort.mock.calls.length >= 6,
+      "expected six supervised retry delays",
+      { stepMs: 10, maxMs: 200 },
+    );
+
+    expect(hoisted.sleepWithAbort.mock.calls.slice(0, 6).map(([ms]) => ms)).toEqual([
+      30_000, 60_000, 120_000, 240_000, 300_000, 300_000,
+    ]);
   });
 
   // Ported from Hermes test_platform_reconnect.py: retryable failures keep
@@ -1806,7 +1817,7 @@ describe("server-channels auto restart", () => {
     expect(handoffSignals[1]?.aborted).toBe(true);
     expect(handoffSignals[2]?.aborted).toBe(false);
     expect(hoisted.sleepWithAbort).toHaveBeenCalledTimes(1);
-    expect(hoisted.sleepWithAbort.mock.calls[0]?.[0]).toBe(10);
+    expect(hoisted.sleepWithAbort.mock.calls[0]?.[0]).toBe(30_000);
     expect(manager.isManuallyStopped("discord", DEFAULT_ACCOUNT_ID)).toBe(false);
     expect(readAccount(manager)).toMatchObject({
       connected: true,
@@ -2673,7 +2684,7 @@ describe("server-channels auto restart", () => {
             "expected later ordinary exit to use restart backoff",
           );
           expect(startAccount).toHaveBeenCalledTimes(2);
-          expect(hoisted.sleepWithAbort.mock.calls[0]?.[0]).toBe(10);
+          expect(hoisted.sleepWithAbort.mock.calls[0]?.[0]).toBe(30_000);
         } else {
           await waitForMicrotaskCondition(
             () => startAccount.mock.calls.length === 2,

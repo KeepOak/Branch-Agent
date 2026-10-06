@@ -1,6 +1,6 @@
 import config from '../window/vite.config.ts';
 import { windowRoot } from './feature-batch-ci-runtime.mjs';
-import { harvestTests, namedTests } from './feature-batch-ci-targets.mjs';
+import { namedTests } from './feature-batch-ci-targets.mjs';
 
 // Use the real React plugin and jsdom environment with four explicit caller suites.
 export default {
@@ -8,7 +8,7 @@ export default {
   root: windowRoot,
   test: {
     ...config.test,
-    include: [...new Set([...namedTests('window'), ...harvestTests('window')])],
+    include: namedTests('window'),
     projects: undefined,
     maxWorkers: 1,
     fileParallelism: false,

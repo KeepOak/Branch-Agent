@@ -204,7 +204,7 @@ export function startChannelHealthMonitor(deps: ChannelHealthMonitorDeps): Chann
             }
           }
 
-          const reason = resolveChannelRestartReason(status, health);
+          const reason = resolveChannelRestartReason(health);
 
           log.info(`[${channelId}:${accountId}] health-monitor: restarting (reason: ${reason})`);
 
