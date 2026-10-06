@@ -157,7 +157,13 @@ jobs:
             cp visual-shots/*.png "$dest/"
             git add "$dest"
             git -c user.name='Branch CI' -c user.email='ci@users.noreply.github.com' commit -m "ci: visual tour for PR $PR_NUMBER run $GITHUB_RUN_ID"
-            git push origin visual-tour
+            for attempt in 1 2 3 4 5; do
+              if git push origin visual-tour; then break; fi
+              if [ "$attempt" -eq 5 ]; then echo 'Could not push screenshots after 5 attempts'; exit 1; fi
+              sleep "$attempt"
+              git fetch origin visual-tour:refs/remotes/origin/visual-tour
+              git rebase origin/visual-tour
+            done
             printf '\n### Screenshots\n\n' >> /tmp/visual-tour-publish/body.md
             for shot in "$dest"/*.png; do
               name="$(basename "$shot" .png)"
