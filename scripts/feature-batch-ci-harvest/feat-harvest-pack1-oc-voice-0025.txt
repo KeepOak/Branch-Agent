@@ -12,6 +12,8 @@
 # VOICE-0085: verified pinned tests after the repository rename; current upstream tests used for newer code. Product code preserved.
 # VOICE-0086 blocked: needs macOS 26: native VoiceWakeRuntime/overlay/chime/tester targets are absent from Branch; on-device Speech/AppKit recognition and overlay tests cannot run on Linux.
 # Upstream 57e0aaa1c190f1abe16e597008fbcc14f5e609e3: apps/macos/Tests/OpenClawIPCTests/VoiceWakeRuntimeTests.swift; apps/macos/Tests/OpenClawIPCTests/VoiceWakeOverlayControllerTests.swift; apps/macos/Tests/OpenClawIPCTests/VoiceWakeTesterTests.swift.
+# VOICE-0088 blocked: needs macOS 26: Swabble daemon/CLI and native test targets are absent from Branch; SpeechAnalyzer/AVFoundation capture and ServeCommand tests cannot run on Linux.
+# Upstream 57e0aaa1c190f1abe16e597008fbcc14f5e609e3: apps/swabble/Tests/SwabbleKitTests/WakeWordGateTests.swift; apps/swabble/Tests/swabbleTests/ServeCommandTests.swift.
 engine:extensions/gradium/speech-provider.test.ts
 engine:extensions/gradium/tts.test.ts
 engine:extensions/senseaudio/media-understanding-provider.test.ts
