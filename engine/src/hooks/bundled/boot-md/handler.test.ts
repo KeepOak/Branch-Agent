@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/hooks/bundled/boot-md/handler.test.ts (atlas AUTOMATION-0072). Changed for Branch: names mapped with scripts/rebrand-map.json; retain current-main agent entries roster fixtures.
 // Boot.md hook tests cover boot file discovery and injected startup context.
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
