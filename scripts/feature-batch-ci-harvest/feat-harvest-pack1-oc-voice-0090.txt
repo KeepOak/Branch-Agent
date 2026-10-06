@@ -4,6 +4,10 @@ engine:extensions/google-meet/node-host.test.ts
 engine:extensions/slack-huddles/src/transports/slack-huddles-platform-adapter.audio.test.ts
 engine:extensions/slack-huddles/src/transports/slack-huddles-platform-adapter.test.ts
 engine:extensions/slack-huddles/src/transports/slack-huddles-urls.test.ts
+engine:extensions/voice-call/src/manager.inbound-allowlist.test.ts
+engine:extensions/voice-call/src/manager.lifecycle.test.ts
+engine:extensions/voice-call/src/media-stream.test.ts
+engine:extensions/voice-call/src/providers/twilio.test.ts
 engine:src/talk/activation-name.test.ts
 engine:src/talk/agent-consult-tool.test.ts
 engine:src/talk/agent-run-control.test.ts
