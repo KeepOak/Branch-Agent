@@ -10,5 +10,12 @@ engine:extensions/oc-path/src/oc-path/tests/resolve.test.ts
 engine:extensions/oc-path/src/oc-path/tests/scenarios/jsonc-byte-fidelity.test.ts
 engine:extensions/oc-path/src/oc-path/tests/scenarios/security-and-limits.test.ts
 engine:extensions/signal/src/send-reactions.test.ts
+engine:src/agents/bash-tools.exec-foreground-failures.test.ts
+engine:src/agents/bash-tools.exec-host-gateway.test.ts
+engine:src/agents/bash-tools.exec-runtime.test.ts
+engine:src/agents/bash-tools.exec-support.test.ts
+engine:src/agents/bash-tools.exec-target.test.ts
+engine:src/agents/bash-tools.exec-timeout-seconds.test.ts
+engine:src/agents/bash-tools.exec-workdir.test.ts
 engine:src/channels/plugins/actions/reaction-message-id.test.ts
 engine:src/skills/library/service.test.ts
