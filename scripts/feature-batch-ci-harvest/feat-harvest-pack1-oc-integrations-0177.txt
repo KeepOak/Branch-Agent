@@ -5,6 +5,7 @@ engine:extensions/telegram/src/sticker-cache.selection.test.ts
 engine:extensions/telegram/src/sticker-cache.test.ts
 engine:src/cli/clawhub-install-confirmation.test.ts
 engine:src/cli/plugins-cli.clawhub-install.harvest.test.ts
+engine:src/cli/plugins-cli.install.test.ts
 engine:src/commands/migrate.resources.test.ts
 engine:src/commands/migrate.test.ts
 engine:src/infra/clawhub-client.test.ts
@@ -30,11 +31,15 @@ engine:src/plugins/bundle-mcp.test.ts
 engine:src/plugins/clawhub.test.ts
 engine:src/plugins/discovery.path-inspection.test.ts
 engine:src/plugins/discovery.test.ts
+engine:src/plugins/git-install.test.ts
 engine:src/plugins/hooks.before-agent-reply.test.ts
 engine:src/plugins/hooks.before-install.test.ts
 engine:src/plugins/hooks.before-tool-call.test.ts
 engine:src/plugins/hooks.correlation.test.ts
 engine:src/plugins/hooks.invocation.test.ts
+engine:src/plugins/install.test.ts
 engine:src/plugins/loader.admission-contracts.test.ts
 engine:src/plugins/loader.bundle.test.ts
 engine:src/plugins/loader.capability-factory.test.ts
+engine:src/plugins/uninstall.test.ts
+engine:src/plugins/update.test.ts

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@2e59936b6747f10c44edb76decd662c2d27305be:src/cli/plugins-cli.install.test.ts (atlas INTEGRATIONS-0179). Changed for Branch: apply the Seedbank prose rename from DECISIONS.md item 135 without changing registry identifiers.
 // Plugins CLI install tests cover plugin install command selection and output.
 import fs from "node:fs";
 import os from "node:os";
@@ -562,7 +563,7 @@ describe("plugins cli install", () => {
     expect(configWriteMock).not.toHaveBeenCalled();
   });
 
-  it("requires acknowledgement for noninteractive non-ClawHub plugin installs", async () => {
+  it("requires acknowledgement for noninteractive non-Seedbank plugin installs", async () => {
     setTty(false);
     primeSuccessfulPluginPersistence("demo");
     installPluginFromNpmSpecMock.mockResolvedValue(createNpmPluginInstallResult("demo"));
@@ -600,7 +601,7 @@ describe("plugins cli install", () => {
     expect(installPluginFromPathMock).toHaveBeenCalledTimes(1);
   });
 
-  it("prompts interactive users before non-ClawHub plugin installs and cancels on no", async () => {
+  it("prompts interactive users before non-Seedbank plugin installs and cancels on no", async () => {
     setTty(true);
     promptYesNoMock.mockResolvedValueOnce(false);
     primeSuccessfulPluginPersistence("demo");
@@ -608,13 +609,13 @@ describe("plugins cli install", () => {
 
     await expect(install("npm:demo")).rejects.toThrow("__exit__:1");
 
-    expect(promptYesNoMock).toHaveBeenCalledWith("Install this non-ClawHub plugin source?");
+    expect(promptYesNoMock).toHaveBeenCalledWith("Install this non-Seedbank plugin source?");
     expect(runtimeLogsContain("Installing plugin from npm registry")).toBe(true);
     expect(runtimeLogsContain("outside Seedbank review")).toBe(true);
     expect(installPluginFromNpmSpecMock).not.toHaveBeenCalled();
   });
 
-  it("prompts interactive users before non-ClawHub plugin installs and proceeds on yes", async () => {
+  it("prompts interactive users before non-Seedbank plugin installs and proceeds on yes", async () => {
     setTty(true);
     promptYesNoMock.mockResolvedValueOnce(true);
     primeSuccessfulPluginPersistence("demo");
@@ -622,7 +623,7 @@ describe("plugins cli install", () => {
 
     await install("npm:demo");
 
-    expect(promptYesNoMock).toHaveBeenCalledWith("Install this non-ClawHub plugin source?");
+    expect(promptYesNoMock).toHaveBeenCalledWith("Install this non-Seedbank plugin source?");
     expect(runtimeLogsContain("Installing plugin from npm registry")).toBe(true);
     expect(runtimeLogsContain("outside Seedbank review")).toBe(true);
     expect(installPluginFromNpmSpecMock).toHaveBeenCalledTimes(1);

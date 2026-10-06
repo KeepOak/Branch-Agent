@@ -197,6 +197,12 @@
   ],
   "phrases": [
     {
+      "why": "registry display names at the start of regular-expression assertions follow the same Seedbank prose rename (DECISIONS.md item 135); escaped API paths stay unchanged",
+      "re": "(?<=/)ClawHub(?= \\\\/api)",
+      "to": "Seedbank",
+      "key": "clawhub"
+    },
+    {
       "why": "the product's name in text is \"Branch Agent\" (DECISIONS.md item 133); inside names, paths, flags and identifiers the word stays \"Branch\"",
       "re": "(?<![\\w./@:$#%&=+-])OpenClaw(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]]|[.:](?:\\s|$)|$))",
       "to": "Branch Agent",
@@ -206,7 +212,7 @@
     },
     {
       "why": "an outside service or tool keeps its own ids in code; only the name people read changes (item 135) Also before a closing quote or backtick and before an ellipsis (\"ClawHub.\" and \"ClawHub…\" inside strings).",
-      "re": "(?<![\\w./@:$#%&=+-])ClawHub(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]…]|[.:](?:[\\s\"'`]|$)|$))",
+      "re": "(?:(?<=non-)|(?<![\\w./@:$#%&=+-]))ClawHub(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]…]|[.:](?:[\\s\"'`]|$)|$))",
       "to": "Seedbank",
       "key": "clawhub"
     },
@@ -236,7 +242,7 @@
     },
     {
       "why": "an outside service or tool keeps its own ids in code; only the name people read changes (item 135)",
-      "re": "(?<![\\w./@:$#%&=+-])Clawpacks?(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]]|[.:](?:\\s|$)|$))",
+      "re": "(?<![\\w./@:$#%&=+-])Claw[pP]acks?(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]]|[.:](?:\\s|$)|$))",
       "to": "Seedpod",
       "key": "clawpack"
     },
