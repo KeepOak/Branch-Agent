@@ -52,7 +52,12 @@ if(starts.length>1&&fs.existsSync(root+"/fail-next"))process.exit(1);
 process.on("message",m=>{if(!String(m?.type).startsWith("branch-desktop:"))return;if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
 if(m.type==="branch-desktop:drain-stop"){fs.writeFileSync(root+"/drained-"+process.pid,"1");setTimeout(()=>process.exit(0),20);}
 if(m.type==="branch-desktop:stop-if-idle"&&!fs.existsSync(root+"/busy"))setTimeout(()=>process.exit(0),20);});
-http.createServer((q,r)=>{r.writeHead(starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end();}).listen(Number(process.argv.at(-1)),"127.0.0.1");`;
+const listener=http.createServer((q,r)=>{r.writeHead(starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end();});
+if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
+  process.send?.({type:"branch-desktop:standby-ready",pid:process.pid});
+  listener.on("error",error=>{if(error.code==="EADDRINUSE")setTimeout(()=>listener.listen(Number(process.argv.at(-1)),"127.0.0.1"),20);else throw error;});
+}
+listener.listen(Number(process.argv.at(-1)),"127.0.0.1");`;
   await writeFile(join(engine, "branch.mjs"), script); await writeFile(join(windowDir, "index.html"), "<html>fixture</html>");
   await writeFile(join(root, "gateway-token"), "isolated-fixture-token");
   await writeFile(join(root, "desktop.json"), JSON.stringify({ dataDir: root, engineDir: engine, windowDir,
@@ -218,7 +223,8 @@ test("a failed update releases the guard for the next owner retry", () => fixtur
   await writeFile(join(root, "fail-next"), "fail"); restart(); await eventually(() => runtime.errors.length === 1);
   await unlink(join(root, "fail-next")); await writeFile(join(root, "release-ready"), "ready");
   restart(); await eventually(() => swapped(root));
-  assert.equal((await starts()).length, 3); assert.equal(runtime.errors.length, 1);
+  assert.equal((await starts()).length, 4, "the failed standby is replaced by a guarded boot before rollback");
+  assert.equal(runtime.errors.length, 1);
 }));
 test("an update click swaps the engine in place: the app and window stay open and the busy engine drains", () => fixture(async ({ root, runtime, starts, restart }) => {
   let quits = 0, relaunches = 0; runtime.app.on("will-quit", () => quits++); runtime.app.relaunch = () => relaunches++;
@@ -238,7 +244,9 @@ test("a busy engine from before drain-stop is never killed by an update click; t
   restart();
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update failed"), 40_000);
   assert.equal(alive(old), true, "A busy engine that cannot drain was killed");
-  assert.equal((await starts()).length, 1, "A second engine started while the first was busy");
+  const launched = await starts();
+  assert.equal(launched.length, 2, "only the read-only standby may start while the first engine is busy");
+  await eventually(() => !alive(launched[1]));
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update").map(([, state]) => state), ["updating", "auto-wait"]);
 }));
 test("a new window build swaps in place after attached files are sent, keeping the engine", () => fixture(async ({ root, runtime, starts }) => {

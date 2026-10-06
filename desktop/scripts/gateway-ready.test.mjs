@@ -37,6 +37,25 @@ test("child exit and signal termination fail readiness immediately", async () =>
   await assert.rejects(waitForReady(cfg, { exitCode: null, signalCode: "SIGTERM" }, 1000), /exited/);
 }));
 
+test("a prepared standby reports warm without replacing the live gateway pid", async () => {
+  const { mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { startGateway, stopGateway, waitForGatewayStandby } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const root = await mkdtemp(join(tmpdir(), "branch-gateway-standby-"));
+  const cfg = { dataDir: root, nodePath: process.execPath, gatewayPort: 0 };
+  let child;
+  try {
+    await writeFile(join(root, "branch.mjs"), 'process.send?.({type:"branch-desktop:standby-ready",pid:process.pid});setInterval(()=>{},1000);');
+    await writeFile(join(root, "gateway.pid"), "12345");
+    child = startGateway(cfg, root, "isolated-fixture-token", true);
+    await waitForGatewayStandby(child, 3000);
+    assert.equal(await readFile(join(root, "gateway.pid"), "utf8"), "12345");
+  } finally {
+    if (child) stopGateway(child);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("the owned desktop gateway starts configured channels even when the launcher environment skips them", async () => {
   const { mkdtemp, readFile, rm, writeFile } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
