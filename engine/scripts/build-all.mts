@@ -276,6 +276,11 @@ const BUILD_ALL_PROFILE_STEP_ENV: Record<string, Record<string, NodeJS.ProcessEn
       BRANCH_PRESERVE_CLI_STARTUP_METADATA: "1",
     },
   },
+  ciBuildSeed: {
+    "tsdown-unified": {
+      BRANCH_PRESERVE_CLI_STARTUP_METADATA: "1",
+    },
+  },
   package: {
     tsdown: {
       BRANCH_PRESERVE_CLI_STARTUP_METADATA: "1",

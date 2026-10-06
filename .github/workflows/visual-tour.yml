@@ -30,9 +30,7 @@ jobs:
           node-version: '24.19.0'
           package-manager-cache: false
       - run: npm install --global pnpm@12.5.1
-      - run: pnpm install --frozen-lockfile && pnpm build
-        env:
-          BRANCH_RUN_NODE_SKIP_DTS_BUILD: '1'
+      - run: pnpm install --frozen-lockfile && node --import ./scripts/tsx.mjs scripts/build-all.mts ciBuildSeed
         working-directory: engine
       - run: pnpm install --frozen-lockfile && pnpm build
         working-directory: window

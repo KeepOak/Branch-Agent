@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  BRANCH_BUILD_TIMESTAMP: ${{ github.event.pull_request.updated_at }}
+
 concurrency:
   group: engine-build-pr-${{ github.ref }}
   cancel-in-progress: true
