@@ -189,8 +189,9 @@ async function removeAgentPath(
         }
       },
       {
-        // Match the established Windows rename policy: AV/indexer handles can linger for a minute.
-        attempts: process.platform === "win32" ? 16 : 1,
+        // Match the established Windows directory-rename policy; file cleanup must stay bounded.
+        attempts:
+          process.platform !== "win32" ? 1 : cleanupPath.trashCoversDescendants ? 16 : 3,
         minDelayMs: 250,
         maxDelayMs: 5_000,
         shouldRetry: (error) =>

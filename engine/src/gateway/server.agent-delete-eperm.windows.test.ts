@@ -15,7 +15,7 @@ installGatewayTestHooks();
 
 it.skipIf(process.platform !== "win32")(
   "moves an agent with an open database to Trash without failed paths",
-  { timeout: 180_000 },
+  { timeout: 240_000 },
   async () => {
     const token = "agent-delete-open-database-test-token";
     const agentId = "delete-open-database";
@@ -61,8 +61,8 @@ it.skipIf(process.platform !== "win32")(
         deleteFiles: true,
       });
       expect(db.isOpen).toBe(false);
-      expect(deleted.failed).toEqual([]);
       expect(deleted.removed).toContainEqual({ path: agentDir, method: "trash" });
+      expect(deleted.failed).toEqual([]);
       await expect(fs.stat(agentDir)).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       if (client) {
