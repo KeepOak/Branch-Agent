@@ -8,3 +8,6 @@ engine:src/channels/message/outbound-echo.test.ts
 engine:src/plugin-sdk/channel-inbound.test.ts
 engine:src/plugin-sdk/channel-ingress-runtime.test.ts
 engine:src/plugin-sdk/channel-outbound.reply-pipeline.test.ts
+engine:src/routing/bindings.test.ts
+engine:src/routing/resolve-route.test.ts
+engine:src/routing/session-key.test.ts
