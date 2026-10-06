@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/infra/github-issue.test.ts (atlas OPS-0056). Changed for Branch: preserve canonical external GitHub API and validator paths through the rename map.
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
@@ -161,7 +162,7 @@ describe("GitHub issue transport", () => {
         "--include",
         "--method",
         "POST",
-        "repos/branch/branch/issues",
+        "repos/openclaw/openclaw/issues",
         "--input",
         "-",
         "--jq",

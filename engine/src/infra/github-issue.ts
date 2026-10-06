@@ -1,3 +1,4 @@
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/infra/github-issue.ts (atlas OPS-0056). Changed for Branch: preserve canonical external GitHub API and validator paths through the rename map.
 import { spawn } from "node:child_process";
 /** Prepares and submits bounded issue content to openclaw/openclaw. */
 import { createHash } from "node:crypto";
@@ -62,7 +63,7 @@ export type GithubIssueSubmitHooks = GithubIssueReconcileHooks & {
 };
 
 const GITHUB_REPOSITORY = "github.com/openclaw/openclaw";
-const GITHUB_REPOSITORY_ISSUES_API = "repos/branch/branch/issues";
+const GITHUB_REPOSITORY_ISSUES_API = "repos/openclaw/openclaw/issues";
 const GITHUB_ISSUE_CREATE_TIMEOUT_MS = 30_000;
 const GITHUB_OUTPUT_MAX_BYTES = 1024 * 1024;
 const GITHUB_ISSUE_BODY_MAX_BYTES = 20_000;
@@ -173,7 +174,7 @@ function createdIssueUrl(value: unknown): string | undefined {
       url.origin === "https://github.com" &&
       !url.search &&
       !url.hash &&
-      /^\/branch\/branch\/issues\/\d+$/u.test(url.pathname)
+      /^\/openclaw\/openclaw\/issues\/\d+$/u.test(url.pathname)
     ) {
       return url.toString();
     }

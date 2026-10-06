@@ -78,6 +78,10 @@
       "re": "(?:github\\.com[/:]|ghcr\\.io/|docker\\.io/)openclaw/[\\w.-]+|(?<![\\w.@/~-])openclaw/openclaw(?![\\w-])"
     },
     {
+      "why": "canonical upstream GitHub API repository and escaped URL-validator paths remain external references",
+      "re": "repos/openclaw/openclaw(?=/)|openclaw\\\\/openclaw"
+    },
+    {
       "why": "npm packages published by the upstream that the engine installs from the registry (also as pnpm writes them in file names): their names cannot change",
       "re": "@openclaw(?:/|__|\\+)(?:crabline|fs-safe[\\w-]*|libterminal|proxyline|uirouter)(?![\\w-])"
     },
