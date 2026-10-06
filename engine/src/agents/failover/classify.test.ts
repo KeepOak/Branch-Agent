@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/failover/classify.test.ts (atlas MODELS-ACCOUNTS-0122). Changed for Branch: canonical rename map; retain current upstream error classification fixtures.
 import { describe, expect, it } from "vitest";
 import {
   classifyFailoverReason,
