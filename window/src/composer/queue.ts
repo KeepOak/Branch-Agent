@@ -67,13 +67,22 @@ export function loadLine(storage: Storage | undefined, sessionKey: string): Queu
   return (parsed as QueueItem[]).map((item) => (item.state === "sending" ? { ...item, state: "failed", error: "Delivery not confirmed" } : item));
 }
 
+/** Fired on the window after the waiting line of a conversation changes, so the thread shows it as queued. */
+export const WAITING_LINE_EVENT = "branch:waiting-line";
+
+function announce(sessionKey: string): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(WAITING_LINE_EVENT, { detail: { sessionKey } }));
+}
+
 export function saveLine(storage: Storage | undefined, sessionKey: string, line: readonly QueueItem[]): void {
   if (!storage) {
     return;
   }
   if (line.length === 0) {
     storage.removeItem(KEY + sessionKey);
+    announce(sessionKey);
     return;
   }
   storage.setItem(KEY + sessionKey, JSON.stringify(line));
+  announce(sessionKey);
 }

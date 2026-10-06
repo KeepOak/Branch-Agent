@@ -19,8 +19,12 @@ describe("usage.status (§4.9.4)", () => {
       { name: "This 5-hour window", left: 12, reset: "resets at 6 pm", low: true },
       { name: "This week", left: 64, reset: "resets Monday", low: false },
     ]);
-    expect(l.rows[1]).toMatchObject({ pill: "Not published", line: "This service does not say what it allows." });
-    expect(l.rows[2].line).toBe("Token expired");
+    expect(l.rows[1]).toMatchObject({ pill: "Not published", line: "Google Gemini hasn't shared a limit with Branch." });
+    expect(l.rows[2].line).toBe("X couldn't share usage right now. Branch will try again.");
+  });
+  it("turns Claude rate limits into status words without showing the engine error", () => {
+    const row = readLimits({ providers: [{ provider: "anthropic", displayName: "Claude", windows: [], error: "HTTP 429: Rate limited. Please try again later." }] }, NOW).rows[0];
+    expect(row.line).toBe("Claude didn't share what's left right now. Branch checks again in 5 min.");
   });
   it("the ring shows the first account's five-hour reading, and nothing without a reading", () => {
     expect(ringReading(readLimits(result, NOW))).toEqual({ name: "a@b.c", left: 12, reset: "resets at 6 pm", low: true });
