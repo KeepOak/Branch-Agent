@@ -69,3 +69,6 @@ engine/src/cron/parse.test.ts,AUTOMATION-0002,openclaw/openclaw,57e0aaa1c190f1ab
 engine/src/cron/validate-timestamp.test.ts,AUTOMATION-0002,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/validate-timestamp.test.ts,2026-10-06
 engine/src/cron/stagger.test.ts,AUTOMATION-0004,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/stagger.test.ts,2026-10-06
 engine/src/cron/service/run-recovery.test.ts,AUTOMATION-0008,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/service/run-recovery.test.ts,2026-10-06
+engine/src/cron/service.failure-alert.test.ts,AUTOMATION-0009,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/service.failure-alert.test.ts,2026-10-06
+engine/src/cron/failure-notification-text.test.ts,AUTOMATION-0009,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/failure-notification-text.test.ts,2026-10-06
+engine/src/cron/delivery.failure-notify.test.ts,AUTOMATION-0009,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/cron/delivery.failure-notify.test.ts,2026-10-06
