@@ -2,4 +2,4 @@ id,build_state,upstream_tests_ported,notes
 AGENT-LOOP-0025,blocked,0/1,Pinned ToolLoopAgent conversion imports @internal/ai-v6 and the Mastra Agent/processor runtime; Branch has no ai or @ai-sdk packages in its manifests or frozen lockfile. Required atlas INDEX/data rows and owner safety guide are also absent. No standalone compatibility stub added.
 AGENT-LOOP-0026,blocked,0/2,AI SDK v4/v5/v6 adapters and Mastra evented loop/recorder test runtime are absent from Branch; frozen dependency changes are forbidden. Owner atlas and safety/design inputs are unavailable.
 AGENT-LOOP-0027,blocked,0/2,OpenCode native/AI SDK runtime requires ai and Effect/core service packages absent from Branch frozen dependencies; Branch native providers have no AI SDK fallback. Owner safety/atlas inputs unavailable.
-AGENT-LOOP-0028,in progress,0/5,
+AGENT-LOOP-0028,blocked,0/5,Pinned AIRI transports require @xsai/stream-text and @xsai-ext/responses plus AIRI generation/continuation contracts absent from Branch frozen dependencies. Existing native transports are not proven equivalent to the five upstream suites.
