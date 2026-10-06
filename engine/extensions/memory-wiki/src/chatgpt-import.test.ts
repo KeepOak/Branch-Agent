@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/memory-wiki/src/chatgpt-import.test.ts (atlas MEMORY-0073). Changed for Branch: port current upstream directory replacement rollback check with Branch durable import state accessors.
 // Memory Wiki tests cover crash-safe ChatGPT rollback behavior.
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
@@ -672,6 +673,42 @@ describe("ChatGPT import rollback recovery", () => {
     );
     expect(recoveryScans).toHaveLength(1);
     expect(rollbackWrites).toBe(3);
+  });
+
+  it("refuses a file replaced by a directory at the move boundary", async () => {
+    const stateDir = await createTempDir("memory-wiki-chatgpt-directory-swap-state-");
+    const { rootDir, config } = await createVault({ initialize: true });
+    configureDurableImportRunStore(stateDir);
+    const runId = "chatgpt-directory-swap";
+    const relativePath = "sources/swapped.md";
+    const targetPath = path.join(rootDir, relativePath);
+    const retainedPath = `${targetPath}.retained`;
+    await fs.writeFile(targetPath, "# Original\n");
+    await seedCreatedRollback({ vaultRoot: rootDir, runId, relativePath, contentHash: "changed" });
+    let swapped = false;
+    __setFsSafeTestHooksForTest({
+      beforeRootFallbackMutation: async (operation) => {
+        if (swapped || operation !== "move") {
+          return;
+        }
+        swapped = true;
+        await fs.rename(targetPath, retainedPath);
+        await fs.mkdir(targetPath);
+        await fs.writeFile(path.join(targetPath, "nested.md"), "# Nested\n");
+      },
+    });
+
+    await expect(rollbackChatGptImportRun({ config, runId })).rejects.toMatchObject({
+      code: "invalid-path",
+    });
+    expect(swapped).toBe(true);
+    await expect(fs.readFile(retainedPath, "utf8")).resolves.toBe("# Original\n");
+    await expect(fs.readFile(path.join(targetPath, "nested.md"), "utf8")).resolves.toBe(
+      "# Nested\n",
+    );
+    const interrupted = await readMemoryWikiImportRunRecord(rootDir, runId);
+    expect(interrupted).not.toHaveProperty("rollbackTargetsFinalizedAt");
+    expect(interrupted?.createdPaths[0]).not.toHaveProperty("recoveryPaths");
   });
 
   it.skipIf(process.platform === "win32")(
