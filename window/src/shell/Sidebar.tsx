@@ -1,7 +1,6 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { Pebble } from "../face/Pebble";
 import { RoomFaces } from "../rooms/RoomFaces";
-import { CommunityInvite } from "./CommunityInvite";
 import type { Conversation } from "../connect/conversations";
 import type { PlaceId } from "../places-nav/routes";
 import { ConversationRow, type RowExtras, type RowState } from "./ConversationRow";
@@ -273,7 +272,6 @@ export function Sidebar(p: SidebarProps) {
           </div>
         </div>
       )}
-      {!p.rail ? <CommunityInvite /> : null}
       <div className="owner">
         <button type="button" className="me" title="Who is using Branch, look, lock" aria-label={p.personName} data-testid="person" onClick={p.onPerson}>
           <span className="initial" aria-hidden="true">

@@ -1,3 +1,5 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/run/overflow-context-recovery.ts (atlas AGENT-LOOP-0103). Changed for Branch: classify raw Cline provider signals before flattening; retain existing transcript and side-effect fences.
+
 import { isContextOverflow } from "@branch/ai/internal/runtime";
 import { isProviderRefusalAssistantError } from "@branch/llm-core/diagnostics";
 import { asPositiveFiniteNumber } from "@branch/normalization-core/number-coercion";
@@ -12,6 +14,10 @@ import {
   isLikelyContextOverflowError,
   isProviderRequestSizeCeilingError,
 } from "../../embedded-agent-helpers.js";
+import {
+  allowsContextOverflowTextFallback,
+  classifyProviderError,
+} from "../../failover/provider-error-classification.js";
 import type { FailoverClassification } from "../../failover/signal.js";
 import { withSessionManagerWrite } from "../../sessions/session-manager-write-admission.js";
 import { classifyCompactionReason } from "../compact-reasons.js";
@@ -90,7 +96,13 @@ export async function recoverEmbeddedRunOverflow(
       ? (() => {
           if (input.promptError) {
             const errorText = formatErrorMessage(input.promptError);
-            if (isLikelyContextOverflowError(errorText)) {
+            const providerClass = classifyProviderError(input.promptError);
+            if (
+              providerClass === "context_window_exceeded" ||
+              (providerClass !== "auth" &&
+                allowsContextOverflowTextFallback(input.promptError) &&
+                isLikelyContextOverflowError(errorText))
+            ) {
               return { text: errorText, source: "promptError" as const };
             }
             // A non-overflow prompt failure must not inherit a stale assistant

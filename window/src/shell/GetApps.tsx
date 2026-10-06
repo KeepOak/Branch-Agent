@@ -28,7 +28,7 @@ export function GetAppsDialog({ onClose, onPair }: { onClose: () => void; onPair
   };
   return (
     <Dialog title="Get the apps" wide onClose={onClose} testid="get-apps"
-      footer={<><button type="button" className="btn ghost" onClick={onClose}>Close</button><button type="button" className="btn pri" onClick={onPair}>Pair a phone</button></>}>
+      footer={<button type="button" className="btn pri" onClick={onPair}>Pair a phone</button>}>
       <div className="appsPA18">
         {APPS.map(([icon, name, where, id]) => (
           <div className="tile" key={name}>

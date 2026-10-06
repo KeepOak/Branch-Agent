@@ -207,9 +207,9 @@ function ModelSettings(p: Props & { levels: { id: string; label: string }[]; spe
       <p className="c-pp c-pp-note">{p.current?.supportsFastMode ? "Faster answers use your plan’s limits faster." : "This model has one speed."}</p>
       {p.advanced && ctx.length > 1 ? (
         <div className="c-row">
-          <span>Room to plan for</span>
+          <span>Context to plan for</span>
           <Segmented
-            label="Room to plan for"
+            label="Context to plan for"
             items={ctx}
             value={str(p.row.contextWindow) || p.current?.contextWindowDefault || ""}
             onPick={(id) => void p.patch({ contextWindow: id })}
