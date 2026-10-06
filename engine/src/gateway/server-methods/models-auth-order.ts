@@ -92,12 +92,6 @@ export const modelsAuthOrderHandlers: GatewayRequestHandlers = {
         rejectInvalidOrder(`profileId ${invalidProfile} is unavailable for provider ${provider}`);
         return;
       }
-      if (profileIds && profileIds.length !== availableProfileIds.length) {
-        rejectInvalidOrder(
-          `profileIds must include every available profile for provider ${provider}`,
-        );
-        return;
-      }
       const updated = await setAuthProfileOrder({
         agentDir: preparedSnapshot.agentDir,
         provider: authProvider,

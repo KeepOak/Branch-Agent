@@ -11,6 +11,7 @@ import { sessions as readSessions } from "../../overview/engine";
 import { CallLine, CodeRow, Kv, Tile, day, lvOf, openPlace, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
 import { componentDesktop } from "../../../connect/desktop-component-updates";
+import { KeeperMark } from "../../../brand/KeeperMark";
 import { DesktopUpdatesPage } from "./desktop-updates";
 import "./updates.css";
 
@@ -298,9 +299,10 @@ function Devices({ lv }: { lv: number }) {
   );
 }
 
-function About() {
+export function About() {
   return (
     <Sec title="About">
+      <div className="s2-keeper"><KeeperMark size={64} /></div>
       <Ctl title="Open-source licences" sub="The software Branch is built on, with each licence." off="The list comes with the Branch app on your computer."><Btn sm disabled>Show</Btn></Ctl>
     </Sec>
   );

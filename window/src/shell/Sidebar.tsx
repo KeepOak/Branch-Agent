@@ -1,11 +1,14 @@
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { Pebble } from "../face/Pebble";
 import { CommunityInvite } from "./CommunityInvite";
 import type { Conversation } from "../connect/conversations";
-import { PLACES, type PlaceId } from "../places-nav/routes";
+import type { PlaceId } from "../places-nav/routes";
 import { ConversationRow, type RowExtras, type RowState } from "./ConversationRow";
 import { Icon } from "./icons";
 import { childrenOf, rowTime, shownChildren, type ListSection } from "./list-model";
 import { ProjectsSection, type Project } from "./Projects";
+import { useSidebarPointerDrag, type SidebarDrop } from "./sidebar-drag";
+import "./contacts-layout.css";
 
 /** The default Trunk beside a page: its name, the keys that toggle it, whether it is open. */
 export type TalkEntry = { name: string; keys: string; open: boolean; onToggle: () => void };
@@ -20,8 +23,6 @@ export type SidebarProps = {
   showPreview: boolean;
   rowState: (row: Conversation) => RowState;
   trunkName: (agentId: string | undefined) => string;
-  inboxCount: number;
-  runningCount: number;
   personName: string;
   hasUnread: boolean;
   filterSlot: ReactNode;
@@ -30,9 +31,9 @@ export type SidebarProps = {
   search: ReactNode;
   searchResults: ReactNode | null;
   rail: boolean;
+  onReorderPins?: (drop: SidebarDrop, visible: readonly string[]) => void;
   onRailSearch: () => void;
   onOpen: (key: string) => void;
-  onPlace: (place: PlaceId) => void;
   onNew: (event: MouseEvent<HTMLElement>) => void;
   onMenu: (row: Conversation, event: MouseEvent<HTMLElement>) => void;
   onPin: (row: Conversation) => void;
@@ -62,62 +63,6 @@ export type SidebarProps = {
   /** The machine switcher, shown at the top of the list only when it slides over (760 px and below). */
   machine?: ReactNode;
 };
-
-const FOLD_KEY = "branch.placesFolded";
-
-function readFolded(): boolean {
-  try {
-    return localStorage.getItem(FOLD_KEY) === "1";
-  } catch {
-    return false; // storage blocked: places start open
-  }
-}
-
-function Places({ current, inbox, running, rail, onPlace }: { current: PlaceId | null; inbox: number; running: number; rail: boolean; onPlace: (p: PlaceId) => void }) {
-  const [foldedPref, setFolded] = useState(readFolded);
-  const folded = foldedPref && !rail; // the rail has no header and no folding (§4.1.8)
-  const toggle = () => {
-    setFolded(!foldedPref);
-    try {
-      localStorage.setItem(FOLD_KEY, foldedPref ? "0" : "1");
-    } catch {
-      // storage blocked: the fold lasts for this window only
-    }
-  };
-  return (
-    <nav className={folded ? "places folded" : "places"} aria-label="Places">
-      <button type="button" className="lh places-h" aria-expanded={!folded} onClick={toggle}>
-        <Icon name={folded ? "chev" : "down"} small />
-        Places
-      </button>
-      <div className="place-rows">
-        {PLACES.map((p) => {
-          const count = p.id === "inbox" ? inbox : p.id === "people" ? running : 0;
-          return (
-            <button
-              key={p.id}
-              type="button"
-              className="nav"
-              data-place={p.id}
-              aria-current={current === p.id ? "page" : undefined}
-              title={folded || rail ? p.name : undefined}
-              aria-label={folded || rail ? p.name : undefined}
-              onClick={() => onPlace(p.id)}
-            >
-              <Icon name={p.icon} />
-              <span className="nav-name">{p.name}</span>
-              {count > 0 ? (
-                <span className={p.id === "inbox" ? "cnt attn" : "cnt"} title={p.id === "people" ? `${count} running now` : undefined}>
-                  {count}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-    </nav>
-  );
-}
 
 const CHILDREN_KEY = "branch.childrenOpen";
 
@@ -169,6 +114,9 @@ function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row:
         depth={depth}
         child={child}
         selected={p.selected?.has(row.key)}
+        pinDraggable={p.rail && row.pinned}
+        pinFixed={row.key === p.home?.key}
+        fallbackLine={row.key === p.home?.key ? "Chief of Staff" : row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : row.kind === "trunk" ? "Trunk" : undefined}
         onOpen={(e) => {
           if ((e.altKey || e.shiftKey) && p.onSelect?.(row, e)) return;
           p.onOpen(row.key);
@@ -192,6 +140,29 @@ function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row:
       ) : null}
     </>
   );
+}
+
+const seenPinned = new Set<string>();
+function PinnedTile({ p, row }: { p: SidebarProps; row: Conversation }) {
+  const [fresh] = useState(() => !seenPinned.has(row.key));
+  useEffect(() => { seenPinned.add(row.key); }, [row.key]);
+  const state = p.rowState(row);
+  const current = row.key === p.openKey && p.currentPlace === null;
+  const role = row.kind === "chatGroup" ? "Group" : row.kind === "outside" ? "Grafted" : row.key === p.home?.key ? "Chief of Staff" : "Trunk";
+  return <div className={fresh ? "pin-tile pin-new" : "pin-tile"} role="listitem" data-pin-key={row.key} data-pin-fixed={row.key === p.home?.key ? "true" : undefined}>
+    <button type="button" className="pin-open" aria-current={current ? "true" : undefined} aria-selected={p.selected?.has(row.key) || undefined}
+      aria-label={`${row.title}, ${role}${row.unread ? ", unread" : ""}${state.working ? ", working" : ""}`}
+      title={row.title} onClick={(e) => { if ((e.altKey || e.shiftKey) && p.onSelect?.(row, e)) return; p.onOpen(row.key); }}
+      onContextMenu={(e) => { e.preventDefault(); p.onMenu(row, e); }}
+      onKeyDown={(e) => { if (e.key === "F10" && e.shiftKey) { e.preventDefault(); p.onMenu(row, e as unknown as MouseEvent<HTMLElement>); } }}>
+      <span className="pin-face"><Pebble size={60} label={row.kind === "chatGroup" || row.kind === "outside" ? row.title : p.trunkName(row.agentId)} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />
+        {row.unread && !current ? <i className="pin-unread" aria-label="Unread" /> : null}
+        {state.waiting ? <i className="needs-you" aria-label="Waiting for you" /> : null}
+      </span>
+      <b className="pin-name">{row.title}</b><span className="pin-role">{role}</span>
+    </button>
+    <button type="button" className="pin-more" aria-label={`More for ${row.title}`} title={`More for ${row.title}`} onClick={(e) => p.onMenu(row, e)}><Icon name="more" small /></button>
+  </div>;
 }
 
 function Rows({ p, rows, kids, depth = 0 }: { p: SidebarProps; rows: Conversation[]; kids: Kids; depth?: number }) {
@@ -230,17 +201,23 @@ function SectionLabel({ p, s, label, lead }: { p: SidebarProps; s: ListSection; 
   );
 }
 
-/** The sidebar (DESIGN-SPEC §4.1.1): search and + new, the Places, the conversation list, the person's row and the gear. */
+/** The sidebar: search and + new, contacts, the person's row and the gear. */
 export function Sidebar(p: SidebarProps) {
   const kids = useKids();
+  const visiblePins = p.sections.find((section) => section.id === "pinned")?.rows.map((row) => row.key) ?? [];
+  const drag = useSidebarPointerDrag((drop) => p.onReorderPins?.(drop, visiblePins), {
+    itemAttribute: "data-pin-key", ignoreSelector: ".pin-more, [data-pin-fixed=true]",
+    axis: p.rail ? "y" : "x", dropZones: ["before", "after"],
+  });
   return (
-    <aside className={p.rail ? "side rail" : "side"} aria-label="Conversations" data-testid="sidebar">
+    <aside className={p.rail ? "side rail" : "side"} aria-label="Conversations" data-testid="sidebar" {...drag}>
       {p.machine ? <div className="side-machine">{p.machine}</div> : null}
       <div className="side-top">
         {p.rail ? (
-          <button type="button" className="ib rail-search" aria-label="Search" title="Search" onClick={p.onRailSearch}>
-            <Icon name="search" />
-          </button>
+          <>
+            <button type="button" className="ib rail-search" aria-label="Search" title="Search" onClick={p.onRailSearch}><Icon name="search" /></button>
+            <button type="button" className="ib rail-new" aria-label="New, places and more" title="New, places and more" onClick={p.onNew}><Icon name="plus" /></button>
+          </>
         ) : (
           <>
             {p.search}
@@ -252,9 +229,7 @@ export function Sidebar(p: SidebarProps) {
       </div>
       {p.searchResults && !p.rail ? p.searchResults : (
         <div className="side-scroll">
-          <Places current={p.currentPlace} inbox={p.inboxCount} running={p.runningCount} rail={p.rail} onPlace={p.onPlace} />
           <div className="list" data-testid="conversation-list">
-            {p.projects && p.onNewProject ? <ProjectsSection projects={p.projects} rows={p.allRows ?? []} renderRows={(rows) => <Rows p={p} rows={rows} kids={kids} />} onNew={p.onNewProject} /> : null}
             {p.sections.map((s, i) => {
               // The Filter and sort button sits on the "Recent" label row, or on the first row when there is no "Recent".
               const lead = s.id === "recent" || (i === 0 && !p.sections.some((x) => x.id === "recent"));
@@ -263,10 +238,11 @@ export function Sidebar(p: SidebarProps) {
               return (
                 <section key={s.id} className="list-sec" data-section={s.id}>
                   {label !== null || lead ? <SectionLabel p={p} s={s} label={label} lead={lead} /> : null}
-                  <Rows p={p} rows={s.rows} kids={kids} />
+                  {s.id === "pinned" && !p.rail ? <div className="pin-grid" role="list" aria-label="Pinned">{s.rows.map((row) => <PinnedTile key={row.key} p={p} row={row} />)}</div> : <Rows p={p} rows={s.rows} kids={kids} />}
                 </section>
               );
             })}
+            {!p.rail && p.projects && p.onNewProject ? <ProjectsSection projects={p.projects} rows={p.allRows ?? []} renderRows={(rows) => <Rows p={p} rows={rows} kids={kids} />} onNew={p.onNewProject} /> : null}
             {p.emptyLine ? (
               <p className="list-empty">
                 {p.emptyLine}
@@ -280,11 +256,11 @@ export function Sidebar(p: SidebarProps) {
                 ) : null}
               </p>
             ) : null}
-            {p.appSections}
+            {!p.rail ? p.appSections : null}
           </div>
         </div>
       )}
-      <CommunityInvite />
+      {!p.rail ? <CommunityInvite /> : null}
       <div className="owner">
         <button type="button" className="me" title="Who is using Branch, look, lock" aria-label={p.personName} data-testid="person" onClick={p.onPerson}>
           <span className="initial" aria-hidden="true">
