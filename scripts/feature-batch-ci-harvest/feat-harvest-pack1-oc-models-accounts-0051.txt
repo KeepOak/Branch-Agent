@@ -6,4 +6,7 @@ engine:src/agents/auth-profiles/order.test.ts
 engine:src/agents/auth-profiles/session-override.rotation.test.ts
 engine:src/agents/auth-profiles/usage-state.test.ts
 engine:src/agents/auth-profiles/usage.test.ts
+engine:src/agents/decision-assistance.test.ts
 engine:src/agents/fast-mode.test.ts
+engine:src/decisions/runtime.admission.test.ts
+engine:src/decisions/runtime.test.ts
