@@ -11,9 +11,14 @@ engine:src/agents/btw.test.ts
 engine:src/agents/bundle-mcp-config.test.ts
 engine:src/agents/embedded-agent-block-chunker.test.ts
 engine:src/agents/embedded-agent-runner/thinking.test.ts
+engine:src/agents/mcp-auth-profile.test.ts
 engine:src/agents/mcp-content.test.ts
+engine:src/agents/mcp-oauth-fetch.test.ts
+engine:src/agents/mcp-oauth-provider.preparation.test.ts
+engine:src/agents/mcp-oauth-store.test.ts
 engine:src/agents/model-thinking-default.test.ts
 engine:src/agents/thinking-runtime.test.ts
 engine:src/agents/workspace-templates.test.ts
 engine:src/agents/workspace.test.ts
 engine:src/auto-reply/thinking.test.ts
+engine:src/cli/mcp-cli.oauth.test.ts

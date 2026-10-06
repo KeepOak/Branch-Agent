@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/mcp-auth-profile.ts (atlas INTEGRATIONS-0014). Changed for Branch: retain provider preparation refactors and shared normalization and parameterized acknowledged/uncertain-write assertions (shared safety layer 41 and owner small-function rule).
 /**
  * Auth-profile backed bearer injection for remote MCP servers.
  */

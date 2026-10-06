@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/mcp-oauth-provider.preparation.test.ts (atlas INTEGRATIONS-0014). Changed for Branch: retain provider preparation refactors and shared normalization and parameterized acknowledged/uncertain-write assertions (shared safety layer 41 and owner small-function rule).
 import { beforeEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import type { McpOAuthStore } from "./mcp-oauth-store.js";
