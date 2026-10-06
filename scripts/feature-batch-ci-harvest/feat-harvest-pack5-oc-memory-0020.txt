@@ -1,6 +1,9 @@
 engine:extensions/active-memory/escalation.test.ts
 engine:extensions/active-memory/index.test.ts
 engine:extensions/active-memory/trigger-recall.test.ts
+engine:extensions/memory-core/src/rings-phases.test.ts
+engine:extensions/memory-core/src/rings.test.ts
+engine:extensions/memory-core/src/short-term-promotion.test.ts
 engine:extensions/memory-core/src/tools.citations.test.ts
 engine:extensions/memory-core/src/tools.recall-tracking.test.ts
 engine:extensions/memory-core/src/tools.test.ts
