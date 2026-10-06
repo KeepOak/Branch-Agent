@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/agents/cli-runner/bundle-mcp.test.ts (atlas MODELS-ACCOUNTS-0032). Changed for Branch: retain exact sorted MCP names after repository rebranding.
 /** Tests Claude-style bundle-MCP config-file overlays for CLI backends. */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -605,7 +606,7 @@ describe("prepareCliBundleMcpConfig", () => {
     ]);
     expect(prepared.mcpConfigHash).toMatch(/^[0-9a-f]{64}$/);
     expect(prepared.mcpResumeHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(Object.keys(raw.mcpServers ?? {}).toSorted()).toEqual(["bundleProbe", "branch"]);
+    expect(Object.keys(raw.mcpServers ?? {}).toSorted()).toEqual(["branch", "bundleProbe"]);
     expect(raw.mcpServers?.branch?.url).toBe("http://127.0.0.1:23119/mcp");
     expect(raw.mcpServers?.branch?.headers?.Authorization).toBe("Bearer lb-tk-123");
     expect(raw.mcpServers?.branch?.headers?.["x-branch-cli-capture-key"]).toBe("");

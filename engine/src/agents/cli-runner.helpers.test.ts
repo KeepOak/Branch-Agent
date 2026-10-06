@@ -54,8 +54,7 @@ describe("prepareCliPromptImagePayload prompt references", () => {
     await expect(
       prepareCliPromptImagePayload({
         backend: { command: "gemini", imagePathScope: "workspace" },
-        prompt:
-          'Called the Read tool with {"file_path":"/workspace/.branch-cli-images/stale.png"}',
+        prompt: 'Called the Read tool with {"file_path":"/workspace/.branch-cli-images/stale.png"}',
         workspaceDir: "/workspace",
       }),
     ).resolves.toStrictEqual({

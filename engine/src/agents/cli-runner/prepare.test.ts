@@ -4446,9 +4446,7 @@ describe("prepareCliRunContext", () => {
         mode: "invalidate",
         invalidatedReason: "missing-transcript",
       });
-      expect(context.branchHistoryPrompt).toContain(
-        `[${recoveredAt}] User: prior claude-cli ask`,
-      );
+      expect(context.branchHistoryPrompt).toContain(`[${recoveredAt}] User: prior claude-cli ask`);
       expect(context.branchHistoryPrompt).toContain(
         "Tool result (exec): Archive created at /tmp/example-backup.tar",
       );
@@ -4779,9 +4777,7 @@ describe("prepareCliRunContext", () => {
       workspaceDir: dir,
       skillsSnapshot,
     });
-    expect(context.systemPrompt).toContain(
-      "/workspace/.branch/sandbox-skills/skills/gog/SKILL.md",
-    );
+    expect(context.systemPrompt).toContain("/workspace/.branch/sandbox-skills/skills/gog/SKILL.md");
     expect(context.systemPrompt).not.toContain(hostSkillPath);
     expect(context.systemPromptReport.skills.promptChars).toBeGreaterThan(0);
     expect(context.systemPromptReport.skills.entries).toEqual([
