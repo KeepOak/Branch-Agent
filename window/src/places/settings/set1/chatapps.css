@@ -52,6 +52,14 @@
 .dlg .box-ca { display: grid; gap: 4px; margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--fill); }
 .dlg .box-ca .ctl { border-bottom: 1px solid var(--hair17); }
 .dlg .box-ca .ctl:last-of-type { border-bottom: 0; }
+.dlg .ctl:has(> .right > .sseg-radio) { display: grid; grid-template-columns: minmax(0, 1fr); }
+.dlg .ctl > .right:has(> .sseg-radio) { grid-column: 1; grid-row: auto; margin-top: 8px; }
+.dlg .sseg.sseg-radio { display: grid; gap: 6px; width: 100%; padding: 0; background: transparent; white-space: normal; }
+.dlg .sseg.sseg-radio button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; height: auto; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r2-17); background: var(--raise); color: var(--ink); text-align: left; cursor: pointer; white-space: normal; }
+.dlg .sseg.sseg-radio button[aria-checked="true"] { border-color: var(--accent); background: var(--accent-tint); }
+.dlg .sseg.sseg-radio .sseg-radio-check { width: 16px; flex: none; color: var(--accent); }
+.dlg .sseg.sseg-radio button small { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.dlg .sseg.sseg-radio button:disabled { opacity: .45; cursor: default; }
 .dlg .box-h-ca { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .dlg .box-h-ca small { font-size: 12.5px; color: var(--ink-2); }
 .dlg .mg-ca h3 { margin: 18px 0 4px; font: 500 10.5px var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }

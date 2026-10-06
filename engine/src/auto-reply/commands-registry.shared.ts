@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/auto-reply/commands-registry.shared.ts (atlas AGENT-LOOP-0101). Changed for Branch: Cline compact aliases route through the existing authorized command.
 /** Shared command registry builders used by browser-safe and runtime command lists. */
 import { formatFastModeAutoLabel, resolveFastModeModelAutoOnSeconds } from "../shared/fast-mode.js";
 import { COMMAND_ARG_FORMATTERS } from "./commands-args.js";
@@ -543,6 +544,7 @@ export function buildBuiltinChatCommands(
       ],
     }),
     defineBuiltinCommand("compact", "Compact the session context.", "session", "essential", {
+      textAliases: ["/compact", "/smol", "/newtask"],
       args: [
         defineCommandArgument("instructions", "Extra compaction instructions", {
           captureRemaining: true,

@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { paneKeyFor, shortcutFor } from "./use-shortcuts";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { describe, expect, it, vi } from "vitest";
+import { paneKeyFor, shortcutFor, useShortcuts } from "./use-shortcuts";
 
 const key = (k: string, mods: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }> = {}) => ({
   key: k,
@@ -104,5 +106,43 @@ describe("side panel keys and Talk live (§4.8.8 parity adds)", () => {
     expect(paneKeyFor(k("D"), false)).toBe("Computer");
     expect(paneKeyFor(k("E"), false)).toBeNull(); // Review: no such tab here yet
     expect(shortcutFor(k("V", false), false)).toBe("talkLive");
+  });
+});
+
+describe("modal shortcut scope (§3.6)", () => {
+  it("leaves global shortcuts and pane keys to the top-most dialog, then restores them on close", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const palette = vi.fn();
+    const escape = vi.fn(() => true);
+    const noop = () => {};
+    function Harness() {
+      useShortcuts({ palette, escape, newConversation: noop, settings: noop, sidePanel: noop, quickAsk: noop,
+        focusMode: noop, toggleList: noop, inbox: noop, focusSearch: noop,
+        archiveOpen: noop, talkBeside: noop, talkLive: noop, stop: noop, nextConversation: noop,
+        shortcuts: noop });
+      return null;
+    }
+    await act(async () => root.render(createElement(Harness)));
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.append(dialog);
+    try {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true }));
+      expect(palette).not.toHaveBeenCalled();
+      expect(paneKeyFor({ ...key("`", { ctrlKey: true }), code: "Backquote" }, false)).toBeNull();
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      expect(escape).toHaveBeenCalledOnce();
+      dialog.remove();
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true }));
+      expect(palette).toHaveBeenCalledOnce();
+      expect(paneKeyFor({ ...key("`", { ctrlKey: true }), code: "Backquote" }, false)).toBe("Terminal");
+    } finally {
+      dialog.remove();
+      await act(async () => root.unmount());
+      host.remove();
+    }
   });
 });

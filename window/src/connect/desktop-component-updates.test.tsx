@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WindowEngine } from "./engine";
 import { UpdatesPage } from "../places/settings/set2/updates";
-import { stageWindowUpdate } from "./desktop-component-updates";
+import { componentDesktop, stageWindowUpdate } from "./desktop-component-updates";
 import { StatusPopover, type StatusContext } from "../shell/StatusLayer";
 import { useUpdate } from "../shell/use-status";
 import type { SaplingSession } from "./session";
@@ -154,4 +154,11 @@ it("actual Settings Check now for Connect elsewhere keeps the remote gateway dis
   await click("Check now");
   expect(status).not.toHaveBeenCalled(); expect(check).not.toHaveBeenCalled();
   expect(request).toHaveBeenCalledWith("update.status", { refreshCheckout: true });
+});
+
+it("keeps native update controls scoped to the live handoff target", () => {
+  const native = { gatewayUrl: "ws://127.0.0.1:1", getGatewayUrl: () => "ws://127.0.0.1:2", componentUpdates: { status: async () => state, check: async () => state, stage: async () => state } };
+  desktopWindow.branchDesktop = native;
+  expect(componentDesktop("ws://127.0.0.1:2")).toBe(native);
+  expect(componentDesktop("ws://127.0.0.1:1")).toBeUndefined();
 });

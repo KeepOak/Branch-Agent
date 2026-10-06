@@ -55,7 +55,7 @@ export function paneKeyFor(
   mac: boolean,
   keys: Record<ActionId, string> = DEFAULT_KEYS,
 ): PaneTarget | null {
-  if (!(e.ctrlKey || e.metaKey) || shortcutFor(e, mac, keys) || document.querySelector("[data-listening]")) {
+  if (!(e.ctrlKey || e.metaKey) || shortcutFor(e, mac, keys) || document.querySelector("[data-listening], [role=dialog][aria-modal=true]")) {
     return null;
   }
   const combo = comboOf({ key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, altKey: e.altKey, code: e.code ?? "" }, mac);
@@ -92,6 +92,11 @@ export function useShortcuts(handlers: ShortcutHandlers): void {
       }
       const which = shortcutFor(e, mac, keys);
       if (!which) {
+        return;
+      }
+      // A modal owns its keyboard. In particular Ctrl+K cannot open a palette over a dialog,
+      // and the pane keys must not change the page behind one (§3.6).
+      if (which !== "escape" && document.querySelector("[role=dialog][aria-modal=true]")) {
         return;
       }
       const t = e.target as HTMLElement | null;
