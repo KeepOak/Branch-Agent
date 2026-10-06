@@ -4,6 +4,9 @@ engine:extensions/qa-lab/src/report.test.ts
 engine:extensions/qa-lab/src/scenario-flow-runner.behaviour.test.ts
 engine:extensions/qa-lab/src/scenario-flow-runner.test.ts
 engine:extensions/qa-lab/src/suite.test.ts
+engine:packages/gateway-protocol/src/schema/frames.auth.test.ts
+engine:packages/gateway-protocol/src/schema/frames.build-id.test.ts
+engine:packages/gateway-protocol/src/schema/frames.worker-runs.test.ts
 engine:src/cli/completion-cli.aliases.test.ts
 engine:src/cli/completion-cli.bash.test.ts
 engine:src/cli/completion-cli.test.ts
