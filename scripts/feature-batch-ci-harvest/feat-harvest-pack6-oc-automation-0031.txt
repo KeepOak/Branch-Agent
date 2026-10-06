@@ -3,6 +3,8 @@ engine:extensions/imap/src/sender-gate.test.ts
 engine:extensions/imap/src/state.test.ts
 engine:extensions/imap/src/watcher.test.ts
 engine:src/cron/active-jobs.test.ts
+engine:src/cron/command-output-summary.test.ts
+engine:src/cron/command-runner.test.ts
 engine:src/cron/delivery-plan.test.ts
 engine:src/cron/delivery-preview.current-origin.test.ts
 engine:src/cron/delivery-preview.test.ts
