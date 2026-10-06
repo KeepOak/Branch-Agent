@@ -86,7 +86,10 @@ describe("Settings › Chat apps", () => {
       element.textContent?.includes("Telegram"),
     );
     expect(row?.querySelector(".pill")?.textContent).toBe("Needs attention");
-    expect(row?.textContent).toContain("Reconnect attempts continue automatically");
+    expect(row?.textContent).toContain("Telegram needs attention.");
+    expect(row?.textContent).not.toContain("Reconnect attempts continue automatically");
+    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
+    expect(document.querySelector(".kit-help-pop")?.textContent).toContain("Reconnect attempts continue automatically");
   });
 
   it("opens the real watchdog log from Technical chat-app settings", async () => {
