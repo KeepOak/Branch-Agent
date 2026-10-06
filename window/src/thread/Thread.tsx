@@ -33,6 +33,8 @@ import { TalkedFold } from "../rooms/TalkedFold";
 import { RoomLine } from "../rooms/RoomLine";
 import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
+import { QueuedMessages, useOwnWaitingLine } from "./QueuedMessages";
+import type { QueuedMessage } from "../connect/session";
 import { dayStamp, fullTime, messageTime, modelName } from "./format";
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
 import type { EarlierPage } from "../shell/useContactSegments";
@@ -44,6 +46,8 @@ type Props = {
   history: Block[];
   live: Block[];
   pendingUser: string | null;
+  /** Messages accepted but waiting for a turn (connect/session.ts queued). */
+  queued?: QueuedMessage[];
   running: boolean;
   onAnswer: (id: string, decision: "allow-once" | "deny") => void;
   /** The shared engine handle (connect/engine.ts); without it the message actions stay greyed with their reason. */
@@ -129,6 +133,11 @@ function pendingExtras(details: Map<string, ApprovalDetails>, shown: Set<string>
 /** The thread (DESIGN-SPEC §4.2.2): history from the engine, then the run that is going now. */
 export function Thread(props: Props) {
   const { name, history, live, pendingUser, running, engine, onToast } = props;
+  const ownLine = useOwnWaitingLine(props.sessionKey ?? engine?.sessionKey);
+  // A message from this window's waiting line that a turn picked up: its bubble says "Delivered" until history has it.
+  const lineTexts = useRef(new Set<string>());
+  for (const item of ownLine) lineTexts.current.add(item.text);
+  const pendingDelivered = pendingUser !== null && lineTexts.current.has(pendingUser);
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
   const prefs = useConversationPrefs(engine);
   const prefKey = JSON.stringify(prefs);
@@ -156,12 +165,13 @@ export function Thread(props: Props) {
   useApprovalKeys(firstPending, answer);
   const { actionsFor, dialog } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, onStartTopic: props.onStartTopic, applyReaction: apply });
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
-  const signature = `${history.length}:${live.length}:${liveText}:${pendingUser ? 1 : 0}:${running ? 1 : 0}:${extras.length}`;
+  const waitingCount = (props.queued?.length ?? 0) + ownLine.length;
+  const signature = `${history.length}:${live.length}:${liveText}:${pendingUser ? 1 : 0}:${running ? 1 : 0}:${extras.length}:${waitingCount}`;
   const follow = useFollow(signature);
   const [finding, setFinding] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
   useFindKey(useCallback(() => setFinding(true), []));
-  const empty = !history.length && !pendingUser && !running && !props.questions?.length;
+  const empty = !history.length && !pendingUser && !running && !props.questions?.length && !waitingCount;
   const preparationError = [props.preparationError, props.earlierError].find(isPreparationPending);
   const anchors = anchorQuestions(history, props.questions ?? []);
   const items: RoomItem[] = props.room ? foldTalks(layout(history), props.room.ownAgentId) : layout(history);
@@ -245,8 +255,18 @@ export function Thread(props: Props) {
             ),
           )}
           {props.room ? <RoomLine history={history} room={props.room} ownName={name} /> : null}
-          {pendingUser ? <UserMessage block={{ kind: "user", key: "pending", text: pendingUser }} /> : null}
+          {pendingUser ? (
+            pendingDelivered ? (
+              <div className="queued-msg delivered" data-testid="queued-message" data-state="delivered">
+                <UserMessage block={{ kind: "user", key: "pending", text: pendingUser }} />
+                <span className="queue-mark mine">Delivered</span>
+              </div>
+            ) : (
+              <UserMessage block={{ kind: "user", key: "pending", text: pendingUser }} />
+            )
+          ) : null}
           {running ? <LiveRun view={view} offset={history.length} /> : null}
+          <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} />
           {(anchors.get(-1) ?? []).map((r) => <QuestionLine key={r.id} record={r} />)}
           {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} />)}
           {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} /> : null}
