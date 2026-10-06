@@ -6,6 +6,7 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { drainStopGateway, gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady } from "./gateway";
+import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowsWindowResident } from "./resident-window";
@@ -74,6 +75,21 @@ let componentsReady = false;
 /** The window build the static server serves: the staged one only once its engine runs. */
 let servedWindowDir = cfg.windowDir;
 let engineRestartInProgress = false;
+const gatewaySupervisor = createGatewayCrashSupervisor({
+  current: () => gateway,
+  log,
+  onExhausted: error => log(`gateway recovery stopped: ${error.message}`),
+  restart: async () => {
+    engineRestartInProgress = true;
+    try {
+      await waitForGatewayPort();
+      const rolledBack = await bootSelectedEngine();
+      log(`gateway recovered after unexpected exit${rolledBack ? " with the retained engine" : ""}`);
+    } finally {
+      engineRestartInProgress = false;
+    }
+  },
+});
 const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
 let tray: Tray | undefined;
 const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, ICON), onChange: settings => {
@@ -122,8 +138,15 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     if (!await candidatePassed(label)) return;
     const started = Date.now();
     win.webContents.send("branch-desktop:engine-update", "updating");
-    if (explicit) log(`update ${label}: old engine ${await drainStopGateway(gateway)}`);
-    else await stopGatewayCleanly(gateway);
+    const priorGateway = gateway;
+    const resumeSupervision = gatewaySupervisor.expectExit(priorGateway);
+    try {
+      if (explicit) log(`update ${label}: old engine ${await drainStopGateway(priorGateway)}`);
+      else await stopGatewayCleanly(priorGateway);
+    } catch (error) {
+      resumeSupervision();
+      throw error;
+    }
     const stopped = Date.now();
     servedWindowDir = cfg.windowDir;
     await waitForGatewayPort();
@@ -338,13 +361,16 @@ async function waitForGatewayPort(): Promise<void> {
 async function bootEngine(): Promise<void> {
   const started = Date.now();
   const engineDir = resolveEngineDir(cfg);
-  gateway = startGateway(cfg, engineDir, token);
-  log(`gateway started from ${engineDir}, pid ${gateway.pid}`);
+  const child = startGateway(cfg, engineDir, token);
+  gateway = child;
+  const observed = gatewaySupervisor.observe(child);
+  log(`gateway started from ${engineDir}, pid ${child.pid}`);
   // publish-engine.sh never removes the folder named here.
   writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
 `);
-  await waitForReady(cfg, gateway, READY_TIMEOUT_MS);
+  await waitForReady(cfg, child, READY_TIMEOUT_MS);
   await confirmComponentUpdate(cfg);
+  observed.ready();
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
   engineUpdateReady = false;
   watchEngine();
@@ -418,6 +444,7 @@ function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
 
 function shutdown(): void {
   log(`quit; stopping gateway pid ${gateway?.pid}`);
+  gatewaySupervisor.close();
   stopEngineWatch?.();
   stopComponentWatch?.();
   autoApply.stop();

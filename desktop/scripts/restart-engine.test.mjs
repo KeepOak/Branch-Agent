@@ -85,6 +85,16 @@ async function fixture(run, holdStartup = false) {
   }
 }
 const swapped = async (root, count = 1) => (await readFile(join(root, "desktop.log"), "utf8")).split("engine swapped in place").length - 1 >= count;
+test("a crashed ready gateway restarts without closing or reloading the window", () => fixture(async ({ root, runtime, starts }) => {
+  const first = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready");
+  process.kill(first, "SIGTERM");
+  await eventually(async () => (await starts()).length === 2);
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway recovered after unexpected exit"));
+  assert.equal(alive((await starts())[1]), true);
+  assert.equal(runtime.window.reloads, 0);
+  assert.equal(runtime.errors.length, 0);
+}));
 test("a second update click preserves the gateway already starting", () => fixture(async ({ root, runtime, starts, restart }) => {
   restart(); await eventually(async () => (await starts()).length === 2);
   const candidate = (await starts())[1]; restart();
