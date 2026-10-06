@@ -1,3 +1,4 @@
 engine:extensions/diagnostics-otel/src/service-export.behaviour.test.ts
 engine:extensions/diagnostics-otel/src/service-node-sdk-parity.test.ts
+engine:extensions/diagnostics-otel/src/service-trace-context.behaviour.test.ts
 engine:extensions/diagnostics-otel/src/service.otlp-export.test.ts
