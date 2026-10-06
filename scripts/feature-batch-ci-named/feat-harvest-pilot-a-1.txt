@@ -1,3 +1,5 @@
+engine:src/auto-reply/reply/mentions.test.ts
+engine:src/channels/mention-gating.test.ts
 engine:src/channels/message/outbound-echo.test.ts
 engine:src/plugin-sdk/channel-inbound.test.ts
 engine:src/plugin-sdk/channel-ingress-runtime.test.ts
