@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/thinking.test.ts (atlas AGENT-LOOP-0243). Changed for Branch: retain provider-policy and runtime helper refactors and the shipped plain-language provider error; preserve effort and retry assertions (owner plain-words rule and small-function rule).
 // Thinking sanitization tests cover reasoning-block retention, stripping, and
 // recovery behavior for provider transcripts and active assistant turns.
 import type { AgentMessage } from "branch/plugin-sdk/agent-core";

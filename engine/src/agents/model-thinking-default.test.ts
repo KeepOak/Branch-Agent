@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/model-thinking-default.test.ts (atlas AGENT-LOOP-0243). Changed for Branch: retain provider-policy and runtime helper refactors and the shipped plain-language provider error; preserve effort and retry assertions (owner plain-words rule and small-function rule).
 import { describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../config/types.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";

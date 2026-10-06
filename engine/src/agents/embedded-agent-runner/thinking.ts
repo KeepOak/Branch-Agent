@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/thinking.ts (atlas AGENT-LOOP-0243). Changed for Branch: retain provider-policy and runtime helper refactors and the shipped plain-language provider error; preserve effort and retry assertions (owner plain-words rule and small-function rule).
 import { getEventStreamCompletion } from "@branch/ai/internal/runtime";
 import { collectErrorGraphCandidates, formatErrorMessage } from "../../infra/errors.js";
 import type { AssistantMessageEvent } from "../../llm/types.js";
