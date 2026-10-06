@@ -108,7 +108,7 @@ export function PersonMenu(p: Props) {
           <i className="sb-new" aria-hidden="true" />
         </button>
       ) : null}
-      <Row icon="spark" label="Replay the first run" onClick={run(p.onReplay)} testid="person-replay" />
+      <Row icon="spark" label="Set up Branch" onClick={run(p.onReplay)} testid="person-replay" />
       <Row icon="monitor" label="About Branch" onClick={run(p.onAbout)} />
       <hr className="msep" />
       <Row icon="lock" label="Lock Branch" onClick={run(p.onLock)} testid="person-lock" />

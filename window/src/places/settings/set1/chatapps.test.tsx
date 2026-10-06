@@ -115,10 +115,10 @@ describe("Settings › Chat apps", () => {
     const { engine, request } = engineOf();
     await render(engine);
     expect(host.textContent).toContain("Requests expire after 60 minutes. Each account holds up to 3 waiting.");
-    await act(async () => button("Approve", host).click());
+    await act(async () => button("Allow", host).click());
     expect(document.querySelector(".dlg h2")?.textContent).toBe("Let Person A message Oak?");
     await act(async () => document.querySelector<HTMLInputElement>('.dlg input[type="checkbox"]')!.click());
-    await act(async () => button("Approve", document.querySelector(".dlg")!).click());
+    await act(async () => button("Allow", document.querySelector(".dlg")!).click());
     expect(request).toHaveBeenCalledWith("channels.pairing.approve", { channel: "telegram", accountId: "default", requestId: "r1", notify: true });
   });
 
@@ -192,6 +192,9 @@ describe("Settings › Chat apps", () => {
     const { engine, request } = engineOf({ "channels.status": two });
     await render(engine);
     await act(async () => button("Open", host).click());
+    expect(document.querySelector(".dlg .box-h-ca .pill")?.textContent).toBe("Online");
+    expect(document.querySelector(".dlg .chw-steps12")).toBeNull();
+    expect(document.querySelector(".dlg")?.textContent).not.toContain("is ready");
     await act(async () => button("Pause", document.querySelector(".dlg")!).click());
     expect(patchOf(request)).toEqual({ channels: { discord: { enabled: false } } });
     expect(request).toHaveBeenCalledWith("channels.stop", { channel: "discord", accountId: "default" });

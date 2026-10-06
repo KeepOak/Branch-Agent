@@ -85,7 +85,7 @@ function Approval({ item, props }: { item: Row; props: NeedsProps }) {
   const trunk = agentName(data.agents.list, str(request.agentId));
   const detail = str(request.cwd) || str(request.description) || (str(item.kind) === "exec" ? "Command" : str(item.kind) === "branch" ? "Branch change" : "Add-on");
   return <InboxRow lead={<Face size={34} label={trunk} />} title={approvalTitle(item)} sub={`${trunk} · ${detail} · ${minutesLeft(num(item.expiresAtMs))}`}>
-    <button type="button" className="btn ghost sm" disabled={!allow || busy || expired || !decisions.includes("deny")} onClick={() => void act(() => resolveApproval(engine, item, "deny"), `Said no. ${trunk} won’t do it.`)}>Don’t</button>
+    <button type="button" className="btn ghost sm" disabled={!allow || busy || expired || !decisions.includes("deny")} onClick={() => void act(() => resolveApproval(engine, item, "deny"), `Said no. ${trunk} won’t do it.`)}>Don’t allow</button>
     {key ? <button type="button" className="btn sm" onClick={() => openConversation(key)}>Open</button> : null}
     <button type="button" className="btn pri sm" disabled={!allow || busy || expired || !decisions.includes("allow-once")} onClick={() => void act(() => resolveApproval(engine, item, "allow-once"), "Allowed once.")}>Allow</button>
   </InboxRow>;

@@ -158,8 +158,8 @@ describe("snoozeChoices", () => {
 describe("wakeWords", () => {
   const now = new Date(2026, 9, 1, 9, 0).getTime();
   it("today, tomorrow, then a weekday", () => {
-    expect(wakeWords(new Date(2026, 9, 1, 18, 0).getTime(), now)).toBe("18:00");
-    expect(wakeWords(new Date(2026, 9, 2, 9, 0).getTime(), now)).toBe("tomorrow 09:00");
-    expect(wakeWords(new Date(2026, 9, 5, 9, 0).getTime(), now)).toMatch(/09:00$/);
+    expect(wakeWords(new Date(2026, 9, 1, 18, 0).getTime(), now)).toBe("6:00 PM");
+    expect(wakeWords(new Date(2026, 9, 2, 9, 0).getTime(), now)).toBe("Tomorrow · 9:00 AM");
+    expect(wakeWords(new Date(2026, 9, 5, 9, 0).getTime(), now)).toMatch(/9:00 AM$/);
   });
 });

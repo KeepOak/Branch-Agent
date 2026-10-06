@@ -280,7 +280,7 @@ function Overlays({ p, open, items, close, target, lastReply, computers }: Overl
   if (!open) return null;
   if (open.kind === "menu") return <Menu at={open.at} items={items} label="Conversation" testid="conversation-menu" onClose={close} />;
   if (open.kind === "known") return <Menu at={open.at} items={open.items} label="Who it knows" testid="who-it-knows" onClose={close} />;
-  if (open.kind === "rules") return p.room ? <Menu at={open.at} items={p.room.rules()} label="Room rules" testid="room-rules" onClose={close} /> : null;
+  if (open.kind === "rules") return p.room ? <Menu at={open.at} items={p.room.rules()} label="Group rules" testid="room-rules" onClose={close} /> : null;
   if (!target) return null;
   const engine = p.session.engine;
   const copy = (text: string) => void copyText(text, notify);
