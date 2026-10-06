@@ -3,6 +3,10 @@ engine:extensions/brave/src/brave-web-search-provider.merge.test.ts
 engine:extensions/brave/src/brave-web-search-provider.preflight.test.ts
 engine:extensions/brave/src/brave-web-search-provider.test.ts
 engine:extensions/exa/src/exa-web-search-provider.test.ts
+engine:extensions/firecrawl/src/firecrawl-cache.test.ts
+engine:extensions/firecrawl/src/firecrawl-client.test.ts
+engine:extensions/firecrawl/src/firecrawl-search-results.test.ts
+engine:extensions/firecrawl/src/firecrawl-tools.test.ts
 engine:extensions/tavily/src/config.test.ts
 engine:extensions/tavily/src/tavily-client.test.ts
 engine:extensions/tavily/src/tavily-crawl-tool.test.ts
