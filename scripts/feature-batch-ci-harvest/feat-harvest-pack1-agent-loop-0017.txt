@@ -2,3 +2,7 @@ engine:extensions/codex/harness.harvest.test.ts
 engine:extensions/codex/src/app-server/approval-bridge.harvest.test.ts
 engine:extensions/codex/src/app-server/attempt-steering.harvest.test.ts
 engine:extensions/codex/src/app-server/auth-bridge.harvest.test.ts
+engine:extensions/copilot/harness.harvest.test.ts
+engine:extensions/copilot/src/attempt.harvest.test.ts
+engine:extensions/copilot/src/attempt.test.ts
+engine:extensions/copilot/src/byok-proxy.harvest.test.ts
