@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/node-host/runtime.test.ts (atlas INTEGRATIONS-0126). Changed for Branch: Retained Branch runtime manifest assertions for duplex commands and disabled native agent runs instead of the older helper-call assertion.
 import fs from "node:fs";
 import path from "node:path";
 import { expectDefined } from "@branch/normalization-core";
