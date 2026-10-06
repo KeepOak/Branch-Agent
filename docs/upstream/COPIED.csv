@@ -27,3 +27,12 @@ engine/extensions/brave/index.ts,RESEARCH-0002,openclaw/openclaw,57e0aaa1c190f1a
 engine/extensions/brave/src/brave-web-search-provider.runtime.ts,RESEARCH-0002,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,extensions/brave/src/brave-web-search-provider.runtime.ts,2026-10-06
 engine/extensions/brave/src/brave-image-search-tool.ts,RESEARCH-0002,bytedance/deer-flow,f840e843d3e2db1485cb65ceae73a5525aa80193,backend/packages/harness/deerflow/community/brave/tools.py,2026-10-06
 engine/extensions/brave/src/brave-image-search-tool.test.ts,RESEARCH-0002,bytedance/deer-flow,f840e843d3e2db1485cb65ceae73a5525aa80193,backend/tests/test_brave_tools.py,2026-10-06
+engine/extensions/tavily/index.ts,RESEARCH-0003,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/tavily/index.ts,2026-10-06
+engine/extensions/tavily/src/tavily-client.ts,RESEARCH-0003,openclaw/openclaw,c83f02659ff9e181f81d12959970261fcaaa1d07,extensions/tavily/src/tavily-client.ts,2026-10-06
+engine/extensions/tavily/src/tavily-crawl-tool.ts,RESEARCH-0003,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,integrations/tavily/src/crawl.ts,2026-10-06
+engine/extensions/tavily/src/tavily-map-tool.ts,RESEARCH-0003,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,integrations/tavily/src/map.ts,2026-10-06
+engine/extensions/tavily/src/tavily-crawl-tool.test.ts,RESEARCH-0003,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,integrations/tavily/src/__tests__/crawl.test.ts,2026-10-06
+engine/extensions/tavily/src/tavily-map-tool.test.ts,RESEARCH-0003,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,integrations/tavily/src/__tests__/map.test.ts,2026-10-06
+engine/extensions/tavily/skills/tavily/SKILL.md,RESEARCH-0003,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/tavily/skills/tavily/SKILL.md,2026-10-06
+engine/extensions/tavily/src/tavily-client.ts,RESEARCH-0003,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,integrations/tavily/src/crawl.ts (adapted to guarded Tavily transport),2026-10-06
+engine/extensions/tavily/src/tavily-client.ts,RESEARCH-0003,mastra-ai/mastra,486d3b7f35edfeaeab47b1230b56880e672cc421,integrations/tavily/src/map.ts (adapted to guarded Tavily transport),2026-10-06
