@@ -36,6 +36,7 @@
 .frame.rail .side .row-av { width: 40px; height: 40px; }
 .frame.rail .side .row-av .pebble { max-width: 40px; max-height: 40px; }
 .frame.rail .side .row .rc { display: contents; }
+.frame.rail .side .row .rc .cnts { display: none; }
 .frame.rail .side .row .rc .mk { position: absolute; z-index: 1; top: 5px; right: 6px; background: var(--side); border-radius: 50%; }
 .frame.rail .side-top { flex-direction: column; gap: 2px; }
 .frame.rail .rail-new { width: 40px; height: 40px; }

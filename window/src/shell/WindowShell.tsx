@@ -1235,7 +1235,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           ) : null
         }
         rail={rail}
-        onReorderPins={(drop, visible) => { if (drop.source !== home?.key) void pinOrder.move(drop.target === home?.key ? { ...drop, zone: "after" } : drop, visible); }}
+        onReorderPins={(drop, visible) => { if (drop.source !== home?.key) void pinOrder.move(drop, visible); }}
         onRailSearch={focusSearch}
         onOpen={(key) => {
           selection.clear();
