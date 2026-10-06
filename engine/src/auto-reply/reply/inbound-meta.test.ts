@@ -1,3 +1,4 @@
+// Adapted from mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421:packages/core/src/channels/processor.test.ts (atlas CHAT-APPS-0001). Verifies the equivalent Branch prompt for public rooms without Mastra processors.
 // Tests inbound metadata normalization before prompt injection.
 import { describe, expect, it, vi } from "vitest";
 import type { SessionEntry, SessionGoalStatus } from "../../config/sessions/types.js";
@@ -118,6 +119,20 @@ function createChatWindowContext(params: {
 }
 
 describe("buildInboundMetaSystemPrompt", () => {
+  it("guides public rooms to stay silent unless addressed without changing direct messages", () => {
+    const group = buildInboundMetaSystemPrompt(
+      { OriginatingChannel: "slack", ChatType: "group" } as TemplateContext,
+      EMPTY_CFG,
+    );
+    const direct = buildInboundMetaSystemPrompt(
+      { OriginatingChannel: "slack", ChatType: "direct" } as TemplateContext,
+      EMPTY_CFG,
+    );
+    expect(group).toContain("not every message is directed at you");
+    expect(group).toContain("Reply with text only when mentioned, replied to, or clearly needed");
+    expect(group).toContain("An empty reply is valid");
+    expect(direct).not.toContain("not every message is directed at you");
+  });
   it.each(["direct", "group"] as const)(
     "keeps $0 system metadata byte-stable as per-turn context changes",
     (ChatType) => {
