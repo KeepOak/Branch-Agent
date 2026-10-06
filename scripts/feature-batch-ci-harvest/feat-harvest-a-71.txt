@@ -11,3 +11,6 @@ engine:extensions/twitch/src/access-control.test.ts
 engine:extensions/twitch/src/monitor.test.ts
 engine:extensions/twitch/src/token.test.ts
 engine:extensions/twitch/src/twitch-client.test.ts
+engine:extensions/zalo/src/monitor.polling-lifecycle.test.ts
+engine:extensions/zalo/src/monitor.webhook.test.ts
+engine:extensions/zalo/src/webhook-spool.test.ts
