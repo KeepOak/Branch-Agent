@@ -261,8 +261,6 @@ type Props = {
   control?: boolean;
   onControl?: (control: boolean) => void;
   level?: Level;
-  /** The docked conversation, beside the page. */
-  dock?: ReactNode;
   onState: (phase: BrowserPhase, title?: string) => void;
 };
 
@@ -286,7 +284,7 @@ export function BrowserMini({ engine, gatewayUrl, blocks }: { engine: WindowEngi
   );
 }
 
-export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", dock = null, onState }: Props) {
+export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", onState }: Props) {
   const entries = useMemo(() => recordedBrowserTabs(blocks), [blocks]);
   const route = useMemo(() => routeOf(entries), [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
   const steps = blocks.filter((b) => b.kind === "step").length;
@@ -446,7 +444,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
         </form>
       ) : null}
       {note ? <p className="stage-error-st note-br" role="status">{note}</p> : null}
-      <div className={dock ? "st7-body" : "st7-body nodock"}>
+      <div className="st7-body">
         <div className="br-left-st">
           <div className="st7-wrap">
             <div className={control ? "st7-screen br-screen-st ctl-st" : "st7-screen br-screen-st"}>
@@ -500,7 +498,6 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
             <BrowserTools engine={engine} route={route} targetId={tab.targetId} name={name} level={level} host={hostOf(url)} tabs={browser.tabs} onPick={setPicked} onCloseTab={closeTab} onClose={() => setDrawer(false)} />
           ) : null}
         </div>
-        {dock}
       </div>
       {menu ? <Menu at={menu.at} items={menu.items} label="This page" onClose={() => setMenu(null)} /> : null}
     </div>

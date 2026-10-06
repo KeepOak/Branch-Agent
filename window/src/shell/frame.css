@@ -9,9 +9,6 @@
   height: 100%;
   background: var(--bg);
 }
-.frame.list-hidden {
-  grid-template-columns: 0 minmax(0, 1fr);
-}
 .frame.focus {
   grid-template-rows: 34px minmax(0, 1fr) 0;
   grid-template-columns: 0 minmax(0, 1fr);
@@ -124,10 +121,6 @@
   background: var(--side);
   border-right: 1px solid var(--hair17);
   overflow: hidden;
-}
-.list-hidden .topbar-left {
-  padding: 0;
-  border: 0;
 }
 .topbar-right {
   display: flex;
@@ -350,96 +343,6 @@
   text-transform: uppercase;
   color: var(--ink-3);
   padding: 10px 10px 2px;
-}
-/* Places (the preview's .places-h14 + .side-nav.nav7): a ruled header, the rows, a rule under them */
-.places {
-  border-top: 1px solid var(--hair17);
-  border-bottom: 1px solid var(--hair17);
-  margin: 0 -8px 4px;
-  padding: 0 8px;
-}
-.places-h {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  border: 0;
-  background: transparent;
-  width: calc(100% + 16px);
-  margin: 0 -8px;
-  text-align: left;
-  padding: 10px 10px 2px;
-}
-.place-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 2px 0 8px;
-}
-.places.folded .place-rows {
-  flex-direction: row;
-  justify-content: space-between;
-  padding: 0 2px 4px;
-}
-.places.folded .nav-name,
-.places.folded .cnt {
-  display: none;
-}
-.places.folded .nav {
-  width: 34px;
-  justify-content: center;
-  padding: 0;
-}
-.nav {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 32px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--r-nav);
-  background: transparent;
-  color: var(--ink-2);
-  font-size: 13.5px;
-  text-align: left;
-  position: relative;
-  transition: background var(--t-colour) var(--ease17), color var(--t-colour) var(--ease17), box-shadow var(--t-colour) var(--ease17);
-}
-.nav .icon {
-  color: var(--ink-3);
-  flex: none;
-}
-.nav:hover {
-  background: var(--wash17);
-}
-.nav[aria-current="page"] {
-  background: var(--raise);
-  box-shadow: var(--sh1-17);
-  color: var(--ink);
-  font-weight: 600;
-}
-.nav[aria-current="page"] .icon {
-  color: var(--ink);
-}
-/* a place's count: the preview's .live6 (People) and, for Inbox, its accent .cnt */
-.cnt {
-  margin-left: auto;
-  min-width: 18px;
-  height: 18px;
-  font: 600 11px/18px var(--mono);
-  text-align: center;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: var(--wash17);
-  color: var(--ink-2);
-  font-variant-numeric: tabular-nums;
-}
-.cnt.attn {
-  height: auto;
-  min-width: 0;
-  font: 600 11px/1 var(--mono);
-  padding: 3px 7px;
-  background: var(--accent);
-  color: var(--on-accent);
 }
 .list {
   margin: 0 -8px;
@@ -694,7 +597,7 @@
   color: var(--ink-2);
 }
 
-/* the main column: placed explicitly, so a hidden sidebar never pulls it into the sidebar's column */
+/* The main column is placed explicitly in the second grid column. */
 .main {
   grid-column: 2;
   grid-row: 2;
@@ -742,40 +645,6 @@ button.sb[aria-expanded="true"] {
 }
 .sb-spacer {
   flex: 1;
-}
-.statusbar .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--line-2);
-}
-.statusbar .dot.on {
-  background: var(--ok);
-}
-.statusbar .dot.wait {
-  background: var(--warn);
-}
-.rdot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--line-2);
-}
-.rdot.on {
-  background: var(--accent);
-  animation: blink 1.4s ease-in-out infinite;
-}
-.meter {
-  display: inline-block;
-  width: 44px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--line-2);
-  overflow: hidden;
-}
-.meter span {
-  display: block;
-  height: 100%;
 }
 @keyframes blink {
   50% {

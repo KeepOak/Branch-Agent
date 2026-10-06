@@ -250,8 +250,8 @@ describe("favicon presentation ownership", () => {
       expect(svgDocument().querySelector('path[fill="rgb(40, 100, 180)"]')).not.toBeNull();
       applyControlUiPresentation({ environment: null });
       await vi.waitFor(() =>
-        expect(svgDocument().querySelectorAll("animate, animateTransform").length).toBeGreaterThan(
-          0,
+        expect(svgDocument().querySelector("svg > svg > image")?.getAttribute("href")).toBe(
+          new DOMParser().parseFromString(faviconSvg, "image/svg+xml").querySelector("image")?.getAttribute("href"),
         ),
       );
       await expectDot("rgb(20, 100, 180)");
@@ -297,13 +297,11 @@ describe("favicon presentation ownership", () => {
       await image.decode();
       expect(image.naturalWidth).toBe(32);
     }
-    const animations = (svg: Document) =>
-      Array.from(svg.querySelectorAll("animate, animateTransform"), (animation) =>
-        new XMLSerializer().serializeToString(animation),
-      );
     const original = new DOMParser().parseFromString(faviconSvg, "image/svg+xml");
-    expect(animations(svgDocument())).toEqual(animations(original));
-    expect(animations(original).length).toBeGreaterThan(0);
+    expect(svgDocument().querySelector("svg > svg > image")?.getAttribute("href")).toBe(
+      original.querySelector("image")?.getAttribute("href"),
+    );
+    expect(svgDocument().querySelector("animate, animateTransform")).toBeNull();
     expect(document.title).toBe(previousTitle);
     applyControlUiFaviconStatus("idle");
     expectOriginals();
@@ -334,7 +332,9 @@ describe("favicon presentation ownership", () => {
     applyControlUiPresentation({ environment: null });
     await vi.waitFor(() => {
       expect(svgIcon.href).not.toBe(environmentWithStatus);
-      expect(svgDocument().querySelectorAll("animate, animateTransform").length).toBeGreaterThan(0);
+      expect(svgDocument().querySelector("svg > svg > image")?.getAttribute("href")).toBe(
+        new DOMParser().parseFromString(faviconSvg, "image/svg+xml").querySelector("image")?.getAttribute("href"),
+      );
       expect(svgDocument().documentElement.lastElementChild?.getAttribute("fill")).toBe(
         "rgb(210, 150, 60)",
       );
