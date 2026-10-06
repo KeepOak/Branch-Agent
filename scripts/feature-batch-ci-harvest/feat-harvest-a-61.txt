@@ -1,3 +1,6 @@
+engine:extensions/feishu/src/docx-batch-insert.test.ts
+engine:extensions/feishu/src/docx-markdown.test.ts
+engine:extensions/feishu/src/docx-table-ops.test.ts
 engine:extensions/googlechat/src/approval-card-actions.test.ts
 engine:extensions/googlechat/src/approval-card-click.test.ts
 engine:extensions/googlechat/src/approval-native.test.ts
