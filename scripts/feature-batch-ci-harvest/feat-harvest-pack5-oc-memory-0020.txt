@@ -3,6 +3,9 @@ engine:extensions/active-memory/index.test.ts
 engine:extensions/active-memory/trigger-recall.test.ts
 engine:extensions/memory-core/src/flush-plan.test.ts
 engine:extensions/memory-core/src/memory-budget.test.ts
+engine:extensions/memory-core/src/memory/hybrid.test.ts
+engine:extensions/memory-core/src/memory/manager-keyword-retrieval.test.ts
+engine:extensions/memory-core/src/memory/manager-search-knn.test.ts
 engine:extensions/memory-core/src/rings-command.test.ts
 engine:extensions/memory-core/src/rings-dreams-file.test.ts
 engine:extensions/memory-core/src/rings-narrative.test.ts
@@ -12,3 +15,4 @@ engine:extensions/memory-core/src/short-term-promotion.test.ts
 engine:extensions/memory-core/src/tools.citations.test.ts
 engine:extensions/memory-core/src/tools.recall-tracking.test.ts
 engine:extensions/memory-core/src/tools.test.ts
+engine:packages/memory-host-sdk/src/host/memory-schema-fts.test.ts
