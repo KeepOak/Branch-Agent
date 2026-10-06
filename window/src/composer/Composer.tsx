@@ -184,6 +184,7 @@ export function Composer(props: Props) {
       draft.clear();
       return;
     }
+    if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") {
       void runBackground(plan.text);
       return;

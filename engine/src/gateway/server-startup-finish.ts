@@ -9,6 +9,7 @@ import { hashConfigRaw } from "../config/io.read-helpers.js";
 import { isNixMode } from "../config/paths.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
+import { getPluginRegistryVersion } from "../plugins/runtime-state.js";
 import { getActiveGatewayRootWorkCount } from "../process/gateway-work-admission.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { getAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
@@ -332,6 +333,9 @@ export async function finishGatewayStartup(params: {
               }
               startupState.pendingReason = "startup-sidecars";
               prepared.afterCommit();
+              broadcast("plugins.changed", {
+                generation: getPluginRegistryVersion(loaded.pluginRegistry),
+              });
               // Nodes can finish their handshake before deferred plugins attach.
               const nodeCapabilitySurfaces = indexPluginNodeCapabilitySurfaces(
                 getPluginNodeCapabilities(),
