@@ -21,7 +21,7 @@ export function pruneInteger(value: unknown, fallback: number): number {
 export function estimateMsgBudgetTokens(message: AgentMessage): number {
   return estimateMessagesTokens([message]);
 }
-function text(message: AgentMessage): string {
+function text(message: Extract<AgentMessage, { role: "toolResult" }>): string {
   return typeof message.content === "string"
     ? message.content
     : message.content
@@ -87,14 +87,16 @@ export class ProactiveToolResultPruner {
     if (this.config.protectTailTokens) {
       let tokens = 0;
       for (let i = messages.length - 1; i >= 0; i--) {
-        tokens += estimateMsgBudgetTokens(messages[i]);
+        const message = messages[i];
+        if (!message) continue;
+        tokens += estimateMsgBudgetTokens(message);
         boundary = Math.min(boundary, i);
         if (tokens >= this.config.protectTailTokens) break;
       }
     }
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i];
-      if (message.role !== "toolResult") continue;
+      if (message?.role !== "toolResult") continue;
       const body = text(message);
       if (!body) continue;
       // Dedup is lossless and tail-agnostic at source. Owner token protection is stronger.

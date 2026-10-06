@@ -30,7 +30,8 @@ export function buildHistory(pairs = 8, bigIndices = [0, 1, 2], bigChars = 9000)
 }
 export function toolText(messages: AgentMessage[], id: string): string {
   const message = messages.find((m) => m.role === "toolResult" && m.toolCallId === id);
-  if (!message || typeof message.content === "string") throw Error("Missing tool result");
+  if (message?.role !== "toolResult" || typeof message.content === "string")
+    throw Error("Missing tool result");
   return message.content
     .filter((p) => p.type === "text")
     .map((p) => p.text)

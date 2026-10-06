@@ -26,11 +26,18 @@ function overflow(error: unknown): boolean {
 function serializeEvent(message: AgentMessage): string {
   return serializeConversation(convertToLlm(sanitizeCompactionMessages([message])));
 }
+function eventTimestamp(message: AgentMessage): number {
+  if (typeof message.timestamp === "number") return message.timestamp;
+  const numeric = Number(message.timestamp);
+  if (Number.isFinite(numeric)) return numeric;
+  const parsed = Date.parse(message.timestamp);
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
 function projectEvents(messages: AgentMessage[], maxLength: number): AgentMessage[] {
   return messages.map((message) => ({
     role: "user",
     content: maybeTruncate(serializeEvent(message), maxLength),
-    timestamp: message.timestamp,
+    timestamp: eventTimestamp(message),
   }));
 }
 export type CompactionOverflowOptions = {

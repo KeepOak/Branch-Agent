@@ -160,7 +160,8 @@ export function pairToolCallResults(messages: readonly unknown[]): ToolCallOccur
     } else if (isRecord(message) && (message.role === "toolResult" || message.type === "tool")) {
       const id = message.tool_call_id ?? message.toolCallId;
       const position = typeof id === "string" ? open.get(id)?.shift() : undefined;
-      if (position !== undefined) occurrences[position].result = message;
+      const occurrence = position === undefined ? undefined : occurrences[position];
+      if (occurrence) occurrence.result = message;
     }
   }
   return occurrences;

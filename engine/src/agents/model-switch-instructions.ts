@@ -25,7 +25,7 @@ export function renderModelInstructionsDiff(params: {
 function previousAssistantModel(messages: readonly AgentMessage[]): string | undefined {
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index];
-    if (message.role === "assistant" && message.model && message.provider) {
+    if (message?.role === "assistant" && message.model && message.provider) {
       return `${message.provider}/${message.model}`;
     }
   }

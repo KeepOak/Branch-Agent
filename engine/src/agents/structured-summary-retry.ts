@@ -19,9 +19,13 @@ export function filterSummaryToolResponses(
     removed = new Set<number>();
   for (let index = 0; index < count; index++) {
     const offset = Math.floor(index / 2);
-    if (index % 2 === 0 && middle > offset) removed.add(indices[middle - offset - 1]);
-    else if (index % 2 === 1 && middle + offset < indices.length)
-      removed.add(indices[middle + offset]);
+    const candidate =
+      index % 2 === 0 && middle > offset
+        ? indices[middle - offset - 1]
+        : index % 2 === 1 && middle + offset < indices.length
+          ? indices[middle + offset]
+          : undefined;
+    if (candidate !== undefined) removed.add(candidate);
   }
   return messages.filter((_message, index) => !removed.has(index));
 }
