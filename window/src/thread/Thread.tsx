@@ -75,6 +75,9 @@ type Props = {
   room?: ThreadRoom;
   topicUpdates?: TopicUpdate[];
   focusTopic?: { key: string; nonce: number } | null;
+  /** A sidebar message search asks this conversation to find the same words after navigation. */
+  findRequest?: { query: string; nonce: number } | null;
+  onFindRequestHandled?: (nonce: number) => void;
   earlierPages?: EarlierPage[];
   currentStartedAt?: number;
   hasEarlierPages?: boolean;
@@ -174,8 +177,18 @@ export function Thread(props: Props) {
   const signature = `${history.length}:${live.length}:${liveText}:${pendingUser ? 1 : 0}:${running ? 1 : 0}:${extras.length}:${waitingCount}`;
   const follow = useFollow(signature);
   const [finding, setFinding] = useState(false);
+  const [findRequest, setFindRequest] = useState({ query: "", nonce: 0 });
   const threadRef = useRef<HTMLDivElement>(null);
-  useFindKey(useCallback(() => setFinding(true), []));
+  useFindKey(useCallback((query?: string) => {
+    setFinding(true);
+    if (query) setFindRequest((current) => ({ query, nonce: current.nonce + 1 }));
+  }, []));
+  useEffect(() => {
+    if (!props.findRequest) return;
+    setFinding(true);
+    setFindRequest({ query: props.findRequest.query, nonce: props.findRequest.nonce });
+    props.onFindRequestHandled?.(props.findRequest.nonce);
+  }, [props.findRequest?.nonce]);
   const empty = !history.length && !pendingUser && !running && !props.questions?.length && !waitingCount;
   const lastReply = [...history].reverse().find((block) => block.kind === "text");
   const suggestionKey = lastReply ? `${props.sessionKey ?? ""}:${lastReply.key}` : null;
@@ -228,7 +241,7 @@ export function Thread(props: Props) {
   return (
     <ThreadContext.Provider value={ctx}>
       <div className="thread-wrap" data-times={prefs.messageTimes} data-look={prefs.msgLook} data-scrollbars={prefs.scroll} dir={prefs.dir}>
-      {finding ? <FindBar root={threadRef} name={name} signature={signature} onClose={() => setFinding(false)} /> : null}
+      {finding ? <FindBar key={findRequest.nonce} root={threadRef} name={name} signature={signature} initialQuery={findRequest.query} onClose={() => { setFinding(false); setFindRequest((current) => ({ query: "", nonce: current.nonce + 1 })); }} /> : null}
       <div className="scroll" ref={follow.scroller} tabIndex={-1} onScroll={(event) => { follow.onScroll(); if (event.currentTarget.scrollTop < 80 && props.hasEarlierPages && !props.loadingEarlier) props.onLoadEarlier?.(); }} data-testid="thread-scroll">
         <div className="thread" ref={threadRef}>
           {props.hasEarlierPages ? <button type="button" className="stamp segment-more" onClick={props.onLoadEarlier} disabled={props.loadingEarlier}>{props.loadingEarlier ? "Loading earlier pages…" : "Earlier pages"}</button> : null}

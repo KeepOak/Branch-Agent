@@ -32,6 +32,10 @@ describe("shortcutFor", () => {
     expect(shortcutFor(key("k"), false)).toBeNull();
     expect(shortcutFor(key("k", { ctrlKey: true, altKey: true }), false)).toBeNull();
   });
+  it("routes Ctrl+P to Past search instead of browser Print", () => {
+    expect(shortcutFor(key("p", { ctrlKey: true }), false)).toBe("focusPastSearch");
+    expect(shortcutFor(key("p", { metaKey: true }), true)).toBe("focusPastSearch");
+  });
 });
 
 describe("settable keys (§4.8.8)", () => {
@@ -115,7 +119,7 @@ describe("modal shortcut scope (§3.6)", () => {
     const noop = () => {};
     function Harness() {
       useShortcuts({ palette, escape, newConversation: noop, settings: noop, sidePanel: noop, quickAsk: noop,
-        focusMode: noop, toggleList: noop, inbox: noop, focusSearch: noop,
+        focusMode: noop, toggleList: noop, inbox: noop, focusSearch: noop, focusPastSearch: noop,
         archiveOpen: noop, talkBeside: noop, talkLive: noop, stop: noop, nextConversation: noop,
         shortcuts: noop });
       return null;
