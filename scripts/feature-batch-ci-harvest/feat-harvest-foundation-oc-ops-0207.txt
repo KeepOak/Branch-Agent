@@ -1,2 +1,3 @@
 engine:src/config/io.observe-recovery.test.ts
 engine:src/config/recovery-policy.test.ts
+engine:src/config/validation-field-help.behaviour.test.ts
