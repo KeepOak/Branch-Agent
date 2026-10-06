@@ -17,9 +17,11 @@ engine:src/acp/control-plane/manager.actor-epoch-fencing.test.ts
 engine:src/acp/control-plane/manager.backend-failover.test.ts
 engine:src/acp/control-plane/spawn.test.ts
 engine:src/agents/agent-roles.test.ts
+engine:src/agents/lanes.test.ts
 engine:src/agents/subagents/spawn/acp-spawn.test.ts
 engine:src/auto-reply/group-thread.test.ts
 engine:src/channels/turn/group-thread-delivery.test.ts
 engine:src/groves/cron-update.test.ts
 engine:src/groves/cron.test.ts
 engine:src/groves/mcp.test.ts
+engine:src/process/command-queue.capacity-groups.test.ts
