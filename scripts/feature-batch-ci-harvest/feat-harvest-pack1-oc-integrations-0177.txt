@@ -1,4 +1,9 @@
 engine:src/plugin-activation-boundary.test.ts
+engine:src/plugin-state/plugin-blob-store.eviction.test.ts
+engine:src/plugin-state/plugin-blob-store.test.ts
+engine:src/plugin-state/plugin-state-store.namespace-independence.test.ts
+engine:src/plugin-state/plugin-state-store.retention.test.ts
+engine:src/plugin-state/plugin-state-store.test.ts
 engine:src/plugins/activation-planner.test.ts
 engine:src/plugins/discovery.path-inspection.test.ts
 engine:src/plugins/discovery.test.ts
