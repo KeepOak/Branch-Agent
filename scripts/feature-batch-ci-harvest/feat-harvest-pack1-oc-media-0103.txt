@@ -1,4 +1,7 @@
 engine:extensions/anthropic/cli-auth-seam.test.ts
+engine:extensions/github-copilot/login.test.ts
+engine:extensions/github-copilot/oauth.test.ts
+engine:extensions/github-copilot/usage.test.ts
 engine:extensions/lmstudio/src/models.fetch.test.ts
 engine:extensions/lmstudio/src/setup.test.ts
 engine:extensions/lmstudio/src/stream.test.ts
