@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/media/audio-transcode.test.ts (atlas MEDIA-0104). Changed for Branch: scope the Darwin fixture to routing so Linux user-namespace ownership checks stay real; preserve staging failure and cleanup assertions.
 // Audio transcode tests cover ffmpeg-backed audio conversion behavior.
 import { existsSync, realpathSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
@@ -202,7 +203,11 @@ describe("transcodeAudioBuffer", () => {
   });
 
   it("returns a failure and cleans its workspace when input staging fails", async () => {
-    vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    // Mock only the afconvert routing check; filesystem admission uses the real host.
+    const hostPlatform = process.platform;
+    vi.spyOn(process, "platform", "get")
+      .mockReturnValue(hostPlatform)
+      .mockReturnValueOnce("darwin");
     let workspaceDir: string | undefined;
     __setFsSafeTestHooksForTest({
       beforeFileStoreSyncPrivateWrite: (filePath) => {
