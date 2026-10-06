@@ -231,6 +231,25 @@ describe("Settings › Seasons", () => {
 
 describe("Settings › Gateway", () => {
   const H = { ok: true, ts: Date.now(), durationMs: 3, channels: { telegram: { connected: true } }, channelLabels: { telegram: "Telegram" } };
+  it("keeps the close-window control below Gateway mode and saves through the desktop setting", async () => {
+    let state = { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: false, startWithWindows: false, branchOnPath: false };
+    const set = vi.fn(async (name: keyof typeof state, on: boolean) => (state = { ...state, [name]: on }));
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get: async () => state, set } };
+    try {
+      const { engine } = engineWith({ health: H });
+      await show("gateway", engine);
+      const mode = document.querySelector('[data-row="Gateway"]');
+      const row = document.querySelector('[data-row="Keep working when the window closes"]');
+      expect(mode?.nextElementSibling).toBe(row);
+      const control = row?.querySelector<HTMLInputElement>('input[role="switch"]');
+      expect(control?.checked).toBe(true);
+      await act(async () => control?.click());
+      expect(set).toHaveBeenCalledWith("keepWorking", false);
+      expect(control?.checked).toBe(false);
+    } finally {
+      delete (window as { branchDesktop?: unknown }).branchDesktop;
+    }
+  });
   it("says the gateway is on from health and system.info, and restarts it on gateway.restart.request", async () => {
     const { engine, request } = engineWith({ health: H, "system.info": { uptimeMs: 3 * 86_400_000 }, "gateway.restart.request": { ok: true, status: "scheduled" } });
     await show("gateway", engine);
@@ -269,13 +288,10 @@ describe("Settings › Branch itself", () => {
     await click("Run now");
     expect(request).toHaveBeenCalledWith("sessions.storage.run", {});
   });
-  it("saves Updating itself on the engine's update settings", async () => {
-    const { engine, request } = engineWith({ health: { ok: true }, "config.get": { hash: "h", valid: true, config: {} }, "config.patch": { ok: true, hash: "h2", config: {} } });
+  it("keeps the Install updates setting in Updates & about only", async () => {
+    const { engine } = engineWith({ health: { ok: true }, "config.get": { hash: "h", valid: true, config: {} } });
     await show("self", engine);
-    await act(async () => (document.querySelector('[aria-label="Updating itself"] button:last-child') as HTMLButtonElement).click());
-    await flush();
-    const patches = request.mock.calls.filter(([m]) => m === "config.patch").map(([, p]) => JSON.parse(String((p as { raw: string }).raw)));
-    expect(patches).toEqual([{ update: { auto: { enabled: false } } }, { update: { checkOnStart: false } }]);
+    expect(document.querySelector('[aria-label="Updating itself"]')).toBeNull();
   });
 });
 

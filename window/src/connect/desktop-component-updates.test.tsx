@@ -69,9 +69,9 @@ it("legacy native bootstrap says it checks every ten minutes, greys Check now, a
   await show(); expect(host.textContent).toContain("Branch checks for updates every 10 minutes and lets you know when one is ready to apply.");
   expect(host.textContent).not.toContain("aren’t available");
   const check = [...host.querySelectorAll("button")].find(row => row.textContent === "Check now");
-  expect(check?.disabled).toBe(true); expect(host.textContent).toContain("Checking by hand needs a newer Branch Agent app.");
+  expect(check?.disabled).toBe(true); expect(host.textContent).toContain("Update the Branch app to check by hand.");
   expect(updateCalls()).toEqual([]);
-  await expect(stageWindowUpdate(engine)).rejects.toThrow("Checking by hand needs a newer Branch Agent app.");
+  await expect(stageWindowUpdate(engine)).rejects.toThrow("Update the Branch app to check by hand.");
   expect(updateCalls()).toEqual([]);
 });
 
@@ -142,7 +142,7 @@ it("native shell status uses component status and legacy shell reports unsupport
   await act(async () => root.unmount()); root = createRoot(host);
   desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl };
   await act(async () => root.render(<UpdateProbe gatewayUrl="ws://127.0.0.1:1" />));
-  expect(document.body.textContent).toContain("Checking by hand needs a newer Branch Agent app.");
+  expect(document.body.textContent).toContain("Update the Branch app to check by hand.");
   expect(document.body.textContent).not.toContain("Branch is up to date."); expect(request).not.toHaveBeenCalled();
 });
 

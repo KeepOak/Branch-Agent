@@ -112,7 +112,7 @@ export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & {
             const fiveHour = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
             const week = row.windows.find((window) => /week/i.test(window.name));
             return <div className="sp-account" key={row.id}>
-              <div className="sp-account-head"><span className="sp-email">{row.email || row.account || row.name}</span><span>{row.plan}</span><strong>{fiveHour ? `${fiveHour.left}% left` : "Not published"}</strong></div>
+              <div className="sp-account-head"><span className="sp-email">{row.email || row.account || row.name}</span><span>{row.plan}</span><strong>{fiveHour ? `${fiveHour.left}% left` : "Not shared"}</strong></div>
               {fiveHour ? <><span className="sp-account-track"><i style={{ width: `${fiveHour.left}%` }} /></span><small>5-hour {fiveHour.reset || "reset time unavailable"}{week ? ` · week ${week.left}% left` : ""}</small></> : <small>{row.line}</small>}
             </div>;
           })}
@@ -120,7 +120,7 @@ export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & {
         {!limits ? <p className="sp-note">Asking each connection…</p> : null}
         {data && !rows.length ? <p className="sp-note">{data.refreshing ? "Asking each connection…" : "No account reports a limit yet."}</p> : null}
         {data ? <p className="sp-note">Checked {ageWords(data.updatedAt, Date.now())}</p> : null}
-        {checkError ? <p className="sp-note">Couldn’t check accounts: {checkError}</p> : null}
+        {checkError ? <p className="sp-note">Couldn’t check accounts right now. Branch will try again.</p> : null}
         <div className="lim-foot">
           <Item icon="retry" label={checking ? "Checking…" : "Check every account now"} testid="usage-check" onClick={check} off={checking ? "Checking accounts now." : undefined} />
           <Item icon="gear" label="Accounts and usage…" testid="open-usage" onClick={onOpenUsage} />

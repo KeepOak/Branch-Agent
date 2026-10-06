@@ -6,6 +6,7 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { drainStopGateway, gatewayActivity, portIsFree, readToken, startGateway, stopGateway, stopGatewayCleanly, waitForReady } from "./gateway";
+import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident } from "./resident-window";
@@ -80,6 +81,34 @@ let componentsReady = false;
 /** The window build the static server serves: the staged one only once its engine runs. */
 let servedWindowDir = cfg.windowDir;
 let engineRestartInProgress = false;
+let gatewayRecoveryError: string | undefined;
+const gatewaySupervisor = createGatewayCrashSupervisor({
+  current: () => gateway,
+  log,
+  onExhausted: error => {
+    gatewayRecoveryError = `Branch couldn't restart the engine after repeated attempts. Restart Branch Agent to try again. ${error.message}`;
+    log(`gateway recovery stopped: ${error.message}`);
+    win?.webContents.send("branch-desktop:gateway-recovery-failed", gatewayRecoveryError);
+    if (!HIDDEN && win?.isVisible()) dialog.showErrorBox("Branch couldn't restart the engine", error.message);
+  },
+  restart: async () => {
+    if (engineRestartInProgress) throw new Error("engine update still in progress");
+    if (engineRunning()) return;
+    engineRestartInProgress = true;
+    try {
+      await waitForGatewayPort();
+      // The selected pointer may already name a staged update. Recover the build that exited;
+      // only the normal update path may validate and confirm the staged engine/window pair.
+      await bootEngine(readFileSync(join(cfg.dataDir, "engine-running.txt"), "utf8").trim(), false);
+      log("gateway recovered after unexpected exit");
+    } catch (error) {
+      if (gateway) stopGateway(gateway);
+      throw error;
+    } finally {
+      engineRestartInProgress = false;
+    }
+  },
+});
 const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
 let tray: Tray | undefined;
 const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, ICON), onChange: settings => {
@@ -123,13 +152,21 @@ const engineRunning = (): boolean => Boolean(gateway && gateway.exitCode === nul
 async function swapEngineInPlace(label: string, explicit: boolean): Promise<void> {
   if (!gateway || !win || engineRestartInProgress) throw new Error("The desktop is not ready to update");
   engineRestartInProgress = true;
+  gatewaySupervisor.cancelPending();
   const windowBefore = windowBuild(servedWindowDir);
   try {
     if (!await candidatePassed(label)) return;
     const started = Date.now();
     win.webContents.send("branch-desktop:engine-update", "updating");
-    if (explicit) log(`update ${label}: old engine ${await drainStopGateway(gateway)}`);
-    else await stopGatewayCleanly(gateway);
+    const priorGateway = gateway;
+    const resumeSupervision = gatewaySupervisor.expectExit(priorGateway);
+    try {
+      if (explicit) log(`update ${label}: old engine ${await drainStopGateway(priorGateway)}`);
+      else await stopGatewayCleanly(priorGateway);
+    } catch (error) {
+      resumeSupervision();
+      throw error;
+    }
     const stopped = Date.now();
     servedWindowDir = cfg.windowDir;
     await waitForGatewayPort();
@@ -344,18 +381,21 @@ async function waitForGatewayPort(): Promise<void> {
 }
 
 /** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
-async function bootEngine(): Promise<void> {
+async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = true): Promise<void> {
   const started = Date.now();
-  const engineDir = resolveEngineDir(cfg);
-  gateway = startGateway(cfg, engineDir, token);
-  log(`gateway started from ${engineDir}, pid ${gateway.pid}`);
+  const child = startGateway(cfg, engineDir, token);
+  gateway = child;
+  const observed = gatewaySupervisor.observe(child);
+  log(`gateway started from ${engineDir}, pid ${child.pid}`);
   // publish-engine.sh never removes the folder named here.
   writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
 `);
-  await waitForReady(cfg, gateway, READY_TIMEOUT_MS);
-  await confirmComponentUpdate(cfg);
+  await waitForReady(cfg, child, READY_TIMEOUT_MS);
+  if (confirmUpdate) await confirmComponentUpdate(cfg);
+  observed.ready();
+  gatewayRecoveryError = undefined;
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
-  engineUpdateReady = false;
+  if (confirmUpdate) engineUpdateReady = false;
   watchEngine();
 }
 
@@ -398,12 +438,14 @@ function watchUpdates(w: BrowserWindow): void {
   // A reload re-runs the preload; show the bar again if an engine update is still waiting.
   w.webContents.on("did-finish-load", () => {
     if (engineUpdateReady) w.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
+    if (gatewayRecoveryError) w.webContents.send("branch-desktop:gateway-recovery-failed", gatewayRecoveryError);
   });
 }
 
 /** The owner's Update click: applies a staged engine/window pair, or a rebuilt engine, in place. */
 async function restartEngine(): Promise<void> {
   if (!gateway || !win || !componentsReady || engineRestartInProgress) return;
+  gatewaySupervisor.cancelPending();
   const staged = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   log(`update requested (${staged ?? "rebuilt engine"}); old engine pid ${gateway.pid}`);
   try { await swapEngineInPlace(staged ?? "rebuilt engine", true); }
@@ -420,6 +462,7 @@ function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
   if (quitAfterCleanStop || !gateway || !engineRunning() || typeof event?.preventDefault !== "function") return false;
   event.preventDefault();
   quitAfterCleanStop = true;
+  gatewaySupervisor.close();
   stopGatewayCleanly(gateway, 15_000).then(() => log("gateway stopped cleanly for quit"),
     error => log(`quit: clean stop skipped: ${error instanceof Error ? error.message : String(error)}`)).finally(() => app.quit());
   return true;
@@ -427,6 +470,7 @@ function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
 
 function shutdown(): void {
   log(`quit; stopping gateway pid ${gateway?.pid}`);
+  gatewaySupervisor.close();
   stopEngineWatch?.();
   stopComponentWatch?.();
   autoApply.stop();

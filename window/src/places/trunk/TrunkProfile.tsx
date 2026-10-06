@@ -107,7 +107,7 @@ export function TrunkProfile(props: TrunkProfileProps) {
   if (removing && row) return <RemoveTrunkDialog engine={engine} agentId={agentId} name={row.name} onClose={() => setRemoving(false)} onRemoved={onClose} />;
   if (!data.data || !row) {
     const line = data.error || (data.loading ? "Reading this Trunk…" : "This Trunk is no longer in the engine’s list.");
-    return <Layer><Dialog title="Trunk" wide onClose={onClose} testid="trunk-profile" footer={<button type="button" className="btn ghost" onClick={onClose}>Close</button>}><p className={data.error ? "tk-error" : "tk-hint"} role={data.error ? "alert" : "status"}>{line}</p></Dialog></Layer>;
+    return <Layer><Dialog title="Trunk" wide onClose={onClose} testid="trunk-profile"><p className={data.error ? "tk-error" : "tk-hint"} role={data.error ? "alert" : "status"}>{line}</p></Dialog></Layer>;
   }
   return <ProfileBody {...props} data={data.data} row={row} reload={data.reload} edit={setEditing} remove={() => setRemoving(true)} files={files} setFiles={setFiles} />;
 }

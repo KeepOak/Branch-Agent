@@ -35,7 +35,7 @@ export async function saveAgentFile(engine: WindowEngine, agentId: string, file:
 
 /** Keep technical keys compatible; rename only human-facing values. Never render secret material. */
 export function visible(value: unknown): string {
-  return text(value).replace(/OpenClaw/gi, "Branch Agent").replace(/Crabbox/gi, "Cuttings").replace(/ClawHub/gi, "Seedbank").replace(/Peekaboo/gi, "Knothole").replace(/Lobsterdex/gi, "Trellis index").replace(/Lobster/gi, "Trellis").replace(/ClawRouter/gi, "Rootway").replace(/ClawSweeper/gi, "Rake").replace(/clawpack/gi, "Seedpod").replace(/Molty/gi, "Sprig").replace(/Workboard/gi, "Canopy").replace(/Dreaming/gi, "Rings");
+  return text(value).replace(/OpenClaw/gi, "Branch").replace(/Crabbox/gi, "Cuttings").replace(/ClawHub/gi, "Seedbank").replace(/Peekaboo/gi, "Knothole").replace(/Lobsterdex/gi, "Trellis index").replace(/Lobster/gi, "Trellis").replace(/ClawRouter/gi, "Rootway").replace(/ClawSweeper/gi, "Rake").replace(/clawpack/gi, "Seedpod").replace(/Molty/gi, "Sprig").replace(/Workboard/gi, "Canopy").replace(/Dreaming/gi, "Rings");
 }
 export function safeEntries(value: unknown): [string, unknown][] {
   return Object.entries(record(value)).filter(([key, item]) => !/secret|password|credential|api.?key|raw|content/i.test(key) && !(/token/i.test(key) && !(typeof item === "number" && /(?:Tokens|TokenCount|TokensUsed|TokensRemaining|TokenLimit)$/i.test(key))));

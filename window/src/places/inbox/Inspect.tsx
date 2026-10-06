@@ -78,7 +78,7 @@ export function Inspect({ engine, title, at, runId, close }: { engine: WindowEng
     return () => { live = false; };
   }, [engine, runId]);
   useEffect(load, [load]);
-  return <Dialog wide title="Who ran this, and with what right" onClose={close} footer={<><button type="button" className="btn ghost" onClick={() => load()}>Start again</button><button type="button" className="btn" onClick={close}>Close</button></>}>
+  return <Dialog wide title="Who ran this, and with what right" onClose={close} footer={<><button type="button" className="btn ghost" onClick={() => load()}>Start again</button></>}>
     <p className="ib-p"><b>{title}</b> · {dayWord(at)}</p>
     <p className="ib-hint">Kept by the Gateway for 30 days. A missing record doesn’t prove the run didn’t happen.</p>
     {error ? <p className="ib-err" role="alert">{error}</p> : !result ? <p className="ib-hint" role="status">Reading the record…</p> : <Body result={result} pick={pick} setPick={setPick} />}

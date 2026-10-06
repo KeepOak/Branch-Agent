@@ -20,7 +20,8 @@ vi.mock("./shell/WindowShell", () => ({
   WindowShell: ({ url }: { url: string }) => {
     const [draft, setDraft] = useState("");
     const note = useVoiceNote(() => {}, () => {});
-    return <div><span data-testid="target">{url}</span><input aria-label="Draft" value={draft} onChange={(event) => setDraft(event.target.value)} />
+    return <div><span data-testid="target">{url}</span><div data-testid="thread-scroll" style={{ overflowY: "auto", height: 100 }} />
+      <input aria-label="Draft" value={draft} onChange={(event) => setDraft(event.target.value)} />
       <button onClick={() => void note.start()}>Record</button><span data-testid="recording">{note.on ? "on" : "off"}</span></div>;
   },
 }));
@@ -52,6 +53,8 @@ it("keeps the draft and active voice recorder mounted through a gateway target s
   root = createRoot(host);
   await act(async () => root?.render(<App />));
   const draft = host.querySelector<HTMLInputElement>('input[aria-label="Draft"]')!;
+  const scroller = host.querySelector<HTMLElement>('[data-testid="thread-scroll"]')!;
+  scroller.scrollTop = 73;
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(draft, "unfinished thought");
     draft.dispatchEvent(new Event("input", { bubbles: true }));
@@ -66,6 +69,8 @@ it("keeps the draft and active voice recorder mounted through a gateway target s
   expect(fake.handoff).toHaveBeenCalledWith("ws://127.0.0.1:2", "shared-token");
   expect(host.querySelector('[data-testid="target"]')?.textContent).toBe("ws://127.0.0.1:2");
   expect(host.querySelector<HTMLInputElement>('input[aria-label="Draft"]')?.value).toBe("unfinished thought");
+  expect(host.querySelector('[data-testid="thread-scroll"]')).toBe(scroller);
+  expect(scroller.scrollTop).toBe(73);
   expect(host.querySelector('[data-testid="recording"]')?.textContent).toBe("on");
   expect(fake.recorderStops).toBe(0);
   expect(track.stop).not.toHaveBeenCalled();

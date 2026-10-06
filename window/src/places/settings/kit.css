@@ -1,29 +1,33 @@
 /* The Settings row kit (§4.7, §5.3), copied from the App Preview's 00-core, 50-settings and 51-set1p rules. */
 .set-col .sec { margin-top: 28px; }
-.set-col .sec > h2 { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; font: 500 10.5px/1.2 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+.set-col .sec > h2 { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; font: 600 12px/1.3 var(--sans); color: var(--ink-2); }
 .set-col .hint { margin: 0 0 8px; font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
 .set-col .rows + .hint, .set-col .ctl + .hint { margin-top: 10px; }
-.set-col .empty { margin: 14px 0; padding: 36px 0; color: var(--ink-3); text-align: center; }
+.set-col .empty { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 14px 0; padding: 36px 0; color: var(--ink-3); text-align: center; }
 
 .set-col .ctl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; align-items: center; padding: 13px 0; border-bottom: 1px solid var(--line); }
 .set-col .ctl > b { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; line-height: 21px; }
 .set-col .ctl > small { grid-column: 1; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
-.set-col .ctl > .right { display: flex; align-items: center; gap: 8px; grid-row: 1 / span 2; grid-column: 2; }
+.set-col .ctl > .right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; grid-row: 1 / span 2; grid-column: 2; min-width: 0; }
 .set-col .ctl.stack-k { grid-template-columns: minmax(0, 1fr); }
 .set-col .ctl.stack-k > .right { grid-row: auto; grid-column: 1; margin-top: 8px; }
 .set-col .ctl.stack-k > .right > .inp,
 .set-col .ctl.stack-k > .right > textarea { flex: 1; width: 100%; }
-.set-col .ctl.off-k > .right { opacity: 0.5; }
-/* each row's pin (preview 96 r618-pin): a grid item right after the title, so a row's lone switch sits under the
-   title and a control on the right leaves a pin-high gap above the sub-line, as the preview's rows do */
+.set-col .ctl:has(> .right .sseg button:nth-child(4)),
+.set-col .ctl:has(> .right textarea),
+.set-col .ctl:has(> .right .inp.wide-k) { grid-template-columns: minmax(0, 1fr); }
+.set-col .ctl:has(> .right .sseg button:nth-child(4)) > .right,
+.set-col .ctl:has(> .right textarea) > .right,
+.set-col .ctl:has(> .right .inp.wide-k) > .right { grid-row: auto; grid-column: 1; justify-content: flex-start; margin-top: 8px; }
+.set-col .ctl.off-k { opacity: 0.45; }
+.set-col .ctl.off-k > .pin-k { display: none; }
+/* A pin appears on hover without moving the right-aligned control. */
 .set-col .ctl > .pin-k { width: 22px; height: 22px; display: inline-grid; place-items: center; margin: 0 0 0 4px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--ink-3); opacity: 0; vertical-align: middle; cursor: pointer; }
 .set-col .ctl:hover > .pin-k, .set-col .ctl > .pin-k:focus-visible, .set-col .ctl > .pin-k[aria-pressed="true"] { opacity: 1; }
 .set-col .ctl > .pin-k[aria-pressed="true"] { color: var(--accent); }
 .set-col .ctl > .pin-k:hover { background: var(--wash17); color: var(--ink); }
-.set-col .ctl:has(> .pin-k):has(> .right > .sw:only-child) > .right { grid-row: auto; grid-column: 1; justify-content: flex-start; }
 /* rows inside a dialog have no pin (the preview pins only the page's rows) */
 .set-col .dlg .ctl > .pin-k { display: none; }
-.set-col .dlg .ctl:has(> .pin-k):has(> .right > .sw:only-child) > .right { grid-row: 1 / span 2; grid-column: 2; justify-content: normal; }
 .set-col .ctl .kept-k { color: var(--ink-3); }
 /* a section of only rows draws as one card (preview 99-final) */
 .set-col .sec:not(:has(> :not(h2, p, .ctl))) > .ctl { background: var(--raise); padding: 14px 16px; border-bottom: 1px solid var(--hair17); box-shadow: inset 1px 0 0 var(--hair17), inset -1px 0 0 var(--hair17); }
@@ -38,8 +42,10 @@
 .set-col .sw:disabled { opacity: 0.5; cursor: default; }
 .set-col .sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.set-col .sseg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; border-radius: 10px; background: var(--fill); }
+.set-col .sseg { display: inline-flex; flex-wrap: nowrap; gap: 2px; padding: 2px; border-radius: 10px; background: var(--fill); white-space: nowrap; }
 .set-col .sseg button { height: 26px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; transition: background-color 0.14s var(--ease17), color 0.14s var(--ease17); }
+.set-col .ctl:has(> .right .sseg button:nth-child(5)) .sseg { width: 100%; }
+.set-col .ctl:has(> .right .sseg button:nth-child(5)) .sseg button { flex: 1; }
 .set-col .sseg button[aria-pressed="true"] { background: var(--raise); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
 .set-col .sseg button:disabled { opacity: 0.5; cursor: default; }
 
@@ -93,13 +99,26 @@
 }
 @media (max-width: 640px) {
   .set-col .ctl:has(> .right .sseg) { grid-template-columns: minmax(0, 1fr); }
-  .set-col .ctl:has(> .right .sseg) > .right { grid-row: auto; grid-column: 1; justify-content: flex-start; margin-top: 6px; flex-wrap: wrap; }
+  .set-col .ctl:has(> .right .sseg) > .right { grid-row: auto; grid-column: 1; justify-content: flex-start; margin-top: 6px; }
 }
 .set-col .kit-page > .lede { margin-bottom: 20px; }
+.set-col .kit-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.set-col .kit-head h1 { margin-bottom: 0; }
+.set-col .kit-help-anchor { flex: none; }
+.set-col .kit-help-pop { position: fixed; z-index: 100; width: min(360px, calc(100vw - 32px)); max-height: min(520px, 70vh); display: flex; flex-direction: column; padding: 14px 0 0; border: 1px solid var(--line); border-radius: var(--r3-17); background: var(--raise); box-shadow: 0 16px 40px rgba(0, 0, 0, .24); }
+.set-col .kit-help-pop > b { padding: 0 16px 12px; font-size: 14px; }
+.set-col .kit-help-body { overflow-y: auto; padding: 0 16px; }
+.set-col .kit-help-body > div { padding: 10px 0; border-top: 1px solid var(--hair17); }
+.set-col .kit-help-body strong { font-size: 12.5px; }
+.set-col .kit-help-body p { margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
+.set-col .kit-help-ask { width: 100%; min-height: 40px; margin-top: 10px; padding: 0 16px; border: 0; border-top: 1px solid var(--hair17); background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.set-col .kit-help-ask:hover:not(:disabled) { background: var(--wash17); }
+.set-col .kit-help-ask:disabled { opacity: .45; cursor: default; }
 .set-col .kit-page > .lede + .status, .set-col .kit-page > .lede + .sec { margin-top: 0; }
 .set-col .num-k { display: inline-flex; align-items: center; gap: 6px; }
 .set-col .num-k .inp { width: 72px; height: 32px; text-align: right; font-variant-numeric: tabular-nums; }
 /* Advanced's number fields are the preview's wider, left-aligned ones */
+.set-col .sec > h2[hidden] { display: none; }
 .set-col .kit-page[data-page-title="Advanced"] .num-k .inp { width: 96px; height: 34px; text-align: left; }
 .set-col .num-k small { min-width: 0; font-size: 12.5px; color: var(--ink-3); }
 /* Advanced writes its units as plain text beside the number (preview <span>) */

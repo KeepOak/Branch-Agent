@@ -68,7 +68,7 @@ export function LocalPage(props: SettingsPageProps) {
   const found = foundRuntimes(detect.data, local);
   const done = () => { setSetup(null); void detect.reload(); void models.reload(); };
   return (
-    <Page title={props.title} lede="Models that run here, free and private. Branch looks at this computer first and only offers what fits.">
+    <Page title={props.title} lede="Models that run here, free and private." help="Models that run here, free and private. Branch looks at this computer first and only offers what fits.">
       <Hardware loading={info.loading} error={info.error} hw={hw} runtimes={detect.loading ? undefined : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} />
       <Recommended loading={detect.loading || models.loading} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} />
       <Runtimes engine={props.engine} hw={hw} detect={detect} models={models} found={found} />
@@ -123,14 +123,14 @@ function Recommended({ loading, options, local, onSetup }: RecProps) {
           ))}
         </div>
       ) : loading ? <p className="hint">Looking for what this computer can run…</p> : <Empty>Nothing to set up on this computer yet.</Empty>}
-      <Ctl title="Recommended models, sized to this computer" sub="Each model with how well it fits here, and a size to pick: small, balanced or full." off={NO_CATALOGUE} />
+      <Ctl title="Recommended models, sized to this computer" sub="Show models that fit here and the sizes available." help="Each model with how well it fits here, and a size to pick: small, balanced or full." off={NO_CATALOGUE} />
     </Sec>
   );
 }
 
 function Installed({ m }: { m: RecordValue }) {
   const name = visible(m.name ?? m.id);
-  const ctx = typeof m.contextWindow === "number" ? Math.round(m.contextWindow / 1024) : 0;
+  const ctx = typeof m.contextWindow === "number" ? Math.round(m.contextWindow / 1000) : 0;
   const runtime = RUNTIMES.find((r) => r.id === m.provider)?.name ?? visible(m.provider);
   return (
     <div className="lm-k" data-row={name}>
@@ -139,7 +139,7 @@ function Installed({ m }: { m: RecordValue }) {
       <div className="lm-tags-k">
         {m.supportsTools === true ? <span className="tag-k">tools</span> : null}
         {Array.isArray(m.input) && m.input.includes("image") ? <span className="tag-k">sees pictures</span> : null}
-        {ctx ? <span className="tag-k">{ctx}k words of memory</span> : null}
+        {ctx ? <span className="tag-k">{ctx}K-token context</span> : null}
       </div>
       <div className="acts">
         <span className="pill done-k"><i />Installed</span>
@@ -150,11 +150,10 @@ function Installed({ m }: { m: RecordValue }) {
   );
 }
 
-const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "local", title, sec, lv }));
+const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "local", title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 export const LOCAL_ROWS: RowEntry[] = [
   ...rows("Recommended for you", 0, ["Recommended models, sized to this computer"]),
   ...rows("Runtimes", 0, RUNTIMES.map((r) => r.name)),
   ...rows("Runtimes", 1, ["Share with your other computers"]),
   ...rows("Running models here, more", 1, MORE_TITLES),
 ];
-

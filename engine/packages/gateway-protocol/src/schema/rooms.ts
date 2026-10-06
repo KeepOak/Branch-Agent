@@ -66,7 +66,7 @@ export const RoomsLogParamsSchema = closedObject({
   cursor: Type.Optional(Type.Integer({ minimum: 0 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
 });
-export const RoomsMembersAddParamsSchema = closedObject({ roomId: Id, kind: Kind, id: Id });
+export const RoomsMembersAddParamsSchema = closedObject({ roomId: Id, kind: Kind, id: Id, outsideAgent: Type.Optional(OutsideAgentSchema) });
 export const RoomsMembersRemoveParamsSchema = closedObject({ roomId: Id, kind: Kind, id: Id });
 export const RoomsRuleSetParamsSchema = closedObject({
   roomId: Id,

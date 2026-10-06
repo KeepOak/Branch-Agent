@@ -18,6 +18,7 @@ import { NOT_ON_PLAN, offPlan, planOrder, runsOnCodex, useCodexPlan } from "./co
 import { useModelAccounts } from "./useModelAccount";
 
 type Props = {
+  embedded?: boolean;
   anchor: RefObject<HTMLElement | null>;
   onClose: () => void;
   models: ModelChoice[];
@@ -94,13 +95,13 @@ export function ModelMenu(p: Props) {
     p.onClose();
     p.onOpen?.(target);
   };
-  return (
-    <Popover anchor={p.anchor} onClose={p.onClose} label="Model and how long it thinks" className="c-model">
+  const content = (
       <div
         ref={body}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
+            e.stopPropagation();
             moveFocus(body.current, e.key === "ArrowDown" ? 1 : -1);
           }
         }}
@@ -165,16 +166,16 @@ export function ModelMenu(p: Props) {
         ) : null}
         <Sep />
         <ModelSettings {...p} levels={levels} speeds={speeds} advanced={advanced} />
-        <ModelAccessInfo model={p.current} />
-        <p className="c-pp c-pp-end">
+        {!p.embedded ? <ModelAccessInfo model={p.current} /> : null}
+        {!p.embedded ? <p className="c-pp c-pp-end">
           Thinking options depend on the model.
           {accounts.length > 1 ? ` When ${accountName(accounts[0])} runs out, Branch moves to ${accountName(accounts[1])}.` : ""}
-        </p>
-        <LinkRow icon="users" label="Accounts and order…" target="settings/accounts" onOpen={p.onOpen} open={open} />
-        <LinkRow icon="sliders" label="Manage models…" target="settings/models" onOpen={p.onOpen} open={open} />
+        </p> : null}
+        {!p.embedded ? <LinkRow icon="users" label="Accounts and order…" target="settings/accounts" onOpen={p.onOpen} open={open} /> : null}
+        {!p.embedded ? <LinkRow icon="sliders" label="Manage models…" target="settings/models" onOpen={p.onOpen} open={open} /> : null}
       </div>
-    </Popover>
   );
+  return p.embedded ? content : <Popover anchor={p.anchor} onClose={p.onClose} label="Model and how long it thinks" className="c-model">{content}</Popover>;
 }
 
 function ModelSettings(p: Props & { levels: { id: string; label: string }[]; speeds: { id: string; label: string }[]; advanced: boolean }) {
@@ -206,9 +207,9 @@ function ModelSettings(p: Props & { levels: { id: string; label: string }[]; spe
       <p className="c-pp c-pp-note">{p.current?.supportsFastMode ? "Faster answers use your plan’s limits faster." : "This model has one speed."}</p>
       {p.advanced && ctx.length > 1 ? (
         <div className="c-row">
-          <span>Room to plan for</span>
+          <span>Context to plan for</span>
           <Segmented
-            label="Room to plan for"
+            label="Context to plan for"
             items={ctx}
             value={str(p.row.contextWindow) || p.current?.contextWindowDefault || ""}
             onPick={(id) => void p.patch({ contextWindow: id })}

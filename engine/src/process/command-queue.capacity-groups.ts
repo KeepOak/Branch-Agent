@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/process/command-queue.capacity-groups.ts (atlas AGENT-LOOP-0013). Changed for Branch: preserve existing Branch rebranding and set-based membership validation; retained under the Harvest rule that test assertions keep or strengthen upstream behavior.
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 // Capacity groups: a shared, hard aggregate budget across several command
 // lanes, with per-member reservations. Split out of command-queue.ts to keep

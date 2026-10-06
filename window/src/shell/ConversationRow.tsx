@@ -1,6 +1,7 @@
 import type { MouseEvent, ReactNode } from "react";
 import type { Conversation, RunMark } from "../connect/conversations";
 import { Pebble } from "../face/Pebble";
+import { RoomFaces } from "../rooms/RoomFaces";
 import { Icon, type IconName } from "./icons";
 import { colourHue, RowIcon } from "./row-look";
 import "./rows.css";
@@ -81,7 +82,7 @@ function workingText(row: Conversation, x: RowExtras | undefined): string {
 function secondLine(row: Conversation, state: RowState, x: RowExtras | undefined): { text: string; word: string; tone: string } | null {
   if (["trunk", "chatGroup", "outside"].includes(row.kind)) {
     if (state.waiting) return { text: row.preview, word: "Waiting on you", tone: "attn" };
-    if (state.working) return { text: workingText(row, x), word: "", tone: "" };
+    if (state.working) return { text: row.headline ? workingText(row, x) : "typing…", word: "", tone: "" };
     return null;
   }
   const mark = row.runMark ? MARKS[row.runMark] : null;
@@ -119,7 +120,7 @@ export function ConversationRow(p: Props) {
   const mark = row.runMark ? MARKS[row.runMark] : null;
   const line = secondLine(row, state, p.extras);
   // One line unless previews are on, or it waits for you or failed (the preview's rowPA18).
-  const twoLine = ["trunk", "chatGroup", "outside"].includes(row.kind) || p.showPreview || state.working || Boolean(line && (line.tone === "attn" || line.tone === "bad"));
+  const twoLine = ["trunk", "group", "chatGroup", "outside"].includes(row.kind) || p.showPreview || state.working || Boolean(line && (line.tone === "attn" || line.tone === "bad"));
   const text = line ?? (twoLine ? { text: row.preview || p.fallbackLine || "", word: "", tone: "" } : null);
   const hue = colourHue(row.color);
   const classes = ["row", current ? "current" : "", twoLine ? "" : "one", p.dimmed ? "dim" : "", p.child ? "child" : "", p.selected ? "sel" : ""].filter(Boolean).join(" ");
@@ -136,6 +137,7 @@ export function ConversationRow(p: Props) {
         className={classes}
         data-testid="conversation-row"
         data-key={row.key}
+        data-drag-key={row.key}
         data-pin-key={p.pinDraggable ? row.key : undefined}
         data-pin-fixed={p.pinFixed ? "true" : undefined}
         data-main={row.isMain ? "true" : undefined}
@@ -151,7 +153,7 @@ export function ConversationRow(p: Props) {
           onKeyDown={(e) => { if (e.key === "F10" && e.shiftKey) { e.preventDefault(); p.onMenu(e as unknown as MouseEvent<HTMLElement>); } }}
           onFocus={(e) => e.currentTarget.matches(":focus-visible") && card(e.currentTarget.parentElement)} onBlur={() => card(null)}>
           <span className={state.working ? "row-av working-ring" : "row-av"} data-working={state.working ? "true" : undefined}>
-            <Pebble size={twoLine ? 40 : 28} label={row.kind === "chatGroup" || row.kind === "outside" ? row.title : p.trunkName} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />
+            {row.roomPicks ? <RoomFaces picks={row.roomPicks} size={twoLine ? 40 : 28} /> : <Pebble size={twoLine ? 40 : 28} label={row.kind === "group" || row.kind === "chatGroup" || row.kind === "outside" ? row.title : p.trunkName} state={state.waiting ? "wait" : state.working ? "work" : "idle"} priority={state.working || state.waiting ? 200 : 100} />}
             {row.unread && !current ? <i className="rail-unread" aria-label="Unread" /> : null}
             {state.waiting ? <i className="needs-you" aria-label="Waiting for you" /> : null}
             {p.selected ? <span className="sel-tick" aria-hidden="true"><Icon name="tick" size={11} /></span> : null}
@@ -190,7 +192,7 @@ function rowButtons(p: Props, row: Conversation): ReactNode {
   return (
     <>
       {p.onPin && !p.child ? (
-        <button type="button" className="ib sm" aria-label={row.pinned ? "Unpin" : "Pin to top"} title={row.pinned ? "Unpin" : "Pin to top"} onClick={p.onPin}>
+        <button type="button" className="ib sm" aria-label={row.pinned ? "Unpin" : "Pin"} title={row.pinned ? "Unpin" : "Pin"} onClick={p.onPin}>
           <Icon name="pin" small />
         </button>
       ) : null}

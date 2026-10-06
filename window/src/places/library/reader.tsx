@@ -10,7 +10,7 @@ export function FileDialog({ engine, agentId, path, line, onClose }: { engine: W
   useEffect(() => { at.current?.scrollIntoView?.({ block: "center" }); }, [file.data]);
   const f = file.data ? fileOf(file.data) : null;
   const image = f?.encoding === "base64" && f.mimeType?.startsWith("image/");
-  return <Dialog title={path.split("/").pop() || path} wide onClose={onClose} footer={<button type="button" className="btn" onClick={onClose}>Close</button>} testid="file-dialog">
+  return <Dialog title={path.split("/").pop() || path} wide onClose={onClose} testid="file-dialog">
     <p className="lib-hint">{path} · read only</p>
     {file.loading && <p className="lib-hint" role="status">Loading…</p>}
     {file.error && <p className="lib-bad" role="alert">{file.error}</p>}

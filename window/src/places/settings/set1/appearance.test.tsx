@@ -78,6 +78,7 @@ describe("Settings › Appearance", () => {
   it("a switch saves the person's look to users.prefs at once", async () => {
     const { engine, request } = engineOf();
     await render(engine);
+    expect([...document.querySelectorAll(".sec h2")].filter((heading) => heading.textContent === "Reading")).toHaveLength(1);
     await act(async () => sw("Keep things still").click());
     expect(request).toHaveBeenCalledWith("users.prefs.set", { entries: { "ui.window.look": { still: true } }, expectedEntries: { "ui.window.look": null } });
     expect(document.documentElement.classList.contains("still-k")).toBe(true);

@@ -2,6 +2,7 @@
 // sessions.list and refreshed on every sessions.changed event, the way OpenClaw's ui/src/lib/sessions does.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { agentIdOf } from "./session";
+import type { RoomPick } from "../rooms/RoomFaces";
 
 export type Conversation = {
   key: string;
@@ -64,6 +65,8 @@ export type Conversation = {
   hiddenFromMe?: boolean;
   /** People in it (participants' identity ids). */
   participantIds?: string[];
+  /** Real room members for the stacked group face. */
+  roomPicks?: RoomPick[];
 };
 
 export type RunMark = "queued" | "failed" | "timeout" | "stopped";
