@@ -1,3 +1,4 @@
+engine:extensions/feishu/src/dynamic-agent.test.ts
 engine:extensions/trellis/src/trellis-runner.test.ts
 engine:extensions/trellis/src/trellis-tool.test.ts
 engine:src/agents/subagents/announce/subagent-announce-handoff.test.ts

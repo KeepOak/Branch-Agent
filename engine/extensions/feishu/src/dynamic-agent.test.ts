@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/feishu/src/dynamic-agent.test.ts (atlas MULTI-AGENT-0046). Changed for Branch: names mapped with scripts/rebrand-map.json; retain current-main account isolation and config mutation policy fixtures.
 // Feishu tests cover dynamic agent plugin behavior.
 import fs from "node:fs";
 import os from "node:os";

@@ -40,3 +40,4 @@ engine/src/agents/tools/sessions-yield-tool.test.ts,MULTI-AGENT-0013,openclaw/op
 engine/src/routing/resolve-route.test.ts,MULTI-AGENT-0044,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/routing/resolve-route.test.ts (changed: Branch names and current-main coverage retained),2026-10-06
 engine/src/routing/bindings.test.ts,MULTI-AGENT-0044,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/routing/bindings.test.ts (changed: Branch names and current-main coverage retained),2026-10-06
 engine/src/routing/session-key.test.ts,MULTI-AGENT-0044,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/routing/session-key.test.ts (changed: Branch names and current-main coverage retained),2026-10-06
+engine/extensions/feishu/src/dynamic-agent.test.ts,MULTI-AGENT-0046,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,extensions/feishu/src/dynamic-agent.test.ts (changed: Branch names and current-main coverage retained),2026-10-06
