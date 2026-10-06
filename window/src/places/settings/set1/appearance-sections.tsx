@@ -58,6 +58,13 @@ export const SCENES: { id: string; name: string; file: string | null; fresh?: bo
 export function BackgroundSec({ look }: { look: Look }) {
   const save = useSaveRunner();
   const bg = String(look.val("bg", "none")), scene = String(look.val("scene", "auto"));
+  const [preview, setPreview] = useState(false);
+  useEffect(() => {
+    if (!preview) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setPreview(false); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [preview]);
   const pick = (id: string) => void save(async () => { await look.store.set("scene", id === "auto" ? null : id); await look.store.set("bg", "painted"); });
   return (
     <Sec title="Background">
@@ -75,9 +82,10 @@ export function BackgroundSec({ look }: { look: Look }) {
       </div>
       <RangeRow look={look} k="scrim" def={35} max={90} title="How much the theme covers it" label="How much the theme covers the background" sub="More keeps text calmer; less shows more of the background." off={bg === "none"} />
       <RangeRow look={look} k="see" def={25} max={60} title="See-through panels" label="See-through panels" sub="Panels blur what’s behind them." off={bg === "none"} />
-      <Ctl title="Preview" sub="Clear the view: see the background." help="Clear the view: see the background. Click anywhere or press Escape to come back." off={bg === "none" ? undefined : "The window doesn’t draw a background yet, so there’s nothing behind it to see."}>
-        <Btn sm disabled>{EYE}See it clearly</Btn>
+      <Ctl title="Preview" sub="Clear the view: see the background." help="Clear the view: see the background. Click anywhere or press Escape to come back." off={bg === "none" ? "Pick a background first." : undefined}>
+        <Btn sm disabled={bg === "none"} onClick={() => setPreview(true)}>{EYE}See it clearly</Btn>
       </Ctl>
+      {preview ? <button type="button" className="scene-preview" aria-label="Close background preview" onClick={() => setPreview(false)}><span>Click anywhere or press Escape to come back</span></button> : null}
     </Sec>
   );
 }

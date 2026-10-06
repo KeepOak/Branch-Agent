@@ -9,6 +9,18 @@
   height: 100%;
   background: var(--bg);
 }
+/* Painted scenes sit behind the shell. Keep panels mostly opaque so their text remains readable. */
+:root[data-scene] .frame {
+  background-image: linear-gradient(color-mix(in srgb, var(--bg) var(--scene-cover), transparent), color-mix(in srgb, var(--bg) var(--scene-cover), transparent)), var(--scene-image);
+  background-position: center;
+  background-size: cover;
+}
+:root[data-scene] .frame :is(.topbar-left, .topbar-right, .side, .statusbar) {
+  background: color-mix(in srgb, var(--side) var(--scene-panel), transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+:root[data-scene] .frame .topbar-right { background: color-mix(in srgb, var(--bg) var(--scene-panel), transparent); }
 .frame.focus {
   grid-template-rows: 34px minmax(0, 1fr) 0;
   grid-template-columns: 0 minmax(0, 1fr);

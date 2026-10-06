@@ -67,6 +67,7 @@ export function UsageRing({ left, low }: { left: number | null; low: boolean }) 
 /** Health polling and socket connectivity are independent facts. */
 function GatewayStatus(p: Pick<Props, "gateway" | "open" | "onItem">) {
   const word = p.gateway === "offline" ? "stopped" : p.gateway === "checking" ? "checking" : "running";
+  const visible = p.gateway === "offline" ? "Offline · Gateway" : p.gateway === "checking" ? "Connecting · Gateway" : "Gateway";
   const colour = p.gateway === "on" ? "var(--ok)" : p.gateway === "checking" ? "var(--warn)" : "var(--bad)";
   return (
     <button type="button" className="sb status-symbol sb-gw" title={`Gateway · ${word}`}
@@ -74,6 +75,7 @@ function GatewayStatus(p: Pick<Props, "gateway" | "open" | "onItem">) {
       data-hide="gateway" data-state={p.gateway} aria-expanded={p.open === "gateway"} aria-haspopup="dialog"
       onClick={(e) => p.onItem("gateway", e)}>
       <StatusGlyph kind="gateway" colour={colour} />
+      <span className="status-label">{visible}</span>
     </button>
   );
 }
@@ -90,6 +92,7 @@ export function StatusBar(p: Props) {
     return () => window.clearTimeout(timer);
   }, [usageExpanded, p.open]);
   const connectionWord = WORDS[p.connection] || "Online";
+  const connectionLabel = p.connection === "connected" ? "Online · you are here" : `${connectionWord} · ${p.machineName}`;
   const connectionColour = p.connection === "connected" ? "var(--ok)" : p.connection === "connecting" ? "var(--warn)" : "var(--bad)";
   const left = p.roomUsed === null ? null : Math.max(0, Math.round((1 - p.roomUsed) * 100));
   const item = (id: StatusItem) => ({ "aria-expanded": p.open === id, "aria-haspopup": "dialog" as const, onClick: (e: MouseEvent<HTMLElement>) => p.onItem(id, e) });
@@ -97,6 +100,7 @@ export function StatusBar(p: Props) {
     <footer className="statusbar" data-testid="statusbar">
       <button type="button" className="sb status-symbol" title={`${p.machineName} · ${connectionWord}`} aria-label={`${p.machineName} · ${connectionWord}`} data-testid="sb-connection" data-state={p.connection} {...item("connection")}>
         <StatusGlyph kind="computer" colour={connectionColour} />
+        <span className="status-label">{connectionLabel}</span>
       </button>
       {p.gatewayShown === false ? null : <GatewayStatus gateway={p.gateway} open={p.open} onItem={p.onItem} />}
       {left !== null && p.roomUsed !== null ? (

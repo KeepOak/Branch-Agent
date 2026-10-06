@@ -568,6 +568,11 @@
   flex-direction: column;
   gap: 10px;
 }
+:root[data-scene] .thread .card {
+  background: color-mix(in srgb, var(--raise) var(--scene-panel), transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
 
 .thread .card.ask {
   border-color: color-mix(in srgb, var(--accent) 75%, transparent);

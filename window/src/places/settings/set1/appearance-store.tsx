@@ -19,6 +19,22 @@ export type EngineKey = keyof typeof ENGINE_PREFS;
 export const DEVICE_KEYS = ["size"] as const;
 const LOCAL = "branch.look";
 const STYLE_ID = "branch-look";
+const SCENE_FILES: Record<string, string> = {
+  spring: "/assets/grove-spring.webp", autumn: "/assets/grove-autumn.webp", winter: "/assets/grove-winter.webp", night: "/assets/grove-night.webp",
+  summer: "/assets/bg/grove-summer.webp", rain: "/assets/bg/grove-rain.webp", lake: "/assets/bg/grove-lake.webp",
+  blossom: "/assets/bg/grove-blossom.webp", canyon: "/assets/bg/grove-canyon.webp", snownight: "/assets/bg/grove-snownight.webp",
+  bamboo: "/assets/bg/grove-bamboo.webp", hills: "/assets/bg/grove-hills.webp",
+  "night17-lake": "/assets/art17/bg/lake-night.webp", "night17-highland": "/assets/art17/bg/highland-moon.webp",
+  "day17-sea": "/assets/art17/bg/sea-morning.webp", "day17-meadow": "/assets/art17/bg/meadow-afternoon.webp",
+  "glow17-amber": "/assets/art17/bg/glow-amber.webp", "season17-snow": "/assets/art17/bg/first-snow.webp",
+};
+function sceneFile(look: RecordValue): string | null {
+  if (look.bg !== "painted" && look.bg !== "grove") return null;
+  const month = new Date().getMonth();
+  const seasonal = month < 2 || month === 11 ? "winter" : month < 5 ? "spring" : month < 8 ? "summer" : "autumn";
+  const selected = look.bg === "grove" ? String(look.season ?? "auto") : String(look.scene ?? "auto");
+  return SCENE_FILES[selected === "auto" ? seasonal : selected] ?? SCENE_FILES[seasonal];
+}
 
 export type Where = "loading" | "profile" | "device";
 export type LookSnap = { look: RecordValue; device: RecordValue; prefs: Partial<Record<EngineKey, unknown>>; palette: Pair | null; where: Where; error?: string };
@@ -63,6 +79,15 @@ const DARK_SELS = ['@media (prefers-color-scheme: dark){:root:root:not([data-the
 /** The window's <style> for a look: the theme in both modes, the accent, fonts, text sizes and stillness. */
 export function lookCss(s: Saved): string {
   const out: string[] = [];
+  const scene = sceneFile(s.look);
+  if (scene) {
+    const scrim = Math.max(0, Math.min(90, Number(s.look.scrim ?? 35) || 0));
+    const see = Math.max(0, Math.min(60, Number(s.look.see ?? 25) || 0));
+    const darkCover = Math.max(35, scrim);
+    out.push(block(":root:root", { "--scene-image": `url('${scene}')`, "--scene-cover": `${Math.max(75, scrim)}%`, "--scene-panel": `${Math.max(75, 95 - see / 2)}%` }));
+    out.push(`@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--scene-cover:${darkCover}%}}`);
+    out.push(block(':root[data-theme="dark"]', { "--scene-cover": `${darkCover}%` }));
+  }
   const accent = isHex(s.prefs.accent) ? s.prefs.accent : null;
   const modeVars = (mode: Mode) => {
     const pal = s.palette ?? BUILTIN[DEFAULT_THEME];
@@ -104,6 +129,7 @@ export function applyLook(s: Saved) {
   root.classList.toggle("contrast17", s.look.contrast === true);
   root.classList.toggle("still-k", s.look.still === true);
   root.toggleAttribute("data-still", s.look.still === true);
+  root.toggleAttribute("data-scene", sceneFile(s.look) !== null);
   mirrorShell(s.look);
   window.dispatchEvent(new CustomEvent("branch:look-change", { detail: { look: s.look, device: s.device, prefs: s.prefs } }));
 }
