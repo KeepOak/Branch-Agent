@@ -63,13 +63,13 @@ listener.listen(Number(process.argv.at(-1)),"127.0.0.1");`;
   await writeFile(join(root, "desktop.json"), JSON.stringify({ dataDir: root, engineDir: engine, windowDir,
     nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() }));
 }
-async function fixture(run, holdStartup = false, fastSupervisor = false, holdCandidate = false) {
+async function fixture(run, holdStartup = false, fastSupervisor = false, holdCandidate = false, forceStandby = false) {
   const scratch = join(tmpdir(), "Codex-session-files"); await mkdir(scratch, { recursive: true });
   const root = await mkdtemp(join(scratch, "branch-restart-")); await createFixtureFiles(root);
   const previous = process.env.BRANCH_DESKTOP_DATA;
   const previousCandidateMin = process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB;
   process.env.BRANCH_DESKTOP_DATA = root;
-  if (holdCandidate) process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = "0";
+  if (holdCandidate || forceStandby) process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = "0";
   const runtime = electronFixture(), starts = async () => {
     try { return JSON.parse(await readFile(join(root, "starts.json"), "utf8")); }
     // The fixture may be mid-write: an empty or partial file reads as "not yet", and eventually() polls again.
@@ -225,7 +225,7 @@ test("a failed update releases the guard for the next owner retry", () => fixtur
   restart(); await eventually(() => swapped(root));
   assert.equal((await starts()).length, 4, "the failed standby is replaced by a guarded boot before rollback");
   assert.equal(runtime.errors.length, 1);
-}));
+}, false, false, false, true));
 test("an update click swaps the engine in place: the app and window stay open and the busy engine drains", () => fixture(async ({ root, runtime, starts, restart }) => {
   let quits = 0, relaunches = 0; runtime.app.on("will-quit", () => quits++); runtime.app.relaunch = () => relaunches++;
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
@@ -248,7 +248,7 @@ test("a busy engine from before drain-stop is never killed by an update click; t
   assert.equal(launched.length, 2, "only the read-only standby may start while the first engine is busy");
   await eventually(() => !alive(launched[1]));
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update").map(([, state]) => state), ["updating", "auto-wait"]);
-}));
+}, false, false, false, true));
 test("a new window build swaps in place after attached files are sent, keeping the engine", () => fixture(async ({ root, runtime, starts }) => {
   let files = true; const owner = runtime.window.webContents; owner.isDestroyed = () => false;
   owner.send = (channel, id) => {
