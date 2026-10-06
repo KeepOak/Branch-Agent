@@ -268,7 +268,7 @@ export class SaplingSession {
       }
     } else if ((event.event === "session.message" || event.event === "sessions.changed") && str(payload.sessionKey) === this.snapshot.sessionKey) {
       this.refreshSettled();
-    } else if (event.event === "rooms.event" && roomIdOf(this.snapshot.sessionKey) === str(payload.roomId) && str(payload.roomId)) {
+    } else if (event.event === "rooms.event" && roomIdOf(this.snapshot.sessionKey ?? "") === str(payload.roomId) && str(payload.roomId)) {
       // A post in this group chat by a Trunk or an outside agent (rooms.send): the room's lead thread shows it.
       this.refreshSettled();
     } else if (event.event === "exec.approval.requested") {
