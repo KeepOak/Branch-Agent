@@ -40,7 +40,7 @@ it("status glyphs open all six popovers from live facts", async () => {
   expect(host.querySelector("[data-testid=sb-room]")?.getAttribute("aria-label")).toBe("Context left · 86%");
   expect(host.querySelector("[data-testid=sb-running]")?.getAttribute("aria-label")).toBe("3 running");
   expect(host.querySelector("[data-testid=sb-version]")?.getAttribute("title")).toBe("Branch 0.19.5 · 0.20.0 ready");
-  expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("you@example.com · 77% left");
+  expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("ChatGPT · Account 1 · 77% left");
 });
 
 it("usage ring folds after five seconds and still opens on one click", async () => {

@@ -116,7 +116,9 @@ describe("Settings › Permissions", () => {
     const grant = { grantId: "g1", cronJobId: "c1", cronJobName: "Morning brief", command: "curl x", useCount: 2, revokedAtMs: null, expiresAtMs: null };
     const { engine, request } = engineOf({ "exec.approval.grants.list": { grants: [grant] }, "exec.approval.grants.revoke": { outcome: "revoked" }, "exec.approval.list": [], "approval.history": { items: [] } });
     await render(engine, 1);
-    await act(async () => button("Open").click());
+    const open = host.querySelector<HTMLButtonElement>('[data-row="Approvals"] button:not(.pin-k)');
+    expect(open).not.toBeNull();
+    await act(async () => open!.click());
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     expect(document.querySelector('[data-testid="approvals"]')!.textContent).toContain("Morning brief");
     await act(async () => button("Revoke").click());

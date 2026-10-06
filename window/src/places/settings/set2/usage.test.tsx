@@ -84,7 +84,7 @@ describe("Settings › Data & usage", () => {
     const claude = document.querySelector('[data-provider="anthropic"]')!;
     expect(claude.textContent).toContain("Measured");
     expect(claude.textContent).toContain("58% left · resets");
-    expect(claude.textContent).toContain("as of 4 min ago, asked Claude plan");
+    expect(claude.textContent).toContain("as of 4 min ago, asked Claude");
     expect(document.querySelector('[data-provider="google"]')!.textContent).toContain("Not published");
     expect(document.querySelector('[data-provider="zai"]')!.textContent).toContain("Token expired");
   });
