@@ -11,7 +11,7 @@ export type ComponentUpdates = {
   check(): Promise<ComponentUpdateStatus>;
   stage(): Promise<ComponentUpdateStatus>;
 };
-type Desktop = { gatewayUrl?: string; componentUpdates?: ComponentUpdates; unavailableReason?: string;
+type Desktop = { gatewayUrl?: string; getGatewayUrl?: () => string; componentUpdates?: ComponentUpdates; unavailableReason?: string;
   onAutoApplyProbe?: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }>) => () => void };
 /** An older Branch Agent app has no Check now bridge, but it still checks every hour and stages updates itself. */
 export const MANUAL_UPDATE_UNSUPPORTED = "Update the Branch app to check by hand.";
@@ -21,9 +21,10 @@ const TARGET_UNVERIFIED = "Branch is connected to a different computer’s engin
 export function componentDesktop(gatewayUrl?: string): Desktop | undefined {
   const desktop = (window as unknown as { branchDesktop?: Desktop }).branchDesktop;
   if (!desktop) return undefined;
-  if (!gatewayUrl || !desktop.gatewayUrl) return { unavailableReason: TARGET_UNVERIFIED };
+  const localUrl = desktop.getGatewayUrl?.() ?? desktop.gatewayUrl;
+  if (!gatewayUrl || !localUrl) return { unavailableReason: TARGET_UNVERIFIED };
   try {
-    const target = new URL(gatewayUrl); const local = new URL(desktop.gatewayUrl);
+    const target = new URL(gatewayUrl); const local = new URL(localUrl);
     if (target.protocol !== "ws:" && target.protocol !== "wss:") return { unavailableReason: TARGET_UNVERIFIED };
     return target.href === local.href ? desktop : undefined;
   } catch { return { unavailableReason: TARGET_UNVERIFIED }; }
