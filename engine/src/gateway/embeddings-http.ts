@@ -5,7 +5,7 @@ import {
   normalizeOptionalString,
 } from "@branch/normalization-core/string-coerce";
 import { z } from "zod";
-import { resolveAgentDir } from "../agents/agent-scope.js";
+import { resolveAgentConfig, resolveAgentDir } from "../agents/agent-scope.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { createConfiguredProviderLocalServiceAcquirer } from "../agents/provider-local-service.js";
 import { getRuntimeConfig } from "../config/io.js";
@@ -227,10 +227,16 @@ export async function handleOpenAiEmbeddingsHttpRequest(
   }
   const agentDir = resolveAgentDir(cfg, agentId);
   const memorySearch = resolveMemorySearchConfig(cfg, agentId);
-  const configuredProvider = memorySearch?.provider ?? "openai";
+  // Memory search fills an unspecified provider with its local default. The HTTP
+  // bridge has its own OpenAI-compatible default, but must honor explicit agent
+  // and global memory provider settings.
+  const configuredSearch = resolveAgentConfig(cfg, agentId)?.memory?.search;
+  const defaultSearch = cfg.memory?.search;
+  const explicitProvider = configuredSearch?.provider ?? defaultSearch?.provider;
+  const configuredProvider = explicitProvider ?? DEFAULT_MEMORY_EMBEDDING_PROVIDER;
   const overrideModel =
     normalizeOptionalString(getHeader(req, "x-branch-model")) ||
-    normalizeOptionalString(memorySearch?.model) ||
+    normalizeOptionalString(configuredSearch?.model ?? defaultSearch?.model) ||
     "";
   const target = resolveEmbeddingsTarget({
     requestModel: overrideModel,
