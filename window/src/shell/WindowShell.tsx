@@ -14,7 +14,7 @@ import { stepLabel } from "../thread/format";
 import { PlaceView } from "../places-nav/PlaceView";
 import { SettingsFrame } from "../places-nav/SettingsFrame";
 import { lookStore } from "../places/settings/set1/appearance-store";
-import { loadRoute, saveRoute, windowTitle, PLACES, type PlaceId, type Route } from "../places-nav/routes";
+import { loadRoute, parseRoute, saveRoute, windowTitle, PLACES, type PlaceId, type Route } from "../places-nav/routes";
 import { pageName } from "../places-nav/settings-nav";
 import { effectiveDark, readThemeChoice, setThemeChoice, toggleTheme, type ThemeChoice } from "../theme/theme";
 import { BannerView, raiseBanner } from "./Banner";
@@ -341,6 +341,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const isNarrow = useNarrow();
   const [slideOpen, setSlideOpen] = useState(false);
   const [route, setRoute] = useState<Route>(loadRoute);
+  const routeRef = useRef(route);
+  routeRef.current = route;
   const [draftTopic, setDraftTopic] = useState<{ agentId: string; nonce: string; options: Record<string, unknown> } | null>(null);
   const [topicReturnKey, setTopicReturnKey] = useState<string | null>(null);
   const draftTopicRef = useRef(draftTopic);
@@ -432,6 +434,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const search = useSearch(request, lists.rows, trunkName);
 
   const go = useCallback((next: Route) => {
+    if (JSON.stringify(routeRef.current) !== JSON.stringify(next)) {
+      const index = Number(history.state?.branchIndex) || 0;
+      history.pushState({ branchRoute: next, branchIndex: index + 1 }, "");
+    }
     draftTopicRef.current = null;
     setDraftTopic(null);
     setStage(null);
@@ -442,6 +448,32 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       void session.open(next.key);
     }
   }, [session]);
+  useEffect(() => {
+    history.replaceState({ branchRoute: routeRef.current, branchIndex: Number(history.state?.branchIndex) || 0 }, "");
+    const pop = (event: PopStateEvent) => {
+      const next = parseRoute(JSON.stringify(event.state?.branchRoute));
+      if (!next) return;
+      setDraftTopic(null);
+      setStage(null);
+      setRoute(next);
+      setSlideOpen(false);
+      saveRoute(next);
+      if (next.kind === "chat" && next.key) void session.open(next.key);
+    };
+    window.addEventListener("popstate", pop);
+    return () => window.removeEventListener("popstate", pop);
+  }, [session]);
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (event.altKey && event.key === "ArrowLeft") { event.preventDefault(); history.back(); }
+      else if (event.altKey && event.key === "ArrowRight") { event.preventDefault(); history.forward(); }
+      else if (event.key === "Escape" && routeRef.current.kind === "place" && routeRef.current.place === "office" && document.activeElement === document.body) {
+        if ((Number(history.state?.branchIndex) || 0) > 0) history.back(); else go({ kind: "place", place: "overview" });
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [go]);
   const openConversation = useCallback((key: string) => go({ kind: "chat", key }), [go]);
   useEffect(() => {
     const removed = () => {
@@ -726,7 +758,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       void session.open(key).then(() => session.send(text));
     },
   });
-  const pageTitle = route.kind === "chat" ? name : route.kind === "place" ? PLACES.find((p) => p.id === route.place)?.name ?? "" : pageName(route.page);
+  const pageTitle = route.kind === "chat" ? name : route.kind === "place" ? route.place === "office" ? "Grove" : PLACES.find((p) => p.id === route.place)?.name ?? "" : pageName(route.page);
   useEffect(() => {
     document.title = windowTitle(pageTitle, needsYou, !ready);
   }, [pageTitle, needsYou, ready]);
@@ -1123,7 +1155,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     main = (
       <>
         {isNarrow ? <PlaceHead onList={toggleList} onSettings={() => openSettings("general")} /> : null}
-        <PlaceView place={route.place} engine={session.engine} facts={{ running, waiting: waitingTotal }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={(agentId) => void startNew(agentId)} />
+        <PlaceView place={route.place} engine={session.engine} facts={{ running, waiting: waitingTotal }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={(agentId) => void startNew(agentId)} createTrunk={() => void newTrunk()} />
       </>
     );
   } else {
