@@ -123,6 +123,16 @@ export function normalizeRawCredentialEntry(
       }
     }
   }
+  if (normalized.type === "token" || normalized.type === "api_key") {
+    const retryAt = entry.identityLookupRetryAt;
+    if (typeof retryAt === "number" && Number.isFinite(retryAt) && retryAt > 0) {
+      normalized.identityLookupRetryAt = retryAt;
+    }
+    const failures = entry.identityLookupFailures;
+    if (typeof failures === "number" && Number.isSafeInteger(failures) && failures > 0) {
+      normalized.identityLookupFailures = failures;
+    }
+  }
   if (normalized.type === "token" || normalized.type === "oauth") {
     const expires = normalizeExpiryField(entry.expires);
     if (expires !== undefined) {

@@ -1142,6 +1142,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           recoveryFailure={openRow?.runError}
           plan={progress.card && !planDismiss.dismissed ? <PlanCard card={progress.card} onRefresh={planRefresh.refresh} refreshing={planRefresh.status} onDismiss={planDismiss.dismiss} /> : null}
           pendingUser={s.pendingUser}
+          queued={s.queued}
           running={Boolean(s.liveRunId)}
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />

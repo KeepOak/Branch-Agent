@@ -1093,7 +1093,7 @@ describe("startGatewayPostAttachRuntime", () => {
     });
   });
 
-  it("publishes Control UI cleanup before pending plugin startup", async () => {
+  it("publishes Control UI cleanup before pending plugin startup without preparing assets", async () => {
     const { promise: pluginStartup, resolve: finishPluginStartup } = createDeferred();
     const buildController = new AbortController();
     const buildSignal = buildController.signal;
@@ -1135,8 +1135,9 @@ describe("startGatewayPostAttachRuntime", () => {
 
     await waitForGatewayTestState(() => {
       expect(loadStartupPlugins).toHaveBeenCalledOnce();
-      expect(startControlUiBuild).toHaveBeenCalledOnce();
     });
+    // Assets are prepared on the first control UI request, never at Gateway start.
+    expect(startControlUiBuild).not.toHaveBeenCalled();
     expect(startGatewaySidecarsPending).not.toHaveBeenCalled();
     expect(buildSignal?.aborted).toBe(false);
 
@@ -1148,7 +1149,7 @@ describe("startGatewayPostAttachRuntime", () => {
     await runtimePromise;
 
     expect(onGatewayLifetimeSidecars.mock.calls.slice(1).flat()).not.toContain(earlySidecar);
-    expect(startControlUiBuild).toHaveBeenCalledOnce();
+    expect(startControlUiBuild).not.toHaveBeenCalled();
     expect(publishedGatewayLifetimeSidecars).not.toContain(earlySidecar);
     await cleanupGatewayTestState();
     expect(stopControlUiBuild).toHaveBeenCalledOnce();
