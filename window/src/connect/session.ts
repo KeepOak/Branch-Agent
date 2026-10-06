@@ -405,18 +405,18 @@ export class SaplingSession {
     }
     this.set({ pendingUser: text, doneAt: null, error: null });
     try {
-      const result = rec(
-        await this.gateway.request("chat.send", {
-          ...extras,
-          sessionKey,
-          message: text,
-          idempotencyKey: crypto.randomUUID(),
-        }),
-      );
+      const roomId = roomIdOf(sessionKey);
+      if (roomId && extras && Object.keys(extras).length) throw new Error("Attachments are not supported in group chats yet.");
+      const result = rec(await (roomId
+        ? this.gateway.request("rooms.send", { roomId, message: text })
+        : this.gateway.request("chat.send", { ...extras, sessionKey, message: text, idempotencyKey: crypto.randomUUID() })));
       const runId = str(result.runId);
       if (runId && !this.finished.has(runId)) {
         this.set({ liveRunId: runId, liveStartedAt: this.snapshot.liveRunId === runId ? this.snapshot.liveStartedAt : Date.now() });
         this.refreshLive();
+      } else if (roomId) {
+        this.set({ pendingUser: null });
+        await this.loadHistory();
       }
     } catch (error) {
       this.set({ pendingUser: null, error: error instanceof Error ? error.message : String(error) });

@@ -84,7 +84,7 @@ describe("rooms methods", () => {
       (await call("rooms.log", { roomId: room.roomId })).events.map(
         (value: { kind: string }) => value.kind,
       ),
-    ).toEqual(["message", "turn.started"]);
+    ).toEqual(["created", "message", "turn.started"]);
     mocks.load.mockReturnValue({ entry: { sessionId: "existing" } });
     await call("rooms.send", { roomId: room.roomId, message: "Revise it" });
     expect(mocks.create).toHaveBeenCalledTimes(1);
@@ -94,7 +94,7 @@ describe("rooms methods", () => {
       message: "Revise it",
     });
     expect(broadcast.mock.calls.map(([name]) => name)).toEqual([
-      "rooms.changed",
+      "rooms.changed", "rooms.event",
       "rooms.event",
       "rooms.event",
       "rooms.event",
@@ -114,5 +114,18 @@ describe("rooms methods", () => {
     expect((await call("rooms.archive", { roomId: room.roomId })).room.archivedAt).toBeGreaterThan(
       0,
     );
+  });
+  it("creates a dropped contact room and records its added member through rooms methods", async () => {
+    const { room } = await call("rooms.create", {
+      name: "Scout and Ledger",
+      members: [{ kind: "trunk", id: "scout", role: "lead" }, { kind: "a2a", id: "ledger" }],
+    });
+    expect(room.members.map((member: { kind: string; id: string }) => `${member.kind}:${member.id}`)).toEqual(["trunk:scout", "a2a:ledger"]);
+    const added = (await call("rooms.members.add", { roomId: room.roomId, kind: "person", id: "ada" })).room;
+    expect(added.members.at(-1)).toMatchObject({ kind: "person", id: "ada" });
+    expect((await call("rooms.log", { roomId: room.roomId })).events).toMatchObject([
+      { kind: "created", payload: { members: [{ kind: "trunk", id: "scout" }, { kind: "a2a", id: "ledger" }] } },
+      { kind: "member.added", payload: { kind: "person", id: "ada" } },
+    ]);
   });
 });
