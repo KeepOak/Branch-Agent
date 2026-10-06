@@ -1,4 +1,7 @@
 engine:extensions/qa-channel/src/channel.test.ts
 engine:extensions/qa-channel/src/inbound.test.ts
 engine:extensions/qa-channel/src/outbound.test.ts
+engine:extensions/telegram/src/doctor.test.ts
+engine:extensions/telegram/src/probe.test.ts
+engine:extensions/telegram/src/security-audit.test.ts
 engine:src/auto-reply/group-thread.test.ts
