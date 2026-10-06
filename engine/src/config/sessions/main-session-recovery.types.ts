@@ -5,6 +5,10 @@ export type MainRestartRecoveryState = {
   revision: number;
   /** Attempts charged when their reservation is persisted, before dispatch. */
   chargedAttempts: number;
+  /** First durable interruption mark; repeated boot scans must not refresh freshness. */
+  interruptedAt?: number;
+  /** Start of the interrupted in-flight turn, distinct from the resume-pending mark. */
+  turnStartedAt?: number;
   /** Last attempt observed starting a backend turn; later startup failures get a fresh budget. */
   startedAttempt?: number;
   /** Private safe token for one recovered outer turn; raw identity refs never enter session state. */

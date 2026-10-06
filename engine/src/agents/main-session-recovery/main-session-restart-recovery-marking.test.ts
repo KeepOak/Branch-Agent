@@ -49,6 +49,51 @@ import { discoverRestartRecoveryStoreTargets } from "./main-session-restart-reco
 
 const sessionDirs = useSessionStoreTempDirs(afterAll, "branch-restart-owner-");
 
+it("does not revive an ancient in-flight turn merely because its session update is recent", async () => {
+  await withBranchTestState({ label: "recovery-stale-active-turn" }, async (state) => {
+    const sessionKey = "agent:main:main";
+    const sessionId = "old-turn";
+    await replaceSessionEntry(
+      { sessionKey },
+      {
+        sessionId,
+        status: "running",
+        startedAt: Date.now() - 2 * 60 * 60_000,
+        updatedAt: Date.now() - 60_000,
+      },
+    );
+    const result = await markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir });
+    expect(result).toEqual({ marked: 0, skipped: 1 });
+    expect(loadSessionEntry({ sessionKey })).toMatchObject({
+      sessionId,
+      status: "failed",
+      abortedLastRun: false,
+    });
+  });
+});
+
+it("recovers a fresh exact turn even when its session update timestamp is old", async () => {
+  await withBranchTestState({ label: "recovery-fresh-active-turn" }, async (state) => {
+    const sessionKey = "agent:main:main";
+    await replaceSessionEntry(
+      { sessionKey },
+      {
+        sessionId: "fresh-turn",
+        status: "running",
+        startedAt: Date.now() - 10 * 60_000,
+        updatedAt: Date.now() - 2 * 60 * 60_000,
+      },
+    );
+    const result = await markStartupOrphanedMainSessionsForRecovery({ stateDir: state.stateDir });
+    expect(result).toEqual({ marked: 1, skipped: 0 });
+    expect(loadSessionEntry({ sessionKey })).toMatchObject({
+      status: "running",
+      abortedLastRun: true,
+      mainRestartRecovery: { interruptedAt: expect.any(Number), turnStartedAt: expect.any(Number) },
+    });
+  });
+});
+
 it("keeps healthy stores recoverable when an earlier startup mark fails", async () => {
   await withBranchTestState({ label: "recovery-mark-failure" }, async (state) => {
     const cfg: BranchConfig = {
@@ -63,18 +108,19 @@ it("keeps healthy stores recoverable when an earlier startup mark fails", async 
       talk: { agentId: "main" },
     };
     await state.writeConfig(cfg);
+    const startedAt = Date.now() - 10_000;
     for (const agentId of ["main", "worker"]) {
       const sessionKey = `agent:${agentId}:main`;
       const sessionId = `${agentId}-session`;
-      await replaceSessionEntry({ agentId, sessionKey }, { sessionId, updatedAt: 1 });
+      await replaceSessionEntry({ agentId, sessionKey }, { sessionId, updatedAt: startedAt });
       await persistGatewaySessionLifecycleEvent({
         agentId,
         sessionKey,
         event: {
-          ts: 1,
+          ts: startedAt,
           sessionId,
           runId: `${agentId}-run`,
-          data: { phase: "start", startedAt: 1 },
+          data: { phase: "start", startedAt },
         },
       });
       expect(loadSessionEntry({ agentId, sessionKey })).toMatchObject({
@@ -191,10 +237,11 @@ it("recovers an orphan after its owner releases retained run metadata", async ()
     const sessionId = "retained-session";
     const runId = "retained-run";
     const lifecycleGeneration = getAgentEventLifecycleGeneration();
-    await replaceSessionEntry({ sessionKey }, { sessionId, updatedAt: 1 });
+    const startedAt = Date.now() - 10_000;
+    await replaceSessionEntry({ sessionKey }, { sessionId, updatedAt: startedAt });
     await persistGatewaySessionLifecycleEvent({
       sessionKey,
-      event: { ts: 1, sessionId, runId, data: { phase: "start", startedAt: 1 } },
+      event: { ts: startedAt, sessionId, runId, data: { phase: "start", startedAt } },
     });
     const context = { sessionKey, sessionId, lifecycleGeneration };
     registerAgentRunContext(runId, context);

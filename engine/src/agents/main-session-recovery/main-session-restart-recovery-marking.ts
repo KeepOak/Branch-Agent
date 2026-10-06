@@ -34,6 +34,7 @@ import {
   restartRecoveryStoreTargetKey,
   type RestartRecoveryStoreTarget,
 } from "./main-session-restart-recovery-diagnostics.js";
+import { isFreshRestartInterruption } from "./main-session-restart-recovery-freshness.js";
 import {
   discoverRestartRecoveryStoreTargets,
   mainSessionRecoveryLog,
@@ -58,6 +59,7 @@ async function markRecoveryStore(params: {
         runs?: RestartRecoveryRun[];
       }
     | { action: "retire_terminal" }
+    | { action: "retire_stale" }
     | { action: "restore_yielded"; isCurrent: () => boolean }
     | undefined;
 }) {
@@ -100,6 +102,18 @@ async function markRecoveryStore(params: {
             lifecycleGeneration: getAgentEventLifecycleGeneration(),
             sessionKey,
           });
+          replacements.push({ sessionKey, entry });
+          counts.skipped++;
+          continue;
+        }
+        if (plan.action === "retire_stale") {
+          transitionMainSessionRecovery(entry, { kind: "clear" });
+          entry.status = "failed";
+          entry.abortedLastRun = false;
+          entry.lastRunError =
+            "Restart-interrupted turn is outside the auto-continue freshness window";
+          entry.endedAt = Date.now();
+          entry.updatedAt = entry.endedAt;
           replacements.push({ sessionKey, entry });
           counts.skipped++;
           continue;
@@ -371,6 +385,17 @@ async function markOrphanedMainSessionStore(
         return undefined;
       }
       orphanChecks.push(hasLiveOwner);
+      if (
+        entry.status === "running" &&
+        !entry.pendingFinalDelivery &&
+        !isFreshRestartInterruption({
+          timestamp: asFiniteNumber(entry.startedAt),
+          now: Date.now(),
+          cfg: params.cfg,
+        })
+      ) {
+        return { action: "retire_stale" };
+      }
       return isMainRestartRecoveryAggregateTerminalOnly(entry)
         ? { action: "retire_terminal" }
         : { action: "mark", resetRuntime: entry.status !== "running" };
