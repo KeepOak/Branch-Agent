@@ -1,6 +1,7 @@
 engine:extensions/active-memory/escalation.test.ts
 engine:extensions/active-memory/index.test.ts
 engine:extensions/active-memory/trigger-recall.test.ts
+engine:extensions/memory-core/src/memory-budget.test.ts
 engine:extensions/memory-core/src/rings-command.test.ts
 engine:extensions/memory-core/src/rings-dreams-file.test.ts
 engine:extensions/memory-core/src/rings-narrative.test.ts
