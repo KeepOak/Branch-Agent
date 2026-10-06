@@ -13,20 +13,22 @@ function registry(): { reg: HighlightRegistry; Highlight: HighlightCtor } | null
   return css?.highlights && Highlight ? { reg: css.highlights, Highlight } : null;
 }
 
-/** Every case-insensitive match in a message, including phrases split by inline Markdown elements. */
+/** Every case-insensitive match in visible conversation text, including inline Markdown. */
 export function findRanges(root: HTMLElement, query: string): Range[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
-  const blocks = [...root.querySelectorAll<HTMLElement>(".blk, .segment-line")]
-    .filter((block) => !block.parentElement?.closest(".blk, .segment-line"));
-  const scopes = blocks.length ? blocks : [root];
+  // A conversation row is one search unit. Earlier-page wrappers contain several
+  // rows, so split those without joining the end of one message to the next.
+  const scopes = [...root.children].flatMap((child) =>
+    child.classList.contains("segment-page") ? [...child.children] : [child],
+  );
   const ranges: Range[] = [];
   for (const scope of scopes) {
     const pieces: { node: Text; start: number; end: number }[] = [];
     let text = "";
     const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
-        return node.parentElement?.closest('button, [aria-hidden="true"], script, style')
+        return node.parentElement?.closest('[aria-hidden="true"], [hidden], script, style')
           ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
       },
     });
