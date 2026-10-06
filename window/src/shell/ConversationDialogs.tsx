@@ -39,22 +39,6 @@ export function StartOverDialog({ trunkName, onStart, onClose }: { trunkName: st
   );
 }
 
-export function RemoveTrunkDialog({ trunkName, onRemove, onClose }: { trunkName: string; onRemove: () => Promise<unknown>; onClose: () => void }) {
-  const { busy, error, run } = useRun(onClose);
-  const footer = (
-    <>
-      <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-      <button type="button" className="btn bad" disabled={busy} onClick={() => run(onRemove)}>Remove {trunkName}</button>
-    </>
-  );
-  return (
-    <Dialog title={`Remove ${trunkName}?`} onClose={onClose} footer={footer} testid="remove-trunk">
-      <p className="lede">{trunkName} is removed from Branch. Its files stay on this computer.</p>
-      {error ? <p className="field-error" role="alert">{error}</p> : null}
-    </Dialog>
-  );
-}
-
 /** About this conversation (Technical): what sessions.describe says about it. */
 export function AboutDialog({ engine, sessionKey, agentId, trunkName, title, onCopy, onClose }: { engine: WindowEngine; sessionKey: string; agentId?: string; trunkName: string; title: string; onCopy: (text: string) => void; onClose: () => void }) {
   const [row, setRow] = useState<Record<string, unknown> | null>(null);

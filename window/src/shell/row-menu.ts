@@ -29,6 +29,7 @@ type Ctx = {
   markContactRead?: (contact: Contact) => void;
   pinContact?: (contact: Contact) => void;
   profile?: (agentId: string | undefined) => void;
+  removeTrunk?: (agentId: string, name: string) => void;
   whoItKnows?: (contact: Contact) => void;
   muted?: boolean;
   toggleMute?: (contact: Contact) => void;
@@ -38,9 +39,6 @@ const WINDOW_OFF = "A conversation in its own window needs the desktop app, whic
 const FORK_OFF = "Copying a conversation needs an engine call that copies up to the last reply; it doesn't have one yet.";
 const MOVE_OFF = "Moving a conversation into a project needs an engine method Branch doesn't have yet.";
 const PAUSE_OFF = "Pausing a Trunk needs an engine method it doesn't have yet.";
-// TODO(engine-lane): Non-default Trunk main sessions cannot be deleted until the engine supports their deletion and a Recently Deleted list.
-export const TRUNK_DELETE_OFF = "Deleting a Trunk's thread needs the engine to allow deleting a non-default Trunk's main session and a Recently Deleted list.";
-
 export const CARD_LINK_OFF = "A link with a preview card needs the engine's share preview, which it doesn't have yet.";
 
 /** Copy › (key c): the conversation's link, a link with a preview card, its Markdown, and at Technical its ID. */
@@ -140,7 +138,7 @@ function contactMenuItems(row: Conversation, c: Ctx, contact: Contact): MenuItem
     trunk ? { label: "Open profile", run: () => c.profile?.(row.agentId), testid: "menu-profile", ...ic("info") } : null,
     contact.isDefault ? null : { kind: "sep" },
     otherTrunk
-      ? { label: "Delete…", letter: "d", danger: true, run: () => undefined, disabled: TRUNK_DELETE_OFF, testid: "menu-delete", ...ic("trash") }
+      ? { label: `Remove ${contact.name}…`, letter: "d", danger: true, run: () => row.agentId && c.removeTrunk?.(row.agentId, contact.name), testid: "menu-remove-trunk", ...ic("trash") }
       : contact.isDefault ? null : { label: "Delete…", letter: "d", danger: true, run: () => c.confirmDelete(row), testid: "menu-delete", ...ic("trash") },
   ];
   return items.filter((item): item is MenuItem => item !== null);
