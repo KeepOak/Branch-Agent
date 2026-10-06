@@ -1,5 +1,7 @@
 engine:extensions/trellis/src/trellis-runner.test.ts
 engine:extensions/trellis/src/trellis-tool.test.ts
+engine:src/agents/subagents/announce/subagent-announce-handoff.test.ts
+engine:src/agents/tools/sessions-yield-tool.test.ts
 engine:src/cli/cron-cli.test.ts
 engine:src/cli/cron-cli/register.cron-edit.test.ts
 engine:src/cli/cron-cli/register.cron-simple.test.ts
