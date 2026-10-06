@@ -192,7 +192,7 @@ function rowButtons(p: Props, row: Conversation): ReactNode {
   return (
     <>
       {p.onPin && !p.child ? (
-        <button type="button" className="ib sm" aria-label={row.pinned ? "Unpin" : "Pin to top"} title={row.pinned ? "Unpin" : "Pin to top"} onClick={p.onPin}>
+        <button type="button" className="ib sm" aria-label={row.pinned ? "Unpin" : "Pin"} title={row.pinned ? "Unpin" : "Pin"} onClick={p.onPin}>
           <Icon name="pin" small />
         </button>
       ) : null}

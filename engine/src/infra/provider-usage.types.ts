@@ -75,6 +75,9 @@ export type ProviderUsageSnapshot = {
   plan?: string;
   /** Account identity (email) the usage was fetched under, when known. */
   accountEmail?: string;
+  authProfileId?: string;
+  /** First usable account in this provider's configured order. */
+  inUse?: boolean;
   error?: string;
 };
 

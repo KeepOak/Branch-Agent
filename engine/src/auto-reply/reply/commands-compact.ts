@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/auto-reply/reply/commands-compact.ts (atlas AGENT-LOOP-0101). Changed for Branch: Cline aliases share the authorized manual compaction path.
 import { normalizeProviderId } from "@branch/model-catalog-core/provider-id";
 import {
   normalizeLowercaseStringOrEmpty,
@@ -40,10 +41,11 @@ function extractCompactInstructions(params: {
     ? stripMentions(raw, params.ctx, params.cfg, params.agentId)
     : raw;
   const trimmed = stripped.trim();
-  if (!normalizeLowercaseStringOrEmpty(trimmed).startsWith("/compact")) {
+  const match = /^\/(?:compact|smol|newtask)(?=\s|:|$)/i.exec(trimmed);
+  if (!match) {
     return undefined;
   }
-  let rest = trimmed.slice("/compact".length).trimStart();
+  let rest = trimmed.slice(match[0].length).trimStart();
   if (rest.startsWith(":")) {
     rest = rest.slice(1).trimStart();
   }
@@ -171,9 +173,9 @@ export async function handleCompactCommand(
   _allowTextCommands: boolean,
   assertOwnerCurrent?: () => void,
 ): ReturnType<CommandHandler> {
-  const compactRequested =
-    params.command.commandBodyNormalized === "/compact" ||
-    params.command.commandBodyNormalized.startsWith("/compact ");
+  const compactRequested = /^\/(?:compact|smol|newtask)(?:\s|$)/.test(
+    params.command.commandBodyNormalized,
+  );
   if (!compactRequested) {
     return null;
   }

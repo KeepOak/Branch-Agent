@@ -36,16 +36,16 @@ export function snoozeTime(until: number, label: string): string {
 /** "18:00", "tomorrow 09:00" or "Mon 09:00" (§4.1.6 Snooze: the wake time). */
 export function wakeWords(until: number, now: number): string {
   const d = new Date(until);
-  const hm = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  const hm = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
   const today = new Date(now);
   const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   if (until < dayStart + 86_400_000) {
     return hm;
   }
   if (until < dayStart + 2 * 86_400_000) {
-    return `tomorrow ${hm}`;
+    return `Tomorrow · ${hm}`;
   }
-  return `${d.toLocaleDateString([], { weekday: "short" })} ${hm}`;
+  return `${d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} · ${hm}`;
 }
 
 /** Who a patch is for: key, Trunk and the transcript it expects (archive and snooze need it). */

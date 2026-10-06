@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/harness/compaction/compaction.ts (atlas AGENT-LOOP-0093). Changed for Branch: restrict compaction cut points to OpenHands history invariant boundaries.
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/harness/compaction/compaction.ts (atlas AGENT-LOOP-0093/0099). Changed for Branch: preserve owner-context safeguards and restrict compaction cut points to OpenHands history invariant boundaries.
 import { messageManipulationIndices } from "../../history-repair/message-manipulation-indices.js";
 import type { Model, StreamFn, Usage } from "@branch/llm-core";
 import {

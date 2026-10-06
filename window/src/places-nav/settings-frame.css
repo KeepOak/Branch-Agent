@@ -54,3 +54,13 @@
 
 .set-col .sec { scroll-margin-block-start: 8px; }
 .set-col .sec > h2:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 5px; border-radius: 3px; }
+
+/* Final-pass headings and right-side values share the same treatment on every settings page. */
+.settings .set-scope > span:first-child,
+.settings .set-col :is(.s2-grp, .grp-pp, .if-lbl, .gw-fld > span:first-child),
+.settings .set-col .dlg :is(h3, .fld > span:first-child) {
+  font: 600 12px/1.3 var(--sans);
+  letter-spacing: normal;
+  text-transform: none;
+}
+.settings .set-col :is(.val-k, .prow > :last-child, .ctl > .right) { font-variant-numeric: tabular-nums; }

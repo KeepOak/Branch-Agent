@@ -83,7 +83,7 @@ function ShareRow({ engine }: { engine: WindowEngine }) {
   const on = cfg.get(SHARE) !== false;
   return (
     <div className="under-k">
-      <Ctl title="Share with your other computers" sub="Their Trunks use this computer’s models. It uses this computer’s graphics card.">
+      <Ctl title="Share with your other computers" sub="Their Trunks use this computer’s models." help="Their Trunks use this computer’s models. It uses this computer’s graphics card.">
         <Switch checked={on} label="Share with your other computers" disabled={cfg.loading} onChange={(v) => void cfg.set(SHARE, v)} />
       </Ctl>
     </div>

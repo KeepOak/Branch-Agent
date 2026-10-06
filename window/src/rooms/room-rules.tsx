@@ -8,7 +8,7 @@ import type { Rule } from "./useRoom";
 
 const WHO: [Rule | "lead", string, string][] = [
   ["lead", "A lead Trunk decides", "It reads each message and picks who answers."],
-  ["always", "Everyone, every time", "Every Trunk in the room answers."],
+  ["always", "Everyone, every time", "Every Trunk in the group answers."],
   ["mention", "Only those you @mention", "Nobody mentioned means everyone."],
 ];
 const PATTERNS: [string, string][] = [
@@ -29,7 +29,7 @@ export function roomRulesItems(p: { chatApp: boolean; rule: Rule | null; choose:
     return { label, sub, checked: p.rule === v, run: () => v !== "lead" && p.choose(v), ...(reason ? { disabled: reason } : {}) };
   });
   return [
-    { kind: "custom", node: <div className="pt">Room rules</div> },
+    { kind: "custom", node: <div className="pt">Group rules</div> },
     { kind: "head", label: "Who answers" },
     ...who,
     { kind: "sep" },
