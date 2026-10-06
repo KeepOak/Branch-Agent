@@ -2,6 +2,7 @@
 // live run). Nothing here is invented: a value the engine didn't record is left out.
 import type { Block } from "../../thread/model";
 import { recordedAt } from "../../thread/model";
+import { stepLabel } from "../../thread/format";
 
 /** Last observation in transcript/event order; never the renderer's mount time. */
 export function activityRecordedAt(blocks: readonly Block[]): number | undefined {
@@ -59,7 +60,7 @@ export function timelineItems(blocks: Block[], name: string): TimelineItem[] {
       out.push({
         key: b.key,
         kind: /spawn|subagent|sessions_spawn/i.test(b.tool) ? "help" : "tool",
-        title: b.title,
+        title: b.title || stepLabel(b),
         line: [name, firstLine(b.detail)].filter(Boolean).join(" · "),
         tech: b.tool,
         had: firstLine(b.detail, 240) || undefined,

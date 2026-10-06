@@ -1,3 +1,4 @@
+// From openclaw/openclaw@9da070d4b99562e7b3f6069e825f1fb17b406544:src/agents/tools/nodes-tool.test.ts (atlas INTEGRATIONS-0127). Changed for Branch: Retained current upstream compiled subprocess preparation and all pinned assertions after the Branch rename.
 // Nodes tool tests cover gateway-scoped node actions, media payload writing,
 // numeric schema guardrails, and pairing approval scopes.
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";

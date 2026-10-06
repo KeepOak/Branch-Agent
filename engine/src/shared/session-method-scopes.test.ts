@@ -122,6 +122,7 @@ describe("resolveDynamicSessionMutationRequiredScope", () => {
     { archived: true },
     { snoozedUntil: 1_800_000_000_000 },
     { snoozedUntil: null },
+    { projectId: "branch" },
   ])("allows session-scoped visibility mutations for single and batch patch %j", (patch) => {
     const target = { key: "agent:main:thread", expectedSessionId: "session-1" };
     for (const [method, params] of [

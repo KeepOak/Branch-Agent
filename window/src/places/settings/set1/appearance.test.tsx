@@ -26,13 +26,13 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; });
 
-function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; current?: string; conflicts?: number; themes?: typeof THEMES } = {}) {
+function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; current?: string; conflicts?: number; themes?: typeof THEMES; themesResponse?: Promise<unknown> } = {}) {
   const prefs: Record<string, unknown> = { ...opts.prefs };
   let conflicts = opts.conflicts ?? 0;
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
     if (method === "users.prefs.get") return opts.profile === false ? { status: "no_durable_identity" } : { status: "ok", entries: { ...prefs } };
     if (method === "users.prefs.set") { if (conflicts-- > 0) return { status: "conflict" }; Object.assign(prefs, params?.entries); return { status: "ok" }; }
-    if (method === "themes.list") return { current: { id: opts.current ?? "grove", mode: "system", scope: "profile", overrides: {} }, theme: THEMES[0], themes: opts.themes ?? THEMES };
+    if (method === "themes.list") return opts.themesResponse ?? { current: { id: opts.current ?? "grove", mode: "system", scope: "profile", overrides: {} }, theme: THEMES[0], themes: opts.themes ?? THEMES };
     if (method === "agents.list") return { defaultId: "main", agents: [{ id: "main", name: "Birch" }] };
     if (method === "config.get") return { hash: "h1", valid: true, config: {} };
     if (method === "models.list") return { models: [] };
@@ -58,6 +58,21 @@ describe("Settings › Appearance", () => {
     expect(button("Browse all 3 themes")).toBeTruthy();
     expect([...host.querySelectorAll(".mirror b")].map((b) => b.textContent)).toEqual(["Light · live mirror of Birch", "Dark · live mirror of Birch", "Match this computer"]);
     expect(host.querySelectorAll(".pet-c12").length).toBe(43);
+  });
+
+  it("shows 46 themes once loaded and never 0 while themes exist", async () => {
+    const catalog = [["grove", "Grove"], ["paper", "Paper"], ...LEGACY_THEMES.map((t) => [t.id, t.name])].map(([id, name]) => ({ id, name, description: `${name}.`, source: "builtin" as const, modes: ["light", "dark"] as ("light" | "dark")[] }));
+    let resolveThemes!: (value: unknown) => void;
+    const themesResponse = new Promise<unknown>((resolve) => { resolveThemes = resolve; });
+    const { engine } = engineOf({ themesResponse });
+    await render(engine);
+    expect(button("Browse themes")).toBeTruthy();
+    expect(host.textContent).not.toContain("Browse all 0 themes");
+    await act(async () => resolveThemes({ current: { id: "grove", mode: "system" }, themes: catalog }));
+    expect(button("Browse all 46 themes")).toBeTruthy();
+    expect(host.textContent).not.toContain("Browse all 0 themes");
+    await act(async () => button("Browse all 46 themes").click());
+    expect(document.querySelectorAll(".dlg .theme6-b")).toHaveLength(46);
   });
 
   it("a switch saves the person's look to users.prefs at once", async () => {
