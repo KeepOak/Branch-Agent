@@ -1,3 +1,6 @@
+engine:extensions/nextcloud-talk/src/inbound.behavior.test.ts
+engine:extensions/nextcloud-talk/src/monitor.replay.test.ts
+engine:extensions/nextcloud-talk/src/webhook-spool.test.ts
 engine:extensions/twitch/src/access-control.test.ts
 engine:extensions/twitch/src/monitor.test.ts
 engine:extensions/twitch/src/token.test.ts
