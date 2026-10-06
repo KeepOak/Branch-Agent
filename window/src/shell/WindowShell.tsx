@@ -10,6 +10,7 @@ import { Composer, VOICE_OFF } from "../composer/Composer";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
 import { Thread } from "../thread/Thread";
+import { stepLabel } from "../thread/format";
 import { PlaceView } from "../places-nav/PlaceView";
 import { SettingsFrame } from "../places-nav/SettingsFrame";
 import { lookStore } from "../places/settings/set1/appearance-store";
@@ -114,7 +115,7 @@ function workWords(s: SessionSnapshot, now: number): string {
   if (step?.kind === "step" && step.status === "running" && /browser|computer|screen|desktop/i.test(step.tool)) {
     return "Working · using the computer";
   }
-  if (step?.kind === "step" && step.status === "running") return `${step.tool === "bash" || step.tool === "command" ? "Running" : "Using"} ${step.title}`;
+  if (step?.kind === "step" && step.status === "running") return [stepLabel(step), step.title].filter(Boolean).join(" · ");
   const state = agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now });
   return state === "work" || state === "idle" ? "Thinking" : STATE_LABEL[state];
 }
