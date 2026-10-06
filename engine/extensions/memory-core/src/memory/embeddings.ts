@@ -34,7 +34,7 @@ type CreateEmbeddingProviderOptions = Omit<MemoryEmbeddingProviderCreateOptions,
   createProvider?: MemoryManagerProviderFactory;
 };
 
-const DEFAULT_MEMORY_EMBEDDING_PROVIDER = "openai";
+const DEFAULT_MEMORY_EMBEDDING_PROVIDER = "local";
 
 function formatProviderError(adapter: MemoryEmbeddingProviderAdapter, err: unknown): string {
   return adapter.formatSetupError?.(err) ?? formatErrorMessage(err);

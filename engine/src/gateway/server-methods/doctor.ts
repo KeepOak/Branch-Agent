@@ -64,6 +64,7 @@ export type DoctorMemoryStatusPayload = {
   agentId: string;
   searchRuntimeRegistered?: boolean;
   provider?: string;
+  rebuild?: { state: "rebuilding" | "ready"; indexedChunks: number };
   health?: MemoryHealth;
   embedding: {
     ok: boolean;
@@ -448,6 +449,12 @@ export const createDoctorHandlers = (
       const payload: DoctorMemoryStatusPayload = {
         agentId,
         provider: status.provider,
+        rebuild: {
+          state: asOptionalRecord(asOptionalRecord(status.custom)?.indexIdentity)?.status === "valid"
+            ? "ready"
+            : "rebuilding",
+          indexedChunks: status.chunks ?? 0,
+        },
         embedding,
         embeddingRuntime: (() => {
           const runtime = asOptionalRecord(asOptionalRecord(status.custom)?.llamaCppRuntime);

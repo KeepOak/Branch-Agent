@@ -1,0 +1,2 @@
+engine:extensions/memory-core/src/memory/manager-provider-change.test.ts
+engine:src/agents/memory-search.test.ts

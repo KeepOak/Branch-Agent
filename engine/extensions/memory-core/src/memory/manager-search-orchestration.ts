@@ -279,6 +279,22 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
               indexState,
             });
       const indexIdentity = refreshSearchIdentity();
+      const providerChangePending = (state: MemoryIndexIdentityState): boolean =>
+        state.status === "mismatched" &&
+        state.owner === "configuration" &&
+        (state.code === "model" || state.code === "provider" || state.code === "provider_settings") &&
+        this.fts.enabled && this.fts.available;
+      if (searchSyncEnabled && providerChangePending(indexIdentity) && this.activeBackgroundSearchSyncs.size === 0) {
+        this.recordAutomaticRebuild();
+        const trackedSearchSync = this.syncPublishedIndexInBackground({ reason: "provider-change" })
+          .catch((err: unknown) => {
+            log.warn(`memory sync failed (provider-change): ${formatErrorMessage(err)}`);
+          })
+          .finally(() => {
+            this.activeBackgroundSearchSyncs.delete(trackedSearchSync);
+          });
+        this.activeBackgroundSearchSyncs.add(trackedSearchSync);
+      }
       const shouldRepairIdentity =
         hasIndexedContent &&
         (indexIdentity.status === "missing" ||
@@ -325,7 +341,7 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
         this.fts.enabled &&
         this.fts.available;
       if (repairedIndexIdentity.status !== "valid") {
-        if (!chunkingUpgradePendingKeywordOnly(repairedIndexIdentity)) {
+        if (!chunkingUpgradePendingKeywordOnly(repairedIndexIdentity) && !providerChangePending(repairedIndexIdentity)) {
           return [];
         }
         log.warn(
@@ -367,7 +383,8 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
         effectiveIdentity = leasedIdentity;
         if (
           leasedIdentity.status === "valid" ||
-          chunkingUpgradePendingKeywordOnly(leasedIdentity)
+          chunkingUpgradePendingKeywordOnly(leasedIdentity) ||
+          providerChangePending(leasedIdentity)
         ) {
           break;
         }
@@ -396,6 +413,7 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
       const keywordOnly =
         embeddingBootstrapKeywordOnly ||
         chunkingUpgradePendingKeywordOnly(effectiveIdentity) ||
+        providerChangePending(effectiveIdentity) ||
         !this.provider ||
         opts?.lexicalOnly;
       if (chunkingUpgradePendingKeywordOnly(effectiveIdentity)) {
