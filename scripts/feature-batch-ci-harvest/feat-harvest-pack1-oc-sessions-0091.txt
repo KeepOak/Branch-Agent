@@ -5,6 +5,11 @@ engine:extensions/discord/src/monitor/thread-bindings.acp-reconciliation.test.ts
 engine:extensions/discord/src/monitor/thread-bindings.authority.test.ts
 engine:extensions/discord/src/monitor/thread-bindings.creation.test.ts
 engine:extensions/llm-task/src/llm-task-tool.test.ts
+engine:src/agents/agent-tools.read.host-operations.test.ts
+engine:src/agents/agent-tools.read.host-write-integrity.test.ts
+engine:src/agents/agent-tools.read.windows.test.ts
+engine:src/agents/agent-tools.read.workspace-mutations.test.ts
+engine:src/agents/agent-tools.read.workspace-root-guard.test.ts
 engine:src/agents/embedded-agent-runner/thinking-replay-repair.test.ts
 engine:src/agents/main-session-recovery/main-session-recovery-store.test.ts
 engine:src/agents/main-session-recovery/main-session-restart-recovery-resume-policy.test.ts
