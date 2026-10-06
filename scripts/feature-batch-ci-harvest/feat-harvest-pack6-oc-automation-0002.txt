@@ -17,3 +17,6 @@ engine:src/cron/service/timeout-policy.test.ts
 engine:src/cron/service/timer.timeout-watchdog.test.ts
 engine:src/cron/stagger.test.ts
 engine:src/cron/validate-timestamp.test.ts
+engine:src/infra/heartbeat-active-hours.test.ts
+engine:src/infra/heartbeat-cooldown.test.ts
+engine:src/infra/heartbeat-visibility.test.ts
