@@ -2,6 +2,7 @@ import type { AgentsDeleteResult } from "../../packages/gateway-protocol/src/sch
 import {
   AgentSharedStoreOwnerError,
   assertAgentSessionStoreDeletionSafe,
+  closeAgentDeleteDirectoryHandles,
   isPathOwnedBySurvivingAgent,
   prepareAgentDeleteDatabases,
   readAgentDeleteDatabaseRegistry,
@@ -324,8 +325,9 @@ export async function agentsDeleteCommand(
       existingJournal ?? { agentId, agentDir, workspaceDir, sessionsDir, deleteFiles },
     );
     let rosterCommitted = !configured;
+    let databasePlan: Awaited<ReturnType<typeof prepareAgentDeleteDatabases>> | undefined;
     try {
-      await prepareAgentDeleteDatabases(cfg, agentId, agentDir);
+      databasePlan = await prepareAgentDeleteDatabases(cfg, agentId, agentDir);
       deletion.assertCurrent();
       const commitRoster = async () =>
         await withAgentExecApprovalsRemoved(agentId, async () => {
@@ -373,6 +375,13 @@ export async function agentsDeleteCommand(
     const purgeFailed = await purgeAgentSessionStoreEntries(cfg, agentId, {
       runDatabaseCleanup: deletion.runDatabaseCleanup,
     });
+    if (deleteFiles && !purgeFailed) {
+      await closeAgentDeleteDirectoryHandles(
+        agentDir,
+        agentId,
+        databasePlan?.registrationPaths,
+      );
+    }
     deletion.assertCurrent();
     // Directory ownership is process-local; resolve survivors before the destructive recheck.
     for (const survivingAgentId of listAgentIds(result.config)) {

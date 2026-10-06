@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/process/command-queue.test.ts (atlas AGENT-LOOP-0013). Changed for Branch: preserve existing Branch rebranding and stronger lifecycle callback context assertions; retained under the Harvest rule that test assertions keep or strengthen upstream behavior.
 // Command queue tests cover bounded command execution and queue ordering.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { spawnSync } from "node:child_process";
