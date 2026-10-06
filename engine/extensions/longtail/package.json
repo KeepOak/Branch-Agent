@@ -1,0 +1,29 @@
+{
+  "name": "@branch/longtail",
+  "version": "2026.9.8",
+  "description": "Send-only long-tail channel delivery for Branch Agent.",
+  "type": "module",
+  "dependencies": { "zod": "4.6.5" },
+  "devDependencies": { "@branch/plugin-sdk": "workspace:*" },
+  "branch": {
+    "extensions": ["./index.ts"],
+    "channel": {
+      "id": "longtail",
+      "label": "Long-tail delivery",
+      "selectionLabel": "Long-tail delivery (send-only)",
+      "docsPath": "/channels/longtail",
+      "docsLabel": "longtail",
+      "blurb": "Send to Rocket.Chat, Zulip, Webex, Gotify, Pushover and ntfy.",
+      "order": 95
+    },
+    "compat": { "pluginApi": ">=2026.9.8" },
+    "build": { "branchVersion": "2026.9.8", "bundledDist": false },
+    "install": {
+      "clawhubSpec": "clawhub:@branch/longtail",
+      "npmSpec": "@branch/longtail",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.9.8"
+    },
+    "release": { "publishToClawHub": true, "publishToNpm": true }
+  }
+}

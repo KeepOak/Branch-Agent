@@ -1,0 +1,9 @@
+{
+  "id": "longtail",
+  "categories": ["channels"],
+  "name": "Long-tail delivery",
+  "description": "Send-only Rocket.Chat, Zulip, Webex, Gotify, Pushover and ntfy delivery.",
+  "activation": { "onStartup": false },
+  "channels": ["longtail"],
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+}

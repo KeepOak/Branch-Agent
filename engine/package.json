@@ -327,6 +327,7 @@
     "!dist/extensions/llama-cpp/**",
     "!dist/extensions/trellis/**",
     "!dist/extensions/longcat/**",
+    "!dist/extensions/longtail/**",
     "!dist/extensions/mattermost/**",
     "!dist/extensions/memory-lancedb/**",
     "!dist/extensions/meta/**",

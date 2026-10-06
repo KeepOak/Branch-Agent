@@ -56,6 +56,11 @@ export const GENERATED_BUNDLED_CHANNEL_IDS: readonly BundledChannelIdMetadata[] 
     label: "LINE",
   },
   {
+    channelId: "longtail",
+    order: 95,
+    label: "Long-tail delivery",
+  },
+  {
     channelId: "matrix",
     order: 70,
     label: "Matrix",
