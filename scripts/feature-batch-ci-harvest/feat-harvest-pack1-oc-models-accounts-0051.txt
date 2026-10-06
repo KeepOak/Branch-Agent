@@ -15,5 +15,8 @@ engine:src/agents/failover/classify.legacy-provider-predicates.test.ts
 engine:src/agents/failover/classify.test.ts
 engine:src/agents/fast-mode.test.ts
 engine:src/agents/local-model-lean.test.ts
+engine:src/agents/provider-local-service.linux-oom.test.ts
+engine:src/agents/provider-local-service.readiness.test.ts
+engine:src/agents/provider-local-service.test.ts
 engine:src/decisions/runtime.admission.test.ts
 engine:src/decisions/runtime.test.ts
