@@ -1,3 +1,5 @@
+engine:extensions/trellis/src/trellis-runner.test.ts
+engine:extensions/trellis/src/trellis-tool.test.ts
 engine:src/hooks/bundled/boot-md/handler.gateway-startup.integration.test.ts
 engine:src/hooks/bundled/boot-md/handler.test.ts
 engine:src/hooks/bundled/bootstrap-extra-files/handler.test.ts
