@@ -23,7 +23,9 @@ describe("memory provider change", () => {
       expect(manager.status().custom?.indexIdentity).toMatchObject({ status: "mismatched" });
       const results = await manager.search("zebra", { minScore: 0 });
       expect(results.some((entry) => entry.path === "memory/2026-01-12.md")).toBe(true);
-      await vi.waitFor(() => expect(embeddingStarted).toBe(true));
+      // The detached maintenance manager must first acquire the published index
+      // after search releases its read lease; this can take longer on Windows.
+      await vi.waitFor(() => expect(embeddingStarted).toBe(true), { timeout: 30_000 });
       expect(manager.status().custom?.indexIdentity).toMatchObject({ status: "mismatched" });
       releaseEmbedding();
       await vi.waitFor(async () => {
