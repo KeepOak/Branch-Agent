@@ -1,2 +1,5 @@
 engine:src/cli/qr-cli.test.ts
 engine:src/media/qr-terminal.render.test.ts
+engine:src/node-host/gateway-candidate-connection.test.ts
+engine:src/node-host/runner.test.ts
+engine:src/node-host/runtime.test.ts
