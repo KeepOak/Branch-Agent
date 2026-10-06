@@ -1,6 +1,7 @@
 engine:src/cli/config-cli.builder-schema.integration.test.ts
 engine:src/cli/config-cli.candidate-model-env.integration.test.ts
 engine:src/cli/config-cli.test.ts
+engine:src/commands/backup-sqlite.test.ts
 engine:src/config/io.observe-recovery.test.ts
 engine:src/config/recovery-policy.test.ts
 engine:src/config/redact-snapshot.matrix-accounts.test.ts
