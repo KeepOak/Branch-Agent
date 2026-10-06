@@ -51,3 +51,8 @@ engine/src/agents/proactive-tool-result-pruning.test.ts,AGENT-LOOP-0102,NousRese
 engine/src/agents/proactive-tool-result-pruning.test-support.ts,AGENT-LOOP-0102,NousResearch/hermes-agent,18d125cc1bd9d0e26188ab49bb325427d5945fa2,tests/agent/test_proactive_tool_result_pruning.py,2026-10-06
 engine/src/agents/proactive-prune-config.test.ts,AGENT-LOOP-0102,NousResearch/hermes-agent,18d125cc1bd9d0e26188ab49bb325427d5945fa2,tests/agent/test_proactive_prune_config.py,2026-10-06
 engine/src/agents/proactive-prune-rearm-threshold.test.ts,AGENT-LOOP-0102,NousResearch/hermes-agent,18d125cc1bd9d0e26188ab49bb325427d5945fa2,tests/agent/test_proactive_prune_rearm_threshold.py,2026-10-06
+engine/src/agents/failover/provider-error-classification.ts,AGENT-LOOP-0103,cline/cline,0809928ab28783c0d2b41c1e56edaf0951dadcab,sdk/packages/llms/src/providers/error-classification.ts,2026-10-06
+engine/src/agents/failover/provider-error-classification.test.ts,AGENT-LOOP-0103,cline/cline,0809928ab28783c0d2b41c1e56edaf0951dadcab,sdk/packages/llms/src/providers/error-classification.test.ts,2026-10-06
+engine/src/agents/embedded-agent-runner/run/overflow-context-recovery.ts,AGENT-LOOP-0103,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/embedded-agent-runner/run/overflow-context-recovery.ts (changed: raw provider classification),2026-10-06
+engine/src/agents/embedded-agent-runner/run.overflow-context-recovery.test.ts,AGENT-LOOP-0103,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/embedded-agent-runner/run.overflow-context-recovery.test.ts (changed: raw provider classification),2026-10-06
+engine/package.json,AGENT-LOOP-0103,cline/cline,0809928ab28783c0d2b41c1e56edaf0951dadcab,bun.lock (changed: pinned ai 7.0.79),2026-10-06

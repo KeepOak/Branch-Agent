@@ -6,7 +6,10 @@ engine:src/agents/compaction.summarize-fallback.test.ts
 engine:src/agents/compaction.summary-format.test.ts
 engine:src/agents/compaction.test.ts
 engine:src/agents/embedded-agent-runner/compact.hooks.test.ts
+engine:src/agents/embedded-agent-runner/run.overflow-context-recovery.test.ts
 engine:src/agents/embedded-agent-runner/run/attempt-tool-call-replay-sanitization.test.ts
+engine:src/agents/embedded-agent-runner/run/overflow-context-recovery.test.ts
+engine:src/agents/failover/provider-error-classification.test.ts
 engine:src/agents/historical-tool-call-args.providers.test.ts
 engine:src/agents/historical-tool-call-args.test.ts
 engine:src/agents/model-switch-instructions.integration.test.ts
