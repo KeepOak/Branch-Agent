@@ -398,6 +398,16 @@ describe("branch mcp serve identity and gateway", () => {
       expect(resolveDesktopGateway({ url: "wss://remote.example" }, {}, dir)).toBeUndefined();
       expect(resolveDesktopGateway({}, { BRANCH_GATEWAY_TOKEN: "env" }, dir)).toBeUndefined();
       expect(resolveDesktopGateway({}, {}, path.join(dir, "missing"))).toBeUndefined();
+      // After an in-place update the desktop records the engine's live port; outside agents follow it.
+      fs.writeFileSync(path.join(dir, "gateway-port"), "40123\r\n");
+      expect(resolveDesktopGateway({}, {}, dir)?.url).toBe("ws://127.0.0.1:40123");
+      expect(resolveDesktopGateway({}, { BRANCH_GATEWAY_PORT: "19555" }, dir)?.url).toBe(
+        "ws://127.0.0.1:19555",
+      );
+      for (const invalid of ["", "abc", "0", "70000", "12 34"]) {
+        fs.writeFileSync(path.join(dir, "gateway-port"), invalid);
+        expect(resolveDesktopGateway({}, {}, dir)?.url).toBe("ws://127.0.0.1:19031");
+      }
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

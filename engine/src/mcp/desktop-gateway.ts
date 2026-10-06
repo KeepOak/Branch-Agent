@@ -8,6 +8,20 @@ import path from "node:path";
 /** The desktop app's gateway port (desktop/src/config.ts DEFAULTS.gatewayPort). */
 export const DESKTOP_GATEWAY_PORT = 19031;
 
+/**
+ * The port the desktop's engine serves on right now. An in-place update can move the engine to another loopback
+ * port; the desktop records the live one in <data>/gateway-port (desktop/src/main.ts adoptGatewayPort).
+ */
+export function readDesktopGatewayPort(dataDir: string): number | undefined {
+  try {
+    const value = fs.readFileSync(path.join(dataDir, "gateway-port"), "utf8").trim();
+    const port = /^\d{1,5}$/.test(value) ? Number(value) : 0;
+    return port > 0 && port < 65536 ? port : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The desktop app's data directory, resolved exactly as desktop/src/config.ts defaultDataDirectory(). */
 export function desktopDataDirectory(
   env: NodeJS.ProcessEnv = process.env,
@@ -59,6 +73,10 @@ export function resolveDesktopGateway(
     return undefined;
   }
   if (!token) return undefined;
-  const port = Number(env.BRANCH_GATEWAY_PORT) || DESKTOP_GATEWAY_PORT;
+  const envPort = Number(env.BRANCH_GATEWAY_PORT);
+  const port =
+    (Number.isInteger(envPort) && envPort > 0 ? envPort : undefined) ??
+    readDesktopGatewayPort(dataDir) ??
+    DESKTOP_GATEWAY_PORT;
   return { url: `ws://127.0.0.1:${port}`, token };
 }

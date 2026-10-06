@@ -72,6 +72,10 @@ export async function waitInGatewayStandby(
     }
     await sleep(OWNER_POLL_MS);
   }
+  // The owner can be gone before the first poll (the launcher quit and stopped it): still never start alone.
+  if (launcherGone()) {
+    throw new Error("standby: the launcher went away before the current owner released state");
+  }
   const waitMs = now() - waitStarted;
   log.info(`standby: state released after ${Math.round(waitMs)}ms; starting`);
   return { warmMs, waitMs };

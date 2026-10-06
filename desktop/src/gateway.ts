@@ -56,10 +56,10 @@ function testProfile(): Record<string, string> {
 
 /** `port` defaults to the configured one; an update's standby passes its own spare port without changing the config. */
 export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false, port = cfg.gatewayPort): ChildProcess {
+  // The profile check can refuse a standby; it runs before the log is opened so a refusal leaks nothing.
+  const prepared = standby ? readPreparedNormalProfile(join(cfg.dataDir, "home")) : undefined;
   const log = createWriteStream(join(cfg.dataDir, "gateway.log"), { flags: "a" });
-  const profile = standby
-    ? readPreparedNormalProfile(join(cfg.dataDir, "home"))
-    : prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => log.write(message + "\n"));
+  const profile = prepared ?? prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => log.write(message + "\n"));
   if (profile.note) log.write(profile.note + "\n");
   const env = {
     ...process.env,
@@ -114,6 +114,12 @@ export function waitForGatewayStandby(child: ChildProcess, timeoutMs: number): P
 
 export interface PreparedGateway { child: ChildProcess; port: number }
 
+let warmingStandby: ChildProcess | undefined;
+/** Quitting while a standby warms must not leave it behind (the caller only holds it once it has warmed). */
+export function stopWarmingStandby(): void {
+  if (warmingStandby) stopGateway(warmingStandby);
+}
+
 /**
  * Starts an update's standby engine beside the live one. The live engine still holds the configured port, so the
  * standby gets its own free loopback port (same token) and is promoted on that port; the window is then handed the
@@ -123,12 +129,15 @@ export interface PreparedGateway { child: ChildProcess; port: number }
 export async function prepareStandbyGateway(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number): Promise<PreparedGateway> {
   const port = await freeLoopbackPort();
   const child = startGateway(cfg, engineDir, token, true, port);
+  warmingStandby = child;
   try {
     await waitForGatewayStandby(child, timeoutMs);
     return { child, port };
   } catch (error) {
     stopGateway(child);
     throw error;
+  } finally {
+    warmingStandby = undefined;
   }
 }
 

@@ -145,7 +145,8 @@ test("Git Bash shim reads the same files, drops CR and passes arguments through"
   assert.ok(shim.startsWith("#!/bin/sh\n"));
   assert.ok(shim.includes("data='C:/Data'\\''s'"));
   assert.ok(shim.includes("tr -d '\\r'"));
-  assert.ok(shim.includes(`if [ -f "$data/gateway-port" ]; then BRANCH_GATEWAY_PORT=$(head -n 1 "$data/gateway-port" | tr -d '\\r'); fi`));
+  // An empty read (never expected: the desktop renames the file into place) keeps the configured port.
+  assert.ok(shim.includes(`if [ -f "$data/gateway-port" ]; then live=$(head -n 1 "$data/gateway-port" | tr -d '\\r'); if [ -n "$live" ]; then BRANCH_GATEWAY_PORT=$live; fi; fi`));
   assert.ok(shim.indexOf("BRANCH_GATEWAY_PORT=19031") < shim.indexOf("$data/gateway-port"));
   assert.ok(shim.includes(`exec 'C:/App/node.exe' "$engine/branch.mjs" "$@"`));
   assert.doesNotMatch(shim, /\r/);
