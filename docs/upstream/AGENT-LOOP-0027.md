@@ -1,10 +1,10 @@
-# AGENT-LOOP-0027 — blocked
+# AGENT-LOOP-0027 — blocked after retry
 
 Source: `anomalyco/opencode@aa481b8f5652f5576c55f914a64ed270e7daa7e0`.
 Filtered clone `/tmp/upstream/anomalyco-opencode` is checked out at the pin.
 
-The dispatcher selects an opt-in supported native request path, otherwise streams through the AI SDK and translates that stream into the same LLM event contract. Tests cover provider/request selection, native compatibility boundaries, wire payloads, tool/usage/error translation, and recorded provider parity.
+Dependency installation and adapter work are now authorized. OpenCode's ai version is pinned at 6.0.168; the new Branch SDK binding from AGENT-LOOP-0026 removes the absence of a model invocation seam. It does not implement this row's automatic native/SDK dispatch. The remaining source contract includes the native support/compatibility matrix, request preparation, plugin/permission hooks, the Effect service layer, session events and recorded parity between both routes. @opencode-ai/core and @opencode-ai/llm are upstream workspace services rather than a drop-in Branch provider. Both cited suites remain unported (0/2); manual binding is not marked equivalent to automatic fallback. No new package is installed without a production consumer.
 
-The cited files import `ai`, `effect`, `@opencode-ai/llm`, core provider/session/auth services, and permission/plugin/request preparation. Branch already has its own native provider runtime and authority-scoped host but no AI SDK fallback. The pinned services and SDK packages are absent from its frozen dependency graph. The recorded tests require the upstream HTTP recorder and fixture/provider/service layer. No separate unchecked request path or duplicate permission implementation was added.
+The attachment supplies the row entry. The checkout has no external atlas INDEX/data rows or owner DESIGN-SPEC/DECISIONS/page-41 guide; their absence is recorded as missing context, not as a dependency-installation prohibition or a request for new permission.
 
-Completing that integration requires resolving the missing dependency/runtime seam while preserving Branch's existing admitted request authority. The task prohibits lockfile changes, and the owner atlas/page-41 instructions needed to approve the mapping are not in this checkout. 0/2 cited test files ported; no test command run.
+No row-specific named test run is claimed. See status/pack1-status.csv.
