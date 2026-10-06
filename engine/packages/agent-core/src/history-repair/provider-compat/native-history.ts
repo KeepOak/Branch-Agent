@@ -1,5 +1,7 @@
 // From mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421:packages/core/src/processors/provider-history-compat.ts (atlas AGENT-LOOP-0095). Branch native transcript adapter; outgoing rewrites retain source payloads and repairs are confined to the request history.
+import { replaceCompactionReplayOwnerContent } from "@branch/ai/transports";
 import type { Context, Message, Model, AssistantMessage } from "@branch/llm-core";
+import { copyInternalToolResultState } from "../../internal-hooks.js";
 import { ProviderHistoryCompat } from "./provider-history-compat.js";
 import { ProcessorRunner } from "./runner.js";
 import {
@@ -40,32 +42,7 @@ function nativePart(part: NativePart, message: AssistantMessage): LinkedPart {
         : {}),
       [SOURCE_PART]: part,
     };
-  if (part.type === "text") {
-    let id = part.textSignature;
-    if (id?.startsWith("{")) {
-      try {
-        const value: unknown = JSON.parse(id);
-        id =
-          value && typeof value === "object" && "id" in value && typeof value.id === "string"
-            ? value.id
-            : undefined;
-      } catch {
-        /* Legacy opaque IDs stay unchanged. */
-      }
-    }
-    return {
-      type: "text",
-      text: part.text,
-      ...(id && message.api.includes("responses")
-        ? {
-            providerOptions: {
-              [message.api.startsWith("azure") ? "azure" : "openai"]: { itemId: id },
-            },
-          }
-        : {}),
-      [SOURCE_PART]: part,
-    };
-  }
+  if (part.type === "text") return textNativePart(part, message);
   return {
     type: "reasoning",
     text: part.thinking,
@@ -79,6 +56,36 @@ function nativePart(part: NativePart, message: AssistantMessage): LinkedPart {
     [SOURCE_PART]: part,
   };
 }
+function textNativePart(
+  part: Extract<NativePart, { type: "text" }>,
+  message: AssistantMessage,
+): LinkedPart {
+  let id = part.textSignature;
+  if (id?.startsWith("{")) {
+    try {
+      const value: unknown = JSON.parse(id);
+      id =
+        value && typeof value === "object" && "id" in value && typeof value.id === "string"
+          ? value.id
+          : undefined;
+    } catch {
+      /* Legacy opaque IDs stay unchanged. */
+    }
+  }
+  return {
+    type: "text",
+    text: part.text,
+    ...(id && message.api.includes("responses")
+      ? {
+          providerOptions: {
+            [message.api.startsWith("azure") ? "azure" : "openai"]: { itemId: id },
+          },
+        }
+      : {}),
+    [SOURCE_PART]: part,
+  };
+}
+
 export function nativePrompt(context: Context): LanguageModelV2Prompt {
   const prompt: LanguageModelV2Prompt = context.systemPrompt
     ? [{ role: "system", content: context.systemPrompt }]
@@ -136,24 +143,27 @@ function dbPart(part: LinkedPart): MastraMessagePart | undefined {
   return undefined;
 }
 export function nativeMessageList(prompt: LanguageModelV2Prompt) {
-  const messages: MastraDBMessage[] = prompt.flatMap((item) => {
+  const messages: MastraDBMessage[] = prompt.map((item, index) => {
     const source = (item as LinkedMessage)[SOURCE_MESSAGE];
-    if (item.role !== "assistant" || source?.role !== "assistant") return [];
-    return [
-      {
-        id: String(source.timestamp),
-        role: "assistant",
-        createdAt: new Date(source.timestamp),
-        content: {
-          format: 2,
-          metadata: { provider: providerId(source.provider, source.api) },
-          parts: item.content.flatMap((p) => {
-            const part = dbPart(p);
-            return part ? [Object.assign(part, { [SOURCE_PART]: p })] : [];
-          }),
-        },
-      } satisfies MastraDBMessage,
-    ];
+    return {
+      id: String(source?.timestamp ?? index),
+      role: item.role,
+      createdAt: new Date(source?.timestamp ?? 0),
+      content: {
+        format: 2,
+        metadata:
+          source?.role === "assistant"
+            ? { provider: providerId(source.provider, source.api) }
+            : undefined,
+        parts:
+          typeof item.content === "string"
+            ? [{ type: "text", text: item.content }]
+            : item.content.flatMap((p) => {
+                const part = dbPart(p);
+                return part ? [Object.assign(part, { [SOURCE_PART]: p })] : [];
+              }),
+      },
+    } satisfies MastraDBMessage;
   });
   return { get: { all: { db: () => messages } } };
 }
@@ -181,9 +191,14 @@ export function restoreNativeContext(context: Context, prompt: LanguageModelV2Pr
         const part = restorePart(p);
         return part ? [part] : [];
       });
-      if (content.length) messages.push({ ...source, content });
+      if (content.length) messages.push(replaceCompactionReplayOwnerContent(source, content));
     } else if (source.role === "toolResult" && item.role === "tool")
-      messages.push({ ...source, toolCallId: item.content[0]?.toolCallId ?? source.toolCallId });
+      messages.push(
+        copyInternalToolResultState(source, {
+          ...source,
+          toolCallId: item.content[0]?.toolCallId ?? source.toolCallId,
+        }),
+      );
     else if (source.role === "user" && item.role === "user") {
       const textParts = item.content.filter((p) => p.type === "text");
       let i = 0;
@@ -249,44 +264,55 @@ export async function repairRejectedContext(
     item.content = item.content.filter(
       (part) => part.type !== "reasoning" || repairedParts.has(part),
     );
-    for (const part of item.content) {
-      const db = repairedParts.get(part);
-      const linked = part as LinkedPart;
-      const source = linked[SOURCE_PART];
-      if (db?.type === "tool-invocation" && part.type === "tool-call") {
-        let id = db.toolInvocation.toolCallId;
-        if (
-          part.providerOptions &&
-          !Object.values(db.providerMetadata ?? {}).some((m) => typeof m.itemId === "string")
-        )
-          id = id.split("|")[0]!;
-        idMap.set(part.toolCallId, id);
-        part.toolCallId = id;
-      } else if (
-        db?.type === "text" &&
-        source?.type === "text" &&
-        part.providerOptions &&
-        !Object.values(db.providerMetadata ?? {}).some((m) => typeof m.itemId === "string")
-      ) {
-        const { textSignature: signature, ...plain } = source;
-        let phase: unknown;
-        if (signature?.startsWith("{")) {
-          try {
-            phase = (JSON.parse(signature) as { phase?: unknown }).phase;
-          } catch {
-            /* No valid phase to retain. */
-          }
-        }
-        linked[SOURCE_PART] =
-          phase === "commentary" || phase === "final_answer"
-            ? { ...plain, textSignature: JSON.stringify({ v: 1, phase }) }
-            : plain;
-      }
-    }
+    for (const part of item.content) applyReactivePartRepair(part, repairedParts.get(part), idMap);
   }
   for (const item of prompt)
     if (item.role === "tool")
       for (const part of item.content)
         part.toolCallId = idMap.get(part.toolCallId) ?? part.toolCallId;
   return restoreNativeContext(context, prompt);
+}
+
+function applyReactivePartRepair(
+  part: PromptPart,
+  db: LinkedDbPart | undefined,
+  idMap: Map<string, string>,
+): void {
+  const linked = part as LinkedPart;
+  const source = linked[SOURCE_PART];
+  if (db?.type === "tool-invocation" && part.type === "tool-call") {
+    let id = db.toolInvocation.toolCallId;
+    if (
+      part.providerOptions &&
+      !Object.values(db.providerMetadata ?? {}).some((m) => typeof m.itemId === "string")
+    )
+      id = id.split("|")[0]!;
+    idMap.set(part.toolCallId, id);
+    part.toolCallId = id;
+  } else if (
+    db?.type === "text" &&
+    source?.type === "text" &&
+    part.providerOptions &&
+    !Object.values(db.providerMetadata ?? {}).some((m) => typeof m.itemId === "string")
+  ) {
+    removeResponseTextSignature(linked, source);
+  }
+}
+function removeResponseTextSignature(
+  part: LinkedPart,
+  source: Extract<NativePart, { type: "text" }>,
+): void {
+  const { textSignature: signature, ...plain } = source;
+  let phase: unknown;
+  if (signature?.startsWith("{")) {
+    try {
+      phase = (JSON.parse(signature) as { phase?: unknown }).phase;
+    } catch {
+      /* No valid phase to retain. */
+    }
+  }
+  part[SOURCE_PART] =
+    phase === "commentary" || phase === "final_answer"
+      ? { ...plain, textSignature: JSON.stringify({ v: 1, phase }) }
+      : plain;
 }

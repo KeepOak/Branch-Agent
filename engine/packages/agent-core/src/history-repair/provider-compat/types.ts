@@ -57,7 +57,8 @@ export type PromptPart = Metadata &
   );
 export type LanguageModelV2Prompt = Array<
   | { role: "system"; content: string }
-  | { role: "user" | "assistant"; content: PromptPart[] }
+  | { role: "user"; content: PromptPart[] }
+  | { role: "assistant"; content: PromptPart[] }
   | { role: "tool"; content: Array<Extract<PromptPart, { type: "tool-result" }>> }
 >;
 export interface MessageList {

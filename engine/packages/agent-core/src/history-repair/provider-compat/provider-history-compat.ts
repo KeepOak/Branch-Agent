@@ -1193,7 +1193,7 @@ export class ProviderHistoryCompat {
     error,
     messageList,
     retryCount,
-  }: ProcessAPIErrorArgs): Promise<ProcessAPIErrorResult | void> {
+  }: ProcessAPIErrorArgs): Promise<ProcessAPIErrorResult> {
     if (retryCount > 0) return;
 
     const messages = messageList.get.all.db();

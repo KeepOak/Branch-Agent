@@ -1,5 +1,4 @@
 import type { Message, Context } from "@branch/llm-core";
-// Written by Branch from mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421:packages/core/src/processors/provider-history-compat.ts (atlas AGENT-LOOP-0095). Verifies production request rewrites and one reactive retry while preserving stored identities.
 import { expect, it } from "vitest";
 import {
   captureAgentLoop,
@@ -10,6 +9,11 @@ import {
   reply,
   user,
 } from "../../agent-loop.test-support.js";
+// Written by Branch from mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421:packages/core/src/processors/provider-history-compat.ts (atlas AGENT-LOOP-0095). Verifies production request rewrites and one reactive retry while preserving stored identities.
+import {
+  attachInternalToolResultProvenance,
+  getInternalToolResultProvenance,
+} from "../../internal-hooks.js";
 import { prepareCompatibleContext, repairRejectedContext } from "./native-history.js";
 const anthropic = {
   ...model,
@@ -31,6 +35,8 @@ it("rewrites native call/result IDs without changing stored history", async () =
       })),
     ],
   };
+  const provenance = { owner: "shared-safety-layer" };
+  attachInternalToolResultProvenance(context.messages[1]!, provenance);
   const before = structuredClone(context);
   const result = await prepareCompatibleContext(context, anthropic);
   expect(
@@ -41,6 +47,7 @@ it("rewrites native call/result IDs without changing stored history", async () =
     "a_b_2",
     "a_b",
   ]);
+  expect(getInternalToolResultProvenance(result.messages[1]!)).toBe(provenance);
   expect(context).toEqual(before);
 });
 it("rewrites Azure system/user reminder tags through the actual loop", async () => {
@@ -130,6 +137,32 @@ it("clears rejected OpenAI item references and keeps visible content and phase",
       context,
       "Item 'msg_orphan' of type 'message' was provided without its required 'reasoning' item",
       1,
+    ),
+  ).toBeUndefined();
+});
+it("retains a thinking-only row separated from the next assistant by a user turn", async () => {
+  const context: Context = {
+    messages: [
+      {
+        ...makeAssistantMessage([
+          { type: "thinking", thinking: "earlier", thinkingSignature: "old-sig" },
+        ]),
+        api: "anthropic-messages",
+        provider: "anthropic",
+      },
+      user("new turn") as Message,
+      {
+        ...makeAssistantMessage([{ type: "text", text: "new answer" }]),
+        api: "anthropic-messages",
+        provider: "anthropic",
+      },
+    ],
+  };
+  expect(
+    await repairRejectedContext(
+      context,
+      "thinking or redacted_thinking blocks in the latest assistant message cannot be modified",
+      0,
     ),
   ).toBeUndefined();
 });
