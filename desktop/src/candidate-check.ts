@@ -6,7 +6,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { DesktopConfig } from "./config";
-import { freeLoopbackPort, stopGateway, waitForReady } from "./gateway";
+import { freeLoopbackPort, setEnginePriority, stopGateway, waitForReady } from "./gateway";
 
 export type CandidateResult = "ready" | "exited" | "slow";
 
@@ -31,6 +31,7 @@ function startCandidate(cfg: DesktopConfig, engineDir: string, token: string, po
 export async function checkCandidateBeside(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number): Promise<CandidateResult> {
   const port = await freeLoopbackPort();
   const child = startCandidate(cfg, engineDir, token, port);
+  setEnginePriority(child, true);
   running = child;
   try {
     await waitForReady({ ...cfg, gatewayPort: port }, child, timeoutMs);

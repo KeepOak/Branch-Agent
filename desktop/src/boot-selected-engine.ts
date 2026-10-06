@@ -26,7 +26,12 @@ export async function bootSelectedEngineWithRollback(steps: {
     if (!await steps.rollback()) throw error;
     steps.log("Updated engine failed readiness; restored prior components");
     await steps.waitForPortRelease();
-    await steps.boot();
+    try { await steps.boot(); }
+    catch (retryError) {
+      // The retained build failed too: never leave its child running unready and unsupervised.
+      steps.stopFailedGateway();
+      throw retryError;
+    }
     return true;
   }
 }

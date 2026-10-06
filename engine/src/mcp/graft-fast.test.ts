@@ -29,6 +29,7 @@ describe("Graft fast start", () => {
         gatewayToken: "desktop-token",
         claudeChannelMode: "auto",
         verbose: false,
+        followDesktopPort: true,
       });
     }
   });

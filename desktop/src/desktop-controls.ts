@@ -168,7 +168,7 @@ export function ringBitmap(left: number, size = 32): Buffer {
   return out;
 }
 
-/** The branch command: a shim that reads the published engine, the gateway token and the live port at run time. */
+/** The branch command: a shim that reads the running engine (else the published one), the token and the live port. */
 export function branchShim(o: { dataDir: string; engineDir: string; nodePath: string; gatewayPort: number }): string {
   return [
     "@echo off",
@@ -176,6 +176,8 @@ export function branchShim(o: { dataDir: string; engineDir: string; nodePath: st
     `set "BRANCH_DATA=${o.dataDir}"`,
     `set "ENGINE=${o.engineDir}"`,
     `if exist "%BRANCH_DATA%\\engine-current.txt" set /p ENGINE=<"%BRANCH_DATA%\\engine-current.txt"`,
+    // The engine actually running wins over a staged one that has not been applied yet.
+    `if exist "%BRANCH_DATA%\\engine-running.txt" set /p ENGINE=<"%BRANCH_DATA%\\engine-running.txt"`,
     `if exist "%BRANCH_DATA%\\gateway-token" set /p BRANCH_GATEWAY_TOKEN=<"%BRANCH_DATA%\\gateway-token"`,
     `set "BRANCH_PROFILE=default"`,
     `set "BRANCH_HOME=%BRANCH_DATA%\\home"`,
@@ -199,6 +201,7 @@ export function branchShShim(o: { dataDir: string; engineDir: string; nodePath: 
     `data=${q(slash(o.dataDir))}`,
     `engine=${q(o.engineDir)}`,
     `if [ -f "$data/engine-current.txt" ]; then engine=$(head -n 1 "$data/engine-current.txt" | tr -d '\\r'); fi`,
+    `if [ -f "$data/engine-running.txt" ]; then running=$(head -n 1 "$data/engine-running.txt" | tr -d '\\r'); if [ -n "$running" ]; then engine=$running; fi; fi`,
     `if [ -f "$data/gateway-token" ]; then BRANCH_GATEWAY_TOKEN=$(head -n 1 "$data/gateway-token" | tr -d '\\r'); export BRANCH_GATEWAY_TOKEN; fi`,
     `BRANCH_PROFILE=default; BRANCH_HOME=${q(`${o.dataDir}\\home`)}; BRANCH_STATE_DIR=${q(`${o.dataDir}\\home\\.branch`)}; BRANCH_CONFIG_PATH=${q(`${o.dataDir}\\home\\.branch\\branch.json`)}; BRANCH_GATEWAY_PORT=${o.gatewayPort}`,
     `if [ -f "$data/gateway-port" ]; then live=$(head -n 1 "$data/gateway-port" | tr -d '\\r'); if [ -n "$live" ]; then BRANCH_GATEWAY_PORT=$live; fi; fi`,

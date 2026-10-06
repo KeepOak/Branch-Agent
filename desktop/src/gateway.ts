@@ -3,6 +3,7 @@ import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { createWriteStream, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
+import { constants as osConstants, setPriority } from "node:os";
 import { join } from "node:path";
 import type { DesktopConfig } from "./config";
 import { prepareNormalProfile, readPreparedNormalProfile } from "./profile-migration";
@@ -114,6 +115,16 @@ export function waitForGatewayStandby(child: ChildProcess, timeoutMs: number): P
 
 export interface PreparedGateway { child: ChildProcess; port: number }
 
+/**
+ * A second engine (candidate check, warming standby) runs below normal priority so it never starves the live engine
+ * on a busy machine; a promoted standby goes back to normal.
+ */
+export function setEnginePriority(child: ChildProcess, background: boolean): void {
+  if (child.pid === undefined) return;
+  try { setPriority(child.pid, background ? osConstants.priority.PRIORITY_BELOW_NORMAL : osConstants.priority.PRIORITY_NORMAL); }
+  catch { /* best effort: the engine still runs at its current priority */ }
+}
+
 let warmingStandby: ChildProcess | undefined;
 /** Quitting while a standby warms must not leave it behind (the caller only holds it once it has warmed). */
 export function stopWarmingStandby(): void {
@@ -129,6 +140,8 @@ export function stopWarmingStandby(): void {
 export async function prepareStandbyGateway(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number): Promise<PreparedGateway> {
   const port = await freeLoopbackPort();
   const child = startGateway(cfg, engineDir, token, true, port);
+  // POSIX cannot raise a lowered process back without privileges, and a promoted standby must run at full speed.
+  if (process.platform === "win32") setEnginePriority(child, true);
   warmingStandby = child;
   try {
     await waitForGatewayStandby(child, timeoutMs);
@@ -194,9 +207,14 @@ export async function drainStopGateway(child: ChildProcess, timeoutMs = DRAIN_EX
   if (child.exitCode !== null || child.signalCode !== null) return "drained";
   try { await gatewayActivity(child, "drain"); }
   catch {
-    // No answer: an engine from before drain-stop. Stop it only while idle; a busy one is never killed.
-    await stopGatewayCleanly(child);
-    return "stopped idle";
+    // No answer. An engine from before drain-stop still answers a plain activity check: stop it only while idle; a
+    // busy one is never killed. One too busy to answer anything has the drain request queued, and it still lands:
+    // wait for that drain to finish, as for an answered one.
+    const answers = await gatewayActivity(child, false, DRAIN_PROBE_TIMEOUT_MS).then(() => true, () => false);
+    if (answers) {
+      await stopGatewayCleanly(child);
+      return "stopped idle";
+    }
   }
   try { await waitForExit(child, timeoutMs); return "drained"; }
   catch {
@@ -204,6 +222,14 @@ export async function drainStopGateway(child: ChildProcess, timeoutMs = DRAIN_EX
     await waitForExit(child, 10_000).catch(() => undefined);
     return "killed";
   }
+}
+
+/** How long an engine that did not answer its drain request gets to answer a plain activity check. */
+const DRAIN_PROBE_TIMEOUT_MS = 10_000;
+
+/** Resolves once `child` has exited, or rejects after `timeoutMs`. */
+export function waitForGatewayExit(child: ChildProcess, timeoutMs: number): Promise<void> {
+  return waitForExit(child, timeoutMs);
 }
 
 /** The engine's own drain budget is 315 s ("shutdown budget at startup: drain=315000ms"); never cut a drain short. */

@@ -43,6 +43,7 @@ async function resolveMcpConfig(config: BranchConfig | undefined): Promise<Branc
 export async function createChannelMcpRuntime(
   opts: {
     gatewayUrl?: string;
+    resolveGatewayUrl?: () => string | undefined;
     gatewayToken?: string;
     gatewayPassword?: string;
     config?: BranchConfig;
@@ -67,6 +68,7 @@ export async function createChannelMcpRuntime(
   );
   const bridge = new BranchChannelBridge(cfg, {
     gatewayUrl: opts.gatewayUrl,
+    ...(opts.resolveGatewayUrl ? { resolveGatewayUrl: opts.resolveGatewayUrl } : {}),
     gatewayToken: opts.gatewayToken,
     gatewayPassword: opts.gatewayPassword,
     ...(opts.graftHost

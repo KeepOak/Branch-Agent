@@ -730,13 +730,16 @@ function registerGraftServe(command: Command): void {
         }
         const { resolveDesktopGateway } = await import("../mcp/desktop-gateway.js");
         // With no auth named, use the Branch Agent desktop app's loopback gateway and token file.
-        const desktop = resolveDesktopGateway({
+        const desktopAuth = {
           url: opts.url as string | undefined,
           token: gatewayToken,
           password: gatewayPassword,
-        });
+        };
+        const desktop = resolveDesktopGateway(desktopAuth);
         await serveBranchChannelMcp({
           gatewayUrl: desktop?.url ?? (opts.url as string | undefined),
+          // The desktop app can move its engine to another port in an update; follow it on every reconnect.
+          ...(desktop ? { resolveGatewayUrl: () => resolveDesktopGateway(desktopAuth)?.url } : {}),
           gatewayToken: desktop?.token ?? gatewayToken,
           gatewayPassword,
           claudeChannelMode,

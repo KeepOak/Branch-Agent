@@ -12,6 +12,8 @@ export type GraftFastPlan = {
   gatewayPassword?: string;
   claudeChannelMode: "auto" | "on" | "off";
   verbose: boolean;
+  /** Found through the desktop app's files: follow its live port on every reconnect. */
+  followDesktopPort?: true;
 };
 
 const VALUE_FLAGS = new Set(["--url", "--token-file", "--password-file", "--claude-channel-mode"]);
@@ -85,7 +87,9 @@ export function planGraftFast(
   }
   if (envToken || env.BRANCH_GATEWAY_PASSWORD) return undefined;
   const found = desktop({}, env);
-  return found ? { ...base, gatewayUrl: found.url, gatewayToken: found.token } : undefined;
+  return found
+    ? { ...base, gatewayUrl: found.url, gatewayToken: found.token, followDesktopPort: true }
+    : undefined;
 }
 
 /** Runs Graft without the full CLI when it can. Resolves false (nothing started) when the full CLI must run. */
@@ -100,6 +104,7 @@ export async function runGraftFast(argv: readonly string[]): Promise<boolean> {
   try {
     await serveBranchChannelMcp({
       gatewayUrl: plan.gatewayUrl,
+      ...(plan.followDesktopPort ? { resolveGatewayUrl: () => resolveDesktopGateway({})?.url } : {}),
       gatewayToken: plan.gatewayToken,
       gatewayPassword: plan.gatewayPassword,
       claudeChannelMode: plan.claudeChannelMode,

@@ -106,8 +106,14 @@ export function createGatewayCrashSupervisor(options: {
 
   return {
     observe,
-    /** Nothing serves after a failed update: restart the last good build with the same bounded budget. */
-    recover: (error: Error) => schedule(error),
+    /** Nothing serves after a failed update: restart the last good build with a fresh bounded budget. */
+    recover: (error: Error) => {
+      if (closed) return;
+      if (restartTimer) clearTimeout(restartTimer);
+      restartTimer = undefined;
+      attempts = 0;
+      schedule(error);
+    },
     cancelPending: () => {
       if (restartTimer) clearTimeout(restartTimer);
       restartTimer = undefined;

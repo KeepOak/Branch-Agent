@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { drainStopGateway, gatewayActivity, portIsFree, prepareStandbyGateway, readToken, startGateway, stopGateway, stopGatewayCleanly, stopWarmingStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { drainStopGateway, gatewayActivity, portIsFree, prepareStandbyGateway, readToken, setEnginePriority, startGateway, stopGateway, stopGatewayCleanly, stopWarmingStandby, waitForGatewayExit, waitForReady, type PreparedGateway } from "./gateway";
 import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
@@ -38,7 +38,8 @@ const ICON = process.platform === "win32"
 const TRAY_ICON = process.platform === "darwin"
   ? join(__dirname, "..", "assets", "brand", "linux", "branch-16.png")
   : ICON;
-const READY_TIMEOUT_MS = 600_000;
+/** Tests shorten it with BRANCH_DESKTOP_READY_TIMEOUT_MS. */
+const READY_TIMEOUT_MS = Number(process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS ?? 600_000);
 /** A standby only loads code before it reports warm; one that takes longer is stopped and the old engine keeps serving. */
 const STANDBY_WARM_TIMEOUT_MS = 120_000;
 /** Failed standbys per update before the guarded stop/start swap takes over, so an update never becomes impossible. */
@@ -139,6 +140,9 @@ let componentsReady = false;
 /** The window build the static server serves: the staged one only once its engine runs. */
 let servedWindowDir = cfg.windowDir;
 let engineRestartInProgress = false;
+/** The engine exited while an update ran: the update's end decides, then recovery runs once with a full budget. */
+let recoveryDeferred = false;
+let quitting = false;
 let gatewayRecoveryError: string | undefined;
 const gatewaySupervisor = createGatewayCrashSupervisor({
   current: () => gateway,
@@ -150,7 +154,8 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
     if (!HIDDEN && win?.isVisible()) dialog.showErrorBox("Branch couldn't restart the engine", error.message);
   },
   restart: async () => {
-    if (engineRestartInProgress) throw new Error("engine update still in progress");
+    // An update in progress owns the engine; spending restart attempts against it would exhaust the budget.
+    if (engineRestartInProgress) { recoveryDeferred = true; log("gateway exit during an update; recovery waits for it"); return; }
     if (engineRunning()) return;
     engineRestartInProgress = true;
     try {
@@ -222,9 +227,12 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
   engineRestartInProgress = true;
   gatewaySupervisor.cancelPending();
   const windowBefore = windowBuild(servedWindowDir);
+  const priorGateway = gateway;
+  const stillOpen = () => { if (quitting) throw new Error("Branch Agent is quitting"); };
   try {
     if (!await candidatePassed(label)) return;
     await prepareUpdateStandby(label, explicit);
+    stillOpen();
     const started = Date.now();
     sendToBranchWindows("branch-desktop:engine-update", "updating");
     const priorGateway = gateway;
@@ -237,8 +245,10 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
       throw error;
     }
     const stopped = Date.now();
+    stillOpen();
     servedWindowDir = cfg.windowDir;
     await waitForGatewayPort();
+    stillOpen();
     const selectedStandby = standby;
     standby = undefined;
     const rolledBack = await bootSelectedEngine(selectedStandby);
@@ -257,18 +267,34 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
   } catch (error) {
     if (standby) stopGateway(standby.child);
     standby = undefined;
+    if (quitting) throw error;
     const message = error instanceof Error ? error.message : String(error);
     sendToBranchWindows("branch-desktop:engine-update-failed", message);
-    // Never leave zero engines: with nothing serving, the crash supervisor brings back the build that last ran.
-    // An old engine still running may already be draining (a drain request whose answer timed out still lands);
-    // its supervision was resumed, so its exit restarts that build too.
-    if (!engineRunning()) gatewaySupervisor.recover(new Error(`the update failed with no engine serving: ${message}`));
-    else {
+    // Still serving only if the engine from before the update is the one running: a new engine that failed may
+    // not have exited yet, and it never became ready.
+    if (gateway === priorGateway && engineRunning()) {
+      recoveryDeferred = false;
       const state = controls.settings().autoApplyUpdates && !autoApplyWaitsForOwner(label) ? "auto-wait" : "ready";
       sendToBranchWindows("branch-desktop:engine-update", state);
+    } else {
+      const failed = gateway;
+      if (failed && failed !== priorGateway && engineRunning()) {
+        stopGateway(failed);
+        await waitForGatewayExit(failed, 15_000).catch(() => undefined);
+      }
+      // Never leave zero engines: the crash supervisor brings back the build that last ran, with a fresh budget.
+      recoveryDeferred = false;
+      gatewaySupervisor.recover(new Error(`the update failed with no engine serving: ${message}`));
     }
     throw error;
-  } finally { engineRestartInProgress = false; }
+  } finally {
+    engineRestartInProgress = false;
+    // The engine exited during an update that still ended with nothing serving.
+    if (recoveryDeferred && !quitting) {
+      recoveryDeferred = false;
+      if (!engineRunning()) gatewaySupervisor.recover(new Error("the engine exited during an update"));
+    }
+  }
 }
 
 /**
@@ -580,6 +606,7 @@ async function start(): Promise<void> {
   for (const port of [cfg.gatewayPort, cfg.windowPort]) {
     if (!(await portIsFree(port))) throw new Error(`port ${port} is already in use; is Branch Agent already running?`);
   }
+  await refuseOrphanedEngine();
   adoptGatewayPort(cfg.gatewayPort);
   await recoverComponentUpdate(cfg);
   if (!existsSync(join(cfg.windowDir, "index.html")) || !existsSync(join(cfg.dataDir, "engine-current.txt")) && !existsSync(join(cfg.engineDir, "branch.mjs"))) {
@@ -603,6 +630,20 @@ async function start(): Promise<void> {
   } });
 }
 
+/**
+ * After an in-place update the engine can serve on a moved port. If the desktop crashed then, that engine is still
+ * running and holds the state: starting another one would wait on its lock, so say so plainly instead.
+ */
+async function refuseOrphanedEngine(): Promise<void> {
+  const read = (name: string) => { try { return Number(readFileSync(join(cfg.dataDir, name), "utf8").trim()); } catch { return 0; } };
+  const port = read("gateway-port"), pid = read("gateway.pid");
+  if (!Number.isInteger(port) || port <= 0 || port === cfg.gatewayPort || !Number.isInteger(pid) || pid <= 0) return;
+  let alive = false;
+  try { process.kill(pid, 0); alive = true; } catch (error) { alive = (error as NodeJS.ErrnoException).code === "EPERM"; }
+  if (!alive || await portIsFree(port)) return;
+  throw new Error(`Branch Agent's engine from the last session is still running (process ${pid} on port ${port}). End that process in Task Manager or Activity Monitor, or restart the computer, then open Branch Agent again.`);
+}
+
 async function waitForGatewayPort(): Promise<void> {
   for (let i = 0; i < 40 && !(await portIsFree(gatewayPort)); i++) await pause(250);
 }
@@ -612,6 +653,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   const started = Date.now();
   const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port);
   if (prepared?.child.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prepared.child.pid));
+  if (prepared) setEnginePriority(prepared.child, false);
   gateway = child;
   const observed = gatewaySupervisor.observe(child);
   log(`gateway started from ${engineDir}, pid ${child.pid}, port ${port}`);
@@ -708,6 +750,7 @@ let quitAfterCleanStop = false;
 function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
   if (quitAfterCleanStop || !gateway || !engineRunning() || typeof event?.preventDefault !== "function") return false;
   event.preventDefault();
+  quitting = true;
   quitAfterCleanStop = true;
   gatewaySupervisor.close();
   stopGatewayCleanly(gateway, 15_000).then(() => log("gateway stopped cleanly for quit"),
@@ -716,6 +759,7 @@ function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
 }
 
 function shutdown(): void {
+  quitting = true;
   log(`quit; stopping gateway pid ${gateway?.pid}`);
   gatewaySupervisor.close();
   stopEngineWatch?.();
@@ -726,6 +770,7 @@ function shutdown(): void {
   stopCandidate();
   stopWarmingStandby();
   if (standby) stopGateway(standby.child);
+  standby = undefined;
   if (gateway) stopGateway(gateway);
   server?.close();
   // The next launch starts on the configured port; never leave a moved, dead port for the branch command to dial.
