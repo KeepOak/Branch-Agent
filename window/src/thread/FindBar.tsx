@@ -13,7 +13,8 @@ function registry(): { reg: HighlightRegistry; Highlight: HighlightCtor } | null
   return css?.highlights && Highlight ? { reg: css.highlights, Highlight } : null;
 }
 
-/** Every case-insensitive match in visible conversation text, including inline Markdown. */
+/** Every case-insensitive match in visible conversation text, including inline Markdown. Like the preview, controls
+ *  (buttons, text boxes, message actions) are skipped. */
 export function findRanges(root: HTMLElement, query: string): Range[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
@@ -28,7 +29,7 @@ export function findRanges(root: HTMLElement, query: string): Range[] {
     let text = "";
     const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
-        return node.parentElement?.closest('[aria-hidden="true"], [hidden], script, style')
+        return node.parentElement?.closest('[aria-hidden="true"], [hidden], script, style, button, textarea, .msg-acts')
           ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
       },
     });
