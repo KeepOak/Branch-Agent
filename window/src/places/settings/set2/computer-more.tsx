@@ -567,7 +567,7 @@ const TABS = [{ id: "cloud", label: "Cloud computers" }, { id: "spares", label: 
 const STATE: Record<string, string> = { requested: "Asked for", provisioning: "Starting", bootstrapping: "Setting up", ready: "Ready", attached: "Working", idle: "Idle", draining: "Finishing", destroying: "Going away", destroyed: "Gone", failed: "Failed", orphaned: "Lost track" };
 
 function Cloud({ c }: { c: Ctx }) {
-  const envs = useLive<RecordValue>(c.engine, "environments.list", { includePreparedDetails: true }, ["node", "environments", "worker"]);
+  const envs = useLive<RecordValue>(c.engine, "environments.list", { includePreparedDetails: true }, ["node", "environments"]);
   const [tab, setTab] = useState("cloud");
   const data = rec(envs.data);
   const workers = list(data.environments).filter((e) => e.worker);

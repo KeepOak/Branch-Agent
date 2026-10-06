@@ -119,7 +119,7 @@ export function registerSessionBackfillGatewayMethods(api: BranchPluginApi): voi
     const rollback = operation === "rollback";
     api.registerGatewayMethod(
       `memory.sessionBackfill.${operation}`,
-      async ({ params, respond }: GatewayRequestHandlerOptions) => {
+      async ({ params, respond, context }: GatewayRequestHandlerOptions) => {
         let request: ReturnType<typeof readGatewayParams>;
         try {
           request = readGatewayParams(params, rollback);
@@ -136,6 +136,14 @@ export function registerSessionBackfillGatewayMethods(api: BranchPluginApi): voi
             ...(apply ? { apply: true } : {}),
             ...(rollback ? { rollback: true } : {}),
           });
+          // Applied or rolled back: Branch's memory views reload (preview changes nothing).
+          if (apply || rollback) {
+            context?.broadcast?.(
+              "memory.changed",
+              { method: `memory.sessionBackfill.${operation}`, ts: Date.now() },
+              { dropIfSlow: true },
+            );
+          }
           respond(
             true,
             rollback
