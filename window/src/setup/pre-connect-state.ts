@@ -4,6 +4,7 @@ import type { Where } from "./setup-model";
 
 const PRE_KEY = "branch.setupPre";
 const TARGET_KEY = "branch.gatewayTarget";
+const NAME_KEY = "branch.gatewayName";
 
 export type PreConnect = { promise: boolean; where: Where };
 
@@ -44,6 +45,22 @@ export function saveTarget(url: string | null): void {
   } catch {
     // storage blocked: the address lasts for this window only
   }
+}
+
+export function readTargetName(url: string): string | null {
+  try {
+    const saved = JSON.parse(localStorage.getItem(NAME_KEY) ?? "null") as { url?: string; name?: string } | null;
+    return saved?.url === url && saved.name ? saved.name : null;
+  } catch { return null; }
+}
+
+export function saveTargetName(url: string, name: string): void {
+  try { localStorage.setItem(NAME_KEY, JSON.stringify({ url, name })); } catch { /* storage is optional */ }
+}
+
+export function isLocalTarget(url: string): boolean {
+  try { return ["127.0.0.1", "localhost", "::1"].includes(new URL(url).hostname); }
+  catch { return false; }
 }
 
 /** The engine's own default gateway address on this computer (engine config/paths.ts DEFAULT_GATEWAY_PORT). */

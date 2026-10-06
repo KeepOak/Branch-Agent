@@ -4,7 +4,7 @@ import { SaplingSession } from "./connect/session";
 import { loadRoute } from "./places-nav/routes";
 import { WindowShell } from "./shell/WindowShell";
 import { PreConnect, type PreConnectState } from "./setup/PreConnect";
-import { LOCAL_ADDRESS, readTarget, saveTarget } from "./setup/pre-connect-state";
+import { isLocalTarget, LOCAL_ADDRESS, readTarget, readTargetName, saveTarget } from "./setup/pre-connect-state";
 import "./shell/shell.css";
 import "./shell/frame.css";
 import "./shell/controls.css";
@@ -77,9 +77,25 @@ function Window({ url, sharedToken, onConnect, onRetry }: WindowProps) {
     const state: PreConnectState = status.phase === "pairing" ? { kind: "pairing", requestId: status.requestId } : { kind: "failed", code: status.code, message: status.message };
     return <PreConnect local={LOCAL} address={url} state={state} busy={false} onConnect={onConnect} onRetry={onRetry} />;
   }
+  return <StartingConnection url={url} phase={status.phase} />;
+}
+
+export function StartingConnection({ url, phase }: { url: string; phase: string }) {
+  const [slow, setSlow] = useState(false);
+  const [details, setDetails] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), 20_000);
+    return () => clearTimeout(timer);
+  }, []);
   return (
-    <main className="connect" data-connection={status.phase}>
-      <p>Connecting to {url.replace(/^wss?:\/\//, "")}…</p>
+    <main className="connect" data-connection={phase}>
+      <span className="connect-spinner" role="progressbar" aria-label="Connecting" />
+      <p>{isLocalTarget(url) ? "Starting Branch…" : `Connecting to ${readTargetName(url) ?? "another computer"}…`}</p>
+      {slow ? <>
+        <p>This is taking longer than usual</p>
+        <button type="button" className="link-k" onClick={() => setDetails((open) => !open)} aria-expanded={details}>Details</button>
+        {details ? <div className="connect-details"><div>Gateway: {url}</div><div>Status: {phase}</div></div> : null}
+      </> : null}
     </main>
   );
 }

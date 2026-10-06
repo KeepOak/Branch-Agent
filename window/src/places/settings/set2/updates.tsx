@@ -12,6 +12,7 @@ import { CallLine, CodeRow, Kv, Tile, day, lvOf, openPlace, rec, str, useCall, u
 import { Ico } from "./icons";
 import { componentDesktop } from "../../../connect/desktop-component-updates";
 import { DesktopUpdatesPage } from "./desktop-updates";
+import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -55,9 +56,9 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
   const status = useLive<RecordValue>(props.engine, "update.status", {}, UPDATE_EVENTS);
   const info = useLive<RecordValue>(props.engine, "status", {}, []);
   const sys = useLive<RecordValue>(props.engine, "system.info", {}, []);
-  const version = str(rec(info.data).runtimeVersion) || str(rec(rec(status.data).updateAvailable).currentVersion);
+  const version = useBranchVersion(props.engine.gatewayUrl);
   const os = OS[str(rec(sys.data).platform)] ?? str(rec(sys.data).osLabel);
-  const lede = version ? `Branch Agent ${version}${os ? ` on ${os}` : ""}.` : props.title;
+  const lede = version ? `Branch ${versionParts(version).short}${os ? ` on ${os}` : ""}.` : props.title;
   const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => void status.reload() };
   return (
     <Page title={props.title} lede={lede}>
@@ -122,7 +123,7 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
       {latest ? (
         <div className="s2-rn">
           <Ico name="doc" />
-          <span className="grow">{`You have ${version || str(available.currentVersion)}. See what it has, and what ${latest} adds.`}</span>
+          <span className="grow">{version ? `You have Branch ${versionParts(version).short}. See what it has, and what ${latest} adds.` : `Checking Branch’s version. See what ${latest} adds.`}</span>
           <Btn sm onClick={() => setDialog("notes")}>What’s new</Btn>
         </div>
       ) : null}
@@ -135,7 +136,7 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
       ) : latest ? (
         <Status title={`${latest} is ready to install`}>It waits for running tasks, up to the update deadline, and keeps a safety copy first.</Status>
       ) : (
-        <Status title="Branch is up to date.">{`You have ${version || str(available.currentVersion) || "the newest version"}.`}</Status>
+        <Status title="Branch is up to date.">{version ? `You have Branch ${versionParts(version).detail}.` : "You have the newest version."}</Status>
       )}
       {latest && !str(active.runId) ? (
         <Acts>

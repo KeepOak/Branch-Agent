@@ -1,5 +1,6 @@
 import type { MouseEvent, ReactNode } from "react";
 import type { RingReading } from "./status-data";
+import { versionParts } from "../connect/branch-version";
 
 export type ConnectionPhase = "connected" | "connecting" | "offline";
 /** The gateway's own state (§4.9.1 item 2): its dot is green only while its health check answers. */
@@ -106,8 +107,8 @@ export function StatusBar(p: Props) {
       ) : null}
       {p.extras?.pet}
       {p.version ? (
-        <button type="button" className="sb hide-sm" title="Version and updates" data-testid="sb-version" {...item("version")}>
-          {p.version}
+        <button type="button" className="sb hide-sm" title={`Branch ${versionParts(p.version).detail} · Version and updates`} data-testid="sb-version" {...item("version")}>
+          Branch {versionParts(p.version).short}
         </button>
       ) : null}
     </footer>

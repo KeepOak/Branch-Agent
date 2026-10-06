@@ -305,6 +305,17 @@
   margin: 0;
   color: var(--ink-2);
 }
+.connect-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--line-2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: connect-turn 1s linear infinite;
+}
+@keyframes connect-turn { to { transform: rotate(360deg); } }
+.connect-details { color: var(--ink-2); font: 12px var(--mono); overflow-wrap: anywhere; }
+.connect .link-k { align-self: flex-start; border: 0; padding: 0; background: none; color: var(--accent); cursor: pointer; text-decoration: underline; }
 .connect input {
   border: 1px solid var(--line);
   border-radius: 8px;
