@@ -23,6 +23,8 @@ engine:src/agents/tools/web-search.redirect.test.ts
 engine:src/agents/tools/web-search.test.ts
 engine:src/agents/usage.test.ts
 engine:src/infra/session-cost-usage.test.ts
+engine:src/talk/client-voice-confirmation-lifecycle.test.ts
+engine:src/talk/client-voice-confirmation.test.ts
 engine:src/web-search/runtime-autodetect-order.test.ts
 engine:src/web-search/runtime-execution.test.ts
 engine:src/web-search/runtime.test.ts
