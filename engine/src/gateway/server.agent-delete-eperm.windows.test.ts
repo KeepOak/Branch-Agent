@@ -60,9 +60,9 @@ it.skipIf(process.platform !== "win32")(
         agentId,
         deleteFiles: true,
       });
+      expect(db.isOpen).toBe(false);
       expect(deleted.failed).toEqual([]);
       expect(deleted.removed).toContainEqual({ path: agentDir, method: "trash" });
-      expect(db.isOpen).toBe(false);
       await expect(fs.stat(agentDir)).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       if (client) {
