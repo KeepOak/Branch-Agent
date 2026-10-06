@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:ui/src/pages/config/settings-search.test.ts (atlas UI-MOBILE-WEB-0067). Changed for Branch: retained existing rebranding and assertions; registered for Harvest CI.
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "../../i18n/index.ts";

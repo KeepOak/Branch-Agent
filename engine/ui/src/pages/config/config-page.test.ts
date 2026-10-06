@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:ui/src/pages/config/config-page.test.ts (atlas UI-MOBILE-WEB-0067). Changed for Branch: retained existing rebranding and assertions; registered for Harvest CI.
 /* @vitest-environment jsdom */
 
 import { render } from "lit";
