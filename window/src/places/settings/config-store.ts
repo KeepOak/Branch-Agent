@@ -44,6 +44,7 @@ export class ConfigStore {
   private chain: Promise<unknown> = Promise.resolve();
   private listeners = new Set<Listener>();
   private loading: Promise<void> | null = null;
+  private revision = 0;
   private engine: WindowEngine;
   constructor(engine: WindowEngine) {
     this.engine = engine;
@@ -58,9 +59,10 @@ export class ConfigStore {
   }
 
   load(): Promise<void> {
+    const revision = this.revision;
     this.loading ??= this.engine.request<ConfigSnapshot>("config.get", {}).then(
-      (snap) => { this.snap = snap; this.error = undefined; },
-      (e: unknown) => { this.error = errorText(e); },
+      (snap) => { if (revision === this.revision) { this.snap = snap; this.error = undefined; } },
+      (e: unknown) => { if (revision === this.revision) this.error = errorText(e); },
     ).finally(() => { this.loading = null; this.emit(); });
     return this.loading;
   }
@@ -69,15 +71,23 @@ export class ConfigStore {
     if (!this.snap?.hash) await this.load();
     if (!this.snap?.hash) throw new Error(this.error ?? "The engine did not give a settings revision.");
     if (this.snap.valid === false) throw new Error("The settings file has a problem. Fix it before changing settings here.");
-    const result = record(await this.engine.request("config.patch", { raw: JSON.stringify(patch), baseHash: this.snap.hash }));
+    const baseHash = this.snap.hash;
+    const result = record(await this.engine.request("config.patch", { raw: JSON.stringify(patch), baseHash }));
     if (result.ok === false) throw new Error(errorText(result.error ?? "The engine did not save the change."));
     if (typeof result.hash === "string" && result.config && typeof result.config === "object") {
+      this.revision++;
       this.snap = { ...this.snap, hash: result.hash, config: record(result.config), valid: true };
       this.emit();
     }
     // Runtime config may be applied after the patch response. Read the committed value so
     // controls do not keep showing the previous default until the whole window reloads.
+    if (this.loading) await this.loading;
+    const committed = this.snap;
     await this.load();
+    if (committed && this.snap?.hash !== committed.hash) {
+      this.snap = committed;
+      this.emit();
+    }
   }
 
   /** Saves one path; queued behind earlier saves so each one uses the revision the last one returned. */

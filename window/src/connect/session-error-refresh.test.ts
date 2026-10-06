@@ -95,7 +95,7 @@ describe("a failing turn's error receipt reaches the thread after it is persiste
     session.stop();
   });
 
-  it("restores the thread after a plugin reload races with returning from Models", async () => {
+  it("shows a disabled plugin error without calling it startup preparation", async () => {
     fake.transcript = [{ role: "user", content: "Earlier message", timestamp: 1 }];
     fake.historyFailures = 1;
     fake.historyFailureText = "PluginInstanceUnavailableError: Plugin openai was reloaded or disabled; use its current tools.";
@@ -103,8 +103,9 @@ describe("a failing turn's error receipt reaches the thread after it is persiste
     session.start();
     fake.options?.onStatus({ phase: "connected", hello } as unknown as GatewayStatus);
     await vi.waitFor(() => expect(session.getSnapshot().error).toContain("PluginInstanceUnavailableError"));
-    await vi.waitFor(() => expect(session.getSnapshot().error).toBeNull(), { timeout: 5_000 });
-    expect(session.getSnapshot().history.some((block) => JSON.stringify(block).includes("Earlier message"))).toBe(true);
+    expect(session.getSnapshot().error).toContain("reloaded or disabled");
+    expect(session.getSnapshot().error).not.toContain("starting up");
+    expect(fake.historyReads).toBe(1);
     session.stop();
   });
 

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { createJob, JOBS as JOB_FILES } from "../places/customize/jobs-data";
 import { saveConfig, type ConfigSnapshot } from "../places/settings/adapter";
-import { firstOn, isLocalModel, knownSetup, readDetected, readTest, setupRecord, type Check, type Detected, type Known, type SetupChoices, type TestResult } from "./setup-model";
+import { firstOn, knownSetup, readDetected, readTest, setupRecord, type Check, type Detected, type Known, type SetupChoices, type TestResult } from "./setup-model";
 import type { ChatApp } from "./steps-later";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
@@ -41,9 +41,7 @@ export function useKnown(engine: WindowEngine, detected: Detected | null, trunkN
 export async function testModel(engine: WindowEngine, detected: Detected, off: string[], inUse: string | null): Promise<TestResult> {
   const agent = engine.agentId ? { agentId: engine.agentId } : {};
   const configured = detected.candidates.find((c) => c.kind === "existing-model");
-  const signedIn = firstOn(detected, off);
-  const keepCurrent = Boolean(inUse || configured) && !(configured && off.includes(configured.key)) &&
-    !(isLocalModel(inUse ?? configured?.modelRef ?? "") && signedIn && !isLocalModel(signedIn.modelRef));
+  const keepCurrent = Boolean(inUse || configured) && !(configured && off.includes(configured.key));
   const pick = keepCurrent ? null : firstOn(detected, off);
   if (!keepCurrent && !pick) {
     return { ok: false, error: "Switch on a connection first." };

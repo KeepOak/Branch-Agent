@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { ConfigStore, modelSafePatch, patchFor } from "./config-store";
 
@@ -19,13 +19,34 @@ describe("ConfigStore", () => {
 
   it("queues two quick saves; the second uses the hash the first returned", async () => {
     let n = 0;
-    const { engine, calls } = engineWith((method) => method === "config.get" ? { hash: `h${n}`, config: { n }, valid: true } : { ok: true, hash: `h${++n}`, config: { n } });
+    const { engine, calls } = engineWith((method) => method === "config.get" ? { hash: "h0", config: { n: 0 }, valid: true } : { ok: true, hash: `h${++n}`, config: { n } });
     const store = new ConfigStore(engine);
     await Promise.all([store.set("a.one", true), store.set("a.two", false)]);
     const patches = calls.filter(([m]) => m === "config.patch").map(([, p]) => p);
     expect(patches.map((p) => p.baseHash)).toEqual(["h0", "h1"]);
     expect(JSON.parse(String(patches[1].raw))).toEqual({ a: { two: false } });
     expect(store.snap?.hash).toBe("h2");
+  });
+
+  it("does not let a pre-patch config read overwrite the saved revision", async () => {
+    let releaseStale: ((value: unknown) => void) | undefined;
+    let gets = 0;
+    const { engine, calls } = engineWith((method) => {
+      if (method === "config.get") {
+        if (++gets === 2) return new Promise((resolve) => { releaseStale = resolve; });
+        return { hash: gets === 1 ? "h0" : "h1", config: gets === 1 ? {} : { saved: true }, valid: true };
+      }
+      return { ok: true, hash: "h1", config: { saved: true } };
+    });
+    const store = new ConfigStore(engine);
+    await store.load();
+    const staleRead = store.load();
+    const save = store.set("saved", true);
+    await vi.waitFor(() => expect(calls.some(([method]) => method === "config.patch")).toBe(true));
+    releaseStale?.({ hash: "h0", config: {}, valid: true });
+    await Promise.all([staleRead, save]);
+    expect(store.snap?.hash).toBe("h1");
+    expect(store.snap?.config).toEqual({ saved: true });
   });
 
   it("reads again and retries once when the config changed elsewhere", async () => {

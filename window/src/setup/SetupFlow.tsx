@@ -14,7 +14,7 @@ import type { LoginStart } from "../places/settings/account-login";
 import { Icon } from "../shell/icons";
 import { notify } from "../shell/notify";
 import { readThemeChoice, setThemeChoice } from "../theme/theme";
-import { doneSteps, firstOn, freshChoices, isLocalModel, LAST, STEPS, type Check, type SetupChoices, type TestResult } from "./setup-model";
+import { doneSteps, firstOn, freshChoices, LAST, STEPS, type Check, type SetupChoices, type TestResult } from "./setup-model";
 import { SetupShell } from "./SetupShell";
 import { WelcomeHero } from "./SetupBrand";
 import { ModelsBody, WelcomeBody, WhereBody } from "./steps-early";
@@ -130,11 +130,9 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
     const { choices, autoUpdate, boot } = latest.current;
     try {
       const preferred = models.detected ? firstOn(models.detected, choices.modelsOff) : null;
-      if (finished && preferred && !isLocalModel(preferred.modelRef) &&
-        (!known?.model || isLocalModel(known.model))) {
+      if (finished && preferred && !known?.model) {
         const selected = await testModel(p.engine, models.detected!, choices.modelsOff, known?.model ?? null);
         setTest(selected);
-        if (!selected.ok) throw new Error(`The signed-in model couldn't answer: ${selected.error}`);
       }
       await recordSetup(p.engine, choices, p.version, finished ? autoUpdate : null);
       const desk = desktopControls();

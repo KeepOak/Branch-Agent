@@ -47,16 +47,18 @@ describe("setup model", () => {
     expect(setupDone({ config: { wizard: { lastRunAt: "x" } } })).toBe(true);
     expect(setupDone({ config: {} })).toBe(false);
   });
-  it("chooses a signed-in account before a detected local model for a fresh default", async () => {
+  it("chooses a signed-in account for a fresh default but keeps a selected local model", async () => {
     const detected = readDetected({ candidates: [
       { kind: "llama-cpp", modelRef: "llama-cpp/qwen", label: "Qwen", credentials: true },
       { kind: "saved-auth:openai:a", modelRef: "openai/gpt-6.1-sol", label: "ChatGPT", credentials: true },
-      { kind: "existing-model", modelRef: "llama-cpp/qwen", label: "In use", credentials: true },
     ] });
     expect(firstOn(detected, [])?.modelRef).toBe("openai/gpt-6.1-sol");
     const { engine: e, request } = engine({ "branch.setup.activate": { ok: true, modelRef: "openai/gpt-6.1-sol", latencyMs: 800 } });
-    expect(await testModel(e, detected, [], "llama-cpp/qwen")).toMatchObject({ ok: true, madeDefault: true });
+    expect(await testModel(e, detected, [], null)).toMatchObject({ ok: true, madeDefault: true });
     expect(params(request, "branch.setup.activate")).toEqual([{ agentId: "main", kind: "saved-auth:openai:a", modelRef: "openai/gpt-6.1-sol" }]);
+    expect(await testModel(e, detected, [], "llama-cpp/qwen")).toMatchObject({ ok: false });
+    expect(params(request, "branch.setup.verify")).toEqual([{ agentId: "main" }]);
+    expect(params(request, "branch.setup.activate")).toHaveLength(1);
   });
   it("chat apps from channels.status and connect problems in plain words", () => {
     expect(readChatApps({ channelOrder: ["telegram", "slack"], channelLabels: { telegram: "Telegram", slack: "Slack" }, channelAccounts: { telegram: [{ connected: true }] } })).toEqual([
@@ -136,7 +138,7 @@ describe("setup flow", () => {
     expect(params(request, "agents.create")).toEqual([]);
     expect(closed).toHaveBeenCalledWith(true);
   });
-  it("replaces a local setup default with a working signed-in model before finishing", async () => {
+  it("keeps a selected local setup default even when cloud activation would fail", async () => {
     const { engine: e, request } = engine({
       health: { ok: true },
       "branch.setup.detect": { candidates: [
@@ -145,7 +147,7 @@ describe("setup flow", () => {
         { kind: "existing-model", modelRef: "llama-cpp/qwen", credentials: true },
       ] },
       "branch.setup.verify": { ok: false, error: "No API key found for provider llama-cpp" },
-      "branch.setup.activate": { ok: true, modelRef: "openai/gpt-6.1-sol", latencyMs: 800 },
+      "branch.setup.activate": { ok: false, error: "Offline" },
       "system.info": { diskAvailableBytes: 2 * 1024 ** 3 },
       "channels.status": { channelOrder: [] },
       "config.get": { hash: "h", config: { agents: { defaults: { model: { primary: "llama-cpp/qwen" } } } } },
@@ -156,7 +158,7 @@ describe("setup flow", () => {
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     await act(async () => tid(host, "setup-finish").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
-    expect(params(request, "branch.setup.activate")).toEqual([{ agentId: "main", kind: "saved-auth:openai:a", modelRef: "openai/gpt-6.1-sol" }]);
+    expect(params(request, "branch.setup.activate")).toEqual([]);
     expect(closed).toHaveBeenCalledWith(true);
   });
   it("an already set-up Branch opens at the first step not done, with Models marked done and its model shown", async () => {
