@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to strict-compiled sources");
-const { prepareNormalProfile, renameWithRetry } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "profile-migration.js")));
+const { prepareNormalProfile, readPreparedNormalProfile, renameWithRetry } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "profile-migration.js")));
 const { startGateway } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
 
 async function homeFixture(run) {
@@ -18,6 +18,13 @@ async function homeFixture(run) {
   try { await run(root, join(root, "home")); }
   finally { await rm(root, { recursive: true, force: true }); }
 }
+
+test("standby never creates or migrates an unprepared profile", async () => homeFixture(async (_root, home) => {
+  assert.throws(() => readPreparedNormalProfile(home), /not ready/);
+  await assert.rejects(readdir(home), { code: "ENOENT" });
+  prepareNormalProfile(home);
+  assert.deepEqual(readPreparedNormalProfile(home), { legacyDevMode: false });
+}));
 
 test("fresh desktop install starts without dev profile or C3-PO", async () => homeFixture(async (root, home) => {
   await writeFile(join(root, "branch.mjs"), 'import {writeFileSync} from "node:fs"; writeFileSync("launch.json",JSON.stringify({profile:process.env.BRANCH_PROFILE,args:process.argv.slice(2)}));');

@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import type { DesktopConfig } from "./config";
-import { prepareNormalProfile } from "./profile-migration";
+import { prepareNormalProfile, readPreparedNormalProfile } from "./profile-migration";
 
 export function readToken(cfg: DesktopConfig): string {
   mkdirSync(cfg.dataDir, { recursive: true });
@@ -44,7 +44,9 @@ function testProfile(): Record<string, string> {
 
 export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false): ChildProcess {
   const log = createWriteStream(join(cfg.dataDir, "gateway.log"), { flags: "a" });
-  const profile = prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => log.write(message + "\n"));
+  const profile = standby
+    ? readPreparedNormalProfile(join(cfg.dataDir, "home"))
+    : prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => log.write(message + "\n"));
   if (profile.note) log.write(profile.note + "\n");
   const env = {
     ...process.env,
