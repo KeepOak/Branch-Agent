@@ -42,23 +42,23 @@ describe("Settings › Permissions", () => {
   it("shows the engine's mode and the Regular sections in the preview's order", async () => {
     const { engine } = engineOf();
     await render(engine);
-    expect(host.textContent).toContain("Full access is on");
-    expect(heads()).toEqual(["This PC", "Without asking, Trunks may…", "Locks and records", "Pinned settings", "Work style"]);
-    expect(button("Full access").getAttribute("aria-pressed")).toBe("true");
+    expect(heads()).toEqual(["This computer", "Access", "Without asking, Trunks may…", "Locks and records", "Pinned settings"]);
+    expect(host.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain("Full access");
+    expect(host.textContent).not.toContain("Work style");
     expect(button("Plan first").disabled).toBe(true);
   });
 
   it("adds the Advanced and Technical sections in place", async () => {
     const { engine } = engineOf();
     await render(engine, 1);
-    expect(heads()).toEqual(["This PC", "Without asking, Trunks may…", "Locks and records", "Pinned settings", "Rules for each tool and folder", "Commands, by default", "Without asking, more", "Checks before anything runs", "Isolation", "Test and explain", "Tools and loops", "Privacy", "Your terminal", "Folders the sandbox may reach", "Work style", "Approvals, more", "Guards, more", "Money", "What each connector may do"]);
+    expect(heads()).toEqual(["This computer", "Access", "Without asking, Trunks may…", "Locks and records", "Pinned settings", "Rules for each tool and folder", "Commands, by default", "Without asking, more", "Checks before anything runs", "Isolation", "Test and explain", "Tools and loops", "Privacy", "Your terminal", "Folders the sandbox may reach", "Approvals, more", "Guards, more", "Money", "What each connector may do"]);
     await render(engine, 2);
     expect(heads()).toContain("Tools, technical");
     expect(heads().indexOf("Security, technical")).toBe(heads().indexOf("Guards that are always on") - 1);
     expect(heads()).toContain("Network and sandbox, technical");
   });
 
-  it("Mode everywhere saves tools.exec.mode without the older security/ask keys", async () => {
+  it("Access saves tools.exec.mode without the older security/ask keys", async () => {
     const { engine, request } = engineOf();
     await render(engine);
     await act(async () => button("Ask first").click());
@@ -120,7 +120,7 @@ describe("Settings › Permissions", () => {
 
   it("lists every row for search, at its level", () => {
     const find = (t: string) => PERMISSIONS_ROWS.find((r) => r.title === t);
-    expect(find("Mode everywhere")?.lv).toBe(0);
+    expect(find("Access")?.lv).toBe(0);
     expect(find("Commands may run")?.lv).toBe(1);
     expect(find("Code mode")?.lv).toBe(2);
     expect(find("Sandbox")?.sec).toBe("Isolation");

@@ -7,7 +7,7 @@ import { Dialog } from "../../../shell/Dialog";
 import { Icon } from "../../../shell/icons";
 import { MODE_ROWS, blockedReason, modeName, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { record, text, visible, type RecordValue } from "../adapter";
-import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg, Status } from "../kit";
+import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
 import { shownWhy } from "../../../shell/shown-why";
 
@@ -27,7 +27,7 @@ export const THIS_PC_ROWS: [string, ReactNode, string, boolean][] = [
 
 export function ThisPc() {
   return (
-    <Sec title="This PC" hint="Windows asks for very little. Seeing the screen and using the mouse need nothing here; Branch still asks you before it takes over.">
+    <Sec title="This computer" hint="Windows asks for very little. Branch asks before taking over.">
       <Plist>
         {THIS_PC_ROWS.map(([t, icon, sub, open]) => (
           <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={sub}>
@@ -47,26 +47,12 @@ export function ThisPc() {
 /** The engine's exec mode for each composer mode (session permissionMode → tools.exec.mode). */
 export const EXEC_OF: Record<EngineMode, string> = { workspace: "auto", guarded: "ask", "read-only": "deny", full: "full" };
 const MODE_OF: Record<string, EngineMode> = { auto: "workspace", ask: "guarded", deny: "read-only", full: "full" };
-const LINE: Record<EngineMode, string> = {
-  workspace: "A reviewer model decides on commands: it allows them, refuses them or asks you.",
-  guarded: "Commands wait for your yes, unless they are on the allowed list.",
-  "read-only": "Trunks never run commands.",
-  full: "Does anything on this computer without asking: files, commands, the internet.",
-};
 
 /** The default Trunk's mode as the engine resolves it (agents.list defaultPermissionMode). */
 export function defaultMode(agents: RecordValue | undefined): EngineMode | null {
   const rows = Array.isArray(agents?.agents) ? (agents.agents as RecordValue[]) : [];
   const def = rows.find((a) => a.id === agents?.defaultId) ?? rows[0];
   return isEngineMode(def?.defaultPermissionMode) ? def.defaultPermissionMode : null;
-}
-
-export function ModeStatus({ agents, loading, error }: { agents?: RecordValue; loading: boolean; error?: string }) {
-  if (loading) return <Status tone="idle" title="Reading the mode…" />;
-  if (error) return <Status tone="bad" title="Branch couldn’t read the mode">{visible(error)}</Status>;
-  const m = defaultMode(agents);
-  if (!m) return <Status tone="idle" title="Each conversation has its own mode">The sandbox or the command defaults below decide what each conversation may do.</Status>;
-  return <Status title={`${modeName(m)} is on`}>{LINE[m]}</Status>;
 }
 
 /** The exec mode in force: the configured tools.exec.mode, or what the engine resolves without one. */
@@ -84,23 +70,15 @@ export async function saveMode(cfg: Cfg, mode: string, after: () => Promise<void
 
 const MODE_OPTS = MODE_ROWS.map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
 export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<void> }) {
+  const selected = execMode(cfg, agents);
   return (
-    <div className="sec pm-mode">
-      <Ctl title="Mode everywhere" sub="Every conversation starts here. Changing the mode in a conversation changes only that conversation.">
-        <Seg label="Mode everywhere" value={execMode(cfg, agents)} options={MODE_OPTS} disabled={cfg.loading} onChange={(m) => void saveMode(cfg, m, reload)} />
-      </Ctl>
-    </div>
-  );
-}
-
-const STYLE = [{ id: "full", label: "Hands-off" }, { id: "auto", label: "Balanced" }, { id: "ask", label: "Careful" }];
-const STYLE_SUB: Record<string, string> = { full: "Full access everywhere: nothing asks.", auto: "Auto everywhere: only risky things ask.", ask: "Ask first everywhere: anything that changes something asks." };
-export function WorkStyle({ x, agents, reload }: { x: Ctx; agents?: RecordValue; reload: () => Promise<void> }) {
-  const m = execMode(x.cfg, agents);
-  return (
-    <Ctl title="How careful" sub={`${STYLE_SUB[m] ?? "Your own mix. Pick one to start from it."} Sets “Mode everywhere”.`}>
-      <Seg label="How careful" value={m} options={STYLE} disabled={x.cfg.loading} onChange={(v) => void saveMode(x.cfg, v, reload)} />
-    </Ctl>
+    <Sec title="Access" hint="Every conversation starts here. A conversation can change its own.">
+      <div className="pm-access" role="radiogroup" aria-label="Access" data-row="Access">
+        {MODE_OPTS.map((option) => <button key={option.id} type="button" role="radio" aria-checked={selected === option.id} className={selected === option.id ? "pm-access-row selected" : "pm-access-row"} disabled={cfg.loading || Boolean(option.off)} title={option.off} onClick={() => void saveMode(cfg, option.id, reload)}>
+          <span aria-hidden="true">{selected === option.id ? "✓" : ""}</span><b>{option.label}</b>
+        </button>)}
+      </div>
+    </Sec>
   );
 }
 export const modeLabel = (exec: string) => modeName(MODE_OF[exec]);

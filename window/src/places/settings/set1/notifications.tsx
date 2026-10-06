@@ -50,7 +50,7 @@ export function NotificationsPage(props: SettingsPageProps) {
   const agents = useResource<RecordValue>(props.engine, "agents.list", {});
   const trunks: Trunk[] = list(agents.data?.agents).map((a) => ({ id: String(a.id), name: visible(record(a.identity).name ?? a.name ?? a.id) }));
   const level = useLevel();
-  const device = /Mac/i.test(typeof navigator === "undefined" ? "" : navigator.platform) ? "This Mac" : "This PC";
+  const device = "This computer";
   return (
     <Page title={props.title} lede="When Branch may interrupt you.">
       <QuietStatus prefs={prefs} />
@@ -170,6 +170,6 @@ export const NOTIFICATIONS_ROWS: RowEntry[] = [
   ...rows("When work stalls", 0, ["A conversation stopped moving"]),
   ...rows("Live activity", 0, ["Live activity at the top of the screen (Mac)"]),
   ...rows("Kinds of notice", 1, KINDS),
-  ...rows("This PC", 1, ["Name on its notifications", "On a locked screen", "Quiet hours", "Only these Trunks", ...TELL_TITLES]),
+  ...rows("This computer", 1, ["Name on its notifications", "On a locked screen", "Quiet hours", "Only these Trunks", ...TELL_TITLES]),
   ...rows("Sorting notifications", 2, ["Use the kind a Trunk gives", "Add a rule"]),
 ];

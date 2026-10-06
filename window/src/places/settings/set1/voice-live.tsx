@@ -143,7 +143,7 @@ export function LiveServices({ cfg, catalog }: Shared) {
           ))}
         </Plist>
       ) : <Hint>{catalog.loading ? "Looking for live-voice services…" : "No live-voice service is installed."}</Hint>}
-      <Greyed why={NO_KEY} rows={[{ t: "Live voice with a ChatGPT plan", sub: "Use your ChatGPT sign-in for live voice instead of a key.", c: { sw: true } }]} />
+      <Greyed why={NO_KEY} rows={[{ t: "Live voice with a ChatGPT account", sub: "Use your ChatGPT sign-in for live voice instead of a key.", c: { sw: true } }]} />
     </Sec>
   );
 }

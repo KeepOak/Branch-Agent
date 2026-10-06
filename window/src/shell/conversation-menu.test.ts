@@ -44,14 +44,14 @@ const REGULAR_OWN = [
   "Open in its own window", "Share…", "[off] Share this Trunk…", "Who it knows", "Reload conversation", "---", "Send to the board", "---",
   "Archive", "Snooze ›", "Copy ›", "Folder ›", "---",
   "Unpin", "[off] Pause this Trunk", "Rename", "Research’s profile", "Edit Trunk…", "[off] Show it how, once", "[off] Make default",
-  "Talk out loud", "Look inside the last reply", "Start over…", "Export conversation", "---",
+  "Talk live", "Look inside the last reply", "Start over…", "Export conversation", "---",
   "Map of this conversation", "Replay this conversation", "Export as a web page", "[off] Export a share file, locked…", "Delete…", "Remove Trunk…",
 ];
 
 describe("conversationMenuItems", () => {
   it("offers Pin to top on a Trunk's main conversation (every Trunk row in the list is one; P2)", () => {
     const main = row({ key: "agent:main:main", agentId: "main", isMain: true, pinned: false, title: "" });
-    expect(shape(conversationMenuItems(ctx("regular", false, { row: main })))).toContain("Pin to top");
+    expect(shape(conversationMenuItems(ctx("regular", false, { row: main })))).toContain("Pin");
     expect(shape(conversationMenuItems(ctx("regular", false, { row: { ...main, pinned: true } })))).toContain("Unpin");
   });
 
@@ -83,12 +83,12 @@ describe("conversationMenuItems", () => {
     const offline = conversationMenuItems(ctx("regular", true, { online: false, hasReply: false, talkOff: "Turn it on in Settings › Voice." })) as Extract<MenuItem, { run: () => void }>[];
     expect(offline.find((i) => i.label === "Reload conversation")?.disabled).toBe(OFF_REASONS.offline);
     expect(offline.find((i) => i.label === "Look inside the last reply")?.disabled).toBe(OFF_REASONS.noReply);
-    expect(offline.find((i) => i.label === "Talk out loud")?.disabled).toBe("Turn it on in Settings › Voice.");
+    expect(offline.find((i) => i.label === "Talk live")?.disabled).toBe("Turn it on in Settings › Voice.");
   });
 
   it("brings the agent window back from the menu once it is closed", () => {
     const rows = shape(conversationMenuItems(ctx("regular", true, { characterHidden: true })));
-    expect(rows.slice(rows.indexOf("Talk out loud"), rows.indexOf("Talk out loud") + 2)).toEqual(["Talk out loud", "Show Research’s window"]);
+    expect(rows.slice(rows.indexOf("Talk live"), rows.indexOf("Talk live") + 2)).toEqual(["Talk live", "Show Research’s window"]);
     expect(shape(conversationMenuItems(ctx("regular", true)))).not.toContain("Show Research’s window");
   });
 

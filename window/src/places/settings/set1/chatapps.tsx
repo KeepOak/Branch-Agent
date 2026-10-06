@@ -108,7 +108,7 @@ function More({ level, cfg, apps, all, trunks }: MoreProps) {
 /** Every row title, for the settings search. */
 export const CHATAPPS_ROWS: RowEntry[] = [
   { page: "chatapps", title: "Asking to message", sec: "Asking to message", lv: 0, words: "pairing approve dismiss requests" },
-  { page: "chatapps", title: "Approve by code", sec: "Asking to message", lv: 0 },
+  { page: "chatapps", title: "Allow by code", sec: "Asking to message", lv: 0 },
   { page: "chatapps", title: "Who answers", sec: "Who answers", lv: 0, words: "routing trunk per chat" },
   ...rowsOf("chatapps", [...ADVANCED, ...TECH_A, ...LATER].map((s) => ({ ...s, rows: s.rows.filter((r) => r.kind !== "custom" || !["cmdRows", "watchdog", "formatting", "queueByApp", "lists", "actions", "msgKeys", "delayMin", "delayMax", "apprWhere"].includes(r.id ?? "")) }))),
   ...["/new and /stop", "/model", "/config", "/approve"].map((t) => ({ page: "chatapps", title: t, sec: "Commands in chat apps", lv: 1 as Lv, words: "who may use command" })),

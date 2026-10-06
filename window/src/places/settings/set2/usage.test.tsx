@@ -88,14 +88,17 @@ describe("Settings › Data & usage", () => {
     expect(document.querySelector('[data-provider="google"]')!.textContent).toContain("Not published");
     expect(document.querySelector('[data-provider="zai"]')!.textContent).toContain("Token expired");
   });
-  it("draws spend per Trunk by name and this month's total", async () => {
+  it("draws spend per Trunk from the same period as the spend picker", async () => {
     const { engine, request } = engineWith(BASE);
     await show(engine);
-    const sec = document.querySelector('[data-sec="Spend, last 7 days"]')!;
+    const sec = document.querySelector('[data-sec="Spend by Trunk · last 30 days"]')!;
     expect(sec.textContent).toContain("Sapling$1.10");
     expect(sec.textContent).toContain("Helper$0.42");
-    expect(sec.textContent).toContain("This month: $14.20.");
-    expect(calls(request, "usage.cost")[0]).toMatchObject({ agentScope: "all" });
+    expect(sec.textContent).not.toContain("This month:");
+    expect(calls(request, "sessions.usage").filter((params) => params.range === "30d")).toHaveLength(2);
+    await click("7 days", document.querySelector(".s2usage-rep")!);
+    expect(document.querySelector('[data-sec="Spend by Trunk · last 7 days"]')).not.toBeNull();
+    expect(calls(request, "sessions.usage").at(-1)?.range).toBe("7d");
   });
   it("greys what the engine can't do, with the reason", async () => {
     const { engine } = engineWith(BASE);
@@ -316,9 +319,9 @@ describe("moving and backups", () => {
 describe("helpers", () => {
   it("words the reset time", () => {
     const now = new Date(2026, 9, 3, 12, 0).getTime();
-    expect(resetWords(new Date(2026, 9, 3, 18, 0).getTime(), now)).toBe("resets at 6 pm");
-    expect(resetWords(new Date(2026, 9, 3, 19, 40).getTime(), now)).toBe("resets at 7:40 pm");
-    expect(resetWords(new Date(2026, 9, 5, 9, 0).getTime(), now)).toMatch(/^resets [A-Z][a-z]+day$/);
+    expect(resetWords(new Date(2026, 9, 3, 18, 0).getTime(), now)).toBe("resets 6 PM");
+    expect(resetWords(new Date(2026, 9, 3, 19, 40).getTime(), now)).toBe("resets 7:40 PM");
+    expect(resetWords(new Date(2026, 9, 5, 9, 0).getTime(), now)).toMatch(/^resets 9 AM Mon$/);
   });
   it("reads durations and sizes", () => {
     expect(daysFrom("30d")).toBe("30"); expect(daysFrom("12h")).toBe("0.5"); expect(daysFrom(7)).toBe("7");

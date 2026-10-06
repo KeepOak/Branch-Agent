@@ -160,7 +160,7 @@ function topRows(c: ConversationMenuContext): (MenuItem | null)[] {
     SEP,
     item("Send to the board", "puzzle", c.run.toBoard),
     SEP,
-    row && !c.isMain && !c.room ? item(row.archived ? "Restore" : "Archive", "trash", row.archived ? c.run.restore : c.run.archive) : null,
+    row && !c.isMain && !c.room ? item(row.archived ? "Restore" : "Archive", "box", row.archived ? c.run.restore : c.run.archive) : null,
     snoozeRow(c),
     at(c, "advanced") ? c.lookItem ?? null : null,
     copyRow(c),
@@ -174,14 +174,14 @@ function topRows(c: ConversationMenuContext): (MenuItem | null)[] {
 function trunkRows(c: ConversationMenuContext): (MenuItem | null)[] {
   const row = c.row;
   return [
-    row ? item(row.pinned ? "Unpin" : "Pin to top", "pin", c.run.pin) : null,
+    row ? item(row.pinned ? "Unpin" : "Pin", "pin", c.run.pin) : null,
     c.ownTrunk ? off("Pause this Trunk", "pause", OFF_REASONS.pause) : null,
     item("Rename", "edit", c.run.rename),
     item(`${c.trunkName}’s profile`, "users", c.run.profile),
     item("Edit Trunk…", "sliders", c.run.editTrunk),
     c.ownTrunk ? off("Show it how, once", "teach", OFF_REASONS.teach) : null,
     c.ownTrunk ? off("Make default", "star", OFF_REASONS.makeDefault) : null,
-    item("Talk out loud", "wave", c.run.talk, c.talkOff ? { disabled: c.talkOff } : {}),
+    item("Talk live", "wave", c.run.talk, c.talkOff ? { disabled: c.talkOff } : {}),
     c.characterHidden ? item(`Show ${c.trunkName}’s window`, "panel", c.run.showCharacter) : null,
     item("Look inside the last reply", "eye", c.run.lookInside, c.hasReply ? {} : { disabled: OFF_REASONS.noReply }),
     item("Start over…", "retry", c.run.startOver),
@@ -195,7 +195,7 @@ function trunkRows(c: ConversationMenuContext): (MenuItem | null)[] {
     item("Export as a web page", "doc", c.run.exportWebPage),
     off("Export a share file, locked…", "lock", OFF_REASONS.shareFile),
     row && !c.isMain ? item("Delete…", "trash", c.run.remove, { danger: true }) : null,
-    c.ownTrunk && c.canRemoveTrunk ? item("Remove Trunk…", "trash", c.run.removeTrunk, { danger: true }) : null,
+    c.ownTrunk && c.canRemoveTrunk ? item("Remove Trunk…", "personMinus", c.run.removeTrunk, { danger: true }) : null,
   ];
 }
 

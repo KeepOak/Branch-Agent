@@ -84,7 +84,7 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
   const [choices, setChoices] = useChoices();
   const [step, setStep] = useState(p.startAt ?? 0);
   const [test, setTest] = useState<TestResult | "testing" | null>(null);
-  // null until the person changes it: setup writes update.auto.enabled only then (defaults stay the engine's).
+  // null until the person changes it: setup writes the same Install updates state as Settings.
   const [autoUpdate, setAutoUpdate] = useState<boolean | null>(null);
   const [talking, setTalking] = useState(false);
   // Start with Windows: on for a fresh Branch (as the design has it), applied through the Branch app when setup finishes.

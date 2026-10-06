@@ -75,7 +75,7 @@ export function Controllers() {
 const QUICK_OFF = "The window can’t open a box over other apps yet.";
 export function ThisComputer() {
   return (
-    <Sec title={MAC ? "This Mac" : "This PC"}>
+    <Sec title="This computer">
       <Ctl title="Quick ask from anywhere" sub="A small box over any app." off={QUICK_OFF}><Switch checked label="Quick ask from anywhere" onChange={noop} /></Ctl>
       <Ctl title="Quick ask shortcut" sub="Escape keeps the old keys." off={QUICK_OFF}><kbd className="key-k">{MAC ? "⌥ Space" : "Ctrl Shift Space"}</kbd><Btn sm>Change…</Btn></Ctl>
     </Sec>

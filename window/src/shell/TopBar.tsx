@@ -45,7 +45,7 @@ type Props = {
   onGuide?: (event: MouseEvent<HTMLElement>) => void;
   conversationTools?: ReactNode;
   /** On a place or Settings page: "Ask <default Trunk>", which shows that Trunk beside the page (§3.3). */
-  ask?: { name: string; open: boolean; onToggle: () => void } | null;
+  ask?: { name: string; open: boolean; onToggle: () => void; help?: boolean } | null;
   /** On a place page: the gear at the start of the header half, which opens Settings (the preview's placeHead). */
   onSettings?: () => void;
 };
@@ -199,7 +199,7 @@ export function TopBar({ compact, machine, header, dark, listHidden, onTheme, on
           {header && !compact ? <span className="conv-tools">{conversationTools}</span> : null}
           {onGuide ? <button type="button" className="ib guide-btn" title="Guide" data-testid="guide" onClick={onGuide}><Icon name="help" small /><span>Guide</span></button> : null}
           {ask ? (
-            <button type="button" className="ib talk-btn" aria-label={`Ask ${ask.name}`} title={`Ask ${ask.name}`} aria-pressed={ask.open} data-testid="ask-default" onClick={ask.onToggle}>
+            <button type="button" className="ib talk-btn" aria-label={ask.help ? "Help for this page" : `Ask ${ask.name}`} title={ask.help ? "Help for this page" : `Ask ${ask.name}`} aria-haspopup={ask.help ? "dialog" : undefined} aria-pressed={ask.help ? undefined : ask.open} data-testid="ask-default" onClick={ask.onToggle}>
               <Icon name="ask" small />
             </button>
           ) : null}

@@ -70,7 +70,7 @@ const RUNS_LATER: Off[] = [
 const rows = (sec: string, lv: number, titles: string[]): [string, string, number][] => titles.map((t) => [t, sec, lv]);
 export const ROWS: RowEntry[] = [
   ["Set up the Gateway again", "", 0],
-  ...rows("What Branch may change about itself", 0, ["Its own settings", "Loosening what it may do", "The gateway’s timings", "Restarting its own engine", "Updating itself", "Its own program and your saved work", "Work on its own code in a separate copy"]),
+  ...rows("What Branch may change about itself", 0, ["Its own settings", "Loosening what it may do", "The gateway’s timings", "Restarting its own engine", "Its own program and your saved work", "Work on its own code in a separate copy"]),
   ["Type branch in any terminal", "", 1],
   ["Let agents use this window", "", 1],
   ...rows("Learning", 0, LEARNING.map(([t]) => t)), ...rows("Learning", 1, [...LEARNING_MORE.map(([t]) => t), "What it adopts", "Learn overnight on"]),
@@ -93,7 +93,7 @@ export function SelfPage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede={LEDE}>
       <Running {...ctx} />
-      <MayChange {...ctx} />
+      <MayChange />
       {lv >= 1 ? <Sec title=""><DesktopCtl title="Type branch in any terminal" sub="Adds the branch command, so the terminal view and scripts work anywhere." name="branchOnPath" /><DesktopCtl title="Let agents use this window" sub="Grafted coding agents (Settings › Grafts) may see and click this window. A bar with Stop shows while one does. Takes effect the next time Branch starts." name="agentControl" /></Sec> : null}
       <NeverDies />
       <Changes {...ctx} />
@@ -164,20 +164,7 @@ function CheckDialog({ engine, only, onClose }: Pick<SettingsPageProps, "engine"
   );
 }
 
-/** Updating itself on the engine's update settings: Allowed installs by itself, Ask me first only checks, Never doesn't check. */
-function updatingChoice(config: Ctx["config"]): { value: string; choose: (id: string) => void } {
-  const auto = config.get("update.auto.enabled") === true;
-  const checks = config.get("update.checkOnStart") !== false;
-  const choose = (id: string) => void (async () => {
-    if (!(await config.set("update.auto.enabled", id === "allowed"))) return;
-    if (id === "never") await config.set("update.checkOnStart", false);
-    else if (!checks) await config.set("update.checkOnStart", null);
-  })();
-  return { value: auto ? "allowed" : checks ? "ask" : "never", choose };
-}
-
-function MayChange({ config }: Ctx) {
-  const updating = updatingChoice(config);
+function MayChange() {
   return (
     <Sec title="What Branch may change about itself">
       <Ctl title="Its own settings" sub="Full access changes it at once; other modes show you the change first. Each change is tried on a throwaway copy." off={NO_SELF}>
@@ -189,9 +176,6 @@ function MayChange({ config }: Ctx) {
       </Ctl>
       <Ctl title="Restarting its own engine" sub="When it’s stuck: at once in Full access, after your yes in other modes. Safe steps carry on after." off={NO_SELF}>
         <Seg label="Restarting its own engine" value="mode" onChange={() => undefined} options={[{ id: "mode", label: "Follows the mode" }, { id: "ask", label: "Ask me first" }]} />
-      </Ctl>
-      <Ctl title="Updating itself" sub="With a safety copy. Running work gets until the update deadline (15 minutes).">
-        <Seg label="Updating itself" value={updating.value} disabled={config.loading} onChange={updating.choose} options={[{ id: "allowed", label: "Allowed" }, { id: "ask", label: "Ask me first" }, { id: "never", label: "Never" }]} />
       </Ctl>
       <Ctl title="Its own program and your saved work" sub="Its program changes only through an update, never by editing its files. This one can’t be switched on."><span className="pill idle">Never, by itself</span></Ctl>
       <Ctl title="Work on its own code in a separate copy" sub="A private copy of Branch’s source. The installed app is never touched. Every change asks you first." off={NO_SELF}><Switch label="Work on its own code in a separate copy" checked={false} onChange={() => undefined} /></Ctl>

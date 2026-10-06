@@ -77,7 +77,7 @@ function SetupSec({ c }: { c: Ctx }) {
         <Switch label="Suggest tools during setup" checked={g("appRecommendations") !== false} disabled={c.config.loading} onChange={(on) => void c.config.set("wizard.appRecommendations", on)} />
       </Ctl>
       {c.lv >= 2 ? <Kv rows={[["Last run", Number.isFinite(at) ? when(at) : "Not finished yet"], ["Started from", str(g("lastRunCommand"))], ["Where Branch runs", mode === "remote" ? "another computer" : mode === "local" ? "this computer" : ""],
-        ["How much it asks", access === "full" ? "Full access" : access === "guarded" ? "Asks first" : ""], ["Safety promise ticked", Number.isFinite(ack) ? when(ack) : "Not yet"]]} /> : null}
+        ["Access", access === "full" ? "Full access" : access === "guarded" ? "Ask first" : ""], ["Safety promise ticked", Number.isFinite(ack) ? when(ack) : "Not yet"]]} /> : null}
     </>
   );
 }
@@ -478,7 +478,7 @@ function ModelTile({ c, onLogs }: { c: Ctx; onLogs: (filter: string) => void }) 
   const room = Number(m?.contextWindow);
   return (
     <Tile name="Model on this computer" pill={pill} tone={m?.available === true ? "ok" : m?.available === false ? "warn" : "idle"}
-      rows={m ? [["Model", str(m.name) || str(m.id)], ["Room", room ? `${Math.round(room / 1000)}K tokens of context` : ""], ["Size", bytes(m.sizeBytes)]] : [["Model", "No model runs on this computer yet."]]}>
+      rows={m ? [["Model", str(m.name) || str(m.id)], ["Context", room ? `${Math.round(room / 1000)}K-token context` : ""], ["Size", bytes(m.sizeBytes)]] : [["Model", "No model runs on this computer yet."]]}>
       <Btn sm disabled title="The engine can’t restart a model on this computer.">Restart</Btn>
       <Btn sm ghost disabled={!m} onClick={() => onLogs(str(m?.provider))}>Open logs</Btn>
     </Tile>

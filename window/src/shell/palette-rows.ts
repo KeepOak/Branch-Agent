@@ -30,10 +30,10 @@ export function paletteRows(c: Ctx): PaletteRow[] {
     { id: "a:focus", group: "Actions", label: "Focus mode", hint: "Ctrl .", run: c.focusMode },
     { id: "a:keys", group: "Actions", label: "Keyboard shortcuts", hint: "?", run: c.shortcuts },
     { id: "a:ask", group: "Actions", label: "Quick ask", hint: "Ctrl Shift Space", run: c.quickAsk },
-    { id: "a:replay", group: "Actions", label: "Replay the first run", hint: "", run: c.setup },
+    { id: "a:replay", group: "Actions", label: "Set up Branch", hint: "", run: c.setup },
     { id: "a:help", group: "Actions", label: "Get help setting up", hint: "", run: c.setup },
-    { id: "a:tour", group: "Actions", label: "Take the tour", hint: "2 min", run: c.tour },
-    { id: "a:skins", group: "Actions", label: "Browse skins", hint: "", run: () => c.openSettings("appearance") },
+    { id: "a:tour", group: "Actions", label: "Take the walkthrough", hint: "2 min", run: c.tour },
+    { id: "a:skins", group: "Actions", label: "Browse themes", hint: "", run: () => c.openSettings("appearance") },
   ];
   const conversations = c.conversations.map((r) => ({
     id: `c:${r.key}`,

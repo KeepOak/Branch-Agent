@@ -52,9 +52,9 @@ describe("Settings › General", () => {
     await render(engine, 0);
     expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Cover the screen"]);
     await render(engine, 1);
-    expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Clipboard history", "Cover the screen", "Controllers", "The conversation", "Summaries of older turns", "This PC"]);
+    expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Clipboard history", "Cover the screen", "Controllers", "The conversation", "Summaries of older turns", "This computer"]);
     await render(engine, 2);
-    expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Clipboard history", "Cover the screen", "Controllers", "The conversation", "Summaries of older turns", "Summaries, technical", "This PC", "Waiting line", "Summaries, more"]);
+    expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Clipboard history", "Cover the screen", "Controllers", "The conversation", "Summaries of older turns", "Summaries, technical", "This computer", "Waiting line", "Summaries, more"]);
   });
 
   it("every row the page draws is in the search list, with its exact title", async () => {
@@ -130,15 +130,15 @@ describe("Settings › General", () => {
       expect(row(t).querySelector(".why-k")?.textContent).toMatch(/window can’t/);
     }
     // In a plain browser the Branch app's own rows are greyed and say where they are changed.
-    for (const t of ["Start with Windows", "Keep working when the window closes"]) {
+    for (const t of ["Start with Windows"]) {
       expect(row(t).getAttribute("aria-disabled")).toBe("true");
       expect(row(t).querySelector(".why-k")?.textContent).toBe(IN_BROWSER);
     }
-    expect(row("Keep working when the window closes").querySelector<HTMLInputElement>("input")!.checked).toBe(false);
-    expect(host.querySelector(".status")?.textContent ?? host.textContent).toContain("Branch runs while it’s open");
+    expect(row("Keep working when the window closes")).toBeNull();
+    expect(host.querySelector(".status")).toBeNull();
   });
 
-  it("in the Branch app on Windows, closing the window keeps it working in the tray", async () => {
+  it("keeps only startup controls in General", async () => {
     const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
     Object.defineProperty(navigator, "platform", { value: "Win32", configurable: true });
     let state = { keepWorking: true, keepAwake: false, trayUsage: false, startWithWindows: false, branchOnPath: false };
@@ -147,19 +147,13 @@ describe("Settings › General", () => {
     try {
       const { engine } = engineOf();
       await render(engine, 0);
-      const keep = row("Keep working when the window closes");
-      expect(keep.querySelector<HTMLInputElement>("input")!.checked).toBe(true);
-      expect(keep.getAttribute("aria-disabled")).toBeNull();
-      expect(host.textContent).toContain("Branch waits in the tray");
+      expect(row("Keep working when the window closes")).toBeNull();
       const start = () => row("Start with Windows").querySelector<HTMLInputElement>("input")!;
       expect(start().checked).toBe(false);
       expect(row("Start with Windows").getAttribute("aria-disabled")).toBeNull();
       await act(async () => start().click());
       expect(set).toHaveBeenCalledWith("startWithWindows", true);
       expect(start().checked).toBe(true);
-      await act(async () => keep.querySelector<HTMLInputElement>("input")!.click());
-      expect(set).toHaveBeenLastCalledWith("keepWorking", false);
-      expect(host.textContent).toContain("Closing the window quits Branch");
     } finally {
       delete (window as { branchDesktop?: unknown }).branchDesktop;
       delete (navigator as { platform?: string }).platform;

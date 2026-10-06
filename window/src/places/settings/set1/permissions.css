@@ -38,3 +38,9 @@
 .set-col .pm-anchor { margin: 0; height: 0; }
 /* Permissions shows commands and paths as chips (preview .code-ps18) */
 .set-col .kit-page[data-page-title="Permissions"] code.val-k { padding: 3px 7px; border-radius: 6px; background: var(--wash17, var(--fill)); color: var(--ink); overflow-wrap: anywhere; }
+.set-col .pm-access { display: grid; gap: 6px; }
+.set-col .pm-access-row { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r2-17); background: var(--raise); color: var(--ink); text-align: left; cursor: pointer; }
+.set-col .pm-access-row.selected { border-color: var(--accent); background: var(--accent-tint); }
+.set-col .pm-access-row > span { width: 16px; flex: none; color: var(--accent); }
+.set-col .pm-access-row > b { font-weight: 500; }
+.set-col .pm-access-row:disabled { opacity: .45; cursor: default; }

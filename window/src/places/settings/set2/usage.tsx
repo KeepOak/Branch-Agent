@@ -8,12 +8,11 @@ import { Acts, Btn, Ctl, Field, Hint, Num, Page, Pick, Pill, Plist, Prow, Sec, S
 import { errorText, list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { Menu, type MenuAnchor } from "../../../shell/Menu";
-import { CallLine, CodeRow, CopyBtn, Kv, Tile, bytes, lvOf, openPlace, rec, span, str, useCall, useLive, when, type RecordValue } from "./common";
+import { CallLine, CodeRow, CopyBtn, Kv, Tile, bytes, lvOf, openPlace, rec, span, str, useCall, useLive, useResource, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
 import { Logo } from "../set1/service";
-import { readMeasuredPercent } from "../../../shell/limit-window-reading";
+import { readLimits, resetWords as sharedResetWords, type LimitRow } from "../../../shell/status-data";
 import { ModelPrices } from "./usage-prices";
-import { useShown } from "../../../shell/shown";
 import { CKPT_PREF, CKPT_SHOW, useCkptCanShow, useCkptOn } from "../../../shell/SaveProgress";
 import { lookStore } from "../set1/appearance-store";
 import "./usage.css";
@@ -79,11 +78,12 @@ export function UsagePage(props: SettingsPageProps) {
   const [days, setDays] = useState("30");
   const [report, setReport] = useState(false);
   const names = useNames(props.engine);
+  const spend = useResource<RecordValue>(props.engine, "sessions.usage", { range: `${days}d`, ...ALL, ...LOCAL, limit: 1 });
   return (
-    <Page title={props.title} lede="What each connection has left, what Branch spent, what it keeps.">
-      <SpendCard engine={props.engine} days={days} setDays={setDays} onOpen={() => setReport(true)} />
+    <Page title={props.title} lede="What each account has left, what Branch spent, what it keeps.">
+      <SpendCard spend={spend} days={days} setDays={setDays} onOpen={() => setReport(true)} />
       <Allowances engine={props.engine} />
-      <TrunkSpend engine={props.engine} names={names} />
+      <TrunkSpend spend={spend} names={names} days={days} />
       <Keeping engine={props.engine} lv={lv} />
       <TestModel />
       <Evals lv={lv} />
@@ -100,9 +100,9 @@ export function UsagePage(props: SettingsPageProps) {
 }
 
 /** The card at the top: what Branch spent in the period, how many tasks, and "Open the report". */
-function SpendCard({ engine, days, setDays, onOpen }: { engine: WindowEngine; days: string; setDays: (d: string) => void; onOpen: () => void }) {
-  const res = useLive<RecordValue>(engine, "sessions.usage", { range: `${days}d`, ...ALL, ...LOCAL, limit: 1 }, []);
-  const data = rec(res.data);
+type SpendResult = { data?: RecordValue; error?: string | null };
+function SpendCard({ spend, days, setDays, onOpen }: { spend: SpendResult; days: string; setDays: (d: string) => void; onOpen: () => void }) {
+  const data = rec(spend.data);
   const tasks = num(rec(rec(data.aggregates).messages).user);
   const stale = str(rec(data.cacheStatus).status);
   return (
@@ -110,8 +110,8 @@ function SpendCard({ engine, days, setDays, onOpen }: { engine: WindowEngine; da
       <div className="s2usage-reph">
         <span>
           <small>Last {days} days</small>
-          <b>{res.data ? money(rec(data.totals).totalCost) : res.error ? "" : "…"}</b>
-          {res.error ? <em className="s2-err" role="alert">{res.error}</em> : res.data ? <em>{tasks} {tasks === 1 ? "task" : "tasks"} · estimated from each model’s price</em> : null}
+          <b>{spend.data ? money(rec(data.totals).totalCost) : spend.error ? "" : "…"}</b>
+          {spend.error ? <em className="s2-err" role="alert">{spend.error}</em> : spend.data ? <em>{tasks} {tasks === 1 ? "task" : "tasks"} · estimated from each model’s price</em> : null}
           {stale && stale !== "fresh" ? <em className="s2usage-inc">Usage may be incomplete. Branch is checking for updated totals.</em> : null}
         </span>
         <Seg label="Spend period" value={days} options={["7", "30", "90"].map((d) => ({ id: d, label: `${d} days` }))} onChange={setDays} />
@@ -122,18 +122,10 @@ function SpendCard({ engine, days, setDays, onOpen }: { engine: WindowEngine; da
 }
 
 /* ---------- what each connection has left ---------- */
-/** "resets at 6 pm", "resets Monday", "resets Oct 12". */
+/** Use the same reset wording as the status bar and its usage popover. */
 export function resetWords(ms: unknown, now = Date.now()): string {
   if (typeof ms !== "number" || !Number.isFinite(ms)) return "";
-  const d = new Date(ms);
-  const end = new Date(now); end.setHours(23, 59, 59, 999);
-  if (ms <= end.getTime()) {
-    if (d.getHours() === 0 && d.getMinutes() === 0) return "resets at midnight";
-    const t = d.toLocaleTimeString("en-US", { hour: "numeric", minute: d.getMinutes() ? "2-digit" : undefined }).toLowerCase().replace(/\s/g, " ");
-    return `resets at ${t}`;
-  }
-  if (ms - now < 7 * 86_400_000) return `resets ${d.toLocaleDateString(undefined, { weekday: "long" })}`;
-  return `resets ${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  return sharedResetWords(ms, 1, now);
 }
 
 /** "4 min ago", "1 h ago", "just now", "yesterday". */
@@ -177,16 +169,9 @@ function Billing({ b }: { b: RecordValue }) {
   return <div className="s2usage-limw"><span>{label}</span><span>{amount(b.amount)}{str(b.period) ? ` · ${str(b.period)}` : ""}</span></div>;
 }
 
-/** The engine's short window names ("5h", "Week") in words. */
-const WINDOW_WORDS: Record<string, string> = { "5h": "This 5-hour window", week: "This week", day: "Today", month: "This month" };
-const windowWords = (label: string) => WINDOW_WORDS[label.toLowerCase()] ?? WINDOW_WORDS[label] ?? label;
-
-function Provider({ p, updatedAt }: { p: RecordValue; updatedAt: unknown }) {
-  const name = str(p.displayName) || str(p.provider);
-  const windows = list(p.windows).flatMap((w) => {
-    const measured = readMeasuredPercent(w.usedPercent);
-    return measured ? [{ label: windowWords(str(w.label)), left: 100 - measured.used, words: resetWords(w.resetAt) }] : [];
-  });
+function Provider({ p, limit, updatedAt }: { p: RecordValue; limit: LimitRow; updatedAt: unknown }) {
+  const name = limit.name;
+  const windows = limit.windows.map((window) => ({ label: window.name, left: window.left, words: window.reset }));
   const billing = list(p.billing);
   const told = windows.length > 0 || billing.some(billingMeasured);
   const sub = [str(p.accountEmail), str(p.plan)].filter(Boolean).join(" · ");
@@ -213,29 +198,27 @@ function Allowances({ engine }: { engine: WindowEngine }) {
   const res = useLive<RecordValue>(engine, "usage.status", {}, []);
   const data = rec(res.data);
   const providers = list(data.providers);
+  const limits = readLimits(res.data);
   return (
-    <Sec title="What each connection has left" hint="How much of each service’s allowance is still there: one row per connection, one row per account. Every figure comes from the service itself.">
+    <Sec title="Account allowances" hint="What each account has left. Every figure comes from its service.">
       {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
-      {res.loading && !res.data ? <Hint>Asking each connection…</Hint> : null}
-      {res.data && !providers.length ? <p className="empty">No connection reports an allowance yet. Connect a model account to see what its service allows.</p> : null}
-      {providers.length ? <div className="s2usage-lims">{providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} updatedAt={data.updatedAt} />)}</div> : null}
-      {data.refreshing === true ? <Hint>Checking each connection again…</Hint> : null}
+      {res.loading && !res.data ? <Hint>Checking accounts…</Hint> : null}
+      {res.data && !providers.length ? <p className="empty">No account reports an allowance yet.</p> : null}
+      {providers.length ? <div className="s2usage-lims">{providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} />)}</div> : null}
+      {data.refreshing === true ? <Hint>Checking accounts again…</Hint> : null}
       <AllowanceRows engine={engine} />
     </Sec>
   );
 }
 
 /* ---------- spend per Trunk ---------- */
-function TrunkSpend({ engine, names }: { engine: WindowEngine; names: Map<string, string> }) {
-  const week = useLive<RecordValue>(engine, "sessions.usage", { range: "7d", ...ALL, ...LOCAL, limit: 1 }, []);
-  const today = new Date();
-  const month = useLive<RecordValue>(engine, "usage.cost", { startDate: ymd(new Date(today.getFullYear(), today.getMonth(), 1)), endDate: ymd(today), ...ALL, ...LOCAL }, []);
-  const rows = list(rec(rec(week.data).aggregates).byAgent).map((a) => ({ id: str(a.agentId), cost: num(rec(a.totals).totalCost) })).sort((a, b) => b.cost - a.cost);
+function TrunkSpend({ spend, names, days }: { spend: SpendResult; names: Map<string, string>; days: string }) {
+  const rows = list(rec(rec(spend.data).aggregates).byAgent).map((a) => ({ id: str(a.agentId), cost: num(rec(a.totals).totalCost) })).sort((a, b) => b.cost - a.cost);
   const max = Math.max(0, ...rows.map((r) => r.cost));
   return (
-    <Sec title="Spend, last 7 days">
-      {week.error ? <p className="hint s2-err" role="alert">{week.error}</p> : null}
-      {week.data && !rows.length ? <p className="empty">Nothing was spent in the last 7 days.</p> : null}
+    <Sec title={`Spend by Trunk · last ${days} days`}>
+      {spend.error ? <p className="hint s2-err" role="alert">{spend.error}</p> : null}
+      {spend.data && !rows.length ? <p className="empty">Nothing was spent in the last {days} days.</p> : null}
       {rows.length ? (
         <div className="s2usage-bars">
           {rows.map((r) => (
@@ -247,8 +230,6 @@ function TrunkSpend({ engine, names }: { engine: WindowEngine; names: Map<string
           ))}
         </div>
       ) : null}
-      {month.data ? <Hint>{`This month: ${money(rec(month.data.totals).totalCost)}. Plans are billed by their own sites; work on this computer is free.`}</Hint> : null}
-      {month.error ? <p className="hint s2-err" role="alert">{month.error}</p> : null}
     </Sec>
   );
 }
@@ -806,12 +787,10 @@ const asNum = (v: string): number | undefined => (v.trim() === "" || !Number.isF
 
 /** The connection rows under the allowances: what the engine doesn't do yet is greyed with why. */
 function AllowanceRows({ engine }: { engine: WindowEngine }) {
-  const shown = useShown(engine); // the same "show.usage" switch as Appearance › What's shown and the status bar's right-click
   const ckptOn = useCkptOn(engine);
   const ckptCanShow = useCkptCanShow();
   return (
     <>
-      <Ctl title="The ring bottom right" sub="The connection used next, how much of its window is left, and when it refills."><Switch label="Show the ring" checked={shown.usage} onChange={(on) => void lookStore(engine).set("show.usage", on)} /></Ctl>
       <Ctl title="Offer to save progress at 95%" sub={<>It only asks, once per connection per window, and never for an estimate. <button type="button" className="link-k" disabled={!ckptCanShow} onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
       <Ctl title="Asking a service what is left" off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
       <DesktopCtl title="Show usage in the tray" sub="A small ring by the clock opens the same list." name="trayUsage" />
@@ -1301,7 +1280,7 @@ function BackupsGo({ data }: { data: RecordValue }) {
 }
 
 export const ROWS: RowEntry[] = ([
-  ["The ring bottom right", "What each connection has left", 0], ["Offer to save progress at 95%", "What each connection has left", 0],
+  ["Offer to save progress at 95%", "What each connection has left", 0],
   ["Asking a service what is left", "What each connection has left", 0], ["Show usage in the tray", "What each connection has left", 0],
   ["Keep conversations", "Keeping things", 0], ["Checkpoints", "Keeping things", 0], ["Conversations", "Keeping things", 1],
   ["Test set", "Test the model you use", 0],

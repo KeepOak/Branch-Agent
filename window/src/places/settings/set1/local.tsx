@@ -130,7 +130,7 @@ function Recommended({ loading, options, local, onSetup }: RecProps) {
 
 function Installed({ m }: { m: RecordValue }) {
   const name = visible(m.name ?? m.id);
-  const ctx = typeof m.contextWindow === "number" ? Math.round(m.contextWindow / 1024) : 0;
+  const ctx = typeof m.contextWindow === "number" ? Math.round(m.contextWindow / 1000) : 0;
   const runtime = RUNTIMES.find((r) => r.id === m.provider)?.name ?? visible(m.provider);
   return (
     <div className="lm-k" data-row={name}>
@@ -139,7 +139,7 @@ function Installed({ m }: { m: RecordValue }) {
       <div className="lm-tags-k">
         {m.supportsTools === true ? <span className="tag-k">tools</span> : null}
         {Array.isArray(m.input) && m.input.includes("image") ? <span className="tag-k">sees pictures</span> : null}
-        {ctx ? <span className="tag-k">{ctx}k words of memory</span> : null}
+        {ctx ? <span className="tag-k">{ctx}K-token context</span> : null}
       </div>
       <div className="acts">
         <span className="pill done-k"><i />Installed</span>
@@ -157,4 +157,3 @@ export const LOCAL_ROWS: RowEntry[] = [
   ...rows("Runtimes", 1, ["Share with your other computers"]),
   ...rows("Running models here, more", 1, MORE_TITLES),
 ];
-

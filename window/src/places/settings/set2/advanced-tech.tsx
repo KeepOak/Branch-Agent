@@ -103,9 +103,9 @@ function convOf(r: RecordValue): Conv {
 function Pips({ used }: { used: number }) {
   const n = Math.ceil(used / 20);
   const tone = used >= 80 ? "bad" : used >= 60 ? "warn" : "on";
-  return <span className="s2advanced-pips" title={`${used}% of the room used`} aria-label={`${used}% of the room used`}>{[0, 1, 2, 3, 4].map((i) => <i key={i} className={i < n ? tone : ""} />)}</span>;
+  return <span className="s2advanced-pips" title={`${used}% of context used`} aria-label={`${used}% of context used`}>{[0, 1, 2, 3, 4].map((i) => <i key={i} className={i < n ? tone : ""} />)}</span>;
 }
-const COLS: [SortKey, string][] = [["name", "Name"], ["kind", "Kind"], ["last", "Last active"], ["room", "Room used"], ["status", "Status"], ["goal", "Goal"]];
+const COLS: [SortKey, string][] = [["name", "Name"], ["kind", "Kind"], ["last", "Last active"], ["room", "Context used"], ["status", "Status"], ["goal", "Goal"]];
 
 export function ConvDialog({ engine, lv, onClose }: { engine: WindowEngine; lv: Lv; onClose: () => void }) {
   const [q, setQ] = useState("");

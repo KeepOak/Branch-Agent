@@ -43,7 +43,7 @@ function WhichNext({ engine, providers, reload, agent }: Props) {
         const mode = p.profileOrder?.length ? "order" : "turns";
         return (
           <Ctl key={p.provider} title={serviceName(p.provider, p.displayName)} icon={<Logo id={p.provider} size={22} />} id={serviceName(p.provider, p.displayName)}
-            sub={p.profileOrderLocked ? "The order is set in the settings file." : mode === "order" ? "The first account with room left, as listed above." : "Each turn goes to the account used longest ago."}>
+            sub={p.profileOrderLocked ? "The order is set in the settings file." : mode === "order" ? "The first account with allowance left, as listed above." : "Each turn goes to the account used longest ago."}>
             <Seg label={`Which ${serviceName(p.provider, p.displayName)} account goes next`} value={mode} options={NEXT} disabled={Boolean(p.profileOrderLocked)} onChange={(m) => set(p, m)} />
           </Ctl>
         );
@@ -65,7 +65,7 @@ function AccountsAdvanced({ engine, all, openSettings }: Props) {
       <Ctl title="Resting now" sub="A limit benches an account only for that model.">{resting.length ? resting.map((a) => <Pill key={a.a.profileId} tone="warn">{accountName(a)}</Pill>) : <Val>None</Val>}</Ctl>
       <Ctl title="Which sign-in each request used" sub="Key or sign-in, and which account; never the key itself." off={NO_KEY}><Btn sm>See the last 20</Btn></Ctl>
       <Ctl title="Organisation" sub="For accounts in more than one organisation: who is billed." off={NO_KEY}><Pick label="Organisation" value="personal" options={[{ id: "personal", label: "Personal" }]} onChange={() => undefined} /></Ctl>
-      <Ctl title="A customer’s ChatGPT plan on a KeepOak computer" sub="Only with that customer’s own sign-in on it. Off until you choose." off={NO_KEY}><Switch checked={false} label="A customer’s ChatGPT plan on a KeepOak computer" onChange={() => undefined} /></Ctl>
+      <Ctl title="A customer’s ChatGPT account on a KeepOak computer" sub="Only with that customer’s own sign-in on it." off={NO_KEY}><Switch checked={false} label="A customer’s ChatGPT account on a KeepOak computer" onChange={() => undefined} /></Ctl>
     </Sec>
   );
 }

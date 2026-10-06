@@ -306,7 +306,7 @@ function Placed({ engine, svc, before, agent, onDone }: { engine: WindowEngine; 
       <label className="fld"><span>Call it</span><input className="inp" disabled title="Branch can’t rename an account yet." value={freshName ?? svc.name} readOnly /></label>
       <div className="fld"><span>Where it goes in the order</span>
         <span className="acts"><button type="button" className="btn sm" disabled={!fresh} onClick={() => put("first")}>First</button><button type="button" className="btn sm" disabled={!fresh} onClick={() => put("last")}>Last</button></span>
-        <small className="hint">Branch uses the first one with room left.</small>
+        <small className="hint">Branch uses the first one with allowance left.</small>
       </div>
     </>
   );

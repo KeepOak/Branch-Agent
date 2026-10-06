@@ -158,8 +158,8 @@ describe("Inbox › Needs you", () => {
   it("sends dismiss, device reject and node approve with the request id", async () => {
     const { host, request } = await render();
     const row = (title: string) => [...host.querySelectorAll(".ib-row")].find(r => r.textContent?.includes(title))!;
-    await click(btn(row("Jordan Ellis"), "Don’t")[0]);
-    await click(btn(row("Phone wants to connect"), "Don’t")[0]);
+    await click(btn(row("Jordan Ellis"), "Don’t allow")[0]);
+    await click(btn(row("Phone wants to connect"), "Don’t allow")[0]);
     await click(btn(row("box wants to offer"), "Allow")[0]);
     expect(calls(request, "channels.pairing.dismiss")).toEqual([{ channel: "telegram", accountId: "default", requestId: "q1" }]);
     expect(calls(request, "device.pair.reject")).toEqual([{ requestId: "d1" }]);

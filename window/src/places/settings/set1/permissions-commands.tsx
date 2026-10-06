@@ -105,9 +105,9 @@ export function CommandDefaults({ x }: { x: Ctx }) {
   const busy = ap.loading || Boolean(ap.error);
   return (
     <>
-      <Hint>Follows “Mode everywhere” unless you set it here.</Hint>
+      <Hint>Follows Access unless you set it here.</Hint>
       <Ctl title="Commands may run"><Seg label="Commands may run" value={r.security} options={RUN} disabled={busy} onChange={set("security")} /></Ctl>
-      <Ctl title="Ask before a command" sub="The engine’s own default, as “Mode everywhere” ships Full access."><Seg label="Ask before a command" value={r.ask} options={ASK} disabled={busy} onChange={set("ask")} /></Ctl>
+      <Ctl title="Ask before a command" sub="The engine’s default starts on Full access."><Seg label="Ask before a command" value={r.ask} options={ASK} disabled={busy} onChange={set("ask")} /></Ctl>
       <Ctl title="When nobody can be asked" sub="When no window, phone or chat app can show the request."><Seg label="When nobody can be asked" value={r.askFallback} options={FALLBACK} disabled={busy} onChange={set("askFallback")} /></Ctl>
       <Ctl title="Let skill programs run" sub="Programs your installed skills list as their own run without a rule. Off until you choose: they would run without asking."><Switch label="Let skill programs run" checked={r.autoAllowSkills} disabled={busy} onChange={set("autoAllowSkills")} /></Ctl>
       {x.trunks.map((t) => <TrunkCommands key={text(t.id)} x={x} trunk={t} defLabel={labelOf(RUN, r.security)} />)}

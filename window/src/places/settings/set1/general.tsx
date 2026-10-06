@@ -8,7 +8,7 @@ import { list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Icon } from "../../../shell/icons";
 import { ShortcutsDialog } from "../../../shell/ShortcutsDialog";
-import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Status, Switch, useConfig, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
+import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Switch, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
 import { PinnedSection } from "../pins";
 import { useDesktopControls } from "../../../connect/desktop-controls";
 import { ClipboardHistory, Controllers, CoverScreen, ThisComputer, Writing, OS } from "./general-more";
@@ -21,7 +21,6 @@ export function GeneralPage(props: SettingsPageProps) {
   const pins = usePinsKit();
   return (
     <Page title={props.title} lede="How Branch starts and behaves on this computer." top={<PinnedSection pins={pins} />}>
-      <GeneralStatus engine={props.engine} />
       <StartingUp />
       <Projects engine={props.engine} />
       <Keyboard />
@@ -36,24 +35,6 @@ export function GeneralPage(props: SettingsPageProps) {
   );
 }
 
-/** The Branch app on Windows hides its window to the tray on close and keeps the engine running
- *  (desktop/src/resident-window.ts); elsewhere closing the window ends it. */
-export function staysInTray(): boolean {
-  const w = window as { branchDesktop?: unknown };
-  return Boolean(w.branchDesktop) && typeof navigator !== "undefined" && /^Win/.test(navigator.platform);
-}
-
-/** What starting up and closing the window do, as the Branch app on this computer has them. */
-function GeneralStatus({ engine }: { engine: SettingsPageProps["engine"] }) {
-  const cfg = useConfig(engine);
-  const desk = useDesktopControls();
-  if (cfg.loading) return <Status tone="idle" title="Reading Branch’s settings…" />;
-  if (cfg.error) return <Status tone="bad" title="Branch couldn’t read its settings">{visible(cfg.error)}</Status>;
-  if (desk.state && !desk.state.keepWorking) return <Status tone="idle" title="Branch runs while it’s open">Closing the window quits Branch and stops its engine.</Status>;
-  if (staysInTray()) return <Status title="Branch waits in the tray">Closing the window keeps it running, so scheduled work goes on.</Status>;
-  return <Status tone="idle" title="Branch runs while it’s open">Starting with {OS} and working on after the window closes are set in the Branch app on your computer.</Status>;
-}
-
 function StartingUp() {
   const desk = useDesktopControls();
   const why = desk.off;
@@ -61,9 +42,6 @@ function StartingUp() {
     <Sec title="Starting up">
       <Ctl title={`Start with ${OS}`} sub="Opens quietly in the tray." off={why}>
         <Switch checked={desk.state?.startWithWindows ?? false} disabled={desk.busy !== null} label={`Start with ${OS}`} onChange={(on) => void desk.set("startWithWindows", on)} />
-      </Ctl>
-      <Ctl title="Keep working when the window closes" sub="Trunks finish what they started." off={why}>
-        <Switch checked={desk.state?.keepWorking ?? false} disabled={desk.busy !== null} label="Keep working when the window closes" onChange={(on) => void desk.set("keepWorking", on)} />
       </Ctl>
       {desk.state && desk.error ? <small className="why-k" role="alert">{visible(desk.error)}</small> : null}
     </Sec>
@@ -111,7 +89,7 @@ function Keyboard() {
 
 const rows = (sec: string, lv: Lv, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "general", title, sec, lv }));
 export const GENERAL_ROWS: RowEntry[] = [
-  ...rows("Starting up", 0, [`Start with ${OS}`, "Keep working when the window closes"]),
+  ...rows("Starting up", 0, [`Start with ${OS}`]),
   ...rows("Projects", 0, []),
   ...rows("Keyboard", 0, ["Keyboard shortcuts"]),
   ...rows("Writing", 0, ["Message box grows with the text", "Check spelling in the message box", "Suggest the rest as I type", "Add my location to messages", "Replies in", "After a plan", "Open Branch on", "Show “Finish setting up”"]),
@@ -122,7 +100,7 @@ export const GENERAL_ROWS: RowEntry[] = [
   ...rows("The conversation", 1, ["Vim keys in the message box", "Message times", "When you send while it works", "Send with", "Task progress above the message box", "Task progress starts", "Open past sessions in", "Ask before deleting a conversation"]),
   ...rows("Summaries of older turns", 1, ["Summarise older turns by themselves", "Summarise when the room left is under", "Always keep the latest", "Model for summaries"]),
   ...rows("Summaries, technical", 2, ["Room to plan for", "Repair the history before each call", "How it summarises", "Summary time limit", "Keep names and numbers exact", "Trim old tool results", "Trim after"]),
-  ...rows(OS === "macOS" ? "This Mac" : "This PC", 1, ["Quick ask from anywhere", "Quick ask shortcut"]),
+  ...rows("This computer", 1, ["Quick ask from anywhere", "Quick ask shortcut"]),
   ...rows("Waiting line", 2, ["Wait before sending what’s in line", "Most messages in line", "When the line is full"]),
   ...rows("Summaries, more", 2, ["How to write the summary", "If a summary can’t be made", "Keep the originals of what it summarises", "A receipt for each thing left out"]),
 ];

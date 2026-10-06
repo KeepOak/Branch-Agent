@@ -5,7 +5,7 @@ import { Btn, Ctl, Plist, Prow, Sec, Status, Switch } from "../kit";
 import { refOf, type ModelsCtx } from "./models-data";
 
 const NONE = "Branch has no setting for this yet.";
-const words = (n: number) => (n >= 1000 ? `${Math.round((n * 0.75) / 1000)}K words of context` : `${n} tokens of context`);
+const contextSize = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}K-token context` : `${n}-token context`);
 
 export function LocalTab({ m, openSettings }: { m: ModelsCtx; openSettings?: (page: string) => void }) {
   const local = m.models.filter((x) => x.local);
@@ -16,7 +16,7 @@ export function LocalTab({ m, openSettings }: { m: ModelsCtx; openSettings?: (pa
   return (
     <>
       {ready
-        ? <Status title={`${ready.name} is ready on this computer`}>Loaded when first asked{ctx ? ` · ${words(ctx)}` : ""} · nothing leaves this computer.</Status>
+        ? <Status title={`${ready.name} is ready on this computer`}>Loaded when first asked{ctx ? ` · ${contextSize(ctx)}` : ""} · nothing leaves this computer.</Status>
         : <Status tone="idle" title="No model on this computer yet">A model here is free and private. Branch checks what fits before it offers one.</Status>}
       {local.length ? (
         <Sec title="">

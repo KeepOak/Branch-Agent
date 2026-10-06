@@ -13,7 +13,7 @@ import { THIS_PC } from "./permissions-commands";
 import { useApprovalsFile } from "./permissions-file";
 import { SectionView, WHY, rowsOf, type Ctx, type Row, type Section } from "./permissions-rows";
 import { LOWER } from "./permissions-sections";
-import { ModeEverywhere, ModeStatus, THIS_PC_ROWS, ThisPc } from "./permissions-top";
+import { ModeEverywhere, THIS_PC_ROWS, ThisPc } from "./permissions-top";
 import "./set1.css";
 import "./permissions.css";
 
@@ -41,7 +41,6 @@ export function PermissionsPage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede="What Trunks may do without asking you first.">
       <ThisPc />
-      <ModeStatus agents={agents.data} loading={agents.loading} error={agents.error} />
       <ModeEverywhere cfg={cfg} agents={agents.data} reload={agents.reload} />
       <SectionView s={WITHOUT} x={x} />
       {LOWER.map((s) => <SectionView key={s.title} s={s} x={x} />)}
@@ -51,11 +50,11 @@ export function PermissionsPage(props: SettingsPageProps) {
 }
 
 const TOP: RowEntry[] = [
-  ...THIS_PC_ROWS.map(([title]) => ({ page: "permissions", title, sec: "This PC", lv: 0 as const })),
-  { page: "permissions", title: "Location access", sec: "This PC", lv: 0 },
-  { page: "permissions", title: "Precise location", sec: "This PC", lv: 0 },
+  ...THIS_PC_ROWS.map(([title]) => ({ page: "permissions", title, sec: "This computer", lv: 0 as const })),
+  { page: "permissions", title: "Location access", sec: "This computer", lv: 0 },
+  { page: "permissions", title: "Precise location", sec: "This computer", lv: 0 },
   { page: "permissions", title: "Lockdown", sec: "Locks and records", lv: 0, words: "stop everything" },
-  { page: "permissions", title: "Mode everywhere", lv: 0, words: "auto ask first plan first read only full access mode" },
+  { page: "permissions", title: "Access", lv: 0, words: "auto ask first plan first read only full access mode" },
 ];
 const COMMAND_ROWS: RowEntry[] = ["Ask before a command", "When nobody can be asked", "Let skill programs run"].map((title) => ({ page: "permissions", title, sec: "Commands, by default", lv: 1 }));
 

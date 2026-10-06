@@ -6,7 +6,7 @@
 import { record } from "../adapter";
 import { CommandDefaults, RulesFor, RulesList } from "./permissions-commands";
 import { WHY, type Cfg, type Dead, type Row, type Section } from "./permissions-rows";
-import { ApprovalsRow, Connectors, Lockdown, Pinned, WhoMay, WorkStyle } from "./permissions-top";
+import { ApprovalsRow, Connectors, Lockdown, Pinned, WhoMay } from "./permissions-top";
 
 const off = (t: string, sub: string | undefined, c: Dead, why = WHY.key, lv?: 0 | 1 | 2): Row => ({ k: "off", t, sub, c, why, lv });
 const offSw = (t: string, sub: string, on: boolean, why = WHY.key): Row => off(t, sub, { sw: on }, why);
@@ -164,11 +164,6 @@ export const POLICY: Section = { title: "Company policy", lv: 2, rows: [
   offSw("Let it repair project folders", "Off until you choose: it changes files in your projects.", false, WHY.policy),
 ] };
 
-export const WORK_STYLE: Section = { title: "Work style", lv: 0, rows: [
-  { k: "el", t: "How careful", el: (x) => <WorkStyle x={x} agents={x.agents} reload={x.reloadAgents} /> },
-  off("New Trunks start on Ask first", "A Trunk brought back from a backup comes back paused and look-only until you give back what it had.", { none: true }, "New Trunks follow “Mode everywhere”."),
-] };
-
 export const MORE_APPROVALS: Section = { title: "Approvals, more", lv: 1, rows: [
   offSw("Change files inside the project folder", "In Auto: edits inside the project run without asking. Outside it, and Branch’s own files, still ask.", false),
   offSw("Use connectors’ tools", "In Auto: tools from your connectors run without asking.", false),
@@ -281,4 +276,4 @@ export const CONNECTORS: Section = { title: "What each connector may do", lv: 1,
 ] };
 
 /** Every section after "Without asking, Trunks may…", in the preview's order. */
-export const LOWER: Section[] = [LOCKS, PINNED, RULES, COMMANDS, MORE_WITHOUT, CHECKS, ISOLATION, TOOLS_TECH, TEST, SECURITY_TECH, GUARDS_ON, TOOLS_LOOPS, PRIVACY, TERMINAL, FOLDERS, POLICY, WORK_STYLE, MORE_APPROVALS, MORE_GUARDS, MONEY, NETWORK, CONNECTORS];
+export const LOWER: Section[] = [LOCKS, PINNED, RULES, COMMANDS, MORE_WITHOUT, CHECKS, ISOLATION, TOOLS_TECH, TEST, SECURITY_TECH, GUARDS_ON, TOOLS_LOOPS, PRIVACY, TERMINAL, FOLDERS, POLICY, MORE_APPROVALS, MORE_GUARDS, MONEY, NETWORK, CONNECTORS];

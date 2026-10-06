@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { SettingsFrame } from "./SettingsFrame";
+import { Ctl, KitProvider, Page, Sec } from "../places/settings/kit";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const engine: WindowEngine = { request: vi.fn(async () => ({})) as WindowEngine["request"], onEvent: () => () => {}, sessionKey: "test", scopes: [] };
@@ -107,5 +108,30 @@ describe("settings keyboard navigation", () => {
     expect(document.activeElement?.getAttribute("data-level")).toBe("technical");
     await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
     expect(document.activeElement?.getAttribute("data-level")).toBe("regular");
+  });
+});
+
+describe("settings page help", () => {
+  it("keeps long explanations in help and asks from its final row", async () => {
+    const ask = vi.fn();
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(
+      <KitProvider level={0} report={{ saving: vi.fn(), saved: vi.fn(), failed: vi.fn() }} scope={null} ask={ask} askName="Sapling">
+        <Page title="General" lede="Set up the way Branch starts.">
+          <Sec title="Starting up">
+            <Ctl title="Start with Windows" sub="Branch waits in the tray and keeps scheduled work running when the window is closed."><button>Change</button></Ctl>
+          </Sec>
+        </Page>
+      </KitProvider>,
+    ));
+    expect(document.querySelector(".lede")?.textContent).toBe("Set up the way Branch starts.");
+    expect(document.querySelector(".ctl > small")?.textContent?.length).toBeLessThanOrEqual(70);
+    expect(document.querySelector(".link-k")?.textContent).not.toBe("Learn more");
+    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Branch waits in the tray and keeps scheduled work running when the window is closed.");
+    expect(document.querySelector(".kit-help-ask")?.textContent).toBe("Ask Sapling about this page");
+    await act(async () => document.querySelector<HTMLButtonElement>(".kit-help-ask")!.click());
+    expect(ask).toHaveBeenCalledWith("Tell me about Settings › General.");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 });

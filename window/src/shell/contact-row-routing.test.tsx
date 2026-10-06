@@ -73,7 +73,7 @@ it("offers Pin but not Archive or Delete on the default Trunk's conversation men
     hasReply: false, talkOff: null, detail: null, fileManager: "Show in File Explorer",
     run: new Proxy({}, { get: () => vi.fn() }) as ConversationMenuRun,
   });
-  expect(items.some((item) => item.kind === undefined && item.label === "Pin to top")).toBe(true);
+  expect(items.some((item) => item.kind === undefined && item.label === "Pin")).toBe(true);
   expect(items.some((item) => item.kind === undefined && (item.label === "Archive" || item.label === "Delete…"))).toBe(false);
 });
 

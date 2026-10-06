@@ -109,6 +109,7 @@ export function ReadingSec({ look }: { look: Look }) {
   return (
     <Sec title="Reading">
       <SpecRow r={rowOf("size")} look={look} />
+      <ReadingMoreRows look={look} />
       {level >= 1 ? (
         <>
           <Ctl title="Interface font" keep="everywhere"><Pick value={font("fontUi")} options={FONTS} label="Interface font" onChange={set("fontUi")} /></Ctl>
@@ -147,11 +148,11 @@ const CODE_SAMPLE: Record<string, [string, string, string]> = {
   solarized: ["#859900", "#2aa198", "#93a1a1"], tm: ["#b5651d", "#3a7d44", "#888"],
 };
 
-export function ReadingMoreSec({ look }: { look: Look }) {
+function ReadingMoreRows({ look }: { look: Look }) {
   const math = look.val("math", true) !== false;
   const cc = CODE_SAMPLE[String(look.val("codeCol", "theme"))] ?? CODE_SAMPLE.theme;
   return (
-    <Sec title="Reading">
+    <>
       {rowsOf(READING_MORE).map((r) => (
         <Fragment key={r.key}>
           <SpecRow r={r} look={look} />
@@ -165,7 +166,7 @@ export function ReadingMoreSec({ look }: { look: Look }) {
           ) : null}
         </Fragment>
       ))}
-    </Sec>
+    </>
   );
 }
 

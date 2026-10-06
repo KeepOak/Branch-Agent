@@ -1176,11 +1176,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       </>
     );
   } else {
-    main = <SettingsFrame page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} />;
+    main = <SettingsFrame page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} askName={defaultName} />;
   }
   const talkEntry: TalkEntry | null =
     route.kind === "chat" ? null : { name: defaultName, keys: currentKeys(keyActions(defaultName), readCustomKeys()).talkBeside, open: talk.open, onToggle: () => setTalk({ open: !talk.open }) };
-  const talkShown = talkEntry !== null && talk.open && !layout.focus;
+  const talkShown = talkEntry !== null && route.kind === "place" && talk.open && !layout.focus;
   if (route.kind !== "chat") {
     main = (
       <>
@@ -1224,7 +1224,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onCharacter={() => setCharacterShown((v) => !v)}
         onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
         conversationTools={conversationTools}
-        ask={talkEntry}
+        ask={route.kind === "settings" ? { name: defaultName, open: false, help: true, onToggle: () => window.dispatchEvent(new Event("branch-settings-help")) } : talkEntry}
         onSettings={route.kind === "place" ? () => openSettings("general") : undefined}
       />
       <Sidebar
@@ -1574,8 +1574,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         />
       ) : null}
       {route.kind === "chat" ? conversationMenu.node : null}
-      <BannerView onOpen={openConversation} />
-      <Toasts />
+      <BannerView onOpen={openConversation} setupOpen={(firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded} />
+      <Toasts setupOpen={(firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded} />
     </div>
     </TrunkEmojiFaces.Provider>
     </TrunkPebbleLooks.Provider>

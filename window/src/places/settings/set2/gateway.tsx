@@ -9,6 +9,7 @@ import { Acts, Btn, Ctl, Field, Hint, Num, Page, Pick, Sec, Seg, Status, Switch,
 import { list } from "../adapter";
 import { CallLine, CodeRow, Kv, bytes, lvOf, rec, span, str, useCall, useLive, when, type RecordValue } from "./common";
 import { Icon } from "../../../shell/icons";
+import { useDesktopControls } from "../../../connect/desktop-controls";
 import "./gateway.css";
 
 const LEDE = "A small helper that keeps Branch running in the background, starts it again if it stops, and carries interrupted work on.";
@@ -21,7 +22,7 @@ const COLORS = ["teal", "amber", "purple", "coral", "pink", "blue", "green", "re
 const DEFAULT_PORT = 18789;
 
 export const ROWS: RowEntry[] = [
-  ["Gateway", "Keep Branch running", 0], ["Carry on interrupted work by itself", "Keep Branch running", 0], ["Show the gateway in the tray", "Keep Branch running", 0],
+  ["Gateway", "Keep Branch running", 0], ["Keep working when the window closes", "Keep Branch running", 0], ["Carry on interrupted work by itself", "Keep Branch running", 0], ["Show the gateway in the tray", "Keep Branch running", 0],
   ["Ask before quitting while work runs", "Keep Branch running", 0], ["A terminal where the Gateway runs", "What it has been doing", 1],
   ["Who can reach the Gateway", "Reach", 1], ["Port", "Reach", 2], ["Sign-in", "Reach", 2], ["Through Cloudflare", "Reach", 1], ["Tailscale", "Reach", 1],
   ["Tailscale access", "Reach", 1], ["Serve Branch’s page to browsers", "Reach", 2], ["Label this computer", "How it’s reached", 1], ["Branch in your browser", "How it’s reached", 1],
@@ -86,10 +87,14 @@ function GatewayStatus({ health, sys, healthError }: Ctx) {
 }
 
 function KeepRunning() {
+  const desk = useDesktopControls();
   return (
     <Sec title="Keep Branch running">
       <Ctl title="Gateway" sub="Recommended: On. Telegram, your phone and automations keep working when the window is closed." off={APP}>
         <Seg label="Gateway" value="on" onChange={() => undefined} options={[{ id: "off", label: "Off" }, { id: "when-needed", label: "When needed" }, { id: "on", label: "On" }]} />
+      </Ctl>
+      <Ctl title="Keep working when the window closes" sub="Trunks finish what they started." off={desk.off}>
+        <Switch checked={desk.state?.keepWorking ?? false} disabled={desk.busy !== null} label="Keep working when the window closes" onChange={(on) => void desk.set("keepWorking", on)} />
       </Ctl>
       <Ctl title="Carry on interrupted work by itself" sub="After a restart, safe steps carry on. Anything that sends or changes something asks you first." off="The engine carries safe steps on by itself; there is no switch for it."><Switch label="Carry on interrupted work by itself" checked onChange={() => undefined} /></Ctl>
       <Ctl title="Show the gateway in the tray" sub="A small Branch icon by the clock with Restart and Quit." off={APP}><Switch label="Show the gateway in the tray" checked onChange={() => undefined} /></Ctl>
