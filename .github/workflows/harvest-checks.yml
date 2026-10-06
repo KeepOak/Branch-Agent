@@ -30,6 +30,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Test Harvest shard selection
+        run: node --test scripts/feature-batch-ci-shard.test.mjs
       - id: pick
         env:
           HARVEST_BASE: ${{ github.event.pull_request.base.sha }}
@@ -74,18 +76,16 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: harvest-${{ matrix.lane }}-${{ strategy.job-index }}
-          path: ${{ runner.temp }}/harvest-*.json
+          path: ${{ runner.temp }}/harvest-${{ matrix.lane }}-*.json
           if-no-files-found: warn
           retention-days: 7
 
   report-nightly:
-    if: always() && github.event_name != 'pull_request' && needs.select.result == 'success'
+    if: always() && github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     needs: [select, test]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: read
-      actions: read
       issues: write
     steps:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
@@ -109,10 +109,14 @@ jobs:
           for file in result_files:
               with open(file, encoding='utf-8') as stream:
                   failures.extend(json.load(stream)['failures'])
-          expected = len(json.loads(os.environ['EXPECTED_MATRIX'])['include'])
+          matrix = os.environ['EXPECTED_MATRIX']
+          expected = len(json.loads(matrix)['include']) if matrix else 0
+          if not matrix:
+              failures.append('Select failed before shards were chosen; see workflow run.')
           if len(result_files) < expected:
               failures.append(f'{expected - len(result_files)} shard(s) failed before test results were written; see workflow run.')
-          if os.environ['TEST_RESULT'] != 'success' and not failures:
+          test_passed = os.environ['TEST_RESULT'] == 'success' or (expected == 0 and os.environ['TEST_RESULT'] == 'skipped' and bool(matrix))
+          if not test_passed and not failures:
               failures = ['Shard failed before test results were written; see workflow run.']
           repo = os.environ['REPO']
           issues = json.loads(subprocess.check_output(['gh', 'issue', 'list', '--repo', repo, '--state', 'open', '--label', 'harvest-nightly', '--json', 'number']))
