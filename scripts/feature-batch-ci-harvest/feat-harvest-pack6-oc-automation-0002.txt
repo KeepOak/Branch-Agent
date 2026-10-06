@@ -1,3 +1,4 @@
+engine:src/agents/tools/cron-tool.pacing.test.ts
 engine:src/cron/cron-execution-diagnostics.e2e.test.ts
 engine:src/cron/delivery.failure-notify.test.ts
 engine:src/cron/failure-notification-text.test.ts
@@ -8,6 +9,7 @@ engine:src/cron/run-error-reason.test.ts
 engine:src/cron/schedule.test.ts
 engine:src/cron/service.failure-alert.test.ts
 engine:src/cron/service.failure-repair.test.ts
+engine:src/cron/service.restart-catchup-pacing.test.ts
 engine:src/cron/service/agent-watchdog.test.ts
 engine:src/cron/service/restart-recovery.behaviour.test.ts
 engine:src/cron/service/run-recovery.test.ts

@@ -80,3 +80,5 @@ engine/src/cron/cron-execution-diagnostics.e2e.test.ts,AUTOMATION-0013,openclaw/
 engine/src/cron/service/agent-watchdog.test.ts,AUTOMATION-0015,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/service/agent-watchdog.test.ts,2026-10-06
 engine/src/cron/service/timeout-policy.test.ts,AUTOMATION-0015,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/service/timeout-policy.test.ts,2026-10-06
 engine/src/cron/service/timer.timeout-watchdog.test.ts,AUTOMATION-0015,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/cron/service/timer.timeout-watchdog.test.ts,2026-10-06
+engine/src/agents/tools/cron-tool.pacing.test.ts,AUTOMATION-0023,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,src/agents/tools/cron-tool.pacing.test.ts,2026-10-06
+engine/src/cron/service.restart-catchup-pacing.test.ts,AUTOMATION-0023,openclaw/openclaw,8177060846209e40a506e442785a7736f31db674,src/cron/service.restart-catchup-pacing.test.ts,2026-10-06
