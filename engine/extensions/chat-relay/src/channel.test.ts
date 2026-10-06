@@ -2,6 +2,7 @@ import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { describe, expect, it } from "vitest";
 import { resolveRelayAccount } from "./accounts.js";
 import { chatRelayPlugin } from "./channel.js";
+import { relayChannelConfigSchema } from "./config-schema.js";
 import { buildRelayTarget, parseRelayTarget } from "./target.js";
 
 describe("opt-in chat relay channel", () => {
@@ -27,5 +28,14 @@ describe("opt-in chat relay channel", () => {
     const target = buildRelayTarget({ platform: "discord", chatType: "channel", chatId: "guild:room" });
     expect(parseRelayTarget(target)).toEqual({ platform: "discord", chatType: "channel", chatId: "guild:room" });
     expect(JSON.stringify(resolveRelayAccount({ cfg: configured }))).not.toMatch(/phone|ownerNumber/u);
+  });
+
+  it("rejects an owner phone number from the saved relay channel config", () => {
+    expect(relayChannelConfigSchema.runtime?.safeParse({
+      enabled: true,
+      url: "https://connector.example",
+      platform: "discord",
+      phoneNumber: "+15551234567",
+    }).success).toBe(false);
   });
 });
