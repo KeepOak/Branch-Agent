@@ -6,7 +6,7 @@ import { Face } from "../face/Face";
 import type { AgentState } from "../face/agentState";
 import { Attachments } from "./Attachments";
 import { copyText, useThread } from "./context";
-import { formatDuration, phaseWords, shortReason, stepLabel, stepsSummary } from "./format";
+import { formatDuration, shortReason, stepLabel, stepsSummary } from "./format";
 import { Icon, ICONS } from "./icons";
 import { Markdown } from "./markdown";
 import { fullOutput, type Block } from "./model";
@@ -170,12 +170,12 @@ export function StepsFold({ steps, live, run }: { steps: Of<"step">[]; live: boo
 }
 
 /** "Done in <duration>", starting with this Trunk's 20 px face in its "yay" state (§4.2.2 "Done in"). */
-export function DoneLine({ block, name }: { block: Of<"done">; name: string }) {
+export function DoneLine({ block, name, words }: { block: Of<"done">; name: string; words: number }) {
   const state: AgentState = "yay";
   return (
     <div className="done-line indent" data-testid="run-done">
       <Face size={20} label={name} state={state} />
-      {block.durationMs ? `Done in ${formatDuration(block.durationMs)}` : "Done"}
+      {block.durationMs ? `Done in ${formatDuration(block.durationMs)}` : "Done"}{words ? ` · ${words} ${words === 1 ? "word" : "words"}` : ""}
     </div>
   );
 }
@@ -219,9 +219,8 @@ export function Notice({ block }: { block: Of<"notice"> }) {
   );
 }
 
-/** Typing dots with this Trunk's face in its "think" state, and the getting-started words (§4.2.2, §4.2.5). */
-export function Typing({ name, status }: { name: string; status: Of<"status"> | null }) {
-  const words = status ? phaseWords(status) : "";
+/** While a turn runs, the face and dots alone indicate typing (#31). */
+export function Typing({ name }: { name: string }) {
   return (
     <div className="msg reply" aria-label="Typing" data-testid="typing">
       <span className="gutter">
@@ -231,7 +230,6 @@ export function Typing({ name, status }: { name: string; status: Of<"status"> | 
         <i />
         <i />
         <i />
-        {words ? <span className="typing-words" title={words}>{words}</span> : null}
       </div>
     </div>
   );
