@@ -13,5 +13,8 @@ engine:src/logging/diagnostic-stability-bundle.test.ts
 engine:src/logging/diagnostic-stability.test.ts
 engine:src/logging/diagnostic-stuck-session-recovery.integration.test.ts
 engine:src/logging/diagnostic-stuck-session-recovery.runtime.test.ts
+engine:src/proxy-capture/runtime.admission.test.ts
+engine:src/proxy-capture/runtime.guarded-fetch.test.ts
+engine:src/proxy-capture/runtime.test.ts
 engine:ui/src/pages/debug/debug-overlay-layout.test.ts
 engine:ui/src/pages/debug/view.test.ts
