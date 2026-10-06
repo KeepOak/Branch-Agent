@@ -1,3 +1,9 @@
 # MEMORY-0076 Standing intents
+# MEMORY-0077 Memory wiki
 engine:extensions/memory-core/src/standing-intents.async.test.ts
 engine:extensions/memory-core/src/standing-intents.test.ts
+engine:extensions/memory-wiki/src/compile.test.ts
+engine:extensions/memory-wiki/src/ingest.test.ts
+engine:extensions/memory-wiki/src/lint.test.ts
+engine:extensions/memory-wiki/src/query.test.ts
+engine:extensions/memory-wiki/src/tool.test.ts
