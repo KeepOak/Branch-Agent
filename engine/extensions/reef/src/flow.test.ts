@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/reef/src/flow.test.ts (atlas SAFETY-0127). Changed for Branch: Preserved current-main openClaimed envelope assertions; SDK names follow the rebrand map.
 import { createPluginRuntimeMock } from "branch/plugin-sdk/plugin-test-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

@@ -1,0 +1,5 @@
+# SAFETY-0127: covered by the production Reef channel; current-main tests preserved.
+engine:extensions/reef/protocol/guard.test.ts
+engine:extensions/reef/protocol/pipeline.test.ts
+engine:extensions/reef/src/flow.test.ts
+engine:extensions/reef/src/trust-store.test.ts
