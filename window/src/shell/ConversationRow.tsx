@@ -82,7 +82,7 @@ function workingText(row: Conversation, x: RowExtras | undefined): string {
 function secondLine(row: Conversation, state: RowState, x: RowExtras | undefined): { text: string; word: string; tone: string } | null {
   if (["trunk", "chatGroup", "outside"].includes(row.kind)) {
     if (state.waiting) return { text: row.preview, word: "Waiting on you", tone: "attn" };
-    if (state.working) return { text: workingText(row, x), word: "", tone: "" };
+    if (state.working) return { text: row.headline ? workingText(row, x) : "typing…", word: "", tone: "" };
     return null;
   }
   const mark = row.runMark ? MARKS[row.runMark] : null;
@@ -192,7 +192,7 @@ function rowButtons(p: Props, row: Conversation): ReactNode {
   return (
     <>
       {p.onPin && !p.child ? (
-        <button type="button" className="ib sm" aria-label={row.pinned ? "Unpin" : "Pin to top"} title={row.pinned ? "Unpin" : "Pin to top"} onClick={p.onPin}>
+        <button type="button" className="ib sm" aria-label={row.pinned ? "Unpin" : "Pin"} title={row.pinned ? "Unpin" : "Pin"} onClick={p.onPin}>
           <Icon name="pin" small />
         </button>
       ) : null}

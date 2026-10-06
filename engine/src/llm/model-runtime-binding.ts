@@ -1,4 +1,5 @@
-import type { LlmRuntime } from "@branch/ai";
+// From KeepOak/Branch-Agent@4cc6c1a80189bdee26011cad5f46ff515ffd0e86:engine/src/llm/model-runtime-binding.ts (atlas AGENT-LOOP-0026). Changed for Branch: bind upstream SDK adapters into the production LLM facade.
+import { createAiSdkModelRuntime, type AiSdkModelFactory, type LlmRuntime } from "@branch/ai";
 import type { Model } from "./types.js";
 
 const MODEL_LLM_RUNTIME = Symbol("branch.modelLlmRuntime");
@@ -39,6 +40,11 @@ export function bindModelLlmRuntime(
     completionTransport,
     completionOwner: getModelCompletionOwner(model),
   });
+}
+
+/** Binds a caller-supplied SDK model factory to the native Branch inference loop. */
+export function bindAiSdkModel(model: Model, factory: AiSdkModelFactory): Model {
+  return bindModelLlmRuntime(model, createAiSdkModelRuntime(model.api, factory));
 }
 
 export function bindModelCompletionOwner(

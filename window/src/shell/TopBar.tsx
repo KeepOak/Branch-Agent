@@ -45,7 +45,7 @@ type Props = {
   onGuide?: (event: MouseEvent<HTMLElement>) => void;
   conversationTools?: ReactNode;
   /** On a place or Settings page: "Ask <default Trunk>", which shows that Trunk beside the page (§3.3). */
-  ask?: { name: string; open: boolean; onToggle: () => void } | null;
+  ask?: { name: string; open: boolean; onToggle: () => void; help?: boolean } | null;
   /** On a place page: the gear at the start of the header half, which opens Settings (the preview's placeHead). */
   onSettings?: () => void;
 };
@@ -54,7 +54,7 @@ type Props = {
 export function stateWords(h: Pick<HeaderInfo, "state" | "isDefaultTrunk" | "trunkName" | "role" | "workWords" | "room">): string {
   if (h.room) return h.room.line;
   if (h.state === "here") {
-    const role = h.role || (h.isDefaultTrunk ? "The assistant on this computer" : h.trunkName);
+    const role = h.role || (h.isDefaultTrunk ? "Your Trunk on this computer" : h.trunkName);
     return `${role} · ${STATE_WORDS.here}`;
   }
   if (h.state === "working") {
@@ -117,16 +117,11 @@ function HeaderFace({ header, onCharacter, size = 32 }: { header: HeaderInfo; on
 }
 
 /** The conversation header as its own row in the main column (narrow windows and focus mode, §3.2). */
-export function HeaderRow({ header, onCharacter, tools, onList }: { header: HeaderInfo; onCharacter?: () => void; tools?: ReactNode; onList?: () => void }) {
+export function HeaderRow({ header, onCharacter, tools }: { header: HeaderInfo; onCharacter?: () => void; tools?: ReactNode }) {
   const live = !header.room && (header.state === "working" || header.state === "waiting");
   const tint = useHeaderTint(header);
   return (
     <div className={`head-row${live ? " live" : ""}${tint ? " tinted" : ""}`} style={tint ? ({ "--tint": tint } as CSSProperties) : undefined}>
-      {onList ? (
-        <button type="button" className="ib" aria-label="Conversations" title="Conversations" data-testid="head-list" onClick={onList}>
-          <Icon name="menu" />
-        </button>
-      ) : null}
       <HeaderFace header={header} onCharacter={onCharacter} size={56} />
       <div className="head-text">
         <HeadName h={header} />
@@ -199,8 +194,8 @@ export function TopBar({ compact, machine, header, dark, listHidden, onTheme, on
           {header && !compact ? <span className="conv-tools">{conversationTools}</span> : null}
           {onGuide ? <button type="button" className="ib guide-btn" title="Guide" data-testid="guide" onClick={onGuide}><Icon name="help" small /><span>Guide</span></button> : null}
           {ask ? (
-            <button type="button" className="ib talk-btn" aria-label={`Ask ${ask.name}`} title={`Ask ${ask.name}`} aria-pressed={ask.open} data-testid="ask-default" onClick={ask.onToggle}>
-              <Icon name="ask" small />
+            <button type="button" className="ib talk-btn" aria-label={ask.help ? "Help for this page" : `Ask ${ask.name}`} title={ask.help ? "Help for this page" : `Ask ${ask.name}`} aria-haspopup={ask.help ? "dialog" : undefined} aria-pressed={ask.help ? undefined : ask.open} data-testid="ask-default" onClick={ask.onToggle}>
+              {ask.help ? "?" : <Icon name="ask" small />}
             </button>
           ) : null}
           <button type="button" className="ib" aria-label={dark ? "Light" : "Dark"} title="Switch light or dark" data-testid="theme" onClick={onTheme}>

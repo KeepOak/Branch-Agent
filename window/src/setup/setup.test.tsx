@@ -7,7 +7,7 @@ import { connectProblem } from "./connect-problems";
 import { PreConnect } from "./PreConnect";
 import { freshChoices, readDetected, readTest, setupDone, setupRecord, STEPS } from "./setup-model";
 import { SetupFlow } from "./SetupFlow";
-import { readChatApps } from "./use-setup-engine";
+import { readChatApps, recordSetup } from "./use-setup-engine";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -64,6 +64,20 @@ function engine(answers: Record<string, unknown>) {
 const params = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter((c) => c[0] === method).map((c) => c[1] as Record<string, unknown>);
 
 describe("setup flow", () => {
+  it("Models opens the shared account catalogue with one Claude choice and no setup-token menu", async () => {
+    const { engine: e, request } = engine({
+      "branch.setup.detect": { secretLogins: [{ id: "setup-token", brand: "anthropic", label: "Claude setup-token", hint: "Run a command" }], authOptions: [{ id: "claude-browser", label: "Claude sign-in" }], manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Claude setup-token" }] },
+      "models.authStatus": { providers: [], providerCapabilities: [{ provider: "anthropic", loginOptions: [{ id: "claude-browser", kind: "oauth", groupLabel: "Claude", label: "Sign in with Claude" }] }] },
+    });
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={2} onClose={() => {}} onLocalModel={() => {}} />);
+    await act(async () => byText(host, "Add an account").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const dialog = document.querySelector('[data-testid="add-account"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.querySelectorAll(".prov")).toHaveLength(1);
+    expect(dialog?.textContent).not.toContain("Run a command");
+    expect(params(request, "models.authStatus")).toEqual([{ agentId: "main" }]);
+  });
   it("Welcome holds Start until the promise is ticked and has no Skip", async () => {
     const { engine: e } = engine({});
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
@@ -81,6 +95,12 @@ describe("setup flow", () => {
     const raw = String(params(request, "config.patch")[0]?.raw);
     expect(JSON.parse(raw).wizard.lastRunAt).toBeTruthy();
     expect(closed).toHaveBeenCalledWith(false);
+  });
+  it("writes the same Install updates setting as Updates & about", async () => {
+    const { engine: e, request } = engine({ "config.get": { hash: "h", config: { update: { checkOnStart: false } } }, "config.patch": { ok: true } });
+    await recordSetup(e, freshChoices("system"), "1.0", false);
+    const raw = JSON.parse(String(params(request, "config.patch")[0]?.raw));
+    expect(raw.update).toEqual({ auto: { enabled: false }, checkOnStart: null });
   });
   it("the health check shows real answers, then finishing makes the picked Trunks", async () => {
     const { engine: e, request } = engine({

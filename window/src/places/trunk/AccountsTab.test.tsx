@@ -93,7 +93,8 @@ describe("Trunk Accounts", () => {
     expect(useAny.disabled).toBe(true);
     expect(useAny.title).toContain("settings file");
     expect(host.textContent).not.toContain("static");
-    expect(host.textContent).toContain("Claude · Subscription 1");
+    // Opaque token IDs use the P61 account label in both Settings and Trunk.
+    expect(host.textContent).toContain("Claude · Account 1");
     expect(request).not.toHaveBeenCalledWith("models.authOrderSet", expect.anything());
   });
 });

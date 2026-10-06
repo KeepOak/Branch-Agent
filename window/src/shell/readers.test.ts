@@ -4,6 +4,7 @@ import { readPersonName } from "./PersonMenu";
 import { roomColour } from "./StatusBar";
 import { dismiss, getToasts, notify } from "./notify";
 import { dragResult } from "./use-layout";
+import { clearBanner, raiseBanner } from "./Banner";
 
 describe("engine readers", () => {
   it("agents.list", () => {
@@ -43,6 +44,15 @@ describe("status and layout", () => {
     expect(getToasts().map((t) => t.text).at(-1)).toBe("d");
     ids.forEach(dismiss);
     expect(getToasts()).toEqual([]);
+  });
+  it("shows only one banner source at a time", () => {
+    notify("A settings change saved");
+    raiseBanner({ title: "Finished", text: "The job finished." });
+    expect(getToasts()).toEqual([]);
+    notify("A newer update arrived");
+    expect(getToasts().map((toast) => toast.text)).toEqual(["A newer update arrived"]);
+    clearBanner();
+    getToasts().forEach((toast) => dismiss(toast.id));
   });
 });
 

@@ -122,7 +122,7 @@ export function runChecks(engine: WindowEngine, apps: ChatApp[], onRow: (i: numb
 /** Writes the setup record (and the update choice) so setup never opens by itself again (§4.8.1 rule 2). */
 export async function recordSetup(engine: WindowEngine, choices: SetupChoices, version: string, autoUpdate: boolean | null): Promise<void> {
   const snapshot = await engine.request<ConfigSnapshot>("config.get", {});
-  await saveConfig(engine, snapshot, { ...setupRecord(choices, version), ...(autoUpdate === null ? {} : { "update.auto.enabled": autoUpdate }) });
+  await saveConfig(engine, snapshot, { ...setupRecord(choices, version), ...(autoUpdate === null ? {} : { "update.auto.enabled": autoUpdate, "update.checkOnStart": null }) });
 }
 
 /** Makes the Trunks picked on step 5, the same way Customize's "Use this job" does. Returns the ones that failed. */

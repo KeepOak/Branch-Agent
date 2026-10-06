@@ -7,6 +7,9 @@ import { PairDialog } from "../places/customize/pairing";
 import { AccountLoginDialog } from "../places/settings/AccountLogin";
 import { ConnectDialog } from "../places/settings/set1/chatapps-connect";
 import { AddAccountDialog } from "../places/settings/set1/add-account";
+import { providersOf } from "../places/settings/set1/accounts";
+import { list, type RecordValue } from "../places/settings/adapter";
+import { useResource } from "../places/settings/hooks";
 import type { LoginStart } from "../places/settings/account-login";
 import { Icon } from "../shell/icons";
 import { notify } from "../shell/notify";
@@ -84,14 +87,13 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
   const [choices, setChoices] = useChoices();
   const [step, setStep] = useState(p.startAt ?? 0);
   const [test, setTest] = useState<TestResult | "testing" | null>(null);
-  // null until the person changes it: setup writes update.auto.enabled only then (defaults stay the engine's).
+  // null until the person changes it: setup writes the same Install updates state as Settings.
   const [autoUpdate, setAutoUpdate] = useState<boolean | null>(null);
   const [talking, setTalking] = useState(false);
   // Start with Windows: on for a fresh Branch (as the design has it), applied through the Branch app when setup finishes.
   const [boot, setBoot] = useState<boolean | null>(null);
   const [checks, setChecks] = useState<Check[]>([]);
   const [login, setLogin] = useState<LoginStart | null>(null);
-  const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const models = useDetected(p.engine);
   const chat = useChatApps(p.engine);
@@ -162,7 +164,7 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [talking]);
   const doneChecks = checks.filter((c) => c.state !== "checking").length;
-  const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, adding, setAdding, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, boot: boot ?? (known?.promise ? null : true), setBoot, checks, setStep });
+  const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, boot: boot ?? (known?.promise ? null : true), setBoot, checks, setStep });
   const [title, lede] = step === 5 ? [TITLES[5][0], reachLede(apps)] : TITLES[step];
   const footer = (
     <>
@@ -194,7 +196,7 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
   const dialogs = (
     <>
       {login && login.method !== SECRET ? <AccountLoginDialog engine={p.engine} start={login} onClose={(signedIn) => { setLogin(null); if (signedIn) models.reload(); }} /> : null}
-      {login && login.method === SECRET ? <AddAccountDialog engine={p.engine} start={{ provider: login.provider }} caps={[]} providers={[]} agent={{ agentId: login.agentId }} onClose={(added) => { setLogin(null); if (added) models.reload(); }} /> : null}
+      {login && login.method === SECRET ? <SetupAddAccountDialog engine={p.engine} agentId={login.agentId} onClose={(added) => { setLogin(null); if (added) models.reload(); }} /> : null}
       {connecting ? <ConnectDialog engine={p.engine} app={{ id: connecting.id, name: connecting.label, detail: "" }} onClose={(changed) => { setConnecting(null); if (changed) chat.reload(); }} /> : null}
       {pairing ? <PairDialog engine={p.engine} close={() => setPairing(false)} /> : null}
     </>
@@ -230,8 +232,6 @@ type Ctx = {
   test: TestResult | "testing" | null;
   setTest: (t: TestResult | "testing" | null) => void;
   setLogin: (l: LoginStart) => void;
-  adding: boolean;
-  setAdding: (v: boolean) => void;
   apps: ChatApp[] | null;
   setConnecting: (app: ChatApp) => void;
   setPairing: (on: boolean) => void;
@@ -244,28 +244,20 @@ type Ctx = {
   setStep: (i: number) => void;
 };
 
-/** A setup menu entry signed in by pasting what the service hands out (Claude's setup-token), in the Add account dialog. */
 const SECRET = "secret";
 
+function SetupAddAccountDialog({ engine, agentId, onClose }: { engine: WindowEngine; agentId: string; onClose: (added: boolean) => void }) {
+  const status = useResource<RecordValue>(engine, "models.authStatus", { agentId });
+  return <AddAccountDialog engine={engine} start={{}} caps={list(status.data?.providerCapabilities)} providers={providersOf(status.data?.providers)} agent={{ agentId }} onClose={onClose} />;
+}
+
 function AddAccount({ c }: { c: Ctx }) {
-  const secrets = c.models.detected?.secretLogins ?? [];
-  const options = [...secrets.filter((o) => o.brand === "anthropic"), ...(c.models.detected?.authOptions ?? [])];
   return (
     <span className="ob-add">
-      <button type="button" className="btn sm" aria-expanded={c.adding} disabled={!options.length || !c.p.defaultAgentId} title={options.length ? undefined : "The engine offered no account sign-ins."} onClick={() => c.setAdding(!c.adding)}>
+      <button type="button" className="btn sm" disabled={!c.p.defaultAgentId} onClick={() => c.setLogin({ agentId: c.p.defaultAgentId ?? "", provider: "", choiceId: "", method: SECRET })}>
         <Icon name="plus" size={13} />
-        Add another account
+        Add an account
       </button>
-      {c.adding ? (
-        <span className="ob-add-list" role="menu">
-          {options.map((o) => (
-            <button key={o.id} type="button" className="mi" role="menuitem" onClick={() => (c.setAdding(false), c.setLogin(o.brand ? { agentId: c.p.defaultAgentId ?? "", provider: o.brand, choiceId: o.id, method: SECRET } : { agentId: c.p.defaultAgentId ?? "", provider: o.label, choiceId: o.id, method: "branch.setup.auth.start" }))}>
-              <span className="mi-label">{o.brand === "anthropic" ? "Claude · Sign in with your Claude subscription" : o.label}</span>
-              {o.hint ? <span className="mi-hint">{o.hint}</span> : null}
-            </button>
-          ))}
-        </span>
-      ) : null}
     </span>
   );
 }

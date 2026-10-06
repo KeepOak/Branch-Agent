@@ -33,8 +33,8 @@ export function ChatRequest({ engine, busy, act, row, ownerSet }: Props & { row:
   const sub = [str(row.accountLabel), minutesAgo(iso(row.createdAt)) && `asked ${minutesAgo(iso(row.createdAt))}`, minutesLeft(iso(row.expiresAt))].filter(Boolean).join(" · ");
   return <>
     <InboxRow lead={<Tile icon="chat" />} title={`${sender} wants to message your Trunks on ${app}`} sub={sub}>
-      <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void act(() => engine.request("channels.pairing.dismiss", key), "Removed. They can ask again.")}>Don’t</button>
       <button type="button" className="btn sm" onClick={() => setReview(true)}>Review</button>
+      <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void act(() => engine.request("channels.pairing.dismiss", key), "Removed. They can ask again.")}>Don’t allow</button>
       <button type="button" className="btn pri sm" disabled={busy} onClick={() => void allow()}>Allow</button>
     </InboxRow>
     {review ? <Dialog title={`Let ${sender} message your Trunks?`} onClose={() => setReview(false)} footer={<><button type="button" className="btn ghost" onClick={() => setReview(false)}>Cancel</button><button type="button" className="btn pri" disabled={busy} onClick={() => void allow()}>Allow</button></>}>
@@ -54,7 +54,7 @@ function DeviceDialog({ engine, busy, act, row, others, level, close }: Props & 
   const all = (method: string, message: string) => act(async () => { for (const r of [row, ...others]) await engine.request(method, { requestId: str(r.requestId) }); }, message).then(ok => { if (ok) close(); });
   const { publicKey: _key, ...details } = row;
   return <Dialog wide title="Allow this device?" onClose={close} footer={<>
-    <button type="button" className="btn ghost" disabled={busy} onClick={() => void decide("device.pair.reject", "Not allowed. The device can ask again.")}>Don’t</button>
+    <button type="button" className="btn ghost" disabled={busy} onClick={() => void decide("device.pair.reject", "Not allowed. The device can ask again.")}>Don’t allow</button>
     <button type="button" className="btn ghost" onClick={close}>Later</button>
     <button type="button" className="btn pri" disabled={!armed || busy} onClick={() => void decide("device.pair.approve", `${name} is connected.`)}>Allow</button></>}>
     <div className="ib-devw"><Tile icon={str(row.deviceFamily).toLowerCase().includes("phone") ? "phone" : "plug"} /><span className="ib-grow"><b>{name}</b><small>{[str(row.platform), str(row.role)].filter(Boolean).join(" · ")}</small></span>{row.isRepair === true ? <span className="ib-pill warn">Already paired: allowing replaces its key</span> : null}</div>
@@ -72,7 +72,7 @@ export function DeviceRequest(props: Props & { row: Row; others: Row[] }) {
   const sub = [str(row.platform), str(row.role), num(row.ts) !== undefined ? `asked ${minutesAgo(num(row.ts))}` : ""].filter(Boolean).join(" · ");
   return <>
     <InboxRow lead={<Tile icon={str(row.deviceFamily).toLowerCase().includes("phone") ? "phone" : "plug"} />} title={<button type="button" className="ib-title-btn" onClick={() => setOpen(true)}>{name} wants to connect{row.isRepair === true ? " again" : ""}</button>} sub={sub}>
-      <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void act(() => engine.request("device.pair.reject", { requestId: str(row.requestId) }), "Not allowed. The device can ask again.")}>Don’t</button>
+      <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void act(() => engine.request("device.pair.reject", { requestId: str(row.requestId) }), "Not allowed. The device can ask again.")}>Don’t allow</button>
       <button type="button" className="btn pri sm" onClick={() => setOpen(true)}>Allow</button>
     </InboxRow>
     {open ? <DeviceDialog {...props} close={() => setOpen(false)} /> : null}
@@ -88,11 +88,11 @@ export function NodeRequest({ engine, busy, act, row }: Props & { row: Row }) {
   const deny = () => decide("node.pair.reject", "Not allowed. Trunks keep the abilities it had before.");
   return <>
     <InboxRow lead={<Tile icon="plug" />} title={`${name} wants to offer new abilities`} sub={adds.length ? `${adds.length} new: ${adds.slice(0, 2).join(", ")}` : str(row.platform)}>
-      <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void deny()}>Don’t</button>
+      <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void deny()}>Don’t allow</button>
       <button type="button" className="btn sm" onClick={() => setReview(true)}>Review</button>
       <button type="button" className="btn pri sm" disabled={busy} onClick={() => void allow()}>Allow</button>
     </InboxRow>
-    {review ? <Dialog title="Allow this computer’s new abilities?" onClose={() => setReview(false)} footer={<><button type="button" className="btn ghost" disabled={busy} onClick={() => void deny()}>Don’t</button><button type="button" className="btn pri" disabled={busy} onClick={() => void allow()}>Allow</button></>}>
+    {review ? <Dialog title="Allow this computer’s new abilities?" onClose={() => setReview(false)} footer={<><button type="button" className="btn ghost" disabled={busy} onClick={() => void deny()}>Don’t allow</button><button type="button" className="btn pri" disabled={busy} onClick={() => void allow()}>Allow</button></>}>
       <p className="ib-p">This computer is asking to add abilities your Trunks could use.</p>
       {adds.length ? <ul className="ib-asks">{adds.map(a => <li key={a} className={/exec|run|shell|system/i.test(a) ? "warn" : ""}>{a}</li>)}</ul> : <p className="ib-hint">Nothing new asked for.</p>}
       <p className="ib-hint">Until allowed, Trunks see only the abilities it had before.</p>
