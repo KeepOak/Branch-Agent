@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/node-host/node-worker-supervisor.test.ts (atlas SESSIONS-0102). Changed for Branch: retain all native cleanup assertions while fixing child discovery on kernels without procfs task children files.
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";

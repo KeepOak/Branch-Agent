@@ -23,6 +23,9 @@ engine:src/config/sessions/reset.test.ts
 engine:src/node-host/node-worker-supervisor.container.test.ts
 engine:src/node-host/node-worker-supervisor.test.ts
 engine:src/node-host/node-worker-workspace.test.ts
+engine:src/process/supervisor/linux-child-subreaper.behaviour.test.ts
+engine:src/process/supervisor/service-child-relay-host.owned-worker.test.ts
+engine:src/process/supervisor/service-child-subreaper.real.test.ts
 engine:src/sessions/session-created.test.ts
 engine:src/skills/discovery/status.test.ts
 engine:src/skills/loading/workspace-skill-loader.test.ts

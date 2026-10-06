@@ -1,3 +1,4 @@
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/process/supervisor/linux-child-subreaper.ts (atlas SESSIONS-0102). Changed for Branch: discover PPID candidates when optional procfs task children files are absent; retain kernel wait ownership before signaling or reaping.
 import type { ChildProcess } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -15,8 +16,37 @@ const WALL = 0x4000_0000;
 const ECHILD = 10;
 const EINTR = 4;
 
+/** Kernels without CONFIG_PROC_CHILDREN still expose parent identities in stat. */
+function childPidsFromParentIdentity(): number[] {
+  const children: number[] = [];
+  for (const name of readdirSync("/proc")) {
+    if (!/^\d+$/u.test(name)) {
+      continue;
+    }
+    let stat: string;
+    try {
+      stat = readFileSync(`/proc/${name}/stat`, "utf8");
+    } catch (error) {
+      if (hasErrnoCode(error, "ENOENT") || hasErrnoCode(error, "ESRCH")) {
+        continue;
+      }
+      throw error;
+    }
+    // comm can contain whitespace and parentheses; PPID follows its final closing parenthesis.
+    const match = /^\d+ \([\s\S]*\) \S (\d+)(?:\s|$)/u.exec(stat);
+    if (!match) {
+      throw new Error("Linux process owner could not read a parent identity");
+    }
+    if (Number(match[1]) === process.pid) {
+      children.push(Number(name));
+    }
+  }
+  return children;
+}
+
 function childPids(): number[] {
   const children = new Set<number>();
+  let readableThreads = 0;
   for (const thread of readdirSync("/proc/self/task")) {
     let value: string;
     try {
@@ -28,6 +58,7 @@ function childPids(): number[] {
       }
       throw error;
     }
+    readableThreads += 1;
     for (const pid of value.trim().split(/\s+/u).filter(Boolean)) {
       if (!/^\d+$/u.test(pid) || !Number.isSafeInteger(Number(pid)) || Number(pid) <= 0) {
         throw new Error("Linux process owner could not enumerate its children");
@@ -35,7 +66,7 @@ function childPids(): number[] {
       children.add(Number(pid));
     }
   }
-  return [...children];
+  return readableThreads > 0 ? [...children] : childPidsFromParentIdentity();
 }
 
 /** One dedicated process acquires adoption before launching any application work. */
