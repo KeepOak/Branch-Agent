@@ -3,3 +3,4 @@ engine:src/cli/gateway-cli/run.supervised-lock.test.ts
 engine:src/daemon/service-audit.definition-facts.test.ts
 engine:src/daemon/service-audit.systemd-timeout.test.ts
 engine:src/daemon/service-audit.test.ts
+engine:src/gateway/host-thaw-recovery.test.ts
