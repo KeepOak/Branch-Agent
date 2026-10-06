@@ -531,6 +531,23 @@ async function recoveryPort(): Promise<number> {
 }
 
 /**
+ * Runs `work` holding the swap guard, so no update, rollback, crash restart or window swap starts meanwhile; resolves
+ * undefined when an update or recovery already holds it. Used to replace a staged update with a newer release.
+ */
+async function underSwapGuard(work: () => Promise<boolean>): Promise<boolean | undefined> {
+  if (engineRestartInProgress) return undefined;
+  engineRestartInProgress = true;
+  try { return await work(); }
+  finally {
+    engineRestartInProgress = false;
+    if (recoveryDeferred && !quitting) {
+      recoveryDeferred = false;
+      if (!engineRunning()) gatewaySupervisor.recover(new Error("the engine exited while a staged update was replaced"));
+    }
+  }
+}
+
+/**
  * A staged engine first starts beside the running one (spare port, scratch state). One that exits is rejected and its
  * publication rolled back with nothing stopped; a slow one still gets the normal swap and its readiness rollback.
  */
@@ -588,7 +605,7 @@ async function offerStagedUpdate(): Promise<void> {
 /** Staging never invokes the gateway's generic updater. */
 async function stageComponentUpdate(): Promise<boolean> {
   if (!componentsReady) throw new Error("The desktop is still starting; check again when the engine is ready");
-  const staged = await refreshComponentUpdate(cfg, fetch, { desktop: install, canReplaceStaged: () => !engineRestartInProgress });
+  const staged = await refreshComponentUpdate(cfg, fetch, { desktop: install, underSwapGuard, log });
   await offerStagedUpdate();
   return staged;
 }
@@ -852,7 +869,7 @@ async function start(): Promise<void> {
   await recoverComponentUpdate(cfg);
   if (!existsSync(join(cfg.windowDir, "index.html")) || !existsSync(join(cfg.dataDir, "engine-current.txt")) && !existsSync(join(cfg.engineDir, "branch.mjs"))) {
     log("Installing verified GitHub components for first launch");
-    await refreshComponentUpdate(cfg, fetch, { desktop: install, canReplaceStaged: () => !engineRestartInProgress });
+    await refreshComponentUpdate(cfg, fetch, { desktop: install, underSwapGuard, log });
   }
   servedWindowDir = cfg.windowDir;
   server = await serveWindow(() => servedWindowDir, cfg.windowPort);
@@ -866,7 +883,7 @@ async function start(): Promise<void> {
   componentsReady = true;
   runConfirmedReleasePrune();
   autoApply.start();
-  stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, canReplaceStaged: () => !engineRestartInProgress, onStaged: () => {
+  stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, underSwapGuard, log, onStaged: () => {
     offerStagedUpdate().catch(error => log(`Component update status: ${String(error)}`));
   } });
   if (macComputerDriver) {

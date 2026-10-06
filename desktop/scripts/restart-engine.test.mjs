@@ -110,7 +110,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   };
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
   await prepare?.(root);
-  let onStaged;
+  let onStaged, swapGuard;
   Module._load = function(name, ...args) {
     if (name === "electron") return runtime.electron;
     if (fastSupervisor && name === "./gateway-supervisor") {
@@ -122,7 +122,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     if (name === "./component-update") {
       const source = originalLoad.call(this, name, ...args);
       return { ...source, watchComponentUpdates: (cfg, log, options) => {
-        onStaged = options.onStaged;
+        onStaged = options.onStaged; swapGuard = options.underSwapGuard;
         return source.watchComponentUpdates(cfg, log, options);
       }, confirmComponentUpdate: async (...args) => {
         // fail-confirm: the new engine answered /readyz but its update cannot be confirmed (once).
@@ -148,7 +148,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   try {
     require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js"));
     if (!holdStartup) await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway ready"), 30_000);
-    await run({ root, runtime, starts, restart, offerStaged: () => onStaged() });
+    await run({ root, runtime, starts, restart, offerStaged: () => onStaged(), swapGuard: (work) => swapGuard(work) });
   } finally {
     await writeFile(join(root, "release-ready"), "ready"); await pause(600);
     runtime.app.emit("will-quit");
@@ -866,6 +866,24 @@ test("a standby that fails after the old engine drained brings the previous buil
   assert.ok(log.lastIndexOf(`gateway started from ${engineDir}`) > log.indexOf("update failed"), "the previous build was not restarted");
   assert.ok(sent.some(([channel]) => channel === "branch-desktop:engine-update-failed"));
 }, false, false, false, true));
+test("an Update click or an automatic update during a staged-update replacement is refused, and works afterwards", () => fixture(async ({ root, runtime, starts, restart, offerStaged, swapGuard }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  await writeFile(join(root, "release-ready"), "ready");
+  await stageFixtureUpdate(root);
+  let releaseGuard;
+  const held = new Promise(resolve => { releaseGuard = resolve; });
+  const replacement = swapGuard(async () => { await held; return true; });
+  restart();                                  // the owner's click
+  offerStaged();                              // the automatic path (auto-apply is on by default)
+  await pause(1_000);
+  assert.equal((await starts()).length, 1, "an update started while the staged pair was being replaced");
+  assert.doesNotMatch(await readFile(join(root, "desktop.log"), "utf8"), /update requested|swapped in place/);
+  // A second replacement cannot start either while one runs.
+  assert.equal(await swapGuard(async () => true), undefined);
+  releaseGuard(); assert.equal(await replacement, true);
+  restart();
+  await eventually(() => swapped(root), 30_000);
+}));
 test("a new window build swaps in place after attached files are sent, keeping the engine", () => fixture(async ({ root, runtime, starts }) => {
   const main = runtime.window;
   await runtime.handlers.get("branch-desktop:open-conversation")(

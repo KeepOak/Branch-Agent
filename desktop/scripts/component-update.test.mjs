@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, readdir, readlink, rm, stat, symlink, utimes, writeFile, rename } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -117,35 +117,63 @@ async function newerRelease({ root, engine, window }, version = "0.4.4") {
   return { release, request };
 }
 
-test("a newer release replaces a staged update the running engine never started", async () => fixture(async (context) => {
+const freeGuard = async (replace) => await replace();
+const busyGuard = async () => undefined;
+
+test("a newer release replaces a staged update the running engine never started, in place", async () => fixture(async (context) => {
   const { cfg, request } = context;
   assert.equal(await source.refreshComponentUpdate(cfg, request), true);
   const staged = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
   await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const served = (await source.readComponentUpdateStatus(cfg)).previousWindowDir;
   const newer = await newerRelease(context);
-  // Without the desktop's go-ahead (an in-place swap may be applying it), the staged pair stays.
+  // Without the desktop's swap guard nothing is replaced.
   assert.equal(await source.refreshComponentUpdate(cfg, newer.request), false);
-  assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { canReplaceStaged: () => false }), false);
-  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.3");
-  assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { canReplaceStaged: () => true }), true);
+  // The served window (the running build's) must stay valid at every moment of the replacement.
+  let checks = 0, missing = 0;
+  const guard = async (replace) => {
+    const probe = setInterval(() => { checks++; if (!existsSync(join(served, "index.html"))) missing++; }, 0);
+    try { return await replace(); } finally { clearInterval(probe); }
+  };
+  assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: guard }), true);
+  assert.ok(checks > 0); assert.equal(missing, 0, "the window the desktop serves went missing during the replacement");
   const status = await source.readComponentUpdateStatus(cfg);
   assert.equal(status.componentsPendingVersion, "0.4.4");
+  assert.equal(status.previousWindowDir, served, "the running build's window moved");
+  assert.equal(await readFile(join(served, "index.html"), "utf8"), "old window");
   const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
   assert.notEqual(selected, staged);
   assert.equal(await readFile(join(cfg.windowDir, "index.html"), "utf8"), "<title>0.4.4 window</title>");
-  assert.equal(await readFile(join(status.previousWindowDir, "index.html"), "utf8"), "old window", "the running engine's window is kept beside it");
-  await assert.rejects(readdir(dirname(staged)), { code: "ENOENT" }, "the superseded staged release was left on disk");
+  await assert.rejects(readdir(staged), { code: "ENOENT" }, "the superseded staged engine was left on disk");
   assert.equal(await source.rollbackComponentUpdate(cfg), true); await unchanged(cfg);
 }));
 
-test("a staged update the engine already runs is never replaced", async () => fixture(async (context) => {
+test("a staged update is not replaced while the swap guard is held, or once its engine runs", async () => fixture(async (context) => {
   const { cfg, request } = context;
   await source.refreshComponentUpdate(cfg, request);
   const staged = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
-  await writeFile(join(cfg.dataDir, "engine-running.txt"), staged + "\n");
   const newer = await newerRelease(context);
-  assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { canReplaceStaged: () => true }), false);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  // An update or recovery holds the guard: the newer download is discarded, the staged pair stays.
+  assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: busyGuard }), false);
   assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
+  assert.deepEqual((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")), [], "the discarded download was left on disk");
+  // The staged engine already runs: it is never replaced underneath itself.
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), staged + "\n");
+  assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: freeGuard }), false);
+  assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
+}));
+
+test("a replacement interrupted mid-way rolls back to the running build", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  const staged = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  const journal = JSON.parse(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8"));
+  // As a crash right after the replacement journal was written and the staged window moved aside.
+  await writeFile(join(cfg.dataDir, "component-update-pending.json"), JSON.stringify({ ...journal, phase: "prepared", engineNext: join(cfg.dataDir, "updates", "next", "engine"), engineReplaced: staged }));
+  await rename(cfg.windowDir, `${staged}-superseded-window`);
+  await source.recoverComponentUpdate(cfg);
+  await unchanged(cfg);
 }));
 
 test("readiness confirmation records version and repeated poll avoids assets", async () => fixture(async ({ cfg, request, requests }) => {
