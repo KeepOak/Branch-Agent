@@ -109,7 +109,11 @@ import {
 } from "./http-image-response.js";
 import type { GatewayHttpRequestAuthOptions } from "./http-request-authority.js";
 import { authorizeControlUiReadRequestOrReply } from "./http-utils.js";
-import { readControlUiRootAsset, type ControlUiRootState } from "./server-control-ui-root.js";
+import {
+  readControlUiRootAsset,
+  requestControlUiRootPreparation,
+  type ControlUiRootState,
+} from "./server-control-ui-root.js";
 import { isTerminalConfigEnabled } from "./terminal/enabled.js";
 
 const ROOT_PREFIX = "/";
@@ -952,6 +956,8 @@ export async function handleControlUiHttpRequest(
   }
 
   const rootState = opts?.root;
+  // The old control UI is requested: prepare its assets now, not at every Gateway start.
+  requestControlUiRootPreparation(rootState);
   if (!rootState || (rootState.kind !== "bundled" && rootState.kind !== "resolved")) {
     respondControlUiAssetsUnavailable(res, rootState);
     return true;

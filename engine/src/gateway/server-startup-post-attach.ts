@@ -709,20 +709,14 @@ export async function startGatewayPostAttachRuntime(
   const candidateCanary = params.updateCanary === true;
   const controlUiRootLifecycle = params.controlUiRootLifecycle;
   const mainSessionRecoveryStartupCheckedStorePaths = new Set<string>();
+  // Branch's window never loads the old control UI: its asset check, retention copy or rebuild
+  // starts on the first control UI request (requestControlUiRootPreparation), not at every start.
+  // Shutdown still owns the lifecycle so a builder started by a request is stopped.
   const controlUiAssetsSidecar =
     !params.minimalTestGateway && controlUiRootLifecycle
-      ? schedulePostReadySidecarTask({
-          name: "sidecars.control-ui-assets",
-          startupTrace: params.startupTrace,
-          log: params.log,
-          shouldRun: () => params.isClosing?.() !== true,
-          run: controlUiRootLifecycle.start,
-          stop: controlUiRootLifecycle.stop,
-        })
+      ? { stop: controlUiRootLifecycle.stop }
       : undefined;
   if (controlUiAssetsSidecar) {
-    // Publish before the first await: slow CA/plugin startup must not strand
-    // the dashboard or hide its running builder from Gateway shutdown.
     params.onGatewayLifetimeSidecars(controlUiAssetsSidecar);
   }
 
