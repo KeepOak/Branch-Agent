@@ -3,9 +3,54 @@ import { describe, expect, it } from "vitest";
 import { startQaBusServer } from "./bus-server.js";
 import { createQaBusState } from "./bus-state.js";
 import { renderQaMarkdownReport } from "./report.js";
+import type { QaScenarioFlow } from "./scenario-catalog.js";
 import { runScenarioFlow } from "./scenario-flow-runner.js";
 import { runQaSuiteScenarioSteps } from "./suite-runtime-flow.js";
 import { makeQaSuiteTestScenario } from "./suite-test-helpers.js";
+
+const roundTripFlow: QaScenarioFlow = {
+  steps: [
+    {
+      name: "deliver and correlate the reply",
+      actions: [
+        {
+          call: "post",
+          args: [
+            "/v1/inbound/message",
+            {
+              accountId: "harvest",
+              conversation: { kind: "direct", id: "owner" },
+              senderId: "owner",
+              text: "resume the task",
+            },
+          ],
+          saveAs: "inbound",
+        },
+        {
+          call: "post",
+          args: [
+            "/v1/outbound/message",
+            {
+              accountId: "harvest",
+              to: "dm:owner",
+              text: "task resumed",
+              replyToId: { ref: "inbound.message.id" },
+            },
+          ],
+          saveAs: "outbound",
+        },
+        { assert: "outbound.message.replyToId === inbound.message.id" },
+        {
+          call: "post",
+          args: ["/v1/poll", { accountId: "harvest", cursor: 0 }],
+          saveAs: "poll",
+        },
+        { assert: "poll.events.length === 2 && poll.cursor === 2" },
+      ],
+      detailsExpr: "outbound.message.text",
+    },
+  ],
+};
 
 describe("QA scenario lab production boundaries", () => {
   it("records a real HTTP transport round trip as scenario and report evidence", async () => {
@@ -32,49 +77,7 @@ describe("QA scenario lab production boundaries", () => {
           runScenario: runQaSuiteScenarioSteps,
           post,
         },
-        flow: {
-          steps: [
-            {
-              name: "deliver and correlate the reply",
-              actions: [
-                {
-                  call: "post",
-                  args: [
-                    "/v1/inbound/message",
-                    {
-                      accountId: "harvest",
-                      conversation: { kind: "direct", id: "owner" },
-                      senderId: "owner",
-                      text: "resume the task",
-                    },
-                  ],
-                  saveAs: "inbound",
-                },
-                {
-                  call: "post",
-                  args: [
-                    "/v1/outbound/message",
-                    {
-                      accountId: "harvest",
-                      to: "dm:owner",
-                      text: "task resumed",
-                      replyToId: { ref: "inbound.message.id" },
-                    },
-                  ],
-                  saveAs: "outbound",
-                },
-                { assert: "outbound.message.replyToId === inbound.message.id" },
-                {
-                  call: "post",
-                  args: ["/v1/poll", { accountId: "harvest", cursor: 0 }],
-                  saveAs: "poll",
-                },
-                { assert: "poll.events.length === 2 && poll.cursor === 2" },
-              ],
-              detailsExpr: "outbound.message.text",
-            },
-          ],
-        },
+        flow: roundTripFlow,
       });
       expect(result).toMatchObject({
         status: "pass",
