@@ -21,7 +21,7 @@ export function LocalMore({ engine, hw, local }: { engine: WindowEngine; hw: Hw;
   if (lv < 1) return null;
   const first = local[0] ? visible(local[0].name ?? local[0].id) : "";
   return (
-    <Sec title="Running models here, more">
+    <Sec title="Running models here, more" group="Running models here">
       <Ctl title="Fit the room to this computer" sub="A model’s room is sized to the memory there is; using more asks first." off={NO_KEY}><Switch checked label="Fit the room to this computer" onChange={() => undefined} /></Ctl>
       <Ctl title="Big downloads on a metered network" off={NO_KEY}><Seg label="Big downloads on a metered network" value="ask" options={[{ id: "ask", label: "Ask first" }, { id: "wait", label: "Wait for an unmetered one" }, { id: "go", label: "Go ahead" }]} onChange={() => undefined} /></Ctl>
       <Ctl title="Runtime download" sub="Verify installed runtimes against published fingerprints." help="Every runtime Branch installs is checked against its published fingerprint."><Pill tone="ok">Always</Pill></Ctl>

@@ -3,6 +3,7 @@
 import type { Block } from "../../thread/model";
 import { recordedAt } from "../../thread/model";
 import { stepLabel } from "../../thread/format";
+import { formatMoney } from "../../format/money";
 
 /** Last observation in transcript/event order; never the renderer's mount time. */
 export function activityRecordedAt(blocks: readonly Block[]): number | undefined {
@@ -103,7 +104,7 @@ export function duration(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-export const money = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: n < 0.01 && n > 0 ? 3 : 2 }).format(n);
+export const money = formatMoney;
 
 export function summaryLine(s: Summary, running: boolean): string {
   return [`${s.steps} step${s.steps === 1 ? "" : "s"}`, s.ms !== undefined ? `${duration(s.ms)}${running ? " so far" : ""}` : "", s.cost !== undefined ? money(s.cost) : ""].filter(Boolean).join(" · ");

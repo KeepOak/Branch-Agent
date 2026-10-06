@@ -24,7 +24,7 @@ export function Retries({ m }: { m: ModelsCtx }) {
 
 export function PerConnection() {
   return (
-    <Sec title="Per connection">
+    <Sec title="Per connection" group="Per account">
       <Ctl title="Service tier" sub="Priority costs more; flex is cheaper and slower." off={NONE}><Seg label="Service tier" value="standard" options={[{ id: "standard", label: "Standard" }, { id: "priority", label: "Priority" }, { id: "flex", label: "Flex" }]} onChange={() => undefined} /></Ctl>
       <Ctl title="Slow down near a rate limit" sub="Spreads requests out instead of hitting the wall." off={NONE}><Switch checked={false} label="Slow down near a rate limit" onChange={() => undefined} /></Ctl>
       <Ctl title="Keep Claude’s cache warm" sub="Keep model caches warm during long jobs." help="A tiny request every 4 minutes during long tasks, so repeats cost less. Off until you choose: each request costs a little." off={NONE}><Switch checked={false} label="Keep Claude’s cache warm" onChange={() => undefined} /></Ctl>
@@ -37,7 +37,7 @@ export function ConnectionsTechnical({ m }: { m: ModelsCtx }) {
   const save = useSaveRunner();
   const refresh = m.cfg.get(["models", "catalogRefresh", "enabled"]);
   return (
-    <Sec title="Connections, technical">
+    <Sec title="Connections, technical" group="Accounts">
       <Ctl title="Model services from plugins" sub="Add another model service through a plugin." help="A plugin can bring a way to reach a model service Branch doesn’t know yet." off={NONE}><Btn sm>See installed</Btn></Ctl>
       <Ctl title="Retired models and hiccups" sub="Try a named successor when a model is retired." help="Automatic: a retired model moves to its named successor, and a brief failure is tried again." off={NONE}><Btn sm>Last 7 days</Btn></Ctl>
       <Ctl title="Keep the model list and prices up to date" sub="Checks the public model list every few hours." help="Checks the public model list every few hours. Nothing about you is sent.">
@@ -53,7 +53,7 @@ export function ConnectionsTechnical({ m }: { m: ModelsCtx }) {
 
 export function DecisionTechnical() {
   return (
-    <Sec title="Decision models, technical">
+    <Sec title="Decision models, technical" showHeading={false} group="Decision models">
       <Ctl title="Ask the big model when it’s less sure than" sub="Below this, the task’s own model decides instead." off={NONE}><Num label="Ask the big model when it’s less sure than" value={undefined} placeholder="0.75" unit="sure" onCommit={() => undefined} /></Ctl>
       <Ctl title="Longest list it filters at once" sub="Longer lists are split." off={NONE}><Num label="Longest list it filters at once" value={undefined} placeholder="400" unit="lines" onCommit={() => undefined} /></Ctl>
     </Sec>
@@ -75,7 +75,7 @@ export function HelpersTechnical({ m }: { m: ModelsCtx }) {
   const sub = (k: string) => m.cfg.get(m.shared("subagents", k));
   const timeout = num(sub("runTimeoutSeconds"));
   return (
-    <Sec title="Helpers, technical">
+    <Sec title="Helpers, technical" showHeading={false} group="Models for smaller jobs">
       <Ctl title="Conversations a Trunk can see" sub="Which conversations a Trunk’s conversation tools may reach.">
         <Seg label="Conversations a Trunk can see" value={String(m.cfg.get(["tools", "sessions", "visibility"]) ?? "all")} options={SEE} onChange={(v) => void m.cfg.set(["tools", "sessions", "visibility"], v === "all" ? null : v)} />
       </Ctl>
@@ -105,7 +105,7 @@ export function EachModel({ m }: { m: ModelsCtx }) {
   const shown = m.models.filter((x) => x.available);
   if (!shown.length) return null;
   return (
-    <Sec title="Each model, technical">
+    <Sec title="Each model, technical" group="Each model">
       {shown.map((x) => {
         const p = (k: string) => m.cfg.get(m.shared("models", x.ref, "params", k));
         const setP = (k: string, v: number | null) => void m.cfg.set(m.shared("models", x.ref, "params", k), v);
@@ -134,7 +134,7 @@ export function PerConnectionMore() {
     ["Show words per second", "While a reply is written, in the status bar.", false],
   ];
   return (
-    <Sec title="Per connection, more">
+    <Sec title="Per connection, more" group="Per connection">
       <Ctl title="OpenRouter picks" sub="Which provider serves an OpenRouter model." off={NONE}><Seg label="OpenRouter picks" value="default" options={[{ id: "default", label: "Its default" }, { id: "cheap", label: "Cheapest" }, { id: "fast", label: "Fastest" }]} onChange={() => undefined} /></Ctl>
       {rows.map(([t, s, on]) => <Ctl key={t} title={t} sub={s} off={NONE}><Switch checked={on} label={t} onChange={() => undefined} /></Ctl>)}
       <Ctl title="Check a model hasn’t changed" sub="Catch a model service silently changing its model." help="Asks a fixed set of questions and compares with last time, to catch a service quietly swapping the model." off={NONE}><Btn sm>Check now</Btn></Ctl>

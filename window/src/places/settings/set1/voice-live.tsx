@@ -36,7 +36,7 @@ export function LiveMore({ cfg, catalog, agents }: Shared & { agents: Kept<Recor
   const str = (path: string) => text(cfg.get(path) ?? "");
   const set = (path: string) => (v: string) => void cfg.set(path, v || null);
   return (
-    <Sec title="Live voice, more">
+    <Sec title="Live voice, more" group="Live voice">
       <Ctl title={<>Live voice{catalog.data ? <Pill tone={tone}>{word}</Pill> : null}</>} id="Live voice" sub={catalog.error ? visible(catalog.error) : ready ? `Using ${live.active?.label}.` : "No live-voice service is set up yet."} />
       <Ctl title="Live voice through" sub={live.providers.some((p) => p.configured) ? "On because a live-voice service is connected." : "Turns on when a live-voice service is connected."}>
         <Pick label="Live voice through" value={live.chosen} options={through} disabled={cfg.loading} onChange={(id) => void chooseLive(cfg, id)} />
@@ -114,7 +114,7 @@ export function LiveTechnical({ cfg, catalog }: Shared) {
   const t = live.active?.transports ?? [];
   const conn = CONN.map((o) => (o.id && t.length && !t.includes(o.id) ? { ...o, off: `${live.active?.label} doesn’t offer this.` } : o));
   return (
-    <Sec title="Live voice, technical" hint="Leave raw live-voice settings blank unless needed." help="Raw live-voice settings; leave them blank unless something sounds wrong.">
+    <Sec title="Live voice, technical" showHeading={false} group="Live voice" hint="Leave raw live-voice settings blank unless needed." help="Raw live-voice settings; leave them blank unless something sounds wrong.">
       <Ctl title="How it runs"><Seg label="How it runs" value={str("talk.realtime.mode")} options={MODES} onChange={set("talk.realtime.mode")} /></Ctl>
       <Ctl title="Who does the thinking"><Seg label="Who does the thinking" value={str("talk.realtime.brain", "agent-consult")} options={BRAINS} onChange={set("talk.realtime.brain")} /></Ctl>
       <Ctl title="Final words go to"><Seg label="Final words go to" value={str("talk.realtime.consultRouting", "provider-direct")} options={FINAL} onChange={set("talk.realtime.consultRouting")} /></Ctl>
@@ -133,7 +133,7 @@ export function LiveTechnical({ cfg, catalog }: Shared) {
 export function LiveServices({ cfg, catalog }: Shared) {
   const live = liveOf(catalog.data, cfg);
   return (
-    <Sec title="Live voice, more services">
+    <Sec title="Live voice, more services" showHeading={false} group="Live voice">
       {live.providers.length ? (
         <Plist>
           {live.providers.map((p) => (

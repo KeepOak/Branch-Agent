@@ -23,7 +23,7 @@ export function AppearanceMore(p: MoreProps) {
       <CharactersSec {...p} />
       <PicturesSec />
       {level >= 2 ? (
-        <Sec title="Window, technical">
+        <Sec title="Window, technical" showHeading={false} group="Window">
           <Ctl title="Window frame" sub="Branch’s own title bar or the system one." off={DESKTOP}><Val>Branch’s own</Val><Btn sm>Choose</Btn></Ctl>
         </Sec>
       ) : null}
@@ -39,7 +39,7 @@ function CharactersSec({ engine, look, trunk }: MoreProps) {
   const first = trunk.agents.find((a) => a.id === trunk.defaultId) ?? trunk.agents[0];
   const still = first ? trunkAppearance(String(record(first.identity).avatar ?? "") || undefined, trunk.nameOf(first))?.still : undefined;
   return (
-    <Sec title="Characters">
+    <Sec title="Characters" group="The Trunk beside the conversation">
       <Ctl title="How faces are drawn" sub="Every Trunk on one stage; each kind keeps its own settings."><Seg value="Videos" options={KINDS} label="How faces are drawn" onChange={() => undefined} /></Ctl>
       <div className="r618-stage ap-k">
         {still ? <img className="stage-av-k" src={still} alt="" width={64} height={64} /> : <span className="stage-av-k" aria-hidden="true">{first ? trunk.nameOf(first).slice(0, 1) : ""}</span>}
@@ -109,7 +109,7 @@ function ListSec({ engine, look, openSettings }: MoreProps) {
   const where = "set in Models › Sub-tasks and side jobs";
   const smallLine = small === undefined ? "Chosen by Branch (Automatic, from Models › Sub-tasks and side jobs)" : small === "" ? `None (${where})` : `${visible(small)} (${where})`;
   return (
-    <Sec title="The list">
+    <Sec title="The list" group="Status bar and list">
       <Ctl title="Ask before deleting a conversation" sub="Removing a kept working copy always asks." keep="everywhere">
         <Switch checked={ask} label="Ask before deleting a conversation" onChange={(on) => void save(() => look.store.set("askDelete", on))} />
       </Ctl>

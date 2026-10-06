@@ -10,6 +10,7 @@ import { list } from "../adapter";
 import { CallLine, CodeRow, Kv, bytes, lvOf, rec, span, str, useCall, useLive, when, type RecordValue } from "./common";
 import { Icon } from "../../../shell/icons";
 import { useDesktopControls } from "../../../connect/desktop-controls";
+import { formatMoney } from "../../../format/money";
 import "./gateway.css";
 
 const LEDE = "A small helper that keeps Branch running in the background, starts it again if it stops, and carries interrupted work on.";
@@ -32,7 +33,7 @@ export const ROWS: RowEntry[] = [
   ["Infrastructure settings", "Technical", 2], ["Accept files and pictures", "Exposure", 2], ["HSTS header", "Exposure", 2], ["HTTPS for the Gateway", "Exposure", 2], ["Allowed browser addresses", "Exposure", 2],
   ["Trust the Host header for origins", "Exposure", 2], ["Wrong sign-ins allowed", "Limits", 2], ["Then lock that address for", "Limits", 2], ["Never lock out this computer", "Limits", 2],
   ["Reach previews from other devices", "App previews", 2], ["Send a message", "From scripts", 2], ["Connect a chat app", "From scripts", 2],
-].map(([title, sec, lv]) => ({ page: "gateway", title: String(title), sec: String(sec), lv: lv as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "gateway", title: String(title), sec: String(sec), group: ({ Reach: "Connection", "How it’s reached": "Connection", Exposure: "Connection", Limits: "Connection", Technical: "Connection", "From scripts": "Connection", "Never break": "If it stops" } as Record<string, string>)[String(sec)], lv: lv as 0 | 1 | 2 }));
 
 type Config = ReturnType<typeof useConfig>;
 type Ctx = SettingsPageProps & { config: Config; health: RecordValue; sys: RecordValue; healthError?: string; lv: number };
@@ -109,7 +110,7 @@ function Reach({ config, lv }: Ctx) {
   const auth = str(config.get("gateway.auth.mode")) || "token";
   const ts = str(config.get("gateway.tailscale.mode")) || "off";
   return (
-    <Sec title="Reach">
+    <Sec title="Reach" group="Connection">
       <Ctl title="Who can reach the Gateway" sub={BIND_LINE[bind]}>
         <Seg label="Who can reach the Gateway" value={bind} disabled={config.loading} onChange={(v) => void config.set("gateway.bind", v)} options={BIND} />
       </Ctl>
@@ -145,7 +146,6 @@ function localAddress(config: Config, sys: RecordValue): string {
 }
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const USD = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** "3 apps connected · Chat apps: 2 of 3 working · Spent today: $0.42", from presence.query, health and usage.cost. */
 function ReachedStatus({ engine, health, openSettings, title }: Ctx & { title: string }) {
@@ -159,7 +159,7 @@ function ReachedStatus({ engine, health, openSettings, title }: Ctx & { title: s
   return (
     <Status title={title}>
       {parts.join(" · ")}
-      {typeof spent === "number" ? <>{" · "}<button type="button" className="link-k" disabled={!openSettings} onClick={() => openSettings?.("usage")}>{`Spent today: ${USD.format(spent)}`}</button></> : null}
+      {typeof spent === "number" ? <>{" · "}<button type="button" className="link-k" disabled={!openSettings} onClick={() => openSettings?.("usage")}>{`Spent today: ${formatMoney(spent)}`}</button></> : null}
     </Status>
   );
 }
@@ -173,7 +173,7 @@ function Reached(ctx: Ctx) {
   const bind = BIND.find((b) => b.id === (str(config.get("gateway.bind")) || "loopback"))?.label ?? "This computer";
   const open = () => window.open(localAddress(config, sys), "_blank", "noopener");
   return (
-    <Sec title="How it’s reached">
+    <Sec title="How it’s reached" group="Connection" showHeading={false}>
       <ReachedStatus {...ctx} title={`${bind} · ${label || str(sys.machineName) || "This computer"}`} />
       <Acts>
         <Btn sm disabled={!page} title={page ? undefined : "Turn on Branch in your browser first."} onClick={open}>Open in a browser</Btn>
@@ -246,7 +246,7 @@ function Connection({ engine, config, sys: first }: Ctx) {
   const loop = rec(sys.eventLoop);
   const address = engine.gatewayUrl?.replace(/[?#].*$/, "") || `ws://127.0.0.1:${Number(config.get("gateway.port")) || Number(sys.port) || DEFAULT_PORT}`;
   return (
-    <Sec title="Connection">
+    <Sec title="Connection" showHeading={false}>
       <Kv rows={[["Connected to", address.replace(/^wss?:\/\//, "").replace(/\/$/, "")], ["Sign-in", AUTH.find((a) => a.id === (str(config.get("gateway.auth.mode")) || "token"))?.label.toLowerCase() ?? ""]]} />
       <Ctl title="Gateway address" sub="Use wss:// for another computer or a secure remote address." help="Use wss:// behind HTTPS or Tailscale, and for any computer that isn’t this one." off={CONN}>
         <input className="inp" aria-label="Gateway address" value={address} readOnly spellCheck={false} />
@@ -269,7 +269,7 @@ function Connection({ engine, config, sys: first }: Ctx) {
 function Technical({ config, sys, openSettings }: Ctx) {
   const reload = str(config.get("gateway.reload.mode")) || "hybrid";
   return (
-    <Sec title="Technical">
+    <Sec title="Technical" group="Connection" showHeading={false}>
       <Ctl title="Apply settings changes" sub="Applies safe changes live; restarts when needed." help="Live applies safe changes at once and restarts the Gateway when one needs it.">
         <Seg label="Apply settings changes" value={reload} disabled={config.loading} onChange={(v) => void config.set("gateway.reload.mode", v)} options={[{ id: "hybrid", label: "Live" }, { id: "off", label: "Only on restart" }]} />
       </Ctl>
@@ -315,7 +315,7 @@ function Exposure({ config }: Ctx) {
   const hsts = config.get("gateway.http.securityHeaders.strictTransportSecurity");
   const on = risky(config);
   return (
-    <Sec title="Exposure">
+    <Sec title="Exposure" group="Connection" showHeading={false}>
       <Ctl title="Accept files and pictures" sub="Off refuses every upload, even from old windows; downloads still work.">
         <Switch label="Accept files and pictures" checked={config.get("gateway.uploads.enabled") !== false} disabled={config.loading} onChange={(v) => void config.set("gateway.uploads.enabled", v)} />
       </Ctl>
@@ -341,7 +341,7 @@ function Limits({ config }: Ctx) {
   const secs = (key: string) => { const v = config.get(`${rl}.${key}`); return typeof v === "number" ? v / 1000 : undefined; };
   const attempts = config.get(`${rl}.maxAttempts`);
   return (
-    <Sec title="Limits">
+    <Sec title="Limits" group="Connection" showHeading={false}>
       <Ctl title="Wrong sign-ins allowed" sub="Within the time below, from one address."><Num label="Wrong sign-ins allowed" value={typeof attempts === "number" ? attempts : undefined} placeholder="10" min={1} onCommit={(v) => void config.set(`${rl}.maxAttempts`, v)} /></Ctl>
       <Ctl title="per" id="per"><Num label="per" unit="s" value={secs("windowMs")} placeholder="60" min={1} onCommit={(v) => void config.set(`${rl}.windowMs`, v === null ? null : v * 1000)} /></Ctl>
       <Ctl title="Then lock that address for"><Num label="Then lock that address for" unit="s" value={secs("lockoutMs")} placeholder="300" min={1} onCommit={(v) => void config.set(`${rl}.lockoutMs`, v === null ? null : v * 1000)} /></Ctl>
@@ -412,11 +412,11 @@ function ChatApps({ lv }: { lv: number }) {
   const demo = "Needs the engine’s chat-app records.";
   return (
     <>
-      <Sec title="Chat apps, more">
+      <Sec title="Chat apps, more" group="Chat apps">
         <Ctl title="Pause a chat app from the chat" sub="/pause and /resume in that app." off="Pausing from the chat needs the engine’s chat command."><Switch label="Pause a chat app from the chat" checked={false} onChange={() => undefined} /></Ctl>
       </Sec>
       {lv >= 2 ? (
-        <Sec title="From scripts">
+        <Sec title="From scripts" group="Connection" showHeading={false}>
           <CodeRow title="Send a message" code={'branch message send --channel telegram --target @me --message "Backup done"'} sub="From any script or scheduled job." />
           <CodeRow title="Connect a chat app" code="branch channels add --channel telegram --token <token>" sub="In one command." />
           <CodeRow title="Send to several chats" code={'branch message broadcast --targets telegram:@me slack:channel:C123 --message "Backup done"'} sub="Each target gets it; any that fails is named." />
@@ -424,15 +424,15 @@ function ChatApps({ lv }: { lv: number }) {
           <CodeRow title="Everything else in a chat" code="branch message --help" sub="Reply, react, edit and pin through a chat app." help="Reply, react, edit, pin, threads and more, per chat app. Add --dry-run to see it first." />
         </Sec>
       ) : null}
-      <Sec title="Chat apps, even more">
+      <Sec title="Chat apps, even more" group="Chat apps" showHeading={false}>
         <Ctl title="Send files into chats" sub="A Trunk can reply with the file itself, not a link." off="Set per chat app in Chat apps."><Switch label="Send files into chats" checked onChange={() => undefined} /></Ctl>
         <Ctl title="Relay for chat-app accounts" sub="The relay delivers messages using your phone number." help="Your phone number passes through the relay to deliver messages and is never saved. Off until you choose: your number would go through the relay." off="Needs the engine’s chat relay."><Switch label="Relay for chat-app accounts" checked={false} onChange={() => undefined} /></Ctl>
         <Ctl title="Push to your phone and browser" sub="When a Trunk needs you and no chat app is set up." off="Set in Notifications."><Switch label="Push to your phone and browser" checked onChange={() => undefined} /></Ctl>
       </Sec>
-      <Sec title="Never break">
+      <Sec title="Never break" group="If it stops">
         <Ctl title="Canary, journal and rollback" sub="Tries changes on a copy and rolls back bad ones." help="Every change to how Branch runs is tried on a copy first; a bad one is rolled back by itself." off="Needs the engine’s change journal."><Btn sm>Open the journal</Btn></Ctl>
       </Sec>
-      <Sec title="Chat apps, in depth">
+      <Sec title="Chat apps, in depth" group="Chat apps" showHeading={false}>
         <Ctl title="Telegram, in depth" sub="Mentions in groups, long replies, live typing and approval buttons." off="Set per chat app in Chat apps."><Btn sm>See all</Btn></Ctl>
         <Ctl title="Messages that always arrive" sub="Retries outgoing messages until the chat app takes them." help="Every outgoing message is written down and tried again until the app takes it." off={demo}><Btn sm>See the record</Btn></Ctl>
         <Ctl title="Messages that didn’t get through" sub="Messages a chat app sent that failed after every retry." help="Messages a chat app sent that failed after every retry. Fix the cause, then send one through again." off="Listed from a terminal, below."><Btn sm>See them</Btn></Ctl>

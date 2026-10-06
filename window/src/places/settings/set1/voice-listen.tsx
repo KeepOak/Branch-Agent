@@ -9,7 +9,7 @@ import type { Cfg, Shared } from "./voice-more";
 
 export function HearingMore() {
   return (
-    <Sec title="Hearing, more">
+    <Sec title="Hearing, more" group="Listening">
       <Greyed why={APP} rows={[{ t: "Microphone level", sub: "Level, the point where it starts listening, and the pitch it hears.", c: { btn: "Test" } }]} />
     </Sec>
   );
@@ -17,7 +17,7 @@ export function HearingMore() {
 
 export function ListeningMore(props: Shared) {
   return (
-    <Sec title="Listening, more">
+    <Sec title="Listening, more" showHeading={false} group="Listening">
       <Greyed why={APP} rows={[{ t: "Wake word", sub: `${props.word}, heard on this computer only. Off until you choose: it keeps the microphone open.`, c: { sw: false } }]} />
       <WakeWords {...props} />
       <Greyed why={APP} rows={[
@@ -90,7 +90,7 @@ function SpeechLanguage({ cfg }: { cfg: Cfg }) {
 
 export function TalkingMore({ cfg }: { cfg: Cfg }) {
   return (
-    <Sec title="Talking, more">
+    <Sec title="Talking, more" showHeading={false} group="Listening">
       <Greyed why={APP} rows={[{ t: "Answer approvals by voice", sub: "Say yes or no to an approval, or hold the phone key to talk turn by turn.", c: { btn: "Try one" } }]} />
       <Ctl title="Talking over it stops it" sub="Speak while it is talking and it stops to listen." help="Speak while it is talking and it stops to listen. On a Mac, pressing the right Option key does the same at any time.">
         <Switch checked={cfg.get("talk.interruptOnSpeech") !== false} label="Talking over it stops it" disabled={cfg.loading} onChange={(on) => void cfg.set("talk.interruptOnSpeech", on)} />

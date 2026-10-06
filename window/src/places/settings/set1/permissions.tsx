@@ -56,6 +56,6 @@ const TOP: RowEntry[] = [
   { page: "permissions", title: "Lockdown", sec: "Locks and records", lv: 0, words: "stop everything" },
   { page: "permissions", title: "Access", lv: 0, words: "auto ask first plan first read only full access mode" },
 ];
-const COMMAND_ROWS: RowEntry[] = ["Ask before a command", "When nobody can be asked", "Let skill programs run"].map((title) => ({ page: "permissions", title, sec: "Commands, by default", lv: 1 }));
+const COMMAND_ROWS: RowEntry[] = ["Ask before a command", "When nobody can be asked", "Let skill programs run"].map((title) => ({ page: "permissions", title, sec: "Commands, by default", group: "Rules and checks", lv: 1 }));
 
 export const PERMISSIONS_ROWS: RowEntry[] = [...TOP, ...rowsOf([WITHOUT, ...LOWER]), ...COMMAND_ROWS];

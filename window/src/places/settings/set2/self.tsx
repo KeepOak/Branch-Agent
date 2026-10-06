@@ -83,7 +83,7 @@ export const ROWS: RowEntry[] = [
   ...rows("Settings you can talk to", 1, ["Change settings by talking", "Suggestions made on this computer"]),
   ...rows("Conversation storage", 1, ["Archive older conversations", "Archive after", "Tidy now"]), ...rows("Conversation storage", 2, ["Shrink the shared database", "Conversation databases"]),
   ...rows("Database, technical", 2, ["Check a copied database", "Who writes the database", "Hand writing to a supervisor"]),
-].map(([title, sec, lv]) => ({ page: "self", title: String(title), ...(sec ? { sec: String(sec) } : {}), lv: Number(lv) as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "self", title: String(title), ...(sec ? { sec: String(sec) } : {}), group: ({ "Working on its own code": "What it may change", "What it may fix by itself": "What it may change" } as Record<string, string>)[String(sec)], lv: Number(lv) as 0 | 1 | 2 }));
 
 type Ctx = SettingsPageProps & { config: ReturnType<typeof useConfig>; lv: number };
 
@@ -101,7 +101,7 @@ export function SelfPage(props: SettingsPageProps) {
       {lv >= 1 ? <OwnCode /> : null}
       <Sec title="A copy of your setup"><Ctl title="Export a copy without secrets" sub="Exports your setup without keys or sign-ins." help="Skills, memory, personas, automations, plugins, settings and theme, with every key and sign-in taken out." off="Needs the engine’s setup export; Your settings › Export saves the settings alone."><Btn sm disabled>Export…</Btn></Ctl></Sec>
       {lv >= 1 ? <HowItRuns {...ctx} /> : null}
-      {lv >= 1 ? <Sec title="What it may fix by itself"><Ctl title="Only through allowed actions" sub="Restarts parts, reloads settings or reconnects chat apps." help="It can restart a part, reload settings, clear a cache, roll back settings or reconnect a chat app. Anything else asks you." off={NO_SELF}><Switch label="Only through allowed actions" checked={false} onChange={() => undefined} /></Ctl></Sec> : null}
+      {lv >= 1 ? <Sec title="What it may fix by itself" showHeading={false} group="What it may change"><Ctl title="Only through allowed actions" sub="Restarts parts, reloads settings or reconnects chat apps." help="It can restart a part, reload settings, clear a cache, roll back settings or reconnect a chat app. Anything else asks you." off={NO_SELF}><Switch label="Only through allowed actions" checked={false} onChange={() => undefined} /></Ctl></Sec> : null}
       {lv >= 1 ? <Sec title="Extras fetched when first used"><Ctl title="Extras on this computer" sub="Speech, office files and connector kits fetched on first use." help="Speech, office files and connector kits Branch fetched the first time they were used." off="Needs the engine’s list of fetched extras." /></Sec> : null}
       {lv >= 1 ? <YourSettings {...ctx} /> : null}
       {lv >= 1 ? <TalkTo /> : null}
@@ -251,7 +251,7 @@ function Learning({ lv }: { lv: number }) {
 
 function OwnCode() {
   return (
-    <Sec title="Working on its own code">
+    <Sec title="Working on its own code" group="What it may change">
       <Ctl title="Pull requests" sub="Proposes draft pull requests with evidence for each change." help="Changes go to branch/… lines as draft pull requests with “Why merge” and evidence; merged only after every check passes on that exact commit."><Val>Drafts, merged after checks</Val></Ctl>
       <Ctl title="Reaching the app" sub="Tests a new build on a copy of your data before keeping it." help="A new build must pass a self-test on a copy of your data; if it doesn’t stay up, it rolls back by itself."><Val>Only through a tested build</Val></Ctl>
       <Ctl title="Build a missing setting when you ask" sub="Proposes a setting when one is missing." help="“There’s no setting for X” becomes a change that adds one, for your review." off={NO_SELF}><Switch label="Build a missing setting when you ask" checked={false} onChange={() => undefined} /></Ctl>
@@ -420,7 +420,7 @@ function ByTrunkDialog({ agents, onClose }: { agents: RecordValue[]; onClose: ()
 
 function DatabaseTechnical() {
   return (
-    <Sec title="Database, technical">
+    <Sec title="Database, technical" group="Database">
       <CodeRow title="Check a copied database" code="branch database preflight <file>" sub="Says whether a copied database fits this version." />
       <CodeRow title="Who writes the database" code="branch database ownership status" />
       <CodeRow title="Hand writing to a supervisor" code="branch database ownership claim" sub="For a service manager that runs the Gateway." />

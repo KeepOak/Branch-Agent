@@ -106,7 +106,7 @@ export const TECH_A: Section[] = [
   { title: "Messages, every setting", lv: 2, hint: "Every message setting the engine has, by its key. The rows above set the common ones.", rows: [{ t: "Message keys", kind: "custom", id: "msgKeys" }] },
 ];
 
-export const DEPTH: Section = { title: "Each app, in depth", lv: 1, hint: "What only one app can do. Each applies once that app is connected.", rows: [{ t: "Apps", kind: "custom", id: "depth" }] };
+export const DEPTH: Section = { title: "Each app, in depth", group: "Each app", lv: 1, hint: "What only one app can do. Each applies once that app is connected.", rows: [{ t: "Apps", kind: "custom", id: "depth" }] };
 
 const EVERY_CHAT = "Branch has no setting for this yet.";
 export const LATER: Section[] = [

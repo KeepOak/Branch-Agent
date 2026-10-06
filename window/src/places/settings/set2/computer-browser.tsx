@@ -30,7 +30,7 @@ export const BROWSER_BASIC: SecSpec = { t: "The browser", lv: 0, rows: [
   { t: "Browser privacy note", sub: "Shown before a Trunk first used the browser.", k: "btn", btn: "Read it", off: "Needs the engine to show this note before a Trunk first uses the browser." },
 ] };
 
-const MORE: SecSpec = { t: "The browser, more", lv: 1, rows: [
+const MORE: SecSpec = { t: "The browser, more", group: "The browser", showHeading: false, lv: 1, rows: [
   { t: "Run the browser in a sandbox", k: "seg", key: "browser.noSandbox", def: false, opts: [{ v: true, l: "Off" }, { v: "auto", l: "When needed", off: "The browser’s own sandbox is either on or off." }, { v: false, l: "On" }] },
   sw("Record browser tasks", "Needs the engine to record browser traces.", "A step-by-step trace you can replay. Off until you choose: recordings take disk space."),
   sw("Number the clickable things", "Needs the engine to number what can be clicked.", "Faster and steadier on busy pages."),
@@ -39,7 +39,7 @@ const MORE: SecSpec = { t: "The browser, more", lv: 1, rows: [
   { t: "Browser profiles", k: "custom", render: (c) => <Profiles c={c} /> },
 ] };
 
-const HOW: SecSpec = { t: "How it browses", lv: 1, rows: [
+const HOW: SecSpec = { t: "How it browses", group: "The browser", showHeading: false, lv: 1, rows: [
   { t: "How it reads pages", sub: "The list and the picture together. A model that can’t see pictures uses the list.", k: "seg", opts: [{ v: "page", l: "Page" }, { v: "picture", l: "Picture" }, { v: "both", l: "Both" }], off: NO_HOW },
   { t: "Read web pages", sub: "Opens a link in a browser and reads it as plain text when a plain download isn’t enough.", k: "seg", opts: [{ v: "off", l: "Off" }, { v: "auto", l: "When needed" }, { v: "on", l: "Always" }], off: NO_HOW },
   sw("Offer to read links you type", NO_HOW, "A link in your message gets a “Read it in?” offer above the message box."),
@@ -52,16 +52,16 @@ const HOW: SecSpec = { t: "How it browses", lv: 1, rows: [
   sw("Copy a password when a page can’t be filled", NO_HOW, "You approve each copy; the clipboard clears after 30 seconds. The model never sees it."),
 ] };
 
-const CLEANERS: SecSpec = { t: "Page cleaners", lv: 1, hint: "Cookie notices are declined in The browser above.", rows: [
+const CLEANERS: SecSpec = { t: "Page cleaners", group: "The browser", showHeading: false, lv: 1, hint: "Cookie notices are declined in The browser above.", rows: [
   sw("Block ads", NO_CLEAN, "Pages load faster and read shorter."),
   sw("Clean tracking from links", NO_CLEAN, "Removes tracking bits from an address before opening it."),
   sw("Hide chat widgets and sign-up pop-ups", NO_CLEAN, "Hidden from what a Trunk reads; the page itself is unchanged."),
   sw("Flag pushy design", NO_CLEAN, "Marks fake countdowns, “only 2 left”, hidden fees, pre-ticked boxes and hard-to-cancel steps so a Trunk isn’t steered by them."),
 ] };
 
-const SITES: SecSpec = { t: "Sites", lv: 1, hint: "Any other site follows “Ask before a site it hasn’t visited”. Private and local addresses are always refused.", body: () => <Sites /> };
+const SITES: SecSpec = { t: "Sites", group: "The browser", showHeading: false, lv: 1, hint: "Any other site follows “Ask before a site it hasn’t visited”. Private and local addresses are always refused.", body: () => <Sites /> };
 
-const HANDS: SecSpec = { t: "What it hands to you", lv: 1, hint: "A yes counts only for the exact page, address and button it asked about; if the page changes first, it asks again. While you drive, it neither acts nor reads the page.", rows: [
+const HANDS: SecSpec = { t: "What it hands to you", group: "The browser", showHeading: false, lv: 1, hint: "A yes counts only for the exact page, address and button it asked about; if the page changes first, it asks again. While you drive, it neither acts nor reads the page.", rows: [
   { t: "Changing a password", k: "val", val: "Hands it to you", tone: "warn", off: NO_HAND },
   { t: "“Are you a person?” checks and security warnings", k: "val", val: "Hands it to you", tone: "warn", off: NO_HAND },
   { t: "Camera, microphone and location requests", k: "val", val: "Asks you", tone: "idle", off: NO_HAND },
@@ -71,9 +71,9 @@ const HANDS: SecSpec = { t: "What it hands to you", lv: 1, hint: "A yes counts o
   sw("Block uploads to every site", "Needs the engine to block uploads.", "Otherwise uploads follow each site’s rule."),
 ] };
 
-const FLOWS: SecSpec = { t: "Saved flows", lv: 1, hint: "A journey across pages, saved from a finished browser task with a picture of each step, to run again in one go.", body: () => <Empty>Needs the engine to save browser journeys.</Empty> };
+const FLOWS: SecSpec = { t: "Saved flows", group: "The browser", showHeading: false, lv: 1, hint: "A journey across pages, saved from a finished browser task with a picture of each step, to run again in one go.", body: () => <Empty>Needs the engine to save browser journeys.</Empty> };
 
-const OWN: SecSpec = { t: "Your own browser", lv: 1, rows: [
+const OWN: SecSpec = { t: "Your own browser", group: "The browser", showHeading: false, lv: 1, rows: [
   sw("Work in its own window in your Chrome", EXT, "Your tabs stay yours. It borrows one only after you allow it on that page, and gives it back when the task ends."),
   sw("Follow videos you watch", EXT, "Where you are in a video, its captions and the picture, for questions about it."),
   { t: "Branch in Chrome’s side panel", sub: "Chat with your Trunks beside any page.", k: "btn", btn: "Get the extension", off: "The extension is installed from the Branch app." },
@@ -83,7 +83,7 @@ const OWN: SecSpec = { t: "Your own browser", lv: 1, rows: [
 
 export const BROWSER_MORE: SecSpec[] = [MORE, HOW, CLEANERS, SITES, HANDS, FLOWS, OWN];
 
-const TECH: SecSpec = { t: "The browser, technical", lv: 2, rows: [
+const TECH: SecSpec = { t: "The browser, technical", group: "The browser", showHeading: false, lv: 2, rows: [
   { t: "Browser program", k: "custom", render: (c) => <Program c={c} /> },
   { t: "Branch’s own browser", k: "custom", render: (c) => <Found c={c} /> },
   { t: "Show the browser window", k: "seg", key: "browser.headless", opts: [{ v: null, l: "Auto" }, { v: false, l: "Always" }, { v: true, l: "Never" }], sub: "Auto shows a window when this computer has a screen." },
@@ -107,7 +107,7 @@ const TECH: SecSpec = { t: "The browser, technical", lv: 2, rows: [
   { t: "Check the browser end to end", k: "custom", render: (c) => <Doctor c={c} /> },
 ] };
 
-const CLOUD_BROWSERS: SecSpec = { t: "Cloud browsers", lv: 2, rows: [
+const CLOUD_BROWSERS: SecSpec = { t: "Cloud browsers", group: "The browser", showHeading: false, lv: 2, rows: [
   { t: "Cloud browsers", sub: "A browser run by a hosted service, for sites that need another location or many browsers at once.", k: "btn", btn: "Add one", off: NO_CLOUD },
   { t: "Local addresses on a cloud browser", sub: "A cloud browser can’t reach localhost or your network, so a browser on this computer opens those.", k: "seg", opts: [{ v: "side", l: "Open on this computer" }, { v: "hint", l: "Show how to reach it" }], off: NO_CLOUD },
   sw("Let a cloud service drive a browser on this computer", NO_CLOUD, "Starts your browser with a private link the service can reach."),

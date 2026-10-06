@@ -31,7 +31,7 @@ export type Spec = {
   opts?: Opt[]; unit?: string; ph?: string; val?: string; tone?: "ok" | "warn" | "bad" | "idle"; btns?: string[]; bare?: boolean; upTo?: Lv; min?: number; max?: number; csv?: boolean; off?: string; btn?: string; tag?: string;
   code?: string; cmds?: string[]; danger?: boolean; arg?: string; render?: (c: Ctx) => ReactNode;
 };
-export type SecSpec = { t: string; lv: Lv; hint?: string; id?: string; rows?: Spec[]; body?: (c: Ctx) => ReactNode; titles?: [string, Lv][] };
+export type SecSpec = { t: string; group?: string; showHeading?: boolean; lv: Lv; hint?: string; id?: string; rows?: Spec[]; body?: (c: Ctx) => ReactNode; titles?: [string, Lv][] };
 
 const LINUX = "Linux only";
 const PAIR_EVENTS = ["device.pair", "node.pair", "node"];
@@ -63,7 +63,7 @@ const USING_SCREEN: SecSpec = { t: "Using the screen", lv: 0, rows: [
   { t: "Check what works", k: "custom", render: (c) => <CheckWorks c={c} /> },
 ] };
 
-const TECHNICAL: SecSpec = { t: "Technical", lv: 2, body: (c) => <TechKv c={c} /> };
+const TECHNICAL: SecSpec = { t: "Technical", group: "Connections", showHeading: false, lv: 2, body: (c) => <TechKv c={c} /> };
 
 const LET_TRUNKS: SecSpec = { t: "Let Trunks use this computer", lv: 0, hint: "Lend this computer to Branch on another computer.", rows: [
   { t: "Code from the other computer", k: "custom", render: () => <PairRow /> },
@@ -74,7 +74,7 @@ const PHONES_LENT: SecSpec = { t: "Phones lent to Branch", lv: 0, body: (c) => <
 
 const LOGBOOK_KEY = "plugins.entries.logbook";
 const LB = `${LOGBOOK_KEY}.config`;
-const LOGBOOK: SecSpec = { t: "Logbook", lv: 1, rows: [
+const LOGBOOK: SecSpec = { t: "Logbook", group: "Connections", showHeading: false, lv: 1, rows: [
   { t: "Logbook", k: "sw", key: `${LOGBOOK_KEY}.enabled`, def: false, sub: "Pictures of your screen at intervals, read by a model into a timeline in Library › Logbook. Off until you choose: it takes pictures of your screen and a model reads them." },
   { t: "Picture every", k: "num", key: `${LB}.captureIntervalSeconds`, def: 30, unit: "seconds", min: 5, max: 600, sub: "From 5 to 600." },
   { t: "Look at them every", k: "num", key: `${LB}.analysisIntervalMinutes`, def: 15, unit: "minutes", min: 3, max: 120, sub: "From 3 to 120." },
@@ -85,7 +85,7 @@ const LOGBOOK: SecSpec = { t: "Logbook", lv: 1, rows: [
   { t: "Picture width", k: "num", lv: 2, key: `${LB}.maxWidth`, def: 1440, unit: "px", min: 480, max: 3840, sub: "From 480 to 3840." },
 ] };
 
-const LENT_TECH: SecSpec = { t: "Lent computer, technical", lv: 2, rows: [
+const LENT_TECH: SecSpec = { t: "Lent computer, technical", group: "Lending", showHeading: false, lv: 2, rows: [
   { t: "Update this lent computer by itself", k: "sw", key: "nodeHost.autoUpdate.enabled", def: true, sub: "Checks hourly, waits for work to finish, restarts at most every 12 hours." },
   { t: "Run whole conversations here", k: "sw", key: "nodeHost.workerRuns.enabled", def: false, sub: "Hosts conversations sent from the other Branch." },
   { t: "Let Claude Code continue here", k: "sw", key: "nodeHost.agentRuns.claude.enabled", def: false, sub: "Runs still ask for your yes." },
@@ -98,7 +98,7 @@ const LENT_TECH: SecSpec = { t: "Lent computer, technical", lv: 2, rows: [
   { t: "Connectors on this computer", k: "code", code: "nodeHost.mcp", sub: "The settings file section." },
 ] };
 
-const SCREEN_TECH: SecSpec = { t: "Screen sharing, technical", lv: 2, rows: [
+const SCREEN_TECH: SecSpec = { t: "Screen sharing, technical", group: "Using the screen", showHeading: false, lv: 2, rows: [
   { t: "Screen sharing", k: "custom", render: (c) => <ShareKv c={c} /> },
   { t: "Run a managed desktop", k: "sw", key: "desktop.host.managed", def: false, tag: LINUX, sub: "Starts a private headless desktop just for Branch. Off until you choose: it runs a second desktop." },
   { t: "Screen-sharing port", k: "num", key: "desktop.host.port", ph: "5900", min: 1, max: 65535, sub: "From 1 to 65535." },
@@ -106,7 +106,7 @@ const SCREEN_TECH: SecSpec = { t: "Screen sharing, technical", lv: 2, rows: [
 ] };
 
 const PAIRING = "gateway.nodes.pairing";
-const ALLOWING: SecSpec = { t: "Allowing connections by themselves", lv: 2, rows: [
+const ALLOWING: SecSpec = { t: "Allowing connections by themselves", group: "Connections", showHeading: false, lv: 2, rows: [
   { t: "Allow connections from this computer by themselves", k: "sw", key: `${PAIRING}.autoApproveLocal`, def: true, sub: "A browser or app on this same computer, or through an SSH tunnel to it, connects without asking." },
   { t: "Allow a computer that proves it is yours", k: "sw", key: `${PAIRING}.sshVerify`, def: true, is: (v) => v !== false, sub: "Branch signs in to it over SSH and checks its key matches; anything else still asks." },
   { t: "Networks that connect without asking", k: "list", key: `${PAIRING}.autoApproveCidrs`, ph: "192.168.1.0/24", sub: "Only a brand-new computer with no extra access; phones, browsers and upgrades still ask. Turns on when you add a network." },
@@ -119,12 +119,12 @@ const CODE_COMMITS: SecSpec = { t: "Code and commits", lv: 0, rows: [
   { t: "Linux computers", sub: "What a paired Linux computer lends to Trunks.", k: "val", lv: 1, val: "Notifications, camera, location", off: "Needs the engine to report what a Linux computer lends." },
 ] };
 
-const NETWORK_MORE: SecSpec = { t: "Network, more", lv: 1, rows: [
+const NETWORK_MORE: SecSpec = { t: "Network, more", group: "Network", lv: 1, rows: [
   { t: "Its computer joins a private network", sub: "So a Trunk’s computer reaches your private machines without opening them to the internet.", k: "seg", opts: [{ v: "off", l: "Off" }, { v: "tailscale", l: "Tailscale" }, { v: "netbird", l: "NetBird" }], off: "Needs the engine to join a Trunk’s computer to a private network." },
   { t: "Previews on your other computers", sub: "See a preview server running on taofik-ai, such as an app a Trunk is building, here in Branch’s browser.", k: "sw", off: "Needs the engine to forward preview servers from other computers." },
 ] };
 
-const ON_MORE: SecSpec = { t: "On a computer, more", lv: 1, rows: [
+const ON_MORE: SecSpec = { t: "On a computer, more", group: "On a computer", showHeading: false, lv: 1, rows: [
   { t: "Let Trunks show you pages", sub: "A Trunk can open a page in the side panel’s Clearing tab.", k: "sw", off: "Needs the engine’s live panel command." },
   { t: "Work in apps in the background", sub: "Through the accessibility tree, without taking the screen.", k: "sw", off: "Needs the screen driver to read apps without the screen." },
   { t: "Read Jupyter notebooks", sub: "Cells, outputs and charts.", k: "sw", off: "Needs the engine to read notebooks." },
@@ -132,7 +132,7 @@ const ON_MORE: SecSpec = { t: "On a computer, more", lv: 1, rows: [
   { t: "Write AGENTS.md for a project", sub: "Branch reads the project and writes its house rules.", k: "val", val: "/init", code: "/init", off: "Needs the engine’s /init command." },
 ] };
 
-const USING_MORE: SecSpec = { t: "Using the screen, more", lv: 1, rows: [
+const USING_MORE: SecSpec = { t: "Using the screen, more", group: "Using the screen", showHeading: false, lv: 1, rows: [
   { t: "Hide Branch while it works here", sub: "Branch’s window hides and a small status window shows while a Trunk uses this computer’s screen. It comes back when the task ends.", k: "sw", off: "Hiding the window is done by the Branch app on your computer." },
   { t: "Most steps in one task", sub: "A task stops and tells you when it reaches this many steps.", k: "num", unit: "steps", off: SCREEN_DRIVER },
   { t: "Wait between steps", sub: "Slows it down so you can follow along. Empty means no wait.", k: "num", unit: "ms", off: SCREEN_DRIVER },
@@ -146,7 +146,7 @@ const USING_MORE: SecSpec = { t: "Using the screen, more", lv: 1, rows: [
   { t: "Covering this computer’s screens", sub: "While someone controls this computer from another device, its own screens are covered. Touching the mouse or keyboard here asks to disconnect, then locks this computer.", k: "val", val: "Always", tone: "idle", off: "Needs the screen driver to cover screens during remote control." },
 ] };
 
-const PHONES_SMALL: SecSpec = { t: "Phones and small devices", lv: 1, rows: [
+const PHONES_SMALL: SecSpec = { t: "Phones and small devices", group: "Lending", lv: 1, rows: [
   { t: "Android phones over USB", sub: "With USB debugging on, a Trunk takes pictures of the phone’s screen, taps, swipes, types and opens apps.", k: "btn", btn: "Set up", off: "Needs the engine to drive a phone over USB." },
   { t: "What it learned on phones", sub: "After each phone task it writes down tips and short cuts, so the next task is quicker and steadier.", k: "btn", btn: "See", off: "Needs the engine to keep phone notes." },
   { t: "iPhone simulator beside the conversation", sub: "Shows the simulator of the app being built next to the chat, so you and the Trunk both use it. Pick the device per conversation.", k: "btn", btn: "Show", off: "The simulator is shown by the Branch app on a Mac." },
@@ -168,7 +168,7 @@ const MORE_PLACES: SecSpec = { t: "More places to run work", lv: 1, rows: [
   { t: "Each conversation’s folders", k: "info", lv: 2, off: "Needs the engine to keep folders per conversation." },
 ] };
 
-const USING_TECH: SecSpec = { t: "Using the screen, technical", lv: 2, rows: [
+const USING_TECH: SecSpec = { t: "Using the screen, technical", group: "Using the screen", showHeading: false, lv: 2, rows: [
   { t: "Screen driver", k: "custom", render: (c) => <ScreenDriver c={c} /> },
   { t: "How it drives the screen", sub: "Apps in the background first; it takes the screen only when it has to.", k: "info", off: SCREEN_DRIVER },
   { t: "When a step fails", sub: "A failed picture, model call or action isn’t tried again. It stops after 10 failed pictures in a row.", k: "info", off: SCREEN_DRIVER },
@@ -183,7 +183,7 @@ const USING_TECH: SecSpec = { t: "Using the screen, technical", lv: 2, rows: [
 ] };
 
 const EXTRA: Spec = { t: "Extra folders", k: "list", key: `${SANDBOX}.docker.binds`, ph: "C:\\path\\to\\folder:/data:ro", sub: "Folders on this computer the box can reach, as host path:box path." };
-const WHERE_MORE: SecSpec = { t: "Where scripts run, more", lv: 1, rows: [
+const WHERE_MORE: SecSpec = { t: "Where scripts run, more", group: "On a computer", showHeading: false, lv: 1, rows: [
   { t: "Your project folder in the box", k: "seg", key: `${SANDBOX}.workspaceAccess`, def: "none", opts: [{ v: "none", l: "Not shared" }, { v: "ro", l: "Read only" }, { v: "rw", l: "Read and write" }], sub: "Scripts work in the box’s own folder unless it is shared." },
   { ...EXTRA, k: "custom", render: (c) => <FoldersRow s={EXTRA} c={c} /> },
   { t: "Sealed boxes running", sub: "Each Trunk’s box, and whether it uses the latest settings.", k: "btn", btn: "See", off: "Needs the engine to list running sealed boxes." },
@@ -196,7 +196,7 @@ const WHERE_MORE: SecSpec = { t: "Where scripts run, more", lv: 1, rows: [
 ] };
 
 const NO_CONTAIN = "Needs the engine to contain scripts on this computer.";
-const SCRIPTS: SecSpec = { t: "Scripts on this computer", lv: 1, rows: [
+const SCRIPTS: SecSpec = { t: "Scripts on this computer", group: "On a computer", showHeading: false, lv: 1, rows: [
   { t: "Contain scripts on this computer", sub: "Each script a Trunk starts runs in its own container.", k: "sw", off: NO_CONTAIN },
   { t: "Starting point", sub: "No internet, no clipboard, no folders.", k: "seg", opts: [{ v: "locked", l: "Locked down" }, { v: "rec", l: "Recommended" }, { v: "open", l: "Open" }], off: NO_CONTAIN },
   { t: "Internet", sub: "Contained scripts can reach public internet addresses. Your local network and shares are not included. Off until you choose: scripts could send what they read over the internet.", k: "sw", off: NO_CONTAIN },
@@ -207,7 +207,7 @@ const SCRIPTS: SecSpec = { t: "Scripts on this computer", lv: 1, rows: [
   { t: "Allow Windows UI calls", sub: "PowerShell and some console tools need these to start. Off until you choose: it widens what contained scripts can call.", k: "sw", lv: 2, off: NO_CONTAIN },
 ] };
 
-const SEALED_TECH: SecSpec = { t: "Sealed box, technical", lv: 2, rows: [
+const SEALED_TECH: SecSpec = { t: "Sealed box, technical", group: "On a computer", showHeading: false, lv: 2, rows: [
   { t: "Box image", k: "custom", render: (c) => <BoxImage c={c} /> },
   { t: "Use another image", k: "change", btn: "Change", bare: true, key: `${SANDBOX}.docker.image`, ph: SANDBOX_IMAGE, sub: "Any image you built or pulled." },
   { t: "Run once when a box is made", k: "copy", key: `${SANDBOX}.docker.setupCommand`, ph: "(none)", sub: "Needs internet, a writable box and the root user." },
@@ -215,7 +215,7 @@ const SEALED_TECH: SecSpec = { t: "Sealed box, technical", lv: 2, rows: [
   { t: "Graphics cards", k: "pick", key: `${SANDBOX}.docker.gpus`, opts: [{ v: null, l: "None" }, { v: "all", l: "All" }], sub: "Graphics cards the box may use." },
 ] };
 
-const LIMITS_TECH: SecSpec = { t: "Limits, technical", lv: 2, rows: [
+const LIMITS_TECH: SecSpec = { t: "Limits, technical", group: "Limits", lv: 2, rows: [
   { t: "Limits for commands", sub: "On Windows, commands run inside a job with a memory and processor ceiling.", k: "btn", btn: "Show limits", off: "Needs the engine to report the limits it puts on commands." },
 ] };
 
@@ -227,7 +227,7 @@ export function ComputerMore(props: SettingsPageProps) {
 
 function SecView({ s, c }: { s: SecSpec; c: Ctx }) {
   return (
-    <Sec title={s.t} hint={s.hint} id={s.id}>
+    <Sec title={s.t} group={s.group} showHeading={s.showHeading} hint={s.hint} id={s.id}>
       {s.body ? s.body(c) : null}
       {(s.rows ?? []).filter((r) => (r.lv ?? 0) <= c.lv && c.lv <= (r.upTo ?? 2)).map((r) => <Row key={r.t} s={r} c={c} />)}
     </Sec>
@@ -681,7 +681,7 @@ function SparesMax({ c }: { c: Ctx }) {
 
 /* ---------- Everything connected ---------- */
 
-const EVERYTHING: SecSpec = { t: "Everything connected", lv: 1, hint: "Every app, browser, phone and computer that can reach this Branch.", body: (c) => <Everything c={c} /> };
+const EVERYTHING: SecSpec = { t: "Everything connected", group: "Connections", lv: 1, hint: "Every app, browser, phone and computer that can reach this Branch.", body: (c) => <Everything c={c} /> };
 
 type Group = "Computers" | "Phones" | "Browsers and apps";
 type Thing = {
@@ -859,7 +859,7 @@ function KeyRow({ c, t, k, onChanged }: { c: Ctx; t: Thing; k: RecordValue; onCh
 
 /* ---------- Who is connected now ---------- */
 
-const WHO: SecSpec = { t: "Who is connected now", lv: 1, hint: "Every app, browser, phone and computer reporting in right now.", body: (c) => <Who c={c} /> };
+const WHO: SecSpec = { t: "Who is connected now", group: "Connections", showHeading: false, lv: 1, hint: "Every app, browser, phone and computer reporting in right now.", body: (c) => <Who c={c} /> };
 
 const MODE: Record<string, string> = { ui: "the window", webchat: "a browser", cli: "the terminal", node: "a computer", backend: "a service", gateway: "this Branch" };
 const IDLE_S = 300;
@@ -922,7 +922,7 @@ const SECTIONS: SecSpec[] = [
 ];
 
 export const ROWS: RowEntry[] = SECTIONS.flatMap((s) => [
-  { page: "computer", title: s.t, lv: s.lv },
-  ...(s.rows ?? []).filter((r) => r.k !== "hint").map((r) => ({ page: "computer", title: r.t, sec: s.t, lv: Math.max(s.lv, r.lv ?? 0) as Lv })),
-  ...(s.titles ?? []).map(([title, lv]) => ({ page: "computer", title, sec: s.t, lv: Math.max(s.lv, lv) as Lv })),
+  { page: "computer", title: s.t, ...(s.group ? { sec: s.t, group: s.group } : {}), lv: s.lv },
+  ...(s.rows ?? []).filter((r) => r.k !== "hint").map((r) => ({ page: "computer", title: r.t, sec: s.t, group: s.group, lv: Math.max(s.lv, r.lv ?? 0) as Lv })),
+  ...(s.titles ?? []).map(([title, lv]) => ({ page: "computer", title, sec: s.t, group: s.group, lv: Math.max(s.lv, lv) as Lv })),
 ]);

@@ -176,7 +176,7 @@ function AlertHow({ c }: { c: Ctx }) {
   );
 }
 const MIN = 60_000;
-const AUTOMATIONS: SecSpec = { title: "Automations", lv: 1, rows: [
+const AUTOMATIONS: SecSpec = { title: "Automations", showHeading: false, lv: 1, rows: [
   no("Report only what changed", "Checks compare with last time and stay quiet otherwise."),
   no("Checks and retries in procedures", "A step can check its own result, retry, and clean up."),
   no("Procedures that start themselves", "On a clock or after a task. Only procedures you set a time for."),
@@ -258,16 +258,16 @@ const TOOLS_SKILLS: SecSpec = { title: "Tools and skills", lv: 1, rows: [
 /* ---------- the remaining plain sections ---------- */
 const btnOff = (t: string, s: string, btn: string, off = NOSET): Spec => ({ t, s, kind: "btn", btn, off });
 const HELPERS: SecSpec = { title: "Helpers", lv: 1, rows: [{ t: "Helpers’ model", draw: (c) => <HelpersModel c={c} /> }, no("Helpers get the connectors", "Off: helpers get the Trunk’s tools minus connectors. They never get more than the Trunk.")] };
-const TOOLS_TECH: SecSpec = { title: "Tools, technical", lv: 2, rows: [
+const TOOLS_TECH: SecSpec = { title: "Tools, technical", group: "Tools", lv: 2, rows: [
   no("Your own tools from files", "Loads tool files from the tools folder. Each one is checked before it’s offered."),
   no("Find tools with a command", "A command that prints more tools for this project.", "text"),
   no("Run connector programs on Branch’s own Node.js", "Off: the Node.js installed on this computer."),
   { t: "Python service", s: "Comes with Branch. Runs Python for tools that need it.", kind: "none", off: "The engine doesn’t report a Python service." },
 ] };
 const HOOKS: SecSpec = { title: "Hooks", lv: 2, rows: ["Before a tool runs", "After a tool runs", "When a conversation starts", "When you send a message", "When a Trunk stops", "When a helper stops", "Before tidying up", "When it needs you", "When a task finishes", "When a session ends", "When settings change", "When a file changes"].map((t) => ({ t })), whole: (c) => <HooksSec c={c} /> };
-const AUTO_MORE: SecSpec = { title: "Automations, more", lv: 1, rows: [no("Run on GitHub Actions while this computer is off", "Schedules and their skills run on free GitHub runners; results and memory come back as commits. Off until you choose: your skills run on GitHub’s computers.")] };
-const SHARING_MORE: SecSpec = { title: "Sharing, more", lv: 1, rows: [btnOff("Pages Trunks publish", "Pages and their comments.", "See them", "Needs the engine’s list of published pages.")] };
-const TRUNKS_MORE: SecSpec = { title: "Trunks, more", lv: 1, rows: [
+const AUTO_MORE: SecSpec = { title: "Automations, more", group: "Automations", lv: 1, rows: [no("Run on GitHub Actions while this computer is off", "Schedules and their skills run on free GitHub runners; results and memory come back as commits. Off until you choose: your skills run on GitHub’s computers.")] };
+const SHARING_MORE: SecSpec = { title: "Sharing, more", group: "Sharing", lv: 1, rows: [btnOff("Pages Trunks publish", "Pages and their comments.", "See them", "Needs the engine’s list of published pages.")] };
+const TRUNKS_MORE: SecSpec = { title: "Trunks, more", group: "Trunks", lv: 1, rows: [
   no("Projects pick up matching work", "A message about a project goes to that project by itself."),
   no("Follow-up tasks", "A Trunk can leave itself a task for later, shown in the Board."),
   btnOff("Standing orders", "Named programmes a Trunk keeps running; ESCALATE pauses one and asks you.", "See them"),
@@ -277,7 +277,7 @@ const TRUNKS_MORE: SecSpec = { title: "Trunks, more", lv: 1, rows: [
   btnOff("Agent marketplace", "Trunks others made, each with a fingerprint you can check.", "Browse"),
   no("Trunk packages", "Add, update and share Trunks as packages. Off as it ships: still experimental."),
 ] };
-const LIBRARY_MORE: SecSpec = { title: "Library, more", lv: 1, rows: [
+const LIBRARY_MORE: SecSpec = { title: "Library, more", group: "Library", lv: 1, rows: [
   no("Search documents by meaning", "Finds the lease clause about repairs when you ask “who fixes the boiler”."),
   no("A local index of mail, calendar and messages", "Built and kept on this computer, for faster answers."),
   no("Keep versions of what Trunks make", "Every file in Made for you keeps its versions and a checksum."),
@@ -294,7 +294,7 @@ const WHAT: SecSpec = { title: "What it can do", lv: 1, hint: "Model tools. Each
   btnOff("Numbered sources you can check", "Each claim in a brief has a number that opens the passage it came from.", "See an example", "Needs the engine’s research briefs."),
 ] };
 const CONVERSATIONS: SecSpec = { title: "Conversations", lv: 1, rows: [{ t: "All conversations", draw: (c) => <DialogRow t="All conversations" s="Every conversation, with its context used and status." btn="Open the table" open={(close) => <ConvDialog engine={c.engine} lv={c.lv} onClose={close} />} /> }] };
-const MEMORY_MORE: SecSpec = { title: "Memory, more", lv: 1, rows: [
+const MEMORY_MORE: SecSpec = { title: "Memory, more", group: "Memory", showHeading: false, lv: 1, rows: [
   { t: "Tidy by meaning each night", draw: (c) => <Ctl title="Tidy by meaning each night" sub="At 3 AM it merges facts that say the same thing in different words." help="At 3 AM it merges facts that say the same thing in different words. Every merge is listed."><Btn sm disabled={!c.openSettings} onClick={() => c.openSettings?.("seasons")}>Last night</Btn></Ctl> },
   btnOff("Project notes as files", "Each project keeps its memory as Markdown in its own folder, so you can read and edit it.", "Open"),
   btnOff("Follow-ups made whole", "A short follow-up like “and July?” becomes a full question before it searches.", "Show one"),
@@ -302,7 +302,7 @@ const MEMORY_MORE: SecSpec = { title: "Memory, more", lv: 1, rows: [
   btnOff("Knowledge cards", "A short card made from a conversation: the question, the answer and where it came from.", "See them"),
   btnOff("Notes it keeps for itself", "Short working notes a Trunk writes and rewrites, such as how a site behaves.", "Read them"),
 ] };
-const MEMORY_TECH: SecSpec = { title: "Memory, technical", lv: 2, hint: "For every Trunk that has no memory setting of its own. Each Trunk’s own memory settings win.", rows: [
+const MEMORY_TECH: SecSpec = { title: "Memory, technical", group: "Memory", showHeading: false, lv: 2, hint: "For every Trunk that has no memory setting of its own. Each Trunk’s own memory settings win.", rows: [
   sw("Search memory", "Turn off for replies that use no memory at all.", "memory.search.enabled", true),
   { t: "Also search past conversations", s: "Off until you choose: it reads every past conversation into the index.", k: "memory.search.sources", kind: "sw", read: (v) => (Array.isArray(v) ? v : ["memory"]).includes("sessions"), write: (on, saved) => { const base = (Array.isArray(saved) ? saved : ["memory"]).filter((x) => x !== "sessions"); return on ? [...base, "sessions"] : base; } },
   sw("Keep search results ready", "Faster re-indexing; uses a little disk.", "memory.search.cache.enabled", true),
@@ -312,14 +312,14 @@ const MEMORY_TECH: SecSpec = { title: "Memory, technical", lv: 2, hint: "For eve
   { t: "Show where a memory came from", s: "Auto shows it when it helps.", k: "memory.citations", kind: "seg", def: "auto", opts: [{ id: "auto", label: "Auto" }, { id: "on", label: "Always" }, { id: "off", label: "Never" }] },
   { t: "Every memory setting", draw: (c) => <EditRow c={c} t="Every memory setting" path="memory" /> },
 ] };
-const SKILLS_TECH: SecSpec = { title: "Skills, technical", lv: 2, rows: [
+const SKILLS_TECH: SecSpec = { title: "Skills, technical", group: "Skills", showHeading: false, lv: 2, rows: [
   { t: "Extra skill folders", s: "Searched last, after Branch’s own and the project’s.", k: "skills.load.extraDirs", kind: "list", add: "Add a folder", ph: "D:\\Skills" },
   { t: "Built-in skills to offer", s: "All: every built-in skill is offered until you pick some.", k: "skills.allowBundled", kind: "list", ph: "a skill name" },
   sw("Pick up skill changes by themselves", "", "skills.load.watch", true),
   { t: "Install skills with", k: "skills.install.nodeManager", kind: "pick", def: "npm", opts: ["npm", "pnpm", "yarn", "bun"].map((x) => ({ id: x, label: x })) },
   { t: "Every skill setting", draw: (c) => <EditRow c={c} t="Every skill setting" path="skills" s="Proposals from Budding keep their own place under Customize › Tools › Skills." /> },
 ] };
-const PLUGINS_TECH: SecSpec = { title: "Plugins, technical", lv: 2, hint: "Changes apply at the next gateway start.", rows: [
+const PLUGINS_TECH: SecSpec = { title: "Plugins, technical", group: "Plugins", lv: 2, hint: "Changes apply at the next gateway start.", rows: [
   sw("Load plugins", "Off loads no plugins at the next start.", "plugins.enabled", true),
   { t: "Only these plugins", s: "Empty means all.", k: "plugins.allow", kind: "list", ph: "plugin id" },
   { t: "Never these plugins", k: "plugins.deny", kind: "list", ph: "plugin id" },

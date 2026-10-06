@@ -6,6 +6,7 @@ import { at, list, record, text, visible } from "./adapter";
 import type { RecordValue } from "./adapter";
 import { useResource } from "./hooks";
 import { useBranchVersion, versionParts } from "../../connect/branch-version";
+import { formatMoney } from "../../format/money";
 
 function Section({ title, children }: { title: string; children: ReactNode }) { return <section><h2>{title}</h2>{children}</section>; }
 function State({ loading, error }: { loading: boolean; error?: string }) { return loading ? <p role="status">Loading from the engine.</p> : error ? <p className="bs-error" role="alert">{visible(error)}</p> : null; }
@@ -13,7 +14,7 @@ function Row({ title, note, children }: { title: string; note?: ReactNode; child
 function Badge({ children, good }: { children: ReactNode; good?: boolean }) { return <span className={`bs-chip${good ? " bs-connected" : ""}`}>{children}</span>; }
 function date(value: unknown) { return typeof value === "number" && Number.isFinite(value) ? new Date(value).toLocaleString() : "Not reported"; }
 function count(value: unknown) { return typeof value === "number" && Number.isFinite(value) ? value.toLocaleString() : "Not reported"; }
-function money(value: unknown) { return typeof value === "number" && Number.isFinite(value) ? new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) : "Not reported"; }
+function money(value: unknown) { return typeof value === "number" && Number.isFinite(value) ? formatMoney(value) : "Not reported"; }
 export function remainingPercent(value: unknown): number | undefined { return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? 100 - value : undefined; }
 
 /** Source: provider-usage.types.ts; percentages are provider values, never invented quotas. */

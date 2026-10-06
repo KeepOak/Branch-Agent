@@ -21,7 +21,7 @@ export type Row = {
   /** custom rows are drawn by the section itself. */
   id?: string;
 };
-export type Section = { title: string; lv: Lv; hint?: string; after?: string; rows: Row[] };
+export type Section = { title: string; group?: string; showHeading?: boolean; lv: Lv; hint?: string; after?: string; rows: Row[] };
 export type Cfg = { get: (path: string) => unknown; set: (path: string, value: unknown) => Promise<boolean>; loading: boolean };
 
 export const NO_KEY = "Branch has no setting for this yet.";
@@ -81,7 +81,7 @@ export function TableSec({ sec, cfg, level, custom }: { sec: Section; cfg: Cfg; 
   const rows = sec.rows.filter((r) => (r.lv ?? sec.lv) <= level);
   return (
     <div className="sec" data-sec={sec.title}>
-      <h2>{sec.title}</h2>
+      {sec.showHeading !== false ? <h2>{sec.group ?? sec.title}</h2> : null}
       {sec.hint ? <Hint>{sec.hint}</Hint> : null}
       {rows.map((r) => r.kind === "custom" ? <Fragment key={r.id ?? r.t}>{custom?.(r.id ?? r.t, r)}</Fragment> : <KeyRow key={r.t} row={r} cfg={cfg} />)}
       {sec.after ? <Hint>{sec.after}</Hint> : null}
@@ -90,5 +90,5 @@ export function TableSec({ sec, cfg, level, custom }: { sec: Section; cfg: Cfg; 
 }
 
 export function rowsOf(page: string, secs: Section[]): RowEntry[] {
-  return secs.flatMap((s) => s.rows.map((r) => ({ page, title: r.t, sec: s.title, lv: r.lv ?? s.lv })));
+  return secs.flatMap((s) => s.rows.map((r) => ({ page, title: r.t, sec: s.title, group: s.group, lv: r.lv ?? s.lv })));
 }

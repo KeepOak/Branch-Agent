@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { SettingsFrame } from "./SettingsFrame";
 import { Ctl, KitProvider, Page, Sec } from "../places/settings/kit";
+import { SETTINGS_ROWS } from "../places/settings";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const engine: WindowEngine = { request: vi.fn(async () => ({})) as WindowEngine["request"], onEvent: () => () => {}, sessionKey: "test", scopes: [] };
@@ -49,6 +50,15 @@ describe("settings frame level", () => {
     await act(async () => hit.click());
     expect(onPage).toHaveBeenCalledWith("accounts");
     expect(localStorage.getItem("branch.level")).toBe("technical");
+  });
+
+  it("uses each page's explicit group in search instead of matching display copy", async () => {
+    const group = (page: string, title: string) => SETTINGS_ROWS.find((row) => row.page === page && row.title === title)?.group;
+    expect(group("gateway", "Wrong sign-ins allowed")).toBe("Connection");
+    expect(group("gateway", "Apply settings changes")).toBe("Connection");
+    expect(group("permissions", "Code mode")).toBe("Sandbox");
+    expect(group("computer", "Technical")).toBe("Connections");
+    expect(group("updates", "Update status for scripts")).toBe("Updating");
   });
 
   it("a row found by search gets focus on its own control, not on its pin", async () => {

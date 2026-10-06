@@ -26,7 +26,7 @@ export type Spec = {
   draw?: (c: Ctx) => ReactNode;
 };
 /** A section: its rows in order, or `whole` when one component draws it (its rows then only feed the search). */
-export type SecSpec = { title: string; hint?: ReactNode; lv: Lv; rows: Spec[]; after?: (c: Ctx) => ReactNode; whole?: (c: Ctx) => ReactNode };
+export type SecSpec = { title: string; group?: string; showHeading?: boolean; hint?: ReactNode; lv: Lv; rows: Spec[]; after?: (c: Ctx) => ReactNode; whole?: (c: Ctx) => ReactNode };
 
 export const NOSET = "The engine has no setting for this.";
 export const APP = "Set by the Branch app on this computer.";
@@ -38,7 +38,7 @@ export function Section({ spec, c }: { spec: SecSpec; c: Ctx }) {
   if (spec.lv > c.lv) return null;
   if (spec.whole) return <>{spec.whole(c)}</>;
   return (
-    <Sec title={spec.title} hint={spec.hint}>
+    <Sec title={spec.title} group={spec.group} showHeading={spec.showHeading} hint={spec.hint}>
       {shown(spec.rows, c.lv).map((r) => <Row key={r.t} r={r} c={c} />)}
       {spec.after?.(c)}
     </Sec>
@@ -119,7 +119,7 @@ function PlugRow({ r, c }: { r: Spec; c: Ctx }) {
 
 /** The search-index rows of a list of sections. */
 export function rowsOf(page: string, secs: SecSpec[]): RowEntry[] {
-  return secs.flatMap((s) => s.rows.map((r) => ({ page, title: r.t, sec: s.title, lv: Math.max(s.lv, r.lv ?? 0) as Lv })));
+  return secs.flatMap((s) => s.rows.map((r) => ({ page, title: r.t, sec: s.title, group: s.group, lv: Math.max(s.lv, r.lv ?? 0) as Lv })));
 }
 
 const sw = (t: string, s: string, k: ConfigPath, def: boolean, extra: Partial<Spec> = {}): Spec => ({ t, s, k, def, kind: "sw", ...extra });
@@ -195,13 +195,13 @@ export const FILES: SecSpec = { title: "Files", lv: 1, rows: [
   no("Your services as folders", "Mail, chat, Drive, Notion and more show up as folders a Trunk can list and read.", "sw", { lv: 2 }),
 ] };
 
-export const WEB_MORE: SecSpec = { title: "Web search, more", lv: 1, rows: [
+export const WEB_MORE: SecSpec = { title: "Web search, more", group: "Web search", lv: 1, rows: [
   { t: "Free search when no key is set", s: "Tried last, after every search you set up.", plug: "duckduckgo" },
   sw("Use the model’s own search when it has one", "Answers come with the sources it used.", "tools.web.search.openaiCodex.enabled", false),
   { t: "Keep results for", s: "The same search within this time isn’t paid for twice.", k: "tools.web.search.cacheTtlMinutes", kind: "num", unit: "minutes", def: 15, min: 0 },
 ] };
 
-export const SKILLS_MORE: SecSpec = { title: "Skills, more", lv: 1, rows: [
+export const SKILLS_MORE: SecSpec = { title: "Skills, more", group: "Skills", lv: 1, rows: [
   no("Start a skill by itself when it clearly fits", "Only when one skill clearly fits better than the next."),
   no("Run !`command` lines in skills", "A skill may fill itself in with a command’s output when it loads. Code blocks never run.", "sw", { lv: 2 }),
   no("Where new skills are saved", "Skills Trunks write go here. A synced folder works.", "text", { lv: 2 }),

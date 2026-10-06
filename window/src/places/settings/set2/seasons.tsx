@@ -30,7 +30,7 @@ export const ROWS: RowEntry[] = [
   ["Exact schedule", "Rings, in depth", 2], ["Log each pass in detail", "Rings, in depth", 2],
   ["Fill the diary from past notes", "Rings, maintenance", 2], ["Remove filled-in entries", "Rings, maintenance", 2],
   ["Remove repeated diary entries", "Rings, maintenance", 2], ["Repair Rings’ files", "Rings, maintenance", 2],
-].map(([title, sec, lv]) => ({ page: "seasons", title: String(title), sec: String(sec), lv: lv as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "seasons", title: String(title), sec: String(sec), group: ({ "Rings, by hand": "Rings", "Rings, in depth": "Rings", "Rings, maintenance": "Rings" } as Record<string, string>)[String(sec)], lv: lv as 0 | 1 | 2 }));
 
 type Config = ReturnType<typeof useConfig>;
 type Ctx = SettingsPageProps & { config: Config; agent: string; status: RecordValue; reload: () => void };
@@ -163,7 +163,7 @@ function More({ engine, config, agent, status, reload }: Ctx) {
   const storage = str(config.get(`${RINGS}.storage.mode`)) || "separate";
   const opts = list(rec(models.data).models).filter((m) => m.available !== false).map((m) => ({ id: `${str(m.provider)}/${str(m.id)}`, label: str(m.name) || str(m.id) }));
   return (
-    <Sec title="Seasons, more">
+    <Sec title="Seasons, more" group="Seasons">
       <Ctl title="Rest a skill after" sub="Unused this long, a skill rests: it stays installed but isn’t offered." off={NO_GARDENER}><Num label="Rest a skill after" value={14} unit="days" onCommit={() => undefined} /></Ctl>
       <Ctl title="Set it aside after" sub="Set-aside skills move to Customize › Tools › Skills › Set aside." off={NO_GARDENER}><Num label="Set it aside after" value={30} unit="days" onCommit={() => undefined} /></Ctl>
       <Ctl title="What each night costs" sub="Shows what each night’s model use costs." help="Each night’s model use: free on this computer, or the plan it used when paid models are allowed." off="Needs the engine to record each night’s model use."><Btn sm>See the nights</Btn></Ctl>
@@ -202,7 +202,7 @@ function WeighDialog({ status, onClose }: { status: RecordValue; onClose: () => 
 function ByHand({ engine, agent, lv }: Ctx & { lv: number }) {
   const [fill, setFill] = useState(false);
   return (
-    <Sec title="Rings, by hand">
+    <Sec title="Rings, by hand" showHeading={false} group="Rings">
       <Ctl title="Keep notes for good now" sub="The notes the deep pass would keep, with why." off={lv >= 2 ? "Runs from a terminal: Keep notes now, below." : TERMINAL}><Btn sm>Preview</Btn></Ctl>
       <Ctl title="Try a night without keeping anything" sub="Shows what the pattern and deep passes would find. It writes nothing." off={lv >= 2 ? "Runs from a terminal: A night that keeps nothing, below." : TERMINAL}><Btn sm>Try it</Btn></Ctl>
       <Ctl title="Fill in from past conversations" sub="Writes diary entries from conversations you choose." help="Writes diary entries from conversations you pick; you can remove them all."><Btn sm disabled={!agent} onClick={() => setFill(true)}>Choose…</Btn></Ctl>
@@ -248,7 +248,7 @@ function InDepth({ config, status }: Ctx) {
   const cron = str(config.get(`${RINGS}.frequency`));
   const phases = rec(status.phases);
   return (
-    <Sec title="Rings, in depth" hint="Fine tuning for each of Rings’ three passes.">
+    <Sec title="Rings, in depth" showHeading={false} group="Rings" hint="Fine tuning for each of Rings’ three passes.">
       <Ctl title="Exact schedule" sub="Five-field cron." help="Five-field cron. Setting it makes Night window read “Custom”; empty uses the night window. Overrides the night window.">
         <input className="inp s2-mono" aria-label="Exact schedule" defaultValue={cron} placeholder="0 3 * * *" onBlur={(e) => { const v = e.target.value.trim(); if (v !== cron) void config.set(`${RINGS}.frequency`, v || null); }} />
       </Ctl>
@@ -277,7 +277,7 @@ function Maintenance({ engine, agent, status, reload }: Ctx) {
   const params = agent ? { agentId: agent } : {};
   const act = (method: string, note: (r: RecordValue) => string) => void call.run(() => engine.request<RecordValue>(method, params), (r) => { reload(); return note(rec(r)); });
   return (
-    <Sec title="Rings, maintenance" hint={`${str(status.shortTermCount) || "0"} notes waiting · ${str(status.promotedToday) || "0"} kept today · ${str(status.promotedTotal) || "0"} kept in all`}>
+    <Sec title="Rings, maintenance" showHeading={false} group="Rings" hint={`${str(status.shortTermCount) || "0"} notes waiting · ${str(status.promotedToday) || "0"} kept today · ${str(status.promotedTotal) || "0"} kept in all`}>
       <Ctl title="Fill the diary from past notes"><Btn sm disabled={call.busy} onClick={() => act("doctor.memory.backfillDreamDiary", (r) => `Wrote ${str(r.written) || "0"} entries from ${str(r.scannedFiles) || "0"} notes.`)}>Fill in</Btn></Ctl>
       <Ctl title="Remove filled-in entries"><Btn sm disabled={call.busy} onClick={() => act("doctor.memory.resetDreamDiary", (r) => `Removed ${str(r.removedEntries) || "0"} entries.`)}>Remove</Btn></Ctl>
       <Ctl title="Remove repeated diary entries" sub="Only exact repeats."><Btn sm disabled={call.busy} onClick={() => act("doctor.memory.dedupeDreamDiary", (r) => `Removed ${str(r.removedEntries) || str(r.removed) || "0"} repeats.`)}>Remove repeats</Btn></Ctl>

@@ -8,7 +8,7 @@ import type { Cfg, Shared } from "./voice-more";
 
 export function VoiceTechnical({ cfg }: Shared) {
   return (
-    <Sec title="Voice, technical">
+    <Sec title="Voice, technical" showHeading={false} group="Voice engine">
       <CodeRow t="Speak into a file" code={'branch infer tts convert --text "Your build is done" --output done.mp3'} sub="Uses the speaking engine above." />
       <CodeRow t="Speaking status" code="branch infer tts status" sub="Show the current voice engine and reading-aloud setting." help="Which engine, voice and named voice are in use, and whether it reads replies aloud. Turning reading aloud on and off is the “Voice” row’s Off and “Answer aloud”." />
       <Ctl title="Voice nicknames" sub="A Trunk can switch voice by nickname, such as “Roger”." help="A Trunk can switch voice by nickname, such as “Roger”. Short names for voices of the chosen engine." off={NO_KEY}

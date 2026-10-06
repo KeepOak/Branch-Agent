@@ -32,85 +32,6 @@ export const useAsk = (): ((text: string) => void) | undefined => useContext(Kit
 export const useScope = (): string | null => useContext(KitContext).scope;
 /** The pinned rows, for General's Pinned list. */
 export const usePinsKit = (): Pins | undefined => useContext(KitContext).pins;
-/** Advanced and Technical rows retain their parent section heading. */
-const SECTION_PARENTS: Record<string, string> = {
-  "Summaries of older turns": "Summaries",
-  "Summaries, technical": "Summaries",
-  "Kinds of notice": "Tell me when…",
-  "Sorting notifications": "Tell me when…",
-  "Prompts behind quick actions": "Project instructions",
-  "Per connection": "Per account",
-  "Connections, technical": "Accounts",
-  "Helpers, technical": "Models for smaller jobs",
-  "Terms": "When one runs out",
-  "Which account goes next": "When one runs out",
-  "Where each sign-in comes from": "Accounts",
-  "Hearing, more": "Listening",
-  "Talking, more": "Listening",
-  "Listening, services": "Listening",
-  "Live voice, more services": "Live voice",
-  "Voice, technical": "Voice engine",
-  "A spoken turn": "Voice engine",
-  "What Trunks may use": "Voice engine",
-  "Reach": "Connection",
-  "How it's reached": "Connection",
-  "Exposure": "Connection",
-  "Gateway::Limits": "Connection",
-  "Gateway::Technical": "Connection",
-  "From scripts": "Connection",
-  "Never break": "If it stops",
-  "Rules for each tool and folder": "Rules and checks",
-  "Commands, by default": "Rules and checks",
-  "Checks before anything runs": "Rules and checks",
-  "Guards that are always on": "Rules and checks",
-  "Tools and loops": "Rules and checks",
-  "Test and explain": "Rules and checks",
-  "What each connector may do": "Rules and checks",
-  "Isolation": "Sandbox",
-  "Folders the sandbox may reach": "Sandbox",
-  "Network and sandbox, technical": "Sandbox",
-  "Security, technical": "Sandbox",
-  "Permissions::Tools, technical": "Sandbox",
-  "Without asking, more": "Without asking, Trunks may…",
-  "Company policy": "Pinned settings",
-  "Money": "Locks",
-  "Everything connected": "Connections",
-  "Who is connected now": "Connections",
-  "Logbook": "Connections",
-  "Allowing connections by themselves": "Connections",
-  "Lent computer, technical": "Lending",
-  "Computer & browser::Technical": "Connections",
-  "Phones and small devices": "Lending",
-  "Screen sharing, technical": "Using the screen",
-  "Where scripts run, more": "On a computer",
-  "Scripts on this computer": "On a computer",
-  "Sealed box, technical": "On a computer",
-  "How it browses": "The browser",
-  "Page cleaners": "The browser",
-  "Sites": "The browser",
-  "What it hands to you": "The browser",
-  "Saved flows": "The browser",
-  "Your own browser": "The browser",
-  "Cloud browsers": "The browser",
-  "Where passwords come from": "Keys",
-  "Keys Branch holds": "Keys",
-  "Money and keeping, more": "Keeping things",
-  "Conversations, every setting": "Keeping things",
-  "Working on its own code": "What it may change",
-  "What it may fix by itself": "What it may change",
-  "Rings, by hand": "Rings",
-  "Rings, in depth": "Rings",
-  "Rings, maintenance": "Rings",
-  "In your editors and notes": "Branch on your other devices",
-  "Help and updates, more": "Updating",
-  "Updates & about::Technical": "Updating",
-  "Characters": "The Trunk beside the conversation",
-  "The list": "Status bar and list",
-};
-export function sectionHeading(title: string, page = ""): string {
-  const base = title.replace(/, (?:even more|more|technical|in depth)$/i, "");
-  return SECTION_PARENTS[`${page}::${title}`] ?? SECTION_PARENTS[title] ?? SECTION_PARENTS[base] ?? base;
-}
 
 /** The not-allowed state (§4.7.0): a person who may not change how Branch is set up sees these rows greyed. */
 export const NOSETUP = "Only someone who may change how Branch is set up can change this.";
@@ -151,7 +72,6 @@ export function useConfig(engine: WindowEngine) {
 
 type HelpEntry = { label: string; text: string };
 const HelpContext = createContext<((key: string, entry?: HelpEntry) => void) | null>(null);
-const PageTitleContext = createContext("");
 
 /** Long explanations are supplied explicitly, never inferred from display copy. */
 function useHelpEntry(key: string, label: string, help?: string): void {
@@ -169,7 +89,6 @@ export function Page({ title, lede, help, children, top }: { title: string; lede
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<Record<string, HelpEntry>>({});
   const helpRef = useRef<HTMLDivElement>(null);
-  const pageRef = useRef<HTMLDivElement>(null);
   const [helpPosition, setHelpPosition] = useState({ top: 0, right: 0 });
   const register = useCallback((key: string, entry?: HelpEntry) => {
     setEntries((current) => {
@@ -203,16 +122,8 @@ export function Page({ title, lede, help, children, top }: { title: string; lede
     document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", escape); };
   }, [open]);
-  useEffect(() => {
-    const seen = new Set<string>();
-    pageRef.current?.querySelectorAll<HTMLElement>(".sec > h2[data-section-heading]").forEach((heading) => {
-      const name = heading.dataset.sectionHeading ?? "";
-      heading.hidden = seen.has(name);
-      seen.add(name);
-    });
-  });
   return (
-    <div className="kit-page" data-page-title={title} ref={pageRef}>
+    <div className="kit-page" data-page-title={title}>
       {top}
       <div className="kit-head"><h1>{title}</h1><div className="kit-help-anchor" ref={helpRef}>
         {open ? <div className="kit-help-pop" role="dialog" aria-label="Help for this page" style={helpPosition}>
@@ -225,21 +136,21 @@ export function Page({ title, lede, help, children, top }: { title: string; lede
         </div> : null}
       </div></div>
       <p className="lede">{lede}</p>
-      <PageTitleContext.Provider value={title}><HelpContext.Provider value={register}>{children}</HelpContext.Provider></PageTitleContext.Provider>
+      <HelpContext.Provider value={register}>{children}</HelpContext.Provider>
     </div>
   );
 }
 
 /** A section: sentence-case heading, an optional hint and its rows. */
-export function Sec({ title, hint, help, right, children, id, personal }: { title: string; hint?: ReactNode; help?: string; right?: ReactNode; children?: ReactNode; id?: string; personal?: boolean }) {
+export function Sec({ title, group, showHeading = true, hint, help, right, children, id, personal }: { title: string; group?: string; showHeading?: boolean; hint?: ReactNode; help?: string; right?: ReactNode; children?: ReactNode; id?: string; personal?: boolean }) {
   const locked = useContext(LockContext);
   const helpKey = useId();
   useHelpEntry(helpKey, title, help);
-  const heading = sectionHeading(title, useContext(PageTitleContext));
-  if (personal && locked) return <SetupLock locked={false}><Sec title={title} hint={hint} help={help} right={right} id={id}>{children}</Sec></SetupLock>;
+  const heading = group ?? title;
+  if (personal && locked) return <SetupLock locked={false}><Sec title={title} group={group} showHeading={showHeading} hint={hint} help={help} right={right} id={id}>{children}</Sec></SetupLock>;
   return (
     <div className="sec" data-sec={title || undefined} id={id}>
-      {title || right ? <h2 tabIndex={-1} data-section-heading={heading}>{heading}{right}</h2> : null}
+      {showHeading && (title || right) ? <h2 tabIndex={-1}>{heading}{right}</h2> : null}
       {hint ? <p className="hint">{hint}</p> : null}
       {children}
     </div>
@@ -312,7 +223,7 @@ export function Seg({ value, options, onChange, label, disabled, layout = "segme
     }}>
       {options.map((o) => (
         <button key={o.id} type="button" role={layout === "radio" ? "radio" : undefined} aria-checked={layout === "radio" ? o.id === value : undefined} aria-pressed={layout === "radio" ? undefined : o.id === value} disabled={disabled || Boolean(o.off)} tabIndex={o.id === active ? 0 : -1} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" title={layout === "radio" ? undefined : shownWhy(o.off)} onClick={() => o.id !== value && onChange(o.id)}>
-          {layout === "radio" ? <span aria-hidden="true" className="sseg-radio-check">{o.id === value ? "✓" : ""}</span> : null}{o.label}{layout === "radio" && o.off ? <small>{o.off}</small> : null}
+          {layout === "radio" ? <span aria-hidden="true" className="sseg-radio-check">{o.id === value ? "✓" : ""}</span> : null}{o.label}{layout === "radio" && shownWhy(o.off) ? <small>{shownWhy(o.off)}</small> : null}
         </button>
       ))}
     </span>
@@ -433,4 +344,4 @@ export function LinkBtn({ children, title, ...rest }: ButtonHTMLAttributes<HTMLB
 }
 
 /** The row search index: each page module lists its rows (title, section, level) so the frame can find and jump. */
-export type RowEntry = { page: string; title: string; sec?: string; lv: Lv; words?: string };
+export type RowEntry = { page: string; title: string; sec?: string; group?: string; lv: Lv; words?: string };

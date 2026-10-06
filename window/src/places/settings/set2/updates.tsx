@@ -45,7 +45,7 @@ export const ROWS: RowEntry[] = [
   ["The handbook", "Help and updates, more", 1], ["If an update fails", "Help and updates, more", 1],
   ["Update history", "Help and updates, more", 1], ["The engine", "Help and updates, more", 1],
   ["Update status for scripts", "Help and updates, more", 2],
-].map(([title, sec, lv]) => ({ page: "updates", title: String(title), sec: String(sec), lv: lv as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "updates", title: String(title), sec: String(sec), group: ({ "In your editors and notes": "Branch on your other devices", "Help and updates, more": "Updating", Technical: "Updating" } as Record<string, string>)[String(sec)], lv: lv as 0 | 1 | 2 }));
 
 type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => void };
 
@@ -327,7 +327,7 @@ function Editors({ gatewayUrl }: { gatewayUrl?: string }) {
     ["Obsidian", "Community plugins", "Chat beside a note; search by meaning; similar notes."],
   ];
   return (
-    <Sec title="In your editors and notes">
+    <Sec title="In your editors and notes" group="Branch on your other devices">
       {rows.map(([title, store, sub]) => <Ctl key={title} title={title} sub={sub} off={NOT_PUBLISHED}><Btn sm disabled>{store}</Btn></Ctl>)}
       <Ctl title="Folders to keep in sync" sub="Obsidian folders the Trunks read, refreshed as they change." off="Needs the Obsidian add-on."><input className="inp" aria-label="Folders to keep in sync" disabled /></Ctl>
       <Ctl title="Search with Branch from your browser" sub="Add it as a search engine; what you type opens a new conversation." off="Opening a conversation from a browser search needs the Branch app."><code className="s2-code">{`${origin}/?q=%s`}</code></Ctl>
@@ -414,7 +414,7 @@ function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: 
   const last = rec(data.status.lastRun);
   const kind = str(rec(rec(data.status.schedule).install).kind);
   return (
-    <Sec title="Help and updates, more">
+    <Sec title="Help and updates, more" group="Updating">
       <Ctl title="The handbook" sub="Answers to “how do I…” questions, found by what you ask." off="Needs the handbook skill in the engine."><Btn sm>Ask it</Btn></Ctl>
       <Ctl title="If an update fails" sub="A Trunk reads what went wrong, tries the fix on a copy and tells you." off="Needs the Trunk that looks after updates, in the engine."><Btn sm>Show an example</Btn></Ctl>
       <h3 className="s2-h3">Last update attempt</h3>
@@ -478,7 +478,7 @@ function Technical({ data, version }: { data: Data; version: string }) {
   const install = rec(rec(data.status.schedule).install);
   const git = rec(install.git);
   return (
-    <Sec title="Technical">
+    <Sec title="Technical" group="Updating" showHeading={false}>
       <Kv rows={[
         ["Version", version], ["Engine version", version], ["Commit", str(git.currentSha).slice(0, 9)],
         ["Installed", day(git.installedAtMs)], ["Last commit", day(git.commitAtMs)], ["Install type", INSTALL[str(install.kind)] ?? ""],

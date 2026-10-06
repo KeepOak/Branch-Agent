@@ -69,7 +69,7 @@ function Meetings({ cfg }: Shared) {
 
 export function CallsMore() {
   return (
-    <Sec title="Calls and meetings, more">
+    <Sec title="Calls and meetings, more" showHeading={false} group="Calls and meetings">
       <Greyed why={NO_KEY} rows={[
         { t: "Recognise who is speaking", sub: "Voices are told apart and remembered; say “that was Jill” to name one.", c: { sw: false } },
         { t: "Split recordings by speaker", sub: "On this computer, as it records.", c: { sw: true }, why: APP },

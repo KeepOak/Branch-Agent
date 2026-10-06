@@ -24,7 +24,7 @@ export const ROWS: RowEntry[] = [
   ["List the keys", "Keys Branch holds", 2], ["Set a key", "Keys Branch holds", 2], ["Remove a key", "Keys Branch holds", 2],
   ["Bring in a .env file", "Keys Branch holds", 2], ["Reload keys", "Keys, technical", 2], ["Keys written in plain text", "Keys, technical", 2],
   ["Move keys out of settings", "Keys, technical", 2], ["The settings file", "Keys, technical", 2],
-].map(([title, sec, lv]) => ({ page: "secrets", title: String(title), sec: String(sec), lv: lv as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "secrets", title: String(title), sec: String(sec), group: ({ "Where passwords come from": "Keys", "Keys Branch holds": "Keys" } as Record<string, string>)[String(sec)], lv: lv as 0 | 1 | 2 }));
 
 export function SecretsPage(props: SettingsPageProps) {
   const lv = lvOf(props.level);
@@ -59,7 +59,7 @@ function Where({ onePassword, config }: Pick<SettingsPageProps, "engine"> & { on
     await config.set("secrets.providers.onepassword", ONEPASSWORD);
   };
   return (
-    <Sec title="Where passwords come from">
+    <Sec title="Where passwords come from" group="Keys">
       <Ctl title="Password manager" sub={onePassword ? "1Password gives Branch a key only where a setting points to it; Branch never shows it." : "Pick the one you use. Branch never sees your passwords."}>
         <Seg label="Password manager" value={onePassword ? "onepassword" : ""} disabled={config.loading} onChange={(id) => void choose(id)}
           options={[{ id: "bitwarden", label: "Bitwarden", off: "Bitwarden needs its engine plugin." }, { id: "onepassword", label: "1Password" }, { id: "windows", label: "Windows", off: "Windows Credential Manager needs its engine plugin." }]} />
@@ -81,7 +81,7 @@ function Keys({ engine, lv, store }: Pick<SettingsPageProps, "engine"> & { lv: n
   const entries = list(rec(store.data).entries);
   const close = (changed: boolean) => { setDlg(null); if (changed) void store.reload(); };
   return (
-    <Sec title="Keys Branch holds" hint="See which keys are set, who changed them and when." help="Which keys are set, who changed them and when; a protected key is never shown." id="s2-keys">
+    <Sec title="Keys Branch holds" showHeading={false} group="Keys" hint="See which keys are set, who changed them and when." help="Which keys are set, who changed them and when; a protected key is never shown." id="s2-keys">
       <Acts><Btn sm ghost onClick={() => setDlg({ kind: "several" })}>Add several</Btn><Btn sm onClick={() => setDlg({ kind: "add" })}><Icon name="plus" small />Add a key</Btn></Acts>
       {store.error ? <p className="hint s2-err" role="alert">{store.error}</p> : null}
       {store.data && !entries.length ? <Empty>No keys yet. Keys you add here, and keys from accounts and connectors, show here.</Empty> : null}
@@ -223,7 +223,7 @@ function KeysTechnical({ engine, store, config }: Pick<SettingsPageProps, "engin
   const found = findings(config.cfg, names);
   const sources = Object.entries(rec(config.get("secrets.providers")));
   return (
-    <Sec title="Keys, technical">
+    <Sec title="Keys, technical" showHeading={false} group="Keys">
       <Ctl title="Reload keys" sub={reload.note ?? reload.error ?? "Reads every key source again, without a restart."}>
         <Btn sm disabled={reload.busy} onClick={() => void reload.run(() => engine.request<RecordValue>("secrets.reload", {}), (r) => `Keys reloaded${Number(r.warningCount) ? ` with ${str(r.warningCount)} warnings` : ""}.`)}>Reload</Btn>
       </Ctl>

@@ -319,7 +319,7 @@ export function TroubleMore(ctx: Ctx) {
   const count = warningsOf(list(rec(warn.data).events)).length;
   const go = () => void copy.run(async () => { await navigator.clipboard.writeText(await summary(ctx.engine, version)); return true; }, () => "Copied.");
   return (
-    <Sec title="Troubleshooting, more">
+    <Sec title="Troubleshooting, more" group="Troubleshooting">
       <Ctl title="A summary for a bug report" sub={copy.error ?? copy.note ?? "Version, model, gateway, paths and settings file, on one paste."}><Btn sm disabled={copy.busy} onClick={go}>Copy</Btn></Ctl>
       <Ctl title="Where each setting comes from" sub="Every setting with its value and the layer it came from."><Btn sm onClick={() => setDlg("cfgsrc")}>Show</Btn></Ctl>
       <Ctl title="Warnings since the start" sub={warn.error ?? (warn.data ? `${count} kept, each with its kind and error id.` : "Each with its kind and error id.")}><Btn sm onClick={() => setDlg("warnings")}>See them</Btn></Ctl>
@@ -405,7 +405,7 @@ export function Troubleshooting(ctx: Ctx) {
   const copySupport = () => void support.run(async () => { await navigator.clipboard.writeText(await summary(engine, version)); return true; }, () => "Copied.");
   const openFile = () => void open.run(() => engine.request<RecordValue>("config.openFile", {}), (r) => { if (rec(r).ok === false) throw new Error(str(rec(r).error)); return `Opened ${str(rec(r).path)}.`; });
   return (
-    <Sec title="Troubleshooting">
+    <Sec title="Troubleshooting" showHeading={false}>
       <Greyed rows={TROUBLE_OFF.slice(0, 1)} />
       <Ctl title="Copy for support" sub={support.error ?? support.note ?? "Plain text with keys left out."}><Btn sm disabled={support.busy} onClick={copySupport}>Copy…</Btn></Ctl>
       <Greyed rows={TROUBLE_OFF.slice(2)} />

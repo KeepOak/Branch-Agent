@@ -43,7 +43,7 @@ const QUICK: [string, string][] = [
 ];
 function QuickPrompts() {
   return (
-    <Sec title="Prompts behind quick actions">
+    <Sec title="Prompts behind quick actions" showHeading={false} group="Project instructions">
       {QUICK.map(([k, v]) => <Ctl key={k} title={k} sub={v} off={NO_KEY}><Btn ghost sm>Edit</Btn></Ctl>)}
     </Sec>
   );

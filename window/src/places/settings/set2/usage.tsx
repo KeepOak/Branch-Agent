@@ -17,14 +17,14 @@ import { CKPT_PREF, CKPT_SHOW, useCkptCanShow, useCkptOn } from "../../../shell/
 import { lookStore } from "../set1/appearance-store";
 import "./usage.css";
 import { DesktopCtl } from "../desktop-ctl";
+import { formatMoney } from "../../../format/money";
 
 /* ---------- figures ---------- */
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const LOCAL = { mode: "specific", timeZone: TZ };
 const ALL = { agentScope: "all" };
-const USD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
-const money = (v: unknown): string => USD.format(num(v));
+const money = (v: unknown): string => formatMoney(num(v));
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const pct = (v: number, digits = 0) => `${(v * 100).toFixed(digits)}%`;
@@ -158,7 +158,7 @@ function billingMeasured(b: RecordValue): boolean {
 
 function Billing({ b }: { b: RecordValue }) {
   const unit = str(b.unit);
-  const amount = (v: unknown) => measuredNumber(v) ? unit === "USD" ? USD.format(v) : `${v.toLocaleString()} ${unit}` : "Unknown";
+  const amount = (v: unknown) => measuredNumber(v) ? unit === "USD" ? formatMoney(v) : `${v.toLocaleString()} ${unit}` : "Unknown";
   if (b.type === "budget") {
     const label = str(b.label) || "Budget";
     return measuredNumber(b.used) && measuredNumber(b.limit) && b.limit > 0
@@ -1031,7 +1031,7 @@ function MoneyMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
   const usage = useLive<RecordValue>(engine, "usage.status", {}, []);
   const balances = list(rec(usage.data).providers).flatMap((p) => list(p.billing).filter((b) => b.type === "balance").map((b) => `${str(p.displayName)}: ${str(b.unit) === "USD" ? money(b.amount) : `${num(b.amount)} ${str(b.unit)}`}`));
   return (
-    <Sec title="Money and keeping, more">
+    <Sec title="Money and keeping, more" group="Keeping things" showHeading={false}>
       <Ctl title="Spend caps per service" sub="Pauses work when a service reaches its monthly limit." help="A monthly limit for each service that bills per use; work pauses and asks when one is reached." off={NO_CAPS}><Btn sm>Set caps</Btn></Ctl>
       <Ctl title="Prepaid balances" sub={balances.length ? balances.join(" · ") : "For services that sell credit, how much is left, checked when you open this page."}>
         <Btn sm disabled={usage.loading} onClick={() => void usage.reload()}>Check now</Btn>
@@ -1098,7 +1098,7 @@ function KeepingMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
   const runTidy = () => void tidy.run(async () => rec(await engine.request("sessions.cleanup", { allAgents: true })), tidyNote);
   const runCold = () => void cold.run(async () => rec(await engine.request("sessions.storage.run", {})), (r) => coldNote(rec(r.maintenance)));
   return (
-    <Sec title="Keeping things, more">
+    <Sec title="Keeping things, more" group="Keeping things" showHeading={false}>
       <Ctl title="Tidy the list" sub={str(g("mode")) === "warn" ? "Branch only tells you what it would tidy." : "Idle conversations leave the list; search still finds them."}>
         <Seg label="Tidy the list" value={str(g("mode")) === "warn" ? "warn" : "enforce"} options={[{ id: "enforce", label: "Do it" }, { id: "warn", label: "Only warn" }]} disabled={config.loading} onChange={(v) => void config.set(`${M}.mode`, v)} />
       </Ctl>
@@ -1214,7 +1214,7 @@ function KeyRow({ k, config }: { k: Key; config: Cfg }) {
 function EverySetting({ engine }: { engine: WindowEngine }) {
   const config = useConfig(engine);
   return (
-    <Sec title="Conversations, every setting" hint="Every conversation setting the engine has, by its key." help="Every conversation setting the engine has, by its key. Archive conversations idle for (above) sets when they leave the list.">
+    <Sec title="Conversations, every setting" group="Keeping things" showHeading={false} hint="Every conversation setting the engine has, by its key." help="Every conversation setting the engine has, by its key. Archive conversations idle for (above) sets when they leave the list.">
       {SESSKEYS.map((k) => <KeyRow key={k[0]} k={k} config={config} />)}
     </Sec>
   );
@@ -1301,4 +1301,4 @@ export const ROWS: RowEntry[] = ([
   ["What’s kept on this computer", "Your data", 0], ["What leaves this computer", "Your data", 0], ["Export everything", "Your data", 0],
   ["Move to another computer", "Your data", 0], ["Backups go to", "Your data", 0], ["Back up to GitHub", "Your data", 0], ["Restore from a backup", "Your data", 0],
   ["Pictures and video this month", "Your data", 0], ["Delete everything", "Your data", 0],
-] as [string, string, number][]).map(([title, sec, lv]) => ({ page: "usage", title, ...(sec ? { sec } : {}), lv: lv as 0 | 1 | 2 }));
+] as [string, string, number][]).map(([title, sec, lv]) => ({ page: "usage", title, ...(sec ? { sec } : {}), group: ({ "Money and keeping, more": "Keeping things", "Conversations, every setting": "Keeping things" } as Record<string, string>)[sec], lv: lv as 0 | 1 | 2 }));

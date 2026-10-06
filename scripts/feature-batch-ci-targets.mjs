@@ -92,6 +92,7 @@ export const windowTests = [
   'src/face/character-arrival.test.tsx',
   'src/face/character-calm.test.tsx',
   'src/face/use-character-motion.test.tsx',
+  'src/format/money.test.ts',
   'src/places-nav/SettingsFrame.test.tsx',
   'src/places/canopy/canopy.test.tsx',
   'src/places/customize/customize.test.tsx',

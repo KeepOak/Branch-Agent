@@ -18,6 +18,7 @@ import { PlugMenu } from "./PlugMenu";
 import { PlusMenu } from "./PlusMenu";
 import { buildExtras, planSend, sendTooltip, type Reply } from "./sending";
 import { Drawer } from "./SlashDrawer";
+import { formatMoney } from "../format/money";
 import { useBackground } from "./useBackground";
 import { hasNoModel, useConversation } from "./useConversation";
 import { safeStorage, saveDraft } from "./drafts";
@@ -489,7 +490,7 @@ export function Composer(props: Props) {
           {vimOn ? <span className="c-flag" data-testid="vim-normal">Normal</span> : null}
           {cost !== undefined && cost > 0 && current && !current.local ? (
             <span className="c-cost" title={`What this conversation has cost so far on ${current.name}. Details in Settings › Data & usage.`}>
-              {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cost)} so far
+              {formatMoney(cost)} so far
             </span>
           ) : null}
         </span>

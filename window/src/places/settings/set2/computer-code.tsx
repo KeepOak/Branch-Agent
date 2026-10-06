@@ -33,7 +33,7 @@ const CODE: SecSpec = { t: "Code", lv: 1, rows: [
 ] };
 
 const sw = (r: string) => (t: string, sub?: string) => off("sw", r)(t, { sub });
-const CODE_MORE: SecSpec = { t: "Code, more", lv: 1, rows: [
+const CODE_MORE: SecSpec = { t: "Code, more", group: "Code", showHeading: false, lv: 1, rows: [
   off("pick", NO_CODE)("How it writes edits", { sub: "Picked for each model unless you choose. Slightly-off edits still find their place.", opts: [{ v: "auto", l: "Picked for each model" }] }),
   off("pick", NO_CODE)("Model that writes the edits", { sub: "In “Plan, then edit”, a second model turns the plan into edits.", opts: [{ v: "same", l: "The same model" }] }),
   sw(NO_CODE)("Run the tests after each edit", "Failures go back to the Trunk to fix."),
@@ -149,7 +149,7 @@ const APPS: SecSpec = { t: "Coding apps", lv: 1, rows: [
 
 export const CODE_SECS: SecSpec[] = [CODE, CODE_MORE, KNOWS, GIT, CHECKS, BIG, SUGGEST, APPS];
 
-export const CODE_TECH: SecSpec = { t: "Code, technical", lv: 2, rows: [
+export const CODE_TECH: SecSpec = { t: "Code, technical", group: "Code", showHeading: false, lv: 2, rows: [
   off("code", NO_CODE)("Files Branch never reads", { sub: "Like .gitignore.", code: ".branchignore" }),
   sw(NO_CODE)("Read a file before editing it", "Refuses an edit to a file it hasn’t read in this task. Off until you choose: it stops edits that would otherwise go through."),
   sw(NO_CODE)("Keep large tool outputs", "Saved to a file instead of cut off."),

@@ -79,7 +79,7 @@ function WhoAnswers({ m, conns, defaultOf }: { m: ModelsCtx; conns: Connection[]
 
 export function AnyModelMore() {
   return (
-    <Sec title="Any model, more">
+    <Sec title="Any model, more" group="Any model">
       <Ctl title="Add pictures and tools to any model" sub="Branch helps models that cannot see pictures or use tools." help="A model that can’t see pictures or call tools gets them through Branch." off={NONE}><Switch checked={false} label="Add pictures and tools to any model" onChange={() => undefined} /></Ctl>
     </Sec>
   );

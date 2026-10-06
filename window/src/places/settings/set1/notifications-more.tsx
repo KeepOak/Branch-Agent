@@ -48,7 +48,7 @@ export function LiveActivity() {
 
 export function KindsOfNotice() {
   return (
-    <Sec title="Kinds of notice" hint="A notice a Trunk sends you is sorted into one of these." help="A notice a Trunk sends you is sorted into one of these. Turning a kind off stops its pop-ups; it still shows in Recent notifications.">
+    <Sec title="Kinds of notice" showHeading={false} group="Tell me when…" hint="A notice a Trunk sends you is sorted into one of these." help="A notice a Trunk sends you is sorted into one of these. Turning a kind off stops its pop-ups; it still shows in Recent notifications.">
       <Hint>{KIND_OFF}</Hint>
       {KINDS.map((k) => (
         <Ctl key={k} title={k} sub="" keep="everywhere" off={KIND_OFF}>
@@ -63,7 +63,7 @@ export function SortingRules() {
   const level = useLevel();
   if (level < 2) return null;
   return (
-    <Sec title="Sorting notifications">
+    <Sec title="Sorting notifications" showHeading={false} group="Tell me when…">
       <Ctl title="Use the kind a Trunk gives" sub="Let urgent Trunk notices take priority." help="When a Trunk marks a notice urgent, a reminder and so on, that wins over your rules." off={RULE_OFF}>
         <Switch checked={false} disabled label="Use the kind a Trunk gives" onChange={() => undefined} />
       </Ctl>

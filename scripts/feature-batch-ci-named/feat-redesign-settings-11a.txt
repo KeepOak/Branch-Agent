@@ -1,5 +1,6 @@
 window:src/composer/composer-logic.test.ts
 window:src/connect/desktop-component-updates.test.tsx
+window:src/format/money.test.ts
 window:src/places-nav/SettingsFrame.test.tsx
 window:src/places-nav/settings-nav.test.ts
 window:src/places/settings/settings.test.tsx

@@ -5,13 +5,14 @@ import type { WindowEngine } from "../../connect/engine";
 import { useResource } from "../library/data";
 import { firstName, num, rec, recs, str } from "./data";
 import { Empty, Status } from "./ui";
+import { formatMoney } from "../../format/money";
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 /** The month so far, in the engine's own time zone. */
 export function monthToDate(now = new Date()) {
   return { agentScope: "all", startDate: iso(new Date(now.getFullYear(), now.getMonth(), 1)), endDate: iso(now), mode: "gateway" };
 }
-const money = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+const money = formatMoney;
 
 export function UsageTab({ engine }: { engine: WindowEngine }) {
   const usage = useResource<unknown>(engine, "sessions.usage", monthToDate());

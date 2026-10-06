@@ -51,7 +51,7 @@ export function SecondTab() {
 }
 export function SecondMore() {
   return (
-    <Sec title="Second opinion, more">
+    <Sec title="Second opinion, more" group="Second opinion">
       <Ctl title="Stress-test the answer" sub="A second model argues against the first answer before you see it." off={NONE}><Btn sm>Show an example</Btn></Ctl>
     </Sec>
   );
@@ -74,7 +74,7 @@ export function MediaTab({ m }: { m: ModelsCtx }) {
 }
 export function MediaMore() {
   return (
-    <Sec title="Media, technical">
+    <Sec title="Media, technical" group="Media">
       <Ctl title="Programs for sound and video" sub="Where Branch finds ffmpeg and yt-dlp. Found by itself." off={NONE}><Btn sm>Check</Btn></Ctl>
     </Sec>
   );

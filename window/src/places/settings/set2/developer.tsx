@@ -103,11 +103,11 @@ export function DeveloperPage(props: SettingsPageProps) {
       <Sec title="Let other assistants use Branch"><Greyed rows={ASSISTANTS} /></Sec>
       <RunsTraces {...ctx} />
       <TroubleMore {...ctx} />
-      <Sec title="Help with code, more"><Greyed rows={CODE_MORE} /></Sec>
+      <Sec title="Help with code, more" showHeading={false} group="Help with code"><Greyed rows={CODE_MORE} /></Sec>
       <Sec title="More branch:// links"><Greyed rows={MORE_LINKS} /></Sec>
       <RunWithout {...ctx} />
       <ToolsTech {...ctx} />
-      <Sec title="Automations, technical"><Greyed rows={AUTO_TECH} /></Sec>
+      <Sec title="Automations, technical" group="Automations"><Greyed rows={AUTO_TECH} /></Sec>
       <SystemSec {...ctx} />
       <BuildMore {...ctx} />
       <FromTerminal />
@@ -368,7 +368,7 @@ function ToolsTech({ engine, config, base }: Ctx) {
   const exec = cm && typeof cm === "object" ? str((cm as Record<string, unknown>).executor) || "node" : "node";
   const ts = config.get("tools.toolSearch");
   return (
-    <Sec title="Tools, technical">
+    <Sec title="Tools, technical" group="Tools">
       <Greyed rows={TOOLS_OFF} />
       <Ctl title="Run code mode in" sub="Node.js is for code you trust; it is not a sandbox." help="Node.js is for code you trust; it is not a sandbox. QuickJS runs each script in its own WebAssembly box. Either way, tools keep their own permissions. Applies to new tasks; a Trunk’s own choice wins.">
         <Pick label="Run code mode in" value={exec} disabled={config.loading} onChange={(v) => void config.set("tools.codeMode", codeModeWith(cm, v))} options={[{ id: "node", label: "Node.js" }, { id: "quickjs", label: "QuickJS (isolated)" }]} />
@@ -477,7 +477,7 @@ function BuildMore({ engine, config }: Ctx) {
   const [events, setEvents] = useState(false);
   const [traffic, setTraffic] = useState(false);
   return (
-    <Sec title="Build on Branch" id="build-more">
+    <Sec title="Build on Branch" showHeading={false} id="build-more">
       {BUILD2_JUMP.map(([t, sub, btn, sel]) => <Ctl key={t} title={t} sub={sub}><Btn sm onClick={() => jump(sel)}>{btn}</Btn></Ctl>)}
       <Ctl title="Events for your programs" sub="A stream of what happens in Branch that your own programs can follow."><Btn sm onClick={() => setEvents(true)}>Show the stream</Btn></Ctl>
       <Greyed rows={BUILD2_OFF2} />

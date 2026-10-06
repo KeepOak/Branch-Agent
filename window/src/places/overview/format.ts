@@ -1,5 +1,6 @@
 // Words for times, lengths and amounts, worded as the preview's places do (41-placesap helpers dayWordPD18,
 // hmPD18, agoPD18). Shared by Overview and Inbox.
+import { formatMoney } from "../../format/money";
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -41,7 +42,7 @@ export function runLength(ms: number): string {
 }
 
 export function money(amount: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
+  return formatMoney(amount);
 }
 
 export function plural(n: number, one: string, many = `${one}s`): string {
