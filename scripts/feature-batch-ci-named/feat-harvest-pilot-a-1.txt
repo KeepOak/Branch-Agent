@@ -1,4 +1,6 @@
 engine:extensions/telegram/src/bot.create-telegram-bot.join-intro.test.ts
+engine:src/auto-reply/reply/commands-session-lifecycle.test.ts
+engine:src/auto-reply/reply/commands-session-store.test.ts
 engine:src/auto-reply/reply/mentions.test.ts
 engine:src/channels/inbound-event/classification.test.ts
 engine:src/channels/join-intro/join-intro-prompt.test.ts
