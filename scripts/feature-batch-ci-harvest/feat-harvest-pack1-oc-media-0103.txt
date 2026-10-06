@@ -1,3 +1,4 @@
+engine:src/cli/nodes-camera.test.ts
 engine:src/media/audio-transcode.test.ts
 engine:src/media/ffmpeg-exec.test.ts
 engine:src/media/media-probe.test.ts
