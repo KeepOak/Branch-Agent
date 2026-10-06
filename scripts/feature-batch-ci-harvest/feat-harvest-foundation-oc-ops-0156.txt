@@ -8,6 +8,7 @@ engine:src/config/env-substitution.behaviour.test.ts
 engine:src/config/env-substitution.test.ts
 engine:src/config/includes.test.ts
 engine:src/config/includes.top-level-key.test.ts
+engine:src/config/io.clobber-snapshot.test.ts
 engine:src/gateway/client.ssh.test.ts
 engine:src/gateway/config-reload.activation.integration.test.ts
 engine:src/gateway/config-reload.decisions.test.ts
