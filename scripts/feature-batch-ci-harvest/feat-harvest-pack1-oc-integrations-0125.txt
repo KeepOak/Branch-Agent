@@ -1,0 +1,2 @@
+engine:src/cli/qr-cli.test.ts
+engine:src/media/qr-terminal.render.test.ts
