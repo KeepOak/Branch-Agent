@@ -238,6 +238,28 @@ describe("Settings › Gateway", () => {
     const patch = request.mock.calls.find(([m]) => m === "config.patch");
     expect(JSON.parse(String((patch?.[1] as { raw: string }).raw))).toEqual({ gateway: { bind: "lan" } });
   });
+  it("keeps the chat relay off until a connector address and platform are configured", async () => {
+    const { engine } = engineWith({ health: H, "config.get": { hash: "h", valid: true, config: {} } });
+    await show("gateway", engine, "advanced");
+    const row = document.querySelector('[data-row="Relay for chat-app accounts"]');
+    expect(row?.getAttribute("aria-disabled")).toBe("true");
+    expect(row?.textContent).toContain("Set the relay connector address and platform below first.");
+    expect(document.querySelector<HTMLInputElement>('input[aria-label="Relay for chat-app accounts"]')?.checked).toBe(false);
+  });
+  it("enables the configured chat relay through the engine config patch", async () => {
+    const { engine, request } = engineWith({
+      health: H,
+      "config.get": { hash: "h", valid: true, config: { channels: { "chat-relay": { url: "https://connector.example", platform: "discord", botId: "app-1" } } } },
+      "config.patch": { ok: true, hash: "h2", config: {} },
+    });
+    await show("gateway", engine, "advanced");
+    const toggle = document.querySelector<HTMLInputElement>('input[aria-label="Relay for chat-app accounts"]');
+    expect(toggle?.disabled).toBe(false);
+    await act(async () => toggle?.click());
+    await flush();
+    const patch = request.mock.calls.find(([method]) => method === "config.patch");
+    expect(JSON.parse(String((patch?.[1] as { raw: string }).raw))).toEqual({ channels: { "chat-relay": { enabled: true } } });
+  });
 });
 
 describe("Settings › Branch itself", () => {

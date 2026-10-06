@@ -1,0 +1,15 @@
+{
+  "id": "chat-relay",
+  "categories": ["channels"],
+  "name": "Chat Relay",
+  "description": "Remote connector chat relay.",
+  "activation": { "onStartup": false },
+  "channels": ["chat-relay"],
+  "channelConfigs": {
+    "chat-relay": {
+      "label": "Chat Relay",
+      "description": "Remote connector endpoint and platform identities. Off until enabled."
+    }
+  },
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+}

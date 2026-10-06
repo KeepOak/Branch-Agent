@@ -20,6 +20,11 @@ export const GENERATED_BUNDLED_CHANNEL_IDS: readonly BundledChannelIdMetadata[] 
     label: "Buzz",
   },
   {
+    channelId: "chat-relay",
+    order: 90,
+    label: "Chat Relay",
+  },
+  {
     channelId: "clickclack",
     order: 85,
     label: "ClickClack",

@@ -1,0 +1,23 @@
+{
+  "name": "@branch/chat-relay",
+  "version": "2026.9.8",
+  "description": "Branch Agent remote chat relay channel plugin",
+  "type": "module",
+  "dependencies": { "ws": "8.21.3", "zod": "4.6.5" },
+  "devDependencies": { "@branch/plugin-sdk": "workspace:*", "branch": "workspace:*" },
+  "peerDependencies": { "branch": ">=2026.9.8" },
+  "peerDependenciesMeta": { "branch": { "optional": true } },
+  "branch": {
+    "extensions": ["./index.ts"],
+    "channel": {
+      "id": "chat-relay",
+      "label": "Chat Relay",
+      "selectionLabel": "Chat Relay (remote connector)",
+      "docsPath": "/channels/chat-relay",
+      "docsLabel": "chat-relay",
+      "blurb": "Connect chat platforms through an opt-in remote relay.",
+      "order": 90
+    },
+    "build": { "branchVersion": "2026.9.8" }
+  }
+}

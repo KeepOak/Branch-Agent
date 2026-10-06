@@ -956,6 +956,22 @@ importers:
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
 
+  extensions/chat-relay:
+    dependencies:
+      ws:
+        specifier: 8.21.3
+        version: 8.21.3
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@branch/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      branch:
+        specifier: workspace:*
+        version: link:../..
+
   extensions/chutes:
     devDependencies:
       '@branch/plugin-sdk':
