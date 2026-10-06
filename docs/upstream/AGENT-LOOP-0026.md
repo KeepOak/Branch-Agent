@@ -1,10 +1,13 @@
-# AGENT-LOOP-0026 — blocked
+# AGENT-LOOP-0026 — done
 
-Source: `mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421`.
-The filtered clone at `/tmp/upstream/mastra-ai-mastra` is checked out at the pin.
+Source: `mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421`; the filtered clone HEAD matches the pin.
 
-The model manager runs SDK models through the evented agent loop; its generate-to-stream adapter preserves tool metadata, provider-executed tool results, text/reasoning/file/source content, custom parts, raw unknown parts, finish reasons, and usage. The six adapter unit tests prove metadata and lossless content conversion. The model-loop E2E file proves text generation/streaming and structured object output with Mastra workers and the recorded gateway.
+Copied the generate-to-stream adapter and adapted the v1/v2/v3 dispatch, prompt projection and event reducer to Branch's canonical provider protocol. `bindAiSdkModel` attaches the factory-backed runtime to a native model; the existing production LLM facade selects that bound runtime. The factory receives Branch's guarded transport and resolved credentials. Managed-transport requirements remain enforced; Branch's admitted loop executes client tools. Provider-executed tools and non-native parts remain in provider metadata instead of being executed again.
 
-`model.loop.ts` imports SDK v5, Mastra's loop, message list, observability, errors, and stream output. The E2E file additionally imports `@ai-sdk/openai-v5`, `@internal/llm-recorder`, and `@internal/test-utils`. None is registered in Branch's frozen dependency graph. Copying only the dependency-free generate adapter would leave it without a production caller and would not implement the row. No such orphan helper was added.
+The user authorized pinned dependencies and necessary adapters on retry. Added the upstream provider aliases at 1.1.3 / 2.0.3 / 3.0.14 and the upstream E2E OpenAI alias at 2.0.115 using repo pnpm. The lockfile retains only those dependency additions; frozen installation passes.
 
-The task prohibits lockfile changes and vendoring whole upstream trees. The atlas and owner safety/design inputs requested for every row are absent (see AGENT-LOOP-0025). 0/2 cited test files ported; no test command run.
+Both cited test files are ported: six generate-to-stream tests and all nine model-loop tests with their assertions. The latter uses the actual pinned OpenAI SDK encoder/decoder with a guarded fetch recording fixture instead of Mastra workers and its recorder. A test-only projection reads canonical structured JSON text events as the original suite's replayable object view; it validates the final object with the original schema. This verifies the Branch protocol adaptation; it does not claim to install Mastra's worker infrastructure. The `.e2e.test.ts` filename triggered unrelated managed-Gateway preparation before assertions, so the port is named `model.loop.harvest.test.ts` and runs in the self-contained named unit shard.
+
+Additional Branch contract tests cover all three SDK majors in one runtime, native generate/stream events, cached-token accounting, lossless unknown content, provider/client tool ownership, missing finish events, abort cancellation, managed transport, resolved credentials and payload hooks. All three files are registered in the Harvest list. No UI changes; screenshots are not applicable.
+
+Validation: `cd engine && CI=1 node scripts/run-vitest.mjs run packages/ai/src/aisdk/generate-to-stream.test.ts packages/ai/src/aisdk/model.loop.harvest.test.ts packages/ai/src/aisdk/runtime.test.ts`. Targeted strict TypeScript includes every new file. Repository strict typecheck also passes.
