@@ -108,9 +108,9 @@ export function runChecks(engine: WindowEngine, apps: ChatApp[], onRow: (i: numb
   engine.request("branch.setup.verify", engine.agentId ? { agentId: engine.agentId } : {}).then(
     (r) => {
       const t = readTest(r);
-      set("The model", t.ok ? { name: t.modelRef, state: "ok", line: `answered in ${t.seconds} s` } : { state: "bad", line: t.error });
+      set("The model", t.ok ? { name: t.modelRef, state: "ok", line: `answered in ${t.seconds} s` } : { state: "bad", line: /no agent model|branch onboard|not configured/i.test(t.error) ? "No model connected yet" : t.error });
     },
-    (e: unknown) => set("The model", { state: "bad", line: message(e) }),
+    (e: unknown) => set("The model", { state: "bad", line: /no agent model|branch onboard|not configured/i.test(message(e)) ? "No model connected yet" : message(e) }),
   );
   engine.request("system.info", {}).then(
     (r) => set("Disk", typeof rec(r).diskAvailableBytes === "number" ? { state: "ok", line: gb(rec(r).diskAvailableBytes as number) } : { state: "bad", line: "this computer didn't report its disk" }),

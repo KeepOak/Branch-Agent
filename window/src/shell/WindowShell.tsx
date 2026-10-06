@@ -1143,7 +1143,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]" ? "this computer" : machine?.name || host;
       })(),
       onOpen: (target: string) => {
-        if (target.startsWith("settings/")) {
+        if (target === "settings/accounts/add") {
+          sessionStorage.setItem("branch.openAddAccount", "1");
+          openSettings("accounts");
+        } else if (target.startsWith("settings/")) {
           openSettings(target.slice("settings/".length));
         } else if (target === "customize/tools") {
           openPlace("customize");

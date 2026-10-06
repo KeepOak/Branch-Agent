@@ -160,7 +160,7 @@ function SignIn({ engine, svc, agent, onRun, onKey }: SignInProps) {
   if (svc.kind === "custom") return <Lead text={`Branch asks for the address and sign-in of ${svc.name}.`} action="Start" onGo={() => onRun({ method: "branch.setup.auth.start", params: { authChoice: svc.choice, ...agent } })} />;
   const [main, ...rest] = [...svc.logins].sort((a, b) => Number(b.kind === "oauth") - Number(a.kind === "oauth") || Number(b.featured === true) - Number(a.featured === true));
   const go = (o: RecordValue) => onRun({ method: "models.authLogin", params: { authChoice: text(o.id), ...agent } });
-  if (main?.kind === "setup-secret") return <SecretSignIn engine={engine} svc={svc} login={main} agent={agent} onRun={onRun} />;
+  if (main?.kind === "setup-secret") return <details><summary>Paste a token instead</summary><SecretSignIn engine={engine} svc={svc} login={main} agent={agent} onRun={onRun} /></details>;
   return (
     <>
       <div className="aa-card">
@@ -208,7 +208,6 @@ function SecretSignIn({ engine, svc, login, agent, onRun }: { engine: WindowEngi
   const first = Boolean(status.data) && all.every((p) => !p.profiles.length);
   const label = freshTokenLabel(name, all.flatMap((p) => p.profiles.map((a) => a.profileId)), svc.brand, svc.brand === "anthropic" ? "claude" : svc.brand);
   const claude = svc.brand === "anthropic";
-  const command = claude ? "claude setup-token" : "";
   const ready = Boolean(token.trim()) && !status.loading;
   const start = () => {
     if (!ready) return;
@@ -220,13 +219,7 @@ function SecretSignIn({ engine, svc, login, agent, onRun }: { engine: WindowEngi
     <>
       <div className="aa-card">
         <b>{claude ? "Sign in with your Claude subscription" : visible(login.label)}</b>
-        {claude ? (
-          <ol className="aa-steps">
-            <li>Open a terminal on this computer and run <code>{command}</code> <button type="button" className="btn sm" onClick={() => void navigator.clipboard?.writeText(command)}>Copy</button></li>
-            <li>It opens claude.ai in your browser. Sign in with the Claude account you want to add.</li>
-            <li>Paste the token it prints below. It starts with <code>sk-ant-oat01-</code>.</li>
-          </ol>
-        ) : login.hint ? <p>{visible(login.hint)}</p> : null}
+        {claude ? <p>If you already have a Claude subscription token, paste it here.</p> : login.hint ? <p>{visible(login.hint)}</p> : null}
         {claude ? <p>This creates a Claude subscription token for Branch. <a href="https://code.claude.com/docs/en/env-vars" target="_blank" rel="noreferrer">Claude’s token guide</a></p> : null}
         <label className="fld"><span>Token</span><input className="inp" type="password" autoComplete="off" aria-label="Token" value={token} onChange={(e) => setToken(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>
         {first ? null : <label className="fld"><span>Call it</span><input className="inp" aria-label="Call it" placeholder={claude ? "Saved by email if blank" : label} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>}

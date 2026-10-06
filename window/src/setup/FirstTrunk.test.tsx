@@ -27,11 +27,12 @@ it("requires first-contact creation before setup/chat and retries failed default
   const engine = { request, onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"] } as unknown as WindowEngine;
   const onClose = vi.fn();
   const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
-  await act(async () => root!.render(<SetupFlow engine={engine} version="1" trunkNames={["Bootstrap"]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={10} onClose={onClose} onLocalModel={() => {}} />));
+  await act(async () => root!.render(<SetupFlow engine={engine} version="1" trunkNames={[]} requireContact defaultAgentId="bootstrap" defaultName="Branch" startAt={4} onClose={onClose} onLocalModel={() => {}} />));
   expect(host.textContent).toContain("Create your first Trunk");
   expect(host.querySelector('[data-testid="setup-finish"]')).toBeNull();
   expect(host.querySelector('[data-testid="setup-skip"]')).toBeNull();
   const input = host.querySelector("input")!;
+  expect(input.labels?.[0]?.textContent).toContain("Name your Trunk");
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Fern"); input.dispatchEvent(new Event("input", { bubbles: true })); });
   const click = async () => { await act(async () => (host.querySelector('[data-testid="first-trunk-create"]') as HTMLButtonElement).click()); };
   await click();
@@ -42,7 +43,7 @@ it("requires first-contact creation before setup/chat and retries failed default
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("Configuration changed");
   expect(onClose).not.toHaveBeenCalled();
   // agents.changed may update the shell before config.patch succeeds; the gate must stay pinned.
-  await act(async () => root!.render(<SetupFlow engine={engine} version="1" trunkNames={["Fern"]} defaultAgentId="bootstrap" defaultName="Branch" startAt={10} onClose={onClose} onLocalModel={() => {}} />));
+  await act(async () => root!.render(<SetupFlow engine={engine} version="1" trunkNames={[]} defaultAgentId="bootstrap" defaultName="Branch" startAt={4} onClose={onClose} onLocalModel={() => {}} />));
   expect(host.textContent).toContain("Create your first Trunk");
   defaultFailed = false;
   await click();
@@ -50,7 +51,7 @@ it("requires first-contact creation before setup/chat and retries failed default
   expect(request).toHaveBeenCalledWith("agents.create", { name: "Fern" });
   expect(request).toHaveBeenCalledWith("config.patch", { baseHash: "h1", raw: JSON.stringify({ agents: { defaultId: "fern" } }) });
   expect(host.textContent).not.toContain("Create your first Trunk");
-  expect(host.querySelector('[data-testid="setup-finish"]')).not.toBeNull();
+  expect(host.querySelector("h2")?.textContent).toBe("Your first Trunks");
 });
 
 it("does not mistake system workers for user contact Trunks", () => {

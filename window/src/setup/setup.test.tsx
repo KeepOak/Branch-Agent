@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { connectProblem } from "./connect-problems";
 import { PreConnect } from "./PreConnect";
-import { firstOn, freshChoices, readDetected, readTest, setupDone, setupRecord, STEPS } from "./setup-model";
+import { doneSteps, firstOn, freshChoices, readDetected, readTest, setupDone, setupRecord, STEPS } from "./setup-model";
 import { SetupFlow } from "./SetupFlow";
+import { useFirstRun } from "./use-first-run";
+import type { SaplingSession } from "../connect/session";
 import { readChatApps, recordSetup, testModel } from "./use-setup-engine";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -31,6 +33,8 @@ describe("setup model", () => {
   it("has the spec's 11 steps", () => {
     expect(STEPS).toHaveLength(11);
     expect(STEPS[2]).toBe("Models");
+    expect(STEPS.slice(4, 10)).toEqual(["Your first Trunks", "Tools", "Reach it anywhere", "Keep it running", "People", "A few extras"]);
+    expect([...doneSteps({ promise: false, where: false, model: null, jobs: [], autoUpdate: null }, false)]).toEqual([]);
   });
   it("reads detect, tests and the record", () => {
     const d = readDetected({
@@ -77,6 +81,14 @@ function engine(answers: Record<string, unknown>) {
 const params = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter((c) => c[0] === method).map((c) => c[1] as Record<string, unknown>);
 
 describe("setup flow", () => {
+  it("opens Welcome on a fresh connection even after pre-connect choices", async () => {
+    sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
+    const session = { request: vi.fn(async () => ({ config: {} })) } as unknown as SaplingSession;
+    function Probe() { const first = useFirstRun(session, true, () => false); return <span data-testid="step">{first.step ?? "waiting"}</span>; }
+    const host = await show(<Probe />);
+    await act(async () => new Promise((r) => setTimeout(r, 750)));
+    expect(host.querySelector('[data-testid="step"]')?.textContent).toBe("0");
+  });
   it("Models opens the shared account catalogue with one Claude choice and no setup-token menu", async () => {
     const { engine: e, request } = engine({
       "branch.setup.detect": { secretLogins: [{ id: "setup-token", brand: "anthropic", label: "Claude setup-token", hint: "Run a command" }], authOptions: [{ id: "claude-browser", label: "Claude sign-in" }], manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Claude setup-token" }] },
@@ -98,6 +110,71 @@ describe("setup flow", () => {
     expect(tid(host, "setup-skip")).toBeNull();
     await act(async () => tid(host, "setup-promise").click());
     expect(tid(host, "setup-next").disabled).toBe(false);
+    await act(async () => tid(host, "setup-next").click());
+    expect(host.querySelector("h2")?.textContent).toBe("Where should Branch run?");
+    await act(async () => tid(host, "setup-next").click());
+    expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
+  });
+  it("shows an existing default Trunk without creating a duplicate", async () => {
+    const { engine: e, request } = engine({});
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["C3-PO"]} defaultAgentId="c3po" defaultName="C3-PO" requireContact startAt={4} onClose={() => {}} onLocalModel={() => {}} />);
+    expect(host.querySelector("h2")?.textContent).toBe("Your first Trunks");
+    expect(host.textContent).not.toContain("Create your first Trunk");
+    expect(host.querySelector(".ob-default-trunk")?.textContent).toContain("C3-PO");
+    await act(async () => byText(host, "Edit").click());
+    const input = host.querySelector<HTMLInputElement>('.ob-default-trunk input')!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Scout"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => byText(host, "Save").click());
+    expect(params(request, "agents.update")).toEqual([{ agentId: "c3po", name: "Scout" }]);
+    expect(host.querySelector(".ob-default-trunk")?.textContent).toContain("Scout");
+    expect(params(request, "agents.create")).toHaveLength(0);
+  });
+  it("uses this computer’s platform throughout setup", async () => {
+    sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
+    const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+    Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => "Linux x86_64" });
+    try {
+      const { engine: e } = engine({});
+      const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={3} onClose={() => {}} onLocalModel={() => {}} />);
+      expect(host.textContent).toContain("Match this computer");
+      expect(host.textContent).not.toContain("Match Windows");
+      await act(async () => host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")[7].click());
+      expect(host.textContent).toContain("Start with Linux");
+      expect(host.textContent).not.toContain("Start with Windows");
+    } finally {
+      if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
+    }
+  });
+  it("uses plain copy for empty tools, chat apps, and access", async () => {
+    sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
+    const { engine: e } = engine({ "channels.status": { channelOrder: [] } });
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={3} onClose={() => {}} onLocalModel={() => {}} />);
+    expect(host.textContent).not.toContain("as the engine ships it");
+    await act(async () => host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")[5].click());
+    expect(host.textContent).toContain("No command-line tools found yet");
+    await act(async () => host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")[6].click());
+    expect(host.textContent).toContain("No chat apps are available yet");
+  });
+  it("routes a failed model check to the shared Add account dialog", async () => {
+    const { engine: e } = engine({ "branch.setup.verify": { ok: false, error: "No agent model is configured. Run 'branch onboard' first." }, health: { ok: true }, "system.info": { diskAvailableBytes: 2 * 1024 ** 3 } });
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={10} onClose={() => {}} onLocalModel={() => {}} />);
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(host.textContent).toContain("No model connected yet");
+    expect(host.textContent).toContain("Trunks can’t answer until a model is connected.");
+    expect(host.textContent).not.toContain("branch onboard");
+    expect(tid(host, "setup-finish").textContent).toBe("Connect a model");
+    await act(async () => tid(host, "setup-finish").click());
+    expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
+    expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
+  });
+  it("Fix it on a failed model check also opens Add account", async () => {
+    const { engine: e } = engine({ "branch.setup.verify": { ok: false, error: "No agent model is configured." }, health: { ok: true } });
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={10} onClose={() => {}} onLocalModel={() => {}} />);
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const fix = [...host.querySelectorAll<HTMLButtonElement>('[data-testid="setup-checks"] button')].find((b) => b.textContent === "Fix it")!;
+    await act(async () => fix.click());
+    expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
+    expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
   });
   it("Skip for now writes the setup record through config.patch", async () => {
     const { engine: e, request } = engine({ "config.get": { hash: "h", config: {} }, "config.patch": { ok: true } });
@@ -162,7 +239,7 @@ describe("setup flow", () => {
     expect(closed).toHaveBeenCalledWith(true);
   });
   it("an already set-up Branch opens at the first step not done, with Models marked done and its model shown", async () => {
-    const { engine: e } = engine({ "config.get": { hash: "h", config: { wizard: { securityAcknowledgedAt: "x" }, agents: { defaults: { model: { primary: "openai/gpt" } } } } } });
+    const { engine: e } = engine({ "config.get": { hash: "h", config: { wizard: { securityAcknowledgedAt: "x", lastRunAt: "x" }, agents: { defaults: { model: { primary: "openai/gpt" } } } } } });
     const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" onClose={() => {}} onLocalModel={() => {}} />);
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(host.querySelector("h2")?.textContent).toBe("Make it yours");
@@ -180,7 +257,7 @@ describe("setup's Reach step", () => {
       "wizard.start": { sessionId: "w1", done: false, step: { id: "s1", type: "text", message: "Paste the bot token" } },
       "device.pair.setupCode": { setupId: "p1", setupCode: "ABCD-2345", qrDataUrl: "" },
     });
-    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={5} onClose={() => {}} onLocalModel={() => {}} />);
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={6} onClose={() => {}} onLocalModel={() => {}} />);
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(tid(host, "setup-app-slack").getAttribute("aria-pressed")).toBe("true");
     await act(async () => tid(host, "setup-app-telegram").click());

@@ -49,11 +49,11 @@ const TITLES: Record<number, [string, string?]> = {
   2: ["Which models should answer?", "Found on this computer:"],
   3: ["Make it yours", "Two quick choices. Both can change any time in Settings."],
   4: ["Your first Trunks", "Pick a few, or tell Branch about your life and work and it proposes them."],
-  5: ["Reach Branch anywhere", "Message your Trunks from the apps you already use. Here are the ones this Branch knows."],
-  6: ["Tools to start with", "Recommended for the Trunks you picked. Everything else is under the plug."],
+  5: ["Tools to start with", "Picked for your Trunks. The rest is under the plug."],
+  6: ["Reach Branch anywhere", "Message your Trunks from apps you already use."],
   7: ["Keep it running"],
   8: ["Anyone else?", "People on this computer, teammates on theirs, or your keepoak.com team. Skip it if it’s just you."],
-  9: ["Two more things", "All optional. Skip them and Branch works the same."],
+  9: ["A few extras", "All optional. Branch works the same without them."],
   10: ["All set?", "Branch checks everything before you start."],
 };
 const PROPOSE_OFF = "Proposing Trunks from a sentence needs a setup call the engine doesn't have yet.";
@@ -75,9 +75,9 @@ function useChoices() {
 
 export function SetupFlow(p: Props) {
   const [contact, setContact] = useState<{ id: string; name: string } | null>(null);
-  const [needsContact] = useState(() => !!p.requireContact || !p.trunkNames.length);
+  const [needsContact] = useState(() => !p.trunkNames.length);
   // The design opens on Welcome; a Branch with no contact Trunk names its first one right after Start.
-  const gate = (needsContact || p.requireContact) && !contact
+  const gate = needsContact && !contact
     ? <FirstTrunk engine={p.engine} onCreated={(id, name) => { setContact({ id, name }); p.onContactCreated?.(); }} />
     : null;
   return <SetupFlowBody {...p} gate={gate} defaultAgentId={contact?.id ?? p.defaultAgentId} defaultName={contact?.name ?? p.defaultName} trunkNames={contact ? [...p.trunkNames, contact.name] : p.trunkNames} />;
@@ -111,7 +111,7 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
     setPrefilled(true);
     // An already set-up Branch starts with only the Trunks it has; a fresh one keeps the spec's two picks.
     setChoices((c) => ({ ...c, promise: c.promise || known.promise, jobs: known.model || known.jobs.length ? known.jobs : c.jobs }));
-    if (known.promise && step === (p.startAt ?? 0)) {
+    if (known.where && step === (p.startAt ?? 0)) {
       setStep(firstUndone(doneSteps(known, false), 0));
     }
   }, [known, prefilled, setChoices, step, p.startAt]);
@@ -150,8 +150,8 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
   const answer = (q: TalkQuestion, o: TalkOption) => {
     if (q.step === 3) { const look = o.value as SetupChoices["look"]; set({ look }); setThemeChoice(look); }
     else if (q.step === 4 && o.value !== "enough") setChoices((c) => ({ ...c, jobs: [...c.jobs, Number(o.value)] }));
-    else if (q.step === 5 && o.value === "phone") setPairing(true);
-    else if (q.step === 5 && o.value.startsWith("app:")) { const app = apps?.find((a) => a.id === o.value.slice(4)); if (app) setConnecting(app); }
+    else if (q.step === 6 && o.value === "phone") setPairing(true);
+    else if (q.step === 6 && o.value.startsWith("app:")) { const app = apps?.find((a) => a.id === o.value.slice(4)); if (app) setConnecting(app); }
     else if (q.step === 7) setAutoUpdate(o.value === "yes");
     else if (q.step === 8) set({ people: o.value === "none" ? null : Number(o.value) });
   };
@@ -170,7 +170,7 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
   }, [talking]);
   const doneChecks = checks.filter((c) => c.state !== "checking").length;
   const body = renderStep(step, { p, choices, set, models, inUse: known?.model ?? null, test, setTest, setLogin, apps, setConnecting, setPairing, autoUpdate: autoUpdate ?? known?.autoUpdate ?? false, setAutoUpdate, boot: boot ?? (known?.promise ? null : true), setBoot, checks, setStep });
-  const [title, lede] = step === 5 ? [TITLES[5][0], reachLede(apps)] : TITLES[step];
+  const [title, lede] = step === 6 ? [TITLES[6][0], reachLede(apps)] : TITLES[step];
   const footer = (
     <>
       {step > 0 ? (
@@ -185,8 +185,8 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
         </button>
       ) : null}
       {step === LAST ? (
-        <button type="button" className="btn pri" data-testid="setup-finish" disabled={busy || doneChecks < checks.length} onClick={() => void close(true)}>
-          {doneChecks < checks.length ? `Checking… ${doneChecks} of ${checks.length}` : "Open Branch and take the walkthrough"}
+        <button type="button" className="btn pri" data-testid="setup-finish" disabled={busy || doneChecks < checks.length} onClick={() => checks.some((c) => c.name === "The model" && c.state === "bad") ? (setStep(2), setLogin({ agentId: p.defaultAgentId ?? p.engine.agentId ?? "", provider: "", choiceId: "", method: SECRET })) : void close(true)}>
+          {checks.some((c) => c.name === "The model" && c.state === "bad") ? "Connect a model" : doneChecks < checks.length ? `Checking… ${doneChecks} of ${checks.length}` : "Open Branch and take the walkthrough"}
         </button>
       ) : (
         <button type="button" className="btn pri" data-testid="setup-next" disabled={step === 0 && !choices.promise} onClick={() => setStep(step === 0 ? firstUndone(done, 1) : step + 1)}>
@@ -195,7 +195,7 @@ function SetupFlowBody(p: Props & { gate: ReactNode }) {
       )}
     </>
   );
-  if (p.gate && step > 0) {
+  if (p.gate && step === 4) {
     return <>{p.gate}</>;
   }
   const dialogs = (
@@ -259,7 +259,7 @@ function SetupAddAccountDialog({ engine, agentId, onClose }: { engine: WindowEng
 function AddAccount({ c }: { c: Ctx }) {
   return (
     <span className="ob-add">
-      <button type="button" className="btn sm" disabled={!c.p.defaultAgentId} onClick={() => c.setLogin({ agentId: c.p.defaultAgentId ?? "", provider: "", choiceId: "", method: SECRET })}>
+      <button type="button" className="btn sm" disabled={!c.p.defaultAgentId && !c.p.engine.agentId} onClick={() => c.setLogin({ agentId: c.p.defaultAgentId ?? c.p.engine.agentId ?? "", provider: "", choiceId: "", method: SECRET })}>
         <Icon name="plus" size={13} />
         Add an account
       </button>
@@ -300,6 +300,9 @@ function renderStep(step: number, c: Ctx): ReactNode {
     case "Your first Trunks":
       return (
         <TrunksBody
+          engine={c.p.engine}
+          defaultAgentId={c.p.defaultAgentId}
+          defaultName={c.p.defaultName}
           jobs={choices.jobs}
           onJob={(i) => set({ jobs: choices.jobs.includes(i) ? choices.jobs.filter((j) => j !== i) : [...choices.jobs, i] })}
           proposeOff={PROPOSE_OFF}
@@ -319,9 +322,9 @@ function renderStep(step: number, c: Ctx): ReactNode {
       return <KeepBody autoUpdate={c.autoUpdate} onAutoUpdate={c.setAutoUpdate} boot={c.boot} onBoot={c.setBoot} />;
     case "People":
       return <PeopleBody people={choices.people} onPeople={(people) => set({ people })} />;
-    case "Two more things":
+    case "A few extras":
       return <MoreBody engine={c.p.engine} agentId={c.p.defaultAgentId} trunkName={c.p.defaultName} />;
     default:
-      return <CheckBody checks={c.checks} onFix={c.setStep} />;
+      return <CheckBody checks={c.checks} onFix={(i) => { c.setStep(i); if (i === 2) c.setLogin({ agentId: c.p.defaultAgentId ?? c.p.engine.agentId ?? "", provider: "", choiceId: "", method: SECRET }); }} />;
   }
 }

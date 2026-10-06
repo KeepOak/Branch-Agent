@@ -2,7 +2,6 @@
 // engine's config has no setup record (wizard.lastRunAt) and nothing else is on top. Never again after that.
 import { useEffect, useState } from "react";
 import type { SaplingSession } from "../connect/session";
-import { readPreConnect } from "./pre-connect-state";
 import { needsFirstContact, setupDone } from "./setup-model";
 
 /** The step setup is open at, or null; `open(step)` reopens it by hand (Guide › Set up Branch, Replay the first run). */
@@ -20,8 +19,7 @@ export function useFirstRun(session: SaplingSession, ready: boolean, busy: () =>
       (config) => {
         if (live) { setRequiresContact(needsFirstContact(config)); setIsFirstRun(!setupDone(config)); }
         if (live && !setupDone(config)) {
-          // Welcome and Where already answered before connecting: carry on at Models.
-          timer = setTimeout(() => live && !busy() && setStep(readPreConnect()?.promise ? 2 : 0), 700);
+          timer = setTimeout(() => live && !busy() && setStep(0), 700);
         }
       },
       (error: unknown) => console.warn("config.get failed", error),
