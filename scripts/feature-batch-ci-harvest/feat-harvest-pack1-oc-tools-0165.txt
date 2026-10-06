@@ -14,6 +14,7 @@ engine:extensions/file-transfer/src/shared/node-invoke-policy.test.ts
 engine:extensions/file-transfer/src/tools/dir-fetch-tool.test.ts
 engine:extensions/file-transfer/src/tools/file-fetch-tool.test.ts
 engine:extensions/file-transfer/src/tools/file-write-tool.test.ts
+engine:extensions/fish-audio-speech/speech-provider.test.ts
 engine:extensions/oc-path/src/cli.test.ts
 engine:extensions/oc-path/src/oc-path/tests/edit.test.ts
 engine:extensions/oc-path/src/oc-path/tests/oc-path.test.ts
