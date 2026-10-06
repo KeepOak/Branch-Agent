@@ -1027,6 +1027,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onTalk: () => window.dispatchEvent(new Event(TALK_EVENT)),
     onSearch: () => window.dispatchEvent(new Event(FIND_EVENT)),
     onSidePanel: () => setPane((value) => value ? null : "Activity"),
+    onTower: () => setTowerOn((on) => { try { localStorage.setItem("branch.controlTower", on ? "hidden" : "shown"); } catch { /* current window only */ } return !on; }),
+    towerVisible: towerOn,
     onList: toggleList,
     onTheme: () => setTheme(toggleTheme(theme)),
     onComputer: () => setStage("Computer"),
@@ -1062,7 +1064,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const who = trunkName(openRow?.agentId);
   const conversationTools = (
     <>
-      <button type="button" className="ib" aria-label={towerOn ? "Hide the control tower" : "Show the control tower"} title="Control tower (Ctrl+Shift+T)" aria-pressed={towerOn} onClick={() => setTowerOn((on) => { try { localStorage.setItem("branch.controlTower", on ? "hidden" : "shown"); } catch { /* current window only */ } return !on; })}><Icon name="sidebar" /></button>
       {draftTopic ? null :
       <button type="button" className="ib" aria-label="Conversation menu" title={`More for ${openRow?.kind === "group" ? name : who}`} data-testid="conversation-menu-button" onClick={conversationMenu.open}>
         <Icon name="more" />
@@ -1095,7 +1096,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     };
     main = draftTopic ? (
       <div className="conversation-column" data-testid="new-topic-draft">
-        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} /> : null}
+        {compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
         <div className="conversation-empty" style={{ flex: 1 }} />
         <div className={pet.id === "none" ? "pet-lane empty" : "pet-lane"} aria-label="Pet"><SidebarPet pet={pet} still={reducedMotion || document.documentElement.hasAttribute("data-still")} working={lists.rows.some((r) => rowState(r).working)} waiting={null} /></div>
         <Composer
@@ -1117,7 +1118,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     ) : (
       <>
         <StageConversation
-        header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} /> : null}
+        header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} onList={toggleList} onBack={() => window.history.back()} onForward={() => window.history.forward()} tools={conversationTools} /> : null}
         thread={<SplitFrame panes={panes} width={splitW} onWidth={setSplitW} side={
           <SplitPanes
             panes={panes}
@@ -1208,7 +1209,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   } else if (route.kind === "place") {
     main = (
       <>
-        {isNarrow ? <PlaceHead onList={toggleList} onSettings={() => openSettings("general")} /> : null}
+        {isNarrow ? <PlaceHead onList={toggleList} onSettings={() => openSettings("general")} onBack={() => window.history.back()} onForward={() => window.history.forward()} /> : null}
         <PlaceView place={route.place} engine={session.engine} facts={{ running, waiting: waitingTotal }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={(agentId) => void startNew(agentId)} createTrunk={() => void newTrunk()} />
       </>
     );
@@ -1261,6 +1262,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         listHidden={rail}
         onTheme={() => setTheme(toggleTheme(theme))}
         onToggleList={toggleList}
+        onBack={() => window.history.back()}
+        onForward={() => window.history.forward()}
         onCharacter={() => setCharacterShown((v) => !v)}
         onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
         conversationTools={conversationTools}
