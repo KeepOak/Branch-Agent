@@ -255,13 +255,10 @@ describe("Settings › Branch itself", () => {
     await click("Run now");
     expect(request).toHaveBeenCalledWith("sessions.storage.run", {});
   });
-  it("saves Updating itself on the engine's update settings", async () => {
-    const { engine, request } = engineWith({ health: { ok: true }, "config.get": { hash: "h", valid: true, config: {} }, "config.patch": { ok: true, hash: "h2", config: {} } });
+  it("keeps the Install updates setting in Updates & about only", async () => {
+    const { engine } = engineWith({ health: { ok: true }, "config.get": { hash: "h", valid: true, config: {} } });
     await show("self", engine);
-    await act(async () => (document.querySelector('[aria-label="Updating itself"] button:last-child') as HTMLButtonElement).click());
-    await flush();
-    const patches = request.mock.calls.filter(([m]) => m === "config.patch").map(([, p]) => JSON.parse(String((p as { raw: string }).raw)));
-    expect(patches).toEqual([{ update: { auto: { enabled: false } } }, { update: { checkOnStart: false } }]);
+    expect(document.querySelector('[aria-label="Updating itself"]')).toBeNull();
   });
 });
 

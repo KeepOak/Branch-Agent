@@ -13,6 +13,7 @@ import { Ico } from "./icons";
 import { componentDesktop } from "../../../connect/desktop-component-updates";
 import { DesktopUpdatesPage } from "./desktop-updates";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
+import { KeeperMark } from "../../../brand/KeeperMark";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -140,7 +141,7 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
       )}
       {latest && !str(active.runId) ? (
         <Acts>
-          <Btn pri disabled={call.busy} onClick={() => setDialog("install")}>{failed ? "Try again" : "Install when nothing is running"}</Btn>
+          <Btn pri disabled={call.busy} onClick={() => setDialog("install")}>{failed ? "Try again" : "Install when idle"}</Btn>
           {started && campaign.state !== "applying" && !(Number(campaign.holdUntilMs) > now) ? <Btn ghost disabled={hold.busy} onClick={holdIt}>Hold for an hour</Btn> : null}
           {failed ? <Btn ghost onClick={() => setDialog("report")}>Report the failure</Btn> : <Btn ghost disabled title={NO_SKIP}>Skip this version</Btn>}
         </Acts>
@@ -309,6 +310,7 @@ function Devices({ lv }: { lv: number }) {
 export function About() {
   return (
     <Sec title="About">
+      <KeeperMark />
       <Ctl title="Open-source licences" sub="The software Branch is built on, with each licence." off="The list comes with the Branch app on your computer."><Btn sm disabled>Show</Btn></Ctl>
     </Sec>
   );

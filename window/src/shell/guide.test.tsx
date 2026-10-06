@@ -47,7 +47,7 @@ describe("walkthrough (§4.8.2)", () => {
     removeEventListener("branch:navigate-place", listen);
     expect(seen).toEqual([
       { type: "branch:navigate-settings", detail: { page: "local" } },
-      { type: "branch:navigate-place", detail: { place: "customize", tab: "Channels" } },
+      { type: "branch:navigate-place", detail: { place: "customize", tab: "Chat apps" } },
       { type: "branch:navigate-settings", detail: { page: "appearance" } },
       { type: "branch:navigate-place", detail: { place: "people" } },
       { type: "branch:navigate-place", detail: { place: "automations", tab: "board" } },
