@@ -1,4 +1,4 @@
-engine:src/gateway/server/ws-connection.startup.test.ts
 engine:src/gateway/methods/core-method-policy.early-startup.test.ts
-window:src/connect/preparation-status.test.ts
+engine:src/gateway/server/ws-connection.startup.test.ts
 window:src/connect/engine-starting.test.ts
+window:src/connect/preparation-status.test.ts
