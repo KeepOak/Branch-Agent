@@ -193,7 +193,7 @@ jobs:
           (cd "$extracted" && codesign -d --extract-certificates "$app" 2>/dev/null)
           fingerprint="$(openssl x509 -inform DER -in "$extracted/codesign0" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)"
           test "$fingerprint" = "$BRANCH_MACOS_SIGNING_IDENTITY"
-          codesign -dr - "$app"
+          codesign -dr - "$app" 2>&1 | grep -F 'designated => identifier "com.electron.branch-agent" and certificate root = H"30bbf0b68236ae05e063465c39dea6c5b396b11c"'
           # The self-signed identity is stable but not notarized; report Gatekeeper's assessment.
           spctl -a -vv "$app" || true
       - name: Check compiled startup and update rollback
