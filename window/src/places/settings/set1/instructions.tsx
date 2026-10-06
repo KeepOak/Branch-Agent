@@ -136,7 +136,7 @@ function FileRow({ name, what, file, workspace, loading, never, onOpen }: RowPro
   );
 }
 
-const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "instructions", title, sec, lv }));
+const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "instructions", title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 export const INSTRUCTIONS_ROWS: RowEntry[] = [
   ...rows("Whose files", 0, FILES.map(([, what]) => what)).map((r, i) => ({ ...r, words: FILES[i][0] })),
   ...rows("Whose files", 1, ["Add a file…"]).map((r) => ({ ...r, words: "BOOTSTRAP.md" })),

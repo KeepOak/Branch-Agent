@@ -1,7 +1,7 @@
 // The rows each set1 page shows, for the settings search (§4.7.0 Searching): exact titles, their section, their level.
 import type { RowEntry } from "../kit";
 
-const rows = (page: string, sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page, title, sec, lv }));
+const rows = (page: string, sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page, title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 
 export const ACCOUNTS_ROWS: RowEntry[] = [
   ...rows("accounts", "Order Branch uses them in", 0, []),

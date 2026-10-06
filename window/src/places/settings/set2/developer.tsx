@@ -576,4 +576,4 @@ function OtherPrograms({ config, base }: Ctx) {
   );
 }
 
-export const ROWS: RowEntry[] = [...SEC_ROWS.values()].flatMap(([sec, ts]) => ts.map((title) => ({ page: "developer", title, sec, lv: 2 as const })));
+export const ROWS: RowEntry[] = [...SEC_ROWS.values()].flatMap(([sec, ts]) => ts.map((title) => ({ page: "developer", title, sec, group: sec === "More branch:// links" ? "branch:// links" : sec.replace(/, (more|technical|in depth)$/, ""), lv: 2 as const })));

@@ -1,13 +1,14 @@
 import { Menu, Tray, type App, type BrowserWindow } from "electron";
 
-/** Closing the Windows window keeps its existing authenticated engine and drafts alive. */
-export function keepWindowsWindowResident(
+/** Closing the desktop window keeps its existing authenticated engine and drafts alive. */
+export function keepWindowResident(
   app: App,
   window: BrowserWindow,
   icon: string,
   options: { hidden?: boolean; platform?: NodeJS.Platform; keepRunning?: () => boolean; onTrayClick?: () => void } = {},
 ): Tray | undefined {
-  if ((options.platform ?? process.platform) !== "win32") return;
+  const platform = options.platform ?? process.platform;
+  if (platform !== "win32" && platform !== "darwin" && platform !== "linux") return;
   let quitting = false;
   const reveal = (): void => {
     if (options.hidden) return;

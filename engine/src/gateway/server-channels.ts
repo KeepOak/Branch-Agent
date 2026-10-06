@@ -1,5 +1,5 @@
 import { asNullableRecord } from "@branch/normalization-core/record-coerce";
-import { RetrySupervisor } from "../../packages/retry/src/index.js";
+import { computeBackoff } from "../../packages/retry/src/index.js";
 import { isChannelAccountExplicitlyDisabled } from "../channels/account-config-enabled.js";
 import { resolveChannelAccount } from "../channels/account-resolution.js";
 import {
@@ -95,12 +95,12 @@ import {
 import type { GatewayContextResolver } from "./server-methods/types.js";
 
 const RESTART_POLICY: BackoffPolicy = {
-  initialMs: 5_000,
+  initialMs: 30_000,
   maxMs: 5 * 60_000,
   factor: 2,
-  jitter: 0.1,
+  jitter: 0,
 };
-const MAX_RESTARTS = 10;
+const RECONNECT_ATTENTION_AFTER_MS = 2 * 60 * 60_000;
 const CHANNEL_STABLE_RUN_MS = RESTART_POLICY.maxMs;
 const CHANNEL_STOP_ABORT_TIMEOUT_MS = 5_000;
 const CHANNEL_STARTUP_CONCURRENCY = 4;
@@ -241,7 +241,9 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
   const getChannelPlugin = (channelId: ChannelId) =>
     getLoadedChannelPluginEntryById(channelId, getPluginRegistry())?.plugin;
   const channelStores = new Map<ChannelId, ChannelRuntimeStore>();
-  const restarts = new Map<string, RetrySupervisor>();
+  // One continuous retry episode per channel account. Attention is a signal,
+  // never a circuit breaker; retryable failures keep their capped backoff.
+  const restarts = new Map<string, { attempts: number; retryingSince: number; attentionFlagged: boolean }>();
   // Tracks accounts that were manually stopped so we don't auto-restart them.
   const manuallyStopped = new Set<string>();
   const recoveryStopTimedOut = new Set<string>();
@@ -391,9 +393,23 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
     patch: ChannelAccountSnapshot,
     abortSignal: AbortSignal,
   ): ChannelAccountSnapshot => {
-    const safePatch = abortSignal.aborted
+    let safePatch = abortSignal.aborted
       ? sanitizeAbortedTaskStatusPatch(patch, getRuntime(channelId, accountId))
       : patch;
+    if (
+      !abortSignal.aborted &&
+      (patch.connected === true || patch.lifecycle === "ready") &&
+      getRuntime(channelId, accountId).retryingSince !== undefined
+    ) {
+      // A proven reconnect ends this attention episode. Preserve the existing
+      // crash-loop backoff ladder, but a later outage earns its own threshold.
+      const restart = restarts.get(restartKey(channelId, accountId));
+      if (restart) {
+        restart.retryingSince = Date.now();
+        restart.attentionFlagged = false;
+      }
+      safePatch = { ...safePatch, needsAttention: false, retryingSince: undefined };
+    }
     const next = setRuntime(channelId, accountId, safePatch);
     // Ready follows all ingress registrations; terminal startup may wait for abort.
     // Retire on this task's terminal report, never an inherited diagnosis.
@@ -851,6 +867,10 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
               ? { healthState: undefined }
               : {}),
             reconnectAttempts: preserveRestartAttempts ? (restarts.get(rKey)?.attempts ?? 0) : 0,
+            needsAttention: preserveRestartAttempts
+              ? (restarts.get(rKey)?.attentionFlagged ?? false)
+              : false,
+            retryingSince: preserveRestartAttempts ? restarts.get(rKey)?.retryingSince : undefined,
           });
           const task = Promise.resolve().then(async () => {
             if (optsValue.deferAccountStartUntil) {
@@ -1037,28 +1057,33 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
               ) {
                 restarts.delete(rKey);
               }
-              const restart =
-                restarts.get(rKey) ?? new RetrySupervisor(RESTART_POLICY, MAX_RESTARTS);
+              const restart = restarts.get(rKey) ?? {
+                attempts: 0,
+                retryingSince: Date.now(),
+                attentionFlagged: false,
+              };
               restarts.set(rKey, restart);
-              const retry = restart.next(abort.signal);
-              if (!retry) {
-                setRuntime(channelId, id, {
-                  restartPending: false,
-                  reconnectAttempts: restart.attempts,
-                });
-                log.error?.(`[${id}] giving up after ${MAX_RESTARTS} restart attempts`);
-                return;
+              restart.attempts = Math.min(restart.attempts + 1, Number.MAX_SAFE_INTEGER);
+              if (
+                !restart.attentionFlagged &&
+                Date.now() - restart.retryingSince >= RECONNECT_ATTENTION_AFTER_MS
+              ) {
+                restart.attentionFlagged = true;
+                log.warn?.(`[${id}] reconnect needs attention after continuous failures; retries continue`);
               }
+              const delayMs = computeBackoff(RESTART_POLICY, restart.attempts);
               log.info?.(
-                `[${id}] auto-restart attempt ${restart.attempts}/${MAX_RESTARTS} in ${Math.round(retry.delayMs / 1000)}s`,
+                `[${id}] auto-restart attempt ${restart.attempts} in ${Math.round(delayMs / 1000)}s`,
               );
               setRuntime(channelId, id, {
                 restartPending: true,
                 reconnectAttempts: restart.attempts,
+                needsAttention: restart.attentionFlagged,
+                retryingSince: restart.retryingSince,
               });
               pendingAutoRestarts.add(rKey);
               try {
-                await sleepWithAbort(retry.delayMs, retry.signal);
+                await sleepWithAbort(delayMs, abort.signal);
                 if (manuallyStopped.has(rKey) || opts.isClosing?.()) {
                   return;
                 }

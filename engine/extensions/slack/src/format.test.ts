@@ -1,4 +1,4 @@
-// Slack tests cover format plugin behavior.
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/slack/src/format.test.ts (atlas CHAT-APPS-0157). Changed for Branch: existing Branch formatter expectations.
 import { describe, expect, it } from "vitest";
 import {
   chunkSlackMrkdwnText,

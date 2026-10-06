@@ -69,7 +69,7 @@ function VoiceRow({ engine, tts, voices }: VoiceProps) {
   );
 }
 
-const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "voice", title, sec, lv }));
+const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "voice", title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 export const VOICE_ROWS: RowEntry[] = [
   ...rows("Talking", 0, ["Listening", "Push-to-talk key", "Microphone", "Test the microphone"]),
   ...rows("Speaking back", 0, ["Voice", "Dictation in the message box"]),

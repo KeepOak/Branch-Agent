@@ -150,7 +150,7 @@ function Installed({ m }: { m: RecordValue }) {
   );
 }
 
-const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "local", title, sec, lv }));
+const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "local", title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 export const LOCAL_ROWS: RowEntry[] = [
   ...rows("Recommended for you", 0, ["Recommended models, sized to this computer"]),
   ...rows("Runtimes", 0, RUNTIMES.map((r) => r.name)),

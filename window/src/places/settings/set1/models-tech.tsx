@@ -134,7 +134,7 @@ export function PerConnectionMore() {
     ["Show words per second", "While a reply is written, in the status bar.", false],
   ];
   return (
-    <Sec title="Per connection, more" group="Per connection">
+    <Sec title="Per connection, more" group="Per account">
       <Ctl title="OpenRouter picks" sub="Which provider serves an OpenRouter model." off={NONE}><Seg label="OpenRouter picks" value="default" options={[{ id: "default", label: "Its default" }, { id: "cheap", label: "Cheapest" }, { id: "fast", label: "Fastest" }]} onChange={() => undefined} /></Ctl>
       {rows.map(([t, s, on]) => <Ctl key={t} title={t} sub={s} off={NONE}><Switch checked={on} label={t} onChange={() => undefined} /></Ctl>)}
       <Ctl title="Check a model hasn’t changed" sub="Catch a model service silently changing its model." help="Asks a fixed set of questions and compares with last time, to catch a service quietly swapping the model." off={NONE}><Btn sm>Check now</Btn></Ctl>

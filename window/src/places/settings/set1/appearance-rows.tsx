@@ -79,7 +79,7 @@ const OTHER: [string, string, Lv][] = [
 ];
 
 export const APPEARANCE_ROWS: RowEntry[] = [
-  ...OTHER.map(([sec, title, lv]) => ({ page: "appearance", title, sec, lv })),
+  ...OTHER.map(([sec, title, lv]) => ({ page: "appearance", title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv })),
   // Season shows only with "The grove" behind the glass, so search can't land on it.
   ...ROWS.filter((r) => r.key !== "season").map((r) => ({ page: "appearance", title: r.title, sec: r.sec.trim(), group: r.group, lv: r.lv ?? 0 })),
 ];

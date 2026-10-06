@@ -160,7 +160,7 @@ function QuietSec({ prefs }: { prefs: Prefs }) {
   );
 }
 
-const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "notifications", title, sec, lv }));
+const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "notifications", title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 const TELL_TITLES = TELL.map((t) => t.title);
 export const NOTIFICATIONS_ROWS: RowEntry[] = [
   ...rows("Tell me when…", 0, ["Notifications on this computer", ...TELL_TITLES, "Send a test notification"]),

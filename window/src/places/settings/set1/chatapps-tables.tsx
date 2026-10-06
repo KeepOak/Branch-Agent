@@ -87,7 +87,7 @@ export const ADVANCED: Section[] = [
 ];
 
 export const TECH_A: Section[] = [
-  { title: "Chat apps, technical", lv: 2, rows: [
+  { title: "Chat apps, technical", group: "Chat apps", lv: 2, rows: [
     { t: "Call it stalled after", sub: "No update from the app for this long. Telegram: 120 seconds; other apps: 30 minutes.", kind: "num", unit: "seconds", def: 120, off: "The engine decides this on its own; Branch can’t change it yet." },
     { t: "Watchdog log", sub: "One line each time it checks or reconnects.", kind: "custom", id: "watchLog" },
     { t: "Smallest part", sub: "How replies are cut into parts.", path: "agents.defaults.blockStreamingChunk.minChars", kind: "num", unit: "characters", def: 800 },

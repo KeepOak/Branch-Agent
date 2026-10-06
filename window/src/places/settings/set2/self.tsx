@@ -83,7 +83,7 @@ export const ROWS: RowEntry[] = [
   ...rows("Settings you can talk to", 1, ["Change settings by talking", "Suggestions made on this computer"]),
   ...rows("Conversation storage", 1, ["Archive older conversations", "Archive after", "Tidy now"]), ...rows("Conversation storage", 2, ["Shrink the shared database", "Conversation databases"]),
   ...rows("Database, technical", 2, ["Check a copied database", "Who writes the database", "Hand writing to a supervisor"]),
-].map(([title, sec, lv]) => ({ page: "self", title: String(title), ...(sec ? { sec: String(sec) } : {}), group: ({ "Working on its own code": "What it may change", "What it may fix by itself": "What it may change" } as Record<string, string>)[String(sec)], lv: Number(lv) as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "self", title: String(title), ...(sec ? { sec: String(sec) } : {}), group: ({ "Working on its own code": "What it may change", "What it may fix by itself": "What it may change", "Database, technical": "Database" } as Record<string, string>)[String(sec)], lv: Number(lv) as 0 | 1 | 2 }));
 
 type Ctx = SettingsPageProps & { config: ReturnType<typeof useConfig>; lv: number };
 
