@@ -11,10 +11,12 @@ test('no FEATURE_SHARD runs everything in one job', () => {
 test('the shards split the named list with nothing lost or run twice', () => {
   for (const lane of ['engine', 'window']) {
     const all = namedTests(lane);
-    const parts = [shardTests(all, shardOf('1/2')), shardTests(all, shardOf('2/2'))];
-    assert.deepEqual([...parts[0], ...parts[1]].sort(), [...all].sort());
-    assert.equal(parts[0].filter((file) => parts[1].includes(file)).length, 0);
-    assert.ok(Math.abs(parts[0].length - parts[1].length) <= 1);
+    for (const total of [2, 3]) {
+      const parts = Array.from({ length: total }, (_, index) => shardTests(all, shardOf(`${index + 1}/${total}`)));
+      assert.deepEqual(parts.flat().sort(), [...all].sort());
+      assert.equal(new Set(parts.flat()).size, all.length);
+      assert.ok(Math.max(...parts.map((part) => part.length)) - Math.min(...parts.map((part) => part.length)) <= 1);
+    }
   }
 });
 
