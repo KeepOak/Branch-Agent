@@ -20,9 +20,9 @@ export function savePanelPlace(place: PanelPlace): void {
 }
 
 export type PanelBounds = { left: number; top: number; right: number; bottom: number };
-export function panelLimits(column: PanelBounds, width: number, height: number, composerTop?: number): PanelBounds {
+export function panelLimits(column: PanelBounds, width: number, height: number, composerTop?: number, headerBottom?: number): PanelBounds {
   const left = column.left + 18;
-  const top = column.top + 18;
+  const top = Math.max(column.top, headerBottom ?? column.top) + 18;
   return {
     left,
     top,

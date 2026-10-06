@@ -54,6 +54,33 @@ it("keeps a dropped position relative to the conversation column and clamps on r
   expect(panelPoint(dropped, panelLimits({ left: 200, top: 50, right: 360, bottom: 250 }, 158, 166, 175))).toEqual({ x: 218, y: 68 });
 });
 
+it("keeps top corners below the conversation header", () => {
+  const limits = panelLimits({ left: 0, top: 34, right: 1000, bottom: 800 }, 158, 166, 700, 88);
+  expect(panelPoint({ corner: "top-left" }, limits)).toEqual({ x: 18, y: 106 });
+  expect(panelPoint({ corner: "top-right" }, limits)).toEqual({ x: 824, y: 106 });
+});
+
+it("reserves the agent window's height after the latest message", async () => {
+  const panel = host.querySelector<HTMLElement>(".character-panel")!;
+  const column = document.querySelector<HTMLElement>(".conversation-column")!;
+  Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 166 });
+  await act(async () => window.dispatchEvent(new Event("resize")));
+  expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("190px");
+});
+
+it("hides while the focused pane removes the conversation and restores its column position", async () => {
+  const panel = host.querySelector<HTMLElement>(".character-panel")!;
+  const column = document.querySelector<HTMLElement>(".conversation-column")!;
+  expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("24px");
+  column.getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) });
+  await act(async () => window.dispatchEvent(new Event("resize")));
+  expect(panel.style.visibility).toBe("hidden");
+  column.getBoundingClientRect = () => ({ left: 200, top: 50, right: 1000, bottom: 800, width: 800, height: 750, x: 200, y: 50, toJSON: () => ({}) });
+  await act(async () => window.dispatchEvent(new Event("resize")));
+  expect(panel.style.left).toBe("982px");
+  expect(panel.style.visibility).not.toBe("hidden");
+});
+
 it("confirms Hide and explains how to bring the agent back", async () => {
   const hide = host.querySelector<HTMLButtonElement>('[aria-label="Hide the agent"]')!;
   await act(async () => hide.click());

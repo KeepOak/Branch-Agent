@@ -26,9 +26,19 @@ export function CharacterPanel({ name, state, onClose, others = [] }: {
     const el = panel.current;
     if (!column || !el) return;
     const rect = column.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+      limits.current = null;
+      setPoint(null);
+      return;
+    }
     const composer = column.querySelector<HTMLElement>(".c-wrap");
-    const next = panelLimits(rect, el.offsetWidth, el.offsetHeight, composer?.getBoundingClientRect().top);
+    const headerBottom = Math.max(
+      column.querySelector<HTMLElement>(".head-row")?.getBoundingClientRect().bottom ?? rect.top,
+      document.querySelector<HTMLElement>(".focus-exit")?.getBoundingClientRect().bottom ?? rect.top,
+    );
+    const next = panelLimits(rect, el.offsetWidth, el.offsetHeight, composer?.getBoundingClientRect().top, headerBottom);
     limits.current = next;
+    column.style.setProperty("--agent-window-clearance", `${el.offsetHeight + 24}px`);
     setPoint(panelPoint(place.current, next));
   }, []);
   useLayoutEffect(() => {
@@ -39,9 +49,11 @@ export function CharacterPanel({ name, state, onClose, others = [] }: {
     if (panel.current) observer.observe(panel.current);
     const composer = column.querySelector<HTMLElement>(".c-wrap");
     if (composer) observer.observe(composer);
+    const header = column.querySelector<HTMLElement>(".head-row");
+    if (header) observer.observe(header);
     window.addEventListener("resize", measure);
     measure();
-    return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
+    return () => { observer.disconnect(); window.removeEventListener("resize", measure); column.style.removeProperty("--agent-window-clearance"); };
   }, [measure]);
 
   const moveTo = (next: PanelPlace, toast = false) => {
