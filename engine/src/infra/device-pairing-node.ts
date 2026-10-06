@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/infra/device-pairing-node.ts (atlas INTEGRATIONS-0124). Changed for Branch: retain shared mutation authority and approval checks across asynchronous node verification (shared safety layer 41).
 // Node surface policy runs in the pairing worker; reconnect claims belong to the live Gateway.
 import { expectDefined } from "@branch/normalization-core";
 import { isRecord } from "@branch/normalization-core/record-coerce";
