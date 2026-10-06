@@ -1,3 +1,5 @@
+engine:src/agents/tools/nodes-tool-invoke-policy.test.ts
+engine:src/agents/tools/nodes-tool.test.ts
 engine:src/cli/qr-cli.test.ts
 engine:src/media/qr-terminal.render.test.ts
 engine:src/node-host/gateway-candidate-connection.test.ts
