@@ -2,6 +2,7 @@
 # MEMORY-0077 Memory wiki
 # MEMORY-0078 Obsidian vault output
 # SELF-IMPROVEMENT-0025 Reflect on negative feedback
+# SELF-IMPROVEMENT-0053 Skill Workshop proposals
 engine:extensions/memory-core/src/standing-intents.async.test.ts
 engine:extensions/memory-core/src/standing-intents.test.ts
 engine:extensions/memory-wiki/src/compile.test.ts
@@ -12,4 +13,8 @@ engine:extensions/memory-wiki/src/obsidian.test.ts
 engine:extensions/memory-wiki/src/query.test.ts
 engine:extensions/memory-wiki/src/tool.test.ts
 engine:extensions/msteams/src/feedback-reflection.test.ts
+engine:src/agents/tools/skill-workshop-tool.evaluation.test.ts
+engine:src/agents/tools/skill-workshop-tool.history.test.ts
+engine:src/agents/tools/skill-workshop-tool.lifecycle.test.ts
 engine:src/channels/feedback-reflection.test.ts
+engine:src/skills/workshop/service.test.ts
