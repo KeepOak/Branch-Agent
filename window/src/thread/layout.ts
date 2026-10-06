@@ -62,10 +62,10 @@ function runLine(blocks: readonly Block[], from: number): RunLine | undefined {
   return undefined;
 }
 
-/** The blocks of the turn a block belongs to: from after the user message before it to the next user message. */
+/** The blocks of a turn: a user message starts its turn; reply blocks start after that user message. */
 export function turnOf(blocks: readonly Block[], index: number): Block[] {
   let start = index;
-  while (start > 0 && blocks[start - 1].kind !== "user") start -= 1;
+  while (blocks[index].kind !== "user" && start > 0 && blocks[start - 1].kind !== "user") start -= 1;
   let end = index;
   while (end + 1 < blocks.length && blocks[end + 1].kind !== "user") end += 1;
   return blocks.slice(start, end + 1);

@@ -41,7 +41,7 @@ function updateRow(value: unknown): { value: string; dot?: "good" | "warn" | "ba
   if (value === undefined) return null;
   const v = record(value), available = record(v.updateAvailable), active = record(v.activeRun), last = record(v.lastRun);
   if (Object.keys(active).length) return { value: "Updating", dot: "next" };
-  if (text(available.latestVersion)) return { value: `${text(available.latestVersion)} ready`, dot: "next" };
+  if (text(available.latestVersion)) return { value: "Branch update ready", dot: "next" };
   if (last.status === "failed" || last.status === "error") return { value: "Last update failed", dot: "bad" };
   return { value: "No update waiting", dot: "good" };
 }
@@ -98,7 +98,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   if (shared.length) lines.push({ ...personFrom("shared", "Shared owner", "", shared), shared: true });
   const status = (key: keyof typeof tiles, label: string) => <ResourceStatus resource={tiles[key]} label={label} retry={() => void data.refresh([key])} />;
   const recent = recentActivity(rows, runList);
-  return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />} before={<RecBar />}>
+  return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />} before={<><RecBar /><button type="button" className="btn sm" onClick={() => openPlace("office")}>Grove</button></>}>
     <div className="ov-grid">
       <Tile title="Now" action={<button type="button" className="ov-link" onClick={() => openPlace("canopy")}>Open Canopy</button>}>
         {status("sessions", "running conversations")}

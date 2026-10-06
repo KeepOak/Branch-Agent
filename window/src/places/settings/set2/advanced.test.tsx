@@ -19,7 +19,7 @@ function engineWith(answers: Answers) {
 }
 let host: HTMLDivElement; let root: Root;
 beforeEach(() => { (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true; host = document.createElement("div"); host.className = "set-col"; document.body.append(host); root = createRoot(host); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.restoreAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 const flush = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
 async function show(engine: WindowEngine, level: "advanced" | "technical" = "technical") {
   await act(async () => root.render(<AdvancedPage page="advanced" title="Advanced" level={level} engine={engine} />));
@@ -47,11 +47,13 @@ describe("Settings › Advanced", () => {
   });
 
   it("reads the service tiles from status, health and the browser", async () => {
-    const { engine } = engineWith({ ...CONFIG, status: { runtimeVersion: "2.0.1", pid: 77 }, health: { ok: true, ts: 1 }, "system.info": { port: 4000 }, "browser.request": (p: Record<string, unknown>) => (p.path === "/tabs" ? { tabs: [{}, {}] } : { enabled: true, running: true, profile: "branch" }) });
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, text: async () => "0.4.4-build-a300a48dba2f" })));
+    const { engine } = engineWith({ ...CONFIG, status: { runtimeVersion: "2026.9.8", pid: 77 }, health: { ok: true, ts: 1 }, "system.info": { port: 4000 }, "browser.request": (p: Record<string, unknown>) => (p.path === "/tabs" ? { tabs: [{}, {}] } : { enabled: true, running: true, profile: "branch" }) });
     await show(engine);
     const tile = document.querySelector('[data-tile="Branch service"]') as HTMLElement;
     expect(tile.textContent).toContain("Running");
-    expect(tile.textContent).toContain("2.0.1");
+    expect(tile.textContent).toContain("0.4.4 · build a300a48d");
+    expect(tile.textContent).not.toContain("2026.9.8");
     expect(tile.textContent).toContain("127.0.0.1:4000");
     expect((document.querySelector('[data-tile="Browser"]') as HTMLElement).textContent).toContain("2");
   });
