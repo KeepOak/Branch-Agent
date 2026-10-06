@@ -1,3 +1,4 @@
+engine:src/channels/message/outbound-echo.test.ts
 engine:src/plugin-sdk/channel-inbound.test.ts
 engine:src/plugin-sdk/channel-ingress-runtime.test.ts
 engine:src/plugin-sdk/channel-outbound.reply-pipeline.test.ts
