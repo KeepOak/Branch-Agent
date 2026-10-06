@@ -588,7 +588,7 @@ async function offerStagedUpdate(): Promise<void> {
 /** Staging never invokes the gateway's generic updater. */
 async function stageComponentUpdate(): Promise<boolean> {
   if (!componentsReady) throw new Error("The desktop is still starting; check again when the engine is ready");
-  const staged = await refreshComponentUpdate(cfg, fetch, { desktop: install });
+  const staged = await refreshComponentUpdate(cfg, fetch, { desktop: install, canReplaceStaged: () => !engineRestartInProgress });
   await offerStagedUpdate();
   return staged;
 }
@@ -852,7 +852,7 @@ async function start(): Promise<void> {
   await recoverComponentUpdate(cfg);
   if (!existsSync(join(cfg.windowDir, "index.html")) || !existsSync(join(cfg.dataDir, "engine-current.txt")) && !existsSync(join(cfg.engineDir, "branch.mjs"))) {
     log("Installing verified GitHub components for first launch");
-    await refreshComponentUpdate(cfg, fetch, { desktop: install });
+    await refreshComponentUpdate(cfg, fetch, { desktop: install, canReplaceStaged: () => !engineRestartInProgress });
   }
   servedWindowDir = cfg.windowDir;
   server = await serveWindow(() => servedWindowDir, cfg.windowPort);
@@ -866,7 +866,7 @@ async function start(): Promise<void> {
   componentsReady = true;
   runConfirmedReleasePrune();
   autoApply.start();
-  stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, onStaged: () => {
+  stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, canReplaceStaged: () => !engineRestartInProgress, onStaged: () => {
     offerStagedUpdate().catch(error => log(`Component update status: ${String(error)}`));
   } });
   if (macComputerDriver) {

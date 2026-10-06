@@ -8,7 +8,7 @@ import { createServer as createPortProbe } from "node:net";
 import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { gzipSync, gunzipSync } from "node:zlib";
 import test, { mock } from "node:test";
@@ -103,6 +103,49 @@ test("manual component bridge checks configured release then stages actual HTTP 
   assert.equal(requests.length, 4);
   assert.ok(requests.every(url => url.startsWith("https://github.com/KeepOak/Branch-Agent/releases/")));
   assert.equal(await source.rollbackComponentUpdate(cfg), true); await unchanged(cfg);
+}));
+
+async function newerRelease({ root, engine, window }, version = "0.4.4") {
+  const output = join(root, `release-${version}`);
+  await writeFile(join(window, "index.html"), `<title>${version} window</title>`);
+  const release = await makeComponentRelease({ version, tag: `v${version}`, engine, window, output });
+  const request = async (url) => {
+    const filename = new URL(url).pathname.split("/").at(-1);
+    if (filename === `branch-release-${process.platform}-${process.arch}.json`) return new Response(JSON.stringify(release));
+    return new Response(await readFile(join(output, filename)));
+  };
+  return { release, request };
+}
+
+test("a newer release replaces a staged update the running engine never started", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  assert.equal(await source.refreshComponentUpdate(cfg, request), true);
+  const staged = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const newer = await newerRelease(context);
+  // Without the desktop's go-ahead (an in-place swap may be applying it), the staged pair stays.
+  assert.equal(await source.refreshComponentUpdate(cfg, newer.request), false);
+  assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { canReplaceStaged: () => false }), false);
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.3");
+  assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { canReplaceStaged: () => true }), true);
+  const status = await source.readComponentUpdateStatus(cfg);
+  assert.equal(status.componentsPendingVersion, "0.4.4");
+  const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  assert.notEqual(selected, staged);
+  assert.equal(await readFile(join(cfg.windowDir, "index.html"), "utf8"), "<title>0.4.4 window</title>");
+  assert.equal(await readFile(join(status.previousWindowDir, "index.html"), "utf8"), "old window", "the running engine's window is kept beside it");
+  await assert.rejects(readdir(dirname(staged)), { code: "ENOENT" }, "the superseded staged release was left on disk");
+  assert.equal(await source.rollbackComponentUpdate(cfg), true); await unchanged(cfg);
+}));
+
+test("a staged update the engine already runs is never replaced", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  const staged = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), staged + "\n");
+  const newer = await newerRelease(context);
+  assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { canReplaceStaged: () => true }), false);
+  assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
 }));
 
 test("readiness confirmation records version and repeated poll avoids assets", async () => fixture(async ({ cfg, request, requests }) => {

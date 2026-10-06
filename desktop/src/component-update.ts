@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
@@ -13,6 +13,11 @@ export interface RefreshOptions {
   retryRejected?: boolean;
   /** The packaged desktop app to update as well; absent in development runs. */
   desktop?: DesktopInstall;
+  /**
+   * True while nothing is applying the staged engine/window pair (no in-place swap running). Then a newer release
+   * replaces a staged pair the running engine never started, instead of waiting behind it.
+   */
+  canReplaceStaged?: () => boolean;
 }
 
 interface ReleaseIdentity { version: string; engineSha256: string; windowSha256: string }
@@ -255,14 +260,47 @@ async function publish(cfg: DesktopConfig, release: ComponentRelease, next: { en
   } catch (error) { await rollbackComponentUpdate(cfg); throw error; }
 }
 
+/** A staged pair nobody is applying and the running engine never started: a newer release may replace it. */
+async function replaceable(cfg: DesktopConfig, held: Publication, options: RefreshOptions): Promise<boolean> {
+  return held.phase === "pending" && options.canReplaceStaged?.() === true
+    && await readOrEmpty(join(cfg.dataDir, "engine-running.txt")) !== held.engineNext;
+}
+
+/** The superseded release folder under <data>/updates (its engine, and the window rollback moved beside it). */
+async function removeStagedRelease(cfg: DesktopConfig, engineNext: string): Promise<void> {
+  const folder = dirname(engineNext);
+  const inside = relative(join(cfg.dataDir, "updates"), folder);
+  if (!inside || inside.startsWith("..") || resolve(folder) === resolve(cfg.dataDir)) return;
+  await rm(folder, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }).catch(() => undefined);
+}
+
+/** A newer release replaces a staged, never-started pair: downloaded first, then swapped in for the staged one. */
+async function replaceStaged(cfg: DesktopConfig, held: Publication, release: ComponentRelease, request: typeof fetch, options: RefreshOptions): Promise<boolean> {
+  if (held.version === release.version || (!options.retryRejected && await componentReleaseRejected(cfg, release))) return false;
+  const next = await stage(cfg, release, request);
+  if (!await replaceable(cfg, held, options) || (await publication(cfg))?.engineNext !== held.engineNext) {
+    await removeStagedRelease(cfg, next.engine);
+    return false;
+  }
+  await rollbackComponentUpdate(cfg);
+  await removeStagedRelease(cfg, held.engineNext);
+  await publish(cfg, release, next);
+  return true;
+}
+
 /**
  * Does not stop/restart the running engine. The desktop owns activation after staging.
- * An unfinished or held engine/window publication blocks the desktop component too.
+ * An unfinished publication, or a staged one that cannot be replaced, blocks the desktop component too.
  */
 async function refresh(cfg: DesktopConfig, request: typeof fetch, options: RefreshOptions): Promise<boolean> {
   await recoverComponentUpdate(cfg);
-  if (await publication(cfg)) return false;
+  const held = await publication(cfg);
+  if (held && !await replaceable(cfg, held, options)) return false;
   const release = await readComponentManifest(request);
+  if (held) {
+    if (!await replaceStaged(cfg, held, release, request, options)) return false;
+    return await stageDesktopUpdate(cfg, release, request, options.desktop) || true;
+  }
   let staged = false;
   if (await readOrEmpty(versionFile(cfg)) !== release.version && (options.retryRejected || !await componentReleaseRejected(cfg, release))) {
     const next = await stage(cfg, release, request);
