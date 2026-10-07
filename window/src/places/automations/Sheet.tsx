@@ -101,6 +101,6 @@ export function Sheet(props: SheetProps) {
   return <Dialog wide testid="au-sheet" title={jobName(job)} onClose={onClose}>
     <p className="au-hint">{scheduleWords(rec(job.schedule))}{next ? ` · ${next}` : ""}</p>
     <div className="au-tabs" role="tablist" aria-label="Automation">{(["runs", "settings"] as const).map(t => <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{t === "runs" ? "Runs" : "Settings"}</button>)}</div>
-    {tab === "runs" ? <RunsTab engine={engine} job={job} openRun={setRun} /> : <Proposal inSheet draft={draft} change={p => setDraft(d => ({ ...d, ...p }))} level={props.level} trunks={props.trunks} models={props.models} busy={props.busy} canWrite={props.canWrite} error={error} onCancel={() => setTab("runs")} onConfirm={() => void confirm()} />}
+    {tab === "runs" ? <RunsTab engine={engine} job={job} openRun={setRun} /> : <Proposal inSheet engine={engine} draft={draft} change={p => setDraft(d => ({ ...d, ...p }))} level={props.level} trunks={props.trunks} models={props.models} busy={props.busy} canWrite={props.canWrite} error={error} onCancel={() => setTab("runs")} onConfirm={() => void confirm()} />}
   </Dialog>;
 }

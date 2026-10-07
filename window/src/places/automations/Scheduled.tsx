@@ -91,7 +91,7 @@ export function ScheduledTab({ engine, level, openConversation }: Props) {
       <input className="inp" aria-label="Describe a new automation" placeholder={"Describe it: “every weekday at 8, check my inbox for invoices”"} value={words} disabled={!write} title={write ? undefined : "Needs an owner"} onChange={e => setWords(e.target.value)} />
       <button type="submit" className="btn pri" disabled={!write || !words.trim()}>Add</button>
     </form>
-    {draft && <Proposal draft={draft} change={p => setDraft(d => d && { ...d, ...p })} level={level} trunks={data?.trunks ?? []} models={models} busy={busy} canWrite={write} error={error} onCancel={() => (draft && editChanged(draft) ? setLeaving(true) : setDraft(null))} onConfirm={runNow => void confirm(runNow)} />}
+    {draft && <Proposal engine={engine} draft={draft} change={p => setDraft(d => d && { ...d, ...p })} level={level} trunks={data?.trunks ?? []} models={models} busy={busy} canWrite={write} error={error} onCancel={() => (draft && editChanged(draft) ? setLeaving(true) : setDraft(null))} onConfirm={runNow => void confirm(runNow)} />}
     {leaving && <LeaveDialog onKeep={() => setLeaving(false)} onLeave={() => {
       setLeaving(false); setDraft(null);
       notify("Nothing was changed."); // fakes-ok: F4 the preview's own toast after Leave (app-latest Change… leave dialog); not yet in DESIGN-SPEC
@@ -108,7 +108,7 @@ export function ScheduledTab({ engine, level, openConversation }: Props) {
     {adv && data && <HowTheyreDoing jobs={data.jobs} runs={data.runs} />}
     {open?.kind === "menu" && <Menu at={open.at} label={`More for ${jobName(open.job)}`} items={menu} onClose={() => setOpen(null)} testid="au-row-menu" />}
     {open?.kind === "remove" && <RemoveDialog job={open.job} act={act} busy={busy} onClose={() => setOpen(null)} />}
-    {open?.kind === "sends" && <SendsDialog job={open.job} act={act} busy={busy} level={level} trunks={data?.trunks ?? []} onClose={() => setOpen(null)} />}
+    {open?.kind === "sends" && <SendsDialog engine={engine} job={open.job} act={act} busy={busy} level={level} trunks={data?.trunks ?? []} onClose={() => setOpen(null)} />}
     {open?.kind === "fails" && <FailDialog job={open.job} act={act} busy={busy} level={level} onClose={() => setOpen(null)} />}
     {open?.kind === "sheet" && <Sheet engine={engine} job={open.job} level={level} trunks={data?.trunks ?? []} models={models} canWrite={write} busy={busy} onClose={() => setOpen(null)} openConversation={openConversation}
       save={d => run(() => saveDraft(engine, d), r => str(r.message))} />}

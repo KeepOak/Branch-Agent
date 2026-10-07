@@ -158,6 +158,19 @@ describe("Automations › Scheduled", () => {
     expect(request).toHaveBeenCalledWith("cron.runs", { scope: "job", id: "a", limit: 5, offset: 0, sortDir: "desc" });
     expect(document.querySelector("[data-testid=au-sheet]")?.textContent).toContain("Runs");
   });
+  it("Chats in your chat apps is enabled from channels.status and cron.add gets the Technical delivery", async () => {
+    const telegram = { channelOrder: ["telegram"], channelLabels: { telegram: "Telegram" }, channelAccounts: { telegram: [{ accountId: "default", name: "Taofik", configured: true, running: true, connected: true }] }, channels: { telegram: { configured: true, connected: true } } };
+    const { engine: e, request } = engine({ ...FX, "channels.status": telegram });
+    await mount(e);
+    await describeIt("every day at 9, check prices");
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const chats = [...host.querySelectorAll("option")].find(o => o.textContent === "Chats in your chat apps") as HTMLOptionElement;
+    expect(chats.disabled).toBe(false);
+    await act(async () => { const sel = host.querySelector("[aria-label='Sends to']") as HTMLSelectElement; sel.value = "chats"; sel.dispatchEvent(new Event("change", { bubbles: true })); });
+    await type(host.querySelector("[aria-label=Recipient]") as HTMLInputElement, "@me");
+    await click(button("Confirm the schedule"));
+    expect(request).toHaveBeenCalledWith("cron.add", expect.objectContaining({ delivery: { mode: "announce", to: "@me", accountId: "default" } }));
+  });
 });
 
 describe("schedule words and drafts", () => {

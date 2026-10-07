@@ -1,0 +1,1 @@
+window:src/places/automations/Proposal.test.tsx
