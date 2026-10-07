@@ -84,7 +84,7 @@ test('checkUIProof fails when window UI files changed without screenshot', () =>
   assert.match(result.message, /Window UI changes detected/);
   assert.match(result.message, /window\/src\/composer\/Composer\.tsx/);
   assert.match(result.message, /window\/src\/main\.tsx/);
-  assert.match(result.message, /AGENTS\.md rule 9/);
+  assert.match(result.message, /AGENTS\.md/);
   assert.match(result.message, /No visible change:/);
 });
 

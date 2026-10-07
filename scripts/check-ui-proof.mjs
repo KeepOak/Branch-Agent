@@ -44,7 +44,7 @@ export function checkUIProof(changedFiles, prBody) {
       '',
       'Add a markdown or HTML image, or a GitHub user-attachments / artifact image link.',
       'For a refactor with no UI effect, add a line: No visible change: <reason>',
-      'See AGENTS.md rule 9 (self-test visible changes and put screenshots in the PR).',
+      'See AGENTS.md: self-test visible changes and put screenshots in the PR.',
     ].join('\n'),
   };
 }
