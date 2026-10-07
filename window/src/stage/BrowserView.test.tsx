@@ -262,14 +262,18 @@ describe("scoped browser viewing", () => {
   });
   it("uses host browser fallback when no recorded route, auto-starts and opens a blank tab", async () => {
     let running = false;
+    const tabs: { targetId: string; title: string; url: string; type: string }[] = [];
     const request = vi.fn(async (_m: string, params: any) => {
       if (params.path === "/") return { running };
       if (params.path === "/start") {
         running = true;
         return {};
       }
-      if (params.path === "/tabs") return { tabs: [] };
-      if (params.path === "/tabs/open") return { targetId: "host-tab-one" };
+      if (params.path === "/tabs") return { tabs };
+      if (params.path === "/tabs/open") {
+        tabs.push({ targetId: "host-tab-one", title: "", url: "about:blank", type: "page" });
+        return { targetId: "host-tab-one" };
+      }
       return {};
     });
     await render(owner(request as any), []);
@@ -280,6 +284,10 @@ describe("scoped browser viewing", () => {
     await flush();
     await flush();
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ method: "POST", path: "/tabs/open", body: { url: "about:blank" } }));
+    await flush();
+    expect(container.querySelector(".br-addr-st")).toBeTruthy();
+    expect(container.textContent).toContain("New tab");
+    expect(container.textContent).toContain("Enter an address and press Enter.");
   }, 10000);
   it("navigates to https:// for a plain domain", async () => {
     const request = routed(() => new Promise(() => {}));
@@ -294,22 +302,18 @@ describe("scoped browser viewing", () => {
     await act(async () => input.form!.requestSubmit());
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/navigate", body: { url: "https://example.com", targetId: "tab-one" } }));
   });
-  it("searches for words that aren't a URL (URL detection logic)", () => {
-    // Test the URL detection logic directly since React event handling is complex in tests
-    const testGo = (input: string, expected: string) => {
-      let result = "";
-      if (/^[a-z][a-z0-9+.-]*:/i.test(input)) {
-        result = input;
-      } else if (/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(input.split(/[/?#]/)[0])) {
-        result = `https://${input}`;
-      } else {
-        result = `https://www.google.com/search?q=${encodeURIComponent(input)}`;
-      }
-      expect(result).toBe(expected);
-    };
-    testGo("weather lisbon", "https://www.google.com/search?q=weather%20lisbon");
-    testGo("what is typescript", "https://www.google.com/search?q=what%20is%20typescript");
-    testGo("hello world", "https://www.google.com/search?q=hello%20world");
+  it("searches for words that aren't a URL", async () => {
+    const request = routed(() => new Promise(() => {}));
+    await render(owner(request as any));
+    await flush();
+    const input = container.querySelector<HTMLInputElement>(".br-addr-st")!;
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set;
+    await act(async () => {
+      nativeInputValueSetter!.call(input, "weather lisbon");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => input.form!.requestSubmit());
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/navigate", body: { url: "https://www.google.com/search?q=weather%20lisbon", targetId: "tab-one" } }));
   });
   it("navigates directly when input has a scheme", async () => {
     const request = routed(() => new Promise(() => {}));

@@ -6,7 +6,7 @@ import type { Level } from "../places-nav/settings-nav";
 import type { BrowserPresentation } from "../thread/browser-presentation";
 import { Menu, type MenuAnchor, type MenuItem } from "../shell/Menu";
 import { BrowserScreencastClient, type BrowserScreencastFrame } from "./browser-screencast-client";
-import { browserCall, readTabs, recordedBrowserTabs, routeKey, routeOf, scopedBrowserRequest, type BrowserRoute, type LiveTab } from "./browser-route";
+import { addressBarUrl, activeRoute, browserCall, isBlankTab, readTabs, recordedBrowserTabs, routeKey, routeOf, scopedBrowserRequest, type BrowserRoute, type LiveTab } from "./browser-route";
 import { BrowserTools } from "./BrowserTools";
 import { SIcon } from "./stage-icons";
 
@@ -287,8 +287,7 @@ export function BrowserMini({ engine, gatewayUrl, blocks }: { engine: WindowEngi
 export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", onState }: Props) {
   const entries = useMemo(() => recordedBrowserTabs(blocks), [blocks]);
   const recordedRoute = useMemo(() => routeOf(entries), [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
-  const hostFallback: BrowserRoute = useMemo(() => ({ target: "host", profile: "branch" }), []);
-  const route = recordedRoute ?? hostFallback;
+  const route = useMemo(() => activeRoute(entries), [routeKey(recordedRoute)]); // eslint-disable-line react-hooks/exhaustive-deps
   const steps = blocks.filter((b) => b.kind === "step").length;
   const [tick, setTick] = useState(0);
   const browser = useBrowser(engine, route, tick + steps);
@@ -302,6 +301,10 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const [view, setView] = useState<{ url?: string; title?: string; phase: BrowserPhase }>({ phase: "empty" });
   const startedRef = useRef(false);
   const openedTabRef = useRef(false);
+  useEffect(() => {
+    startedRef.current = false;
+    openedTabRef.current = false;
+  }, [engine.sessionKey]);
   const recordedNewest = entries.at(-1)?.tab.targetId;
   const tab = browser.tabs.find((t) => t.targetId === picked) ?? browser.tabs.find((t) => t.targetId === recordedNewest) ?? browser.tabs[0];
   const entry: BrowserPresentation | null = route && tab ? { tab: { ...route, targetId: tab.targetId } as BrowserPresentation["tab"], revision: String(tick), url: tab.url, title: tab.title } : null;
@@ -329,15 +332,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     const target = raw.trim();
     if (!target || !tab) return;
     onControl?.(true);
-    let navigateUrl: string;
-    if (/^[a-z][a-z0-9+.-]*:/i.test(target)) {
-      navigateUrl = target;
-    } else if (/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(target.split(/[/?#]/)[0])) {
-      navigateUrl = `https://${target}`;
-    } else {
-      navigateUrl = `https://www.google.com/search?q=${encodeURIComponent(target)}`;
-    }
-    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: navigateUrl } }).then(() => {
+    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: addressBarUrl(target) } }).then(() => {
       setAddress(null);
       refresh();
     }, fail);
@@ -386,7 +381,13 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   useEffect(() => {
     if (!recordedRoute && browser.phase === "stopped" && !startedRef.current && route) {
       startedRef.current = true;
-      void browserCall(engine, route, "POST", "/start").then(() => setTick((t) => t + 1), (e) => setNote(e instanceof Error ? e.message : String(e)));
+      void browserCall(engine, route, "POST", "/start").then(
+        () => setTick((t) => t + 1),
+        (e) => {
+          startedRef.current = false;
+          setNote(e instanceof Error ? e.message : String(e));
+        },
+      );
     }
   }, [engine, recordedRoute, browser.phase, route]);
   useEffect(() => {
@@ -399,7 +400,10 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
           setPicked(id);
         }
         setTick((t) => t + 1);
-      }, (e) => setNote(e instanceof Error ? e.message : String(e)));
+      }, (e) => {
+        openedTabRef.current = false;
+        setNote(e instanceof Error ? e.message : String(e));
+      });
     }
   }, [engine, recordedRoute, browser.phase, browser.tabs.length, route]);
   const working = running && !control;
@@ -416,9 +420,9 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
         ) : null}
       </Blank>
     );
-  else if (!tab) page = <Blank title="New tab" text="Enter an address and press Enter." />;
+  else if (!tab || isBlankTab(tab.url)) page = <Blank title="New tab" text="Enter an address and press Enter." />;
   else page = <Screencast key={entry ? `${routeKey(route)}:${tab.targetId}` : "none"} engine={engine} gatewayUrl={gatewayUrl} entry={entry} interact={control} onState={onView} />;
-  const showChrome = browser.phase === "ready" || (browser.phase === "loading" && browser.tabs.length > 0);
+  const showChrome = browser.phase === "ready" || (browser.phase === "loading" && browser.tabs.length > 0) || (!recordedRoute && browser.phase !== "error" && browser.phase !== "none");
   return (
     <div className="browser-st">
       {route ? (

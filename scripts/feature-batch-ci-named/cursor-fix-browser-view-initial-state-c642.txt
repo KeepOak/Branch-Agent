@@ -1,1 +1,2 @@
 window:src/stage/BrowserView.test.tsx
+window:src/stage/browser-route.test.ts
