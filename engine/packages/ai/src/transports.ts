@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/ai/src/transports.ts (atlas AGENT-LOOP-0096). Changed for Branch: preserve Gemini call IDs/signatures and harden outbound histories per R-1633 and the pinned Gemini CLI.
 /** Provider transport implementations and transport-specific compatibility helpers. */
 export type { OpenAIResponsesCompactionRejection } from "./provider-options.js";
 export * from "./transports/anthropic-payload-policy.js";
@@ -39,5 +40,6 @@ export {
 export {
   convertGoogleTools,
   projectGoogleMessages,
+  hardenGoogleContents,
   requiresGoogleToolCallId,
 } from "./providers/google-messages.js";

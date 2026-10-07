@@ -1,4 +1,5 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/harness/compaction/compaction.ts (atlas AGENT-LOOP-0099). Changed for Branch: existing runtime adapters and owner-context safeguards; upstream assertions retained.
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/harness/compaction/compaction.ts (atlas AGENT-LOOP-0093/0099). Changed for Branch: preserve owner-context safeguards and restrict compaction cut points to OpenHands history invariant boundaries.
+import { messageManipulationIndices } from "../../history-repair/message-manipulation-indices.js";
 import type { Model, StreamFn, Usage } from "@branch/llm-core";
 import {
   CHARS_PER_TOKEN_ESTIMATE,
@@ -465,6 +466,8 @@ export function findCutPoint(
   constraints?: CompactionRetentionConstraints,
 ): CutPointResult {
   const retention = constraints?.budget;
+  const safeCuts = messageManipulationIndices(entries.slice(startIndex, endIndex).map(getMessageFromEntryForCompaction));
+  const isSafeCut = (index: number, message: AgentMessage): boolean => safeCuts.has(index - startIndex) && isCutPointMessage(message);
   // Projection validates persisted custom/branch timestamps even outside the
   // retained tail. Keep that eager validation without storing every cut point.
   let cutIndex: number | undefined;
@@ -475,7 +478,7 @@ export function findCutPoint(
     if (entry && entry.id === constraints?.preserveFromEntryId) {
       lastAllowedCut = i;
     }
-    if (message && isCutPointMessage(message)) {
+    if (message && isSafeCut(i, message)) {
       cutIndex = i;
     }
   }
@@ -495,7 +498,7 @@ export function findCutPoint(
     if (!message) {
       continue;
     }
-    if (isCutPointMessage(message)) {
+    if (isSafeCut(i, message)) {
       cutIndex = i;
     }
     accumulatedTokens += retention?.estimateTokens(message) ?? estimateTokens(message);
@@ -515,7 +518,7 @@ export function findCutPoint(
       if (retainedTokens > tailLimit) {
         break;
       }
-      if (i <= lastAllowedCut && message && isCutPointMessage(message)) {
+      if (i <= lastAllowedCut && message && isSafeCut(i, message)) {
         if (fittingCut === endIndex) {
           // The summary maximum is a reservation, not a minimum: small windows
           // retain one complete atom and give the summary the remaining room.

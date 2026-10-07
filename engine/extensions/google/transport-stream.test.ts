@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/google/transport-stream.test.ts (atlas AGENT-LOOP-0096). Changed for Branch: retain opaque signatures and require IDs on every call/response per owner R-1633; all payload assertions retained.
 // Google tests cover transport stream plugin behavior.
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -45,9 +46,7 @@ let createGoogleGenerativeAiTransportStreamFn: typeof import("./transport-stream
 let createGoogleVertexTransportStreamFn: typeof import("./transport-stream.js").createGoogleVertexTransportStreamFn;
 let resolveGoogleVertexAuthorizedUserHeaders: typeof import("./vertex-adc.js").resolveGoogleVertexAuthorizedUserHeaders;
 
-const MODEL_PROVIDER_REQUEST_TRANSPORT_SYMBOL = Symbol.for(
-  "branch.modelProviderRequestTransport",
-);
+const MODEL_PROVIDER_REQUEST_TRANSPORT_SYMBOL = Symbol.for("branch.modelProviderRequestTransport");
 
 function attachModelProviderRequestTransport<TModel extends object>(
   model: TModel,
@@ -2505,7 +2504,7 @@ describe("google transport stream", () => {
 
   it.each([
     {
-      name: "replaces invalid Gemini tool-call sentinel signatures with the skip fallback",
+      name: "preserves opaque Gemini tool-call signature bytes per R-1633",
       signature: "reasoning",
     },
     {
@@ -2518,8 +2517,8 @@ describe("google transport stream", () => {
       { messages: [googleToolCallAssistantTurn({ thoughtSignature: signature })] } as never,
     );
     expect(getFirstModelTurn(params.contents).parts[0]).toMatchObject({
-      thoughtSignature: "skip_thought_signature_validator",
-      functionCall: { name: "lookup", args: { q: "hello" } },
+      thoughtSignature: signature,
+      functionCall: { id: "call_1", name: "lookup", args: { q: "hello" } },
     });
   });
 
@@ -2582,7 +2581,7 @@ describe("google transport stream", () => {
 
     expect(params.contents[0]).toEqual({
       role: "model",
-      parts: [{ functionCall: { name: "lookup", args: { q: "hello" } } }],
+      parts: [{ functionCall: { id: "call_1", name: "lookup", args: { q: "hello" } } }],
     });
     expect(JSON.stringify(params.contents)).not.toContain("Zm9yZWlnbl9zaWc=");
     expect(JSON.stringify(params.contents)).not.toContain("skip_thought_signature_validator");
@@ -2757,9 +2756,7 @@ describe("google transport stream", () => {
         role: "user",
         parts: ["screenshot", "weather"].map((name) => ({
           functionResponse: {
-            ...(modelId === "gemini-2.5-flash"
-              ? { id: name === "screenshot" ? "call_1" : "call_2" }
-              : {}),
+            id: name === "screenshot" ? "call_1" : "call_2",
             name,
             response:
               name === "screenshot" ? { output: "(see attached image)" } : { output: "Sunny, 21C" },

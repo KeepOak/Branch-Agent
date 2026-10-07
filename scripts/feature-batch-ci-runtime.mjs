@@ -28,9 +28,18 @@ export function run(command, args, cwd = repoRoot, env = process.env) {
 }
 
 async function fetchBytes(url) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });
-  assert(response.ok, `Download failed ${response.status}: ${url}`);
-  return Buffer.from(await response.arrayBuffer());
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+      assert(response.ok, `Download failed ${response.status}: ${url}`);
+      return Buffer.from(await response.arrayBuffer());
+    } catch (error) {
+      if (!(error instanceof TypeError) || attempt === 3) throw error;
+      console.warn(`Transient registry download failure (attempt ${attempt}/3): ${url}`);
+      await new Promise(resolve => setTimeout(resolve, attempt * 1_000));
+    }
+  }
+  throw new Error(`Registry download failed: ${url}`);
 }
 
 export function lockedIntegrity(lock, name, version) {

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/ai/src/providers/google-shared.ts (atlas AGENT-LOOP-0096). Changed for Branch: preserve Gemini call IDs/signatures and harden outbound histories per R-1633 and the pinned Gemini CLI.
 import {
   type Content,
   FunctionCallingConfigMode,
@@ -29,6 +30,7 @@ import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import { stripSystemPromptCacheBoundary } from "../utils/system-prompt-cache-boundary.js";
 import {
   projectGoogleMessages,
+  hardenGoogleContents,
   requiresGoogleToolCallId,
   convertGoogleTools,
 } from "./google-messages.js";
@@ -99,6 +101,18 @@ export async function runGoogleGenerateContentLifecycle<T extends GoogleApiType>
     const nextParams = await options?.onPayload?.(requestParams, model);
     if (nextParams !== undefined) {
       requestParams = nextParams as GenerateContentParameters;
+    }
+    if (
+      /gemini/i.test(model.id) &&
+      Array.isArray(requestParams.contents) &&
+      requestParams.contents.every(
+        (content) => content && typeof content === "object" && "role" in content,
+      )
+    ) {
+      requestParams = {
+        ...requestParams,
+        contents: hardenGoogleContents(requestParams.contents as Content[]),
+      };
     }
     const googleStream = await client.models.generateContentStream(requestParams);
     const googleIterator = googleStream[Symbol.asyncIterator]();

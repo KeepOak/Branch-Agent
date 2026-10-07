@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/agent-loop.ts (atlas AGENT-LOOP-0089). Changed for Branch: port recoverable tool feedback from OpenHands and structured exception results from DeerFlow.
 import type { AssistantMessage, ToolResultMessage } from "@branch/llm-core";
 import { coerceErrorMessage } from "@branch/normalization-core/error-coercion";
 import { createStreamedSteeringConfig, getSteeringAtCheckpoint } from "./agent-loop-steering.js";
@@ -51,6 +52,8 @@ import type {
   ToolLoopIntervention,
   ToolLoopWarning,
 } from "./types.js";
+import { toolExceptionResult } from "./tool-error-feedback.js";
+import { unknownToolFeedback, invalidArgumentsFeedback } from "./tool-validation-feedback.js";
 import { validateToolArguments } from "./validation.js";
 
 /** Callback used by synchronous loop runners to publish agent lifecycle events. */
@@ -983,20 +986,24 @@ async function validateToolCallForBatchAdmission(
   }
   const tool = resolution.tool;
   if (!tool) {
-    return immediateToolCallError(`Tool ${toolCall.name} not found`);
+    return immediateToolCallError(unknownToolFeedback(toolCall.name, (batch.currentContext.tools ?? []).map((candidate) => candidate.name)));
   }
 
   let preparedToolCall: AgentToolCall;
   try {
+    const rawArguments: unknown = toolCall.arguments;
+    const parsedArguments = typeof rawArguments === "string" ? JSON.parse(rawArguments) as Record<string, unknown> : toolCall.arguments;
     const preparedArguments = tool.prepareArguments
-      ? tool.prepareArguments(toolCall.arguments)
-      : toolCall.arguments;
+      ? tool.prepareArguments(parsedArguments)
+      : parsedArguments;
     preparedToolCall =
       preparedArguments === toolCall.arguments
         ? toolCall
         : { ...toolCall, arguments: preparedArguments as Record<string, unknown> };
   } catch (error) {
-    return immediateToolCallError(coerceErrorMessage(error));
+    const feedback = invalidArgumentsFeedback(toolCall.name, toolCall.arguments, error);
+    toolCall.arguments = { _branch_malformed_tool_call: true, error: feedback };
+    return { ...immediateToolCallError(feedback), errorKind: "argument-validation" };
   }
 
   let validatedArgs: unknown;
@@ -1004,7 +1011,7 @@ async function validateToolCallForBatchAdmission(
     validatedArgs = validateToolArguments(tool, preparedToolCall);
   } catch (error) {
     return {
-      ...immediateToolCallError(coerceErrorMessage(error)),
+      ...immediateToolCallError(invalidArgumentsFeedback(toolCall.name, preparedToolCall.arguments, error)),
       errorKind: "argument-validation",
     };
   }
@@ -1047,7 +1054,7 @@ async function prepareToolCallExecution(
     return {
       kind: "immediate",
       outcome: {
-        result: createToolExecutionErrorResult(error),
+        result: createToolExecutionErrorResult(error, prepared.tool.name),
         isError: true,
         executionStarted: false,
       },
@@ -1100,7 +1107,7 @@ async function prepareToolCallExecution(
               throw implementationStartError.error;
             }
             return {
-              result: createToolExecutionErrorResult(error),
+              result: createToolExecutionErrorResult(error, prepared.tool.name),
               isError: true,
               executionStarted,
               ...(executionStarted && signal?.aborted && error === signal.reason
@@ -1161,7 +1168,7 @@ async function prepareToolCallExecution(
               executionStarted: false,
             }
           : {
-              result: createToolExecutionErrorResult(internalPreparation.outcome.error),
+              result: createToolExecutionErrorResult(internalPreparation.outcome.error, prepared.tool.name),
               isError: true,
               executionStarted: false,
             },
@@ -1393,8 +1400,8 @@ async function completeUnstartedToolCall(
   return finalized;
 }
 
-function createToolExecutionErrorResult(error: unknown): AgentToolResult<unknown> {
-  const result = createErrorToolResult(coerceErrorMessage(error));
+function createToolExecutionErrorResult(error: unknown, toolName: string): AgentToolResult<unknown> {
+  const result = toolExceptionResult(toolName, error);
   return typeof error === "object" && error !== null
     ? copyInternalToolResultState(error, result)
     : result;

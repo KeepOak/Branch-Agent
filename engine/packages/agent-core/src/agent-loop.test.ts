@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/agent-loop.test.ts (atlas AGENT-LOOP-0089). Changed for Branch: assert the ported available-tools recovery hint without weakening validation.
 // Agent Core tests cover agent loop behavior.
 import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";
@@ -334,7 +335,7 @@ describe("deferred tool hydration", () => {
               type: "text",
               text:
                 failure === "missing"
-                  ? "Tool requested_deferred not found"
+                  ? "Tool 'requested_deferred' not found. Available: []"
                   : 'Deferred tool resolver returned "other_deferred" for requested "requested_deferred"',
             },
           ],

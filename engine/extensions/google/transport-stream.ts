@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/google/transport-stream.ts (atlas AGENT-LOOP-0096). Changed for Branch: preserve Gemini call IDs/signatures and harden outbound histories per R-1633 and the pinned Gemini CLI.
 import type { StreamFn } from "branch/plugin-sdk/agent-core";
 import {
   getEnvApiKey,
@@ -26,6 +27,7 @@ import {
   buildGuardedModelFetch,
   consumeGoogleGenerateContentStream,
   projectGoogleMessages,
+  hardenGoogleContents,
   requiresGoogleToolCallId,
   convertGoogleTools,
   type GoogleStreamChunk as GoogleSseChunk,
@@ -1003,7 +1005,21 @@ function createGoogleTransportStreamFn(kind: CanonicalGoogleTransportApi): Strea
         if (nextParams !== undefined) {
           params = nextParams as GoogleGenerateContentRequest;
         }
-        const trustedVideoSlots = materializeGoogleVideoSlots(params, videoSlots);
+        let trustedVideoSlots = materializeGoogleVideoSlots(params, videoSlots);
+        if (/gemini/i.test(model.id)) {
+          const videoPayloads = new Set(trustedVideoSlots.map((part) => part.inlineData));
+          params.contents = hardenGoogleContents(params.contents).map((content) => ({
+            ...content,
+          }));
+          trustedVideoSlots = params.contents.flatMap((content) =>
+            Array.isArray(content.parts)
+              ? content.parts.filter(
+                  (part): part is Record<string, unknown> =>
+                    isRecord(part) && videoPayloads.has(part.inlineData),
+                )
+              : [],
+          );
+        }
         const requestUrl = buildGoogleTransportRequestUrl(kind, model, options);
         const fetchImpl = (options as { fetch?: typeof fetch } | undefined)?.fetch;
         const openSse = async (apiKeyForRequest: string | undefined) => {
