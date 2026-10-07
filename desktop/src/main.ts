@@ -353,7 +353,7 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
 const seamlessHandoff = (): boolean => cfg.seamlessHandoff === true;
 
 /**
- * Old engines that stepped down, from the moment they did: quitting stops them (shutdown), a crash leaves their
+ * Old engines from the moment step-down is sent: quitting stops them (shutdown), a crash leaves their
  * record for the next launch to retire, and one still alive at HANDOFF_RETIRE_KILL_AFTER_MS is killed.
  */
 const retiring = new Map<ChildProcess, ReturnType<typeof setTimeout>>();
@@ -376,9 +376,9 @@ function stopRetiring(child: ChildProcess): void {
   retiring.delete(child);
 }
 
-/** The old engine answers /readyz on the live port within a short bound (never trust "kept serving" without it). */
-async function priorServes(prior: ChildProcess): Promise<boolean> {
-  return waitForReady({ ...cfg, gatewayPort }, prior, PRIOR_READY_CHECK_MS).then(() => true, () => false);
+/** Never trust "kept serving" without /readyz; rollback restarts in place and needs the full warmup budget. */
+async function priorServes(prior: ChildProcess, timeoutMs = PRIOR_READY_CHECK_MS): Promise<boolean> {
+  return waitForReady({ ...cfg, gatewayPort }, prior, timeoutMs).then(() => true, () => false);
 }
 /** The old engine is not serving (fenced for good, or dead): the update's end stops it and recovery takes over. */
 function notServing(prior: ChildProcess): void {
@@ -397,8 +397,8 @@ function notServing(prior: ChildProcess): void {
 async function handOffToStandby(label: string, prior: ChildProcess, selected: PreparedGateway, resumeSupervision: () => void,
   attempt: { stepDownSent: boolean }): Promise<"swapped" | "kept" | "drain"> {
   attempt.stepDownSent = true;
+  keepRetiring(label, prior);
   const stepped = await deactivateGateway(prior, STEP_DOWN_TIMEOUT_MS);
-  if (stepped === "ok") keepRetiring(label, prior);
   if (quitting) throw new Error("Branch Agent is quitting");
   if (stepped !== "ok") {
     // Never told to take over, the standby never takes the state: stop it.
@@ -408,11 +408,14 @@ async function handOffToStandby(label: string, prior: ChildProcess, selected: Pr
       // Unknown: a build from before the handoff, or a step-down still running. Taking control back is harmless if
       // it never stepped down; an engine that answers neither but serves is an old build and is drained instead.
       const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
-      if ((back === "ok" || back === "unanswered") && await priorServes(prior)) {
+      if ((back === "ok" || back === "unanswered") &&
+        await priorServes(prior, back === "ok" ? STANDBY_READY_TIMEOUT_MS : PRIOR_READY_CHECK_MS)) {
+        stopRetiring(prior);
         log(`update ${label}: the old engine did not step down in time; it kept serving; draining it instead`);
         return "drain";
       }
     } else if (stepped === "refused" && await priorServes(prior)) {
+      stopRetiring(prior);
       resumeSupervision();
       throw new Error("the running engine could not step down for the update and kept serving");
     }
@@ -454,7 +457,7 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   const failedEngine = resolveEngineDir(cfg);
   try {
     if (portClash) log(`update ${label}: standby port ${selected.port} was taken before the standby could bind it; the release stays eligible`);
-    else if (error instanceof GatewayReadinessTimeoutError) await recordComponentUpdateTimeout(cfg, failedEngine);
+    else if (error instanceof GatewayReadinessTimeoutError) log(`update ${label}: handoff readiness budget expired; the release remains eligible for the guarded swap`);
     else await rejectFailedComponentUpdate(cfg, failedEngine);
   } catch (recordError) { log(`update ${label}: failure could not be recorded: ${String(recordError)}`); }
   await rollbackComponentUpdate(cfg).catch(rollbackError => log(`update ${label}: component rollback: ${String(rollbackError)}`));
@@ -464,7 +467,7 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   if (lastGoodEngineDir) writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${lastGoodEngineDir}\n`);
   if (prior.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prior.pid));
   const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
-  if (back !== "ok" || !await priorServes(prior)) {
+  if (back !== "ok" || !await priorServes(prior, STANDBY_READY_TIMEOUT_MS)) {
     notServing(prior);
     resumeSupervision();
     throw new Error(`the update failed and the old engine could not take control back (${back}): ${message}`);
