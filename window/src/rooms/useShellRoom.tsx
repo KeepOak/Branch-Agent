@@ -11,7 +11,7 @@ import type { ThreadRoom } from "./thread-room";
 import { RULE_WORDS, useRoom } from "./useRoom";
 
 /** The composer's placeholder in a room (§4.3.1). */
-export const ROOM_PLACEHOLDER = "Message the room · @ to call a Trunk";
+export const ROOM_PLACEHOLDER = "Message the group · @ to call a Trunk";
 
 export type ShellRoom = {
   thread: ThreadRoom;

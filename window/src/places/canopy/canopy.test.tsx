@@ -139,7 +139,7 @@ describe("Canopy › Now", () => {
     const { calls } = await mount();
     await click(button("Allow", runCard("Report")));
     expect(calls).toContainEqual(["approval.resolve", { id: "ap1", kind: "exec", decision: "allow-once" }]);
-    await click(button("Don’t", runCard("Report")));
+    await click(button("Don’t allow", runCard("Report")));
     expect(calls).toContainEqual(["approval.resolve", { id: "ap1", kind: "exec", decision: "deny" }]);
   });
   it("stops with sessions.abort, pauses only a goal and greys Pause with a reason otherwise", async () => {

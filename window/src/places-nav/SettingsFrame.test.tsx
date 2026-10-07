@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { SettingsFrame } from "./SettingsFrame";
+import { Ctl, KitProvider, Page, Sec, Status } from "../places/settings/kit";
+import { SETTINGS_ROWS } from "../places/settings";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const engine: WindowEngine = { request: vi.fn(async () => ({})) as WindowEngine["request"], onEvent: () => () => {}, sessionKey: "test", scopes: [] };
@@ -22,6 +26,19 @@ async function open(page: string, onPage = vi.fn()) {
 }
 
 describe("settings frame level", () => {
+  it("keeps Settings headings and labels in sentence case", () => {
+    const root = join(process.cwd(), "src/places/settings");
+    const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((item) => {
+      const path = join(dir, item.name);
+      return item.isDirectory() ? files(path) : item.name.endsWith(".css") ? [path] : [];
+    });
+    const styles = [...files(root), join(process.cwd(), "src/places-nav/settings-frame.css")];
+    const uppercase = styles.flatMap((file) => readFileSync(file, "utf8").split(/\r?\n/)
+      .filter((line) => /text-transform:\s*uppercase/i.test(line) && !/\.(?:s2cm-code|code-ca input|hexin)\b/.test(line))
+      .map((line) => `${file}: ${line.trim()}`));
+    expect(uppercase).toEqual([]);
+  });
+
   it("opening an Advanced page at Regular raises the level and shows that page", async () => {
     localStorage.setItem("branch.level", "regular");
     const onPage = await open("advanced");
@@ -38,6 +55,24 @@ describe("settings frame level", () => {
     expect(onPage).toHaveBeenCalledWith("general");
   });
 
+  it("keeps the page scroll position when changing its detail level", async () => {
+    await open("general");
+    const scroll = document.querySelector<HTMLElement>(".set-scroll")!;
+    let top = 420;
+    const writes: number[] = [];
+    Object.defineProperty(scroll, "scrollTop", { configurable: true, get: () => top, set: (value: number) => { top = value; writes.push(value); } });
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="advanced"]')!.click());
+    expect(scroll.scrollTop).toBe(420);
+    expect(writes).toEqual([420]); // Restoration must be active; jsdom does not reset scroll on reflow.
+    scroll.scrollTop = 310;
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="technical"]')!.click());
+    expect(scroll.scrollTop).toBe(310);
+    expect(writes).toEqual([420, 310, 310]);
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="regular"]')!.click());
+    expect(scroll.scrollTop).toBe(310);
+    expect(writes).toEqual([420, 310, 310, 310]);
+  });
+
   it("a row found by search opens its page at the level that shows it", async () => {
     localStorage.setItem("branch.level", "regular");
     const onPage = await open("general");
@@ -48,6 +83,23 @@ describe("settings frame level", () => {
     await act(async () => hit.click());
     expect(onPage).toHaveBeenCalledWith("accounts");
     expect(localStorage.getItem("branch.level")).toBe("technical");
+  });
+
+  it("uses display groups without hidden depth suffixes for every search row", () => {
+    expect(SETTINGS_ROWS.length).toBeGreaterThan(0);
+    const missing = SETTINGS_ROWS.filter((row) => !row.group?.trim());
+    expect(missing.map((row) => `${row.page}: ${row.title}`)).toEqual([]);
+    const bad = SETTINGS_ROWS.filter((row) => /, (?:more|technical|in depth)$/i.test(row.group ?? ""));
+    expect(bad.map((row) => `${row.page}: ${row.title} (${row.group})`)).toEqual([]);
+  });
+
+  it("uses each page's explicit group in search instead of matching display copy", () => {
+    const group = (page: string, title: string) => SETTINGS_ROWS.find((row) => row.page === page && row.title === title)?.group;
+    expect(group("gateway", "Wrong sign-ins allowed")).toBe("Connection");
+    expect(group("gateway", "Apply settings changes")).toBe("Connection");
+    expect(group("permissions", "Code mode")).toBe("Sandbox");
+    expect(group("computer", "Technical")).toBe("Connections");
+    expect(group("updates", "Update status for scripts")).toBe("Updating");
   });
 
   it("a row found by search gets focus on its own control, not on its pin", async () => {
@@ -107,5 +159,56 @@ describe("settings keyboard navigation", () => {
     expect(document.activeElement?.getAttribute("data-level")).toBe("technical");
     await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
     expect(document.activeElement?.getAttribute("data-level")).toBe("regular");
+  });
+});
+
+describe("settings page help", () => {
+  it("keeps operational messages visible and moves only explicit rationale into help", async () => {
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(
+      <KitProvider level={0} report={{ saving: vi.fn(), saved: vi.fn(), failed: vi.fn() }} scope={null}>
+        <Page title="Advanced" lede="Choose how Branch works, including settings needed after a restart.">
+          <Sec title="Privacy">
+            <Ctl title="Share usage" sub="Counts features, never messages." help="Off until you choose: it sends counts outside this computer."><button>Change</button></Ctl>
+            <Ctl title="Reconnect" sub="Run branch graft invite, then paste the new code into the other computer." off="Pairing was removed; reconnect before changing this setting."><button>Change</button></Ctl>
+            <Status tone="bad" title="Branch couldn't update">Download failed. Check the network, then retry the update.</Status>
+          </Sec>
+        </Page>
+      </KitProvider>,
+    ));
+    expect(document.querySelector(".lede")?.textContent).toContain("after a restart.");
+    expect(document.querySelector('[data-row="Share usage"] > small')?.textContent).toBe("Counts features, never messages.");
+    expect(document.querySelector('[data-row="Reconnect"]')?.textContent).toContain("branch graft invite, then paste the new code");
+    expect(document.querySelector('[data-row="Reconnect"]')?.textContent).toContain("Pairing was removed; reconnect before changing this setting.");
+    expect(document.querySelector('[role="status"]')?.textContent).toContain("Check the network, then retry the update.");
+    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
+    const help = document.querySelector(".kit-help-pop")!;
+    expect(help.textContent).toContain("Share usage");
+    expect(help.textContent).toContain("Off until you choose: it sends counts outside this computer.");
+    expect(help.textContent).not.toContain("branch graft invite");
+    expect(help.textContent).not.toContain("Download failed");
+  });
+
+  it("keeps long explanations in help and asks from its final row", async () => {
+    const ask = vi.fn();
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(
+      <KitProvider level={0} report={{ saving: vi.fn(), saved: vi.fn(), failed: vi.fn() }} scope={null} ask={ask} askName="Sapling">
+        <Page title="General" lede="Set up the way Branch starts.">
+          <Sec title="Starting up">
+            <Ctl title="Start with Windows" sub="Branch waits in the tray." help="Branch waits in the tray and keeps scheduled work running when the window is closed."><button>Change</button></Ctl>
+          </Sec>
+        </Page>
+      </KitProvider>,
+    ));
+    expect(document.querySelector(".lede")?.textContent).toBe("Set up the way Branch starts.");
+    expect(document.querySelector(".ctl > small")?.textContent?.length).toBeLessThanOrEqual(70);
+    expect(document.querySelector(".link-k")?.textContent).not.toBe("Learn more");
+    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Branch waits in the tray and keeps scheduled work running when the window is closed.");
+    expect(document.querySelector(".kit-help-ask")?.textContent).toBe("Ask Sapling about this page");
+    await act(async () => document.querySelector<HTMLButtonElement>(".kit-help-ask")!.click());
+    expect(ask).toHaveBeenCalledWith("Tell me about Settings › General.");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 });

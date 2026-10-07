@@ -43,7 +43,7 @@ export function InstructionsPage(props: SettingsPageProps) {
   const owner = pick ?? defaultId;
   const ownerName = owner === defaultId ? "every Trunk" : trunks.find((t) => t.id === owner)?.name ?? owner;
   return (
-    <Page title={props.title} lede="Plain files every Trunk reads before it works. They work the same as in other agents, so a file written for one of them works here.">
+    <Page title={props.title} lede="Plain files every Trunk reads before it works." help="Plain files every Trunk reads before it works. They work the same as in other agents, so a file written for one of them works here.">
       {agents.error ? <Status tone="bad" title="Branch couldn’t read your Trunks">{visible(agents.error)}</Status> : null}
       {defaultId ? <Whose trunks={trunks} defaultId={defaultId} owner={owner} onPick={setPick} /> : null}
       {owner ? <OwnerFiles key={`files-${owner}`} engine={props.engine} agentId={owner} ownerName={ownerName} /> : null}
@@ -136,7 +136,7 @@ function FileRow({ name, what, file, workspace, loading, never, onOpen }: RowPro
   );
 }
 
-const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "instructions", title, sec, lv }));
+const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "instructions", title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 export const INSTRUCTIONS_ROWS: RowEntry[] = [
   ...rows("Whose files", 0, FILES.map(([, what]) => what)).map((r, i) => ({ ...r, words: FILES[i][0] })),
   ...rows("Whose files", 1, ["Add a file…"]).map((r) => ({ ...r, words: "BOOTSTRAP.md" })),

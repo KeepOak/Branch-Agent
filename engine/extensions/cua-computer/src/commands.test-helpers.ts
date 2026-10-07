@@ -18,9 +18,9 @@ const CUA_DRIVER_ENDPOINT_ENV = "BRANCH_CUA_DRIVER_ENDPOINT";
 export function macOsEndpoint(overrides: Record<string, unknown> = {}): NodeJS.ProcessEnv {
   return {
     [CUA_DRIVER_ENDPOINT_ENV]: JSON.stringify({
-      v: 1,
-      socketPath: "/tmp/branch-cua-test/driver.sock",
-      binaryPath: process.execPath,
+      v: 2,
+      port: 21831,
+      secret: "a".repeat(64),
       ...overrides,
     }),
   };
@@ -34,18 +34,16 @@ export function invalidMacOsEndpoints(): Array<[string, NodeJS.ProcessEnv]> {
       "partial",
       {
         [CUA_DRIVER_ENDPOINT_ENV]: JSON.stringify({
-          v: 1,
-          socketPath: "/tmp/branch-cua-test/driver.sock",
+          v: 2,
+          port: 21831,
         }),
       },
     ],
-    ["unsupported version", macOsEndpoint({ v: 2 })],
+    ["unsupported version", macOsEndpoint({ v: 1 })],
     ["extra field", macOsEndpoint({ extra: true })],
-    ["relative socket", macOsEndpoint({ socketPath: "relative.sock" })],
-    ["relative binary", macOsEndpoint({ binaryPath: "cua-driver" })],
-    ["nul socket", macOsEndpoint({ socketPath: "/tmp/cua\0.sock" })],
-    ["missing binary", macOsEndpoint({ binaryPath: "/missing/cua-driver" })],
-    ["oversized", macOsEndpoint({ socketPath: `/${"x".repeat(4_096)}` })],
+    ["invalid port", macOsEndpoint({ port: 0 })],
+    ["invalid secret", macOsEndpoint({ secret: "short" })],
+    ["oversized", macOsEndpoint({ secret: "a".repeat(4_096) })],
   ];
 }
 

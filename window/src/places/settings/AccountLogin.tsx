@@ -26,9 +26,9 @@ export function StepBody({ step, value, onValue, onAnswer, busy }: { step: Wizar
   );
 }
 
-export function Footer({ view, value, busy, onAnswer, onCancel, onClose }: { view: View; value: unknown; busy: boolean; onAnswer: (v?: unknown) => void; onCancel: () => void; onClose: () => void }) {
+export function Footer({ view, value, busy, onAnswer, onCancel }: { view: View; value: unknown; busy: boolean; onAnswer: (v?: unknown) => void; onCancel: () => void }) {
   if (view.phase === "done" || view.phase === "error") {
-    return <button type="button" className="btn primary" onClick={onClose}>Close</button>;
+    return null;
   }
   const step = view.phase === "step" && !view.waiting ? view.step : null;
   return (
@@ -62,7 +62,7 @@ export function AccountLoginDialog({ engine, start, onClose }: { engine: WindowE
   };
   const close = () => (w.view.phase === "done" || w.view.phase === "error" ? onClose(w.view.phase === "done") : cancel());
   return (
-    <Dialog title={`Sign in to ${start.provider}`} onClose={close} testid="account-login" footer={<Footer view={w.view} value={w.value} busy={w.busy} onAnswer={w.answer} onCancel={cancel} onClose={close} />}>
+    <Dialog title={`Sign in to ${start.provider}`} onClose={close} testid="account-login" footer={<Footer view={w.view} value={w.value} busy={w.busy} onAnswer={w.answer} onCancel={cancel} />}>
       <WizardBody wizard={w} doneText="Signed in. The account is saved for this Trunk." />
     </Dialog>
   );
