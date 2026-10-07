@@ -25,7 +25,7 @@ export function PairDialog({ engine, close }: { engine: WindowEngine; close: () 
   const [error, setError] = useState<string | null>(null);
   const [paired, setPaired] = useState<string | null>(null);
   const make = async () => {
-    setBusy(true); setError(null); setPaired(null);
+    setBusy(true); setError(null); setPaired(null); setCode(null);
     try {
       const r = rec(await engine.request("device.pair.setupCode", { includeQr: true, ...(access === "full" ? {} : { bootstrapProfile: access }), ...(access === "node" ? { joinUrl: true } : {}) }));
       setCode({ setupId: str(r.setupId), setupCode: str(r.setupCode), qr: str(r.qrDataUrl), joinUrl: str(r.joinUrl), expiresAtMs: typeof r.expiresAtMs === "number" ? r.expiresAtMs : null, downgraded: r.accessDowngraded === true });
@@ -36,7 +36,7 @@ export function PairDialog({ engine, close }: { engine: WindowEngine; close: () 
   return <Dialog title="Pair a phone" onClose={close} testid="pair"
     footer={code ? <><button type="button" className="btn ghost" disabled={busy} onClick={() => void make()}>Make a new code</button><button type="button" className="btn pri" onClick={close}>Done</button></>
       : <><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn pri" disabled={busy} onClick={() => void make()}>Make the code</button></>}>
-    {!code ? <div className="cz-radios" role="radiogroup" aria-label="What it may do"><b>What it may do</b>{ACCESS.map(a => <label key={a.id} className="cz-radio"><input type="radio" name="pair-access" checked={access === a.id} onChange={() => setAccess(a.id)} /><span><b>{a.name}</b><small>{a.line}</small></span></label>)}</div>
+    {!code ? <div className="cz-radios" role="radiogroup" aria-label="What it may do"><b>What it may do</b>{ACCESS.map(a => <label key={a.id} className="cz-radio"><input type="radio" name="pair-access" disabled={busy} checked={access === a.id} onChange={() => setAccess(a.id)} /><span><b>{a.name}</b><small>{a.line}</small></span></label>)}</div>
       : <div className="cz-pair">
         {code.qr && <img src={code.qr} alt="Pairing code" width={180} height={180} />}
         <ol><li>Open the Branch app on your phone.</li><li>Tap <b>Pair with a computer</b>.</li><li>Point the camera at this code.</li><li>Check that both screens show <b>{code.setupCode}</b>.</li></ol>
