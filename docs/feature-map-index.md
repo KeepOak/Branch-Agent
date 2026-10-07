@@ -146,3 +146,4 @@ See `.cursor/skills/verify-in-app/SKILL.md` for the complete guide to:
 4. Adding them to a PR
 
 The feature map is validated in CI: `scripts/feature-map-check.mjs` ensures every listed source file exists.
+# Updated to trigger workflow
