@@ -50,7 +50,7 @@ describe("browser doctor rerun", () => {
       await act(async () => host.querySelector<HTMLButtonElement>("button")!.click());
       const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!;
       await act(async () => dialog.querySelector<HTMLButtonElement>(".dlg-f button")!.click());
-      await act(async () => dialog.querySelector<HTMLButtonElement>(".dlg-f button:last-child")!.click());
+      await act(async () => dialog.querySelector<HTMLButtonElement>(".dlg-h button")!.click());
       expect(host.querySelector('[role="dialog"]')).toBeNull();
       await act(async () => finish({ ok: true, checks: [] }));
       expect(host.querySelector('[role="dialog"]')).toBeNull();

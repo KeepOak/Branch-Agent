@@ -5,6 +5,7 @@
 import { defaultApiRegistry, defaultLlmRuntime } from "@branch/ai/internal/runtime";
 import { registerBuiltInApiProviders } from "@branch/ai/providers";
 import { makeZeroUsageSnapshot } from "../agents/usage.js";
+import { assertLockdownOff } from "../config/lockdown.js";
 import { classifyGatewayStorageFailure } from "../infra/sqlite-error-diagnostics.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import { createLazyPromise } from "../shared/lazy-promise.js";
@@ -52,6 +53,8 @@ function deferUntilTransportRuntimeHost(
   void (async () => {
     try {
       await ensureTransportRuntimeHost();
+      // Lockdown: no model is called, so nothing is spent; the caller sees an error event.
+      assertLockdownOff();
       for await (const event of start()) {
         output.push(event);
       }
@@ -88,6 +91,7 @@ export async function complete<TApi extends Api>(
   await ensureTransportRuntimeHost();
   assertCurrent?.();
   options?.signal?.throwIfAborted();
+  assertLockdownOff();
   return await resolveRuntime(model).complete(model, context, options);
 }
 
@@ -111,5 +115,6 @@ export async function completeSimple<TApi extends Api>(
   // Runtime setup can outlive its caller. Admit only a current request to the provider.
   assertCurrent?.();
   options?.signal?.throwIfAborted();
+  assertLockdownOff();
   return await resolveRuntime(model).completeSimple(model, context, options);
 }

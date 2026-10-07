@@ -1,9 +1,19 @@
+import fs from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { observeHostDataSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { clearBootstrapSnapshot, getOrLoadBootstrapFiles } from "../../agents/bootstrap-cache.js";
 import { writeSessionEntry } from "../../config/sessions/session-accessor.sqlite-entry-store.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
+import {
+  resolveSessionHandoffLeaseDir,
+  writeSessionHandoffLease,
+} from "../../process/session-handoff-lease-files.js";
+import {
+  refreshSessionHandoffLeases,
+  resetSessionHandoffLeaseGateForTest,
+} from "../../process/session-handoff-lease-gate.js";
+import { getFileLockProcessStartTime } from "../../shared/pid-alive.js";
 import {
   closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
@@ -207,4 +217,61 @@ describe("cron session preparation", () => {
       );
     },
   );
+
+  it("waits for the previous engine to finish the job's session before writing it", async () => {
+    resetRunCronIsolatedAgentTurnHarness();
+    resetSessionHandoffLeaseGateForTest();
+    vi.stubEnv("BRANCH_STATE_DIR", tempDirs.make("branch-cron-session-lease-"));
+    const database = openBranchAgentDatabase({ agentId: "main", env: process.env });
+    const preparedBoundary = new Error("cron session preparation reached");
+    const preparedFor: string[] = [];
+    resolveCronSessionMock.mockImplementation(async (params) => {
+      preparedFor.push(params.sessionKey);
+      throw preparedBoundary;
+    });
+    const prepare = () =>
+      prepareCronRunContext({
+        input: makeIsolatedAgentParamsFixture({
+          agentId: "main",
+          cfg: { session: { store: database.path } },
+          sessionKey: "agent:main:work",
+          job: makeIsolatedAgentJobFixture({
+            sessionTarget: "current",
+            sessionKey: "agent:main:work",
+            delivery: { mode: "none" },
+          }),
+        }),
+        isFastTestEnv: true,
+        onLifecycleInterrupt: () => {},
+      });
+    try {
+      // Unleased: the job's session is prepared at once.
+      await expect(prepare()).rejects.toBe(preparedBoundary);
+      const [sessionKey] = preparedFor;
+      expect(sessionKey).toBeTruthy();
+      // The previous engine (a live process other than this one) still finishes that session.
+      const { file, lease } = writeSessionHandoffLease(
+        resolveSessionHandoffLeaseDir(),
+        `session:${sessionKey}`,
+      );
+      fs.writeFileSync(
+        file,
+        JSON.stringify({
+          ...lease,
+          pid: process.ppid,
+          startTime: getFileLockProcessStartTime(process.ppid),
+        }),
+      );
+      refreshSessionHandoffLeases();
+      const parked = prepare();
+      void parked.catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(preparedFor).toHaveLength(1);
+      fs.unlinkSync(file);
+      await expect(parked).rejects.toBe(preparedBoundary);
+      expect(preparedFor).toEqual([sessionKey, sessionKey]);
+    } finally {
+      resetSessionHandoffLeaseGateForTest();
+    }
+  });
 });

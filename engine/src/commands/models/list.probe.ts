@@ -170,6 +170,8 @@ export type AuthProbeOptions = {
   timeoutMs: number;
   concurrency: number;
   maxTokens: number;
+  /** Keep the ordinary Branch probe default; scheduled Codex checks use the Codex harness. */
+  agentHarnessRuntimeOverride?: "branch" | "codex";
 };
 
 export function mapFailoverReasonToProbeStatus(reason?: string | null): AuthProbeStatus {
@@ -698,6 +700,7 @@ async function probeTarget(params: {
   target: AuthProbeTarget;
   timeoutMs: number;
   maxTokens: number;
+  agentHarnessRuntimeOverride?: "branch" | "codex";
   abortSignal?: AbortSignal;
 }): Promise<AuthProbeResult> {
   const { cfg, agentId, agentDir, workspaceDir, storePath, target, timeoutMs, maxTokens } = params;
@@ -808,7 +811,7 @@ async function probeTarget(params: {
         reasoningLevel: "off",
         verboseLevel: "off",
         streamParams: { maxTokens },
-        agentHarnessRuntimeOverride: "branch",
+        agentHarnessRuntimeOverride: params.agentHarnessRuntimeOverride ?? "branch",
         disableTools: true,
         modelRun: true,
         cleanupBundleMcpOnRunEnd: true,
@@ -880,6 +883,7 @@ async function runTargetsWithConcurrency(params: {
   timeoutMs: number;
   maxTokens: number;
   concurrency: number;
+  agentHarnessRuntimeOverride?: "branch" | "codex";
   onProgress?: (update: { completed: number; total: number; label?: string }) => void;
   abortSignal?: AbortSignal;
 }): Promise<AuthProbeResult[]> {
@@ -914,6 +918,7 @@ async function runTargetsWithConcurrency(params: {
         target,
         timeoutMs,
         maxTokens,
+        agentHarnessRuntimeOverride: params.agentHarnessRuntimeOverride,
         abortSignal: params.abortSignal,
       });
       completed += 1;
@@ -1010,6 +1015,7 @@ export async function runAuthProbes(params: {
           targets: plan.targets,
           timeoutMs: params.options.timeoutMs,
           maxTokens: params.options.maxTokens,
+          agentHarnessRuntimeOverride: params.options.agentHarnessRuntimeOverride,
           concurrency: params.options.concurrency,
           onProgress: params.onProgress,
           abortSignal,

@@ -7,7 +7,10 @@ import {
 import { ALLOW_OLDER_BINARY_DESTRUCTIVE_ACTIONS_ENV } from "../../config/future-version-guard.js";
 import { GATEWAY_CONFIG_SELECTION_ENV_KEYS } from "../../config/gateway-env-selection.js";
 import { CONFIG_AUDIT_STORE_LABEL } from "../../config/io.audit.js";
-import { describeConfigSnapshotInputChange } from "../../config/snapshot-inputs.js";
+import {
+  describeConfigSnapshotInputChange,
+  isLockdownOnlyConfigChange,
+} from "../../config/snapshot-inputs.js";
 import type { ConfigFileSnapshot } from "../../config/types.js";
 import {
   clearFsSafeEnvFallback,
@@ -669,7 +672,9 @@ export async function recheckGatewayRunBootstrap(
   const change = describeGatewayRunConfigChange(prepared.snapshot, current, {
     allowPathChange: params.snapshot !== undefined,
   });
-  if (!change) {
+  // Lockdown switched while a standby waited: start anyway. The engine reads it fresh and comes up locked,
+  // and refusing would abort the handoff for a switch that touches no migration input.
+  if (!change || isLockdownOnlyConfigChange(prepared.snapshot, current)) {
     return true;
   }
   params.runtime.error(

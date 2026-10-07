@@ -13,8 +13,8 @@ export function CallsAndMeetings(props: Shared) {
   const { cfg } = props;
   const calls = cfg.get(`${CALL}.enabled`) === true;
   return (
-    <Sec title="Calls and meetings" hint="Phone calls go through your own Twilio number; meeting notes use your connected calendar.">
-      <Ctl title="Phone calls" sub="Call you, or call someone for you. Off until you choose: calls cost money by the minute and reach people outside Branch.">
+    <Sec title="Calls and meetings" hint="Calls use your Twilio number; notes use your calendar." help="Phone calls go through your own Twilio number; meeting notes use your connected calendar.">
+      <Ctl title="Phone calls" sub="Call you, or call someone for you." help="Call you, or call someone for you. Off until you choose: calls cost money by the minute and reach people outside Branch.">
         <Switch checked={calls} label="Phone calls" disabled={cfg.loading} onChange={(on) => void cfg.set(`${CALL}.enabled`, on)} />
       </Ctl>
       <Ctl title="Calling from" sub="Your Twilio number. Its key is in the locker.">
@@ -48,10 +48,10 @@ function Meetings({ cfg }: Shared) {
   const setNotes = (on: boolean) => void cfg.set("plugins.entries", Object.fromEntries(MEETINGS.map((id) => [id, { enabled: on }])));
   return (
     <>
-      <Ctl title="Keep meeting transcripts" sub="Lets a Trunk save what’s said in a meeting. It records nothing by itself: “Meeting notes” and the places below decide when.">
+      <Ctl title="Keep meeting transcripts" sub="Lets a Trunk save what’s said in a meeting." help="Lets a Trunk save what’s said in a meeting. It records nothing by itself: “Meeting notes” and the places below decide when.">
         <Switch checked={keep} label="Keep meeting transcripts" disabled={cfg.loading} onChange={(on) => void cfg.set("transcripts.enabled", on)} />
       </Ctl>
-      <Ctl title="Meeting notes" sub="A Trunk joins Meet, Teams or Zoom as a guest and brings the notes back.">
+      <Ctl title="Meeting notes" sub="A Trunk joins meetings as a guest and brings back notes." help="A Trunk joins Meet, Teams or Zoom as a guest and brings the notes back.">
         <Switch checked={notes} label="Meeting notes" disabled={cfg.loading} onChange={setNotes} />
       </Ctl>
       <Greyed why="Branch can’t add a place from here yet." rows={[{
@@ -69,7 +69,7 @@ function Meetings({ cfg }: Shared) {
 
 export function CallsMore() {
   return (
-    <Sec title="Calls and meetings, more">
+    <Sec title="Calls and meetings, more" showHeading={false} group="Calls and meetings">
       <Greyed why={NO_KEY} rows={[
         { t: "Recognise who is speaking", sub: "Voices are told apart and remembered; say “that was Jill” to name one.", c: { sw: false } },
         { t: "Split recordings by speaker", sub: "On this computer, as it records.", c: { sw: true }, why: APP },

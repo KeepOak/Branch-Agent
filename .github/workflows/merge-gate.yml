@@ -7,6 +7,7 @@ on:
   pull_request:
 
 permissions:
+  contents: read
   checks: read
   actions: read
 
@@ -15,10 +16,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  merge-gate:
+  changed-test-coverage:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
+      - name: Check out the PR merge commit and its base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Test the coverage check
+        run: node --test scripts/changed-test-coverage.test.mjs
+      - name: Require every changed test to run in CI
+        run: node scripts/changed-test-coverage.mjs
+      - name: Check merge command patterns in documentation
+        run: node scripts/check-merge-command.mjs
+
+  merge-gate:
+    needs: changed-test-coverage
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Require changed test coverage
+        env:
+          COVERAGE_RESULT: ${{ needs.changed-test-coverage.result }}
+        run: test "$COVERAGE_RESULT" = success
       - name: Wait for the PR's other checks
         env:
           GH_TOKEN: ${{ github.token }}
@@ -28,7 +56,7 @@ jobs:
           set -euo pipefail
           # Give path-filtered workflows time to register their runs.
           sleep 30
-          for attempt in $(seq 1 110); do
+          for attempt in $(seq 1 190); do
             runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
               --jq '[.check_runs[] | select(.name != "merge-gate")]')
             pending=$(jq '[.[] | select(.status != "completed")] | length' <<<"$runs")
