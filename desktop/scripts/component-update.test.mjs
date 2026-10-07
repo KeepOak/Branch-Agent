@@ -731,6 +731,31 @@ test("cold rollback retains renderer and engine while the failed latest stays on
   } finally { await stop(); }
 }));
 
+test("desktop app-code update confirms only after the gateway is ready", async () => fixture(async ({ cfg }) => {
+  await mkdir(join(cfg.dataDir, "x"), { recursive: true });
+  await writeFile(join(cfg.dataDir, "x", "app.asar"), "staged");
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({
+    version: "0.4.9", sha256: "abc", kind: "asar",
+    staged: join(cfg.dataDir, "x", "app.asar"),
+    target: join(cfg.dataDir, "app.asar"),
+    phase: "applied",
+  }));
+  const state = { bodies: [], reloads: 0, draft: "", fetch };
+  const stop = await coldDesktopCaller(cfg, state);
+  try {
+    await eventually(async () => (await readFile(join(cfg.dataDir, "desktop.log"), "utf8")).includes("gateway ready after"));
+    const phaseLog = await readFile(join(cfg.dataDir, "desktop.log"), "utf8");
+    assert.ok(phaseLog.includes("window loaded after"));
+    assert.ok(phaseLog.includes("starting gateway"));
+    assert.ok(phaseLog.includes("desktop update 0.4.9 started; confirmed"));
+    assert.ok(phaseLog.indexOf("window loaded after") < phaseLog.indexOf("desktop update 0.4.9 started; confirmed"));
+    assert.ok(phaseLog.indexOf("starting gateway") < phaseLog.indexOf("desktop update 0.4.9 started; confirmed"));
+    assert.ok(phaseLog.indexOf("gateway started") < phaseLog.indexOf("desktop update 0.4.9 started; confirmed"));
+    assert.equal(await exists(join(cfg.dataDir, "desktop-update-pending.json")), false);
+    assert.equal((await readFile(join(cfg.dataDir, "desktop-update-version.txt"), "utf8")).trim(), "0.4.9");
+  } finally { await stop(); }
+}));
+
 test("normal readiness keeps the early renderer and typed draft without another navigation", async () => fixture(async ({ cfg }) => {
   const state = { bodies: [], reloads: 0, draft: "", fetch };
   const stop = await coldDesktopCaller(cfg, state);

@@ -46,7 +46,8 @@ const ICON_REVISION = "keeper-v1";
 const iconFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "desktop-icon-version.txt");
 const packagedIconFile = (install: DesktopInstall): string => join(install.resourcesDir, "keeper-icon-revision");
 const rejectedFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "desktop-update-rejected.json");
-const CONFIRM_TIMEOUT_MS = 90_000;
+/** Must cover profile migration plus engine ready (desktop/src/main.ts READY_TIMEOUT_MS). */
+const CONFIRM_TIMEOUT_MS = 600_000;
 /**
  * Inside Electron, fs treats any path ending in .asar as an archive to read from, so writing or checking a new
  * app.asar fails. Staged copies are named .asar.staged; the helper (plain Node) gives them their names back.
@@ -209,7 +210,7 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
   return true;
 }
 
-/** The new desktop app started and showed its window: keep it. The previous copy stays beside it for rollback. */
+/** The new desktop app reached a ready gateway: keep it. The previous copy stays beside it for rollback. */
 export async function confirmDesktopUpdate(cfg: DesktopConfig): Promise<string | null> {
   const journal = await readDesktopJournal(cfg);
   if (!journal || journal.phase === "staged") return null;

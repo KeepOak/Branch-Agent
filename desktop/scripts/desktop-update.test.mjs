@@ -176,7 +176,7 @@ test("a new Electron without a whole-app package is refused out loud", () => fix
 
 test("after the app exits the helper swaps app.asar, relaunches, and keeps the app that confirms", () => fixture(async ({ root, cfg, request, install }) => {
   await updater.refreshComponentUpdate(cfg, request, { desktop: install });
-  // The relaunched "app" is a script that confirms the way main.ts does once its window shows.
+  // The relaunched "app" is a script that confirms the way main.ts does once the gateway is ready.
   const relaunched = join(root, "relaunched.cjs");
   await writeFile(relaunched, `require(${JSON.stringify(join(dist, "desktop-update.js"))}).confirmDesktopUpdate(${JSON.stringify(cfg)});`);
   install.executable = process.execPath;

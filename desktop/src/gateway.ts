@@ -1,6 +1,6 @@
 // Starts the Branch engine gateway as a child process (as the early copy's start.sh does) and stops it by PID.
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { createWriteStream, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, createWriteStream, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { constants as osConstants, setPriority } from "node:os";
@@ -61,9 +61,16 @@ function testProfile(): Record<string, string> {
 export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false, port = cfg.gatewayPort, macComputerEndpoint?: string): ChildProcess {
   // The profile check can refuse a standby; it runs before the log is opened so a refusal leaks nothing.
   const prepared = standby ? readPreparedNormalProfile(join(cfg.dataDir, "home")) : undefined;
-  const log = createWriteStream(join(cfg.dataDir, "gateway.log"), { flags: "a" });
-  const profile = prepared ?? prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => log.write(message + "\n"));
-  if (profile.note) log.write(profile.note + "\n");
+  const logPath = join(cfg.dataDir, "gateway.log");
+  // Phase lines are flushed with appendFileSync so a crash during copy still leaves a trail.
+  const logPhase = (message: string): void => {
+    appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`);
+  };
+  if (!standby) logPhase("starting profile migration");
+  const profile = prepared ?? prepareNormalProfile(join(cfg.dataDir, "home"), undefined, logPhase);
+  if (profile.note) logPhase(profile.note);
+  logPhase("spawning gateway");
+  const log = createWriteStream(logPath, { flags: "a" });
   const env = {
     ...process.env,
     BRANCH_PROFILE: profile.legacyDevMode ? "dev" : "default",
