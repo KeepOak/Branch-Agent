@@ -12,6 +12,7 @@ import { startCronMaintenance } from "../cron/maintenance.js";
 import {
   beginCronReceiptAuthorityClose,
   drainCronReceiptAuthority,
+  releaseCronReceiptAuthorityForHandoff,
   resumeCronReceiptAuthorityHostAfterFailedHandoff,
 } from "../cron/store/receipt-authority-owner.js";
 import {
@@ -573,6 +574,7 @@ export async function prepareGatewayLifecycle(params: {
       );
       await beforeHandoffDeadline(shutdownRuntime.stopCronMaintenance(), deadline);
       await beforeHandoffDeadline(drainCronReceiptAuthority(), deadline);
+      await beforeHandoffDeadline(releaseCronReceiptAuthorityForHandoff(), deadline);
       handoffLeases.seal();
       if (!handoffAdmission.commit()) {
         throw new Error("Gateway handoff admission was invalidated before state release");
