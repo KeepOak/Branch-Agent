@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -86,7 +86,7 @@ async function packageDesktop(scratch, output, identity) {
   assert.equal(folders.length, 1, "Expected one native desktop package");
   const app = folders[0];
   const resources = identity.platform === "darwin" ? join(app, "Branch Agent.app/Contents/Resources") : join(app, "resources");
-  const node = await bundleNode(resources, undefined, identity);
+  let node = await bundleNode(resources, undefined, identity);
   // Outside app.asar so a fresh package can prove its executable already has the Keeper icon.
   await writeFile(join(resources, "keeper-icon-revision"), "keeper-v1\n");
   // The desktop update component: app.asar alone, plus the whole app (the bootstrap package) for Electron changes.
@@ -98,11 +98,15 @@ async function packageDesktop(scratch, output, identity) {
     const signingPassword = process.env.BRANCH_MACOS_SIGNING_PASSWORD_FILE;
     const rcodesign = process.env.BRANCH_MACOS_RCODESIGN;
     assert(signingP12 && signingPassword && rcodesign, "macOS releases require a stable code-signing identity");
+    // A receipt inside the sealed bundle cannot be rewritten after nested-code signing.
+    // The release proof records the final shipped Node hash instead.
+    await rm(join(resources, "node/node-runtime.json"));
     // Packager signs before the bundled Node and icon revision are added. Sign the finished bundle,
-    // including its nested code, and use system tar to retain _CodeSignature and framework symlinks.
+    // including its nested code, before hashing the Node binary or archiving the app.
     await run(rcodesign, ["sign", "--p12-file", signingP12, "--p12-password-file", signingPassword, join(app, "Branch Agent.app")]);
-    await run("tar", ["-czf", join(output, `branch-desktop-${identity.version}-${identity.platform}-${identity.arch}.tar.gz`), "-C", app, "."]);
-  } else desktop.runtime = app;
+    node = { ...node, sha256: (await fileDigest(join(resources, "node/node"))).sha256 };
+  }
+  desktop.runtime = app;
   return { node, electron, electronVersion: identity.electronVersion, desktop,
     nodePath: join(resources, "node", identity.platform === "win32" ? "node.exe" : "node") };
 }
