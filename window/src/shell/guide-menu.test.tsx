@@ -19,9 +19,9 @@ describe("Guide menu external links", () => {
     { label: "Set up Branch", hint: "3 min", run: () => undefined, testid: "guide-setup" },
     { label: "Take the walkthrough", hint: "2 min", run: () => undefined, testid: "guide-tour" },
     { kind: "sep" },
-    { label: "Docs", run: () => window.open(docsUrl, "_blank") },
-    { label: "Get help", run: () => window.open(helpUrl, "_blank") },
-    { label: "Community", run: communityUrl ? () => window.open(communityUrl, "_blank") : undefined, disabled: communityUrl ? undefined : communityDisabledReason },
+    { label: "Docs", run: () => { window.open(docsUrl, "_blank"); } },
+    { label: "Get help", run: () => { window.open(helpUrl, "_blank"); } },
+    { label: "Community", run: communityUrl ? () => { window.open(communityUrl, "_blank"); } : undefined, disabled: communityUrl ? undefined : communityDisabledReason },
     { label: "What Branch can do", run: () => undefined, testid: "guide-cando" },
   ];
 
