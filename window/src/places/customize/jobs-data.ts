@@ -2,7 +2,7 @@
 import type { WindowEngine } from "../../connect/engine";
 import { errorText, type FileEntry } from "../library/data";
 import { createReadyTrunk } from "../trunk/api";
-import { CHIEF_OF_STAFF_DESCRIPTION, createChiefOfStaff } from "../trunk/chief-of-staff";
+import { CHIEF_OF_STAFF_DESCRIPTION, makeChiefOfStaff } from "../trunk/chief-of-staff";
 /** The starting jobs, each with the pebble colour and shape the preview draws on its tile. */
 export const JOBS = [
   { name: "Inbox Manager", description: "Clears your inbox and drafts replies in your voice" , color: "#4F6FA8", shape: "50%" },
@@ -14,7 +14,6 @@ export const JOBS = [
 ];
 /** Create an actual Trunk, then append the selected job to its source-generated instructions. */
 export async function createJob(engine: WindowEngine, job: typeof JOBS[number], current: () => boolean = () => true, avatar?: string, name = job.name) {
-  if (job.name === "Chief of Staff") return createChiefOfStaff(engine, current, name, avatar);
   const agentId = await createReadyTrunk(engine, name, current, avatar);
   try {
     if (!current()) throw new Error("You left this screen before its job instructions were saved.");
@@ -24,6 +23,10 @@ export async function createJob(engine: WindowEngine, job: typeof JOBS[number], 
     const content = (file.content ?? "").trimEnd() + "\n\n## Your job\n\n" + job.description + ".\n";
     const saved = await engine.request<{ ok: boolean }>("agents.files.set", { agentId, name: "SOUL.md", content, ...(file.missing ? { expectedMissing: true } : { expectedHash: file.hash }) });
     if (saved.ok !== true) throw new Error("The engine did not confirm the instructions were saved.");
+    if (job.name === "Chief of Staff") {
+      if (!current()) throw new Error("You left this screen before its role was saved.");
+      await makeChiefOfStaff(engine, agentId);
+    }
     return agentId;
   } catch (error) { throw new Error(`${job.name} was created (${agentId}), but its job instructions were not saved. ${errorText(error)} Open Edit to finish setting it up.`); }
 }
