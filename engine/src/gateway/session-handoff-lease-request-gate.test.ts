@@ -77,6 +77,9 @@ describe("session handoff lease request gate: which requests", () => {
       "chat.history",
       "sessions.companion.ask",
       "progressCard.get",
+      "chat.abort",
+      "sessions.abort",
+      "sessions.processes.stop",
       "health",
     ]) {
       expect(isSessionHandoffGatedMethod(method), method).toBe(false);
@@ -113,6 +116,24 @@ describe("session handoff lease request gate: which requests", () => {
         { key: "agent:main:main" },
         leased,
       ),
+    ).toEqual([]);
+  });
+
+  it("waits on every held session for a write that names none, and never for a new session", () => {
+    const leased = ["session:agent:main:main", "session:agent:main:work"];
+    expect(findSessionHandoffLeasedLanes("agent", { message: "hi" }, leased)).toEqual(leased);
+    expect(
+      findSessionHandoffLeasedLanes("sessions.create", { key: "agent:main:new" }, leased),
+    ).toEqual([]);
+    expect(
+      findSessionHandoffLeasedLanes(
+        "sessions.create",
+        { key: "agent:main:child", parentSessionKey: "agent:main:work" },
+        leased,
+      ),
+    ).toEqual(["session:agent:main:work"]);
+    expect(
+      findSessionHandoffLeasedLanes("chat.abort", { sessionKey: "agent:main:main" }, leased),
     ).toEqual([]);
   });
 });

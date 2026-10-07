@@ -31,13 +31,39 @@ export type SessionHandoffLeaseRequestWait =
 /** How long a refused caller should wait before it tries again. */
 export const SESSION_HANDOFF_LEASE_RETRY_AFTER_MS = 5_000;
 
-/** Methods that name a session in their target fields but only read it. */
-const SESSION_TARGET_READS = new Set(["sessions.messages.subscribe", "progressCard.get"]);
+/**
+ * Methods that name a session in their target fields but never write it: reads, and Stop. A run the previous
+ * engine still finishes is not this engine's to stop, so Stop answers at once instead of waiting to fail.
+ */
+const UNGATED_SESSION_TARGET_METHODS = new Set([
+  "sessions.messages.subscribe",
+  "progressCard.get",
+  "chat.abort",
+  "sessions.abort",
+  "sessions.processes.stop",
+]);
 
-/** Methods that may write the sessions they name (the shared session method policy, minus reads). */
+/** Methods that may write the sessions they name (the shared session method policy, minus reads and Stop). */
 export function isSessionHandoffGatedMethod(method: string): boolean {
-  if (SESSION_TARGET_READS.has(method)) return false;
+  if (UNGATED_SESSION_TARGET_METHODS.has(method)) return false;
   return method === "sessions.patchMany" || sessionMutationTargetFields(method).length > 0;
+}
+
+/** The sessions a request names. A new session can't be leased; creating one only writes its parent. */
+function requestSessionTargets(
+  method: string,
+  params: unknown,
+): Array<{ sessionKey: string; agentId?: string }> {
+  if (method !== "sessions.create") return resolveDirectSessionTargets(method, params);
+  const record = params as { parentSessionKey?: unknown; agentId?: unknown } | null | undefined;
+  const parent = record?.parentSessionKey;
+  if (typeof parent !== "string" || !parent.trim()) return [];
+  return [
+    {
+      sessionKey: parent,
+      ...(typeof record?.agentId === "string" ? { agentId: record.agentId } : {}),
+    },
+  ];
 }
 
 function laneCandidates(key: string, agentId: string | undefined): string[] {
@@ -63,17 +89,23 @@ export function findSessionHandoffLeasedLanes(
   leasedLanes: readonly string[],
 ): string[] {
   if (leasedLanes.length === 0 || !isSessionHandoffGatedMethod(method)) return [];
+  const targets = requestSessionTargets(method, params);
+  const sessionId = (params as { sessionId?: unknown } | null | undefined)?.sessionId;
+  const namesSessionId = typeof sessionId === "string" && sessionId.trim() !== "";
+  // A write that names no session lands in a default one (the agent's main session, say): any of them may be held.
+  if (targets.length === 0 && !namesSessionId) {
+    return method === "sessions.create" ? [] : [...leasedLanes];
+  }
   const exact = new Set<string>();
   const aliasSuffixes: string[] = [];
-  for (const { sessionKey, agentId } of resolveDirectSessionTargets(method, params)) {
+  for (const { sessionKey, agentId } of targets) {
     const key = sessionKey.trim();
     if (!key) continue;
     for (const lane of laneCandidates(key, agentId)) exact.add(lane);
     // An unscoped alias may belong to any agent: match every lane that ends in it.
     if (!key.toLowerCase().startsWith("agent:")) aliasSuffixes.push(`:${key.toLowerCase()}`);
   }
-  const sessionId = (params as { sessionId?: unknown } | null | undefined)?.sessionId;
-  if (typeof sessionId === "string" && sessionId.trim()) exact.add(resolveSessionLane(sessionId));
+  if (namesSessionId) exact.add(resolveSessionLane(sessionId as string));
   return leasedLanes.filter(
     (lane) =>
       exact.has(lane) || aliasSuffixes.some((suffix) => lane.toLowerCase().endsWith(suffix)),
