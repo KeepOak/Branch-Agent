@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { capabilityTests, harvestTests, namedTests } from './feature-batch-ci-targets.mjs';
+import { slices, windowSlices } from './feature-slice-ci-targets.mjs';
+import { priorityMemoryIntegration, priorityTests } from './priority-capabilities-ci-targets.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const testFile = /^(engine|window|desktop)\/.+\.test\.(?:ts|tsx|mjs|mts)$/;
@@ -41,6 +43,16 @@ export function coverageTargets(desktopWorkflow) {
     for (const file of [...namedTests(lane), ...harvestTests(lane)]) covered.add(`${lane}/${file}`);
   }
   for (const file of capabilityTests()) covered.add(`engine/${file}`);
+  for (const slice of slices) {
+    for (const file of [...slice.native, ...slice.vitest]) covered.add(`engine/${file}`);
+    for (const followup of slice.followups ?? []) {
+      for (const file of [...(followup.native ?? []), ...(followup.vitest ?? [])]) covered.add(`engine/${file}`);
+    }
+  }
+  for (const slice of windowSlices) {
+    for (const file of [...slice.native, ...slice.vitest]) covered.add(`window/${file}`);
+  }
+  for (const file of [...priorityTests, priorityMemoryIntegration]) covered.add(`engine/${file}`);
   return covered;
 }
 
