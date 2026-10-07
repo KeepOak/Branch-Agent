@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile, rename } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile, rename } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createPortProbe } from "node:net";
 import { createRequire } from "node:module";
@@ -161,8 +161,8 @@ test("archive traversal is rejected even when compressed asset hash is valid", a
   await assert.rejects(readFile(join(root, "escaped")), { code: "ENOENT" });
 }, data => damage(data, tar => { tar.fill(0, 0, 100); tar.write("../../escaped", 0); checksum(tar); })));
 
-test("archive symlink entries are rejected before filesystem publication", async () => fixture(async ({ cfg, request }) => {
-  await assert.rejects(source.refreshComponentUpdate(cfg, request), /links/); await unchanged(cfg);
+test("malformed archive symlink entries are rejected before filesystem publication", async () => fixture(async ({ cfg, request }) => {
+  await assert.rejects(source.refreshComponentUpdate(cfg, request), /link has content/); await unchanged(cfg);
 }, data => damage(data, tar => { tar[156] = 50; checksum(tar); })));
 
 test("archive checksum corruption is rejected after asset hash passes", async () => fixture(async ({ cfg, request }) => {
@@ -298,6 +298,26 @@ test("release maker assembles distinct Windows/macOS descriptors sharing only an
     }
   }
   assert.equal((await readdir(output)).filter(name => name.startsWith(".component-stage-")).length, 0);
+}));
+
+test("macOS runtime component preserves in-bundle framework symlinks", { skip: process.platform !== "darwin" }, async () => fixture(async ({ root, engine, window }) => {
+  const app = join(root, "signed-app"), contents = join(app, "Branch Agent.app/Contents");
+  const framework = join(contents, "Frameworks/Example.framework");
+  await mkdir(join(contents, "Resources"), { recursive: true });
+  await mkdir(join(framework, "Versions/A"), { recursive: true });
+  await writeFile(join(contents, "Resources/app.asar"), "sealed asar");
+  await writeFile(join(framework, "Versions/A/Example"), "signed framework");
+  await symlink("A", join(framework, "Versions/Current"));
+  const asar = join(root, "asar"); await mkdir(asar); await writeFile(join(asar, "app.asar"), "sealed asar");
+  const output = join(root, "mac-runtime-release");
+  const release = await makeComponentRelease({ version: "0.4.3", engine, window, output, platform: "darwin", arch: "arm64",
+    desktop: { app: asar, runtime: app, electronVersion: "44.5.1" } });
+  const asset = release.components.desktopRuntime;
+  const extracted = join(root, "mac-runtime-extracted"); await mkdir(extracted);
+  const { extractComponentArchive } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-archive.js")));
+  await extractComponentArchive(join(output, new URL(asset.url).pathname.split("/").at(-1)), extracted, asset.expandedBytes);
+  assert.equal(await readlink(join(extracted, "Branch Agent.app/Contents/Frameworks/Example.framework/Versions/Current")), "A");
+  assert.equal(await readFile(join(extracted, "Branch Agent.app/Contents/Frameworks/Example.framework/Versions/Current/Example"), "utf8"), "signed framework");
 }));
 
 test("release maker refuses changed shared renderer and preserves existing immutable assets", async () => fixture(async ({ root, engine, window }) => {

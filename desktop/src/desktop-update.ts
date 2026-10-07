@@ -1,8 +1,8 @@
 // The desktop app's own update, in the same verified component flow as the engine and window.
 // Like electron-updater's quitAndInstall: a release is downloaded, size/SHA256-checked and extracted beside the
 // other components while the app runs; the swap happens only once this app has exited. A small helper (written
-// outside app.asar, run by plain Node) waits for the exit, swaps app.asar (or, when Electron itself changes, the
-// whole app folder), relaunches, and restores the previous copy if the new one never confirms its start.
+// outside app.asar, run by plain Node) waits for the exit, swaps app.asar (or the whole app when Electron changes
+// or macOS requires a sealed bundle), relaunches, and restores the previous copy if the new one never confirms.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import type * as NodeFs from "node:fs";
@@ -53,6 +53,7 @@ const CONFIRM_TIMEOUT_MS = 90_000;
  */
 export const STAGED_ASAR = ".asar.staged";
 const stagedName = (name: string): string => name.replace(/\.asar(?=\/|$)/g, STAGED_ASAR);
+const sealedMacInstall = (install: DesktopInstall): boolean => process.platform === "darwin" && install.appDir.endsWith(".app");
 
 /** Electron's fs opens app.asar as an archive; original-fs reads the file's own bytes. */
 const rawFs: typeof NodeFs = process.versions.electron ? require("original-fs") : require("node:fs");
@@ -87,7 +88,8 @@ async function rejected(cfg: DesktopConfig, version: string, sha256: string): Pr
 function choose(release: ComponentRelease, install: DesktopInstall, iconUpgrade = false): { asset: DesktopAsset; kind: DesktopJournal["kind"] } | undefined {
   const desktop = release.components.desktop;
   if (!desktop) return undefined;
-  if (desktop.electronVersion === install.electronVersion && !iconUpgrade) return { asset: desktop, kind: "asar" };
+  // macOS seals app.asar in the code signature; replacing that resource alone invalidates the app.
+  if (!sealedMacInstall(install) && desktop.electronVersion === install.electronVersion && !iconUpgrade) return { asset: desktop, kind: "asar" };
   const runtime = release.components.desktopRuntime;
   if (!runtime || runtime.electronVersion !== desktop.electronVersion) {
     throw new Error(`Release ${release.version} moves the desktop to Electron ${desktop.electronVersion}; install the new desktop package from the release page`);
@@ -103,9 +105,11 @@ async function installedMatches(asset: DesktopAsset, install: DesktopInstall): P
 
 /** A staged copy byte-identical to the installed one: for a whole app, the same executable and app.asar. */
 async function stagedMatchesInstalled(journal: DesktopJournal, install: DesktopInstall): Promise<boolean> {
+  const executable = sealedMacInstall(install) ? join("Contents", "MacOS", basename(install.executable)) : basename(install.executable);
+  const resources = sealedMacInstall(install) ? join("Contents", "Resources") : "resources";
   const pairs: Array<[string, string]> = journal.kind === "asar" ? [[journal.staged, journal.target]]
-    : [[join(journal.staged, basename(install.executable)), install.executable],
-      [join(journal.staged, `resources/app${STAGED_ASAR}`), join(install.resourcesDir, "app.asar")]];
+    : [[join(journal.staged, executable), install.executable],
+      [join(journal.staged, resources, `app${STAGED_ASAR}`), join(install.resourcesDir, "app.asar")]];
   for (const [staged, installed] of pairs) {
     const digest = await fileSha256(staged);
     if (!digest || digest !== await fileSha256(installed)) return false;
@@ -144,10 +148,13 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
     await mkdir(payload);
     await extractComponentArchive(archive, payload, choice.asset.expandedBytes, stagedName);
     await rm(archive);
-    const staged = choice.kind === "asar" ? join(payload, `app${STAGED_ASAR}`) : payload;
+    const staged = choice.kind === "asar" ? join(payload, `app${STAGED_ASAR}`)
+      : sealedMacInstall(install) ? join(payload, basename(install.appDir)) : payload;
     const target = choice.kind === "asar" ? join(install.resourcesDir, "app.asar") : install.appDir;
     if (choice.kind === "asar") await assertFile(staged);
-    else for (const file of [basename(install.executable), `resources/app${STAGED_ASAR}`]) await assertFile(join(payload, file));
+    else for (const file of sealedMacInstall(install)
+      ? [`Contents/MacOS/${basename(install.executable)}`, `Contents/Resources/app${STAGED_ASAR}`]
+      : [basename(install.executable), `resources/app${STAGED_ASAR}`]) await assertFile(join(staged, file));
     const journal: DesktopJournal = { version: release.version, sha256: choice.asset.sha256, kind: choice.kind, staged, target, phase: "staged" };
     await replaceFile(journalFile(cfg), JSON.stringify(journal));
     return true;
@@ -184,7 +191,8 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
   // A whole-folder swap must not run the helper from inside the folder it renames.
   const node = journal.kind === "runtime" ? join(work, basename(install.nodePath)) : install.nodePath;
   if (journal.kind === "runtime") await copyFile(install.nodePath, node);
-  const relaunchExecutable = journal.kind === "runtime" ? join(install.appDir, basename(install.executable)) : install.executable;
+  const relaunchExecutable = journal.kind === "runtime" && !sealedMacInstall(install)
+    ? join(install.appDir, basename(install.executable)) : install.executable;
   const plan: HelperPlan = { journal: journalFile(cfg), versionFile: versionFile(cfg), rejectedFile: rejectedFile(cfg),
     log: join(cfg.dataDir, "desktop.log"), waitPid: process.pid, relaunch: { command: relaunchExecutable, args }, confirmTimeoutMs: CONFIRM_TIMEOUT_MS };
   const planFile = join(work, "desktop-update-plan.json");
