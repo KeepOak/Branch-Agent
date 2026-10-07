@@ -28,21 +28,33 @@ function abortWindowRuns(ops: ChatAbortOps): void {
   }
 }
 
+/** One stop step; a failure is logged and never keeps the others, or the config commit, from running. */
+function attempt(step: string, stop: () => unknown): void {
+  try {
+    const result = stop();
+    if (result instanceof Promise) {
+      result.catch((error: unknown) =>
+        log.warn(`Lockdown could not stop ${step}: ${String(error)}`),
+      );
+    }
+  } catch (error) {
+    log.warn(`Lockdown could not stop ${step}: ${String(error)}`);
+  }
+}
+
 /** Stops every running Trunk. `ops` is the gateway's chat run state when the gateway context is up. */
 export function stopRunningWorkForLockdown(ops?: ChatAbortOps): void {
   if (ops) {
-    abortWindowRuns(ops);
+    attempt("window runs", () => abortWindowRuns(ops));
   }
   // Channel inbound, cron, hooks and subagents run outside the window's chat registry.
-  abortEmbeddedAgentRun(undefined, { mode: "all" });
-  abortActiveCronTaskRuns(LOCKDOWN_STOP_REASON);
+  attempt("embedded runs", () => abortEmbeddedAgentRun(undefined, { mode: "all" }));
+  attempt("cron runs", () => abortActiveCronTaskRuns(LOCKDOWN_STOP_REASON));
   // Only agent-owned background commands; desktop and update processes share the supervisor and keep running.
-  for (const session of listRunningSessions()) {
-    cancelBackgroundExecSession(session.id);
-  }
-  void peekAcpSessionManager()
-    ?.cancelAllTurns(LOCKDOWN_STOP_REASON)
-    .catch((error: unknown) =>
-      log.warn(`ACP turns did not all stop for Lockdown: ${String(error)}`),
-    );
+  attempt("background commands", () => {
+    for (const session of listRunningSessions()) {
+      attempt(`background command ${session.id}`, () => cancelBackgroundExecSession(session.id));
+    }
+  });
+  attempt("ACP turns", () => peekAcpSessionManager()?.cancelAllTurns(LOCKDOWN_STOP_REASON));
 }

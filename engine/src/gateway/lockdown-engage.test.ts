@@ -67,4 +67,17 @@ describe("stopping running work when Lockdown turns on", () => {
     ]);
     expect(mocks.abortEmbeddedAgentRun).toHaveBeenCalledOnce();
   });
+
+  it("keeps stopping the rest when one step throws", () => {
+    mocks.abortEmbeddedAgentRun.mockImplementationOnce(() => {
+      throw new Error("abort failed");
+    });
+    mocks.cancelBackgroundExecSession.mockImplementationOnce(() => {
+      throw new Error("kill failed");
+    });
+    expect(() => stopRunningWorkForLockdown(undefined)).not.toThrow();
+    expect(mocks.abortActiveCronTaskRuns).toHaveBeenCalledOnce();
+    expect(mocks.cancelBackgroundExecSession).toHaveBeenCalledTimes(2);
+    expect(mocks.cancelAllTurns).toHaveBeenCalledOnce();
+  });
 });
