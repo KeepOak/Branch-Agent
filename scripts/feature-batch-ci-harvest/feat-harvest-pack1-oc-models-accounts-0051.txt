@@ -1,32 +1,5 @@
+# Tests for feat/harvest-pack1-oc-models-accounts-0051 run from scripts/feature-batch-ci-named/feat-harvest-pack1-oc-models-accounts-0051.txt.
+# Left out of Harvest so harvestTests() and namedTests() stay disjoint.
+# merge-gate-trusted coverage reads only named lists from the PR head.
 # order.test.ts and usage-state.test.ts stay on the named engine list after main merge.
 # paired-node.e2e.test.ts stays out of Harvest: Harvest vitest excludes **/*.e2e.test.ts.
-engine:extensions/apple-fm/index.test.ts
-engine:extensions/apple-fm/native.test.ts
-engine:extensions/apple-fm/stream.test.ts
-engine:extensions/ollama/src/node-inference.test.ts
-engine:src/agents/auth-profiles/oauth-manager.lock-cancel.test.ts
-engine:src/agents/auth-profiles/oauth-manager.test.ts
-engine:src/agents/auth-profiles/oauth-refresh-fence.test.ts
-engine:src/agents/auth-profiles/oauth.concurrent-agents.test.ts
-engine:src/agents/auth-profiles/session-override.rotation.test.ts
-engine:src/agents/auth-profiles/usage.test.ts
-engine:src/agents/decision-assistance.test.ts
-engine:src/agents/embedded-agent-runner/google-prompt-cache.failures.test.ts
-engine:src/agents/embedded-agent-runner/google-prompt-cache.test.ts
-engine:src/agents/embedded-agent-runner/prompt-cache-retention.test.ts
-engine:src/agents/failover-policy.test.ts
-engine:src/agents/failover/classify.legacy-provider-predicates.test.ts
-engine:src/agents/failover/classify.test.ts
-engine:src/agents/fast-mode.test.ts
-engine:src/agents/local-model-lean.test.ts
-engine:src/agents/provider-local-service.linux-oom.test.ts
-engine:src/agents/provider-local-service.readiness.test.ts
-engine:src/agents/provider-local-service.test.ts
-engine:src/agents/subagents/spawn/subagent-spawn.authority.test.ts
-engine:src/agents/subagents/spawn/subagent-spawn.depth-limits.test.ts
-engine:src/agents/tools/sessions-spawn-tool.test.ts
-engine:src/agents/tools/subagents-tool.test.ts
-engine:src/cli/capability-cli.help.test.ts
-engine:src/cli/capability-cli.test.ts
-engine:src/decisions/runtime.admission.test.ts
-engine:src/decisions/runtime.test.ts
