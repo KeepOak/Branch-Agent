@@ -110,7 +110,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   };
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
   await prepare?.(root);
-  let onStaged, swapGuard;
+  let onStaged, onWithdrawal, swapGuard, pendingVersion;
   // Auto-apply's clock: a test moves it past the 60 s idle hold instead of waiting for it.
   const clock = { skew: 0 };
   Module._load = function(name, ...args) {
@@ -123,12 +123,15 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     }
     if (name === "./auto-apply-update") {
       const source = originalLoad.call(this, name, ...args);
-      return { ...source, createAutoApplyUpdate: options => source.createAutoApplyUpdate({ ...options, now: () => Date.now() + clock.skew }) };
+      return { ...source, createAutoApplyUpdate: options => {
+        pendingVersion = options.pendingVersion;
+        return source.createAutoApplyUpdate({ ...options, now: () => Date.now() + clock.skew });
+      } };
     }
     if (name === "./component-update") {
       const source = originalLoad.call(this, name, ...args);
       return { ...source, watchComponentUpdates: (cfg, log, options) => {
-        onStaged = options.onStaged; swapGuard = options.underSwapGuard;
+        onStaged = options.onStaged; onWithdrawal = options.onWithdrawal; swapGuard = options.underSwapGuard;
         return source.watchComponentUpdates(cfg, log, options);
       }, confirmComponentUpdate: async (...args) => {
         // fail-confirm: the new engine answered /readyz but its update cannot be confirmed (once).
@@ -154,7 +157,8 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   try {
     require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js"));
     if (!holdStartup) await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway ready"), 30_000);
-    await run({ root, runtime, starts, restart, offerStaged: () => onStaged(), swapGuard: (work) => swapGuard(work), clock });
+    await run({ root, runtime, starts, restart, offerStaged: () => onStaged(), withdraw: version => onWithdrawal(version),
+      pendingVersion: () => pendingVersion(), swapGuard: (work) => swapGuard(work), clock });
   } finally {
     await writeFile(join(root, "release-ready"), "ready"); await pause(600);
     runtime.app.emit("will-quit");
@@ -930,6 +934,13 @@ test("a queued Update click is discarded when replacement withdraws the staged r
   await swapGuard(async () => true);
   await pause(200);
   assert.equal((await starts()).length, 1, "the stale click fired on an unrelated later release");
+}));
+
+test("auto-apply ignores a withdrawn version while the staged status still reports it", () => fixture(async ({ root, pendingVersion, withdraw }) => {
+  await stageFixtureUpdate(root);
+  assert.equal(await pendingVersion(), "fixture-next");
+  withdraw("fixture-next");
+  assert.equal(await pendingVersion(), null);
 }));
 test("a staged-update replacement that ends rolled back keeps the served window valid and never reloads it", () => fixture(async ({ root, runtime, offerStaged, swapGuard }) => {
   idleWindow(runtime);

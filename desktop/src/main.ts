@@ -608,7 +608,10 @@ async function candidatePassed(label: string, signal?: AbortSignal): Promise<boo
 }
 
 const autoApply = createAutoApplyUpdate({
-  pendingVersion: async () => (await readComponentUpdateStatus(cfg)).componentsPendingVersion,
+  pendingVersion: async () => {
+    const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+    return version === withdrawnUpdateVersion ? null : version;
+  },
   enabled: () => controls.settings().autoApplyUpdates,
   activity: async () => {
     if (!gateway) throw new Error("The gateway is not running");
