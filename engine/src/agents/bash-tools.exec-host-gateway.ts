@@ -853,8 +853,22 @@ export async function processGatewayAllowlist(
   }
   const requiresAsk =
     policyRequiresAsk || (durableApprovalRequiresBinding && mutableFileApprovalRequiresOneShot);
+  // Explicit approval requirements can also arise under full policy (for
+  // example strict inline eval). Bind those Windows dispatches through the
+  // same native enforcer without changing ordinary Full Access admission.
+  const reviewEnforcedCommand =
+    process.platform === "win32" &&
+    policyRequiresAsk &&
+    analysisOk &&
+    !shouldPrepareAllowlistExecution
+      ? buildEnforcedShellCommand({
+          command: params.command,
+          segments: allowlistEval.segments,
+          platform: process.platform,
+        })
+      : gatewayEnforcedCommand;
   const autoReviewEnforcedCommand =
-    gatewayEnforcedCommand?.ok === true ? gatewayEnforcedCommand.command : undefined;
+    reviewEnforcedCommand?.ok === true ? reviewEnforcedCommand.command : undefined;
   const autoReviewBlockedByShellStartup = allowlistEval.segments.some((segment) =>
     hasPosixShellStartupBeforeInlineCommand(segment.argv),
   );
