@@ -164,6 +164,69 @@ test("a staged update is not replaced while the swap guard is held, or once its 
   assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
 }));
 
+/** Fails the replacement's folder moves chosen by `fails(from, to)`; every other move runs for real. */
+async function withFailingMoves(fails, run) {
+  const files = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-files.js")));
+  source.setReplacementMoveForTests(async (from, to) => {
+    if (fails(from, to)) throw Object.assign(new Error(`EPERM: operation not permitted, rename '${from}'`), { code: "EPERM" });
+    return files.move(from, to);
+  });
+  try { return await run(); } finally { source.setReplacementMoveForTests(undefined); }
+}
+
+test("a replacement that fails part way puts the staged pair back; the served window never moves", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  const staged = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  const journal = await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8");
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const served = (await source.readComponentUpdateStatus(cfg)).previousWindowDir;
+  const newer = await newerRelease(context);
+  const logs = [];
+  let checks = 0, missing = 0;
+  const guard = async (replace) => {
+    const probe = setInterval(() => { checks++; if (!existsSync(join(served, "index.html"))) missing++; }, 0);
+    try { return await replace(); } finally { clearInterval(probe); }
+  };
+  // As Defender holding the just-extracted window: moving the newer window into place fails.
+  await withFailingMoves((from, to) => to === cfg.windowDir && from.includes("release-0.4.4-"), () =>
+    assert.rejects(source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: guard, log: line => logs.push(line) }), /EPERM/));
+  assert.ok(checks > 0); assert.equal(missing, 0, "the window the desktop serves went missing");
+  assert.equal(await readFile(join(served, "index.html"), "utf8"), "old window");
+  // The held staged pair is back exactly as it was, still offered.
+  assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
+  assert.equal(await readFile(join(cfg.dataDir, "component-update-pending.json"), "utf8"), journal);
+  assert.equal(await readFile(join(cfg.windowDir, "index.html"), "utf8"), "<title>new window</title>");
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.3");
+  assert.deepEqual((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")), [], "the newer download was left on disk");
+  assert.match(logs.join("\n"), /0\.4\.3 stays staged/);
+}));
+
+test("a replacement whose undo also fails rolls back to the running build, and says where the window now is", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const newer = await newerRelease(context);
+  await withFailingMoves((from, to) => to === cfg.windowDir, () =>
+    assert.rejects(source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: async replace => await replace() }), /EPERM/));
+  await unchanged(cfg);
+  const status = await source.readComponentUpdateStatus(cfg);
+  assert.equal(status.publicationInProgress, false);
+  assert.equal(status.previousWindowDir, null, "the desktop must now serve windowDir, which holds the running build");
+}));
+
+test("a manifest that goes back to the running version withdraws the staged pair instead of staging a copy", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-version.txt"), "0.4.2\n");
+  const back = await newerRelease(context, "0.4.2");
+  assert.equal(await source.refreshComponentUpdate(cfg, back.request, { underSwapGuard: freeGuard }), false);
+  await unchanged(cfg);
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, null);
+  assert.deepEqual((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.2-")), [], "a copy of the running version was staged");
+}));
+
 test("a replacement interrupted mid-way rolls back to the running build", async () => fixture(async (context) => {
   const { cfg, request } = context;
   await source.refreshComponentUpdate(cfg, request);

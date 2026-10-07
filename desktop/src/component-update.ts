@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
@@ -272,49 +272,89 @@ async function replaceable(cfg: DesktopConfig, held: Publication): Promise<boole
 /** Removes a superseded staged component folder under <data>/updates; a failure is logged, never silent. */
 async function removeStagedFolder(cfg: DesktopConfig, folder: string, log?: (line: string) => void): Promise<void> {
   const inside = relative(join(cfg.dataDir, "updates"), folder);
-  if (!inside || inside.startsWith("..") || !existsSync(folder)) return;
+  // relative() returns an absolute path for a folder on another Windows drive.
+  if (!inside || inside.startsWith("..") || isAbsolute(inside) || !existsSync(folder)) return;
   try { await rm(folder, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); }
   catch (error) { log?.(`Superseded staged update folder ${folder} could not be removed: ${error instanceof Error ? error.message : String(error)}`); }
 }
 
+/** Test seam: replaces the folder move used by a staged-pair replacement (to fail it part way). */
+let replacementMove: typeof move = move;
+export function setReplacementMoveForTests(fn: typeof move | undefined): void { replacementMove = fn ?? move; }
+
 /**
  * Replaces a staged, never-started engine/window pair with a newer release in place, under one journal. The running
- * build's window (windowPrevious) never moves, so the window the desktop serves stays valid throughout. A crash in
- * between is rolled back to the running build like any prepared publication.
+ * build's window (windowPrevious) never moves, so the window the desktop serves stays valid throughout. A failure
+ * part way puts the held staged pair back exactly as it was (only if that fails too does the publication roll back
+ * to the running build); a crash in between is rolled back to the running build like any prepared publication.
+ * Resolves with the superseded folders, which the caller removes once the swap guard is released.
  */
-async function replaceStagedInPlace(cfg: DesktopConfig, held: Publication, release: ComponentRelease, next: { engine: string; window: string }, log?: (line: string) => void): Promise<void> {
+async function replaceStagedInPlace(cfg: DesktopConfig, held: Publication, release: ComponentRelease, next: { engine: string; window: string }, log?: (line: string) => void): Promise<string[]> {
   const pending: Publication = { ...held, version: release.version, identity: releaseIdentity(release), phase: "prepared",
     engineNext: next.engine, engineReplaced: held.engineNext };
   await replaceFile(journalFile(cfg), JSON.stringify(pending));
   const supersededWindow = `${held.engineNext}-superseded-window`;
+  let heldWindowMoved = false, nextWindowMoved = false;
   try {
-    if (existsSync(cfg.windowDir)) await move(cfg.windowDir, supersededWindow);
-    await move(next.window, cfg.windowDir);
+    if (existsSync(cfg.windowDir)) { await replacementMove(cfg.windowDir, supersededWindow); heldWindowMoved = true; }
+    await replacementMove(next.window, cfg.windowDir); nextWindowMoved = true;
     await replaceFile(join(cfg.dataDir, "engine-current.txt"), `${next.engine}\n`);
     pending.phase = "pending";
     delete pending.engineReplaced;
     await replaceFile(journalFile(cfg), JSON.stringify(pending));
-  } catch (error) { await rollbackComponentUpdate(cfg); throw error; }
-  await removeStagedFolder(cfg, held.engineNext, log);
-  await removeStagedFolder(cfg, supersededWindow, log);
+  } catch (error) {
+    try {
+      if (nextWindowMoved && existsSync(cfg.windowDir)) await replacementMove(cfg.windowDir, next.window);
+      if (heldWindowMoved) await replacementMove(supersededWindow, cfg.windowDir);
+      await replaceFile(join(cfg.dataDir, "engine-current.txt"), `${held.engineNext}\n`);
+      await replaceFile(journalFile(cfg), JSON.stringify(held));
+      log?.(`The staged update could not be replaced (${error instanceof Error ? error.message : String(error)}); ${held.version} stays staged`);
+    } catch (restoreError) {
+      log?.(`The staged update could not be put back (${String(restoreError)}); rolling back to the running build`);
+      await rollbackComponentUpdate(cfg);
+    }
+    throw error;
+  }
+  return [held.engineNext, supersededWindow];
 }
 
 /**
  * A newer release replaces a staged, never-started pair. It is downloaded first, with nothing touched; the
  * replacement itself runs under the desktop's swap guard, so no update or window swap can start against it.
  */
-async function replaceStaged(cfg: DesktopConfig, held: Publication, release: ComponentRelease, request: typeof fetch, options: RefreshOptions): Promise<boolean> {
-  if (!options.underSwapGuard || held.version === release.version || (!options.retryRejected && await componentReleaseRejected(cfg, release))) return false;
+async function replaceStaged(cfg: DesktopConfig, held: Publication, release: ComponentRelease, request: typeof fetch, options: RefreshOptions): Promise<"replaced" | "withdrawn" | false> {
+  if (!options.underSwapGuard || held.version === release.version) return false;
+  // The manifest went back to the version that runs: the staged release was withdrawn. Never stage a copy of the
+  // running build as an "update"; put the running build's pair back instead (under the guard, as any replacement).
+  if (release.version === await readOrEmpty(versionFile(cfg))) {
+    const withdrawn = await options.underSwapGuard(async () => {
+      const current = await publication(cfg);
+      if (current?.engineNext !== held.engineNext || !await replaceable(cfg, current)) return false;
+      options.log?.(`The staged update ${current.version} was withdrawn; the running ${release.version} stays`);
+      return rollbackComponentUpdate(cfg);
+    });
+    return withdrawn === true ? "withdrawn" : false;
+  }
+  if (!options.retryRejected && await componentReleaseRejected(cfg, release)) return false;
   const next = await stage(cfg, release, request);
-  const replaced = await options.underSwapGuard(async () => {
-    // Re-checked under the guard: the staged pair may have been applied or changed while downloading.
-    const current = await publication(cfg);
-    if (current?.engineNext !== held.engineNext || current.phase !== "pending" || !await replaceable(cfg, current)) return false;
-    await replaceStagedInPlace(cfg, current, release, next, options.log);
-    return true;
-  });
-  if (replaced !== true) await removeStagedFolder(cfg, dirname(next.engine), options.log);
-  return replaced === true;
+  let superseded: string[] = [];
+  try {
+    const replaced = await options.underSwapGuard(async () => {
+      // Re-checked under the guard: the staged pair may have been applied or changed while downloading.
+      const current = await publication(cfg);
+      if (current?.engineNext !== held.engineNext || current.phase !== "pending" || !await replaceable(cfg, current)) return false;
+      superseded = await replaceStagedInPlace(cfg, current, release, next, options.log);
+      return true;
+    });
+    if (replaced !== true) superseded = [dirname(next.engine)];
+    return replaced === true ? "replaced" : false;
+  } catch (error) {
+    superseded = [dirname(next.engine)];
+    throw error;
+  } finally {
+    // Outside the guard: removing an engine folder can take seconds on Windows, and crash recovery waits on the guard.
+    for (const folder of superseded) await removeStagedFolder(cfg, folder, options.log);
+  }
 }
 
 /**
@@ -327,8 +367,9 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
   if (held && (!options.underSwapGuard || !await replaceable(cfg, held))) return false;
   const release = await readComponentManifest(request);
   if (held) {
-    if (!await replaceStaged(cfg, held, release, request, options)) return false;
-    return await stageDesktopUpdate(cfg, release, request, options.desktop) || true;
+    const result = await replaceStaged(cfg, held, release, request, options);
+    if (!result) return false;
+    return await stageDesktopUpdate(cfg, release, request, options.desktop) || result === "replaced";
   }
   let staged = false;
   if (await readOrEmpty(versionFile(cfg)) !== release.version && (options.retryRejected || !await componentReleaseRejected(cfg, release))) {
