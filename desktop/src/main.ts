@@ -451,6 +451,7 @@ async function handOffToStandby(label: string, prior: ChildProcess, selected: Pr
       resumeSupervision();
       throw new Error("the running engine could not step down for the update and kept serving");
     }
+    standbyFailures.set(label, STANDBY_ATTEMPTS);
     notServing(prior);
     resumeSupervision();
     throw new Error(`the running engine could not step down (${stepped}) and is not serving; Branch restarts it`);

@@ -44,6 +44,8 @@ type AuthorityOwner = {
   pending: Set<string>;
   observations: Set<Observation>;
   uses: Set<{ observation: Observation; retire: () => void }>;
+  closeForHandoff?: () => Promise<void>;
+  closePromise?: Promise<void>;
   failure?:
     | { origin: "admission" | "reconciliation"; error: unknown }
     | { origin: "native-initiation"; error: Error };
@@ -139,11 +141,10 @@ function ownerFor(context: BranchStateWorkerContext): AuthorityOwner {
     owner.failure = { origin: "admission", error };
   });
   owners.set(key, owner);
-  const unregister = registerBranchStateDatabaseAsyncResource({
-    async close(identity) {
-      if (identity && identity.key !== admittedSource.identity.key) {
-        return;
-      }
+  const closeOwner = (identity?: { key: string }): Promise<void> => {
+    if (identity && identity.key !== admittedSource.identity.key) return Promise.resolve();
+    if (owner.closePromise) return owner.closePromise;
+    const closing = (async () => {
       owner.closing = true;
       for (const use of owner.uses) {
         use.retire();
@@ -162,8 +163,17 @@ function ownerFor(context: BranchStateWorkerContext): AuthorityOwner {
         owners.delete(key);
       }
       unregister();
-    },
+    })();
+    owner.closePromise = closing;
+    void closing.catch(() => {
+      if (owner.closePromise === closing) owner.closePromise = undefined;
+    });
+    return closing;
+  };
+  const unregister = registerBranchStateDatabaseAsyncResource({
+    close: closeOwner,
   });
+  owner.closeForHandoff = () => closeOwner();
   return owner;
 }
 
@@ -218,6 +228,13 @@ export async function drainCronReceiptAuthority(): Promise<void> {
       throw unavailable();
     }
   }
+}
+
+/** A deactivated Gateway keeps its agent DB open for leased turns, but must relinquish
+ * physical cron custody before the successor can start the scheduler. */
+export async function releaseCronReceiptAuthorityForHandoff(): Promise<void> {
+  beginCronReceiptAuthorityClose();
+  await Promise.all(Array.from(owners.values(), (owner) => owner.closeForHandoff?.()));
 }
 
 function queue<T>(owner: AuthorityOwner, operation: () => Promise<T>): Promise<T> {
