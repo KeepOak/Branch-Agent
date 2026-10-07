@@ -22,8 +22,11 @@ const {
 } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
 
 const pause = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-async function eventually(predicate, ms = 15_000) {
-  for (const end = Date.now() + ms; !await predicate(); await pause(50)) if (Date.now() > end) throw new Error("Fixture deadline");
+async function eventually(predicate, ms = 15_000, step = 50) {
+  for (const end = Date.now() + ms; !await predicate(); await pause(step)) if (Date.now() > end) throw new Error("Fixture deadline");
+}
+async function eventuallyListed(folder, pid, ms = 20_000) {
+  await eventually(async () => (await listFolderProcesses(folder)).some(proc => proc.pid === pid), ms, 400);
 }
 function alive(pid) {
   try { process.kill(pid, 0); return true; } catch (error) { return error.code === "EPERM"; }
@@ -129,7 +132,7 @@ test("a runtime swap stops the install-folder node host before the rename and re
   leftover.push(child.pid);
   child.unref();
   await eventually(() => alive(child.pid), 5_000);
-  await eventually(async () => (await listFolderProcesses(appDir)).some(proc => proc.pid === child.pid), 20_000);
+  await eventuallyListed(appDir, child.pid);
   assert.equal(await runHelper(plan), "applied");
   assert.equal(await readFile(join(appDir, "Branch Agent.exe"), "utf8"), "new runtime");
   assert.equal(await readFile(join(appDir, "resources", "app.asar"), "utf8"), "new desktop asar");
@@ -155,7 +158,7 @@ test("stopFolderProcesses waits for the host to exit and restartFolderProcesses 
     leftover.push(child.pid);
     child.unref();
     await eventually(() => alive(child.pid), 5_000);
-    await eventually(async () => (await listFolderProcesses(root)).some(proc => proc.pid === child.pid), 20_000);
+    await eventuallyListed(root, child.pid);
     const lines = [];
     const stopped = await stopFolderProcesses(root, line => lines.push(line));
     assert.ok(stopped.some(proc => proc.pid === child.pid));
@@ -200,7 +203,7 @@ setInterval(() => {}, 1000);
   leftover.push(leftoverServe.pid);
   leftoverServe.unref();
   await eventually(() => alive(leftoverServe.pid), 5_000);
-  await eventually(async () => (await listFolderProcesses(appDir)).some(proc => proc.pid === leftoverServe.pid), 20_000);
+  await eventuallyListed(appDir, leftoverServe.pid);
   await eventually(async () => { try { return (await readFile(childPidFile, "utf8")).trim().length > 0; } catch { return false; } });
   const grandchild = Number((await readFile(childPidFile, "utf8")).trim());
   leftover.push(grandchild);
@@ -233,7 +236,7 @@ test("a node.exe outside the install folder is left alone", async () => {
     inside.unref();
     outside.unref();
     await eventually(() => alive(inside.pid) && alive(outside.pid), 5_000);
-    await eventually(async () => (await listFolderProcesses(root)).some(proc => proc.pid === inside.pid), 20_000);
+    await eventuallyListed(root, inside.pid);
     assert.equal(isInstallFolderNode({ pid: outside.pid, name: nodeName, executable: process.execPath, args: [] }, root), false);
     const lines = [];
     await stopFolderProcesses(root, line => lines.push(line));

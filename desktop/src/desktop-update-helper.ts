@@ -147,12 +147,8 @@ function listDescendants(pid: number): number[] {
       } else if (process.platform === "darwin") {
         const output = execFileSync("pgrep", ["-P", String(parent)], { encoding: "utf8", windowsHide: true, timeout: 5_000, stdio: ["ignore", "pipe", "pipe"] }).trim();
         kids = output ? output.split(/\s+/).map(Number).filter(n => Number.isInteger(n) && n > 0) : [];
-      } else if (process.platform === "win32") {
-        const output = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-          `Get-CimInstance Win32_Process -Filter "ParentProcessId=${parent}" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessId`],
-        { encoding: "utf8", windowsHide: true, timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }).trim();
-        kids = output ? output.split(/\s+/).map(Number).filter(n => Number.isInteger(n) && n > 0) : [];
       }
+      // Windows: taskkill /T walks the tree. A CIM parent-id walk here hung the desktop job.
     } catch { /* no children, or the parent is already gone */ }
     for (const kid of kids) {
       if (seen.has(kid)) continue;
