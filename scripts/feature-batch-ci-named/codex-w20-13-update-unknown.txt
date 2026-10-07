@@ -1,1 +1,1 @@
-window:src/places/settings/set2/updates-unknown.test.tsx
+window:src/places/settings/set2/updates.status.test.tsx
