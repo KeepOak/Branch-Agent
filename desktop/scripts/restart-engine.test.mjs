@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
@@ -673,7 +674,7 @@ test("a new window build swaps in place after attached files are sent, keeping t
   assert.equal(child.reloads, 1, "The pop-out kept running the old window build");
   assert.equal((await starts()).length, 1, "A window update restarted the engine");
 }));
-test("conversation IPC authenticates frames, tracks retargets, and guards a closed main window", () => fixture(async ({ runtime }) => {
+test("conversation IPC authenticates frames, tracks retargets, and guards a closed main window", () => fixture(async ({ root, runtime }) => {
   const main = runtime.window;
   const event = (w) => ({ sender: w.webContents, senderFrame: w.webContents.mainFrame });
   const info = event(main);
@@ -690,12 +691,18 @@ test("conversation IPC authenticates frames, tracks retargets, and guards a clos
   runtime.ipcMain.emit("branch-desktop:info", childInfo);
   assert.equal(childInfo.returnValue.gatewayToken, info.returnValue.gatewayToken);
   assert.throws(() => runtime.handlers.get("branch-desktop:open-main-route")(event(main), { kind: "chat", key: "agent:test:one" }));
+  const stateFile = key => join(root, `conversation-window-${createHash("sha256").update(key).digest("hex").slice(0, 20)}.json`);
+  await writeFile(stateFile("agent:test:one"), "{}");
   await runtime.handlers.get("branch-desktop:retarget-conversation-window")(event(child), "agent:test:two");
   assert.deepEqual(runtime.handlers.get("branch-desktop:conversation-windows")(event(main)), ["agent:test:two"]);
+  assert.equal(existsSync(stateFile("agent:test:one")), false);
+  child.emit("move");
+  await eventually(() => existsSync(stateFile("agent:test:two")));
   await runtime.handlers.get("branch-desktop:open-main-route")(event(child), { kind: "chat", key: "agent:test:two" });
   main.destroy();
   await runtime.handlers.get("branch-desktop:close-conversation-window")(event(child));
   assert.equal(child.isDestroyed(), true);
+  assert.deepEqual(JSON.parse(await readFile(join(root, "conversation-windows.json"), "utf8")), []);
 }));
 test("closing the main window with Keep working off closes pop-outs and quits", () => fixture(async ({ runtime }) => {
   const main = runtime.window;
@@ -709,6 +716,28 @@ test("closing the main window with Keep working off closes pop-outs and quits", 
   assert.equal(child.isDestroyed(), true);
   assert.equal(quits, 1);
 }, false, false, false, false, true));
+
+test("restores only existing saved conversations and removes deleted pop-out state", () => fixture(async ({ root, runtime }) => {
+  const main = runtime.window;
+  const event = { sender: main.webContents, senderFrame: main.webContents.mainFrame };
+  const one = "agent:test:one", deleted = "agent:test:deleted";
+  const stateFile = key => join(root, `conversation-window-${createHash("sha256").update(key).digest("hex").slice(0, 20)}.json`);
+  assert.equal(runtime.windows.length, 1, "saved windows wait for an existence check");
+  assert.deepEqual(runtime.handlers.get("branch-desktop:saved-conversation-windows")(event), [one, deleted]);
+  assert.throws(() => runtime.handlers.get("branch-desktop:restore-conversation-windows")(event, ["agent:test:foreign"]));
+  runtime.handlers.get("branch-desktop:restore-conversation-windows")(event, [one]);
+  assert.equal(runtime.windows.length, 2);
+  assert.equal(existsSync(stateFile(deleted)), false);
+  assert.deepEqual(JSON.parse(await readFile(join(root, "conversation-windows.json"), "utf8")), [one]);
+  runtime.handlers.get("branch-desktop:forget-conversation-window")(event, one);
+  await eventually(() => runtime.windows[1].isDestroyed());
+  assert.equal(existsSync(stateFile(one)), false);
+  assert.deepEqual(JSON.parse(await readFile(join(root, "conversation-windows.json"), "utf8")), []);
+}, false, false, false, "never", false, async (root) => {
+  const keys = ["agent:test:one", "agent:test:deleted"];
+  await writeFile(join(root, "conversation-windows.json"), JSON.stringify(keys));
+  for (const key of keys) await writeFile(join(root, `conversation-window-${createHash("sha256").update(key).digest("hex").slice(0, 20)}.json`), "{}");
+}));
 test("engine handoff and update notices reach the main window and every pop-out", () => fixture(async ({ root, runtime, restart }) => {
   const main = runtime.window;
   await runtime.handlers.get("branch-desktop:open-conversation")(

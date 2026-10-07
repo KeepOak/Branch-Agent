@@ -2,7 +2,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, session, shell } from "electron";
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
-import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { drainStopGateway, gatewayActivity, portIsFree, prepareStandbyGateway, readToken, setEnginePriority, sendStandbyTakeOver, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, waitForReady, type PreparedGateway } from "./gateway";
@@ -129,8 +129,9 @@ const ownedWebContents = (sender: unknown) => {
 let quitting = false;
 const conversationWindowFile = join(cfg.dataDir, "conversation-windows.json");
 const conversationStateFile = (key: string): string => `conversation-window-${createHash("sha256").update(key).digest("hex").slice(0, 20)}.json`;
+let pendingSavedConversationKeys = savedConversationKeys();
 function saveConversationWindows(): void {
-  try { writeFileSync(conversationWindowFile, JSON.stringify([...conversationWindows.keys()])); } catch { /* a window remains usable without persistence */ }
+  try { writeFileSync(conversationWindowFile, JSON.stringify([...new Set([...pendingSavedConversationKeys, ...conversationWindows.keys()])])); } catch { /* a window remains usable without persistence */ }
   if (win && !win.isDestroyed()) win.webContents.send("branch-desktop:conversation-windows", [...conversationWindows.keys()]);
 }
 function savedConversationKeys(): string[] {
@@ -522,12 +523,17 @@ function openConversationWindow(key: string): void {
       backgroundThrottling: !HIDDEN,
     },
   });
+  pendingSavedConversationKeys = pendingSavedConversationKeys.filter((saved) => saved !== key);
   conversationWindows.set(key, child);
   saveConversationWindows();
-  child.on("closed", () => { if (conversationWindows.get(key) === child) { conversationWindows.delete(key); if (!quitting) saveConversationWindows(); } });
+  child.on("closed", () => {
+    const current = [...conversationWindows].find(([, window]) => window === child)?.[0];
+    if (current) { conversationWindows.delete(current); if (!quitting) saveConversationWindows(); }
+  });
   child.webContents.on("did-finish-load", () => offerWindowStatus(child));
   if (place?.maximized) child.once("show", () => child.maximize());
-  trackWindowState(child, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds, conversationStateFile(key));
+  trackWindowState(child, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds,
+    () => conversationStateFile([...conversationWindows].find(([, window]) => window === child)?.[0] ?? key));
   child.setMenuBarVisibility(false);
   lockDown(child);
   if (!HIDDEN) child.once("ready-to-show", () => child.show());
@@ -585,6 +591,38 @@ async function start(): Promise<void> {
     if (!isOwnedComponentWindow(e, win?.webContents, windowUrl())) throw new Error("Only the main Branch window can list conversation windows");
     return [...conversationWindows.keys()];
   });
+  ipcMain.handle("branch-desktop:saved-conversation-windows", (e) => {
+    if (!isOwnedComponentWindow(e, win?.webContents, windowUrl())) throw new Error("Only the main Branch window can restore conversation windows");
+    return [...pendingSavedConversationKeys];
+  });
+  ipcMain.handle("branch-desktop:restore-conversation-windows", (e, valid: unknown) => {
+    if (!isOwnedComponentWindow(e, win?.webContents, windowUrl())) throw new Error("Only the main Branch window can restore conversation windows");
+    if (!Array.isArray(valid) || !valid.every((key) => typeof key === "string" && pendingSavedConversationKeys.includes(key))) throw new Error("Invalid saved conversations");
+    const keep = new Set<string>(valid);
+    for (const key of pendingSavedConversationKeys) {
+      if (!keep.has(key)) {
+        try { unlinkSync(join(cfg.dataDir, conversationStateFile(key))); } catch { /* no saved bounds */ }
+      }
+    }
+    const restore = pendingSavedConversationKeys.filter((key) => keep.has(key));
+    pendingSavedConversationKeys = [];
+    for (const key of restore) openConversationWindow(key);
+    saveConversationWindows();
+  });
+  ipcMain.handle("branch-desktop:forget-conversation-window", (e, key: unknown) => {
+    const contents = ownedWebContents(e.sender);
+    if (!contents || !isOwnedComponentWindow(e, contents, windowUrl())) throw new Error("Only a Branch window can forget a conversation window");
+    if (typeof key !== "string" || !key.trim()) throw new Error("A conversation key is required");
+    pendingSavedConversationKeys = pendingSavedConversationKeys.filter((saved) => saved !== key);
+    const child = conversationWindows.get(key);
+    if (child) {
+      conversationWindows.delete(key);
+      // Let a deleting pop-out receive its IPC answer before its renderer goes away.
+      setTimeout(() => { if (!child.isDestroyed()) child.destroy(); }, 0);
+    }
+    try { unlinkSync(join(cfg.dataDir, conversationStateFile(key))); } catch { /* no saved bounds */ }
+    saveConversationWindows();
+  });
   ipcMain.handle("branch-desktop:open-main-route", (e, route: unknown) => {
     const owner = BrowserWindow.fromWebContents(e.sender);
     if (!owner || ![...conversationWindows.values()].includes(owner) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
@@ -617,6 +655,7 @@ async function start(): Promise<void> {
     if (other && other !== owner && !other.isDestroyed()) throw new Error("That conversation already has a window");
     conversationWindows.delete(previous);
     conversationWindows.set(key, owner);
+    try { unlinkSync(join(cfg.dataDir, conversationStateFile(previous))); } catch { /* no saved bounds */ }
     saveConversationWindows();
   });
   ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void restartEngine(); });
@@ -656,7 +695,6 @@ async function start(): Promise<void> {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");
   }
-  for (const key of savedConversationKeys()) openConversationWindow(key);
   watchUpdates(win);
   componentsReady = true;
   autoApply.start();

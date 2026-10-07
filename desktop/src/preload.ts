@@ -18,6 +18,9 @@ if (info) {
     openConversation: (key: string) => ipcRenderer.invoke("branch-desktop:open-conversation", key),
     conversationWindows: {
       list: (): Promise<string[]> => ipcRenderer.invoke("branch-desktop:conversation-windows"),
+      saved: (): Promise<string[]> => ipcRenderer.invoke("branch-desktop:saved-conversation-windows"),
+      restore: (keys: string[]): Promise<void> => ipcRenderer.invoke("branch-desktop:restore-conversation-windows", keys),
+      forget: (key: string): Promise<void> => ipcRenderer.invoke("branch-desktop:forget-conversation-window", key),
       onChanged: (listener: (keys: string[]) => void) => {
         const handler = (_event: Electron.IpcRendererEvent, keys: string[]) => listener(keys);
         ipcRenderer.on("branch-desktop:conversation-windows", handler);
