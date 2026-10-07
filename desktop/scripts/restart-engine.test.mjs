@@ -94,7 +94,7 @@ else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-n
     nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() }));
 }
 /** standby: true always warms a standby; "never" (the default) always runs the plain guarded swap, whatever the runner's memory. */
-async function fixture(run, holdStartup = false, fastSupervisor = false, holdCandidate = false, standby = "never", keepWorkingOff = false, prepare = undefined, holdUndo = false) {
+async function fixture(run, holdStartup = false, fastSupervisor = false, holdCandidate = false, standby = "never", keepWorkingOff = false, prepare = undefined, holdUndo = false, manualEngineWatch = false) {
   const scratch = join(tmpdir(), "Codex-session-files"); await mkdir(scratch, { recursive: true });
   const root = await mkdtemp(join(scratch, "branch-restart-")); await createFixtureFiles(root);
   if (keepWorkingOff) await writeFile(join(root, "desktop-settings.json"), JSON.stringify({ keepWorking: false }));
@@ -110,7 +110,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   };
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
   await prepare?.(root);
-  let onStaged, onWithdrawal, swapGuard, pendingVersion;
+  let onStaged, onWithdrawal, swapGuard, pendingVersion, engineWatchTick;
   // Auto-apply's clock: a test moves it past the 60 s idle hold instead of waiting for it.
   const clock = { skew: 0 };
   Module._load = function(name, ...args) {
@@ -122,6 +122,18 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
         await writeFile(join(root, "startup-awaiting-continuation"), "1");
         while (!existsSync(join(root, "release-start-continuation"))) await pause(5);
         return result;
+      } };
+    }
+    if (manualEngineWatch && name === "./updates") {
+      const source = originalLoad.call(this, name, ...args);
+      return { ...source, watchEngineBuild: (signature, onChange) => {
+        let last = signature();
+        const tick = () => {
+          const next = signature();
+          if (next && next !== last) { last = next; onChange(); }
+        };
+        engineWatchTick = tick;
+        return () => { if (engineWatchTick === tick) engineWatchTick = undefined; };
       } };
     }
     if (fastSupervisor && name === "./gateway-supervisor") {
@@ -192,7 +204,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js"));
     if (!holdStartup) await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway ready"), 30_000);
     await run({ root, runtime, starts, restart, offerStaged: () => onStaged(), withdraw: version => onWithdrawal(version),
-      pendingVersion: () => pendingVersion(), swapGuard: (work) => swapGuard(work), clock });
+      pendingVersion: () => pendingVersion(), swapGuard: (work) => swapGuard(work), engineWatchTick: () => engineWatchTick(), clock });
   } finally {
     await writeFile(join(root, "release-ready"), "ready");
     if (holdUndo) await writeFile(join(root, "release-undo"), "release");
@@ -1056,6 +1068,29 @@ test("failed Undo rolls back its staged switch and can be retried", () => fixtur
   assert.equal((await readFile(join(root, "component-update-version.txt"), "utf8")).trim(), "fixture-previous");
   assert.equal(JSON.parse(await readFile(join(root, "component-update-undone.json"), "utf8")).version, "fixture-next");
 }, false, false, false, true, false, handoffOn()));
+test("Undo's temporary engine pointer is never offered as a new update", () => fixture(async ({ root, runtime, offerStaged, engineWatchTick }) => {
+  const sent = idleWindow(runtime), owner = runtime.window.webContents;
+  const { stagedEngine } = await stageFixtureUpdate(root, true);
+  await writeFile(join(root, "release-ready"), "ready");
+  offerStaged();
+  await eventually(() => sent.some(([channel, value]) => channel === "branch-desktop:update-applied" && value.canUndo), 30_000);
+  await writeFile(join(root, "fail-standby"), "fail");
+  await writeFile(join(root, "fail-undo-stop"), "fail");
+  runtime.ipcMain.emit("branch-desktop:undo-update", { sender: owner, senderFrame: owner.mainFrame });
+  await eventually(() => existsSync(join(root, "undo-prepared")));
+  const log = () => readFile(join(root, "desktop.log"), "utf8");
+  const offersBefore = (await log()).split("new engine build found; offering Update").length - 1;
+  engineWatchTick(); // The 15-second poll lands while Undo's reverse journal is pending.
+  await pause(50);
+  assert.equal((await log()).split("new engine build found; offering Update").length - 1, offersBefore);
+  await writeFile(join(root, "release-undo"), "release");
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-undo-failed"), 30_000);
+  assert.equal((await readFile(join(root, "engine-current.txt"), "utf8")).trim(), stagedEngine);
+  const offersAfter = (await log()).split("new engine build found; offering Update").length - 1;
+  engineWatchTick(); // The rollback pointer must be the watcher's new baseline.
+  await pause(50);
+  assert.equal((await log()).split("new engine build found; offering Update").length - 1, offersAfter);
+}, false, false, false, true, false, handoffOn(), true, true));
 test("Undo pins the outgoing window, excludes auto-apply, and explains a busy-lock click", () => fixture(async ({ root, runtime, offerStaged }) => {
   const sent = idleWindow(runtime), owner = runtime.window.webContents;
   await stageFixtureUpdate(root, true);

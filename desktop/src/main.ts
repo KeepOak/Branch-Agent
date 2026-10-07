@@ -656,7 +656,9 @@ const autoApply = createAutoApplyUpdate({
  * the running engine started with. A staged desktop app only waits for the next launch, so it offers nothing.
  */
 async function offerStagedUpdate(): Promise<void> {
+  if (updateLock.purpose === "undo update") return;
   const { componentsPendingVersion, previousWindowDir } = await readComponentUpdateStatus(cfg);
+  if (updateLock.purpose === "undo update") return;
   if (!componentsPendingVersion) return;
   if (componentsPendingVersion === withdrawnUpdateVersion) return;
   withdrawnUpdateVersion = undefined;
@@ -1049,11 +1051,16 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
 }
 
 /** Watches the engine pointer and build from their current value (re-armed after a rejected candidate's rollback). */
+let engineWatchGeneration = 0;
 function watchEngine(): void {
+  const generation = ++engineWatchGeneration;
   stopEngineWatch?.();
   stopEngineWatch = watchEngineBuild(() => engineSignature(cfg), () => {
+    if (generation !== engineWatchGeneration || updateLock.purpose === "undo update") return;
+    // Undo's temporary pointer is not a new build.
     log("new engine build found; offering Update");
     void readComponentUpdateStatus(cfg).then(({ componentsPendingVersion }) => {
+      if (generation !== engineWatchGeneration || updateLock.purpose === "undo update") return;
       if (componentsPendingVersion) return offerStagedUpdate();
       if (withdrawnUpdateVersion) return;
       engineUpdateReady = true;
@@ -1141,7 +1148,11 @@ async function undoLastUpdate(): Promise<void> {
     if (!existsSync(servedWindowDir)) servedWindowDir = cfg.windowDir;
     log(`update undo failed: ${String(error)}`);
     sendToBranchWindows("branch-desktop:update-undo-failed", String(error));
-  } finally { await updateLock.release(lock); }
+  } finally {
+    // Boot may have re-armed the watcher on Undo's temporary pointer; seed it from the final pointer.
+    if (stopEngineWatch) watchEngine();
+    await updateLock.release(lock);
+  }
 }
 
 /** The owner's Update click: applies a staged engine/window pair, or a rebuilt engine, in place. */
