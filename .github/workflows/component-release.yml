@@ -90,10 +90,11 @@ jobs:
           path: ${{ runner.temp }}/shared-window/
           if-no-files-found: error
           retention-days: 3
-  # Native targets start with identity; the engine builds while the shared renderer job runs, and the
-  # renderer artifact is fetched only when packaging needs it (release-build.mjs waits for the ready file).
+  # Native packaging needs the shared renderer artifact. Starting native before `window` finishes
+  # burns the 15-minute job cap on a poll; on a backed-up queue that poll expires and the job
+  # fails even though the renderer later succeeds (win32/darwin on #588).
   native:
-    needs: identity
+    needs: [identity, window]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
