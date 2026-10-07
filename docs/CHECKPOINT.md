@@ -26,7 +26,7 @@ See [`AGENTS.md`](../AGENTS.md) for the full workflow.
 
 ## Durable priorities
 
-**Priority order:** (1) seamless updates, (2) preview parity (the real app matching the Branch App Preview 1:1 in look and logic), (3) logic everywhere.
+**Priority order:** (1) fix what's broken, (2) seamless updates, (3) proactive agents, (4) the real app matching the newest Branch App Preview 1:1 in both look and logic, ported from the preview's code, (5) logic testing of the app, (6) new features.
 
 ### Seamless handoff gate
 

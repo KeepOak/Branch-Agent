@@ -96,7 +96,7 @@ cd desktop && node --test scripts/file.test.mjs
 
 Open PRs and their current CI status: `gh pr list --json number,title,headRefName,statusCheckRollup` or <https://github.com/KeepOak/Branch-Agent/pulls>.
 
-**Priority order:** (1) seamless updates, (2) preview parity (the real app matching the Branch App Preview 1:1), (3) logic everywhere.
+**Priority order:** (1) fix what's broken, (2) seamless updates, (3) proactive agents, (4) the real app matching the newest Branch App Preview 1:1 in both look and logic, ported from the preview's code, (5) logic testing of the app, (6) new features.
 
 1. **Roles.** GOD is the coordinator. Branch PR Closer holds delegated merge authority: it may merge when the merge gate is green AND there is a MERGE review verdict on the PR's current head commit. Builder agents work on assigned tasks. Reviewer agents only review.
 
