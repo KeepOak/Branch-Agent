@@ -24,6 +24,7 @@ import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from 
 import { createAutoApplyUpdate } from "./auto-apply-update";
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
 import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
+import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
 import { freemem } from "node:os";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
@@ -166,7 +167,15 @@ function runConfirmedReleasePrune(): void {
 }
 /** The window build the static server serves: the staged one only once its engine runs. */
 let servedWindowDir = cfg.windowDir;
-let engineRestartInProgress = false;
+/**
+ * The one update lock: an in-place update, crash recovery, a staged-update replacement and #380's Undo each hold it
+ * for their whole run. Undo holds it across its prepare and passes the handle to swapEngineInPlace.
+ */
+const updateLock = createUpdateLock(released => afterUpdateLockRelease(released));
+const RECOVERY = "crash recovery", REPLACING = "replace the staged update";
+/** An Update click that arrived while a newer release replaced the staged one: it runs once the replacement ends. */
+let updateClickQueued = false;
+let withdrawnUpdateVersion: string | undefined;
 /** The engine exited while an update ran: the update's end decides, then recovery runs once with a full budget. */
 let recoveryDeferred = false;
 /** A failed update left nothing serving: once recovery brings the previous build back, the bar says it was kept. */
@@ -183,9 +192,9 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
   },
   restart: async () => {
     // An update in progress owns the engine; spending restart attempts against it would exhaust the budget.
-    if (engineRestartInProgress) { recoveryDeferred = true; log("gateway exit during an update; recovery waits for it"); return; }
+    if (updateLock.held) { recoveryDeferred = true; log(`gateway exit during an update (${updateLock.purpose}); recovery waits for it`); return; }
     if (quitting || engineServing()) return;
-    engineRestartInProgress = true;
+    const lock = updateLock.acquire(RECOVERY)!;
     try {
       // A live engine that never became ready (a failed update's new engine slow to exit) is not serving: stop it.
       if (gateway && engineRunning()) await stopFailedEngine(gateway);
@@ -205,7 +214,7 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
       if (gateway) await stopFailedEngine(gateway);
       throw error;
     } finally {
-      engineRestartInProgress = false;
+      await updateLock.release(lock);
     }
   },
 });
@@ -259,11 +268,12 @@ const engineServing = (): boolean => engineRunning() && gateway === readyGateway
  * engine's state lock means the standby can only bind and become ready after the old engine has released state.
  * A staged desktop app is never applied here; it waits for the next natural launch.
  */
-async function swapEngineInPlace(label: string, explicit: boolean): Promise<void> {
-  if (!gateway || !win || engineRestartInProgress) throw new Error("The desktop is not ready to update");
+async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle): Promise<void> {
+  // `held`: the caller (Undo) already holds the update lock and keeps it; otherwise the swap takes it.
+  if (!gateway || !win || (held ? !updateLock.holds(held) : updateLock.held)) throw new Error("The desktop is not ready to update");
   // A crash restart always runs first: an update never cancels it, and never starts with no engine serving.
   if (!engineServing()) throw new Error("The engine is restarting after an exit; the update waits for it");
-  engineRestartInProgress = true;
+  const lock = held ?? updateLock.acquire(`update ${label}`)!;
   const windowBefore = windowBuild(servedWindowDir);
   const priorGateway = gateway;
   const attempt = { stepDownSent: false };
@@ -344,15 +354,30 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     throw error;
   } finally {
     priorGateway.off("exit", priorExited);
-    engineRestartInProgress = false;
-    const exitedDuring = recoveryDeferred;
-    recoveryDeferred = false;
-    // Never leave zero engines: whatever ended the update, the crash supervisor brings back the build that last ran,
-    // with a fresh budget, when nothing serves now.
-    if (!quitting && !engineServing()) {
-      if (gateway && engineRunning()) await stopFailedEngine(gateway);
-      gatewaySupervisor.recover(new Error(exitedDuring ? "the engine exited during an update" : "the update ended with no engine serving"));
-    }
+    // A held lock stays with its holder, whose release runs the same recovery check.
+    if (!held) await updateLock.release(lock);
+  }
+}
+
+/**
+ * After an update, a replacement or Undo releases the lock: never leave zero engines. Whatever the holder did, the
+ * crash supervisor brings back the build that last ran, with a fresh budget, when nothing serves now. Crash recovery
+ * itself retries within its own budget. A queued Update click runs next.
+ */
+async function afterUpdateLockRelease(released: UpdateLockHandle): Promise<void> {
+  if (released.purpose === RECOVERY) return;
+  const queuedClick = updateClickQueued;
+  updateClickQueued = false;
+  const exitedDuring = recoveryDeferred;
+  recoveryDeferred = false;
+  if (quitting) return;
+  if (!engineServing()) {
+    if (gateway && engineRunning()) await stopFailedEngine(gateway);
+    gatewaySupervisor.recover(new Error(exitedDuring ? `the engine exited during "${released.purpose}"` : `nothing served after "${released.purpose}"`));
+  } else if (queuedClick) {
+    const staged = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+    if (engineUpdateReady && staged) void restartEngine();
+    else sendToBranchWindows("branch-desktop:engine-update", "kept");
   }
 }
 
@@ -532,6 +557,31 @@ async function recoveryPort(): Promise<number> {
 }
 
 /**
+ * Runs `work` holding the swap guard, so no update, rollback, crash restart or window swap starts meanwhile; resolves
+ * undefined when an update or recovery already holds it. Used to replace a staged update with a newer release.
+ */
+async function underSwapGuard(work: () => Promise<boolean>): Promise<boolean | undefined> {
+  const lock = updateLock.acquire(REPLACING);
+  if (!lock) return undefined;
+  try { return await work(); }
+  finally {
+    // Replaced, withdrawn, put back or rolled back: serve the window of the build that runs, and offer only what is
+    // still staged. The window the desktop serves never points at a folder that moved.
+    await followStagedUpdate().catch(error => log(`Component update status: ${String(error)}`));
+    await updateLock.release(lock);
+  }
+}
+
+async function followStagedUpdate(): Promise<void> {
+  const { componentsPendingVersion, previousWindowDir } = await readComponentUpdateStatus(cfg);
+  servedWindowDir = previousWindowDir ?? cfg.windowDir;
+  if (!componentsPendingVersion && engineUpdateReady) {
+    engineUpdateReady = false;
+    watchEngine();
+  }
+}
+
+/**
  * A staged engine first starts beside the running one (spare port, scratch state). One that exits is rejected and its
  * publication rolled back with nothing stopped; a slow one still gets the normal swap and its readiness rollback.
  */
@@ -559,7 +609,10 @@ async function candidatePassed(label: string, signal?: AbortSignal): Promise<boo
 }
 
 const autoApply = createAutoApplyUpdate({
-  pendingVersion: async () => (await readComponentUpdateStatus(cfg)).componentsPendingVersion,
+  pendingVersion: async () => {
+    const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+    return version === withdrawnUpdateVersion ? null : version;
+  },
   enabled: () => controls.settings().autoApplyUpdates,
   activity: async () => {
     if (!gateway) throw new Error("The gateway is not running");
@@ -580,7 +633,9 @@ const autoApply = createAutoApplyUpdate({
 async function offerStagedUpdate(): Promise<void> {
   const { componentsPendingVersion, previousWindowDir } = await readComponentUpdateStatus(cfg);
   if (!componentsPendingVersion) return;
-  if (previousWindowDir && !engineRestartInProgress) servedWindowDir = previousWindowDir;
+  if (componentsPendingVersion === withdrawnUpdateVersion) return;
+  withdrawnUpdateVersion = undefined;
+  if (previousWindowDir && !updateLock.held) servedWindowDir = previousWindowDir;
   engineUpdateReady = true;
   sendToBranchWindows("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
   void autoApply.tick();
@@ -589,7 +644,7 @@ async function offerStagedUpdate(): Promise<void> {
 /** Staging never invokes the gateway's generic updater. */
 async function stageComponentUpdate(): Promise<boolean> {
   if (!componentsReady) throw new Error("The desktop is still starting; check again when the engine is ready");
-  const staged = await refreshComponentUpdate(cfg, fetch, { desktop: install });
+  const staged = await refreshComponentUpdate(cfg, fetch, { desktop: install, underSwapGuard, log });
   await offerStagedUpdate();
   return staged;
 }
@@ -853,7 +908,7 @@ async function start(): Promise<void> {
   await recoverComponentUpdate(cfg);
   if (!existsSync(join(cfg.windowDir, "index.html")) || !existsSync(join(cfg.dataDir, "engine-current.txt")) && !existsSync(join(cfg.engineDir, "branch.mjs"))) {
     log("Installing verified GitHub components for first launch");
-    await refreshComponentUpdate(cfg, fetch, { desktop: install });
+    await refreshComponentUpdate(cfg, fetch, { desktop: install, underSwapGuard, log });
   }
   servedWindowDir = cfg.windowDir;
   server = await serveWindow(() => servedWindowDir, cfg.windowPort);
@@ -867,14 +922,19 @@ async function start(): Promise<void> {
   componentsReady = true;
   runConfirmedReleasePrune();
   autoApply.start();
-  stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, onStaged: () => {
+  stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, underSwapGuard, log,
+    onWithdrawal: version => {
+      withdrawnUpdateVersion = version;
+      engineUpdateReady = false;
+      sendToBranchWindows("branch-desktop:engine-update", "kept");
+    }, onStaged: () => {
     offerStagedUpdate().catch(error => log(`Component update status: ${String(error)}`));
   } });
   if (macComputerDriver) {
     let enabled = screenControlEnabled();
     let granted = enabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
     const timer = setInterval(() => {
-      if (engineRestartInProgress) return;
+      if (updateLock.held) return;
       const nextEnabled = screenControlEnabled();
       const nextGranted = nextEnabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
       if (nextEnabled !== enabled || nextGranted && !granted) {
@@ -958,6 +1018,7 @@ function watchEngine(): void {
     log("new engine build found; offering Update");
     void readComponentUpdateStatus(cfg).then(({ componentsPendingVersion }) => {
       if (componentsPendingVersion) return offerStagedUpdate();
+      if (withdrawnUpdateVersion) return;
       engineUpdateReady = true;
       sendToBranchWindows("branch-desktop:engine-update", "ready");
     }).catch(error => log(`Engine build status: ${String(error)}`));
@@ -993,17 +1054,22 @@ async function bootSelectedEngine(prepared?: PreparedGateway): Promise<boolean> 
   });
 }
 
+/** The window build the open window last loaded; the watcher never reloads onto the same build. */
+let shownWindowBuild: string | undefined;
 function watchUpdates(w: BrowserWindow): void {
+  shownWindowBuild = windowBuild(servedWindowDir);
   stopWindowWatch = watchWindowBuild(cfg.windowDir, () => {
     void readComponentUpdateStatus(cfg).then(({ publicationInProgress }) => {
       // A staged engine/window pair activates together through the in-place swap.
-      if (publicationInProgress || engineRestartInProgress) return;
+      if (publicationInProgress || updateLock.held) return;
+      // The window already shows this build (a staged pair was put back, or rolled back to the build it runs).
+      if (windowBuild(servedWindowDir) === shownWindowBuild) return;
       log("new window build found; swapping it in");
       void hotSwapWindow();
     }).catch(error => log(`Window update status: ${String(error)}`));
   });
   // A reload re-runs the preload; show the bar again if an engine update is still waiting.
-  w.webContents.on("did-finish-load", () => offerWindowStatus(w));
+  w.webContents.on("did-finish-load", () => { shownWindowBuild = windowBuild(servedWindowDir); offerWindowStatus(w); });
 }
 function offerWindowStatus(w: BrowserWindow): void {
   if (w.isDestroyed() || !w.webContents.getURL().startsWith(windowUrl())) return;
@@ -1013,7 +1079,16 @@ function offerWindowStatus(w: BrowserWindow): void {
 
 /** The owner's Update click: applies a staged engine/window pair, or a rebuilt engine, in place. */
 async function restartEngine(): Promise<void> {
-  if (!gateway || !win || !componentsReady || engineRestartInProgress) return;
+  if (!gateway || !win || !componentsReady) return;
+  if (updateLock.held) {
+    if (updateLock.purpose === REPLACING && !updateClickQueued) {
+      // A newer release is replacing the staged one: the click is kept and runs right after, on the newer release.
+      updateClickQueued = true;
+      log("update requested while a newer release replaces the staged one; it runs right after");
+      sendToBranchWindows("branch-desktop:engine-update", "preparing");
+    }
+    return;
+  }
   if (!engineServing()) {
     // A crash restart wins: the click never cancels it. If recovery already gave up, the click retries it now.
     log("update requested while the engine is restarting; recovery runs first");
@@ -1021,6 +1096,11 @@ async function restartEngine(): Promise<void> {
     return;
   }
   const staged = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+  if (staged && staged === withdrawnUpdateVersion) {
+    log(`update requested for withdrawn release ${staged}; keeping the running engine`);
+    sendToBranchWindows("branch-desktop:engine-update", "kept");
+    return;
+  }
   log(`update requested (${staged ?? "rebuilt engine"}); old engine pid ${gateway.pid}`);
   try { await swapEngineInPlace(staged ?? "rebuilt engine", true); }
   catch (err) {
