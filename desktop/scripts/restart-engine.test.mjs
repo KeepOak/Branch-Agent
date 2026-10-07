@@ -64,21 +64,28 @@ process.on("message",m=>{if(!String(m?.type).startsWith("branch-desktop:"))retur
 // it answers the plain activity check, and refuses stop-if-idle while draining.
 if(starts.length===1&&fs.existsSync(root+"/slow-drain-reply")){if(m.type==="branch-desktop:drain-stop"&&!globalThis.draining){const end=Date.now()+7000;while(Date.now()<end);globalThis.draining=true;setTimeout(()=>{fs.writeFileSync(root+"/drained-"+process.pid,"1");process.exit(0);},3000);}process.send({type:"branch-desktop:activity-result",id:m.id,idle:!globalThis.draining,activeRuns:globalThis.draining?1:0,pendingReplies:0,totalActive:globalThis.draining?1:0});return;}
 // late-drain-ack: a saturated first engine answers nothing, yet the drain request lands and it exits 12 s later.
-if(starts.length===1&&fs.existsSync(root+"/late-drain-ack")){if(m.type==="branch-desktop:drain-stop"&&!globalThis.draining){globalThis.draining=true;setTimeout(()=>{fs.writeFileSync(root+"/drained-"+process.pid,"1");process.exit(0);},12000);}return;}if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
-if(m.type==="branch-desktop:drain-stop"){fs.writeFileSync(root+"/drained-"+process.pid,"1");setTimeout(()=>process.exit(0),20);}
+if(starts.length===1&&fs.existsSync(root+"/late-drain-ack")){if(m.type==="branch-desktop:drain-stop"&&!globalThis.draining){globalThis.draining=true;setTimeout(()=>{fs.writeFileSync(root+"/drained-"+process.pid,"1");process.exit(0);},12000);}return;}// A current engine steps down for its standby: it releases the state and keeps its run in flight (busy-run).
+// fenced: a stepped-down engine admits nothing new (fence-readyz: its /readyz says so). slow-deactivate: it answers late.
+if(m.type==="branch-desktop:deactivate"){if(fs.existsSync(root+"/older-engine")||fs.existsSync(root+"/no-handoff"))return;globalThis.fenced=true;fs.writeFileSync(root+"/released-"+process.pid,"1");if(fs.existsSync(root+"/busy-run")&&!globalThis.run){globalThis.run=new Promise(r=>setTimeout(()=>{fs.appendFileSync(root+"/transcript.txt","old run final\\n");r();},2000));}setTimeout(()=>process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:!fs.existsSync(root+"/refuse-deactivate")}),fs.existsSync(root+"/slow-deactivate")?3000:0);return;}
+// rollback records which other engines were still alive when it ran: the failed standby must already be gone.
+if(m.type==="branch-desktop:rollback"){if(fs.existsSync(root+"/older-engine")||fs.existsSync(root+"/no-handoff"))return;const ok=!fs.existsSync(root+"/refuse-rollback");if(ok){globalThis.fenced=false;try{fs.unlinkSync(root+"/released-"+process.pid);}catch{}}fs.writeFileSync(root+"/rolled-back-"+process.pid,JSON.stringify(starts.filter(p=>p!==process.pid&&(()=>{try{process.kill(p,0);return true;}catch{return false;}})())));process.send({type:"branch-desktop:rollback-result",id:m.id,ok});return;}
+if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
+// retire-hangs: a stepped-down engine that never exits after its drain request (a blocked event loop).
+if(m.type==="branch-desktop:drain-stop"&&!(globalThis.fenced&&fs.existsSync(root+"/retire-hangs"))){Promise.resolve(globalThis.run).then(()=>{fs.writeFileSync(root+"/drained-"+process.pid,"1");setTimeout(()=>process.exit(0),20);});}
 if(m.type==="branch-desktop:stop-if-idle"&&!fs.existsSync(root+"/busy"))setTimeout(()=>process.exit(0),20);});
-const listener=http.createServer((q,r)=>{r.writeHead(starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end();});
+const listener=http.createServer((q,r)=>{r.writeHead(globalThis.fenced&&fs.existsSync(root+"/fence-readyz")?503:starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end();});
 // As a standby since #411: it takes the state over only on its launcher's take-over message, then says so.
-if(process.env.BRANCH_GATEWAY_STANDBY==="1")process.on("message",m=>{if(m?.type!=="branch-desktop:take-over"||globalThis.tookOver)return;globalThis.tookOver=true;fs.writeFileSync(root+"/took-over-"+process.pid,JSON.stringify({oldEngineAlive:(()=>{try{process.kill(starts[0],0);return true;}catch{return false;}})()}));process.send?.({type:"branch-desktop:taking-over",pid:process.pid,port:Number(process.argv.at(-1))});});
+if(process.env.BRANCH_GATEWAY_STANDBY==="1")process.on("message",m=>{if(m?.type!=="branch-desktop:take-over"||globalThis.tookOver)return;globalThis.tookOver=true;if(fs.existsSync(root+"/released-"+starts[0]))fs.writeFileSync(root+"/took-over-after-step-down-"+process.pid,"1");fs.writeFileSync(root+"/took-over-"+process.pid,JSON.stringify({oldEngineAlive:(()=>{try{process.kill(starts[0],0);return true;}catch{return false;}})()}));process.send?.({type:"branch-desktop:taking-over",pid:process.pid,port:Number(process.argv.at(-1))});});
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
   const announce=()=>process.send?.({type:"branch-desktop:standby-ready",pid:process.pid});
   if(fs.existsSync(root+"/hold-standby")){const timer=setInterval(()=>{if(!fs.existsSync(root+"/hold-standby")){clearInterval(timer);announce();}},10);}else announce();
 }
 // No EADDRINUSE retry: an engine listens once on the port the desktop gave it, so a standby on the live port fails.
 const listen=()=>listener.listen(Number(process.argv.at(-1)),"127.0.0.1");
-// As the real engine: a standby binds only after the old engine released state (here: once it drained).
-if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-exits-after-release")){const timer=setInterval(()=>{if(fs.existsSync(root+"/drained-"+starts[0])){clearInterval(timer);process.exit(1);}},10);}
-else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-binds-after-release")){const timer=setInterval(()=>{if(fs.existsSync(root+"/drained-"+starts[0])){clearInterval(timer);listen();}},10);}
+// As the real engine: a standby binds only after the old engine released state (stepped down, or drained).
+const released=()=>fs.existsSync(root+"/released-"+starts[0])||fs.existsSync(root+"/drained-"+starts[0]);
+if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-exits-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);process.exit(1);}},10);}
+else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-binds-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);listen();}},10);}
 else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-needs-take-over")){const timer=setInterval(()=>{if(globalThis.tookOver){clearInterval(timer);listen();}},10);}else listen();`;
   await writeFile(join(engine, "branch.mjs"), script); await writeFile(join(windowDir, "index.html"), "<html>fixture</html>");
   await writeFile(join(root, "gateway-token"), "isolated-fixture-token");
@@ -148,10 +155,17 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     Module._load = originalLoad; globalThis.fetch = originalFetch;
     previous === undefined ? delete process.env.BRANCH_DESKTOP_DATA : process.env.BRANCH_DESKTOP_DATA = previous;
     previousCandidateMin === undefined ? delete process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB : process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = previousCandidateMin;
-    delete process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS;
+    for (const name of ["READY", "STEP_DOWN", "TAKE_OVER", "STANDBY_READY", "ROLLBACK"]) delete process.env[`BRANCH_DESKTOP_${name}_TIMEOUT_MS`];
+    delete process.env.BRANCH_DESKTOP_RETIRE_KILL_AFTER_MS;
     await rm(root, { recursive: true, force: true });
   }
 }
+/** Turns the P45 handoff on (desktop.json "seamlessHandoff", off by default), with shorter deadlines from `env`. */
+const handoffOn = (env = {}) => async (root) => {
+  const file = join(root, "desktop.json");
+  await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, "utf8")), seamlessHandoff: true }));
+  for (const [name, value] of Object.entries(env)) process.env[`BRANCH_DESKTOP_${name}`] = String(value);
+};
 const swapped = async (root, count = 1) => (await readFile(join(root, "desktop.log"), "utf8")).split("engine swapped in place").length - 1 >= count;
 async function stageFixtureUpdate(root) {
   const { engineDir, windowDir } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
@@ -345,7 +359,8 @@ test("standby takes a separate loopback port before desktop hands the resident w
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-handoff"),
     [["branch-desktop:engine-handoff", `ws://127.0.0.1:${launch.port}`]]);
   assert.equal(runtime.window.reloads, 0);
-  assert.ok(await readFile(join(root, `drained-${old}`), "utf8"), "old engine did not complete its drain");
+  // After the handoff the old engine is told to finish and stop; it drains right after.
+  await eventually(() => existsSync(join(root, `drained-${old}`)));
 }, false, false, false, true));
 test("a standby that waits for its launcher's word (#411) is told to take over only once the old engine has stopped", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
@@ -378,11 +393,164 @@ test("after a standby handoff the window and the next swap follow the live port;
   assert.equal(await readFile(join(root, "gateway-port"), "utf8"), String(second.port), "the branch command would dial a stale port");
   assert.equal((await starts()).length, 3);
 }, false, false, false, true));
+test("a busy old engine steps down: the window moves to the standby while the old run finishes there, then the old engine stops", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  const old = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "busy-run"), "a Trunk is working");
+  await writeFile(join(root, "standby-binds-after-release"), "1"); await writeFile(join(root, "transcript.txt"), "");
+  restart();
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:engine-handoff"), 30_000);
+  // Handed over while the old engine is still alive and its run is still in flight.
+  assert.equal(alive(old), true, "the old engine stopped before the window was handed over");
+  assert.equal(await readFile(join(root, "transcript.txt"), "utf8"), "", "the window waited for the old run to finish");
+  const standby = (await starts())[1];
+  const { port } = JSON.parse(await readFile(join(root, `launch-${standby}.json`), "utf8"));
+  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-handoff").map(([, url]) => url), [`ws://127.0.0.1:${port}`]);
+  assert.equal(await servingOn(port), true);
+  assert.equal(await servingOn(gatewayPort), true, "the old engine stopped serving its connection before its run finished");
+  // The old run finishes on the old engine and is saved, then the old engine stops by itself.
+  await eventually(async () => (await readFile(join(root, "transcript.txt"), "utf8")) === "old run final\n", 10_000);
+  await eventually(() => !alive(old), 10_000);
+  assert.ok(existsSync(join(root, `drained-${old}`)));
+  assert.equal(alive(standby), true);
+  assert.equal(runtime.window.reloads, 0);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), new RegExp(`old engine ${old} stepped down; telling standby ${standby} to take over`));
+  assert.ok(existsSync(join(root, `took-over-after-step-down-${standby}`)), "the standby was told to take over before the old engine stepped down");
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /swapped in place by handoff/);
+  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update").map(([, state]) => state), ["updating", "updated"]);
+}, false, false, false, true, false, handoffOn()));
+test("a standby that fails after the old engine stepped down gives control back to the old engine", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  const old = (await starts())[0];
+  await writeFile(join(root, "standby-exits-after-release"), "1");
+  restart();
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 30_000);
+  // The failed standby was gone (its state lock free) before the old engine was asked to take control back.
+  assert.deepEqual(JSON.parse(await readFile(join(root, `rolled-back-${old}`), "utf8")), [], "rollback ran beside a live standby");
+  assert.equal(alive(old), true); assert.equal(await servingOn(gatewayPort), true);
+  assert.equal(existsSync(join(root, `drained-${old}`)), false, "the old engine was drained although it took control back");
+  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-handoff"), []);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /the old engine took control back on port/);
+  await pause(1500);
+  assert.equal((await starts()).length, 2, "recovery started another engine although the old one serves");
+}, false, false, false, true, false, handoffOn()));
+test("a handoff whose standby port was taken gives control back without rejecting the release", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  await stageFixtureUpdate(root);
+  await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "hold-standby"), "wait");
+  await writeFile(join(root, "standby-binds-after-release"), "1");
+  restart();
+  // A staged update first runs a candidate check beside the engine; the standby is the launch marked as one.
+  const standbyLaunch = async () => {
+    for (const pid of await starts()) {
+      const file = join(root, `launch-${pid}.json`);
+      if (existsSync(file)) { const launch = JSON.parse(await readFile(file, "utf8")); if (launch.standby) return launch; }
+    }
+  };
+  await eventually(async () => Boolean(await standbyLaunch()), 30_000);
+  const { port } = await standbyLaunch();
+  const squatter = createServer(socket => socket.destroy()); await new Promise(resolve => squatter.listen(port, "127.0.0.1", resolve));
+  try {
+    await unlink(join(root, "hold-standby"));
+    await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 40_000);
+  } finally { await new Promise(resolve => squatter.close(resolve)); }
+  const old = (await starts())[0];
+  assert.equal(alive(old), true); assert.equal(await servingOn(gatewayPort), true);
+  assert.equal(existsSync(join(root, "component-update-rejected.json")), false, "a healthy release was rejected for a port clash");
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /was taken before the standby could bind it/);
+}, false, false, false, true, false, handoffOn()));
+test("an old engine that cannot step down is drained instead and the update still completes", () => fixture(async ({ root, starts, restart }) => {
+  const old = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "no-handoff"), "1");
+  restart();
+  await eventually(() => swapped(root), 60_000);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /the old engine did not step down in time; it kept serving; draining it instead/);
+  assert.equal(alive(old), false); assert.ok(existsSync(join(root, `drained-${old}`)));
+}, false, false, false, true, false, handoffOn({ STEP_DOWN_TIMEOUT_MS: 1000, ROLLBACK_TIMEOUT_MS: 1000 })));
+test("with the handoff off (the default) a warmed standby never makes the old engine step down", () => fixture(async ({ root, starts, restart }) => {
+  const old = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready");
+  restart();
+  await eventually(() => swapped(root), 30_000);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /standby engine \d+ prepared on port/);
+  assert.equal(existsSync(join(root, `released-${old}`)), false, "the old engine was asked to step down");
+  assert.ok(existsSync(join(root, `drained-${old}`)), "the old engine was not drained first");
+  assert.doesNotMatch(await readFile(join(root, "desktop.log"), "utf8"), /stepped down|by handoff/);
+}, false, false, false, true));
+test("quitting mid-handoff stops the stepped-down engine and the standby; nothing is left running", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const old = (await starts())[0];
+  restart(); // no release-ready: the standby takes over but never answers /readyz
+  await eventually(async () => (await starts()).length === 2 && existsSync(join(root, `took-over-after-step-down-${(await starts())[1]}`)), 30_000);
+  const standby = (await starts())[1];
+  runtime.app.emit("will-quit", { preventDefault() {} });
+  await eventually(() => !alive(old) && !alive(standby), 20_000);
+  await pause(1000);
+  assert.equal((await starts()).length, 2, "an engine started after quit");
+  assert.equal(existsSync(join(root, `rolled-back-${old}`)), false, "a quit was treated as a failed standby");
+}, false, false, false, true, false, handoffOn()));
+test("a step-down slower than its deadline is never trusted: the standby is killed, the old engine takes control back, and the update still completes", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const old = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "slow-deactivate"), "1");
+  restart();
+  await eventually(() => swapped(root), 40_000);
+  const standby = (await starts())[1];
+  assert.equal(existsSync(join(root, `took-over-after-step-down-${standby}`)), false, "the standby was told to take over");
+  assert.deepEqual(JSON.parse(await readFile(join(root, `rolled-back-${old}`), "utf8")), [], "rollback ran beside the live standby");
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /did not step down in time; it kept serving; draining it instead/);
+  assert.ok(existsSync(join(root, `drained-${old}`))); assert.equal(alive(old), false);
+  assert.equal(alive((await starts()).at(-1)), true);
+}, false, false, false, true, false, handoffOn({ STEP_DOWN_TIMEOUT_MS: 1000 })));
+test("a refused step-down is trusted only when the old engine proves it still serves; a fenced one is replaced", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  const old = (await starts())[0];
+  // The old engine says it did not step down, yet its restore failed: it admits nothing new.
+  await writeFile(join(root, "refuse-deactivate"), "1"); await writeFile(join(root, "fence-readyz"), "1");
+  await writeFile(join(root, "release-ready"), "ready");
+  restart();
+  await eventually(async () => { const latest = (await starts()).at(-1); return ![old, (await starts())[1]].includes(latest) && alive(latest) && await servingOn(gatewayPort); }, 40_000);
+  assert.equal(alive(old), false, "a fenced old engine was left running as if it served");
+  assert.deepEqual(sent.filter(([channel, state]) => channel === "branch-desktop:engine-update" && ["ready", "auto-wait"].includes(state)), [],
+    "the bar offered Update while no engine served");
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"));
+}, false, false, false, true, false, handoffOn()));
+test("a standby that is ready keeps the state when only its update record fails: it rolls forward, never back", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const old = (await starts())[0];
+  await stageFixtureUpdate(root);
+  await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "fail-confirm"), "1");
+  restart();
+  await eventually(() => swapped(root), 40_000);
+  assert.equal(existsSync(join(root, "fail-confirm")), false, "the confirmation failure was never exercised");
+  const standby = JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8")).find(record => record.role === "standby");
+  assert.ok(standby && alive(standby.pid));
+  assert.equal(existsSync(join(root, `rolled-back-${old}`)), false, "channels and cron moved back to the old engine");
+  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-handoff").map(([, url]) => url), [`ws://127.0.0.1:${standby.port}`]);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /its update could not be confirmed .*keeping it/);
+}, false, false, false, true, false, handoffOn()));
+test("a stepped-down engine still alive past its lease deadline is killed; a second update meanwhile uses the guarded swap", () => fixture(async ({ root, starts, restart }) => {
+  const old = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "retire-hangs"), "1");
+  restart();
+  await eventually(() => swapped(root), 30_000);
+  assert.equal(alive(old), true);
+  // One handoff at a time: the next update drains the serving engine instead of stepping it down.
+  restart();
+  await eventually(() => swapped(root, 2), 30_000);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /an old engine is still finishing its sessions; using the guarded swap/);
+  await eventually(() => !alive(old), 10_000);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), new RegExp(`old engine ${old} is still alive past its lease deadline; stopping it`));
+}, false, false, false, true, false, handoffOn({ RETIRE_KILL_AFTER_MS: 6000 })));
 test("a busy engine from before drain-stop is never killed by an update click; the update is offered again", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const old = (await starts())[0]; await writeFile(join(root, "older-engine"), "1"); await writeFile(join(root, "busy"), "a Trunk is working");
   restart();
-  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update failed"), 40_000);
+  // An older engine never answers the step-down (20 s), then refuses to drain while busy (20 s).
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update failed"), 70_000);
   assert.equal(alive(old), true, "A busy engine that cannot drain was killed");
   const launched = await starts();
   assert.equal(launched.length, 2, "only the read-only standby may start while the first engine is busy");
@@ -440,8 +608,9 @@ test("a window build that arrives with a standby update hands the window the new
 test("a standby port taken before the engine binds it falls back to the live port without rejecting the update", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  // The guarded path (an old engine that cannot step down); the handoff path has its own test below.
   await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "hold-standby"), "wait");
-  await writeFile(join(root, "standby-binds-after-release"), "1");
+  await writeFile(join(root, "standby-binds-after-release"), "1"); await writeFile(join(root, "no-handoff"), "1");
   restart();
   await eventually(async () => (await starts()).length === 2);
   const standby = (await starts())[1];
@@ -451,7 +620,7 @@ test("a standby port taken before the engine binds it falls back to the live por
   const squatter = createServer(socket => socket.destroy()); await new Promise(resolve => squatter.listen(port, "127.0.0.1", resolve));
   try {
     await unlink(join(root, "hold-standby"));
-    await eventually(() => swapped(root), 40_000);
+    await eventually(() => swapped(root), 70_000);
   } finally { await new Promise(resolve => squatter.close(resolve)); }
   assert.equal(alive(standby), false);
   const launched = await starts();
@@ -640,7 +809,9 @@ test("a standby that fails after the old engine drained brings the previous buil
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const { gatewayPort, engineDir } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
   const old = (await starts())[0];
+  // The guarded path: an old engine that cannot step down is drained before the standby fails.
   await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "standby-exits-after-release"), "1");
+  await writeFile(join(root, "no-handoff"), "1");
   restart();
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update failed"), 30_000);
   const standby = (await starts())[1];

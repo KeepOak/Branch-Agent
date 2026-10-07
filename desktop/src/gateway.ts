@@ -8,6 +8,7 @@ import { join } from "node:path";
 import type { DesktopConfig } from "./config";
 import { prepareNormalProfile, readPreparedNormalProfile } from "./profile-migration";
 import { recordEngine } from "./engine-records";
+import { HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 
 export function readToken(cfg: DesktopConfig): string {
   mkdirSync(cfg.dataDir, { recursive: true });
@@ -218,6 +219,76 @@ export function gatewayActivity(child: ChildProcess, stop: boolean | "drain" = f
   if (!child.connected) return Promise.reject(new Error("The gateway activity channel is unavailable"));
   const request = sendActivityRequest(child, stop);
   return within(request.reply, timeoutMs, "The gateway activity check timed out").finally(() => request.cancel());
+}
+
+export type HandoffAnswer = "ok" | "refused" | "unanswered" | "exited";
+
+/**
+ * Sends one handoff request over the owned child channel. "unanswered": no reply within `timeoutMs` (an engine from
+ * before the handoff, or one still working on it: unknown, never taken as a refusal); "exited": it died meanwhile.
+ */
+function gatewayHandoffRequest(child: ChildProcess, type: "deactivate" | "rollback", timeoutMs: number): Promise<HandoffAnswer> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve("exited");
+  if (!child.connected) return Promise.resolve("unanswered");
+  const id = ++nextActivityId;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { cleanup(); resolve("unanswered"); }, timeoutMs);
+    const cleanup = () => { clearTimeout(timer); child.off("message", onMessage); child.off("exit", onExit); };
+    const onMessage = (value: unknown) => {
+      const response = value as { type?: unknown; id?: unknown; ok?: unknown };
+      if (response?.type !== `branch-desktop:${type}-result` || response.id !== id) return;
+      cleanup(); resolve(response.ok === true ? "ok" : "refused");
+    };
+    const onExit = () => { cleanup(); resolve("exited"); };
+    child.on("message", onMessage);
+    child.once("exit", onExit);
+    child.send({ type: `branch-desktop:${type}`, id }, error => { if (error) { cleanup(); resolve("unanswered"); } });
+  });
+}
+
+/**
+ * Asks the old engine to step down for its standby without exiting: it refuses new work, stops channels and cron,
+ * keeps a lease on every session with a run in flight and releases the state.
+ */
+export function deactivateGateway(child: ChildProcess, timeoutMs = HANDOFF_STEP_DOWN_TIMEOUT_MS): Promise<HandoffAnswer> {
+  return gatewayHandoffRequest(child, "deactivate", timeoutMs);
+}
+
+/** Asks the old engine to take control back: it reacquires the state and restarts in place on its own port. */
+export function rollbackGateway(child: ChildProcess, timeoutMs = HANDOFF_ROLLBACK_TIMEOUT_MS): Promise<HandoffAnswer> {
+  return gatewayHandoffRequest(child, "rollback", timeoutMs);
+}
+
+/** The standby's answer to the take-over message (engine standby.ts GATEWAY_STANDBY_TAKING_OVER_MESSAGE, #411). */
+export const STANDBY_TAKING_OVER_MESSAGE = "branch-desktop:taking-over";
+
+/**
+ * Tells a warmed standby to take over (only after the old engine stepped down) and resolves true once it answers
+ * `branch-desktop:taking-over` (#411): from then on it owns, or is about to own, the state, channels and cron.
+ */
+export function takeOverStandby(child: ChildProcess, timeoutMs = HANDOFF_TAKE_OVER_TIMEOUT_MS): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null || !child.connected) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { cleanup(); resolve(false); }, timeoutMs);
+    const cleanup = () => { clearTimeout(timer); child.off("message", onMessage); child.off("exit", onExit); };
+    const onMessage = (value: unknown) => {
+      const message = value as { type?: unknown; pid?: unknown };
+      if (message?.type !== STANDBY_TAKING_OVER_MESSAGE || message.pid !== child.pid) return;
+      cleanup(); resolve(true);
+    };
+    const onExit = () => { cleanup(); resolve(false); };
+    child.on("message", onMessage);
+    child.once("exit", onExit);
+    sendStandbyTakeOver(child);
+  });
+}
+
+/** Kills an engine and its process group at once and resolves when it has exited: its state lock is free then. */
+export async function killGatewayAndWait(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
+  stopGateway(child, "SIGKILL");
+  await exited;
 }
 
 /**

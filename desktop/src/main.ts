@@ -5,7 +5,8 @@ import type { Server } from "node:http";
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { drainStopGateway, gatewayActivity, portIsFree, prepareStandbyGateway, readToken, setEnginePriority, sendStandbyTakeOver, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STANDBY_READY_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
@@ -47,6 +48,14 @@ function envMs(value: string | undefined, fallback: number): number {
 }
 /** Tests shorten it with BRANCH_DESKTOP_READY_TIMEOUT_MS. */
 const READY_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS, 600_000);
+/** The handoff deadlines (handoff-timeouts.ts, shared with the engine); tests shorten them through the environment. */
+const STEP_DOWN_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_STEP_DOWN_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS);
+const TAKE_OVER_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_TAKE_OVER_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS);
+const STANDBY_READY_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_STANDBY_READY_TIMEOUT_MS, HANDOFF_STANDBY_READY_TIMEOUT_MS);
+const ROLLBACK_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_ROLLBACK_TIMEOUT_MS, HANDOFF_ROLLBACK_TIMEOUT_MS);
+const RETIRE_KILL_AFTER_MS = envMs(process.env.BRANCH_DESKTOP_RETIRE_KILL_AFTER_MS, HANDOFF_RETIRE_KILL_AFTER_MS);
+/** How long an old engine that says it still serves gets to prove it on /readyz. */
+const PRIOR_READY_CHECK_MS = 10_000;
 /** A standby only loads code before it reports warm; one that takes longer is stopped and the old engine keeps serving. */
 const STANDBY_WARM_TIMEOUT_MS = 120_000;
 /** Failed standbys per update before the guarded stop/start swap takes over, so an update never becomes impossible. */
@@ -250,6 +259,7 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
   engineRestartInProgress = true;
   const windowBefore = windowBuild(servedWindowDir);
   const priorGateway = gateway;
+  const attempt = { stepDownSent: false };
   const stillOpen = () => { if (quitting) throw new Error("Branch Agent is quitting"); };
   const preparation = new AbortController();
   const priorExited = () => {
@@ -268,22 +278,29 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     const started = Date.now();
     sendToBranchWindows("branch-desktop:engine-update", "updating");
     const resumeSupervision = gatewaySupervisor.expectExit(priorGateway);
-    try {
-      if (explicit) log(`update ${label}: old engine ${await drainStopGateway(priorGateway)}`);
-      else await stopGatewayCleanly(priorGateway);
-    } catch (error) {
-      resumeSupervision();
-      throw error;
-    }
+    // One handoff at a time: while an old engine still finishes its sessions, the guarded swap runs instead.
+    if (standby && seamlessHandoff() && retiring.size > 0) log(`update ${label}: an old engine is still finishing its sessions; using the guarded swap`);
+    const handoff = standby && seamlessHandoff() && retiring.size === 0
+      ? await handOffToStandby(label, priorGateway, standby, resumeSupervision, attempt) : "drain";
+    let rolledBack = handoff === "kept";
     const stopped = Date.now();
-    stillOpen();
-    servedWindowDir = cfg.windowDir;
-    await waitForGatewayPort();
-    stillOpen();
-    const selectedStandby = standby;
-    standby = undefined;
-    const rolledBack = await bootSelectedEngine(selectedStandby);
-    log(`update ${label}: engine ${rolledBack ? "rolled back" : "swapped"} in place; stop ${stopped - started} ms, start ${Date.now() - stopped} ms, app and window kept open`);
+    if (handoff === "drain") {
+      try {
+        if (explicit) log(`update ${label}: old engine ${await drainStopGateway(priorGateway)}`);
+        else await stopGatewayCleanly(priorGateway);
+      } catch (error) {
+        resumeSupervision();
+        throw error;
+      }
+      stillOpen();
+      servedWindowDir = cfg.windowDir;
+      await waitForGatewayPort();
+      stillOpen();
+      const selectedStandby = standby;
+      standby = undefined;
+      rolledBack = await bootSelectedEngine(selectedStandby);
+    }
+    log(`update ${label}: engine ${rolledBack ? "rolled back" : "swapped"} in place${handoff === "drain" ? "" : " by handoff"}; stop ${stopped - started} ms, start ${Date.now() - stopped} ms, app and window kept open`);
     engineUpdateReady = false;
     if (rolledBack) {
       sendToBranchWindows("branch-desktop:engine-update", "kept");
@@ -301,9 +318,13 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     if (quitting) throw error;
     const message = error instanceof Error ? error.message : String(error);
     sendToBranchWindows("branch-desktop:engine-update-failed", message);
-    // Still serving only if the engine from before the update is the one running: a new engine that failed may
-    // not have exited yet, and it never became ready.
-    if (gateway === priorGateway && engineRunning()) {
+    // Still serving only if the engine from before the update is the one running and ready (and not retiring): a new
+    // engine that failed may not have exited yet, and it never became ready. After a step-down was asked for, the old
+    // engine must also prove it on /readyz.
+    const priorServing = gateway === priorGateway && engineServing() && !retiring.has(priorGateway) &&
+      (!attempt.stepDownSent || await priorServes(priorGateway));
+    if (!priorServing && gateway === priorGateway) notServing(priorGateway);
+    if (priorServing) {
       recoveryDeferred = false;
       const state = controls.settings().autoApplyUpdates ? "auto-wait" : "ready";
       sendToBranchWindows("branch-desktop:engine-update", state);
@@ -326,6 +347,131 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
       gatewaySupervisor.recover(new Error(exitedDuring ? "the engine exited during an update" : "the update ended with no engine serving"));
     }
   }
+}
+
+/** P45's seamless handoff runs only when desktop.json turns it on; off, an update drains the old engine first. */
+const seamlessHandoff = (): boolean => cfg.seamlessHandoff === true;
+
+/**
+ * Old engines that stepped down, from the moment they did: quitting stops them (shutdown), a crash leaves their
+ * record for the next launch to retire, and one still alive at HANDOFF_RETIRE_KILL_AFTER_MS is killed.
+ */
+const retiring = new Map<ChildProcess, ReturnType<typeof setTimeout>>();
+function keepRetiring(label: string, child: ChildProcess): void {
+  if (child.exitCode !== null || child.signalCode !== null || retiring.has(child)) return;
+  const timer = setTimeout(() => {
+    log(`update ${label}: old engine ${child.pid} is still alive past its lease deadline; stopping it`);
+    stopGateway(child, "SIGKILL");
+  }, RETIRE_KILL_AFTER_MS);
+  timer.unref?.();
+  retiring.set(child, timer);
+  child.once("exit", () => {
+    clearTimeout(timer);
+    if (retiring.delete(child)) log(`update ${label}: old engine ${child.pid} finished its kept sessions and stopped`);
+  });
+}
+/** The old engine took control back: it serves again and is no longer retiring. */
+function stopRetiring(child: ChildProcess): void {
+  clearTimeout(retiring.get(child));
+  retiring.delete(child);
+}
+
+/** The old engine answers /readyz on the live port within a short bound (never trust "kept serving" without it). */
+async function priorServes(prior: ChildProcess): Promise<boolean> {
+  return waitForReady({ ...cfg, gatewayPort }, prior, PRIOR_READY_CHECK_MS).then(() => true, () => false);
+}
+/** The old engine is not serving (fenced for good, or dead): the update's end stops it and recovery takes over. */
+function notServing(prior: ChildProcess): void {
+  if (readyGateway === prior) readyGateway = undefined;
+  stopRetiring(prior);
+}
+
+/**
+ * The seamless path (desktop.json "seamlessHandoff"). The old engine steps down without exiting: it refuses new work,
+ * stops channels and cron, keeps every session with a run in flight until that run finishes, and releases the state.
+ * Only then is the warm standby told to take over (#411); once it answers /readyz on its own port the window is
+ * handed to it and the old engine finishes its kept sessions and stops. A standby that fails is killed before the
+ * old engine is asked to take control back, so the state lock is free and never has two owners.
+ * "drain": the old engine cannot step down (a build from before the handoff); the guarded swap runs instead.
+ */
+async function handOffToStandby(label: string, prior: ChildProcess, selected: PreparedGateway, resumeSupervision: () => void,
+  attempt: { stepDownSent: boolean }): Promise<"swapped" | "kept" | "drain"> {
+  attempt.stepDownSent = true;
+  const stepped = await deactivateGateway(prior, STEP_DOWN_TIMEOUT_MS);
+  if (stepped === "ok") keepRetiring(label, prior);
+  if (quitting) throw new Error("Branch Agent is quitting");
+  if (stepped !== "ok") {
+    // Never told to take over, the standby never takes the state: stop it.
+    standby = undefined;
+    await killGatewayAndWait(selected.child);
+    if (stepped === "unanswered") {
+      // Unknown: a build from before the handoff, or a step-down still running. Taking control back is harmless if
+      // it never stepped down; an engine that answers neither but serves is an old build and is drained instead.
+      const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
+      if ((back === "ok" || back === "unanswered") && await priorServes(prior)) {
+        log(`update ${label}: the old engine did not step down in time; it kept serving; draining it instead`);
+        return "drain";
+      }
+    } else if (stepped === "refused" && await priorServes(prior)) {
+      resumeSupervision();
+      throw new Error("the running engine could not step down for the update and kept serving");
+    }
+    notServing(prior);
+    resumeSupervision();
+    throw new Error(`the running engine could not step down (${stepped}) and is not serving; Branch restarts it`);
+  }
+  standby = undefined;
+  log(`update ${label}: old engine ${prior.pid} stepped down; telling standby ${selected.child.pid} to take over on port ${selected.port}`);
+  const tookOver = await takeOverStandby(selected.child, TAKE_OVER_TIMEOUT_MS);
+  if (quitting) throw new Error("Branch Agent is quitting");
+  if (!tookOver) {
+    await takeControlBack(label, prior, selected, resumeSupervision, new Error("the standby did not take over in time"));
+    return "kept";
+  }
+  servedWindowDir = cfg.windowDir;
+  try {
+    // Well under the lease deadline, so the old engine can still take control back.
+    await bootEngine(resolveEngineDir(cfg), true, selected, selected.port, { readyTimeoutMs: STANDBY_READY_TIMEOUT_MS, keepOnConfirmFailure: true });
+  } catch (error) {
+    // Quitting: shutdown stops both engines; nothing is rolled back or recorded against the release.
+    if (quitting) throw error;
+    await takeControlBack(label, prior, selected, resumeSupervision, error);
+    return "kept";
+  }
+  // The window moves to the new engine next; the old one finishes its kept sessions and stops by itself.
+  gatewayActivity(prior, "drain", 30_000).catch(error => log(`update ${label}: old engine retire request: ${String(error)}`));
+  return "swapped";
+}
+
+/** A standby that failed after the old engine stepped down: kill it, then let the old engine reclaim the state. */
+async function takeControlBack(label: string, prior: ChildProcess, selected: PreparedGateway, resumeSupervision: () => void, error: unknown): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+  log(`update ${label}: the standby failed (${message}); giving control back to the old engine`);
+  // Something else took the standby's spare port before it could bind: not the release's fault.
+  const portClash = selected.child.exitCode !== null && !await portIsFree(selected.port);
+  // Gone for good (its state lock released) before the old engine is asked to reclaim the state.
+  await killGatewayAndWait(selected.child);
+  const failedEngine = resolveEngineDir(cfg);
+  try {
+    if (portClash) log(`update ${label}: standby port ${selected.port} was taken before the standby could bind it; the release stays eligible`);
+    else if (error instanceof GatewayReadinessTimeoutError) await recordComponentUpdateTimeout(cfg, failedEngine);
+    else await rejectFailedComponentUpdate(cfg, failedEngine);
+  } catch (recordError) { log(`update ${label}: failure could not be recorded: ${String(recordError)}`); }
+  await rollbackComponentUpdate(cfg).catch(rollbackError => log(`update ${label}: component rollback: ${String(rollbackError)}`));
+  servedWindowDir = cfg.windowDir;
+  gateway = prior;
+  // The branch command and the next launch name the engine that runs again, not the failed standby.
+  if (lastGoodEngineDir) writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${lastGoodEngineDir}\n`);
+  if (prior.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prior.pid));
+  const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
+  if (back !== "ok" || !await priorServes(prior)) {
+    notServing(prior);
+    resumeSupervision();
+    throw new Error(`the update failed and the old engine could not take control back (${back}): ${message}`);
+  }
+  stopRetiring(prior);
+  resumeSupervision();
+  log(`update ${label}: the old engine took control back on port ${gatewayPort}`);
 }
 
 /**
@@ -706,7 +852,8 @@ async function waitForGatewayPort(): Promise<void> {
 }
 
 /** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
-async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = true, prepared?: PreparedGateway, port = prepared?.port ?? gatewayPort): Promise<void> {
+async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = true, prepared?: PreparedGateway, port = prepared?.port ?? gatewayPort,
+  options: { readyTimeoutMs?: number; keepOnConfirmFailure?: boolean } = {}): Promise<void> {
   const started = Date.now();
   if (macComputerDriver && !screenControlEnabled()) await macComputerDriver.stop();
   const macComputerEndpoint = await (!prepared && screenControlEnabled() ? macComputerDriver?.start(engineDir) : undefined)?.catch(error => {
@@ -727,9 +874,13 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
 `);
   // Ready means listening on its own port and answering /readyz there; only then does the window follow it.
-  await waitForReady({ ...cfg, gatewayPort: port }, child, READY_TIMEOUT_MS);
+  await waitForReady({ ...cfg, gatewayPort: port }, child, options.readyTimeoutMs ?? READY_TIMEOUT_MS);
   // Only a confirmed engine moves the live port: a rollback reboots on the port the window already uses.
-  if (confirmUpdate) await confirmComponentUpdate(cfg);
+  // A handoff's standby that is ready owns the state, channels and cron: a failed confirmation never rolls it back.
+  if (confirmUpdate) await confirmComponentUpdate(cfg).catch(error => {
+    if (!options.keepOnConfirmFailure) throw error;
+    log(`the new engine serves but its update could not be confirmed (${String(error)}); keeping it`);
+  });
   adoptGatewayPort(port);
   lastGoodEngineDir = engineDir;
   readyGateway = child;
@@ -843,6 +994,8 @@ function shutdown(): void {
   controls.dispose();
   stopCandidate();
   stopWarmingStandby();
+  // A quit mid-handoff stops the stepped-down engine too; a crash leaves its record for the next launch.
+  for (const child of retiring.keys()) stopGateway(child);
   if (standby) stopGateway(standby.child);
   standby = undefined;
   if (gateway) stopGateway(gateway);

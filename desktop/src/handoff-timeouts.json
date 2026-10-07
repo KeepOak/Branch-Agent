@@ -1,0 +1,11 @@
+{
+  "$comment": "P45 engine handoff deadlines in ms, shared by the desktop (desktop/src/handoff-timeouts.ts) and the engine (import this file with { type: \"json\" }). Meanings and the bounds between them: handoff-timeouts.ts.",
+  "leaseMaxWaitMs": 330000,
+  "leaseMaxAgeMs": 360000,
+  "stepDownTimeoutMs": 60000,
+  "takeOverTimeoutMs": 30000,
+  "standbyReadyTimeoutMs": 120000,
+  "rollbackLockWaitMs": 20000,
+  "rollbackTimeoutMs": 30000,
+  "retireKillAfterMs": 345000
+}
