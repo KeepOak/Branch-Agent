@@ -43,7 +43,7 @@ export function groupHint(drop: SidebarDrop, contacts: readonly GroupContact[], 
 export function useGroupRooms(session: SaplingSession, ready: boolean) {
   const [rooms, setRooms] = useState<GroupRoom[]>([]);
   const [peerOnline, setPeerOnline] = useState<Map<string, boolean>>(new Map());
-  const reload = () => session.request<{ rooms: GroupRoom[] }>("rooms.list", {}).then((result) => setRooms(result.rooms), (error: unknown) => console.warn("rooms.list failed", error)); // credential-logging-allowed: "session" is a websocket session object, not a credential
+  const reload = () => session.request<{ rooms: GroupRoom[] }>("rooms.list", {}).then((result) => setRooms(result.rooms), (error: unknown) => console.warn("rooms.list failed", error));
   const reloadPeers = () => session.request<{ peers: { name: string; online?: boolean }[] }>("a2a.peers.list", {}).then(
     (result) => setPeerOnline(new Map(result.peers.filter((peer) => typeof peer.online === "boolean").map((peer) => [peer.name, peer.online!]))),
     () => undefined,

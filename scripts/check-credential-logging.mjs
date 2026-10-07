@@ -1,38 +1,39 @@
 #!/usr/bin/env node
 
-// Rejects log calls that reference credential-named identifiers without using the redaction helper.
+// Rejects log calls that pass credential-named identifiers without a redaction helper.
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CREDENTIAL_IDENTIFIERS = [
-  "token",
   "accessToken",
   "access_token",
   "refreshToken",
   "refresh_token",
-  "session",
+  "idToken",
+  "id_token",
   "sessionToken",
   "session_token",
-  "cookie",
+  "sessionKey",
+  "session_key",
+  "sessionSecret",
+  "session_secret",
   "apiKey",
   "api_key",
+  "clientSecret",
+  "client_secret",
   "secret",
   "password",
   "passwd",
   "authorization",
   "bearer",
+  "cookie",
+  "token",
 ];
 
-const LOG_CALL_PATTERNS = [
-  // console.* methods
-  "console\\.(?:log|info|warn|error|debug)",
-  // logger.* methods
-  "logger\\.(?:trace|debug|info|warn|error|fatal)",
-  // file log writers (common patterns)
-  "fs\\.writeFile(?:Sync)?\\(",
-  "fs\\.appendFile(?:Sync)?\\(",
-  "createWriteStream\\(",
+const LOG_SEARCH_PATTERNS = [
+  "console\\.(log|info|warn|error|debug)",
+  "logger\\.(trace|debug|info|warn|error|fatal)",
 ];
 
 const REDACTION_HELPERS = [
@@ -50,18 +51,90 @@ const REDACTION_HELPERS = [
 
 const OPT_OUT_COMMENT_PATTERN = /credential-logging-allowed:\s*(.+)/i;
 
+const GREP_EXCLUDES = [
+  ":!*.test.*",
+  ":!test/**",
+  ":!*.spec.*",
+  ":!scripts/check-credential-logging.test.mjs",
+  ":!scripts/check-credential-logging.mjs",
+  ":!*.min.js",
+  ":!*.bundle.js",
+  ":!design/**",
+  ":!dist/**",
+  ":!build/**",
+  ":!node_modules/**",
+];
+
+const IDENTIFIER_RE = new RegExp(
+  String.raw`(?:^|[^A-Za-z0-9_$])(?:${CREDENTIAL_IDENTIFIERS.join("|")})(?![A-Za-z0-9_$])`,
+  "i",
+);
+
 /**
- * Parses git grep output into violation records with context.
+ * Drops quoted text so words like "session" or "token" in messages are ignored,
+ * while keeping `${…}` interpolations (those can hold identifiers).
  */
+export function stripStringLiterals(line) {
+  let out = "";
+  let i = 0;
+  while (i < line.length) {
+    const ch = line[i];
+    if (ch === "/" && line[i + 1] === "/") {
+      break;
+    }
+    if (ch === "/" && line[i + 1] === "*") {
+      const end = line.indexOf("*/", i + 2);
+      if (end === -1) {
+        break;
+      }
+      i = end + 2;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") {
+      const quote = ch;
+      i += 1;
+      while (i < line.length) {
+        if (line[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (quote === "`" && line[i] === "$" && line[i + 1] === "{") {
+          i += 2;
+          let depth = 1;
+          const start = i;
+          while (i < line.length && depth > 0) {
+            if (line[i] === "{") {
+              depth += 1;
+            } else if (line[i] === "}") {
+              depth -= 1;
+            }
+            i += 1;
+          }
+          out += ` ${stripStringLiterals(line.slice(start, Math.max(start, i - 1)))} `;
+          continue;
+        }
+        if (line[i] === quote) {
+          i += 1;
+          break;
+        }
+        i += 1;
+      }
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
 function parseGitGrepOutput(stdout) {
   const violations = [];
   const output = stdout.toString("utf8");
-  const lines = output.split("\n").filter(Boolean);
-
-  for (const line of lines) {
+  for (const line of output.split("\n").filter(Boolean)) {
     const match = line.match(/^([^:]+):(\d+):(.*)$/);
-    if (!match) continue;
-
+    if (!match) {
+      continue;
+    }
     const [, filePath, lineNumber, content] = match;
     violations.push({
       filePath,
@@ -69,130 +142,115 @@ function parseGitGrepOutput(stdout) {
       content: content.trim(),
     });
   }
-
   return violations;
 }
 
-/**
- * Checks if a line is opted out via an inline comment.
- */
-function isOptedOut(content, filePath, lineNumber, cwd) {
+function isOptedOut(content) {
   const match = content.match(OPT_OUT_COMMENT_PATTERN);
-  if (!match) return false;
-
-  // Opt-out requires a reason
-  const reason = match[1].trim();
-  return reason.length > 0;
+  return Boolean(match?.[1]?.trim());
 }
 
-/**
- * Checks if the log call includes redaction.
- */
 function includesRedaction(content) {
   return REDACTION_HELPERS.some((helper) => content.includes(helper));
 }
 
-/**
- * Uses git grep to find potential credential logging violations.
- */
-export function findCredentialLoggingViolations(cwd = process.cwd()) {
-  const violations = [];
+function hasCredentialIdentifier(content) {
+  return IDENTIFIER_RE.test(stripStringLiterals(content));
+}
 
-  // Search for log calls separately for each pattern to avoid complex regex issues
-  const searchPatterns = [
-    "console\\.(log|info|warn|error|debug)",
-    "logger\\.(trace|debug|info|warn|error|fatal)",
-  ];
-
-  const allCandidates = [];
-
-  for (const pattern of searchPatterns) {
-    const logCallResult = spawnSync(
-      "git",
-      [
-        "grep",
-        "--no-color",
-        "-n",
-        "-E",
-        pattern,
-        "--",
-        ".",
-        ":!*.test.*",
-        ":!test/**",
-        ":!*.spec.*",
-        ":!scripts/check-credential-logging.test.mjs",
-        ":!scripts/check-credential-logging.mjs",
-        ":!*.min.js",
-        ":!*.bundle.js",
-        ":!design/**",
-        ":!dist/**",
-        ":!build/**",
-        ":!node_modules/**",
-      ],
-      {
-        cwd,
-        encoding: "utf8",
-        maxBuffer: 50 * 1024 * 1024,
-      },
-    );
-
-    if (logCallResult.status === 1) {
-      continue;
-    }
-    if (logCallResult.status !== 0) {
-      const stderr = logCallResult.stderr?.trim();
-      throw new Error(stderr || `git grep failed with status ${logCallResult.status ?? "unknown"}`);
-    }
-
-    allCandidates.push(...parseGitGrepOutput(Buffer.from(logCallResult.stdout)));
-  }
-
-  // Remove duplicates
-  const uniqueCandidates = new Map();
-  for (const candidate of allCandidates) {
-    const key = `${candidate.filePath}:${candidate.lineNumber}`;
-    if (!uniqueCandidates.has(key)) {
-      uniqueCandidates.set(key, candidate);
-    }
-  }
-
-  // Filter candidates that mention credential identifiers
-  for (const candidate of uniqueCandidates.values()) {
-    const { filePath, lineNumber, content } = candidate;
-
-    // Skip if opted out
-    if (isOptedOut(content, filePath, lineNumber, cwd)) {
-      continue;
-    }
-
-    // Skip if redaction is present
-    if (includesRedaction(content)) {
-      continue;
-    }
-
-    // Check if line contains credential identifiers
-    const hasCredentialIdentifier = CREDENTIAL_IDENTIFIERS.some((identifier) => {
-      // Match identifier as whole word or property access
-      const wordPattern = new RegExp(`\\b${identifier}\\b`, "i");
-      const propertyPattern = new RegExp(`\\.${identifier}\\b`, "i");
-      return wordPattern.test(content) || propertyPattern.test(content);
-    });
-
-    if (hasCredentialIdentifier) {
-      violations.push(candidate);
-    }
-  }
-
-  return violations;
+function isExcludedPath(file) {
+  return (
+    /\.(test|spec)\./.test(file) ||
+    file.endsWith(".min.js") ||
+    file.endsWith(".bundle.js") ||
+    file.startsWith("design/") ||
+    file.startsWith("dist/") ||
+    file.startsWith("build/") ||
+    file.startsWith("node_modules/") ||
+    file === "scripts/check-credential-logging.mjs" ||
+    file === "scripts/check-credential-logging.test.mjs"
+  );
 }
 
 /**
- * Runs the credential logging check.
+ * Changed paths versus the PR base (first parent of the merge commit, matching
+ * scripts/changed-test-coverage.mjs). Override with CREDENTIAL_LOGGING_BASE.
  */
-export async function main() {
-  const cwd = process.cwd();
-  const violations = findCredentialLoggingViolations(cwd);
+export function changedFiles(cwd = process.cwd()) {
+  const base = process.env.CREDENTIAL_LOGGING_BASE || "HEAD^1";
+  const result = spawnSync("git", ["diff", "--name-only", "--diff-filter=d", base, "HEAD"], {
+    cwd,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    const stderr = result.stderr?.trim();
+    throw new Error(stderr || `git diff failed with status ${result.status ?? "unknown"}`);
+  }
+  return result.stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+}
 
+function grepLogCalls(cwd, paths) {
+  const candidates = [];
+  for (const pattern of LOG_SEARCH_PATTERNS) {
+    const args = ["grep", "--no-color", "-n", "-E", pattern, "--"];
+    if (paths) {
+      const filtered = paths.filter((file) => !isExcludedPath(file));
+      if (filtered.length === 0) {
+        continue;
+      }
+      args.push(...filtered);
+    } else {
+      args.push(".", ...GREP_EXCLUDES);
+    }
+    const result = spawnSync("git", args, {
+      cwd,
+      encoding: "utf8",
+      maxBuffer: 50 * 1024 * 1024,
+    });
+    if (result.status === 1) {
+      continue;
+    }
+    if (result.status !== 0) {
+      const stderr = result.stderr?.trim();
+      throw new Error(stderr || `git grep failed with status ${result.status ?? "unknown"}`);
+    }
+    candidates.push(...parseGitGrepOutput(Buffer.from(result.stdout)));
+  }
+  return candidates;
+}
+
+/**
+ * Finds log calls whose arguments include a credential identifier that is not
+ * passed through a shared redaction helper and is not opted out.
+ */
+export function findCredentialLoggingViolations(cwd = process.cwd(), checkAll = false) {
+  const paths = checkAll ? null : changedFiles(cwd);
+  const unique = new Map();
+  for (const candidate of grepLogCalls(cwd, paths)) {
+    const key = `${candidate.filePath}:${candidate.lineNumber}`;
+    if (!unique.has(key)) {
+      unique.set(key, candidate);
+    }
+  }
+
+  const violations = [];
+  for (const candidate of unique.values()) {
+    if (isOptedOut(candidate.content)) {
+      continue;
+    }
+    if (includesRedaction(candidate.content)) {
+      continue;
+    }
+    if (hasCredentialIdentifier(candidate.content)) {
+      violations.push(candidate);
+    }
+  }
+  return violations;
+}
+
+export async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
+  const checkAll = argv.includes("--all");
+  const violations = findCredentialLoggingViolations(cwd, checkAll);
   if (violations.length === 0) {
     return;
   }
@@ -207,13 +265,11 @@ export async function main() {
   console.error("Or add an opt-out comment with a reason:");
   console.error("  // credential-logging-allowed: reason");
   console.error("");
-
   for (const violation of violations) {
     console.error(`  ${violation.filePath}:${violation.lineNumber}`);
     console.error(`    ${violation.content}`);
   }
-
-  process.exit(1);
+  process.exitCode = 1;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

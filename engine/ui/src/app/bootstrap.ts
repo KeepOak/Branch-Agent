@@ -656,7 +656,7 @@ export function bootstrapApplication(): ApplicationRuntime {
                   : isDefaultChatLanding(history.location(), basePath, routeIdFromPath),
             }),
             (error) => {
-              console.error("[branch] initial session location failed", error); // credential-logging-allowed: "session" in error message context
+              console.error("[branch] initial session location failed", error);
             },
           );
         });

@@ -225,7 +225,7 @@ export function createFaceTimeCallEventHandler(params: {
     try {
       await params.callControl.startCallTalk(call);
       await params.callControl.activateCallTalk(call);
-      params.logger.info("[facetime] realtime talk session active"); // credential-logging-allowed: "session" in informational message context
+      params.logger.info("[facetime] realtime talk session active");
     } catch (error) {
       if (call.lifecycleAbort.signal.aborted || params.calls.active !== call) {
         return;

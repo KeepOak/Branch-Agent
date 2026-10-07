@@ -242,7 +242,7 @@ export async function runAcpClientInteractive(opts: AcpClientOptions = {}): Prom
   });
 
   console.log("Branch Agent ACP client");
-  console.log(`Session: ${sessionId}`); // credential-logging-allowed: session ID for display, no sensitive data
+  console.log(`Session: ${sessionId}`);
   console.log('Type a prompt, or "exit" to quit.\n');
 
   let quitting = false; // Only client-owned shutdown makes a signal stop successful.

@@ -623,7 +623,7 @@ export class RealtimeTalkSession {
       if (owner.closeSignal.aborted) {
         return;
       }
-      console.warn("Realtime Talk voice session close failed", error); // credential-logging-allowed: "session" in error message context
+      console.warn("Realtime Talk voice session close failed", error);
       // Suppress if a newer transport has started: closing the old call is its own
       // teardown and must not push the active replacement call into an error state.
       if (this.transportGeneration === detached.generation) {

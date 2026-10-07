@@ -24,8 +24,8 @@ if (existsSync(target)) {
 
 const tokenFile = join(to, "gateway-token");
 if (existsSync(tokenFile)) {
-  console.log("token already present:", tokenFile); // credential-logging-allowed: file path, not token value
+  console.log("token already present:", tokenFile);
 } else {
   writeFileSync(tokenFile, randomBytes(24).toString("hex"), { mode: 0o600 });
-  console.log("token written:", tokenFile); // credential-logging-allowed: file path, not token value
+  console.log("token written:", tokenFile);
 }

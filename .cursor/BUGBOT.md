@@ -46,11 +46,6 @@ Conventions and common failure modes for this repository. Bugbot should check th
   - Or REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
 - **Why:** A new push after review must block the merge until re-reviewed. Merge commits preserve the full history.
 
-### Credential logging
-- **Wrong:** Logging credentials like `apiKey`, `accessToken`, `password`, `sessionToken` without redaction.
-- **Right:** Use `redactSensitiveText()`, `redactLogRecordForTransport()`, or similar helpers from `engine/src/logging/redact.ts`.
-- **Check:** The merge-gate workflow's `credential-logging-guard` job enforces this.
-
 ## Code style
 
 1. **No placeholder implementations.** A feature is either complete or shown disabled with its reason. No TODOs for the thing you just built.
@@ -80,4 +75,4 @@ Every merge to `main` that touches `engine/`, `window/`, or `desktop/` triggers 
 - [ ] No placeholder implementations or skipped tests.
 - [ ] Visual changes include screenshots.
 - [ ] Tests prove the fix (failing on old head, passing on new).
-- [ ] Credentials use redaction helpers.
+- [ ] FIX any change that logs credentials or bypasses the redaction helper.

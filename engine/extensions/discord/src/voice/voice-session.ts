@@ -327,7 +327,7 @@ export class DiscordVoiceSessions {
       };
       void completion.then(forget, (error: unknown) => {
         forget();
-        logger.warn(`discord voice: session stop failed: ${formatErrorMessage(error)}`); // credential-logging-allowed: "session" in error message context
+        logger.warn(`discord voice: session stop failed: ${formatErrorMessage(error)}`);
       });
       return stopCompletion;
     };
