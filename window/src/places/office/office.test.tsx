@@ -85,7 +85,7 @@ describe("Pixel office", () => {
     const roster = officeRoster(agents, sessions, contacts, {}, new Map(), { items: [approval] });
     expect(roster.agents[0]).toMatchObject({ state: "needs_you", needsYou: 1 });
     const helper = { ...approval, request: { sessionKey: "agent:oak:child" } };
-    const withHelper = officeRoster(agents, { sessions: [...sessions.sessions, { key: "agent:oak:child", agentId: "oak", hasActiveRun: true, spawnedBy: "agent:oak:main" }] }, contacts, {}, new Map(), [{ items: [helper] }, { items: [] }, { items: [] }]);
+    const withHelper = officeRoster(agents, { sessions: [...sessions.sessions, { key: "agent:oak:child", agentId: "oak", hasActiveRun: true, spawnedBy: "agent:oak:main" }] }, { contacts: [{ ...contacts.contacts[0], needsYou: true }] }, {}, new Map(), [[], [helper], []]);
     expect(withHelper.agents[0]).toMatchObject({ state: "working", needsYou: 1 });
     expect(officeRoster(agents, sessions, contacts, {}, new Map(), { items: [{ ...approval, state: "allowed" }] }).agents[0]?.state).toBe("working");
   });

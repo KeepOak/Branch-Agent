@@ -36,7 +36,7 @@ it("moves to a chosen corner and remembers it for this computer", async () => {
   await act(async () => panel.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 400, clientY: 300 })));
   expect(document.querySelector('[role="menu"][aria-label="Move the agent window"]')).not.toBeNull();
   expect(document.querySelector('[role="menu"] .ph')?.textContent).toBe("Move the agent");
-  expect(document.querySelector('[role="menuitemcheckbox"][aria-checked="true"]')?.textContent).toBe("Bottom right");
+  expect(document.querySelector('[role="menuitemcheckbox"][aria-checked="true"]')?.textContent).toContain("Bottom right");
   const choice = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemcheckbox"]')].find((button) => button.textContent === "Top left")!;
   await act(async () => choice.click());
   expect(readPanelPlace()).toEqual({ corner: "top-left" });

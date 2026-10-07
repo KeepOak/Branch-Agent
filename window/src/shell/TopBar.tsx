@@ -11,6 +11,7 @@ export type HeaderInfo = {
   name: string;
   trunkName: string;
   state: FaceState;
+  paused?: boolean;
   isDefaultTrunk: boolean;
   /** What the Trunk is for (its identity theme), the words before "· ready" (the preview's c.role). */
   role?: string;
@@ -43,9 +44,9 @@ type Props = {
 };
 
 /** The preview's five header forms, projected from the shared Trunk state. */
-export function stateWords(h: Pick<HeaderInfo, "state" | "isDefaultTrunk" | "trunkName" | "role" | "room">): string {
+export function stateWords(h: Pick<HeaderInfo, "state" | "paused" | "isDefaultTrunk" | "trunkName" | "role" | "room">): string {
   if (h.room) return h.room.line;
-  if (h.state === "sleep") return "Paused · won’t start anything new";
+  if (h.paused) return "Paused · won’t start anything new";
   if (h.state === "wait") return "Waiting for you";
   if (["think", "work", "search", "read"].includes(h.state)) return "Working · using the computer";
   const role = h.role || (h.isDefaultTrunk ? "Your Trunk on this computer" : h.trunkName);

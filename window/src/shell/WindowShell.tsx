@@ -3,7 +3,7 @@ import type { Conversation } from "../connect/conversations";
 import type { Topic } from "@branch/gateway-protocol";
 import type { TopicUpdate } from "../thread/TopicCard";
 import type { SendExtras } from "../connect/engine";
-import { roomIdOf, type SaplingSession, type SessionSnapshot } from "../connect/session";
+import { roomIdOf, type SaplingSession } from "../connect/session";
 import { withOwner } from "../connect/agent-owner";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { Composer, VOICE_OFF } from "../composer/Composer";
@@ -691,7 +691,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   const questions = useQuestions(ready ? session.engine : undefined);
   const waitingQuestion = questions.list.find((q) => q.status === "pending" && (!q.expiresAtMs || q.expiresAtMs > now)) ?? null;
-  const faceNow = waitingQuestion || (openKey && (pending.get(openKey) ?? 0) > 0) ? "wait" : agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now, lastActivityAt: s.lastActivityAt });
+  const openTrunkPaused = trunks.list.some(t => t.paused && openKey?.startsWith(`agent:${t.id}:`));
+  const faceNow = waitingQuestion || (openKey && (pending.get(openKey) ?? 0) > 0) ? "wait" : agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now, paused: openTrunkPaused, lastActivityAt: s.lastActivityAt });
   const rowState = useCallback((row: Conversation) => {
     const open = row.key === openKey;
     return { waiting: row.needsYou === true || (pending.get(row.key) ?? 0) > 0 || (open && faceNow === "wait"), working: row.working || (open && ["think", "work", "search", "read"].includes(faceNow)) };
@@ -917,6 +918,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           name,
           trunkName: trunkName(draftTopic?.agentId ?? openRow?.agentId),
           state: draftTopic ? "idle" as const : faceNow,
+          paused: !draftTopic && openTrunkPaused,
           isDefaultTrunk: (draftTopic?.agentId ?? openRow?.agentId) === trunks.defaultId,
           role: trunks.list.find((t) => t.id === (draftTopic?.agentId ?? openRow?.agentId ?? trunks.defaultId))?.theme,
           renaming: !draftTopic && renaming !== null && renaming === openKey,
