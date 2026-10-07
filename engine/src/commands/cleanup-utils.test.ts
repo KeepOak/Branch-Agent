@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/commands/cleanup-utils.test.ts (atlas OPS-0096). Changed for Branch: retain Branch agents.entries fixtures instead of upstream agents.list.
 // Cleanup utility tests cover filesystem cleanup helpers, temp paths, and command runtime behavior.
 import { spawn } from "node:child_process";
 import { once } from "node:events";
