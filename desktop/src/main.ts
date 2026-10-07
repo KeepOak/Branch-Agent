@@ -377,7 +377,7 @@ async function afterUpdateLockRelease(released: UpdateLockHandle): Promise<void>
   } else if (queuedClick) {
     const staged = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
     if (engineUpdateReady && staged) void restartEngine();
-    else win?.webContents.send("branch-desktop:engine-update", "kept");
+    else sendToBranchWindows("branch-desktop:engine-update", "kept");
   }
 }
 
@@ -925,7 +925,7 @@ async function start(): Promise<void> {
     onWithdrawal: version => {
       withdrawnUpdateVersion = version;
       engineUpdateReady = false;
-      win?.webContents.send("branch-desktop:engine-update", "kept");
+      sendToBranchWindows("branch-desktop:engine-update", "kept");
     }, onStaged: () => {
     offerStagedUpdate().catch(error => log(`Component update status: ${String(error)}`));
   } });
@@ -1084,7 +1084,7 @@ async function restartEngine(): Promise<void> {
       // A newer release is replacing the staged one: the click is kept and runs right after, on the newer release.
       updateClickQueued = true;
       log("update requested while a newer release replaces the staged one; it runs right after");
-      win.webContents.send("branch-desktop:engine-update", "preparing");
+      sendToBranchWindows("branch-desktop:engine-update", "preparing");
     }
     return;
   }
@@ -1095,6 +1095,11 @@ async function restartEngine(): Promise<void> {
     return;
   }
   const staged = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+  if (staged && staged === withdrawnUpdateVersion) {
+    log(`update requested for withdrawn release ${staged}; keeping the running engine`);
+    sendToBranchWindows("branch-desktop:engine-update", "kept");
+    return;
+  }
   log(`update requested (${staged ?? "rebuilt engine"}); old engine pid ${gateway.pid}`);
   try { await swapEngineInPlace(staged ?? "rebuilt engine", true); }
   catch (err) {

@@ -942,6 +942,28 @@ test("auto-apply ignores a withdrawn version while the staged status still repor
   withdraw("fixture-next");
   assert.equal(await pendingVersion(), null);
 }));
+test("a pop-out Update click after withdrawal cannot install the withdrawn release", () => fixture(async ({ root, runtime, starts, offerStaged, withdraw }) => {
+  const main = runtime.window;
+  await runtime.handlers.get("branch-desktop:open-conversation")(
+    { sender: main.webContents, senderFrame: main.webContents.mainFrame }, "agent:test:one");
+  const child = runtime.windows[1];
+  const mainEvents = [], childEvents = [];
+  main.webContents.send = (...args) => mainEvents.push(args);
+  child.webContents.send = (...args) => childEvents.push(args);
+  await stageFixtureUpdate(root);
+  offerStaged();
+  await eventually(() => [mainEvents, childEvents].every(events =>
+    events.some(([channel, state]) => channel === "branch-desktop:engine-update" && ["ready", "auto-wait"].includes(state))));
+  withdraw("fixture-next");
+  for (const events of [mainEvents, childEvents]) {
+    assert.ok(events.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"));
+  }
+  runtime.ipcMain.emit("branch-desktop:restart-engine", { sender: child.webContents, senderFrame: child.webContents.mainFrame });
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update requested for withdrawn release fixture-next"));
+  assert.equal((await starts()).length, 1, "the withdrawn release started another engine");
+  assert.equal(mainEvents.at(-1)[1], "kept");
+  assert.equal(childEvents.at(-1)[1], "kept");
+}));
 test("a staged-update replacement that ends rolled back keeps the served window valid and never reloads it", () => fixture(async ({ root, runtime, offerStaged, swapGuard }) => {
   idleWindow(runtime);
   const cfg = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
