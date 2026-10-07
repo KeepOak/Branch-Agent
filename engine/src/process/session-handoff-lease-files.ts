@@ -9,8 +9,9 @@
 // have several holders at once (back-to-back updates: A still finishes a run while B steps down with a turn for the
 // same session parked behind A), and a successor waits until every holder of that session has released it.
 //
-// This gates the session's command lane. Session writes that do not run in that lane (session RPCs, compaction,
-// subagent and cron writers) are not gated here; the handoff wiring has to route or fence them.
+// This gates the session's command lane, which carries turns, compaction, and cron and heartbeat runs. Gateway
+// requests that write a session outside its lane (session RPCs, chat.send's user turn, in-process dispatch) wait in
+// gateway/session-handoff-lease-request-gate.ts.
 //
 // A lease is live only while its holder process is the same process (pid and start time) and it is younger than
 // the longest a handoff may keep a session; anything else is stale and is deleted on sight. The format is version 2
@@ -29,6 +30,12 @@ export const SESSION_LANE_PREFIX = "session:";
  * successor's turn waits for one. The holder's `deadline` fires at this age.
  */
 export const SESSION_HANDOFF_LEASE_MAX_WAIT_MS = 330_000;
+/**
+ * The longest a Gateway request that writes a leased session waits before it is refused as retryable. Clients
+ * give up on a request after 30 s (DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS), and a write they were told failed must
+ * never run later, so this stays well below that. In-process dispatch waits up to its own deadline instead.
+ */
+export const SESSION_HANDOFF_LEASE_REQUEST_WAIT_MS = 15_000;
 /** A lease older than this guards nothing, whoever holds it: the successor runs the session from then on. */
 export const SESSION_HANDOFF_LEASE_MAX_AGE_MS = SESSION_HANDOFF_LEASE_MAX_WAIT_MS + 30_000;
 const START_TIME_TIMEOUT_MS = 1_000;
