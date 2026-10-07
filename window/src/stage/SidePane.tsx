@@ -87,6 +87,7 @@ type Props = {
   card: ProgressCard | null;
   cardError: string;
   tab: PaneTab;
+  focusHelpers?: number;
   onTab: (tab: PaneTab) => void;
   onClose: () => void;
   toast: (message: string) => void;
@@ -98,7 +99,7 @@ type Props = {
 };
 
 /** The side panel: its tabs, + Add a tab, Focus, Minimize, Layout and a resizer, over each tab's engine data. */
-export function SidePane({ engine, name, blocks, running, card, cardError, tab, onTab, onClose, toast, title, onReload, contactTopics }: Props) {
+export function SidePane({ engine, name, blocks, running, card, cardError, tab, focusHelpers, onTab, onClose, toast, title, onReload, contactTopics }: Props) {
   const [prefs, setPrefs] = useState<Prefs>(readPrefs);
   const [focus, setFocus] = useState(false);
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[]; label: string } | null>(null);
@@ -218,7 +219,7 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
                 {error}
               </p>
             ) : null}
-            {current === "Activity" ? <ActivityTab engine={engine} name={name} blocks={blocks} running={running} level={level} onError={fail} /> : null}
+            {current === "Activity" ? <ActivityTab engine={engine} name={name} blocks={blocks} running={running} level={level} focusHelpers={focusHelpers} onError={fail} /> : null}
             {current === "Conversations" && contactTopics ? <ContactTopicsPane {...contactTopics} /> : null}
             {current === "Dashboard" ? <DashboardTab engine={engine} name={name} level={level} /> : null}
             {current === "Preview" ? <PreviewTab engine={engine} name={name} portals={previews.portals} error={previews.error} onError={fail} toast={toast} /> : null}

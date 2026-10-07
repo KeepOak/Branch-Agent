@@ -18,6 +18,7 @@ describe("thread words", () => {
     expect(stepsSummary([step("read"), step("read"), step("web_search")])).toBe("Read 2 files and searched the web · 3 steps");
     expect(stepsSummary([{ ...step("exec"), at: 1_000 }, { ...step("read"), at: 42_000 }])).toBe("Ran a command and read a file · 2 steps · 41s");
     expect(stepsSummary([step("exec"), step("read", "running")])).toBe("Reading a file");
+    expect(stepsSummary([step("exec")], { title: "text", durationMs: 59_000 })).toBe("Ran a command");
   });
 
   it("stamps the day over the first message of each day", () => {
@@ -35,10 +36,13 @@ describe("thread words", () => {
     expect(formatDuration(90_000)).toBe("1m 30s");
     expect(clockLeft(125_000)).toBe("2:05");
     expect(modelName("ollama/qwen3:14b")).toBe("qwen3:14b");
+    expect(modelName("openai/gpt-6.1-sol")).toBe("GPT-6.1 Sol");
+    expect(modelName("openai/GPT-6.1-Sol")).toBe("GPT-6.1 Sol");
   });
 
   it("shortens an engine error to its first sentence without the lead-in", () => {
     const raw = "Your request couldn't be completed: ⚠️ Authentication failed (provider returned HTTP 401). Your provider token may have expired.";
     expect(shortReason(raw)).toBe("Authentication failed (provider returned HTTP 401).");
+    expect(shortReason("Failed to observe plugin state entry. | PLUGIN_STATE_READ_FAILED | 42")).not.toContain("PLUGIN_STATE_READ_FAILED");
   });
 });

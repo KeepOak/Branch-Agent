@@ -11,6 +11,7 @@ import {
 import { roleScopesAllow } from "../shared/operator-scope-compat.js";
 import type { BranchStateDatabase } from "../state/branch-state-db.js";
 import type {
+  WorkerOperationContext,
   WorkerOperationHandlers,
   WorkerOperations,
 } from "../state/worker-operation-registry.js";
@@ -30,6 +31,7 @@ import {
   consumeDeviceBootstrapTokenWithSetupCompletionInTransaction,
   loadDeviceBootstrapTokenRecords,
   withDevicePairingStoreDatabase,
+  hasExpiredDevicePairSetupCompletionRecords,
   loadDevicePairSetupCompletionRecord,
   persistDeviceBootstrapTokenRecords as persistState,
   pruneExpiredDevicePairSetupCompletionRecords,
@@ -39,6 +41,12 @@ import type {
   DevicePairSetupCompletionRecord,
 } from "./device-pairing.types.js";
 import { generatePairingToken, verifyPairingToken } from "./pairing-token.js";
+
+// Pruning rewrites no paired device, so it publishes no pairing change.
+const pruneDevicePairSetupCompletions = devicePairingMutation(
+  (input: { nowMs: number }) => pruneExpiredDevicePairSetupCompletionRecords(input.nowMs),
+  { publishPairing: false },
+);
 
 // Outlive generic setup credentials; cloud-worker completion also binds durably
 // on its environment row, independently of this retained delivery outcome.
@@ -497,9 +505,12 @@ export const deviceBootstrapOperations = {
   "bootstrap.readCompletion": devicePairingMutation((input: { setupId: string; nowMs: number }) =>
     loadDevicePairSetupCompletionRecord(input.setupId, input.nowMs),
   ),
-  "bootstrap.prune": devicePairingMutation((input: { nowMs: number }) =>
-    pruneExpiredDevicePairSetupCompletionRecords(input.nowMs),
-  ),
+  // Runs every minute: on a busy state database a write transaction that finds nothing still waits for the
+  // write lock and holds other writers up. Look first; most minutes nothing has elapsed.
+  "bootstrap.prune": (input: { nowMs: number }, context: WorkerOperationContext) =>
+    hasExpiredDevicePairSetupCompletionRecords(context.open().db, input.nowMs)
+      ? pruneDevicePairSetupCompletions(input, context)
+      : 0,
   "bootstrap.clear": devicePairingMutation(clearDeviceBootstrapTokens),
   "bootstrap.revoke": devicePairingMutation(
     (input: Parameters<typeof revokeDeviceBootstrapToken>[0], { database }) =>

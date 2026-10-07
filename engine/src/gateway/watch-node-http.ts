@@ -24,7 +24,7 @@ import {
   deriveDeviceIdFromPublicKey,
   normalizeDevicePublicKeyBase64Url,
 } from "../infra/device-identity.js";
-import { approveBootstrapDevicePairing } from "../infra/device-pairing-approval.js";
+import { pairedDeviceAllowsBootstrapProfile } from "./server/ws-connection/connect-device-metadata.js";
 import { captureAuthenticatedNodePairingState } from "../infra/device-pairing-node-state.js";
 import {
   approveNodePairing,
@@ -35,7 +35,7 @@ import {
   recordPairedNodeConnection,
   recordPairedNodeDisconnection,
 } from "../infra/device-pairing-node.js";
-import { verifyDeviceToken } from "../infra/device-pairing-tokens.js";
+import { rotateDeviceToken, verifyDeviceToken } from "../infra/device-pairing-tokens.js";
 import {
   getPairedDevice,
   requestDevicePairing,
@@ -646,10 +646,10 @@ export function createWatchNodeHttpRuntime(options: WatchNodeHttpRuntimeOptions)
         sendUnauthorized(res);
         return;
       }
-      // Setup approval owns the entire handoff. Reusing an existing role token
-      // could skip a node-to-voice upgrade or hand out an older, broader grant.
-      const pairing = await requestDevicePairing(
-        {
+      // The claimed Watch id/platform is not approval authority. A setup code
+      // creates a visible request; the owner must allow it before a retry.
+      if (!pairedDeviceAllowsBootstrapProfile({ device: existing, devicePublicKey: publicKey, profile })) {
+        const pairing = await requestDevicePairing({
           deviceId: derivedDeviceId,
           publicKey,
           displayName: connect.client.displayName,
@@ -661,23 +661,29 @@ export function createWatchNodeHttpRuntime(options: WatchNodeHttpRuntimeOptions)
           roles: profile.roles,
           scopes: profile.scopes,
           remoteIp: clientIp,
-          silent: true,
-        },
-        options.pairingBaseDir,
-      );
-      const approved = await approveBootstrapDevicePairing(
-        pairing.request.requestId,
-        profile,
-        { onTokensReplaced: options.onDeviceTokensReplaced },
-        options.pairingBaseDir,
-      );
-      if (approved?.status !== "approved") {
-        sendUnauthorized(res);
+          silent: false,
+        }, options.pairingBaseDir);
+        if (pairing.created) options.broadcast("device.pair.requested", pairing.request, { dropIfSlow: true });
+        sendJson(res, 202, { ok: false, reason: "pairing required", requestId: pairing.request.requestId });
         return;
       }
-      issuedDeviceToken = approved.device.tokens?.node?.token ?? null;
+      issuedDeviceToken = existing?.tokens?.node?.token ?? null;
       if (voiceProfile) {
-        const operatorToken = approved.device.tokens?.operator;
+        // A previously broader operator token must never be handed to a Watch.
+        let operatorToken = existing?.tokens?.operator;
+        const voiceScopes = ["operator.read", "operator.talk"];
+        if (operatorToken && (operatorToken.scopes.length !== voiceScopes.length ||
+          !voiceScopes.every((scope) => operatorToken?.scopes.includes(scope)))) {
+          const rotated = await rotateDeviceToken({
+            deviceId: derivedDeviceId,
+            role: "operator",
+            scopes: voiceScopes,
+            baseDir: options.pairingBaseDir,
+          });
+          if (!rotated.ok) { sendUnauthorized(res); return; }
+          options.onDeviceTokensReplaced?.(derivedDeviceId, ["operator"]);
+          operatorToken = (await getPairedDevice(derivedDeviceId, options.pairingBaseDir))?.tokens?.operator;
+        }
         if (!operatorToken) {
           sendUnauthorized(res);
           return;
@@ -689,16 +695,6 @@ export function createWatchNodeHttpRuntime(options: WatchNodeHttpRuntimeOptions)
           issuedAtMs: operatorToken.rotatedAtMs ?? operatorToken.createdAtMs,
         });
       }
-      options.broadcast(
-        "device.pair.resolved",
-        {
-          requestId: pairing.request.requestId,
-          deviceId: derivedDeviceId,
-          decision: "approved",
-          ts: current,
-        },
-        { dropIfSlow: true },
-      );
       setupBootstrapAccepted = Boolean(issuedDeviceToken);
     } else if (deviceToken) {
       const paired = await getPairedDevice(derivedDeviceId, options.pairingBaseDir);

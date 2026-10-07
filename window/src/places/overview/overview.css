@@ -1,12 +1,5 @@
 /* Overview (§4.6.1), measured from the preview's .ov / .tile / .recbar rules. The recommendation bar sits above the
    place's h1 (PlaceFrame's `before`). */
-.place > .ov-rec { margin:0 0 16px; }
-.ov-rec { display:flex; align-items:center; gap:10px; padding:9px 10px 9px 12px; border:1px solid var(--line); border-radius:14px; background:var(--raise); font-size:13px; flex-wrap:wrap; }
-.ov-rec-tile { flex:none; display:grid; place-items:center; width:30px; height:30px; border-radius:9px; background:var(--brand-tint); color:var(--ink-2); }
-.ov-rec-t { flex:1; min-width:220px; }
-.ov-rec-t b { font-weight:600; }
-.ov-rec-t small { display:block; color:var(--ink-3); font-size:12px; line-height:1.5; }
-.ov-rec-good { color:var(--ok); font-weight:600; margin-left:4px; }
 
 .ov-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr)); gap:12px; margin-top:18px; }
 .ov-tile { min-width:0; padding:16px; background:var(--raise); border:1px solid var(--hair17); border-radius:var(--r3-17); display:grid; gap:8px; align-content:start; font-size:14px; }
