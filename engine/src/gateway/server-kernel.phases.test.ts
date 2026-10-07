@@ -12,8 +12,8 @@ import {
   resetGatewayWorkAdmission,
 } from "../process/gateway-work-admission.js";
 import {
+  listSessionHandoffLeases,
   resolveSessionHandoffLeaseDir,
-  sessionHandoffLeaseFile,
 } from "../process/session-handoff-lease-files.js";
 import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js";
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
@@ -285,14 +285,14 @@ describe("Gateway startup phases", () => {
       try {
         await running;
         await server.deactivate();
-        const file = sessionHandoffLeaseFile(resolveSessionHandoffLeaseDir(), lane);
-        expect(existsSync(file)).toBe(true);
+        const leases = () => listSessionHandoffLeases(resolveSessionHandoffLeaseDir(), lane);
+        expect(leases()).toHaveLength(1);
         finish();
         await run;
         await expect(server.waitForDeactivatedRuns()).resolves.toMatchObject({
           deadlineElapsed: false,
         });
-        expect(existsSync(file)).toBe(false);
+        expect(leases()).toHaveLength(0);
       } finally {
         finish();
         await server.close({ reason: "live run handoff test cleanup" });
