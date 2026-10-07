@@ -850,32 +850,40 @@ test("launch retires the engines the last session recorded and left holding thei
   const { spawn } = await import("node:child_process");
   const { engineProcessIdentity } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "engine-records.js"));
   const holdPort = "const s=require('net').createServer().listen(0,'127.0.0.1',()=>process.send(s.address().port));setInterval(()=>{},1000)";
-  const orphan = spawn(process.execPath, ["-e", holdPort], { stdio: ["ignore", "ignore", "ignore", "ipc"], detached: process.platform !== "win32" });
+  const orphan = spawn(process.execPath, ["-e", holdPort], { stdio: ["ignore", "ignore", "ignore", "ipc"], detached: process.platform !== "win32", windowsHide: true });
+  const orphanSpawnedAt = Date.now();
   const orphanPort = await new Promise(resolve => orphan.once("message", resolve));
+  const unverifiable = spawn(process.execPath, ["-e", holdPort], { stdio: ["ignore", "ignore", "ignore", "ipc"], detached: process.platform !== "win32", windowsHide: true });
+  const unverifiablePort = await new Promise(resolve => unverifiable.once("message", resolve));
   // A reused PID on an occupied port, or a matching process that does not own that port, is never touched.
-  const bystander = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore" });
+  const bystander = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore", windowsHide: true });
   try {
     await fixture(async ({ root, starts }) => {
-      await eventually(() => !alive(orphan.pid), 10_000);
+      await eventually(() => !alive(orphan.pid), 10_000).catch(async error => {
+        throw new Error(`${error.message}: ${await readFile(join(root, "desktop.log"), "utf8")}`);
+      });
+      assert.equal(alive(unverifiable.pid), true, "an owned port without either start-time proof was stopped");
       assert.equal(alive(bystander.pid), true, "a reused PID was stopped");
       assert.match(await readFile(join(root, "desktop.log"), "utf8"), new RegExp(`retiring the last session's standby engine ${orphan.pid} on port ${orphanPort}`));
-      // Only the engine this launch started is recorded now.
+      // Only the engine this launch started is recorded now, even if its identity query times out.
       await eventually(async () => {
         const records = JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8"));
-        return records.length === (await starts()).length && records.every(record => record.started);
+        return records.length === (await starts()).length && records.every(record => Number.isSafeInteger(record.spawnedAt));
       });
       assert.deepEqual(JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8")).map(record => record.pid), await starts());
     }, false, false, false, "never", false, async (root) => {
       const orphanIdentity = await engineProcessIdentity(orphan.pid), bystanderIdentity = await engineProcessIdentity(bystander.pid);
-      assert.ok(orphanIdentity && bystanderIdentity);
+      const unverifiableIdentity = await engineProcessIdentity(unverifiable.pid);
+      assert.ok(orphanIdentity && bystanderIdentity && unverifiableIdentity);
       await writeFile(join(root, "gateway-engines.json"), JSON.stringify([
-        { pid: orphan.pid, port: orphanPort, role: "standby", executable: orphanIdentity.executable },
+        { pid: orphan.pid, port: orphanPort, role: "standby", ...orphanIdentity, spawnedAt: orphanSpawnedAt },
+        { pid: unverifiable.pid, port: unverifiablePort, role: "standby", executable: unverifiableIdentity.executable },
         { pid: bystander.pid, port: orphanPort, role: "candidate", ...bystanderIdentity, started: "reused-pid" },
-        { pid: bystander.pid, port: orphanPort, role: "candidate", ...bystanderIdentity },
+        { pid: bystander.pid, port: orphanPort, role: "candidate", executable: bystanderIdentity.executable, spawnedAt: Date.now() },
       ]));
     });
   } finally {
-    orphan.kill(); bystander.kill();
+    orphan.kill(); unverifiable.kill(); bystander.kill();
   }
 });
 test("a spawned engine has a recovery record before its start-time query finishes", async () => {
@@ -888,7 +896,7 @@ test("a spawned engine has a recovery record before its start-time query finishe
     const records = JSON.parse(readFileSync(join(root, "gateway-engines.json"), "utf8"));
     assert.deepEqual(records.map(({ pid, port, role, started }) => ({ pid, port, role, started })),
       [{ pid: child.pid, port: 12345, role: "engine", started: undefined }]);
-    await eventually(() => Boolean(JSON.parse(readFileSync(join(root, "gateway-engines.json"), "utf8"))[0]?.started));
+    assert.ok(Math.abs(records[0].spawnedAt - Date.now()) < 5_000, "spawn time was not recorded synchronously");
   } finally {
     child.kill();
     await rm(root, { recursive: true, force: true });
