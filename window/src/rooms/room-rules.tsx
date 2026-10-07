@@ -2,7 +2,9 @@
 // "Who answers": "A lead Trunk decides", "Everyone, every time", "Only those you @mention"; then "How the Trunks work
 // together here". In a Branch group, all three Who answers choices call rooms.rule.set. In a chat-app group,
 // Everyone and @mention set the engine's groupActivation ("always" / "mention"); lead stays greyed. The
-// working-together patterns have no engine method yet and stay greyed with the reason.
+// working-together patterns have no engine method yet and stay greyed with the reason. A participant room that is
+// neither a Branch group nor a chat-app group keeps Who answers greyed: lead has no method there, and Everyone /
+// @mention only write groupActivation on chat-app sessions.
 import type { MenuItem } from "../shell/Menu";
 import { ROOM_REASONS } from "./room-menu";
 import type { Rule } from "./useRoom";
@@ -27,9 +29,9 @@ export const ruleToast = (rule: Rule | "lead", room: string) => {
   return `${text}, in ${room} from now on.`;
 };
 
-export function roomRulesItems(p: { chatApp: boolean; rule: Rule | "lead" | null; choose: (rule: Rule | "lead") => void }): MenuItem[] {
+export function roomRulesItems(p: { chatApp: boolean; branchGroup?: boolean; rule: Rule | "lead" | null; choose: (rule: Rule | "lead") => void }): MenuItem[] {
   const who = WHO.map(([v, label, sub]): MenuItem => {
-    const reason = p.chatApp && v === "lead" ? ROOM_REASONS.lead : undefined;
+    const reason = p.branchGroup ? undefined : v === "lead" ? ROOM_REASONS.lead : p.chatApp ? undefined : ROOM_REASONS.whoAnswers;
     return { label, sub, checked: p.rule === v, run: () => p.choose(v), ...(reason ? { disabled: reason } : {}) };
   });
   return [

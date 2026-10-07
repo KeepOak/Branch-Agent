@@ -9,6 +9,7 @@ const NO_METHOD = "needs an engine method Branch doesn't have yet.";
 export const ROOM_REASONS = {
   addTrunk: `Adding a Trunk to a group ${NO_METHOD}`,
   lead: `A lead Trunk choosing who answers ${NO_METHOD}`,
+  whoAnswers: `Choosing who answers outside a chat-app group ${NO_METHOD}`,
   pattern: `A way of working for one group ${NO_METHOD}`,
 } as const;
 

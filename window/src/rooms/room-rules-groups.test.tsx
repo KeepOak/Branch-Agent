@@ -25,7 +25,7 @@ function who(items: ReturnType<typeof roomRulesItems>) {
 
 describe("Group rules in a Branch group", () => {
   it("enables all three Who answers choices and checks @mention", () => {
-    const items = who(roomRulesItems({ chatApp: false, rule: "mention", choose: () => undefined }));
+    const items = who(roomRulesItems({ chatApp: false, branchGroup: true, rule: "mention", choose: () => undefined }));
     expect(items.map((row) => [row.label, Boolean(row.disabled), row.checked])).toEqual([
       ["A lead Trunk decides", false, false],
       ["Everyone, every time", false, false],
@@ -62,6 +62,53 @@ describe("Group rules in a Branch group", () => {
     await act(async () => items[0]!.run());
     expect(request).toHaveBeenCalledWith("rooms.rule.set", { roomId: "room-1", rule: "lead" });
     expect(notify).toHaveBeenCalledWith("A lead Trunk decides, in Planning circle from now on.");
+  });
+
+  it("keeps Who answers greyed in a participant room that is not a Branch group", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "users.self") return { profile: { id: "p-me" } };
+      if (method === "sessions.describe") {
+        return {
+          session: {
+            participants: [
+              { identity: { type: "agent", id: "scout" }, label: "Scout" },
+              { identity: { type: "agent", id: "builder" }, label: "Builder" },
+            ],
+          },
+        };
+      }
+      return {};
+    });
+    const engine = { request, onEvent: () => () => undefined, sessionKey: "agent:scout:shared", agentId: "scout" } as unknown as WindowEngine;
+    let shell: ShellRoom | undefined;
+    function Harness() {
+      shell = useShellRoom({
+        engine,
+        rowKind: undefined,
+        agentId: "scout",
+        title: "Shared",
+        ownTrunk: "Scout",
+        history: [],
+        trunks: [{ id: "scout", name: "Scout" }, { id: "builder", name: "Builder" }],
+      });
+      return null;
+    }
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(<Harness />));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(shell?.menu).not.toBeNull();
+    const rows = who(shell!.menu!.rules());
+    expect(rows.map((row) => [row.label, Boolean(row.disabled)])).toEqual([
+      ["A lead Trunk decides", true],
+      ["Everyone, every time", true],
+      ["Only those you @mention", true],
+    ]);
+    expect(rows[0]?.disabled).toBe(ROOM_REASONS.lead);
+    expect(rows[1]?.disabled).toBe(ROOM_REASONS.whoAnswers);
   });
 
   it("keeps lead greyed in a chat-app group and still sets mention or always", () => {

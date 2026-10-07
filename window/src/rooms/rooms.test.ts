@@ -133,8 +133,7 @@ describe("room menu and rules", () => {
     rows[1].run();
     expect(chosen).toEqual(["always"]);
     const shared = roomRulesItems({ chatApp: false, rule: null, choose: () => undefined }).filter((i) => "run" in i);
-    expect(shared.slice(0, 3).every((i) => !("disabled" in i && i.disabled))).toBe(true);
-    expect(shared.slice(3).every((i) => "disabled" in i && i.disabled)).toBe(true);
+    expect(shared.every((i) => "disabled" in i && i.disabled)).toBe(true);
     expect(ruleToast("always", "Month-end")).toBe("Everyone, every time, in Month-end from now on.");
   });
 

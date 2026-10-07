@@ -55,7 +55,7 @@ export function useShellRoom(a: Args): ShellRoom {
     return {
       thread: { ...thread, isRoom: true }, placeholder: ROOM_PLACEHOLDER,
       header: { faces: (size) => <RoomFaces picks={picks} size={Math.min(size, 34)} />, line: `${names.join(", ")} and you` },
-      menu: { ruleWords: rule ? RULE_WORDS[rule] : null, rules: () => roomRulesItems({ chatApp: false, rule, choose }) },
+      menu: { ruleWords: rule ? RULE_WORDS[rule] : null, rules: () => roomRulesItems({ chatApp: false, branchGroup: true, rule, choose }) },
       others: all.filter((member) => member.kind === "trunk" && member.id !== a.agentId).map((member) => member.name),
       members: [...names, "you"],
     };
