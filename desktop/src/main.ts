@@ -26,6 +26,7 @@ import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
 import { freemem } from "node:os";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
+import { MacComputerDriver } from "./mac-computer-driver";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 /** Scratch test copies: never grouped with, or mistaken for, the owner's app (they also start hidden). */
@@ -115,6 +116,7 @@ function handWindowToGateway(always = false): void {
   windowPort = gatewayPort;
   sendToBranchWindows("branch-desktop:engine-handoff", gatewayUrl());
 }
+const macComputerDriver = process.platform === "darwin" ? new MacComputerDriver(log) : undefined;
 let server: Server | undefined;
 let win: BrowserWindow | undefined;
 const conversationWindows = new Map<string, BrowserWindow>();
@@ -686,7 +688,11 @@ async function waitForGatewayPort(): Promise<void> {
 /** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
 async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = true, prepared?: PreparedGateway, port = prepared?.port ?? gatewayPort): Promise<void> {
   const started = Date.now();
-  const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port);
+  const macComputerEndpoint = await macComputerDriver?.start(engineDir).catch(error => {
+    log(`Mac computer driver unavailable: ${String(error)}`);
+    return undefined;
+  });
+  const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint);
   if (prepared?.child.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prepared.child.pid));
   if (prepared) {
     setEnginePriority(prepared.child, false);
@@ -820,6 +826,7 @@ function shutdown(): void {
   standby = undefined;
   if (gateway) stopGateway(gateway);
   clearEngineRecords(cfg.dataDir);
+  void macComputerDriver?.stop();
   server?.close();
   // The next launch starts on the configured port; never leave a moved, dead port for the branch command to dial.
   writeGatewayPortFile(cfg.gatewayPort);

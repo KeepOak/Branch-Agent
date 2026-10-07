@@ -55,6 +55,14 @@ test("fresh desktop install starts without dev profile or C3-PO", async () => ho
   assert.equal(await readFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"), "utf8"), "intentional dev profile");
 }));
 
+test("desktop passes only its app-owned Mac driver lease to the live gateway", async () => homeFixture(async root => {
+  await writeFile(join(root, "branch.mjs"), 'import {writeFileSync} from "node:fs"; writeFileSync("launch.json",JSON.stringify({endpoint:process.env.BRANCH_CUA_DRIVER_ENDPOINT}));');
+  const endpoint = JSON.stringify({ v: 1, socketPath: "/private/tmp/branch-cua.sock", binaryPath: "/Applications/Branch.app/cua-driver" });
+  const child = startGateway({ dataDir: root, nodePath: process.execPath, gatewayPort: 19631 }, root, "fixture-token", endpoint);
+  await once(child, "exit");
+  assert.equal(JSON.parse(await readFile(join(root, "launch.json"), "utf8")).endpoint, endpoint);
+}));
+
 test("owner-shaped dev workspace migrates once with the original archived and normal files preserved", async () => homeFixture(async (_root, home) => {
   await mkdir(join(home, ".branch", "state"), { recursive: true });
   await mkdir(join(home, ".branch-dev", "workspace"), { recursive: true });
