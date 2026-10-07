@@ -67,9 +67,9 @@ import { parseTcpPort } from "../../infra/tcp-port.js";
 import { setConsoleSubsystemFilter, setConsoleTimestampPrefix } from "../../logging/console.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { defaultRuntime } from "../../runtime.js";
-import { printGroveBanner, type GroveBannerResult } from "../grove-banner.js";
 import { formatCliCommand } from "../command-format.js";
 import { formatInvalidConfigPort, formatInvalidPortOption } from "../error-format.js";
+import { printGroveBanner, type GroveBannerResult } from "../grove-banner.js";
 import type { InvalidConfigRecoveryDeps } from "../invalid-config-recovery.js";
 import { withProgress } from "../progress.js";
 import {
@@ -557,7 +557,8 @@ async function runGatewayCommandOnce(
   // Assign legacy Trunk faces before the startup snapshot is captured, so the
   // gateway and the published config both see the same one-time migration.
   if (!opts.updateCanary) {
-    const { assignTrunkCharactersAtStartup } = await import("../../gateway/trunk-character-startup.js");
+    const { assignTrunkCharactersAtStartup } =
+      await import("../../gateway/trunk-character-startup.js");
     await assignTrunkCharactersAtStartup();
   }
   const { cfg, lowerPrecedenceEnv, snapshot, startupConfigSnapshotRead } =
@@ -976,9 +977,11 @@ async function runGatewayCommandOnce(
     completeGatewayBootLifecycle(activeBootId, completion, process.env);
     activeBootId = undefined;
   };
-  const hostRendezvous =
+  let hostRendezvous =
     preparedHost ??
-    (await (await import("../../infra/host-rendezvous.js")).prepareHostRendezvous({
+    (await (
+      await import("../../infra/host-rendezvous.js")
+    ).prepareHostRendezvous({
       profile: process.env.BRANCH_PROFILE?.trim() || "default",
       home: process.env.BRANCH_HOME?.trim() || (await import("node:os")).homedir(),
       gatewayPort: port,
@@ -994,10 +997,30 @@ async function runGatewayCommandOnce(
     defaultRuntime.exit(hostRendezvous.decision.transient ? 75 : 78);
     return;
   }
+  // The host role (host attach record and lock) follows the state: a desktop handoff hands it to the successor
+  // with the state, and a rollback takes it back before the gateway restarts in place.
+  const hostRole = {
+    release: async () => {
+      await hostRendezvous.close?.();
+    },
+    reclaim: async () => {
+      const next = await (
+        await import("../../infra/host-rendezvous.js")
+      ).prepareHostRendezvous({
+        profile: process.env.BRANCH_PROFILE?.trim() || "default",
+        home: process.env.BRANCH_HOME?.trim() || (await import("node:os")).homedir(),
+        gatewayPort: port,
+      });
+      if (next.decision.outcome !== "start") return false;
+      hostRendezvous = next;
+      return true;
+    },
+  };
   const startLoop = async (lifecycleLockDeadlineMs?: number) =>
     await runGatewayLoop({
       runtime: defaultRuntime,
       ownsProcessLifecycle: true,
+      hostRole,
       lockPort: port,
       lifecycleLockDeadlineMs,
       healthHost,
@@ -1085,7 +1108,8 @@ async function runGatewayCommandOnce(
     await triageStartupFailure(err);
     defaultRuntime.exit(resolveGatewayStartupFailureExitCode(err));
   } finally {
-    if (!preparedHost) {
+    // The caller closes the host it prepared; one this run claimed (itself, or back after a rollback) is ours.
+    if (hostRendezvous !== preparedHost) {
       await hostRendezvous.close?.();
     }
   }
