@@ -68,8 +68,10 @@ export class MacComputerDriver {
   private proxy?: Server;
 
   permissionsGranted(engineDir: string): boolean {
-    const sdk = this.sdk(engineDir);
-    return sdk.hasRequiredMacOSPermissions(sdk.currentMacOsPermissionStatus());
+    try {
+      const sdk = this.sdk(engineDir);
+      return sdk.hasRequiredMacOSPermissions(sdk.currentMacOsPermissionStatus());
+    } catch { return false; }
   }
 
   constructor(
