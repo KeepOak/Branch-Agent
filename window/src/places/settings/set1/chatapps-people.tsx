@@ -108,7 +108,9 @@ const GROUPS: [string, string[]][] = [
 export function actionsAfter(allow: string[] | undefined, group: string[], on: boolean): string[] | null {
   const base = allow ?? ALL_ACTIONS;
   const next = on ? [...new Set([...base, ...group])] : base.filter((a) => !group.includes(a));
-  return ALL_ACTIONS.every((a) => next.includes(a)) ? null : next;
+  // An explicit list remains a restriction, even if it covers today's known actions.
+  // Removing it would grant engine actions introduced later or supplied by a plugin.
+  return allow === undefined && ALL_ACTIONS.every((a) => next.includes(a)) ? null : next;
 }
 function Actions({ cfg }: PCtx) {
   const raw = cfg.get("tools.message.actions.allow");
