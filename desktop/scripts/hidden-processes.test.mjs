@@ -17,5 +17,7 @@ test("desktop child-process launches are hidden", () => {
   assert.match(updateHelper, /spawn\(plan\.relaunch\.command[^\n]*windowsHide: false/);
   assert.match(readFileSync(join(root, "gateway.ts"), "utf8"), /execFileSync\("taskkill"[^\n]*windowsHide: true/);
   assert.match(updateHelper, /execFileSync\("taskkill"[^\n]*windowsHide: true/);
-  assert.match(readFileSync(join(root, "engine-records.ts"), "utf8"), /execFileSync\("taskkill"[^\n]*windowsHide: true/);
+  const records = readFileSync(join(root, "engine-records.ts"), "utf8");
+  assert.match(records, /const run =[^\n]*execFileSync\([^\n]*windowsHide: true/);
+  assert.match(records, /run\("taskkill"[^\n]*\/PID/);
 });
