@@ -1,8 +1,8 @@
 // Inbox (DESIGN-SPEC §4.6.2; preview renderInbox + 40-places + 41-placesap p20-inbox / p25-history): Needs you,
 // Finished, History and Later, with the recommendation bar above and Messages below.
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import { NoticesBell } from "./Bell";
 import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
-import { RecBar } from "../overview/RecBar";
 import type { WindowEngine } from "../../connect/engine";
 import { has, loadNeeds, loadNeedsCount, markRead, refreshesInbox, usePlaceData } from "./data";
 import { takeInboxHandoff, type InboxTab } from "./handoff";
@@ -14,7 +14,7 @@ import "./inbox.css";
 
 const TABS: { id: InboxTab; name: string }[] = [{ id: "needs", name: "Needs you" }, { id: "finished", name: "Finished" }, { id: "history", name: "History" }, { id: "later", name: "Later" }];
 
-function TabRow({ tab, set, counts, markAll }: { tab: InboxTab; set: (t: InboxTab) => void; counts: Partial<Record<InboxTab, number>>; markAll?: () => void }) {
+function TabRow({ tab, set, counts, markAll, bell }: { tab: InboxTab; set: (t: InboxTab) => void; counts: Partial<Record<InboxTab, number>>; markAll?: () => void; bell: ReactNode }) {
   const move = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
     const next = e.key === "ArrowRight" ? (i + 1) % TABS.length : e.key === "ArrowLeft" ? (i + TABS.length - 1) % TABS.length : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : -1;
     if (next < 0) return;
@@ -23,6 +23,7 @@ function TabRow({ tab, set, counts, markAll }: { tab: InboxTab; set: (t: InboxTa
   };
   return <div className="ib-tabs">
     <div role="tablist" aria-label="Inbox" className="ib-tablist">{TABS.map((t, i) => <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} tabIndex={tab === t.id ? 0 : -1} onKeyDown={e => move(e, i)} onClick={() => set(t.id)}>{t.name}{counts[t.id] ? <span className="ib-n">{counts[t.id]}</span> : null}</button>)}</div>
+    {bell}
     {markAll ? <button type="button" className="ib-mar" onClick={markAll}>Mark all read</button> : null}
   </div>;
 }
@@ -71,8 +72,7 @@ export function InboxPlace({ engine, level, openConversation, openPlace, openSet
   const canMark = (tab === "needs" || tab === "finished") && unread.length > 0 && has(engine, "operator.sessions.write");
   const markAll = () => void needs.act(() => markRead(engine, unread), "All marked read.");
   return <PlaceFrame title="Inbox" lede="Everything a Trunk is waiting on you for, what finished, and a record of what ran.">
-    <RecBar />
-    <TabRow tab={tab} set={setTab} counts={{ needs: needsCount(data) }} markAll={canMark ? markAll : undefined} />
+    <TabRow tab={tab} set={setTab} counts={{ needs: needsCount(data) }} markAll={canMark ? markAll : undefined} bell={<NoticesBell data={data} openConversation={openConversation} openSettings={openSettings} />} />
     {needs.loading && !data ? <p role="status" className="ib-hint">Reading the Inbox…</p> : null}
     {needs.error ? <p role="alert" className="ib-err">{needs.error}</p> : null}
     {tab === "needs" ? data?.errors.map(error => <p className="ib-err" role="alert" key={error}>{error}</p>) : null}

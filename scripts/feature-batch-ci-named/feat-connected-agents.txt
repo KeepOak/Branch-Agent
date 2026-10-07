@@ -1,0 +1,3 @@
+engine:src/mcp/many-agents.load.test.ts
+window:src/places/settings/set2/agents.test.tsx
+window:src/places-nav/settings-nav.test.ts

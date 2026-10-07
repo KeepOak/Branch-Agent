@@ -6,20 +6,22 @@ Configuration comes from the per-user `desktop.json`. Defaults use LocalAppData/
 
 The window uses context isolation, a sandbox and no Node integration. Navigation stays on its served origin. HTTPS links open in the default browser. Quit stops only the gateway process tree owned by this launcher, using taskkill on Windows or its dedicated process group on macOS/Linux.
 
+On Linux, launch the extracted package with `./branch-agent` or `./Branch\ Agent` from the package folder. Both are launchers; the raw Electron binary is `Branch Agent.bin`. Chromium requires `chrome-sandbox` to be owned by root with mode `4755`; ordinary tar extraction cannot establish either property. The launcher requests one-time authorization with `pkexec` on a graphical desktop or `sudo` in a terminal, verifies the result, then starts the app. If no authorization prompt is available, it prints the exact `sudo chown` and `sudo chmod` commands for that package. Whole-runtime updates use the same launcher after extraction; an Electron runtime change may require authorization for its new sandbox binary.
+
 ## GitHub component updates
 
 At launch and hourly, the launcher checks the latest release from `KeepOak/Branch-Agent` for `branch-release-<platform>-<arch>.json`. Separate manifests allow each host to select the right engine without overwriting another platform's release descriptor. Engine and window archives are downloaded into private staging, checked against exact compressed/expanded byte counts and SHA256, then published by rename. Archive traversal, links and unsupported tar extensions are rejected.
 
-The running engine remains unchanged until the user clicks Restart. A successful ready probe confirms the selected release. A failed updated engine restores the previous engine pointer and window, then retries the retained engine. Interrupted publication is recovered on the next launch. Existing token files and previous component folders are retained. When a newly selected engine fails readiness, automatic checks skip that exact version and engine/window hash identity. Confirmed installed version is recorded separately. A newer release can stage normally; callers can explicitly retry with `refreshComponentUpdate(config, fetch, { retryRejected: true })`. Interrupted preparation and failed downloads remain retryable.
+The running engine remains unchanged until the user clicks Restart. A successful ready probe confirms the selected release. A failed updated engine restores the previous engine pointer and window, then retries the retained engine. Interrupted publication is recovered on the next launch. Existing token files and the immediately previous component folder are retained; after confirmation, older updater-owned release folders are pruned. When a newly selected engine fails readiness, automatic checks skip that exact version and engine/window hash identity. Confirmed installed version is recorded separately. A newer release can stage normally; callers can explicitly retry with `refreshComponentUpdate(config, fetch, { retryRejected: true })`. Interrupted preparation and failed downloads remain retryable.
 
-Desktop code changes require a new desktop package. Component updates currently replace only the engine and renderer; they do not update the Electron launcher executable or its Node runtime.
+The desktop app itself is a component too. Each target's manifest names `branch-desktop-app-<version>-<target>.tar.gz` (only `resources/app.asar`) and, on Windows and Linux, the whole packaged app (`branch-desktop-<version>-<target>.tar.gz`, also the bootstrap package), each with the Electron version it was built for. The launcher stages the app.asar archive while Electron stays the same, and the whole app when the release moves to another Electron, with the same size/SHA256 checks and private extraction as the engine and window, under its own journal (`desktop-update-pending.json`). Like electron-updater's quit-and-install, nothing in the running app changes: at the next start, or on Restart, the launcher writes a small helper outside app.asar, quits, and the helper (plain Node) waits for that exact PID to exit, renames the old copy to `.previous`, moves the new one in and relaunches. The new app confirms once its window shows; without confirmation within 90 seconds the helper stops it by PID, puts the previous copy back, records the release as rejected and relaunches the previous app. A held or unfinished engine/window publication blocks the desktop component as well. On macOS an Electron change still needs the new desktop package.
 
 ## Preparing a release
 
 Build and production-deploy the engine, including its production dependencies, launcher and dist build metadata. Build the renderer separately. For each supported target:
 
 ```sh
-node desktop/scripts/make-component-release.mjs --version 0.4.3 --tag v0.4.3 \
+node desktop/scripts/make-component-release.mjs --version 0.4.3 --tag v0.4.3 --sourceCommit "$(git rev-parse HEAD)" \
   --engine /path/to/deployed-engine --window /path/to/built-window \
   --output /path/to/release-assets --platform win32 --arch x64
 ```
@@ -28,7 +30,21 @@ The maker emits `branch-engine-<version>-<platform>-<arch>.tar.gz`, `branch-wind
 
 Publish the target manifests, engine archives, common renderer archive and corresponding desktop packages together at the immutable specified GitHub release tag. Finish uploading and verifying all assets before making that release the latest stable release. The repository and assets must be readable by an unauthenticated installed app. A release workflow needs contents-write permission, an exact tested source SHA and independent platform build receipts. Asset creation alone does not publish a release or verify an installed update.
 
+The `GitHub component release` workflow builds automatically for relevant merged changes on `main`, for a source-version tag, or through an explicit manual run. It freezes the current main commit, builds one shared renderer, runs the explicit feature and strict-build gates on Windows x64, macOS arm64 and Linux x64, production-deploys each engine, and packages each native Electron launcher with its validated Node runtime. Main builds use an immutable `<desktop-version>-build-<source-sha-prefix>` release version; a `v<desktop-version>` tag uses that exact source version. No pending PR source is included.
+
+Each platform supplies an exact-source inventory, runtime receipt, component manifest and hashes. Publication requires all three native jobs, checks every asset against its platform inventory, uploads a draft release, downloads all uploaded assets and compares their bytes before exposing the stable update. A newer main commit or an existing tag aborts publication. Failed builds leave the current latest release unchanged. Renderer archive modes are fixed to `0644` to preserve identical shared assets across hosts; engine executable modes remain intact.
+
+Before publication, each native job boots the actual production-deployed engine with its packaged Node24 executable. The smoke uses a fresh temporary profile, no inherited credentials, disabled plugins/channels/automatic engine updates, free loopback ports and a newly generated token. Its trusted loopback CLI identity requests only `operator.read` and verifies that scope before calling non-model health; it uses no admin scope or device-auth bypass. Real readyz, authenticated health and owned shutdown must finish within three minutes including cleanup; source identity and runtime receipts must match. No model requests or owner data are part of this gate. After stable publication, the publisher additionally verifies GitHub latest and downloads each latest platform manifest without authentication, comparing its exact bytes, source SHA, version and component hashes with the verified build.
+
+Triggers create release attempts, not a promise that every source commit ships. A failed gate or a newer main head prevents stable publication. Main attempts use distinct source-SHA build versions; an immutable `v0.4.3` source-version tag cannot be reused for changed code. Future version-tag releases require a desktop source version bump, matching tag and a fresh successful native build matrix.
+
+This release path supplies both component updates and desktop bootstrap packages. Existing launchers gain engine, renderer and desktop app changes through their GitHub watcher. A launcher that predates the desktop component needs the new desktop package (or its app.asar) installed once. Release availability and successful hosted builds do not establish an installed upgrade: verify the downloaded Windows package, retained profile, actual selected engine, renderer connection and owned rollback separately.
+
 Packages bundle a Node24.16+ executable with a SHA256/runtime receipt. The executable's actual platform and architecture must match the package target. `package.sh` targets Windows x64. `package.ps1` can reuse an existing Electron runtime; its optional version stamping changes executable metadata in the new package. Neither packaging script changes shortcuts or starts the installed app.
+
+Production deployment uses pnpm's existing Windows virtual-directory encoding on all platforms (`PNPM_CONFIG_VIRTUAL_STORE_DIR_MAX_LENGTH=60` in the deployment child only). Linux/macOS default directory names can otherwise make materialized peer-dependency paths exceed the regular USTAR fields accepted by installed launchers. This changes directory hashing, not dependency versions, peer selection, file names, package contents or feature limits. Source configuration and locks stay unchanged; long layouts are never truncated or published with unsupported PAX/link entries. A pinned-pnpm fixture reproduces the long layout, then verifies module/peer/payload identity after portable deployment and extraction through the unchanged installed reader. Any still-unrepresentable member fails closed with its relative path and UTF-8 byte length.
+
+The native production smoke runs the engine extracted from the actual generated release archive, with its bundled Node executable. Before extraction, compressed bytes and SHA256 must match the manifest; the unchanged compiled launcher reader checks every archive member and expanded byte count, and extracted build metadata must identify the frozen source commit. The safe inventory records that archive identity and requires it to match the shipped asset. Booting the original deployment folder is insufficient evidence for archive delivery.
 
 ## Scoped checks
 
@@ -37,6 +53,7 @@ Compile strict TypeScript with `node node_modules/typescript/bin/tsc -p desktop/
 ```sh
 node --max-old-space-size=96 --test \
   desktop/scripts/component-update.test.mjs \
+  desktop/scripts/desktop-update.test.mjs \
   desktop/scripts/gateway-ready.test.mjs
 ```
 

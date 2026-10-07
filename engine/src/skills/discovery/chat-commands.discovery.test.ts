@@ -6,6 +6,7 @@ import { registerAgentWorkspaceAccess } from "../../agents/workspace-access.js";
 import { createSkillCommandLoaders } from "../../auto-reply/reply/skill-command-loaders.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { withEnvAsync } from "../../test-utils/env.js";
+import { cleanupSessionStateForTest } from "../../test-utils/session-state-cleanup.js";
 import { readWorkspaceSkillSources } from "../loading/workspace-skill-loader.js";
 import { resolveWorkspaceSkillSourcePlan } from "../loading/workspace-skill-sources.js";
 import { writeSkill } from "../test-support/e2e-test-helpers.js";
@@ -17,9 +18,64 @@ import {
   prepareSkillCommandsForAgents,
 } from "./chat-commands.js";
 
-const tempDirs = useAutoCleanupTempDirTracker((cleanup) => afterEach(cleanup));
+const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
+  afterEach(async () => {
+    for (const root of tempDirs.dirs) {
+      await cleanupSessionStateForTest({ stateDir: root, rootPath: root });
+    }
+    cleanup();
+  }),
+);
 
 describe("skill command discovery through workspace loading", () => {
+  describe.each([
+    ["sync", listSkillCommandsForAgents],
+    ["async", prepareSkillCommandsForAgents],
+  ] as const)("%s agent command discovery", (_mode, discover) => {
+    it("keeps distinct commands across workspaces with truncated-name collisions", async () => {
+      const root = tempDirs.make("agent-skill-command-collision-");
+      const firstName = `${"a".repeat(31)}-one`;
+      const secondName = `${"a".repeat(31)}-two`;
+      const firstWorkspace = path.join(root, "first");
+      const secondWorkspace = path.join(root, "second");
+      for (const [workspace, name] of [
+        [firstWorkspace, firstName],
+        [secondWorkspace, secondName],
+      ] as const) {
+        await writeSkill({
+          dir: path.join(workspace, "skills", name),
+          name,
+          description: "Agent command",
+        });
+      }
+      const bundledSkillsDir = path.join(root, "bundled");
+      await fs.mkdir(bundledSkillsDir);
+      const cfg = {
+        plugins: { enabled: false },
+        agents: {
+          entries: {
+            first: { workspace: firstWorkspace, skills: [firstName] },
+            second: { workspace: secondWorkspace, skills: [secondName] },
+          },
+        },
+        skills: { allowBundled: [] },
+      } satisfies BranchConfig;
+      await withEnvAsync(
+        { BRANCH_STATE_DIR: root, BRANCH_BUNDLED_SKILLS_DIR: bundledSkillsDir },
+        async () => {
+          const commands = await discover({ cfg, agentIds: ["first", "second"] });
+          expect(commands.map(({ skillName, name }) => ({ skillName, name }))).toEqual([
+            { skillName: firstName, name: `${"a".repeat(31)}_` },
+            {
+              skillName: secondName,
+              name: `${"a".repeat(30)}_2`,
+            },
+          ]);
+        },
+      );
+    });
+  });
+
   it("includes a registered remote workspace absent from the Gateway filesystem", async () => {
     const root = tempDirs.make("remote-skill-commands-");
     const gateway = path.join(root, "missing-gateway-workspace");

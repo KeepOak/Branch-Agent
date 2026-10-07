@@ -54,5 +54,5 @@ export async function loadCompleteTranscript(engine: WindowEngine, sessionKey: s
     ids.add(id);
     return true;
   });
-  return historyToBlocks(unique, [], sessionKey, null);
+  return historyToBlocks(unique, [], sessionKey, null, { wholeOutput: true });
 }

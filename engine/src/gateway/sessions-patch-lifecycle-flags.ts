@@ -36,6 +36,13 @@ export function applySessionPatchLifecycleFlags(params: {
   }
 
   const pinnable = isPinnableSessionEntry(storeKey, next);
+  if ("done" in patch) {
+    if (patch.done === true) {
+      next.done = true;
+    } else {
+      delete next.done;
+    }
+  }
   if (!pinnable) {
     delete next.pinnedAt;
   }

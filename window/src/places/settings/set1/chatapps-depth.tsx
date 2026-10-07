@@ -107,11 +107,13 @@ const MSG_KEYS: [string, string, string | null, string, ("text" | "number" | "se
   ["messages.statusReactions.enabled", "Show progress as reactions.", null, "Discord on, others off", "bool"],
 ];
 
+export const MSG_KEY_TITLES = MSG_KEYS.map(([key]) => key);
+
 export function MsgKeys({ cfg }: { cfg: Cfg }) {
   return <>{MSG_KEYS.map(([key, what, above, def, kind, opts]) => {
     const v = cfg.get(key);
     return (
-      <Ctl key={key} id={key} title={<code>{key}</code>} sub={`${what} Default: ${def}.`}>
+      <Ctl key={key} title={key} sub={`${what} Default: ${def}.`}>
         {above ? <Val>Set above in {above}</Val> : <KeyInput k={key} kind={kind ?? "text"} opts={opts} v={v} cfg={cfg} />}
         {!above && v !== undefined ? <Btn ghost sm onClick={() => void cfg.set(key, null)}>Back to default</Btn> : null}
       </Ctl>

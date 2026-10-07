@@ -26,9 +26,9 @@ export function StepBody({ step, value, onValue, onAnswer, busy }: { step: Wizar
   );
 }
 
-export function Footer({ view, value, busy, onAnswer, onCancel, onClose }: { view: View; value: unknown; busy: boolean; onAnswer: (v?: unknown) => void; onCancel: () => void; onClose: () => void }) {
+export function Footer({ view, value, busy, onAnswer, onCancel }: { view: View; value: unknown; busy: boolean; onAnswer: (v?: unknown) => void; onCancel: () => void }) {
   if (view.phase === "done" || view.phase === "error") {
-    return <button type="button" className="btn primary" onClick={onClose}>Close</button>;
+    return null;
   }
   const step = view.phase === "step" && !view.waiting ? view.step : null;
   return (
@@ -55,14 +55,14 @@ export function WizardBody({ wizard: w, doneText }: { wizard: ReturnType<typeof 
 
 /** A provider sign-in in its own dialog (models.authLogin), for the setup flow; onClose says whether it signed in. */
 export function AccountLoginDialog({ engine, start, onClose }: { engine: WindowEngine; start: LoginStart; onClose: (signedIn: boolean) => void }) {
-  const w = useWizard(engine, { method: "models.authLogin", params: { agentId: start.agentId, authChoice: start.choiceId } });
+  const w = useWizard(engine, { method: start.method ?? "models.authLogin", params: { agentId: start.agentId, authChoice: start.choiceId } });
   const cancel = () => {
     w.cancel();
     onClose(false);
   };
   const close = () => (w.view.phase === "done" || w.view.phase === "error" ? onClose(w.view.phase === "done") : cancel());
   return (
-    <Dialog title={`Sign in to ${start.provider}`} onClose={close} testid="account-login" footer={<Footer view={w.view} value={w.value} busy={w.busy} onAnswer={w.answer} onCancel={cancel} onClose={close} />}>
+    <Dialog title={`Sign in to ${start.provider}`} onClose={close} testid="account-login" footer={<Footer view={w.view} value={w.value} busy={w.busy} onAnswer={w.answer} onCancel={cancel} />}>
       <WizardBody wizard={w} doneText="Signed in. The account is saved for this Trunk." />
     </Dialog>
   );

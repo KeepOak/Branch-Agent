@@ -57,6 +57,8 @@ export type SpeechSynthesisRequest = {
   target: SpeechSynthesisTarget;
   providerOverrides?: SpeechProviderOverrides;
   timeoutMs: number;
+  /** Cancellation owned by the host request, independent of provider deadlines. */
+  signal?: AbortSignal;
 };
 
 /** Buffered speech synthesis result plus file/voice-note compatibility metadata. */

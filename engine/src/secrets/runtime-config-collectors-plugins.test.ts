@@ -25,7 +25,7 @@ vi.mock("../plugins/bundled-plugin-metadata.js", () => ({
 
 function asConfig(value: unknown): BranchConfig {
   return {
-    agents: { list: [{ id: "main", default: true }] },
+    agents: { entries: { main: {} } },
     ...(value as BranchConfig),
   };
 }

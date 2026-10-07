@@ -49,7 +49,7 @@ import {
 import { getProviderUsageRuntimeSnapshot } from "./provider-usage-runtime.js";
 import { usageHandlers } from "./usage.js";
 
-const config: BranchConfig = { agents: { list: [{ id: "main", default: true }] } };
+const config: BranchConfig = { agents: { entries: { main: {} } } };
 const refreshingCapableClient = { connect: { caps: ["usage-refreshing"] } };
 const providerDescriptor = { provider: "openai", displayName: "OpenAI" };
 const visibleProvider = { providers: [{ provider: "openai" }] };

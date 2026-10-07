@@ -3,7 +3,6 @@ import { registerNodeSqliteDisposeCallback } from "../infra/kysely-sync-cache-st
 import { executeSqliteQueryTakeFirstSync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
 import { assertSqliteIntegrity } from "../infra/sqlite-integrity.js";
 import {
-  assertSqliteSchemaContains,
   createSqliteTableContractReader,
   readSqliteSchemaCookie,
 } from "../infra/sqlite-schema-contract.js";
@@ -19,12 +18,45 @@ import {
   readStateSchemaMigrationVersion,
 } from "./branch-state-db-schema-version.js";
 import type { DB } from "./branch-state-db.generated.js";
-import {
-  getBranchStateRuntimeSchema,
-  STATE_PERSISTENT_SCHEMA_COMPATIBILITY,
-} from "./branch-state-schema-compatibility.js";
 
 const validatedSchemas = new WeakMap<DatabaseSync, { cookie: number; unregister: () => void }>();
+
+/** Recheck mutable metadata within the caller's admission transaction. */
+export function assertExistingBranchStateRuntimeMetadata(
+  database: DatabaseSync,
+  pathname: string,
+): number {
+  const version = assertSupportedStateSchemaVersion(database, pathname);
+  if (readStateSchemaMigrationVersion(database) !== BRANCH_STATE_SCHEMA_VERSION) {
+    throw new Error(
+      `Existing shared-state database ${pathname} requires schema migration by its owning installation; run branch doctor --fix there before using it.`,
+    );
+  }
+  let metadata;
+  try {
+    metadata = executeSqliteQueryTakeFirstSync(
+      database,
+      getNodeSqliteKysely<Pick<DB, "schema_meta">>(database)
+        .selectFrom("schema_meta")
+        .select(["role", "schema_version"])
+        .where("meta_key", "=", "primary")
+        .limit(1),
+    );
+  } catch (error) {
+    throw classifySqliteTableReadError(
+      database,
+      "schema_meta",
+      ["meta_key", "role", "schema_version"],
+      error,
+    );
+  }
+  if (metadata?.role !== "global" || metadata.schema_version !== version) {
+    throw new Error(
+      `Existing shared-state database ${pathname} has inconsistent ownership or schema metadata.`,
+    );
+  }
+  return version;
+}
 
 /** Prove the existing runtime contract without certifying this release's repairs. */
 export function assertExistingBranchStateRuntimeSchema(
@@ -32,35 +64,7 @@ export function assertExistingBranchStateRuntimeSchema(
   pathname: string,
 ): void {
   const schemaCookie = runSqliteDeferredTransactionSync(database, () => {
-    const version = assertSupportedStateSchemaVersion(database, pathname);
-    if (readStateSchemaMigrationVersion(database) !== BRANCH_STATE_SCHEMA_VERSION) {
-      throw new Error(
-        `Existing shared-state database ${pathname} requires schema migration by its owning installation before this node can use it.`,
-      );
-    }
-    let metadata;
-    try {
-      metadata = executeSqliteQueryTakeFirstSync(
-        database,
-        getNodeSqliteKysely<Pick<DB, "schema_meta">>(database)
-          .selectFrom("schema_meta")
-          .select(["role", "schema_version"])
-          .where("meta_key", "=", "primary")
-          .limit(1),
-      );
-    } catch (error) {
-      throw classifySqliteTableReadError(
-        database,
-        "schema_meta",
-        ["meta_key", "role", "schema_version"],
-        error,
-      );
-    }
-    if (metadata?.role !== "global" || metadata.schema_version !== version) {
-      throw new Error(
-        `Existing shared-state database ${pathname} has inconsistent ownership or schema metadata.`,
-      );
-    }
+    assertExistingBranchStateRuntimeMetadata(database, pathname);
     const currentCookie = readSqliteSchemaCookie(database);
     if (typeof currentCookie !== "number") {
       throw new Error(`Existing shared-state database ${pathname} schema version is unavailable.`);
@@ -73,13 +77,6 @@ export function assertExistingBranchStateRuntimeSchema(
       const readTable = createSqliteTableContractReader(database);
       assertCurrentStateRuntimeSchema(database, pathname, readTable);
       assertNoLegacyStateRuntimeRepair(database, pathname);
-      assertSqliteSchemaContains(
-        database,
-        pathname,
-        getBranchStateRuntimeSchema({ includeVersionLazyAdditiveTables: false }),
-        STATE_PERSISTENT_SCHEMA_COMPATIBILITY,
-        readTable,
-      );
     }
     return currentCookie;
   });

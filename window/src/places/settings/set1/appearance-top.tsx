@@ -11,7 +11,7 @@ import { ACCENTS } from "./appearance-editor";
 import { isHex, SLATE, type Mode, type Pair } from "./appearance-look";
 import { rowOf } from "./appearance-rows";
 import { SpecRow, type Look } from "./appearance-sections";
-import { GROUP, PALETTE_ICON, Swatch, themeName, type ThemeDesc, type Themes } from "./appearance-themes";
+import { PALETTE_ICON, Swatch, themeGroup, themeName, type ThemeDesc, type Themes } from "./appearance-themes";
 
 /** The window's light/dark choice, kept in step with the top bar's button. */
 export function useThemeChoice(): [ThemeChoice, Mode] {
@@ -103,10 +103,10 @@ export function ThemeSec({ look, pair, themes, current, mode, onBrowse, onMake }
         <Swatch c={pair[mode]} />
         <span className="grow">
           <b>{current ? themeName(current) : themes.loading ? "Reading your theme…" : "Branch Slate"}</b>
-          <small>{[current ? GROUP[current.source] : "Branch", mode === "dark" ? "Moonlight" : "Daylight", contrast ? "more contrast" : ""].filter(Boolean).join(" · ")}</small>
+          <small>{[current ? themeGroup(current) : "Branch", mode === "dark" ? "Moonlight" : "Daylight", contrast ? "more contrast" : ""].filter(Boolean).join(" · ")}</small>
           {themes.error ? <small className="why-k">{visible(themes.error)}</small> : null}
           <Acts>
-            <Btn pri sm disabled={themes.loading || Boolean(themes.error)} onClick={onBrowse}>{`Browse all ${themes.list.length} themes`}</Btn>
+            <Btn pri sm disabled={themes.loading || Boolean(themes.error)} onClick={onBrowse}>{themes.list.length ? `Browse all ${themes.list.length} themes` : "Browse themes"}</Btn>
             <Btn sm disabled={themes.loading} onClick={() => onMake(false)}>{PALETTE_ICON}Make your own</Btn>
           </Acts>
         </span>

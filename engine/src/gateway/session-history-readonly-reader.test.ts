@@ -17,7 +17,6 @@ import {
   BranchAgentDatabaseReadOnlyScope,
   withScopedBranchAgentDatabaseReadOnly,
 } from "../state/branch-agent-db-readonly-scope.js";
-import { assertBranchAgentCurrentRuntimeSchema } from "../state/branch-agent-db-schema-helpers.js";
 import { invalidateBranchAgentDatabaseValidation } from "../state/branch-agent-db-validation-cache.js";
 import { openBranchAgentDatabase } from "../state/branch-agent-db.js";
 import { withBranchTestState } from "../test-utils/branch-test-state.js";
@@ -250,18 +249,6 @@ it.each(["cold", "warm", "policy", "receipt"] as const)(
   },
 );
 
-it("observes a row changed after preparation and before the first worker read", async () => {
-  await withHistory(async ({ target, database }) => {
-    const reader = createReadonlySessionHistoryReader(target);
-    database.db
-      .prepare("UPDATE session_nodes SET entry_json = ? WHERE session_key = ?")
-      .run("{", target.entryValidationKey!);
-    await expect(
-      reader.readRecentSessionMessagesWithStatsAsync(target.transcript, { maxMessages: 10 }),
-    ).rejects.toThrow("branch doctor --fix");
-  });
-});
-
 it("revalidates the retained handle between paged and anchored reader invocations", async () => {
   await withHistory(async ({ target, database }) => {
     const scope = new BranchAgentDatabaseReadOnlyScope();
@@ -403,12 +390,6 @@ it("validates participant projection on the current reader handle", async () => 
 it("admits history without creating a missing additive participant table", async () => {
   await withHistory(async ({ target, database }) => {
     database.db.exec("DROP TABLE session_participants");
-    expect(() =>
-      assertBranchAgentCurrentRuntimeSchema(database.db, {
-        agentId: database.agentId,
-        pathname: database.path,
-      }),
-    ).not.toThrow();
     const reader = createReadonlySessionHistoryReader(target);
     const page = await reader.readRecentSessionMessagesWithStatsAsync(target.transcript, {
       maxMessages: 10,

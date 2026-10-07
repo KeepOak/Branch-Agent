@@ -1,6 +1,7 @@
 import { isRecord } from "branch/plugin-sdk/string-coerce-runtime";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { setCanopyCards } from "./card-state.ts";
+import { normalizeCanopyChange } from "./change-payload.ts";
 import { formatError } from "./normalization-utils.ts";
 import { normalizeCardsPayload } from "./normalization.ts";
 import {
@@ -97,34 +98,37 @@ async function loadCanopyInternal(
           }
         }
       }
-      const payload = await client.request("canopy.cards.list", {});
+      const payload = await client.request(
+        "canopy.cards.list",
+        runtime.cardsRevision ? { sinceRevision: runtime.cardsRevision } : {},
+      );
+      if (!isCurrentCanopyLoadGeneration(params.host, generation)) {
+        return false;
+      }
+      const unchanged = isRecord(payload) && payload.unchanged === true;
       if (
         catalogOnly &&
+        !unchanged &&
         (!isRecord(payload) || !Array.isArray(payload.cards) || !Array.isArray(payload.boards))
       ) {
         return false;
       }
-      const normalized = normalizeCardsPayload(payload);
-      if (!isCurrentCanopyLoadGeneration(params.host, generation)) {
-        return false;
-      }
+      const normalized = unchanged ? state : normalizeCardsPayload(payload);
       if (catalogOnly) {
         state.boards = normalized.boards;
-        // Keep navigation current without replacing cards beneath an unfinished draft.
-        if (shouldDeferCanopyLiveRefresh(state)) {
-          return true;
-        }
-        // Catalog hydration never establishes task freshness or authorizes stale edits.
-        setCanopyCards(state, normalized.cards);
-        state.statuses = normalized.statuses;
-        return true;
       }
-      if (params.preserveError && shouldDeferCanopyLiveRefresh(state)) {
-        return false;
+      // Keep navigation current without replacing cards beneath an unfinished draft.
+      if ((catalogOnly || params.preserveError) && shouldDeferCanopyLiveRefresh(state)) {
+        return catalogOnly;
       }
+      runtime.cardsRevision = normalizeCanopyChange(isRecord(payload) ? payload.revision : null);
       setCanopyCards(state, normalized.cards);
       state.boards = normalized.boards;
       state.statuses = normalized.statuses;
+      // Catalog hydration never authorizes stale edits.
+      if (catalogOnly) {
+        return true;
+      }
       const recoveredLoadError = runtime.loadError;
       if (recoveredLoadError !== undefined && state.error === recoveredLoadError) {
         state.error = null;

@@ -20,7 +20,7 @@ import "./people.css";
 export type TabId = "live" | "people" | "groups" | "shared" | "agents" | "activity" | "usage" | "rules" | "signin";
 /** The optional-team banner shows on these tabs only (§4.6.5 shared header parts). */
 const BANNER: TabId[] = ["live", "agents", "activity", "usage", "rules"];
-const TAB_NAMES: [TabId, string][] = [["live", "Live now"], ["people", "People"], ["groups", "Groups"], ["shared", "Shared"], ["agents", "Teams of specialists"], ["activity", "Activity"], ["usage", "Usage"], ["rules", "Rules"], ["signin", "Signing in"]];
+const TAB_NAMES: [TabId, string][] = [["live", "Live now"], ["people", "People"], ["groups", "Access groups"], ["shared", "Shared"], ["agents", "Teams"], ["activity", "Activity"], ["usage", "Usage"], ["rules", "Rules"], ["signin", "Signing in"]];
 
 export function PeoplePlace({ engine, openConversation, openSettings, level }: PlaceProps) {
   const [tab, setTab] = useState<TabId>("live");
@@ -41,7 +41,7 @@ export function PeoplePlace({ engine, openConversation, openSettings, level }: P
   }, []);
   const me = str(rec(rec(self.data).profile).id) || null;
   const people = activeProfiles(profiles(users.data));
-  const running = rows(runs.data).filter(r => r.working).length;
+  const running = rows(runs.data).filter(r => r.working && !r.helper).length;
   const seePerson = (id: string) => { setPerson(id); setTab("people"); };
   const tabs = TAB_NAMES.map(([id, name]) => ({ id, name, count: id === "live" && runs.data ? running : id === "people" && users.data ? people.length : undefined }));
   return <PlaceFrame title="People" lede="Everyone who uses Branch: on this computer, on their own devices, and your keepoak.com team.">

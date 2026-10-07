@@ -10,6 +10,13 @@ const blocks: Block[] = [
 ];
 
 describe("side pane model", () => {
+  it("preserves recorded step timestamps in sequence order", () => {
+    const items = timelineItems([
+      { kind: "step", key: "one", tool: "read", title: "first", detail: "", status: "ok", at: 22000 },
+      { kind: "step", key: "two", tool: "read", title: "second", detail: "", status: "ok", at: 15000 },
+    ], "Ada");
+    expect(items.map((item) => [item.key, item.at])).toEqual([["one", 22000], ["two", 15000]]);
+  });
   it("lists steps, replies and messages in order with what the engine recorded", () => {
     const items = timelineItems(blocks, "Ada");
     expect(items.map((i) => i.kind)).toEqual(["you", "tool", "model"]);

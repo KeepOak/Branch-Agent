@@ -1,5 +1,6 @@
 // Small shared parts of Canopy: the context every tab reads, a tick-list popover, faces and pills.
 import type { ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Face } from "../../face/Face";
 import type { Level } from "../../places-nav/level";
@@ -35,7 +36,7 @@ export function ChoiceMenu({ at, label, head, options, onPick, onClose, radio, f
         {head ? <div className="ph">{head}</div> : null}
         {options.map(o => (
           <button key={o.id} type="button" className="mi" role={radio ? "menuitemradio" : "menuitemcheckbox"} aria-checked={o.checked}
-            disabled={Boolean(o.disabled)} title={o.disabled} onClick={() => onPick(o.id)}>
+            disabled={Boolean(o.disabled)} title={shownWhy(o.disabled)} onClick={() => onPick(o.id)}>
             <span className="cn-mi-t">{o.label}</span>
             <span className="cn-tick">{o.checked ? <Icon name="check" /> : null}</span>
           </button>

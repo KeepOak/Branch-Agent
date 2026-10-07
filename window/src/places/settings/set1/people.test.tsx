@@ -49,7 +49,7 @@ const pick = async (name: string) => act(async () => [...host.querySelectorAll<H
 describe("Settings › People", () => {
   it("lists people from users.list grouped by where they use Branch, merged profiles left out", async () => {
     await render(engineOf().engine);
-    expect(host.querySelector("p.lede")?.textContent).toContain("The same list as People › People in the People place.");
+    expect(host.querySelector("p.lede")?.textContent).toBe("Everyone who uses Branch, on this computer or their own.");
     expect([...host.querySelectorAll(".grp-pp")].map((g) => g.textContent)).toEqual(["On this computer", "On their own device"]);
     expect([...host.querySelectorAll(".pitem-pp b")].map((b) => b.textContent)).toEqual(["Alex · you", "Dana Okafor"]);
     expect([...host.querySelectorAll(".pitem-pp small")].map((m) => m.textContent)).toEqual(["Owner · last used Now", "last used 5 min ago"]);
@@ -60,6 +60,29 @@ describe("Settings › People", () => {
   it("the empty list uses the empty line", async () => {
     await render(engineOf({ "users.list": { profiles: [] }, "users.self": new Error("users.self requires an authenticated user") }).engine);
     expect(host.querySelector(".empty")?.textContent).toBe("Only you use Branch so far.");
+  });
+
+  it("users.self is listed as you even before users.list has them", async () => {
+    await render(engineOf({ "users.list": { profiles: [] } }).engine);
+    expect(host.querySelector(".empty")).toBeNull();
+    expect([...host.querySelectorAll(".pitem-pp b")].map((b) => b.textContent)).toEqual(["Alex · you"]);
+    expect(host.querySelector(".grp-pp")?.textContent).toBe("On this computer");
+    expect(host.querySelector(".phead-pp b")?.textContent).toBe("Alex");
+  });
+
+  it("Invite someone opens the invite dialog, whose own-device tab makes a one-time code", async () => {
+    const { engine, request } = engineOf({ "device.pair.setupCode": { setupCode: "INV-1", gatewayUrl: "wss://x", expiresAtMs: NOW + 900000 } });
+    await render(engine);
+    expect(host.textContent).not.toContain("Branch can’t send invites yet.");
+    const invite = button("Invite someone")!;
+    expect(invite.disabled).toBe(false);
+    await act(async () => invite.click());
+    const dlg = document.querySelector(".dlg")!;
+    expect(dlg.textContent).toContain("Invite someone");
+    await act(async () => [...dlg.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "On their own device")!.click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg button")].find((b) => b.textContent === "Make a one-time code")!.click());
+    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { bootstrapProfile: "limited", includeQr: true });
+    expect(document.querySelector(".dlg .pp-code")?.textContent).toBe("INV-1");
   });
 
   it("Change saves your name through users.setDisplayName", async () => {
@@ -119,6 +142,7 @@ describe("Settings › People", () => {
     expect(host.querySelector('[data-sec="Signing in to Branch"]')).toBeNull();
     await render(engine, 1);
     expect(host.querySelector('[data-row="Passkeys"]')?.getAttribute("aria-disabled")).toBe("true");
+    expect(button("Show it")?.disabled).toBe(true);
     expect(host.querySelector(".scopes-pp")).toBeNull();
     await act(async () => button("See the last")!.click());
     expect(request).toHaveBeenCalledWith("audit.list", { limit: 20 });

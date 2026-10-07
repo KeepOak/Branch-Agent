@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -42,7 +43,7 @@ describe("Automations › Triggers", () => {
   });
   it("Advanced: Hooks lists hooks.status and a switch patches hooks.internal.entries", async () => {
     const request = await mount("advanced");
-    expect(byText("Set up").disabled).toBe(true); expect(byText("Set up").title).toMatch(/^Needs the engine’s/);
+    expect(byText("Set up").disabled).toBe(true); expect(byText("Set up").title).toBe(""); expect(visibleDevNotes(host)).toEqual([]);
     expect(byText("Make one").disabled).toBe(true);
     await click(byText("See hooks"));
     expect(request).toHaveBeenCalledWith("hooks.status", {});

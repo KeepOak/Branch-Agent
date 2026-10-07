@@ -10,20 +10,7 @@ import path from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
-import { resolveCronJobConfigRevision } from "../cron/config-revision.js";
-import {
-  loadCronRows,
-  loadedCronStoreFromRows,
-  upsertCronJobRow,
-} from "../cron/store/row-codec.js";
-import type { CronStoredJob } from "../cron/types.js";
-import { buildCronExecOperationBinding } from "../gateway/operator-approval-standing-grants.js";
-import {
-  insertOperatorApproval,
-  resolveOperatorApproval,
-} from "../gateway/operator-approval-store.js";
 import { onAgentEvent } from "../infra/agent-events.js";
-import { registerCronRunExecSource } from "../infra/cron-run-exec-source.js";
 import {
   onInternalDiagnosticEvent,
   resetDiagnosticEventsForTest,
@@ -217,6 +204,7 @@ vi.mock("./bash-tools.exec-host-shared.js", async (importOriginal) => {
 
 vi.mock("./bash-tools.exec-runtime.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./bash-tools.exec-runtime.js")>()),
+  createApprovalSlug: vi.fn(() => "slug"),
   runExecProcess: runExecProcessMock,
 }));
 
@@ -1560,7 +1548,7 @@ describe("processGatewayAllowlist", () => {
 
     const result = await runGatewayAllowlist({
       command: "find . -maxdepth 1",
-      turnSourceChannel: "feishu",
+      turnSourceChannel: "webchat",
       approvalFollowupMode: "agent",
     });
     expect(result.pendingResult?.details.status).toBe("approval-pending");
@@ -1620,7 +1608,7 @@ describe("processGatewayAllowlist", () => {
       const result = await runGatewayAllowlist({
         command,
         workdir,
-        turnSourceChannel: "feishu",
+        turnSourceChannel: "webchat",
         approvalFollowupMode: "agent",
       });
 
@@ -1647,7 +1635,7 @@ describe("processGatewayAllowlist", () => {
 
     const result = await runGatewayAllowlist({
       command: "find . -maxdepth 1",
-      turnSourceChannel: "feishu",
+      turnSourceChannel: "webchat",
       approvalFollowupMode: "agent",
     });
     expect(result.pendingResult?.details.status).toBe("approval-pending");
@@ -1713,7 +1701,7 @@ describe("processGatewayAllowlist", () => {
       try {
         const result = await runGatewayAllowlist({
           command,
-          turnSourceChannel: "feishu",
+          turnSourceChannel: "webchat",
           approvalFollowupMode: "agent",
           env,
           requestedEnv: env,
@@ -1762,7 +1750,7 @@ describe("processGatewayAllowlist", () => {
 
     const result = await runGatewayAllowlist({
       command: "find . -maxdepth 1",
-      turnSourceChannel: "feishu",
+      turnSourceChannel: "webchat",
       approvalFollowupMode: "agent",
       signal: controller.signal,
       env: { PATH: "/usr/bin:/bin" },
@@ -1781,7 +1769,7 @@ describe("processGatewayAllowlist", () => {
 
     const result = await runGatewayAllowlist({
       command: "find . -maxdepth 1",
-      turnSourceChannel: "feishu",
+      turnSourceChannel: "webchat",
       approvalFollowupMode: "agent",
       runId: "run-aborted",
       toolCallId: "tool-aborted",
@@ -1865,6 +1853,7 @@ describe("processGatewayAllowlist", () => {
     });
     expect(commitExecAuthorizationMock).not.toHaveBeenCalled();
   });
+<<<<<<< HEAD
 
   describe("cron standing grants", () => {
     const CRON_STORE_KEY = "/tmp/branch-exec-host-cron-store";
@@ -2075,5 +2064,7 @@ describe("processGatewayAllowlist", () => {
       expect(commitExecAuthorizationMock.mock.calls[0]?.[0].allowAlwaysDecision).toBeUndefined();
     });
   });
+=======
+>>>>>>> features/mac-pool-09-20261003
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

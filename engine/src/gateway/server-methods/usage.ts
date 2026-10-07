@@ -13,8 +13,10 @@ import { sessionCreatorProfileId } from "../../config/sessions/session-entry-pro
 import type { BranchConfig } from "../../config/types.branch.js";
 import { loadSessionLogs, loadSessionUsageTimeSeries } from "../../infra/session-cost-usage.js";
 import { forecastCoveredUsage } from "../../infra/usage-burn-forecast.js";
+import { readModelUpgradeState } from "../../infra/model-upgrade-state.js";
 import { analyzeUsageRows } from "../../infra/usage-cost-insights.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
+import { getAsyncWorkSignal } from "../../shared/async-work-scope.js";
 import {
   createUsageAggregateAccumulator,
   UNKNOWN_USAGE_CREATOR_KEY,
@@ -56,7 +58,7 @@ import {
 } from "./usage-session-selection.js";
 import { assertValidParams } from "./validation.js";
 
-function resolveSessionUsageFileOrRespond(
+async function resolveSessionUsageFileOrRespond(
   params: { key?: unknown; agentId?: unknown } | undefined,
   detail: "timeseries" | "logs",
   respond: RespondFn,
@@ -80,10 +82,11 @@ function resolveSessionUsageFileOrRespond(
     respond(false, undefined, sessionOwner.error);
     return null;
   }
-  let resolved: NonNullable<ReturnType<typeof resolveSessionUsageTarget>> | undefined;
+  let resolved: Awaited<ReturnType<typeof resolveSessionUsageTarget>>;
   try {
-    resolved = resolveSessionUsageTarget(key, config, sessionOwner.agentId);
+    resolved = await resolveSessionUsageTarget(key, config, sessionOwner.agentId);
   } catch {
+    getAsyncWorkSignal()?.throwIfAborted();
     resolved = undefined;
   }
   if (!resolved) {
@@ -161,7 +164,11 @@ function projectUsageCreator(
 }
 
 export const usageHandlers: GatewayRequestHandlers = {
-  "usage.status": async ({ respond, context, client }) => {
+  "usage.status": async ({ respond, context, client, params }) => {
+    if (params?.refresh !== undefined && typeof params.refresh !== "boolean") {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "refresh must be a boolean"));
+      return;
+    }
     // Only clients with bounded retry machinery may receive an incomplete cold result.
     // In-process dispatch reuses the originating request's client, capabilities
     // included, so a plugin proxying this method inside a capable UI request
@@ -176,8 +183,10 @@ export const usageHandlers: GatewayRequestHandlers = {
     const summary = await loadUsageStatusStaleWhileRevalidate({
       config: context.getRuntimeConfig(),
       coldRead,
+      forceRefresh: params?.refresh === true,
     });
-    respond(true, summary, undefined);
+    const upgrade = await readModelUpgradeState();
+    respond(true, { ...summary, ...(upgrade.notice ? { modelUpgradeNotice: upgrade.notice } : {}) }, undefined);
   },
   "usage.cost": async ({ respond, params, context, client }) => {
     const budgetLimitUsd = params?.budgetLimitUsd;
@@ -417,7 +426,7 @@ export const usageHandlers: GatewayRequestHandlers = {
     respond(true, { ...result, costInsights: analyzeUsageRows(result.sessions) }, undefined);
   },
   "sessions.usage.timeseries": async ({ respond, params, context }) => {
-    const resolved = resolveSessionUsageFileOrRespond(
+    const resolved = await resolveSessionUsageFileOrRespond(
       params,
       "timeseries",
       respond,
@@ -426,11 +435,10 @@ export const usageHandlers: GatewayRequestHandlers = {
     if (!resolved) {
       return;
     }
-    const { config, key, entry, agentId, sessionId, sessionFile } = resolved;
+    const { config, key, agentId, sessionId, sessionFile } = resolved;
 
     const timeseries = await loadSessionUsageTimeSeries({
       sessionId,
-      sessionEntry: entry,
       sessionFile,
       config,
       agentId,
@@ -454,7 +462,7 @@ export const usageHandlers: GatewayRequestHandlers = {
         ? Math.min(params.limit, 1000)
         : 200;
 
-    const resolved = resolveSessionUsageFileOrRespond(
+    const resolved = await resolveSessionUsageFileOrRespond(
       params,
       "logs",
       respond,
@@ -463,11 +471,10 @@ export const usageHandlers: GatewayRequestHandlers = {
     if (!resolved) {
       return;
     }
-    const { config, entry, agentId, sessionId, sessionFile } = resolved;
+    const { config, agentId, sessionId, sessionFile } = resolved;
 
     const logs = await loadSessionLogs({
       sessionId,
-      sessionEntry: entry,
       sessionFile,
       config,
       agentId,

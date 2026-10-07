@@ -89,7 +89,6 @@ export function mockLaunchedChrome(
     exe: { kind: "chromium", path: "/usr/bin/chromium" },
     userDataDir: "/tmp/branch-test",
     cdpPort: 18800,
-    startedAt: Date.now(),
     proc,
   };
   launchBranchChrome.mockResolvedValue(running);

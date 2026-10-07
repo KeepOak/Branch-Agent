@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
+import { Icon } from "../../../shell/icons";
 import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Empty, Plist, Prow, Sec, useSaveRunner } from "../kit";
@@ -19,7 +20,7 @@ export function OwnAccounts({ engine }: { engine: WindowEngine }) {
     await own.reload();
   });
   return (
-    <Sec personal title="Your own accounts" hint="Accounts only you use. New conversations you start prefer the one you pick; the household’s order still applies when it runs out. This isn’t a billing promise.">
+    <Sec personal title="Your own accounts" hint="Accounts only you use." help="Accounts only you use. New conversations you start prefer the one you pick; the household’s order still applies when it runs out. This isn’t a billing promise.">
       {own.error ? <p className="hint">{visible(own.error)}</p> : null}
       {mine.length ? (
         <Plist>
@@ -30,7 +31,7 @@ export function OwnAccounts({ engine }: { engine: WindowEngine }) {
           ))}
         </Plist>
       ) : !own.loading && !own.error ? <Empty>No account of your own yet. New conversations use the household’s.</Empty> : null}
-      <div className="acts"><Btn sm disabled={own.loading || Boolean(own.error) || !accounts.length} title={!accounts.length ? "Add an account above first." : undefined} onClick={() => setAdding(true)}>Add your own account</Btn></div>
+      <div className="acts"><Btn sm disabled={own.loading || Boolean(own.error) || !accounts.length} title={!accounts.length ? "Add an account above first." : undefined} onClick={() => setAdding(true)}><Icon name="plus" small />Add your own account</Btn></div>
       {adding ? <PickOwn engine={engine} accounts={accounts.filter((a) => a.selected !== true)} onClose={(picked) => { setAdding(false); if (picked) void own.reload(); }} /> : null}
     </Sec>
   );
@@ -52,7 +53,7 @@ function PickOwn({ engine, accounts, onClose }: { engine: WindowEngine; accounts
             <span className="grow"><b>{serviceName(text(a.provider), undefined, a.authType === "api_key")} · {visible(a.label)}</b><small>{a.authType === "api_key" ? "A key" : "A signed-in account"}</small></span>
           </button>
         ))}
-        {!accounts.length ? <p className="empty">Every account is already yours.</p> : null}
+        {!accounts.length ? <Empty>Every account is already yours.</Empty> : null}
       </div>
     </Dialog>
   );

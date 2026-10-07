@@ -13,6 +13,7 @@ import {
   formatProviderLoginChoiceRef,
   isProviderLoginChoiceStartable,
 } from "../../plugins/provider-login-options.js";
+import { buildTokenProfileId } from "../../plugins/provider-auth-token.js";
 import { createNonExitingRuntime } from "../../runtime.js";
 import {
   ProviderAuthConfigApplyError,
@@ -72,6 +73,11 @@ export const modelsAuthLoginHandlers: GatewayRequestHandlers = {
       );
       return;
     }
+    // A labelled sign-in gets its own profile, the way OpenAI sign-ins are keyed by email.
+    const profileLabel = params.profileLabel?.trim();
+    const profileId = profileLabel
+      ? buildTokenProfileId({ provider: choice.providerId, name: profileLabel })
+      : undefined;
     const assertCurrent = () => {
       client.connectionSignal?.throwIfAborted();
       if (client.invalidated || !client.connect.scopes?.includes("operator.admin")) {
@@ -123,6 +129,7 @@ export const modelsAuthLoginHandlers: GatewayRequestHandlers = {
                 method: choice.methodId,
                 ownerPluginId: choice.pluginId,
                 credentialOnly: true,
+                ...(profileId ? { profileId } : {}),
                 onModelAccessRequested: (request) => {
                   modelAccess = request;
                 },

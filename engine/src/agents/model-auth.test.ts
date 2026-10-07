@@ -788,6 +788,18 @@ describe("resolveApiKeyForProviderCore", () => {
 });
 
 describe("resolveApiKeyForProviderCore – synthetic local auth for custom providers", () => {
+  it("uses a local model's resolved loopback route when the provider config is absent", async () => {
+    const auth = await resolveAuth({
+      provider: "llama-cpp",
+      cfg: {},
+      modelApi: "openai-completions",
+      modelBaseUrl: "http://127.0.0.1:8081/v1",
+      store: authStore({}),
+    });
+    expect(auth.apiKey).toBe(CUSTOM_LOCAL_AUTH_MARKER);
+    expect(auth.source).toContain("synthetic local key");
+  });
+
   it("synthesizes a local auth marker for custom providers with a local baseUrl and no apiKey", async () => {
     const auth = await resolveAuth({
       provider: "custom-ipv6",

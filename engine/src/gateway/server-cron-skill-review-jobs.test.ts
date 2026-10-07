@@ -8,7 +8,7 @@ import { CronService } from "../cron/service.js";
 import { saveCronJobsStore } from "../cron/store.js";
 import type { CronJob } from "../cron/types.js";
 import {
-  closeBranchAgentDatabasesForTest,
+  closeBranchAgentDatabasesAsync,
   getBranchAgentDatabaseIfOpen,
 } from "../state/branch-agent-db.js";
 import { openBranchStateDatabase } from "../state/branch-state-db.js";
@@ -160,10 +160,10 @@ describe("reconcileSkillCollectionReviewJobs", () => {
     ]);
     const cfg = {
       agents: {
-        list: [
-          { id: "main", default: true, workspace: "/tmp/branch-shared" },
-          { id: "ops", workspace: "/tmp/branch-shared" },
-        ],
+        entries: {
+          main: { workspace: "/tmp/branch-shared" },
+          ops: { workspace: "/tmp/branch-shared" },
+        },
       },
       skills: { workshop: { autonomous: { mode: "propose" } } },
     } as BranchConfig;
@@ -216,7 +216,7 @@ describe("reconcileSkillCollectionReviewJobs", () => {
       },
     );
     const cfg = {
-      agents: { list: [{ id: "main", default: true, workspace: "/tmp/branch-main" }] },
+      agents: { entries: { main: { workspace: "/tmp/branch-main" } } },
       skills: { workshop: { autonomous: { mode: "propose" } } },
     } as BranchConfig;
 
@@ -275,7 +275,7 @@ describe("reconcileSkillCollectionReviewJobs", () => {
           ...preferences,
         },
       );
-      closeBranchAgentDatabasesForTest();
+      await closeBranchAgentDatabasesAsync(testState.root);
       await expect(reconcileSkillCollectionReviewJobs({ cron, cfg, logger })).resolves.toEqual({
         ok: true,
       });
@@ -296,7 +296,7 @@ describe("reconcileSkillCollectionReviewJobs", () => {
     const testState = await createBranchTestState({ label: "skill-review-convergence" });
     const storePath = testState.statePath("cron", "jobs.json");
     const cfg: BranchConfig = {
-      agents: { ownership: "explicit", list: [{ id: "main", default: true }, { id: "ops" }] },
+      agents: { ownership: "explicit", entries: { main: {}, ops: {} } },
     };
     const deps = {
       scheduler: createTestGatewayScheduler(),
@@ -383,7 +383,7 @@ describe("reconcileSkillCollectionReviewJobs", () => {
     const config = (mode: "auto" | "off") =>
       ({
         agents: {
-          list: [{ id: "main", default: true, workspace: workspaceDir }],
+          entries: { main: { workspace: workspaceDir } },
         },
         skills: { workshop: { autonomous: { mode } } },
       }) satisfies BranchConfig;

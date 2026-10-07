@@ -1,13 +1,14 @@
 // The Settings row kit (DESIGN-SPEC §4.7, §5.3): the preview's designed rows (.sec, .ctl, .sw, segments, .prow lists,
 // status boxes) and the save-as-you-change plumbing every page shares. Copied from the App Preview's 00-core,
 // 50-settings and 51-set1p styles; each change saves at once and reports to the frame's "Saved" line.
-import { createContext, useCallback, useContext, useEffect, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { errorText, record, type RecordValue } from "./adapter";
 import { configStore, pathKeys, type ConfigPath } from "./config-store";
 import { Icon } from "../../shell/icons";
 import { PIN_MAX, type Pins } from "./pins";
+import { isDevNote, shownWhy } from "../../shell/shown-why";
 import "./kit.css";
 
 /** 0 = Regular, 1 = Advanced, 2 = Technical. */
@@ -15,7 +16,7 @@ export type Lv = 0 | 1 | 2;
 export type SaveReport = { saving: () => void; saved: () => void; failed: (message: string) => void };
 /** ask: starts a conversation with the default Trunk ("Learn more"); absent while no model is set up. */
 /** pins: each row's pin and General's Pinned list (absent outside the Settings frame). */
-type Kit = { level: Lv; report: SaveReport; scope: string | null; ask?: (text: string) => void; pins?: Pins };
+type Kit = { level: Lv; report: SaveReport; scope: string | null; ask?: (text: string) => void; askName?: string; pins?: Pins };
 const NOOP: SaveReport = { saving: () => undefined, saved: () => undefined, failed: () => undefined };
 const KitContext = createContext<Kit>({ level: 0, report: NOOP, scope: null });
 
@@ -69,27 +70,87 @@ export function useConfig(engine: WindowEngine) {
   return { cfg, get, set, loading: !version && !store.error, error: store.error, invalid: version?.valid === false, reload: () => store.load() };
 }
 
-/** A page head: the title, the lede and its "Learn more" (a conversation about this page with the default Trunk).
- *  `top` comes before the title (General's Pinned list, as the preview draws it). */
-export function Page({ title, lede, children, top }: { title: string; lede: ReactNode; children?: ReactNode; top?: ReactNode }) {
-  const { ask } = useContext(KitContext);
+type HelpEntry = { label: string; text: string };
+const HelpContext = createContext<((key: string, entry?: HelpEntry) => void) | null>(null);
+
+/** Only explicitly supplied explanations register with page help. */
+function useHelpEntry(key: string, label: string, help?: string): void {
+  const register = useContext(HelpContext);
+  useEffect(() => {
+    if (!help || !register) return;
+    register(key, { label, text: help });
+    return () => register(key);
+  }, [help, key, label, register]);
+}
+
+/** A page head with one help affordance and the original ask action inside it. */
+export function Page({ title, lede, help, children, top }: { title: string; lede: ReactNode; help?: string; children?: ReactNode; top?: ReactNode }) {
+  const { ask, askName } = useContext(KitContext);
+  const [open, setOpen] = useState(false);
+  const [entries, setEntries] = useState<Record<string, HelpEntry>>({});
+  const helpRef = useRef<HTMLDivElement>(null);
+  const [helpPosition, setHelpPosition] = useState({ top: 0, right: 0 });
+  const register = useCallback((key: string, entry?: HelpEntry) => {
+    setEntries((current) => {
+      if (entry && current[key]?.text === entry.text && current[key]?.label === entry.label) return current;
+      if (!entry && !current[key]) return current;
+      const next = { ...current };
+      if (entry) next[key] = entry; else delete next[key];
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    const toggle = () => {
+      const anchor = document.querySelector<HTMLElement>('[data-testid="ask-default"]');
+      if (anchor) {
+        const box = anchor.getBoundingClientRect();
+        setHelpPosition({ top: box.bottom + 8, right: window.innerWidth - box.right });
+      }
+      setOpen((value) => !value);
+    };
+    window.addEventListener("branch-settings-help", toggle);
+    return () => window.removeEventListener("branch-settings-help", toggle);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!helpRef.current?.contains(target) && !document.querySelector('[data-testid="ask-default"]')?.contains(target)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); document.querySelector<HTMLButtonElement>('[data-testid="ask-default"]')?.focus(); } };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", escape); };
+  }, [open]);
   return (
     <div className="kit-page" data-page-title={title}>
       {top}
-      <h1>{title}</h1>
-      <p className="lede">{lede}{ask ? <> <LinkBtn onClick={() => ask(`Tell me about Settings › ${title}.`)}>Learn more</LinkBtn></> : null}</p>
-      {children}
+      <div className="kit-head"><h1>{title}</h1><div className="kit-help-anchor" ref={helpRef}>
+        {open ? <div className="kit-help-pop" role="dialog" aria-label="Help for this page" style={helpPosition}>
+          <b>About {title}</b>
+          <div className="kit-help-body">
+            {help ? <div><strong>{title}</strong><p>{help}</p></div> : null}
+            {Object.values(entries).map((entry) => <div key={`${entry.label}-${entry.text}`}><strong>{entry.label}</strong><p>{entry.text}</p></div>)}
+          </div>
+          <button type="button" className="kit-help-ask" disabled={!ask} title={ask ? undefined : "Set up a model to ask about this page"} onClick={() => { setOpen(false); ask?.(`Tell me about Settings › ${title}.`); }}>Ask {askName ?? "your Trunk"} about this page</button>
+        </div> : null}
+      </div></div>
+      {lede ? <p className="lede">{lede}</p> : null}
+      <HelpContext.Provider value={register}>{children}</HelpContext.Provider>
     </div>
   );
 }
 
-/** A section: the mono heading, an optional hint and its rows. */
-export function Sec({ title, hint, right, children, id, personal }: { title: string; hint?: ReactNode; right?: ReactNode; children?: ReactNode; id?: string; personal?: boolean }) {
+/** A section: sentence-case heading, an optional hint and its rows. */
+export function Sec({ title, group, showHeading = true, hint, help, right, children, id, personal }: { title: string; group?: string; showHeading?: boolean; hint?: ReactNode; help?: string; right?: ReactNode; children?: ReactNode; id?: string; personal?: boolean }) {
   const locked = useContext(LockContext);
-  if (personal && locked) return <SetupLock locked={false}><Sec title={title} hint={hint} right={right} id={id}>{children}</Sec></SetupLock>;
+  const helpKey = useId();
+  useHelpEntry(helpKey, title, help);
+  const heading = group ?? title;
+  if (personal && locked) return <SetupLock locked={false}><Sec title={title} group={group} showHeading={showHeading} hint={hint} help={help} right={right} id={id}>{children}</Sec></SetupLock>;
   return (
     <div className="sec" data-sec={title || undefined} id={id}>
-      {title || right ? <h2>{title}{right}</h2> : null}
+      {showHeading && (title || right) ? <h2 tabIndex={-1}>{heading}{right}</h2> : null}
       {hint ? <p className="hint">{hint}</p> : null}
       {children}
     </div>
@@ -114,14 +175,17 @@ function PinBtn({ title }: { title: string }) {
 
 /** One settings row: title, sub-line and the control on the right. `off` greys the control and says why on its own line.
  *  Every row with a plain title has a pin, except General's Pinned list itself (noPin). */
-export function Ctl({ title, sub, children, off, keep, icon, stack, id, after, noPin }: {
-  title: ReactNode; sub?: ReactNode; children?: ReactNode; off?: string; keep?: Keep; icon?: ReactNode; stack?: boolean; id?: string; after?: ReactNode; noPin?: boolean;
+export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, after, noPin }: {
+  title: ReactNode; sub?: ReactNode; help?: string; children?: ReactNode; off?: string; keep?: Keep; icon?: ReactNode; stack?: boolean; id?: string; after?: ReactNode; noPin?: boolean;
 }) {
   const level = useLevel();
+  const helpKey = useId();
   const locked = useContext(LockContext);
   const why = off ?? (locked ? NOSETUP : undefined);
   const name = typeof title === "string" ? title : id;
-  const line = sub ?? why;
+  const shown = shownWhy(why);
+  const line = sub ?? shown;
+  useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", help);
   const kept = keep && level >= 1 ? KEEP_LINE[keep] : null;
   return (
     <div className={`ctl${why ? " off-k" : ""}${stack ? " stack-k" : ""}`} data-row={name} aria-disabled={why ? true : undefined}>
@@ -129,7 +193,7 @@ export function Ctl({ title, sub, children, off, keep, icon, stack, id, after, n
       {typeof title === "string" && !noPin ? <PinBtn title={title} /> : null}
       {children ? <span className="right" inert={why ? true : undefined}>{children}</span> : null}
       {line || kept ? <small>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
-      {why && sub ? <small className="why-k">{why}</small> : null}
+      {shown && sub ? <small className="why-k">{shown}</small> : null}
       {after}
     </div>
   );
@@ -142,12 +206,24 @@ export function Switch({ checked, onChange, label, disabled }: { checked: boolea
 export type Opt = { id: string; label: string; off?: string };
 
 /** A segmented choice (pressed-style, like the preview's settings rows). */
-export function Seg({ value, options, onChange, label, disabled }: { value: string; options: Opt[]; onChange: (id: string) => void; label: string; disabled?: boolean }) {
+export function Seg({ value, options, onChange, label, disabled, layout = "segments" }: { value: string; options: Opt[]; onChange: (id: string) => void; label: string; disabled?: boolean; layout?: "segments" | "radio" }) {
+  const active = options.find((option) => option.id === value && !option.off)?.id ?? options.find((option) => !option.off)?.id;
   return (
-    <span className="sseg" role="group" aria-label={label}>
+    <span className={layout === "radio" ? "sseg sseg-radio" : "sseg"} role={layout === "radio" ? "radiogroup" : "group"} aria-label={label} onKeyDown={(e) => {
+      if (disabled || e.altKey || e.ctrlKey || e.metaKey) return;
+      const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+      const index = buttons.indexOf(e.target as HTMLButtonElement);
+      if (index < 0) return;
+      const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+      const next = e.key === "Home" ? 0 : e.key === "End" ? buttons.length - 1 : step ? (index + step + buttons.length) % buttons.length : -1;
+      if (next < 0) return;
+      e.preventDefault();
+      buttons[next].focus();
+      buttons[next].click();
+    }}>
       {options.map((o) => (
-        <button key={o.id} type="button" aria-pressed={o.id === value} disabled={disabled || Boolean(o.off)} title={o.off} onClick={() => o.id !== value && onChange(o.id)}>
-          {o.label}
+        <button key={o.id} type="button" role={layout === "radio" ? "radio" : undefined} aria-checked={layout === "radio" ? o.id === value : undefined} aria-pressed={layout === "radio" ? undefined : o.id === value} disabled={disabled || Boolean(o.off)} tabIndex={o.id === active ? 0 : -1} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" title={layout === "radio" ? undefined : shownWhy(o.off)} onClick={() => o.id !== value && onChange(o.id)}>
+          {layout === "radio" ? <span aria-hidden="true" className="sseg-radio-check">{o.id === value ? "✓" : ""}</span> : null}{o.label}{layout === "radio" && shownWhy(o.off) ? <small>{shownWhy(o.off)}</small> : null}
         </button>
       ))}
     </span>
@@ -208,7 +284,9 @@ export function Tabs({ tabs, value, onChange, label }: { tabs: Opt[]; value: str
 
 export type Tone = "ok" | "warn" | "bad" | "idle";
 /** The status box at the top of a page: a dot, a bold line and what it means. */
-export function Status({ tone = "ok", title, children, action }: { tone?: Tone; title: ReactNode; children?: ReactNode; action?: ReactNode }) {
+export function Status({ tone = "ok", title, help, children, action }: { tone?: Tone; title: ReactNode; help?: string; children?: ReactNode; action?: ReactNode }) {
+  const helpKey = useId();
+  useHelpEntry(helpKey, typeof title === "string" ? title : "Status", help);
   return (
     <div className={`status${tone === "bad" ? " bad-k" : ""}`} role="status">
       <span className={`sdot ${tone === "ok" ? "" : tone}`} />
@@ -225,7 +303,9 @@ export function Status({ tone = "ok", title, children, action }: { tone?: Tone; 
 export function Plist({ children }: { children: ReactNode }) {
   return <div className="rows">{children}</div>;
 }
-export function Prow({ icon, title, sub, children }: { icon?: ReactNode; title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
+export function Prow({ icon, title, sub, help, children }: { icon?: ReactNode; title: ReactNode; sub?: ReactNode; help?: string; children?: ReactNode }) {
+  const helpKey = useId();
+  useHelpEntry(helpKey, typeof title === "string" ? title : "Row", help);
   return (
     <div className="prow" data-row={typeof title === "string" ? title : undefined}>
       {icon}
@@ -235,30 +315,33 @@ export function Prow({ icon, title, sub, children }: { icon?: ReactNode; title: 
   );
 }
 
-export function Btn({ pri, sm, ghost, className, children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { pri?: boolean; sm?: boolean; ghost?: boolean }) {
+export function Btn({ pri, sm, ghost, className, children, title, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { pri?: boolean; sm?: boolean; ghost?: boolean }) {
   const cls = ["btn", pri ? "pri" : "", sm ? "sm" : "", ghost ? "ghost" : "", className ?? ""].filter(Boolean).join(" ");
-  return <button type="button" className={cls} {...rest}>{children}</button>;
+  return <button type="button" className={cls} title={shownWhy(title)} {...rest}>{children}</button>;
 }
 export function Acts({ children }: { children: ReactNode }) {
   return <div className="acts">{children}</div>;
 }
-export function Pill({ tone = "idle", children }: { tone?: "ok" | "warn" | "bad" | "idle" | "work"; children: ReactNode }) {
-  return <span className={`pill ${tone}`}><i />{children}</span>;
+/** A status pill; `dot={false}` for the preview's plain pills ("Never, by itself", "Off"). */
+export function Pill({ tone = "idle", dot = true, children }: { tone?: "ok" | "warn" | "bad" | "idle" | "work"; dot?: boolean; children: ReactNode }) {
+  return <span className={`pill ${tone}`}>{dot ? <i /> : null}{children}</span>;
 }
+/** A paragraph that is only a developer note (shown-why.ts) is not drawn. */
+const noteOnly = (children: ReactNode) => typeof children === "string" && isDevNote(children);
 export function Hint({ children }: { children: ReactNode }) {
-  return <p className="hint">{children}</p>;
+  return noteOnly(children) ? null : <p className="hint">{children}</p>;
 }
-export function Empty({ children }: { children: ReactNode }) {
-  return <p className="empty">{children}</p>;
+export function Empty({ children, ...rest }: { children: ReactNode; "data-row"?: string }) {
+  return noteOnly(children) ? null : <p className="empty" {...rest}><Icon name="inbox" size={22} />{children}</p>;
 }
 /** A plain value on the right of a row (Technical readouts). */
 export function Val({ children, code }: { children: ReactNode; code?: boolean }) {
   return code ? <code className="val-k">{children}</code> : <span className="val-k">{children}</span>;
 }
 /** A link-styled button (Learn more, Back to default, section links). */
-export function LinkBtn({ children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button type="button" className="link-k" {...rest}>{children}</button>;
+export function LinkBtn({ children, title, ...rest }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return <button type="button" className="link-k" title={shownWhy(title)} {...rest}>{children}</button>;
 }
 
 /** The row search index: each page module lists its rows (title, section, level) so the frame can find and jump. */
-export type RowEntry = { page: string; title: string; sec?: string; lv: Lv; words?: string };
+export type RowEntry = { page: string; title: string; sec?: string; group: string; lv: Lv; words?: string };

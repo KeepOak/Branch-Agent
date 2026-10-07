@@ -66,76 +66,72 @@ export function registerBackupCommand(program: Command) {
       });
     });
 
-  backup
-    .command("verify <archive>")
-    .description("Validate a backup archive and its embedded manifest")
-    .option("--from <location>", "Read a backup key or latest from a storage location")
-    .option("--namespace <name>", "Backup namespace (default: sanitized hostname)")
-    .option("--json", "Output JSON", false)
-    .addHelpText(
-      "after",
-      () =>
-        `\n${theme.heading("Examples:")}\n${formatHelpExamples([
-          [
-            "branch backup verify ./2026-03-09T08-00-00.000+08-00-branch-backup.tar.gz",
-            "Check that the archive structure and manifest are intact.",
-          ],
-          [
-            "branch backup verify ~/Backups/latest.tar.gz --json",
-            "Emit machine-readable verification output.",
-          ],
-        ])}`,
-    )
-    .action(async (archive, opts) => {
-      await runCommandWithRuntime(defaultRuntime, async () => {
-        if (opts.from !== undefined) {
-          const { backupRemoteVerifyCommand } = await import("../../commands/backup-remote.js");
-          await backupRemoteVerifyCommand(defaultRuntime, { ...opts, archive });
-        } else {
+  for (const operation of ["verify", "restore"] as const) {
+    const restore = operation === "restore";
+    const command = backup
+      .command(`${operation} <archive>`)
+      .description(
+        restore
+          ? "Restore a verified backup archive to a fresh staging directory"
+          : "Validate a backup archive and its embedded manifest",
+      )
+      .option("--from <location>", "Read a backup key or latest from a storage location")
+      .option("--namespace <name>", "Backup namespace (default: sanitized hostname)");
+    if (restore) {
+      command.requiredOption(
+        "--target <dir>",
+        "Fresh target directory; non-empty directories are refused",
+      );
+    }
+    command
+      .option("--json", "Output JSON", false)
+      .addHelpText(
+        "after",
+        () =>
+          `\n${theme.heading("Examples:")}\n${formatHelpExamples(
+            restore
+              ? [
+                  [
+                    "branch backup restore ~/Backups/latest.tar.gz --target ./restored-branch",
+                    "Verify, then extract the whole archive into a fresh staging directory.",
+                  ],
+                  [
+                    "branch backup restore ~/Backups/latest.tar.gz --target ./restored-branch --json",
+                    "Emit machine-readable restore details and rollback warnings.",
+                  ],
+                ]
+              : [
+                  [
+                    "branch backup verify ./2026-03-09T08-00-00.000+08-00-branch-backup.tar.gz",
+                    "Check that the archive structure and manifest are intact.",
+                  ],
+                  [
+                    "branch backup verify ~/Backups/latest.tar.gz --json",
+                    "Emit machine-readable verification output.",
+                  ],
+                ],
+          )}`,
+      )
+      .action((archive, opts) =>
+        runCommandWithRuntime(defaultRuntime, async () => {
+          if (opts.from !== undefined) {
+            const remote = await import("../../commands/backup-remote.js");
+            const run = restore
+              ? remote.backupRemoteRestoreCommand
+              : remote.backupRemoteVerifyCommand;
+            await run(defaultRuntime, { ...opts, archive });
+            return;
+          }
           if (opts.namespace) {
             throw new Error("--namespace requires --from <location>.");
           }
-          const { backupVerifyCommand } = await import("../../commands/backup-verify.js");
-          await backupVerifyCommand(defaultRuntime, { ...opts, archive });
-        }
-      });
-    });
-
-  backup
-    .command("restore <archive>")
-    .description("Restore a verified backup archive to a fresh staging directory")
-    .option("--from <location>", "Read a backup key or latest from a storage location")
-    .option("--namespace <name>", "Backup namespace (default: sanitized hostname)")
-    .requiredOption("--target <dir>", "Fresh target directory; non-empty directories are refused")
-    .option("--json", "Output JSON", false)
-    .addHelpText(
-      "after",
-      () =>
-        `\n${theme.heading("Examples:")}\n${formatHelpExamples([
-          [
-            "branch backup restore ~/Backups/latest.tar.gz --target ./restored-branch",
-            "Verify, then extract the whole archive into a fresh staging directory.",
-          ],
-          [
-            "branch backup restore ~/Backups/latest.tar.gz --target ./restored-branch --json",
-            "Emit machine-readable restore details and rollback warnings.",
-          ],
-        ])}`,
-    )
-    .action(async (archive, opts) => {
-      await runCommandWithRuntime(defaultRuntime, async () => {
-        if (opts.from !== undefined) {
-          const { backupRemoteRestoreCommand } = await import("../../commands/backup-remote.js");
-          await backupRemoteRestoreCommand(defaultRuntime, { ...opts, archive });
-        } else {
-          if (opts.namespace) {
-            throw new Error("--namespace requires --from <location>.");
-          }
-          const { backupRestoreCommand } = await import("../../commands/backup-restore.js");
-          await backupRestoreCommand(defaultRuntime, { ...opts, archive });
-        }
-      });
-    });
+          const run = restore
+            ? (await import("../../commands/backup-restore.js")).backupRestoreCommand
+            : (await import("../../commands/backup-verify.js")).backupVerifyCommand;
+          await run(defaultRuntime, { ...opts, archive });
+        }),
+      );
+  }
 
   backup
     .command("list")
@@ -194,6 +190,13 @@ function registerBackupScheduleCommands(backup: Command): void {
         "Keep credential-bearing tables in pushed scheduled backups",
         false,
       )
+      .option(
+        "--files",
+        "Also back up the redacted config, workspace files and media (Git backups)",
+        false,
+      )
+      .option("--media-max-file-mb <n>", "Largest media file to back up with --files, in MB (default 50)")
+      .option("--media-max-total-mb <n>", "Most media to back up with --files, in MB (default 1024)")
       .option("--global-only", "Back up only the shared state database", false)
       .option("--agent <id>", "Back up only one agent database")
       .action(async (opts) => {
@@ -250,6 +253,13 @@ function registerBackupGitCommands(backup: Command): void {
     .option("--agent <id>", "Back up an agent database (repeatable)", collectOption, [])
     .option("--push", "Push the current branch to origin", false)
     .option("--exclude-secrets", "Omit credential-bearing database tables", false)
+    .option(
+      "--files",
+      "Also back up the redacted config and workspace files and media, never secret files",
+      false,
+    )
+    .option("--media-max-file-mb <n>", "Largest media file to back up with --files, in MB (default 50)")
+    .option("--media-max-total-mb <n>", "Most media to back up with --files, in MB (default 1024)")
     .option("--json", "Output JSON", false)
     .action(async (opts) => {
       await runCommandWithRuntime(defaultRuntime, async () => {

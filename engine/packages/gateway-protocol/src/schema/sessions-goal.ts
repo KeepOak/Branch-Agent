@@ -7,6 +7,22 @@ export const SessionGoalSchema = closedObject({
   schemaVersion: Type.Literal(1),
   id: NonEmptyString,
   objective: Type.String(),
+  acceptanceCriteria: Type.Optional(Type.Array(NonEmptyString)),
+  checkpoint: Type.Optional(
+    closedObject({
+      summary: NonEmptyString,
+      nextAction: NonEmptyString,
+      updatedAt: Type.Number(),
+    }),
+  ),
+  completionEvidence: Type.Optional(
+    Type.Array(
+      closedObject({
+        criterion: Type.Integer({ minimum: 0 }),
+        evidence: NonEmptyString,
+      }),
+    ),
+  ),
   status: Type.Union([
     Type.Literal("active"),
     Type.Literal("paused"),

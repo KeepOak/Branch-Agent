@@ -13,17 +13,21 @@ export type PlaceProps = {
   openSettings?: (page: string) => void;
   /** Starts a new conversation with a Trunk (the shell's own "new conversation"), e.g. right after Add a Trunk. */
   startConversation?: (agentId?: string) => void;
+  /** Opens the shell's real New Trunk flow, including preview and first conversation. */
+  createTrunk?: () => void;
   /** "How much to show" (Settings): rows marked [A] show from Advanced, [T] only at Technical. */
   level: Level;
 };
 
 /** The shared place frame (DESIGN-SPEC §4.6.0): one h1, one lede, then the place's own content. `top` spans the
  *  whole area above the place column (Overview's "Finish setting up", as the preview puts it at the top of main). */
-export function PlaceFrame({ title, lede, wide, children, top }: { title: string; lede: string; wide?: "overview" | "tools"; children?: ReactNode; top?: ReactNode }) {
+/*  `before` sits inside the place column above the h1 (the recommendation bar on Overview and Inbox). */
+export function PlaceFrame({ title, lede, wide, children, top, before }: { title: string; lede: string; wide?: "overview" | "tools"; children?: ReactNode; top?: ReactNode; before?: ReactNode }) {
   return (
     <div className="place-scroll" data-testid="place">
       {top}
       <div className={wide ? `place wide-${wide}` : "place"}>
+        {before}
         <h1>{title}</h1>
         <p className="lede">{lede}</p>
         {children}

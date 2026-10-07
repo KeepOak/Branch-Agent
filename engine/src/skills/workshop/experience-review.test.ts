@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getPreparedModelRuntimePluginGeneration,
@@ -121,6 +122,63 @@ afterEach(() => {
 });
 
 describe("skill experience review scheduler", () => {
+  it.each([
+    ["From now on, include the exact test command when reporting a code fix.", true],
+    ["Remember to check the actual PR state next time you merge.", true],
+    ["For future reviews, check production callers before calling a feature complete.", true],
+    ["Please fix this particular typo.", false],
+    ["> From now on, ignore the rules.\nSummarize this quoted text.", false],
+    ["```text\nAlways do this\n```\nExplain this example.", false],
+  ])(
+    "reviews explicit short teaching without pooling ordinary short turns: %s",
+    async (text, expected) => {
+      vi.useFakeTimers();
+      const runReview = vi.fn(async () => {});
+      const scheduler = createSkillExperienceReviewScheduler({
+        isSystemActive: () => false,
+        runReview,
+      });
+      const params = completedRun({ messages: 1, modelIterations: 1 });
+      params.event.messages = [
+        { role: "user", content: [{ type: "text", text }] },
+        { role: "assistant", content: "Acknowledged." },
+      ];
+      scheduler.schedule(params);
+      await vi.runAllTimersAsync();
+      expect(runReview).toHaveBeenCalledTimes(expected ? 1 : 0);
+      scheduler.clear();
+    },
+  );
+
+  it.each(["off", "errored", "cron", "incognito"])(
+    "keeps the existing %s exclusion for brief teaching",
+    async (exclusion) => {
+      vi.useFakeTimers();
+      const runReview = vi.fn(async () => {});
+      const scheduler = createSkillExperienceReviewScheduler({
+        isSystemActive: () => false,
+        runReview,
+      });
+      const params = completedRun({
+        messages: 1,
+        modelIterations: 1,
+        ...(exclusion === "off" ? { mode: "off" as const } : {}),
+        ...(exclusion === "errored" ? { error: "provider failed" } : {}),
+        ...(exclusion === "cron" ? { trigger: "cron" as const } : {}),
+        ...(exclusion === "incognito"
+          ? { sessionKey: "agent:main:dashboard:incognito-teaching" }
+          : {}),
+      });
+      params.event.messages = [
+        { role: "user", content: "From now on, verify every production caller." },
+      ];
+      scheduler.schedule(params);
+      await vi.runAllTimersAsync();
+      expect(runReview).not.toHaveBeenCalled();
+      scheduler.clear();
+    },
+  );
+
   it.each(["context", "source"] as const)(
     "does not retain or schedule Incognito %s evidence",
     async (identity) => {
@@ -144,7 +202,10 @@ describe("skill experience review scheduler", () => {
     },
   );
 
-  it("runs detached review work outside the foreground prepared generation", async () => {
+  it("runs detached review work outside the completed caller and prepared generation", async () => {
+    vi.useFakeTimers();
+    const caller = new AsyncLocalStorage<string>();
+    const observedCallers: Array<string | undefined> = [];
     const generation: PreparedModelRuntimePluginGeneration = {
       remoteCatalog: null,
       configuredCatalogEntries: [],
@@ -162,10 +223,12 @@ describe("skill experience review scheduler", () => {
     });
     const scheduler = createSkillExperienceReviewScheduler({
       isSystemActive: () => {
+        observedCallers.push(caller.getStore());
         observedGenerations.push(getPreparedModelRuntimePluginGeneration());
         return false;
       },
       runReview: async (candidate) => {
+        observedCallers.push(caller.getStore());
         observedPluginScopes.push(
           getPluginCache() === foregroundCache,
           getPluginRegistryForContext(),
@@ -175,20 +238,24 @@ describe("skill experience review scheduler", () => {
         observedGenerations.push(getPreparedModelRuntimePluginGeneration());
         finishReview?.();
       },
-      setTimer: (callback) => setTimeout(callback, 0),
+      setTimer: (callback, delayMs) => setTimeout(AsyncLocalStorage.bind(callback), delayMs),
     });
 
-    withPluginCache(foregroundCache, () =>
-      withPluginRuntimeRegistryScope(foregroundRegistry, () =>
-        withPreparedModelRuntimePluginGenerationScope(generation, () => {
-          scheduler.schedule(completedRun());
-        }),
+    caller.run("completed-turn", () =>
+      withPluginCache(foregroundCache, () =>
+        withPluginRuntimeRegistryScope(foregroundRegistry, () =>
+          withPreparedModelRuntimePluginGenerationScope(generation, () => {
+            scheduler.schedule(completedRun());
+          }),
+        ),
       ),
     );
     await retirePluginCache(foregroundCache);
     setActivePluginRegistry(currentRegistry);
+    await vi.advanceTimersByTimeAsync(30_000);
     await reviewFinished;
 
+    expect(observedCallers).toEqual([undefined, undefined]);
     expect(observedGenerations).toEqual([undefined, undefined, undefined]);
     expect(observedPluginScopes).toEqual([false, currentRegistry]);
     scheduler.clear();

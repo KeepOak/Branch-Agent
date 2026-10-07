@@ -1,7 +1,7 @@
 import type { BranchConfig } from "../config/types.branch.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { runInDetachedAsyncContext } from "../shared/async-work-scope.js";
+import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import { withAgentRosterFactsBatch } from "./agent-scope-config.js";
 import { listConfiguredOwnerInputs } from "./prepared-model-runtime.configured.js";
 import { PreparedModelRuntimePublicationSupersededError } from "./prepared-model-runtime.errors.js";
@@ -20,6 +20,13 @@ import type {
 } from "./prepared-model-runtime.types.js";
 
 const log = createSubsystemLogger("agents/prepared-model-runtime");
+const catalogRefreshFailures = new Map<
+  string,
+  { failures: number; retryAt: number; inFlight: boolean }
+>();
+const loggedCatalogRefreshErrors = new Set<string>();
+const CATALOG_REFRESH_RETRY_MS = 60_000;
+const CATALOG_REFRESH_MAX_RETRY_MS = 30 * 60_000;
 
 export function refreshCommittedProviderCatalogs(
   owners: Iterable<PreparedModelRuntimeOwner>,
@@ -28,11 +35,43 @@ export function refreshCommittedProviderCatalogs(
     if (owner.provenance !== "configured" || owner.pending || owner.needsRefresh) {
       continue;
     }
-    void owner.snapshot?.loadFullModelCatalog?.({ changedOnly: true }).catch((error: unknown) => {
-      if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) {
-        log.warn(`provider catalog refresh failed: ${formatErrorMessage(error)}`);
-      }
-    });
+    const snapshot = owner.snapshot;
+    if (!snapshot?.loadFullModelCatalog) {
+      continue;
+    }
+    const key = owner.input.agentDir;
+    const previous = catalogRefreshFailures.get(key);
+    if (previous?.inFlight || (previous && Date.now() < previous.retryAt)) {
+      continue;
+    }
+    const state = previous ?? { failures: 0, retryAt: 0, inFlight: false };
+    state.inFlight = true;
+    catalogRefreshFailures.set(key, state);
+    void snapshot
+      .loadFullModelCatalog({ changedOnly: true })
+      .then(() => {
+        if (catalogRefreshFailures.get(key) === state) {
+          catalogRefreshFailures.delete(key);
+        }
+      })
+      .catch((error: unknown) => {
+        if (error instanceof PreparedModelRuntimePublicationSupersededError) {
+          catalogRefreshFailures.delete(key);
+          return;
+        }
+        const message = formatErrorMessage(error);
+        if (!loggedCatalogRefreshErrors.has(message)) {
+          loggedCatalogRefreshErrors.add(message);
+          log.warn(`provider catalog refresh failed: ${message}`);
+        }
+        state.retryAt =
+          Date.now() +
+          Math.min(CATALOG_REFRESH_RETRY_MS * 2 ** state.failures, CATALOG_REFRESH_MAX_RETRY_MS);
+        state.failures += 1;
+      })
+      .finally(() => {
+        state.inFlight = false;
+      });
   }
 }
 

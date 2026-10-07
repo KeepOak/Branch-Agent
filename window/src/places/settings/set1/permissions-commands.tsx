@@ -36,7 +36,7 @@ export function RulesList({ x }: { x: Ctx }) {
     const node = x.nodes.find((n) => text(n.nodeId) === x.rulesFor);
     return node ? <NodeRules engine={x.engine} node={node} /> : null;
   }
-  const rules = x.ap.snap?.file.agents?.["*"]?.allowlist ?? [];
+  const rules = x.ap.snap?.file?.agents?.["*"]?.allowlist ?? [];
   const save = (next: AllowEntry[]) => x.ap.update((f) => withAgent(f, "*", (a) => ({ ...a, allowlist: next.length ? next : undefined })));
   const up = (i: number) => { const next = [...rules]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; void save(next); };
   return (
@@ -105,11 +105,11 @@ export function CommandDefaults({ x }: { x: Ctx }) {
   const busy = ap.loading || Boolean(ap.error);
   return (
     <>
-      <Hint>Follows “Mode everywhere” unless you set it here.</Hint>
+      <Hint>Follows Access unless you set it here.</Hint>
       <Ctl title="Commands may run"><Seg label="Commands may run" value={r.security} options={RUN} disabled={busy} onChange={set("security")} /></Ctl>
-      <Ctl title="Ask before a command" sub="The engine’s own default, as “Mode everywhere” ships Full access."><Seg label="Ask before a command" value={r.ask} options={ASK} disabled={busy} onChange={set("ask")} /></Ctl>
+      <Ctl title="Ask before a command" sub="The engine’s default starts on Full access."><Seg label="Ask before a command" value={r.ask} options={ASK} disabled={busy} onChange={set("ask")} /></Ctl>
       <Ctl title="When nobody can be asked" sub="When no window, phone or chat app can show the request."><Seg label="When nobody can be asked" value={r.askFallback} options={FALLBACK} disabled={busy} onChange={set("askFallback")} /></Ctl>
-      <Ctl title="Let skill programs run" sub="Programs your installed skills list as their own run without a rule. Off until you choose: they would run without asking."><Switch label="Let skill programs run" checked={r.autoAllowSkills} disabled={busy} onChange={set("autoAllowSkills")} /></Ctl>
+      <Ctl title="Let skill programs run" sub="Programs your installed skills list as their own run without a rule." help="Programs your installed skills list as their own run without a rule. Off until you choose: they would run without asking."><Switch label="Let skill programs run" checked={r.autoAllowSkills} disabled={busy} onChange={set("autoAllowSkills")} /></Ctl>
       {x.trunks.map((t) => <TrunkCommands key={text(t.id)} x={x} trunk={t} defLabel={labelOf(RUN, r.security)} />)}
     </>
   );
@@ -118,7 +118,7 @@ export function CommandDefaults({ x }: { x: Ctx }) {
 function TrunkCommands({ x, trunk, defLabel }: { x: Ctx; trunk: RecordValue; defLabel: string }) {
   const [open, setOpen] = useState(false);
   const id = text(trunk.id);
-  const own = x.ap.snap?.file.agents?.[id] ?? {};
+  const own = x.ap.snap?.file?.agents?.[id] ?? {};
   const pats = own.allowlist ?? [];
   const name = trunkName(trunk);
   const pick = (v: string) => void x.ap.update((f) => withAgent(f, id, (a) => { const n = { ...a }; if (v) n.security = v; else delete n.security; return n; }));
@@ -133,7 +133,7 @@ function TrunkCommands({ x, trunk, defLabel }: { x: Ctx; trunk: RecordValue; def
 
 function Patterns({ ap, id, name, onClose }: { ap: ApprovalsFile; id: string; name: string; onClose: () => void }) {
   const [draft, setDraft] = useState("");
-  const pats = ap.snap?.file.agents?.[id]?.allowlist ?? [];
+  const pats = ap.snap?.file?.agents?.[id]?.allowlist ?? [];
   const save = (next: AllowEntry[]) => ap.update((f) => withAgent(f, id, (a) => ({ ...a, allowlist: next.length ? next : undefined })));
   const add = async () => { if (draft.trim() && await save([...pats, { pattern: draft.trim() }])) setDraft(""); };
   const last = (p: AllowEntry) => (p.lastUsedAt ? `Last used ${new Date(p.lastUsedAt).toLocaleString()}` : "Not used yet");

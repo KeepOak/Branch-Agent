@@ -11,7 +11,7 @@ describe("resolveSkillsAgentWorkspace", () => {
   const config: BranchConfig = {
     agents: {
       ownership: "explicit",
-      list: [{ id: "ops" }, { id: "research" }],
+      entries: { ops: {}, research: {} },
     },
   };
 

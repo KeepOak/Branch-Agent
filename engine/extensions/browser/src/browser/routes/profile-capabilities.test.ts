@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { BrowserRouteContext, ProfileContext } from "../server-context.js";
 import { makeBrowserProfile, makeBrowserServerState } from "../server-context.test-harness.js";
+import { admitExistingSessionAction } from "./existing-session-limits.js";
 import { registerBrowserRoutes } from "./index.js";
 import { withBrowserProfileCapabilities } from "./profile-capabilities.js";
 import { createBrowserRouteApp, createBrowserRouteResponse } from "./test-helpers.js";
@@ -20,7 +21,6 @@ function setup(engine: "chromium" | "lightpanda" = "lightpanda") {
   const ctx = {
     forProfile: vi.fn(() => profileCtx),
     state: () => makeBrowserServerState({ profile }),
-    mapTabError: () => null,
   } as unknown as BrowserRouteContext;
   const routes = createBrowserRouteApp();
   const request = async (method: "get" | "post", path: string, input: Partial<BrowserRequest>) => {
@@ -37,6 +37,34 @@ function setup(engine: "chromium" | "lightpanda" = "lightpanda") {
 
 describe("browser engine route admission", () => {
   it.each([
+    { kind: "humanClick", ref: "e1" },
+    { kind: "batch", actions: [{ kind: "batch", actions: [{ kind: "humanClick", ref: "e1" }] }] },
+  ])(
+    "rejects existing-session native pointer request before resolving a browser tab (%j)",
+    async (body) => {
+      const { ctx, ensureTabAvailable, routes, request } = setup("chromium");
+      ctx.forProfile("selected").profile.driver = "existing-session";
+      registerBrowserRoutes(routes.app, ctx);
+      const response = await request("post", "/act", { query: { profile: "selected" }, body });
+      expect(response.statusCode).toBe(501);
+      expect(response.body).toMatchObject({ code: "ACT_EXISTING_SESSION_UNSUPPORTED" });
+      expect(ensureTabAvailable).not.toHaveBeenCalled();
+    },
+  );
+  it("rejects humanClick in the existing-session admission before native dispatch", () => {
+    expect(admitExistingSessionAction({ kind: "humanClick", ref: "e1" })).toEqual({
+      ok: false,
+      error: "humanClick requires a native Playwright browser profile.",
+    });
+    expect(
+      admitExistingSessionAction({
+        kind: "batch",
+        actions: [{ kind: "humanClick", ref: "e1" }],
+      }).ok,
+    ).toBe(false);
+  });
+  it.each([
+    ["post", "/act", { body: { kind: "humanClick", ref: "e1" } }],
     ["post", "/screenshot", {}],
     ["get", "/cookies", {}],
     ["post", "/act", { body: { kind: "batch", actions: [{ kind: "click" }] } }],

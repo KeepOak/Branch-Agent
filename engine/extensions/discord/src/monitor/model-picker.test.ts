@@ -1,4 +1,4 @@
-// Discord tests cover model picker plugin behavior.
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/discord/src/monitor/model-picker.test.ts (atlas CHAT-APPS-0137). Changed for Branch: pin the token for the renamed runtime id.
 import { ComponentType } from "discord-api-types/v10";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseCustomId, serializePayload } from "../internal/discord.js";
@@ -288,7 +288,7 @@ describe("provider paging", () => {
     expect(secondBucket.hasPrev).toBe(false);
   });
 
-  it("caps custom provider page size at Discord-safe max", () => {
+  it("uses Discord-safe provider pages with and without buckets", () => {
     const compactData = createModelsProviderData({
       anthropic: ["claude-sonnet-4-5"],
       openai: ["gpt-4o"],
@@ -297,7 +297,6 @@ describe("provider paging", () => {
     const compactPage = getDiscordModelPickerProviderPage({
       data: compactData,
       page: 1,
-      pageSize: 999,
     });
     expect(compactPage.pageSize).toBe(DISCORD_MODEL_PICKER_PROVIDER_SINGLE_PAGE_MAX);
     expect(compactPage.buckets).toHaveLength(1);
@@ -313,7 +312,6 @@ describe("provider paging", () => {
     const pagedPage = getDiscordModelPickerProviderPage({
       data: pagedData,
       page: 1,
-      pageSize: 999,
     });
     expect(pagedPage.buckets.length).toBeGreaterThan(1);
     expect(pagedPage.items.length).toBeLessThanOrEqual(
@@ -356,10 +354,10 @@ describe("model paging", () => {
     expect(secondBucket.items).toHaveLength(9);
   });
 
-  it("caps custom model page size at Discord select-option max", () => {
+  it("uses Discord select-option max for model pages", () => {
     const data = createModelsProviderData({ openai: ["gpt-4o", "gpt-4.1"] });
     const page = requireValue(
-      getDiscordModelPickerModelPage({ data, provider: "openai", pageSize: 999 }),
+      getDiscordModelPickerModelPage({ data, provider: "openai" }),
       "expected model page when provider exists",
     );
     expect(page.pageSize).toBe(DISCORD_MODEL_PICKER_MODEL_PAGE_SIZE);
@@ -837,6 +835,37 @@ describe("Discord model picker rendering", () => {
     );
   });
 
+  it.each(["llama3.2:latest", "a".repeat(100), "a".repeat(101), "😀".repeat(80), "😀".repeat(101)])(
+    "bounds select labels by code point and tokenizes model %s",
+    (model) => {
+      const data = createModelsProviderData({ ollama: [model] });
+      const select = requireValue(
+        renderModelsViewRows({
+          command: "model",
+          userId: "owner",
+          data,
+          provider: "ollama",
+          currentModel: `ollama/${model}`,
+        })
+          .flatMap((row) => row.components ?? [])
+          .find((component) =>
+            component.options?.some(
+              (option) => option.label === Array.from(model).slice(0, 100).join(""),
+            ),
+          ),
+        "model select should be rendered",
+      );
+      expect(select.options).toEqual([
+        {
+          label: Array.from(model).slice(0, 100).join(""),
+          value: createDiscordModelPickerModelToken("ollama", model),
+          default: true,
+        },
+      ]);
+      expect(parseDiscordModelPickerCustomId(select.custom_id ?? "")?.action).toBe("pick");
+    },
+  );
+
   it("renders model view with select menu and explicit submit button", () => {
     const data = createModelsProviderData({
       openai: ["gpt-4.1", "gpt-4o", "o3"],
@@ -883,11 +912,13 @@ describe("Discord model picker rendering", () => {
       throw new Error("models view did not render a model select");
     }
     expect(modelSelect.options?.length).toBe(3);
-    const o3ModelOption = modelSelect.options?.find((option) => option.value === "o3");
+    const o3ModelOption = modelSelect.options?.find(
+      (option) => option.value === createDiscordModelPickerModelToken("openai", "o3"),
+    );
     expect(o3ModelOption?.default).toBe(true);
 
     const parsedModelSelectState = parseDiscordModelPickerCustomId(modelSelect.custom_id ?? "");
-    expect(parsedModelSelectState?.action).toBe("model");
+    expect(parsedModelSelectState?.action).toBe("pick");
     expect(parsedModelSelectState?.provider).toBe("openai");
 
     const navButtons = rows[2]?.components ?? [];
@@ -1018,18 +1049,18 @@ describe("Discord model picker rendering", () => {
     const modelSelectState = parseDiscordModelPickerCustomId(modelSelect?.custom_id ?? "");
     expect(modelSelectState?.runtime).toBeUndefined();
     expect(modelSelectState?.runtimeIndex).toBeUndefined();
-    expect(modelSelectState?.runtimeToken).toBe("lqS8JgJl");
+    expect(modelSelectState?.runtimeToken).toBe("84x2TIqg");
     const submitState = parseDiscordModelPickerCustomId(
       rows[3]?.components?.at(-1)?.custom_id ?? "",
     );
     expect(submitState?.runtime).toBeUndefined();
     expect(submitState?.runtimeIndex).toBeUndefined();
-    expect(submitState?.runtimeToken).toBe("lqS8JgJl");
+    expect(submitState?.runtimeToken).toBe("84x2TIqg");
     const resetState = parseDiscordModelPickerCustomId(rows[3]?.components?.[2]?.custom_id ?? "");
     expect(resetState?.action).toBe("reset");
     expect(resetState?.runtime).toBeUndefined();
     expect(resetState?.runtimeIndex).toBeUndefined();
-    expect(resetState?.runtimeToken).toBe("lqS8JgJl");
+    expect(resetState?.runtimeToken).toBe("84x2TIqg");
   });
 
   it("renders not-found model view with a back button", () => {

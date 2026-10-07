@@ -24,3 +24,16 @@
 }
 .set-col .stack-k .nt-chips { justify-content: flex-start; }
 @media (max-width: 640px) { .set-col .nt-hook { flex: 1; width: 100%; } }
+/* a stacked row, as the preview draws it: the pin beside its title, then the sub-line, then the control */
+.set-col [data-page-title="Notifications"] .ctl.stack-k { grid-template-columns: auto minmax(0, 1fr); }
+.set-col [data-page-title="Notifications"] .ctl.stack-k > .pin-k { justify-self: start; }
+.set-col [data-page-title="Notifications"] .ctl.stack-k > :not(b, .pin-k) { grid-column: 1 / -1; }
+.set-col [data-page-title="Notifications"] .ctl.stack-k > small:not(.why-k) { order: 1; }
+.set-col [data-page-title="Notifications"] .ctl.stack-k > .right { order: 2; }
+.set-col [data-page-title="Notifications"] .ctl.stack-k > .why-k { order: 3; }
+.set-col [data-page-title="Notifications"] .ctl.stack-k > .right:has(> .nt-chips) { margin-top: 2px; }
+/* at phone width a row with a list or a text box puts it under its words, so the sub-line keeps the full width */
+@media (max-width: 640px) {
+  .set-col [data-page-title="Notifications"] .ctl:has(> .right > select.inp, > .right > input.inp) { grid-template-columns: minmax(0, 1fr); }
+  .set-col [data-page-title="Notifications"] .ctl:has(> .right > select.inp, > .right > input.inp) > .right { grid-row: auto; grid-column: 1; justify-content: flex-start; margin-top: 6px; }
+}

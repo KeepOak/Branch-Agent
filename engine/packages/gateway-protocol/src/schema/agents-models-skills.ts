@@ -10,6 +10,9 @@ import {
 import { NonEmptyString, Sha256String } from "./primitives.js";
 import { GitHubSetupHandleSchema } from "./secrets.js";
 import { SessionPermissionModeSchema } from "./sessions-row.js";
+import { SkillsDetailResultSchema } from "./skill-detail.js";
+
+export { SkillsDetailResultSchema } from "./skill-detail.js";
 
 export {
   ModelChoiceSchema,
@@ -44,6 +47,10 @@ const AgentCreatedViaSchema = Type.Union([
   Type.Literal("grove"),
 ]);
 
+const AgentColourSchema = Type.Union([Type.Literal("#2F8C86"), Type.Literal("#1785AF"), Type.Literal("#8A5AA8"), Type.Literal("#5E8C4A"), Type.Literal("#4F6FA8"), Type.Literal("#C9982E"), Type.Literal("#B84A6B"), Type.Literal("#56616B")]);
+const AgentShapeSchema = Type.Union([Type.Literal("Circle"), Type.Literal("Stone"), Type.Literal("Leaf"), Type.Literal("Acorn"), Type.Literal("Shield")]);
+const AgentEyesSchema = Type.Union([Type.Literal("Round"), Type.Literal("Wide"), Type.Literal("Sleepy")]);
+
 /** Condensed agent record returned by list APIs. */
 export const AgentSummarySchema = closedObject({
   id: NonEmptyString,
@@ -62,6 +69,9 @@ export const AgentSummarySchema = closedObject({
       theme: Type.Optional(NonEmptyString),
       emoji: Type.Optional(NonEmptyString),
       avatar: Type.Optional(NonEmptyString),
+      colour: Type.Optional(AgentColourSchema),
+      shape: Type.Optional(AgentShapeSchema),
+      eyes: Type.Optional(AgentEyesSchema),
       avatarUrl: Type.Optional(NonEmptyString),
     }),
   ),
@@ -106,6 +116,9 @@ export const AgentsCreateParamsSchema = closedObject({
   model: Type.Optional(NonEmptyString),
   emoji: Type.Optional(Type.String()),
   avatar: Type.Optional(Type.String()),
+  colour: Type.Optional(AgentColourSchema),
+  shape: Type.Optional(AgentShapeSchema),
+  eyes: Type.Optional(AgentEyesSchema),
 });
 
 /** Result returned after creating an agent. */
@@ -127,6 +140,9 @@ export const AgentsUpdateParamsSchema = closedObject({
   agentRuntime: Type.Optional(NonEmptyString),
   emoji: Type.Optional(Type.String()),
   avatar: Type.Optional(Type.String()),
+  colour: Type.Optional(AgentColourSchema),
+  shape: Type.Optional(AgentShapeSchema),
+  eyes: Type.Optional(AgentEyesSchema),
 });
 
 /** Result returned after updating an agent. */
@@ -337,7 +353,7 @@ export const SkillsInstallParamsSchema = Type.Union([
   }),
 ]);
 
-/** Updates installed skill settings or refreshes ClawHub-installed skills. */
+/** Updates installed skill settings or refreshes Seedbank-installed skills. */
 export const SkillsUpdateParamsSchema = Type.Union([
   closedObject({
     skillKey: NonEmptyString,
@@ -397,61 +413,12 @@ export const SkillsSearchResultSchema = closedObject({
 /** Reads registry detail for one skill. */
 export const SkillsDetailParamsSchema = closedObject({
   slug: Type.String({ minLength: 1, description: CLAWHUB_SKILL_REF_DESCRIPTION }),
+  version: Type.Optional(NonEmptyString),
 });
 
 /** Reads current security verdicts for configured skills. */
 export const SkillsSecurityVerdictsParamsSchema = closedObject({
   agentId: Type.Optional(NonEmptyString),
-});
-
-/** Skill registry detail, latest version, metadata, and owner info. */
-export const SkillsDetailResultSchema = closedObject({
-  skill: Type.Union([
-    closedObject({
-      slug: NonEmptyString,
-      displayName: NonEmptyString,
-      summary: Type.Optional(Type.String()),
-      icon: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-      tags: Type.Optional(Type.Record(NonEmptyString, Type.String())),
-      channel: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-      isOfficial: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])),
-      createdAt: Type.Integer(),
-      updatedAt: Type.Integer(),
-    }),
-    Type.Null(),
-  ]),
-  latestVersion: Type.Optional(
-    Type.Union([
-      closedObject({
-        version: NonEmptyString,
-        createdAt: Type.Integer(),
-        changelog: Type.Optional(Type.String()),
-      }),
-      Type.Null(),
-    ]),
-  ),
-  metadata: Type.Optional(
-    Type.Union([
-      closedObject({
-        os: Type.Optional(Type.Union([Type.Array(Type.String()), Type.Null()])),
-        systems: Type.Optional(Type.Union([Type.Array(Type.String()), Type.Null()])),
-      }),
-      Type.Null(),
-    ]),
-  ),
-  owner: Type.Optional(
-    Type.Union([
-      closedObject({
-        handle: Type.Optional(Type.Union([NonEmptyString, Type.Null()])),
-        displayName: Type.Optional(Type.Union([NonEmptyString, Type.Null()])),
-        image: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-        official: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])),
-        channel: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-        isOfficial: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])),
-      }),
-      Type.Null(),
-    ]),
-  ),
 });
 
 /** Security verdict report for installed/requested skills. */

@@ -1,6 +1,6 @@
 {
   "name": "@branch/diagnostics-prometheus",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "description": "Branch Agent diagnostics Prometheus exporter for runtime metrics.",
   "repository": {
     "type": "git",
@@ -21,10 +21,10 @@
       "minHostVersion": ">=2026.4.25"
     },
     "compat": {
-      "pluginApi": ">=2026.9.7"
+      "pluginApi": ">=2026.9.8"
     },
     "build": {
-      "branchVersion": "2026.9.7"
+      "branchVersion": "2026.9.8"
     },
     "release": {
       "publishToClawHub": true,

@@ -66,6 +66,7 @@ it.each(["cold", "preexisting"] as const)(
     );
     setCanonicalSqliteSessionMainKey(initial, "previous");
     if (lifetime === "cold") {
+      await closeBranchAgentDatabasesAsync(stateDir);
       closeBranchAgentDatabasesForTest();
     }
 
@@ -91,7 +92,7 @@ it("does not create a missing configured agent database during startup maintenan
   const storePath = path.join(stateDir, "agents", "idle", "sessions", "sessions.json");
   const env = { ...process.env, BRANCH_STATE_DIR: stateDir };
   const cfg: BranchConfig = {
-    agents: { entries: { idle: { default: true } } },
+    agents: { entries: { idle: {} } },
     session: { store: path.join(stateDir, "agents", "{agentId}", "sessions", "sessions.json") },
   };
   const sqlitePath = resolveSqliteTargetFromSessionStorePath(storePath, {
@@ -143,6 +144,7 @@ it.each([false, true])(
     }
     setCanonicalSqliteSessionMainKey(survivor, "previous");
     setCanonicalSqliteSessionMainKey(deleted, "previous");
+    await closeBranchAgentDatabasesAsync(stateDir);
     closeBranchAgentDatabasesForTest();
     const deletion = beginAgentDeletionJournal(
       {
@@ -198,6 +200,7 @@ it("observes committed deletion before startup handoff after canonical database 
     { sessionId: "retained-session", updatedAt: 1 },
   );
   setCanonicalSqliteSessionMainKey(database, "previous");
+  await closeBranchAgentDatabasesAsync(stateDir);
   closeBranchAgentDatabasesForTest();
   expect(readAgentDatabaseAdmissionRefusal("alpha", { env })).toBeUndefined();
 
@@ -256,7 +259,7 @@ it("observes committed deletion before startup handoff after canonical database 
     await withAgentDeletion(
       "alpha",
       async (begin) => {
-        const deletion = begin({
+        const deletion = await begin({
           agentId: "alpha",
           agentDir,
           sessionsDir: path.join(stateDir, "agents", "alpha", "sessions"),
@@ -301,6 +304,7 @@ it.each(["missing", "receipt-held", "malformed-receipt", "malformed-journal"])(
           { sessionId: `${agentId}-session`, updatedAt: 1 },
         );
       }
+      await closeBranchAgentDatabasesAsync(stateDir);
       closeBranchAgentDatabasesForTest();
       runBranchStateWriteTransaction(
         (database) => {
@@ -382,7 +386,7 @@ it("re-registers durable lineage children before configured-only runtime reads",
     const env = { ...process.env };
     const storeTemplate = path.join(stateDir, "agents", "{agentId}", "sessions", "sessions.json");
     const cfg: BranchConfig = {
-      agents: { entries: { ops: { default: true } } },
+      agents: { entries: { ops: {} } },
       session: { store: storeTemplate },
     };
     const mainKey = "agent:ops:main";
@@ -411,6 +415,7 @@ it("re-registers durable lineage children before configured-only runtime reads",
       agentId: "codex",
       env,
     }).path;
+    await closeBranchAgentDatabasesAsync(stateDir);
     closeBranchAgentDatabasesForTest();
     unregisterBranchAgentDatabase({ agentId: "codex", env, path: childDatabasePath });
 
@@ -465,7 +470,7 @@ it("keeps copied state directories self-contained for combined gateway reads", a
   const canonicalSourceStateDir = fs.realpathSync.native(sourceStateDir);
   const copiedStateDir = path.join(root, "copy");
   const cfg: BranchConfig = {
-    agents: { entries: { main: { default: true } } },
+    agents: { entries: { main: {} } },
   };
   const sessionKey = "agent:main:copied-state";
 
@@ -475,6 +480,7 @@ it("keeps copied state directories self-contained for combined gateway reads", a
       { agentId: "main", env, sessionKey },
       { sessionId: "copied-session", updatedAt: 1 },
     );
+    await closeBranchAgentDatabasesAsync(canonicalSourceStateDir);
     closeBranchAgentDatabasesForTest();
     closeBranchStateDatabaseForTest();
     invalidateRegisteredAgentDatabasesMemo({ env });

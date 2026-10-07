@@ -8,21 +8,24 @@ import { Popover } from "./Dialog";
 import { Icon, ICONS } from "./icons";
 import type { ApprovalDecision } from "./model";
 import type { ApprovalDetails, Helper } from "./useEngineData";
+import { modelName } from "./format";
 
-type Mark = "working" | "done" | "waiting" | "stopped";
+type Mark = "working" | "done" | "waiting" | "stopped" | "stalled";
 
 export function helperMark(h: Helper, waiting: boolean): Mark {
   if (waiting) return "waiting";
+  if ((h.status === "running" || h.status === "queued") && h.updatedAt && Date.now() - h.updatedAt > 10 * 60_000) return "stalled";
   if (h.status === "running" || h.status === "queued") return "working";
   if (h.status === "done") return "done";
   return h.status ? "stopped" : "working";
 }
 
-const MARK_ICON: Record<Mark, string> = { working: ICONS.spin, done: ICONS.check, waiting: ICONS.warn, stopped: ICONS.x };
+const MARK_ICON: Record<Mark, string> = { working: ICONS.spin, done: ICONS.check, waiting: ICONS.warn, stopped: ICONS.x, stalled: ICONS.warn };
 
 function pillWords(h: Helper, mark: Mark): string {
   if (mark === "waiting") return "Waiting for you";
   if (mark === "working") return "Working";
+  if (mark === "stalled") return "No recent update";
   if (mark === "done") return "Done";
   return h.status === "killed" || h.status === "interrupted" ? "Stopped · by you" : "Stopped";
 }
@@ -42,6 +45,7 @@ type TreeProps = {
   root: string;
   onStop: (h: Helper) => void;
   onAnswer: (id: string, decision: ApprovalDecision) => void;
+  onOpenSession?: (key: string) => void;
 };
 
 function Row({ h, depth, props }: { h: Helper; depth: number; props: TreeProps }) {
@@ -52,15 +56,16 @@ function Row({ h, depth, props }: { h: Helper; depth: number; props: TreeProps }
       <div className="helper-top">
         <span className={`hmark ${mark}`} aria-hidden="true"><Icon d={MARK_ICON[mark]} /></span>
         <span className="helper-name">
-          <b>{h.name}</b>
-          <small>{h.model ? `${h.model} · on this computer` : "on this computer"}</small>
+          {props.onOpenSession ? <button type="button" className="btn sm ghost" onClick={() => props.onOpenSession?.(h.key)}>{h.name}</button> : <b>{h.name}</b>}
+          {h.model ? <small>{modelName(h.model)}</small> : null}
         </span>
         <span className={`pill ${mark === "done" ? "ok" : mark === "stopped" ? "bad" : "wait"}`}>{pillWords(h, mark)}</span>
-        {mark === "working" || mark === "waiting" ? (
+        {mark === "working" || mark === "waiting" || mark === "stalled" ? (
           <button type="button" className="btn sm ghost" aria-label={`Stop ${h.name}`} onClick={() => props.onStop(h)}>Stop</button>
         ) : null}
       </div>
       {h.task ? <p className="helper-job">{h.task}</p> : null}
+      {h.error ? <p className="helper-error">{h.error}</p> : null}
       {asks.map((a) => (
         <div key={a.id} className="helper-ask">
           <b>{a.command}</b>
@@ -73,14 +78,16 @@ function Row({ h, depth, props }: { h: Helper; depth: number; props: TreeProps }
   );
 }
 
-function Branch({ parent, depth, props }: { parent: string; depth: number; props: TreeProps }) {
+function Branch({ parent, depth, props, visited = new Set<string>() }: { parent: string; depth: number; props: TreeProps; visited?: Set<string> }) {
   return (
     <>
-      {props.helpers.filter((h) => h.parent === parent).map((h) => (
-        <div key={h.key}>
+      {props.helpers.filter((h) => h.parent === parent && !visited.has(h.key)).map((h) => (
+        <li key={h.key} className="helper-branch">
+        <ul className="helper-children">
           <Row h={h} depth={depth} props={props} />
-          <Branch parent={h.key} depth={depth + 1} props={props} />
-        </div>
+          <Branch parent={h.key} depth={depth + 1} props={props} visited={new Set([...visited, h.key])} />
+        </ul>
+        </li>
       ))}
     </>
   );
@@ -111,7 +118,7 @@ export function HelpersChip(props: TreeProps & {onOpenActivity?: () => void}) {
   const words = chipWords(props.helpers.length, waiting, marks.every((m) => m === "done"));
   return (
     <div className="helpers-wrap">
-      <button type="button" className="helpers-chip" aria-expanded={open} data-testid="helpers-chip" onClick={() => props.onOpenActivity ? props.onOpenActivity() : setOpen((v) => !v)}>
+      <button type="button" className="helpers-chip" aria-expanded={props.onOpenActivity ? undefined : open} data-testid="helpers-chip" onClick={() => props.onOpenActivity ? props.onOpenActivity() : setOpen((v) => !v)}>
         <span className="hmarks">
           {marks.slice(0, 5).map((m, i) => <span key={i} className={`hmark ${m}`}><Icon d={MARK_ICON[m]} size={14} /></span>)}
           {marks.length > 5 ? <span className="hmore">+{marks.length - 5}</span> : null}

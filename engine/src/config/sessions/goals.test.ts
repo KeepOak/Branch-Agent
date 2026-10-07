@@ -526,4 +526,19 @@ describe("session goals", () => {
     );
     expect(getSessionEntry({ storePath: fixture.storePath(), sessionKey })?.goal).toBeUndefined();
   });
+
+  it("keeps operator completion available for a paused goal", async () => {
+    await writeSession(0);
+    const scope = { storePath: fixture.storePath(), sessionKey };
+    await createSessionGoal({ ...scope, objective: "ship", acceptanceCriteria: ["Verified"] });
+    await updateSessionGoalStatus({ ...scope, status: "paused", actor: { type: "human" } });
+    const completed = await updateSessionGoalStatus({
+      ...scope,
+      status: "complete",
+      actor: { type: "human" },
+      note: "Operator verified the result",
+    });
+    expect(completed.status).toBe("complete");
+    expect(getSessionEntry(scope)?.goal?.status).toBe("complete");
+  });
 });

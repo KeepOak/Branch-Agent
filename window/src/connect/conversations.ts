@@ -1,6 +1,8 @@
 // The conversation list (DESIGN-SPEC §4.1.1): the engine's sessions, read with sessions.subscribe and
 // sessions.list and refreshed on every sessions.changed event, the way OpenClaw's ui/src/lib/sessions does.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { agentIdOf } from "./session";
+import type { RoomPick } from "../rooms/RoomFaces";
 
 export type Conversation = {
   key: string;
@@ -11,13 +13,22 @@ export type Conversation = {
   archived: boolean;
   unread: boolean;
   snoozedUntil: number | null;
+  done?: boolean;
   createdAt: number;
   updatedAt: number;
   preview: string;
   working: boolean;
+  /** Run ids reported by sessions.list for a live conversation. */
+  activeRunIds?: string[];
   kind: string;
   system: boolean;
   automation: boolean;
+  needsYou?: boolean;
+  /** Classification retained for the contact projection. */
+  classification?: string;
+  spawnDepth?: number;
+  helper?: boolean;
+  groupChat?: boolean;
   label?: string;
   /** The conversation's room: tokens used now and the model's window (sessions.list totalTokens, contextTokens). */
   totalTokens: number;
@@ -54,6 +65,8 @@ export type Conversation = {
   hiddenFromMe?: boolean;
   /** People in it (participants' identity ids). */
   participantIds?: string[];
+  /** Real room members for the stacked group face. */
+  roomPicks?: RoomPick[];
 };
 
 export type RunMark = "queued" | "failed" | "timeout" | "stopped";
@@ -74,7 +87,7 @@ const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v)
 export const LIST_PARAMS = {
   includeGlobal: true,
   includeUnknown: true,
-  configuredAgentsOnly: true,
+  configuredAgentsOnly: false,
   includeLastMessage: true,
   includeDerivedTitles: true,
   archived: "all",
@@ -87,8 +100,9 @@ export function projectConversation(raw: unknown, mainKey: string | null): Conve
   const key = str(r.key);
   const label = str(r.label) || undefined;
   const title = label || str(r.displayName) || str(r.derivedTitle) || "";
-  const activeRunIds = Array.isArray(r.activeRunIds) ? r.activeRunIds : [];
+  const activeRunIds = Array.isArray(r.activeRunIds) ? r.activeRunIds.filter((id): id is string => typeof id === "string" && Boolean(id)) : [];
   const classification = str(r.classification);
+  const participants = Array.isArray(r.participants) ? r.participants : [];
   return {
     key,
     title,
@@ -98,13 +112,19 @@ export function projectConversation(raw: unknown, mainKey: string | null): Conve
     archived: r.archived === true,
     unread: r.unread === true,
     snoozedUntil: num(r.snoozedUntil) || null,
+    done: r.done === true,
     createdAt: num(r.createdAt) || num(r.updatedAt),
     updatedAt: num(r.updatedAt),
     preview: str(r.lastMessagePreview).replace(/\s+/g, " ").trim(),
     working: r.hasActiveRun === true || activeRunIds.length > 0,
+    activeRunIds,
     kind: str(r.kind),
     system: classification === "system" || str(r.createdVia) === "system",
     automation: classification === "cron" || key.includes(":cron:"),
+    classification,
+    spawnDepth: num(r.spawnDepth),
+    helper: Boolean(r.spawnedBy) || num(r.spawnDepth) > 0,
+    groupChat: str(r.kind) === "group" || participants.some((p) => str(rec(rec(p).identity).type) === "profile"),
     label,
     ...(str(r.sessionId) ? { sessionId: str(r.sessionId) } : {}),
     ...(typeof r.markedUnreadAt === "number" ? { markedUnreadAt: r.markedUnreadAt } : {}),
@@ -166,15 +186,18 @@ export class ConversationList {
   private snapshot: ConversationsSnapshot = { rows: [], loaded: false, error: null };
   private readonly listeners = new Set<() => void>();
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private inFlight = false;
+  private inFlight: Promise<void> | null = null;
   private again = false;
+  private selectedContact: { key: string; agentId: string } | null = null;
 
   private readonly request: Request;
   private mainKey: string | null;
 
-  constructor(request: Request, mainKey: string | null) {
+  constructor(request: Request, mainKey: string | null, selectedKey: string | null = null) {
     this.request = request;
     this.mainKey = mainKey;
+    const agentId = selectedKey ? agentIdOf(selectedKey) : "";
+    if (selectedKey && agentId) this.selectedContact = { key: selectedKey, agentId };
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -191,13 +214,17 @@ export class ConversationList {
     }
   }
 
-  /** Subscribes to session changes and reads the first page. */
+  /** Subscribes to session changes and reads the first page. Each start is a new connection, so rows
+   * shown until that read lands claim no running work: the engine's live registry says what runs. */
   async start(): Promise<void> {
+    if (this.snapshot.rows.some((row) => row.working)) {
+      this.set({ rows: this.snapshot.rows.map((row) => (row.working ? { ...row, working: false } : row)) });
+    }
     try {
       const result = rec(await this.request("sessions.subscribe", LIST_PARAMS));
-      this.apply(result.list);
+      await this.apply(result.list);
     } catch (error) {
-      this.set({ loaded: true, error: error instanceof Error ? error.message : String(error) });
+      this.set({ loaded: false, error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -227,25 +254,68 @@ export class ConversationList {
   async refresh(): Promise<void> {
     if (this.inFlight) {
       this.again = true;
-      return;
+      return this.inFlight;
     }
-    this.inFlight = true;
+    const read = async () => {
+      // Assign the shared promise before even a synchronously refused request can settle it.
+      await Promise.resolve();
+      try {
+        do {
+          this.again = false;
+          try { await this.apply(await this.request("sessions.list", LIST_PARAMS)); }
+          catch (error) { this.set({ error: error instanceof Error ? error.message : String(error) }); }
+        } while (this.again);
+      } finally { this.inFlight = null; }
+    };
+    this.inFlight = read();
+    return this.inFlight;
+  }
+
+  /** An exact authorized read is the absence authority; the paged sidebar is only a projection. */
+  private async describeContact(key: string, agentId: string): Promise<Conversation | null> {
     try {
-      this.apply(await this.request("sessions.list", LIST_PARAMS));
+      const result = rec(await this.request("sessions.describe", { key, agentId, includeDerivedTitles: true, includeLastMessage: true }));
+      if (!Object.hasOwn(result, "session")) throw new Error("The engine did not describe the contact conversation");
+      if (result.session === null) return null;
+      const row = projectConversation(result.session, this.mainKey);
+      if (row.key !== key || row.agentId !== agentId || !row.sessionId) throw new Error("The engine returned a different or incomplete contact conversation");
+      return row;
     } catch (error) {
-      this.set({ error: error instanceof Error ? error.message : String(error) });
-    } finally {
-      this.inFlight = false;
-      if (this.again) {
-        this.again = false;
-        void this.refresh();
-      }
+      this.set({ rows: this.snapshot.rows.filter((row) => row.key !== key), loaded: false });
+      throw error;
     }
   }
 
-  private apply(list: unknown): void {
+  /** Retains one actual described contact, including one outside the first sidebar page. */
+  async selectContact(key: string, agentId: string): Promise<Conversation | null> {
+    const row = await this.describeContact(key, agentId);
+    if (!row) {
+      if (this.selectedContact?.key === key) this.selectedContact = null;
+      this.set({ rows: this.snapshot.rows.filter((item) => item.key !== key), loaded: true, error: null });
+      return null;
+    }
+    this.selectedContact = { key, agentId };
+    this.set({ rows: [...this.snapshot.rows.filter((item) => item.key !== key), row], loaded: true, error: null });
+    return row;
+  }
+
+  private async apply(list: unknown): Promise<void> {
     const sessions = rec(list).sessions;
     const rows = Array.isArray(sessions) ? sessions.map((s) => projectConversation(s, this.mainKey)) : [];
+    const contact = this.selectedContact;
+    if (contact && !rows.some((row) => row.key === contact.key)) {
+      let selected: Conversation | null;
+      try { selected = await this.describeContact(contact.key, contact.agentId); }
+      catch (error) {
+        // Hide stale retained data immediately, but retain the key for an authorized retry.
+        // A failed read is not an authoritative deletion and must not trigger saved-route fallback.
+        if (this.selectedContact === contact) this.set({ rows: rows.filter((row) => row.key && row.key !== contact.key), loaded: false });
+        throw error;
+      }
+      if (this.selectedContact !== contact) { this.again = true; return; }
+      if (selected) rows.push(selected);
+      else this.selectedContact = null;
+    }
     this.set({ rows: rows.filter((r) => r.key), loaded: true, error: null });
   }
 

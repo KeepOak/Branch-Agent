@@ -20,6 +20,9 @@ export type AgentIdentityFile = {
   creature?: string;
   vibe?: string;
   avatar?: string;
+  colour?: string;
+  shape?: string;
+  eyes?: string;
 };
 
 const WRITABLE_IDENTITY_FIELDS = [
@@ -27,9 +30,12 @@ const WRITABLE_IDENTITY_FIELDS = [
   ["theme", "Theme"],
   ["emoji", "Emoji"],
   ["avatar", "Avatar"],
+  ["colour", "Colour"],
+  ["shape", "Shape"],
+  ["eyes", "Eyes"],
 ] as const satisfies ReadonlyArray<readonly [keyof AgentIdentityFile, string]>;
 
-const RICH_IDENTITY_LABELS = new Set(["name", "creature", "vibe", "theme", "emoji", "avatar"]);
+const RICH_IDENTITY_LABELS = new Set(["name", "creature", "vibe", "theme", "emoji", "avatar", "colour", "shape", "eyes"]);
 
 const IDENTITY_PLACEHOLDER_VALUES = new Set([
   "not set yet",
@@ -51,7 +57,7 @@ export function normalizeIdentityForFile(
   for (const [field] of WRITABLE_IDENTITY_FIELDS) {
     const value = identity?.[field]?.trim();
     if (value) {
-      resolved[field] = value;
+      (resolved as Record<string, string | undefined>)[field] = value;
     }
   }
   return Object.keys(resolved).length ? resolved : undefined;
@@ -61,11 +67,17 @@ export function createAgentIdentityConfig(params: {
   name?: string;
   emoji?: unknown;
   avatar?: unknown;
+  colour?: unknown;
+  shape?: unknown;
+  eyes?: unknown;
 }): IdentityConfig | undefined {
   return normalizeIdentityForFile({
     ...(params.name ? { name: sanitizeAgentIdentityLine(params.name) } : {}),
     emoji: sanitizeAgentIdentityLine(normalizeOptionalString(params.emoji) ?? ""),
     avatar: sanitizeAgentIdentityLine(normalizeOptionalString(params.avatar) ?? ""),
+    colour: normalizeOptionalString(params.colour) as IdentityConfig["colour"],
+    shape: normalizeOptionalString(params.shape) as IdentityConfig["shape"],
+    eyes: normalizeOptionalString(params.eyes) as IdentityConfig["eyes"],
   });
 }
 
@@ -114,6 +126,9 @@ function parseIdentityMarkdown(content: string): AgentIdentityFile | null {
       case "vibe":
       case "theme":
       case "avatar":
+      case "colour":
+      case "shape":
+      case "eyes":
         identity[parsed.label] = value;
     }
   }
@@ -147,7 +162,7 @@ function resolveIdentityInsertIndex(lines: string[]): number {
  */
 export function mergeIdentityMarkdownContent(
   content: string | undefined,
-  identity: Pick<AgentIdentityFile, "name" | "theme" | "emoji" | "avatar">,
+  identity: Pick<AgentIdentityFile, "name" | "theme" | "emoji" | "avatar" | "colour" | "shape" | "eyes">,
 ): string {
   const nextLines = content
     ? content.replace(/\r\n/g, "\n").split("\n")

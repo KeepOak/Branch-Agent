@@ -9,6 +9,13 @@
 .set-col .s2developer-cmd { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 10px; background: var(--fill); margin: 6px 0; }
 .set-col .s2developer-cmd code { flex: 1; min-width: 0; font: 12px var(--mono); overflow-wrap: anywhere; }
 .set-col .s2developer-mono, .dlg .s2developer-mono { font-family: var(--mono); font-size: 12px; }
+.set-col .s2developer-lst { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.set-col .s2developer-lst .chip6 { gap: 6px; }
+.set-col .s2developer-add { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.set-col .s2developer-add .inp { width: min(200px, 60vw); }
+.set-col .s2developer-txt .inp { width: min(260px, 46vw); font-family: var(--mono); font-size: 12px; }
+.set-col .s2developer-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.set-col .acts.s2developer-acts { margin: 8px 0; }
 
 .dlg .s2developer-dlg { display: grid; gap: 10px; min-width: 0; }
 .dlg .s2developer-tr { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: 14px; align-items: start; }

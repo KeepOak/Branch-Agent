@@ -10,6 +10,7 @@ import { Icon } from "../../../shell/icons";
 import { Btn, Empty, Hint, Page, Pill, Status, useConfig, useLevel, type RowEntry } from "../kit";
 import { GROUPS, ago, connsOf, keptDevices, faceColour, groupOf, initials, lastActive, profilesOf, roleOf, rolesOf, type Conn, type Group, type Profile, type Roles } from "./people-data";
 import { PersonCard } from "./people-card";
+import { InviteDialog } from "../../people/person-dialogs";
 import { usePicture, type Picture } from "./people-mine";
 import { EachPerson, Records, SigningIn } from "./people-more";
 import "./people.css";
@@ -19,28 +20,30 @@ export type People = {
   keep: Set<string>; trunks: Map<string, string>; reload: () => Promise<void>; openSettings?: (page: string) => void; pic: Picture;
 };
 
-const LEDE = "Everyone who uses Branch: on this computer, on their own devices, and your keepoak.com team. The same list as People › People in the People place.";
+const LEDE = "Everyone who uses Branch, on this computer or their own.";
+const HELP = "Everyone who uses Branch: on this computer, on their own devices, and your keepoak.com team. The same list as People › People in the People place.";
 
 export function PeoplePage(props: SettingsPageProps) {
   const lv = useLevel();
   const ctx = usePeople(props);
   const [selId, setSel] = useState<string | null>(null);
+  const [invite, setInvite] = useState(false);
   const sel = ctx.people.find((p) => p.id === selId) ?? ctx.self ?? ctx.people[0] ?? null;
   return (
-    <Page title={props.title} lede={LEDE}>
+    <Page title={props.title} lede={LEDE} help={HELP}>
       {ctx.error ? <Status tone="bad" title="Branch couldn’t read who uses it">{visible(ctx.error)}</Status> : null}
       <div className="t10-pp">
         <div className="plist-pp">
           {ctx.self ? <ProfileHead ctx={ctx} me={ctx.self} /> : null}
           <PersonList ctx={ctx} sel={sel} onSel={setSel} loading={ctx.loading} />
-          <Btn pri className="invite-pp" disabled title="Branch can’t send invites yet."><Icon name="plus" small />Invite someone</Btn>
-          <small className="why-pp">Branch can’t send invites yet.</small>
+          <Btn pri className="invite-pp" onClick={() => setInvite(true)}><Icon name="plus" small />Invite someone</Btn>
         </div>
         {sel ? <PersonCard key={sel.id} ctx={ctx} p={sel} /> : null}
       </div>
       <Hint>Separation on one computer, not separate accounts. Each person’s conversations and memory are their own.</Hint>
       <EachPerson roles={ctx.roles} />
       {lv >= 1 ? <><Records engine={props.engine} trunks={ctx.trunks} /><SigningIn /></> : null}
+      {invite ? <InviteDialog engine={props.engine} onClose={() => { setInvite(false); void ctx.reload(); }} /> : null}
     </Page>
   );
 }
@@ -52,9 +55,12 @@ function usePeople(props: SettingsPageProps): People & { loading: boolean; error
   const presenceData = useLast(presence.data);
   const agents = useResource<RecordValue>(props.engine, "agents.list", {});
   const cfg = useConfig(props.engine);
-  const people = profilesOf(useLast(users.data));
+  const listed = profilesOf(useLast(users.data));
   const meData = useLast(me.data);
   const selfId = typeof record(meData?.profile).id === "string" ? String(record(meData?.profile).id) : null;
+  // users.self names the signed-in person even when users.list hasn't caught up yet.
+  const mine = selfId && !listed.some((p) => p.id === selfId) ? profilesOf({ profiles: [meData?.profile] }) : [];
+  const people = [...mine, ...listed];
   const self = people.find((p) => p.id === selfId) ?? null;
   const reload = async () => { await Promise.all([users.reload(), me.reload(), presence.reload()]); };
   const pic = usePicture(props.engine, self, reload);
@@ -118,7 +124,7 @@ function PersonItem({ ctx, p, current, onSel }: { ctx: People; p: Profile; curre
   );
 }
 
-const row = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "people", title, sec, lv }));
+const row = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "people", title, sec, group: sec, lv }));
 export const PEOPLE_ROWS: RowEntry[] = [
   ...row("You", 0, ["Your own instructions", "Your own accounts"]),
   ...row("Each person", 0, ["Ask for a PIN when switching person", "Keep conversations separate"]),

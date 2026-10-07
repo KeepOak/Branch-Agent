@@ -1,6 +1,7 @@
 /** Session identity and context preparation for isolated cron runs. */
 import { tryResolveAmbientOwnerAgentId } from "../../agents/agent-scope.js";
 import { clearBootstrapSnapshotOnSessionRollover } from "../../agents/bootstrap-cache.js";
+import { resolveSessionLane } from "../../agents/embedded-agent-runner/lanes.js";
 import type { LiveSessionModelSelection } from "../../agents/live-model-switch.js";
 import { findModelInCatalog } from "../../agents/model-catalog-lookup.js";
 import {
@@ -10,6 +11,7 @@ import {
 } from "../../agents/prepared-model-runtime.js";
 import { resolveAgentModelPrimaryValue } from "../../config/model-input.js";
 import { resolveCreatorSandbox } from "../../gateway/operator-role-policy.js";
+import { waitForSessionHandoffLease } from "../../process/session-handoff-lease-gate.js";
 import { isCronSessionKey, parseAgentSessionKey } from "../../routing/session-key.js";
 import {
   AGENT_HARNESS_SESSION_ID_LOCKED_MESSAGE,
@@ -155,6 +157,12 @@ export async function prepareCronRunContext(params: {
   const isGmailHook = hookExternalContentSource === "gmail";
   const now = Date.now();
   const sandbox = resolveCreatorSandbox(runtimeCfg, { actor: input.job.createdActor });
+  // A job that runs in an existing session writes its entry below, before the run reaches the session lane. When
+  // the previous engine is still finishing that session (in-place update), wait for it, as a turn there would.
+  await waitForSessionHandoffLease(
+    resolveSessionLane(agentSessionKey),
+    input.abortSignal ?? input.signal,
+  );
   const cronSession = await prepareCronSession({
     cfg: runtimeCfg,
     sessionKey: agentSessionKey,

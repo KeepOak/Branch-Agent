@@ -33,18 +33,20 @@ function sub(app: App, f: Found, on: boolean): string {
 export function CodingApps({ engine }: { engine: WindowEngine }) {
   const scope = useScope();
   const detect = useResource<RecordValue>(engine, "branch.setup.detect", scope ? { agentId: scope } : {});
+  const usage = useResource<RecordValue>(engine, "usage.status");
+  const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
   const cfg = useConfig(engine);
   return (
-    <Sec title="Coding apps on this computer" hint="Each app keeps its own account and permissions. Turning one on doesn’t sign you in.">
+    <Sec title="Coding apps on this computer" hint="Each app keeps its own account and permissions." help="Each app keeps its own account and permissions. Turning one on doesn’t sign you in.">
       {APPS.map((app) => {
         const f = foundState(app, detect.data);
         const [tone, word] = detect.loading ? ["idle", "Looking…"] : PILL[f.state];
         const pluginOn = app.plugin ? cfg.get(`plugins.entries.${app.plugin}.enabled`) === true : f.state === "ready";
         return (
-          <Ctl key={app.kind} id={app.name} title={<>{app.name}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={detect.loading ? "Looking on this computer…" : sub(app, f, pluginOn)}>
+          <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={detect.loading ? "Looking on this computer…" : sub(app, f, pluginOn)}>
             {app.plugin
-              ? <Switch checked={pluginOn} label={app.name} disabled={cfg.loading} onChange={(v) => void cfg.set(`plugins.entries.${app.plugin}.enabled`, v)} />
-              : <span title={`Follows ${app.name}’s own sign-in on this computer.`}><Switch checked={pluginOn} label={app.name} disabled onChange={() => undefined} /></span>}
+              ? <Switch checked={pluginOn} label={`Use ${app.name}`} disabled={cfg.loading} onChange={(v) => void cfg.set(`plugins.entries.${app.plugin}.enabled`, v)} />
+              : <span title={`Follows ${app.name}’s own sign-in on this computer.`}><Switch checked={pluginOn} label={`Use ${app.name}`} disabled onChange={() => undefined} /></span>}
           </Ctl>
         );
       })}

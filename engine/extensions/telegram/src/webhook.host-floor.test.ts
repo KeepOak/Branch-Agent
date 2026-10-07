@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/telegram/src/webhook.host-floor.test.ts (atlas CHAT-APPS-0119). Changed for Branch: exercise Gateway-owned webhook routes after upstream retired per-account listeners.
 import { once } from "node:events";
 import { createServer, request } from "node:http";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
@@ -5,7 +6,7 @@ import {
   createEmptyPluginRegistry,
   setActivePluginRegistry,
 } from "branch/plugin-sdk/plugin-test-runtime";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { getServerPort, webhookUrl } from "./test-support/webhook-gateway.js";
 import { postWebhookHeadersOnly, postWebhookJson } from "./test-support/webhook-http.js";
 import { startTelegramWebhook } from "./webhook.js";
@@ -51,11 +52,36 @@ vi.mock("./telegram-ingress-drain-factory.js", () => ({
 
 let registry = createEmptyPluginRegistry();
 const running: Array<Awaited<ReturnType<typeof startTelegramWebhook>>> = [];
+const gatewayServer = createServer((req, res) => {
+  if (req.url === "/healthz") {
+    res.writeHead(200);
+    res.end(req.method === "HEAD" ? undefined : "ok");
+    return;
+  }
+  const route = registry.httpRoutes.find((entry) => entry.path === req.url);
+  if (!route) {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+  void Promise.resolve(route.handler(req, res)).catch(() => {
+    res.writeHead(500);
+    res.end();
+  });
+});
+
+beforeAll(async () => {
+  gatewayServer.listen(0, "127.0.0.1");
+  await once(gatewayServer, "listening");
+});
+afterAll(async () => {
+  await new Promise<void>((resolve) => gatewayServer.close(() => resolve()));
+});
 
 beforeEach(() => {
   registry = createEmptyPluginRegistry();
   setActivePluginRegistry(registry);
-  mocks.gatewayOwnsListeners = false;
+  mocks.gatewayOwnsListeners = true;
   mocks.init.mockReset().mockResolvedValue(undefined);
   mocks.setWebhook.mockReset().mockResolvedValue(true);
   mocks.stopBot.mockReset();
@@ -106,17 +132,18 @@ async function start(
 it("serves exact health and webhook paths and waits for admission before acknowledging", async () => {
   const port = await freePort();
   await start(port);
+  const gatewayPort = getServerPort(gatewayServer);
   for (const method of ["GET", "HEAD", "POST"]) {
-    const health = await fetch(webhookUrl(port, "/healthz"), { method });
+    const health = await fetch(webhookUrl(gatewayPort, "/healthz"), { method });
     expect(health.status).toBe(200);
     expect(await health.text()).toBe(method === "HEAD" ? "" : "ok");
   }
   for (const path of ["/healthz?x=1", "/healthz/", "/hook?x=1", "/HOOK"]) {
-    const missing = await fetch(webhookUrl(port, path));
+    const missing = await fetch(webhookUrl(gatewayPort, path));
     expect(missing.status).toBe(404);
     await missing.text();
   }
-  const unauthorized = await postWebhookHeadersOnly({ port, path: "/hook", declaredLength: 100 });
+  const unauthorized = await postWebhookHeadersOnly({ port: gatewayPort, path: "/hook", declaredLength: 100 });
   expect(unauthorized).toEqual({ statusCode: 401, body: "unauthorized" });
   expect(mocks.admit).not.toHaveBeenCalled();
 
@@ -128,7 +155,7 @@ it("serves exact health and webhook paths and waits for admission before acknowl
   });
   let responded = false;
   const response = postWebhookJson({
-    url: webhookUrl(port, "/hook"),
+    url: webhookUrl(gatewayPort, "/hook"),
     payload: '{"update_id":1}',
     secret: "fixture-secret",
   }).then((value) => {
@@ -147,7 +174,7 @@ it("serves exact health and webhook paths and waits for admission before acknowl
   await accepted.text();
   mocks.admit.mockRejectedValueOnce(new Error("storage failed"));
   const rejected = await postWebhookJson({
-    url: webhookUrl(port, "/hook"),
+    url: webhookUrl(gatewayPort, "/hook"),
     payload: '{"update_id":2}',
     secret: "fixture-secret",
   });
@@ -156,17 +183,17 @@ it("serves exact health and webhook paths and waits for admission before acknowl
   await rejected.text();
 });
 
-it("keeps account-local delivery on separate ports and rejects shared-port ownership", async () => {
+it("keeps account-local delivery on shared Gateway routes and rejects ambiguous secrets", async () => {
   const firstPort = await freePort();
   await start(firstPort, { accountId: "first" });
   const secondPort = await freePort();
-  await start(secondPort, { accountId: "second" });
-  for (const [port, account] of [
-    [firstPort, "first"],
-    [secondPort, "second"],
+  await start(secondPort, { accountId: "second", path: "/hook-two" });
+  for (const [path, account] of [
+    ["/hook", "first"],
+    ["/hook-two", "second"],
   ] as const) {
     const accepted = await postWebhookJson({
-      url: webhookUrl(port, "/hook"),
+      url: webhookUrl(getServerPort(gatewayServer), path),
       payload: '{"update_id":3}',
       secret: "fixture-secret",
     });
@@ -174,11 +201,15 @@ it("keeps account-local delivery on separate ports and rejects shared-port owner
     await accepted.text();
     expect(mocks.admit).toHaveBeenLastCalledWith(account, { update_id: 3 });
   }
-  await expect(start(firstPort, { accountId: "third" })).rejects.toMatchObject({
-    code: "EADDRINUSE",
+  await start(firstPort, { accountId: "third" });
+  const ambiguous = await postWebhookJson({
+    url: webhookUrl(getServerPort(gatewayServer), "/hook"),
+    payload: '{"update_id":4}',
+    secret: "fixture-secret",
   });
-  expect(mocks.setWebhook).toHaveBeenCalledTimes(2);
-  expect(mocks.closeTransport).toHaveBeenCalledTimes(1);
+  expect(ambiguous.status).toBe(401);
+  expect(await ambiguous.text()).toBe("ambiguous webhook target");
+  expect(mocks.admit).toHaveBeenCalledTimes(2);
 });
 
 it.each(["stop", "abort"] as const)(
@@ -203,13 +234,14 @@ it.each(["stop", "abort"] as const)(
 it("settles owned resources before joining an unfinished request on shutdown", async () => {
   const port = await freePort();
   const webhook = await start(port);
+  const gatewayPort = getServerPort(gatewayServer);
   const cleanupSettled = createDeferred<void>();
   mocks.settleIngress.mockImplementationOnce(() => cleanupSettled.resolve());
   const body = '{"update_id":4}';
   const response = createDeferred<
     { statusCode: number | undefined; accepted: string | string[] | undefined } | Error
   >();
-  const req = request(webhookUrl(port, "/hook"), {
+  const req = request(webhookUrl(gatewayPort, "/hook"), {
     agent: false,
     method: "POST",
     headers: {
@@ -246,10 +278,10 @@ it("settles owned resources before joining an unfinished request on shutdown", a
     expect(mocks.stopIngress).toHaveBeenCalledOnce();
     expect(mocks.settleIngress).toHaveBeenCalledOnce();
     // Cross an I/O boundary before checking that stop still joins the held request.
-    await expect(fetch(webhookUrl(port, "/healthz"))).rejects.toMatchObject(
-      process.versions.bun ? { code: "ECONNREFUSED" } : { cause: { code: "ECONNREFUSED" } },
-    );
-    expect(stopped).toBe(false);
+    const health = await fetch(webhookUrl(gatewayPort, "/healthz"));
+    expect(health.status).toBe(200);
+    await health.text();
+    expect(stopped).toBe(true);
     req.end(body);
     expect(await response.promise).toEqual({ statusCode: 500, accepted: undefined });
     expect(mocks.admit).not.toHaveBeenCalled();

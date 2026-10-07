@@ -1,10 +1,10 @@
 // Tests /learn prompt rewriting, defaults, standards, and availability gating.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { testing as cliBackendsTesting } from "../../agents/cli-backends.test-support.js";
-import { migratePersistedImplicitMainRoster } from "../../config/legacy.roster.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { DEFAULT_LEARN_REQUEST } from "../../skills/workshop/learn-prompt.js";
 import { SKILL_AUTHORING_STANDARDS_PROMPT } from "../../skills/workshop/skill-authoring-standards.js";
+import { createCanonicalAgentConfigFixture } from "../../test-utils/config-roster.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import { handleLearnCommand } from "./commands-learn.js";
 import type { HandleCommandsParams } from "./commands-types.js";
@@ -33,7 +33,7 @@ function buildLearnParams(
   commandBodyNormalized: string,
   cfg: BranchConfig = {},
 ): HandleCommandsParams {
-  const loadedConfig = migratePersistedImplicitMainRoster(cfg).config as BranchConfig;
+  const loadedConfig = createCanonicalAgentConfigFixture(cfg).config;
   return {
     cfg: { ...loadedConfig, models: loadedConfig.models ?? DEFAULT_TEST_MODELS },
     ctx: {

@@ -20,6 +20,14 @@ describe("tool display", () => {
 
   it.each([
     {
+      name: "Tool Search inner query",
+      params: {
+        name: "tool_call",
+        args: { id: "web_search", args: { query: "Branch Agent release notes" } },
+      },
+      detail: 'with for "Branch Agent release notes"',
+    },
+    {
       name: "trimmed action with a false first detail",
       params: {
         name: "browser",

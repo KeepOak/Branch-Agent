@@ -67,6 +67,42 @@ describe("Settings › Chat apps", () => {
     expect(button("All 3 chat apps")).toBeTruthy();
   });
 
+  it("shows reconnect needs-attention while automatic retries continue", async () => {
+    const status = {
+      ...STATUS,
+      channelAccounts: {
+        ...STATUS.channelAccounts,
+        telegram: [{
+          ...STATUS.channelAccounts.telegram[0],
+          needsAttention: true,
+          restartPending: true,
+          reconnectAttempts: 24,
+        }],
+      },
+    };
+    const { engine } = engineOf({ "channels.status": status });
+    await render(engine);
+    const row = [...host.querySelectorAll(".prow")].find((element) =>
+      element.textContent?.includes("Telegram"),
+    );
+    expect(row?.querySelector(".pill")?.textContent).toBe("Needs attention");
+    expect(row?.textContent).toContain("Reconnect attempts continue automatically");
+  });
+
+  it("opens the real watchdog log from Technical chat-app settings", async () => {
+    const { engine, request } = engineOf({
+      "logs.tail": {
+        file: "branch.log",
+        cursor: 1,
+        lines: ["gateway/health-monitor: [telegram:default] restarting (reason: disconnected)"],
+      },
+    });
+    await render(engine, 2);
+    await act(async () => button("Open watchdog log").click());
+    expect(request).toHaveBeenCalledWith("logs.tail", { limit: 500 });
+    expect(document.querySelector(".dlg")?.textContent).toContain("restarting (reason: disconnected)");
+  });
+
   it("says no chat app is connected yet, and hides Asking and Who answers", async () => {
     const { engine } = engineOf({ "channels.status": { ...STATUS, channels: {}, channelAccounts: {} } });
     await render(engine);
@@ -79,10 +115,10 @@ describe("Settings › Chat apps", () => {
     const { engine, request } = engineOf();
     await render(engine);
     expect(host.textContent).toContain("Requests expire after 60 minutes. Each account holds up to 3 waiting.");
-    await act(async () => button("Approve", host).click());
+    await act(async () => button("Allow", host).click());
     expect(document.querySelector(".dlg h2")?.textContent).toBe("Let Person A message Oak?");
     await act(async () => document.querySelector<HTMLInputElement>('.dlg input[type="checkbox"]')!.click());
-    await act(async () => button("Approve", document.querySelector(".dlg")!).click());
+    await act(async () => button("Allow", document.querySelector(".dlg")!).click());
     expect(request).toHaveBeenCalledWith("channels.pairing.approve", { channel: "telegram", accountId: "default", requestId: "r1", notify: true });
   });
 
@@ -92,6 +128,17 @@ describe("Settings › Chat apps", () => {
     const seg = host.querySelector('[aria-label="Who answers in Discord"]')!;
     await act(async () => button("Birch", seg).click());
     expect(patchOf(request)).toEqual({ bindings: [{ agentId: "two", match: { channel: "discord", accountId: "*" } }] });
+  });
+
+  it("shows the five messaging policies as one radio list in the manage dialog", async () => {
+    const { engine, request } = engineOf();
+    await render(engine);
+    await act(async () => button("Open", [...host.querySelectorAll(".prow")].find((row) => row.textContent?.includes("Telegram"))!).click());
+    const radios = [...document.querySelectorAll<HTMLButtonElement>('.dlg [role="radiogroup"][aria-label="Who may message it"] [role="radio"]')];
+    expect(radios.map((radio) => radio.textContent?.trim().replace(/^✓/, ""))).toEqual(["Only meAdd yourself below first.", "People I approve", "Anyone in my workspaceBranch can’t tell who is in your workspace yet.", "Anyone", "No one"]);
+    expect(radios.filter((radio) => radio.getAttribute("aria-checked") === "true").map((radio) => radio.textContent)).toEqual(["✓People I approve"]);
+    await act(async () => button("No one", document.querySelector(".dlg")!).click());
+    expect(patchOf(request)).toEqual({ channels: { telegram: { dmPolicy: "disabled" } } });
   });
 
   it("shows Advanced sections only at Advanced, and the key list only at Technical", async () => {
@@ -156,9 +203,24 @@ describe("Settings › Chat apps", () => {
     const { engine, request } = engineOf({ "channels.status": two });
     await render(engine);
     await act(async () => button("Open", host).click());
+    expect(document.querySelector(".dlg .box-h-ca .pill")?.textContent).toBe("Online");
+    expect(document.querySelector(".dlg .chw-steps12")).toBeNull();
+    expect(document.querySelector(".dlg")?.textContent).not.toContain("is ready");
     await act(async () => button("Pause", document.querySelector(".dlg")!).click());
     expect(patchOf(request)).toEqual({ channels: { discord: { enabled: false } } });
     expect(request).toHaveBeenCalledWith("channels.stop", { channel: "discord", accountId: "default" });
     expect(request).toHaveBeenCalledWith("channels.stop", { channel: "discord", accountId: "second" });
+  });
+});
+
+describe("Settings › Chat apps on a partial engine reply", () => {
+  it("renders every level, without crashing, when pairing and other replies are empty", async () => {
+    const request = vi.fn(async (method: string) => (method === "channels.status" ? STATUS : {}));
+    const engine = { request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine;
+    for (const level of [0, 1, 2] as const) {
+      await render(engine, level);
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+      expect(host.querySelector("h1")?.textContent).toBe("Chat apps");
+    }
   });
 });

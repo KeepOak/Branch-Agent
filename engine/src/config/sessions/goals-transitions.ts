@@ -3,10 +3,7 @@ import { resolveFreshSessionTotalTokens } from "./types.js";
 import type { SessionEntry, SessionGoal, SessionGoalStatus } from "./types.js";
 
 export class SessionGoalTransitionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "SessionGoalTransitionError";
-  }
+  override name = "SessionGoalTransitionError";
 }
 
 function normalizeTokenCount(value: number | undefined): number | undefined {
@@ -69,7 +66,7 @@ export function accountSessionGoalUsage(
 
 export function buildCreatedSessionGoal(
   entry: SessionEntry,
-  options: { objective: string; tokenBudget?: number },
+  options: { objective: string; tokenBudget?: number; acceptanceCriteria?: string[] },
   now: number,
 ): SessionGoal {
   const objective = options.objective;
@@ -85,6 +82,9 @@ export function buildCreatedSessionGoal(
     schemaVersion: 1,
     id: crypto.randomUUID(),
     objective,
+    ...(options.acceptanceCriteria?.length
+      ? { acceptanceCriteria: [...options.acceptanceCriteria] }
+      : {}),
     status: "active",
     createdAt: now,
     updatedAt: now,
@@ -101,6 +101,8 @@ export function buildUpdatedSessionGoalStatus(
   options: {
     status: Extract<SessionGoalStatus, "active" | "paused" | "blocked" | "complete">;
     note?: string;
+    completionEvidence?: SessionGoal["completionEvidence"];
+    requireCompletionEvidence?: boolean;
   },
   now: number,
 ): SessionGoal {
@@ -110,6 +112,29 @@ export function buildUpdatedSessionGoalStatus(
   }
   if (accounted.status === "complete" && accounted.status !== options.status) {
     throw new SessionGoalTransitionError(`goal is already ${accounted.status}`);
+  }
+  if (
+    options.status === "complete" &&
+    options.requireCompletionEvidence &&
+    accounted.acceptanceCriteria?.length
+  ) {
+    const evidence = options.completionEvidence ?? accounted.completionEvidence ?? [];
+    if (
+      evidence.some(
+        (item) =>
+          !Number.isInteger(item.criterion) ||
+          item.criterion < 0 ||
+          item.criterion >= accounted.acceptanceCriteria!.length ||
+          !item.evidence.trim(),
+      ) ||
+      accounted.acceptanceCriteria.some(
+        (_, index) => !evidence.some((item) => item.criterion === index && item.evidence.trim()),
+      )
+    ) {
+      throw new SessionGoalTransitionError(
+        "Record evidence for every acceptance criterion before completing the goal.",
+      );
+    }
   }
   const resetsBudgetWindow =
     options.status === "active" &&
@@ -126,6 +151,11 @@ export function buildUpdatedSessionGoalStatus(
     ...(options.status === "paused" ? { pausedAt: now } : {}),
     ...(options.status === "blocked" ? { blockedAt: now } : {}),
     ...(options.status === "complete" ? { completedAt: accounted.completedAt ?? now } : {}),
+    ...(options.status === "complete" &&
+    accounted.status !== "complete" &&
+    options.completionEvidence
+      ? { completionEvidence: options.completionEvidence.map((item) => ({ ...item })) }
+      : {}),
   };
   if (resetsBudgetWindow) {
     next.tokenStart = freshTokenStart ?? 0;
@@ -161,5 +191,12 @@ export function buildUpdatedSessionGoalObjective(
     throw new SessionGoalTransitionError(`goal is already ${accounted.status}`);
   }
   // Rewording keeps status and token accounting; only the target moves.
-  return { ...accounted, objective, updatedAt: now };
+  // Evidence and recovery instructions refer to the old objective, not the reworded target.
+  const {
+    acceptanceCriteria: _criteria,
+    completionEvidence: _evidence,
+    checkpoint: _checkpoint,
+    ...rest
+  } = accounted;
+  return { ...rest, objective, updatedAt: now };
 }

@@ -363,15 +363,11 @@ function finishOwnedRow(
 
 /** Connection-bound launch journal; every operation retains its original write transaction. */
 export class NodeWorkerLaunchKernel {
-  private readonly databaseOptions: BranchStateDatabaseOptions;
-
   constructor(
-    options: BranchStateDatabaseOptions & {
+    private readonly databaseOptions: BranchStateDatabaseOptions & {
       database: NonNullable<BranchStateDatabaseOptions["database"]>;
     },
-  ) {
-    this.databaseOptions = options;
-  }
+  ) {}
 
   private write<T>(
     operationLabel: string,

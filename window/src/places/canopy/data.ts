@@ -5,7 +5,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { approvals, errorText, paged, rec, rows, sessions, str, type Row } from "../automations/runtime";
 
 export type Col = "working" | "waiting" | "next" | "stuck" | "done";
-export const COLS: [Col, string][] = [["working", "Working"], ["waiting", "Waiting for you"], ["next", "Up next"], ["stuck", "Stuck"], ["done", "Done today"]];
+export const COLS: [Col, string][] = [["working", "Working"], ["waiting", "Waiting for you"], ["next", "Coming up"], ["stuck", "Stuck"], ["done", "Done today"]];
 export type Why = "you" | "card" | "access" | "room" | "failed";
 export const BLOCK: Record<Why, [string, string]> = { you: ["wait", "Waiting for you"], card: ["idle", "Waiting on another card"], access: ["warn", "Missing access"], room: ["warn", "Out of room or budget"], failed: ["bad", "It failed"] };
 export const WAYOUT: Record<Why, string> = { you: "Answer", card: "See the card", access: "Sign in", room: "Answer", failed: "Try again" };

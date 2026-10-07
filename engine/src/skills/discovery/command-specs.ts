@@ -8,9 +8,11 @@ import { createDedupeCache } from "../../infra/dedupe.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { loadEnabledClaudeBundleCommands } from "../../plugins/bundle-commands.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
+import { getSkillBundles } from "../loading/skill-bundles.js";
 import { resolveSkillTelemetrySource } from "../loading/source.js";
 import { filterSkillEntries } from "../loading/workspace-skill-filter.js";
 import { loadVisibleSkills, prepareWorkspaceSkills } from "../loading/workspace-skill-loader.js";
+import { resolveSkillFileHost } from "../skill-file-host.js";
 import type {
   SkillEligibilityContext,
   SkillCommandSpec,
@@ -19,6 +21,7 @@ import type {
 } from "../types.js";
 import { resolveEffectiveAgentSkillFilter } from "./agent-filter.js";
 import { sanitizeSkillCommandName, SKILL_COMMAND_MAX_LENGTH } from "./command-name.js";
+import { recordSkillCommandFileHost } from "./skill-command-provenance.js";
 import { isSkillPromptVisible, isSkillUserInvocable } from "./skill-index.js";
 
 const skillsLogger = createSubsystemLogger("skills");
@@ -125,9 +128,25 @@ function assembleWorkspaceSkillCommandSpecs(
   const used = new Set<string>();
   for (const reserved of opts?.reservedNames ?? []) {
     used.add(normalizeLowercaseStringOrEmpty(reserved));
+    used.add(sanitizeSkillCommandName(reserved));
   }
 
   const specs: SkillCommandSpec[] = [];
+  for (const bundle of getSkillBundles().values()) {
+    if (used.has(bundle.slug)) {
+      continue;
+    }
+    used.add(bundle.slug);
+    specs.push({
+      name: bundle.slug,
+      displayName: bundle.name,
+      skillName: bundle.name,
+      description: bundle.description,
+      modelVisible: false,
+      sourceFilePath: bundle.sourceFilePath,
+      skillBundle: bundle,
+    });
+  }
   const claimName = (rawName: string, bundle = false) => {
     const prefix = bundle ? "bundle-" : "";
     const label = bundle ? "bundle" : "skill";
@@ -199,7 +218,7 @@ function assembleWorkspaceSkillCommandSpecs(
           return { kind: "tool", toolName, argMode: "raw" } as const;
         })();
 
-    specs.push({
+    const spec: SkillCommandSpec = {
       name: unique,
       displayName: entry.skill.displayName ?? rawName,
       skillFile: canonicalizePath(entry.skill.filePath),
@@ -208,7 +227,12 @@ function assembleWorkspaceSkillCommandSpecs(
       modelVisible: isSkillPromptVisible(entry),
       skillSource: resolveSkillTelemetrySource(entry.skill),
       ...(dispatch ? { dispatch } : {}),
-    });
+    };
+    const fileHost = resolveSkillFileHost(entry.skill);
+    if (fileHost) {
+      recordSkillCommandFileHost(spec, fileHost);
+    }
+    specs.push(spec);
   }
 
   const bundleCommands = loadEnabledClaudeBundleCommands({

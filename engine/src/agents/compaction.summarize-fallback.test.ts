@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/compaction.summarize-fallback.test.ts (atlas AGENT-LOOP-0099). Changed for Branch: existing runtime adapters and owner-context safeguards; upstream assertions retained.
 // Covers final fallback behavior when model-backed summarization fails.
 import type { AgentMessage } from "branch/plugin-sdk/agent-core";
 import type { ExtensionContext } from "branch/plugin-sdk/agent-sessions";

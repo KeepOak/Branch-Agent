@@ -36,6 +36,16 @@ export const AgentsFilesGetParamsSchema = closedObject({
   name: NonEmptyString,
 });
 
+/** Exports the Markdown memory files for one configured agent. */
+export const MemoryExportParamsSchema = closedObject({
+  agentId: Type.Optional(NonEmptyString),
+});
+
+export const MemoryExportResultSchema = closedObject({
+  agentId: NonEmptyString,
+  files: Type.Array(closedObject({ path: NonEmptyString, content: Type.String() })),
+});
+
 /** Result for reading one editable agent file. */
 export const AgentsFilesGetResultSchema = closedObject({
   agentId: NonEmptyString,
@@ -67,6 +77,8 @@ export type AgentsFileEntry = Static<typeof AgentsFileEntrySchema>;
 export type AgentsFilesListParams = Static<typeof AgentsFilesListParamsSchema>;
 export type AgentsFilesListResult = Static<typeof AgentsFilesListResultSchema>;
 export type AgentsFilesGetParams = Static<typeof AgentsFilesGetParamsSchema>;
+export type MemoryExportParams = Static<typeof MemoryExportParamsSchema>;
+export type MemoryExportResult = Static<typeof MemoryExportResultSchema>;
 export type AgentsFilesGetResult = Static<typeof AgentsFilesGetResultSchema>;
 export type AgentsFilesSetParams = Static<typeof AgentsFilesSetParamsSchema>;
 export type AgentsFilesSetResult = Static<typeof AgentsFilesSetResultSchema>;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import type { Block } from "../../thread/model";
 import type { Level } from "../../places-nav/settings-nav";
@@ -7,7 +7,8 @@ import { useApprovalDetails, useHelpers, type ApprovalDetails, type Helper } fro
 import { needsYou } from "../../thread/Helpers";
 import { Face } from "../../face/Face";
 import { SIcon } from "../stage-icons";
-import { activityState, money } from "./pane-model";
+import { activityRecordedAt, activityState, money } from "./pane-model";
+import { shortReason, stepLabel } from "../../thread/format";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -36,40 +37,46 @@ function useCanopyCard(engine: WindowEngine): { title: string; status: string } 
 }
 
 /** Each helper's model and provider (sessions.list rows) and its spend so far (sessions.usage). */
-function useHelperFacts(engine: WindowEngine, helpers: Helper[]): Map<string, { line: string; cost?: number }> {
-  const [facts, setFacts] = useState(new Map<string, { line: string; cost?: number }>());
-  const keys = helpers.map((h) => h.key).join("|");
+function useHelperFacts(engine: WindowEngine, helpers: Helper[]): Map<string, { line: string; cost?: number; job?: string; thinking?: string }> {
+  const [facts, setFacts] = useState<{ owner: WindowEngine; signature: string; rows: Map<string, { line: string; cost?: number; job?: string; thinking?: string }> } | null>(null);
+  const signature = JSON.stringify(helpers.map((h) => [h.key, h.parent, h.status, h.model, h.updatedAt]));
   useEffect(() => {
     let live = true;
     void Promise.all(
       helpers.map(async (h) => {
-        const usage = await engine.request("sessions.usage", { key: h.key }).catch(() => null);
+        const usage = await engine.request("sessions.usage", { key: h.key, range: "all" }).catch(() => null);
         const cost = rec(rec(usage).totals).totalCost;
         const rows = await engine.request("sessions.list", { spawnedBy: h.parent, limit: 200 }).catch(() => null);
         const row = (Array.isArray(rec(rows).sessions) ? (rec(rows).sessions as unknown[]) : []).map(rec).find((r) => r.key === h.key) ?? {};
         const provider = str(row.modelProvider);
         const line = [str(row.model) || h.model, PROVIDER[provider] ?? provider].filter(Boolean).join(" · ");
-        return [h.key, { line, ...(typeof cost === "number" ? { cost } : {}) }] as const;
+        const history = await engine.request("chat.history", { sessionKey: h.key, limit: 200 }).catch(() => null);
+        const messages = (Array.isArray(rec(history).messages) ? rec(history).messages as unknown[] : []).map(rec);
+        const contentText = (content: unknown, type: string) => typeof content === "string" && type === "text" ? content : (Array.isArray(content) ? content.map(rec).filter((part) => part.type === type).map((part) => str(type === "thinking" ? part.thinking : part.text)).filter(Boolean).join(" ") : "");
+        const job = messages.map((m) => m.role === "user" ? contentText(m.content, "text") : "").find(Boolean);
+        const thinking = messages.toReversed().map((m) => m.role === "assistant" ? contentText(m.content, "thinking") : "").find(Boolean);
+        return [h.key, { line, ...(typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? { cost } : {}), ...(job ? { job } : {}), ...(thinking ? { thinking } : {}) }] as const;
       }),
-    ).then((list) => live && setFacts(new Map(list)));
+    ).then((list) => live && setFacts({ owner: engine, signature, rows: new Map(list) }));
     return () => {
       live = false;
     };
-    // keys names the helpers; the list itself is a new array each render.
+    // Status/model changes under the same key must refresh measured facts too.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engine, keys]);
-  return facts;
+  }, [engine, signature]);
+  return facts?.owner === engine && facts.signature === signature ? facts.rows : new Map();
 }
 
-function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: ApprovalDetails[]; facts?: { line: string; cost?: number }; onStop: () => void; onAnswer: (id: string, d: "allow-once" | "deny") => void }) {
+function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: ApprovalDetails[]; facts?: { line: string; cost?: number; job?: string; thinking?: string }; onStop: () => void; onAnswer: (id: string, d: "allow-once" | "deny") => void }) {
   const waiting = asks.length > 0;
   const working = h.status === "running" || h.status === "queued" || !h.status;
-  const pill = waiting ? "Waiting for you" : working ? "Working" : h.status === "done" ? "Done" : "Stopped";
+  const stalled = working && h.updatedAt && Date.now() - h.updatedAt > 10 * 60_000;
+  const pill = waiting ? "Waiting for you" : stalled ? "No recent update" : working ? "Working" : h.status === "done" ? "Done" : "Stopped";
   return (
     <div className="hp-card-pn" role="listitem">
       <div className="hp-top-pn">
-        <span className={`hp-mark-pn ${waiting ? "wait" : working ? "work" : h.status === "done" ? "done" : "stop"}`} aria-hidden="true">
-          <SIcon name={waiting ? "info" : working ? "spin" : h.status === "done" ? "check" : "x"} small className={working && !waiting ? "spin-st" : undefined} />
+        <span className={`hp-mark-pn ${waiting || stalled ? "wait" : working ? "work" : h.status === "done" ? "done" : "stop"}`} aria-hidden="true">
+          <SIcon name={waiting || stalled ? "info" : working ? "spin" : h.status === "done" ? "check" : "x"} small className={working && !waiting && !stalled ? "spin-st" : undefined} />
         </span>
         <span className="grow">
           <b>{h.name}</b>
@@ -87,8 +94,9 @@ function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: App
           ) : null}
         </span>
       </div>
-      {h.task ? <p className="hp-job-pn">{h.task}</p> : null}
-      {h.error ? <p className="err-st">{h.error}</p> : null}
+      {h.task || facts?.job ? <p className="hp-job-pn">Job: {h.task || facts?.job}</p> : null}
+      {facts?.thinking ? <details className="hp-think-pn"><summary>What it's thinking</summary><p>{facts.thinking}</p></details> : null}
+      {h.error ? <p className="err-st">{shortReason(h.error)}</p> : null}
       {asks.map((a) => (
         <div key={a.id} className="hp-ask-pn">
           <span className="grow">
@@ -110,9 +118,29 @@ function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: App
   );
 }
 
+/**
+ * The task the Activity tab is about, never earlier tasks' steps: the run going now (its blocks follow the history's
+ * last turn end, or your last message), or else the last task, the newest turn that had steps. A plain reply after
+ * it is not a task, so it doesn't empty the list.
+ */
+export function currentTask(blocks: readonly Block[], running: boolean): Block[] {
+  const kinds = blocks.map((b) => b.kind);
+  if (running) return blocks.slice(Math.max(kinds.lastIndexOf("user"), kinds.lastIndexOf("done"), kinds.lastIndexOf("error")) + 1);
+  for (let end = blocks.length; end > 0; ) {
+    const start = kinds.lastIndexOf("user", end - 1);
+    const turn = blocks.slice(start + 1, end);
+    if (turn.some((b) => b.kind === "step")) return turn;
+    if (start < 0) break;
+    end = start;
+  }
+  return [];
+}
+
 /** Activity: what it's doing now, the Canopy card it works on, its recent steps and its helpers. */
-export function ActivityTab({ engine, name, blocks, running, level, onError }: { engine: WindowEngine; name: string; blocks: Block[]; running: boolean; level: Level; onError: (m: string) => void }) {
+export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, onError }: { engine: WindowEngine; name: string; blocks: Block[]; running: boolean; level: Level; focusHelpers?: number; onError: (m: string) => void }) {
+  const helperSection = useRef<HTMLElement>(null);
   const { helpers } = useHelpers(engine);
+  useEffect(() => { if (focusHelpers && helpers.length) helperSection.current?.scrollIntoView?.({ block: "start" }); }, [focusHelpers, helpers.length]);
   const { details } = useApprovalDetails(engine);
   const card = useCanopyCard(engine);
   const facts = useHelperFacts(engine, helpers);
@@ -120,8 +148,8 @@ export function ActivityTab({ engine, name, blocks, running, level, onError }: {
   const mine = approvals.filter((a) => !a.decision && a.sessionKey === engine.sessionKey).length;
   const helperWaiting = approvals.filter((a) => !a.decision && helpers.some((h) => h.key === a.sessionKey)).length;
   const state = activityState(running, mine + helperWaiting);
-  const [asOf] = useState(() => new Date());
-  const steps = blocks.filter((b): b is Extract<Block, { kind: "step" }> => b.kind === "step");
+  const asOf = activityRecordedAt(blocks);
+  const steps = currentTask(blocks, running).filter((b): b is Extract<Block, { kind: "step" }> => b.kind === "step");
   const shown = steps.slice(-8);
   const first = steps.length - shown.length;
   const direct = helpers.filter((h) => h.parent === engine.sessionKey);
@@ -129,7 +157,7 @@ export function ActivityTab({ engine, name, blocks, running, level, onError }: {
     <>
       <p className="hg-pn">
         <i className={`dot-pn ${state.tone}`} />
-        {state.text} · as of {asOf.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+        {state.text}{asOf === undefined ? "" : ` · as of ${new Date(asOf).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
       </p>
       {card ? (
         <div className="prow-pn">
@@ -148,10 +176,10 @@ export function ActivityTab({ engine, name, blocks, running, level, onError }: {
             <li key={b.key} className={b.status}>
               <SIcon name={b.status === "ok" ? "check" : b.status === "running" ? "spin" : b.status === "denied" || b.status === "failed" ? "x" : "info"} small className={b.status === "running" ? "spin-st" : undefined} />
               <span>
-                {b.title}
-                {b.detail || level === "technical" ? <small>{level === "technical" ? [b.tool, b.detail].filter(Boolean).join(" · ") : b.detail}</small> : null}
+                {stepLabel(b)}
+                {b.detail && !/^\s*[\[{]/.test(b.detail) ? <small>{shortReason(b.detail)}</small> : null}
               </span>
-              <time>{b.status === "running" ? "now" : first + i + 1}</time>
+              <time>{b.at ? new Date(b.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : `Step ${first + i + 1}`}</time>
             </li>
           ))}
         </ol>
@@ -159,7 +187,7 @@ export function ActivityTab({ engine, name, blocks, running, level, onError }: {
         <p className="pane-empty">No steps yet. What {name} does shows here as it works.</p>
       )}
       {helpers.length ? (
-        <section className="hp-pn" aria-label="Helpers on this task">
+        <section ref={helperSection} className="hp-pn" aria-label="Helpers on this task">
           <div className="hph-pn">
             <h3>Helpers on this task</h3>
             <small>
