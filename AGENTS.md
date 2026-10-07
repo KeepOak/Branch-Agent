@@ -18,8 +18,21 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 8. **Don't touch a running desktop app.** Test engines use their own free loopback ports and data folders, never `19031`/`19032` or the app's data folder. Stop processes by process id, never by name.
 9. **Self-test visible changes** in a scratch engine and window (browser or computer tools, the bridge's `ui_*` tools, or Playwright) and put screenshots in the PR.
 10. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. PR body: what, why, exact test commands and pass counts.
-11. **Merging:** `main` requires the `merge-gate` check. After review, `gh pr merge <n> --auto --merge`. CI jobs have a hard 15-minute cap: split or shard work rather than raising a timeout.
+11. **Merging:** `main` requires the `merge-gate` check. Only the coordinator merges, and only the head that was reviewed: `gh pr merge <n> --squash --match-head-commit <reviewed-sha>`. CI jobs have a hard 15-minute cap: split or shard work rather than raising a timeout.
 12. **Releases are automatic.** A merge touching `engine/`, `window/` or `desktop/` publishes a component release (engine, window, desktop, desktopRuntime) that installed apps pick up within the hour and apply on restart. Treat every merge as shipping.
+
+## Coordinating Trunks
+
+The current state of the build, what is open and how to resume is in [`docs/CHECKPOINT.md`](docs/CHECKPOINT.md). Read it before starting coordinator work.
+
+1. **Roles.** The owner sets priorities. One coordinator routes work, gets reviews and merges. Trunks (builder agents: Oak, Elm, Birch, Ash, Cedar, Maple, Spruce) do all the hands-on work. Reviewer agents only review. The coordinator writes code only when no Trunk can.
+2. **Priority order:** (1) seamless updates (P45), (2) the real app matching the Branch App Preview 1:1 in look and logic, ported from the preview's code, (3) logic everywhere. Phone layouts are part of (2).
+3. **Briefs.** One brief per task, naming the PR, its head, the exact `file:line` problems, the minimal fix, and tests that must fail on the old head. Push to the same branch and never merge.
+4. **Review before merge.** Every head gets an adversarial read-only review: a MERGE or FIX verdict, `file:line` evidence, and CI log lines proving the changed tests actually ran on macOS, Ubuntu and Windows. A green check alone is not proof. A new push needs a new review.
+5. **Parity changes** need side-by-side screenshots of the preview and the real app, of the full layout.
+6. **`seamlessHandoff` stays off** until the real two-engine test (#429) is merged. Then turn it on in its own one-line PR and test it live mid-conversation.
+7. **Pausing.** When the owner says pause, send nothing new, let running work finish, set the remaining briefs aside, and update `docs/CHECKPOINT.md`.
+8. **Never go silent.** Report to the owner at least every 90 minutes while work is running.
 
 ## Driving Branch from an agent (Graft)
 
