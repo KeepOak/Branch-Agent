@@ -276,6 +276,13 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
         indexIdentity.status === "mismatched" &&
         indexIdentity.owner === "branch" &&
         !hasTargetArchiveFiles;
+      const needsProviderChangeReindex =
+        indexIdentity.status === "mismatched" &&
+        indexIdentity.owner === "configuration" &&
+        (indexIdentity.code === "model" ||
+          indexIdentity.code === "provider" ||
+          indexIdentity.code === "provider_settings") &&
+        !hasTargetArchiveFiles;
       const canRunRetryFullReindex =
         indexIdentity.status !== "missing" || needsInitialIndex || canRebuildMissingIdentity;
       needsFullReindex =
@@ -284,6 +291,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
         needsMissingIdentityReindex ||
         needsExplicitIdentityReindex ||
         needsRuntimeVersionReindex ||
+        needsProviderChangeReindex ||
         (this.memoryFullRetryDirty && canRunRetryFullReindex) ||
         (this.sessionsFullRetryDirty && indexIdentity.status !== "valid" && canRunRetryFullReindex);
       // Empty indexes still need source discovery when no watcher or session listener runs.

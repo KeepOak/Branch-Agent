@@ -1,5 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`config help copy quality > documents the local memory provider default 1`] = `"Selects the embedding backend used to build/query memory vectors. Defaults to "local"; set "openai", "openai-compatible", "gemini", "voyage", "mistral", "bedrock", "deepinfra", "github-copilot", "lmstudio", or "ollama" to choose another backend explicitly."`;
+
 exports[`config tier coverage > keeps the curated common leaf set reviewable 1`] = `
 [
   "acp.allowedAgents.*",

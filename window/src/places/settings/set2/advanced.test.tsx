@@ -177,6 +177,42 @@ describe("Settings › Advanced", () => {
     expect(row("Meaning search").textContent).toContain("Working");
   });
 
+  it("shows the local memory provider and rebuild progress", async () => {
+    const { engine } = engineWith({
+      ...CONFIG,
+      "doctor.memory.status": {
+        provider: "local",
+        embedding: { ok: false, checked: false },
+        rebuild: { state: "rebuilding", done: 3, total: 12 },
+      },
+    });
+    await show(engine);
+    expect(row("Meaning search").textContent).toContain("On this computer");
+    expect(row("Meaning search").textContent).toContain("Rebuilding the index · 3/12 passages");
+    expect(row("Meaning search uses").textContent).toContain("On this computer");
+  });
+
+  it("shows an explicit text-only choice even when status is stale", async () => {
+    const { engine } = engineWith({
+      ...CONFIG,
+      "config.get": { hash: "h", valid: true, config: { memory: { search: { provider: "none" } } } },
+      "doctor.memory.status": { provider: "openai", embedding: { ok: false, checked: false } },
+    });
+    await show(engine);
+    expect(row("Meaning search").textContent).toContain("Text search only");
+    expect(row("Meaning search").textContent).not.toContain("OpenAI");
+  });
+
+  it("shows runtime text-only fallback instead of claiming local embeddings work", async () => {
+    const { engine } = engineWith({
+      ...CONFIG,
+      "doctor.memory.status": { provider: "none", embedding: { ok: false, checked: true, error: "Local model unavailable" } },
+    });
+    await show(engine);
+    expect(row("Meaning search").textContent).toContain("Text search only");
+    expect(row("Meaning search").textContent).not.toContain("On this computer");
+  });
+
   it("lists every row for the settings search", () => {
     expect(ROWS.find((r) => r.title === "Logs")).toBeUndefined();
     expect(ROWS.find((r) => r.title === "How much the log keeps")).toMatchObject({ sec: "Logs", lv: 2 });

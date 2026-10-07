@@ -96,8 +96,7 @@ function HelpersModel({ c }: { c: Ctx }) {
 }
 
 /* ---------- Memory ---------- */
-const PROVIDERS: Opt[] = [["openai", "OpenAI"], ["gemini", "Gemini"], ["voyage", "Voyage"], ["mistral", "Mistral"], ["bedrock", "Amazon Bedrock"], ["deepinfra", "DeepInfra"], ["github-copilot", "GitHub Copilot"], ["lmstudio", "LM Studio"], ["ollama", "Ollama"], ["local", "On this computer"], ["openai-compatible", "An OpenAI-compatible address"]].map(([id, label]) => ({ id, label }));
-const LOCAL = new Set(["lmstudio", "ollama", "local"]);
+const PROVIDERS: Opt[] = [["local", "On this computer"], ["none", "Text search only"], ["github-copilot", "GitHub Copilot"], ["lmstudio", "LM Studio"], ["ollama", "Ollama"], ["openai", "OpenAI (API billing)"], ["gemini", "Gemini (API billing)"], ["voyage", "Voyage (API billing)"], ["mistral", "Mistral (API billing)"], ["bedrock", "Amazon Bedrock (API billing)"], ["deepinfra", "DeepInfra (API billing)"], ["openai-compatible", "An OpenAI-compatible address"]].map(([id, label]) => ({ id, label }));
 
 function MeaningSearch({ c }: { c: Ctx }) {
   const params = c.agent ? { agentId: c.agent } : {};
@@ -105,13 +104,22 @@ function MeaningSearch({ c }: { c: Ctx }) {
   const test = useCall();
   const [probe, setProbe] = useState<RecordValue | null>(null);
   const emb = rec((probe ?? rec(st.data)).embedding);
-  const provider = str(rec(probe ?? st.data).provider) || str(c.config.get("memory.search.provider")) || "openai";
+  const selected = str(c.config.get("memory.search.provider"));
+  const runtime = rec(probe ?? st.data);
+  const runtimeProvider = str(runtime.provider);
+  const provider = runtimeProvider === "none" || runtimeProvider === "local"
+    ? runtimeProvider
+    : (selected && selected !== "auto" ? selected : "") || runtimeProvider || "none";
   const name = PROVIDERS.find((p) => p.id === provider)?.label ?? provider;
+  const rebuild = rec(rec(st.data).rebuild);
+  const progress = rebuild.state === "rebuilding" ? `Rebuilding the index · ${Number(rebuild.done) || 0}/${Number(rebuild.total) || 0} passages` : "";
+  const download = rec(rec(probe ?? st.data).download);
+  const downloading = Number(download.total) > 0 ? `Downloading local model · ${Math.round(100 * Number(download.done) / Number(download.total))}%` : "";
   const checked = emb.checked !== false && (emb.ok === true || Boolean(emb.error));
   const word = !checked ? "Not checked yet" : emb.ok === true ? "Working" : "Not working";
   const line = !checked ? "Branch hasn’t checked meaning search yet." : emb.ok === true ? "Meaning search answered." : str(emb.error);
   return (
-    <Ctl title="Meaning search" sub={`${st.error ?? line} ${name} · ${LOCAL.has(provider) ? "on this computer" : "in the cloud"}`} after={<CallLine call={test} />}>
+    <Ctl title="Meaning search" sub={`${st.error ?? line} ${name}${downloading ? ` · ${downloading}` : ""}${progress ? ` · ${progress}` : ""}`} after={<CallLine call={test} />}>
       <span className="s2advanced-v">{word}</span>
       <Btn sm disabled={test.busy} onClick={() => void test.run(async () => setProbe(rec(await c.engine.request("doctor.memory.status", { ...params, probe: true }))))}>Test</Btn>
     </Ctl>
@@ -145,7 +153,7 @@ const MEMORY: SecSpec = { title: "Memory", lv: 1, rows: [
   { t: "All start files together", s: "All the files a Trunk reads first load up to this much together.", k: "agents.defaults.bootstrapTotalMaxChars", kind: "num", unit: "characters", def: 60000, min: 1 },
   sw("Match by meaning", "Finds “invoice” when the fact says “bill”.", "memory.search.store.vector.enabled", true),
   { t: "Meaning search", draw: (c) => <MeaningSearch c={c} /> },
-  { t: "Meaning search uses", s: "The service that turns facts into something searchable by meaning. Changing it rebuilds the index.", k: "memory.search.provider", kind: "pick", def: "openai", opts: PROVIDERS },
+  { t: "Meaning search uses", s: "On this computer by default. Text search stays available while the index rebuilds. API-billed services are used only when you choose one.", k: "memory.search.provider", kind: "pick", def: "local", opts: PROVIDERS },
   no("Share memory between Trunks", "Off: each Trunk keeps its own. Off until you choose: it changes where your data goes."),
   no("Ask before remembering", "Off: a Trunk writes what is worth keeping as it works, and the conversation shows “Remembered”. On: it asks “Remember this?” first."),
   { t: "Memory engine", lv: 2, draw: (c) => <MemoryEngine c={c} /> },

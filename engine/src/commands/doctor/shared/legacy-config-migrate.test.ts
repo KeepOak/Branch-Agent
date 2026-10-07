@@ -1809,9 +1809,9 @@ describe("legacy memory search config migrate", () => {
       expect.arrayContaining(["agents.defaults.memorySearch", "agents", "agents.list"]),
     );
     const res = migrateLegacyConfigForTest(raw);
-    expect(res.config?.memory?.search).toEqual({ provider: "openai", query: { maxResults: 5 } });
+    expect(res.config?.memory?.search).toEqual({ provider: "local", query: { maxResults: 5 } });
     expect(res.config?.agents?.entries?.local?.memory?.search).toEqual({
-      provider: "openai",
+      provider: "local",
       store: { vector: { enabled: true } },
     });
     expect(res.config?.agents?.entries?.custom?.memory?.search).toEqual({
@@ -1819,6 +1819,18 @@ describe("legacy memory search config migrate", () => {
       query: { maxResults: 10 },
     });
     expect(res.config?.agents?.entries?.retired?.memory?.search).toBeUndefined();
+  });
+  it("rewrites legacy automatic memory providers once without changing an explicit paid choice", () => {
+    const first = migrateLegacyConfigForTest({
+      memory: { search: { provider: "auto" } },
+      agents: { entries: { paid: { memory: { search: { provider: "openai" } } } } },
+    });
+    expect(first.config?.memory?.search?.provider).toBe("local");
+    expect(first.config?.agents?.entries?.paid?.memory?.search?.provider).toBe("openai");
+    expect(first.changes).toContain('Moved memory.search.provider from legacy "auto" to "local".');
+    const second = migrateLegacyConfigForTest(first.config);
+    expect(second.config).toBeNull();
+    expect(second.changes).toEqual([]);
   });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

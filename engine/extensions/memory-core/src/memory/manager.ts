@@ -339,21 +339,35 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     if (this.syncing) {
       return await this.syncing;
     }
-    await this.syncOutcomes.track(() =>
-      runMemorySearchMaintenance({
-        reason: params.reason,
-        takeDirtyGeneration: () => this.takeSearchMaintenanceRequest(),
-        restoreDirtyGeneration: (generation) => this.adoptReindexRetryState(generation),
-        acquireManager: () =>
-          MemoryIndexManager.get({
-            cfg: this.cfg,
-            agentId: this.agentId,
-            purpose: "maintenance",
-            acquireLocalService: this.acquireLocalService,
-            maintenanceSource: this,
-          }),
-      }),
-    );
+    if (params.reason === "provider-change") {
+      this.providerChangeProgress = { completed: 0, total: 0 };
+    }
+    try {
+      await this.syncOutcomes.track(() =>
+        runMemorySearchMaintenance({
+          reason: params.reason,
+          ...(params.reason === "provider-change"
+            ? {
+                progress: (update: { completed: number; total: number }) => {
+                  this.providerChangeProgress = update;
+                },
+              }
+            : {}),
+          takeDirtyGeneration: () => this.takeSearchMaintenanceRequest(),
+          restoreDirtyGeneration: (generation) => this.adoptReindexRetryState(generation),
+          acquireManager: () =>
+            MemoryIndexManager.get({
+              cfg: this.cfg,
+              agentId: this.agentId,
+              purpose: "maintenance",
+              acquireLocalService: this.acquireLocalService,
+              maintenanceSource: this,
+            }),
+        }),
+      );
+    } finally {
+      this.providerChangeProgress = undefined;
+    }
   }
 
   protected async syncAdmitted(
@@ -517,6 +531,22 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
   }
 
   private publishedStatus(): MemoryProviderStatus {
+    // Status managers own a separate read-only connection. Project runtime state
+    // from a live manager for the same agent/store when one exists; otherwise
+    // use this manager's own provider state (for example, after a CLI probe).
+    const matchesWriter = (manager: MemoryIndexManager) =>
+      manager !== this &&
+      manager.purpose !== "status" &&
+      manager.agentId === this.agentId &&
+      manager.settings.store.databasePath === this.settings.store.databasePath &&
+      !manager.closing &&
+      !manager.closed;
+    const active =
+      this.purpose === "status"
+        ? this.managerRegistry.findCachedDefault(matchesWriter) ??
+          this.managerRegistry.findTracked(matchesWriter) ??
+          this
+        : this;
     if (this.embeddingBootstrapFailure) {
       this.refreshKeywordFallbackIndexIdentity();
     } else {
@@ -537,8 +567,10 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     // Status projects the effective keyword-only search mode while degraded.
     // Sync generations still snapshot this.provider so recovery can rebuild vectors.
     const providerInfo = resolveStatusProviderInfo({
-      provider: this.embeddingBootstrapFailure ? null : this.provider,
-      providerInitialized: this.embeddingBootstrapFailure ? true : this.providerInitialized,
+      provider: active?.embeddingBootstrapFailure ? null : (active?.provider ?? null),
+      providerInitialized:
+        (this.purpose === "status" && active !== this) ||
+        active.embeddingBootstrapFailure !== undefined || active.providerInitialized,
       requestedProvider: this.settings.provider,
       resolveConfiguredModel: () =>
         this.resolveConfiguredIndexIdentity()?.provider.model || this.settings.model,
@@ -588,8 +620,8 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
         available: this.fts.available,
         error: this.fts.loadError,
       },
-      fallback: this.fallbackReason
-        ? { from: this.fallbackFrom ?? "local", reason: this.fallbackReason }
+      fallback: active?.fallbackReason
+        ? { from: active.fallbackFrom ?? "local", reason: active.fallbackReason }
         : undefined,
       vector: {
         enabled: this.vector.enabled,
@@ -619,12 +651,14 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
       },
       custom: {
         watcher: this.memoryWatcherHealth,
-        llamaCppRuntime: getLocalEmbeddingRuntimeFacts(this.provider),
+        llamaCppRuntime: getLocalEmbeddingRuntimeFacts(active?.provider ?? null),
         searchMode: providerInfo.searchMode,
-        providerState: this.providerLifecycle,
-        providerUnavailableReason: this.providerUnavailableReason,
+        providerState: active?.providerLifecycle ?? this.providerLifecycle,
+        providerUnavailableReason: active?.providerUnavailableReason,
         indexIdentity: this.indexIdentityState,
         automaticRebuildNotice: this.automaticRebuildNotice,
+        providerChangeProgress: active?.providerChangeProgress,
+        providerPreparationProgress: active?.providerPreparationProgress,
       },
     };
   }

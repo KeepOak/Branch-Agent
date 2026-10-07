@@ -312,7 +312,7 @@ describe("memory search config", () => {
     expect(resolved?.sources).toEqual(["memory"]);
   });
 
-  it("defaults provider to openai when unspecified", () => {
+  it("defaults provider to local without choosing a paid API", () => {
     const cfg = asConfig({
       memory: {
         search: {
@@ -321,17 +321,33 @@ describe("memory search config", () => {
       },
     });
     const resolved = resolveMemorySearchConfig(cfg, "main");
-    expect(resolved?.provider).toBe("openai");
-    expect(resolved?.model).toBe("text-embedding-3-small");
+    expect(resolved?.provider).toBe("local");
+    expect(resolved?.model).not.toBe("text-embedding-3-small");
     expect(resolved?.fallback).toBe("none");
     expect(resolved?.store.databasePath).toBe(resolveBranchAgentSqlitePath({ agentId: "main" }));
   });
 
-  it("normalizes legacy auto provider config to openai", () => {
+  it("migrates legacy auto provider config to local", () => {
     const resolved = resolveMemorySearchConfig(configWithDefaultProvider("auto"), "main");
 
-    expect(resolved?.provider).toBe("openai");
-    expect(resolved?.model).toBe("text-embedding-3-small");
+    expect(resolved?.provider).toBe("local");
+    expect(resolved?.model).not.toBe("text-embedding-3-small");
+  });
+
+  it("does not select a paid provider just because an API key is present", () => {
+    const previous = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "test-key-not-for-embeddings";
+    try {
+      const resolved = resolveMemorySearchConfig(asConfig({}), "main");
+      expect(resolved?.provider).toBe("local");
+      expect(resolved?.fallback).toBe("none");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previous;
+      }
+    }
   });
 
   it("resolves providers from the generic embedding provider registry", () => {

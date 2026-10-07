@@ -67,7 +67,10 @@ const DEFAULT_CACHE_ENABLED = true;
 // without limit. Must stay above a typical live chunk count: a cap below the working set
 // evicts rows the next sync needs and forces paid re-embedding.
 const DEFAULT_CACHE_MAX_ENTRIES = 50_000;
-const DEFAULT_MEMORY_EMBEDDING_PROVIDER = "openai";
+// Never infer consent to a metered embeddings API from an available API key.
+// The local adapter downloads its model on first use; if it is not installed or
+// cannot start, the optional-provider path keeps keyword search available.
+const DEFAULT_MEMORY_EMBEDDING_PROVIDER = "local";
 
 function getConfiguredMemoryEmbeddingProvider(providerId: string, cfg: BranchConfig) {
   // `none` is the built-in FTS-only sentinel, never a plugin capability.

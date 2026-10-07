@@ -213,7 +213,7 @@ export const MODEL_FIELD_HELP: Record<string, string> = {
   "memory.search.experimental.sessionMemory":
     "Indexes session transcripts into memory search. Keep this advanced override when root and per-agent recall inheritance differ.",
   "memory.search.provider":
-    'Selects the embedding backend used to build/query memory vectors. Defaults to "openai"; set "openai-compatible", "gemini", "voyage", "mistral", "bedrock", "deepinfra", "github-copilot", "lmstudio", "ollama", or "local" when you want a different backend.',
+    'Selects the embedding backend used to build/query memory vectors. Defaults to "local"; set "openai", "openai-compatible", "gemini", "voyage", "mistral", "bedrock", "deepinfra", "github-copilot", "lmstudio", or "ollama" to choose another backend explicitly.',
   "memory.search.model":
     "Embedding model override used by the selected memory provider when a non-default model is required. Set this only when you need explicit recall quality/cost tuning beyond provider defaults.",
   "memory.search.inputType":

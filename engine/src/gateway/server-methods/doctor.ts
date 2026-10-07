@@ -64,6 +64,8 @@ export type DoctorMemoryStatusPayload = {
   agentId: string;
   searchRuntimeRegistered?: boolean;
   provider?: string;
+  rebuild?: { state: "rebuilding" | "ready"; done: number; total: number };
+  download?: { done: number; total: number };
   health?: MemoryHealth;
   embedding: {
     ok: boolean;
@@ -448,6 +450,26 @@ export const createDoctorHandlers = (
       const payload: DoctorMemoryStatusPayload = {
         agentId,
         provider: status.provider,
+        rebuild: (() => {
+          const progress = asOptionalRecord(
+            asOptionalRecord(status.custom)?.providerChangeProgress,
+          );
+          return progress
+            ? {
+                state: "rebuilding",
+                done: Number(progress.completed) || 0,
+                total: Number(progress.total) || 0,
+              }
+            : { state: "ready", done: 0, total: 0 };
+        })(),
+        download: (() => {
+          const progress = asOptionalRecord(
+            asOptionalRecord(status.custom)?.providerPreparationProgress,
+          );
+          return progress
+            ? { done: Number(progress.downloadedSize) || 0, total: Number(progress.totalSize) || 0 }
+            : undefined;
+        })(),
         embedding,
         embeddingRuntime: (() => {
           const runtime = asOptionalRecord(asOptionalRecord(status.custom)?.llamaCppRuntime);

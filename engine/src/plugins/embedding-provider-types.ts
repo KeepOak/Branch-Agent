@@ -77,6 +77,12 @@ export type EmbeddingProviderCreateOptions = {
   };
   dimensions?: number;
   taskType?: string;
+  /** Receives managed local model/runtime download progress during preparation. */
+  onProgress?: (progress: {
+    downloadedSize: number;
+    totalSize: number;
+    bytesPerSecond: number;
+  }) => void;
 };
 
 /** Result returned by an embedding provider adapter create call. */

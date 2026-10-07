@@ -160,6 +160,119 @@ describe("memory index", () => {
     expect(second).toBe(first);
   });
 
+  it("projects downloading, rebuilding, and text-only fallback from a separate live manager", async () => {
+    const cfg = createCfg({ provider: "local" });
+    const live = await RuntimeMemoryIndexManager.get({ cfg, agentId: "main" });
+    const status = await RuntimeMemoryIndexManager.get({ cfg, agentId: "main", purpose: "status" });
+    if (!live || !status) {
+      throw new Error("Expected live and status memory managers");
+    }
+    trackManager(live);
+    trackManager(status);
+    expect(status).not.toBe(live);
+
+    let releaseProviderInit: () => void = () => {};
+    providerFixture.providerInitGate = new Promise<void>((resolve) => {
+      releaseProviderInit = resolve;
+    });
+    providerFixture.providerPreparationUpdate = { downloadedSize: 32, totalSize: 128 };
+    const probe = live.probeEmbeddingAvailability();
+    try {
+      await vi.waitFor(() => expect(providerFixture.providerCalls).toHaveLength(1));
+      expect(status.status()).toMatchObject({
+        provider: "none",
+        custom: {
+          searchMode: "fts-only",
+          providerPreparationProgress: { downloadedSize: 32, totalSize: 128 },
+        },
+      });
+    } finally {
+      releaseProviderInit();
+      providerFixture.providerInitGate = null;
+    }
+    await probe;
+    expect(status.status()).toMatchObject({ provider: "mock", custom: { searchMode: "hybrid" } });
+    expect(status.status().custom?.providerPreparationProgress).toBeUndefined();
+
+    // The rebuild callback writes this field on the live manager while maintenance runs.
+    (live as unknown as { providerChangeProgress: { completed: number; total: number } }).providerChangeProgress =
+      { completed: 3, total: 8 };
+    expect(status.status().custom?.providerChangeProgress).toEqual({ completed: 3, total: 8 });
+
+    providerFixture.forceNoProvider = true;
+    const fallbackCfg = createCfg({ provider: "local", model: "fallback-model" });
+    const fallback = await RuntimeMemoryIndexManager.get({ cfg: fallbackCfg, agentId: "main" });
+    const fallbackStatus = await RuntimeMemoryIndexManager.get({
+      cfg: fallbackCfg,
+      agentId: "main",
+      purpose: "status",
+    });
+    if (!fallback || !fallbackStatus) {
+      throw new Error("Expected fallback memory managers");
+    }
+    trackManager(fallback);
+    trackManager(fallbackStatus);
+    await fallback.probeEmbeddingAvailability();
+    expect(fallbackStatus.status()).toMatchObject({
+      provider: "none",
+      custom: { searchMode: "fts-only" },
+    });
+  });
+
+  it("reports a probed status manager's provider without a cached writer", async () => {
+    const cfg = createCfg({ provider: "local" });
+    const status = await RuntimeMemoryIndexManager.get({ cfg, agentId: "main", purpose: "status" });
+    if (!status) {
+      throw new Error("Expected a status memory manager");
+    }
+    trackManager(status);
+
+    expect(status.status()).toMatchObject({
+      provider: "local",
+      custom: { searchMode: "hybrid" },
+    });
+    await expect(status.probeEmbeddingAvailability()).resolves.toEqual({ ok: true });
+    expect(status.status()).toMatchObject({
+      provider: "mock",
+      custom: { searchMode: "hybrid" },
+    });
+  });
+
+  it("projects progress from a transient gateway memory manager", async () => {
+    const cfg = createCfg({ provider: "local" });
+    const transient = await RuntimeMemoryIndexManager.get({ cfg, agentId: "main", purpose: "cli" });
+    const status = await RuntimeMemoryIndexManager.get({ cfg, agentId: "main", purpose: "status" });
+    if (!transient || !status) {
+      throw new Error("Expected transient and status memory managers");
+    }
+    trackManager(transient);
+    trackManager(status);
+
+    let releaseProviderInit: () => void = () => {};
+    providerFixture.providerInitGate = new Promise<void>((resolve) => {
+      releaseProviderInit = resolve;
+    });
+    providerFixture.providerPreparationUpdate = { downloadedSize: 32, totalSize: 128 };
+    const probe = transient.probeEmbeddingAvailability();
+    try {
+      await vi.waitFor(() => expect(providerFixture.providerCalls).toHaveLength(1));
+      expect(status.status().custom?.providerPreparationProgress).toEqual({
+        downloadedSize: 32,
+        totalSize: 128,
+      });
+    } finally {
+      releaseProviderInit();
+      providerFixture.providerInitGate = null;
+    }
+    await probe;
+    expect(status.status()).toMatchObject({ provider: "mock", custom: { searchMode: "hybrid" } });
+    (transient as unknown as { providerChangeProgress: { completed: number; total: number } }).providerChangeProgress =
+      { completed: 3, total: 8 };
+    expect(status.status().custom?.providerChangeProgress).toEqual({ completed: 3, total: 8 });
+    await transient.close();
+    expect(status.status().custom?.providerChangeProgress).toBeUndefined();
+  });
+
   it("retires the prior builtin manager when an agent workspace changes", async () => {
     const firstCfg = createCfg({ model: "workspace-model" });
     const secondCfg = createCfg({ model: "workspace-model" });

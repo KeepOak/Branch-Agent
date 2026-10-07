@@ -70,9 +70,10 @@ with automatic user modeling.
 
 ## Getting started
 
-By default, the builtin engine uses OpenAI embeddings. If `OPENAI_API_KEY` or
-`models.providers.openai.apiKey` is already configured, vector search works
-with no extra memory config.
+By default, the builtin engine provisions a managed llama.cpp service for local
+GGUF embeddings and downloads its model on first use. While it prepares, memory
+search still uses keyword search; an API key alone never opts memory into a
+metered embedding service.
 
 To set a provider explicitly:
 
@@ -86,7 +87,8 @@ To set a provider explicitly:
 }
 ```
 
-Without an embedding provider, only keyword search is available.
+Choose a remote provider explicitly only if you want to use that service for
+embeddings. Without an embedding provider, keyword search remains available.
 
 To force local GGUF embeddings, install and configure the official
 [llama.cpp provider](/plugins/llama-cpp), then point `local.modelPath` at a
