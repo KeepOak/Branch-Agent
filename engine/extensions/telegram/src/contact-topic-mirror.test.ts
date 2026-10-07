@@ -1,8 +1,6 @@
-import path from "node:path";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { createPluginRuntimeMock } from "branch/plugin-sdk/channel-test-helpers";
 import type { PluginStateKeyedStore } from "branch/plugin-sdk/plugin-state-runtime";
-import { createBranchTestState, type BranchTestState } from "branch/plugin-sdk/test-state";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { telegramPlugin } from "./channel.js";
 import { peekContactTopicMirror, resetContactTopicMirrorsForTest } from "./contact-topic-mirror.js";
@@ -16,16 +14,13 @@ import { clearTelegramRuntimeForTest } from "./runtime.test-support.js";
 
 describe("Telegram contact topic mirror", () => {
   const fixture = useTelegramHttpFixture();
-  let state: BranchTestState;
   let cfg: BranchConfig;
   const stored = new Map<string, { sessionKey: string }>();
 
-  beforeEach(async () => {
-    state = await createBranchTestState({ layout: "state-only", prefix: "telegram-contact-topic-" });
+  beforeEach(() => {
     cfg = {
       ...fixture.cfg,
       agents: { ownership: "explicit", defaultId: "elm", entries: { elm: {} } },
-      session: { store: path.join(state.stateDir, "{agentId}", "sessions.json") },
     };
     resetContactTopicMirrorsForTest();
     stored.clear();
@@ -39,10 +34,9 @@ describe("Telegram contact topic mirror", () => {
     }));
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     resetContactTopicMirrorsForTest();
     clearTelegramRuntimeForTest();
-    await state.cleanup();
   });
 
   async function createMirror(topicsEnabled: boolean) {

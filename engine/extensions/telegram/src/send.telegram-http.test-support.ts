@@ -217,6 +217,8 @@ export function useTelegramHttpFixture() {
       for (const socket of sockets) {
         socket.destroy();
       }
+      sockets.clear();
+      server.closeAllConnections();
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
       });
