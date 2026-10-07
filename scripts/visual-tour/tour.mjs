@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { readScreens } from './manifest.mjs';
 import { checkedStep } from './dead-click.mjs';
+import { gatewayPort } from './gateway-port.mjs';
 
 const require = createRequire(new URL('../../engine/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
@@ -10,7 +11,7 @@ const screens = await readScreens(new URL('./screens.json', import.meta.url));
 const out = resolve(process.env.VISUAL_OUT ?? 'visual-tour-output');
 const fixture = JSON.parse(await readFile(resolve(out, 'fixture.json'), 'utf8'));
 const token = (await readFile(process.env.VISUAL_TOKEN_FILE, 'utf8')).trim();
-const gateway = `ws://127.0.0.1:${process.env.VISUAL_GATEWAY_PORT}`;
+const gateway = `ws://127.0.0.1:${gatewayPort()}`;
 const windowUrl = `http://127.0.0.1:${process.env.VISUAL_WINDOW_PORT}`;
 const previewUrl = process.env.VISUAL_PREVIEW_PORT ? `http://127.0.0.1:${process.env.VISUAL_PREVIEW_PORT}` : null;
 const failures = [], consoleErrors = [], shots = [];
