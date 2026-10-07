@@ -1,0 +1,90 @@
+/* Board cards (§4.6.3.5, preview board15/card15): individual cards in the six columns. */
+
+.au-col-empty {
+  padding: 12px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.au-card {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: var(--raise);
+  border: 1px solid var(--hair17, var(--line));
+  cursor: pointer;
+  position: relative;
+}
+
+.au-card:hover {
+  border-color: var(--line-2);
+  background: var(--wash17);
+}
+
+.au-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.au-card b {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+  padding-right: 20px;
+}
+
+.au-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.au-card-foot small {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.au-card-more {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.au-card:hover .au-card-more,
+.au-card-more:focus-visible {
+  opacity: 1;
+}
+
+.au-card-more:hover {
+  background: var(--fill);
+  color: var(--ink);
+}
+
+.au-card-more:disabled {
+  cursor: default;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .au-card-more {
+    transition: none;
+  }
+}
