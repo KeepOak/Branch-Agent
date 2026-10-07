@@ -103,6 +103,15 @@ function Suggested({ ctx, p, reload }: { ctx: ToolsCtx; p: Proposal; reload: () 
 
 function SkillDetail({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
   const op = useOperation(ctx.engine);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const library = useResource<unknown>(ctx.engine, "skills.library.list", {});
+  const entry = list(rec(library.data).entries).find(e => str(e.slug) === skill.key || str(e.name) === skill.name);
+  const canRemove = skill.source === "Installed" && !!entry;
+  const removeReason = skill.source === "Built in" ? "Built-in skills can't be removed; turn it off instead." : skill.source === "In this Trunk's folder" ? "Workspace skills can't be removed; delete the file." : canRemove ? undefined : "Only skills from the skill library can be removed.";
+  const handleRemove = () => {
+    if (!entry) return;
+    void op.run("skills.library.mutate", { skillId: str(entry.skillId), expectedRevision: str(entry.revision), action: "remove" }, () => { setConfirmRemove(false); ctx.skills.reload(); });
+  };
   return <div className="t9-detail" data-testid="skill-detail">
     <div className="t9-dh"><span className="cz-tile big"><Glyph name="bolt" /></span><span className="grow"><b>{skill.name}</b><small>{skill.source}{skill.description ? " · " + skill.description : ""}</small></span>
       <Switch label={`${skill.name} on or off`} on={!skill.disabled} onChange={on => void op.run("skills.update", { skillKey: skill.key, enabled: on }, ctx.skills.reload)} /></div>
@@ -114,7 +123,10 @@ function SkillDetail({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
       {shows(ctx.level, "technical") && skill.filePath && <><dt>File</dt><dd><code>{skill.filePath}</code></dd></>}</dl></Sec>
     {shows(ctx.level, "advanced") && <KeptVersions ctx={ctx} skill={skill} />}
     <div className="cz-acts">{skill.registry ? <button type="button" className="btn sm" disabled={op.busy} onClick={() => void op.run("skills.update", { ...scopeOf(ctx), source: "clawhub", slug: skill.key }, ctx.skills.reload)}>Check for updates</button> : <Grey reason="Only skills from the skill library can be checked for updates.">Check for updates</Grey>}
-      <span className="cz-grow" /><Grey className="btn ghost sm" reason="Needs the engine's skill remove method.">Remove</Grey></div>
+      <span className="cz-grow" />{canRemove ? <button type="button" className="btn ghost sm" disabled={op.busy} onClick={() => setConfirmRemove(true)}>Remove</button> : <Grey className="btn ghost sm" reason={removeReason}>Remove</Grey>}</div>
+    {confirmRemove && <Dialog title={`Remove ${skill.name}?`} onClose={() => setConfirmRemove(false)} footer={<><button type="button" className="btn ghost" onClick={() => setConfirmRemove(false)}>Cancel</button><button type="button" className="btn bad" disabled={op.busy} onClick={handleRemove}>Remove</button></>}>
+      <p style={{ margin: 0 }}>This removes {skill.name} from your library. You can install it again later.</p>
+    </Dialog>}
   </div>;
 }
 

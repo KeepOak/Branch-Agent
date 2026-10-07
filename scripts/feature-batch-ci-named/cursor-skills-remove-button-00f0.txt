@@ -1,0 +1,1 @@
+window:src/places/customize/skills-remove.test.tsx
