@@ -1145,3 +1145,32 @@ describe("command queue", () => {
     }
   });
 });
+
+describe("session handoff enqueue hook", () => {
+  beforeEach(() => {
+    resetCommandQueueStateForTest();
+  });
+
+  it("sees every session-lane enqueue before it runs, and can refuse one", async () => {
+    const queue = await import("./command-queue.js");
+    const seen: string[] = [];
+    const unregister = queue.registerSessionLaneHandoffEnqueue((lane) => {
+      seen.push(lane);
+      if (lane.endsWith(":refused")) throw new Error("refused by the step-down");
+    });
+    try {
+      await expect(queue.enqueueCommandInLane("session:agent:main:kept", async () => "ok")).resolves.toBe("ok");
+      await expect(
+        queue.enqueueCommandInLane("session:agent:main:refused", async () => "ran"),
+      ).rejects.toThrow("refused by the step-down");
+      await expect(queue.enqueueCommandInLane(CommandLane.Main, async () => "main")).resolves.toBe("main");
+      expect(seen).toEqual(["session:agent:main:kept", "session:agent:main:refused"]);
+      // One step-down at a time.
+      expect(() => queue.registerSessionLaneHandoffEnqueue(() => {})).toThrow(/already installed/);
+    } finally {
+      unregister();
+    }
+    const again = queue.registerSessionLaneHandoffEnqueue(() => {});
+    again();
+  });
+});

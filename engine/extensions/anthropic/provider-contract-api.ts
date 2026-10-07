@@ -4,6 +4,20 @@ const noopAuth = async () => ({ profiles: [] });
 
 export function createAnthropicAuthMethods() {
   return {
+    browser: {
+      id: "browser",
+      kind: "oauth" as const,
+      label: "Sign in with Claude",
+      hint: "Sign in to your Claude subscription in the browser",
+      run: noopAuth,
+      wizard: {
+        choiceId: "claude-browser",
+        choiceLabel: "Sign in with Claude",
+        choiceHint: "Sign in to your Claude subscription in the browser",
+        groupId: "anthropic",
+        groupLabel: "Claude",
+      },
+    },
     cli: {
       id: "cli",
       kind: "custom" as const,

@@ -43,6 +43,7 @@ import {
   beginCronReceiptAuthorityClose,
   drainCronReceiptAuthority,
   observeCronReceiptAuthority,
+  releaseCronReceiptAuthorityForHandoff,
   startCronReceiptAuthorityHost,
 } from "./receipt-authority-owner.js";
 import { finishCronRunReceiptAsync } from "./run-receipt-store.js";
@@ -54,6 +55,30 @@ import { prepareCronStoreChanges } from "./save.kernel.js";
 
 afterEach(() => vi.restoreAllMocks());
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+
+it("relinquishes cron custody for handoff while the predecessor database remains open", async () => {
+  await withBranchTestState({ label: "cron-authority-handoff" }, async (fixture) => {
+    const database = openBranchStateDatabase();
+    const storePath = fixture.statePath("cron", "jobs.json");
+    const store = { version: 1 as const, jobs: [makeCronReceiptJob("handoff")] };
+    await saveCronStore(storePath, store);
+    const lockPath = `${captureBranchStateWorkerContext().admission.identity.canonicalPath}.cron-authority`;
+    try {
+      await releaseCronReceiptAuthorityForHandoff();
+      expect(database.db.isOpen).toBe(true);
+      const successor = await acquireFileLock(lockPath, {
+        retries: { retries: 0, factor: 1, minTimeout: 1, maxTimeout: 1 },
+        stale: 0,
+        staleRecovery: "remove-if-definitely-stale",
+      });
+      await successor.release();
+      startCronReceiptAuthorityHost();
+      await saveCronStore(storePath, store);
+    } finally {
+      startCronReceiptAuthorityHost();
+    }
+  });
+});
 
 it("reports rejected native settlement without releasing database or authority custody", async ({
   signal,

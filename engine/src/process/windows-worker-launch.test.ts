@@ -28,8 +28,9 @@ describe("hidden Windows runtime workers", () => {
     );
     expect(source("./spawn-broker/worker.ts")).toMatch(/spawnWithInheritedOomScore\([^\n]*hiddenWindowsOptions\(/);
     expect(source("./spawn-broker/execa-worker.ts")).toMatch(/const spawnOptions = hiddenWindowsOptions\(/);
-    expect(source("../../extensions/codex/src/app-server/transport-stdio.ts")).toContain(
-      'windowsHide: invocation.windowsHide ?? (process.platform === "win32")',
-    );
+    const codexTransport = source("../../extensions/codex/src/app-server/transport-stdio.ts");
+    expect(codexTransport).toContain("const launch = withHiddenWindowsConsole(invocation)");
+    expect(codexTransport).toContain("spawn(launch.command, launch.argv, {");
+    expect(codexTransport).toContain('windowsHide: launch.windowsHide ?? (process.platform === "win32")');
   });
 });

@@ -19,7 +19,7 @@ async function mountResizer() {
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root?.render(
-    <SideResizer layout={{ sideW: 292, rail: false, focus: false }}
+    <SideResizer layout={{ sideW: 292, rail: false, hidden: false, focus: false }}
       onLayout={(patch) => committed.push(patch)} onLive={(width) => live.push(width)} />,
   ));
   const separator = host.querySelector<HTMLElement>("[role=separator]")!;
@@ -77,10 +77,10 @@ describe("sidebar resize cancellation", () => {
   });
 
   it.each([
-    { width: 30, patch: { rail: true } },
+    { width: 30, patch: { hidden: true } },
     { width: 80, patch: { rail: true } },
     { width: 2000, patch: { sideW: 640, rail: false } },
-  ])("retains the rail and width bounds at $width", async ({ width, patch }) => {
+  ])("applies hidden, rail and width bounds at $width", async ({ width, patch }) => {
     const { separator, committed } = await mountResizer();
     await pointer(separator, "pointerdown", 292);
     await pointer(separator, "pointerup", width);

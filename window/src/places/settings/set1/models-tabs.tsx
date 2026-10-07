@@ -5,7 +5,7 @@ import { Btn, Ctl, Plist, Prow, Sec, Status, Switch } from "../kit";
 import { refOf, type ModelsCtx } from "./models-data";
 
 const NONE = "Branch has no setting for this yet.";
-const words = (n: number) => (n >= 1000 ? `${Math.round((n * 0.75) / 1000)}K words of context` : `${n} tokens of context`);
+const contextSize = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}K-token context` : `${n}-token context`);
 
 export function LocalTab({ m, openSettings }: { m: ModelsCtx; openSettings?: (page: string) => void }) {
   const local = m.models.filter((x) => x.local);
@@ -16,7 +16,7 @@ export function LocalTab({ m, openSettings }: { m: ModelsCtx; openSettings?: (pa
   return (
     <>
       {ready
-        ? <Status title={`${ready.name} is ready on this computer`}>Loaded when first asked{ctx ? ` · ${words(ctx)}` : ""} · nothing leaves this computer.</Status>
+        ? <Status title={`${ready.name} is ready on this computer`}>Loaded when first asked{ctx ? ` · ${contextSize(ctx)}` : ""} · nothing leaves this computer.</Status>
         : <Status tone="idle" title="No model on this computer yet">A model here is free and private. Branch checks what fits before it offers one.</Status>}
       {local.length ? (
         <Sec title="">
@@ -36,7 +36,7 @@ export function LocalTab({ m, openSettings }: { m: ModelsCtx; openSettings?: (pa
 
 export function LocalMore({ openSettings }: { openSettings?: (page: string) => void }) {
   return (
-    <Sec title="Will it fit on this computer?" hint="Each model is checked against this computer’s graphics memory, memory and free space.">
+    <Sec title="Will it fit on this computer?" hint="Checks models against memory, graphics memory and disk space." help="Each model is checked against this computer’s graphics memory, memory and free space.">
       <Ctl title="Models that fit here" sub="The full list, with a fit for each, is in Settings › On this computer.">{openSettings ? <Btn sm onClick={() => openSettings("local")}>See what fits</Btn> : null}</Ctl>
     </Sec>
   );
@@ -45,13 +45,13 @@ export function LocalMore({ openSettings }: { openSettings?: (page: string) => v
 export function SecondTab() {
   return (
     <Sec title="">
-      <Ctl title="Ask a second model on hard questions" sub="Shows both answers side by side when they disagree. Off until you choose: it doubles the cost." off={NONE}><Switch checked={false} label="Ask a second model on hard questions" onChange={() => undefined} /></Ctl>
+      <Ctl title="Ask a second model on hard questions" sub="Shows both answers side by side when they disagree." help="Shows both answers side by side when they disagree. Off until you choose: it doubles the cost." off={NONE}><Switch checked={false} label="Ask a second model on hard questions" onChange={() => undefined} /></Ctl>
     </Sec>
   );
 }
 export function SecondMore() {
   return (
-    <Sec title="Second opinion, more">
+    <Sec title="Second opinion, more" group="Second opinion">
       <Ctl title="Stress-test the answer" sub="A second model argues against the first answer before you see it." off={NONE}><Btn sm>Show an example</Btn></Ctl>
     </Sec>
   );
@@ -74,7 +74,7 @@ export function MediaTab({ m }: { m: ModelsCtx }) {
 }
 export function MediaMore() {
   return (
-    <Sec title="Media, technical">
+    <Sec title="Media, technical" group="Media">
       <Ctl title="Programs for sound and video" sub="Where Branch finds ffmpeg and yt-dlp. Found by itself." off={NONE}><Btn sm>Check</Btn></Ctl>
     </Sec>
   );
