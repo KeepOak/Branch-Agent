@@ -9,6 +9,8 @@ describe("Mac driver broker client", () => {
     const secret = "a".repeat(64);
     let authenticated = false;
     const server = createServer(socket => {
+      // Windows may report a reset when the helper exits after the reply.
+      socket.on("error", () => undefined);
       let pending = Buffer.alloc(0);
       socket.on("data", chunk => {
         pending = Buffer.concat([pending, chunk]);
@@ -30,6 +32,7 @@ describe("Mac driver broker client", () => {
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
+    child.stdin!.on("error", () => undefined);
     try {
       const output = once(child.stdout!, "data");
       child.stdin!.write("ping");
