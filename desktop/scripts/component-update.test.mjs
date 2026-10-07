@@ -220,6 +220,7 @@ test("actual desktop caller retains running engine and checks a failing engine b
   const ipcMain = Object.assign(new EventEmitter(), { handle() {} });
   let servedAt, ownerWindow, reloads = 0; const launchedAt = Date.now();
   class BrowserWindow extends EventEmitter {
+    static fromWebContents(sender) { return ownerWindow?.webContents === sender ? ownerWindow : null; }
     constructor() { super(); ownerWindow = this; this.url = ""; this.webContents = new EventEmitter(); Object.assign(this.webContents, {
       getURL: () => this.url, setWindowOpenHandler: () => {}, send: () => {}, reload: () => { reloads++; this.webContents.emit("did-finish-load"); } }); }
     async loadURL(url) { if (url.startsWith("http://")) servedAt = Date.now(); this.url = url; this.webContents.emit("did-finish-load"); }
@@ -370,7 +371,8 @@ function coldCallerElectron(state) {
   const app = new EventEmitter(); Object.assign(app, { getVersion: () => "fixture", setPath: () => {}, setAppUserModelId: () => {},
     requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(), quit: () => app.emit("will-quit") });
   class BrowserWindow extends EventEmitter {
-    constructor() { super(); this.url = ""; this.webContents = new EventEmitter(); Object.assign(this.webContents, {
+    static fromWebContents(sender) { return state.window?.webContents === sender ? state.window : null; }
+    constructor() { super(); state.window = this; this.url = ""; this.webContents = new EventEmitter(); Object.assign(this.webContents, {
       getURL: () => this.url, setWindowOpenHandler: () => {}, send: () => {}, reload: () => { state.draft = ""; state.reloads++; } }); }
     async loadURL(url) {
       this.url = url;

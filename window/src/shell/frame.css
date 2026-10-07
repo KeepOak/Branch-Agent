@@ -120,6 +120,13 @@
 .frame.focus .topbar {
   grid-template-columns: minmax(0, 1fr);
 }
+.frame.dedicated .side,
+.frame.dedicated .topbar-left {
+  display: none;
+}
+.frame.dedicated .topbar {
+  grid-template-columns: minmax(0, 1fr);
+}
 .topbar-left {
   display: flex;
   align-items: center;

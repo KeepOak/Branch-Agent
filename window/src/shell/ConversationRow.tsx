@@ -28,6 +28,7 @@ type Props = {
   current: boolean;
   time: string;
   showPreview: boolean;
+  popped?: boolean;
   state: RowState;
   trunkName: string;
   dimmed?: boolean;
@@ -96,6 +97,7 @@ function RightColumn({ row, p, mark }: { row: Conversation; p: Props; mark: (typ
   const why = mark ? (mark.bad ? `${mark.word}: ${row.runError || "it stopped"}` : `${mark.word}: waiting for a free slot`) : "";
   return (
     <span className="rc">
+      {p.popped ? <span title="In its own window" aria-label="In its own window"><Icon name="panel" size={15} /></span> : null}
       <time className="row-time">{p.wakes ? `Wakes ${p.wakes}` : p.time}</time>
       {p.extras && p.extras.waitingToSend > 0 ? (
         <span className="cnts" title={`${p.extras.waitingToSend} messages waiting to send`} aria-label={`${p.extras.waitingToSend} messages waiting to send`}>{p.extras.waitingToSend}</span>

@@ -15,13 +15,14 @@ import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
-import { registerTitleBarIpc, titleBarOptions } from "./title-bar";
+import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate } from "./auto-apply-update";
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
 import { freemem } from "node:os";
+import { createHash } from "node:crypto";
 import type { Tray } from "electron";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
@@ -72,6 +73,28 @@ if (readSettings(join(cfg.dataDir, "desktop-settings.json")).agentControl) {
 let gateway: ChildProcess | undefined;
 let server: Server | undefined;
 let win: BrowserWindow | undefined;
+const conversationWindows = new Map<string, BrowserWindow>();
+const branchWindows = (): BrowserWindow[] => [win, ...conversationWindows.values()].filter((w): w is BrowserWindow => Boolean(w && !w.isDestroyed()));
+const sendToBranchWindows = (channel: string, ...args: unknown[]): void => {
+  for (const w of branchWindows()) w.webContents.send(channel, ...args);
+};
+const ownedWebContents = (sender: unknown) => {
+  const owner = BrowserWindow.fromWebContents(sender as Electron.WebContents);
+  return owner && branchWindows().includes(owner) ? owner.webContents : undefined;
+};
+let quitting = false;
+const conversationWindowFile = join(cfg.dataDir, "conversation-windows.json");
+const conversationStateFile = (key: string): string => `conversation-window-${createHash("sha256").update(key).digest("hex").slice(0, 20)}.json`;
+function saveConversationWindows(): void {
+  try { writeFileSync(conversationWindowFile, JSON.stringify([...conversationWindows.keys()])); } catch { /* a window remains usable without persistence */ }
+  if (win && !win.isDestroyed()) win.webContents.send("branch-desktop:conversation-windows", [...conversationWindows.keys()]);
+}
+function savedConversationKeys(): string[] {
+  try {
+    const value: unknown = JSON.parse(readFileSync(conversationWindowFile, "utf8"));
+    return Array.isArray(value) ? value.filter((key): key is string => typeof key === "string" && Boolean(key.trim())) : [];
+  } catch { return []; }
+}
 let token = "";
 let engineUpdateReady = false;
 let stopEngineWatch: (() => void) | undefined;
@@ -88,7 +111,7 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
   onExhausted: error => {
     gatewayRecoveryError = `Branch couldn't restart the engine after repeated attempts. Restart Branch Agent to try again. ${error.message}`;
     log(`gateway recovery stopped: ${error.message}`);
-    win?.webContents.send("branch-desktop:gateway-recovery-failed", gatewayRecoveryError);
+    sendToBranchWindows("branch-desktop:gateway-recovery-failed", gatewayRecoveryError);
     if (!HIDDEN && win?.isVisible()) dialog.showErrorBox("Branch couldn't restart the engine", error.message);
   },
   restart: async () => {
@@ -112,13 +135,12 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
 const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
 let tray: Tray | undefined;
 const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, ICON), onChange: settings => {
-  if (engineUpdateReady) win?.webContents.send("branch-desktop:engine-update", settings.autoApplyUpdates ? "auto-wait" : "ready");
+  if (engineUpdateReady) sendToBranchWindows("branch-desktop:engine-update", settings.autoApplyUpdates ? "auto-wait" : "ready");
   void autoApply.tick();
 } });
 let nextProbeId = 0;
 
-async function probeWindowState(): Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }> {
-  const owner = win?.webContents;
+async function probeOneWindow(owner: Electron.WebContents): Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }> {
   if (!owner || owner.isDestroyed()) throw new Error("The window is not ready to report approvals and drafts");
   const id = ++nextProbeId;
   return new Promise((resolve, reject) => {
@@ -136,6 +158,12 @@ async function probeWindowState(): Promise<{ pendingApprovals: number; streaming
     ipcMain.on("branch-desktop:auto-apply:result", receive);
     owner.send("branch-desktop:auto-apply:probe", id);
   });
+}
+async function probeWindowState(): Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }> {
+  const states = await Promise.all(branchWindows().map(w => probeOneWindow(w.webContents)));
+  if (!states.length) throw new Error("The window is not ready to report approvals and drafts");
+  return { pendingApprovals: Math.max(...states.map(s => s.pendingApprovals)), streaming: states.some(s => s.streaming),
+    unsavedDraftFiles: states.some(s => s.unsavedDraftFiles) };
 }
 
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -157,7 +185,7 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
   try {
     if (!await candidatePassed(label)) return;
     const started = Date.now();
-    win.webContents.send("branch-desktop:engine-update", "updating");
+    sendToBranchWindows("branch-desktop:engine-update", "updating");
     const priorGateway = gateway;
     const resumeSupervision = gatewaySupervisor.expectExit(priorGateway);
     try {
@@ -173,15 +201,15 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     const rolledBack = await bootSelectedEngine();
     log(`update ${label}: engine ${rolledBack ? "rolled back" : "swapped"} in place; stop ${stopped - started} ms, start ${Date.now() - stopped} ms, app and window kept open`);
     engineUpdateReady = false;
-    if (rolledBack) win.webContents.send("branch-desktop:engine-update", "kept");
+    if (rolledBack) sendToBranchWindows("branch-desktop:engine-update", "kept");
     else if (windowBuild(cfg.windowDir) !== windowBefore) void hotSwapWindow();
     else {
-      win.webContents.send("branch-desktop:engine-handoff", `ws://127.0.0.1:${cfg.gatewayPort}`);
-      win.webContents.send("branch-desktop:engine-update", "updated");
+      sendToBranchWindows("branch-desktop:engine-handoff", `ws://127.0.0.1:${cfg.gatewayPort}`);
+      sendToBranchWindows("branch-desktop:engine-update", "updated");
     }
   } catch (error) {
     // Still serving (the engine became busy before it stopped): offer the update again.
-    if (engineRunning()) win.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
+    if (engineRunning()) sendToBranchWindows("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
     throw error;
   } finally { engineRestartInProgress = false; }
 }
@@ -197,7 +225,7 @@ async function candidatePassed(label: string): Promise<boolean> {
   // The machine-load rule: a second engine only when there is room for it; otherwise the plain swap with its rollback.
   if (freemem() < CANDIDATE_MIN_FREE_BYTES) { log(`update ${label}: candidate check skipped; ${Math.round(freemem() / 2 ** 20)} MB free`); return true; }
   const candidate = resolveEngineDir(cfg);
-  win?.webContents.send("branch-desktop:engine-update", "preparing");
+  sendToBranchWindows("branch-desktop:engine-update", "preparing");
   const started = Date.now();
   const result = await checkCandidateBeside(cfg, candidate, token, READY_TIMEOUT_MS);
   log(`update ${label}: candidate check beside the running engine ${result} after ${Date.now() - started} ms`);
@@ -208,7 +236,7 @@ async function candidatePassed(label: string): Promise<boolean> {
   engineUpdateReady = false;
   watchEngine();
   log(`update ${label}: kept the running engine; nothing was stopped`);
-  win?.webContents.send("branch-desktop:engine-update", "kept");
+  sendToBranchWindows("branch-desktop:engine-update", "kept");
   return false;
 }
 
@@ -236,7 +264,7 @@ async function offerStagedUpdate(): Promise<void> {
   if (!componentsPendingVersion) return;
   if (previousWindowDir && !engineRestartInProgress) servedWindowDir = previousWindowDir;
   engineUpdateReady = true;
-  win?.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
+  sendToBranchWindows("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
   void autoApply.tick();
 }
 
@@ -250,21 +278,24 @@ async function stageComponentUpdate(): Promise<boolean> {
 
 /** Swaps in a new window build: route and drafts are already kept by the window; the preload keeps scroll. */
 async function hotSwapWindow(): Promise<void> {
-  const w = win;
-  if (!w || w.isDestroyed() || !w.webContents.getURL().startsWith(windowUrl())) return;
+  const windows = branchWindows().filter(w => w.webContents.getURL().startsWith(windowUrl()));
+  if (!windows.length) return;
   // Attached files live only in memory; the swap waits until they are sent or removed.
-  while (!w.isDestroyed() && (await probeWindowState().catch(() => undefined))?.unsavedDraftFiles) await pause(5_000);
-  if (w.isDestroyed()) return;
-  const id = ++nextProbeId;
-  await new Promise<void>(resolve => {
-    const done = () => { clearTimeout(timer); ipcMain.off("branch-desktop:swap-ready", receive); resolve(); };
-    const receive = (_event: Electron.IpcMainEvent, replyId: unknown) => { if (replyId === id) done(); };
-    const timer = setTimeout(done, 2_000);
-    ipcMain.on("branch-desktop:swap-ready", receive);
-    w.webContents.send("branch-desktop:prepare-swap", id);
-  });
+  while (branchWindows().length && (await probeWindowState().catch(() => undefined))?.unsavedDraftFiles) await pause(5_000);
+  await Promise.all(windows.filter(w => !w.isDestroyed()).map(async w => {
+    const id = ++nextProbeId;
+    await new Promise<void>(resolve => {
+      const done = () => { clearTimeout(timer); ipcMain.off("branch-desktop:swap-ready", receive); resolve(); };
+      const receive = (event: Electron.IpcMainEvent, replyId: unknown) => {
+        if (replyId === id && event.sender === w.webContents) done();
+      };
+      const timer = setTimeout(done, 2_000);
+      ipcMain.on("branch-desktop:swap-ready", receive);
+      w.webContents.send("branch-desktop:prepare-swap", id);
+    });
+    if (!w.isDestroyed()) w.webContents.reload();
+  }));
   log("window updated in place");
-  w.webContents.reload();
 }
 
 const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(
@@ -298,6 +329,13 @@ function createWindow(): BrowserWindow {
   if (!HIDDEN && !QUIET && !TEST_COPY) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
   trackWindowState(w, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds);
   lockDown(w);
+  w.on("closed", () => {
+    if (win === w) win = undefined;
+    if (!quitting && !controls.settings().keepWorking) {
+      for (const child of conversationWindows.values()) if (!child.isDestroyed()) child.close();
+      app.quit();
+    }
+  });
   tray = keepWindowResident(app, w, TRAY_ICON, {
     hidden: HIDDEN,
     keepRunning: () => controls.settings().keepWorking,
@@ -305,6 +343,47 @@ function createWindow(): BrowserWindow {
     onTrayClick: () => { if (controls.settings().trayUsage) w.webContents.send("branch-desktop:open-usage"); },
   });
   return w;
+}
+
+/** A conversation gets its own frame and URL, while sharing the running engine with the main window. */
+function openConversationWindow(key: string): void {
+  const existing = conversationWindows.get(key);
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    if (!HIDDEN) { existing.show(); existing.focus(); }
+    return;
+  }
+  const url = new URL(windowUrl());
+  url.searchParams.set("conversation", key);
+  const saved = readWindowState(cfg.dataDir, conversationStateFile(key));
+  const place = saved ? placeWindow(saved, screen.getAllDisplays()) : undefined;
+  const mainWidth = win && !win.isDestroyed() ? win.getBounds().width : 1280;
+  const child = new BrowserWindow({
+    title: TEST_COPY ? "Test — Branch Agent" : "Branch Agent",
+    width: Math.max(560, mainWidth - 292),
+    height: win && !win.isDestroyed() ? win.getBounds().height : 760,
+    ...(place?.bounds ?? {}),
+    show: false,
+    icon: ICON,
+    ...titleBarOptions(),
+    webPreferences: {
+      preload: join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true,
+      backgroundThrottling: !HIDDEN,
+    },
+  });
+  conversationWindows.set(key, child);
+  saveConversationWindows();
+  child.on("closed", () => { if (conversationWindows.get(key) === child) { conversationWindows.delete(key); if (!quitting) saveConversationWindows(); } });
+  child.webContents.on("did-finish-load", () => offerWindowStatus(child));
+  if (place?.maximized) child.once("show", () => child.maximize());
+  trackWindowState(child, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds, conversationStateFile(key));
+  child.setMenuBarVisibility(false);
+  lockDown(child);
+  if (!HIDDEN) child.once("ready-to-show", () => child.show());
+  void child.loadURL(url.toString()).catch((error: unknown) => {
+    log(`conversation window failed to load: ${String(error)}`);
+    child.destroy();
+  });
 }
 
 /** The window may only show the served window's origin; links open in the default browser. */
@@ -338,14 +417,67 @@ async function start(): Promise<void> {
   token = readToken(cfg);
   // Registered before any page loads: the preload asks for it synchronously.
   ipcMain.on("branch-desktop:info", (e) => {
-    const served = e.sender.getURL().startsWith(windowUrl());
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const served = Boolean(owner && branchWindows().includes(owner) && e.senderFrame === e.sender.mainFrame && e.sender.getURL().startsWith(windowUrl()));
     e.returnValue = served ? { gatewayUrl: `ws://127.0.0.1:${cfg.gatewayPort}`, gatewayToken: token } : null;
   });
-  ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, win?.webContents, windowUrl())) void restartEngine(); });
-  registerComponentUpdateIpc(ipcMain, () => win?.webContents, windowUrl(), componentUpdates);
-  registerDesktopControlsIpc(ipcMain, () => win?.webContents, windowUrl(), controls);
+  ipcMain.handle("branch-desktop:open-conversation", (e, key: unknown) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner || (owner !== win && ![...conversationWindows.values()].includes(owner)) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
+      throw new Error("Only a Branch window can open a conversation window");
+    }
+    if (typeof key !== "string" || !key.trim()) throw new Error("A conversation key is required");
+    openConversationWindow(key);
+  });
+  ipcMain.handle("branch-desktop:conversation-windows", (e) => {
+    if (!isOwnedComponentWindow(e, win?.webContents, windowUrl())) throw new Error("Only the main Branch window can list conversation windows");
+    return [...conversationWindows.keys()];
+  });
+  ipcMain.handle("branch-desktop:open-main-route", (e, route: unknown) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner || ![...conversationWindows.values()].includes(owner) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
+      throw new Error("Only a conversation window can open the main window");
+    }
+    if (!route || typeof route !== "object" || !["chat", "place", "settings"].includes(String((route as { kind?: unknown }).kind))) {
+      throw new Error("Invalid destination");
+    }
+    if (!win || win.isDestroyed()) throw new Error("The main window is not available");
+    if (win.isMinimized()) win.restore();
+    win.show(); win.focus();
+    win.webContents.send("branch-desktop:open-main-route", route);
+  });
+  ipcMain.handle("branch-desktop:close-conversation-window", (e) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner || ![...conversationWindows.values()].includes(owner) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
+      throw new Error("Only a conversation window can close itself");
+    }
+    owner.close();
+  });
+  ipcMain.handle("branch-desktop:retarget-conversation-window", (e, key: unknown) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner || ![...conversationWindows.values()].includes(owner) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
+      throw new Error("Only a conversation window can change its conversation");
+    }
+    if (typeof key !== "string" || !key.trim()) throw new Error("A conversation key is required");
+    const previous = [...conversationWindows].find(([, child]) => child === owner)?.[0];
+    if (!previous || previous === key) return;
+    const other = conversationWindows.get(key);
+    if (other && other !== owner && !other.isDestroyed()) throw new Error("That conversation already has a window");
+    conversationWindows.delete(previous);
+    conversationWindows.set(key, owner);
+    saveConversationWindows();
+  });
+  ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void restartEngine(); });
+  registerComponentUpdateIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), componentUpdates);
+  registerDesktopControlsIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), controls);
   registerTitleBarIpc(ipcMain, () => win?.webContents, windowUrl(), (overlay) => win?.setTitleBarOverlay(overlay));
-  registerClipboardIpc(ipcMain, () => win?.webContents, windowUrl(), clipboard);
+  ipcMain.on("branch-desktop:title-bar", (event, value) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    if (!owner || ![...conversationWindows.values()].includes(owner) || !isOwnedComponentWindow(event, owner.webContents, windowUrl())) return;
+    const overlay = parseTitleBarOverlay(value);
+    if (overlay) owner.setTitleBarOverlay(overlay);
+  });
+  registerClipboardIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), clipboard);
   controls.apply();
   win = createWindow();
   await win.loadURL(STARTING);
@@ -368,6 +500,7 @@ async function start(): Promise<void> {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");
   }
+  for (const key of savedConversationKeys()) openConversationWindow(key);
   watchUpdates(win);
   componentsReady = true;
   autoApply.start();
@@ -407,7 +540,7 @@ function watchEngine(): void {
     void readComponentUpdateStatus(cfg).then(({ componentsPendingVersion }) => {
       if (componentsPendingVersion) return offerStagedUpdate();
       engineUpdateReady = true;
-      win?.webContents.send("branch-desktop:engine-update", "ready");
+      sendToBranchWindows("branch-desktop:engine-update", "ready");
     }).catch(error => log(`Engine build status: ${String(error)}`));
   });
 }
@@ -436,10 +569,12 @@ function watchUpdates(w: BrowserWindow): void {
     }).catch(error => log(`Window update status: ${String(error)}`));
   });
   // A reload re-runs the preload; show the bar again if an engine update is still waiting.
-  w.webContents.on("did-finish-load", () => {
-    if (engineUpdateReady) w.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
-    if (gatewayRecoveryError) w.webContents.send("branch-desktop:gateway-recovery-failed", gatewayRecoveryError);
-  });
+  w.webContents.on("did-finish-load", () => offerWindowStatus(w));
+}
+function offerWindowStatus(w: BrowserWindow): void {
+  if (w.isDestroyed() || !w.webContents.getURL().startsWith(windowUrl())) return;
+  if (engineUpdateReady) w.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
+  if (gatewayRecoveryError) w.webContents.send("branch-desktop:gateway-recovery-failed", gatewayRecoveryError);
 }
 
 /** The owner's Update click: applies a staged engine/window pair, or a rebuilt engine, in place. */
@@ -485,15 +620,16 @@ if (!app.requestSingleInstanceLock()) {
   log("another Branch Agent window is open; quitting");
   app.quit();
 } else {
+  app.on("before-quit", () => { quitting = true; });
   app.on("second-instance", () => {
-    if (win && !HIDDEN) {
+    if (win && !win.isDestroyed() && !HIDDEN) {
       if (win.isMinimized()) win.restore();
       win.show();
       win.focus();
     }
   });
   app.on("activate", () => {
-    if (win && !HIDDEN) {
+    if (win && !win.isDestroyed() && !HIDDEN) {
       if (win.isMinimized()) win.restore();
       win.show();
       win.focus();
