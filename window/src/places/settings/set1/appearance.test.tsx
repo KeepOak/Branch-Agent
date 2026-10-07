@@ -101,6 +101,20 @@ describe("Settings › Appearance", () => {
     await act(async () => { await lookStore(engine).set("scrim", 90); await lookStore(engine).set("see", 60); });
     expect(document.getElementById("branch-look")?.textContent).toContain("--scene-cover:90%;--scene-panel:40%");
   });
+
+  it("applies a see-through slider input before the pointer is released", async () => {
+    const { engine } = engineOf();
+    await render(engine);
+    await act(async () => lookStore(engine).set("bg", "painted"));
+    const slider = host.querySelector<HTMLInputElement>('input[aria-label="See-through panels"]')!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    await act(async () => {
+      setValue.call(slider, "60");
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(slider.value).toBe("60");
+    expect(document.getElementById("branch-look")?.textContent).toContain("--scene-panel:40%");
+  });
   it("draws the theme, the gallery button and the mirrors from the engine", async () => {
     const { engine } = engineOf();
     await render(engine);

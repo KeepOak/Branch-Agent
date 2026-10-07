@@ -115,11 +115,15 @@ function RangeRow({ look, k, def, max, title, label, sub, off }: { look: Look; k
   const saved = Number(look.val(k, def));
   const [v, setV] = useState(saved);
   useEffect(() => setV(saved), [saved]);
-  const commit = () => { if (v !== saved) void save(() => look.store.set(k, v === def ? null : v)); };
+  // Preview index.html:9718-9720,10198 applies each input value immediately, including keyboard changes.
+  const change = (next: number) => {
+    setV(next);
+    if (next !== saved) void save(() => look.store.set(k, next === def ? null : next));
+  };
   return (
     <Ctl title={title} sub={sub} keep="everywhere">
       <input className="range" type="range" min={0} max={max} step={5} value={v} aria-label={label} disabled={off}
-        onChange={(e) => setV(Number(e.target.value))} onPointerUp={commit} onKeyUp={commit} onBlur={commit} />
+        onChange={(e) => change(Number(e.currentTarget.value))} />
       <span className="pct-k">{v}%</span>
     </Ctl>
   );
