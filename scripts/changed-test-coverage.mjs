@@ -23,6 +23,19 @@ export function desktopRunTargets(workflow) {
   return targets;
 }
 
+// The real-engine handoff suite is deliberately split by named case on each OS. Registering
+// its whole file in a named feature batch would exceed the 15-minute Windows job cap.
+export function handoffRunTargets(workflow, config) {
+  const targets = new Set();
+  if (!/^\s*run:\s*node scripts\/run-vitest\.mjs run --config test\/vitest\/vitest\.desktop-handoff\.config\.ts -t /m.test(workflow)) {
+    return targets;
+  }
+  for (const match of config.matchAll(/include:\s*\["(test\/.+?\.test\.ts)"\]/g)) {
+    targets.add(`engine/${match[1]}`);
+  }
+  return targets;
+}
+
 export function changedTestPaths(nameStatus) {
   return nameStatus.split(/\r?\n/).filter(Boolean).flatMap((line) => {
     const [status, ...paths] = line.split('\t');
@@ -37,8 +50,9 @@ export function uncoveredTests(changed, covered) {
     target === file || (target.includes('*') && path.matchesGlob(file, target)))).sort();
 }
 
-export function coverageTargets(desktopWorkflow) {
+export function coverageTargets(desktopWorkflow, handoffWorkflow = '', handoffConfig = '') {
   const covered = desktopRunTargets(desktopWorkflow);
+  for (const file of handoffRunTargets(handoffWorkflow, handoffConfig)) covered.add(file);
   for (const lane of ['engine', 'window']) {
     for (const file of [...namedTests(lane), ...harvestTests(lane)]) covered.add(`${lane}/${file}`);
   }
@@ -70,7 +84,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     { cwd: root, encoding: 'utf8', windowsHide: true });
   const changed = changedTestPaths(status);
   const workflow = readFileSync(path.join(root, '.github/workflows/desktop-checks.yml'), 'utf8');
-  const uncovered = uncoveredTests(changed, coverageTargets(workflow));
+  const handoffWorkflow = readFileSync(path.join(root, '.github/workflows/engine-handoff-checks.yml'), 'utf8');
+  const handoffConfig = readFileSync(path.join(root, 'engine/test/vitest/vitest.desktop-handoff.config.ts'), 'utf8');
+  const uncovered = uncoveredTests(changed, coverageTargets(workflow, handoffWorkflow, handoffConfig));
   if (uncovered.length) {
     for (const file of uncovered) console.error(`Uncovered changed test: ${file}\n  Add: ${additionFor(file)}`);
     process.exitCode = 1;

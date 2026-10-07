@@ -1,7 +1,7 @@
 // What the row menu, hover buttons and keys do to a conversation (DESIGN-SPEC §4.1.6 and its Parity adds),
 // each through the engine method its row names, followed by a read-back of the list.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import type { Conversation, ConversationList } from "../connect/conversations";
+import { LIST_PARAMS, type Conversation, type ConversationList } from "../connect/conversations";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { notify } from "./notify";
 import { forgetDeletedConversationWindow } from "./own-window";
@@ -12,6 +12,37 @@ export type Actions = ReturnType<typeof conversationActions>;
 
 const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const nameOf = (row: Conversation) => row.title || "New conversation";
+const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
+
+async function unusedCopyLabel(request: Request, list: ConversationList, name: string): Promise<string> {
+  const taken = new Set<string>();
+  const add = (label: string) => {
+    if (label) taken.add(label);
+  };
+  if (typeof list.getSnapshot === "function") {
+    for (const row of list.getSnapshot().rows) {
+      add(row.title);
+      if (row.label) add(row.label);
+    }
+  }
+  try {
+    const listed = rec(await request("sessions.list", LIST_PARAMS));
+    for (const session of Array.isArray(listed.sessions) ? listed.sessions : []) {
+      const row = rec(session);
+      add(str(row.label) || str(row.displayName) || str(row.derivedTitle));
+    }
+  } catch {
+    // Fall through and try the default name; a clash still surfaces as a patch error.
+  }
+  const base = `${name} (copy)`;
+  if (!taken.has(base)) return base;
+  for (let n = 2; n < 100; n += 1) {
+    const label = `${name} (copy ${n})`;
+    if (!taken.has(label)) return label;
+  }
+  return `${name} (copy ${Date.now()})`;
+}
 
 /** The snooze choices (§4.1.6 Snooze and Wake): each with its wake time, built from `now`. */
 export function snoozeChoices(now: number): { label: string; until: number }[] {
@@ -189,6 +220,27 @@ export function conversationActions(request: Request, list: ConversationList, op
       } catch (e) {
         notify(`Couldn't start a conversation: ${reason(e)}.`, { tone: "bad" });
         return null;
+      }
+    },
+    async copyConversation(row: Conversation, open: (key: string) => void): Promise<void> {
+      try {
+        const result = rec(await request("sessions.create", {
+          parentSessionKey: row.key,
+          fork: true,
+          ...(row.working ? { forkFrom: "last-completed" } : {}),
+          ...(row.agentId ? { agentId: row.agentId } : {}),
+        }));
+        const newKey = str(result.key) || str(result.sessionKey);
+        if (!newKey) {
+          notify("The engine didn't return the new conversation.", { tone: "bad" });
+          return;
+        }
+        await request("sessions.patch", { key: newKey, label: await unusedCopyLabel(request, list, nameOf(row)) });
+        await list.refresh();
+        open(newKey);
+        notify("Copied into a new conversation.");
+      } catch (e) {
+        notify(`Couldn't copy ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" });
       }
     },
   };
