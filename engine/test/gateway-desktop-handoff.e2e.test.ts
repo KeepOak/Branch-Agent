@@ -429,17 +429,20 @@ describe("in-place engine handoff between real engines", () => {
         "B's channel starts after take-over",
       );
       expect(await channel.starts()).toEqual([a.child.pid, b.child.pid]);
-      let runs = await clientB.request<{ entries: Array<{ status: string }> }>("cron.runs", {
-        id: jobId,
-        limit: 10,
-      });
+      let runs: { entries: Array<{ status: string }> } = { entries: [] };
       try {
         await waitUntil(
           async () => {
-            runs = await clientB.request<{ entries: Array<{ status: string }> }>("cron.runs", {
-              id: jobId,
-              limit: 10,
-            });
+            try {
+              runs = await clientB.request<{ entries: Array<{ status: string }> }>("cron.runs", {
+                id: jobId,
+                limit: 10,
+              });
+            } catch (error) {
+              // /readyz can lead cron receipt-authority settlement after a take-over.
+              if ((error as { gatewayCode?: unknown }).gatewayCode === "UNAVAILABLE") return false;
+              throw error;
+            }
             return runs.entries.length > 0;
           },
           120_000,
