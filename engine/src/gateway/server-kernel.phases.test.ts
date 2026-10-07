@@ -19,6 +19,7 @@ import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js"
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
 import { getFreePort } from "../test-utils/ports.js";
 import { prepareGatewayKernel } from "./server-kernel.js";
+import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import * as runShutdown from "./server-run-shutdown.js";
 import * as stateRuntime from "./server-runtime-state-prepare.js";
 import { startGatewayServerCore } from "./server-start.js";
@@ -196,7 +197,7 @@ describe("Gateway startup phases", () => {
     });
   });
 
-  it("reopens admission even when handoff restoration fails", async () => {
+  it("keeps admission fenced when handoff restoration fails", async () => {
     await withPhaseState("gateway-phase-restore-fails", async (port) => {
       const server = await startGatewayServerCore(port, options("gateway-phase-restore-fails-token"));
       try {
@@ -206,8 +207,8 @@ describe("Gateway startup phases", () => {
         );
         vi.spyOn(cronAuthority, "resumeCronReceiptAuthorityHostAfterFailedHandoff")
           .mockRejectedValueOnce(new Error("receipt restore failed"));
-        await expect(server.deactivate()).rejects.toThrow("Gateway handoff restoration failed");
-        expect(isGatewayWorkAdmissionClosed()).toBe(false);
+        await expect(server.deactivate()).rejects.toBeInstanceOf(GatewayHandoffFatalError);
+        expect(isGatewayWorkAdmissionClosed()).toBe(true);
       } finally {
         await server.close({ reason: "failed restoration test cleanup" });
       }
@@ -233,6 +234,31 @@ describe("Gateway startup phases", () => {
         await expect(server.deactivate()).resolves.toBeUndefined();
       } finally {
         await server.close({ reason: "failed state release test cleanup" });
+      }
+    });
+  });
+
+  it("keeps the kernel fenced when state release also loses database access", async () => {
+    await withPhaseState("gateway-phase-release-lost", async (port) => {
+      let ownsState = true;
+      const server = await startGatewayServerCore(port, {
+        ...options("gateway-phase-release-lost-token"),
+        gatewayStateOwner: {
+          assertDatabaseAccess: () => {
+            if (!ownsState) throw new Error("state access lost");
+          },
+          release: async () => {
+            ownsState = false;
+            throw new Error("state release failed");
+          },
+        },
+      });
+      try {
+        await server.startupSettled;
+        await expect(server.deactivate()).rejects.toBeInstanceOf(GatewayHandoffFatalError);
+        expect(isGatewayWorkAdmissionClosed()).toBe(true);
+      } finally {
+        await server.close({ reason: "lost state release test cleanup" });
       }
     });
   });

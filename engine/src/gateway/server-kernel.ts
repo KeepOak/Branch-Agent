@@ -27,6 +27,7 @@ import { createGatewayControlUiRootLifecycle } from "./server-control-ui-root.js
 import { startGatewayCoreRuntime } from "./server-core-runtime.js";
 import { prepareGatewayKernelRequestRuntime } from "./server-kernel-request-runtime.js";
 import { prepareGatewayLifecycle } from "./server-lifecycle.js";
+import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import { registerGatewayModelCatalogPrivateAccess } from "./server-model-catalog-auth.js";
 import type { GatewayServerOptions } from "./server-public.js";
 import { prepareGatewayKernelState } from "./server-runtime-state-prepare.js";
@@ -191,10 +192,17 @@ export async function prepareGatewayKernel(
             } catch (error) {
               // The lease release may fail before ownership transfers. In that
               // case this kernel is still the only engine and must take work again.
-              stateLease?.assertDatabaseAccess(
-                (await import("../state/branch-state-db.paths.js")).resolveBranchStateSqlitePath(),
-              );
-              await sdkResourceHost.run(() => kernel.restoreFailedStateRelease());
+              try {
+                stateLease?.assertDatabaseAccess(
+                  (await import("../state/branch-state-db.paths.js")).resolveBranchStateSqlitePath(),
+                );
+                await sdkResourceHost.run(() => kernel.restoreFailedStateRelease());
+              } catch (restoreError) {
+                throw new GatewayHandoffFatalError(
+                  "Gateway handoff lost state ownership or could not restore serving",
+                  { cause: new AggregateError([error, restoreError]) },
+                );
+              }
               throw error;
             }
           })().catch((error: unknown) => {

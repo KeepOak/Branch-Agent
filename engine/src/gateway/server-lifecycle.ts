@@ -61,6 +61,7 @@ import { waitForNodeWorkerSupervisor } from "./node-registry-private.js";
 import { clearNodeWakeState } from "./node-wake-state.js";
 import { createLazyGatewayCronState } from "./server-cron-lazy.js";
 import { createGatewayCronReconciliation } from "./server-cron-reconciled.js";
+import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import { applyGatewayLaneConcurrency, resolveGatewayLaneConcurrency } from "./server-lanes.js";
 import { createGatewayServerLiveState } from "./server-live-state.js";
 import { createGatewayPluginRuntimeGeneration } from "./server-plugin-runtime-generation.js";
@@ -539,10 +540,10 @@ export async function prepareGatewayLifecycle(params: {
           : cron.stop());
       await shutdownRuntime.stopCronMaintenance();
       await drainCronReceiptAuthority();
+      handoffLeases.seal();
       if (!handoffAdmission.commit()) {
         throw new Error("Gateway handoff admission was invalidated before state release");
       }
-      handoffLeases.seal();
     })().catch(async (error: unknown) => {
       handoffLeases?.releaseAll();
       if (isGatewayRestartDraining()) {
@@ -551,19 +552,21 @@ export async function prepareGatewayLifecycle(params: {
         deactivation = undefined;
         throw error;
       }
+      let restored = false;
       try {
         // This engine still owns state on a failed handoff. Restore every
         // producer before reopening admission to new work.
         await restoreHandoffProducers();
+        restored = true;
       } catch (restoreError) {
-        // The old engine still owns state. Do not strand it behind a permanent
-        // admission fence when one of its producers fails to restart.
-        handoffAdmission?.release();
-        handoffAdmission?.rollback();
-        throw new AggregateError([error, restoreError], "Gateway handoff restoration failed");
+        throw new GatewayHandoffFatalError("Gateway handoff restoration failed", {
+          cause: new AggregateError([error, restoreError]),
+        });
       } finally {
-        handoffAdmission?.release();
-        handoffAdmission?.rollback();
+        if (restored) {
+          handoffAdmission?.release();
+          handoffAdmission?.rollback();
+        }
         handoffAdmission = null;
         handoffLeases = undefined;
         deactivation = undefined;
@@ -582,11 +585,17 @@ export async function prepareGatewayLifecycle(params: {
   const restoreFailedStateRelease = async () => {
     await deactivation;
     handoffLeases?.releaseAll();
+    let restored = false;
     try {
       await restoreHandoffProducers();
+      restored = true;
+    } catch (error) {
+      throw new GatewayHandoffFatalError("Gateway handoff restoration failed", { cause: error });
     } finally {
-      handoffAdmission?.release();
-      handoffAdmission?.rollback();
+      if (restored) {
+        handoffAdmission?.release();
+        handoffAdmission?.rollback();
+      }
       handoffAdmission = null;
       handoffLeases = undefined;
       deactivation = undefined;

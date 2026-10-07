@@ -41,4 +41,25 @@ describe("Gateway cron handoff drain", () => {
     await draining;
     expect(settled).toBe(true);
   });
+
+  it("bounds a stuck handoff drain without cancelling the running cron job", async () => {
+    vi.useFakeTimers();
+    try {
+      waitRuns.mockImplementation(() => new Promise(() => {}));
+      waitJobs.mockImplementation(() => new Promise(() => {}));
+      const draining = drainGatewayCron({
+        settlements: [new Promise(() => {})],
+        logger: { warn: vi.fn() },
+        preserveActiveRuns: true,
+      });
+      const rejection = expect(draining).rejects.toThrow("Cron runs did not finish before Gateway handoff");
+      await vi.advanceTimersByTimeAsync(15_000);
+      await rejection;
+      expect(waitRuns).toHaveBeenCalledWith(15_000);
+      expect(waitJobs).toHaveBeenCalledWith(15_000);
+      expect(abortRuns).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

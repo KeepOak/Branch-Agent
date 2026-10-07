@@ -1,4 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
+import { GatewayHandoffFatalError } from "../../gateway/server-handoff-error.js";
+
+const { replacementHandler } = vi.hoisted(() => ({
+  replacementHandler: {
+    accept: undefined as
+      | Parameters<typeof import("./run-loop-request.js").registerGatewayRunInstallationReplacement>[0]["accept"]
+      | undefined,
+  },
+}));
+vi.mock("./run-loop-request.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./run-loop-request.js")>();
+  return {
+    ...actual,
+    registerGatewayRunInstallationReplacement: (
+      params: Parameters<typeof actual.registerGatewayRunInstallationReplacement>[0],
+    ) => {
+      replacementHandler.accept = params.accept;
+      return () => {
+        replacementHandler.accept = undefined;
+      };
+    },
+  };
+});
 import { runLoopFixture } from "./run-loop-mocks.test-support.js";
 import {
   createCloseMock,
@@ -9,7 +32,7 @@ import {
   withIsolatedSignals,
 } from "./run-loop.test-support.js";
 
-const { acquireGatewayLock, gatewayLog, runLoopWithStart } = runLoopFixture;
+const { acquireGatewayLock, gatewayLog, peekGatewayRestartReason, runLoopWithStart } = runLoopFixture;
 
 async function within<T>(work: Promise<T>, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -26,7 +49,40 @@ async function within<T>(work: Promise<T>, label: string): Promise<T> {
 }
 
 describe("desktop engine handoff", () => {
-  it("recovers the last desktop engine when the successor is gone at the lease deadline", async () => {
+  it("exits for supervisor recovery when deactivation cannot restore serving", async () => {
+    await withIsolatedSignals(async () => {
+      const sendDescriptor = Object.getOwnPropertyDescriptor(process, "send");
+      const previousMessageListeners = new Set(process.listeners("message"));
+      if (!process.send) {
+        Object.defineProperty(process, "send", { configurable: true, value: vi.fn() });
+      }
+      const close = createCloseMock();
+      const { start, started } = createSignaledStart(close);
+      const originalStart = start.getMockImplementation();
+      start.mockImplementation(async (...args) => ({
+        ...(await originalStart!(...args)),
+        deactivate: async () => {
+          throw new GatewayHandoffFatalError("cannot restore serving");
+        },
+      }));
+      const { runtime, exited } = createRuntimeWithExitSignal();
+      await within(runLoopWithStart({ start, runtime }), "run-loop import");
+      try {
+        await within(waitForStart(started), "run-loop start");
+        const onMessage = process.listeners("message").find(
+          (listener) => !previousMessageListeners.has(listener),
+        );
+        onMessage?.({ type: "branch-desktop:deactivate", id: 1 } as never);
+        await expect(within(exited, "fatal handoff exit")).resolves.toBe(1);
+        expect(close).toHaveBeenCalled();
+      } finally {
+        if (sendDescriptor) Object.defineProperty(process, "send", sendDescriptor);
+        else Reflect.deleteProperty(process, "send");
+      }
+    });
+  });
+
+  it("refuses signal, replacement, and triage restarts while deactivated", async () => {
     await withIsolatedSignals(async ({ captureSignal }) => {
       const sendDescriptor = Object.getOwnPropertyDescriptor(process, "send");
       const previousMessageListeners = new Set(process.listeners("message"));
@@ -37,16 +93,74 @@ describe("desktop engine handoff", () => {
       const { start, started } = createSignaledStart(close);
       const originalStart = start.getMockImplementation();
       const deactivate = vi.fn(async () => {});
-      const rollbackDeactivation = vi.fn(async () => {});
       start.mockImplementation(async (...args) => ({
         ...(await originalStart!(...args)),
         deactivate,
-        rollbackDeactivation,
-        waitForDeactivatedRuns: async () => ({
-          deadlineElapsed: true,
-          expiresAt: Date.now() + 30_000,
-        }),
+        waitForDeactivatedRuns: () => new Promise(() => {}),
       }));
+      const { runtime, exited } = createRuntimeWithExitSignal();
+      await within(runLoopWithStart({ start, runtime }), "run-loop import");
+      try {
+        await within(waitForStart(started), "run-loop start");
+        const onMessage = process.listeners("message").find(
+          (listener) => !previousMessageListeners.has(listener),
+        );
+        onMessage?.({ type: "branch-desktop:deactivate", id: 1 } as never);
+        await waitForLoopCondition(() => deactivate.mock.calls.length > 0, "deactivation did not start");
+        await Promise.resolve();
+        captureSignal("SIGUSR2")();
+        replacementHandler.accept?.({
+          running: { version: "1", buildId: null },
+          detectedAt: Date.now(),
+          message: "installation replaced",
+          reason: "installation replacement",
+        });
+        peekGatewayRestartReason.mockReturnValueOnce("gateway.triage_completed");
+        captureSignal("SIGUSR2")();
+        expect(close).not.toHaveBeenCalled();
+        expect(start).toHaveBeenCalledTimes(1);
+        expect(gatewayLog.warn).toHaveBeenCalledWith(
+          "installation replacement ignored while desktop handoff is deactivated",
+        );
+      } finally {
+        captureSignal("SIGTERM")();
+        await within(exited, "desktop handoff loop stop");
+        vi.restoreAllMocks();
+        if (sendDescriptor) Object.defineProperty(process, "send", sendDescriptor);
+        else Reflect.deleteProperty(process, "send");
+      }
+    });
+  });
+
+  it("recovers the last desktop engine when the successor is gone at the lease deadline", async () => {
+    await withIsolatedSignals(async ({ captureSignal }) => {
+      const sendDescriptor = Object.getOwnPropertyDescriptor(process, "send");
+      const previousMessageListeners = new Set(process.listeners("message"));
+      if (!process.send) {
+        Object.defineProperty(process, "send", { configurable: true, value: vi.fn() });
+      }
+      const close = createCloseMock();
+      const { start, started } = createSignaledStart(close);
+      const originalStart = start.getMockImplementation();
+      let resumeRestart!: () => void;
+      const restartBlocked = new Promise<void>((resolve) => {
+        resumeRestart = resolve;
+      });
+      const processExit = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+      const deactivate = vi.fn(async () => {});
+      const rollbackDeactivation = vi.fn(async () => {});
+      start.mockImplementation(async (...args) => {
+        if (start.mock.calls.length > 1) await restartBlocked;
+        return {
+          ...(await originalStart!(...args)),
+          deactivate,
+          rollbackDeactivation,
+          waitForDeactivatedRuns: async () => ({
+            deadlineElapsed: true,
+            expiresAt: Date.now() + 1_100,
+          }),
+        };
+      });
       const { runtime, exited } = createRuntimeWithExitSignal();
       await within(runLoopWithStart({ start, runtime }), "run-loop import");
       try {
@@ -67,7 +181,10 @@ describe("desktop engine handoff", () => {
         expect(gatewayLog.warn).toHaveBeenCalledWith(
           "desktop successor is gone; restoring the last engine in place",
         );
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(processExit).not.toHaveBeenCalled();
       } finally {
+        resumeRestart();
         captureSignal("SIGTERM")();
         try {
           await Promise.race([
@@ -79,6 +196,7 @@ describe("desktop engine handoff", () => {
         } finally {
           if (sendDescriptor) Object.defineProperty(process, "send", sendDescriptor);
           else Reflect.deleteProperty(process, "send");
+          processExit.mockRestore();
         }
       }
     });

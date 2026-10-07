@@ -16,6 +16,7 @@ import type { GatewayBootLifecycleCompletion } from "../../infra/gateway-boot-li
 import { acquireGatewayLock } from "../../infra/gateway-lock.js";
 import { consumeGatewaySuspendHandoff } from "../../infra/gateway-suspend-coordinator.js";
 import type { GatewayRestartIntent } from "../../infra/restart-intent.js";
+import { isGatewayHandoffFatalError } from "../../gateway/server-handoff-error.js";
 import { cleanupSnapshotOperations } from "../../infra/sqlite-readonly-location-cleanup.js";
 import { findStartupMaintenanceRequiredError } from "../../infra/startup-maintenance-required.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -117,6 +118,7 @@ export async function runGatewayLoop(params: {
   let hostExitRequested = false;
   let releaseHostLifeline: (() => void) | undefined;
   let forcedExitStarted = false;
+  let fatalHandoffFailure = false;
   let restartResolver: (() => void) | null = null;
   // The HTTP server can report ready before params.start returns its close handle.
   // Defer lifecycle signals from that window until the loop can close and advance.
@@ -159,13 +161,17 @@ export async function runGatewayLoop(params: {
     processLifetime?.port2.close();
   };
   const exitProcess = (code: number) => {
+    clearTimeout(handoffHardExitTimer);
+    handoffHardExitTimer = undefined;
     if (pendingRestartCompletion) {
       completeBoot(pendingRestartCompletion);
     }
     clearPendingStartupForceExitTimer();
     void hostLifecycle?.retire();
     cleanupSignals();
-    params.runtime.exit(hostExitRequested && code === 0 ? Number(process.exitCode ?? 0) : code);
+    params.runtime.exit(
+      fatalHandoffFailure ? 1 : hostExitRequested && code === 0 ? Number(process.exitCode ?? 0) : code,
+    );
   };
   const exitProcessAfterLogFlush = async (
     code: number,
@@ -953,6 +959,10 @@ export async function runGatewayLoop(params: {
     restartIntent?: GatewayRestartIntent,
     hostedStop?: ReturnType<typeof createGatewayHostLifecycle>,
   ) => {
+    if (action !== "stop" && desktopDeactivation) {
+      gatewayLog.warn(`restart ignored while desktop handoff is deactivated (${restartReason ?? signal})`);
+      return;
+    }
     if (hostExitRequested && action !== "stop") {
       return;
     }
@@ -1067,6 +1077,10 @@ export async function runGatewayLoop(params: {
   };
 
   const onSigterm = () => {
+    if (desktopDeactivation) {
+      request("stop", "SIGTERM");
+      return;
+    }
     observeSignal("SIGTERM");
     // Debug-level: every accepted signal is announced by request()'s
     // "received <signal>; ..." line, so an info pre-log would double up.
@@ -1099,6 +1113,8 @@ export async function runGatewayLoop(params: {
   // The packaged desktop owns this child over its private IPC channel. Unlike a
   // Windows PID kill, this enters the same active-work drain as SIGTERM.
   const rollbackDesktopDeactivation = async (reason: string): Promise<boolean> => {
+    clearTimeout(handoffHardExitTimer);
+    handoffHardExitTimer = undefined;
     // Keep session leases until this process owns state again. If a successor
     // owns the lock, only that engine may continue writing.
     const reacquired = await acquireGatewayLock({
@@ -1118,13 +1134,6 @@ export async function runGatewayLoop(params: {
   const stopPredecessorAtLeaseDeadline = (expiresAt?: number) =>
     (deadlineRecovery ??= (async () => {
       if (!desktopDeactivation) return;
-      handoffHardExitTimer ??= setTimeout(
-        () => {
-          gatewayLog.error("desktop handoff predecessor exceeded lease expiry margin");
-          process.exit(1);
-        },
-        Math.max(0, (expiresAt ?? Date.now()) - Date.now() - 1_000),
-      );
       try {
         if (await rollbackDesktopDeactivation("desktop successor lost")) {
           gatewayLog.warn("desktop successor is gone; restoring the last engine in place");
@@ -1133,6 +1142,15 @@ export async function runGatewayLoop(params: {
       } catch (error) {
         gatewayLog.error(`desktop handoff recovery failed: ${String(error)}`);
       }
+      // Only a successor holding the lock can make the predecessor exit. A
+      // rollback already reclaiming that lock must never inherit this timer.
+      handoffHardExitTimer ??= setTimeout(
+        () => {
+          gatewayLog.error("desktop handoff predecessor exceeded lease expiry margin");
+          process.exit(1);
+        },
+        Math.max(0, (expiresAt ?? Date.now()) - Date.now() - 1_000),
+      );
       gatewayLog.error("desktop handoff lease deadline elapsed; stopping predecessor");
       onSigterm();
     })());
@@ -1148,7 +1166,12 @@ export async function runGatewayLoop(params: {
       }
       if (!desktopDeactivation) deadlineRecovery = undefined;
       desktopDeactivation ??= activeServer.deactivate().catch((error: unknown) => {
-        desktopDeactivation = undefined;
+        if (isGatewayHandoffFatalError(error)) {
+          fatalHandoffFailure = true;
+          request("stop", "SIGTERM");
+        } else {
+          desktopDeactivation = undefined;
+        }
         throw error;
       });
       void desktopDeactivation.then(
@@ -1243,6 +1266,11 @@ export async function runGatewayLoop(params: {
   const onRestartSignal = () => {
     observeSignal("SIGUSR2");
     gatewayLog.debug("signal SIGUSR2 received");
+    if (desktopDeactivation) {
+      eagerLifecycleRuntime.markGatewayRestartHandled();
+      gatewayLog.warn("SIGUSR2 restart ignored while desktop handoff is deactivated");
+      return;
+    }
     if (foregroundUpdateClosed) {
       return;
     }
@@ -1349,6 +1377,10 @@ export async function runGatewayLoop(params: {
     logger: gatewayLog,
     supervised: Boolean(supervisorMode),
     accept: (fact) => {
+      if (desktopDeactivation) {
+        gatewayLog.warn("installation replacement ignored while desktop handoff is deactivated");
+        return;
+      }
       installationReplacement = fact;
       request("restart", "SIGUSR2", fact.reason);
     },
