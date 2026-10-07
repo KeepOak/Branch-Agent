@@ -8,7 +8,6 @@ engine:src/cron/command-runner.test.ts
 engine:src/cron/delivery-plan.test.ts
 engine:src/cron/delivery-preview.current-origin.test.ts
 engine:src/cron/delivery-preview.test.ts
-engine:src/cron/delivery-routing.behaviour.test.ts
 engine:src/cron/delivery-target-validation.test.ts
 engine:src/cron/delivery.test.ts
 engine:src/cron/isolated-agent.lane.test.ts
