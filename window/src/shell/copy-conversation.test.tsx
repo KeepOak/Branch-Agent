@@ -38,14 +38,13 @@ describe("copy conversation", () => {
     const actions = conversationActions(request, { refresh } as unknown as ConversationList, () => null);
 
     const items = menu(false, actions, (r) => void actions.copyConversation(r, open));
-    const forkItem = items.find((item) => item.kind === undefined && item.testid === "menu-fork");
+    const forkItem = items.find((item) => item.kind === undefined && item.label === "Copy into a new conversation");
     expect(forkItem).toMatchObject({ label: "Copy into a new conversation", letter: "f" });
     expect(forkItem && "disabled" in forkItem ? forkItem.disabled : undefined).toBeUndefined();
+    expect(forkItem && "testid" in forkItem ? forkItem.testid : undefined).toBe("menu-fork");
 
     if (!forkItem || forkItem.kind !== undefined) throw new Error("Fork item is missing");
-    
-    const promise = actions.copyConversation(row(false), open);
-    await promise;
+    await forkItem.run();
 
     expect(request).toHaveBeenNthCalledWith(1, "chat.history", { sessionKey: key, agentId: "research" });
     expect(request).toHaveBeenNthCalledWith(2, "sessions.fork", { key, agentId: "research", expectedSessionId: "session-1", entryId: "e4" });
@@ -70,8 +69,9 @@ describe("copy conversation", () => {
     const actions = conversationActions(request, { refresh } as unknown as ConversationList, () => null);
 
     const items = menu(true, actions, (r) => void actions.copyConversation(r, open));
-    const forkItem = items.find((item) => item.kind === undefined && item.testid === "menu-fork");
+    const forkItem = items.find((item) => item.kind === undefined && item.label === "Copy into a new conversation");
     expect(forkItem).toMatchObject({ label: "Copy into a new conversation", letter: "f", hint: "From the last finished reply" });
+    expect(forkItem && "disabled" in forkItem ? forkItem.disabled : undefined).toBeUndefined();
 
     if (!forkItem || forkItem.kind !== undefined) throw new Error("Fork item is missing");
     await forkItem.run();
