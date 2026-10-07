@@ -118,3 +118,10 @@ export async function patchConfig(engine: { request<T>(m: string, p?: unknown): 
 }
 
 export const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+/** Creation errors are for people naming a Trunk, not engine IDs. */
+export const creationProblem = (error: unknown) => {
+  const message = errorText(error);
+  if (/reserved/i.test(message)) return "That name is kept for Branch. Choose another Trunk name.";
+  if (/invalid|no valid id characters/i.test(message)) return "Use a name with at least one letter or number.";
+  return "Couldn’t create your Trunk. Try again.";
+};
