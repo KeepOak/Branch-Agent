@@ -105,7 +105,7 @@ export function MemoryTab({ engine, blocks, name }: { engine: WindowEngine; bloc
 
   if (!asked) return <p className="pane-empty">Nothing to look up yet. What {name} remembers about this conversation shows here once you ask something.</p>;
   const cur: Partial<typeof state> = state.owner === engine && state.key === key ? state : { key };
-  if (cur.error) return <div><p className="err-st" role="alert">{cur.error}</p><button type="button" className="btn sm" onClick={() => { setState({ owner: engine, key }); setAttempt((value) => value + 1); }}>Try again</button></div>;
+  if (cur.error) return <div><p className="err-st" role="alert">{cur.error}</p><button type="button" className="btn sm" onClick={() => { setState({ owner: engine, key }); setRevision((value) => value + 1); }}>Try again</button></div>;
   if (!cur.rows) return <p className="pane-empty">Looking through what {name} remembers…</p>;
   const visibleRows = cur.rows.filter((_, i) => !forgotRows.has(i));
   if (!visibleRows.length) return <p className="pane-empty">{name} doesn't remember anything that fits this conversation.</p>;
