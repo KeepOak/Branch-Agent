@@ -20,6 +20,7 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as
 ) => (...fnArgs: unknown[]) => Promise<unknown>;
 
 const qaFlowImportLoaders: Record<string, QaFlowImportLoader> = {
+  "branch/plugin-sdk/qa-runtime": () => import("branch/plugin-sdk/qa-runtime"),
   "./auth-profile.fixture.js": () => import("./auth-profile.fixture.js"),
   "./codex-plugin.fixture.js": () => import("./codex-plugin.fixture.js"),
   "./errors.js": () => import("./errors.js"),

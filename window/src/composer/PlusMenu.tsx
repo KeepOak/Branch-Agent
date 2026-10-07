@@ -1,18 +1,18 @@
 // The + menu (DESIGN-SPEC §4.3.2): add material and switch this conversation's options without leaving the box.
 // Rows the engine can't do yet stay listed, greyed with the reason (rule 2: never remove a feature).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useRef, type RefObject } from "react";
 import { NO_ROUTE, type OpenTarget } from "./nav";
 import { Popover, moveFocus } from "./Popover";
 import { Head, MenuItem, Sep, Switch } from "./ui";
 import { Icon } from "./icons";
 import type { Trunk } from "./useConversation";
+import { shownWhy } from "../shell/shown-why";
 
 export const GAP = {
-  folder: "Not available in this engine yet: it has no per-conversation folder grant.",
   screenshot: "Not available in this window yet: screen capture needs the desktop app.",
   temporary: "Not available in this engine yet: a conversation is temporary only when it is made (sessions.create incognito).",
   checkWithMe: "Not available in this engine yet: it has no ask-questions-first switch for a conversation.",
-  whoAnswers: "Not available in this engine yet: a conversation's Trunk is fixed when it is made.",
   picture: "Connect a model first, in Settings › Models.",
   gif: "Not available in this engine yet: it has no GIF search service.",
   prompts: "Not available in this engine yet: it keeps no saved prompts.",
@@ -29,6 +29,7 @@ type Props = {
   trunks: Trunk[];
   trunkId: string;
   onAttach: () => void;
+  onFolder: () => void;
   onPhoto: () => void;
   onInsert: (text: string) => void;
   onBackground: () => void;
@@ -37,6 +38,7 @@ type Props = {
   temporary: boolean;
   /** Starts a new temporary conversation with this Trunk. */
   onTemporary?: () => void;
+  onWhoAnswers?: (agentId: string) => void;
   /** Opens "Make a picture"; absent when no model is set up. */
   onPicture?: () => void;
   /** Records a voice note; absent while the microphone isn't turned on. */
@@ -66,49 +68,48 @@ export function PlusMenu(p: Props) {
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
+            e.stopPropagation();
             moveFocus(body.current, e.key === "ArrowDown" ? 1 : -1);
           }
         }}
       >
+        <Head>Add</Head>
         <MenuItem icon="clip" label="Attach files" testId="plus-attach" onClick={run(p.onAttach)} />
-        <MenuItem icon="folder" label="Add a folder" disabled reason={GAP.folder} />
+        <MenuItem icon="folder" label="Add a folder" onClick={run(p.onFolder)} />
+        <MenuItem icon="folder" label="From Google Drive" disabled reason={GAP.drive} />
+        <MenuItem icon="folder" label="From OneDrive or SharePoint" disabled reason={GAP.oneDrive} />
         <MenuItem icon="camera" label="Take a screenshot" disabled reason={GAP.screenshot} />
         <MenuItem icon="camera" label="Take a photo" testId="plus-photo" onClick={run(p.onPhoto)} />
         <MenuItem icon="mic" label="Record a voice note" testId="plus-voice-note" disabled={!p.onVoiceNote} reason={p.onVoiceNote ? undefined : GAP.voiceNote} onClick={p.onVoiceNote ? run(p.onVoiceNote) : undefined} />
         <Sep />
+        <Head>Insert</Head>
         <MenuItem icon="at" label="Mention a Trunk" right={<kbd>@</kbd>} onClick={run(() => p.onInsert("@"))} />
         <MenuItem icon="slash" label="Use a skill" right={<kbd>/</kbd>} onClick={run(() => p.onInsert("/"))} />
+        <MenuItem icon="star" label="Saved prompts" disabled reason={GAP.prompts} />
+        <MenuItem icon="target" label="Set a goal" right={<kbd>/goal</kbd>} onClick={run(() => p.onInsert("/goal "))} />
+        <Sep />
+        <Head>Make</Head>
+        <MenuItem icon="image" label="Make a picture" disabled={!p.onPicture} reason={p.onPicture ? undefined : GAP.picture} onClick={p.onPicture ? run(p.onPicture) : undefined} />
+        <MenuItem icon="doc" label="Write a document, spreadsheet or slides" disabled reason={GAP.office} />
+        <MenuItem icon="gif" label="Find a GIF…" disabled reason={GAP.gif} />
+        <MenuItem icon="spark" label="Improve my draft" disabled reason={GAP.improve} />
+        <Sep />
+        <Head>Run</Head>
+        <MenuItem icon="bg" label="Run it in the background" testId="plus-background" right={<kbd>/bg</kbd>} onClick={run(p.onBackground)} />
+        {offRow("Phone call…", "call", true)}
+        {offRow("Join a meeting…", "meet", false)}
+        <Sep />
+        <Head>Who answers here</Head>
+        {p.trunks.map((t) => (
+          <MenuItem key={t.id} label={t.name} checked={t.id === p.trunkId} disabled={t.id !== p.trunkId && !p.onWhoAnswers}
+            reason={t.id !== p.trunkId && !p.onWhoAnswers ? "This conversation's Trunk is fixed after its first message." : undefined}
+            onClick={t.id !== p.trunkId && p.onWhoAnswers ? run(() => p.onWhoAnswers?.(t.id)) : undefined} />
+        ))}
         <Sep />
         <SwitchRow icon="ghost" label="Temporary conversation" on={p.temporary}
           reason={p.temporary ? "This conversation is temporary." : p.onTemporary ? "Starts a new temporary conversation with this Trunk." : GAP.temporary}
           onChange={p.temporary || !p.onTemporary ? undefined : run(p.onTemporary)} />
         <SwitchRow icon="help" label="Check with me" on={false} reason={GAP.checkWithMe} />
-        <Sep />
-        <Head>Who answers in this conversation</Head>
-        {p.trunks.map((t) => (
-          <MenuItem
-            key={t.id}
-            label={t.name}
-            checked={t.id === p.trunkId}
-            disabled={t.id !== p.trunkId}
-            reason={t.id !== p.trunkId ? GAP.whoAnswers : undefined}
-          />
-        ))}
-        <Sep />
-        <MenuItem icon="image" label="Make a picture" disabled={!p.onPicture} reason={p.onPicture ? undefined : GAP.picture} onClick={p.onPicture ? run(p.onPicture) : undefined} />
-        <MenuItem icon="gif" label="Find a GIF…" disabled reason={GAP.gif} />
-        <MenuItem icon="target" label="Set a goal" right={<kbd>/goal</kbd>} onClick={run(() => p.onInsert("/goal "))} />
-        <MenuItem icon="star" label="Saved prompts" right={<kbd>/</kbd>} disabled reason={GAP.prompts} />
-        <Sep />
-        <MenuItem icon="bg" label="Run it in the background" testId="plus-background" right={<kbd>/bg</kbd>} onClick={run(p.onBackground)} />
-        <MenuItem icon="doc" label="Write a document, spreadsheet or slides" disabled reason={GAP.office} />
-        <Sep />
-        {offRow("Phone call…", "call", true)}
-        {offRow("Join a meeting…", "meet", false)}
-        <Sep />
-        <MenuItem icon="folder" label="From Google Drive" disabled reason={GAP.drive} />
-        <MenuItem icon="folder" label="From OneDrive or SharePoint" disabled reason={GAP.oneDrive} />
-        <MenuItem icon="spark" label="Improve my draft" disabled reason={GAP.improve} />
       </div>
     </Popover>
   );
@@ -116,7 +117,7 @@ export function PlusMenu(p: Props) {
 
 function SwitchRow({ icon, label, reason, on, onChange }: { icon: "ghost" | "help"; label: string; reason: string; on: boolean; onChange?: () => void }) {
   return (
-    <div className="c-mi c-switchrow" title={reason}>
+    <div className="c-mi c-switchrow" title={shownWhy(reason)}>
       <span className="c-mi-ic"><Icon name={icon} size={16} /></span>
       <span className="c-mi-t">
         <span>{label}</span>

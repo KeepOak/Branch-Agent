@@ -2,9 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const readClawPackageRefsMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../groves/provenance.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../groves/provenance.js")>()),
-  readClawPackageRefs: readClawPackageRefsMock,
+vi.mock("../groves/provenance-async.js", () => ({
+  readClawPackageOwnership: async () => ({ packageRefs: readClawPackageRefsMock(), installs: [] }),
 }));
 
 const { collectGrovePluginUninstallWarnings } = await import("./uninstall-grove-references.js");
@@ -20,7 +19,7 @@ describe("collectGrovePluginUninstallWarnings", () => {
     readClawPackageRefsMock.mockReset();
   });
 
-  it("ignores a dependency that was conclusively rolled back", () => {
+  it("ignores a dependency that was conclusively rolled back", async () => {
     readClawPackageRefsMock.mockReturnValue([
       {
         kind: "plugin",
@@ -32,10 +31,12 @@ describe("collectGrovePluginUninstallWarnings", () => {
       },
     ]);
 
-    expect(collectGrovePluginUninstallWarnings({ pluginId: "audit", installRecord })).toEqual([]);
+    expect(await collectGrovePluginUninstallWarnings({ pluginId: "audit", installRecord })).toEqual(
+      [],
+    );
   });
 
-  it("keeps warning for an uncertain failed install", () => {
+  it("keeps warning for an uncertain failed install", async () => {
     readClawPackageRefsMock.mockReturnValue([
       {
         kind: "plugin",
@@ -47,9 +48,9 @@ describe("collectGrovePluginUninstallWarnings", () => {
       },
     ]);
 
-    expect(collectGrovePluginUninstallWarnings({ pluginId: "audit", installRecord })).toContain(
-      'Warning: plugin "audit" is referenced by Grove: @owner/audit-grove.',
-    );
+    expect(
+      await collectGrovePluginUninstallWarnings({ pluginId: "audit", installRecord }),
+    ).toContain('Warning: plugin "audit" is referenced by Grove: @owner/audit-grove.');
   });
 
   it.each([
@@ -68,7 +69,7 @@ describe("collectGrovePluginUninstallWarnings", () => {
       record: { source: "clawhub" as const, version: "2.0.1" },
       ref: "audit",
     },
-  ])("$label", ({ record, ref }) => {
+  ])("$label", async ({ record, ref }) => {
     readClawPackageRefsMock.mockReturnValue([
       {
         kind: "plugin",
@@ -81,7 +82,7 @@ describe("collectGrovePluginUninstallWarnings", () => {
     ]);
 
     expect(
-      collectGrovePluginUninstallWarnings({
+      await collectGrovePluginUninstallWarnings({
         pluginId: "audit",
         installRecord: record,
       }),

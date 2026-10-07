@@ -5,38 +5,6 @@ import { registerModelSetupEnglish } from "../../i18n/locales/en-model-setup.ts"
 
 registerModelSetupEnglish();
 
-function renderModelProviderDiscovery(props: {
-  state: "closed" | "loading" | "ready";
-  agentLabel: string;
-  credentialChoices: readonly string[];
-  onCancel: () => void;
-  onClose: () => void;
-}) {
-  if (props.state === "closed") {
-    return nothing;
-  }
-  if (props.state === "loading") {
-    return html`<branch-modal-dialog
-      label=${t("modelSetup.discovery.title")}
-      @modal-cancel=${props.onCancel}
-    >
-      <div class="model-setup-wizard">
-        <div class="model-setup-wizard__body" role="status">${t("common.loading")}</div>
-        <div class="model-setup-wizard__footer">
-          <button class="btn" @click=${props.onCancel}>${t("common.cancel")}</button>
-        </div>
-      </div>
-    </branch-modal-dialog>`;
-  }
-  return html`<branch-model-setup-page
-    .routeData=${{ firstRun: false }}
-    .embedded=${true}
-    .credentialChoices=${props.credentialChoices}
-    .agentLabel=${props.agentLabel}
-    .onClose=${props.onClose}
-  ></branch-model-setup-page>`;
-}
-
 type DiscoveryOwner = {
   client: GatewayBrowserClient | null;
   epoch: number;
@@ -132,21 +100,39 @@ export class ModelProviderDiscoveryController implements ReactiveController {
   }
 
   render(data: { agentLabel: string; credentialChoices: readonly string[] }) {
+    if (this.state === "closed") {
+      return nothing;
+    }
     const generation = this.generation;
-    return renderModelProviderDiscovery({
-      ...data,
-      state: this.state,
-      onCancel: () => {
-        if (generation === this.generation) {
-          this.reset();
-        }
-      },
-      onClose: () => {
+    const cancel = () => {
+      if (generation === this.generation) {
+        this.reset();
+      }
+    };
+    if (this.state === "loading") {
+      return html`<branch-modal-dialog
+        label=${t("modelSetup.discovery.title")}
+        @modal-cancel=${cancel}
+      >
+        <div class="model-setup-wizard">
+          <div class="model-setup-wizard__body" role="status">${t("common.loading")}</div>
+          <div class="model-setup-wizard__footer">
+            <button class="btn" @click=${cancel}>${t("common.cancel")}</button>
+          </div>
+        </div>
+      </branch-modal-dialog>`;
+    }
+    return html`<branch-model-setup-page
+      .routeData=${{ firstRun: false }}
+      .embedded=${true}
+      .credentialChoices=${data.credentialChoices}
+      .agentLabel=${data.agentLabel}
+      .onClose=${() => {
         if (generation === this.generation) {
           this.reset();
           this.options.onClose();
         }
-      },
-    });
+      }}
+    ></branch-model-setup-page>`;
   }
 }

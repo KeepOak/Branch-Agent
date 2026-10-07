@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto";
 import { resolve, sep } from "node:path";
 import { coerceErrorMessage } from "@branch/normalization-core/error-coercion";
 import { root as fsSafeRoot } from "../infra/fs-safe.js";
 import type { BranchStateDatabaseOptions } from "../state/branch-state-db.js";
 import { groveWorkspaceActionsById } from "./application-provenance.js";
+import { digestGroveBytes } from "./digest.js";
 import type { GroveAddPlan } from "./types.js";
 import type { GroveUpdatePlan } from "./update-plan.js";
 import { collectGroveRollbackFailures } from "./update-rollback.js";
@@ -31,10 +31,6 @@ export class GroveWorkspaceUpdateError extends Error {
     super(message);
     this.name = "GroveWorkspaceUpdateError";
   }
-}
-
-function digest(content: Uint8Array): string {
-  return `sha256:${createHash("sha256").update(content).digest("hex")}`;
 }
 
 export async function applyGroveWorkspaceUpdate(
@@ -95,7 +91,7 @@ export async function applyGroveWorkspaceUpdate(
       if (
         previousContent &&
         action.currentDigest &&
-        digest(previousContent) !== action.currentDigest
+        digestGroveBytes(previousContent) !== action.currentDigest
       ) {
         throw new GroveWorkspaceUpdateError(
           `Workspace file ${JSON.stringify(path)} changed after planning.`,
@@ -139,7 +135,7 @@ export async function applyGroveWorkspaceUpdate(
         sourceRoot: source,
       });
       const content = resolvedSource.content;
-      if (digest(content) !== target.digest || target.digest !== action.desiredDigest) {
+      if (digestGroveBytes(content) !== target.digest || target.digest !== action.desiredDigest) {
         throw new GroveWorkspaceUpdateError(
           `Workspace source for ${JSON.stringify(path)} changed after planning.`,
         );
@@ -163,7 +159,7 @@ export async function applyGroveWorkspaceUpdate(
         const currentContent = await workspace.readBytes(path, {
           maxBytes: MAX_UPDATE_FILE_BYTES,
         });
-        if (digest(currentContent) !== target.digest) {
+        if (digestGroveBytes(currentContent) !== target.digest) {
           throw new Error(`Workspace file ${JSON.stringify(path)} changed before rollback.`);
         }
         if (previousContent) {

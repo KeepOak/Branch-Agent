@@ -4,7 +4,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Btn, Ctl, Pick, Sec, Seg, Switch, useLevel, useSaveRunner, type Opt } from "../kit";
 import { DESKTOP, READING_MORE, rowOf, rowsOf, type RowSpec } from "./appearance-rows";
-import type { useLook } from "./appearance-store";
+import { sceneFile, type useLook } from "./appearance-store";
 
 export type Look = ReturnType<typeof useLook>;
 
@@ -17,7 +17,7 @@ export function SpecRow({ r, look, disabled }: { r: RowSpec; look: Look; disable
   const set = (x: unknown) => void save(() => look.store.set(r.key, x === r.def ? null : x));
   const off = Boolean(r.off) || disabled;
   return (
-    <Ctl title={r.title} sub={r.sub} keep={r.keep} off={r.off}>
+    <Ctl title={r.title} sub={r.sub} help={r.help} keep={r.keep} off={r.off}>
       {r.kind === "sw" ? <Switch checked={v === true} label={r.title} disabled={off} onChange={set} /> : null}
       {r.kind === "seg" ? <Seg value={String(v)} options={r.opts ?? []} label={r.title} disabled={off} onChange={set} /> : null}
       {r.kind === "pick" ? <Pick value={String(v)} options={r.opts ?? []} label={r.title} disabled={off} onChange={set} /> : null}
@@ -30,7 +30,7 @@ export function AgentsSec({ look }: { look: Look }) {
   const shown = look.val("agentShown", shellShown()) === true;
   return (
     <Sec title="Agents">
-      <Ctl title="Show the agent beside the conversation" sub="It acts out what the Trunk is doing: thinking, searching, reading, working, waiting for you, celebrating, resting.">
+      <Ctl title="Show the agent beside the conversation" sub="The Trunk’s character shows what it is doing." help="It acts out what the Trunk is doing: thinking, searching, reading, working, waiting for you, celebrating, resting.">
         <Switch checked={shown} label="Show the agent beside the conversation" onChange={(on) => void save(() => look.store.set("agentShown", on))} />
       </Ctl>
       <SpecRow r={rowOf("agentSize")} look={look} />
@@ -58,6 +58,33 @@ export const SCENES: { id: string; name: string; file: string | null; fresh?: bo
 export function BackgroundSec({ look }: { look: Look }) {
   const save = useSaveRunner();
   const bg = String(look.val("bg", "none")), scene = String(look.val("scene", "auto"));
+  const [preview, setPreview] = useState(false);
+  useEffect(() => {
+    if (!preview) return;
+    document.documentElement.classList.add("scene-peek");
+    const close = () => setPreview(false);
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation(); // The shell's Escape must not close the pane or focus mode too.
+      close();
+    };
+    const keyup = (event: KeyboardEvent) => { if ([" ", "Enter", "Escape"].includes(event.key)) close(); };
+    window.addEventListener("pointerup", close, true);
+    window.addEventListener("pointercancel", close, true);
+    window.addEventListener("keyup", keyup, true);
+    window.addEventListener("keydown", keydown, true);
+    window.addEventListener("blur", close);
+    return () => {
+      document.documentElement.classList.remove("scene-peek");
+      window.removeEventListener("pointerup", close, true);
+      window.removeEventListener("pointercancel", close, true);
+      window.removeEventListener("keyup", keyup, true);
+      window.removeEventListener("keydown", keydown, true);
+      window.removeEventListener("blur", close);
+    };
+  }, [preview]);
+  const previewReason = bg === "none" ? "Pick a background first." : sceneFile(look.snap.look) ? undefined : "Not drawn yet.";
   const pick = (id: string) => void save(async () => { await look.store.set("scene", id === "auto" ? null : id); await look.store.set("bg", "painted"); });
   return (
     <Sec title="Background">
@@ -75,8 +102,8 @@ export function BackgroundSec({ look }: { look: Look }) {
       </div>
       <RangeRow look={look} k="scrim" def={35} max={90} title="How much the theme covers it" label="How much the theme covers the background" sub="More keeps text calmer; less shows more of the background." off={bg === "none"} />
       <RangeRow look={look} k="see" def={25} max={60} title="See-through panels" label="See-through panels" sub="Panels blur what’s behind them." off={bg === "none"} />
-      <Ctl title="Preview" sub="Clear the view: see the background. Click anywhere or press Escape to come back." off={bg === "none" ? undefined : "The window doesn’t draw a background yet, so there’s nothing behind it to see."}>
-        <Btn sm disabled>{EYE}See it clearly</Btn>
+      <Ctl title="Preview" sub="Hold it to see the background on its own." off={previewReason}>
+        <Btn sm disabled={Boolean(previewReason)} onPointerDown={(e) => { e.preventDefault(); setPreview(true); }} onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); if (!e.repeat) setPreview(true); } }}>{EYE}See it clearly</Btn>
       </Ctl>
     </Sec>
   );
@@ -108,8 +135,8 @@ export function ReadingSec({ look }: { look: Look }) {
   const set = (k: "fontUi" | "fontChat") => (id: string) => void save(() => look.store.set(k, id === "theme" ? null : id));
   return (
     <Sec title="Reading">
-      <SpecRow r={rowOf("width")} look={look} />
       <SpecRow r={rowOf("size")} look={look} />
+      <ReadingMoreRows look={look} />
       {level >= 1 ? (
         <>
           <Ctl title="Interface font" keep="everywhere"><Pick value={font("fontUi")} options={FONTS} label="Interface font" onChange={set("fontUi")} /></Ctl>
@@ -148,11 +175,11 @@ const CODE_SAMPLE: Record<string, [string, string, string]> = {
   solarized: ["#859900", "#2aa198", "#93a1a1"], tm: ["#b5651d", "#3a7d44", "#888"],
 };
 
-export function ReadingMoreSec({ look }: { look: Look }) {
+function ReadingMoreRows({ look }: { look: Look }) {
   const math = look.val("math", true) !== false;
   const cc = CODE_SAMPLE[String(look.val("codeCol", "theme"))] ?? CODE_SAMPLE.theme;
   return (
-    <Sec title="Reading">
+    <>
       {rowsOf(READING_MORE).map((r) => (
         <Fragment key={r.key}>
           <SpecRow r={r} look={look} />
@@ -166,7 +193,7 @@ export function ReadingMoreSec({ look }: { look: Look }) {
           ) : null}
         </Fragment>
       ))}
-    </Sec>
+    </>
   );
 }
 
@@ -179,4 +206,3 @@ export function WindowSec({ look }: { look: Look }) {
     </Sec>
   );
 }
-

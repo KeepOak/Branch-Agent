@@ -45,7 +45,6 @@ import {
   getBranchDatabaseMaintenanceScope,
   maintenanceOwnerMayCopySourcesInProcess,
 } from "./branch-state-maintenance-context.js";
-import type { BranchStateReadReceipt } from "./branch-state-read-error.js";
 import {
   startBranchStateReadOperation,
   type BranchStateReadCompletion,
@@ -58,6 +57,7 @@ import {
   runSynchronousReadScope,
 } from "./branch-state-read-scope.js";
 import type {
+  BranchStateReadReceipt,
   BranchStateReadOptions,
   BranchStateReadCommand,
   BranchStateReadReply,
@@ -548,7 +548,10 @@ export function withExistingBranchStateDatabaseArtifactPreservingReadOnly<T>(
 /** Publication guards need current rows, never an inherited discovery snapshot. */
 export function withExistingBranchStateDatabaseCurrentReadOnly<T>(
   operation: (database: BranchStateReadOnlyDatabase) => T,
-  options: BranchStateDatabaseOptions = {},
+  options: BranchStateDatabaseOptions & {
+    /** Existing host mutation guards may read natively outside worker admission grants. */
+    allowNativeRead?: true;
+  } = {},
   openStateSchemaReadAdmission?: BranchStateSchemaReadAdmission,
 ): T | undefined {
   const pathname = resolveReadOnlyPath(options);
@@ -570,7 +573,9 @@ export function withExistingBranchStateDatabaseCurrentReadOnly<T>(
     return withBranchStateReadOnlyLocation(
       operation,
       pathname,
-      prepareSqliteReadOnlyLocationSync(pathname),
+      options.allowNativeRead && !isArtifactPreservingStateRead() && !openStateSchemaReadAdmission
+        ? pathname
+        : prepareSqliteReadOnlyLocationSync(pathname),
       openStateSchemaReadAdmission,
     );
   });
@@ -615,4 +620,13 @@ export function readCurrentBranchStateDatabaseContentVersion(
   const pathname = resolveReadOnlyPath(options);
   const env = options.env ?? process.env;
   return stateSnapshotReads.exit(() => readAdmittedStateContentVersion(pathname, env));
+}
+
+/** Current guards leave discovery snapshots after validating their inherited read admission. */
+export function withCurrentBranchStateReadScope<T>(
+  options: BranchStateDatabaseOptions,
+  operation: (pathname: string) => T,
+): T {
+  const pathname = resolveReadOnlyPath(options);
+  return stateSnapshotReads.exit(() => operation(pathname));
 }

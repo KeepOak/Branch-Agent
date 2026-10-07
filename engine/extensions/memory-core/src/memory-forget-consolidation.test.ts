@@ -41,7 +41,7 @@ describe("memory forget", () => {
     vi.stubEnv("BRANCH_STATE_DIR", stateDir);
     await configureMemoryCoreRingsStateForTests();
     cfg = {
-      agents: { defaults: { workspace: workspaceDir }, list: [{ id: "main", default: true }] },
+      agents: { defaults: { workspace: workspaceDir }, entries: { main: {} } },
     } as BranchConfig;
   });
 
@@ -80,11 +80,11 @@ describe("memory forget", () => {
       cfg = {
         agents: {
           defaults: { workspace: workspaceDir },
-          list: [
-            { id: "alpha", default: true, workspace: workspaceDir },
-            { id: "gamma", workspace: workspaceDir },
-            { id: "vacant", workspace: workspaceDir },
-          ],
+          entries: {
+            alpha: { workspace: workspaceDir },
+            gamma: { workspace: workspaceDir },
+            vacant: { workspace: workspaceDir },
+          },
         },
       } as BranchConfig;
       await upsertSessionEntry({

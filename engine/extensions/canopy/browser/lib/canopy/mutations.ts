@@ -270,6 +270,7 @@ export async function moveCanopyCard(
     params.requestUpdate?.();
   }
   if (reloadAfterFailure) {
+    invalidateCanopyLoads(params.host);
     await loadCanopy({
       host: params.host,
       client: params.client,

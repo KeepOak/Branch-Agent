@@ -1,7 +1,9 @@
 import { collectConfiguredModelRefs } from "@branch/model-catalog-core/configured-model-refs";
 import { parseModelCatalogRef } from "@branch/model-catalog-core/model-catalog-refs";
 import { normalizeProviderId } from "@branch/model-catalog-core/provider-id";
+import { isRecord } from "@branch/normalization-core/record-coerce";
 import { normalizeLowercaseStringOrEmpty } from "@branch/normalization-core/string-coerce";
+import { readAgentRosterProperty } from "../agents/agent-roster.js";
 import {
   isDefaultAgentRuntimeId,
   normalizeOptionalAgentRuntimeId,
@@ -128,16 +130,22 @@ function resolveEffectiveSelectedModelRefs(params: { cfg: BranchConfig; agentId:
 
 function configuredRefTargetsAgent(params: {
   cfg: BranchConfig;
-  sourceConfigBeforeMigrations?: BranchConfig;
+  sourceConfigBeforeMigrations?: unknown;
   path: string;
   agentId: string;
 }): boolean {
   const match = /^agents\.list\.(\d+)\./.exec(params.path);
   if (match) {
-    const entry = (params.sourceConfigBeforeMigrations ?? params.cfg).agents?.list?.[
-      Number(match[1])
-    ];
-    return Boolean(entry && normalizeAgentId(entry.id) === params.agentId);
+    const roster = readAgentRosterProperty(params.sourceConfigBeforeMigrations ?? params.cfg);
+    const entry =
+      roster?.kind === "list" && Array.isArray(roster.value)
+        ? roster.value[Number(match[1])]
+        : undefined;
+    return (
+      isRecord(entry) &&
+      typeof entry.id === "string" &&
+      normalizeAgentId(entry.id) === params.agentId
+    );
   }
   const keyedMatch = /^agents\.entries\.([^.]+)\./.exec(params.path);
   return !keyedMatch || normalizeAgentId(keyedMatch[1] ?? "") === params.agentId;
@@ -145,7 +153,7 @@ function configuredRefTargetsAgent(params: {
 
 function configuredRefIsEffectiveForAgent(params: {
   cfg: BranchConfig;
-  sourceConfigBeforeMigrations?: BranchConfig;
+  sourceConfigBeforeMigrations?: unknown;
   path: string;
   value: string;
   agentId: string;
@@ -224,7 +232,7 @@ function configuredProviderPoliciesNeedCodex(
 
 function configuredModelRefsNeedCodex(params: {
   cfg: BranchConfig;
-  sourceConfigBeforeMigrations?: BranchConfig;
+  sourceConfigBeforeMigrations?: unknown;
   env: NodeJS.ProcessEnv;
   agentIds: string[];
 }): { complete: boolean; needsCodex: boolean } {
@@ -295,7 +303,7 @@ function defaultOpenAiRouteNeedsCodex(
 function configNeedsCodexForOpenAi(
   cfg: BranchConfig,
   env: NodeJS.ProcessEnv,
-  sourceConfigBeforeMigrations?: BranchConfig,
+  sourceConfigBeforeMigrations?: unknown,
 ): boolean {
   const agentIds = listAgentIds(cfg);
   const configuredRefs = configuredModelRefsNeedCodex({
@@ -317,7 +325,7 @@ function configNeedsCodexForOpenAi(
 export function shouldSuppressMissingCodexPluginDiagnostics(
   cfg: BranchConfig,
   env: NodeJS.ProcessEnv = process.env,
-  sourceConfigBeforeMigrations?: BranchConfig,
+  sourceConfigBeforeMigrations?: unknown,
 ): boolean {
   const entryEnabled = codexPluginEntryEnabled(cfg);
   if (entryEnabled === true) {

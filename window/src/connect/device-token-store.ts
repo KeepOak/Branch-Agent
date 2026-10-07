@@ -58,3 +58,19 @@ export function hasStoredDeviceToken(gatewayUrl: string): boolean {
   }
   return false;
 }
+
+/** The operator token this browser holds for the engine at `gatewayUrl`, if it paired. */
+export function storedOperatorToken(gatewayUrl: string): string | null {
+  try {
+    const prefix = `${PREFIX}:${gatewayUrl}:`;
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(prefix) || !key.endsWith(":operator")) continue;
+      const parsed = JSON.parse(localStorage.getItem(key) ?? "null") as { token?: unknown } | null;
+      if (typeof parsed?.token === "string" && parsed.token) return parsed.token;
+    }
+  } catch {
+    // Storage blocked: no token.
+  }
+  return null;
+}

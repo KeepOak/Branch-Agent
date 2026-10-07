@@ -6,6 +6,7 @@ import {
   closeBranchStateDatabaseForTest,
   createChannelIngressQueueForTests,
 } from "branch/plugin-sdk/channel-ingress-test-runtime";
+import { closeBranchStateDatabaseAsync } from "branch/plugin-sdk/sqlite-runtime-testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSignedCreateMessageRequest } from "./monitor.test-fixtures.js";
 import { migrateNextcloudTalkLegacyReplayState } from "./webhook-spool-state.js";
@@ -58,12 +59,14 @@ async function withQueue<T>(fn: (queue: NextcloudTalkIngressQueue) => Promise<T>
     return await fn(queue);
   } finally {
     closeBranchStateDatabaseForTest();
+    await closeBranchStateDatabaseAsync();
     await fs.rm(stateDir, { recursive: true, force: true });
   }
 }
 
-afterEach(() => {
+afterEach(async () => {
   closeBranchStateDatabaseForTest();
+  await closeBranchStateDatabaseAsync();
   vi.restoreAllMocks();
 });
 

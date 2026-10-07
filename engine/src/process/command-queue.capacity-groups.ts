@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/process/command-queue.capacity-groups.ts (atlas AGENT-LOOP-0013). Changed for Branch: preserve existing Branch rebranding and set-based membership validation; retained under the Harvest rule that test assertions keep or strengthen upstream behavior.
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 // Capacity groups: a shared, hard aggregate budget across several command
 // lanes, with per-member reservations. Split out of command-queue.ts to keep
@@ -159,7 +160,7 @@ export function validateCommandLaneGroupSpec(
   group: string,
   spec: CommandLaneGroupSpec,
 ): LaneGroupState {
-  const members = spec.members.map((member) => normalizeLane(member));
+  const members = new Set(spec.members.map((member) => normalizeLane(member)));
   for (const member of members) {
     assertGroupEligibleLane(member);
   }
@@ -167,7 +168,7 @@ export function validateCommandLaneGroupSpec(
   let reservedTotal = 0;
   for (const [rawLane, count] of Object.entries(spec.reservations ?? {})) {
     const member = normalizeLane(rawLane);
-    if (!members.includes(member)) {
+    if (!members.has(member)) {
       throw new Error(`command lane group "${group}" reserves for non-member lane "${member}"`);
     }
     const reserved = Math.max(0, Math.floor(count));
@@ -182,7 +183,7 @@ export function validateCommandLaneGroupSpec(
       `command lane group "${group}" reserves ${reservedTotal} slots but its budget is ${budget}`,
     );
   }
-  return { group, budget, members: new Set(members), reservations };
+  return { group, budget, members, reservations };
 }
 
 /** Install a validated group, detaching its members from any previous owner. */

@@ -1,6 +1,6 @@
 {
   "name": "@branch/a2a",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "description": "Branch Agent A2A v1.0 Agent-to-Agent protocol channel plugin",
   "repository": {
     "type": "git",
@@ -20,7 +20,7 @@
     "branch": "workspace:*"
   },
   "peerDependencies": {
-    "branch": ">=2026.9.7"
+    "branch": ">=2026.9.8"
   },
   "peerDependenciesMeta": {
     "branch": {

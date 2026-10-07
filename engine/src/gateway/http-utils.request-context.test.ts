@@ -36,25 +36,21 @@ const trustedRequestAuth = { trustDeclaredOperatorScopes: true };
 beforeEach(() => sessionEntries.clear());
 
 describe("resolveGatewayRequestContext", () => {
-  it("uses normalized x-branch-message-channel when enabled", () => {
+  it("uses normalized x-branch-message-channel", () => {
     const result = resolveGatewayRequestContext({
       req: createReq({ "x-branch-message-channel": " Custom-Channel " }),
       model: "branch",
       sessionPrefix: "openai",
-      defaultMessageChannel: "webchat",
-      useMessageChannelHeader: true,
     });
 
     expect(result.messageChannel).toBe("custom-channel");
   });
 
-  it("uses default messageChannel when header support is disabled", () => {
+  it("defaults messageChannel to webchat when the header is absent", () => {
     const result = resolveGatewayRequestContext({
-      req: createReq({ "x-branch-message-channel": "custom-channel" }),
+      req: createReq(),
       model: "branch",
       sessionPrefix: "openresponses",
-      defaultMessageChannel: "webchat",
-      useMessageChannelHeader: false,
     });
 
     expect(result.messageChannel).toBe("webchat");
@@ -66,7 +62,6 @@ describe("resolveGatewayRequestContext", () => {
       model: "branch",
       user: "alice",
       sessionPrefix: "openresponses",
-      defaultMessageChannel: "webchat",
     });
 
     expect(result.sessionKey).toContain("openresponses-user:alice");
@@ -77,7 +72,6 @@ describe("resolveGatewayRequestContext", () => {
       req: createReq({ "x-branch-session-key": "customer-case-42" }),
       model: "branch",
       sessionPrefix: "openai",
-      defaultMessageChannel: "webchat",
     });
 
     expect(result.sessionKey).toBe("customer-case-42");
@@ -98,7 +92,6 @@ describe("resolveGatewayRequestContext", () => {
         req: createReq({ "x-branch-session-key": sessionKey }),
         model: "branch",
         sessionPrefix: "openai",
-        defaultMessageChannel: "webchat",
       }),
     ).toThrow(/reserved internal session namespaces/u);
   });
@@ -111,7 +104,6 @@ describe("resolveGatewayRequestContext", () => {
       req: createReq({ "x-branch-session-key": sessionKey }),
       model: "branch",
       sessionPrefix: "openai",
-      defaultMessageChannel: "webchat",
     });
 
     expect(result.sessionKey).toBe(sessionKey);
@@ -130,7 +122,6 @@ describe("resolveGatewayRequestContext", () => {
         req: createReq({ "x-branch-session-key": sessionKey }),
         model: "branch",
         sessionPrefix: "openai",
-        defaultMessageChannel: "webchat",
       }),
     ).toThrow(/reserved internal session namespaces/u);
   });
@@ -141,7 +132,6 @@ describe("resolveGatewayRequestContext", () => {
         req: createReq({ "x-branch-agent-id": "missing-agent" }),
         model: "branch",
         sessionPrefix: "openai",
-        defaultMessageChannel: "webchat",
       }),
     ).toThrow(/Unknown agent/);
 
@@ -150,7 +140,6 @@ describe("resolveGatewayRequestContext", () => {
         req: createReq(),
         model: "branch/missing-agent",
         sessionPrefix: "openai",
-        defaultMessageChannel: "webchat",
       }),
     ).toThrow(/Unknown agent/);
 
@@ -159,7 +148,6 @@ describe("resolveGatewayRequestContext", () => {
         req: createReq({ "x-branch-agent-id": "!!!" }),
         model: "branch",
         sessionPrefix: "openai",
-        defaultMessageChannel: "webchat",
       }),
     ).toThrow("Unknown agent '!!!'.");
   });
@@ -170,7 +158,6 @@ describe("resolveGatewayRequestContext", () => {
         req: createReq({ "x-branch-agent-id": "main" }),
         model: "gpt-4o",
         sessionPrefix: "openai",
-        defaultMessageChannel: "webchat",
       }),
     ).toThrow("Invalid `model`. Use `branch` or `branch/<agentId>`.");
   });

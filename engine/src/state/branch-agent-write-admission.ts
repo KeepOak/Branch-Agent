@@ -1,9 +1,11 @@
+import type { SqliteWorkerEphemeralTarget } from "../infra/sqlite-worker-contract.js";
 import {
   readDatabasePathIdentitySync,
   type DatabasePathIdentity,
 } from "../infra/sqlite-worker-identity.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import {
+  isActiveStoreWriter,
   runQueuedStoreWrite,
   type StoreWriterQueue,
   type StoreWriterTiming,
@@ -61,11 +63,28 @@ export function runBranchAgentWriteAdmission<T>(
 
 /** Reserve a native write permit without admitting inherited foreground callbacks. */
 export function runBranchAgentWorkerWrite<T>(
-  options: BranchAgentDatabaseOptions,
+  options:
+    | BranchAgentDatabaseOptions
+    | { target: Readonly<SqliteWorkerEphemeralTarget>; assertCurrent(): void },
   run: () => Promise<T>,
   timing?: StoreWriterTiming,
   signal?: AbortSignal,
 ): Promise<T> {
+  if ("target" in options) {
+    const { handle, incarnation } = options.target;
+    return runQueuedStoreWrite({
+      queues: admission.queues,
+      storePath: `ephemeral:${handle}:${incarnation}`,
+      label: "incognito agent database write admission",
+      reentrant: false,
+      fn: async () => {
+        options.assertCurrent();
+        return run();
+      },
+      timing,
+      signal,
+    });
+  }
   return runBranchAgentWriteAdmission(
     options,
     async ({ canonicalPath: storePath }) => {
@@ -83,4 +102,31 @@ export function runBranchAgentWorkerWrite<T>(
     timing,
     signal,
   );
+}
+
+/** Compose the existing foreground queues without inverting inherited acquisition order. */
+export async function runBranchAgentWriteAdmissions<T>(
+  options: readonly BranchAgentDatabaseOptions[],
+  run: () => Promise<T> | T,
+): Promise<T> {
+  const selected = new Map(
+    options.map((option) => [resolveBranchAgentSqlitePath(option), option]),
+  );
+  const paths = [...selected.keys()].toSorted();
+  const inherited = [...admission.queues.keys()].filter((pathname) =>
+    isActiveStoreWriter(admission.queues, pathname),
+  );
+  if (paths.some((pathname) => inherited.includes(pathname))) {
+    throw new Error("Session read batch cannot reenter an active SQLite writer admission");
+  }
+  if (paths.some((pathname) => inherited.some((held) => held > pathname))) {
+    throw new Error("Session read batch would invert inherited SQLite writer admission order");
+  }
+  const acquire = (index: number): Promise<T> => {
+    const pathname = paths[index];
+    return pathname === undefined
+      ? Promise.resolve().then(run)
+      : runBranchAgentWriteAdmission(selected.get(pathname)!, () => acquire(index + 1), true);
+  };
+  return await acquire(0);
 }

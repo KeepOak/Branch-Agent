@@ -16,9 +16,10 @@ export function captureBranchStateReadContextWithAdmission(
 ): Pick<
   BranchStateWorkerContext,
   "admission" | "maintenanceScope" | "existingSchemaPath" | "runInCapturedSchemaScope"
-> {
+> & { assertPublicationCurrent: () => void } {
   const schema = captureBranchStateSchemaReadAdmission(pathname);
   const capturedAdmission = captureAdmission(pathname);
+  const assertPublicationCurrent = capturedAdmission.assertCurrent;
   let admission = capturedAdmission;
   let runInCapturedSchemaScope: BranchStateWorkerContext["runInCapturedSchemaScope"];
   if (schema) {
@@ -43,6 +44,7 @@ export function captureBranchStateReadContextWithAdmission(
   return {
     maintenanceScope: getBranchDatabaseMaintenanceScope(),
     admission,
+    assertPublicationCurrent,
     existingSchemaPath: schema?.path,
     runInCapturedSchemaScope,
   };

@@ -2,6 +2,7 @@ import {
   encodeBranchStateWorkerError,
   hydrateBranchStateWorkerError,
   retainBranchStateWorkerErrorPayload,
+  type BranchStateWorkerErrorPayload,
 } from "../state/branch-state-worker-error.js";
 import {
   capturePluginStateErrorCause,
@@ -19,7 +20,7 @@ export type PluginStateWorkerFailure = {
   operation: PluginStateStoreOperation;
   path?: string;
   owner: PluginStateStoreError["owner"];
-  cause?: PluginStateErrorCause;
+  cause?: PluginStateErrorCause<BranchStateWorkerErrorPayload>;
 };
 
 const errorConstructors = new Map<string, ErrorConstructor>([
@@ -32,7 +33,9 @@ const errorConstructors = new Map<string, ErrorConstructor>([
   ["EvalError", EvalError],
 ]);
 
-function restoreCause(value: PluginStateErrorCause | undefined): Error | undefined {
+function restoreCause(
+  value: PluginStateErrorCause<BranchStateWorkerErrorPayload> | undefined,
+): Error | undefined {
   if (value && "canonical" in value) {
     const retained = new Error("SQLite worker error cause");
     retainBranchStateWorkerErrorPayload(retained, value.canonical);

@@ -1,7 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { DatabaseSync } from "node:sqlite";
 import { normalizeAgentId } from "@branch/normalization-core/agent-id";
-import { enableNodeSqliteKyselyStatementCache } from "../infra/kysely-sync-cache-state.js";
 import { SQLITE_IDLE_HANDLE_TTL_MS } from "../infra/sqlite-handle-lifecycle.js";
 import {
   registerSqliteCacheExitClose,
@@ -24,18 +23,12 @@ import {
   type BranchAgentReadOnlyDatabase,
   type BranchAgentReadOnlyDatabaseHandle,
 } from "./branch-agent-db-readonly-open.js";
-import {
-  registerBranchAgentDatabaseSyncResource,
-  matchesAgentDatabaseReadCandidatePath,
-  type BranchAgentDatabaseReadCandidateResource,
-} from "./branch-agent-db-resources.js";
+import { registerBranchAgentDatabaseSyncResource } from "./branch-agent-db-resources.js";
 import { observeBranchDatabaseMaintenanceResource } from "./branch-state-db-async-lifecycle.js";
 
 export type BranchAgentDatabaseReadOnlyBehavior = {
   allowExtension?: boolean;
 };
-
-type ReadCandidate = Pick<BranchAgentDatabaseReadCandidateResource, "path" | "scope">;
 
 type ReadTarget = BranchAgentDatabaseOptions & { agentId: string; path: string };
 const readOnlyScope = new AsyncLocalStorage<BranchAgentDatabaseReadOnlyScope>();
@@ -153,16 +146,6 @@ export class BranchAgentDatabaseReadOnlyScope {
     return this.target?.agentId === agentId && this.target.path === pathname;
   }
 
-  closeMatching(candidates: readonly ReadCandidate[]): void {
-    const target = this.target;
-    if (
-      target &&
-      candidates.some((candidate) => matchesAgentDatabaseReadCandidatePath(candidate, target.path))
-    ) {
-      this.close();
-    }
-  }
-
   private acquire(options: BranchAgentDatabaseOptions) {
     if (this.database && !isBranchAgentDatabasePathCurrent(this.database)) {
       this.discardConnection();
@@ -187,7 +170,6 @@ export class BranchAgentDatabaseReadOnlyScope {
           revoke: () => this.close(),
           close: () => this.close(),
         });
-        enableNodeSqliteKyselyStatementCache(this.database.db);
         retainedScopes.active.add(this);
         if (this.cached) {
           retainedScopes.paths.set(this.database.path, this);
@@ -315,15 +297,6 @@ export function invalidateBranchAgentReadOnlyProjections(
 /** Writable admission retires an idle reader before opening the same physical file. */
 export function closeIdleBranchAgentDatabaseReadOnly(pathname: string): void {
   retainedScopes.paths.get(pathname)?.closeIfIdle();
-}
-
-/** Called only after the native worker has settled preceding reads, including explicit scopes. */
-export function closeBranchAgentDatabaseReadOnlyCandidates(
-  candidates: readonly ReadCandidate[],
-): void {
-  for (const scope of retainedScopes.active) {
-    scope.closeMatching(candidates);
-  }
 }
 
 export function retainCachedBranchAgentDatabaseReadOnly(options: ReadTarget) {

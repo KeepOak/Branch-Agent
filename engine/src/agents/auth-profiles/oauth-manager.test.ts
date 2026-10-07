@@ -14,6 +14,7 @@ import { closeBranchAgentDatabasesForTest } from "../../state/branch-agent-db.js
 import { closeBranchStateDatabaseForTest } from "../../state/branch-state-db.js";
 import {
   connectUserModelAccount,
+  readSelectedUserModelAccount,
   readUserModelAuthProfile,
 } from "../../state/user-model-accounts.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
@@ -202,7 +203,7 @@ describe("createOAuthManager", () => {
           connectUserModelAccount({
             ownerProfileId: owner.id,
             credential: reconnected,
-            matchesCredential: () => true,
+            replacement: readSelectedUserModelAccount(owner.id, reconnected.provider),
             assertCurrent() {},
           });
           return {

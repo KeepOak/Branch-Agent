@@ -1,3 +1,4 @@
+import "../test-utils/prepare-compiled-subprocesses.js";
 import process from "node:process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -6,6 +7,7 @@ import {
   type PluginManifestCommandAliasRegistry,
 } from "../plugins/manifest-command-aliases.js";
 import { createDeferredCore } from "../shared/deferred.js";
+import { captureEnv } from "../test-utils/env.js";
 import {
   resolveGatewayCatalogCommandPath,
   resolveGatewayRunPreBootstrapOptions,
@@ -30,6 +32,9 @@ vi.mock("node:process", async (importOriginal) => ({
   }),
 }));
 const runGatewayCommand = vi.hoisted(() => vi.fn());
+const prepareHostRendezvous = vi.hoisted(() =>
+  vi.fn(async () => ({ decision: { outcome: "start", message: "" } })),
+);
 const sqliteAdmission = vi.hoisted(() => ({
   initialize: vi.fn<() => Promise<void>>().mockResolvedValue(),
   selectGatewayEnvironment: vi.fn<() => Promise<boolean>>().mockResolvedValue(true),
@@ -39,6 +44,7 @@ vi.mock("../infra/bun-sqlite-library.js", async (importOriginal) => ({
   initializeSqliteRuntimeCapabilities: sqliteAdmission.initialize,
 }));
 vi.mock("./gateway-cli/run.js", () => ({ runGatewayCommand }));
+vi.mock("../infra/host-rendezvous.js", () => ({ prepareHostRendezvous }));
 // Keep Commander parsing independent of native startup; run-main.exit and
 // command-execution-startup tests own bootstrap and admission behavior.
 vi.mock("./gateway-cli/pre-bootstrap.js", () => ({
@@ -66,14 +72,19 @@ vi.mock("../logging/console.js", async (importOriginal) => ({
 
 describe("CLI host admission and Gateway fast-path parsing", () => {
   const previousExitCode = process.exitCode;
+  const pathEnv = captureEnv(["PATH", "BRANCH_PATH_BOOTSTRAPPED"]);
   beforeEach(() => {
     process.exitCode = undefined;
     runGatewayCommand.mockClear();
+    prepareHostRendezvous.mockReset().mockResolvedValue({
+      decision: { outcome: "start", message: "" },
+    });
     sqliteAdmission.initialize.mockReset().mockResolvedValue();
     sqliteAdmission.selectGatewayEnvironment.mockClear();
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   });
   afterEach(() => {
+    pathEnv.restore();
     process.exitCode = previousExitCode;
     vi.restoreAllMocks();
   });
@@ -97,6 +108,15 @@ describe("CLI host admission and Gateway fast-path parsing", () => {
     }
     expect(sqliteAdmission.selectGatewayEnvironment).toHaveBeenCalledOnce();
     expect(runGatewayCommand).toHaveBeenCalledOnce();
+  });
+
+  it("attaches a duplicate gateway before state bootstrap enters the owner guard", async () => {
+    prepareHostRendezvous.mockResolvedValueOnce({
+      decision: { outcome: "attach", message: "Already serving this profile" },
+    });
+    await runCli(cliArgs("gateway", "run"));
+    expect(runGatewayCommand).not.toHaveBeenCalled();
+    expect(prepareHostRendezvous).toHaveBeenCalledOnce();
   });
 
   it.each([["node", "run"], ["node", "worker"], ["worker"]])(

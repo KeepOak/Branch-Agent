@@ -371,6 +371,7 @@ describe("Grove status and remove", () => {
       consentPlanIntegrity: remove.planIntegrity,
       purgeSessions: async () => undefined,
     });
+    expect(removed.error).toBeUndefined();
     expect(removed).toMatchObject({ status: "complete", agentRemoved: false });
     await expect(readGroveStatus("worker", { env: current.env, config: {} })).resolves.toMatchObject(
       {
@@ -504,6 +505,7 @@ describe("Grove status and remove", () => {
     const result = await applyGroveRemovePlan(plan, {
       ...removeOptions(current, plan, config),
     });
+    expect(result.error).toBeUndefined();
     expect(result).toMatchObject({
       status: "complete",
       agentRemoved: true,
@@ -887,7 +889,6 @@ describe("Grove status and remove", () => {
     });
     const packageDeps = {
       resolvePlugin,
-      acquirePackageLease: vi.fn(() => ({ heartbeat: vi.fn(), release: vi.fn() })),
     };
     const plan = await buildGroveRemovePlan("worker", {
       env: current.env,
@@ -903,12 +904,12 @@ describe("Grove status and remove", () => {
       }),
     );
 
-    await expect(
-      applyGroveRemovePlan(plan, {
-        ...removeOptions(current, plan, config),
-        packageDeps,
-      }),
-    ).resolves.toMatchObject({ status: "complete", agentRemoved: true });
+    const result = await applyGroveRemovePlan(plan, {
+      ...removeOptions(current, plan, config),
+      packageDeps,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result).toMatchObject({ status: "complete", agentRemoved: true });
   });
 
   it("blocks removal when the created agent config changed", async () => {

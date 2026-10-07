@@ -9,14 +9,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT_DIR/scripts/lib/docker-e2e-image.sh"
-source "$ROOT_DIR/scripts/lib/docker-e2e-package.sh"
 
 IMAGE_NAME="$(docker_e2e_resolve_image "branch-update-channel-switch-e2e" BRANCH_UPDATE_CHANNEL_SWITCH_E2E_IMAGE)"
 SKIP_BUILD="${BRANCH_UPDATE_CHANNEL_SWITCH_E2E_SKIP_BUILD:-0}"
-cleanup() {
-  docker_e2e_cleanup_package_tgz "${PACKAGE_TGZ:-}"
-}
-trap cleanup EXIT
+trap 'docker_e2e_cleanup_package_tgz "${PACKAGE_TGZ:-}"' EXIT
 
 PACKAGE_TGZ="$(docker_e2e_prepare_package_tgz update-channel-switch "${BRANCH_CURRENT_PACKAGE_TGZ:-}")"
 # Bare lanes mount the package artifact instead of baking app sources into the image.
@@ -37,8 +33,6 @@ docker_e2e_run_with_harness \
   -e BRANCH_SKIP_CHANNELS=1 \
   -e BRANCH_SKIP_PROVIDERS=1 \
   -e OPENCLAW_FS_SAFE_NATIVE_CONTRACT \
-  -e BRANCH_UPDATE_CHANNEL_DRY_RUN_PACKAGE_COMPAT \
-  -e BRANCH_UPDATE_CHANNEL_DIRTY_BLOCK_EXIT_ZERO_COMPAT \
   -e BRANCH_E2E_GIT_CHANNEL_TIMEOUT \
   -e "BRANCH_TEST_STATE_SCRIPT_B64=$BRANCH_TEST_STATE_SCRIPT_B64" \
   "${DOCKER_E2E_PACKAGE_ARGS[@]}" \
@@ -105,10 +99,6 @@ done
 node scripts/docker/verify-fs-safe-native.mjs \
   --package-root /tmp/npm-prefix/lib/node_modules/branch \
   --mode fallback
-BRANCH_UPDATE_CHANNEL_DRY_RUN_PACKAGE_COMPAT="${BRANCH_UPDATE_CHANNEL_DRY_RUN_PACKAGE_COMPAT:-0}"
-export BRANCH_UPDATE_CHANNEL_DRY_RUN_PACKAGE_COMPAT
-BRANCH_UPDATE_CHANNEL_DIRTY_BLOCK_EXIT_ZERO_COMPAT="${BRANCH_UPDATE_CHANNEL_DIRTY_BLOCK_EXIT_ZERO_COMPAT:-0}"
-export BRANCH_UPDATE_CHANNEL_DIRTY_BLOCK_EXIT_ZERO_COMPAT
 command -v branch >/dev/null
 branch_e2e_enable_branch_cli_timeout
 # Channel switches install dependencies and swap the whole package inside the
@@ -189,7 +179,7 @@ assert_package_dry_run() {
     assert-dry-run "$expected_kind" "$expected_channel" "$selection"
   node scripts/e2e/lib/update-channel-switch/assertions.mjs assert-config-channel dev
 }
-dev_channel_args=(--channel dev)
+dev_channel_args=()
 echo "==> package dry-run channel and one-off tag precedence"
 branch config set update.channel dev
 assert_package_dry_run git dev stored
@@ -197,25 +187,15 @@ assert_package_dry_run git dev explicit --channel dev
 assert_package_dry_run git dev explicit --channel dev --tag beta
 assert_package_dry_run package dev stored --tag beta
 assert_package_dry_run package stable explicit --channel stable
-# 7.33 reports a stored dev channel as a package update even though an
-# explicit --channel dev selects Git. Keep the explicit selector for the
-# destructive admission and actual switch probes on that frozen contract.
-if [ "$BRANCH_UPDATE_CHANNEL_DRY_RUN_PACKAGE_COMPAT" != "1" ]; then
-  dev_channel_args=()
-fi
-
 echo "==> ordinary untracked files still block Git admission"
 printf "retain user notes\n" >"$git_root/operator-update-notes.tmp"
 set +e
 dirty_json="$(branch update "${dev_channel_args[@]}" --yes --json --no-restart)"
 dirty_status=$?
 set -e
-# Historical update CLIs can report a blocked structured result with exit zero.
-# Admit only that exact legacy status; timeouts, signals, and other failures stay fatal.
 node scripts/e2e/lib/update-channel-switch/assertions.mjs \
   assert-dirty-exit \
-  "$dirty_status" \
-  "$BRANCH_UPDATE_CHANNEL_DIRTY_BLOCK_EXIT_ZERO_COMPAT"
+  "$dirty_status"
 # The payload assertion proves the update was rejected and no checkout state changed.
 UPDATE_JSON="$dirty_json" node scripts/e2e/lib/update-channel-switch/assertions.mjs \
   assert-dirty-update "$git_root" "$fixture_sha"

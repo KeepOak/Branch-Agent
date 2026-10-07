@@ -1,1 +1,1 @@
-window:src/connect/setup-journey.test.tsx
+window:src/setup/setup.test.tsx

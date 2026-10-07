@@ -10,7 +10,7 @@ export async function createMemoryForgetFixture(prefix = "branch-memory-forget-"
   const { stateDir, workspaceDir } = state;
   await configureMemoryCoreRingsStateForTests();
   const cfg: BranchConfig = {
-    agents: { defaults: { workspace: workspaceDir }, list: [{ id: "main", default: true }] },
+    agents: { defaults: { workspace: workspaceDir }, entries: { main: {} } },
   };
   return {
     stateDir,

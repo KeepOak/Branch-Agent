@@ -44,7 +44,7 @@ export async function cleanupEmbeddedAgentRunnerTestWorkspace(
 export function createEmbeddedAgentRunnerOpenAiConfig(modelIds: string[]): BranchConfig {
   return {
     agents: {
-      list: [{ id: "main" }, { id: "test" }, { id: "embedded-agent" }],
+      entries: { main: {}, test: {}, "embedded-agent": {} },
     },
     models: {
       providers: {
