@@ -187,12 +187,57 @@ it("keeps the failure deadline ahead of mtime expiry after a slow successful tou
   }
 });
 
-it.each(["EIO", "worker exit"] as const)(
-  "fences state admission with a visible reason after %s stops renewal",
+it("fences state admission with a visible reason after EIO stops renewal", async () => {
+  const root = tempDirs.make("branch-owner-heartbeat-lost-");
+  const databasePath = path.join(root, "state", "branch.sqlite");
+  const { workers, ready, beats } = observeHeartbeatWorkers("EIO");
+  const gateway = await acquireGatewayLock({
+    allowInTests: true,
+    env: { BRANCH_STATE_DIR: root },
+    timeoutMs: 0,
+  });
+  if (!gateway) {
+    throw new Error("Expected Gateway custody");
+  }
+  try {
+    const owner = captureGatewayStateOwner(databasePath);
+    if (!owner) {
+      throw new Error("Expected captured Gateway custody");
+    }
+    await Promise.all(ready);
+    const worker = workers[0];
+    const lastBeat = beats[0];
+    if (!worker || !lastBeat) {
+      throw new Error("Expected one heartbeat worker and its shared observation");
+    }
+    expect(() => gateway.assertCurrent()).not.toThrow();
+    Atomics.store(lastBeat, 0, process.hrtime.bigint() / 1_000_000n - 60_001n);
+    const reason = "synthetic EIO";
+    expect(() => gateway.assertCurrent()).toThrow(reason);
+    expect(owner.signal.aborted).toBe(true);
+    expect(owner.signal.reason).toMatchObject({
+      message: expect.stringContaining(gateway.lockPath),
+    });
+    expect(() => owner.assertCurrent()).toThrow(reason);
+    expect(() => acquireStateDatabaseSchemaLease(databasePath)).toThrow(
+      expect.objectContaining({
+        name: "GatewayStateOwnerContentionError",
+        cause: owner.signal.reason,
+      }),
+    );
+    expect(workers).toHaveLength(1);
+  } finally {
+    await gateway.release();
+    await Promise.all(workers.map((worker) => worker.terminate()));
+  }
+});
+
+it.each(["stalled", "worker exit"] as const)(
+  "keeps ownership when the heartbeat is late (%s) and no other process took the lock",
   async (fault) => {
-    const root = tempDirs.make("branch-owner-heartbeat-lost-");
+    const root = tempDirs.make("branch-owner-heartbeat-late-");
     const databasePath = path.join(root, "state", "branch.sqlite");
-    const { workers, ready, beats } = observeHeartbeatWorkers(fault === "EIO" ? fault : undefined);
+    const { workers, ready, beats } = observeHeartbeatWorkers();
     const gateway = await acquireGatewayLock({
       allowInTests: true,
       env: { BRANCH_STATE_DIR: root },
@@ -207,39 +252,73 @@ it.each(["EIO", "worker exit"] as const)(
         throw new Error("Expected captured Gateway custody");
       }
       await Promise.all(ready);
-      const worker = workers[0];
-      const lastBeat = beats[0];
+      const [worker] = workers;
+      const [lastBeat] = beats;
       if (!worker || !lastBeat) {
         throw new Error("Expected one heartbeat worker and its shared observation");
       }
       if (fault === "worker exit") {
         await worker.terminate();
       }
+      const raw = fs.readFileSync(gateway.lockPath, "utf8");
+      const before = fs.statSync(gateway.lockPath).mtimeMs;
+      // The whole process stood still for longer than the renewal deadline (a frozen VM, a blocked disk).
+      Atomics.store(lastBeat, 0, process.hrtime.bigint() / 1_000_000n - 15n * 60_000n);
       expect(() => gateway.assertCurrent()).not.toThrow();
-      Atomics.store(lastBeat, 0, process.hrtime.bigint() / 1_000_000n - 60_001n);
-      const reason =
-        fault === "EIO"
-          ? "synthetic EIO"
-          : "utimes heartbeat renewal did not complete within 60 seconds";
-      expect(() => gateway.assertCurrent()).toThrow(reason);
-      expect(owner.signal.aborted).toBe(true);
-      expect(owner.signal.reason).toMatchObject({
-        message: expect.stringContaining(gateway.lockPath),
-      });
-      expect(() => owner.assertCurrent()).toThrow(reason);
-      expect(() => acquireStateDatabaseSchemaLease(databasePath)).toThrow(
-        expect.objectContaining({
-          name: "GatewayStateOwnerContentionError",
-          cause: owner.signal.reason,
-        }),
+      expect(() => owner.assertCurrent()).not.toThrow();
+      expect(owner.signal.aborted).toBe(false);
+      // Re-asserted on the same file: renewed now, and a fresh worker renews from here on.
+      expect(fs.readFileSync(gateway.lockPath, "utf8")).toBe(raw);
+      expect(fs.statSync(gateway.lockPath).mtimeMs).toBeGreaterThanOrEqual(before);
+      expect(workers).toHaveLength(2);
+      const [, renewed] = beats;
+      expect(Number(process.hrtime.bigint() / 1_000_000n - Atomics.load(renewed!, 0))).toBeLessThan(
+        10_000,
       );
-      expect(workers).toHaveLength(1);
     } finally {
       await gateway.release();
       await Promise.all(workers.map((worker) => worker.terminate()));
     }
   },
 );
+
+it("loses ownership when the heartbeat is late and another process took the lock meanwhile", async () => {
+  const root = tempDirs.make("branch-owner-heartbeat-taken-");
+  const databasePath = path.join(root, "state", "branch.sqlite");
+  const { workers, ready, beats } = observeHeartbeatWorkers();
+  const gateway = await acquireGatewayLock({
+    allowInTests: true,
+    env: { BRANCH_STATE_DIR: root },
+    timeoutMs: 0,
+  });
+  if (!gateway) {
+    throw new Error("Expected Gateway custody");
+  }
+  try {
+    const owner = captureGatewayStateOwner(databasePath);
+    if (!owner) {
+      throw new Error("Expected captured Gateway custody");
+    }
+    await Promise.all(ready);
+    const [worker] = workers;
+    const [lastBeat] = beats;
+    if (!worker || !lastBeat) {
+      throw new Error("Expected one heartbeat worker and its shared observation");
+    }
+    // Stop the worker so it can't notice first; a rival replaces the lock while this process stood still.
+    await worker.terminate();
+    fs.unlinkSync(gateway.lockPath);
+    fs.writeFileSync(gateway.lockPath, "successor");
+    Atomics.store(lastBeat, 0, process.hrtime.bigint() / 1_000_000n - 15n * 60_000n);
+    expect(() => gateway.assertCurrent()).toThrow("no longer current");
+    expect(owner.signal.aborted).toBe(true);
+    expect(fs.readFileSync(gateway.lockPath, "utf8")).toBe("successor");
+    expect(workers).toHaveLength(1);
+  } finally {
+    await gateway.release();
+    await Promise.all(workers.map((worker) => worker.terminate()));
+  }
+});
 
 it("renews retained custody during synchronous work and never touches a successor", async () => {
   const { workers, ready } = observeHeartbeatWorkers();
