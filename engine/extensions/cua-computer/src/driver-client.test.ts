@@ -248,7 +248,10 @@ describe("CUA Driver direct session", () => {
       },
       undefined,
     );
-    expect(mocks.typeText).toHaveBeenCalledWith({ text: "hello", target }, undefined);
+    expect(mocks.typeText.mock.calls).toEqual(
+      (process.platform === "win32" ? [..."hello"] : ["hello"])
+        .map(text => [{ text, target }, undefined]),
+    );
     expect(mocks.pressKey).toHaveBeenCalledWith(
       { key: "a", modifiers: ["cmd"], target },
       undefined,
