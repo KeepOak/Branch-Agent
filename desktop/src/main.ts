@@ -22,7 +22,7 @@ import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate } from "./auto-apply-update";
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
-import { retireRecordedEngines } from "./engine-records";
+import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
 import { freemem } from "node:os";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
@@ -249,9 +249,19 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
   const windowBefore = windowBuild(servedWindowDir);
   const priorGateway = gateway;
   const stillOpen = () => { if (quitting) throw new Error("Branch Agent is quitting"); };
+  const preparation = new AbortController();
+  const priorExited = () => {
+    preparation.abort();
+    stopCandidate();
+    stopWarmingStandby();
+  };
+  priorGateway.once("exit", priorExited);
   try {
-    if (!await candidatePassed(label)) return;
+    if (!await candidatePassed(label, preparation.signal)) return;
+    if (preparation.signal.aborted || !engineServing()) throw new Error("The serving engine exited during update preparation");
     await prepareUpdateStandby(label, explicit);
+    if (preparation.signal.aborted || !engineServing()) throw new Error("The serving engine exited during standby warmup");
+    priorGateway.off("exit", priorExited);
     stillOpen();
     const started = Date.now();
     sendToBranchWindows("branch-desktop:engine-update", "updating");
@@ -304,6 +314,7 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     }
     throw error;
   } finally {
+    priorGateway.off("exit", priorExited);
     engineRestartInProgress = false;
     const exitedDuring = recoveryDeferred;
     recoveryDeferred = false;
@@ -335,6 +346,10 @@ async function prepareUpdateStandby(label: string, explicit: boolean): Promise<v
     log(`update ${label}: standby engine ${standby.child.pid} prepared on port ${standby.port} while the current engine kept serving`);
   } catch (error) {
     standbyFailures.set(label, (standbyFailures.get(label) ?? 0) + 1);
+    if (String(error).includes("standby exited before warming")) {
+      log(`update ${label}: the standby exited before warming; using the guarded stop/start swap`);
+      return;
+    }
     throw new Error(`the new engine could not be prepared beside the running one, which kept serving: ${String(error)}`);
   }
 }
@@ -356,7 +371,7 @@ async function recoveryPort(): Promise<number> {
  * publication rolled back with nothing stopped; a slow one still gets the normal swap and its readiness rollback.
  */
 let candidateCheckedFor: string | undefined;
-async function candidatePassed(label: string): Promise<boolean> {
+async function candidatePassed(label: string, signal?: AbortSignal): Promise<boolean> {
   const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   if (!version || candidateCheckedFor === version) return true;
   // The machine-load rule: a second engine only when there is room for it; otherwise the plain swap with its rollback.
@@ -365,6 +380,7 @@ async function candidatePassed(label: string): Promise<boolean> {
   sendToBranchWindows("branch-desktop:engine-update", "preparing");
   const started = Date.now();
   const result = await checkCandidateBeside(cfg, candidate, token, READY_TIMEOUT_MS);
+  if (signal?.aborted) throw new Error("The serving engine exited during candidate check");
   log(`update ${label}: candidate check beside the running engine ${result} after ${Date.now() - started} ms`);
   if (result !== "exited") { candidateCheckedFor = version; return true; }
   await rejectFailedComponentUpdate(cfg, candidate);
@@ -805,6 +821,7 @@ function shutdown(): void {
   if (standby) stopGateway(standby.child);
   standby = undefined;
   if (gateway) stopGateway(gateway);
+  clearEngineRecords(cfg.dataDir);
   server?.close();
   // The next launch starts on the configured port; never leave a moved, dead port for the branch command to dial.
   writeGatewayPortFile(cfg.gatewayPort);

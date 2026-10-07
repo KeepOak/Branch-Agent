@@ -55,7 +55,7 @@ const starts=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[];
 starts.push(process.pid);fs.writeFileSync(file,JSON.stringify(starts));
 const peers=starts.filter(p=>p!==process.pid&&(()=>{try{process.kill(p,0);return true;}catch{return false;}})());
 fs.writeFileSync(root+"/launch-"+process.pid+".json",JSON.stringify({port:Number(process.argv.at(-1)),standby:process.env.BRANCH_GATEWAY_STANDBY==="1",token:process.env.BRANCH_GATEWAY_TOKEN,peers}));
-if(starts.length>1&&fs.existsSync(root+"/fail-next"))process.exit(1);
+if(starts.length===2&&fs.existsSync(root+"/fail-next"))process.exit(1);
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/fail-standby"))process.exit(1);
 // slow-sigterm: the update's new engine runs a shutdown that outlasts the desktop's grace (as one stuck in startup can).
 if(starts.length===2&&fs.existsSync(root+"/slow-sigterm"))process.on("SIGTERM",()=>{fs.writeFileSync(root+"/sigterm-"+process.pid,"1");setTimeout(()=>process.exit(0),20000);});
@@ -124,8 +124,9 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     }
     if (holdCandidate && name === "./candidate-check") {
       const source = originalLoad.call(this, name, ...args);
-      return { ...source, checkCandidateBeside: async () => {
-        while (!existsSync(join(root, "release-candidate"))) await pause(5);
+      return { ...source, stopCandidate: () => { void writeFile(join(root, "candidate-aborted"), "1"); source.stopCandidate(); }, checkCandidateBeside: async () => {
+        await writeFile(join(root, "candidate-started"), "1");
+        while (!existsSync(join(root, "release-candidate")) && !existsSync(join(root, "candidate-aborted"))) await pause(5);
         return "exited";
       } };
     }
@@ -138,7 +139,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   const restart = () => runtime.ipcMain.emit("branch-desktop:restart-engine", { sender: runtime.window.webContents, senderFrame: runtime.window.webContents.mainFrame });
   try {
     require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js"));
-    if (!holdStartup) await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway ready"));
+    if (!holdStartup) await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway ready"), 30_000);
     await run({ root, runtime, starts, restart, offerStaged: () => onStaged() });
   } finally {
     await writeFile(join(root, "release-ready"), "ready"); await pause(600);
@@ -198,19 +199,16 @@ test("crash recovery keeps the running engine and staged engine/window update pe
   assert.equal(sent.filter(([channel, value]) => channel === "branch-desktop:engine-update" && value === "updated").length, 0);
   assert.equal(runtime.window.reloads, 0);
 }));
-test("a crash retry during candidate rejection restarts the dead engine after the swap guard clears", () => fixture(async ({ root, runtime, starts, restart }) => {
+test("a crash during candidate rejection aborts it and restarts the dead engine", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   await stageFixtureUpdate(root);
   restart();
   await eventually(() => sent.some(([channel, value]) => channel === "branch-desktop:engine-update" && value === "preparing"));
   await writeFile(join(root, "release-ready"), "ready");
   process.kill((await starts())[0], "SIGTERM");
-  // The update owns the engine: recovery waits for it instead of spending its restart budget against it.
-  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway exit during an update; recovery waits for it"));
-  await pause(300);
-  assert.doesNotMatch(await readFile(join(root, "desktop.log"), "utf8"), /gateway restart attempt 2\/4/);
-  await writeFile(join(root, "release-candidate"), "release");
-  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway recovered after unexpected exit"));
+  await eventually(() => existsSync(join(root, "candidate-aborted")), 10_000);
+  await eventually(async () => (await starts()).length === 2 && alive((await starts())[1]), 30_000);
+  assert.equal(existsSync(join(root, "release-candidate")), false);
   assert.equal((await starts()).length, 2);
   assert.equal(sent.some(([channel]) => channel === "branch-desktop:gateway-recovery-failed"), false);
 }, false, { maxAttempts: 4, initialDelayMs: 10, maxDelayMs: 80, stableAfterMs: 60_000 }, true));
@@ -248,6 +246,18 @@ test("an Update click with a failing candidate while a crash restart waits never
     "the owner was told the current version was kept while nothing served");
   assert.equal(sent.some(([channel]) => channel === "branch-desktop:gateway-recovery-failed"), false);
 }, false, { maxAttempts: 2, initialDelayMs: 2000, maxDelayMs: 2000, stableAfterMs: 60_000 }, true));
+test("a serving engine crash aborts a held candidate check and recovers before its deadline", () => fixture(async ({ root, starts, restart }) => {
+  const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  await stageFixtureUpdate(root);
+  const old = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready");
+  restart();
+  await eventually(() => existsSync(join(root, "candidate-started")), 10_000);
+  process.kill(old, "SIGTERM");
+  await eventually(() => existsSync(join(root, "candidate-aborted")), 10_000);
+  await eventually(async () => { const latest = (await starts()).at(-1); return latest !== old && alive(latest) && await servingOn(gatewayPort); }, 30_000);
+  assert.equal(existsSync(join(root, "release-candidate")), false, "recovery waited for the candidate deadline");
+}, false, { maxAttempts: 2, initialDelayMs: 10, maxDelayMs: 10, stableAfterMs: 60_000 }, true));
 test("a clean quit closes supervision before stopping the gateway", () => fixture(async ({ root, runtime, starts }) => {
   let deferred = false;
   runtime.app.emit("will-quit", { preventDefault() { deferred = true; } });
@@ -285,23 +295,17 @@ test("a failed update releases the guard for the next owner retry", () => fixtur
   restart(); await eventually(() => swapped(root));
   assert.equal((await starts()).length, 4); assert.equal(runtime.errors.length, 1);
 }, false, false, false, "never"));
-test("a standby that fails to warm is stopped, the old engine keeps serving and the update is offered again", () => fixture(async ({ root, runtime, starts, restart }) => {
+test("a standby that exits early falls through to the guarded swap without another click", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
   const old = (await starts())[0];
-  await writeFile(join(root, "fail-next"), "fail"); restart();
-  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update failed"));
+  await writeFile(join(root, "fail-next"), "fail"); await writeFile(join(root, "release-ready"), "ready"); restart();
+  await eventually(() => swapped(root), 30_000);
   const failed = (await starts())[1];
   await eventually(() => !alive(failed));
-  assert.equal(alive(old), true, "a failed standby stopped the serving engine");
-  assert.equal(existsSync(join(root, `drained-${old}`)), false, "the serving engine was drained for a standby that never warmed");
+  assert.equal(alive(old), false);
+  assert.equal(existsSync(join(root, `drained-${old}`)), true);
   assert.equal((await fetch(`http://127.0.0.1:${gatewayPort}/readyz`)).status, 200);
-  assert.equal(runtime.errors.length, 0, "the owner saw an error although the engine kept serving");
-  // Automatic updates fall back to the guarded swap after a failed standby, so "auto-wait" stays true.
-  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update").map(([, state]) => state).slice(-1), ["auto-wait"]);
-  assert.ok(sent.some(([channel]) => channel === "branch-desktop:engine-update-failed"), "the owner was not told the update failed");
-  await unlink(join(root, "fail-next")); await writeFile(join(root, "release-ready"), "ready");
-  restart(); await eventually(() => swapped(root));
   assert.equal((await starts()).length, 3, "the retry started more than one standby");
 }, false, false, false, true));
 test("an update click swaps the engine in place: the app and window stay open and the busy engine drains", () => fixture(async ({ root, runtime, starts, restart }) => {
@@ -394,18 +398,14 @@ test("a busy engine from before drain-stop is never killed by the guarded swap e
   assert.equal((await starts()).length, 1, "A second engine started while the first was busy");
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update").map(([, state]) => state), ["updating", "auto-wait"]);
 }));
-test("after two failed standbys the next Update uses the guarded stop/start swap", () => fixture(async ({ root, runtime, starts, restart }) => {
+test("an early standby exit uses the guarded stop/start swap in the same Update click", () => fixture(async ({ root, runtime, starts, restart }) => {
   const old = (await starts())[0];
   await writeFile(join(root, "fail-standby"), "fail"); await writeFile(join(root, "release-ready"), "ready");
-  const failures = async () => (await readFile(join(root, "desktop.log"), "utf8")).split("update failed").length - 1;
-  restart(); await eventually(async () => await failures() === 1);
-  restart(); await eventually(async () => await failures() === 2);
-  assert.equal(alive(old), true, "a failed standby stopped the serving engine");
   restart(); await eventually(() => swapped(root));
-  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /the standby failed 2 time\(s\); using the guarded stop\/start swap/);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /standby exited before warming; using the guarded stop\/start swap/);
   const launched = await starts();
-  assert.equal(launched.length, 4);
-  assert.equal(JSON.parse(await readFile(join(root, `launch-${launched[3]}.json`), "utf8")).standby, false);
+  assert.equal(launched.length, 3);
+  assert.equal(JSON.parse(await readFile(join(root, `launch-${launched[2]}.json`), "utf8")).standby, false);
   assert.ok(existsSync(join(root, `drained-${old}`)));
 }, false, false, false, true));
 test("quitting while a standby warms stops it; nothing is left running", () => fixture(async ({ root, runtime, starts, restart }) => {
@@ -493,7 +493,7 @@ test("a drain whose answer times out still lands: the update completes once the 
   // While the old engine drained the bar said "Updating", never "ready" or "auto-wait".
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update").map(([, state]) => state), ["updating", "updated"]);
 }));
-test("an engine that exits while an update warms its standby is brought back when that update fails", () => fixture(async ({ root, runtime, starts, restart }) => {
+test("an engine that exits while an update warms its standby is recovered before warmup ends", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
   const old = (await starts())[0];
@@ -504,10 +504,9 @@ test("an engine that exits while an update warms its standby is brought back whe
   await writeFile(join(root, "release-ready"), "ready");
   process.kill(old, "SIGTERM");
   await eventually(() => !alive(old));
-  await pause(500); // with the old budget burn, every restart attempt would be spent here
-  process.kill(warming, "SIGTERM");
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update failed"), 30_000);
   await eventually(async () => { const latest = (await starts()).at(-1); return ![old, warming].includes(latest) && alive(latest) && await servingOn(gatewayPort); }, 30_000);
+  assert.equal(existsSync(join(root, "hold-standby")), true, "recovery waited for standby warmup");
   assert.equal(sent.some(([channel]) => channel === "branch-desktop:gateway-recovery-failed"), false, "recovery gave up");
   assert.deepEqual(runtime.errors.map(([title]) => title).filter(title => title !== "Branch couldn't finish the update"), [],
     "the owner was told recovery failed");
@@ -588,21 +587,27 @@ test("quitting while the new engine boots never rejects the release or starts an
 }));
 test("launch retires the engines the last session recorded and left holding their ports, and nothing else", async () => {
   const { spawn } = await import("node:child_process");
+  const { engineProcessIdentity } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "engine-records.js"));
   const holdPort = "const s=require('net').createServer().listen(0,'127.0.0.1',()=>process.send(s.address().port));setInterval(()=>{},1000)";
   const orphan = spawn(process.execPath, ["-e", holdPort], { stdio: ["ignore", "ignore", "ignore", "ipc"], detached: process.platform !== "win32" });
   const orphanPort = await new Promise(resolve => orphan.once("message", resolve));
-  // A live process on a free port is not an engine the last session left (a reused PID): never touched.
+  // A reused PID on an occupied port, or a matching process that does not own that port, is never touched.
   const bystander = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore" });
   try {
     await fixture(async ({ root, starts }) => {
       await eventually(() => !alive(orphan.pid), 10_000);
-      assert.equal(alive(bystander.pid), true, "a process the last session did not leave holding its port was stopped");
+      assert.equal(alive(bystander.pid), true, "a reused PID was stopped");
       assert.match(await readFile(join(root, "desktop.log"), "utf8"), new RegExp(`retiring the last session's standby engine ${orphan.pid} on port ${orphanPort}`));
       // Only the engine this launch started is recorded now.
       assert.deepEqual(JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8")).map(record => record.pid), await starts());
     }, false, false, false, "never", async (root) => {
-      await writeFile(join(root, "gateway-engines.json"), JSON.stringify([{ pid: orphan.pid, port: orphanPort, role: "standby" },
-        { pid: bystander.pid, port: await freePort(), role: "candidate" }]));
+      const orphanIdentity = engineProcessIdentity(orphan.pid), bystanderIdentity = engineProcessIdentity(bystander.pid);
+      assert.ok(orphanIdentity && bystanderIdentity);
+      await writeFile(join(root, "gateway-engines.json"), JSON.stringify([
+        { pid: orphan.pid, port: orphanPort, role: "standby", ...orphanIdentity },
+        { pid: bystander.pid, port: orphanPort, role: "candidate", ...bystanderIdentity, started: "reused-pid" },
+        { pid: bystander.pid, port: orphanPort, role: "candidate", ...bystanderIdentity },
+      ]));
     });
   } finally {
     orphan.kill(); bystander.kill();
