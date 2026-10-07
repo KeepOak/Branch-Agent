@@ -80,14 +80,12 @@ branch node run --host <gateway-host> --port 18789
 ```
 
 Or read a short-lived node setup code from the Control UI Devices page. The safest
-forms read from stdin (interactive prompt or pipe) or from a file with mode `0600`:
+forms read from stdin (interactive prompt) or from a file with mode `0600`:
 
 ```bash
-# Interactive prompt (hidden input)
+# Interactive prompt (hidden input) - recommended
 branch node run --pair -
-
-# Piped input
-echo 'oc-pair://<setup-code>' | branch node run --pair -
+# Paste the setup code when prompted
 
 # From a secure file
 chmod 600 /path/to/code.txt
@@ -98,8 +96,8 @@ Options:
 
 - `--host <host>`: Gateway WebSocket host (default: `127.0.0.1`)
 - `--pair -`: Read the Gateway endpoint, bootstrap token, TLS mode, and optional
-  certificate pin from a setup code on stdin (interactive prompt or piped input).
-  Explicit gateway flags override values from `--pair`.
+  certificate pin from a setup code on stdin (interactive hidden prompt). Explicit
+  gateway flags override values from `--pair`. **Precedence:** stdin > file > env > argv.
 - `--pair-file <path>`: Read setup code from file (must be mode `0600` on POSIX).
 - `--pair-if-needed -`: Use stdin setup code, but prefer the saved device token when present.
 - `--pair-if-needed-file <path>`: Use file setup code, but prefer saved device token.
@@ -107,6 +105,15 @@ Options:
   visible in process list). Use `--pair -` or `--pair-file` instead.
 - `--pair-if-needed <code-or-url>`: **Deprecated.** Like `--pair`, but prefer saved token.
 - `--port <port>`: Gateway WebSocket port (default: `18789`)
+
+**Environment variable fallback:** `BRANCH_PAIRING_CODE` provides the setup code when
+stdin/file/argv are not used. This is a fallback for non-interactive automation. Note
+that environment variables are visible to same-user processes.
+
+**Windows file permissions:** When using `--pair-file` on Windows, manually verify that
+only the owner has read access. Right-click the file → Properties → Security → Advanced,
+ensure inheritance is disabled and no other users/groups are listed. Programmatic ACL
+validation requires external tools and is not yet implemented.
 - `--context-path <path>`: Gateway WebSocket context path (e.g. `/branch-gw`). Appended to the WebSocket URL.
 - `--tls`: Use TLS for the gateway connection
 - `--no-tls`: Force a plaintext Gateway connection even when the local Gateway config enables TLS

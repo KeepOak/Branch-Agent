@@ -125,9 +125,14 @@ export function readSetupCodeFromFile(filePath: string): string {
       );
     }
   } else {
-    // Windows: We can't reliably check ACLs without external tools.
-    // Document the requirement but allow the read.
-    // (A future enhancement could shell out to icacls to verify owner-only access.)
+    // Windows: ACL validation requires external tools (icacls) or native modules.
+    // For now, document the requirement. A future enhancement could shell out to
+    // icacls and parse its output to verify owner-only access.
+    // 
+    // Expected manual verification:
+    // Right-click file → Properties → Security → Advanced
+    // Ensure only the owner has permissions, inheritance is disabled,
+    // and no other users/groups are listed.
   }
 
   let content: string;
@@ -150,7 +155,13 @@ export function readSetupCodeFromEnv(varName: string): string | undefined {
 }
 
 /**
- * Resolve setup code from various sources in priority order.
+ * Resolve setup code from various sources in priority order:
+ * 1. Stdin (when argv is "-" or allowStdin is true and no other source)
+ * 2. File (--pair-file / --code-file)
+ * 3. Environment variable (fallback for non-interactive automation; visible to same-user processes)
+ * 4. Command-line argument (deprecated, warns)
+ *
+ * The code is never logged.
  * Returns both the code and metadata about where it came from.
  */
 export async function resolveSetupCode(options: {
@@ -177,7 +188,7 @@ export async function resolveSetupCode(options: {
     return { code, source: { kind: "file", value: code, path: options.filePath } };
   }
 
-  // Priority 3: environment variable
+  // Priority 3: environment variable (fallback for non-interactive automation)
   if (options.envVar) {
     const code = readSetupCodeFromEnv(options.envVar);
     if (code) {
@@ -203,7 +214,7 @@ export async function resolveSetupCode(options: {
 }
 
 /**
- * Warn if setup code came from argv (deprecated).
+ * Warn if setup code came from argv (deprecated) or environment variable (visible to processes).
  */
 export function warnIfSetupCodeFromArgv(
   source: SetupCodeSource,
@@ -213,7 +224,12 @@ export function warnIfSetupCodeFromArgv(
     runtime.warn(
       "WARNING: Passing setup codes as command-line arguments is deprecated and insecure. " +
         "Any local process can read them from the process list. " +
-        "Use --pair-file <path>, pipe to stdin, or set BRANCH_PAIRING_CODE environment variable instead.",
+        "Use --pair-file <path>, stdin prompt, or set BRANCH_PAIRING_CODE environment variable instead.",
+    );
+  } else if (source.kind === "env") {
+    runtime.warn(
+      "WARNING: BRANCH_PAIRING_CODE environment variable is visible to same-user processes. " +
+        "For interactive use, prefer stdin prompt (--pair -) or --pair-file with mode 0600.",
     );
   }
 }

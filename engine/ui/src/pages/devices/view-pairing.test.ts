@@ -73,8 +73,10 @@ describe("device pairing dialog", () => {
 
     expect(container.querySelectorAll('input[name="device-pair-access"]')).toHaveLength(3);
     expect(container.querySelector(".device-pair-setup__command code")?.textContent).toBe(
-      'echo \'oc-pair://AbC_123\' | branch node run --pair -',
+      'branch node run --pair -',
     );
+    // Code should be shown separately
+    expect(container.textContent).toContain('oc-pair://AbC_123');
     expect(container.querySelector('[role="timer"]')?.textContent?.trim()).toBe(
       "This setup link expires in 1:00.",
     );

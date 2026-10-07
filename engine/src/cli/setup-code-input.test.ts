@@ -226,6 +226,7 @@ describe("warnIfSetupCodeFromArgv", () => {
       warn: (msg: string) => warnings.push(msg),
     };
     warnIfSetupCodeFromArgv({ kind: "env", value: "code", varName: "VAR" }, runtime);
-    expect(warnings).toHaveLength(0);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("visible to same-user processes");
   });
 });

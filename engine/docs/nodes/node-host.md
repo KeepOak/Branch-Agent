@@ -57,15 +57,19 @@ branch node run --host <gateway-host> --port 18789 --display-name "Build Node"
 ```
 
 For one-paste setup, create a **Node host** setup link from the Control UI
-Devices page. The command reads the code from stdin to avoid exposing it in
-the process list:
+Devices page. The command prompts for the code with hidden input:
 
 ```bash
-echo 'oc-pair://<setup-code>' | branch node run --pair -
+branch node run --pair -
+# Setup code: [paste from UI, hidden input]
 ```
 
-For interactive use, just run `branch node run --pair -` and it will prompt
-for the code with hidden input.
+For non-interactive use, save the code to a file with mode `0600`:
+
+```bash
+chmod 600 /path/to/code.txt
+branch node run --pair-file /path/to/code.txt
+```
 
 The link is single-use and expires after 10 minutes. It supplies the endpoint,
 bootstrap token, TLS mode, and certificate pin when available. Explicit

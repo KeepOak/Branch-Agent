@@ -347,12 +347,12 @@ scoped device. It uses the same setup-code pairing a phone uses.
    Branch finds the host with `branch gateway discover`. On Windows it browses
    with its own mDNS query, since Windows has no `dns-sd` or `avahi-browse`.
 3. On the joining Branch, pass the setup code securely (stdin or file) to avoid
-   exposing it in the process list:
+   exposing it in shell history or process lists:
    ```bash
-   echo '<setup-code>' | branch graft join - --name "Studio Laptop"
-   # or interactively:
    branch graft join --name "Studio Laptop"
-   # (prompts for code with hidden input)
+   # Setup code: [paste when prompted, hidden input]
+   # or with a file:
+   branch graft join --code-file /path/to/code.txt --name "Studio Laptop"
    ```
    It connects with the joining Branch's own device identity and asks for
    `operator.read` and `operator.write` only. It never asks for admin, approvals
