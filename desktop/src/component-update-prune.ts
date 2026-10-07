@@ -122,11 +122,21 @@ export async function pruneOldReleases(
     const commandsLower = commands.toLowerCase();
     if (retained.has(folderReal) || [folder, folderReal].some(path => commandsLower.includes(`${path}${separator}`.toLowerCase()))) continue;
     const trash = join(updates, `.trash-${entry.name}-${process.pid}-${Math.random().toString(36).slice(2)}`);
-    try {
-      await rename(folder, trash);
-      await rm(trash, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
-    } catch (error) { reportFailure?.(new Error(`Could not prune ${entry.name}: ${String(error)}`)); }
+    try { await deleteReleaseFolder(folder, trash); }
+    catch (error) { reportFailure?.(new Error(`Could not prune ${entry.name}: ${String(error)}`)); }
   }
+}
+
+async function defaultDeleteReleaseFolder(folder: string, trash: string): Promise<void> {
+  await rename(folder, trash);
+  await rm(trash, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+}
+
+let deleteReleaseFolder = defaultDeleteReleaseFolder;
+
+/** Test seam: replace the rename+rm used while pruning (to simulate a locked Windows file). */
+export function setPruneDeleteForTests(fn: typeof defaultDeleteReleaseFolder | undefined): void {
+  deleteReleaseFolder = fn ?? defaultDeleteReleaseFolder;
 }
 
 const SPACE_MARGIN_BYTES = 500 * 1024 * 1024;

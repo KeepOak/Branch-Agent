@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
-const { checkDiskSpace, pruneOldReleases } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-prune.js")));
+const { checkDiskSpace, pruneOldReleases, setPruneDeleteForTests } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-prune.js")));
 
 async function makeRelease(updates, name, complete = true) {
   const folder = join(updates, name);
@@ -130,11 +130,15 @@ test("a locked or undeletable release is skipped without failing the prune", asy
   const current = await makeRelease(updates, "release-0.4.5-eeeee5");
   await makeRelease(updates, "release-0.4.1-aaaaa1");
   const failures = [];
-  await chmod(updates, 0o555);
+  setPruneDeleteForTests(async () => {
+    const error = new Error("EPERM: locked");
+    error.code = "EPERM";
+    throw error;
+  });
   try {
     await pruneOldReleases(cfg, join(current, "engine"), "", undefined, error => failures.push(error));
   } finally {
-    await chmod(updates, 0o755);
+    setPruneDeleteForTests(undefined);
   }
   const remaining = await readdir(updates);
   assert.ok(remaining.includes("release-0.4.5-eeeee5"));
