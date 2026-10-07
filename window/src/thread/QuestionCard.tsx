@@ -1,7 +1,7 @@
 // The question card (DESIGN-SPEC §4.2.2 "Choice block" and "Questions"): A–D options with their keys, "Or type your
 // own answer", pick several, several questions one at a time, a step on a web page, and a secret. The first
 // waiting question sits above the message box; the thread keeps one line where it was asked.
-import { useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { answerValues, outcome, pick, type, typesOwn, type Draft, type Question, type QuestionRecord } from "./questions";
 import "./questions.css";
 
@@ -41,7 +41,10 @@ export function DockQuestion({ record, trunkName, onResolve }: { record: Questio
           <path d={collapsed ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
         </svg>
       </button>
-      {collapsed ? <span className="dock-q-t">{first.question}</span> : <QuestionCard key={record.id} record={record} trunkName={trunkName} onResolve={onResolve} />}
+      {collapsed ? <span className="dock-q-t">{first.question}</span> : null}
+      <div hidden={collapsed}>
+        <QuestionCard key={record.id} record={record} trunkName={trunkName} onResolve={onResolve} />
+      </div>
     </div>
   );
 }
@@ -51,22 +54,30 @@ export function QuestionCard({ record, trunkName, onResolve }: { record: Questio
   const [at, setAt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const submitting = useRef(false);
   const many = record.questions.length > 1;
   const q = record.questions[Math.min(at, record.questions.length - 1)];
   const draft = drafts[q.questionId];
   const set = (d: Draft) => setDrafts((cur) => ({ ...cur, [q.questionId]: d }));
   const send = (all: Record<string, Draft>) => {
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setError(null);
     const answers = Object.fromEntries(record.questions.map((x) => [x.questionId, answerValues(x, all[x.questionId])]));
     onResolve(record.id, { answers }).catch((e: unknown) => {
+      submitting.current = false;
       setBusy(false);
       setError(reason(e));
     });
   };
   const skip = () => {
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true);
+    setError(null);
     onResolve(record.id, { cancel: true }).catch((e: unknown) => {
+      submitting.current = false;
       setBusy(false);
       setError(reason(e));
     });
@@ -74,13 +85,14 @@ export function QuestionCard({ record, trunkName, onResolve }: { record: Questio
   const ready = (d: Record<string, Draft>) => record.questions.every((x) => answerValues(x, d[x.questionId]).length > 0);
   const next = (d: Record<string, Draft>) => (at < record.questions.length - 1 ? setAt(at + 1) : ready(d) && send(d));
   const choose = (label: string) => {
+    if (submitting.current) return;
     const d = { ...drafts, [q.questionId]: pick(q, draft, label) };
     setDrafts(d);
     if (!q.multiSelect) next(d);
   };
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const i = KEYS.indexOf(e.key.toUpperCase());
-    if (e.ctrlKey || e.metaKey || e.altKey || i < 0 || i >= q.options.length || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (submitting.current || e.repeat || e.ctrlKey || e.metaKey || e.altKey || i < 0 || i >= q.options.length || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     e.preventDefault();
     choose(q.options[i].label);
   };
@@ -92,7 +104,7 @@ export function QuestionCard({ record, trunkName, onResolve }: { record: Questio
       {q.url ? <ExternalStep url={q.url} /> : null}
       {q.isSecret ? <SecretLines q={q} trunkName={trunkName} /> : null}
       <Options q={q} draft={draft} disabled={busy} onPick={choose} />
-      {typesOwn(q) ? <OwnAnswer q={q} draft={draft} disabled={busy} onType={(t) => set(type(q, draft, t))} onDone={() => next(drafts)} last={!many || at === record.questions.length - 1} /> : null}
+      {typesOwn(q) ? <OwnAnswer key={q.questionId} q={q} draft={draft} disabled={busy} onType={(t) => set(type(q, draft, t))} onDone={() => next(drafts)} last={!many || at === record.questions.length - 1} /> : null}
       {many || q.multiSelect || q.url ? (
         <div className="card-buttons">
           {many ? <button type="button" className="btn ghost sm" disabled={busy || at === 0} onClick={() => setAt(at - 1)}>Back</button> : null}
@@ -127,11 +139,18 @@ function Options({ q, draft, disabled, onPick }: { q: Question; draft: Draft | u
 }
 
 function OwnAnswer({ q, draft, disabled, onType, onDone, last }: { q: Question; draft: Draft | undefined; disabled: boolean; onType: (t: string) => void; onDone: () => void; last: boolean }) {
+  const [revealed, setRevealed] = useState(false);
   const placeholder = q.isSecret ? "Paste the key or password…" : q.options.length ? "Or type your own answer" : "Your answer";
   const text = draft?.text ?? "";
   return (
     <form className="own" onSubmit={(e) => { e.preventDefault(); if (text.trim()) onDone(); }}>
-      <input className="inp" type={q.isSecret ? "password" : "text"} autoComplete="off" placeholder={placeholder} aria-label={q.isSecret ? q.question : "Your own answer"} value={text} disabled={disabled} onChange={(e) => onType(e.target.value)} />
+      <input className="inp" type={q.isSecret && !revealed ? "password" : "text"} autoComplete="off" placeholder={placeholder} aria-label={q.isSecret ? q.question : "Your own answer"} value={text} disabled={disabled} onChange={(e) => onType(e.target.value)} />
+      {q.isSecret ? <button className="ib" type="button" aria-label={revealed ? "Hide" : "Show"} aria-pressed={revealed} disabled={disabled} onClick={() => setRevealed((value) => !value)}>
+        <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" />
+          {revealed ? <path d="m3 3 18 18" /> : null}
+        </svg>
+      </button> : null}
       <button className="btn sm" type="submit" disabled={disabled || !text.trim()}>{q.isSecret ? "Submit" : last ? "Reply" : "Next"}</button>
     </form>
   );
