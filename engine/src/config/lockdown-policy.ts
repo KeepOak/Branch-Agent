@@ -56,6 +56,9 @@ export const LOCKDOWN_REFUSED_READ_METHODS: ReadonlySet<string> = new Set([
   "controlUi.linkPreview", // outbound fetches
   "controlUi.githubPreview",
   "controlUi.githubDetail",
+  "github.preview",
+  "github.detail",
+  "github.image",
   "controlUi.sessionPullRequests.checks", // asks GitHub for check runs
   "skills.search",
   "board.prompt.authorize", // grants a board widget a prompt
@@ -70,6 +73,7 @@ const STOP_OR_NARROW = new Map<string, Check>([
   ["chat.abort", always],
   ["sessions.abort", always],
   ["sessions.processes.stop", always],
+  ["sessions.goal.update", (p) => p?.action === "pause"],
   ["exec.approval.resolve", denies],
   ["plugin.approval.resolve", denies],
   ["approval.resolve", denies],

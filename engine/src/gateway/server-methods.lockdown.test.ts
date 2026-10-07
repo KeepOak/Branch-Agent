@@ -100,11 +100,21 @@ describe("Lockdown gateway admission", () => {
       "users.personalFile.set",
       "users.github.disconnect",
       "controlUi.linkPreview",
+      "github.preview",
+      "github.detail",
+      "github.image",
       "skills.search",
       "controlUi.sessionPullRequests.checks",
     ]) {
       expect((await request(method)).ran, method).toBe(false);
     }
+  });
+
+  it("allows pausing a goal while locked, but not resuming or changing it", async () => {
+    const goal = { sessionKey: "agent:main:main", goalId: "g1" };
+    expect((await request("sessions.goal.update", { ...goal, action: "pause" })).ran).toBe(true);
+    expect((await request("sessions.goal.update", { ...goal, action: "resume" })).ran).toBe(false);
+    expect((await request("sessions.goal.update", { ...goal, action: "edit" })).ran).toBe(false);
   });
 
   it("keeps Stop and narrowing actions: Don't, device revoke, pausing a schedule", async () => {
