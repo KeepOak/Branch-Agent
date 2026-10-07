@@ -113,6 +113,7 @@ async function preapproveWatchDevice(baseDir: string, identity: ReturnType<typeo
     publicKey: publicKeyRawBase64UrlFromPem(identity.publicKeyPem),
     clientId: GATEWAY_CLIENT_IDS.WATCHOS_APP,
     clientMode: GATEWAY_CLIENT_MODES.NODE,
+    displayName: "Test Watch",
     platform: "watchOS 11.5.0",
     deviceFamily: "Apple Watch",
     role: "node",
@@ -683,6 +684,7 @@ describe("watch node HTTP transport", () => {
       baseDir: completedBaseDir,
       profile: NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE,
     });
+    await preapproveWatchDevice(completedBaseDir, completedIdentity);
     const completedLimiter = createGatewayAuthRateLimiter(limiterConfig, {
       scheduler: createTestGatewayScheduler(),
     });
@@ -863,7 +865,11 @@ describe("watch node HTTP transport", () => {
     }
     const paired = await getPairedDevice(identity.deviceId, baseDir);
     expect(paired?.roles).toEqual(["node", "operator"]);
-    expect(paired?.approvedScopes).toEqual(["operator.read", "operator.talk"]);
+    expect(paired?.approvedScopes).toEqual(
+      existingProfile === FULL_ACCESS_PAIRING_SETUP_BOOTSTRAP_PROFILE
+        ? FULL_ACCESS_PAIRING_SETUP_BOOTSTRAP_PROFILE.scopes
+        : ["operator.read", "operator.talk"],
+    );
     expect(loadDevicePairSetupCompletionRecord(issued.setupId, Date.now(), baseDir)).toMatchObject({
       access: "limited",
       deliveryState: "confirmed",
