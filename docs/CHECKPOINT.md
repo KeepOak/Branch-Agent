@@ -29,8 +29,8 @@
 |:--|:--|:--|:--|
 | #445 desktop profile migration (Birch) | `c3661ba07` | CLEAN, verdict FIX | R4 data loss is fixed. Four items remain (see below), then re-review. |
 | #441 topic row 1:1 with preview (Spruce) | `fda4bf610` | CLEAN | Builder finished; review this head with full-layout screenshots. |
-| #438 each Trunk's look in Grove | `f8469273a` | open | Review the latest push. |
-| #436 Mac control restart without applying updates | `2ae64a523` | open | Review the latest push. |
+| #438 each Trunk's look in Grove (Cedar) | `f8469273a` | review said FIX | Emoji and colourless Trunks still look identical. Fix not pushed yet. |
+| #436 Mac control restart without applying updates (Cedar) | `2ae64a523` | review said FIX | The secret still leaks into Trunk shells. Fix not pushed yet. |
 | #446 startup bulk audit | `28544717f` | draft | Share the numbers with the owner. |
 | macOS packaging job | | not assigned | It hits the 15-minute CI cap. Split it or shard it. |
 
@@ -46,5 +46,6 @@
 1. Read this file and the rules in `AGENTS.md`.
 2. Check the current head and CI of each PR above. Builders may have pushed since this checkpoint.
 3. Re-run #380's macOS native job, review the current head, and merge if the verdict is MERGE.
-4. Send the #445 F1-F4 brief to Birch, and review #441, #438 and #436.
-5. When #429 is merged, open the one-line PR that turns `seamlessHandoff` on.
+4. Send the #445 F1-F4 brief to Birch, review #441, and get the #438 and #436 fixes pushed.
+5. Check the replies on briefs that finished without a PR: Ash (Settings greyed-out toggles), Maple (Copy version info / request ID, login take-over, Tailscale remote access), Oak (rebases of the old security PRs #118 #112 #113 #16/#65).
+6. When #429 is merged, open the one-line PR that turns `seamlessHandoff` on.
