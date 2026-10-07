@@ -1,5 +1,4 @@
-// Settings › Branch itself (DESIGN-SPEC §4.7.16): how it runs (health, status, system.info), restarting the engine
-// (gateway.restart.request), updating itself (update.auto.enabled, update.checkOnStart), every change to its setup
+// Settings › Branch itself (DESIGN-SPEC §4.7.16): how it runs (health, status, system.info), every change to its setup
 // (branch.changes.list), who is connected (system-presence, users.list), conversation storage (sessions.storage.* and
 // session.maintenance.coldStorage.*) and the settings file. The rest needs engine settings that don't exist yet, so
 // those rows are greyed with the reason.
@@ -23,7 +22,12 @@ const COSTS_NOTE = "Needs the engine to count what each skill, connector and age
 const NO_ROLLBACK = "Rolling back a change needs the engine’s roll back.";
 const NO_SETTING = "Needs an engine setting for it.";
 const APP = "Runs in the Branch app on your computer.";
-const SOURCE: Record<string, string> = { "system-agent": "Branch", doctor: "Check and fix", "config-rpc": "Settings", cli: "The terminal", "plugin-install": "A plugin install", external: "Edited outside Branch", unknown: "" };
+
+function changeLabel(entry: RecordValue): string {
+  if (entry.kind === "config-write") return "Setup saved";
+  if (entry.kind === "external-edit") return "Setup changed outside Branch";
+  return str(entry.summary) || "Branch changed its setup";
+}
 
 /** A greyed switch row: title, sub-line, the reason, and the level it shows from. */
 type Off = [title: string, sub: string, why: string, lv?: number];
@@ -121,7 +125,6 @@ function Running({ engine, lv }: Ctx) {
   const version = useBranchVersion(engine.gatewayUrl);
   const health = useLive<RecordValue>(engine, "health", { probe: false }, ["health"]);
   const sys = rec(useLive<RecordValue>(engine, "system.info", {}, []).data);
-  const restart = useCall();
   const [check, setCheck] = useState<"" | "fix" | "only">("");
   const up = span(sys.uptimeMs);
   const facts = lv >= 2 ? [version ? `Branch ${versionParts(version).detail}` : "", sys.pid ? `process ${str(sys.pid)}` : "", rec(sys.processMemory).rssBytes ? bytes(rec(sys.processMemory).rssBytes) : ""].filter(Boolean) : [];
@@ -132,10 +135,8 @@ function Running({ engine, lv }: Ctx) {
       <Acts>
         <Btn onClick={() => setCheck("fix")}><Icon name="check" small />Check and fix</Btn>
         {lv >= 1 ? <Btn ghost onClick={() => setCheck("only")}>Check only</Btn> : null}
-        <Btn disabled={restart.busy} onClick={() => void restart.run(() => engine.request<RecordValue>("gateway.restart.request", { reason: "settings" }), () => "Restarting. The window reconnects by itself.")}><Icon name="retry" small />Restart the engine</Btn>
         <Btn ghost onClick={() => window.location.reload()}>Reload without dropping work</Btn>
       </Acts>
-      <CallLine call={restart} />
       <Ctl title="Set up the Gateway again" sub="Install or reconfigure the Gateway on this computer." help="Install or reconfigure the Gateway on this computer. Your conversations and settings stay." off="Runs in the Branch app’s setup."><Btn sm>Open setup</Btn></Ctl>
       {check ? <CheckDialog engine={engine} only={check === "only"} onClose={() => setCheck("")} /> : null}
     </>
@@ -209,7 +210,7 @@ function Changes({ engine }: Ctx) {
         <ol className="s2-tl s2-season">
           {entries.map((e) => (
             <li key={str(e.id)} className={e.invalid === true ? "bad" : "ok"}>
-              <span>{[SOURCE[str(e.source)], str(e.summary)].filter(Boolean).join(": ")}<small>{when(e.at)}{Array.isArray(e.changedPaths) && e.changedPaths.length ? ` · ${e.changedPaths.map(String).slice(0, 3).join(", ")}` : ""}</small></span>
+              <span>{changeLabel(e)}<small>{when(e.at)}</small></span>
               {e.kind === "config-write" ? <span className="acts"><Btn sm ghost disabled title={NO_ROLLBACK}>Roll back</Btn></span> : null}
             </li>
           ))}

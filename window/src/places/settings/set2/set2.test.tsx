@@ -263,10 +263,18 @@ describe("Settings › Gateway", () => {
 });
 
 describe("Settings › Branch itself", () => {
-  it("lists every change from branch.changes.list and greys roll back with its reason", async () => {
-    const { engine } = engineWith({ health: { ok: true }, "branch.changes.list": { entries: [{ id: "c1", at: Date.now(), kind: "config-write", source: "config-rpc", summary: "Updated update.channel", changedPaths: ["update.channel"] }] } });
+  it("shows plain-language changes without raw paths or a duplicate restart", async () => {
+    const { engine } = engineWith({ health: { ok: true }, "branch.changes.list": { entries: [
+      { id: "c1", at: Date.now(), kind: "config-write", source: "config-rpc", summary: "Settings updated configuration: plugins.installs, wizard", changedPaths: ["plugins.installs", "wizard"] },
+      { id: "c2", at: Date.now(), kind: "external-edit", source: "external", summary: "Configuration edited outside Branch Agent: gateway.bind", changedPaths: ["gateway.bind"] },
+    ] } });
     await show("self", engine);
-    expect(document.body.textContent).toContain("Settings: Updated update.channel");
+    expect(document.body.textContent).toContain("Setup saved");
+    expect(document.body.textContent).toContain("Setup changed outside Branch");
+    expect(document.body.textContent).not.toContain("plugins.installs");
+    expect(document.body.textContent).not.toContain("wizard");
+    expect(document.body.textContent).not.toContain("gateway.bind");
+    expect(document.body.textContent).not.toContain("Restart the engine");
     expect(button("Roll back").disabled).toBe(true);
   });
   it("tidies conversation storage on sessions.storage.run only when archiving is on", async () => {
