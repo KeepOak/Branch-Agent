@@ -11,7 +11,7 @@ const __dirname = dirname(__filename);
 const ROOT = join(__dirname, "..");
 
 function check() {
-  const mapPath = join(ROOT, "docs", "feature-map.json");
+  const mapPath = process.env.FEATURE_MAP_PATH ?? join(ROOT, "docs", "feature-map.json");
   
   if (!existsSync(mapPath)) {
     console.error("❌ Feature map not found: docs/feature-map.json");

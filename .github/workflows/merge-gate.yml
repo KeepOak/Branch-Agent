@@ -34,6 +34,8 @@ jobs:
         run: node --test scripts/changed-test-coverage.test.mjs
       - name: Require every changed test to run in CI
         run: node scripts/changed-test-coverage.mjs
+      - name: Test the feature map checker
+        run: node --test scripts/feature-map-check.test.mjs
       - name: Validate feature map source paths
         run: node scripts/feature-map-check.mjs
 
