@@ -78,6 +78,8 @@ export async function runGatewayLoop(params: {
   onRestartStartupFailure?: GatewayRestartStartupFailureHandler;
   /** Internal lifecycle probe for tests of requests that bypass signal prefilters. */
   onRequestReady?: (request: (action: GatewayRunSignalAction, signal: GatewayRunSignalRequest["signal"], reason?: string) => void) => void;
+  /** The host attach role, handed over with the state in a desktop handoff and taken back on rollback. */
+  hostRole?: { release: () => Promise<void>; reclaim: () => Promise<boolean> };
 }) {
   // macOS/BSD process inspection reports process.title instead of the original
   // argv. Give the long-running Gateway a verifiable identity for lock readers.
@@ -1129,6 +1131,9 @@ export async function runGatewayLoop(params: {
     });
     if (!reacquired) return false;
     lock = reacquired;
+    if (!(await params.hostRole?.reclaim().catch(() => false)) && params.hostRole) {
+      gatewayLog.warn("desktop handoff rollback could not take the host role back");
+    }
     try {
       await server?.rollbackDeactivation();
     } catch (error) {
@@ -1188,7 +1193,11 @@ export async function runGatewayLoop(params: {
         throw error;
       });
       void desktopDeactivation.then(
-        () => {
+        async () => {
+          // The successor claims the host role as it takes over: let it go with the state.
+          await params.hostRole?.release().catch((error: unknown) => {
+            gatewayLog.warn(`desktop handoff could not release the host role: ${String(error)}`);
+          });
           process.send?.({ type: "branch-desktop:deactivate-result", id: incoming.id, ok: true });
           // Even if the desktop never sends drain-stop, the predecessor must
           // stop before the successor considers its leases expired.
