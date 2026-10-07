@@ -1,0 +1,2 @@
+window:src/places/settings/set1/chatapps-actions.test.ts
+window:src/places/settings/set1/chatapps.test.tsx
