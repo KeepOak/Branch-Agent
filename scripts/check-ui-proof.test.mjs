@@ -38,12 +38,13 @@ test('hasScreenshotProof detects HTML images', () => {
 
 test('hasScreenshotProof detects GitHub user-attachments links', () => {
   assert.equal(hasScreenshotProof('https://user-images.githubusercontent.com/123/image.png'), true);
-  assert.equal(hasScreenshotProof('See https://github.com/user/repo/assets/screenshot.png'), true);
+  assert.equal(hasScreenshotProof('See https://github.com/user-attachments/assets/abcd-efgh'), true);
 });
 
 test('hasScreenshotProof detects opt-out phrase', () => {
   assert.equal(hasScreenshotProof('No visible change: internal refactor'), true);
   assert.equal(hasScreenshotProof('No Visible Change: type-only edit'), true);
+  assert.equal(hasScreenshotProof('No visible change:'), false);
 });
 
 test('hasScreenshotProof returns false for body without proof', () => {
@@ -84,6 +85,7 @@ test('checkUIProof fails when window UI files changed without screenshot', () =>
   assert.match(result.message, /window\/src\/composer\/Composer\.tsx/);
   assert.match(result.message, /window\/src\/main\.tsx/);
   assert.match(result.message, /AGENTS\.md rule 9/);
+  assert.match(result.message, /No visible change:/);
 });
 
 test('checkUIProof ignores test files in window directory', () => {
