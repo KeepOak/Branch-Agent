@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/mcp/channel-server.ts (atlas INTEGRATIONS-0020). Changed for Branch: retain Graft conversation tools and device-auth preparation before startup and the MCP handshake ordering; preserve bridge policy assertions (shared safety layer 41 and owner included-features rule 03 A1.4).
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { createChannelMcpRuntime } from "./channel-server-runtime.js";

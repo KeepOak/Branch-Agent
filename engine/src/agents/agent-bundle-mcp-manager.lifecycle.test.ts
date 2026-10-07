@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/agent-bundle-mcp-manager.lifecycle.test.ts (atlas INTEGRATIONS-0013). Changed for Branch: retain session lifetime and plugin ownership guards and shipped MCP app metadata; schema assertions also live in agent-bundle-mcp-schema.test.ts (shared safety layer 41 and owner included-features rule 03 A1.4).
 import { AsyncLocalStorage } from "node:async_hooks";
 import { expectDefined } from "@branch/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";

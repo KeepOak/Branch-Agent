@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-block-chunker.ts (atlas AGENT-LOOP-0321). Changed for Branch: retain separator helper refactoring and parameterized fence and paragraph coverage with the compiled process harness (owner small-function rule).
 /**
  * Splits streamed embedded-agent replies into Markdown-safe message chunks.
  */

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/btw.test.ts (atlas AGENT-LOOP-0273). Changed for Branch: use the current agent configuration and detached-run cancellation lifecycle without changing main-history isolation (shared safety layer 41).
 import "./btw.mocks.test-support.js";
 import { DatabaseSync } from "node:sqlite";
 import { expectDefined } from "@branch/normalization-core";

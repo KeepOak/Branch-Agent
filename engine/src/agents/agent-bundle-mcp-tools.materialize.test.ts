@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/agent-bundle-mcp-tools.materialize.test.ts (atlas INTEGRATIONS-0013). Changed for Branch: prepare compiled subprocesses; preserve the shipped MIME-aware embedded-resource projection and strengthen raw guest payload assertions (owner included-features rule 03 A1.4; Branch commits dd1b3538b and 014478baf).
 /** Tests materializing MCP catalog tools into agent tool definitions and results. */
 
 import "../test-utils/prepare-compiled-subprocesses.js";
@@ -21,6 +22,7 @@ import type {
   SessionMcpRuntime,
 } from "./agent-bundle-mcp-types.js";
 import { applyEmbeddedAttemptToolsAllow } from "./embedded-agent-runner/run/attempt-tool-construction-plan.js";
+import { consumeMcpCodeModeGuestResult } from "./mcp-content.js";
 import { getMcpAppViewLease } from "./mcp-ui-resource.js";
 import { testing as mcpUiResourceTesting } from "./mcp-ui-resource.test-support.js";
 import { createAgentCleanupScope } from "./run-cleanup-timeout.js";
@@ -610,10 +612,19 @@ describe("createBundleMcpToolRuntime", () => {
       { type: "text", text: "[Quarterly report] https://example.com/a.docx" },
       { type: "text", text: "https://example.com/bare" },
       { type: "text", text: "memo body" },
-      { type: "text", text: "blob://two" },
+      { type: "text", text: "[Binary Data (application/pdf)] blob://two" },
       { type: "text", text: "[audio audio/mpeg]" },
       { type: "image", data: "iVBOR", mimeType: "image/png" },
     ]);
+    expect(consumeMcpCodeModeGuestResult(result)).toMatchObject({
+      content: expect.arrayContaining([
+        {
+          type: "resource",
+          resource: { uri: "blob://two", blob: "AAAA", mimeType: "application/pdf" },
+        },
+      ]),
+      isError: false,
+    });
   });
 
   it("coerces a malformed image block (missing base64 source) to text", async () => {

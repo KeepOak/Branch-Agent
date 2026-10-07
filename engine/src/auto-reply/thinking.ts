@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/auto-reply/thinking.ts (atlas AGENT-LOOP-0243). Changed for Branch: retain provider-policy and runtime helper refactors and the shipped plain-language provider error; preserve effort and retry assertions (owner plain-words rule and small-function rule).
 import { listMappedModelThinkingLevels } from "@branch/model-catalog-core/model-catalog-types";
 // Thinking/reasoning level catalog helpers for auto-reply model controls.
 import { normalizeProviderId } from "@branch/model-catalog-core/provider-id";

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/btw.ts (atlas AGENT-LOOP-0273). Changed for Branch: use the current agent configuration and detached-run cancellation lifecycle without changing main-history isolation (shared safety layer 41).
 import { randomUUID } from "node:crypto";
 /**
  * Runs `/btw` side questions against the active conversation without resuming

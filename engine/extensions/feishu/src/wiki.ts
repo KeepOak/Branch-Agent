@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/feishu/src/wiki.ts (atlas INTEGRATIONS-0082). Changed for Branch: retain strict SDK request typing and small helper refactors and additional color-markup assertions (owner strict-TypeScript and small-function rules).
 import { readPositiveIntegerParam } from "branch/plugin-sdk/param-readers";
 import type { BranchPluginApi } from "../runtime-api.js";
 import { assertFeishuApiSuccess } from "./api-response.js";

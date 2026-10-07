@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/mcp/channel-server.test.ts (atlas INTEGRATIONS-0020). Changed for Branch: retain formatting of the Branch-named bridge helper; assertions are unchanged (owner Branch adaptation rule 03 A1.2).
 // Channel MCP server tests cover channel tool registration and requests.
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-block-chunker.test.ts (atlas AGENT-LOOP-0321). Changed for Branch: retain separator helper refactoring and parameterized fence and paragraph coverage with the compiled process harness (owner small-function rule).
 // Covers streaming chunk boundaries for embedded-agent text blocks.
 import { describe, expect, it, vi } from "vitest";
 import * as fences from "../../packages/markdown-core/src/fences.js";
