@@ -58,7 +58,7 @@ test("fresh desktop install starts without dev profile or C3-PO", async () => ho
 test("desktop passes only its app-owned Mac driver lease to the live gateway", async () => homeFixture(async root => {
   await writeFile(join(root, "branch.mjs"), 'import {writeFileSync} from "node:fs"; writeFileSync("launch.json",JSON.stringify({endpoint:process.env.BRANCH_CUA_DRIVER_ENDPOINT}));');
   const endpoint = JSON.stringify({ v: 2, port: 21831, secret: "a".repeat(64) });
-  const child = startGateway({ dataDir: root, nodePath: process.execPath, gatewayPort: 19631 }, root, "fixture-token", endpoint);
+  const child = startGateway({ dataDir: root, nodePath: process.execPath, gatewayPort: 19631 }, root, "fixture-token", false, 19631, endpoint);
   await once(child, "exit");
   assert.equal(JSON.parse(await readFile(join(root, "launch.json"), "utf8")).endpoint, endpoint);
 }));

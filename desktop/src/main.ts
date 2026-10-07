@@ -334,6 +334,9 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
  * A failed standby is already stopped and nothing else is: the current engine keeps serving.
  */
 async function prepareUpdateStandby(label: string, explicit: boolean): Promise<void> {
+  // A warmed child cannot be given a fresh Electron-owned driver lease on promotion.
+  // Preserve computer control by using the guarded stop/start path for this case.
+  if (macComputerDriver && screenControlEnabled()) return;
   if (freemem() < CANDIDATE_MIN_FREE_BYTES || !standbyProfileReady()) return;
   const failures = standbyFailures.get(label) ?? 0;
   // Automatic updates never wait for a click that may not be offered: one failed standby is enough to fall back.
@@ -670,9 +673,10 @@ async function start(): Promise<void> {
     let enabled = screenControlEnabled();
     let granted = enabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
     const timer = setInterval(() => {
+      if (engineRestartInProgress) return;
       const nextEnabled = screenControlEnabled();
       const nextGranted = nextEnabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
-      if ((nextEnabled !== enabled || nextGranted && !granted) && !engineRestartInProgress) {
+      if (nextEnabled !== enabled || nextGranted && !granted) {
         enabled = nextEnabled;
         granted = nextGranted;
         void restartEngine();
@@ -705,7 +709,7 @@ async function waitForGatewayPort(): Promise<void> {
 async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = true, prepared?: PreparedGateway, port = prepared?.port ?? gatewayPort): Promise<void> {
   const started = Date.now();
   if (macComputerDriver && !screenControlEnabled()) await macComputerDriver.stop();
-  const macComputerEndpoint = await (screenControlEnabled() ? macComputerDriver?.start(engineDir) : undefined)?.catch(error => {
+  const macComputerEndpoint = await (!prepared && screenControlEnabled() ? macComputerDriver?.start(engineDir) : undefined)?.catch(error => {
     log(`Mac computer driver unavailable: ${String(error)}`);
     return undefined;
   });
