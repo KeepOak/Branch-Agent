@@ -67,6 +67,17 @@ describe("setup model", () => {
     expect(params(request, "branch.setup.verify")).toEqual([{ agentId: "main" }]);
     expect(params(request, "branch.setup.activate")).toHaveLength(1);
   });
+  it("chooses a local server before installed CLIs whose sign-ins are unverified", async () => {
+    const detected = readDetected({ candidates: [
+      { kind: "codex-cli", modelRef: "codex-cli/gpt", detail: "installed; login status unverified" },
+      { kind: "claude-cli", modelRef: "claude-cli/sonnet", detail: "installed; login status unverified" },
+      { kind: "llama-cpp", modelRef: "llama-cpp/qwen", credentials: true },
+    ] });
+    expect(firstOn(detected, [])?.modelRef).toBe("llama-cpp/qwen");
+    const { engine: e, request } = engine({ "branch.setup.activate": { ok: true, modelRef: "llama-cpp/qwen", latencyMs: 800 } });
+    expect(await testModel(e, detected, [], null)).toMatchObject({ ok: true, madeDefault: true });
+    expect(params(request, "branch.setup.activate")).toEqual([{ agentId: "main", kind: "llama-cpp", modelRef: "llama-cpp/qwen" }]);
+  });
   it("chat apps from channels.status and connect problems in plain words", () => {
     expect(readChatApps({ channelOrder: ["telegram", "slack"], channelLabels: { telegram: "Telegram", slack: "Slack" }, channelAccounts: { telegram: [{ connected: true }] } })).toEqual([
       { id: "telegram", label: "Telegram", connected: true },
@@ -88,7 +99,49 @@ function engine(answers: Record<string, unknown>) {
 const params = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter((c) => c[0] === method).map((c) => c[1] as Record<string, unknown>);
 
 describe("setup flow", () => {
-  it("reopens first-Trunk creation through WindowShell after returning from local-model Settings", async () => {
+  it("shows the shared reserved-name wording from WindowShell New Trunk", async () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} });
+    const snapshot = {
+      status: { phase: "connected" }, sessionKey: null, mainKey: null, name: "Branch", history: [], live: [],
+      pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null, doneAt: null,
+      lastActivityAt: null, error: null, steered: [],
+    };
+    const request = vi.fn(async (method: string) => {
+      if (method === "config.get") return { hash: "h", config: { wizard: { lastRunAt: "2026-10-06T00:00:00Z" } } };
+      if (method === "agents.list") return { defaultId: "oak", agents: [{ id: "oak", kind: "agent", name: "Oak" }] };
+      if (method === "agents.create") return { ok: false, error: { message: '"branch" is reserved' } };
+      if (method === "contacts.list") return { contacts: [] };
+      if (method === "rooms.list") return { rooms: [] };
+      if (method === "peers.list" || method === "a2a.peers.list") return { peers: [] };
+      if (method === "channels.status") return { channelOrder: [] };
+      return {};
+    });
+    const session = {
+      request, engine: { request, onEvent: () => () => {}, scopes: ["operator.admin"], agentId: "oak" },
+      gatewayUrl: "ws://127.0.0.1:19661", getSnapshot: () => snapshot, subscribe: () => () => {},
+      onGatewayEvent: () => () => {}, open: vi.fn(async () => {}), reload: vi.fn(),
+    } as unknown as SaplingSession;
+    const host = await show(<WindowShell session={session} url="ws://127.0.0.1:19661" />);
+    await act(async () => new Promise((r) => setTimeout(r, 750)));
+    await act(async () => tid(host, "new").click());
+    await act(async () => tid(host, "new-trunk").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const input = document.querySelector<HTMLInputElement>('[data-testid="new-trunk-preview"] input')!;
+    expect(input).toBeTruthy();
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Branch"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => byText(document.body, "Make Trunk").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(request).toHaveBeenCalledWith("agents.create", expect.objectContaining({ name: "Branch" }));
+    expect(document.body.textContent).toContain("That name is kept for Branch. Choose another Trunk name.");
+    expect(document.body.textContent).not.toContain('"branch" is reserved');
+  });
+  it.each([
+    { label: "reopens first-Trunk creation through WindowShell after returning from local-model Settings", hasTrunk: false },
+    { label: "keeps setup closed through WindowShell when a Trunk exists on return from Settings", hasTrunk: true },
+  ])("$label", async ({ hasTrunk }) => {
     vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
     HTMLElement.prototype.scrollIntoView = vi.fn();
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
@@ -99,7 +152,9 @@ describe("setup flow", () => {
     };
     const request = vi.fn(async (method: string) => {
       if (method === "config.get") return { hash: "h", config: {} };
-      if (method === "agents.list") return { defaultId: "bootstrap", agents: [{ id: "bootstrap", kind: "system", name: "Branch" }] };
+      if (method === "agents.list") return hasTrunk
+        ? { defaultId: "fern", agents: [{ id: "fern", name: "Fern" }] }
+        : { defaultId: "bootstrap", agents: [{ id: "bootstrap", kind: "system", name: "Branch" }] };
       if (method === "contacts.list") return { contacts: [] };
       if (method === "rooms.list") return { rooms: [] };
       if (method === "peers.list") return { peers: [] };
@@ -120,8 +175,9 @@ describe("setup flow", () => {
     await act(async () => tid(host, "setup-next").click());
     await act(async () => byText(host, "install a model on this computer").click());
     expect(host.textContent).toContain("Models that run here, free and private.");
-    await act(async () => byText(host, "Back to Branch").click());
-    expect(host.querySelector("h2")?.textContent).toBe("Create your first Trunk");
+    expect(host.querySelector('[data-testid="setup"]')).toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>(".set-back")!.click());
+    expect(host.querySelector("h2")?.textContent).toBe(hasTrunk ? undefined : "Create your first Trunk");
   });
   it("opens Welcome on a fresh connection even after pre-connect choices", async () => {
     sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
@@ -436,6 +492,26 @@ describe("setup flow", () => {
     // Researcher already exists, so setup prefills it as the only pick and makes nothing twice.
     expect(params(request, "agents.create")).toEqual([]);
     expect(closed).toHaveBeenCalledWith(true);
+  });
+  it("does not repeat a successful Say hello test for the same model at Finish", async () => {
+    sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
+    const { engine: e, request } = engine({
+      "branch.setup.detect": { candidates: [{ kind: "saved-auth:openai:a", modelRef: "openai/gpt", credentials: true }] },
+      "branch.setup.activate": { ok: true, modelRef: "openai/gpt", latencyMs: 800 },
+      "branch.setup.verify": { ok: true, modelRef: "openai/gpt", latencyMs: 800 },
+      health: { ok: true }, "system.info": { diskAvailableBytes: 2 * 1024 ** 3 },
+      "channels.status": { channelOrder: [] },
+      "config.get": { hash: "h", config: {} }, "config.patch": { ok: true },
+    });
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={2} onClose={() => {}} onLocalModel={() => {}} />);
+    await act(async () => tid(host, "setup-test").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(params(request, "branch.setup.activate")).toHaveLength(1);
+    await act(async () => host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")[10].click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    await act(async () => tid(host, "setup-finish").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(params(request, "branch.setup.activate")).toHaveLength(1);
   });
   it("keeps a selected local setup default even when cloud activation would fail", async () => {
     const { engine: e, request } = engine({

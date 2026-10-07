@@ -90,8 +90,8 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
-  // Recorded as soon as it exists, so a launch after a desktop crash finds every engine this one started.
-  recordEngine(cfg.dataDir, child, port, standby ? "standby" : "engine");
+  // Record the spawn before querying its start time, so a crash cannot lose the engine.
+  recordEngine(cfg.dataDir, child, port, standby ? "standby" : "engine", cfg.nodePath);
   child.stdout?.pipe(log);
   child.stderr?.pipe(log);
   if (!standby && child.pid !== undefined) {

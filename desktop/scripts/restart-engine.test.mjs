@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
@@ -94,7 +94,7 @@ else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-n
     nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() }));
 }
 /** standby: true always warms a standby; "never" (the default) always runs the plain guarded swap, whatever the runner's memory. */
-async function fixture(run, holdStartup = false, fastSupervisor = false, holdCandidate = false, standby = "never", keepWorkingOff = false, prepare = undefined) {
+async function fixture(run, holdStartup = false, fastSupervisor = false, holdCandidate = false, standby = "never", keepWorkingOff = false, prepare = undefined, holdUndo = false, manualEngineWatch = false) {
   const scratch = join(tmpdir(), "Codex-session-files"); await mkdir(scratch, { recursive: true });
   const root = await mkdtemp(join(scratch, "branch-restart-")); await createFixtureFiles(root);
   if (keepWorkingOff) await writeFile(join(root, "desktop-settings.json"), JSON.stringify({ keepWorking: false }));
@@ -110,24 +110,79 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   };
   if (holdStartup) await writeFile(join(root, "hold-startup"), "wait");
   await prepare?.(root);
-  let onStaged;
+  let onStaged, onWithdrawal, swapGuard, pendingVersion, engineWatchTick;
+  // Auto-apply's clock: a test moves it past the 60 s idle hold instead of waiting for it.
+  const clock = { skew: 0 };
   Module._load = function(name, ...args) {
     if (name === "electron") return runtime.electron;
+    if (name === "./boot-selected-engine" && existsSync(join(root, "hold-start-continuation"))) {
+      const source = originalLoad.call(this, name, ...args);
+      return { ...source, bootSelectedEngineWithRollback: async options => {
+        const result = await source.bootSelectedEngineWithRollback(options);
+        await writeFile(join(root, "startup-awaiting-continuation"), "1");
+        while (!existsSync(join(root, "release-start-continuation"))) await pause(5);
+        return result;
+      } };
+    }
+    if (manualEngineWatch && name === "./updates") {
+      const source = originalLoad.call(this, name, ...args);
+      return { ...source, watchEngineBuild: (signature, onChange) => {
+        let last = signature();
+        const tick = () => {
+          const next = signature();
+          if (next && next !== last) { last = next; onChange(); }
+        };
+        engineWatchTick = tick;
+        return () => { if (engineWatchTick === tick) engineWatchTick = undefined; };
+      } };
+    }
     if (fastSupervisor && name === "./gateway-supervisor") {
       const source = originalLoad.call(this, name, ...args);
       return { createGatewayCrashSupervisor: options => source.createGatewayCrashSupervisor({ ...options,
         policy: typeof fastSupervisor === "object" ? fastSupervisor :
           { maxAttempts: 1, initialDelayMs: 10, maxDelayMs: 10, stableAfterMs: 60_000 } }) };
     }
+    if (name === "./auto-apply-update") {
+      const source = originalLoad.call(this, name, ...args);
+      return { ...source, createAutoApplyUpdate: options => {
+        pendingVersion = options.pendingVersion;
+        return source.createAutoApplyUpdate({ ...options, now: () => Date.now() + clock.skew });
+      } };
+    }
     if (name === "./component-update") {
       const source = originalLoad.call(this, name, ...args);
       return { ...source, watchComponentUpdates: (cfg, log, options) => {
-        onStaged = options.onStaged;
+        if (existsSync(join(root, "hold-start-continuation"))) writeFileSync(join(root, "component-watch-started"), "1");
+        onStaged = options.onStaged; onWithdrawal = options.onWithdrawal; swapGuard = options.underSwapGuard;
         return source.watchComponentUpdates(cfg, log, options);
+      }, prepareComponentUpdateUndo: async (...args) => {
+        const prepared = await source.prepareComponentUpdateUndo(...args);
+        if (prepared && holdUndo) {
+          await writeFile(join(root, "undo-prepared"), "ready");
+          while (!existsSync(join(root, "release-undo"))) await pause(5);
+        }
+        return prepared;
       }, confirmComponentUpdate: async (...args) => {
         // fail-confirm: the new engine answered /readyz but its update cannot be confirmed (once).
         if (existsSync(join(root, "fail-confirm"))) { await unlink(join(root, "fail-confirm")); throw Error("fixture confirmation failure"); }
         return source.confirmComponentUpdate(...args);
+      } };
+    }
+    if (name === "./gateway") {
+      const source = originalLoad.call(this, name, ...args);
+      return { ...source, stopGatewayCleanly: async (...args) => {
+        if (existsSync(join(root, "fail-auto-stop"))) {
+          const count = Number(await readFile(join(root, "fail-auto-stop"), "utf8"));
+          await writeFile(join(root, "fail-auto-stop"), String(count + 1));
+          throw Error("The gateway became busy before it could stop");
+        }
+        return source.stopGatewayCleanly(...args);
+      }, drainStopGateway: async (...args) => {
+        if (existsSync(join(root, "fail-undo-stop"))) {
+          await unlink(join(root, "fail-undo-stop"));
+          throw Error("fixture stop deadline");
+        }
+        return source.drainStopGateway(...args);
       } };
     }
     if (holdCandidate && name === "./candidate-check") {
@@ -148,9 +203,12 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   try {
     require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js"));
     if (!holdStartup) await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway ready"), 30_000);
-    await run({ root, runtime, starts, restart, offerStaged: () => onStaged() });
+    await run({ root, runtime, starts, restart, offerStaged: () => onStaged(), withdraw: version => onWithdrawal(version),
+      pendingVersion: () => pendingVersion(), swapGuard: (work) => swapGuard(work), engineWatchTick: () => engineWatchTick(), clock });
   } finally {
-    await writeFile(join(root, "release-ready"), "ready"); await pause(600);
+    await writeFile(join(root, "release-ready"), "ready");
+    if (holdUndo) await writeFile(join(root, "release-undo"), "release");
+    await pause(600);
     runtime.app.emit("will-quit");
     await eventually(async () => (await starts()).every(pid => !alive(pid)));
     Module._load = originalLoad; globalThis.fetch = originalFetch;
@@ -168,7 +226,7 @@ const handoffOn = (env = {}) => async (root) => {
   for (const [name, value] of Object.entries(env)) process.env[`BRANCH_DESKTOP_${name}`] = String(value);
 };
 const swapped = async (root, count = 1) => (await readFile(join(root, "desktop.log"), "utf8")).split("engine swapped in place").length - 1 >= count;
-async function stageFixtureUpdate(root) {
+async function stageFixtureUpdate(root, undoable = false) {
   const { engineDir, windowDir } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
   const stagedEngine = join(root, "staged-engine"), previousWindow = join(root, "previous-window");
   await mkdir(join(stagedEngine, "dist"), { recursive: true });
@@ -178,8 +236,10 @@ async function stageFixtureUpdate(root) {
   await mkdir(windowDir);
   await writeFile(join(windowDir, "index.html"), "<html>staged window</html>");
   await writeFile(join(root, "engine-current.txt"), `${stagedEngine}\n`);
+  if (undoable) await writeFile(join(root, "component-update-version.txt"), "fixture-previous\n");
   await writeFile(join(root, "component-update-pending.json"), JSON.stringify({ version: "fixture-next", phase: "pending",
-    enginePrevious: "", engineNext: stagedEngine, windowPrevious: previousWindow, windowExisted: true,
+    previousVersion: undoable ? "fixture-previous" : undefined,
+    enginePrevious: undoable ? engineDir : "", engineNext: stagedEngine, windowPrevious: previousWindow, windowExisted: true,
     identity: { version: "fixture-next", engineSha256: "engine", windowSha256: "window" } }));
   return { engineDir, stagedEngine, previousWindow, windowDir };
 }
@@ -593,7 +653,11 @@ test("a standby that is ready keeps the state when only its update record fails:
   restart();
   await eventually(() => swapped(root), 40_000);
   assert.equal(existsSync(join(root, "fail-confirm")), false, "the confirmation failure was never exercised");
-  const standby = JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8")).find(record => record.role === "standby");
+  let standby;
+  await eventually(async () => {
+    standby = JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8")).find(record => record.role === "standby");
+    return standby;
+  });
   assert.ok(standby && alive(standby.pid));
   assert.equal(existsSync(join(root, `rolled-back-${old}`)), false, "channels and cron moved back to the old engine");
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-handoff").map(([, url]) => url), [`ws://127.0.0.1:${standby.port}`]);
@@ -841,28 +905,56 @@ test("launch retires the engines the last session recorded and left holding thei
   const { spawn } = await import("node:child_process");
   const { engineProcessIdentity } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "engine-records.js"));
   const holdPort = "const s=require('net').createServer().listen(0,'127.0.0.1',()=>process.send(s.address().port));setInterval(()=>{},1000)";
-  const orphan = spawn(process.execPath, ["-e", holdPort], { stdio: ["ignore", "ignore", "ignore", "ipc"], detached: process.platform !== "win32" });
+  const orphan = spawn(process.execPath, ["-e", holdPort], { stdio: ["ignore", "ignore", "ignore", "ipc"], detached: process.platform !== "win32", windowsHide: true });
+  const orphanSpawnedAt = Date.now();
   const orphanPort = await new Promise(resolve => orphan.once("message", resolve));
+  const unverifiable = spawn(process.execPath, ["-e", holdPort], { stdio: ["ignore", "ignore", "ignore", "ipc"], detached: process.platform !== "win32", windowsHide: true });
+  const unverifiablePort = await new Promise(resolve => unverifiable.once("message", resolve));
   // A reused PID on an occupied port, or a matching process that does not own that port, is never touched.
-  const bystander = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore" });
+  const bystander = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore", windowsHide: true });
   try {
     await fixture(async ({ root, starts }) => {
-      await eventually(() => !alive(orphan.pid), 10_000);
+      await eventually(() => !alive(orphan.pid), 10_000).catch(async error => {
+        throw new Error(`${error.message}: ${await readFile(join(root, "desktop.log"), "utf8")}`);
+      });
+      assert.equal(alive(unverifiable.pid), true, "an owned port without either start-time proof was stopped");
       assert.equal(alive(bystander.pid), true, "a reused PID was stopped");
       assert.match(await readFile(join(root, "desktop.log"), "utf8"), new RegExp(`retiring the last session's standby engine ${orphan.pid} on port ${orphanPort}`));
-      // Only the engine this launch started is recorded now.
+      // Only the engine this launch started is recorded now, even if its identity query times out.
+      await eventually(async () => {
+        const records = JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8"));
+        return records.length === (await starts()).length && records.every(record => Number.isSafeInteger(record.spawnedAt));
+      });
       assert.deepEqual(JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8")).map(record => record.pid), await starts());
     }, false, false, false, "never", false, async (root) => {
-      const orphanIdentity = engineProcessIdentity(orphan.pid), bystanderIdentity = engineProcessIdentity(bystander.pid);
-      assert.ok(orphanIdentity && bystanderIdentity);
+      const orphanIdentity = await engineProcessIdentity(orphan.pid), bystanderIdentity = await engineProcessIdentity(bystander.pid);
+      const unverifiableIdentity = await engineProcessIdentity(unverifiable.pid);
+      assert.ok(orphanIdentity && bystanderIdentity && unverifiableIdentity);
       await writeFile(join(root, "gateway-engines.json"), JSON.stringify([
-        { pid: orphan.pid, port: orphanPort, role: "standby", ...orphanIdentity },
+        { pid: orphan.pid, port: orphanPort, role: "standby", ...orphanIdentity, spawnedAt: orphanSpawnedAt },
+        { pid: unverifiable.pid, port: unverifiablePort, role: "standby", executable: unverifiableIdentity.executable },
         { pid: bystander.pid, port: orphanPort, role: "candidate", ...bystanderIdentity, started: "reused-pid" },
-        { pid: bystander.pid, port: orphanPort, role: "candidate", ...bystanderIdentity },
+        { pid: bystander.pid, port: orphanPort, role: "candidate", executable: bystanderIdentity.executable, spawnedAt: Date.now() },
       ]));
     });
   } finally {
-    orphan.kill(); bystander.kill();
+    orphan.kill(); unverifiable.kill(); bystander.kill();
+  }
+});
+test("a spawned engine has a recovery record before its start-time query finishes", async () => {
+  const { spawn } = await import("node:child_process");
+  const { recordEngine } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "engine-records.js"));
+  const root = await mkdtemp(join(tmpdir(), "branch-record-spawn-"));
+  const child = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore", windowsHide: true });
+  try {
+    recordEngine(root, child, 12345, "engine", process.execPath);
+    const records = JSON.parse(readFileSync(join(root, "gateway-engines.json"), "utf8"));
+    assert.deepEqual(records.map(({ pid, port, role, started }) => ({ pid, port, role, started })),
+      [{ pid: child.pid, port: 12345, role: "engine", started: undefined }]);
+    assert.ok(Math.abs(records[0].spawnedAt - Date.now()) < 5_000, "spawn time was not recorded synchronously");
+  } finally {
+    child.kill();
+    await rm(root, { recursive: true, force: true });
   }
 });
 test("launch refuses plainly when the last session's engine still runs on a moved port", async () => {
@@ -898,6 +990,243 @@ test("a standby that fails after the old engine drained brings the previous buil
   assert.ok(log.lastIndexOf(`gateway started from ${engineDir}`) > log.indexOf("update failed"), "the previous build was not restarted");
   assert.ok(sent.some(([channel]) => channel === "branch-desktop:engine-update-failed"));
 }, false, false, false, true));
+/** Answers the window's approval/draft probes as an idle window would, recording everything sent to it. */
+function idleWindow(runtime) {
+  const sent = [], owner = runtime.window.webContents; owner.isDestroyed = () => false;
+  owner.send = (channel, value) => {
+    sent.push([channel, value]);
+    if (channel === "branch-desktop:auto-apply:probe") setTimeout(() => runtime.ipcMain.emit("branch-desktop:auto-apply:result",
+      { sender: owner, senderFrame: owner.mainFrame }, value, { pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }), 5);
+  };
+  return sent;
+}
+test("automatic flagged handoff keeps a busy run and shows one confirmed notice across reload", () => fixture(async ({ root, runtime, starts, offerStaged }) => {
+  const sent = idleWindow(runtime);
+  const old = (await starts())[0];
+  await writeFile(join(root, "busy-run"), "1");
+  await stageFixtureUpdate(root); await writeFile(join(root, "release-ready"), "ready");
+  offerStaged();
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-applied"), 30_000);
+  const notice = sent.find(([channel]) => channel === "branch-desktop:update-applied")[1];
+  assert.equal(notice.version, "fixture-next");
+  assert.ok(notice.expiresAt > Date.now());
+  assert.equal(alive(old), true, "automatic update killed the busy predecessor");
+  assert.doesNotMatch(await readFile(join(root, "desktop.log"), "utf8"), /auto-apply: idle hold|old engine drained/);
+  runtime.window.webContents.emit("did-finish-load");
+  await eventually(() => sent.filter(([channel]) => channel === "branch-desktop:update-applied").length === 2);
+  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:update-applied").map(([, value]) => value), [notice, notice]);
+}, false, false, false, true, false, handoffOn()));
+
+test("failed automatic flagged standby postpones once without draining the serving engine", () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
+  const sent = idleWindow(runtime);
+  const old = (await starts())[0];
+  await stageFixtureUpdate(root); await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "fail-standby"), "fail");
+  offerStaged();
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 30_000);
+  assert.equal(alive(old), true);
+  assert.equal(existsSync(join(root, `drained-${old}`)), false, "automatic failure drained the serving engine");
+  assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update-failed"), []);
+  clock.skew = 61_000; offerStaged();
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("failed 1 time(s)"), 30_000);
+  assert.equal(sent.filter(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept").length, 1);
+}, false, false, false, true, false, handoffOn()));
+test("two automatic busy-stop failures for one version never leave an updating bar", () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
+  const sent = idleWindow(runtime);
+  const old = (await starts())[0];
+  await stageFixtureUpdate(root);
+  await writeFile(join(root, "release-ready"), "ready");
+  await writeFile(join(root, "fail-auto-stop"), "0");
+  offerStaged();
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("auto-apply: idle hold for fixture-next"));
+  clock.skew = 61_000; offerStaged();
+  await eventually(async () => Number(await readFile(join(root, "fail-auto-stop"), "utf8")) === 1);
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"));
+  clock.skew = 183_000; offerStaged();
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).split("auto-apply: idle hold for fixture-next").length === 3);
+  clock.skew = 245_000; offerStaged();
+  await eventually(async () => Number(await readFile(join(root, "fail-auto-stop"), "utf8")) === 2);
+  assert.equal(alive(old), true);
+  assert.equal(sent.filter(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept").length, 1);
+  assert.equal(sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && ["preparing", "updating"].includes(state)), false);
+  assert.equal(sent.filter(([channel]) => channel === "branch-desktop:engine-update").at(-1)[1], "auto-wait");
+}));
+test("Undo succeeds in one click after a standby failure", () => fixture(async ({ root, runtime, offerStaged }) => {
+  const sent = idleWindow(runtime), owner = runtime.window.webContents;
+  await stageFixtureUpdate(root, true);
+  await writeFile(join(root, "release-ready"), "ready");
+  offerStaged();
+  await eventually(() => sent.some(([channel, value]) => channel === "branch-desktop:update-applied" && value.canUndo), 30_000);
+  await writeFile(join(root, "fail-standby"), "fail");
+  runtime.ipcMain.emit("branch-desktop:undo-update", { sender: owner, senderFrame: owner.mainFrame });
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-undone"), 30_000);
+  assert.equal(sent.some(([channel]) => channel === "branch-desktop:update-undo-failed"), false);
+  assert.equal(existsSync(join(root, "component-update-pending.json")), false);
+  assert.equal((await readFile(join(root, "component-update-version.txt"), "utf8")).trim(), "fixture-previous");
+}, false, false, false, true, false, handoffOn()));
+test("failed Undo rolls back its staged switch and can be retried", () => fixture(async ({ root, runtime, offerStaged }) => {
+  const sent = idleWindow(runtime), owner = runtime.window.webContents;
+  const { stagedEngine, windowDir, previousWindow } = await stageFixtureUpdate(root, true);
+  await writeFile(join(root, "release-ready"), "ready");
+  offerStaged();
+  await eventually(() => sent.some(([channel, value]) => channel === "branch-desktop:update-applied" && value.canUndo), 30_000);
+  await writeFile(join(root, "fail-standby"), "fail");
+  await writeFile(join(root, "fail-undo-stop"), "fail");
+  runtime.ipcMain.emit("branch-desktop:undo-update", { sender: owner, senderFrame: owner.mainFrame });
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-undo-failed"), 30_000);
+  assert.equal((await readFile(join(root, "engine-current.txt"), "utf8")).trim(), stagedEngine);
+  assert.equal(await readFile(join(windowDir, "index.html"), "utf8"), "<html>staged window</html>");
+  assert.equal(existsSync(previousWindow), true);
+  assert.equal(existsSync(join(root, "component-update-pending.json")), false);
+  assert.equal(existsSync(join(root, "component-update-undone.json")), false);
+  runtime.ipcMain.emit("branch-desktop:undo-update", { sender: owner, senderFrame: owner.mainFrame });
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-undone"), 30_000);
+  assert.equal((await readFile(join(root, "component-update-version.txt"), "utf8")).trim(), "fixture-previous");
+  assert.equal(JSON.parse(await readFile(join(root, "component-update-undone.json"), "utf8")).version, "fixture-next");
+}, false, false, false, true, false, handoffOn()));
+test("Undo's temporary engine pointer is never offered as a new update", () => fixture(async ({ root, runtime, offerStaged, engineWatchTick }) => {
+  const sent = idleWindow(runtime), owner = runtime.window.webContents;
+  const { stagedEngine } = await stageFixtureUpdate(root, true);
+  await writeFile(join(root, "release-ready"), "ready");
+  offerStaged();
+  await eventually(() => sent.some(([channel, value]) => channel === "branch-desktop:update-applied" && value.canUndo), 30_000);
+  await writeFile(join(root, "fail-standby"), "fail");
+  await writeFile(join(root, "fail-undo-stop"), "fail");
+  runtime.ipcMain.emit("branch-desktop:undo-update", { sender: owner, senderFrame: owner.mainFrame });
+  await eventually(() => existsSync(join(root, "undo-prepared")));
+  const log = () => readFile(join(root, "desktop.log"), "utf8");
+  const offersBefore = (await log()).split("new engine build found; offering Update").length - 1;
+  engineWatchTick(); // The 15-second poll lands while Undo's reverse journal is pending.
+  await pause(50);
+  assert.equal((await log()).split("new engine build found; offering Update").length - 1, offersBefore);
+  await writeFile(join(root, "release-undo"), "release");
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-undo-failed"), 30_000);
+  assert.equal((await readFile(join(root, "engine-current.txt"), "utf8")).trim(), stagedEngine);
+  const offersAfter = (await log()).split("new engine build found; offering Update").length - 1;
+  engineWatchTick(); // The rollback pointer must be the watcher's new baseline.
+  await pause(50);
+  assert.equal((await log()).split("new engine build found; offering Update").length - 1, offersAfter);
+}, false, false, false, true, false, handoffOn(), true, true));
+test("Undo pins the outgoing window, excludes auto-apply, and explains a busy-lock click", () => fixture(async ({ root, runtime, offerStaged }) => {
+  const sent = idleWindow(runtime), owner = runtime.window.webContents;
+  await stageFixtureUpdate(root, true);
+  await writeFile(join(root, "release-ready"), "ready");
+  offerStaged();
+  await eventually(() => sent.some(([channel, value]) => channel === "branch-desktop:update-applied" && value.canUndo), 30_000);
+  const swapsBeforeUndo = (await readFile(join(root, "desktop.log"), "utf8")).split("engine swapped in place").length - 1;
+  runtime.ipcMain.emit("branch-desktop:undo-update", { sender: owner, senderFrame: owner.mainFrame });
+  await eventually(() => existsSync(join(root, "undo-prepared")));
+  const { windowPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  assert.equal(await (await fetch(`http://127.0.0.1:${windowPort}/`)).text(), "<html>staged window</html>");
+  offerStaged();
+  runtime.ipcMain.emit("branch-desktop:undo-update", { sender: owner, senderFrame: owner.mainFrame });
+  await eventually(() => sent.some(([channel, value]) => channel === "branch-desktop:update-undo-failed" && value === "An update is finishing, try again in a moment"));
+  assert.equal((await readFile(join(root, "desktop.log"), "utf8")).split("engine swapped in place").length - 1, swapsBeforeUndo);
+  assert.equal(sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), false);
+  await writeFile(join(root, "release-undo"), "release");
+  await eventually(async () => (await readFile(join(root, "component-update-version.txt"), "utf8")).trim() === "fixture-previous", 30_000);
+  assert.equal(sent.filter(([channel]) => channel === "branch-desktop:update-applied").length, 1);
+}, false, false, false, true, false, handoffOn(), true));
+test("an Update click or an automatic update during a staged-update replacement waits for it, then the click runs once", () => fixture(async ({ root, runtime, starts, restart, offerStaged, swapGuard, clock }) => {
+  const sent = idleWindow(runtime);
+  const log = () => readFile(join(root, "desktop.log"), "utf8");
+  await writeFile(join(root, "release-ready"), "ready");
+  await stageFixtureUpdate(root);
+  // Auto-apply first holds an idle update for 60 s.
+  offerStaged();
+  await eventually(async () => (await log()).includes("auto-apply: idle hold for fixture-next"));
+  let releaseGuard;
+  const held = new Promise(resolve => { releaseGuard = resolve; });
+  const replacement = swapGuard(async () => { await held; return true; });
+  // Past the hold, auto-apply skips the replacement lock instead of trying the update.
+  clock.skew = 61_000;
+  offerStaged();
+  await eventually(async () => (await log()).includes("auto-apply: off; awaiting Restart"));
+  await pause(100);
+  assert.doesNotMatch(await log(), /auto-apply: restarting for fixture-next/);
+  assert.doesNotMatch(await log(), /auto-apply: waiting; activity check failed: The desktop is not ready to update/);
+  assert.equal(sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), false);
+  // The owner's click is kept: the bar says the update is being prepared.
+  restart();
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "preparing"));
+  assert.match(await log(), /update requested while a newer release replaces the staged one/);
+  assert.equal((await starts()).length, 1, "an update started while the staged pair was being replaced");
+  assert.doesNotMatch(await log(), /update requested \(|swapped in place/);
+  // A second replacement cannot start either while one runs.
+  assert.equal(await swapGuard(async () => true), undefined);
+  releaseGuard(); assert.equal(await replacement, true);
+  // The kept click runs by itself once the replacement ends, exactly once.
+  await eventually(() => swapped(root), 30_000);
+  assert.equal((await log()).split("update requested (").length - 1, 1);
+}));
+test("a queued Update click is discarded when replacement withdraws the staged release", () => fixture(async ({ root, runtime, starts, restart, offerStaged, swapGuard }) => {
+  const sent = idleWindow(runtime);
+  const cfg = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  await stageFixtureUpdate(root);
+  offerStaged();
+  let releaseGuard;
+  const held = new Promise(resolve => { releaseGuard = resolve; });
+  const updates = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js"));
+  const replacement = swapGuard(async () => { await held; return updates.rollbackComponentUpdate(cfg); });
+  restart();
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "preparing"));
+  releaseGuard();
+  assert.equal(await replacement, true);
+  await pause(200);
+  assert.equal((await starts()).length, 1, "a withdrawn release drained the running engine");
+  assert.equal(sent.at(-1)[1], "kept");
+  await swapGuard(async () => true);
+  await pause(200);
+  assert.equal((await starts()).length, 1, "the stale click fired on an unrelated later release");
+}));
+
+test("auto-apply ignores a withdrawn version while the staged status still reports it", () => fixture(async ({ root, pendingVersion, withdraw }) => {
+  await stageFixtureUpdate(root);
+  assert.equal(await pendingVersion(), "fixture-next");
+  withdraw("fixture-next");
+  assert.equal(await pendingVersion(), null);
+}));
+test("a pop-out Update click after withdrawal cannot install the withdrawn release", () => fixture(async ({ root, runtime, starts, offerStaged, withdraw }) => {
+  const main = runtime.window;
+  await runtime.handlers.get("branch-desktop:open-conversation")(
+    { sender: main.webContents, senderFrame: main.webContents.mainFrame }, "agent:test:one");
+  const child = runtime.windows[1];
+  const mainEvents = [], childEvents = [];
+  main.webContents.send = (...args) => mainEvents.push(args);
+  child.webContents.send = (...args) => childEvents.push(args);
+  await stageFixtureUpdate(root);
+  offerStaged();
+  await eventually(() => [mainEvents, childEvents].every(events =>
+    events.some(([channel, state]) => channel === "branch-desktop:engine-update" && ["ready", "auto-wait"].includes(state))));
+  withdraw("fixture-next");
+  for (const events of [mainEvents, childEvents]) {
+    assert.ok(events.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"));
+  }
+  runtime.ipcMain.emit("branch-desktop:restart-engine", { sender: child.webContents, senderFrame: child.webContents.mainFrame });
+  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update requested for withdrawn release fixture-next"));
+  assert.equal((await starts()).length, 1, "the withdrawn release started another engine");
+  assert.equal(mainEvents.at(-1)[1], "kept");
+  assert.equal(childEvents.at(-1)[1], "kept");
+}));
+test("a staged-update replacement that ends rolled back keeps the served window valid and never reloads it", () => fixture(async ({ root, runtime, offerStaged, swapGuard }) => {
+  idleWindow(runtime);
+  const cfg = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  await stageFixtureUpdate(root);
+  await writeFile(join(cfg.windowDir, "branch-build.txt"), "staged-build");
+  offerStaged();
+  const page = async () => { const response = await fetch(`http://127.0.0.1:${cfg.windowPort}/`); return [response.status, await response.text()]; };
+  await eventually(async () => (await page())[1] === "<html>fixture</html>");
+  await pause(3_500); // the window watcher has seen the staged build
+  const reloads = runtime.window.reloads;
+  // The worst failure: the replacement's undo failed too, so the publication rolled back to the running build,
+  // moving the window folder the desktop served into windowDir.
+  const updates = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js"));
+  await assert.rejects(swapGuard(async () => { await updates.rollbackComponentUpdate(cfg); throw Error("fixture: replacement rolled back"); }), /rolled back/);
+  assert.deepEqual(await page(), [200, "<html>fixture</html>"], "the served window went missing");
+  await pause(4_000); // more than one watcher poll
+  assert.equal(runtime.window.reloads, reloads, "the live window was reloaded");
+  assert.doesNotMatch(await readFile(join(root, "desktop.log"), "utf8"), /new window build found/);
+  assert.deepEqual(await page(), [200, "<html>fixture</html>"]);
+}, false, false, false, "never", async root => { await writeFile(join(root, "window", "branch-build.txt"), "running-build"); }));
 test("a new window build swaps in place after attached files are sent, keeping the engine", () => fixture(async ({ root, runtime, starts }) => {
   const main = runtime.window;
   await runtime.handlers.get("branch-desktop:open-conversation")(
@@ -1035,3 +1364,14 @@ test("a restart request during first launch preserves its starting gateway", () 
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway ready"));
   assert.equal((await starts()).length, 1);
 }, true));
+test("quitting after gateway readiness does not arm startup watchers afterward", () => fixture(async ({ root, runtime, starts }) => {
+  try {
+    await eventually(() => existsSync(join(root, "startup-awaiting-continuation")), 30_000);
+    runtime.app.emit("will-quit");
+    await eventually(async () => (await starts()).every(pid => !alive(pid)));
+  } finally {
+    await writeFile(join(root, "release-start-continuation"), "1");
+  }
+  await pause(50);
+  assert.equal(existsSync(join(root, "component-watch-started")), false);
+}, false, false, false, "never", false, async root => writeFile(join(root, "hold-start-continuation"), "1")));
