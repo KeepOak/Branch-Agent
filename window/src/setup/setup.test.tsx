@@ -12,6 +12,7 @@ import type { SaplingSession } from "../connect/session";
 import { readChatApps, recordSetup, testModel } from "./use-setup-engine";
 import { matchPlatformLabel } from "./steps-later";
 import type { TalkHandle } from "./TalkSetup";
+import { WindowShell } from "../shell/WindowShell";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -87,6 +88,41 @@ function engine(answers: Record<string, unknown>) {
 const params = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter((c) => c[0] === method).map((c) => c[1] as Record<string, unknown>);
 
 describe("setup flow", () => {
+  it("reopens first-Trunk creation through WindowShell after returning from local-model Settings", async () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    const snapshot = {
+      status: { phase: "connected" }, sessionKey: null, mainKey: null, name: "Branch", history: [], live: [],
+      pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null, doneAt: null,
+      lastActivityAt: null, error: null, steered: [],
+    };
+    const request = vi.fn(async (method: string) => {
+      if (method === "config.get") return { hash: "h", config: {} };
+      if (method === "agents.list") return { defaultId: "bootstrap", agents: [{ id: "bootstrap", kind: "system", name: "Branch" }] };
+      if (method === "contacts.list") return { contacts: [] };
+      if (method === "rooms.list") return { rooms: [] };
+      if (method === "peers.list") return { peers: [] };
+      if (method === "a2a.peers.list") return { peers: [] };
+      if (method === "channels.status") return { channelOrder: [] };
+      return {};
+    });
+    const session = {
+      request, engine: { request, onEvent: () => () => {}, scopes: ["operator.admin"], agentId: "bootstrap" },
+      gatewayUrl: "ws://127.0.0.1:19661", getSnapshot: () => snapshot, subscribe: () => () => {},
+      onGatewayEvent: () => () => {}, open: vi.fn(async () => {}), reload: vi.fn(),
+    } as unknown as SaplingSession;
+    const host = await show(<WindowShell session={session} url="ws://127.0.0.1:19661" />);
+    await act(async () => new Promise((r) => setTimeout(r, 750)));
+    expect(host.querySelector("h2")?.textContent).toBe("Hi, I’m Branch.");
+    await act(async () => tid(host, "setup-promise").click());
+    await act(async () => tid(host, "setup-next").click());
+    await act(async () => tid(host, "setup-next").click());
+    await act(async () => byText(host, "install a model on this computer").click());
+    expect(host.textContent).toContain("Models that run here, free and private.");
+    await act(async () => byText(host, "Back to Branch").click());
+    expect(host.querySelector("h2")?.textContent).toBe("Create your first Trunk");
+  });
   it("opens Welcome on a fresh connection even after pre-connect choices", async () => {
     sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
     const session = { request: vi.fn(async () => ({ config: {} })) } as unknown as SaplingSession;
@@ -299,6 +335,23 @@ describe("setup flow", () => {
     await act(async () => tid(host, "setup-finish").click());
     expect(host.querySelector("h2")?.textContent).toBe("Which models should answer?");
     expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
+  });
+  it("finishes when a detected signed-in account is switched on despite a failed initial model check", async () => {
+    const { engine: e, request } = engine({
+      "branch.setup.detect": { candidates: [{ kind: "saved-auth:openai:a", modelRef: "openai/gpt-6.1-sol", label: "ChatGPT", credentials: true }] },
+      "branch.setup.verify": { ok: false, error: "No agent model is configured." },
+      "branch.setup.activate": { ok: true, modelRef: "openai/gpt-6.1-sol", latencyMs: 800 },
+      health: { ok: true },
+      "config.get": { hash: "h", config: {} },
+      "config.patch": { ok: true },
+    });
+    const closed = vi.fn();
+    const host = await show(<SetupFlow engine={e} version="1" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={10} onClose={closed} onLocalModel={() => {}} />);
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(tid(host, "setup-finish").textContent).toBe("Open Branch and take the walkthrough");
+    await act(async () => tid(host, "setup-finish").click());
+    expect(params(request, "branch.setup.activate")).toEqual([{ agentId: "main", kind: "saved-auth:openai:a", modelRef: "openai/gpt-6.1-sol" }]);
+    expect(closed).toHaveBeenCalledWith(true);
   });
   it("Fix it on a failed model check also opens Add account", async () => {
     const { engine: e } = engine({ "branch.setup.verify": { ok: false, error: "No agent model is configured." }, health: { ok: true } });
