@@ -49,7 +49,7 @@ export function freshChoices(look: Look): SetupChoices {
   return { promise: false, where: "this", look, modelsOff: [], jobs: [1, 2], people: null };
 }
 
-export type Candidate = { key: string; kind: string; modelRef: string; label: string; detail: string; recommended: boolean; signedOut: boolean };
+export type Candidate = { key: string; kind: string; modelRef: string; label: string; detail: string; recommended: boolean; signedOut: boolean; confirmed: boolean };
 export type AuthOption = { id: string; label: string; hint: string; brand?: string };
 export type Detected = { candidates: Candidate[]; configuredModel: string | null; setupComplete: boolean; unavailable: { label: string; reason: string }[]; authOptions: AuthOption[]; secretLogins: AuthOption[] };
 
@@ -65,6 +65,7 @@ export function readDetected(result: unknown): Detected {
       detail: str(c.detail),
       recommended: c.recommended === true,
       signedOut: c.credentials === false,
+      confirmed: c.credentials === true,
     })),
     configuredModel: str(r.configuredModel) || null,
     setupComplete: r.setupComplete === true,
@@ -80,12 +81,13 @@ export function readDetected(result: unknown): Detected {
   };
 }
 
-/** The connection "Say hello to test it" uses: the first switched-on one that isn't signed out. */
+/** Choose confirmed cloud access, then a local server, then an unverified switched-on route. */
 export function firstOn(detected: Detected, off: string[]): Candidate | null {
   const on = detected.candidates.filter((c) => !off.includes(c.key) && !c.signedOut);
-  // A signed-in account is ready to answer across Trunks. A discovered local server
-  // may still need its provider setup, so do not make it the fresh default first.
-  return on.find((c) => c.kind !== "existing-model" && !isLocalModel(c.modelRef)) ?? on[0] ?? null;
+  // Confirmed cloud access works across Trunks. Installed CLIs do not confirm
+  // sign-in, so try a discovered local server before those unverified routes.
+  return on.find((c) => c.confirmed && c.kind !== "existing-model" && !isLocalModel(c.modelRef))
+    ?? on.find((c) => isLocalModel(c.modelRef)) ?? on[0] ?? null;
 }
 
 export function isLocalModel(ref: string): boolean {

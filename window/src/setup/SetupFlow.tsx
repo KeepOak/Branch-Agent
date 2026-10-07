@@ -127,7 +127,7 @@ function SetupFlowBody(p: Props & { needsContact: boolean; onFirstTrunkCreated: 
     const { choices, autoUpdate, boot } = latest.current;
     try {
       const preferred = models.detected ? firstOn(models.detected, choices.modelsOff) : null;
-      if (finished && preferred && !known?.model) {
+      if (finished && preferred && !known?.model && !(test && test !== "testing" && test.ok && test.modelRef === preferred.modelRef)) {
         const selected = await testModel(p.engine, models.detected!, choices.modelsOff, known?.model ?? null);
         setTest(selected);
       }
