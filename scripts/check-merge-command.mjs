@@ -70,14 +70,29 @@ export function checkMergeCommands(rootDir = root, docs = docsToCheck) {
     const contextEnd = Math.min(contextStart + 300, content.length);
     const context = content.slice(contextStart, contextEnd);
     
-    if (!context.includes('"merge"') && !context.includes('merge_method')) {
-      console.error(`${doc}: REST API merge call should specify merge_method: "merge":`);
+    // Must specify merge_method: "merge"
+    if (!context.includes('merge_method') || !context.includes('"merge"')) {
+      console.error(`${doc}: REST API merge call must specify merge_method: "merge":`);
       console.error(`  ${call}`);
       failed = true;
     }
     
+    // Must not use squash or rebase
+    if (context.includes('"squash"')) {
+      console.error(`${doc}: REST API merge call must not use merge_method: "squash":`);
+      console.error(`  ${call}`);
+      failed = true;
+    }
+    
+    if (context.includes('"rebase"')) {
+      console.error(`${doc}: REST API merge call must not use merge_method: "rebase":`);
+      console.error(`  ${call}`);
+      failed = true;
+    }
+    
+    // Must specify sha
     if (!context.includes('sha')) {
-      console.error(`${doc}: REST API merge call should specify sha parameter:`);
+      console.error(`${doc}: REST API merge call must specify sha parameter:`);
       console.error(`  ${call}`);
       failed = true;
     }

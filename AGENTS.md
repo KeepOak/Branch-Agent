@@ -98,17 +98,41 @@ Open PRs and their current CI status: `gh pr list --json number,title,headRefNam
 
 **Priority order:** (1) fix what's broken, (2) seamless updates, (3) proactive agents, (4) the real app matching the newest Branch App Preview 1:1 in both look and logic, ported from the preview's code, (5) logic testing of the app, (6) new features.
 
-1. **Roles.** GOD is the coordinator. Branch PR Closer holds delegated merge authority: it may merge when the merge gate is green AND there is a MERGE review verdict on the PR's current head commit. Builder agents work on assigned tasks. Reviewer agents only review.
+**Roles:**
+- **GOD:** Coordinator, sets priorities
+- **Branch PR Closer:** Reviews and merges when merge-gate is green AND a MERGE verdict exists for the current head
+- **Branch Parity Builder:** Preview match and punch list
+- **Branch Verifier:** Checks merged work in the real app and files `verifier` issues
+- **Branch Coordinator:** Runs the Trunks (Branch's built-in builder agents) and uses the app like a person to file logic and flow bugs
+- **Branch Gardener:** Repo rules and CI
 
-2. **Briefs.** One brief per task, naming the PR, its head, the exact `file:line` problems, the minimal fix, and tests that must fail on the old head. Push to the same branch and never merge.
+**Trunks:**
+- Branch's built-in builder agents, run by Branch Coordinator
+- Branch fresh from current main, open PRs only, never merge or push to main
+- Take one small fix per PR
+- Stay off branches other agents are already updating
+- Never run on the dev profile
+- Mark a work-queue item as in flight before starting it
+- Never push to another agent's PR branch
+- Branch Coordinator spreads Trunk work across the connected model accounts so none runs out mid-task
 
-3. **Review before merge.** Every head gets an adversarial read-only review: a MERGE or FIX verdict, `file:line` evidence, and CI log lines proving the changed tests actually ran on macOS, Ubuntu and Windows. A green check alone is not proof. A new push needs a new review.
+**Rules:**
 
-4. **Merging.** Branch PR Closer may merge a PR when both conditions hold: (1) the merge-gate check is green on the current head, and (2) a review gave a MERGE verdict for that exact commit SHA. Always merge with a merge commit, pinned to the reviewed SHA:
+1. **Briefs.** One brief per task, naming the PR, its head, the exact `file:line` problems, the minimal fix, and tests that must fail on the old head. Push to the same branch and never merge.
+
+2. **Review before merge.** Every head gets an adversarial read-only review: a MERGE or FIX verdict, `file:line` evidence, and CI log lines proving the changed tests actually ran on macOS, Ubuntu and Windows. A green check alone is not proof. A new push needs a new review.
+
+3. **Merging.** Branch PR Closer may merge a PR when both conditions hold: (1) the merge-gate check is green on the current head, and (2) a review gave a MERGE verdict for that exact commit SHA. Always merge with a merge commit, pinned to the reviewed SHA:
    - `gh pr merge <number> --auto --merge --match-head-commit <reviewed-sha>`
    - Or via REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
 
-5. **Seamless handoff gate.** The `seamlessHandoff` flag stays off until #429 (real two-engine handoff test) is merged. After #429 lands, turn it on in its own one-line PR and test it live mid-conversation.
+4. **Never rebase or force-push an open PR.** Once a PR is open, never rebase or force-push it. To bring it up to date, merge main in, because any push needs a fresh review on the new head.
+
+5. **No personal paths in the repo.** Never put machine names, hostnames, personal paths, account emails, or local file paths from any bot's computer in the repo.
+
+6. **Model access for builder agents.** Builder agents (including Trunks) use the owner's subscription sign-ins for model access, never paid API keys.
+
+7. **Seamless handoff gate.** The `seamlessHandoff` flag stays off until #429 (real two-engine handoff test) is merged. After #429 lands, turn it on in its own one-line PR and test it live mid-conversation.
 
 ## Working with AI agents
 
