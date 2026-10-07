@@ -103,6 +103,7 @@ import { conversationLink, useConversationMenu } from "./ConversationMenu";
 import { openConversationWindow, ownWindowUnavailable } from "./own-window";
 import { TALK_EVENT, useVoiceCatalog } from "../composer/VoiceParts";
 import { DockQuestion } from "../thread/QuestionCard";
+import { CHECK_STATUS_EVENT } from "../thread/blocks";
 import { WhereChips } from "../thread/WhereChips";
 import { FIND_EVENT } from "../thread/FindBar";
 import { useQuestions } from "../thread/questions";
@@ -577,6 +578,20 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     window.addEventListener("branch:navigate-settings", navigate);
     return () => window.removeEventListener("branch:navigate-settings", navigate);
   }, [openSettings]);
+  useEffect(() => {
+    // "Couldn't finish" › Check status: the Gateway popover (§4.9.3) at the clicked button, as the preview opens it
+    // (openPop(el, POPS.gateway())); else over its status bar item.
+    const check = (event: Event) => {
+      const at = (event as CustomEvent<{ left?: number; right?: number; top?: number }>).detail;
+      const r = at && typeof at.left === "number" && typeof at.right === "number" && typeof at.top === "number"
+        ? { left: at.left, right: at.right, top: at.top, width: at.right - at.left }
+        : document.querySelector("[data-testid=sb-gateway]")?.getBoundingClientRect();
+      const above = r && r.width ? { left: r.left, right: r.right, top: r.top, align: "left" as const } : { left: 8, right: 8, top: innerHeight - 40, align: "left" as const };
+      setOverlay({ kind: "status", item: "gateway", above });
+    };
+    window.addEventListener(CHECK_STATUS_EVENT, check);
+    return () => window.removeEventListener(CHECK_STATUS_EVENT, check);
+  }, []);
   // The Branch app's tray: its usage ring shows the same reading as the ring bottom right, and a click opens Usage.
   const trayLeft = ringReading(limits)?.left ?? null;
   useEffect(() => {
@@ -1198,6 +1213,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           pendingUser={s.pendingUser}
           queued={s.queued}
           steered={s.steered}
+          ended={s.ended}
           running={Boolean(s.liveRunId)}
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />

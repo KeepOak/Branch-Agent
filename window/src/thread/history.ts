@@ -33,6 +33,9 @@ type Builder = {
   runId: string | null;
   runStart: number;
   runFinished: boolean;
+  /** The run was stopped (an aborted partial the engine kept: `branchAbort`). */
+  runStopped: boolean;
+  /** When the newest message was written (`__branch.recordTimestampMs`), so a run ends when its last reply ended. */
   lastTs: number;
   /** Keep every tool result whole (complete transcript exports); the thread keeps a tail of long ones. */
   wholeOutput: boolean;
@@ -144,10 +147,17 @@ function attachmentsOf(content: unknown): Attachment[] {
 
 function closeRun(b: Builder, inFlightRunId: string | null): void {
   if (b.runId && b.runFinished && b.runId !== inFlightRunId) {
-    b.blocks.push({ kind: "done", key: `${b.runId}:done`, runId: b.runId, durationMs: b.lastTs - b.runStart });
+    b.blocks.push({ kind: "done", key: `${b.runId}:done`, runId: b.runId, durationMs: Math.max(0, b.lastTs - b.runStart), ...(b.runStopped ? { stopped: true } : {}) });
   }
   b.runId = null;
   b.runFinished = false;
+  b.runStopped = false;
+}
+
+/** When a message was written: the engine's record time, else the message's own time. An assistant message's own
+ *  `timestamp` is when its stream began, so a long reply would end its run too early ("Done in 7s" for 55 s). */
+function writtenAt(m: Message): number {
+  return num(rec(m.__branch).recordTimestampMs) || num(m.timestamp);
 }
 
 function onAssistantPart(b: Builder, part: unknown, key: string, m: Message): void {
@@ -179,6 +189,7 @@ function onAssistant(b: Builder, m: Message, index: number): void {
     b.blocks.push({ kind: "error", key: `h:${index}:error`, runId: b.runId ?? undefined, message: str(m.errorMessage) });
   }
   b.runFinished = str(m.stopReason) !== "toolUse";
+  b.runStopped ||= rec(m.branchAbort).aborted === true;
 }
 
 function findApproval(
@@ -255,7 +266,8 @@ function onUser(b: Builder, m: Message, index: number, inFlightRunId: string | n
     return;
   }
   closeRun(b, inFlightRunId);
-  b.runStart = num(m.timestamp);
+  // A message sent while the turn before still ran starts its own turn when that one ended.
+  b.runStart = Math.max(num(m.timestamp), b.lastTs);
   if (isRestartResume(m)) {
     b.blocks.push({ kind: "notice", key: `h:${index}`, text: RESUMED_AFTER_RESTART });
     return;
@@ -281,7 +293,7 @@ export function historyToBlocks(
   inFlightRunId: string | null,
   options: { wholeOutput?: boolean } = {},
 ): Block[] {
-  const b: Builder = { blocks: [], steps: new Map(), runId: null, runStart: 0, runFinished: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
+  const b: Builder = { blocks: [], steps: new Map(), runId: null, runStart: 0, runFinished: false, runStopped: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
   for (const [index, raw] of messages.entries()) {
     const m = rec(raw);
     const runId = str(rec(m.__branch).runId) || null;
@@ -296,8 +308,30 @@ export function historyToBlocks(
       onCustom(b, m, index);
       b.runFinished ||= str(m.customType) === "run-failed-before-reply";
     }
-    b.lastTs = num(m.timestamp) || b.lastTs;
+    // Only a turn's own messages move its end; notes the engine writes between turns (compaction, context) don't.
+    // Only a turn's own messages move its end; notes the engine writes between turns (compaction and reset markers,
+    // context) can be stamped "now" and would zero every later "Done in".
+    if ((m.role !== "custom" && m.role !== "system") || str(m.customType) === "run-failed-before-reply") b.lastTs = Math.max(b.lastTs, writtenAt(m));
   }
   closeRun(b, inFlightRunId);
   return b.blocks;
+}
+
+/**
+ * Marks the turns of runs that were stopped (`stopped` holds their run ids): their Done line becomes "Stopped". A run
+ * stopped before it wrote anything has no Done line in the history, so one is added after your message's turn.
+ */
+export function markStopped(blocks: readonly Block[], stopped: ReadonlySet<string>): Block[] {
+  if (!stopped.size) return [...blocks];
+  const out = blocks.map((block) => (block.kind === "done" && stopped.has(block.runId) && !block.stopped ? { ...block, stopped: true } : block));
+  const done = new Set(out.filter((block) => block.kind === "done").map((block) => (block as Extract<Block, { kind: "done" }>).runId));
+  for (let i = out.length - 1; i >= 0; i -= 1) {
+    const block = out[i];
+    const runId = block.kind === "user" ? block.meta?.runKey : undefined;
+    if (!runId || !stopped.has(runId) || done.has(runId)) continue;
+    let end = i + 1;
+    while (end < out.length && out[end].kind !== "user") end += 1;
+    out.splice(end, 0, { kind: "done", key: `${runId}:done`, runId, stopped: true });
+  }
+  return out;
 }
