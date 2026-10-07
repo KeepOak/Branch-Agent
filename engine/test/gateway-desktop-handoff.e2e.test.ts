@@ -291,6 +291,12 @@ async function handOverWithRunInFlight(
 
   step("B owns the state and is ready");
   const clientB = await connect(current, portB, signal);
+  // /readyz can precede agent-database inspection. Every case below exercises
+  // session behavior, so wait for that separate admission boundary once here.
+  await whenAgentsReady(() => clientB.request("sessions.create", {
+    agentId: "main",
+    key: "agent:main:handoff-successor-ready",
+  }));
   return { a, b, portA, portB, clientA, clientB, noAdmissionGapMs };
 }
 
