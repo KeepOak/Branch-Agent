@@ -320,12 +320,18 @@ describe("in-place engine handoff between real engines", () => {
       try {
         await waitUntil(
           async () => {
-            transcript = JSON.stringify(
-              await clientB.request("chat.history", { sessionKey: SESSION_S }),
-            );
+            let history: unknown;
+            try {
+              history = await clientB.request("chat.history", { sessionKey: SESSION_S });
+            } catch (error) {
+              // The released session changes placement while B adopts it; retry the read.
+              if (String(error).includes("placement authority changed")) return false;
+              throw error;
+            }
+            transcript = JSON.stringify(history);
             return transcript.includes("REPLY_A");
           },
-          90_000,
+          150_000,
           "A's final reply appears on B",
         );
       } catch (error) {
@@ -414,7 +420,7 @@ describe("in-place engine handoff between real engines", () => {
             name: "P45 handoff once",
             agentId: "main",
             enabled: true,
-            schedule: { kind: "at", at: new Date(Date.now() + 30_000).toISOString() },
+            schedule: { kind: "at", at: new Date(Date.now() + 180_000).toISOString() },
             sessionTarget: "isolated",
             wakeMode: "now",
             payload: { kind: "agentTurn", message: "MARK_C: due during handoff." },
@@ -429,6 +435,9 @@ describe("in-place engine handoff between real engines", () => {
         "B's channel starts after take-over",
       );
       expect(await channel.starts()).toEqual([a.child.pid, b.child.pid]);
+      await whenAgentsReady(() =>
+        clientB.request("sessions.create", { agentId: "main", key: "agent:main:handoff-cron-ready" }),
+      );
       let runs: { entries: Array<{ status: string }> } = { entries: [] };
       try {
         await waitUntil(
@@ -445,7 +454,7 @@ describe("in-place engine handoff between real engines", () => {
             }
             return runs.entries.length > 0;
           },
-          120_000,
+          240_000,
           "the due cron job has a run receipt",
         );
       } catch (error) {

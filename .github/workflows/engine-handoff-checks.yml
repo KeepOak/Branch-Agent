@@ -46,12 +46,18 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         shard:
-          - name: turn-and-rollback-before
-            pattern: 'hands the state|rolls back before'
-          - name: services-and-desktop-before
-            pattern: 'starts the successor channel|takes the state back'
-          - name: rollback-after-and-desktop-after
-            pattern: 'does not roll the old engine|finishes and stops'
+          - name: turn-order
+            pattern: 'hands the state to the standby'
+          - name: rollback-before
+            pattern: 'rolls back before the standby'
+          - name: channel-and-cron
+            pattern: 'starts the successor channel'
+          - name: desktop-before
+            pattern: 'takes the state back when the desktop'
+          - name: rollback-after
+            pattern: 'does not roll the old engine'
+          - name: desktop-after
+            pattern: 'finishes and stops the old engine'
           - name: lease-gate
             pattern: 'makes a session RPC'
     defaults:
