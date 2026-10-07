@@ -49,6 +49,29 @@ describe("ConfigStore", () => {
     expect(store.snap?.config).toEqual({ saved: true });
   });
 
+  it("re-reads a successful patch without a hash instead of restoring the old snapshot", async () => {
+    let releaseStale: ((value: unknown) => void) | undefined;
+    let gets = 0;
+    const { engine, calls } = engineWith((method) => {
+      if (method === "config.get") {
+        if (++gets === 2) return new Promise((resolve) => { releaseStale = resolve; });
+        return gets === 1
+          ? { hash: "h0", config: { saved: false }, valid: true }
+          : { hash: "h1", config: { saved: true }, valid: true };
+      }
+      return { ok: true, config: { saved: true } };
+    });
+    const store = new ConfigStore(engine);
+    await store.load();
+    const staleRead = store.load();
+    const save = store.set("saved", true);
+    await vi.waitFor(() => expect(calls.some(([method]) => method === "config.patch")).toBe(true));
+    releaseStale?.({ hash: "h0", config: { saved: false }, valid: true });
+    await Promise.all([staleRead, save]);
+    expect(store.snap).toMatchObject({ hash: "h1", config: { saved: true } });
+    expect(calls.filter(([method]) => method === "config.get")).toHaveLength(3);
+  });
+
   it("reads again and retries once when the config changed elsewhere", async () => {
     let gets = 0, patches = 0;
     const { engine } = engineWith((method) => {

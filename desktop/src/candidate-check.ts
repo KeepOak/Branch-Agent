@@ -32,7 +32,7 @@ function startCandidate(cfg: DesktopConfig, engineDir: string, token: string, po
 export async function checkCandidateBeside(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number): Promise<CandidateResult> {
   const port = await freeLoopbackPort();
   const child = startCandidate(cfg, engineDir, token, port);
-  recordEngine(cfg.dataDir, child, port, "candidate");
+  recordEngine(cfg.dataDir, child, port, "candidate", cfg.nodePath);
   setEnginePriority(child, true);
   running = child;
   try {

@@ -1,17 +1,11 @@
 import { useId, useRef, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { createTrunk, loadRoster, makeDefault } from "../places/trunk/api";
+import { creationProblem } from "../places/trunk/model";
 import { SetupShell } from "./SetupShell";
 
 // Match the engine's normalizeAgentIdStrict when locating an existing Trunk by its ID.
 const idForName = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
-const creationProblem = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/reserved/i.test(message)) return "That name is kept for Branch. Choose another Trunk name.";
-  if (/invalid|no valid id characters/i.test(message)) return "Use a name with at least one letter or number.";
-  return "Couldn’t create your Trunk. Try again.";
-};
-
 /** A usable default Trunk is required before leaving onboarding, even when a technical owner exists. */
 export function FirstTrunk({ engine, onCreated, onBack, onSkip }: { engine: WindowEngine; onCreated: (id: string, name: string) => void; onBack: (step: number) => void; onSkip: () => void }) {
   const formId = useId();
