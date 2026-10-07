@@ -127,7 +127,10 @@ describe("setup flow", () => {
     expect(document.body.textContent).toContain("That name is kept for Branch. Choose another Trunk name.");
     expect(document.body.textContent).not.toContain('"branch" is reserved');
   });
-  it("reopens first-Trunk creation through WindowShell after returning from local-model Settings", async () => {
+  it.each([
+    { label: "reopens first-Trunk creation through WindowShell after returning from local-model Settings", hasTrunk: false },
+    { label: "keeps setup closed through WindowShell when a Trunk exists on return from Settings", hasTrunk: true },
+  ])("$label", async ({ hasTrunk }) => {
     vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
     HTMLElement.prototype.scrollIntoView = vi.fn();
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
@@ -138,7 +141,9 @@ describe("setup flow", () => {
     };
     const request = vi.fn(async (method: string) => {
       if (method === "config.get") return { hash: "h", config: {} };
-      if (method === "agents.list") return { defaultId: "bootstrap", agents: [{ id: "bootstrap", kind: "system", name: "Branch" }] };
+      if (method === "agents.list") return hasTrunk
+        ? { defaultId: "fern", agents: [{ id: "fern", name: "Fern" }] }
+        : { defaultId: "bootstrap", agents: [{ id: "bootstrap", kind: "system", name: "Branch" }] };
       if (method === "contacts.list") return { contacts: [] };
       if (method === "rooms.list") return { rooms: [] };
       if (method === "peers.list") return { peers: [] };
@@ -159,8 +164,9 @@ describe("setup flow", () => {
     await act(async () => tid(host, "setup-next").click());
     await act(async () => byText(host, "install a model on this computer").click());
     expect(host.textContent).toContain("Models that run here, free and private.");
-    await act(async () => byText(host, "Back to Branch").click());
-    expect(host.querySelector("h2")?.textContent).toBe("Create your first Trunk");
+    expect(host.querySelector('[data-testid="setup"]')).toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>(".set-back")!.click());
+    expect(host.querySelector("h2")?.textContent).toBe(hasTrunk ? undefined : "Create your first Trunk");
   });
   it("opens Welcome on a fresh connection even after pre-connect choices", async () => {
     sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
