@@ -8,12 +8,12 @@ import {
 } from "./guide-links";
 
 describe("guide links", () => {
-  it("exports the help URL for Docs", () => {
-    expect(docsUrl).toBe("https://keepoak.com/help");
+  it("exports the KeepOak homepage URL for Docs", () => {
+    expect(docsUrl).toBe("https://keepoak.com");
   });
 
-  it("exports the help URL for Get help", () => {
-    expect(helpUrl).toBe("https://keepoak.com/help");
+  it("exports the KeepOak homepage URL for Get help", () => {
+    expect(helpUrl).toBe("https://keepoak.com");
   });
 
   it("has no community URL yet", () => {
@@ -26,7 +26,7 @@ describe("guide links", () => {
 });
 
 describe("guideLinkItems", () => {
-  it("Get help and Docs are enabled and call the external-open helper with https://keepoak.com/help", () => {
+  it("Get help and Docs are enabled and call the external-open helper with https://keepoak.com", () => {
     const open = vi.fn();
     const items = guideLinkItems(open);
     const docs = items.find((item) => item.label === "Docs");
@@ -34,9 +34,9 @@ describe("guideLinkItems", () => {
     expect(docs?.disabled).toBeUndefined();
     expect(help?.disabled).toBeUndefined();
     docs?.run();
-    expect(open).toHaveBeenCalledWith("https://keepoak.com/help");
+    expect(open).toHaveBeenCalledWith("https://keepoak.com");
     help?.run();
-    expect(open).toHaveBeenNthCalledWith(2, "https://keepoak.com/help");
+    expect(open).toHaveBeenNthCalledWith(2, "https://keepoak.com");
   });
 
   it("Community is disabled with a plain reason", () => {

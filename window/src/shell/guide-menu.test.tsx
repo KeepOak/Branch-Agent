@@ -11,6 +11,7 @@ describe("Guide menu in WindowShell", () => {
     expect(source).toContain('from "./guide-links"');
     expect(source).toContain("guideLinkItems");
     expect(source).toContain('window.open(url, "_blank", "noopener")');
+    expect(source).not.toContain("https://keepoak.com/help");
   });
 
   it("no item says address isn't configured", () => {

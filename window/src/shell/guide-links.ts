@@ -1,10 +1,10 @@
 // Guide menu external links: Docs, Get help and Community.
 
-/** No docs site exists yet, so Docs opens the same Help page. */
-export const docsUrl = "https://keepoak.com/help";
+/** No docs site exists yet, so Docs opens the KeepOak homepage. */
+export const docsUrl = "https://keepoak.com";
 
-/** KeepOak's real Help & contact page. */
-export const helpUrl = "https://keepoak.com/help";
+/** Get help opens the KeepOak homepage. */
+export const helpUrl = "https://keepoak.com";
 
 /** Community has no real address yet. */
 export const communityUrl: string | null = null;
