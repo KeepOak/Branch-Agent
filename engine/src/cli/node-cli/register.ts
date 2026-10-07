@@ -59,7 +59,10 @@ export function registerNodeCli(program: Command) {
           "Use the saved device token when available; otherwise pair with this setup code (deprecated: use --pair-file or stdin)",
         ).conflicts("pair"),
       )
-      .option("--pair-file <path>", "Read pairing setup code from file (must be mode 0600 on POSIX)")
+      .option(
+        "--pair-file <path>",
+        "Read pairing setup code from file (mode 0600 on POSIX; Windows warns on Users/Everyone ACLs)",
+      )
       .option(
         "--pair-if-needed-file <path>",
         "Use saved device token when available; otherwise read setup code from file",
@@ -78,19 +81,21 @@ export function registerNodeCli(program: Command) {
       let gatewayOptions;
       try {
         const { resolveSetupCode, warnIfSetupCodeFromArgv } = await import("../setup-code-input.js");
-        
+
         // Determine if we're using --pair or --pair-if-needed
-        const isPairIfNeeded = opts.pairIfNeeded !== undefined || opts.pairIfNeededFile !== undefined;
+        const isPairIfNeeded =
+          opts.pairIfNeeded !== undefined || opts.pairIfNeededFile !== undefined;
         const argvCode = opts.pair ?? opts.pairIfNeeded;
         const filePath = opts.pairFile ?? opts.pairIfNeededFile;
 
         let setupCode: string | undefined;
-        if (argvCode || filePath) {
+        if (argvCode || filePath || process.env.BRANCH_PAIRING_CODE) {
           const resolved = await resolveSetupCode({
             argv: argvCode,
             filePath,
             envVar: "BRANCH_PAIRING_CODE",
             allowStdin: argvCode === "-",
+            onWarn: (msg) => defaultRuntime.log(msg),
           });
           setupCode = resolved.code;
           warnIfSetupCodeFromArgv(resolved.source, defaultRuntime);

@@ -89,6 +89,10 @@ chmod 600 /path/to/code.txt
 branch node run --pair-file /path/to/code.txt
 ```
 
+Sources are resolved in this order: stdin, file, `BRANCH_PAIRING_CODE`, then a
+deprecated argv value. `BRANCH_PAIRING_CODE` is a fallback for non-interactive
+automation and is visible to same-user processes. The code is never logged.
+
 The setup link carries the Gateway endpoint, a short-lived single-use bootstrap
 token, and a TLS certificate pin when the Gateway directly serves a pinnable
 leaf certificate. The bootstrap token expires after 10 minutes. Explicit

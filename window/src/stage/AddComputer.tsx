@@ -62,6 +62,7 @@ function Choice({ icon, title, text, disabled, onPick }: { icon: StageIconName; 
 }
 
 function PairBody({ pairing }: { pairing: Pairing }) {
+  const [copied, setCopied] = useState(false);
   if (pairing.phase === "loading") return <p className="hint-st"><SIcon name="spin" small className="spin-st" /> Making a code…</p>;
   if (pairing.phase === "error") return <p className="err-st" role="alert">{pairing.message}</p>;
   const minutes = pairing.expiresAtMs ? Math.max(1, Math.round((pairing.expiresAtMs - Date.now()) / 60000)) : null;
@@ -71,6 +72,18 @@ function PairBody({ pairing }: { pairing: Pairing }) {
       <code className="code-st">branch node run --pair -</code>
       <p className="hint-st p0-st">When prompted, paste this setup code:</p>
       <code className="code-st">{pairing.code}</code>
+      <button
+        type="button"
+        className="btn"
+        onClick={() => {
+          void navigator.clipboard.writeText(pairing.code).then(
+            () => setCopied(true),
+            () => setCopied(false),
+          );
+        }}
+      >
+        {copied ? "Copied" : "Copy setup code"}
+      </button>
       {pairing.qr && <img src={pairing.qr} alt="QR code to pair this computer" width={180} height={180} />}
       {pairing.done ? (
         <>

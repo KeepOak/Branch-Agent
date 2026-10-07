@@ -1,5 +1,5 @@
 // Branch-to-Branch Graft commands: `branch graft invite` on the host issues upstream's device setup code;
-// `branch graft join <setup-code>` on the other Branch pairs it as a scoped device (src/mcp/graft-join.ts).
+// `branch graft join` on the other Branch pairs it as a scoped device (src/mcp/graft-join.ts).
 import os from "node:os";
 import type { Command } from "commander";
 import type { BranchConfig } from "../config/types.branch.js";
@@ -42,7 +42,8 @@ async function runInvite(opts: InviteOpts): Promise<void> {
     `Setup code for another Branch (works once, until it expires):\n${result.setupCode}`,
   );
   defaultRuntime.log(`It connects to ${result.gatewayUrl}. On the other Branch run:`);
-  defaultRuntime.log(`  ${formatCliCommand("branch graft join <setup-code>")}`);
+  defaultRuntime.log(`  ${formatCliCommand("branch graft join")}`);
+  defaultRuntime.log("  (paste the setup code at the hidden prompt, or use --code-file)");
   defaultRuntime.log(
     `Approve it with ${formatCliCommand("branch devices approve <requestId>")} if it waits for approval.`,
   );
@@ -155,14 +156,15 @@ export function registerGraftBranchCommands(graft: Command): void {
     .action(async (code: string | undefined, opts: JoinOpts & { codeFile?: string }) => {
       try {
         const { resolveSetupCode, warnIfSetupCodeFromArgv } = await import("./setup-code-input.js");
-        
+
         const resolved = await resolveSetupCode({
           argv: code,
           filePath: opts.codeFile,
           envVar: "BRANCH_PAIRING_CODE",
           allowStdin: !code || code === "-",
+          onWarn: (msg) => defaultRuntime.log(msg),
         });
-        
+
         warnIfSetupCodeFromArgv(resolved.source, defaultRuntime);
         
         await runJoin(resolved.code, opts);

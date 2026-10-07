@@ -72,11 +72,11 @@ describe("device pairing dialog", () => {
     );
 
     expect(container.querySelectorAll('input[name="device-pair-access"]')).toHaveLength(3);
-    expect(container.querySelector(".device-pair-setup__command code")?.textContent).toBe(
-      'branch node run --pair -',
-    );
-    // Code should be shown separately
-    expect(container.textContent).toContain('oc-pair://AbC_123');
+    const commandText = container.querySelector(".device-pair-setup__command code")?.textContent;
+    expect(commandText).toBe("branch node run --pair -");
+    expect(commandText).not.toContain("AbC_123");
+    expect(container.textContent).toContain("oc-pair://AbC_123");
+    expect(container.textContent).toContain("When prompted, paste this setup code:");
     expect(container.querySelector('[role="timer"]')?.textContent?.trim()).toBe(
       "This setup link expires in 1:00.",
     );

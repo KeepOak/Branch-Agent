@@ -105,15 +105,6 @@ Options:
   visible in process list). Use `--pair -` or `--pair-file` instead.
 - `--pair-if-needed <code-or-url>`: **Deprecated.** Like `--pair`, but prefer saved token.
 - `--port <port>`: Gateway WebSocket port (default: `18789`)
-
-**Environment variable fallback:** `BRANCH_PAIRING_CODE` provides the setup code when
-stdin/file/argv are not used. This is a fallback for non-interactive automation. Note
-that environment variables are visible to same-user processes.
-
-**Windows file permissions:** When using `--pair-file` on Windows, manually verify that
-only the owner has read access. Right-click the file → Properties → Security → Advanced,
-ensure inheritance is disabled and no other users/groups are listed. Programmatic ACL
-validation requires external tools and is not yet implemented.
 - `--context-path <path>`: Gateway WebSocket context path (e.g. `/branch-gw`). Appended to the WebSocket URL.
 - `--tls`: Use TLS for the gateway connection
 - `--no-tls`: Force a plaintext Gateway connection even when the local Gateway config enables TLS
@@ -125,6 +116,20 @@ validation requires external tools and is not yet implemented.
 - `--all-commands`: Advertise the full default command surface and forget any saved `--commands` allowlist. Cannot be combined with `--commands`.
 - `--share-installed-apps`: On macOS, advertise installed applications through `device.apps`
 - `--no-share-installed-apps`: Disable installed application sharing
+
+Setup-code sources are resolved in this order: **stdin, then file, then
+`BRANCH_PAIRING_CODE`, then a deprecated argv value**. The code is never logged.
+
+`BRANCH_PAIRING_CODE` is a fallback for non-interactive automation only. Environment
+variables are visible to same-user processes. Prefer a hidden stdin prompt
+(`--pair -`) or `--pair-file`.
+
+On Windows, `--pair-file` runs `icacls` and **warns** (it does not refuse) when
+Everyone, `BUILTIN\Users`, Authenticated Users, or Guest have access. Inherited
+SYSTEM/Administrators entries are expected and ignored. A hard refuse would
+reject ordinary user-created files that inherit Users from the parent folder.
+If `icacls` cannot run, the CLI also warns and still reads the file. Restrict
+the ACL manually when warned (File Properties → Security → Advanced).
 
 ## Gateway auth for node host
 

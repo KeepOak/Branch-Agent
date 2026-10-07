@@ -1,235 +1,137 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
-import path from "node:path";
 import os from "node:os";
-import { spawn } from "node:child_process";
+import path from "node:path";
+import { Command } from "commander";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { encodePairingSetupCode } from "../../pairing/setup-code.js";
+import { registerNodeCli } from "./register.js";
 
-describe("branch node run pairing options", () => {
+type LoadNodeHostConfig = typeof import("../../node-host/config.js").loadNodeHostConfig;
+
+const daemonMocks = vi.hoisted(() => ({
+  defaultRuntime: {
+    log: vi.fn(),
+    error: vi.fn(),
+    exit: vi.fn(),
+  },
+  loadNodeHostConfig: vi.fn<LoadNodeHostConfig>(async () => null),
+  runNodeHost: vi.fn(),
+}));
+
+vi.mock("./daemon.js", () => daemonMocks);
+
+vi.mock("../../node-host/config.js", () => ({
+  loadNodeHostConfig: daemonMocks.loadNodeHostConfig,
+}));
+
+vi.mock("../../node-host/runner.js", () => ({
+  runNodeHost: daemonMocks.runNodeHost,
+}));
+
+vi.mock("../../runtime.js", () => ({
+  defaultRuntime: daemonMocks.defaultRuntime,
+}));
+
+function createProgram(): Command {
+  const program = new Command();
+  program.exitOverride();
+  program.configureOutput({
+    writeErr: () => undefined,
+    writeOut: () => undefined,
+  });
+  registerNodeCli(program);
+  return program;
+}
+
+const run = (args: string[]) => createProgram().parseAsync(["node", ...args], { from: "user" });
+const pairCode = () =>
+  encodePairingSetupCode({
+    url: "wss://gateway.example:8443/branch-gw",
+    bootstrapToken: "bootstrap-123",
+    tlsFingerprint: `sha256:${"ab".repeat(32)}`,
+  });
+
+describe("branch node run pairing input", () => {
   let tempDir: string;
-  let testFilePath: string;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-pair-test-"));
-    testFilePath = path.join(tempDir, "code.txt");
+    vi.clearAllMocks();
+    daemonMocks.loadNodeHostConfig.mockResolvedValue(null);
   });
 
   afterEach(() => {
-    if (fs.existsSync(tempDir)) {
+    vi.unstubAllEnvs();
+    if (tempDir && fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
 
-  it("warns when using deprecated --pair <code> form", async () => {
-    const { stdout, stderr, exitCode } = await runNodeCommand([
-      "run",
-      "--pair",
-      "invalid-code-for-test",
-    ]);
-    
-    // Should emit warning about deprecated form
-    const combined = stdout + stderr;
-    expect(combined).toContain("deprecated and insecure");
-    // Will fail because the code is invalid, but that's expected
-    expect(exitCode).not.toBe(0);
+  function writeCodeFile(mode: number, contents: string) {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-pair-test-"));
+    const filePath = path.join(tempDir, "code.txt");
+    fs.writeFileSync(filePath, contents, { mode });
+    fs.chmodSync(filePath, mode);
+    return filePath;
+  }
+
+  it("warns when using deprecated --pair <code> form without echoing the code", async () => {
+    const code = pairCode();
+    await run(["run", "--pair", code]);
+    expect(daemonMocks.defaultRuntime.log).toHaveBeenCalledWith(
+      expect.stringContaining("deprecated and insecure"),
+    );
+    expect(daemonMocks.defaultRuntime.log.mock.calls.flat().join("\n")).not.toContain(code);
+    expect(daemonMocks.runNodeHost).toHaveBeenCalled();
   });
 
-  it("accepts --pair-file option", async () => {
-    const setupCode = "oc-pair://test-code-12345";
-    fs.writeFileSync(testFilePath, setupCode, { mode: 0o600 });
-
-    const { stdout, stderr, exitCode } = await runNodeCommand([
-      "run",
-      "--pair-file",
-      testFilePath,
-    ]);
-
-    const combined = stdout + stderr;
-    // Should not warn about deprecated form
-    expect(combined).not.toContain("deprecated and insecure");
-    // Will fail because code is fake, but no permission error
-    expect(combined).not.toContain("unsafe permissions");
+  it("accepts --pair-file without a deprecation warning", async () => {
+    const code = pairCode();
+    const filePath = writeCodeFile(0o600, code);
+    await run(["run", "--pair-file", filePath]);
+    expect(daemonMocks.defaultRuntime.log).not.toHaveBeenCalledWith(
+      expect.stringContaining("deprecated and insecure"),
+    );
+    expect(daemonMocks.defaultRuntime.error).not.toHaveBeenCalledWith(
+      expect.stringContaining("unsafe permissions"),
+    );
+    expect(daemonMocks.runNodeHost).toHaveBeenCalled();
   });
 
   it("rejects --pair-file with unsafe permissions on POSIX", async function () {
     if (os.platform() === "win32") {
       this.skip();
     }
-
-    const setupCode = "oc-pair://test-code-12345";
-    fs.writeFileSync(testFilePath, setupCode, { mode: 0o644 });
-
-    const { stdout, stderr, exitCode } = await runNodeCommand([
-      "run",
-      "--pair-file",
-      testFilePath,
-    ]);
-
-    const combined = stdout + stderr;
-    expect(combined).toContain("unsafe permissions");
-    expect(exitCode).not.toBe(0);
+    const filePath = writeCodeFile(0o644, pairCode());
+    await run(["run", "--pair-file", filePath]);
+    expect(daemonMocks.defaultRuntime.error).toHaveBeenCalledWith(
+      expect.stringContaining("unsafe permissions"),
+    );
+    expect(daemonMocks.runNodeHost).not.toHaveBeenCalled();
   });
 
-  it("accepts --pair-if-needed-file option", async () => {
-    const setupCode = "oc-pair://test-code-67890";
-    fs.writeFileSync(testFilePath, setupCode, { mode: 0o600 });
-
-    const { stdout, stderr, exitCode } = await runNodeCommand([
-      "run",
-      "--pair-if-needed-file",
-      testFilePath,
-    ]);
-
-    const combined = stdout + stderr;
-    // Should not warn about deprecated form
-    expect(combined).not.toContain("deprecated and insecure");
+  it("accepts --pair-if-needed-file without a deprecation warning", async () => {
+    const filePath = writeCodeFile(0o600, pairCode());
+    await run(["run", "--pair-if-needed-file", filePath]);
+    expect(daemonMocks.defaultRuntime.log).not.toHaveBeenCalledWith(
+      expect.stringContaining("deprecated and insecure"),
+    );
+    expect(daemonMocks.runNodeHost).toHaveBeenCalled();
   });
 
   it("warns when using deprecated --pair-if-needed <code> form", async () => {
-    const { stdout, stderr, exitCode } = await runNodeCommand([
-      "run",
-      "--pair-if-needed",
-      "invalid-code-for-test",
-    ]);
+    await run(["run", "--pair-if-needed", pairCode()]);
+    expect(daemonMocks.defaultRuntime.log).toHaveBeenCalledWith(
+      expect.stringContaining("deprecated and insecure"),
+    );
+    expect(daemonMocks.runNodeHost).toHaveBeenCalled();
+  });
 
-    const combined = stdout + stderr;
-    expect(combined).toContain("deprecated and insecure");
-    expect(exitCode).not.toBe(0);
+  it("warns that BRANCH_PAIRING_CODE is visible to same-user processes", async () => {
+    vi.stubEnv("BRANCH_PAIRING_CODE", pairCode());
+    await run(["run"]);
+    expect(daemonMocks.defaultRuntime.log).toHaveBeenCalledWith(
+      expect.stringContaining("visible to same-user processes"),
+    );
+    expect(daemonMocks.runNodeHost).toHaveBeenCalled();
   });
 });
-
-describe("branch graft join pairing options", () => {
-  let tempDir: string;
-  let testFilePath: string;
-
-  beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "graft-join-test-"));
-    testFilePath = path.join(tempDir, "code.txt");
-  });
-
-  afterEach(() => {
-    if (fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    }
-  });
-
-  it("warns when using deprecated positional argument form", async () => {
-    const { stdout, stderr, exitCode } = await runGraftCommand([
-      "join",
-      "invalid-code-for-test",
-    ]);
-
-    const combined = stdout + stderr;
-    expect(combined).toContain("deprecated and insecure");
-    expect(exitCode).not.toBe(0);
-  });
-
-  it("accepts --code-file option", async () => {
-    const setupCode = "oc-pair://test-code-12345";
-    fs.writeFileSync(testFilePath, setupCode, { mode: 0o600 });
-
-    const { stdout, stderr, exitCode } = await runGraftCommand([
-      "join",
-      "--code-file",
-      testFilePath,
-    ]);
-
-    const combined = stdout + stderr;
-    // Should not warn about deprecated form
-    expect(combined).not.toContain("deprecated and insecure");
-  });
-
-  it("rejects --code-file with unsafe permissions on POSIX", async function () {
-    if (os.platform() === "win32") {
-      this.skip();
-    }
-
-    const setupCode = "oc-pair://test-code-12345";
-    fs.writeFileSync(testFilePath, setupCode, { mode: 0o644 });
-
-    const { stdout, stderr, exitCode } = await runGraftCommand([
-      "join",
-      "--code-file",
-      testFilePath,
-    ]);
-
-    const combined = stdout + stderr;
-    expect(combined).toContain("unsafe permissions");
-    expect(exitCode).not.toBe(0);
-  });
-});
-
-// Helper to run node command and capture output
-async function runNodeCommand(
-  args: string[],
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve) => {
-    const child = spawn("node", ["--loader", "tsx", "src/cli/run-main.ts", "node", ...args], {
-      cwd: path.resolve(__dirname, "../../"),
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 5000,
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-
-    child.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
-
-    child.on("close", (code) => {
-      resolve({ stdout, stderr, exitCode: code ?? 1 });
-    });
-
-    child.on("error", (error) => {
-      stderr += error.message;
-      resolve({ stdout, stderr, exitCode: 1 });
-    });
-
-    // Kill after timeout
-    setTimeout(() => {
-      child.kill();
-    }, 4500);
-  });
-}
-
-// Helper to run graft command and capture output
-async function runGraftCommand(
-  args: string[],
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve) => {
-    const child = spawn("node", ["--loader", "tsx", "src/cli/run-main.ts", "graft", ...args], {
-      cwd: path.resolve(__dirname, "../../"),
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 5000,
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-
-    child.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
-
-    child.on("close", (code) => {
-      resolve({ stdout, stderr, exitCode: code ?? 1 });
-    });
-
-    child.on("error", (error) => {
-      stderr += error.message;
-      resolve({ stdout, stderr, exitCode: 1 });
-    });
-
-    // Kill after timeout
-    setTimeout(() => {
-      child.kill();
-    }, 4500);
-  });
-}
