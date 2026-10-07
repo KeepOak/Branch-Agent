@@ -304,7 +304,7 @@ async function sendMessageWhatsAppInActivityScope(
     logger.info({ jid: redactedJid, messageId }, "sent message");
     return { messageId, toJid: sentRemoteJid };
   } catch (err) {
-    logger.error({ err: String(err), to: redactedTo, hasMedia }, "failed to send via web session");
+    logger.error({ err: String(err), to: redactedTo, hasMedia }, "failed to send via web session"); // credential-logging-allowed: "session" in error message context
     const firstAccepted = acceptedResults[0];
     throw mergeWhatsAppAcceptedSendError({
       error: err,
@@ -421,7 +421,7 @@ export async function sendPollWhatsApp(
     logger.info({ jid: redactedJid, messageId }, "sent poll");
     return { messageId, toJid: resolveActualSentRemoteJid(result, jid) };
   } catch (err) {
-    logger.error({ err: String(err), to: redactedTo }, "failed to send poll via web session");
+    logger.error({ err: String(err), to: redactedTo }, "failed to send poll via web session"); // credential-logging-allowed: "session" in error message context
     throw err;
   }
 }

@@ -449,7 +449,7 @@ const main = async (argv = process.argv.slice(2)) => {
 
   const anthropic = pickAnthropicTokens(store);
   if (anthropic.length === 0) {
-    console.log("Auth profiles: no Anthropic token profiles found");
+    console.log("Auth profiles: no Anthropic token profiles found"); // credential-logging-allowed: "token" in informational message, no values logged
   } else {
     for (const entry of anthropic) {
       console.log(

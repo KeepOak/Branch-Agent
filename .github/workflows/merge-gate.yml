@@ -35,8 +35,26 @@ jobs:
       - name: Require every changed test to run in CI
         run: node scripts/changed-test-coverage.mjs
 
+  credential-logging-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the PR merge commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Test credential logging check
+        run: node --test scripts/check-credential-logging.test.mjs
+      - name: Reject unredacted credential logging
+        run: node scripts/check-credential-logging.mjs
+
   merge-gate:
-    needs: changed-test-coverage
+    needs: [changed-test-coverage, credential-logging-guard]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -45,6 +63,10 @@ jobs:
         env:
           COVERAGE_RESULT: ${{ needs.changed-test-coverage.result }}
         run: test "$COVERAGE_RESULT" = success
+      - name: Require credential logging guard
+        env:
+          GUARD_RESULT: ${{ needs.credential-logging-guard.result }}
+        run: test "$GUARD_RESULT" = success
       - name: Wait for the PR's other checks
         env:
           GH_TOKEN: ${{ github.token }}

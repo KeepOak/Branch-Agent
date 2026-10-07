@@ -375,7 +375,7 @@ export class VoiceCallWebhookServer {
         }
         const twilio = this.provider as TwilioProvider;
         if (!twilio.isValidStreamToken(callId, token)) {
-          this.logger.warn(`Rejecting media stream: invalid token for ${callId}`);
+          this.logger.warn(`Rejecting media stream: invalid token for ${callId}`); // credential-logging-allowed: "token" in error message, identifies call ID not token value
           return false;
         }
         return true;

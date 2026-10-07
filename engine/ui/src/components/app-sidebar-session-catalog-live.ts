@@ -270,7 +270,7 @@ export class SessionCatalogLiveState {
       return;
     }
     this.warnedRequestErrors.add(signature);
-    console.warn("Session catalog refresh failed", error);
+    console.warn("Session catalog refresh failed", error); // credential-logging-allowed: "session" in error message context
   }
 
   markFinal(params: { catalogs: readonly SessionCatalog[]; progressSequence: number }) {

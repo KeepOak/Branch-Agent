@@ -20,6 +20,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 10. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. PR body: what, why, exact test commands and pass counts.
 11. **Merging:** `main` requires the `merge-gate` check. Only the coordinator merges, and only the head that was reviewed: `gh pr merge <n> --squash --match-head-commit <reviewed-sha>`. CI jobs have a hard 15-minute cap: split or shard work rather than raising a timeout.
 12. **Releases are automatic.** A merge touching `engine/`, `window/` or `desktop/` publishes a component release (engine, window, desktop, desktopRuntime) that installed apps pick up within the hour and apply on restart. Treat every merge as shipping.
+13. **Never log credentials.** Session tokens, API keys, passwords, secrets, bearer tokens, and authorization headers must go through `redactSensitiveText()` or similar helpers in `engine/src/logging/redact.ts`. Opt out only with an inline comment and reason: `// credential-logging-allowed: reason`.
 
 ## Coordinating Trunks
 

@@ -259,7 +259,7 @@ export async function main() {
   });
 
   if (violations.length === 0) {
-    console.log("session transcript reader boundary guard passed.");
+    console.log("session transcript reader boundary guard passed."); // credential-logging-allowed: "session" in success message context
     return;
   }
 

@@ -459,7 +459,7 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
                   }
                 : undefined,
               onRecordError: (err) => {
-                logger.warn("failed updating session meta", {
+                logger.warn("failed updating session meta", { // credential-logging-allowed: "session" in error message context
                   error: String(err),
                   storePath,
                   sessionKey: ctxPayload.SessionKey ?? _route.sessionKey,

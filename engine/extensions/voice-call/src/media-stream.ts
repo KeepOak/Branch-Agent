@@ -370,7 +370,7 @@ export class MediaStreamHandler {
         this.config.onSpeechStart?.(callSid, streamSid);
       },
       onError: (error) => {
-        console.warn("[MediaStream] Transcription session error:", error.message);
+        console.warn("[MediaStream] Transcription session error:", error.message); // credential-logging-allowed: "session" in error message context
         const session = this.sessions.get(streamSid);
         if (session) {
           this.emitTalkEvent(session, {
@@ -445,7 +445,7 @@ export class MediaStreamHandler {
   }
 
   private handleStop(session: StreamSession): void {
-    console.log(`[MediaStream] Stream stopped: ${session.streamSid}`);
+    console.log(`[MediaStream] Stream stopped: ${session.streamSid}`); // credential-logging-allowed: stream ID for logging, no credentials
 
     this.clearTtsState(session.streamSid);
     session.sttSession.close();

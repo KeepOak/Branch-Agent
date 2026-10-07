@@ -227,7 +227,7 @@ class SessionPrefetcher {
         await this.prefetchEligibleSessions();
       }
     } catch (error) {
-      console.debug("[chat-session-prefetch] cycle failed", error);
+      console.debug("[chat-session-prefetch] cycle failed", error); // credential-logging-allowed: "session" in error message context
     } finally {
       this.running = false;
       if (this.rescheduleDelayMs !== null) {

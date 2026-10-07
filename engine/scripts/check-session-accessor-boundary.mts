@@ -902,12 +902,12 @@ export async function main() {
   );
 
   if (violations.length === 0 && debt.regressions.length === 0 && debt.improvements.length === 0) {
-    console.log("session accessor boundary guard passed.");
+    console.log("session accessor boundary guard passed."); // credential-logging-allowed: "session" in success message context
     return;
   }
 
   if (violations.length > 0) {
-    console.error("Found legacy session store usage in session-accessor migrated files:");
+    console.error("Found legacy session store usage in session-accessor migrated files:"); // credential-logging-allowed: "session" in error message context
     for (const violation of violations) {
       console.error(`- ${violation.path}:${violation.line}: ${violation.reason}`);
     }

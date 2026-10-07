@@ -81,7 +81,7 @@ export class TwitchClientManager {
       });
 
       authProvider.onRefreshFailure((userId, error) => {
-        this.logger.error(`Failed to refresh access token for user ${userId}: ${error.message}`);
+        this.logger.error(`Failed to refresh access token for user ${userId}: ${error.message}`); // credential-logging-allowed: "token" in error message, no value logged
       });
 
       const refreshStatus = account.refreshToken
@@ -150,7 +150,7 @@ export class TwitchClientManager {
       );
     }
 
-    this.logger.debug?.(`Using ${tokenResolution.source} token source for ${account.username}`);
+    this.logger.debug?.(`Using ${tokenResolution.source} token source for ${account.username}`); // credential-logging-allowed: "token" in debug message describes source, not value
 
     if (!account.clientId) {
       this.logger.error(`Missing Twitch client ID for account ${account.username}`);

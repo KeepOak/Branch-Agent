@@ -50,7 +50,7 @@ export async function processDiscordVoiceSegment(
   );
   // Recording owns STT; conversation authorization cannot hold the recording queue.
   const ingress = params.resolveIngressContext().catch((error: unknown) => {
-    logger.warn(`discord voice: conversation authorization failed: ${formatErrorMessage(error)}`);
+    logger.warn(`discord voice: conversation authorization failed: ${formatErrorMessage(error)}`); // credential-logging-allowed: "authorization" in error message, no credential values
     return null;
   });
   const conversationAuthorized = ingress.then(
