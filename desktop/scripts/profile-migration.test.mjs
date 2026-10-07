@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to strict-compiled sources");
-const { prepareNormalProfile, renameWithRetry } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "profile-migration.js")));
+const { prepareNormalProfile, readPreparedNormalProfile, renameWithRetry } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "profile-migration.js")));
 const { startGateway } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
 
 async function homeFixture(run) {
@@ -18,6 +18,22 @@ async function homeFixture(run) {
   try { await run(root, join(root, "home")); }
   finally { await rm(root, { recursive: true, force: true }); }
 }
+
+async function waitForLog(file, expected) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const log = await readFile(file, "utf8");
+    if (log.includes(expected)) return log;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  return readFile(file, "utf8");
+}
+
+test("standby never creates or migrates an unprepared profile", async () => homeFixture(async (_root, home) => {
+  assert.throws(() => readPreparedNormalProfile(home), /not ready/);
+  await assert.rejects(readdir(home), { code: "ENOENT" });
+  prepareNormalProfile(home);
+  assert.deepEqual(readPreparedNormalProfile(home), { legacyDevMode: false });
+}));
 
 test("fresh desktop install starts without dev profile or C3-PO", async () => homeFixture(async (root, home) => {
   await writeFile(join(root, "branch.mjs"), 'import {writeFileSync} from "node:fs"; writeFileSync("launch.json",JSON.stringify({profile:process.env.BRANCH_PROFILE,args:process.argv.slice(2)}));');
@@ -71,14 +87,14 @@ test("gateway log records migration start, counts, and failure details", async (
   await writeFile(join(home, ".branch-dev", "workspace", "IDENTITY.md"), "owner");
   const child = startGateway({ dataDir: root, nodePath: process.execPath, gatewayPort: 19631 }, root, "fixture-token");
   await once(child, "exit");
-  const log = await readFile(join(root, "gateway.log"), "utf8");
+  const log = await waitForLog(join(root, "gateway.log"), "Profile migration done:");
   assert.match(log, /Profile migration start/);
   assert.match(log, /Profile migration done: 1 copied, 0 links skipped, \d+ ms/);
   await rm(join(home, ".branch"), { recursive: true });
   await writeFile(join(home, ".branch"), "not a directory");
   const failed = startGateway({ dataDir: root, nodePath: process.execPath, gatewayPort: 19631 }, root, "fixture-token");
   await once(failed, "exit");
-  const failureLog = await readFile(join(root, "gateway.log"), "utf8");
+  const failureLog = await waitForLog(join(root, "gateway.log"), "Profile migration failed");
   assert.ok(failureLog.includes(`Profile migration failed (code=UNKNOWN path=${join(home, ".branch")} message=Normal profile root is not a directory)`));
 }));
 

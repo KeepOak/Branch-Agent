@@ -46,4 +46,19 @@ describe("gateway standby", () => {
     ).rejects.toThrow("launcher went away");
     expect(hasLiveOwner).toHaveBeenCalledOnce();
   });
+
+  it("never starts alone when its launcher quit after the owner was already gone", async () => {
+    await expect(
+      waitInGatewayStandby(
+        {},
+        {
+          warm: async () => {},
+          hasLiveOwner: async () => false,
+          sleep: async () => {},
+          notify: () => {},
+          launcherGone: () => true,
+        },
+      ),
+    ).rejects.toThrow("launcher went away");
+  });
 });
