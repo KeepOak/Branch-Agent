@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import type { RuntimeConfigWriteApplication } from "../../config/runtime-write-application.js";
 import type { BranchConfig } from "../../config/types.branch.js";
+import * as agentDatabaseAdmission from "../../state/agent-database-admission.js";
 import { startGatewaySessionAdmissionWarmup } from "../server-session-admission-warmup.js";
 
 const mocks = vi.hoisted(() => ({
@@ -153,4 +154,31 @@ it("warms every configured Trunk after readiness without blocking startup", asyn
   expect(seen).toEqual([]);
   await sidecar.stop();
   expect(seen).toEqual(["agent:juniper:home", "agent:tester:home"]);
+});
+
+it("waits for background agent database preparation before warming an existing Trunk", async () => {
+  const readRefusal = vi
+    .spyOn(agentDatabaseAdmission, "readAgentDatabaseAdmissionRefusal")
+    .mockReturnValue({
+      agentId: "juniper",
+      paths: [],
+      code: "agent-database-inspection-pending",
+      reason: "startup inspection pending",
+      repairHint: "retry",
+    });
+  mocks.warmAdmission.mockClear();
+  const sidecar = startGatewaySessionAdmissionWarmup({
+    cfg: { agents: { entries: { juniper: {} } } },
+    signal: new AbortController().signal,
+    warn: vi.fn(),
+  });
+  try {
+    await vi.waitFor(() => expect(readRefusal).toHaveBeenCalledWith("juniper"));
+    expect(mocks.warmAdmission).not.toHaveBeenCalled();
+    readRefusal.mockReturnValue(undefined);
+    await sidecar.stop();
+    expect(mocks.warmAdmission).toHaveBeenCalledOnce();
+  } finally {
+    readRefusal.mockRestore();
+  }
 });
