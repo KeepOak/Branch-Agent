@@ -100,6 +100,7 @@ import { useShellRoom } from "../rooms/useShellRoom";
 import { NewGroupChatHost } from "../rooms/NewGroupChat";
 import { agentState, STATE_LABEL } from "../face/agentState";
 import { conversationLink, useConversationMenu } from "./ConversationMenu";
+import { openConversationWindow, ownWindowUnavailable } from "./own-window";
 import { TALK_EVENT, useVoiceCatalog } from "../composer/VoiceParts";
 import { DockQuestion } from "../thread/QuestionCard";
 import { WhereChips } from "../thread/WhereChips";
@@ -122,7 +123,7 @@ function workWords(s: SessionSnapshot, now: number): string {
   if (step?.kind === "step" && step.status === "running" && /browser|computer|screen|desktop/i.test(step.tool)) {
     return "Working · using the computer";
   }
-  if (step?.kind === "step" && step.status === "running") return [stepLabel(step), step.title].filter(Boolean).join(" · ");
+  if (step?.kind === "step" && step.status === "running") return stepLabel(step);
   const state = agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now });
   return state === "work" || state === "idle" ? "Thinking" : STATE_LABEL[state];
 }
@@ -325,6 +326,16 @@ function useEngineReads(session: SaplingSession) {
 
 /** The whole window once connected (DESIGN-SPEC §3): top bar, sidebar, main, status bar, menus and toasts. */
 export function WindowShell({ session, url }: { session: SaplingSession; url: string }) {
+  const dedicated = new URLSearchParams(location.search).has("conversation");
+  const [poppedKeys, setPoppedKeys] = useState<string[]>([]);
+  useEffect(() => {
+    const bridge = (window as unknown as { branchDesktop?: { conversationWindows?: { list: () => Promise<string[]>; onChanged: (listener: (keys: string[]) => void) => () => void } } }).branchDesktop?.conversationWindows;
+    if (!bridge || dedicated) return;
+    let live = true;
+    void bridge.list().then((keys) => { if (live) setPoppedKeys(keys); }, () => undefined);
+    const stop = bridge.onChanged((keys) => { if (live) setPoppedKeys(keys); });
+    return () => { live = false; stop(); };
+  }, [dedicated]);
   useEffect(() => componentDesktop(session.gatewayUrl)?.onAutoApplyProbe?.(async () => {
     const approvals = await Promise.all(["exec.approval.list", "plugin.approval.list", "branch.approval.list"].map(
       method => session.request<unknown>(method, {}),
@@ -382,6 +393,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [replyTo, setReplyTo] = useState<{ entryId: string; name: string; text: string } | null>(null);
   const [stage, setStage] = useState<StageMode | null>(null);
   const [pane, setPane] = useState<PaneTab | null>(null);
+  const [focusHelpers, setFocusHelpers] = useState(0);
   const [pip, setPip] = useState<PipTarget | null>(null);
   const [stageComputer, setStageComputer] = useState<string | null>(null);
   const [addingComputer, setAddingComputer] = useState(false);
@@ -454,6 +466,19 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const search = useSearch(request, lists.rows, trunkName);
 
   const go = useCallback((next: Route) => {
+    if (dedicated && next.kind !== "chat") {
+      const bridge = (window as unknown as { branchDesktop?: { openInMain?: (route: Route) => Promise<void> } }).branchDesktop;
+      if (bridge?.openInMain) {
+        void bridge.openInMain(next).catch((error: unknown) => notify(`Couldn't open main window: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+        return;
+      }
+    }
+    if (dedicated && next.kind === "chat" && next.key && (routeRef.current.kind !== "chat" || next.key !== routeRef.current.key)) {
+      const bridge = (window as unknown as { branchDesktop?: { retargetConversationWindow?: (key: string) => Promise<void> } }).branchDesktop;
+      if (bridge?.retargetConversationWindow) {
+        void bridge.retargetConversationWindow(next.key).catch((error: unknown) => notify(`Couldn't change this window: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+      }
+    }
     if (JSON.stringify(routeRef.current) !== JSON.stringify(next)) {
       const index = Number(history.state?.branchIndex) || 0;
       history.pushState({ branchRoute: next, branchIndex: index + 1 }, "");
@@ -467,7 +492,27 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     if (next.kind === "chat" && next.key) {
       void session.open(next.key);
     }
-  }, [session]);
+  }, [session, dedicated]);
+  useEffect(() => {
+    const bridge = (window as unknown as { branchDesktop?: { onOpenMainRoute?: (listener: (route: unknown) => void) => () => void } }).branchDesktop;
+    return bridge?.onOpenMainRoute?.((raw) => {
+      const route = parseRoute(JSON.stringify(raw) ?? null);
+      if (route) go(route);
+    });
+  }, [go]);
+  useEffect(() => {
+    if (!dedicated) return;
+    const close = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "w") {
+        event.preventDefault();
+        const bridge = (window as unknown as { branchDesktop?: { closeConversationWindow?: () => Promise<void> } }).branchDesktop;
+        if (bridge?.closeConversationWindow) void bridge.closeConversationWindow();
+        else window.close();
+      }
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [dedicated]);
   useEffect(() => {
     history.replaceState({ branchRoute: routeRef.current, branchIndex: Number(history.state?.branchIndex) || 0 }, "");
     const pop = (event: PopStateEvent) => {
@@ -490,7 +535,19 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [go]);
-  const openConversation = useCallback((key: string) => go({ kind: "chat", key }), [go]);
+  const openConversation = useCallback((key: string) => {
+    if ((dedicated && key !== new URLSearchParams(location.search).get("conversation")) || (!dedicated && poppedKeys.includes(key))) {
+      void openConversationWindow(key).catch((error: unknown) => notify(`Couldn't open window: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+      return;
+    }
+    go({ kind: "chat", key });
+  }, [go, dedicated, poppedKeys]);
+  useEffect(() => {
+    const current = routeRef.current;
+    if (!dedicated && current.kind === "chat" && poppedKeys.includes(current.key ?? openKey ?? "")) {
+      go({ kind: "place", place: "overview" });
+    }
+  }, [dedicated, go, poppedKeys, openKey]);
   const openSearchMessage = useCallback((key: string, query: string) => {
     setSearchFind({ key, query, nonce: ++searchFindNonce.current });
     openConversation(key);
@@ -721,7 +778,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   const questions = useQuestions(ready ? session.engine : undefined);
   const waitingQuestion = questions.list.find((q) => q.status === "pending" && (!q.expiresAtMs || q.expiresAtMs > now)) ?? null;
-  const faceNow = waitingQuestion ? "waiting" : faceState(s, now);
+  const faceNow = waitingQuestion || (openKey && (pending.get(openKey) ?? 0) > 0) ? "waiting" : faceState(s, now);
   const rowState = useCallback((row: Conversation) => {
     const open = row.key === openKey;
     return { waiting: row.needsYou === true || (pending.get(row.key) ?? 0) > 0 || (open && faceNow === "waiting"), working: row.working || (open && faceNow === "working") };
@@ -851,6 +908,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       now,
       trunkName: trunkName(row.agentId),
       open: openConversation,
+      ownWindow: (key) => { void openConversationWindow(key).catch((error: unknown) => notify(`Couldn't open window: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" })); },
+      ownWindowOpen: (key) => poppedKeys.includes(key),
+      ownWindowOff: ownWindowUnavailable(),
       rename: (r) => {
         openConversation(r.key);
         setRenaming(r.key);
@@ -1005,6 +1065,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     ready,
     now,
     row: openRow,
+    ownWindowOpen: dedicated || Boolean(openKey && poppedKeys.includes(openKey)),
     isMain: !openRow || openKey === s.mainKey,
     title: name,
     trunk: { id: openRow?.agentId ?? trunks.defaultId ?? undefined, name: trunkName(openRow?.agentId) },
@@ -1047,7 +1108,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onReply: (target: { entryId: string; name: string; text: string }) => setReplyTo(target),
   };
   const sideWidth = layout.hidden && !isNarrow ? 0 : liveW ?? (rail ? 68 : layout.sideW);
-  const frameClass = ["frame", rail ? "rail" : "", layout.hidden && !isNarrow ? "list-hidden" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
+  const frameClass = ["frame", dedicated ? "dedicated" : "", rail ? "rail" : "", layout.hidden && !isNarrow ? "list-hidden" : "", layout.focus ? "focus" : "", slideOpen ? "slide-open" : ""].filter(Boolean).join(" ");
   const summary = filterSummary(prefs, trunkName, personName);
   const dark = theme === "system" ? systemDark : effectiveDark(theme);
   const filterOpen = overlay?.kind === "filter";
@@ -1143,7 +1204,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onStartTopic={activeContact?.kind === "trunk" ? startFromMessage : undefined}
           topicUpdates={topicUpdates}
           focusTopic={focusTopic}
-          onOpenActivity={() => setPane("Activity")}
+          onOpenActivity={() => { setPane("Activity"); setFocusHelpers((n) => n + 1); }}
           supplement={
             <>
               <ComputerActivityCard blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} name={trunkName(openRow?.agentId)} engine={session.engine} gatewayUrl={url} onWatch={(mode, takeOver) => { setStageTakeOver(Boolean(takeOver)); setStage(mode); }} />
@@ -1161,6 +1222,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           plan={progress.card && !planDismiss.dismissed ? <PlanCard card={progress.card} onRefresh={planRefresh.refresh} refreshing={planRefresh.status} onDismiss={planDismiss.dismiss} /> : null}
           pendingUser={s.pendingUser}
           queued={s.queued}
+          steered={s.steered}
           running={Boolean(s.liveRunId)}
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />
@@ -1191,12 +1253,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
                 projectName={projects.projects.find((x) => x.id === openRow?.projectId)?.name ?? null} onStartTopic={(options) => startNew(openRow?.agentId, options)} />
             ) : null
           }
-          onSend={(text: string, extras?: SendExtras) => void session.send(text, extras)}
+          onSend={(text: string, extras?: SendExtras, idempotencyKey?: string) => void session.send(text, extras, idempotencyKey)}
           onStop={() => void session.stopRun()}
         />}
         />
         {pane && ready ? (
-          <SidePane key={s.sessionKey} engine={session.engine} name={trunkName(openRow?.agentId)} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} cardError={progress.error} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={notify} title={name} onReload={() => void session.reload()}
+          <SidePane key={s.sessionKey} engine={session.engine} name={trunkName(openRow?.agentId)} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} cardError={progress.error} tab={pane} focusHelpers={focusHelpers} onTab={setPane} onClose={() => setPane(null)} toast={notify} title={name} onReload={() => void session.reload()}
             contactTopics={topicContact ? { items: topicItems, name: topicContact.name, onOpen: openTopic } : undefined} />
         ) : null}
       </>
@@ -1242,7 +1304,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     <TrunkAppearances.Provider value={appearances}>
     <TrunkPebbleLooks.Provider value={Object.fromEntries(trunks.list.map((t) => [t.name, { colour: t.colour, shape: t.shape, eyes: t.eyes }]))}>
     <TrunkEmojiFaces.Provider value={Object.fromEntries(trunks.list.map((t) => [t.name, t.emoji ?? ""]))}>
-    <div className={frameClass} data-connection={ready ? "ready" : s.status.phase} data-route={route.kind} style={{ ["--side-w" as string]: `${sideWidth}px` }}>
+    <div className={frameClass} data-connection={ready ? "ready" : s.status.phase} data-route={route.kind} style={{ ["--side-w" as string]: `${dedicated ? 0 : sideWidth}px` }}>
       <a className="skip" href="#main">
         {route.kind === "chat" ? "Skip to the conversation" : "Skip to the page"}
       </a>
@@ -1267,6 +1329,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         currentPlace={route.kind === "place" ? route.place : null}
         now={now}
         showPreview={prefs.preview}
+        poppedKeys={poppedKeys}
         rowState={rowState}
         trunkName={trunkName}
         personName={person}
@@ -1602,7 +1665,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onClose={() => setGuide(null)}
         />
       ) : null}
-      {(firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded ? (
+      {!dedicated && (firstRun.step !== null || !trunks.list.length) && ready && trunks.loaded ? (
         <SetupFlow
           engine={session.engine}
           version={branchVersion}

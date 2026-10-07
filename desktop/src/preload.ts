@@ -15,6 +15,23 @@ if (info) {
   let gatewayUrl = info.gatewayUrl;
   contextBridge.exposeInMainWorld("branchDesktop", {
     gatewayUrl: info.gatewayUrl, getGatewayUrl: () => gatewayUrl, gatewayToken: info.gatewayToken,
+    openConversation: (key: string) => ipcRenderer.invoke("branch-desktop:open-conversation", key),
+    conversationWindows: {
+      list: (): Promise<string[]> => ipcRenderer.invoke("branch-desktop:conversation-windows"),
+      onChanged: (listener: (keys: string[]) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, keys: string[]) => listener(keys);
+        ipcRenderer.on("branch-desktop:conversation-windows", handler);
+        return () => ipcRenderer.removeListener("branch-desktop:conversation-windows", handler);
+      },
+    },
+    openInMain: (route: unknown) => ipcRenderer.invoke("branch-desktop:open-main-route", route),
+    closeConversationWindow: () => ipcRenderer.invoke("branch-desktop:close-conversation-window"),
+    retargetConversationWindow: (key: string) => ipcRenderer.invoke("branch-desktop:retarget-conversation-window", key),
+    onOpenMainRoute: (listener: (route: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, route: unknown) => listener(route);
+      ipcRenderer.on("branch-desktop:open-main-route", handler);
+      return () => ipcRenderer.removeListener("branch-desktop:open-main-route", handler);
+    },
     clipboard: { writeText: (text: string) => ipcRenderer.invoke("branch-desktop:clipboard:write-text", text) },
     componentUpdates: {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),

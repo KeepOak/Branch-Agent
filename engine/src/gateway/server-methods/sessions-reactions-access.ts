@@ -44,6 +44,7 @@ export async function withSessionReactionAccess(
     sessionKey: string;
     agentId?: string;
     write: boolean;
+    contextChange?: boolean;
   },
   consume: (access: { target: SessionSharingTarget; assertCurrent: () => void }) => Promise<void>,
 ): Promise<void> {
@@ -151,7 +152,7 @@ export async function withSessionReactionAccess(
           );
         }
         const denied = sharing.authorizeTarget(target);
-        if (denied && !(resolveSessionVisibility(target.entry) === "suggest" && cap !== "view")) {
+        if (denied && !(!params.contextChange && resolveSessionVisibility(target.entry) === "suggest" && cap !== "view")) {
           deny(denied);
         }
       }

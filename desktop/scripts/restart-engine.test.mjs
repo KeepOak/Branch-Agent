@@ -22,20 +22,24 @@ async function freePort() {
   const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port;
 }
 function electronFixture() {
-  let window; const app = new EventEmitter(), ipcMain = new EventEmitter(), errors = [];
+  let window; const windows = [], handlers = new Map(), app = new EventEmitter(), ipcMain = new EventEmitter(), errors = [];
   Object.assign(app, { getVersion: () => "fixture", setPath() {}, setAppUserModelId() {},
     requestSingleInstanceLock: () => true, whenReady: async () => {}, quit() { app.emit("will-quit"); } });
   class BrowserWindow extends EventEmitter {
-    constructor() { super(); window = this; this.reloads = 0; this.webContents = new EventEmitter();
+    static fromWebContents(sender) { return windows.find(w => w.webContents === sender) ?? null; }
+    constructor() { super(); if (!window) window = this; windows.push(this); this.reloads = 0; this.destroyed = false; this.webContents = new EventEmitter();
       Object.assign(this.webContents, { mainFrame: { url: "" }, getURL: () => this.url, setWindowOpenHandler() {}, send() {},
-        reload: () => { this.reloads++; this.webContents.emit("did-finish-load"); } }); }
+        isDestroyed: () => this.destroyed, reload: () => { this.reloads++; this.webContents.emit("did-finish-load"); } }); }
     async loadURL(url) { this.url = url; this.webContents.mainFrame.url = url; this.webContents.emit("did-finish-load"); }
     setMenuBarVisibility() {} show() {} focus() {} hide() {} isMinimized() { return false; }
-    maximize() {} isMaximized() { return false; } isVisible() { return true; } isDestroyed() { return false; } getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; }
+    maximize() {} isMaximized() { return false; } isVisible() { return true; } isDestroyed() { return this.destroyed; }
+    getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; } getBounds() { return this.getNormalBounds(); }
+    close() { if (this.destroyed) return; const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } }; this.emit("close", event); if (!event.defaultPrevented) this.destroy(); }
+    destroy() { if (this.destroyed) return; this.destroyed = true; this.emit("closed"); }
   }
   class Tray extends EventEmitter { setToolTip() {} setContextMenu() {} destroy() {} }
-  return { app, ipcMain, errors, get window() { return window; }, electron: { app, BrowserWindow, Tray,
-    ipcMain: Object.assign(ipcMain, { handle() {} }), Menu: { buildFromTemplate: value => value },
+  return { app, ipcMain, handlers, windows, errors, get window() { return window; }, electron: { app, BrowserWindow, Tray,
+    ipcMain: Object.assign(ipcMain, { handle(channel, fn) { handlers.set(channel, fn); } }), Menu: { buildFromTemplate: value => value },
     screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) },
     dialog: { showErrorBox: (...args) => errors.push(args) }, shell: { openExternal() {} },
     session: { defaultSession: { setPermissionRequestHandler() {} } } } };
@@ -58,9 +62,10 @@ http.createServer((q,r)=>{r.writeHead(starts.length===1&&!fs.existsSync(root+"/h
   await writeFile(join(root, "desktop.json"), JSON.stringify({ dataDir: root, engineDir: engine, windowDir,
     nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() }));
 }
-async function fixture(run, holdStartup = false, fastSupervisor = false, holdCandidate = false) {
+async function fixture(run, holdStartup = false, fastSupervisor = false, holdCandidate = false, keepWorkingOff = false) {
   const scratch = join(tmpdir(), "Codex-session-files"); await mkdir(scratch, { recursive: true });
   const root = await mkdtemp(join(scratch, "branch-restart-")); await createFixtureFiles(root);
+  if (keepWorkingOff) await writeFile(join(root, "desktop-settings.json"), JSON.stringify({ keepWorking: false }));
   const previous = process.env.BRANCH_DESKTOP_DATA;
   const previousCandidateMin = process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB;
   process.env.BRANCH_DESKTOP_DATA = root;
@@ -242,18 +247,80 @@ test("a busy engine from before drain-stop is never killed by an update click; t
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-update").map(([, state]) => state), ["updating", "auto-wait"]);
 }));
 test("a new window build swaps in place after attached files are sent, keeping the engine", () => fixture(async ({ root, runtime, starts }) => {
-  let files = true; const owner = runtime.window.webContents; owner.isDestroyed = () => false;
-  owner.send = (channel, id) => {
-    const event = { sender: owner, senderFrame: owner.mainFrame };
-    if (channel === "branch-desktop:auto-apply:probe") setTimeout(() => runtime.ipcMain.emit("branch-desktop:auto-apply:result", event, id, { pendingApprovals: 0, streaming: false, unsavedDraftFiles: files }), 5);
-    if (channel === "branch-desktop:prepare-swap") setTimeout(() => runtime.ipcMain.emit("branch-desktop:swap-ready", event, id), 5);
-  };
+  const main = runtime.window;
+  await runtime.handlers.get("branch-desktop:open-conversation")(
+    { sender: main.webContents, senderFrame: main.webContents.mainFrame }, "agent:test:one");
+  const child = runtime.windows[1];
+  let files = true;
+  for (const w of [main, child]) {
+    const owner = w.webContents;
+    owner.send = (channel, id) => {
+      const event = { sender: owner, senderFrame: owner.mainFrame };
+      if (channel === "branch-desktop:auto-apply:probe") setTimeout(() => runtime.ipcMain.emit("branch-desktop:auto-apply:result", event, id, { pendingApprovals: 0, streaming: false, unsavedDraftFiles: w === child && files }), 5);
+      if (channel === "branch-desktop:prepare-swap") setTimeout(() => runtime.ipcMain.emit("branch-desktop:swap-ready", event, id), 5);
+    };
+  }
   const windowDir = JSON.parse(await readFile(join(root, "desktop.json"), "utf8")).windowDir;
   await writeFile(join(windowDir, "branch-build.txt"), "build-a"); await pause(3500);
   await writeFile(join(windowDir, "branch-build.txt"), "build-b"); await pause(4000);
   assert.equal(runtime.window.reloads, 0, "The swap dropped attached files");
+  assert.equal(child.reloads, 0, "The pop-out dropped attached files");
   files = false; await eventually(() => runtime.window.reloads === 1);
+  assert.equal(child.reloads, 1, "The pop-out kept running the old window build");
   assert.equal((await starts()).length, 1, "A window update restarted the engine");
+}));
+test("conversation IPC authenticates frames, tracks retargets, and guards a closed main window", () => fixture(async ({ runtime }) => {
+  const main = runtime.window;
+  const event = (w) => ({ sender: w.webContents, senderFrame: w.webContents.mainFrame });
+  const info = event(main);
+  runtime.ipcMain.emit("branch-desktop:info", info);
+  assert.equal(typeof info.returnValue.gatewayToken, "string");
+  const foreign = { sender: { getURL: () => main.url }, senderFrame: main.webContents.mainFrame };
+  runtime.ipcMain.emit("branch-desktop:info", foreign);
+  assert.equal(foreign.returnValue, null);
+  await runtime.handlers.get("branch-desktop:open-conversation")(event(main), "agent:test:one");
+  const child = runtime.windows[1];
+  assert.ok(child);
+  assert.deepEqual(runtime.handlers.get("branch-desktop:conversation-windows")(event(main)), ["agent:test:one"]);
+  const childInfo = event(child);
+  runtime.ipcMain.emit("branch-desktop:info", childInfo);
+  assert.equal(childInfo.returnValue.gatewayToken, info.returnValue.gatewayToken);
+  assert.throws(() => runtime.handlers.get("branch-desktop:open-main-route")(event(main), { kind: "chat", key: "agent:test:one" }));
+  await runtime.handlers.get("branch-desktop:retarget-conversation-window")(event(child), "agent:test:two");
+  assert.deepEqual(runtime.handlers.get("branch-desktop:conversation-windows")(event(main)), ["agent:test:two"]);
+  await runtime.handlers.get("branch-desktop:open-main-route")(event(child), { kind: "chat", key: "agent:test:two" });
+  main.destroy();
+  await runtime.handlers.get("branch-desktop:close-conversation-window")(event(child));
+  assert.equal(child.isDestroyed(), true);
+}));
+test("closing the main window with Keep working off closes pop-outs and quits", () => fixture(async ({ runtime }) => {
+  const main = runtime.window;
+  const event = { sender: main.webContents, senderFrame: main.webContents.mainFrame };
+  await runtime.handlers.get("branch-desktop:open-conversation")(event, "agent:test:one");
+  const child = runtime.windows[1];
+  let quits = 0;
+  runtime.app.on("will-quit", () => { quits++; });
+  main.close();
+  assert.equal(main.isDestroyed(), true);
+  assert.equal(child.isDestroyed(), true);
+  assert.equal(quits, 1);
+}, false, false, false, true));
+test("engine handoff and update notices reach the main window and every pop-out", () => fixture(async ({ root, runtime, restart }) => {
+  const main = runtime.window;
+  await runtime.handlers.get("branch-desktop:open-conversation")(
+    { sender: main.webContents, senderFrame: main.webContents.mainFrame }, "agent:test:one");
+  const child = runtime.windows[1];
+  const mainEvents = [], childEvents = [];
+  main.webContents.send = (...args) => mainEvents.push(args);
+  child.webContents.send = (...args) => childEvents.push(args);
+  await writeFile(join(root, "release-ready"), "ready");
+  restart();
+  await eventually(() => childEvents.some(([channel]) => channel === "branch-desktop:engine-handoff"));
+  for (const events of [mainEvents, childEvents]) {
+    assert.ok(events.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "updating"));
+    assert.ok(events.some(([channel, url]) => channel === "branch-desktop:engine-handoff" && /^ws:\/\/127\.0\.0\.1:\d+$/.test(url)));
+    assert.ok(events.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "updated"));
+  }
 }));
 test("a restart request during first launch preserves its starting gateway", () => fixture(async ({ root, starts, restart }) => {
   await eventually(async () => (await starts()).length === 1);

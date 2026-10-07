@@ -18,6 +18,7 @@ describe("thread words", () => {
     expect(stepsSummary([step("read"), step("read"), step("web_search")])).toBe("Read 2 files and searched the web · 3 steps");
     expect(stepsSummary([{ ...step("exec"), at: 1_000 }, { ...step("read"), at: 42_000 }])).toBe("Ran a command and read a file · 2 steps · 41s");
     expect(stepsSummary([step("exec"), step("read", "running")])).toBe("Reading a file");
+    expect(stepsSummary([step("exec")], { title: "text", durationMs: 59_000 })).toBe("Ran a command");
   });
 
   it("stamps the day over the first message of each day", () => {
@@ -42,5 +43,6 @@ describe("thread words", () => {
   it("shortens an engine error to its first sentence without the lead-in", () => {
     const raw = "Your request couldn't be completed: ⚠️ Authentication failed (provider returned HTTP 401). Your provider token may have expired.";
     expect(shortReason(raw)).toBe("Authentication failed (provider returned HTTP 401).");
+    expect(shortReason("Failed to observe plugin state entry. | PLUGIN_STATE_READ_FAILED | 42")).not.toContain("PLUGIN_STATE_READ_FAILED");
   });
 });

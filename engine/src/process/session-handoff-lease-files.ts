@@ -9,8 +9,10 @@
 // have several holders at once (back-to-back updates: A still finishes a run while B steps down with a turn for the
 // same session parked behind A), and a successor waits until every holder of that session has released it.
 //
-// This gates the session's command lane. Session writes that do not run in that lane (session RPCs, compaction,
-// subagent and cron writers) are not gated here; the handoff wiring has to route or fence them.
+// This gates the session's command lane, which carries turns, compaction, and cron and heartbeat runs. Gateway
+// requests that write a session outside its lane (session RPCs, chat.send's user turn, in-process dispatch) wait in
+// gateway/session-handoff-lease-request-gate.ts. Cron (run-prepare) and heartbeat (its busy check) consult the lease
+// before the session writes they make ahead of the lane.
 //
 // A lease is live only while its holder process is the same process (pid and start time) and it is younger than
 // the longest a handoff may keep a session; anything else is stale and is deleted on sight. The format is version 2
@@ -29,6 +31,12 @@ export const SESSION_LANE_PREFIX = "session:";
  * successor's turn waits for one. The holder's `deadline` fires at this age.
  */
 export const SESSION_HANDOFF_LEASE_MAX_WAIT_MS = 330_000;
+/**
+ * The longest a Gateway request that writes a leased session waits before it is refused as retryable. Clients
+ * give up on a request after 30 s (DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS), and a write they were told failed must
+ * never run later, so this stays well below that. In-process dispatch waits up to its own deadline instead.
+ */
+export const SESSION_HANDOFF_LEASE_REQUEST_WAIT_MS = 15_000;
 /** A lease older than this guards nothing, whoever holds it: the successor runs the session from then on. */
 export const SESSION_HANDOFF_LEASE_MAX_AGE_MS = SESSION_HANDOFF_LEASE_MAX_WAIT_MS + 30_000;
 const START_TIME_TIMEOUT_MS = 1_000;
@@ -62,9 +70,34 @@ export function sessionHandoffLeaseFile(dir: string, lane: string, ownerId: stri
 
 /** The lease in `file`, or undefined when there is none (missing or not a lease this format understands). */
 export function readSessionHandoffLease(file: string): SessionHandoffLease | undefined {
+  let text: string;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    return undefined;
+  }
+  return parseSessionHandoffLease(file, text);
+}
+
+/**
+ * Like readSessionHandoffLease, for deciding whether a holder still holds: a file that is there but cannot be read
+ * right now (Windows: antivirus or an indexer has it open) is retried briefly, then reported as "busy" rather than
+ * as gone, so a passing read error never frees a session its holder still writes.
+ */
+export function readHeldSessionHandoffLease(file: string): SessionHandoffLease | undefined | "busy" {
+  let text: string;
+  try {
+    text = withFileRetries(() => fs.readFileSync(file, "utf8"));
+  } catch (error) {
+    return isTransientFileError(error) ? "busy" : undefined;
+  }
+  return parseSessionHandoffLease(file, text);
+}
+
+function parseSessionHandoffLease(file: string, text: string): SessionHandoffLease | undefined {
   let value: Partial<SessionHandoffLease>;
   try {
-    value = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<SessionHandoffLease>;
+    value = JSON.parse(text) as Partial<SessionHandoffLease>;
   } catch {
     return undefined;
   }
@@ -140,25 +173,32 @@ function pauseSync(ms: number): void {
 }
 
 /** Antivirus or an indexer can hold a file for a moment on Windows: retry briefly before giving up. */
-function withFileRetries<T>(operation: () => T): T {
+function withFileRetries<T>(operation: () => T, retries = FILE_RETRIES): T {
   for (let attempt = 0; ; attempt += 1) {
     try {
       return operation();
     } catch (error) {
-      if (attempt >= FILE_RETRIES || !isTransientFileError(error)) throw error;
+      if (attempt >= retries || !isTransientFileError(error)) throw error;
       pauseSync(FILE_RETRY_DELAY_MS);
     }
   }
 }
 
+export type RemoveLeaseOptions = {
+  /** A single attempt, without the short blocking retries (a removal already being retried on a timer). */
+  once?: boolean;
+  /** No warning when it fails (the caller already warned for this file). */
+  quiet?: boolean;
+};
+
 /** Removes `file`; false (and logged) when it could not be removed, true when it is gone. */
-function removeFile(file: string): boolean {
+function removeFile(file: string, options: RemoveLeaseOptions = {}): boolean {
   try {
-    withFileRetries(() => fs.unlinkSync(file));
+    withFileRetries(() => fs.unlinkSync(file), options.once ? 0 : FILE_RETRIES);
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
-    log.warn(`session handoff lease ${file} could not be removed: ${String(error)}`);
+    if (!options.quiet) log.warn(`session handoff lease ${file} could not be removed: ${String(error)}`);
     return false;
   }
 }
@@ -213,7 +253,11 @@ export function writeSessionHandoffLease(dir: string, lane: string): { file: str
   return { file, lease };
 }
 
-/** Removes this holder's own lease file; false (and logged) when it is still there. */
-export function removeSessionHandoffLease(file: string, _lease?: SessionHandoffLease): boolean {
-  return removeFile(file);
+/** Removes this holder's own lease file; false (and logged unless `quiet`) when it is still there. */
+export function removeSessionHandoffLease(
+  file: string,
+  _lease?: SessionHandoffLease,
+  options?: RemoveLeaseOptions,
+): boolean {
+  return removeFile(file, options);
 }

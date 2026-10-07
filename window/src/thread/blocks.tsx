@@ -23,7 +23,7 @@ export function UserMessage({ block, children }: { block: Of<"user">; children?:
   const long = isLong(block.text);
   const [open, setOpen] = useState(false);
   return (
-    <div className="msg user-msg" data-entry={block.meta?.entryId}>
+    <div className={`msg user-msg${block.meta?.excluded ? " left-out" : ""}`} data-entry={block.meta?.entryId}>
       {children}
       {block.meta?.via ? (
         <span className="via-line">
@@ -44,10 +44,37 @@ export function UserMessage({ block, children }: { block: Of<"user">; children?:
   );
 }
 
+/** Steered note (§4.2.2): what you told the Trunk while it worked, inside that turn (the preview's `.steered-b17`). */
+export function SteeredNote({ name, text }: { name: string; text: string }) {
+  return (
+    <div className="steered-note indent" role="note" data-testid="steered-note">
+      <Icon d={ICONS.retry} size={14} />
+      <span>You steered {name}: “{text}”. It takes this at its next step; nothing done so far is lost.</span>
+    </div>
+  );
+}
+
+/** Your message that didn't go (§4.2.2 Parity adds "Not sent"): it stays, with a red pill, the reason, Try again
+ *  and Discard. */
+export function NotSent({ text, reason, onRetry, onDiscard }: { text: string; reason: string; onRetry: () => void; onDiscard: () => void }) {
+  const why = shortReason(reason.replace(/^\s*Error:\s*/i, ""));
+  return (
+    <div className="queued-msg not-sent" data-testid="not-sent">
+      <UserMessage block={{ kind: "user", key: "not-sent", text }} />
+      <div className="send-status mine">
+        <span className="pill bad"><i />Not sent</span>
+        {why ? <span className="send-why" title={reason}>{why}</span> : null}
+        <button type="button" className="btn ghost sm" onClick={onRetry}>Try again</button>
+        <button type="button" className="btn ghost sm" title="Removes this copy." onClick={onDiscard}>Discard</button>
+      </div>
+    </div>
+  );
+}
+
 /** A Trunk's reply. `face` is the gutter character, shown only on the first block of a run (§4.2.2 gutter rule). */
 export function Reply({ block, face, from, working, children }: { block: Of<"text">; face?: ReactNode; from?: string; working?: boolean; children?: ReactNode }) {
   return (
-    <div className="msg reply" data-entry={block.meta?.entryId}>
+    <div className={`msg reply${block.meta?.excluded ? " left-out" : ""}`} data-entry={block.meta?.entryId}>
       {children}
       <span className="gutter">{face ? <span className={working ? "gutter-face working-ring" : "gutter-face"}>{face}</span> : null}</span>
       <div className="reply-text" data-testid="message" data-role="assistant">

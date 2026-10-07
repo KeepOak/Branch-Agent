@@ -5,7 +5,7 @@ import { agentState } from "../face/agentState";
 import { PRIORITY } from "../face/cap";
 import { resolveApproval } from "./actions";
 import { ApprovalCard, ApprovalGroup } from "./ApprovalCard";
-import { DoneLine, ErrorBlock, Notice, Reply, StepsFold, Thinking, Typing, UserMessage } from "./blocks";
+import { DoneLine, ErrorBlock, Notice, Reply, SteeredNote, StepsFold, Thinking, Typing, UserMessage } from "./blocks";
 import { ThreadContext, type ThreadContextValue } from "./context";
 import { ReactionChips } from "./dialogs";
 import { DoneCheer } from "./DoneCheer";
@@ -34,7 +34,7 @@ import { RoomLine } from "../rooms/RoomLine";
 import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
 import { QueuedMessages, useOwnWaitingLine } from "./QueuedMessages";
-import type { QueuedMessage } from "../connect/session";
+import type { QueuedMessage, SteeredNote as Steered } from "../connect/session";
 import { dayStamp, formatDuration, fullTime, messageTime, modelName, stepLabel } from "./format";
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
 import { suggestionsFor } from "./suggestions";
@@ -49,6 +49,8 @@ type Props = {
   pendingUser: string | null;
   /** Messages accepted but waiting for a turn (connect/session.ts queued). */
   queued?: QueuedMessage[];
+  /** What you told the running turn (steered), shown as notes under it until the turn ends. */
+  steered?: Steered[];
   running: boolean;
   /** When the live run started (engine time); the "Working" clock counts from it. */
   liveStartedAt?: number | null;
@@ -95,14 +97,25 @@ const RESTART_NOT_RESUMED = "Interrupted by a restart. Continue?";
 const NEAR_END_PX = 80;
 const LATEST_PX = 450;
 
-function useFollow(signature: string) {
+/** `sent` lists what you just sent (your message over the turn, a steer, the newest waiting one). When one of them
+ *  becomes something new, the thread jumps to the latest message even if you had scrolled up (owner decision 7,
+ *  2026-10-06); everyone else's blocks keep your place. */
+function useFollow(signature: string, sent: readonly (string | null | undefined)[]) {
   const scroller = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const [distance, setDistance] = useState(0);
   const atEnd = useRef(true);
+  const lastSent = useRef(sent);
+  const sentKey = sent.join("\u0000");
+  useEffect(() => {
+    const before = lastSent.current;
+    lastSent.current = sent;
+    if (sent.some((value, i) => value && value !== before[i])) atEnd.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sentKey]);
   useEffect(() => {
     if (atEnd.current) end.current?.scrollIntoView({ block: "end" });
-  }, [signature]);
+  }, [signature, sentKey]);
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
@@ -175,7 +188,7 @@ export function Thread(props: Props) {
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
   const waitingCount = (props.queued?.length ?? 0) + ownLine.length;
   const signature = `${history.length}:${live.length}:${liveText}:${pendingUser ? 1 : 0}:${running ? 1 : 0}:${extras.length}:${waitingCount}`;
-  const follow = useFollow(signature);
+  const follow = useFollow(signature, [pendingUser, props.steered?.at(-1)?.runId, ownLine.at(-1)?.id]);
   const [finding, setFinding] = useState(false);
   const [findRequest, setFindRequest] = useState({ query: "", nonce: 0 });
   const threadRef = useRef<HTMLDivElement>(null);
@@ -199,10 +212,17 @@ export function Thread(props: Props) {
   const preparationError = [props.preparationError, props.earlierError].find(isPreparationPending);
   const anchors = anchorQuestions(history, props.questions ?? []);
   const items: RoomItem[] = props.room ? foldTalks(layout(history), props.room.ownAgentId) : layout(history);
+  const helperStartedAt = Math.min(...helpers.map((h) => h.createdAt ?? Number.POSITIVE_INFINITY));
+  const helperUserAt = Number.isFinite(helperStartedAt) ? history.findLastIndex((b) => b.kind === "user" && typeof b.meta?.timestamp === "number" && b.meta.timestamp <= helperStartedAt) : -1;
+  const helperNextUserAt = helperUserAt < 0 ? -1 : history.findIndex((b, i) => i > helperUserAt && b.kind === "user");
   const planWanted = props.plan ? planAnchor(history) : -1;
   const planAt = items.some((i) => i.type === "block" && i.index === planWanted) ? planWanted : -1;
   const lastUser = history.map((b) => b.kind).lastIndexOf("user");
   const stamps = useMemo(() => dayStamps(history), [history]);
+  const helperChip = helpers.length && engine?.sessionKey ? (
+    <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenActivity}
+      onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
+  ) : null;
   const topicEvents = new Map<number, { at: number; node: ReactNode }[]>();
   for (const update of props.topicUpdates ?? []) {
     const add = (position: number, at: number, node: ReactNode) => topicEvents.set(position, [...(topicEvents.get(position) ?? []), { at, node }]);
@@ -272,6 +292,7 @@ export function Thread(props: Props) {
               </Fragment>
             ) : (
               <Fragment key={keyOf(item)}>
+                {item.type === "block" && item.index === helperNextUserAt ? helperChip : null}
                 {item.type === "block" && stamps.has(item.index) ? <div className="stamp" data-testid="day-stamp">{stamps.get(item.index)}</div> : null}
                 <ItemWithQuestions item={item} view={view} asked={item.type === "block" ? anchors.get(item.index) : undefined} plan={item.type === "block" && item.index === planAt ? props.plan : null} />
                 {renderTopicEvents(item.type === "block" ? item.index : history.findIndex((block) => block.key === item.steps.at(-1)?.key))}
@@ -289,15 +310,14 @@ export function Thread(props: Props) {
               <UserMessage block={{ kind: "user", key: "pending", text: pendingUser }} />
             )
           ) : null}
+          <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} part="delivered" />
           {running ? <LiveRun view={view} offset={history.length} /> : null}
-          <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} />
+          {running ? (props.steered ?? []).map((note) => <SteeredNote key={note.runId} name={name} text={note.text} />) : null}
+          <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
           {(anchors.get(-1) ?? []).map((r) => <QuestionLine key={r.id} record={r} />)}
           {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} />)}
           {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} /> : null}
-          {helpers.length && engine?.sessionKey ? (
-            <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenActivity}
-              onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
-          ) : null}
+          {helperNextUserAt < 0 ? helperChip : null}
           {props.supplement}
           {suggestions.length ? <div className="suggestion-row" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
             {suggestions.map((text) => <button key={text} type="button" onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}>{text}</button>)}
@@ -455,6 +475,8 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
       return view.dismissed.has(block.key) ? null : <ErrorBlock block={block} onDismiss={() => view.setDismissed((s) => new Set(s).add(block.key))} />;
     case "notice":
       return <Notice block={block} />;
+    case "steer":
+      return <SteeredNote name={view.name} text={block.text} />;
     default:
       return null;
   }
@@ -470,6 +492,7 @@ function MessageView({ block, index, firstReply, face, view, live }: { block: Ex
   const entryId = block.meta?.entryId;
   const chips = entryId ? view.reactions.get(entryId) ?? [] : [];
   const bar = actions ? <HoverBar isReply={block.kind === "text"} actions={actions} meta={block.meta} /> : null;
+  const putBack = block.meta?.excluded && actions?.context ? <div className="context-line">Left out of context · <button type="button" disabled={Boolean(actions.context.disabled)} title={actions.context.disabled ?? undefined} onClick={actions.context.run}>Put back</button></div> : null;
   const toggle = (emoji: string, remove: boolean) => {
     if (actions && !actions.reactDisabled) actions.react(emoji, remove);
   };
@@ -482,6 +505,7 @@ function MessageView({ block, index, firstReply, face, view, live }: { block: Ex
         ) : (
           <UserMessage block={block}>{bar}</UserMessage>
         )}
+        {putBack}
         <TimeLine block={block} view={view} />
         <ReactionChips list={chips} onToggle={toggle} />
       </>
@@ -490,6 +514,7 @@ function MessageView({ block, index, firstReply, face, view, live }: { block: Ex
   return (
     <>
       <Reply block={block} face={face ? faceFor(view, live) : undefined} working={face && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
+      {putBack}
       {live ? null : <TimeLine block={block} view={view} />}
       <ReactionChips list={chips} onToggle={toggle} />
     </>

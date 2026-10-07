@@ -147,6 +147,19 @@ describe("pictures in replies", () => {
     expect(host.querySelector("img.md-inline-picture")!.getAttribute("src")).toContain("mediaTicket=v1.t2.s");
   });
 
+  it("earns the silent retry back once a picture loads, so a later expired ticket is replaced without a word again", async () => {
+    let n = 0;
+    const { engine: e, calls } = gateway(() => ({ available: true, mediaTicket: `v1.t${++n}.s` }));
+    const host = await mount("![Screen](/tmp/shot.png)", e);
+    await act(async () => host.querySelector(".picture img")!.dispatchEvent(new Event("error")));
+    await act(async () => {});
+    await act(async () => host.querySelector(".picture img")!.dispatchEvent(new Event("load")));
+    await act(async () => host.querySelector(".picture img")!.dispatchEvent(new Event("error")));
+    await act(async () => {});
+    expect(calls).toHaveLength(3);
+    expect(host.querySelector('[data-testid="picture-unavailable"]')).toBeNull();
+  });
+
   it("says Picture unavailable when it still doesn't load after one new ticket, and Try again asks again", async () => {
     const { engine: e, calls } = gateway();
     const host = await mount("![Screen](/tmp/shot.png)", e);

@@ -127,9 +127,9 @@ interface Ipc {
 }
 
 /** Only the owned served window may call; the renderer never passes a URL or a path. */
-export function registerDesktopControlsIpc(ipc: Ipc, owner: () => Sender | undefined, servedUrl: string, controls: DesktopControls): void {
+export function registerDesktopControlsIpc(ipc: Ipc, owner: (event: InvokeEvent) => Sender | undefined, servedUrl: string, controls: DesktopControls): void {
   const owned = (event: InvokeEvent): void => {
-    if (!isOwnedComponentWindow(event, owner(), servedUrl)) throw new Error("Desktop controls require the owned served window");
+    if (!isOwnedComponentWindow(event, owner(event), servedUrl)) throw new Error("Desktop controls require the owned served window");
   };
   ipc.handle("branch-desktop:controls:get", async (event) => { owned(event); return controls.get(); });
   ipc.handle("branch-desktop:controls:set", async (event, name, on) => {
@@ -143,7 +143,7 @@ export function registerDesktopControlsIpc(ipc: Ipc, owner: () => Sender | undef
     await controls.openDownload(id);
   });
   ipc.on("branch-desktop:controls:tray-usage", (event, left) => {
-    if (!isOwnedComponentWindow(event, owner(), servedUrl)) return;
+    if (!isOwnedComponentWindow(event, owner(event), servedUrl)) return;
     controls.trayUsage(typeof left === "number" ? left : null);
   });
 }
