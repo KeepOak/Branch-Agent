@@ -1,3 +1,4 @@
+engine:packages/memory-host-sdk/src/host/remote-http.lockdown.test.ts
 engine:src/acp/control-plane/manager.lockdown.test.ts
 engine:src/agents/agent-tools.before-tool-call.lockdown.test.ts
 engine:src/agents/cli-runner/execute.lockdown.test.ts

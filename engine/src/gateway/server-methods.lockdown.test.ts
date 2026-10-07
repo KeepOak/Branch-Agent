@@ -101,6 +101,7 @@ describe("Lockdown gateway admission", () => {
       "users.github.disconnect",
       "controlUi.linkPreview",
       "skills.search",
+      "controlUi.sessionPullRequests.checks",
     ]) {
       expect((await request(method)).ran, method).toBe(false);
     }

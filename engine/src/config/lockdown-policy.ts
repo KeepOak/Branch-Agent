@@ -37,7 +37,12 @@ export function isLockdownSwitchPatch(params: unknown): boolean {
   return readLockdownSwitchPatch(params) !== undefined;
 }
 
-/** Read-scoped methods that nonetheless spend, write, or reach outside this computer. */
+/**
+ * Read-scoped methods that nonetheless spend, write, or reach outside this computer. The rule: refuse a read that
+ * calls a model, writes the person's data, contacts another server, or widens access. Reads that only change this
+ * person's own view (mentions.dismiss, sessions.setInvolvement, sessions.viewers.set) stay: they drive no Trunk and
+ * nothing leaves the computer. Plugin methods registered with read scope are outside this list.
+ */
 export const LOCKDOWN_REFUSED_READ_METHODS: ReadonlySet<string> = new Set([
   "sessions.companion.ask", // side chat: a model call
   "users.personalFile.set", // writes the person's file
@@ -51,6 +56,7 @@ export const LOCKDOWN_REFUSED_READ_METHODS: ReadonlySet<string> = new Set([
   "controlUi.linkPreview", // outbound fetches
   "controlUi.githubPreview",
   "controlUi.githubDetail",
+  "controlUi.sessionPullRequests.checks", // asks GitHub for check runs
   "skills.search",
   "board.prompt.authorize", // grants a board widget a prompt
   "device.scopes.requestUpgrade", // asks for wider access
