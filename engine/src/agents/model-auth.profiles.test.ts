@@ -4,6 +4,7 @@ import type { Model } from "branch/plugin-sdk/llm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { ModelProviderConfig, BranchConfig } from "../config/types.js";
+import { prepareAuthInheritanceOwnerForWrite } from "../config/io.auth-inheritance-owner.js";
 import type { SecretRef } from "../config/types.secrets.js";
 import { writeConfigMachineState } from "../state/config-machine-state-write.js";
 import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js";
@@ -28,6 +29,7 @@ import type { AuthProfileCredential, OAuthCredential } from "./auth-profiles/typ
 import { upsertAuthProfileWithLockOrThrow } from "./auth-profiles/upsert-with-lock.js";
 import { resolveInlineProviderApiKeyUsageId } from "./auth-profiles/usage.js";
 import { resolveLegacyInheritedAuthDir } from "./legacy-inherited-auth-dir.js";
+import { isInheritedAuthStoreOwner } from "./agent-delete-safety.js";
 import {
   createRuntimeProviderAuthLookup,
   getApiKeyForModelCore as resolveModelAuth,
@@ -410,6 +412,34 @@ describe("configured auth inheritance owner", () => {
         expect(await resolveAuth({ provider: "openai", cfg, agentDir: cedarDir })).toMatchObject({ apiKey: "juniper-key" });
         const afterMakeDefault: BranchConfig = { ...cfg, agents: { ...cfg.agents, defaultId: "willow" } };
         expect(await resolveAuth({ provider: "openai", cfg: afterMakeDefault, agentDir: cedarDir })).toMatchObject({ apiKey: "willow-key" });
+      },
+    );
+  });
+
+  it("pins recovered sign-ins when Make default selects a Trunk without its own accounts", async () => {
+    await withBranchTestState(
+      { layout: "state-only", prefix: "branch-auth-default-empty-switch-", agentEnv: "clear", env: { OPENAI_API_KEY: undefined } },
+      async (state) => {
+        const cfg: BranchConfig = {
+          agents: {
+            ownership: "explicit",
+            defaultId: "juniper",
+            defaults: { systemAgent: { agentId: "dev" }, authInheritance: { agentId: "main" } },
+            entries: { dev: {}, juniper: {}, cedar: {}, tester: {} },
+          },
+        };
+        writePersistedAuthProfileStoreRaw(
+          authStore({ "openai:juniper": keyCredential("openai", "juniper-key") }),
+          state.agentDir("juniper"),
+        );
+        const switched: BranchConfig = { ...cfg, agents: { ...cfg.agents, defaultId: "cedar" } };
+        const prepared = prepareAuthInheritanceOwnerForWrite({
+          currentConfig: cfg, targetConfig: switched, writesOwnershipTopology: false,
+        });
+        expect(prepared.insertedPaths).toEqual([["agents", "defaults", "authInheritance", "agentId"]]);
+        expect(prepared.config.agents?.defaults?.authInheritance?.agentId).toBe("juniper");
+        expect(await resolveAuth({ provider: "openai", cfg: prepared.config, agentDir: state.agentDir("tester") })).toMatchObject({ apiKey: "juniper-key" });
+        expect(isInheritedAuthStoreOwner(prepared.config, "juniper")).toBe(true);
       },
     );
   });

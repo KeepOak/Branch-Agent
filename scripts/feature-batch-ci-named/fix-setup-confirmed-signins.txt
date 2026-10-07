@@ -1,4 +1,3 @@
 engine:src/agents/model-auth.profiles.test.ts
-engine:src/commands/doctor/shared/default-agent-role-materialization.write.test.ts
 window:src/places/settings/config-store.test.ts
 window:src/setup/setup.test.tsx

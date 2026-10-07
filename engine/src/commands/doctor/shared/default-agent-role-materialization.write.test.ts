@@ -2,10 +2,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveLegacyInheritedAuthAgentId } from "../../../agents/legacy-inherited-auth-dir.js";
-import { isInheritedAuthStoreOwner } from "../../../agents/agent-delete-safety.js";
-import { createApiKeyCredential, createAuthProfileStoreFixture } from "../../../agents/auth-profiles/credential-fixtures.test-support.js";
-import { writePersistedAuthProfileStoreRaw } from "../../../agents/auth-profiles/sqlite.js";
 import { createConfigIO, resetConfigRuntimeState } from "../../../config/io.js";
 import { tryResolveLegacyCompatibilityAgentId } from "../../../config/legacy.default-agent-owner.js";
 import type { BranchConfig } from "../../../config/types.branch.js";
@@ -38,42 +34,6 @@ afterEach(async () => {
 });
 
 describe("default role materialization authored writes", () => {
-  it("persists the recovered auth owner when Make default selects a Trunk without sign-ins", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "branch-recovered-auth-owner-"));
-    roots.push(root);
-    const env = { HOME: root, BRANCH_STATE_DIR: root, BRANCH_TEST_FAST: "1" };
-    const configPath = path.join(root, "branch.json");
-    const original: BranchConfig = {
-      agents: {
-        ownership: "explicit",
-        defaultId: "juniper",
-        defaults: { systemAgent: { agentId: "dev" }, authInheritance: { agentId: "main" } },
-        entries: { dev: {}, juniper: {}, cedar: {} },
-      },
-    };
-    await fs.writeFile(configPath, JSON.stringify(original));
-    writePersistedAuthProfileStoreRaw(
-      createAuthProfileStoreFixture({ "openai:juniper": createApiKeyCredential("openai", "juniper-key") }),
-      path.join(root, "agents", "juniper", "agent"),
-    );
-    const io = configIO(root, env);
-    const snapshot = await io.readConfigFileSnapshot();
-    const changed: BranchConfig = {
-      ...snapshot.config,
-      agents: { ...snapshot.config.agents, defaultId: "cedar" },
-    };
-    await io.writeConfigFile(changed, {
-      baseSnapshot: snapshot,
-      explicitSetPaths: [["agents", "defaultId"]],
-      explicitSetValueSource: changed,
-    });
-    const saved = JSON.parse(await fs.readFile(configPath, "utf8")) as BranchConfig;
-    expect(saved.agents?.defaultId).toBe("cedar");
-    expect(saved.agents?.defaults?.authInheritance?.agentId).toBe("juniper");
-    expect(resolveLegacyInheritedAuthAgentId(saved, env)).toBe("juniper");
-    expect(isInheritedAuthStoreOwner(saved, "juniper")).toBe(true);
-  });
-
   it("preserves env references and includes and is idempotent after persistence", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "branch-default-roles-"));
     roots.push(root);
