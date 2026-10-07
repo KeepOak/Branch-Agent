@@ -27,6 +27,7 @@ export type { CronEvent } from "./service/state.js";
 /** Public cron service facade that owns mutable scheduler state and delegates to locked ops. */
 export class CronService implements CronServiceContract {
   stopAndDrain?: () => Promise<void>;
+  stopAndDrainForHandoff?: () => Promise<void>;
   private readonly state;
   private startInProgress = 0;
   private startState: { generation: number; promise: Promise<void> } | null = null;

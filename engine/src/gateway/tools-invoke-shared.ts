@@ -20,6 +20,12 @@ import {
   type ConversationReadInvocationOrigin,
 } from "../channels/plugins/conversation-read-origin.js";
 import { getRuntimeConfig } from "../config/io.js";
+import {
+  assertLockdownOff,
+  isLockdownError,
+  isLockdownOn,
+  LOCKDOWN_MESSAGE,
+} from "../config/lockdown.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { logWarn } from "../logger.js";
@@ -240,6 +246,10 @@ async function invokeGatewayToolWithSignal(
   if (!toolName) {
     return failure(400, "invalid_request", "tools.invoke requires name");
   }
+  // Lockdown: the HTTP and RPC tool API acts outside any Trunk run, so it is refused here too.
+  if (isLockdownOn()) {
+    return failure(403, "tool_call_blocked", LOCKDOWN_MESSAGE);
+  }
 
   if (process.env.VITEST && MEMORY_TOOL_NAMES.has(toolName)) {
     const reasons = resolveMemoryToolDisableReasons(params.cfg);
@@ -442,6 +452,7 @@ async function invokeGatewayToolWithSignal(
       async () => {
         assertInvocationCurrent();
         assertCapturedInputCommitAllowed();
+        assertLockdownOff();
         return await tool.execute?.(toolCallId, hookResult.params, params.signal);
       },
     );
@@ -453,6 +464,9 @@ async function invokeGatewayToolWithSignal(
       result,
     };
   } catch (err) {
+    if (isLockdownError(err)) {
+      return failure(403, "tool_call_blocked", LOCKDOWN_MESSAGE);
+    }
     const inputStatus = resolveToolInputErrorStatus(err);
     if (inputStatus !== null) {
       return failure(

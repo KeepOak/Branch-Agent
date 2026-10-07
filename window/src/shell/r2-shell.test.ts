@@ -122,10 +122,14 @@ describe("select several", () => {
 
 describe("the conversation header and cards", () => {
   it("header state words as the preview's statusLine", () => {
-    expect(stateWords({ state: "here", isDefaultTrunk: true, trunkName: "Sapling" })).toBe("The assistant on this computer · ready");
-    expect(stateWords({ state: "here", isDefaultTrunk: false, trunkName: "Fern", role: "Research" })).toBe("Research · ready");
-    expect(stateWords({ state: "working", isDefaultTrunk: false, trunkName: "Fern", workWords: "Working · using the computer" })).toBe("Working · using the computer");
-    expect(stateWords({ state: "waiting", isDefaultTrunk: false, trunkName: "Fern" })).toBe("Waiting for you");
+    expect(stateWords({ state: "idle", isDefaultTrunk: true, trunkName: "Sapling" })).toBe("Your Trunk on this computer · ready");
+    expect(stateWords({ state: "idle", isDefaultTrunk: false, trunkName: "Fern", role: "Research" })).toBe("Research · ready");
+    expect(stateWords({ state: "work", isDefaultTrunk: false, trunkName: "Fern" })).toBe("Working · using the computer");
+    expect(stateWords({ state: "wait", isDefaultTrunk: false, trunkName: "Fern" })).toBe("Waiting for you");
+    expect(stateWords({ state: "sleep", paused: true, isDefaultTrunk: false, trunkName: "Fern" })).toBe("Paused · won’t start anything new");
+    for (const state of ["idle", "talk", "yay", "oops", "sleep"] as const) {
+      expect(stateWords({ state, isDefaultTrunk: false, trunkName: "Fern", role: "Research" })).toBe("Research · ready");
+    }
   });
   it("an action's verbs and rows", () => {
     expect(actionWords("Send this email to Dana?")).toMatchObject({ yes: "Send it", no: "Don’t send" });

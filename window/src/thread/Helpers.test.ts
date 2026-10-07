@@ -16,6 +16,7 @@ describe("helpers chip and marks (§4.2.2, §4.4.10)", () => {
   it("marks each helper from its engine status", () => {
     const h = { key: "k", name: "n", parent: "p" };
     expect(helperMark({ ...h, status: "running" }, false)).toBe("working");
+    expect(helperMark({ ...h, status: "running", updatedAt: Date.now() - 11 * 60_000 }, false)).toBe("stalled");
     expect(helperMark({ ...h, status: "running" }, true)).toBe("waiting");
     expect(helperMark({ ...h, status: "done" }, false)).toBe("done");
     expect(helperMark({ ...h, status: "killed" }, false)).toBe("stopped");

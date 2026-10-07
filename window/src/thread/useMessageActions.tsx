@@ -1,5 +1,5 @@
 // Wires each hover-bar action to its engine method and keeps the dialogs they open (DESIGN-SPEC §4.2.6).
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { askAgain, askedBy, branchFrom, editAndSend, nextAsk, setReaction } from "./actions";
 import { copyText, type ThreadContextValue } from "./context";
 import { BranchDialog, EditDialog, LookInside } from "./dialogs";
@@ -34,6 +34,12 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
   const { engine, name, toast, running } = ctx;
   const [dialog, setDialog] = useState<DialogState>(null);
   const [reading, setReading] = useState<string | null>(readingKey());
+  const [undoContext, setUndoContext] = useState<string | null>(null);
+  useEffect(() => {
+    if (!undoContext) return;
+    const timer = setTimeout(() => setUndoContext(null), 6000);
+    return () => clearTimeout(timer);
+  }, [undoContext]);
   const busy = running ? `Not while ${name} is working.` : null;
   const act = (run: () => void, reason: string | null): Act => ({ run, disabled: engine ? reason : NO_ENGINE });
   const fail = (e: unknown) => toast(errorText(e));
@@ -41,11 +47,17 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
 
   const retry = (userEntryId: string) => {
     if (!engine) return;
-    askAgain(engine, userEntryId).then(reload, fail);
+    // With the window's own send the new turn shows live; reading history again mid-turn would draw it twice.
+    askAgain(engine, userEntryId).then(engine.send ? undefined : reload, fail);
   };
   const react = (entryId: string | undefined, emoji: string, remove = false) => {
     if (!engine || !entryId) return;
     setReaction(engine, entryId, emoji, remove).then((raw) => opts.applyReaction(entryId, raw), fail);
+  };
+  const setContext = (entryId: string, exclude: boolean) => {
+    if (!engine) return;
+    engine.request("session.context.set", { sessionKey: engine.sessionKey, ...(engine.agentId ? { agentId: engine.agentId } : {}), messageId: entryId, exclude })
+      .then(() => { reload(); setUndoContext(exclude ? null : entryId); if (exclude) toast("Left out of context."); }, fail);
   };
 
   const actionsFor = (blocks: readonly Block[], index: number): HoverActions | null => {
@@ -65,6 +77,7 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
       reactDisabled: !engine ? NO_ENGINE : !entryId ? "This message has no engine id yet." : null,
       ...(isReply ? { inspect: act(() => setDialog({ kind: "inspect", block, turn: turnOf(blocks, index) }), null) } : {}),
       branch: act(() => branchAt && setDialog({ kind: "branch", entryId: branchAt }), busy ?? (branchAt ? null : LATEST)),
+      context: { ...act(() => entryId && setContext(entryId, !block.meta?.excluded), busy ?? (entryId ? null : "This message has no engine id yet.")), excluded: block.meta?.excluded === true },
       ...(opts.onStartTopic ? { startConversation: { run: () => entryId && opts.onStartTopic?.(entryId), disabled: entryId ? null : "This message has no engine id yet." } } : {}),
       ...(isReply
         ? {
@@ -89,7 +102,7 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
   const close = () => setDialog(null);
   let node: ReactNode = null;
   if (dialog?.kind === "edit" && engine) {
-    node = <EditDialog text={dialog.text} onClose={close} onSend={async (words) => { await editAndSend(engine, dialog.entryId, words); reload(); }} />;
+    node = <EditDialog text={dialog.text} onClose={close} onSend={async (words) => { await editAndSend(engine, dialog.entryId, words); if (!engine.send) reload(); }} />;
   } else if (dialog?.kind === "branch" && engine) {
     node = (
       <BranchDialog
@@ -104,5 +117,5 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
     const done = dialog.turn.find((b): b is Extract<Block, { kind: "done" }> => b.kind === "done");
     node = <LookInside inspect={{ meta: dialog.block.meta, durationMs: done?.durationMs, steps: dialog.turn.filter((b) => b.kind === "step" || b.kind === "approval").length }} onClose={close} />;
   }
-  return { actionsFor, dialog: node };
+  return { actionsFor, dialog: <>{node}{undoContext ? <div className="context-undo" role="status">Back in context. <button type="button" onClick={() => { setContext(undoContext, true); setUndoContext(null); }}>Undo</button></div> : null}</> };
 }

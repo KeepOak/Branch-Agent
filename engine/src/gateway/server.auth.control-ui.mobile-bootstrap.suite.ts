@@ -81,6 +81,13 @@ export function registerControlUiMobileBootstrapSuite(): void {
     "operator.talk.secrets",
     "operator.write",
   ];
+  const approvePendingDevice = async (deviceId: string) => {
+    const { listDevicePairing } = await import("../infra/device-pairing.js");
+    const { approveDevicePairing } = await import("../infra/device-pairing-approval.js");
+    const pending = (await listDevicePairing()).pending.find((row) => row.deviceId === deviceId);
+    expect(pending).toBeDefined();
+    expect((await approveDevicePairing(pending!.requestId, { callerScopes: ["operator.admin"] }))?.status).toBe("approved");
+  };
 
   const connectSetupCodeBootstrapNode = async (params: {
     identityPrefix: string;
@@ -92,6 +99,7 @@ export function registerControlUiMobileBootstrapSuite(): void {
       deviceFamily: string;
     };
     limited?: boolean;
+    autoApprove?: boolean;
     identityFixture?: Awaited<ReturnType<typeof createOperatorIdentityFixture>>;
   }) => {
     const { issueDeviceBootstrapToken } = await import("../infra/device-bootstrap.js");
@@ -101,14 +109,14 @@ export function registerControlUiMobileBootstrapSuite(): void {
       params.identityFixture ?? (await createOperatorIdentityFixture(params.identityPrefix));
     const { identityPath, identity } = identityFixture;
     try {
-      const wsBootstrap = await openWs(port, REMOTE_BOOTSTRAP_HEADERS);
+      let wsBootstrap = await openWs(port, REMOTE_BOOTSTRAP_HEADERS);
       try {
         const issued = await issueDeviceBootstrapToken({
           profile: params.limited
             ? PAIRING_SETUP_BOOTSTRAP_PROFILE
             : FULL_ACCESS_PAIRING_SETUP_BOOTSTRAP_PROFILE,
         });
-        const initial = await connectReq(wsBootstrap, {
+        const connect = () => connectReq(wsBootstrap, {
           skipDefaultAuth: true,
           bootstrapToken: issued.token,
           role: "node",
@@ -116,7 +124,16 @@ export function registerControlUiMobileBootstrapSuite(): void {
           client: params.client,
           deviceIdentityPath: identityPath,
         });
-        return { identity, initial };
+        const first = await connect();
+        if (params.autoApprove === false) return { identity, initial: first, first };
+        expect(first.ok).toBe(false);
+        expect((first.error?.details as { code?: string } | undefined)?.code).toBe(
+          ConnectErrorDetailCodes.PAIRING_REQUIRED,
+        );
+        await approvePendingDevice(identity.deviceId);
+        wsBootstrap.close();
+        wsBootstrap = await openWs(port, REMOTE_BOOTSTRAP_HEADERS);
+        return { identity, initial: await connect(), first };
       } finally {
         wsBootstrap.close();
       }
@@ -199,12 +216,17 @@ export function registerControlUiMobileBootstrapSuite(): void {
             throw new Error("expected owner-issued Watch setup code");
           }
           const bootstrap = decodePairingSetupCode(setupCode);
-          const response = await connectWatchNode({
+          const connectWatch = () => connectWatchNode({
             baseUrl: `${bootstrap.url.replace("ws:", "http:")}/api/nodes/watch`,
             identity,
             client,
             bootstrapToken: bootstrap.bootstrapToken,
           });
+          const pendingResponse = await connectWatch();
+          expect(pendingResponse.status).toBe(202);
+          expect(await readJson(pendingResponse)).toMatchObject({ reason: "pairing required" });
+          await approvePendingDevice(identity.deviceId);
+          const response = await connectWatch();
           expect(response.status).toBe(200);
           auth = await readJson(response);
           wsOwner.close();
@@ -212,9 +234,9 @@ export function registerControlUiMobileBootstrapSuite(): void {
           const issued = await issueDeviceBootstrapToken({
             profile: VOICE_NODE_PAIRING_SETUP_BOOTSTRAP_PROFILE,
           });
-          const wsBootstrap = await openWs(port, REMOTE_BOOTSTRAP_HEADERS);
+          let wsBootstrap = await openWs(port, REMOTE_BOOTSTRAP_HEADERS);
           sockets.push(wsBootstrap);
-          const initial = await connectReq(wsBootstrap, {
+          const connectVoice = () => connectReq(wsBootstrap, {
             skipDefaultAuth: true,
             bootstrapToken: issued.token,
             role: "node",
@@ -222,6 +244,13 @@ export function registerControlUiMobileBootstrapSuite(): void {
             client,
             deviceIdentityPath: identityPath,
           });
+          const beforeApproval = await connectVoice();
+          expect(beforeApproval.ok).toBe(false);
+          await approvePendingDevice(identity.deviceId);
+          wsBootstrap.close();
+          wsBootstrap = await openWs(port, REMOTE_BOOTSTRAP_HEADERS);
+          sockets.push(wsBootstrap);
+          const initial = await connectVoice();
           if (!initial.ok) {
             throw new Error(`voice-node bootstrap failed: ${JSON.stringify(initial.error)}`);
           }
@@ -395,18 +424,24 @@ export function registerControlUiMobileBootstrapSuite(): void {
       }
       const bootstrap = decodePairingSetupCode(setup.payload.setupCode);
       if (watchHttp) {
-        const response = await connectWatchNode({
+        const connectWatch = () => connectWatchNode({
           baseUrl: `${bootstrap.url.replace("ws:", "http:")}/api/nodes/watch`,
           identity,
           client,
           bootstrapToken: bootstrap.bootstrapToken,
         });
+        const pendingResponse = await connectWatch();
+        expect(pendingResponse.status).toBe(voice ? 202 : 200);
+        if (voice) {
+          await approvePendingDevice(identity.deviceId);
+        }
+        const response = voice ? await connectWatch() : pendingResponse;
         expect(response.status).toBe(200);
         await readJson(response);
       } else {
-        const node = await openWs(port, REMOTE_BOOTSTRAP_HEADERS);
+        let node = await openWs(port, REMOTE_BOOTSTRAP_HEADERS);
         sockets.push(node);
-        const connected = await connectReq(node, {
+        const connectVoice = () => connectReq(node, {
           skipDefaultAuth: true,
           bootstrapToken: bootstrap.bootstrapToken,
           role: "node",
@@ -414,11 +449,19 @@ export function registerControlUiMobileBootstrapSuite(): void {
           client,
           deviceIdentityPath: identityPath,
         });
+        expect((await connectVoice()).ok).toBe(false);
+        await approvePendingDevice(identity.deviceId);
+        node.close();
+        node = await openWs(port, REMOTE_BOOTSTRAP_HEADERS);
+        sockets.push(node);
+        const connected = await connectVoice();
         expect(connected.ok).toBe(true);
       }
       expect(new Set((await getPairedDevice(identity.deviceId))?.approvedScopes)).toEqual(
         new Set(
-          voice ? ["operator.read", "operator.talk"] : ["operator.read", "operator.approvals"],
+          voice
+            ? ["operator.read", "operator.approvals", "operator.talk"]
+            : ["operator.read", "operator.approvals"],
         ),
       );
 
@@ -426,7 +469,9 @@ export function registerControlUiMobileBootstrapSuite(): void {
         oldOperatorClosed,
         rpcReq(oldOperator, "health").then((reply) => reply.ok),
       ]);
-      expect(oldGrantStillConnected).toBe(!voice);
+      // Manual approval merges the operator grant without closing an already
+      // authenticated narrow WebSocket. Watch HTTP rotates its token at handoff.
+      expect(oldGrantStillConnected).toBe(!voice || !watchHttp);
     } finally {
       for (const socket of sockets) {
         socket.close();
@@ -435,7 +480,7 @@ export function registerControlUiMobileBootstrapSuite(): void {
     }
   });
 
-  test("qr setup code returns node token plus full operator handoff", async () => {
+  test("qr setup code returns node token plus full operator handoff only after owner approval", async () => {
     const { issueDeviceBootstrapToken, verifyDeviceBootstrapToken } =
       await import("../infra/device-bootstrap.js");
     const { publicKeyRawBase64UrlFromPem } = await import("../infra/device-identity.js");
@@ -459,8 +504,8 @@ export function registerControlUiMobileBootstrapSuite(): void {
       const issued = await issueDeviceBootstrapToken({
         profile: FULL_ACCESS_PAIRING_SETUP_BOOTSTRAP_PROFILE,
       });
-      const wsBootstrap = await openWs(port, REMOTE_BOOTSTRAP_HEADERS);
-      const initial = await connectReq(wsBootstrap, {
+      let wsBootstrap = await openWs(port, REMOTE_BOOTSTRAP_HEADERS);
+      const connectBootstrap = () => connectReq(wsBootstrap, {
         skipDefaultAuth: true,
         bootstrapToken: issued.token,
         role: "node",
@@ -468,6 +513,19 @@ export function registerControlUiMobileBootstrapSuite(): void {
         client,
         deviceIdentityPath: identityPath,
       });
+      const beforeApproval = await connectBootstrap();
+      expect(beforeApproval.ok).toBe(false);
+      expect((beforeApproval.error?.details as { code?: string } | undefined)?.code).toBe(
+        ConnectErrorDetailCodes.PAIRING_REQUIRED,
+      );
+      expect(await getPairedDevice(identity.deviceId)).toBeFalsy();
+      const pending = (await listDevicePairing()).pending.find((row) => row.deviceId === identity.deviceId);
+      expect(pending).toMatchObject({ roles: ["node", "operator"], scopes: FULL_OPERATOR_SCOPES });
+      const { approveDevicePairing } = await import("../infra/device-pairing-approval.js");
+      expect((await approveDevicePairing(pending!.requestId, { callerScopes: ["operator.admin"] }))?.status).toBe("approved");
+      wsBootstrap.close();
+      wsBootstrap = await openWs(port, REMOTE_BOOTSTRAP_HEADERS);
+      const initial = await connectBootstrap();
       expect(initial.ok).toBe(true);
       const approvedPayload = initial.payload as
         | {
@@ -609,13 +667,14 @@ export function registerControlUiMobileBootstrapSuite(): void {
       },
     },
   ])(
-    "qr setup code auto-approves $name clients when mobile metadata matches",
+    "qr setup code requires owner approval for $name despite matching mobile metadata",
     async ({ client, identityPrefix }) => {
       const { getPairedDevice, listDevicePairing } = await import("../infra/device-pairing.js");
-      const { identity, initial } = await connectSetupCodeBootstrapNode({
+      const { identity, initial, first } = await connectSetupCodeBootstrapNode({
         identityPrefix,
         client,
       });
+      expect(first.ok).toBe(false);
       expect(initial.ok).toBe(true);
       const approvedPayload = initial.payload as
         | {
@@ -776,6 +835,7 @@ export function registerControlUiMobileBootstrapSuite(): void {
       const { identity, initial } = await connectSetupCodeBootstrapNode({
         identityPrefix,
         client,
+        autoApprove: false,
       });
       expect(initial.ok).toBe(false);
       expect(initial.error?.message ?? "").toContain("pairing required");

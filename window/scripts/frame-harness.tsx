@@ -20,6 +20,9 @@ const fixture={
     if(method==='sessions.subscribe')return {list:{sessions:rows}};
     if(method==='sessions.list' && params?.spawnedBy)return {sessions:[]};
     if(method==='agents.list')return agents;
+    if(method==='a2a.peers.list')return {peers:[]};
+    if(method==='contacts.list')return {contacts:[]};
+    if(method==='rooms.list')return {rooms:[]};
     if(method==='sessions.list')return {sessions:rows,defaults:{modelProvider:'local',model:'fixture',thinkingLevel:'medium'}};
     if(method==='sessions.describe')return {session:{key:params.key,modelProvider:'local',model:'fixture',permissionMode:'full'}};
     if(method==='models.list')return {models:[{id:'fixture',provider:'local',name:'Local model',contextWindow:32768}]};

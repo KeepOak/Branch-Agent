@@ -20,9 +20,10 @@ function menu(target: Conversation, current?: Contact) {
   const profile = vi.fn();
   const toggleMute = vi.fn();
   const removeTrunk = vi.fn();
+  const ownWindow = vi.fn();
   const actions = { pin: vi.fn(), setUnread: vi.fn(), archive: vi.fn(), restore: vi.fn(), snooze: vi.fn() };
   const items = rowMenuItems(target, {
-    actions: actions as never, now: 100, trunkName: "Oak", open: vi.fn(), rename, confirmDelete,
+    actions: actions as never, now: 100, trunkName: "Oak", open: vi.fn(), ownWindow, rename, confirmDelete,
     level: "regular", ask: vi.fn(), editTrunk: vi.fn(), tidy: vi.fn(),
     copyMarkdown: vi.fn(), copyText: vi.fn(), copyLink: vi.fn(), profile, contact: current,
     markContactRead: vi.fn(), pinContact: vi.fn(), whoItKnows: vi.fn(), toggleMute, removeTrunk,
@@ -32,10 +33,34 @@ function menu(target: Conversation, current?: Contact) {
     if (item && "run" in item && !item.disabled) item.run();
     return item;
   };
-  return { items, run, rename, confirmDelete, profile, actions, toggleMute, removeTrunk };
+  return { items, run, rename, confirmDelete, profile, actions, toggleMute, removeTrunk, ownWindow };
 }
 
 describe("contact and topic row menus", () => {
+  it("opens contact threads and topics in a separate window", () => {
+    const thread = row("agent:oak:main", { isMain: true });
+    const main = menu(thread, contact("trunk", thread, true));
+    expect(main.run("menu-own-window")).toMatchObject({ label: "Open in its own window" });
+    expect(main.ownWindow).toHaveBeenCalledWith(thread.key);
+    const topic = row("agent:oak:topic");
+    const child = menu(topic);
+    child.run("menu-own-window");
+    expect(child.ownWindow).toHaveBeenCalledWith(topic.key);
+  });
+  it("offers to show an already popped-out conversation", () => {
+    const thread = row("agent:oak:main", { isMain: true });
+    const ownWindow = vi.fn();
+    const items = rowMenuItems(thread, {
+      actions: {} as never, now: 100, trunkName: "Oak", open: vi.fn(), ownWindow,
+      ownWindowOpen: (key) => key === thread.key,
+      rename: vi.fn(), confirmDelete: vi.fn(), level: "regular", ask: vi.fn(), editTrunk: vi.fn(),
+      tidy: vi.fn(), copyMarkdown: vi.fn(), copyText: vi.fn(), copyLink: vi.fn(),
+    });
+    const item = items.find((candidate) => "testid" in candidate && candidate.testid === "menu-own-window");
+    expect(item).toMatchObject({ label: "Show its window" });
+    if (item && "run" in item) item.run();
+    expect(ownWindow).toHaveBeenCalledWith(thread.key);
+  });
   it("matches the final-pass row-menu changes without the duplicate new-conversation action", () => {
     const main = row("agent:oak:main", { kind: "trunk", isMain: true });
     const items = menu(main, contact("trunk", main, true)).items;

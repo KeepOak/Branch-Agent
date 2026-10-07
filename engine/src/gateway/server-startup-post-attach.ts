@@ -686,6 +686,7 @@ export async function startGatewayPostAttachRuntime(
     getCurrentPluginMetadataSnapshot?: () => PluginMetadataSnapshot | undefined;
     getCurrentActivationSourceConfig?: () => BranchConfig | null;
     getCronService?: () => PluginServiceCronHost | null | undefined;
+    activateCronAuthority?: () => void;
     onChannelsStarted?: () => Awaitable<void>;
     onPluginServices?: (pluginServices: PluginServicesHandle | null) => void;
     onPostReadySidecars: (...sidecars: GatewayPostReadySidecarHandle[]) => void;
@@ -851,7 +852,10 @@ export async function startGatewayPostAttachRuntime(
   };
   const startSidecars = () =>
     params.minimalTestGateway
-      ? startStartupLog().then(() => pluginRegistry)
+      ? Promise.resolve().then(() => {
+          params.activateCronAuthority?.();
+          return startStartupLog();
+        }).then(() => pluginRegistry)
       : nextTurn().then(async () => {
           if (params.isClosing?.()) {
             skipStartupLog();
@@ -862,6 +866,7 @@ export async function startGatewayPostAttachRuntime(
             skipStartupLog();
             return pluginRegistry;
           }
+          params.activateCronAuthority?.();
           const startupLog = startStartupLog();
           if (candidateCanary) {
             await startupLog;
