@@ -152,7 +152,6 @@ let engineRestartInProgress = false;
 let recoveryDeferred = false;
 /** A failed update left nothing serving: once recovery brings the previous build back, the bar says it was kept. */
 let keptNoticeAfterRecovery = false;
-let quitting = false;
 let gatewayRecoveryError: string | undefined;
 const gatewaySupervisor = createGatewayCrashSupervisor({
   current: () => gateway,
@@ -265,7 +264,6 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     stillOpen();
     const started = Date.now();
     sendToBranchWindows("branch-desktop:engine-update", "updating");
-    const priorGateway = gateway;
     const resumeSupervision = gatewaySupervisor.expectExit(priorGateway);
     try {
       if (explicit) log(`update ${label}: old engine ${await drainStopGateway(priorGateway)}`);
@@ -304,7 +302,7 @@ async function swapEngineInPlace(label: string, explicit: boolean): Promise<void
     // not have exited yet, and it never became ready.
     if (gateway === priorGateway && engineRunning()) {
       recoveryDeferred = false;
-      const state = controls.settings().autoApplyUpdates && !autoApplyWaitsForOwner(label) ? "auto-wait" : "ready";
+      const state = controls.settings().autoApplyUpdates ? "auto-wait" : "ready";
       sendToBranchWindows("branch-desktop:engine-update", state);
     } else {
       // A new engine that failed may still be alive: stop it (SIGKILL after a grace) before recovery starts another.

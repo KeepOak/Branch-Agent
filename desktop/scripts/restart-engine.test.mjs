@@ -362,7 +362,7 @@ test("a standby that waits for its launcher's word (#411) is told to take over o
 test("after a standby handoff the window and the next swap follow the live port; the configured port is untouched", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
-  const info = () => { const event = { sender: runtime.window.webContents }; runtime.ipcMain.emit("branch-desktop:info", event); return event.returnValue; };
+  const info = () => { const event = { sender: runtime.window.webContents, senderFrame: runtime.window.webContents.mainFrame }; runtime.ipcMain.emit("branch-desktop:info", event); return event.returnValue; };
   await writeFile(join(root, "release-ready"), "ready");
   restart(); await eventually(() => swapped(root));
   const first = JSON.parse(await readFile(join(root, `launch-${(await starts())[1]}.json`), "utf8"));
@@ -434,7 +434,7 @@ test("a window build that arrives with a standby update hands the window the new
   await eventually(() => sent.some(([channel]) => channel === "reload"), 20_000);
   assert.ok(sent.findIndex(([channel]) => channel === "branch-desktop:engine-handoff") < sent.findIndex(([channel]) => channel === "reload"),
     "the window reloaded before it was given the new port");
-  const event = { sender: runtime.window.webContents }; runtime.ipcMain.emit("branch-desktop:info", event);
+  const event = { sender: runtime.window.webContents, senderFrame: runtime.window.webContents.mainFrame }; runtime.ipcMain.emit("branch-desktop:info", event);
   assert.equal(event.returnValue.gatewayUrl, `ws://127.0.0.1:${launch.port}`);
 }, false, false, false, true));
 test("a standby port taken before the engine binds it falls back to the live port without rejecting the update", () => fixture(async ({ root, runtime, starts, restart }) => {
@@ -471,7 +471,7 @@ test("an update that fails after its standby answered /readyz rolls back on the 
   assert.equal(existsSync(join(root, "fail-confirm")), false, "the confirmation failure was never exercised");
   assert.match(await readFile(join(root, "desktop.log"), "utf8"), /standby engine \d+ prepared on port/);
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-handoff"), [], "the window was moved to a rolled-back engine");
-  const event = { sender: runtime.window.webContents }; runtime.ipcMain.emit("branch-desktop:info", event);
+  const event = { sender: runtime.window.webContents, senderFrame: runtime.window.webContents.mainFrame }; runtime.ipcMain.emit("branch-desktop:info", event);
   assert.equal(event.returnValue.gatewayUrl, `ws://127.0.0.1:${gatewayPort}`);
   assert.equal(await readFile(join(root, "gateway-port"), "utf8"), String(gatewayPort));
   const serving = (await starts()).at(-1);
