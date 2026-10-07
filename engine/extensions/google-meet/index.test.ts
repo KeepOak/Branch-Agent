@@ -3273,14 +3273,9 @@ describe("google-meet plugin", () => {
       callbacks.onTranscript?.("user", "Please include launch blockers.", true);
 
       await vi.advanceTimersByTimeAsync(TEST_TALKBACK_DEBOUNCE_MS);
-      // Debounce is virtual; lifecycle admission and session forking use real database IO.
-      vi.useRealTimers();
-      await vi.waitFor(
-        () => {
-          expect(runtime.agent.runEmbeddedAgent).toHaveBeenCalledTimes(1);
-        },
-        { timeout: 10_000 },
-      );
+      await vi.waitFor(() => {
+        expect(runtime.agent.runEmbeddedAgent).toHaveBeenCalledTimes(1);
+      });
       const consultArgs = requireRecord(
         (runtime.agent.runEmbeddedAgent.mock.calls as unknown[][])[0]?.[0],
         "default talk-back agent request",
