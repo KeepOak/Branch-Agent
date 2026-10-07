@@ -26,12 +26,14 @@ the browser process.
 Other common Linux launch failures:
 
 - `No usable sandbox!` on Ubuntu 24.04: AppArmor may block unprivileged user
-  namespaces for the browser executable. Branch Agent probes this restriction
-  and, when blocked, launches its managed browser with `--no-sandbox` and logs
-  the reason. To keep Chromium's sandbox enabled, configure an AppArmor profile
-  that permits user namespaces for the browser. If the probe cannot identify
-  the restriction, the launch fails promptly with a `browser.noSandbox: true`
-  fallback hint instead of waiting for CDP to time out.
+  namespaces for the browser executable. Branch Agent does not probe AppArmor
+  or automatically disable Chromium's sandbox. To keep the sandbox enabled,
+  configure an AppArmor profile that permits user namespaces for the browser.
+  If you knowingly choose to run without Chromium's sandbox, set
+  `browser.noSandbox: true` in `~/.branch/branch.json` (or run
+  `branch config set browser.noSandbox true`). Only then does Branch Agent add
+  `--no-sandbox` when launching its managed browser. Otherwise, a sandbox
+  startup failure reports a `browser.noSandbox: true` hint.
 - `The profile appears to be in use by another Chromium process`: stale
   `Singleton*` lock files in the managed profile directory. Branch Agent removes
   these locks and retries once when the lock points at a dead process on the
