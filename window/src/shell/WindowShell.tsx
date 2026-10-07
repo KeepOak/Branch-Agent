@@ -55,7 +55,7 @@ import { createReadyTrunk } from "../places/trunk/api";
 import { RemoveTrunkDialog, TRUNK_REMOVED_EVENT } from "../places/trunk/RemoveTrunk";
 import { NewTrunkPreview, type TrunkChoice } from "../places/trunk/NewTrunkPreview";
 import type { Roster } from "../places/trunk/model";
-import { readRoster } from "../places/trunk/model";
+import { creationProblem, readRoster } from "../places/trunk/model";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { PairDialog } from "../places/customize/pairing";
 import { Palette } from "./Palette";
@@ -771,7 +771,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       setNewTrunkRoster(null);
       openConversation(key);
     } catch (e) {
-      notify(`Couldn't make the Trunk: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" });
+      notify(creationProblem(e), { tone: "bad" });
     } finally {
       setMakingTrunk(false);
     }

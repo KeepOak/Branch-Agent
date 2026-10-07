@@ -88,6 +88,45 @@ function engine(answers: Record<string, unknown>) {
 const params = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter((c) => c[0] === method).map((c) => c[1] as Record<string, unknown>);
 
 describe("setup flow", () => {
+  it("shows the shared reserved-name wording from WindowShell New Trunk", async () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} });
+    const snapshot = {
+      status: { phase: "connected" }, sessionKey: null, mainKey: null, name: "Branch", history: [], live: [],
+      pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null, doneAt: null,
+      lastActivityAt: null, error: null, steered: [],
+    };
+    const request = vi.fn(async (method: string) => {
+      if (method === "config.get") return { hash: "h", config: { wizard: { lastRunAt: "2026-10-06T00:00:00Z" } } };
+      if (method === "agents.list") return { defaultId: "oak", agents: [{ id: "oak", kind: "agent", name: "Oak" }] };
+      if (method === "agents.create") return { ok: false, error: { message: '"branch" is reserved' } };
+      if (method === "contacts.list") return { contacts: [] };
+      if (method === "rooms.list") return { rooms: [] };
+      if (method === "peers.list" || method === "a2a.peers.list") return { peers: [] };
+      if (method === "channels.status") return { channelOrder: [] };
+      return {};
+    });
+    const session = {
+      request, engine: { request, onEvent: () => () => {}, scopes: ["operator.admin"], agentId: "oak" },
+      gatewayUrl: "ws://127.0.0.1:19661", getSnapshot: () => snapshot, subscribe: () => () => {},
+      onGatewayEvent: () => () => {}, open: vi.fn(async () => {}), reload: vi.fn(),
+    } as unknown as SaplingSession;
+    const host = await show(<WindowShell session={session} url="ws://127.0.0.1:19661" />);
+    await act(async () => new Promise((r) => setTimeout(r, 750)));
+    await act(async () => tid(host, "new").click());
+    await act(async () => tid(host, "new-trunk").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const input = document.querySelector<HTMLInputElement>('[data-testid="new-trunk-preview"] input')!;
+    expect(input).toBeTruthy();
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Branch"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => byText(document.body, "Make Trunk").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(request).toHaveBeenCalledWith("agents.create", expect.objectContaining({ name: "Branch" }));
+    expect(document.body.textContent).toContain("That name is kept for Branch. Choose another Trunk name.");
+    expect(document.body.textContent).not.toContain('"branch" is reserved');
+  });
   it("reopens first-Trunk creation through WindowShell after returning from local-model Settings", async () => {
     vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
     HTMLElement.prototype.scrollIntoView = vi.fn();
