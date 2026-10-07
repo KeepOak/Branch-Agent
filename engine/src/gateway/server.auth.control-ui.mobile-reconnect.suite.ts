@@ -58,6 +58,7 @@ export function registerControlUiMobileReconnectSuite(): void {
       bootstrapServer = started.server;
       const { port } = started;
       const { issueDeviceBootstrapToken } = await import("../infra/device-bootstrap.js");
+      const { approveDevicePairing } = await import("../infra/device-pairing-approval.js");
       const { FULL_ACCESS_PAIRING_SETUP_BOOTSTRAP_PROFILE } =
         await import("../shared/device-bootstrap-profile.js");
       const { getPairedDevice, listDevicePairing } = await import("../infra/device-pairing.js");
@@ -84,10 +85,24 @@ export function registerControlUiMobileReconnectSuite(): void {
         client: nodeClient,
         deviceIdentityPath: identityPath,
       });
-      expect(initial.ok, JSON.stringify(initial.error)).toBe(true);
-      expect(initial.payload?.type).toBe("hello-ok");
+      expect(initial.ok).toBe(false);
+      const pending = (await listDevicePairing()).pending.find((row) => row.deviceId === identity.deviceId);
+      expect(pending).toBeDefined();
+      expect((await approveDevicePairing(pending!.requestId, { callerScopes: ["operator.admin"] }))?.status).toBe("approved");
+      await closeWs(bootstrapWs);
+      bootstrapWs = await openWs(port, REMOTE_BOOTSTRAP_HEADERS);
+      const approved = await connectReq(bootstrapWs, {
+        skipDefaultAuth: true,
+        bootstrapToken: bootstrap.token,
+        role: "node",
+        scopes: [],
+        client: nodeClient,
+        deviceIdentityPath: identityPath,
+      });
+      expect(approved.ok, JSON.stringify(approved.error)).toBe(true);
+      expect(approved.payload?.type).toBe("hello-ok");
 
-      const initialAuth = initial.payload?.auth;
+      const initialAuth = approved.payload?.auth;
       const nodeToken =
         isRecord(initialAuth) && typeof initialAuth.deviceToken === "string"
           ? initialAuth.deviceToken

@@ -13,18 +13,40 @@ function registry(): { reg: HighlightRegistry; Highlight: HighlightCtor } | null
   return css?.highlights && Highlight ? { reg: css.highlights, Highlight } : null;
 }
 
-/** Every case-insensitive match of `query` in the thread's text, as ranges in reading order. */
+/** Every case-insensitive match in visible conversation text, including inline Markdown. Like the preview, controls
+ *  (buttons, text boxes, and each message's hover bar with its time and model label, the preview's .msg-acts) are skipped. */
 export function findRanges(root: HTMLElement, query: string): Range[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
+  // A conversation row is one search unit. Earlier-page wrappers contain several
+  // rows, so split those without joining the end of one message to the next.
+  const scopes = [...root.children].flatMap((child) =>
+    child.classList.contains("segment-page") ? [...child.children] : [child],
+  );
   const ranges: Range[] = [];
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const text = (node.textContent ?? "").toLowerCase();
-    for (let at = text.indexOf(q); at >= 0; at = text.indexOf(q, at + q.length)) {
+  for (const scope of scopes) {
+    const pieces: { node: Text; start: number; end: number }[] = [];
+    let text = "";
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        return node.parentElement?.closest('[aria-hidden="true"], [hidden], script, style, button, textarea, .hover-bar')
+          ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const content = node.textContent ?? "";
+      if (!content) continue;
+      pieces.push({ node: node as Text, start: text.length, end: text.length + content.length });
+      text += content;
+    }
+    const lower = text.toLowerCase();
+    for (let at = lower.indexOf(q); at >= 0; at = lower.indexOf(q, at + q.length)) {
+      const first = pieces.find((piece) => piece.end > at);
+      const last = pieces.find((piece) => piece.end >= at + q.length);
+      if (!first || !last) continue;
       const range = document.createRange();
-      range.setStart(node, at);
-      range.setEnd(node, at + q.length);
+      range.setStart(first.node, at - first.start);
+      range.setEnd(last.node, at + q.length - last.start);
       ranges.push(range);
     }
   }
@@ -47,9 +69,9 @@ function useHighlights(ranges: Range[], current: number): void {
   }, [ranges, current]);
 }
 
-export function FindBar({ root, name, onClose, signature }: { root: RefObject<HTMLElement | null>; name: string; onClose: () => void; signature: string }) {
+export function FindBar({ root, name, onClose, signature, initialQuery = "" }: { root: RefObject<HTMLElement | null>; name: string; onClose: () => void; signature: string; initialQuery?: string }) {
   const input = useRef<HTMLInputElement>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [current, setCurrent] = useState(0);
   const [ranges, setRanges] = useState<Range[]>([]);
   useEffect(() => {
@@ -91,7 +113,7 @@ export function FindBar({ root, name, onClose, signature }: { root: RefObject<HT
 }
 
 /** Ctrl+F (⌘F) opens or focuses find in this conversation. */
-export function useFindKey(open: () => void): void {
+export function useFindKey(open: (query?: string) => void): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "f") {
@@ -101,8 +123,9 @@ export function useFindKey(open: () => void): void {
       }
     };
     // The header's "Find in this conversation" button asks for it too.
-    const onAsk = () => {
-      open();
+    const onAsk = (event: Event) => {
+      const query = (event as CustomEvent<{ query?: string }>).detail?.query;
+      open(query);
       setTimeout(() => document.querySelector<HTMLInputElement>(".find-bar input")?.focus(), 0);
     };
     window.addEventListener("keydown", onKey);

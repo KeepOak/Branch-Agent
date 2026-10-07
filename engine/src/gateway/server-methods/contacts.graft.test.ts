@@ -14,6 +14,10 @@ import {
 } from "../contacts/outside-agents.js";
 
 const removed = vi.hoisted(() => ({ calls: [] as string[], fail: "" }));
+const replyStep = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("../../agents/tools/agent-step.js", () => ({ runAgentStep: replyStep }));
+vi.mock("../call.js", () => ({ callGateway: vi.fn() }));
+vi.mock("../../mcp/graft-link.js", () => ({ ensureGraftLinks: vi.fn(() => ({ states: () => ({}) })) }));
 vi.mock("./devices.js", () => ({
   deviceHandlers: {
     "device.pair.remove": async ({
@@ -59,7 +63,7 @@ async function call(method: string, params: Record<string, unknown>, client: unk
   await contactHandlers[method]!({
     params,
     client,
-    context: { broadcast: () => undefined, getRuntimeConfig: () => ({}) },
+    context: { broadcast: () => undefined, getRuntimeConfig: () => ({}), logGateway: { warn: () => undefined, info: () => undefined } },
     respond: (ok: boolean, payload?: unknown, error?: { message?: string }) => {
       reply = { ok, payload, error };
     },
@@ -71,6 +75,21 @@ const branchB = { id: "branch-b", name: "Branch B", kind: "branch" };
 const scout = { id: "branch-b--scout", name: "Scout", kind: "trunk", via: "branch-b" };
 
 describe("Branch-to-Branch graft on the host", () => {
+  it("exposes saved links and rejects malformed window join requests", async () => {
+    expect((await call("graft.links.list", {}, owner)).payload).toEqual({ links: [] });
+    const invalid = await call("graft.join", { code: "" }, owner);
+    expect(invalid.ok).toBe(false);
+    expect(invalid.error?.message).toContain("Enter a setup code");
+  });
+  it("forgets only a saved link from the joining Branch", async () => {
+    const { saveGraftLink } = await import("../../mcp/graft-join.js");
+    saveGraftLink({ url: "wss://first.example.test", name: "First", joinedAt: Date.now() });
+    saveGraftLink({ url: "wss://second.example.test", name: "Second", joinedAt: Date.now() });
+    expect((await call("graft.links.forget", { url: "wss://missing.example.test" }, owner)).ok).toBe(false);
+    expect((await call("graft.links.forget", { url: "wss://first.example.test" }, owner)).payload).toEqual({ forgotten: "wss://first.example.test" });
+    expect((await call("graft.links.list", {}, owner)).payload.links).toMatchObject([{ url: "wss://second.example.test" }]);
+  });
+
   it("treats only non-admin device connections as grafted devices", () => {
     expect(graftDeviceId(device("dev-b"))).toBe("dev-b");
     expect(graftDeviceId(owner)).toBeUndefined();
@@ -94,6 +113,18 @@ describe("Branch-to-Branch graft on the host", () => {
       "branch-b",
       "branch-b--scout",
     ]);
+  });
+
+  it("routes a local Trunk's work to the joined device and accepts only its reply", async () => {
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    await call("contacts.outside.hello", { agent: { ...scout, trunkId: "scout" } }, device("dev-b"));
+    const sent = await call("graft.work.send", { target: "a2a:branch-b--scout", text: "Ping", sourceSessionKey: "agent:juniper:main", idempotencyKey: "send-1" }, owner);
+    expect(sent.ok).toBe(true);
+    expect((await call("graft.work.poll", {}, device("dev-c"))).ok).toBe(false);
+    expect((await call("graft.work.poll", {}, device("dev-b"))).payload.job).toMatchObject({ id: sent.payload.id, trunkId: "scout", text: "Ping" });
+    expect((await call("graft.work.complete", { id: sent.payload.id, reply: "forged" }, device("dev-c"))).ok).toBe(false);
+    expect((await call("graft.work.complete", { id: sent.payload.id, reply: "PONG" }, device("dev-b"))).ok).toBe(true);
+    expect(replyStep).toHaveBeenCalledWith(expect.objectContaining({ agentId: "juniper", sessionKey: "agent:juniper:main", message: "PONG" }));
   });
 
   it("refuses another device or the owner's tools taking a grafted Branch's rows", async () => {
