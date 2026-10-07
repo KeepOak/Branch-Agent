@@ -16,7 +16,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 6. **Type-check before pushing:** `pnpm -C window typecheck` for window changes; `node scripts/strict-typecheck.mjs` for engine changes (about 6 GB).
 7. **Windows child processes start hidden** (`windowsHide: true`, `CREATE_NO_WINDOW`). Tests never open visible windows.
 8. **Don't touch a running desktop app.** Test engines use their own free loopback ports and data folders, never `19031`/`19032` or the app's data folder. Stop processes by process id, never by name.
-9. **Self-test visible changes** in a scratch engine and window (browser or computer tools, the bridge's `ui_*` tools, or Playwright) and put screenshots in the PR.
+9. **Self-test visible changes** in a scratch engine and window and put screenshots in the PR. Use `.cursor/skills/verify-in-app/SKILL.md`: it starts a test instance, navigates to any screen in `docs/feature-map.json`, and screenshots it. The verification script is `scripts/verify-in-app.mjs`.
 10. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. PR body: what, why, exact test commands and pass counts.
 11. **Merging:** `main` requires the `merge-gate` check. Only the coordinator merges, and only the head that was reviewed: `gh pr merge <n> --squash --match-head-commit <reviewed-sha>`. CI jobs have a hard 15-minute cap: split or shard work rather than raising a timeout.
 12. **Releases are automatic.** A merge touching `engine/`, `window/` or `desktop/` publishes a component release (engine, window, desktop, desktopRuntime) that installed apps pick up within the hour and apply on restart. Treat every merge as shipping.

@@ -1,0 +1,566 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Feature map for Branch desktop app: screens, routes, and implementation sources",
+  "version": "1.0.0",
+  "lastUpdated": "2026-10-07",
+  "places": [
+    {
+      "id": "overview",
+      "name": "Overview",
+      "route": { "kind": "place", "place": "overview" },
+      "navigation": "Click 'Overview' in sidebar",
+      "description": "Dashboard showing health, activity, and system status",
+      "icon": "home",
+      "sources": [
+        "window/src/places/overview/index.tsx",
+        "window/src/places/overview/engine.ts",
+        "window/src/places/overview/People.tsx",
+        "window/src/places/overview/Setup.tsx"
+      ],
+      "mainControls": [
+        { "name": "Health tile", "type": "section" },
+        { "name": "Activity tile", "type": "section" },
+        { "name": "Try again", "type": "button", "condition": "on error" },
+        { "name": "Finish setup", "type": "button", "condition": "incomplete setup" }
+      ]
+    },
+    {
+      "id": "canopy",
+      "name": "Canopy",
+      "route": { "kind": "place", "place": "canopy" },
+      "navigation": "Click 'Canopy' in sidebar",
+      "description": "View and manage all runs, helpers, computers, and cards",
+      "icon": "panel",
+      "sources": [
+        "window/src/places/canopy/index.tsx",
+        "window/src/places/canopy/data.ts",
+        "window/src/places/canopy/NowTab.tsx",
+        "window/src/places/canopy/CardsTab.tsx",
+        "window/src/places/canopy/CardSheet.tsx",
+        "window/src/places/canopy/CardDialogs.tsx"
+      ],
+      "tabs": [
+        {
+          "id": "now",
+          "name": "Now",
+          "navigation": "Click 'Now' tab in Canopy",
+          "description": "Currently running tasks and active sessions"
+        },
+        {
+          "id": "cards",
+          "name": "Cards",
+          "navigation": "Click 'Cards' tab in Canopy",
+          "description": "Saved automation cards and configurations"
+        }
+      ],
+      "mainControls": [
+        { "name": "Now tab", "type": "tab" },
+        { "name": "Cards tab", "type": "tab" },
+        { "name": "Filter controls", "type": "input" },
+        { "name": "Computer status", "type": "display" }
+      ]
+    },
+    {
+      "id": "inbox",
+      "name": "Inbox",
+      "route": { "kind": "place", "place": "inbox" },
+      "navigation": "Click 'Inbox' in sidebar",
+      "description": "Messages, approvals, and notifications requiring attention",
+      "icon": "inbox",
+      "sources": [
+        "window/src/places/inbox/index.tsx",
+        "window/src/places/inbox/data.ts",
+        "window/src/places/inbox/NeedsYou.tsx",
+        "window/src/places/inbox/Tabs.tsx",
+        "window/src/places/inbox/History.tsx",
+        "window/src/places/inbox/Bell.tsx"
+      ],
+      "tabs": [
+        {
+          "id": "needs",
+          "name": "Needs you",
+          "navigation": "Click 'Needs you' tab in Inbox",
+          "description": "Items requiring user action or approval"
+        },
+        {
+          "id": "finished",
+          "name": "Finished",
+          "navigation": "Click 'Finished' tab in Inbox",
+          "description": "Completed tasks and resolved items"
+        },
+        {
+          "id": "history",
+          "name": "History",
+          "navigation": "Click 'History' tab in Inbox",
+          "description": "Historical inbox items"
+        },
+        {
+          "id": "later",
+          "name": "Later",
+          "navigation": "Click 'Later' tab in Inbox",
+          "description": "Deferred items to review later"
+        }
+      ],
+      "mainControls": [
+        { "name": "Needs you tab", "type": "tab" },
+        { "name": "Finished tab", "type": "tab" },
+        { "name": "History tab", "type": "tab" },
+        { "name": "Later tab", "type": "tab" },
+        { "name": "Mark all read", "type": "button" },
+        { "name": "Notifications bell", "type": "button" }
+      ]
+    },
+    {
+      "id": "automations",
+      "name": "Automations",
+      "route": { "kind": "place", "place": "automations" },
+      "navigation": "Click 'Automations' in sidebar",
+      "description": "Scheduled tasks, procedures, triggers, and automation workflows",
+      "icon": "clock",
+      "sources": [
+        "window/src/places/automations/index.tsx",
+        "window/src/places/automations/runtime.ts",
+        "window/src/places/automations/Scheduled.tsx",
+        "window/src/places/automations/Procedures.tsx",
+        "window/src/places/automations/Triggers.tsx",
+        "window/src/places/automations/Checkins.tsx",
+        "window/src/places/automations/Board.tsx"
+      ],
+      "tabs": [
+        {
+          "id": "scheduled",
+          "name": "Scheduled",
+          "navigation": "Click 'Scheduled' tab in Automations",
+          "description": "Time-based scheduled tasks"
+        },
+        {
+          "id": "procedures",
+          "name": "Procedures",
+          "navigation": "Click 'Procedures' tab in Automations",
+          "description": "Defined procedures and workflows"
+        },
+        {
+          "id": "triggers",
+          "name": "Triggers",
+          "navigation": "Click 'Triggers' tab in Automations",
+          "description": "Event-based triggers"
+        },
+        {
+          "id": "checkins",
+          "name": "Check-ins",
+          "navigation": "Click 'Check-ins' tab in Automations",
+          "description": "Periodic check-in tasks"
+        },
+        {
+          "id": "board",
+          "name": "Board",
+          "navigation": "Click 'Board' tab in Automations",
+          "description": "Visual board view of automations"
+        }
+      ]
+    },
+    {
+      "id": "library",
+      "name": "Library",
+      "route": { "kind": "place", "place": "library" },
+      "navigation": "Click 'Library' in sidebar",
+      "description": "Memory, documents, meetings, and created content",
+      "icon": "book",
+      "sources": [
+        "window/src/places/library/index.tsx",
+        "window/src/places/library/data.ts",
+        "window/src/places/library/memory.tsx",
+        "window/src/places/library/documents.tsx",
+        "window/src/places/library/meetings.tsx",
+        "window/src/places/library/made.tsx",
+        "window/src/places/library/logbook.tsx"
+      ],
+      "tabs": [
+        {
+          "id": "memory",
+          "name": "Memory",
+          "navigation": "Click 'Memory' tab in Library",
+          "description": "Saved memories and context"
+        },
+        {
+          "id": "documents",
+          "name": "Documents",
+          "navigation": "Click 'Documents' tab in Library",
+          "description": "Document library"
+        },
+        {
+          "id": "meetings",
+          "name": "Meetings",
+          "navigation": "Click 'Meetings' tab in Library",
+          "description": "Meeting records and notes"
+        },
+        {
+          "id": "made",
+          "name": "Made for you",
+          "navigation": "Click 'Made for you' tab in Library",
+          "description": "AI-generated content"
+        },
+        {
+          "id": "logbook",
+          "name": "Logbook",
+          "navigation": "Click 'Logbook' tab in Library",
+          "description": "Activity logs"
+        }
+      ]
+    },
+    {
+      "id": "people",
+      "name": "People",
+      "route": { "kind": "place", "place": "people" },
+      "navigation": "Click 'People' in sidebar",
+      "description": "Users, groups, teams, shared resources, and access control",
+      "icon": "users",
+      "sources": [
+        "window/src/places/people/index.tsx",
+        "window/src/places/people/data.ts",
+        "window/src/places/people/live.tsx",
+        "window/src/places/people/person.tsx",
+        "window/src/places/people/groups.tsx",
+        "window/src/places/people/shared.tsx",
+        "window/src/places/people/teams.tsx",
+        "window/src/places/people/activity.tsx",
+        "window/src/places/people/usage.tsx",
+        "window/src/places/people/rules.tsx",
+        "window/src/places/people/signin.tsx"
+      ],
+      "tabs": [
+        {
+          "id": "live",
+          "name": "Live now",
+          "navigation": "Click 'Live now' tab in People",
+          "description": "Currently active users and sessions"
+        },
+        {
+          "id": "people",
+          "name": "People",
+          "navigation": "Click 'People' tab in People",
+          "description": "User directory"
+        },
+        {
+          "id": "groups",
+          "name": "Access groups",
+          "navigation": "Click 'Access groups' tab in People",
+          "description": "User groups and permissions"
+        },
+        {
+          "id": "shared",
+          "name": "Shared",
+          "navigation": "Click 'Shared' tab in People",
+          "description": "Shared resources and connections"
+        },
+        {
+          "id": "agents",
+          "name": "Teams",
+          "navigation": "Click 'Teams' tab in People",
+          "description": "Team management"
+        },
+        {
+          "id": "activity",
+          "name": "Activity",
+          "navigation": "Click 'Activity' tab in People",
+          "description": "User activity logs"
+        },
+        {
+          "id": "usage",
+          "name": "Usage",
+          "navigation": "Click 'Usage' tab in People",
+          "description": "Resource usage by people"
+        },
+        {
+          "id": "rules",
+          "name": "Rules",
+          "navigation": "Click 'Rules' tab in People",
+          "description": "Access rules and policies"
+        },
+        {
+          "id": "signin",
+          "name": "Signing in",
+          "navigation": "Click 'Signing in' tab in People",
+          "description": "Authentication and sign-in settings"
+        }
+      ]
+    },
+    {
+      "id": "customize",
+      "name": "Customize",
+      "route": { "kind": "place", "place": "customize" },
+      "navigation": "Click 'Customize' in sidebar",
+      "description": "Configure Trunks, tools, specialists, channels, and global settings",
+      "icon": "sliders",
+      "sources": [
+        "window/src/places/customize/index.tsx",
+        "window/src/places/customize/trunks.tsx",
+        "window/src/places/customize/tools.tsx",
+        "window/src/places/customize/specialists.tsx",
+        "window/src/places/customize/channels.tsx",
+        "window/src/places/customize/everywhere.tsx"
+      ],
+      "tabs": [
+        {
+          "id": "trunks",
+          "name": "Trunks",
+          "navigation": "Click 'Trunks' tab in Customize",
+          "description": "Manage AI assistants (Trunks)"
+        },
+        {
+          "id": "tools",
+          "name": "Tools",
+          "navigation": "Click 'Tools' tab in Customize",
+          "description": "Configure available tools and integrations"
+        },
+        {
+          "id": "specialists",
+          "name": "Specialists",
+          "navigation": "Click 'Specialists' tab in Customize",
+          "description": "Specialized agent configurations"
+        },
+        {
+          "id": "chatapps",
+          "name": "Chat apps",
+          "navigation": "Click 'Chat apps' tab in Customize",
+          "description": "Connect and configure messaging platforms"
+        },
+        {
+          "id": "everywhere",
+          "name": "Everywhere",
+          "navigation": "Click 'Everywhere' tab in Customize",
+          "description": "Global settings across all Trunks"
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "name": "Settings",
+      "route": { "kind": "settings", "page": "general" },
+      "navigation": "Click Settings gear icon",
+      "description": "Application configuration and preferences",
+      "icon": "settings",
+      "sources": [
+        "window/src/places/settings/index.tsx",
+        "window/src/places/settings/pages.tsx",
+        "window/src/places/settings/kit.tsx",
+        "window/src/places-nav/settings-nav.ts"
+      ],
+      "pages": [
+        {
+          "id": "general",
+          "name": "General",
+          "navigation": "Settings › General",
+          "description": "Basic app behavior and startup settings",
+          "sources": ["window/src/places/settings/set1/general.tsx"]
+        },
+        {
+          "id": "people",
+          "name": "People",
+          "navigation": "Settings › People",
+          "description": "User management in settings context",
+          "sources": ["window/src/places/settings/set1/people-mine.tsx"]
+        },
+        {
+          "id": "appearance",
+          "name": "Appearance",
+          "navigation": "Settings › Appearance",
+          "description": "Visual theme and UI customization",
+          "sources": ["window/src/places/settings/set1/appearance.tsx"]
+        },
+        {
+          "id": "notifications",
+          "name": "Notifications",
+          "navigation": "Settings › Notifications",
+          "description": "Notification preferences and delivery",
+          "sources": ["window/src/places/settings/set1/notifications-prefs.tsx"]
+        },
+        {
+          "id": "instructions",
+          "name": "Instructions",
+          "navigation": "Settings › Instructions",
+          "description": "Edit Trunk instruction files",
+          "sources": ["window/src/places/settings/set1/instructions.tsx"]
+        },
+        {
+          "id": "models",
+          "name": "Models",
+          "navigation": "Settings › Models",
+          "description": "AI model selection and configuration",
+          "sources": ["window/src/places/settings/set1/models.tsx"]
+        },
+        {
+          "id": "local",
+          "name": "Local",
+          "navigation": "Settings › Local",
+          "description": "Local model settings",
+          "sources": ["window/src/places/settings/set1/local.tsx"]
+        },
+        {
+          "id": "accounts",
+          "name": "Accounts",
+          "navigation": "Settings › Accounts",
+          "description": "Connected accounts and authentication",
+          "sources": ["window/src/places/settings/set1/accounts.test.tsx", "window/src/places/settings/set1/own-accounts.tsx"]
+        },
+        {
+          "id": "voice",
+          "name": "Voice",
+          "navigation": "Settings › Voice",
+          "description": "Voice input and speech settings",
+          "sources": ["window/src/places/settings/set1/voice.tsx"]
+        },
+        {
+          "id": "chatapps",
+          "name": "Chat apps",
+          "navigation": "Settings › Chat apps",
+          "description": "Connected messaging platform settings",
+          "sources": ["window/src/places/settings/set1/chatapps.tsx"]
+        },
+        {
+          "id": "permissions",
+          "name": "Permissions",
+          "navigation": "Settings › Permissions",
+          "description": "Approval policies and access permissions",
+          "sources": ["window/src/places/settings/set1/permissions-top.tsx"]
+        },
+        {
+          "id": "computer",
+          "name": "Computer",
+          "navigation": "Settings › Computer",
+          "description": "Computer and browser control settings",
+          "sources": ["window/src/places/settings/set2/computer.tsx"]
+        },
+        {
+          "id": "secrets",
+          "name": "Secrets",
+          "navigation": "Settings › Secrets",
+          "description": "Stored credentials and secrets management",
+          "sources": ["window/src/places/settings/set2/secrets.tsx"]
+        },
+        {
+          "id": "usage",
+          "name": "Usage",
+          "navigation": "Settings › Usage",
+          "description": "Resource usage and quota tracking",
+          "sources": ["window/src/places/settings/set2/usage.tsx"]
+        },
+        {
+          "id": "backups",
+          "name": "Backups",
+          "navigation": "Settings › Backups",
+          "description": "Backup configuration and status",
+          "sources": ["window/src/places/settings/set2/backups.tsx"]
+        },
+        {
+          "id": "gateway",
+          "name": "Gateway",
+          "navigation": "Settings › Gateway",
+          "description": "Gateway service configuration",
+          "sources": ["window/src/places/settings/set2/gateway.tsx"]
+        },
+        {
+          "id": "self",
+          "name": "Self",
+          "navigation": "Settings › Self",
+          "description": "Self-modification and maintenance settings",
+          "sources": ["window/src/places/settings/set2/self.tsx"]
+        },
+        {
+          "id": "agents",
+          "name": "Agents",
+          "navigation": "Settings › Agents",
+          "description": "Cloud agent and worker settings",
+          "sources": ["window/src/places/settings/set2/agents.tsx"]
+        },
+        {
+          "id": "seasons",
+          "name": "Seasons",
+          "navigation": "Settings › Seasons",
+          "description": "Memory rings and seasonal improvements",
+          "sources": ["window/src/places/settings/set2/seasons.tsx"]
+        },
+        {
+          "id": "updates",
+          "name": "Updates",
+          "navigation": "Settings › Updates",
+          "description": "Application update settings",
+          "sources": ["window/src/places/settings/set2/updates.tsx"]
+        },
+        {
+          "id": "achievements",
+          "name": "Achievements",
+          "navigation": "Settings › Achievements",
+          "description": "User achievements and milestones",
+          "sources": ["window/src/places/settings/set2/achievements.tsx"]
+        },
+        {
+          "id": "advanced",
+          "name": "Advanced",
+          "navigation": "Settings › Advanced",
+          "description": "Advanced technical settings",
+          "sources": ["window/src/places/settings/set2/advanced.tsx"]
+        },
+        {
+          "id": "developer",
+          "name": "Developer",
+          "navigation": "Settings › Developer",
+          "description": "Developer tools and diagnostic information",
+          "sources": ["window/src/places/settings/set2/developer.tsx"]
+        }
+      ]
+    },
+    {
+      "id": "chat",
+      "name": "Conversation",
+      "route": { "kind": "chat", "key": null },
+      "navigation": "Click conversation in sidebar or open from Places",
+      "description": "Active conversation with a Trunk",
+      "sources": [
+        "window/src/thread/Thread.tsx",
+        "window/src/composer/Composer.tsx",
+        "window/src/face/Face.tsx"
+      ],
+      "mainControls": [
+        { "name": "Message composer", "type": "textarea" },
+        { "name": "Send button", "type": "button" },
+        { "name": "Attachment button", "type": "button" },
+        { "name": "Message thread", "type": "display" }
+      ]
+    }
+  ],
+  "commonControls": [
+    {
+      "name": "Sidebar",
+      "navigation": "Always visible on left side",
+      "sources": ["window/src/shell/Sidebar.tsx"],
+      "controls": [
+        { "name": "Place navigation buttons", "type": "button" },
+        { "name": "Settings gear", "type": "button" },
+        { "name": "Conversation list", "type": "list" }
+      ]
+    },
+    {
+      "name": "Settings navigation",
+      "navigation": "Within Settings view",
+      "sources": ["window/src/places-nav/settings-nav.ts"],
+      "controls": [
+        { "name": "Settings search", "type": "search" },
+        { "name": "Settings category list", "type": "list" }
+      ]
+    }
+  ],
+  "keyNavigationPatterns": [
+    {
+      "pattern": "ui_navigate",
+      "description": "Navigate by clicking control names in sequence",
+      "example": "ui_navigate('Settings › Usage') clicks Settings gear, then Usage",
+      "separator": "›"
+    },
+    {
+      "pattern": "Place tabs",
+      "description": "Navigate tabs with arrow keys, Home, End",
+      "sources": ["window/src/places/library/index.tsx", "window/src/places/canopy/index.tsx"]
+    }
+  ]
+}
