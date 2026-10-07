@@ -524,7 +524,7 @@ test("a new engine that never became ready is stopped, not mistaken for a servin
     "the bar offered Update with no engine serving");
   await writeFile(join(root, "release-ready"), "ready");
   await eventually(async () => { const latest = (await starts()).at(-1); return ![old, unready].includes(latest) && alive(latest) && await servingOn(gatewayPort); }, 30_000);
-}, false, false, false, "never", async () => { process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS = "3000"; }));
+}, false, false, false, "never", false, async () => { process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS = "3000"; }));
 test("a failed new engine that outlives its SIGTERM grace is killed, and the previous build serves again", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
@@ -542,7 +542,7 @@ test("a failed new engine that outlives its SIGTERM grace is killed, and the pre
   // After recovery the bar leaves "Updating Branch…": the owner hears the current version was kept.
   await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"));
   assert.deepEqual(sent.filter(([channel, state]) => channel === "branch-desktop:engine-update" && ["ready", "auto-wait"].includes(state)), []);
-}, false, false, false, "never", async () => { process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS = "3000"; }));
+}, false, false, false, "never", false, async () => { process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS = "3000"; }));
 test("a staged engine that times out and outlives its SIGTERM grace is gone before the retained build starts", () => fixture(async ({ root, starts, restart }) => {
   const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
   await stageFixtureUpdate(root);
@@ -556,7 +556,7 @@ test("a staged engine that times out and outlives its SIGTERM grace is gone befo
   assert.equal(alive(unready), false);
   // The retained build never waited on the failed engine's state: that engine was gone before it started.
   assert.deepEqual(JSON.parse(await readFile(join(root, `launch-${retained}.json`), "utf8")).peers, []);
-}, false, false, false, "never", async () => { process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS = "3000"; }));
+}, false, false, false, "never", false, async () => { process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS = "3000"; }));
 test("a drain reply that arrives after the drain wait still finishes the update instead of failing it", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
@@ -600,7 +600,7 @@ test("launch retires the engines the last session recorded and left holding thei
       assert.match(await readFile(join(root, "desktop.log"), "utf8"), new RegExp(`retiring the last session's standby engine ${orphan.pid} on port ${orphanPort}`));
       // Only the engine this launch started is recorded now.
       assert.deepEqual(JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8")).map(record => record.pid), await starts());
-    }, false, false, false, "never", async (root) => {
+    }, false, false, false, "never", false, async (root) => {
       const orphanIdentity = engineProcessIdentity(orphan.pid), bystanderIdentity = engineProcessIdentity(bystander.pid);
       assert.ok(orphanIdentity && bystanderIdentity);
       await writeFile(join(root, "gateway-engines.json"), JSON.stringify([
