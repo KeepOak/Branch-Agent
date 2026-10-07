@@ -1,0 +1,80 @@
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import type { WindowEngine } from "../connect/engine";
+import { notify } from "../shell/notify";
+import { ROOM_REASONS } from "./room-menu";
+import { roomRulesItems, ruleToast } from "./room-rules";
+import { useShellRoom, type ShellRoom } from "./useShellRoom";
+
+vi.mock("../shell/notify", () => ({ notify: vi.fn() }));
+
+(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+let root: Root | undefined;
+afterEach(async () => {
+  if (root) await act(async () => root!.unmount());
+  root = undefined;
+  document.body.innerHTML = "";
+  vi.mocked(notify).mockClear();
+});
+
+function who(items: ReturnType<typeof roomRulesItems>) {
+  return items.filter((item): item is Extract<(typeof items)[number], { run: () => void; label: string }> => "run" in item && "label" in item).slice(0, 3);
+}
+
+describe("Group rules in a Branch group", () => {
+  it("enables all three Who answers choices and checks @mention", () => {
+    const items = who(roomRulesItems({ chatApp: false, rule: "mention", choose: () => undefined }));
+    expect(items.map((row) => [row.label, Boolean(row.disabled), row.checked])).toEqual([
+      ["A lead Trunk decides", false, false],
+      ["Everyone, every time", false, false],
+      ["Only those you @mention", false, true],
+    ]);
+  });
+
+  it("choosing Everyone or a lead Trunk calls rooms.rule.set and toasts the preview wording", async () => {
+    const request = vi.fn(async () => ({ room: {} }));
+    const names: Record<string, string> = { scout: "Scout", builder: "Builder" };
+    let shell: ShellRoom | undefined;
+    function Harness() {
+      shell = useShellRoom({
+        engine: { request } as unknown as WindowEngine,
+        rowKind: undefined,
+        agentId: "scout",
+        title: "Planning circle",
+        ownTrunk: "Scout",
+        history: [],
+        trunks: [{ id: "scout", name: "Scout" }, { id: "builder", name: "Builder" }],
+        groupRoom: { roomId: "room-1", rule: "mentions", members: [{ kind: "trunk", id: "scout" }, { kind: "trunk", id: "builder" }] },
+        memberName: (_kind, id) => names[id] ?? id,
+      });
+      return null;
+    }
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(<Harness />));
+    expect(shell?.menu?.ruleWords).toBe("mentions only");
+    const items = who(shell!.menu!.rules());
+    await act(async () => items[1]!.run());
+    expect(request).toHaveBeenCalledWith("rooms.rule.set", { roomId: "room-1", rule: "everyone" });
+    expect(notify).toHaveBeenCalledWith("Everyone, every time, in Planning circle from now on.");
+    await act(async () => items[0]!.run());
+    expect(request).toHaveBeenCalledWith("rooms.rule.set", { roomId: "room-1", rule: "lead" });
+    expect(notify).toHaveBeenCalledWith("A lead Trunk decides, in Planning circle from now on.");
+  });
+
+  it("keeps lead greyed in a chat-app group and still sets mention or always", () => {
+    const chosen: string[] = [];
+    const rows = who(roomRulesItems({ chatApp: true, rule: "mention", choose: (rule) => chosen.push(rule) }));
+    expect(rows.map((row) => [row.label, Boolean(row.disabled), row.checked])).toEqual([
+      ["A lead Trunk decides", true, false],
+      ["Everyone, every time", false, false],
+      ["Only those you @mention", false, true],
+    ]);
+    expect(rows[0]?.disabled).toBe(ROOM_REASONS.lead);
+    rows[1]!.run();
+    expect(chosen).toEqual(["always"]);
+    expect(ruleToast("lead", "Planning circle")).toBe("A lead Trunk decides, in Planning circle from now on.");
+  });
+});

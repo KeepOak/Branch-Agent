@@ -44,11 +44,14 @@ export function useShellRoom(a: Args): ShellRoom {
     const all = a.groupRoom.members.map((member) => ({ ...member, name: a.memberName?.(member.kind, member.id) ?? member.id }));
     const names = all.map((member) => member.name).filter((name, index, list) => name && list.indexOf(name) === index);
     const picks = all.slice(0, 2).map((member) => member.kind === "trunk" ? { kind: "trunk" as const, name: member.name } : { kind: "person" as const, id: member.id, name: member.name });
-    const rule = a.groupRoom.rule === "everyone" ? "always" : a.groupRoom.rule === "mentions" ? "mention" : null;
-    const choose = (next: "mention" | "always") => void a.engine?.request("rooms.rule.set", { roomId: a.groupRoom!.roomId, rule: next === "mention" ? "mentions" : "everyone" }).then(
-      () => notify(ruleToast(next, a.title)),
-      (error: unknown) => notify(error instanceof Error ? error.message : String(error), { tone: "bad" }),
-    );
+    const rule = a.groupRoom.rule === "everyone" ? "always" : a.groupRoom.rule === "mentions" ? "mention" : a.groupRoom.rule === "lead" ? "lead" : null;
+    const choose = (next: "mention" | "always" | "lead") => {
+      const engineRule = next === "mention" ? "mentions" : next === "always" ? "everyone" : "lead";
+      void a.engine?.request("rooms.rule.set", { roomId: a.groupRoom!.roomId, rule: engineRule }).then(
+        () => notify(ruleToast(next, a.title)),
+        (error: unknown) => notify(error instanceof Error ? error.message : String(error), { tone: "bad" }),
+      );
+    };
     return {
       thread: { ...thread, isRoom: true }, placeholder: ROOM_PLACEHOLDER,
       header: { faces: (size) => <RoomFaces picks={picks} size={Math.min(size, 34)} />, line: `${names.join(", ")} and you` },
@@ -59,11 +62,13 @@ export function useShellRoom(a: Args): ShellRoom {
   }
   if (!room.isRoom) return { thread, header: null, menu: null, others: [], members: [] };
   const picks = roomPicks(a.ownTrunk, room.members, trunkName);
-  const choose = (rule: "mention" | "always") =>
+  const choose = (rule: "mention" | "always" | "lead") => {
+    if (rule === "lead") return;
     void room.setRule(rule).then(
       () => notify(ruleToast(rule, a.title)),
       (e: unknown) => notify(e instanceof Error ? e.message : String(e), { tone: "bad" }),
     );
+  };
   return {
     thread,
     placeholder: ROOM_PLACEHOLDER,
