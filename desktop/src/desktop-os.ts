@@ -2,10 +2,11 @@
 // the user Path in HKCU\Environment (kept unexpanded, as REG_EXPAND_SZ, then broadcast), and the tray.
 import { nativeImage, powerSaveBlocker, shell, type App, type Tray } from "electron";
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { DesktopConfig } from "./config";
+import { activeEngineDir, defaultCliBinDir, ensureCliLauncher, isOwnedCliLauncher } from "./cli-launcher";
 import { branchShim, branchShShim, editUserPath, pathHas, ringBitmap, type ControlDeps } from "./desktop-controls";
 
 const run = promisify(execFile);
@@ -27,11 +28,33 @@ const writeUserPath = (value: string): Promise<string> => powershell([
   "[Environment]::SetEnvironmentVariable('BRANCH_PATH_REFRESH',$null,'User')",
 ].join("; "), { BRANCH_NEW_PATH: value });
 
+function readOwned(file: string): string | undefined {
+  try {
+    const contents = readFileSync(file, "utf8");
+    return isOwnedCliLauncher(contents) ? contents : undefined;
+  } catch { return undefined; }
+}
+
 export function desktopOs(app: App, cfg: DesktopConfig, tray: () => Tray | undefined, icon: string): ControlDeps {
   const login = { path: process.execPath, args: [START_IN_TRAY] };
-  // branch.cmd for cmd and PowerShell, an extensionless sh script for Git Bash (as npm's cmd-shim writes both).
-  const binDir = join(cfg.dataDir, "bin"), shim = join(binDir, "branch.cmd"), shShim = join(binDir, "branch");
-  const windowsOnly = (): void => { if (process.platform !== "win32") throw new Error("The branch command is added by the Windows app"); };
+  // Windows: branch.cmd for cmd and PowerShell, an extensionless sh script for Git Bash (as npm's cmd-shim writes both).
+  // macOS/Linux: a stable ~/.local/bin/branch that reads the pointer in the data folder.
+  const binDir = defaultCliBinDir(cfg.dataDir);
+  const shim = join(binDir, process.platform === "win32" ? "branch.cmd" : "branch");
+  const shShim = join(binDir, "branch");
+  const active = () => ({
+    dataDir: cfg.dataDir, nodePath: cfg.nodePath,
+    engineDir: activeEngineDir(cfg.dataDir, cfg.engineDir), gatewayPort: cfg.gatewayPort,
+  });
+  const sync = (create: boolean): void => {
+    const current = active();
+    if (process.platform === "win32") {
+      ensureCliLauncher({ launcherPath: shim, active: current, create, kind: "cmd", contents: branchShim(cfg) });
+      ensureCliLauncher({ launcherPath: shShim, active: current, create, kind: "sh", contents: branchShShim(cfg) });
+      return;
+    }
+    ensureCliLauncher({ launcherPath: shim, active: current, create, kind: "sh" });
+  };
   return {
     settingsFile: join(cfg.dataDir, "desktop-settings.json"),
     login: {
@@ -43,25 +66,23 @@ export function desktopOs(app: App, cfg: DesktopConfig, tray: () => Tray | undef
       stop: (id) => { if (powerSaveBlocker.isStarted(id)) powerSaveBlocker.stop(id); },
     },
     cli: {
-      installed: async () => process.platform === "win32" && existsSync(shim) && pathHas(await readUserPath(), binDir),
+      installed: async () => {
+        if (!existsSync(shim) || !readOwned(shim)) return false;
+        if (process.platform === "win32") return pathHas(await readUserPath(), binDir);
+        return true;
+      },
       install: async () => {
-        windowsOnly();
         mkdirSync(binDir, { recursive: true });
-        writeFileSync(shim, branchShim(cfg));
-        writeFileSync(shShim, branchShShim(cfg));
-        await writeUserPath(editUserPath(await readUserPath(), binDir, true));
+        sync(true);
+        if (process.platform === "win32") await writeUserPath(editUserPath(await readUserPath(), binDir, true));
       },
       uninstall: async () => {
-        windowsOnly();
-        await writeUserPath(editUserPath(await readUserPath(), binDir, false));
-        rmSync(shim, { force: true });
-        rmSync(shShim, { force: true });
+        if (process.platform === "win32") await writeUserPath(editUserPath(await readUserPath(), binDir, false));
+        for (const file of process.platform === "win32" ? [shim, shShim] : [shim]) {
+          if (readOwned(file)) rmSync(file, { force: true });
+        }
       },
-      refresh: () => {
-        if (process.platform !== "win32") return;
-        if (existsSync(shim)) writeFileSync(shim, branchShim(cfg));
-        if (existsSync(shShim)) writeFileSync(shShim, branchShShim(cfg));
-      },
+      refresh: () => { sync(false); },
     },
     tray: {
       usage: (left, on) => {
