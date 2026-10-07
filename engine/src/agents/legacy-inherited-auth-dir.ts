@@ -62,9 +62,13 @@ export function resolveLegacyInheritedAuthDir(
 export function pinLegacyInheritedAuthOwnerForRosterTransition(
   sourceConfig: BranchConfig,
   targetConfig: BranchConfig,
+  env: NodeJS.ProcessEnv = process.env,
 ): BranchConfig {
-  const sourceOwner = resolveLegacyInheritedAuthAgentId(sourceConfig);
-  if (sourceOwner === resolveLegacyInheritedAuthAgentId(targetConfig)) {
+  const sourceOwner = resolveLegacyInheritedAuthAgentId(sourceConfig, env);
+  const recoveringEmptyMain =
+    normalizeOptionalString(sourceConfig.agents?.defaults?.authInheritance?.agentId) === "main" &&
+    sourceOwner !== "main";
+  if (!recoveringEmptyMain && sourceOwner === resolveLegacyInheritedAuthAgentId(targetConfig, env)) {
     return targetConfig;
   }
   return {
