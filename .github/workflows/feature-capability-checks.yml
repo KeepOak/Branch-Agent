@@ -54,15 +54,5 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
-      - name: Cache pnpm store
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.local/share/pnpm/store
-            ~/AppData/Local/pnpm/store
-            ~/Library/pnpm/store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml', 'scripts/feature-batch-ci-window-tooling/pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-${{ runner.os }}-
       - name: Verify pins, install frozen dependencies, and run capability tests
         run: node scripts/feature-batch-ci.mjs capabilities
