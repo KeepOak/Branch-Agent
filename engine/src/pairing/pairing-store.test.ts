@@ -7,10 +7,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
 import { DEFAULT_ACCOUNT_ID } from "../routing/session-key.js";
 import type { DB as BranchStateKyselyDatabase } from "../state/branch-state-db.generated.js";
-import {
-  closeBranchStateDatabaseForTest,
-  openBranchStateDatabase,
-} from "../state/branch-state-db.js";
+import { openBranchStateDatabase } from "../state/branch-state-db.js";
+import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
 
 const pairingMocks = vi.hoisted(() => ({
   getPairingAdapter: vi.fn<
@@ -51,8 +49,8 @@ beforeAll(() => {
   fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "branch-pairing-"));
 });
 
-afterAll(() => {
-  closeBranchStateDatabaseForTest();
+afterAll(async () => {
+  await closeStateDatabaseForTest();
   fs.rmSync(fixtureRoot, { recursive: true, force: true });
 });
 
@@ -62,10 +60,10 @@ beforeEach(() => {
   pairingMocks.getPairingAdapter.mockReset();
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.useRealTimers();
   vi.restoreAllMocks();
-  closeBranchStateDatabaseForTest();
+  await closeStateDatabaseForTest();
 });
 
 function createTestEnv(): { stateDir: string; env: NodeJS.ProcessEnv } {
@@ -98,6 +96,56 @@ function writeAllowFromFixture(params: {
 }
 
 describe("pairing store", () => {
+  it.each(["list", "approve"] as const)(
+    "rolls back %s when owner authority is revoked before commit",
+    async (operation) => {
+      const { env } = createTestEnv();
+      const createdAt =
+        operation === "list" ? "2020-01-01T00:00:00.000Z" : new Date().toISOString();
+      writeChannelPairingStateSnapshot(
+        "telegram",
+        {
+          version: 1,
+          requests: [
+            {
+              id: "123",
+              code: "ABCDEFGH",
+              createdAt,
+              lastSeenAt: createdAt,
+              meta: { accountId: "default" },
+            },
+          ],
+          allowFrom: {},
+        },
+        env,
+      );
+      const before = readChannelPairingStateSnapshot("telegram", env);
+      const { db } = openBranchStateDatabase({ env });
+      let admitted = false;
+      const assertCurrent = () => {
+        if (!db.isTransaction) {
+          return;
+        }
+        if (admitted) {
+          throw new Error("owner authority revoked");
+        }
+        admitted = true;
+      };
+
+      await expect(
+        operation === "list"
+          ? listChannelPairingRequests("telegram", env, undefined, assertCurrent)
+          : approveChannelPairingCode({
+              channel: "telegram",
+              code: "ABCDEFGH",
+              env,
+              assertCurrent,
+            }),
+      ).rejects.toThrow("owner authority revoked");
+      expect(readChannelPairingStateSnapshot("telegram", env)).toEqual(before);
+    },
+  );
+
   it("normalizes allowlist entries through channel pairing adapters", async () => {
     const { env } = createTestEnv();
     pairingMocks.getPairingAdapter.mockReturnValue({

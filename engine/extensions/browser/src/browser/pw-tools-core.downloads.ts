@@ -1,7 +1,3 @@
-/**
- * File chooser, dialog, and download helpers for Playwright-backed browser
- * tools.
- */
 import path from "node:path";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import {

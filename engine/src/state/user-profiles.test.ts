@@ -12,7 +12,7 @@ import {
   openBranchStateDatabase,
   runBranchStateWriteTransaction,
 } from "./branch-state-db.js";
-import { getUserPreferences, setUserPreferences } from "./user-preferences.js";
+import { getUserPreferences, setUserPreferences } from "./user-preferences.test-support.js";
 import { onUserProfilesChanged, readUserProfileVersion } from "./user-profile-events.js";
 import { listUserProfilesSync } from "./user-profile-identity.read.js";
 import {
@@ -248,7 +248,9 @@ describe("user profiles", () => {
     const email = "shared@example.test";
     const accountA = github(10, "account-a", { email, initialName: "Account A" });
     setDisplayName(accountA.id, "Account A Custom", options);
-    expect(setUserPreferences(accountA.id, { theme: "grove" }, options)).toMatchObject({ ok: true });
+    expect(setUserPreferences(accountA.id, { theme: "grove" }, options)).toMatchObject({
+      ok: true,
+    });
     const accountB = github(20, "account-b", { email, initialName: "Account B" });
     expect(accountB).toMatchObject({
       displayName: "Account B",

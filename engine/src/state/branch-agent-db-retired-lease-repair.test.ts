@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
 import { migrateLegacyMediaPersistence } from "../infra/state-migrations.media-persistence.js";
+import { withAgentDatabaseMaintenanceLease } from "./branch-agent-db-maintenance-lease.js";
+import { migrateBranchAgentDatabaseForMaintenance } from "./branch-agent-db-maintenance.js";
 import { withBranchAgentDatabaseReadOnly } from "./branch-agent-db-readonly.js";
 import {
   closeBranchAgentDatabasesForTest,
-  migrateBranchAgentDatabaseForMaintenance,
   BRANCH_AGENT_SCHEMA_VERSION,
   openBranchAgentDatabase,
-  withAgentDatabaseMaintenanceLease,
 } from "./branch-agent-db.js";
 import { closeBranchStateDatabaseForTest } from "./branch-state-db.js";
 

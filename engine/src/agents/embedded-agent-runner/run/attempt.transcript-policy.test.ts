@@ -40,6 +40,7 @@ describe("resolveAttemptTranscriptPolicy", () => {
     const runtimePlanModelContext = {
       workspaceDir: "/tmp/branch-transcript-policy",
       modelApi: "anthropic-messages",
+      directApiKey: true,
     };
 
     expect(

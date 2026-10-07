@@ -1,6 +1,7 @@
 // Imessage tests cover monitor.watch subscribe retry plugin behavior.
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import { redactIdentifier } from "branch/plugin-sdk/logging-core";
+import { createTestPluginServiceScheduler } from "branch/plugin-sdk/plugin-test-api";
 import type { waitForTransportReady } from "branch/plugin-sdk/transport-ready-runtime";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRuntimeSpies } from "../../test-support/runtime-spies.js";
@@ -98,6 +99,7 @@ describe("monitorIMessageProvider watch.subscribe startup retry", () => {
       .mockResolvedValueOnce(secondClient);
 
     const monitorPromise = monitorIMessageProvider({
+      scheduler: createTestPluginServiceScheduler(),
       config: { channels: { imessage: {} } } as never,
       runtime: runtime as never,
       statusSink,
@@ -160,6 +162,7 @@ describe("monitorIMessageProvider watch.subscribe startup retry", () => {
     );
 
     const monitorErrorPromise = monitorIMessageProvider({
+      scheduler: createTestPluginServiceScheduler(),
       config: { channels: { imessage: {} } } as never,
       runtime: runtime as never,
       statusSink,
@@ -198,6 +201,7 @@ describe("monitorIMessageProvider watch.subscribe startup retry", () => {
 
     await expect(
       monitorIMessageProvider({
+        scheduler: createTestPluginServiceScheduler(),
         config: { channels: { imessage: {} } } as never,
         runtime: createRuntimeSpies() as never,
         statusSink,
@@ -258,6 +262,7 @@ describe("monitorIMessageProvider watch.subscribe startup retry", () => {
       });
 
       await monitorIMessageProvider({
+        scheduler: createTestPluginServiceScheduler(),
         config: {
           agents: { entries: { main: { identity: { name: "Grove" } } } },
           channels: {
@@ -358,6 +363,7 @@ describe("monitorIMessageProvider watch.subscribe startup retry", () => {
     });
 
     await monitorIMessageProvider({
+      scheduler: createTestPluginServiceScheduler(),
       config: { channels: { imessage: { groupPolicy: "open" } } },
       runtime,
     });

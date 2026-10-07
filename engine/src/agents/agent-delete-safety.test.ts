@@ -76,10 +76,10 @@ describe("shared workspace deletion safety", () => {
       );
       const config: BranchConfig = {
         agents: {
-          list: [
-            { id: "alpha", workspace: workspaceAliasDir },
-            { id: "beta", workspace: workspaceDir },
-          ],
+          entries: {
+            alpha: { workspace: workspaceAliasDir },
+            beta: { workspace: workspaceDir },
+          },
         },
       };
 

@@ -1,16 +1,27 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/process/command-queue.scoped-lanes.test.ts (atlas AGENT-LOOP-0013). Changed for Branch: preserve the existing Branch command-queue singleton namespace in assertions; retained under the Harvest rule that test assertions keep or strengthen upstream behavior.
 // Regression coverage for lifecycle-owned cleanup of ephemeral command lanes.
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
+import { getFileLockProcessStartTime } from "../shared/pid-alive.js";
 import {
   enqueueCommandInLane,
   getCommandLaneSnapshot,
   getTotalQueueSize,
+  listCommandLaneTotals,
   resetCommandLane,
   setCommandLaneConcurrency,
 } from "./command-queue.js";
 import { createLaneQueue, type LaneState } from "./command-queue.state.js";
 import { resetCommandQueueStateForTest } from "./command-queue.test-support.js";
 import { CommandLane } from "./lanes.js";
+import { resolveSessionHandoffLeaseDir, writeSessionHandoffLease } from "./session-handoff-lease-files.js";
+import {
+  refreshSessionHandoffLeases,
+  resetSessionHandoffLeaseGateForTest,
+} from "./session-handoff-lease-gate.js";
 
 vi.mock("../logging/diagnostic-runtime.js", () => ({
   logLaneEnqueue: vi.fn(),
@@ -293,6 +304,35 @@ describe("scoped command lane lifecycle", () => {
       expect(lanes.has(lane)).toBe(false);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it("counts a turn parked behind a previous engine's session lease as queued in that lane", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "branch-scoped-lease-"));
+    const previous = process.env.BRANCH_STATE_DIR;
+    process.env.BRANCH_STATE_DIR = stateDir;
+    resetSessionHandoffLeaseGateForTest();
+    const lane = "session:agent:main:parked";
+    try {
+      // The previous engine: a live process other than this one (the test runner's parent).
+      const { file, lease } = writeSessionHandoffLease(resolveSessionHandoffLeaseDir(), lane);
+      fs.writeFileSync(
+        file,
+        JSON.stringify({ ...lease, pid: process.ppid, startTime: getFileLockProcessStartTime(process.ppid) }),
+      );
+      refreshSessionHandoffLeases();
+      const parked = enqueueCommandInLane(lane, async () => "ran");
+      expect(getCommandLaneSnapshot(lane)).toMatchObject({ queuedCount: 1, activeCount: 0 });
+      expect(listCommandLaneTotals()).toContainEqual({ lane, activeCount: 0, queuedCount: 1 });
+      expect(getTotalQueueSize()).toBe(1);
+      fs.unlinkSync(file);
+      await expect(parked).resolves.toBe("ran");
+      expect(getCommandLaneSnapshot(lane).queuedCount).toBe(0);
+    } finally {
+      resetSessionHandoffLeaseGateForTest();
+      if (previous === undefined) delete process.env.BRANCH_STATE_DIR;
+      else process.env.BRANCH_STATE_DIR = previous;
+      fs.rmSync(stateDir, { recursive: true, force: true });
     }
   });
 });

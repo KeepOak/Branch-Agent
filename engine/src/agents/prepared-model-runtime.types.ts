@@ -163,6 +163,8 @@ export type PreparedModelRuntimeLeaseOptions = {
   retainIdleRunOwner?: boolean;
   catalogMode?: PreparedModelRuntimeCatalogMode;
   pluginGeneration?: PreparedModelRuntimePluginGeneration;
+  /** An already-admitted turn may join a successor after its generation is retired. */
+  rejoinSupersededPluginGeneration?: boolean;
   pluginMetadataSnapshot?: PluginMetadataSnapshot;
   abortSignal?: AbortSignal;
   /** Pure planning against admitted facts; requested selections remain explicit and additive. */
@@ -275,6 +277,8 @@ export type PreparedModelRuntimeOwner = {
 export type PreparedModelRuntimeReplacement = {
   degraded?: boolean;
   gateId: PreparedModelRuntimeReplacementGateId;
+  /** Undefined means a global publication; scoped readers outside this set keep their owner. */
+  agentIds?: ReadonlySet<string>;
   promise: Promise<void>;
   resolve: () => void;
   reject: (error: Error) => void;

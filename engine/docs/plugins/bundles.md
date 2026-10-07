@@ -141,6 +141,8 @@ These are recognized and shown in diagnostics, but Branch Agent does not run the
 ## MCP for embedded Branch Agent
 
 - Enabled bundles can contribute MCP server config.
+- Stdio commands default their working directory to the plugin config directory.
+  Remote HTTP servers do not receive an implicit working directory.
 - Branch Agent merges bundle MCP config into the effective embedded Branch Agent
   settings as `mcpServers`.
 - Branch Agent exposes supported bundle MCP tools during embedded Branch Agent agent

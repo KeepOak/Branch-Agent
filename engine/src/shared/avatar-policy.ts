@@ -1,6 +1,5 @@
 import path from "node:path";
 import { normalizeLowercaseStringOrEmpty } from "@branch/normalization-core/string-coerce";
-import { isPathInside } from "../infra/path-guards.js";
 export { AVATAR_MAX_BYTES } from "./avatar-limits.js";
 
 /**
@@ -85,11 +84,6 @@ export function hasAvatarUriScheme(value: string): boolean {
 /** Detects Windows absolute paths so they are not mistaken for URI schemes. */
 export function isWindowsAbsolutePath(value: string): boolean {
   return WINDOWS_ABS_RE.test(value);
-}
-
-/** Checks that a resolved avatar path remains inside its configured root. */
-export function isPathWithinRoot(rootDir: string, targetPath: string): boolean {
-  return isPathInside(rootDir, targetPath);
 }
 
 /** Heuristically detects strings that look like local avatar file paths. */

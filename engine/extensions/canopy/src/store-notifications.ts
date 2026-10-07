@@ -2,7 +2,7 @@ import type {
   CanopyNotification,
   CanopyNotificationSubscription,
 } from "@branch/canopy-contract";
-import type { PersistedCanopyNotificationSubscription } from "./persistence-types.js";
+import { resolveIntegerOption } from "branch/plugin-sdk/number-runtime";
 import {
   cardRunId,
   cardSessionKey,
@@ -38,12 +38,9 @@ export class CanopyNotificationStore extends CanopyWorkflowStore {
     const boardId = normalizeBoardId(input.boardId);
     const cardId = normalizeBoundedString(input.cardId, undefined, 120, "card id");
     const subscriptions = (await this.subscriptionStore.entries({ boardId, cardId }))
-      .map((entry) => entry.value)
-      .filter(
-        (entry): entry is PersistedCanopyNotificationSubscription =>
-          entry?.version === 1 && Boolean(entry.subscription?.id),
+      .flatMap(({ value }) =>
+        value?.version === 1 && value.subscription?.id ? [value.subscription] : [],
       )
-      .map((entry) => entry.subscription)
       .filter((subscription) => !boardId || subscription.boardId === boardId)
       .filter((subscription) => !cardId || subscription.cardId === cardId)
       .toSorted((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
@@ -68,10 +65,7 @@ export class CanopyNotificationStore extends CanopyWorkflowStore {
     );
     const boardId = normalizeBoardId(input.boardId);
     const cardId = normalizeBoundedString(input.cardId, undefined, 120, "card id");
-    const limit =
-      typeof input.limit === "number" && Number.isFinite(input.limit)
-        ? Math.max(1, Math.min(200, Math.trunc(input.limit)))
-        : 50;
+    const limit = resolveIntegerOption(input.limit, 50, { min: 1, max: 200 });
     const subscriptionEntry = subscriptionId
       ? await this.subscriptionStore.lookup(subscriptionId)
       : undefined;

@@ -20,11 +20,20 @@ async function fixture(body) {
     await writeFile(join(engine, "dist/entry.js"), "export {};\n");
     await writeFile(join(engine, "dist/build-info.json"), JSON.stringify({ commit }));
     await writeFile(join(window, "index.html"), "<!doctype html><title>Branch</title>");
+    const asar = join(root, "desktop-asar"), app = join(root, "desktop-app");
+    await mkdir(asar); await mkdir(join(app, "resources"), { recursive: true });
+    await writeFile(join(asar, "app.asar"), "offline fixture asar");
+    await writeFile(join(app, "Branch Agent.exe"), "offline fixture app"); await writeFile(join(app, "resources/app.asar"), "offline fixture asar");
+    const macApp = join(app, "Branch Agent.app", "Contents");
+    await mkdir(join(macApp, "Resources"), { recursive: true });
+    await mkdir(join(macApp, "MacOS"), { recursive: true });
+    await writeFile(join(macApp, "Resources/app.asar"), "offline fixture asar");
+    await writeFile(join(macApp, "MacOS/Branch Agent"), "offline fixture app");
     for (const [platform, arch] of targets) {
       const output = join(root, platform); await mkdir(output);
-      const manifest = await makeComponentRelease({ version, sourceCommit: commit, tag: `v${version}`, engine, window, output, platform, arch });
-      const name = `branch-desktop-${version}-${platform}-${arch}.${platform === "win32" ? "zip" : "tar.gz"}`;
-      await writeFile(join(output, name), `${platform}/${arch} offline fixture only`);
+      const desktop = { app: asar, electronVersion: "44.5.1", runtime: app };
+      const manifest = await makeComponentRelease({ version, sourceCommit: commit, tag: `v${version}`, engine, window, desktop, output, platform, arch });
+      const name = `branch-desktop-${version}-${platform}-${arch}.tar.gz`;
       const identity = { commit, version, platform, arch, electronVersion: "44.5.1", runtime: {
         electronVersion: "44.5.1", electron: { sha256: "b".repeat(64), bytes: 1 },
         node: { version: "v24.19.0", platform, arch, sha256: "c".repeat(64) } }, smoke: { commit, ready: true, authenticatedHealth: true, exited: true, elapsedMs: 10, runtime: { version: "v24.19.0", platform, arch }, source: "verified-component-archive", archiveSha256: manifest.components.engine.sha256, archiveBytes: manifest.components.engine.bytes, expandedBytes: manifest.components.engine.expandedBytes } };
@@ -50,7 +59,7 @@ async function alterManifest(assets, edit) {
 test("full native release inventories bind all targets to one exact source and shared renderer", () => fixture(async ({ assets }) => {
   const result = await verifyReleaseDirectory(assets, commit, version);
   assert.deepEqual(result.targets, ["darwin-arm64", "linux-x64", "win32-x64"]);
-  assert.equal(Object.keys(result.inventory).length, 13);
+  assert.equal(Object.keys(result.inventory).length, 16);
 }));
 
 for (const [label, edit, message] of [
@@ -77,6 +86,10 @@ for (const [label, edit, message] of [
   ["wrong target metadata", value => { value.components.engine.platform = "linux"; }, /Expected values/],
   ["manifest hash mismatch", value => { value.components.engine.sha256 = "f".repeat(64); }, /Manifest\/asset mismatch/],
   ["unbounded invalid expanded size", value => { value.components.engine.expandedBytes = Infinity; }, /Invalid expanded/],
+  ["missing desktop component", value => { delete value.components.desktop; }, /Missing release component/],
+  ["missing desktop runtime", value => { delete value.components.desktopRuntime; }, /Missing release component/],
+  ["desktop for another Electron", value => { value.components.desktop.electronVersion = "45.0.0"; }, /Desktop component Electron/],
+  ["desktop for another target", value => { value.components.desktop.arch = "arm64"; }, /Expected values/],
 ]) test(`release inventory rejects ${label}`, () => fixture(async ({ assets }) => {
   await alterManifest(assets, edit); await assert.rejects(verifyReleaseDirectory(assets, commit, version), message);
 }));

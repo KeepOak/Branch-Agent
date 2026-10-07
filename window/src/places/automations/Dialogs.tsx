@@ -1,6 +1,7 @@
 // The schedule row menu's dialogs (§4.6.3.1): Remove…, Change where it sends… and When it fails….
 // Each sends one cron.remove / cron.update with only its own field.
 import { useState } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import { Dialog } from "../../shell/Dialog";
 import { Segmented } from "../../shell/Popover";
 import { shows, type Level } from "../../places-nav/level";
@@ -26,7 +27,7 @@ export function SendsDialog({ job, act, onClose, busy, level, trunks }: { job: R
   return <Dialog title={`Where ${jobName(job)} sends`} onClose={onClose} footer={<><button type="button" className="btn ghost sm" onClick={onClose}>Cancel</button><button type="button" className="btn pri sm" disabled={busy} onClick={save}>Save</button></>}>
     <Field label="Sends to"><select className="inp" aria-label="Sends to" value={d.sendsTo} onChange={e => setD({ ...d, sendsTo: e.target.value as SendsTo })}>
       <option value="conversation">{trunk}’s conversation</option>
-      <option value="" disabled title={CHATS_REASON}>Chats in your chat apps · {CHATS_REASON}</option>
+      <option value="" disabled title={shownWhy(CHATS_REASON)}>Chats in your chat apps</option>
       {adv && <option value="nowhere">Nowhere: keep it in History</option>}
       {adv && <option value="webhook">Another app (web address)</option>}
     </select></Field>

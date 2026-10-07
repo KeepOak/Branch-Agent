@@ -50,19 +50,6 @@ function compareSessionCards(left: CanopyCard, right: CanopyCard): number {
   );
 }
 
-function indexCanopySessionCards(cards: readonly CanopyCard[]): Map<string, CanopyCard> {
-  const index = new Map<string, CanopyCard>();
-  for (const card of cards) {
-    for (const key of cardSessionKeys(card)) {
-      const previous = index.get(key);
-      if (!previous || compareSessionCards(card, previous) < 0) {
-        index.set(key, card);
-      }
-    }
-  }
-  return index;
-}
-
 export function findCanopySessionCard(
   cards: readonly CanopyCard[],
   sessionKey: string,
@@ -73,5 +60,14 @@ export function findCanopySessionCard(
   // A local session tail cannot establish its agent owner. Provisional link
   // resolution belongs to session-resolution; this lookup needs recorded identity.
   const key = normalizeSessionKeyForUiComparison(sessionKey);
-  return indexCanopySessionCards(cards).get(key) ?? null;
+  let selected: CanopyCard | null = null;
+  for (const card of cards) {
+    if (
+      cardSessionKeys(card).includes(key) &&
+      (!selected || compareSessionCards(card, selected) < 0)
+    ) {
+      selected = card;
+    }
+  }
+  return selected;
 }

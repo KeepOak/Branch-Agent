@@ -91,10 +91,12 @@ export function buildTranscriptEntries(blocks: readonly Block[], includeToolDeta
       if (split.reasoning) entries.push({ kind: "note", summary: "Thinking", content: split.reasoning, timestamp });
       const content = [split.message, attachments].filter(Boolean).join("\n");
       if (content) entries.push({ kind: "message", author: block.kind === "user" ? "user" : "assistant", content, timestamp });
+    } else if (block.kind === "steer") {
+      entries.push({ kind: "message", author: "user", content: block.text, timestamp: block.meta?.timestamp ? new Date(block.meta.timestamp).toISOString() : "" });
     } else if (block.kind === "thinking") {
       if (block.text.trim()) entries.push({ kind: "note", summary: "Thinking", content: block.text, timestamp: "" });
     } else if (block.kind === "step") {
-      entries.push({ kind: "tool", summary: block.title, details: includeToolDetails ? [block.detail, block.output].filter(Boolean).filter((text, index, values) => values.indexOf(text) === index).join("\n\n") : "", timestamp: "" });
+      entries.push({ kind: "tool", summary: block.title || block.tool, details: includeToolDetails ? [block.detail, block.output].filter(Boolean).filter((text, index, values) => values.indexOf(text) === index).join("\n\n") : "", timestamp: "" });
     } else if (block.kind === "error") {
       entries.push({ kind: "error", content: block.message, timestamp: "" });
     } else if (block.kind === "notice") {

@@ -1,24 +1,51 @@
-import type { Insertable } from "kysely";
+import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
 import {
   resolveSqliteScope,
+  resolveSqliteWriteAdmissionScope,
   toDatabaseOptions,
 } from "../config/sessions/session-accessor.sqlite-scope.js";
-import type { DB as BranchAgentKyselyDatabase } from "../state/branch-agent-db.generated.js";
+import { captureSessionStoreReadCandidates } from "../config/sessions/session-store-target-inventory.js";
+import { withSessionStoreTarget } from "../config/sessions/session-store-target-runtime.js";
+import { withSessionHistoryWorkerReadCandidates } from "../config/sessions/session-transcript-worker-resources.js";
+import { resolveStateDir } from "../config/state-dir.js";
+import { isIncognitoSessionKey } from "../routing/session-key.js";
 import {
   openBranchAgentDatabase,
   runBranchAgentWriteTransaction,
 } from "../state/branch-agent-db.js";
+import {
+  isIncognitoBranchAgentSqlitePath,
+  resolveBranchAgentSqlitePath,
+} from "../state/branch-agent-db.paths.js";
+import { captureBranchAgentDatabaseExecution } from "../state/branch-agent-execution.js";
 import { ensureMessageToolRunOutcomeSchema } from "../state/branch-agent-message-tool-outcome-schema.js";
-import { executeSqliteQuerySync, getNodeSqliteKysely } from "./kysely-sync.js";
+import {
+  openBranchAgentSqliteWorkerStore,
+  type BranchAgentSqliteWorkerStore,
+} from "../state/branch-agent-worker-store.js";
+import {
+  runBranchAgentWorkerWrite,
+  runBranchAgentWriteAdmission,
+} from "../state/branch-agent-write-admission.js";
+import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js";
+import { captureBranchStateReadContext } from "../state/branch-state-worker-context.js";
+import {
+  hydrateBranchStateWorkerError,
+  retainBranchStateWorkerErrorPayload,
+} from "../state/branch-state-worker-error.js";
+import {
+  recordMessageToolRunOutcomeInDatabase,
+  type MessageToolRunOutcomeInsert,
+} from "./message-tool-run-outcome-store.kernel.js";
+import type { MessageToolRunOutcomeWorkerOperations } from "./message-tool-run-outcome-store.worker.js";
+import { runtimeProcessEntrypoints } from "./runtime-process-entrypoints.js";
+import { resolveRuntimeWorkerUrl } from "./runtime-worker-url.js";
+import { throwSqliteLifecycleErrors } from "./sqlite-lifecycle-errors.js";
+import { readDatabasePathIdentitySync } from "./sqlite-worker-identity.js";
+import { createSqliteWorkerOperationAdmission } from "./sqlite-worker-operation-admission.js";
 
-const MESSAGE_TOOL_RUN_OUTCOME_MAX_ROWS = 10_000;
-
-type MessageToolRunOutcomeTable = BranchAgentKyselyDatabase["message_tool_run_outcomes"];
-type MessageToolRunOutcomeDatabase = Pick<BranchAgentKyselyDatabase, "message_tool_run_outcomes">;
-type MessageToolRunOutcomeInsert = Insertable<MessageToolRunOutcomeTable>;
-
-/** Records one bounded completion fact for a message-tool-only run. */
-export function recordMessageToolRunOutcome(params: {
+/** Records one bounded completion fact before the run's owner retires. */
+export async function recordMessageToolRunOutcome(params: {
   runId: string;
   sessionKey: string;
   agentId: string;
@@ -29,7 +56,7 @@ export function recordMessageToolRunOutcome(params: {
   occurredAt: number;
   storePath?: string;
   env?: NodeJS.ProcessEnv;
-}): void {
+}): Promise<void> {
   const values: MessageToolRunOutcomeInsert = {
     run_id: params.runId,
     session_key: params.sessionKey,
@@ -40,30 +67,143 @@ export function recordMessageToolRunOutcome(params: {
     run_status: params.runStatus,
     occurred_at: params.occurredAt,
   };
-  const databaseOptions = toDatabaseOptions(resolveSqliteScope(params));
-  ensureMessageToolRunOutcomeSchema(openBranchAgentDatabase(databaseOptions).db);
-  runBranchAgentWriteTransaction(
-    ({ db }) => {
-      const agentDb = getNodeSqliteKysely<MessageToolRunOutcomeDatabase>(db);
-      executeSqliteQuerySync(db, agentDb.insertInto("message_tool_run_outcomes").values(values));
-      executeSqliteQuerySync(
-        db,
-        agentDb
-          .deleteFrom("message_tool_run_outcomes")
-          .where(
-            "id",
-            "in",
-            agentDb
-              .selectFrom("message_tool_run_outcomes")
-              .select("id")
-              .orderBy("occurred_at", "desc")
-              .orderBy("id", "desc")
-              .limit(2_147_483_647)
-              .offset(MESSAGE_TOOL_RUN_OUTCOME_MAX_ROWS),
-          ),
-      );
-    },
-    databaseOptions,
-    { operationLabel: "message-tool.run-outcome.record" },
+  const env = cloneEnvWithPlatformSemantics(params.env ?? process.env);
+  env.BRANCH_STATE_DIR = resolveStateDir(env);
+  const scope = { ...params, env };
+  if (
+    isIncognitoSessionKey(scope.sessionKey) ||
+    (scope.storePath && isIncognitoBranchAgentSqlitePath(scope.storePath, scope))
+  ) {
+    // Process-held incognito side data stays with its existing in-memory owner.
+    const options = toDatabaseOptions(resolveSqliteScope(scope));
+    ensureMessageToolRunOutcomeSchema(openBranchAgentDatabase(options).db);
+    runBranchAgentWriteTransaction(
+      ({ db }) => recordMessageToolRunOutcomeInDatabase(db, values),
+      options,
+      { operationLabel: "message-tool.run-outcome.record" },
+    );
+    return;
+  }
+  const storePath = scope.storePath ?? resolveBranchAgentSqlitePath(scope);
+  const candidates = captureSessionStoreReadCandidates(storePath);
+  const identities = new Map(
+    candidates
+      .filter((candidate) => !candidate.scope)
+      .map((candidate) => {
+        const identity = readDatabasePathIdentitySync(candidate.path);
+        return [identity.canonicalPath, identity] as const;
+      }),
   );
+  const admission = resolveSqliteWriteAdmissionScope({ ...scope, storePath });
+  const shared = captureBranchStateReadContext(resolveBranchStateSqlitePath(env));
+  // Retain discovery custody before queuing; close must not turn waiting work into a fresh open.
+  await withSessionHistoryWorkerReadCandidates(candidates, async (custody) => {
+    const assertCaptured = () => {
+      custody.assertCurrent();
+      shared.admission.assertCurrent();
+    };
+    const prepare = () =>
+      withSessionStoreTarget(
+        { agentId: scope.agentId, storePath, env, candidates },
+        async (target, owner) => {
+          const options = { ...target.database, env };
+          const identity =
+            identities.get(options.path) ?? readDatabasePathIdentitySync(options.path);
+          if (!identities.has(options.path) && identity.key.startsWith("file:")) {
+            throw new Error("Message-tool outcome target appeared after source capture");
+          }
+          const execution = captureBranchAgentDatabaseExecution(
+            options,
+            identity.key.startsWith("file:")
+              ? {
+                  expectedIdentity: {
+                    kind: "file",
+                    physicalIdentity: identity.key.slice("file:".length),
+                    nativeLocation: identity.canonicalPath,
+                    birthtime: identity.birthtime,
+                  },
+                }
+              : { expectedCreationIdentity: identity },
+          );
+          const assertCurrent = () => {
+            assertCaptured();
+            owner.assertCurrent();
+            execution.assertCurrent();
+          };
+          const failures: unknown[] = [];
+          let worker:
+            | BranchAgentSqliteWorkerStore<MessageToolRunOutcomeWorkerOperations>
+            | undefined;
+          try {
+            await runBranchAgentWriteAdmission(
+              options,
+              async () => {
+                await owner.refreshBeforeDispatch(() => execution.assertCurrent());
+                await runBranchAgentWorkerWrite(options, () =>
+                  execution.prepare({
+                    assertCurrent,
+                    onRegistryChange: owner.onRegistryChange,
+                    createAdmission(binding) {
+                      return () => ({
+                        nativeLocations: binding.nativeLocations,
+                        admission: createSqliteWorkerOperationAdmission((request, grant) => {
+                          binding.authorize(request);
+                          assertCurrent();
+                          if (!grant()) {
+                            throw new Error("Message-tool outcome preparation authority expired");
+                          }
+                        }, binding.attachment),
+                      });
+                    },
+                  }),
+                );
+                await owner.revalidateTarget();
+                worker =
+                  await openBranchAgentSqliteWorkerStore<MessageToolRunOutcomeWorkerOperations>(
+                    options,
+                    { execution },
+                    {
+                      moduleUrl: resolveRuntimeWorkerUrl(
+                        runtimeProcessEntrypoints.messageToolRunOutcomeStore,
+                      ),
+                      input: undefined,
+                    },
+                  );
+                await worker.run(async (writer) => {
+                  for (const command of [
+                    { type: "prepare", input: undefined },
+                    { type: "record", input: values },
+                  ] as const) {
+                    const result = await writer.execute(command);
+                    if (!result.ok) {
+                      const error = new Error("Message-tool outcome transaction failed");
+                      retainBranchStateWorkerErrorPayload(error, result.error);
+                      throw hydrateBranchStateWorkerError(error, { includeOrdinary: true });
+                    }
+                  }
+                }, assertCurrent);
+              },
+              true,
+            );
+          } catch (error) {
+            failures.push(error);
+          } finally {
+            for (const close of [() => worker?.close(), () => execution.release()]) {
+              try {
+                await close();
+              } catch (error) {
+                failures.push(error);
+              }
+            }
+          }
+          throwSqliteLifecycleErrors(failures, "Message-tool outcome recording and cleanup failed");
+        },
+        assertCaptured,
+      );
+    if (admission) {
+      await runBranchAgentWriteAdmission(toDatabaseOptions(admission), prepare, true);
+    } else {
+      await prepare();
+    }
+  });
 }

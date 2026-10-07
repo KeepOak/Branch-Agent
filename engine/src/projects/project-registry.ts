@@ -4,23 +4,14 @@ import { withAgentRosterFactsBatch } from "../agents/agent-scope-config.js";
 import { listAgentIds, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
 import type { BranchConfig } from "../config/types.branch.js";
-import {
-  runBranchStateWriteTransaction,
-  type BranchStateDatabaseOptions,
-} from "../state/branch-state-db.js";
+import type { BranchStateDatabaseOptions } from "../state/branch-state-db.js";
 import type { BranchStateLeaseContext } from "../state/branch-state-lease.js";
 import { captureBranchStateWorkerContext } from "../state/branch-state-worker-context.js";
 import type { BranchStateWorkerContext } from "../state/branch-state-worker-context.types.js";
 import { withProjectCheckoutLifecycle } from "./project-checkout.js";
 import { registerResolvedProject } from "./project-registration.js";
-import {
-  ensureProjectRegistrySchema,
-  removeProjectCheckoutReferenceInDatabase,
-  type ProjectRegistryIdentity,
-  type ProjectRegistryRecord,
-} from "./project-registry.kernel.js";
+import type { ProjectRegistryIdentity, ProjectRegistryRecord } from "./project-registry.types.js";
 
-export type { ProjectRegistryRecord } from "./project-registry.kernel.js";
 export {
   ProjectCheckoutError,
   resolveProjectCheckout,
@@ -219,22 +210,6 @@ export async function selectStoredProjectRegistry(
       }
     },
   };
-}
-
-export function removeProjectCheckoutReference(
-  project: ProjectRegistryRecord,
-  lease: BranchStateLeaseContext,
-  options: BranchStateDatabaseOptions = {},
-): "missing" | "changed" | "remaining" | "final" {
-  ensureProjectRegistrySchema(options);
-  return runBranchStateWriteTransaction(
-    ({ db: sqlite }) => {
-      lease.assertOwnedInTransaction(sqlite);
-      return removeProjectCheckoutReferenceInDatabase(sqlite, project);
-    },
-    options,
-    { operationLabel: "projects.registry.checkout-reference.remove" },
-  );
 }
 
 export async function resolveProjectCloneRefreshOwner(

@@ -1,6 +1,6 @@
 // Background work started from this composer (DESIGN-SPEC §4.3.2 "Run it in the background", §4.3.7 Background
 // chip): each job is its own conversation made with sessions.create { message }, followed with sessions.describe.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { errorText, list, rec, str, type WindowEngine } from "./engine";
 import type { BackgroundJob } from "./DockRow";
 
@@ -9,7 +9,7 @@ function title(text: string): string {
   return one.length > 60 ? `${one.slice(0, 59)}…` : one;
 }
 
-export function useBackground(engine: WindowEngine | undefined, agentId: string | undefined) {
+export function useBackground(engine: WindowEngine | undefined, agentId: string | undefined, mainKey = "main") {
   const [jobs, setJobs] = useState<BackgroundJob[]>([]);
 
   const refresh = useCallback(
@@ -21,6 +21,15 @@ export function useBackground(engine: WindowEngine | undefined, agentId: string 
     },
     [engine],
   );
+
+  // A new connection is a new engine (a restart or an update): ask it again whether each job still runs.
+  const jobsNow = useRef(jobs);
+  jobsNow.current = jobs;
+  useEffect(() => {
+    for (const job of jobsNow.current.filter((j) => j.running)) {
+      refresh(job.key).catch((e: unknown) => console.warn("Couldn't read a background conversation:", errorText(e)));
+    }
+  }, [refresh]);
 
   useEffect(() => {
     if (!engine) return;
@@ -38,7 +47,11 @@ export function useBackground(engine: WindowEngine | undefined, agentId: string 
     async (text: string): Promise<string | null> => {
       if (!engine) return "Not connected to the engine.";
       try {
-        const result = rec(await engine.request("sessions.create", { ...(agentId ? { agentId } : {}), message: text, titleSource: text.slice(0, 1000) }));
+        const first = text.trim();
+        if (!first) return "Write a message to start the conversation.";
+        const id = agentId || engine.agentId;
+        if (!id) return "Choose a Trunk before starting the conversation.";
+        const result = rec(await engine.request("sessions.create", { agentId: id, parentSessionKey: `agent:${id}:${mainKey}`, message: first, displayName: first.replace(/\s+/g, " ").slice(0, 100), titleSource: first.slice(0, 1000) }));
         const key = str(result.key) || str(rec(result.session).key);
         if (!key) return "The engine made no conversation.";
         setJobs((all) => [...all, { key, title: title(text), running: true, step: "Working on it" }]);
@@ -47,7 +60,7 @@ export function useBackground(engine: WindowEngine | undefined, agentId: string 
         return errorText(error);
       }
     },
-    [engine, agentId],
+    [engine, agentId, mainKey],
   );
 
   const stop = useCallback(

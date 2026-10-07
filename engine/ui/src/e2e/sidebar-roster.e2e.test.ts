@@ -104,7 +104,7 @@ suite.define(() => {
         });
         await page.addInitScript(() => {
           localStorage.setItem(
-            "branch:control-ui:community-invite",
+            "branch:control-ui:community-invite:v2",
             JSON.stringify({ dismissedAtMs: Date.now() }),
           );
         });

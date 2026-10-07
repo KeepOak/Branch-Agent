@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/process/command-queue.ts (atlas AGENT-LOOP-0013). Changed for Branch: preserve existing Branch rebranding and enqueue-context task/lifecycle callbacks; retained under the Harvest rule that test assertions keep or strengthen upstream behavior.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { clampPositiveTimerTimeoutMs } from "@branch/normalization-core/number-coercion";
 import { formatErrorMessage, readErrorName, toErrorObject } from "../infra/errors.js";
@@ -6,6 +7,8 @@ import {
   logLaneDequeue,
   logLaneEnqueue,
 } from "../logging/diagnostic-runtime.js";
+import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
+import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import {
   applyCommandLaneCapacity,
   canAdmitInGroup,
@@ -21,7 +24,6 @@ import {
   enqueueLaneQueue,
   type CommandLaneTaskMarker,
   getQueueState,
-  type LaneGroupState,
   type LaneState,
   normalizeLane,
   removeLaneQueueEntry,
@@ -40,6 +42,11 @@ import {
   runWithGatewayRootWorkReadmission,
 } from "./gateway-work-admission.js";
 import { CommandLane, SUBAGENT_LANE_PREFIX, SWARM_LANE_PREFIX } from "./lanes.js";
+import {
+  countSessionHandoffLeaseWaiters,
+  listSessionHandoffLeaseWaiters,
+  waitForSessionHandoffLease,
+} from "./session-handoff-lease-gate.js";
 export {
   GatewayDrainingError,
   isGatewayWorkAdmissionClosed as isGatewayDraining,
@@ -47,6 +54,24 @@ export {
 } from "./gateway-work-admission.js";
 export type { CommandLaneTaskMarker } from "./command-queue.state.js";
 export type { CommandLaneSnapshot } from "./command-queue.types.js";
+const sessionLaneHandoff = resolveGlobalSingleton(Symbol.for("branch.sessionLaneHandoffEnqueue"), () => ({
+  hook: undefined as ((lane: string) => void) | undefined,
+}));
+
+/**
+ * A stepping-down engine's lease holder installs this: it sees every enqueue into a session lane before it runs, so
+ * it can lease the session or refuse it. One at a time; throws while another is installed.
+ */
+export function registerSessionLaneHandoffEnqueue(callback: (lane: string) => void): () => void {
+  if (sessionLaneHandoff.hook) {
+    throw new Error("Session handoff enqueue hook is already installed");
+  }
+  sessionLaneHandoff.hook = callback;
+  return () => {
+    if (sessionLaneHandoff.hook === callback) sessionLaneHandoff.hook = undefined;
+  };
+}
+
 export class CommandLaneClearedError extends Error {
   constructor(lane?: string) {
     super(lane ? `Command lane "${lane}" cleared` : "Command lane cleared");
@@ -424,14 +449,14 @@ function drainLane(
 }
 
 function drainReadyCommandLane(lane: string, completedState?: LaneState): void {
-  if (getLaneGroup(lane)) {
-    drainCommandLaneGroup(lane, drainLane);
-    return;
-  }
-  // An idle scoped lane may have been retired and recreated while an older
-  // task was finishing. Preserve the completion's captured state so its drain
-  // cannot retire a newer registry entry that it never owned.
-  drainLane(lane, Number.POSITIVE_INFINITY, completedState);
+  runInDetachedAsyncContext(() => {
+    if (getLaneGroup(lane)) {
+      drainCommandLaneGroup(lane, drainLane);
+      return;
+    }
+    // An older completion must not retire a recreated lane that it never owned.
+    drainLane(lane, Number.POSITIVE_INFINITY, completedState);
+  });
 }
 
 function updateLaneConcurrency(lane: string, maxConcurrent: number): LaneState[] {
@@ -466,10 +491,9 @@ export function publishLaneConfiguration(config: {
   clearGroups?: readonly string[];
 }): void {
   // Validate before mutation so a rejected group cannot leave widened lanes behind.
-  const validated: LaneGroupState[] = [];
-  for (const [group, spec] of Object.entries(config.groups ?? {})) {
-    validated.push(validateCommandLaneGroupSpec(group, spec));
-  }
+  const validated = Object.entries(config.groups ?? {}).map(([group, spec]) =>
+    validateCommandLaneGroupSpec(group, spec),
+  );
 
   const touched = new Set<string>();
   for (const [rawLane, maxConcurrent] of Object.entries(config.lanes ?? {})) {
@@ -535,7 +559,25 @@ export function enqueueCommandInLane<T>(
   if (isGatewaySubordinateWorkAdmissionClosed()) {
     return Promise.reject(new GatewayDrainingError());
   }
+  const sessionLane = normalizeLane(lane);
+  if (sessionLaneHandoff.hook && sessionLane.startsWith("session:")) {
+    try {
+      sessionLaneHandoff.hook(sessionLane);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
+  // A session a previous engine still finishes after an in-place update is not touched until it is released.
+  const handoffLease = waitForSessionHandoffLease(sessionLane, opts?.abortSignal);
+  if (handoffLease) {
+    const resume = AsyncLocalStorage.snapshot();
+    opts?.onQueued?.();
+    const resumed = opts ? { ...opts } : undefined;
+    if (resumed) delete resumed.onQueued;
+    return handoffLease.then(() => resume(() => enqueueCommandInLane(lane, task, resumed)));
+  }
   const runInAsyncContext = AsyncLocalStorage.snapshot();
+  const { onWait, taskTimeoutProgressAtMs, taskTimeoutSubscribe } = opts ?? {};
   const cleaned = normalizeLane(lane);
   const warnAfterMs = opts?.warnAfterMs ?? 2_000;
   const state = getLaneState(cleaned);
@@ -556,12 +598,19 @@ export function enqueueCommandInLane<T>(
       taskIdentity: opts?.taskIdentity ? { ...opts.taskIdentity } : undefined,
       sessionTarget: opts?.sessionTarget ? { ...opts.sessionTarget } : undefined,
       taskTimeoutMs: clampPositiveTimerTimeoutMs(opts?.taskTimeoutMs),
-      taskTimeoutProgressAtMs: opts?.taskTimeoutProgressAtMs,
-      taskTimeoutSubscribe: opts?.taskTimeoutSubscribe,
+      taskTimeoutProgressAtMs: taskTimeoutProgressAtMs
+        ? () => runInAsyncContext(taskTimeoutProgressAtMs)
+        : undefined,
+      taskTimeoutSubscribe: taskTimeoutSubscribe
+        ? (onDeadline) => {
+            const unsubscribe = runInAsyncContext(taskTimeoutSubscribe, onDeadline);
+            return () => runInAsyncContext(unsubscribe);
+          }
+        : undefined,
       taskTimeoutAbortSignal: opts?.taskTimeoutAbortSignal,
       taskTimeoutAbortGraceMs: clampPositiveTimerTimeoutMs(opts?.taskTimeoutAbortGraceMs),
       taskTimeoutReleaseSignal: opts?.taskTimeoutReleaseSignal,
-      onWait: opts?.onWait,
+      onWait: onWait ? (...args) => runInAsyncContext(onWait, ...args) : undefined,
     };
     entry.queuedAheadAtEnqueue = enqueueLaneQueue(state.queue, entry);
     entry.activeAheadAtEnqueue = state.activeTaskIds.size;
@@ -594,7 +643,7 @@ export function enqueueCommandInLane<T>(
 export function getQueueSize(lane: string = CommandLane.Main) {
   const resolved = normalizeLane(lane);
   const state = getQueueState().lanes.get(resolved);
-  return state ? getLaneDepth(state) : 0;
+  return (state ? getLaneDepth(state) : 0) + countSessionHandoffLeaseWaiters(resolved);
 }
 
 export function getCommandLaneSnapshot(lane: string = CommandLane.Main): CommandLaneSnapshot {
@@ -602,7 +651,8 @@ export function getCommandLaneSnapshot(lane: string = CommandLane.Main): Command
   const state = getQueueState().lanes.get(resolved);
   const snapshot: CommandLaneSnapshot = {
     lane: state?.lane ?? resolved,
-    queuedCount: state?.queue.length ?? 0,
+    // Turns parked behind a previous engine's session lease are queued work too.
+    queuedCount: (state?.queue.length ?? 0) + countSessionHandoffLeaseWaiters(resolved),
     activeCount: state?.activeTaskIds.size ?? 0,
     maxConcurrent: state?.maxConcurrent ?? getDefaultLaneConcurrency(resolved),
     draining: state?.draining ?? false,
@@ -626,11 +676,18 @@ export function listCommandLaneTotals(): Array<{
   activeCount: number;
   queuedCount: number;
 }> {
-  return [...getQueueState().lanes.values()].map((state) => ({
-    lane: state.lane,
-    activeCount: state.activeTaskIds.size,
-    queuedCount: state.queue.length,
-  }));
+  const totals = new Map(
+    [...getQueueState().lanes.values()].map((state) => [
+      state.lane,
+      { lane: state.lane, activeCount: state.activeTaskIds.size, queuedCount: state.queue.length },
+    ]),
+  );
+  for (const { lane, waiters } of listSessionHandoffLeaseWaiters()) {
+    const entry = totals.get(lane) ?? { lane, activeCount: 0, queuedCount: 0 };
+    entry.queuedCount += waiters;
+    totals.set(lane, entry);
+  }
+  return [...totals.values()];
 }
 
 /**
@@ -655,6 +712,9 @@ export function getTotalQueueSize() {
   let total = 0;
   for (const s of getQueueState().lanes.values()) {
     total += getLaneDepth(s);
+  }
+  for (const { waiters } of listSessionHandoffLeaseWaiters()) {
+    total += waiters;
   }
   return total;
 }

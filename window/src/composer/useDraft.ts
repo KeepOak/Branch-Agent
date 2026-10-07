@@ -2,7 +2,7 @@
 // people it tells and its reply target. Switching away and back restores the words (DESIGN-SPEC §4.3.1 rule 4).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pastedTextFile, readDraftFile, type AttachmentPolicy, type DraftFile } from "./attachments";
-import { loadDraft, safeStorage, saveDraft } from "./drafts";
+import { loadDraft, safeStorage, saveDraft, trackDraftFiles } from "./drafts";
 import { MENTION_PEOPLE_MAX } from "./mention";
 import type { Person } from "./DockRow";
 
@@ -13,6 +13,11 @@ export function useDraft(sessionKey: string | null, policy: AttachmentPolicy | u
   const [people, setPeople] = useState<Person[]>([]);
   const [note, setNote] = useState("");
   const keyRef = useRef(sessionKey);
+  const fileOwner = useRef(Symbol("draft files"));
+  useEffect(() => {
+    trackDraftFiles(fileOwner.current, files.length);
+    return () => trackDraftFiles(fileOwner.current, 0);
+  }, [files.length]);
 
   useEffect(() => {
     keyRef.current = sessionKey;

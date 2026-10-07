@@ -1,6 +1,6 @@
 {
   "name": "@branch/bonjour",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "description": "Branch Agent Bonjour/mDNS gateway discovery",
   "type": "module",
   "dependencies": {

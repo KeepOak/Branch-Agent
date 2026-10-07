@@ -1,6 +1,6 @@
 import { isRecord } from "@branch/normalization-core/record-coerce";
+import { normalizeNullableString as readNonemptyString } from "@branch/normalization-core/string-coerce";
 import { mergeChatStreamMessage } from "./chat-stream-message.js";
-import { readSessionProjectionString as readNonemptyString } from "./session-projection-message-identity.js";
 import {
   reduceSessionProjection,
   type SessionProjectionEvent,

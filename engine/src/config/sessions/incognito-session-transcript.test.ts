@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../agents/sessions/session-manager.js";
 import {
+  closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
   inspectBranchAgentDatabaseOwner,
   listBranchRegisteredAgentDatabases,
@@ -124,6 +125,7 @@ describe("session creation scope", () => {
       ).resolves.toMatchObject({ ok: true, sessionFile: key });
       expect(loadSessionEntry(scope)).toMatchObject(updated);
 
+      await closeBranchAgentDatabasesAsync();
       closeBranchAgentDatabasesForTest();
       expect(loadSessionEntry(scope)).toBeUndefined();
       await expect(loadTranscriptEvents(transcriptScope)).resolves.toEqual([]);
@@ -165,6 +167,7 @@ describe("session creation scope", () => {
         expect.objectContaining({ agentId: physicalOwner, path: databasePath }),
       ]);
       expect(fs.existsSync(databasePath)).toBe(true);
+      await closeBranchAgentDatabasesAsync();
       closeBranchAgentDatabasesForTest();
       expect(loadSessionEntry(scope)).toMatchObject(entry);
       await expect(loadTranscriptEvents({ ...scope, sessionId: entry.sessionId })).resolves.toEqual(
@@ -363,6 +366,7 @@ describe("incognito transcript access", () => {
       ]);
       expect(fs.readdirSync(stateDir, { recursive: true })).toEqual([]);
 
+      await closeBranchAgentDatabasesAsync();
       closeBranchAgentDatabasesForTest();
       expect(listSessionEntriesCore({ agentId: "main", env, storePath })).toEqual([]);
       await expect(

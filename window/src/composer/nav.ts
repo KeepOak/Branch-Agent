@@ -2,8 +2,10 @@
 export type OpenTarget =
   | "settings/models"
   | "settings/accounts"
+  | "settings/accounts/add"
   | "settings/permissions"
   | "settings/voice"
+  | "settings/usage"
   | "customize/tools"
   | "local-model-setup";
 

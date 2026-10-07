@@ -3,26 +3,22 @@ import type { DatabaseSync } from "node:sqlite";
 import { isMainThread } from "node:worker_threads";
 import { resolveStateDir } from "../config/paths.js";
 import { isGatewayExternallySupervised } from "../infra/gateway-supervision.js";
+import { registerNodeSqliteDisposeCallback } from "../infra/kysely-sync-cache-state.js";
 import { enableNodeSqliteKyselyStatementCache } from "../infra/kysely-sync.js";
 import {
   openNodeSqliteDatabase,
+  resolveExistingSqliteFileUri,
   supportsNodeSqliteExtensionLoading,
 } from "../infra/node-sqlite.js";
 import type { SqliteFileGeneration } from "../infra/sqlite-file-generation.js";
 import { quarantineOrphanedSqliteSidecars } from "../infra/sqlite-files.js";
 import {
-  confirmSqliteFileIntegrity,
   isTerminalSqliteIntegrityError,
   type SqliteIntegrityDiagnostics,
   type SqliteIntegrityOperation,
   type SqliteIntegrityConfirmation,
 } from "../infra/sqlite-integrity.js";
-import { withSqlitePostCommitPublications } from "../infra/sqlite-post-commit.js";
 import { admitSqliteSchema } from "../infra/sqlite-schema-facts.js";
-import {
-  runSqliteImmediateTransactionSync,
-  type SqliteTransactionOptions,
-} from "../infra/sqlite-transaction.js";
 import { isSqliteSchemaVersionError } from "../infra/sqlite-user-version.js";
 import { prepareSqliteDatabaseDirectory } from "../infra/sqlite-wal-filesystem.js";
 import { createSqliteWalReclamationResult } from "../infra/sqlite-wal-reclamation.js";
@@ -32,8 +28,16 @@ import {
   registerSqliteCacheExitClose,
   type SqliteWalMaintenance,
 } from "../infra/sqlite-wal.js";
+import { assertExistingDatabaseIdentity } from "../infra/sqlite-worker-identity.js";
 import { requestSqliteWorkerOperationAdmission } from "../infra/sqlite-worker-operation-admission.js";
 import { normalizeAgentId } from "../routing/session-key.js";
+import {
+  assertAgentCreationClaimAccess,
+  assertAgentCreationClaimAliases,
+  assertAgentCreationClaimCurrent,
+  registerAgentCreationClaimHandle,
+  reserveAgentCreationClaimAdmission,
+} from "./agent-creation-claim.js";
 import { assertAgentDatabaseAdmitted } from "./agent-database-admission.js";
 import {
   assertAgentDeletionCleanupAliases,
@@ -42,33 +46,35 @@ import {
   registerAgentDeletionDatabaseCleanup,
 } from "./agent-deletion-cleanup.js";
 import { readAgentDeletionJournal } from "./agent-deletion-journal.js";
+import { assertCanonicalSessionValidationSchema } from "./branch-agent-canonical-validation-schema.js";
 import { createBranchAgentDatabaseAdmissionOwner } from "./branch-agent-db-admission.js";
 import type {
   BranchAgentDatabase,
   BranchAgentDatabaseOptions,
   BranchAgentDatabaseRegistrationObserver,
+  BranchAgentDatabaseRepairAdmission,
 } from "./branch-agent-db-contract.js";
 import {
+  assertBranchAgentDatabaseIdentity,
   registerBranchAgentDatabaseIdentity,
   readBranchAgentDatabaseIdentity,
 } from "./branch-agent-db-identity.js";
+import { isSameBootAgentDatabaseLease } from "./branch-agent-db-lease-provenance.js";
 import {
   hasAgentDatabaseMaintenanceAuthority,
   assertBranchAgentDatabaseLease,
   claimBranchAgentDatabaseLease,
-  recordBranchAgentDatabaseIntegrityVerified,
+  recordBranchAgentDatabaseAdmission,
   releaseBranchAgentDatabaseLease,
   type BranchAgentIntegrityVerificationReceiver,
   type prepareBranchAgentDatabaseWorkerLease,
 } from "./branch-agent-db-lease.js";
 import {
   agentDatabaseLifecycle as cache,
-  assertAgentDatabaseTerminalOpenAllowed,
   startAgentDatabaseOpenTiming,
   resolveAgentDatabaseIntegrityGateReason,
   closeCachedBranchAgentDatabase,
   closeMaintenanceAgentDatabase,
-  closeBranchAgentDatabaseByPath,
   closeBranchAgentDatabaseByPathAsync,
   closeBranchAgentDatabases,
   refreshAgentDatabaseIdleTimer,
@@ -80,11 +86,9 @@ import {
 } from "./branch-agent-db-lifecycle.js";
 import { ensureBranchAgentDatabasePermissions } from "./branch-agent-db-permissions.js";
 import { closeIdleBranchAgentDatabaseReadOnly } from "./branch-agent-db-readonly-scope.js";
+import { registerBranchAgentDatabase } from "./branch-agent-db-registry.js";
 import {
-  registerBranchAgentDatabase,
-  unregisterBranchAgentDatabase,
-} from "./branch-agent-db-registry.js";
-import {
+  assertAgentDatabaseResourceAdmission,
   matchesAgentDatabaseReadCandidatePath,
   type BranchAgentDatabaseReadCandidateResource,
 } from "./branch-agent-db-resources.js";
@@ -98,6 +102,7 @@ import {
   agentDatabaseIntegrityBeforeMutationSteps,
   ensureBranchAgentSchema,
 } from "./branch-agent-db-schema.js";
+import { assertAgentDatabaseTerminalOpenAllowed } from "./branch-agent-db-terminal.js";
 import {
   clearBranchAgentDatabaseValidationCache,
   adoptBranchAgentDatabaseValidation,
@@ -112,7 +117,7 @@ import {
   resolveBranchAgentSqlitePath,
 } from "./branch-agent-db.paths.js";
 import { registerBranchAgentWalMaintenance } from "./branch-agent-db.wal.js";
-import { requestBranchAgentDatabaseQuickCheck } from "./branch-database-verify.js";
+import { requestBranchAgentDatabaseIntegrityCheck } from "./branch-database-verify.js";
 import {
   clearBranchDatabaseQuarantine,
   readBranchDatabaseQuarantineFailure,
@@ -130,10 +135,6 @@ export {
   type BranchAgentDatabase,
   type BranchAgentDatabaseOptions,
 } from "./branch-agent-db-contract.js";
-export {
-  assertBranchAgentDatabaseForMaintenance,
-  migrateBranchAgentDatabaseForMaintenance,
-} from "./branch-agent-db-maintenance.js";
 export { deferBranchAgentPostCommitPublication } from "./branch-agent-db-lifecycle.js";
 export { ensureBranchAgentDatabasePermissions } from "./branch-agent-db-permissions.js";
 export {
@@ -147,16 +148,21 @@ export {
   resolveBranchAgentSqlitePath,
 } from "./branch-agent-db.paths.js";
 
-/** Reconfirm an advisory worker failure on the live owner connection. */
+/** Drain the live owner before reconfirming an advisory failure in a native child. */
 export async function confirmBranchAgentDatabaseIntegrity(
   pathname: string,
+  lifetime?: import("./branch-database-verify.impl.js").DatabaseVerifyWorkerLifetime,
 ): Promise<SqliteIntegrityConfirmation> {
   const resolvedPath = path.resolve(pathname);
   await closeBranchAgentDatabaseByPathAsync(resolvedPath);
   // Closing breaks process ownership of the pathname. A replacement must
   // revalidate and claim its schema before the path can become trusted again.
   invalidateBranchAgentDatabaseValidation(resolvedPath);
-  return confirmSqliteFileIntegrity(resolvedPath, resolvedPath);
+  const { confirmDatabaseVerifyWorker } = await import("./branch-database-verify.impl.js");
+  return confirmDatabaseVerifyWorker(
+    { path: resolvedPath, kind: "agent", label: resolvedPath },
+    lifetime,
+  );
 }
 
 /** Latch background verification damage so later opens fail without rescanning. */
@@ -191,6 +197,7 @@ export function clearBranchAgentDatabaseOpenFailure(
 export type { BranchAgentDatabaseWriteAdmission } from "./branch-agent-db-admission.js";
 export const {
   openBranchAgentDatabase,
+  runBranchAgentWriteTransaction,
   withBranchAgentDatabaseAsync,
   withBranchAgentDatabaseAdmission,
 } = createBranchAgentDatabaseAdmissionOwner(openBranchAgentDatabaseSteps);
@@ -200,21 +207,40 @@ function* openBranchAgentDatabaseSteps(
   pending?: PendingAgentDatabaseOpen,
   preparedLease?: ReturnType<typeof prepareBranchAgentDatabaseWorkerLease>,
   registrationObserver?: BranchAgentDatabaseRegistrationObserver,
+  repairAdmission?: BranchAgentDatabaseRepairAdmission,
 ): SqliteIntegrityOperation<BranchAgentDatabase> {
   const agentId = normalizeAgentId(options.agentId);
   assertAgentDatabaseAdmitted(agentId, { env: options.env });
   const databaseOptions = { ...options, agentId };
   const pathname = resolveBranchAgentSqlitePath(databaseOptions);
+  const assertCurrent = (database?: Pick<BranchAgentDatabase, "db" | "path">) => {
+    repairAdmission?.assertCurrent?.();
+    if (repairAdmission?.expectedIdentity) {
+      if (database) {
+        assertBranchAgentDatabaseIdentity(database, repairAdmission.expectedIdentity);
+      } else {
+        assertExistingDatabaseIdentity(
+          pathname,
+          repairAdmission.expectedIdentity.key,
+          repairAdmission.expectedIdentity.birthtime,
+        );
+      }
+    }
+  };
+  assertCurrent();
+  assertAgentCreationClaimCurrent(databaseOptions);
   getAgentDeletionDatabaseCleanup(databaseOptions)?.assertCurrent();
   const incognito = isIncognitoBranchAgentSqlitePath(pathname, databaseOptions);
   // A live successful cache entry is authoritative; failed entries remain only for disposal.
   const opened = getBranchAgentDatabaseIfOpen(databaseOptions);
   if (opened) {
+    assertCurrent(opened);
     if (preparedLease) {
       throw new Error("A prepared Worker lease cannot adopt an existing agent database handle");
     }
     return opened;
   }
+  assertAgentDatabaseResourceAdmission({ agentId, path: pathname });
   if (!pending) {
     revokePendingAgentDatabaseOpen(pathname);
   }
@@ -233,6 +259,14 @@ function* openBranchAgentDatabaseSteps(
     // and no directory, lease, registry row, WAL sidecar, or file write may be created.
     const db = openNodeSqliteDatabase(":memory:", { allowExtension });
     db.enableLoadExtension(false);
+    if (!isMainThread) {
+      // Worker-owned incognito must never spill SQLite temporary content to disk.
+      db.exec("PRAGMA temp_store=MEMORY");
+      // sqlite-allow-raw -- Admit the memory-only policy before schema work can use temporary pages.
+      if (db.prepare("PRAGMA temp_store").get()?.temp_store !== 2) {
+        throw new Error("Incognito actor requires memory-only SQLite temporary storage");
+      }
+    }
     configureSqlitePreSchemaPragmas(db, {
       busyTimeoutMs: BRANCH_SQLITE_BUSY_TIMEOUT_MS,
     });
@@ -244,19 +278,22 @@ function* openBranchAgentDatabaseSteps(
     });
     ensureBranchAgentSchema(db, agentId, pathname);
     admitSqliteSchema(db);
+    assertCanonicalSessionValidationSchema(db);
     registerBranchAgentDatabaseIdentity(db);
     const database = { agentId, db, path: pathname, walMaintenance };
     cache.incognito.add(database);
     cache.unregisterExitClose ??= registerSqliteCacheExitClose(closeBranchAgentDatabases);
     cache.databases.set(pathname, database);
     cache.generation += 1;
-    retainIncognitoSharedState(db, options.env);
+    registerNodeSqliteDisposeCallback(db, retainIncognitoSharedState(options.env));
     getBranchDatabaseMaintenanceScope()?.own(database.db, "agent-handles", () =>
       closeMaintenanceAgentDatabase(database),
     );
     return database;
   }
-  quarantineOrphanedSqliteSidecars(pathname);
+  if (!repairAdmission?.expectedIdentity) {
+    quarantineOrphanedSqliteSidecars(pathname);
+  }
   // Latched paths are quarantined; every fresh open fails fast here until
   // doctor repairs the file and clears the latch plus the persisted row.
   assertAgentDatabaseTerminalOpenAllowed(pathname);
@@ -290,21 +327,25 @@ function* openBranchAgentDatabaseSteps(
   let verification: BranchAgentIntegrityVerification | undefined;
   let reuseIntegrity = false;
   let integrityRevoked = false;
+  let processDeath = false;
   const validation = pending?.validation ?? preparedLease?.validation;
   const captureVerification: BranchAgentIntegrityVerificationReceiver = (
     record,
     runtimeIntegrityAllowed,
     invalidated,
+    deadOwner,
   ) => {
     verification = record;
     reuseIntegrity = runtimeIntegrityAllowed;
     integrityRevoked = invalidated;
+    processDeath = deadOwner;
     if (invalidated && validation) {
       // Stale-peer cleanup precedes adoption of proof already transferred by the host.
       Atomics.store(new Int32Array(validation.valid), 0, 0);
     }
   };
   const releaseOptions = { env: leaseEnvironment, initializationAgentPaths: [pathname] };
+  assertCurrent();
   const leaseId = preparedLease
     ? preparedLease.claim(captureVerification)
     : claimBranchAgentDatabaseLease(
@@ -330,21 +371,32 @@ function* openBranchAgentDatabaseSteps(
   let openedDb: DatabaseSync | undefined;
   let openedDatabase: BranchAgentDatabase | undefined;
   let openedWalMaintenance: SqliteWalMaintenance | undefined;
+  let releaseCreationAdmission: (() => void) | undefined;
   try {
-    ensureBranchAgentDatabasePermissions(pathname, databaseOptions);
-    prepareSqliteDatabaseDirectory(pathname);
+    assertCurrent();
+    if (!repairAdmission?.expectedIdentity) {
+      ensureBranchAgentDatabasePermissions(pathname, databaseOptions);
+      prepareSqliteDatabaseDirectory(pathname);
+    }
     closeIdleBranchAgentDatabaseReadOnly(pathname);
     // Ordinary agent state also works with SQLite builds that omit extensions.
     // Trusted borrowers may enable them only when both the runtime and permissions allow it.
-    const db = openNodeSqliteDatabase(pathname, { allowExtension });
+    const db = openNodeSqliteDatabase(
+      repairAdmission?.expectedIdentity ? resolveExistingSqliteFileUri(pathname) : pathname,
+      { allowExtension },
+    );
+    openedDb = db;
+    registerBranchAgentDatabaseIdentity(db);
+    assertCurrent({ db, path: pathname });
+    if (repairAdmission?.expectedIdentity) {
+      ensureBranchAgentDatabasePermissions(pathname, databaseOptions);
+    }
     db.enableLoadExtension(false);
     enableNodeSqliteKyselyStatementCache(db);
-    openedDb = db;
     if (preparedLease) {
       // Worker TEMP policy precedes schema/session caches and any exposed connection.
       db.exec("PRAGMA temp_store = FILE");
     }
-    registerBranchAgentDatabaseIdentity(db);
     finishPhase("open");
     // Eviction churn must avoid migration/convergence and registry busy waits.
     // Version and owner can change while evicted, so their read-only gates run on every open.
@@ -359,6 +411,15 @@ function* openBranchAgentDatabaseSteps(
       assertSupportedAgentSchemaVersion(db, pathname);
       const existingSchema = readExistingAgentSchemaMeta(db);
       assertExistingAgentSchemaOwner(existingSchema, agentId, pathname);
+      if (pending) {
+        releaseCreationAdmission = reserveAgentCreationClaimAdmission(
+          pending,
+          databaseOptions,
+          async () => {
+            await closeBranchAgentDatabaseByPathAsync(pathname, agentId);
+          },
+        );
+      }
       // Runtime proof survives last-lease close; cold opens require clean-close proof.
       // Runtime proof carries owner revocation; every open still checks schema convergence.
       diagnostics.integrityGateReason = resolveAgentDatabaseIntegrityGateReason(
@@ -372,8 +433,11 @@ function* openBranchAgentDatabaseSteps(
         diagnostics,
         verification,
         isValidatedReopen && reuseIntegrity,
-        true,
+        processDeath &&
+          preparedLease !== undefined &&
+          isSameBootAgentDatabaseLease(preparedLease.provenance, pathname),
       );
+      assertCurrent(validationDatabase);
       if (!diagnostics.integrityGateOutcome || diagnostics.integrityGateOutcome === "cached") {
         delete diagnostics.integrityGateReason;
       }
@@ -397,6 +461,7 @@ function* openBranchAgentDatabaseSteps(
       });
       openedWalMaintenance = walMaintenance;
       finishPhase("configuration");
+      assertCurrent(validationDatabase);
       if (!isValidatedReopen) {
         ensureBranchAgentSchema(db, agentId, pathname);
       }
@@ -421,8 +486,10 @@ function* openBranchAgentDatabaseSteps(
       }
       throw err;
     }
+    assertCurrent({ db, path: pathname });
     ensureBranchAgentDatabasePermissions(pathname, databaseOptions);
     admitSqliteSchema(db);
+    assertCanonicalSessionValidationSchema(db);
     const database = { agentId, db, path: pathname, walMaintenance };
     openedDatabase = database;
     if (hasAgentDatabaseMaintenanceAuthority()) {
@@ -430,20 +497,14 @@ function* openBranchAgentDatabaseSteps(
         "Agent database maintenance is in progress; retry after branch doctor --fix completes.",
       );
     }
-    const cleanup = registerAgentDeletionDatabaseCleanup(database, databaseOptions);
-    if (cleanup) {
-      const release = retainAgentDatabase(db);
-      cleanup.registerClose(async () => {
-        // The scope owns this connection, not a later cache entry at the same pathname.
-        if (cache.databases.get(database.path) === database) {
-          await closeBranchAgentDatabaseByPathAsync(database.path, database.agentId);
-        } else if (database.db.isOpen) {
-          throw new Error("Agent deletion cleanup lost its database close owner.");
-        }
-        release();
-      });
-    }
+    registerAgentDeletionDatabaseCleanup(database, databaseOptions)?.registerClose(
+      createScopeOwnedClose(database, "Agent deletion cleanup"),
+    );
+    registerAgentCreationClaimHandle(database, databaseOptions)?.registerClose(
+      createScopeOwnedClose(database, "Agent creation claim"),
+    );
     if (!isValidatedReopen) {
+      assertCurrent(database);
       registerBranchAgentDatabase(
         { agentId, path: pathname, env: options.env },
         registrationObserver,
@@ -458,23 +519,36 @@ function* openBranchAgentDatabaseSteps(
     cache.leases.set(pathname, { leaseId, env: leaseEnvironment });
     cache.databases.set(pathname, database);
     const identity = readBranchAgentDatabaseIdentity(database).identity;
-    if (diagnostics.integrityGateOutcome === "cached" && !(isValidatedReopen && reuseIntegrity)) {
+    assertCurrent(database);
+    const deferred = diagnostics.integrityGateMode === "deferred";
+    if (
+      deferred ||
+      (diagnostics.integrityGateOutcome === "cached" && !(isValidatedReopen && reuseIntegrity))
+    ) {
+      const check = deferred ? "full" : "quick";
       if (preparedLease) {
         requestSqliteWorkerOperationAdmission({
           stage: "prepare",
           facts: {
-            kind: "agent-integrity-cached",
+            kind: "agent-integrity-check",
             lease: preparedLease.receipt,
+            check,
           },
         });
       } else {
-        requestBranchAgentDatabaseQuickCheck({ path: pathname, env: leaseEnvironment });
+        requestBranchAgentDatabaseIntegrityCheck({
+          path: pathname,
+          env: leaseEnvironment,
+          check,
+        });
       }
-    } else if (diagnostics.integrityGateOutcome !== "cached" && typeof identity === "string") {
-      recordBranchAgentDatabaseIntegrityVerified(
+    }
+    if (typeof identity === "string") {
+      recordBranchAgentDatabaseAdmission(
         leaseId,
         { agentId, path: pathname, env: leaseEnvironment },
         identity,
+        !deferred && diagnostics.integrityGateOutcome !== "cached",
       );
     }
     refreshAgentDatabaseIdleTimer(database);
@@ -484,6 +558,7 @@ function* openBranchAgentDatabaseSteps(
     getBranchDatabaseMaintenanceScope()?.own(database.db, "agent-handles", () =>
       closeMaintenanceAgentDatabase(database),
     );
+    releaseCreationAdmission?.();
     return database;
   } catch (error) {
     let closeError: unknown;
@@ -521,6 +596,7 @@ function* openBranchAgentDatabaseSteps(
           path: pathname,
           walMaintenance: openedWalMaintenance ?? {
             checkpoint: () => false,
+            stop: async () => {},
             reclaimFreePages: createSqliteWalReclamationResult,
             close: () => false,
           },
@@ -548,38 +624,20 @@ function* openBranchAgentDatabaseSteps(
   }
 }
 
-export function runBranchAgentWriteTransaction<T>(
-  operation: (database: BranchAgentDatabase) => T,
-  options: BranchAgentDatabaseOptions,
-  transactionOptions: Pick<
-    SqliteTransactionOptions,
-    "busyTimeoutMs" | "operationLabel" | "slowTransactionHoldMs"
-  > = {},
-): T {
-  const database = openBranchAgentDatabase(options);
-  const enteredNestedTransaction = database.db.isTransaction;
-  return withSqlitePostCommitPublications(database.db, () =>
-    runSqliteImmediateTransactionSync(
-      database.db,
-      () => {
-        assertAgentDeletionDatabaseCleanupAccess(database, options);
-        const operationResult = operation(database);
-        if (!enteredNestedTransaction && !cache.incognito.has(database)) {
-          // Permission failure must roll back with the write. Repairing after
-          // COMMIT could make callers retry a transaction already durable in SQLite.
-          ensureBranchAgentDatabasePermissions(database.path, options);
-        }
-        return operationResult;
-      },
-      {
-        busyTimeoutMs: transactionOptions.busyTimeoutMs ?? BRANCH_SQLITE_BUSY_TIMEOUT_MS,
-        databaseLabel: database.path,
-        ...transactionOptions,
-        operationLabel: transactionOptions.operationLabel ?? "agent.write",
-        withCommit: getAgentDeletionDatabaseCleanup(options)?.withCommit,
-      },
-    ),
-  );
+/** A lifecycle scope closes its exact connection and retains its borrow until disposal succeeds. */
+function createScopeOwnedClose(
+  database: BranchAgentDatabase,
+  owner: string,
+): () => Promise<void> {
+  const release = retainAgentDatabase(database.db);
+  return async () => {
+    if (cache.databases.get(database.path) === database) {
+      await closeBranchAgentDatabaseByPathAsync(database.path, database.agentId);
+    } else if (database.db.isOpen) {
+      throw new Error(`${owner} lost its database close owner.`);
+    }
+    release();
+  };
 }
 
 /** Retain the exact verified connection across awaits; explicit disposal still revokes it. */
@@ -613,6 +671,7 @@ export function getBranchAgentDatabaseIfOpen(
   const database = cache.databases.get(pathname);
   if (!database?.db.isOpen) {
     assertAgentDeletionCleanupAliases(options, isSameBranchAgentDatabasePath);
+    assertAgentCreationClaimAliases(options, isSameBranchAgentDatabasePath);
     return undefined;
   }
   if (cache.failures.has(pathname)) {
@@ -624,6 +683,7 @@ export function getBranchAgentDatabaseIfOpen(
     );
   }
   assertAgentDeletionDatabaseCleanupAccess(database, options);
+  assertAgentCreationClaimAccess(database, options);
   observeBranchDatabaseMaintenanceResource(database.db);
   refreshAgentDatabaseIdleTimer(database);
   return database;
@@ -675,53 +735,6 @@ export function retainBranchAgentDatabaseReadCandidates(
   }
 }
 
-/** Close and unregister one unambiguous transient agent database by filesystem identity. */
-export function disposeBranchAgentDatabaseByPath(
-  pathname: string,
-  options: { env?: NodeJS.ProcessEnv } = {},
-): boolean {
-  const resolvedPath = path.resolve(pathname);
-  for (const pendingPath of cache.pending.keys()) {
-    if (isSameBranchAgentDatabasePath(pendingPath, resolvedPath)) {
-      revokePendingAgentDatabaseOpen(pendingPath);
-    }
-  }
-  for (const retained of cache.retainedCloses) {
-    if (isSameBranchAgentDatabasePath(retained.path, resolvedPath)) {
-      retained.close();
-    }
-  }
-  // Disposal can be followed by file deletion or recreation, so revalidate next open.
-  invalidateBranchAgentDatabaseValidation(resolvedPath);
-  const matchingDatabases = [...cache.databases.values()].filter((candidate) =>
-    isSameBranchAgentDatabasePath(candidate.path, resolvedPath),
-  );
-  if (matchingDatabases.length > 1) {
-    return false;
-  }
-  const database = matchingDatabases[0];
-  if (database && cache.incognito.has(database)) {
-    return closeBranchAgentDatabaseByPath(database.path);
-  }
-  if (!database) {
-    return false;
-  }
-  try {
-    unregisterBranchAgentDatabase({
-      agentId: database.agentId,
-      path: database.path,
-      ...(options.env ? { env: options.env } : {}),
-    });
-  } finally {
-    // Secret-bearing transient DBs must close even when registry maintenance
-    // fails; Windows otherwise cannot remove the file during caller cleanup.
-    closeBranchAgentDatabaseByPath(database.path);
-  }
-  return true;
-}
-
-export { withAgentDatabaseMaintenanceLease } from "./branch-agent-db-maintenance-lease.js";
-
 /** Release fixture handles and pathname trust before a test root is recreated. */
 export function closeBranchAgentDatabasesForTest(rootPath?: string): void {
   closeBranchAgentDatabases(rootPath);
@@ -734,6 +747,7 @@ export {
   closeBranchAgentDatabaseByPathAsync,
   closeBranchAgentDatabases,
   closeBranchAgentDatabasesAsync,
+  disposeBranchAgentDatabaseByPath,
   inspectBranchAgentDatabaseOwner,
   isIncognitoBranchAgentDatabase,
   listOpenIncognitoAgentDatabases,

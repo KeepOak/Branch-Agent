@@ -1,4 +1,5 @@
 import type { BranchConfig } from "../../config/types.branch.js";
+import { resolveAgentMaxConcurrent } from "../../config/agent-limits.js";
 import type { GatewayRecoveryRuntime } from "../../gateway/server-instance-runtime.types.js";
 import { waitForAbortSignal } from "../../infra/abort-signal.js";
 import {
@@ -21,6 +22,7 @@ import {
   MAX_RECOVERY_RETRIES,
   RETRY_BACKOFF_MULTIPLIER,
   discoverRestartRecoveryStoreTargets,
+  hasPendingRestartRecoveryAdmission,
 } from "./main-session-restart-recovery-shared.js";
 import {
   loadExpectedRestartRecoveryTarget,
@@ -28,7 +30,29 @@ import {
 } from "./main-session-restart-recovery-store.js";
 
 type RecoveryCounts = { started: number; settled: number; failed: number; skipped: number };
-const STARTUP_RECOVERY_MAX_ACTIVE_RUNS = 1;
+const PENDING_ADMISSION_POLL_MS = 1_000;
+
+/** Resolves true once none of these agents waits for startup database admission. */
+async function waitForPendingAdmissions(params: {
+  agentIds: readonly string[];
+  stateDir?: string;
+  signal: AbortSignal;
+  shouldContinue: () => boolean;
+}): Promise<boolean> {
+  try {
+    while (
+      params.shouldContinue() &&
+      hasPendingRestartRecoveryAdmission(params.agentIds, params.stateDir)
+    ) {
+      await sleepWithAbort(PENDING_ADMISSION_POLL_MS, params.signal, { ref: false });
+    }
+  } catch (error) {
+    if (params.shouldContinue()) {
+      throw error;
+    }
+  }
+  return params.shouldContinue();
+}
 
 async function runRecoveryRetries(params: {
   initialDelayMs: number;
@@ -75,29 +99,37 @@ export async function recoverRestartAbortedMainSessions(params: {
   excludedStoreTargets?: ReadonlySet<string>;
   lifecycleGeneration?: string;
   shouldContinue?: () => boolean;
+  onPendingAdmission?: (agentId: string) => void;
   gatewayRuntime: GatewayRecoveryRuntime;
   recoveryCapacity?: ReturnType<typeof createMainSessionRecoveryCapacity>;
+  terminalOnFailure?: boolean;
 }): Promise<RecoveryCounts> {
   const result = { started: 0, settled: 0, failed: 0, skipped: 0 };
   const handledSessionKeys = params.handledSessionKeys ?? new Set<string>();
 
-  for (const target of await discoverRestartRecoveryStoreTargets({
+  const targets = await discoverRestartRecoveryStoreTargets({
     ...params,
     statuses: ["running"],
-  })) {
-    if (params.shouldContinue?.() === false) {
-      return result;
-    }
-    if (params.excludedStoreTargets?.has(restartRecoveryStoreTargetKey(target))) {
-      continue;
-    }
-    const storeResult = await recoverStore({
-      ...params,
-      storePath: target.storePath,
-      storeAgentId: target.agentId,
-      handledSessionKeys,
-      recoveryCapacity: params.recoveryCapacity,
-    });
+  });
+  const storeResults = await Promise.all(
+    targets.map(async (target) => {
+      if (
+        params.shouldContinue?.() === false ||
+        params.excludedStoreTargets?.has(restartRecoveryStoreTargetKey(target))
+      ) {
+        return { started: 0, settled: 0, failed: 0, skipped: 0 };
+      }
+      return await recoverStore({
+        ...params,
+        storePath: target.storePath,
+        storeAgentId: target.agentId,
+        handledSessionKeys,
+        recoveryCapacity: params.recoveryCapacity,
+        terminalOnFailure: params.terminalOnFailure,
+      });
+    }),
+  );
+  for (const storeResult of storeResults) {
     result.started += storeResult.started;
     result.settled += storeResult.settled;
     result.failed += storeResult.failed;
@@ -252,11 +284,15 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
     isAgentEventLifecycleGenerationCurrent(lifecycleGeneration);
   const startupRecoveryCutoffMs = Date.now();
   const recoveryCapacity = createMainSessionRecoveryCapacity({
-    limit: STARTUP_RECOVERY_MAX_ACTIVE_RUNS,
+    limit: resolveAgentMaxConcurrent(params.getConfig()),
   });
   const startupCheckedStorePaths = params.startupCheckedStorePaths ?? new Set<string>();
+  // Agents still preparing their databases at startup are skipped, not checked.
+  const pendingAdmissionAgentIds = new Set<string>();
+  const onPendingAdmission = (agentId: string) => pendingAdmissionAgentIds.add(agentId);
   const runRecoveryAttempt = async (
     exhaustedTargets: Map<string, ExhaustedRestartRecoveryTarget>,
+    finalAttempt: boolean,
   ): Promise<RecoveryCounts> => {
     return await runWithGatewayIndependentRootWorkAdmission(
       async () => {
@@ -266,6 +302,7 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
           stateDir: params.stateDir,
           startupCheckedStorePaths,
           updatedBeforeMs: startupRecoveryCutoffMs,
+          onPendingAdmission,
         });
         const result = await recoverRestartAbortedMainSessions({
           cfg,
@@ -284,8 +321,10 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
           excludedStoreTargets: new Set(marking.failedTargets?.map(restartRecoveryStoreTargetKey)),
           lifecycleGeneration,
           shouldContinue,
+          onPendingAdmission,
           gatewayRuntime: params.gatewayRuntime,
           recoveryCapacity,
+          terminalOnFailure: finalAttempt,
         });
         result.failed += marking.failedTargets?.length ?? 0;
         return result;
@@ -331,18 +370,15 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
     }
   };
   let exhaustedTargets = new Map<string, ExhaustedRestartRecoveryTarget>();
-  const run = Promise.resolve().then(async () => {
-    if (params.waitForStart) {
-      await Promise.race([params.waitForStart(), waitForAbortSignal(abortController.signal)]);
-    }
+  const runRecoveryWave = async (initialDelayMs: number): Promise<void> => {
     await runRecoveryRetries({
-      initialDelayMs: params.delayMs ?? DEFAULT_RECOVERY_DELAY_MS,
+      initialDelayMs,
       maxRetries: Math.max(1, params.maxRetries ?? MAX_RECOVERY_RETRIES),
       shouldContinue,
       signal: abortController.signal,
       attempt: async (finalAttempt) => {
         exhaustedTargets = new Map();
-        const result = await runRecoveryAttempt(exhaustedTargets);
+        const result = await runRecoveryAttempt(exhaustedTargets, finalAttempt);
         if (result.failed === 0) {
           return true;
         }
@@ -360,6 +396,28 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
         }
       },
     });
+  };
+  const run = Promise.resolve().then(async () => {
+    if (params.waitForStart) {
+      await Promise.race([params.waitForStart(), waitForAbortSignal(abortController.signal)]);
+    }
+    await runRecoveryWave(params.delayMs ?? DEFAULT_RECOVERY_DELAY_MS);
+    // Rescan each agent once its startup admission settles; otherwise its
+    // interrupted runs stay "running" with nothing left to resume them.
+    while (shouldContinue() && pendingAdmissionAgentIds.size > 0) {
+      const agentIds = [...pendingAdmissionAgentIds];
+      pendingAdmissionAgentIds.clear();
+      const admitted = await waitForPendingAdmissions({
+        agentIds,
+        stateDir: params.stateDir,
+        signal: abortController.signal,
+        shouldContinue,
+      });
+      if (!admitted) {
+        return;
+      }
+      await runRecoveryWave(0);
+    }
   });
   return {
     stop: async () => {
