@@ -12,24 +12,49 @@ vi.mock("./look-prefs", () => ({ AGENT_SIZE_PX: { s: 72, m: 110, l: 150 }, useLo
 let root: Root;
 let host: HTMLDivElement;
 let close: () => void;
+class FakeResizeObserver implements ResizeObserver {
+  static instances: FakeResizeObserver[] = [];
+  observed = new Set<Element>();
+  disconnected = false;
+  private callback: ResizeObserverCallback;
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    FakeResizeObserver.instances.push(this);
+  }
+  observe(target: Element) { this.observed.add(target); }
+  unobserve(target: Element) { this.observed.delete(target); }
+  disconnect() { this.disconnected = true; this.observed.clear(); }
+  trigger(target: Element) {
+    expect(this.observed.has(target)).toBe(true);
+    this.callback([], this);
+  }
+}
 
 beforeEach(async () => {
   localStorage.clear();
-  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  FakeResizeObserver.instances = [];
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
   host = document.body.appendChild(document.createElement("div"));
   const column = document.createElement("div");
   column.className = "conversation-column";
   column.getBoundingClientRect = () => ({ left: 200, top: 50, right: 1000, bottom: 800, width: 800, height: 750, x: 200, y: 50, toJSON: () => ({}) });
+  const header = document.createElement("div");
+  header.className = "head-row";
   const composer = document.createElement("div");
   composer.className = "c-wrap";
   composer.getBoundingClientRect = () => ({ left: 200, top: 700, right: 1000, bottom: 800, width: 800, height: 100, x: 200, y: 700, toJSON: () => ({}) });
-  column.append(composer);
+  column.append(header, composer);
   document.body.append(column);
   close = vi.fn<() => void>();
   root = createRoot(host);
   await act(async () => root.render(<CharacterPanel name="Juniper" state="work" onClose={close} column={column} />));
 });
-afterEach(async () => { await act(async () => root.unmount()); document.body.replaceChildren(); vi.unstubAllGlobals(); });
+afterEach(async () => {
+  await act(async () => root.unmount());
+  expect(FakeResizeObserver.instances.every((observer) => observer.disconnected)).toBe(true);
+  document.body.replaceChildren();
+  vi.unstubAllGlobals();
+});
 
 it("moves to a chosen corner and remembers it for this computer", async () => {
   const panel = host.querySelector<HTMLElement>(".character-panel")!;
@@ -75,6 +100,56 @@ it("reserves the agent window's height after the latest message", async () => {
   Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 166 });
   await act(async () => window.dispatchEvent(new Event("resize")));
   expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("190px");
+});
+
+it("remeasures sidebar, focus, and composer changes through observed resizes", async () => {
+  const panel = host.querySelector<HTMLElement>(".character-panel")!;
+  const column = document.querySelector<HTMLElement>(".conversation-column")!;
+  const header = column.querySelector<HTMLElement>(".head-row")!;
+  const composer = column.querySelector<HTMLElement>(".c-wrap")!;
+  const observer = FakeResizeObserver.instances[0]!;
+  expect(observer.observed).toEqual(new Set([column, panel, composer, header]));
+  Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 166 });
+  await act(async () => observer.trigger(panel));
+  expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("190px");
+  expect(panel.style.left).toBe("982px");
+  expect(panel.style.top).toBe("522px");
+
+  // Hiding the sidebar expands the conversation column.
+  column.getBoundingClientRect = () => ({ left: 0, top: 50, right: 1200, bottom: 800, width: 1200, height: 750, x: 0, y: 50, toJSON: () => ({}) });
+  Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 180 });
+  await act(async () => observer.trigger(column));
+  expect(panel.style.left).toBe("1182px");
+  expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("204px");
+
+  // Focus mode removes the conversation, then restores it.
+  column.getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) });
+  await act(async () => observer.trigger(column));
+  expect(panel.style.visibility).toBe("hidden");
+  column.getBoundingClientRect = () => ({ left: 0, top: 50, right: 1200, bottom: 800, width: 1200, height: 750, x: 0, y: 50, toJSON: () => ({}) });
+  Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 192 });
+  await act(async () => observer.trigger(column));
+  expect(panel.style.visibility).not.toBe("hidden");
+  expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("216px");
+
+  // A taller composer moves the window up, while the panel's new size updates clearance.
+  composer.getBoundingClientRect = () => ({ left: 0, top: 600, right: 1200, bottom: 800, width: 1200, height: 200, x: 0, y: 600, toJSON: () => ({}) });
+  Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 200 });
+  await act(async () => observer.trigger(composer));
+  expect(panel.style.top).toBe("388px");
+  expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("224px");
+
+  const nextColumn = column.cloneNode(true) as HTMLElement;
+  nextColumn.getBoundingClientRect = column.getBoundingClientRect;
+  nextColumn.querySelector<HTMLElement>(".c-wrap")!.getBoundingClientRect = composer.getBoundingClientRect;
+  column.replaceWith(nextColumn);
+  await act(async () => root.render(<CharacterPanel name="Juniper" state="work" onClose={close} column={nextColumn} />));
+  expect(observer.disconnected).toBe(true);
+  expect(column.style.getPropertyValue("--agent-window-clearance")).toBe("");
+  expect(FakeResizeObserver.instances[1]?.observed).toEqual(new Set([
+    nextColumn, panel, nextColumn.querySelector(".c-wrap"), nextColumn.querySelector(".head-row"),
+  ]));
+  expect(nextColumn.style.getPropertyValue("--agent-window-clearance")).toBe("224px");
 });
 
 it("reattaches clearance when switching between conversations of the same Trunk", async () => {
