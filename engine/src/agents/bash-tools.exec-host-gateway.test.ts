@@ -10,12 +10,18 @@ import path from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
+import { bindCronJobAdmittedRun, resetCronActiveJobs } from "../cron/active-jobs.js";
 import { resolveCronJobConfigRevision } from "../cron/config-revision.js";
+import { prepareCronRunAdmission } from "../cron/run-admission.js";
+import { markServiceCronJobActive } from "../cron/service/run-receipts.js";
+import { createCronServiceState } from "../cron/service/state.js";
 import {
   loadCronRows,
   loadedCronStoreFromRows,
   upsertCronJobRow,
 } from "../cron/store/row-codec.js";
+import { releaseLocalCronRunReceiptOwnership } from "../cron/store/run-receipt-store.js";
+import { claimCronRunReceiptForTest } from "../cron/store/run-receipt-store.test-support.js";
 import type { CronStoredJob } from "../cron/types.js";
 import { buildCronExecOperationBinding } from "../gateway/operator-approval-standing-grants.js";
 import {
@@ -65,6 +71,7 @@ import {
   closeBranchStateDatabaseByPathAsync,
   openBranchStateDatabase,
 } from "../state/branch-state-db.js";
+import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import { resetProcessRegistryForTests } from "./bash-process-registry.test-support.js";
 import type {
   ExecApprovalFollowupFactory,
@@ -1869,16 +1876,23 @@ describe("processGatewayAllowlist", () => {
 
   describe("cron standing grants", () => {
     const CRON_STORE_KEY = "/tmp/branch-exec-host-cron-store";
-    const grantCommand = "node --version";
+    // Real resolvable executables only: OpenClaw main (9a1e00e2a) denies
+    // approval unless PATH resolution succeeds. Windows uses the existing
+    // read-only where.exe fixture so mutable node.exe is not required.
+    const grantCommand = fixtureCommand("echo nightly-backup");
     const grantTempDirs: string[] = [];
     let stateDirBackup: string | undefined;
     let hadStateDirBackup = false;
     let workdir: string;
     let unregisterCronSource: (() => void) | undefined;
     let ownedDatabasePath: string | undefined;
+    let runOwner: ReturnType<typeof prepareCronRunAdmission> | undefined;
+    let controller: AbortController;
+    const releases: Array<() => void> = [];
 
     beforeEach(() => {
       ownedDatabasePath = undefined;
+      runOwner = undefined;
       hadStateDirBackup = "BRANCH_STATE_DIR" in process.env;
       stateDirBackup = process.env.BRANCH_STATE_DIR;
       const stateDir = fs.realpathSync(
@@ -1896,8 +1910,14 @@ describe("processGatewayAllowlist", () => {
     });
 
     afterEach(async () => {
+      for (const release of releases.splice(0)) {
+        release();
+      }
       unregisterCronSource?.();
       unregisterCronSource = undefined;
+      runOwner?.close();
+      runOwner = undefined;
+      resetCronActiveJobs();
       if (ownedDatabasePath) await closeBranchStateDatabaseByPathAsync(ownedDatabasePath);
       closeBranchStateDatabaseForTest();
       if (hadStateDirBackup) {
@@ -2004,6 +2024,41 @@ describe("processGatewayAllowlist", () => {
 
     async function prepareCronRun(mintGrant: boolean) {
       const revision = seedCronJobRow();
+      const database = openBranchStateDatabase(databaseOptions());
+      const loaded = loadedCronStoreFromRows(loadCronRows(database.db, CRON_STORE_KEY));
+      const job = loaded.store.jobs.find((entry) => entry.id === "job-1");
+      if (!job) {
+        throw new Error("seeded cron job did not load back");
+      }
+      const receipt = claimCronRunReceiptForTest(CRON_STORE_KEY, job, Date.now());
+      releases.push(() => releaseLocalCronRunReceiptOwnership(receipt));
+      const marker = markServiceCronJobActive(
+        createCronServiceState({
+          scheduler: createTestGatewayScheduler(),
+          storePath: CRON_STORE_KEY,
+          cronEnabled: true,
+          log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+          enqueueSystemEvent: vi.fn(),
+          requestHeartbeat: vi.fn(),
+          runIsolatedAgentJob: vi.fn(),
+        }),
+        job,
+        receipt,
+      );
+      runOwner = prepareCronRunAdmission({
+        cfg: {},
+        agentId: "main",
+        runId: "cron-run-1",
+        jobId: job.id,
+        sessionKey: "agent:main:cron:job-1",
+        deliveryAttemptFence: null,
+      });
+      controller = new AbortController();
+      bindCronJobAdmittedRun(
+        marker,
+        await runOwner.preparedRunAdmission.admit("embedded"),
+        controller.signal,
+      );
       if (mintGrant) {
         await mintStandingGrant(revision);
       }
@@ -2012,6 +2067,7 @@ describe("processGatewayAllowlist", () => {
         jobId: "job-1",
         jobConfigRevision: revision,
         jobName: "Nightly backup",
+        standingGrantAuthority: runOwner.standingGrantAuthority,
       });
     }
 
@@ -2022,6 +2078,7 @@ describe("processGatewayAllowlist", () => {
         agentId: "main",
         runId: "cron-run-1",
         ask: "on-miss",
+        signal: controller.signal,
       });
     }
 
