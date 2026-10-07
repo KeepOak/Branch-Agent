@@ -31,7 +31,7 @@ test("Mac app requests both permissions before supplying a live embedded driver 
       uniffiDestroy() { events.push("destroy"); }
     },
   });
-  const driver = new MacComputerDriver(() => {}, sdk);
+  const driver = new MacComputerDriver(() => {}, sdk, () => "ai.branch.mac");
   try {
     assert.equal(await driver.start(dir), undefined);
     assert.deepEqual(events, ["permission request"]);

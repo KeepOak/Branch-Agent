@@ -55,7 +55,11 @@ export class MacComputerDriver {
   private selectedEngine?: string;
   private starting?: Promise<string | undefined>;
 
-  constructor(private readonly log: (line: string) => void, private readonly sdk: (engineDir: string) => MacSdk = loadSdk) {}
+  constructor(
+    private readonly log: (line: string) => void,
+    private readonly sdk: (engineDir: string) => MacSdk = loadSdk,
+    private readonly bundleId: () => string = hostBundleId,
+  ) {}
 
   async start(engineDir: string): Promise<string | undefined> {
     if (this.selectedEngine === engineDir && this.endpoint) return this.endpoint;
@@ -81,7 +85,7 @@ export class MacComputerDriver {
     // windows discovered after launch, which a bounded startup manifest cannot.
     const host = sdk.EmbeddedCuaDriverHost.withOptions({
       binaryPath: binary,
-      hostBundleId: hostBundleId(),
+      hostBundleId: this.bundleId(),
       permissionMode: sdk.EmbeddedPermissionMode.Unrestricted,
       approveCapabilityManifest: false,
       approveSessionPolicy: false,
