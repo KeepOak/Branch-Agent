@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { RELEASE_REPOSITORY } from "./component-update-manifest";
 import { isOwnedComponentWindow } from "./component-update-ipc";
+import { CLI_LAUNCHER_CMD_MARKER, CLI_LAUNCHER_MARKER, CLI_LAUNCHER_REPAIR_MESSAGE } from "./cli-launcher";
 
 export interface DesktopSettings {
   /** Closing the window hides it in the tray and the engine keeps working (on by default, as before). */
@@ -60,6 +61,8 @@ export interface DesktopControls {
   trayUsage(left: number | null): void;
   /** Applies saved settings at launch (keep awake). */
   apply(): void;
+  /** Rewrites an owned `branch` launcher after a confirmed update or app move. */
+  refreshCli(): void;
   dispose(): void;
 }
 
@@ -86,6 +89,9 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
     if (!on && blocker !== undefined) { deps.awake.stop(blocker); blocker = undefined; }
   };
   const get = async (): Promise<ControlsState> => ({ ...saved, startWithWindows: deps.login.get(), branchOnPath: await deps.cli.installed() });
+  const refreshCli = (): void => {
+    try { deps.cli.refresh?.(); } catch { /* a locked or read-only shim keeps its old copy */ }
+  };
   const set = async (name: ControlName, on: boolean): Promise<ControlsState> => {
     if (typeof on !== "boolean") throw new Error("A desktop control takes on or off");
     if (name === "startWithWindows") deps.login.set(on);
@@ -113,8 +119,9 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
     apply: () => {
       holdAwake(saved.keepAwake);
       // An update can move the bundled node; the branch command (and agents registered with it) must keep working.
-      try { deps.cli.refresh?.(); } catch { /* a locked or read-only shim keeps its old copy */ }
+      refreshCli();
     },
+    refreshCli,
     dispose: () => holdAwake(false),
   };
 }
@@ -172,6 +179,7 @@ export function ringBitmap(left: number, size = 32): Buffer {
 export function branchShim(o: { dataDir: string; engineDir: string; nodePath: string; gatewayPort: number }): string {
   return [
     "@echo off",
+    CLI_LAUNCHER_CMD_MARKER,
     "setlocal",
     `set "BRANCH_DATA=${o.dataDir}"`,
     `set "ENGINE=${o.engineDir}"`,
@@ -186,6 +194,14 @@ export function branchShim(o: { dataDir: string; engineDir: string; nodePath: st
     `set "BRANCH_GATEWAY_PORT=${o.gatewayPort}"`,
     // An update can move the engine to another loopback port; the desktop records the live one here.
     `if exist "%BRANCH_DATA%\\gateway-port" set /p BRANCH_GATEWAY_PORT=<"%BRANCH_DATA%\\gateway-port"`,
+    `if not exist "${o.nodePath}" (`,
+    `  echo ${CLI_LAUNCHER_REPAIR_MESSAGE}`,
+    "  exit /b 1",
+    ")",
+    `if not exist "%ENGINE%\\branch.mjs" (`,
+    `  echo ${CLI_LAUNCHER_REPAIR_MESSAGE}`,
+    "  exit /b 1",
+    ")",
     `"${o.nodePath}" "%ENGINE%\\branch.mjs" %*`,
     "",
   ].join("\r\n");
@@ -198,6 +214,7 @@ export function branchShShim(o: { dataDir: string; engineDir: string; nodePath: 
   const slash = (s: string) => s.replace(/\\/g, "/");
   return [
     "#!/bin/sh",
+    CLI_LAUNCHER_MARKER,
     `data=${q(slash(o.dataDir))}`,
     `engine=${q(o.engineDir)}`,
     `if [ -f "$data/engine-current.txt" ]; then engine=$(head -n 1 "$data/engine-current.txt" | tr -d '\\r'); fi`,
@@ -208,6 +225,7 @@ export function branchShShim(o: { dataDir: string; engineDir: string; nodePath: 
     // BRANCH_DATA lets a long-running `branch mcp serve` re-read gateway-port after an update moves the engine.
     `BRANCH_DATA=${q(o.dataDir)}`,
     "export BRANCH_DATA BRANCH_PROFILE BRANCH_HOME BRANCH_STATE_DIR BRANCH_CONFIG_PATH BRANCH_GATEWAY_PORT",
+    `if [ ! -f ${q(slash(o.nodePath))} ] || [ ! -f "$engine/branch.mjs" ]; then echo ${q(CLI_LAUNCHER_REPAIR_MESSAGE)} >&2; exit 1; fi`,
     `exec ${q(slash(o.nodePath))} "$engine/branch.mjs" "$@"`,
     "",
   ].join("\n");

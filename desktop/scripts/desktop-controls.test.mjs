@@ -132,6 +132,8 @@ test("ring bitmap draws the share left as an arc over a faint track", () => {
 
 test("branch shim reads the published engine and token at run time", () => {
   const shim = branchShim({ dataDir: "C:\\Data", engineDir: "C:\\App\\engine", nodePath: "C:\\App\\node.exe", gatewayPort: 19031 });
+  assert.ok(shim.includes("@rem Created by Branch Agent"));
+  assert.ok(shim.includes("Open Branch once to repair the branch command."));
   assert.ok(shim.includes('set /p ENGINE=<"%BRANCH_DATA%\\engine-current.txt"'));
   // The engine that runs, not a staged one still waiting to be applied.
   assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('set /p ENGINE=<"%BRANCH_DATA%\\engine-running.txt"'));
@@ -144,7 +146,8 @@ test("branch shim reads the published engine and token at run time", () => {
 
 test("Git Bash shim reads the same files, drops CR and passes arguments through", () => {
   const shim = branchShShim({ dataDir: "C:\\Data's", engineDir: "C:\\App\\engine", nodePath: "C:\\App\\node.exe", gatewayPort: 19031 });
-  assert.ok(shim.startsWith("#!/bin/sh\n"));
+  assert.ok(shim.startsWith("#!/bin/sh\n# Created by Branch Agent\n"));
+  assert.ok(shim.includes("Open Branch once to repair the branch command."));
   assert.ok(shim.includes("data='C:/Data'\\''s'"));
   assert.ok(shim.includes("tr -d '\\r'"));
   assert.ok(shim.indexOf("engine-current.txt") < shim.indexOf('if [ -f "$data/engine-running.txt" ]'));
@@ -188,6 +191,14 @@ test("close policy and tray click follow the controls (mocked Electron, no windo
     assert.equal(clicks, 1);
   } finally { Module._load = originalLoad; }
 });
+
+test("refreshCli rewrites the launcher after a confirmed update", async () => fixture(async ({ deps, calls }) => {
+  let refreshed = 0;
+  deps.cli.refresh = () => { refreshed++; calls.push(["cli-refresh"]); };
+  const controls = createDesktopControls(deps);
+  controls.refreshCli();
+  assert.equal(refreshed, 1);
+}));
 
 test("launch refreshes an existing branch command and never installs one", async () => fixture(async ({ deps, calls }) => {
   let refreshed = 0;

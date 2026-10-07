@@ -934,7 +934,10 @@ async function start(): Promise<void> {
   await win.loadURL(STARTING);
   log(`starting page shown after ${Date.now() - launchStarted} ms`);
   const desktopVersion = await confirmDesktopUpdate(cfg);
-  if (desktopVersion) log(`desktop update ${desktopVersion} started; confirmed`);
+  if (desktopVersion) {
+    log(`desktop update ${desktopVersion} started; confirmed`);
+    controls.refreshCli();
+  }
   // Engines the last session started and left running (a crash mid-update): retire them before starting our own.
   await retireRecordedEngines(cfg.dataDir, log);
   for (const port of [cfg.gatewayPort, cfg.windowPort]) {
@@ -1038,6 +1041,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
       if (!options.keepOnConfirmFailure) throw error;
       log(`the new engine serves but its update could not be confirmed (${String(error)}); keeping it`);
     }
+    controls.refreshCli();
   }
   adoptGatewayPort(port);
   lastGoodEngineDir = engineDir;
