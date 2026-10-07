@@ -1,0 +1,25 @@
+# UI-MOBILE-WEB-0100 Wear OS app: blocked (0/2 upstream test files).
+# Source: openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3.
+# Branch omits the Android phone app and Wear / wear-shared Gradle modules.
+# The watch depends on the phone Data Layer relay and matching package/signature;
+# no Android SDK is installed and Harvest CI accepts only engine/window Vitest files.
+# The cited Kotlin suites cannot run here; isolated controller copies would not
+# deliver a working watch app. Restore the native phone/watch build and test lane.
+# UI-MOBILE-WEB-0104: Telegram Mini App dashboard (existing production implementation).
+# UI-MOBILE-WEB-0110: Inline HTML widgets (existing production implementation).
+# UI-MOBILE-WEB-0111: Session dashboards of live widgets (existing production implementation).
+# UI-MOBILE-WEB-0113: Agent screen tool (existing production implementation).
+# UI-MOBILE-WEB-0114: Live desktop view (existing production implementation).
+engine:extensions/canvas/src/a2ui-jsonl.test.ts
+engine:extensions/canvas/src/board-widget.test.ts
+engine:extensions/canvas/src/host/a2ui.test.ts
+engine:extensions/telegram/src/miniapp/init-data.test.ts
+engine:extensions/telegram/src/miniapp/routes.test.ts
+engine:src/agents/tools/screen-tool.test.ts
+engine:src/canvas/widget-script-syntax.test.ts
+engine:src/canvas/widget-tool.test.ts
+engine:src/canvas/wrap.test.ts
+engine:src/node-host/desktop-stream-command.test.ts
+engine:ui/src/components/desktop/desktop-audio.test.ts
+engine:ui/src/components/desktop/desktop-panel.test.ts
+engine:ui/src/pages/dashboards/dashboards-page.test.ts

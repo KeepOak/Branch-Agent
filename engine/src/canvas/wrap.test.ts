@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/canvas/wrap.test.ts (atlas UI-MOBILE-WEB-0110). Changed for Branch: exact document length and SHA-256 after the repository rename map (DECISIONS.md item 127).
 // Widget document wrapper: byte stability and the host-bridge contract it emits.
 import { createHash } from "node:crypto";
 import { runInNewContext } from "node:vm";
@@ -69,9 +70,9 @@ describe("buildWidgetDocument", () => {
       '<SvG viewBox="0 0 10 10"><circle r="4" /></SvG>',
     );
 
-    expect(Buffer.byteLength(html)).toBe(17500);
+    expect(Buffer.byteLength(html)).toBe(17454);
     expect(createHash("sha256").update(html).digest("hex")).toBe(
-      "2332e0e7540e8112fcd7d0937e643d2dabc80c1f742d6f259ee837ba254a349f",
+      "701e5adfdb2a6f563e3c36ef9bf13165fbb9c9c57af01bea7febdebacfa0a401",
     );
   });
 });

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:ui/src/pages/dashboards/dashboards-page.test.ts (atlas UI-MOBILE-WEB-0111). Changed for Branch: preserve current pagination and retired-scope coverage with Branch dashboard query semantics and the repository rename map.
 /* @vitest-environment jsdom */
 
 import type { BoardGetParams, BoardSnapshot } from "@branch/gateway-protocol";
