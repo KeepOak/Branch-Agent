@@ -55,6 +55,7 @@ function Cards({ data, engine, busy, act, openConversation, openPlace, openSetti
   const names = data.expired.map(p => str(p.displayName) || str(p.provider));
   const expiredAt = data.expired.flatMap(p => num(rec(p.expiry).expiresAt) ?? [])[0];
   return <div className="ib-cards">
+    {data.modelUpgradeNotice ? <StatusCard icon="check" title="Model update" sub={data.modelUpgradeNotice} /> : null}
     {data.channels.map(({ channel, label, account }) => <StatusCard key={`${channel}:${str(account.accountId)}`} tone="bad" icon="chat" lead={<ChatLogo id={channel} name={label} size={34} />} title={`${label} stopped: ${str(account.lastError)}`} sub={`Messages sent to ${str(account.name) || label}${num(account.lastStopAt) !== undefined ? ` since ${whenWord(num(account.lastStopAt)!)}` : ""} haven’t reached Branch.`}>
       <button type="button" className="btn ghost sm" disabled={busy || !has(engine, "operator.admin")} onClick={() => void act(() => engine.request("channels.stop", { channel, accountId: str(account.accountId) }), `${label} is off.`)}>Turn {label} off</button>
       <button type="button" className="btn pri sm" onClick={() => openPlace("customize")}>Set it up again</button>
@@ -85,7 +86,7 @@ function Approval({ item, props }: { item: Row; props: NeedsProps }) {
   const trunk = agentName(data.agents.list, str(request.agentId));
   const detail = str(request.cwd) || str(request.description) || (str(item.kind) === "exec" ? "Command" : str(item.kind) === "branch" ? "Branch change" : "Add-on");
   return <InboxRow lead={<Face size={34} label={trunk} />} title={approvalTitle(item)} sub={`${trunk} · ${detail} · ${minutesLeft(num(item.expiresAtMs))}`}>
-    <button type="button" className="btn ghost sm" disabled={!allow || busy || expired || !decisions.includes("deny")} onClick={() => void act(() => resolveApproval(engine, item, "deny"), `Said no. ${trunk} won’t do it.`)}>Don’t</button>
+    <button type="button" className="btn ghost sm" disabled={!allow || busy || expired || !decisions.includes("deny")} onClick={() => void act(() => resolveApproval(engine, item, "deny"), `Said no. ${trunk} won’t do it.`)}>Don’t allow</button>
     {key ? <button type="button" className="btn sm" onClick={() => openConversation(key)}>Open</button> : null}
     <button type="button" className="btn pri sm" disabled={!allow || busy || expired || !decisions.includes("allow-once")} onClick={() => void act(() => resolveApproval(engine, item, "allow-once"), "Allowed once.")}>Allow</button>
   </InboxRow>;

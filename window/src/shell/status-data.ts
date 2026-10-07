@@ -14,26 +14,26 @@ export const LOW_LEFT = 15;
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-/** "6 pm", "7:40 pm" (§4.9.4 window lines). */
+/** "6 PM", "7:40 PM" (§1.9). */
 export function clockWords(at: Date): string {
   const h = at.getHours();
   const m = at.getMinutes();
   const hour = h % 12 === 0 ? 12 : h % 12;
-  return `${hour}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "am" : "pm"}`;
+  return `${hour}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "AM" : "PM"}`;
 }
 
-/** "resets at 6 pm" today, "resets Monday" within the week, else the date; "full" when nothing is used. */
+/** Reset times use the same 12-hour words on every account surface. */
 export function resetWords(resetAt: number | undefined, usedPercent: number, now: number): string {
   if (!resetAt || resetAt <= now) {
-    return usedPercent <= 0 ? "full" : "";
+    return usedPercent <= 0 ? "not used yet" : "";
   }
   const at = new Date(resetAt);
   const today = new Date(now);
   if (at.toDateString() === today.toDateString()) {
-    return `resets at ${clockWords(at)}`;
+    return `resets ${clockWords(at)}`;
   }
   if (resetAt - now < 6 * 86_400_000) {
-    return `resets ${DAYS[at.getDay()]}`;
+    return `resets ${clockWords(at)} ${DAYS[at.getDay()].slice(0, 3)}`;
   }
   return `resets ${at.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
 }
@@ -59,7 +59,7 @@ export function ageWords(at: number, now: number): string {
 
 export type LimitWindow = { name: string; left: number; reset: string; low: boolean };
 export type LimitPill = "Measured" | "Not published";
-export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string };
+export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean };
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
 
 /** Usage endpoints return diagnostic text; the status bar only shows human-facing status words. */
@@ -71,7 +71,7 @@ export function usageStatusWords(error: unknown, provider: string): string {
   return `${provider} couldn't share usage right now. Branch will try again.`;
 }
 
-function limitRow(p: Record<string, unknown>, updatedAt: number, now: number): LimitRow {
+function limitRow(p: Record<string, unknown>, updatedAt: number, now: number, accountNumber: number): LimitRow {
   const windows = list(p.windows).flatMap((w) => {
     const measured = readMeasuredPercent(w.usedPercent);
     if (!measured) return [];
@@ -80,16 +80,25 @@ function limitRow(p: Record<string, unknown>, updatedAt: number, now: number): L
   });
   const account = [str(p.accountEmail), str(p.plan)].filter(Boolean).join(" · ");
   const measured = windows.length > 0;
-  const name = (str(p.displayName) || str(p.provider)).replace(/\s+plan$/i, "");
+  const provider = str(p.provider);
+  const service = str(p.displayName) || provider;
+  const name = provider === "openai-codex" || /^ChatGPT plan$/i.test(service) ? `ChatGPT · Account ${accountNumber}` : service.replace(/\s+plan$/i, "");
   const line = p.error === "Usage not reported" ? "Usage not reported" : p.error ? usageStatusWords(p.error, name) : measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, name);
-  return { id: `${str(p.provider)}:${account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line };
+  return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true };
 }
 
 /** usage.status: one row per connection and account, never added together (§4.9.4 rule 1). */
 export function readLimits(result: unknown, now = Date.now()): Limits {
   const r = rec(result);
   const updatedAt = num(r.updatedAt) || now;
-  return { rows: list(r.providers).map((p) => limitRow(p, updatedAt, now)), updatedAt, refreshing: r.refreshing === true };
+  const numbers = new Map<string, number>();
+  const rows = list(r.providers).map((p) => {
+    const provider = str(p.provider);
+    const number = (numbers.get(provider) ?? 0) + 1;
+    numbers.set(provider, number);
+    return limitRow(p, updatedAt, now, number);
+  });
+  return { rows, updatedAt, refreshing: r.refreshing === true };
 }
 
 export type RingReading = { name: string; left: number; reset: string; low: boolean };
@@ -100,10 +109,32 @@ export function ringReading(limits: Limits | null): RingReading | null {
   for (const row of rows) {
     const w = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
     if (w) {
-      return { name: row.email || row.account || row.name, left: w.left, reset: w.reset, low: w.low };
+      return { name: row.name, left: w.left, reset: w.reset, low: w.low };
     }
   }
   return null;
+}
+
+/** usage.cost params for this calendar month on this computer's clock. */
+export function monthParams(now = new Date()): Record<string, unknown> {
+  const day = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const offset = -now.getTimezoneOffset();
+  const abs = Math.abs(offset);
+  const utcOffset = `UTC${offset >= 0 ? "+" : "-"}${Math.floor(abs / 60)}${abs % 60 ? `:${String(abs % 60).padStart(2, "0")}` : ""}`;
+  return {
+    startDate: day(new Date(now.getFullYear(), now.getMonth(), 1)),
+    endDate: day(now),
+    mode: "specific",
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    utcOffset,
+    agentScope: "all",
+  };
+}
+
+/** usage.cost: "$14.20", or null when the engine reports no cost. */
+export function readMonthSpend(result: unknown): string | null {
+  const totals = rec(rec(result).totals);
+  return typeof totals.totalCost === "number" ? `$${totals.totalCost.toFixed(2)}` : null;
 }
 
 /** "256K", "32K", "1.2M": the size of a model's window, in the words the spec uses for tokens. */

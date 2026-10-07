@@ -48,7 +48,8 @@ describe("Trunk Accounts", () => {
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Which service is the new account with?");
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).not.toContain("Add key");
     await act(async () => resolveDetect({ manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Anthropic setup-token" }] }));
-    expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("claude setup-token");
+    expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Claude");
+    expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Paste a token instead");
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).not.toContain("Add key");
   });
 

@@ -51,6 +51,13 @@ export const SessionReactionsSetParamsSchema = closedObject({
 
 export const SessionReactionsListParamsSchema = closedObject(SessionReactionTargetParamsSchema);
 
+export const SessionContextSetParamsSchema = closedObject({
+  ...SessionReactionTargetParamsSchema,
+  messageId: NonEmptyString,
+  exclude: Type.Boolean(),
+});
+export const SessionContextSetResultSchema = closedObject({ messageId: NonEmptyString, excluded: Type.Boolean() });
+
 export const SessionReactionsSetResultSchema = closedObject({
   messageId: NonEmptyString,
   reactions: Type.Array(MessageReactionSummarySchema),
@@ -77,6 +84,7 @@ export type MessageReactionSummary = Static<typeof MessageReactionSummarySchema>
 export type SessionReactionMirror = Static<typeof SessionReactionMirrorSchema>;
 export type SessionReactionsSetParams = Static<typeof SessionReactionsSetParamsSchema>;
 export type SessionReactionsListParams = Static<typeof SessionReactionsListParamsSchema>;
+export type SessionContextSetParams = Static<typeof SessionContextSetParamsSchema>;
 export type SessionReactionsSetResult = Static<typeof SessionReactionsSetResultSchema>;
 export type SessionReactionsListResult = Static<typeof SessionReactionsListResultSchema>;
 export type SessionReactionEvent = Static<typeof SessionReactionEventSchema>;

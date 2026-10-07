@@ -12,8 +12,8 @@ let root: Root | null = null;
 let host: HTMLDivElement;
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = null; document.body.innerHTML = ""; });
 
-async function mount() {
-  const request = vi.fn((method: string) => Promise.resolve(method === "agents.list" ? { defaultId: "main", mainKey: "main", agents: [{ id: "main", name: "Main" }] } : { plugins: [], skills: [], nodes: [] }));
+async function mount(agents = [{ id: "main", name: "Main" }]) {
+  const request = vi.fn((method: string) => Promise.resolve(method === "agents.list" ? { defaultId: "main", mainKey: "main", agents } : { plugins: [], skills: [], nodes: [] }));
   const engine: WindowEngine = { request: request as unknown as WindowEngine["request"], onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"] };
   host = document.createElement("div"); document.body.append(host);
   root = createRoot(host);
@@ -40,5 +40,15 @@ describe("branch:place-tab", () => {
     await send("library", "Channels");
     await send("customize", "Nowhere");
     expect(selectedTab()).toBe("Trunks");
+  });
+  it("hides the Trunks count at zero and shows it when Trunks exist", async () => {
+    await mount([]);
+    const tab = () => host.querySelector<HTMLButtonElement>('[aria-label="Customize"] [role="tab"]');
+    expect(tab()?.hasAttribute("data-count")).toBe(false);
+    expect(tab()?.getAttribute("aria-label")).toBeNull();
+    await act(async () => root?.unmount()); root = null;
+    await mount();
+    expect(tab()?.getAttribute("data-count")).toBe("1");
+    expect(tab()?.getAttribute("aria-label")).toBe("Trunks, 1");
   });
 });

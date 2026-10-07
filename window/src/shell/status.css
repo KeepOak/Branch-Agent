@@ -101,7 +101,8 @@
   border-radius: 4px;
 }
 .brow .v {
-  font: 12px var(--mono);
+  width: 82px;
+  font-size: 12px;
   text-align: right;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;

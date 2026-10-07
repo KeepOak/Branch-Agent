@@ -71,7 +71,10 @@ export function useLimits(session: SaplingSession, ready: boolean): Limits | nul
     void load();
     const timer = setInterval(load, 5 * 60_000);
     window.addEventListener("branch:usage-checked", load);
-    return () => { clearInterval(timer); window.removeEventListener("branch:usage-checked", load); };
+    const off = session.onGatewayEvent((event, payload) => {
+      if (event === "chat" && rec(payload).state === "final") void load();
+    });
+    return () => { clearInterval(timer); window.removeEventListener("branch:usage-checked", load); off(); };
   }, [session, ready]);
   return limits;
 }

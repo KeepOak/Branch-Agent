@@ -73,9 +73,9 @@ export function NewTrunkCard({ engine, flow, onDone }: { engine: WindowEngine; f
     <div className="dock-q talk-setup" data-testid="new-trunk-card">
       <div className="card choice q-card" aria-busy={busy}>
         <p className="talk-done">{line}</p>
-        <div className="q">{step === 1 ? "What should I take on first?" : "How careful should I be?"}</div>
+        <div className="q">{step === 1 ? "What should I take on first?" : "Access for this Trunk"}</div>
         <div className="sub">{step === 1 ? "Pick one for now. You can add more later." : "Lockdown still stops me, whatever you pick."}</div>
-        <div className="opts" role="radiogroup" aria-label={step === 1 ? "What should I take on first?" : "How careful should I be?"}>
+        <div className="opts" role="radiogroup" aria-label={step === 1 ? "What should I take on first?" : "Access for this Trunk"}>
           {opts.map((o, j) => (
             <button key={o.label} type="button" className="opt" role="radio" aria-checked={false} disabled={busy} onClick={() => void (step === 1 ? job(j) : care(j))}>
               <kbd>{KEYS[j]}</kbd>
