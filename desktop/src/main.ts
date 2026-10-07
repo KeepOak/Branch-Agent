@@ -289,7 +289,7 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
   };
   priorGateway.once("exit", priorExited);
   try {
-    if (!await candidatePassed(label, preparation.signal)) return;
+    if (!await candidatePassed(label, explicit, preparation.signal)) return;
     if (preparation.signal.aborted || !engineServing()) throw new Error("The serving engine exited during update preparation");
     await prepareUpdateStandby(label, explicit);
     if (preparation.signal.aborted || !engineServing()) throw new Error("The serving engine exited during standby warmup");
@@ -299,7 +299,7 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     priorGateway.off("exit", priorExited);
     stillOpen();
     const started = Date.now();
-    sendToBranchWindows("branch-desktop:engine-update", "updating");
+    if (explicit) sendToBranchWindows("branch-desktop:engine-update", "updating");
     const resumeSupervision = gatewaySupervisor.expectExit(priorGateway);
     // One handoff at a time: while an old engine still finishes its sessions, the guarded swap runs instead.
     if (standby && seamlessHandoff() && retiring.size > 0) log(`update ${label}: an old engine is still finishing its sessions; using the guarded swap`);
@@ -595,13 +595,13 @@ async function followStagedUpdate(): Promise<void> {
  * publication rolled back with nothing stopped; a slow one still gets the normal swap and its readiness rollback.
  */
 let candidateCheckedFor: string | undefined;
-async function candidatePassed(label: string, signal?: AbortSignal): Promise<boolean> {
+async function candidatePassed(label: string, explicit: boolean, signal?: AbortSignal): Promise<boolean> {
   const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   if (!version || candidateCheckedFor === version) return true;
   // The machine-load rule: a second engine only when there is room for it; otherwise the plain swap with its rollback.
   if (freemem() < CANDIDATE_MIN_FREE_BYTES) { log(`update ${label}: candidate check skipped; ${Math.round(freemem() / 2 ** 20)} MB free`); return true; }
   const candidate = resolveEngineDir(cfg);
-  sendToBranchWindows("branch-desktop:engine-update", "preparing");
+  if (explicit) sendToBranchWindows("branch-desktop:engine-update", "preparing");
   const started = Date.now();
   const result = await checkCandidateBeside(cfg, candidate, token, READY_TIMEOUT_MS);
   if (signal?.aborted) throw new Error("The serving engine exited during candidate check");
@@ -622,7 +622,7 @@ const autoApply = createAutoApplyUpdate({
     const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
     return version === withdrawnUpdateVersion ? null : version;
   },
-  enabled: () => controls.settings().autoApplyUpdates,
+  enabled: () => controls.settings().autoApplyUpdates && !updateLock.held,
   seamlessHandoff,
   activity: async () => {
     if (!gateway) throw new Error("The gateway is not running");
@@ -1118,7 +1118,10 @@ function offerWindowStatus(w: BrowserWindow): void {
 /** Undo owns the same lock as update, recovery and staged-release replacement, including its publication moves. */
 async function undoLastUpdate(): Promise<void> {
   const lock = updateLock.acquire("undo update");
-  if (!lock) return;
+  if (!lock) {
+    sendToBranchWindows("branch-desktop:update-undo-failed", "An update is finishing, try again in a moment");
+    return;
+  }
   try {
     if (!gateway || !engineServing()) throw new Error("The engine is not ready to switch");
     const active = await gatewayActivity(gateway);
