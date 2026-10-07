@@ -1,6 +1,6 @@
 // Automations (§4.6.3; preview 40-places / 41-placesap p30-sched, p35-prop, p40-auto-other, 94-g4p).
 // Scheduling contracts adapted from engine/ui cron form/controller.
-import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
 import { Checkins } from "./Checkins";
 import { formToSchedule, scheduleWords as words, type ScheduleForm } from "./model";
@@ -8,11 +8,15 @@ import { canAdmin, ScheduledTab } from "./Scheduled";
 import { TriggersTab } from "./Triggers";
 import { ProceduresTab } from "./Procedures";
 import { BoardTab } from "./Board";
-import { canWrite, rec, str, usePlaceData, type Row } from "./runtime";
-import { loadCanopy } from "../canopy/data";
+import { canApprove, canWrite, rec, str, usePlaceData, type Row } from "./runtime";
+import { computers, loadCanopy } from "../canopy/data";
+import { CardSheet } from "../canopy/CardSheet";
+import { CardDialog, cardPatch, draftOf } from "../canopy/CardDialogs";
+import type { Ctx } from "../canopy/ui";
 import "./activity.css";
 import "./automations.css";
 import "./board-cards.css";
+import "../canopy/canopy.css";
 
 const TABS = [["scheduled", "Scheduled"], ["procedures", "Procedures"], ["triggers", "Triggers"], ["checkins", "Check-ins"], ["board", "Board"]] as const;
 type Tab = (typeof TABS)[number][0];
@@ -46,8 +50,9 @@ export function tabFromEvent(detail: unknown): Tab | null {
 
 export function AutomationsPlace({ engine, openConversation, openPlace, level }: PlaceProps) {
   const [tab, setTab] = useState<Tab>("scheduled");
+  const [sheet, setSheet] = useState("");
+  const [editing, setEditing] = useState<Row | null>(null);
   const state = usePlaceData(engine, loadCanopy);
-  
   const moveTab = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (event.ctrlKey || event.altKey || event.metaKey) return;
     const next = event.key === "ArrowRight" ? (index + 1) % TABS.length : event.key === "ArrowLeft" ? (index + TABS.length - 1) % TABS.length : event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : -1;
@@ -56,26 +61,22 @@ export function AutomationsPlace({ engine, openConversation, openPlace, level }:
     setTab(TABS[next][0]);
     event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
   };
-  
   useEffect(() => {
     const onTab = (e: Event) => { const next = tabFromEvent((e as CustomEvent).detail); if (next) setTab(next); };
     window.addEventListener("branch:place-tab", onTab);
     return () => window.removeEventListener("branch:place-tab", onTab);
   }, []);
-  
   const act = useCallback(async (op: () => Promise<unknown>, message: string) => {
     const ok = await state.act(op, message);
     if (!ok) void state.refresh();
     return ok;
   }, [state]);
-  
-  const openCard = useCallback((id: string) => {
-    openPlace("canopy");
-    setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "canopy", tab: "Cards" } })), 0);
-    // Card sheet will open in Canopy with the id - Canopy handles displaying the sheet
-    void id; // Suppress unused variable warning
-  }, [openPlace]);
-  
+  const d = state.data;
+  const comps = useMemo(() => d ? computers(d) : [], [d]);
+  const ctx: Ctx | null = d ? {
+    engine, d, level, comps, now: Date.now(), write: canWrite(engine), approve: canApprove(engine), busy: state.busy, act,
+    openConversation, openPlace, openCard: id => setSheet(id),
+  } : null;
   return <PlaceFrame title="Automations" lede="Work your Trunks do on their own.">
     <div className="auto-place">
       <div className="au-tabs" role="tablist" aria-label="Automations">{TABS.map(([id, name], index) => <button key={id} type="button" role="tab" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} onKeyDown={event => moveTab(event, index)} onClick={() => setTab(id)}>{name}</button>)}</div>
@@ -84,14 +85,10 @@ export function AutomationsPlace({ engine, openConversation, openPlace, level }:
       {tab === "procedures" && <ProceduresTab engine={engine} level={level} />}
       {tab === "triggers" && <TriggersTab engine={engine} level={level} openConversation={openConversation} />}
       {tab === "checkins" && <Checkins engine={engine} level={level} />}
-      {tab === "board" && <BoardTab 
-        openPlace={openPlace}
-        data={state.data}
-        engine={engine}
-        openCard={openCard}
-        write={canWrite(engine)}
-        act={act}
-      />}
+      {tab === "board" && <BoardTab openPlace={openPlace} data={d} engine={engine} openCard={id => setSheet(id)} write={canWrite(engine)} act={act} />}
+      {ctx && sheet && !editing ? <CardSheet ctx={ctx} id={sheet} close={() => setSheet("")} edit={c => setEditing(c)} /> : null}
+      {ctx && editing ? <CardDialog ctx={ctx} base={editing} start={draftOf(editing)} close={() => setEditing(null)}
+        save={x => act(() => engine.request("canopy.cards.update", { id: editing.id, expectedUpdatedAt: editing.updatedAt, patch: cardPatch(x, editing) }), "Saved.")} /> : null}
     </div>
   </PlaceFrame>;
 }

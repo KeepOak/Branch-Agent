@@ -62,8 +62,14 @@ const cards = [
   { title: 'Fix CI timeout', status: 'blocked', agentId: agents[1] },
   { title: 'Resolve merge conflicts', status: 'blocked', agentId: agents[2] },
 ];
-for (const card of cards) {
-  call('canopy.cards.create', { title: card.title, status: card.status, agentId: card.agentId });
+let seededCards = 0;
+try {
+  for (const card of cards) {
+    call('canopy.cards.create', { title: card.title, status: card.status, agentId: card.agentId });
+    seededCards += 1;
+  }
+} catch (error) {
+  console.warn(`Canopy cards: seeded ${seededCards} of ${cards.length} (${error instanceof Error ? error.message : error}).`);
 }
 
 // The tour only inspects UI state. Do not install fake credentials: the gateway
@@ -75,4 +81,4 @@ call('config.patch', {
   raw: JSON.stringify({ wizard: { lastRunAt: new Date().toISOString(), lastRunCommand: 'window', lastRunMode: 'local' } }),
 });
 writeFileSync(resolve(process.env.VISUAL_OUT ?? 'visual-tour-output', 'fixture.json'), JSON.stringify({ researchKey }));
-console.log(`Seeded ${agents.length} Trunks, ${notes.length} conversations, ${cards.length} cards, and one group without provider credentials.`);
+console.log(`Seeded ${agents.length} Trunks, ${notes.length} conversations, ${seededCards} cards, and one group without provider credentials.`);

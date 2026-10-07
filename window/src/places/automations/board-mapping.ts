@@ -1,38 +1,40 @@
-// Maps Canopy's nine card statuses to Board's six columns (§4.6.3.5, preview's Automations › Board).
-// The Board's columns match the preview's 5-column design extended with "To sort" for triage work.
+// Maps Canopy's nine card statuses onto Automations › Board's six columns
+// (§4.6.3.5; preview COLS15 after the D18 orchard patch).
 
 export type BoardCol = "sort" | "todo" | "doing" | "check" | "done" | "stuck";
-export type CanopyStatus = "triage" | "backlog" | "todo" | "scheduled" | "ready" | "running" | "review" | "blocked" | "done";
 
-/** Maps a Canopy status to a Board column. */
-export function statusToColumn(status: CanopyStatus): BoardCol {
-  switch (status) {
-    case "triage": return "sort";
-    case "backlog": return "todo";
-    case "todo": return "todo";
-    case "scheduled": return "todo";
-    case "ready": return "doing";
-    case "running": return "doing";
-    case "review": return "check";
-    case "blocked": return "stuck";
-    case "done": return "done";
-  }
+export const BOARD_COLUMNS: [BoardCol, string][] = [
+  ["sort", "To sort"], ["todo", "To do"], ["doing", "Doing"], ["check", "To check"], ["done", "Done"], ["stuck", "Stuck"],
+];
+
+const STATUS_COL: Record<string, BoardCol> = {
+  triage: "sort",
+  backlog: "todo",
+  todo: "todo",
+  scheduled: "todo",
+  ready: "doing",
+  running: "doing",
+  review: "check",
+  blocked: "stuck",
+  done: "done",
+};
+
+const COL_STATUS: Record<BoardCol, string> = {
+  sort: "triage",
+  todo: "todo",
+  doing: "running",
+  check: "review",
+  done: "done",
+  stuck: "blocked",
+};
+
+export function statusToColumn(status: string): BoardCol | null {
+  return STATUS_COL[status] ?? null;
 }
 
-/** Maps a Board column to a Canopy status, or returns null when no move method exists for that column. */
-export function columnToStatus(col: BoardCol): CanopyStatus | null {
-  switch (col) {
-    case "sort": return "triage";
-    case "todo": return "todo";
-    case "doing": return "running";
-    case "check": return "review";
-    case "done": return "done";
-    case "stuck": return "blocked";
-  }
+/** The canopy.cards.move status that lands a card in this column. */
+export function columnToStatus(col: BoardCol): string {
+  return COL_STATUS[col];
 }
 
-/** The reason a move to this column is disabled, or null when the move is allowed. */
-export function moveDisabledReason(_col: BoardCol): string | null {
-  // All columns have canopy.cards.move support via columnToStatus
-  return null;
-}
+export const colName = (col: BoardCol) => BOARD_COLUMNS.find(([k]) => k === col)?.[1] ?? col;

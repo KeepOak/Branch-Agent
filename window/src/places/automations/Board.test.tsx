@@ -2,288 +2,159 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BoardTab } from "./Board";
-import type { CanopyData } from "../canopy/data";
 import type { WindowEngine } from "../../connect/engine";
+import type { CanopyData } from "../canopy/data";
+import { AutomationsPlace } from "./index";
+import { BoardTab } from "./Board";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span data-face={label} /> }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const createMockData = (cards: any[]): CanopyData => ({
-  sessions: [],
-  pending: [],
-  jobs: [],
-  runs: [],
-  cards,
-  boards: [],
-  trunks: [
-    { id: "trunk1", name: "Oak" },
-    { id: "trunk2", name: "Elm" }
-  ],
-  defaultTrunk: "trunk1",
-  mainKey: "main",
-  nodes: [],
-  computer: null,
-  cardsError: "",
-  errors: [],
-  viewer: "viewer1"
-});
+function canopyData(cards: Record<string, unknown>[]): CanopyData {
+  return {
+    sessions: [], pending: [], jobs: [], runs: [], cards, boards: [],
+    trunks: [{ id: "a", name: "Juniper" }, { id: "b", name: "Tide" }],
+    defaultTrunk: "a", mainKey: "main", nodes: [], computer: null, cardsError: "", errors: [], viewer: "you",
+  };
+}
 
 let root: Root | undefined, host: HTMLElement;
 afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; });
 
-async function mount(props: {
-  data: CanopyData | null;
-  engine: WindowEngine | null;
-  write?: boolean;
-}) {
-  const openPlace = vi.fn();
-  const openCard = vi.fn();
-  const actFn = vi.fn(async (op, _msg) => { await op(); return true; });
-  const mockEngine = props.engine || {
-    request: vi.fn().mockResolvedValue({ ok: true }),
-    scopes: ["operator.write"],
-    onEvent: vi.fn(() => vi.fn()),
-  } as unknown as WindowEngine;
-  
-  host = document.createElement("div");
-  document.body.append(host);
-  root = createRoot(host);
-  
-  await act(async () => {
-    root!.render(<BoardTab 
-      openPlace={openPlace}
-      data={props.data}
-      engine={mockEngine}
-      openCard={openCard}
-      write={props.write ?? true}
-      act={actFn}
-    />);
-  });
-  
+async function mountTab(props: { data: CanopyData | null; write?: boolean }) {
+  const openPlace = vi.fn(), openCard = vi.fn();
+  const actFn = vi.fn(async (op: () => Promise<unknown>, _message: string) => { await op(); return true; });
+  const engine = { request: vi.fn(async () => ({ ok: true })), onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"] } as unknown as WindowEngine;
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => { root!.render(<BoardTab openPlace={openPlace} data={props.data} engine={engine} openCard={openCard} write={props.write ?? true} act={actFn} />); });
   await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-  
-  return { host, openPlace, openCard, actFn, engine: mockEngine };
+  return { openPlace, openCard, actFn, engine };
 }
 
 const click = async (el: HTMLElement) => { await act(async () => { el.click(); await new Promise(r => setTimeout(r, 0)); }); };
+const col = (name: string) => [...host.querySelectorAll(".au-col")].find(s => s.getAttribute("aria-label") === name) as HTMLElement;
+const counts = () => BOARD_NAMES.map(name => col(name).querySelector("h3 span")?.textContent);
+const BOARD_NAMES = ["To sort", "To do", "Doing", "To check", "Done", "Stuck"];
+
+function fx(over: Record<string, unknown> = {}) {
+  return {
+    "sessions.list": { sessions: [], hasMore: false },
+    "exec.approval.list": [], "plugin.approval.list": [], "branch.approval.list": [],
+    "cron.list": { jobs: [], hasMore: false },
+    "cron.runs": { entries: [], hasMore: false },
+    "canopy.cards.list": { cards: [
+      { id: "k1", title: "Ready card", status: "ready", agentId: "a", updatedAt: 5, notes: "On the widgets" },
+      { id: "k2", title: "Failed card", status: "blocked", agentId: "b", updatedAt: 6, metadata: { failureCount: 1, attempts: [{ status: "failed", error: "Tests failed" }] } },
+      { id: "k3", title: "Inbox triage", status: "triage", agentId: "a", updatedAt: 7 },
+      { id: "k4", title: "Review copy", status: "review", agentId: "a", updatedAt: 8 },
+    ], boards: [] },
+    "agents.list": { defaultId: "a", mainKey: "main", agents: [{ id: "a", identity: { name: "Juniper" } }, { id: "b", identity: { name: "Tide" } }] },
+    "node.list": { nodes: [] },
+    "computer.status": { configured: false },
+    "users.self": { profile: { id: "you" } },
+    "canopy.notifications.list": { subscriptions: [] },
+    ...over,
+  };
+}
+
+async function mountPlace(responses = fx()) {
+  const calls: [string, unknown][] = [];
+  const request = vi.fn(async (method: string, params?: unknown) => {
+    calls.push([method, params]);
+    if (method in responses) { const v = responses[method as keyof typeof responses]; if (v instanceof Error) throw v; return v; }
+    return { applied: true, ok: true };
+  });
+  const engine = { request: request as WindowEngine["request"], onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"] } as WindowEngine;
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => { root!.render(<AutomationsPlace engine={engine} facts={{ running: 0, waiting: 0 }} openConversation={vi.fn()} openPlace={vi.fn()} level="regular" />); });
+  await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+  return { calls, request };
+}
 
 describe("BoardTab", () => {
-  describe("with no data", () => {
-    it("shows six columns with zero counts", async () => {
-      const { host } = await mount({ data: null, engine: null });
-      
-      const columns = host.querySelectorAll(".au-col");
-      expect(columns).toHaveLength(6);
-      
-      const labels = Array.from(columns).map(col => col.querySelector("h3")?.textContent);
-      expect(labels).toEqual(["To sort0", "To do0", "Doing0", "To check0", "Done0", "Stuck0"]);
-    });
-
-    it("shows banner pointing to Canopy", async () => {
-      const { host } = await mount({ data: null, engine: null });
-      
-      const banner = host.querySelector(".au-banner");
-      expect(banner).toBeTruthy();
-      expect(banner?.textContent).toContain("Cards your Trunks work on today are in Canopy");
-    });
-
-    it("has disabled Bring in issues button", async () => {
-      const { host } = await mount({ data: null, engine: null });
-      
-      const button = Array.from(host.querySelectorAll("button")).find(b => b.textContent?.includes("Bring in issues"));
-      expect(button).toBeTruthy();
-      expect(button?.disabled).toBe(true);
-    });
+  it("shows six empty columns while cards are still loading", async () => {
+    await mountTab({ data: null });
+    expect([...host.querySelectorAll(".au-col")].map(s => s.getAttribute("aria-label"))).toEqual(BOARD_NAMES);
+    expect(host.textContent).toContain("Reading cards…");
+    expect(counts()).toEqual(["0", "0", "0", "0", "0", "0"]);
   });
 
-  describe("with no cards", () => {
-    it("shows empty state when cards array is empty", async () => {
-      const data = createMockData([]);
-      const { host } = await mount({ data, engine: null });
-      
-      const banner = host.querySelector(".au-banner");
-      expect(banner?.textContent).toContain("No cards yet");
-    });
-
-    it("shows zero counts in all columns", async () => {
-      const data = createMockData([]);
-      const { host } = await mount({ data, engine: null });
-      
-      const counts = Array.from(host.querySelectorAll(".au-col h3 span")).map(s => s.textContent);
-      expect(counts).toEqual(["0", "0", "0", "0", "0", "0"]);
-    });
+  it("shows an empty state that points at Canopy when there are no cards", async () => {
+    await mountTab({ data: canopyData([]) });
+    expect(host.textContent).toContain("No cards yet");
+    expect(host.textContent).toContain("Cards are made from conversations");
   });
 
-  describe("status to column mapping", () => {
-    it("maps triage cards to To sort column", async () => {
-      const data = createMockData([
-        { id: "c1", title: "Triage card", status: "triage", agentId: "trunk1", updatedAt: 100 }
-      ]);
-      const { host } = await mount({ data, engine: null });
-      
-      const sortColumn = Array.from(host.querySelectorAll(".au-col"))[0];
-      expect(sortColumn.querySelector("h3 span")?.textContent).toBe("1");
-      expect(sortColumn.textContent).toContain("Triage card");
-    });
-
-    it("maps backlog, todo, and scheduled cards to To do column", async () => {
-      const data = createMockData([
-        { id: "c1", title: "Backlog card", status: "backlog", agentId: "trunk1", updatedAt: 100 },
-        { id: "c2", title: "Todo card", status: "todo", agentId: "trunk1", updatedAt: 100 },
-        { id: "c3", title: "Scheduled card", status: "scheduled", agentId: "trunk1", updatedAt: 100 }
-      ]);
-      const { host } = await mount({ data, engine: null });
-      
-      const todoColumn = Array.from(host.querySelectorAll(".au-col"))[1];
-      expect(todoColumn.querySelector("h3 span")?.textContent).toBe("3");
-      expect(todoColumn.textContent).toContain("Backlog card");
-      expect(todoColumn.textContent).toContain("Todo card");
-      expect(todoColumn.textContent).toContain("Scheduled card");
-    });
-
-    it("maps ready and running cards to Doing column", async () => {
-      const data = createMockData([
-        { id: "c1", title: "Ready card", status: "ready", agentId: "trunk1", updatedAt: 100 },
-        { id: "c2", title: "Running card", status: "running", agentId: "trunk1", updatedAt: 100 }
-      ]);
-      const { host } = await mount({ data, engine: null });
-      
-      const doingColumn = Array.from(host.querySelectorAll(".au-col"))[2];
-      expect(doingColumn.querySelector("h3 span")?.textContent).toBe("2");
-      expect(doingColumn.textContent).toContain("Ready card");
-      expect(doingColumn.textContent).toContain("Running card");
-    });
-
-    it("maps review cards to To check column", async () => {
-      const data = createMockData([
-        { id: "c1", title: "Review card", status: "review", agentId: "trunk1", updatedAt: 100 }
-      ]);
-      const { host } = await mount({ data, engine: null });
-      
-      const checkColumn = Array.from(host.querySelectorAll(".au-col"))[3];
-      expect(checkColumn.querySelector("h3 span")?.textContent).toBe("1");
-      expect(checkColumn.textContent).toContain("Review card");
-    });
-
-    it("maps done cards to Done column", async () => {
-      const data = createMockData([
-        { id: "c1", title: "Done card", status: "done", agentId: "trunk1", updatedAt: 100 }
-      ]);
-      const { host } = await mount({ data, engine: null });
-      
-      const doneColumn = Array.from(host.querySelectorAll(".au-col"))[4];
-      expect(doneColumn.querySelector("h3 span")?.textContent).toBe("1");
-      expect(doneColumn.textContent).toContain("Done card");
-    });
-
-    it("maps blocked cards to Stuck column", async () => {
-      const data = createMockData([
-        { id: "c1", title: "Blocked card", status: "blocked", agentId: "trunk1", updatedAt: 100 }
-      ]);
-      const { host } = await mount({ data, engine: null });
-      
-      const stuckColumn = Array.from(host.querySelectorAll(".au-col"))[5];
-      expect(stuckColumn.querySelector("h3 span")?.textContent).toBe("1");
-      expect(stuckColumn.textContent).toContain("Blocked card");
-    });
-
-    it("handles multiple cards in each column with correct counts", async () => {
-      const data = createMockData([
-        { id: "c1", title: "Card 1", status: "triage", agentId: "trunk1", updatedAt: 100 },
-        { id: "c2", title: "Card 2", status: "triage", agentId: "trunk1", updatedAt: 100 },
-        { id: "c3", title: "Card 3", status: "todo", agentId: "trunk1", updatedAt: 100 },
-        { id: "c4", title: "Card 4", status: "running", agentId: "trunk1", updatedAt: 100 },
-        { id: "c5", title: "Card 5", status: "running", agentId: "trunk1", updatedAt: 100 },
-        { id: "c6", title: "Card 6", status: "running", agentId: "trunk1", updatedAt: 100 }
-      ]);
-      const { host } = await mount({ data, engine: null });
-      
-      const counts = Array.from(host.querySelectorAll(".au-col h3 span")).map(s => s.textContent);
-      expect(counts).toEqual(["2", "1", "3", "0", "0", "0"]);
-    });
+  it("lands each Canopy status in the preview column with the matching count", async () => {
+    await mountTab({ data: canopyData([
+      { id: "1", title: "Triage card", status: "triage", agentId: "a", updatedAt: 1 },
+      { id: "2", title: "Backlog card", status: "backlog", agentId: "a", updatedAt: 1 },
+      { id: "3", title: "Todo card", status: "todo", agentId: "a", updatedAt: 1 },
+      { id: "4", title: "Scheduled card", status: "scheduled", agentId: "a", updatedAt: 1 },
+      { id: "5", title: "Ready card", status: "ready", agentId: "a", updatedAt: 1 },
+      { id: "6", title: "Running card", status: "running", agentId: "b", updatedAt: 1 },
+      { id: "7", title: "Review card", status: "review", agentId: "a", updatedAt: 1 },
+      { id: "8", title: "Done card", status: "done", agentId: "a", updatedAt: 1 },
+      { id: "9", title: "Blocked card", status: "blocked", agentId: "a", updatedAt: 1 },
+    ]) });
+    expect(counts()).toEqual(["1", "3", "2", "1", "1", "1"]);
+    expect(col("To sort").textContent).toContain("Triage card");
+    expect(col("To do").textContent).toMatch(/Backlog card[\s\S]*Todo card[\s\S]*Scheduled card/);
+    expect(col("Doing").textContent).toMatch(/Ready card[\s\S]*Running card/);
+    expect(col("To check").textContent).toContain("Review card");
+    expect(col("Done").textContent).toContain("Done card");
+    expect(col("Stuck").textContent).toContain("Blocked card");
   });
 
-  describe("card interactions", () => {
-    it("opens card sheet when card is clicked", async () => {
-      const data = createMockData([
-        { id: "c1", title: "Click me", status: "todo", agentId: "trunk1", updatedAt: 100 }
-      ]);
-      const { host, openCard } = await mount({ data, engine: null });
-      
-      const card = host.querySelector(".au-card") as HTMLElement;
-      expect(card).toBeTruthy();
-      
-      await click(card);
-      expect(openCard).toHaveBeenCalledWith("c1");
-    });
+  it("opens the card when its face is clicked", async () => {
+    const { openCard } = await mountTab({ data: canopyData([{ id: "c1", title: "Click me", status: "todo", agentId: "a", updatedAt: 1 }]) });
+    await click(host.querySelector(".au-bcard") as HTMLElement);
+    expect(openCard).toHaveBeenCalledWith("c1");
+  });
 
-    it("shows trunk name when card has assigned trunk", async () => {
-      const data = createMockData([
-        { id: "c1", title: "Card with trunk", status: "todo", agentId: "trunk2", updatedAt: 100 }
-      ]);
-      const { host } = await mount({ data, engine: null });
-      
-      const todoColumn = Array.from(host.querySelectorAll(".au-col"))[1];
-      expect(todoColumn.textContent).toContain("Card with trunk");
-      const face = todoColumn.querySelector("[data-face]");
-      expect(face?.getAttribute("data-face")).toBe("Elm");
-    });
+  it("moves a card through canopy.cards.move and disables Split with a reason", async () => {
+    const { actFn, engine } = await mountTab({ data: canopyData([{ id: "c1", title: "Move me", status: "todo", agentId: "a", updatedAt: 9 }]) });
+    await click(host.querySelector(".au-bmore") as HTMLButtonElement);
+    expect(host.querySelector("[role=menu]")).toBeTruthy();
+    const doing = [...host.querySelectorAll("[role=menuitemradio]")].find(b => b.textContent?.includes("Doing")) as HTMLButtonElement;
+    await click(doing);
+    expect(actFn.mock.calls[0][1]).toBe("Moved to Doing.");
+    await actFn.mock.calls[0][0]();
+    expect(engine.request).toHaveBeenCalledWith("canopy.cards.move", { id: "c1", status: "running", expectedUpdatedAt: 9 });
+    await click(host.querySelector(".au-bmore") as HTMLButtonElement);
+    const split = [...host.querySelectorAll("button")].find(b => b.textContent?.includes("Split into smaller cards"));
+    expect(split?.disabled).toBe(true);
+    expect(split?.title).toBe("Open the card in Canopy to split it into smaller cards.");
+  });
 
-    it("opens move menu when more button is clicked", async () => {
-      const data = createMockData([
-        { id: "c1", title: "Moveable card", status: "todo", agentId: "trunk1", updatedAt: 100 }
-      ]);
-      const { host } = await mount({ data, engine: null });
-      
-      const moreButton = host.querySelector(".au-card-more") as HTMLButtonElement;
-      expect(moreButton).toBeTruthy();
-      
-      await click(moreButton);
-      
-      const menu = host.querySelector("[role=menu]");
-      expect(menu).toBeTruthy();
-      
-      const menuItems = menu?.querySelectorAll("[role=menuitemradio]");
-      expect(menuItems).toHaveLength(6);
-    });
+  it("Make it clear calls canopy.cards.specify; Looks good moves to done", async () => {
+    const { actFn, engine } = await mountTab({ data: canopyData([
+      { id: "s1", title: "gym membership thing??", status: "triage", agentId: "a", updatedAt: 2 },
+      { id: "r1", title: "Check the copy", status: "review", agentId: "a", updatedAt: 3 },
+    ]) });
+    await click([...host.querySelectorAll("button")].find(b => b.textContent === "Make it clear")!);
+    expect(actFn.mock.calls[0][1]).toBe("Made clear and moved to To do.");
+    await actFn.mock.calls[0][0]();
+    expect(engine.request).toHaveBeenCalledWith("canopy.cards.specify", { id: "s1", title: "Gym membership", summary: "Made clear from the board." });
+    await click([...host.querySelectorAll("button")].find(b => b.textContent === "Looks good")!);
+    expect(actFn.mock.calls[1][1]).toBe("Done.");
+    await actFn.mock.calls[1][0]();
+    expect(engine.request).toHaveBeenCalledWith("canopy.cards.move", { id: "r1", status: "done", expectedUpdatedAt: 3 });
+  });
+});
 
-    it("moves card when menu item is selected", async () => {
-      const data = createMockData([
-        { id: "c1", title: "Move me", status: "todo", agentId: "trunk1", updatedAt: 100 }
-      ]);
-      
-      const { host, actFn, engine } = await mount({ data, engine: null });
-      
-      const moreButton = host.querySelector(".au-card-more") as HTMLButtonElement;
-      await click(moreButton);
-      
-      const doingOption = Array.from(host.querySelectorAll("[role=menuitemradio]"))[2] as HTMLButtonElement;
-      expect(doingOption.textContent).toContain("Doing");
-      
-      await click(doingOption);
-      
-      expect(actFn).toHaveBeenCalled();
-      expect(actFn.mock.calls[0][1]).toBe("Moved to Doing.");
-      
-      // Execute the operation to verify it would call the right engine method
-      const operation = actFn.mock.calls[0][0];
-      await operation();
-      expect(engine.request).toHaveBeenCalledWith("canopy.cards.move", {
-        id: "c1",
-        status: "running",
-        expectedUpdatedAt: 100
-      });
-    });
-
-    it("disables more button when write permission is false", async () => {
-      const data = createMockData([
-        { id: "c1", title: "Read only card", status: "todo", agentId: "trunk1", updatedAt: 100 }
-      ]);
-      const { host } = await mount({ data, engine: null, write: false });
-      
-      const moreButton = host.querySelector(".au-card-more") as HTMLButtonElement;
-      expect(moreButton.disabled).toBe(true);
-    });
+describe("Automations › Board against live Canopy cards", () => {
+  it("draws Canopy cards in the Board columns and opens the existing card sheet", async () => {
+    const { calls } = await mountPlace();
+    await click([...host.querySelectorAll<HTMLButtonElement>("[role=tab]")].find(t => t.textContent === "Board")!);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(calls.some(([method]) => method === "canopy.cards.list")).toBe(true);
+    expect(col("To sort").querySelector("h3 span")?.textContent).toBe("1");
+    expect(col("Doing").textContent).toContain("Ready card");
+    expect(col("Stuck").textContent).toContain("Failed card");
+    expect(col("To check").textContent).toContain("Review copy");
+    await click([...host.querySelectorAll<HTMLElement>(".au-bcard")].find(c => c.textContent?.includes("Ready card"))!);
+    expect(host.querySelector("[data-testid=cn-sheet]")).toBeTruthy();
+    expect(host.querySelector("[data-testid=cn-sheet]")?.textContent).toContain("Ready card");
   });
 });
