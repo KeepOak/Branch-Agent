@@ -127,9 +127,9 @@ interface Ipc {
 }
 
 /** Only the owned served window may call; the renderer never passes a URL or a path. */
-export function registerDesktopControlsIpc(ipc: Ipc, owner: () => Sender | undefined, servedUrl: string, controls: DesktopControls): void {
+export function registerDesktopControlsIpc(ipc: Ipc, owner: (event: InvokeEvent) => Sender | undefined, servedUrl: string, controls: DesktopControls): void {
   const owned = (event: InvokeEvent): void => {
-    if (!isOwnedComponentWindow(event, owner(), servedUrl)) throw new Error("Desktop controls require the owned served window");
+    if (!isOwnedComponentWindow(event, owner(event), servedUrl)) throw new Error("Desktop controls require the owned served window");
   };
   ipc.handle("branch-desktop:controls:get", async (event) => { owned(event); return controls.get(); });
   ipc.handle("branch-desktop:controls:set", async (event, name, on) => {
@@ -143,7 +143,7 @@ export function registerDesktopControlsIpc(ipc: Ipc, owner: () => Sender | undef
     await controls.openDownload(id);
   });
   ipc.on("branch-desktop:controls:tray-usage", (event, left) => {
-    if (!isOwnedComponentWindow(event, owner(), servedUrl)) return;
+    if (!isOwnedComponentWindow(event, owner(event), servedUrl)) return;
     controls.trayUsage(typeof left === "number" ? left : null);
   });
 }
@@ -168,7 +168,7 @@ export function ringBitmap(left: number, size = 32): Buffer {
   return out;
 }
 
-/** The branch command: a shim that reads the published engine and the gateway token at run time. */
+/** The branch command: a shim that reads the running engine (else the published one), the token and the live port. */
 export function branchShim(o: { dataDir: string; engineDir: string; nodePath: string; gatewayPort: number }): string {
   return [
     "@echo off",
@@ -176,12 +176,16 @@ export function branchShim(o: { dataDir: string; engineDir: string; nodePath: st
     `set "BRANCH_DATA=${o.dataDir}"`,
     `set "ENGINE=${o.engineDir}"`,
     `if exist "%BRANCH_DATA%\\engine-current.txt" set /p ENGINE=<"%BRANCH_DATA%\\engine-current.txt"`,
+    // The engine actually running wins over a staged one that has not been applied yet.
+    `if exist "%BRANCH_DATA%\\engine-running.txt" set /p ENGINE=<"%BRANCH_DATA%\\engine-running.txt"`,
     `if exist "%BRANCH_DATA%\\gateway-token" set /p BRANCH_GATEWAY_TOKEN=<"%BRANCH_DATA%\\gateway-token"`,
     `set "BRANCH_PROFILE=default"`,
     `set "BRANCH_HOME=%BRANCH_DATA%\\home"`,
     `set "BRANCH_STATE_DIR=%BRANCH_HOME%\\.branch"`,
     `set "BRANCH_CONFIG_PATH=%BRANCH_STATE_DIR%\\branch.json"`,
     `set "BRANCH_GATEWAY_PORT=${o.gatewayPort}"`,
+    // An update can move the engine to another loopback port; the desktop records the live one here.
+    `if exist "%BRANCH_DATA%\\gateway-port" set /p BRANCH_GATEWAY_PORT=<"%BRANCH_DATA%\\gateway-port"`,
     `"${o.nodePath}" "%ENGINE%\\branch.mjs" %*`,
     "",
   ].join("\r\n");
@@ -197,9 +201,13 @@ export function branchShShim(o: { dataDir: string; engineDir: string; nodePath: 
     `data=${q(slash(o.dataDir))}`,
     `engine=${q(o.engineDir)}`,
     `if [ -f "$data/engine-current.txt" ]; then engine=$(head -n 1 "$data/engine-current.txt" | tr -d '\\r'); fi`,
+    `if [ -f "$data/engine-running.txt" ]; then running=$(head -n 1 "$data/engine-running.txt" | tr -d '\\r'); if [ -n "$running" ]; then engine=$running; fi; fi`,
     `if [ -f "$data/gateway-token" ]; then BRANCH_GATEWAY_TOKEN=$(head -n 1 "$data/gateway-token" | tr -d '\\r'); export BRANCH_GATEWAY_TOKEN; fi`,
     `BRANCH_PROFILE=default; BRANCH_HOME=${q(`${o.dataDir}\\home`)}; BRANCH_STATE_DIR=${q(`${o.dataDir}\\home\\.branch`)}; BRANCH_CONFIG_PATH=${q(`${o.dataDir}\\home\\.branch\\branch.json`)}; BRANCH_GATEWAY_PORT=${o.gatewayPort}`,
-    "export BRANCH_PROFILE BRANCH_HOME BRANCH_STATE_DIR BRANCH_CONFIG_PATH BRANCH_GATEWAY_PORT",
+    `if [ -f "$data/gateway-port" ]; then live=$(head -n 1 "$data/gateway-port" | tr -d '\\r'); if [ -n "$live" ]; then BRANCH_GATEWAY_PORT=$live; fi; fi`,
+    // BRANCH_DATA lets a long-running `branch mcp serve` re-read gateway-port after an update moves the engine.
+    `BRANCH_DATA=${q(o.dataDir)}`,
+    "export BRANCH_DATA BRANCH_PROFILE BRANCH_HOME BRANCH_STATE_DIR BRANCH_CONFIG_PATH BRANCH_GATEWAY_PORT",
     `exec ${q(slash(o.nodePath))} "$engine/branch.mjs" "$@"`,
     "",
   ].join("\n");

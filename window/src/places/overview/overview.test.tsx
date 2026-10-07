@@ -5,9 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { OVERVIEW_READS, OverviewData, people, runs, sessions, sharedConnections } from "./engine";
-import { OverviewPlace, LOCKDOWN_GAP, PAUSE_ALL_GAP } from "./index";
-import { KEEP_RUNNING_GAP, resetRecommendation } from "./RecBar";
-const KEEP_RUNNING_IS_NOTE = KEEP_RUNNING_GAP.includes("doesn");
+import { OverviewPlace, PAUSE_ALL_GAP } from "./index";
 import { takeInboxHandoff } from "../inbox/handoff";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -29,6 +27,7 @@ function fixture(request: (method: string, params?: unknown) => Promise<unknown>
 
 const NOW = Date.now();
 const FX: Record<string, unknown> = {
+  "config.get": { hash: "h1", valid: true, config: {} },
   "sessions.list": { sessions: [
     { key: "agent:main:a", agentId: "main", label: "Sort the receipts", hasActiveRun: true, observerDigest: { headline: "Reading the folder" }, updatedAt: NOW, owner: { actor: { type: "human", id: "p1" } } },
     { key: "agent:main:b", agentId: "main", label: "Plan the week", updatedAt: NOW - 6e4, createdActor: { type: "human", id: "p1" } },
@@ -49,7 +48,7 @@ const FX: Record<string, unknown> = {
 };
 
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; resetRecommendation(); localStorage.clear(); });
+afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
 
 async function render(request = vi.fn(async (method: string) => FX[method] ?? {})) {
   const openPlace = vi.fn(), openSettings = vi.fn(), openConversation = vi.fn();
@@ -112,7 +111,7 @@ describe("Overview screen", () => {
     const text = host.textContent ?? "";
     expect(text).toContain("Telegram");
     expect(text).toContain("Last night,");
-    expect(text).toContain("1.1.0 ready");
+    expect(text).toContain("Branch update ready");
     expect(text).toContain("$1.70");
     expect([...host.querySelectorAll(".ov-brow")].map(r => r.textContent)).toEqual(["Rowan$1.10", "Elm$0.60"]);
     expect(text).toContain("1m 12s");
@@ -126,26 +125,26 @@ describe("Overview screen", () => {
     const now = [...host.querySelectorAll(".ov-now")].map(b => b.textContent);
     expect(now).toEqual(["RowanReading the folder"]);
   });
-  it("greys controls the engine cannot back, with their reasons", async () => {
-    const { host } = await render();
-    expect(button(host, "Lockdown")).toMatchObject({ disabled: true, title: "" });
+  it("switches Lockdown through the engine while leaving unsupported controls disabled", async () => {
+    const request = vi.fn(async (method: string) => method === "config.patch" ? { ok: true, hash: "h2", config: { security: { lockdown: true } } } : FX[method] ?? {});
+    const { host } = await render(request);
+    const lockdownBtn = button(host, "Lockdown");
+    expect(lockdownBtn?.disabled).toBe(false);
+    expect(lockdownBtn?.className).toContain("bad"); // Preview spec-v23 index.html:8759 button class when off
+    await act(async () => lockdownBtn?.click());
+    expect(request).toHaveBeenCalledWith("config.patch", { raw: '{"security":{"lockdown":true}}', baseHash: "h1" });
+    const offBtn = button(host, "Turn Lockdown off");
+    expect(offBtn).toBeTruthy();
+    expect(offBtn?.className).not.toContain("bad"); // Preview spec-v23 index.html:8759 button class when on
     expect(button(host, "Pause all Trunks")).toMatchObject({ disabled: true, title: "" });
-    expect([LOCKDOWN_GAP, PAUSE_ALL_GAP].every(gap => gap.startsWith("Needs the engine"))).toBe(true);
+    expect(PAUSE_ALL_GAP.startsWith("Needs the engine")).toBe(true);
     expect(visibleDevNotes(host)).toEqual([]);
-    expect(button(host, "Yes")).toMatchObject({ disabled: true, title: "" });
-    expect(host.querySelector(".ov-badges")).not.toBeNull(); expect(KEEP_RUNNING_IS_NOTE).toBe(true);
+    expect(host.querySelector(".ov-badges")).not.toBeNull();
   });
 
-  it("hides the recommendation on Not now, and keeps it hidden after Don't ask again", async () => {
-    const first = await render();
-    await act(async () => button(first.host, "Not now")!.click());
-    expect(first.host.textContent).not.toContain("Keep your Trunks running");
-    await act(async () => root?.unmount()); root = undefined; resetRecommendation();
-    const second = await render();
-    await act(async () => button(second.host, "Don’t ask again")!.click());
-    await act(async () => root?.unmount()); root = undefined; resetRecommendation();
-    const third = await render();
-    expect(third.host.textContent).not.toContain("Keep your Trunks running");
+  it("does not recommend changing a gateway mode the window cannot read or set", async () => {
+    const { host } = await render();
+    expect(host.textContent).not.toContain("Keep your Trunks running");
   });
 
   it("counts a person's open and running conversations without helpers, and adds the shared owner", async () => {

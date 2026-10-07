@@ -37,11 +37,11 @@ const OS: Record<string, string> = { win32: "Windows", windows: "Windows", darwi
 
 export const ROWS: RowEntry[] = [
   ...MORE_ROWS,
-  { page: "computer", title: "Waiting for your yes", lv: 0 }, { page: "computer", title: "Computers they may use", lv: 0 },
-  { page: "computer", title: "Keep this computer awake", sec: "Computers they may use", lv: 0 }, { page: "computer", title: "Which Trunk uses which", lv: 0 },
+  { page: "computer", title: "Waiting for your yes", group: "Waiting for your yes", lv: 0 }, { page: "computer", title: "Computers they may use", group: "Computers they may use", lv: 0 },
+  { page: "computer", title: "Keep this computer awake", sec: "Computers they may use", group: "Computers they may use", lv: 0 }, { page: "computer", title: "Which Trunk uses which", group: "Which Trunk uses which", lv: 0 },
 ];
 
-type Req = { id: string; kind: "device" | "node"; name: string; plat: string; access: string[]; more: boolean; ts: number; deviceId: string; ip: string; version: string; engine: string };
+type Req = { id: string; kind: "device" | "node"; name: string; plat: string; access: string[]; more: boolean; ts: number; deviceId: string; ip: string; version: string };
 
 function accessOf(words: unknown): string[] {
   return [...new Set((Array.isArray(words) ? words : []).map((w) => ACCESS[String(w)] ?? "").filter(Boolean))];
@@ -55,12 +55,12 @@ function requests(devices: RecordValue, nodes: RecordValue): Req[] {
   const fromDevices = list(devices.pending).map((r): Req => ({
     id: str(r.requestId), kind: "device", name: str(r.displayName) || str(r.clientId) || "A device", plat: osOf(r.platform),
     access: accessOf(r.scopes), more: pairedDevices.has(str(r.deviceId)) || r.isRepair === true, ts: Number(r.ts) || 0,
-    deviceId: str(r.deviceId), ip: str(r.remoteIp), version: "", engine: "",
+    deviceId: str(r.deviceId), ip: str(r.remoteIp), version: "",
   }));
   const fromNodes = list(nodes.pending).map((r): Req => ({
     id: str(r.requestId), kind: "node", name: str(r.displayName) || "A computer", plat: osOf(r.platform),
     access: accessOf(r.commands), more: pairedNodes.has(str(r.nodeId)), ts: Number(r.ts) || 0,
-    deviceId: str(r.nodeId), ip: str(r.remoteIp), version: str(r.uiVersion) || str(r.version), engine: str(r.coreVersion),
+    deviceId: str(r.nodeId), ip: str(r.remoteIp), version: str(r.uiVersion) || str(r.version),
   }));
   return [...fromDevices, ...fromNodes].filter((r) => r.id).sort((a, b) => b.ts - a.ts);
 }
@@ -126,7 +126,7 @@ function RequestRow({ r, lv, busy, onAllow, onRefuse }: { r: Req; lv: number; bu
           {r.access.length ? <> · {r.access.map((a, i) => <span key={a} className={RISKY.has(a) ? "s2-warn" : undefined}>{i ? ", " : ""}{a}</span>)}</> : null}
         </small>
         {r.more ? <small className="s2-note">Asks for more access than before</small> : null}
-        {lv >= 2 ? <details className="s2-det"><summary>Details</summary><Kv rows={[["Device ID", r.deviceId], ["Address it came from", r.ip], ["App", r.version], ["Engine", r.engine]]} /></details> : null}
+        {lv >= 2 ? <details className="s2-det"><summary>Details</summary><Kv rows={[["Device ID", r.deviceId], ["Address it came from", r.ip], ["App", r.version]]} /></details> : null}
       </span>
       <Btn sm ghost disabled={busy} onClick={onRefuse}>Don’t allow</Btn>
       <Btn sm pri disabled={busy || !ready} title={ready ? undefined : "Allow is ready in a moment"} onClick={onAllow}>Allow</Btn>
@@ -161,7 +161,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
       {nodes.error ? <p className="hint s2-err" role="alert">{nodes.error}</p> : null}
       {lv >= 1 ? <FindRow find={find} onFind={setFind} onRefresh={() => { void nodes.reload(); void status.reload(); }} /> : null}
       {lv >= 1 && paired.length && !all.length ? <Hint>No computer matches.</Hint> : null}
-      {here.length || (status.data && !find.q) ? <div className="s2-grp">On this PC</div> : null}
+      {here.length || (status.data && !find.q) ? <div className="s2-grp">On this computer</div> : null}
       <div className="s2-comps">
         {here.map(card)}
         {status.data && !here.length && !find.q ? <ThisComputer status={local} /> : null}
@@ -169,7 +169,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
       {other.length ? <><div className="s2-grp">Your other computers</div><div className="s2-comps">{other.map(card)}</div></> : null}
       {nodes.data && !all.length && !status.data ? <Hint>No computers are paired yet.</Hint> : null}
       <InTheCloud engine={engine} />
-      <DesktopCtl title="Keep this computer awake" sub="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." name="keepAwake" />
+      <DesktopCtl title="Keep this computer awake" sub="Keeps this computer awake while Trunks use it." help="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." name="keepAwake" />
       <Acts><Btn pri onClick={() => window.dispatchEvent(new CustomEvent("branch:add-computer"))}><Icon name="plus" small />Add a computer</Btn></Acts>
     </Sec>
   );
@@ -312,7 +312,7 @@ function DetailsDialog({ node, lv, users, onClose }: { node: Node; lv: number; u
   const caps = (Array.isArray(node.caps) ? node.caps : []).map(String);
   const s = rec(node.hostStats);
   return (
-    <Dialog title={name} wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title={name} wide onClose={onClose}>
       <p>{node.connected === true ? "Connected" : `Offline${node.lastSeenAtMs ? ` · last reported ${when(node.lastSeenAtMs)}` : ""}`}</p>
       <Kv rows={[["Kind", node.gatewayLocal === true ? "The computer Branch runs on" : "Another computer"], ["System", [osOf(node.platform), str(node.modelIdentifier)].filter(Boolean).join(" · ")], ["Version", str(node.version)], ...(lv >= 2 ? [["ID", <code key="id">{str(node.nodeId)}</code>] as [string, ReactNode]] : [])]} />
       {lv >= 1 ? (

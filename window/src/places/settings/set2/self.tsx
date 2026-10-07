@@ -10,6 +10,7 @@ import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Num, Page, Pick, Sec, Seg, Status, Switch, Val, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
+import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { CallLine, CodeRow, Kv, bytes, lvOf, rec, span, str, useCall, useLive, when, type RecordValue } from "./common";
 import { Icon } from "../../../shell/icons";
 import { DesktopCtl } from "../desktop-ctl";
@@ -69,7 +70,7 @@ const RUNS_LATER: Off[] = [
 const rows = (sec: string, lv: number, titles: string[]): [string, string, number][] => titles.map((t) => [t, sec, lv]);
 export const ROWS: RowEntry[] = [
   ["Set up the Gateway again", "", 0],
-  ...rows("What Branch may change about itself", 0, ["Its own settings", "Loosening what it may do", "The gateway’s timings", "Restarting its own engine", "Updating itself", "Its own program and your saved work", "Work on its own code in a separate copy"]),
+  ...rows("What Branch may change about itself", 0, ["Its own settings", "Loosening what it may do", "The gateway’s timings", "Restarting its own engine", "Its own program and your saved work", "Work on its own code in a separate copy"]),
   ["Type branch in any terminal", "", 1],
   ["Let agents use this window", "", 1],
   ...rows("Learning", 0, LEARNING.map(([t]) => t)), ...rows("Learning", 1, [...LEARNING_MORE.map(([t]) => t), "What it adopts", "Learn overnight on"]),
@@ -82,7 +83,7 @@ export const ROWS: RowEntry[] = [
   ...rows("Settings you can talk to", 1, ["Change settings by talking", "Suggestions made on this computer"]),
   ...rows("Conversation storage", 1, ["Archive older conversations", "Archive after", "Tidy now"]), ...rows("Conversation storage", 2, ["Shrink the shared database", "Conversation databases"]),
   ...rows("Database, technical", 2, ["Check a copied database", "Who writes the database", "Hand writing to a supervisor"]),
-].map(([title, sec, lv]) => ({ page: "self", title: String(title), ...(sec ? { sec: String(sec) } : {}), lv: Number(lv) as 0 | 1 | 2 }));
+].map(([title, sec, lv]) => ({ page: "self", title: String(title), ...(sec ? { sec: String(sec) } : {}), group: ({ "Working on its own code": "What it may change", "What it may fix by itself": "What it may change", "Database, technical": "Database" } as Record<string, string>)[String(sec)] ?? String(sec || "Branch itself"), lv: Number(lv) as 0 | 1 | 2 }));
 
 type Ctx = SettingsPageProps & { config: ReturnType<typeof useConfig>; lv: number };
 
@@ -92,16 +93,16 @@ export function SelfPage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede={LEDE}>
       <Running {...ctx} />
-      <MayChange {...ctx} />
-      {lv >= 1 ? <Sec title=""><DesktopCtl title="Type branch in any terminal" sub="Adds the branch command, so the terminal view and scripts work anywhere." name="branchOnPath" /><DesktopCtl title="Let agents use this window" sub="Grafted coding agents (Settings › Grafts) may see and click this window. A bar with Stop shows while one does. Takes effect the next time Branch starts." name="agentControl" /></Sec> : null}
+      <MayChange />
+      {lv >= 1 ? <Sec title=""><DesktopCtl title="Type branch in any terminal" sub="Adds the branch command for terminal views and scripts." help="Adds the branch command, so the terminal view and scripts work anywhere." name="branchOnPath" /><DesktopCtl title="Let agents use this window" sub="Grafted agents may see and click this window." help="Grafted coding agents (Settings › Grafts) may see and click this window. A bar with Stop shows while one does. Takes effect the next time Branch starts." name="agentControl" /></Sec> : null}
       <NeverDies />
       <Changes {...ctx} />
       <Learning lv={lv} />
       {lv >= 1 ? <OwnCode /> : null}
-      <Sec title="A copy of your setup"><Ctl title="Export a copy without secrets" sub="Skills, memory, personas, routines, plugins, settings and theme, with every key and sign-in taken out." off="Needs the engine’s setup export; Your settings › Export saves the settings alone."><Btn sm disabled>Export…</Btn></Ctl></Sec>
+      <Sec title="A copy of your setup"><Ctl title="Export a copy without secrets" sub="Exports your setup without keys or sign-ins." help="Skills, memory, personas, automations, plugins, settings and theme, with every key and sign-in taken out." off="Needs the engine’s setup export; Your settings › Export saves the settings alone."><Btn sm disabled>Export…</Btn></Ctl></Sec>
       {lv >= 1 ? <HowItRuns {...ctx} /> : null}
-      {lv >= 1 ? <Sec title="What it may fix by itself"><Ctl title="Only through allowed actions" sub="It can restart a part, reload settings, clear a cache, roll back settings or reconnect a chat app. Anything else asks you." off={NO_SELF}><Switch label="Only through allowed actions" checked={false} onChange={() => undefined} /></Ctl></Sec> : null}
-      {lv >= 1 ? <Sec title="Extras fetched when first used"><Ctl title="Extras on this computer" sub="Speech, office files and connector kits Branch fetched the first time they were used." off="Needs the engine’s list of fetched extras." /></Sec> : null}
+      {lv >= 1 ? <Sec title="What it may fix by itself" showHeading={false} group="What it may change"><Ctl title="Only through allowed actions" sub="Restarts parts, reloads settings or reconnects chat apps." help="It can restart a part, reload settings, clear a cache, roll back settings or reconnect a chat app. Anything else asks you." off={NO_SELF}><Switch label="Only through allowed actions" checked={false} onChange={() => undefined} /></Ctl></Sec> : null}
+      {lv >= 1 ? <Sec title="Extras fetched when first used"><Ctl title="Extras on this computer" sub="Speech, office files and connector kits fetched on first use." help="Speech, office files and connector kits Branch fetched the first time they were used." off="Needs the engine’s list of fetched extras." /></Sec> : null}
       {lv >= 1 ? <YourSettings {...ctx} /> : null}
       {lv >= 1 ? <TalkTo /> : null}
       {lv >= 1 ? <Storage {...ctx} /> : null}
@@ -117,13 +118,13 @@ function OffSwitches({ items }: { items: Off[] }) {
 
 /** The running status and its actions. Reload is this window's own reload; nothing running stops. */
 function Running({ engine, lv }: Ctx) {
+  const version = useBranchVersion(engine.gatewayUrl);
   const health = useLive<RecordValue>(engine, "health", { probe: false }, ["health"]);
   const sys = rec(useLive<RecordValue>(engine, "system.info", {}, []).data);
-  const status = rec(useLive<RecordValue>(engine, "status", {}, []).data);
   const restart = useCall();
   const [check, setCheck] = useState<"" | "fix" | "only">("");
   const up = span(sys.uptimeMs);
-  const facts = lv >= 2 ? [str(status.runtimeVersion) ? `Engine ${str(status.runtimeVersion)}` : "", sys.pid ? `process ${str(sys.pid)}` : "", rec(sys.processMemory).rssBytes ? bytes(rec(sys.processMemory).rssBytes) : ""].filter(Boolean) : [];
+  const facts = lv >= 2 ? [version ? `Branch ${versionParts(version).detail}` : "", sys.pid ? `process ${str(sys.pid)}` : "", rec(sys.processMemory).rssBytes ? bytes(rec(sys.processMemory).rssBytes) : ""].filter(Boolean) : [];
   return (
     <>
       {health.error ? <Status tone="bad" title="The engine isn’t answering">{health.error}</Status>
@@ -135,7 +136,7 @@ function Running({ engine, lv }: Ctx) {
         <Btn ghost onClick={() => window.location.reload()}>Reload without dropping work</Btn>
       </Acts>
       <CallLine call={restart} />
-      <Ctl title="Set up the Gateway again" sub="Install or reconfigure the Gateway on this computer. Your conversations and settings stay." off="Runs in the Branch app’s setup."><Btn sm>Open setup</Btn></Ctl>
+      <Ctl title="Set up the Gateway again" sub="Install or reconfigure the Gateway on this computer." help="Install or reconfigure the Gateway on this computer. Your conversations and settings stay." off="Runs in the Branch app’s setup."><Btn sm>Open setup</Btn></Ctl>
       {check ? <CheckDialog engine={engine} only={check === "only"} onClose={() => setCheck("")} /> : null}
     </>
   );
@@ -150,7 +151,7 @@ function CheckDialog({ engine, only, onClose }: Pick<SettingsPageProps, "engine"
   const channels = Object.entries(rec(h.channels)).map(([id, v]) => [str(rec(h.channelLabels)[id]) || id, rec(v)] as const);
   const embed = rec(rec(memory.data).embedding);
   return (
-    <Dialog title={only ? "Check only" : "Check and fix"} wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title={only ? "Check only" : "Check and fix"} wide onClose={onClose}>
       {health.loading && !health.data ? <p>Checking…</p> : null}
       <ol className="s2-tl">
         <li className={health.error ? "bad" : "ok"}><span>The engine<small>{health.error ?? (typeof h.durationMs === "number" ? `Answered in ${h.durationMs} ms` : "Answered")}</small></span></li>
@@ -163,37 +164,21 @@ function CheckDialog({ engine, only, onClose }: Pick<SettingsPageProps, "engine"
   );
 }
 
-/** Updating itself on the engine's update settings: Allowed installs by itself, Ask me first only checks, Never doesn't check. */
-function updatingChoice(config: Ctx["config"]): { value: string; choose: (id: string) => void } {
-  const auto = config.get("update.auto.enabled") === true;
-  const checks = config.get("update.checkOnStart") !== false;
-  const choose = (id: string) => void (async () => {
-    if (!(await config.set("update.auto.enabled", id === "allowed"))) return;
-    if (id === "never") await config.set("update.checkOnStart", false);
-    else if (!checks) await config.set("update.checkOnStart", null);
-  })();
-  return { value: auto ? "allowed" : checks ? "ask" : "never", choose };
-}
-
-function MayChange({ config }: Ctx) {
-  const updating = updatingChoice(config);
+function MayChange() {
   return (
     <Sec title="What Branch may change about itself">
-      <Ctl title="Its own settings" sub="Full access changes it at once; other modes show you the change first. Each change is tried on a throwaway copy." off={NO_SELF}>
+      <Ctl title="Its own settings" sub="Full access changes it at once; other modes show you the change first." help="Full access changes it at once; other modes show you the change first. Each change is tried on a throwaway copy." off={NO_SELF}>
         <Seg label="Its own settings" value="mode" onChange={() => undefined} options={[{ id: "mode", label: "Follows the mode" }, { id: "ask", label: "Ask me first" }, { id: "never", label: "Never" }]} />
       </Ctl>
-      <Ctl title="Loosening what it may do" sub="On: it may loosen what it may do as the mode allows; where the mode asks, it asks every time and the answer is never kept. Off: it never asks." off={NO_SELF}><Switch label="Loosening what it may do" checked={false} onChange={() => undefined} /></Ctl>
+      <Ctl title="Loosening what it may do" sub="May request more access when its current mode allows." help="On: it may loosen what it may do as the mode allows; where the mode asks, it asks every time and the answer is never kept. Off: it never asks." off={NO_SELF}><Switch label="Loosening what it may do" checked={false} onChange={() => undefined} /></Ctl>
       <Ctl title="The gateway’s timings" sub="Full access changes them at once; other modes ask you first." off={NO_SELF}>
         <Seg label="The gateway’s timings" value="mode" onChange={() => undefined} options={[{ id: "mode", label: "Follows the mode" }, { id: "never", label: "Never" }]} />
       </Ctl>
-      <Ctl title="Restarting its own engine" sub="When it’s stuck: at once in Full access, after your yes in other modes. Safe steps carry on after." off={NO_SELF}>
+      <Ctl title="Restarting its own engine" sub="Fixes stuck work under the current Access setting." help="When it’s stuck: at once in Full access, after your yes in other modes. Safe steps carry on after." off={NO_SELF}>
         <Seg label="Restarting its own engine" value="mode" onChange={() => undefined} options={[{ id: "mode", label: "Follows the mode" }, { id: "ask", label: "Ask me first" }]} />
       </Ctl>
-      <Ctl title="Updating itself" sub="With a safety copy. Running work gets until the update deadline (15 minutes).">
-        <Seg label="Updating itself" value={updating.value} disabled={config.loading} onChange={updating.choose} options={[{ id: "allowed", label: "Allowed" }, { id: "ask", label: "Ask me first" }, { id: "never", label: "Never" }]} />
-      </Ctl>
-      <Ctl title="Its own program and your saved work" sub="Its program changes only through an update, never by editing its files. This one can’t be switched on."><span className="pill idle">Never, by itself</span></Ctl>
-      <Ctl title="Work on its own code in a separate copy" sub="A private copy of Branch’s source. The installed app is never touched. Every change asks you first." off={NO_SELF}><Switch label="Work on its own code in a separate copy" checked={false} onChange={() => undefined} /></Ctl>
+      <Ctl title="Its own program and your saved work" sub="Program files change only through an update." help="Its program changes only through an update, never by editing its files. This one can’t be switched on."><span className="pill idle">Never, by itself</span></Ctl>
+      <Ctl title="Work on its own code in a separate copy" sub="A private copy of Branch’s source." help="A private copy of Branch’s source. The installed app is never touched. Every change asks you first." off={NO_SELF}><Switch label="Work on its own code in a separate copy" checked={false} onChange={() => undefined} /></Ctl>
     </Sec>
   );
 }
@@ -252,7 +237,7 @@ function Learning({ lv }: { lv: number }) {
       {lv >= 1 ? (
         <>
           <OffSwitches items={LEARNING_MORE} />
-          <Ctl title="What it adopts" sub="A change is kept only if the tests show it does better, not because a model says so."><Val>Decided by tests</Val></Ctl>
+          <Ctl title="What it adopts" sub="Keeps changes only when tests show an improvement." help="A change is kept only if the tests show it does better, not because a model says so."><Val>Decided by tests</Val></Ctl>
           <Ctl title="Learn overnight on" sub="Never on a paid-per-use key." off={NO_LEARN}>
             <Pick label="Learn overnight on" value="both" onChange={() => undefined} options={[{ id: "local", label: "Models on this computer" }, { id: "plans", label: "Your plans" }, { id: "both", label: "Models on this computer, then your plans" }]} />
           </Ctl>
@@ -266,10 +251,10 @@ function Learning({ lv }: { lv: number }) {
 
 function OwnCode() {
   return (
-    <Sec title="Working on its own code">
-      <Ctl title="Pull requests" sub="Changes go to branch/… lines as draft pull requests with “Why merge” and evidence; merged only after every check passes on that exact commit."><Val>Drafts, merged after checks</Val></Ctl>
-      <Ctl title="Reaching the app" sub="A new build must pass a self-test on a copy of your data; if it doesn’t stay up, it rolls back by itself."><Val>Only through a tested build</Val></Ctl>
-      <Ctl title="Build a missing setting when you ask" sub="“There’s no setting for X” becomes a change that adds one, for your review." off={NO_SELF}><Switch label="Build a missing setting when you ask" checked={false} onChange={() => undefined} /></Ctl>
+    <Sec title="Working on its own code" group="What it may change">
+      <Ctl title="Pull requests" sub="Proposes draft pull requests with evidence for each change." help="Changes go to branch/… lines as draft pull requests with “Why merge” and evidence; merged only after every check passes on that exact commit."><Val>Drafts, merged after checks</Val></Ctl>
+      <Ctl title="Reaching the app" sub="Tests a new build on a copy of your data before keeping it." help="A new build must pass a self-test on a copy of your data; if it doesn’t stay up, it rolls back by itself."><Val>Only through a tested build</Val></Ctl>
+      <Ctl title="Build a missing setting when you ask" sub="Proposes a setting when one is missing." help="“There’s no setting for X” becomes a change that adds one, for your review." off={NO_SELF}><Switch label="Build a missing setting when you ask" checked={false} onChange={() => undefined} /></Ctl>
       <Ctl title="Ask for a change" sub="From any conversation or chat app." off="Needs the engine’s /improve command."><Btn sm>/improve</Btn></Ctl>
     </Sec>
   );
@@ -280,17 +265,17 @@ function HowItRuns({ engine, config, lv }: Ctx) {
   const max = config.get("agents.defaults.maxConcurrent");
   return (
     <Sec title="How the engine runs">
-      <Ctl title="Runs as" sub="The same way on every system: systemd on Linux, launchd on a Mac, a task on Windows." off="Needs the engine to report how it was started." />
+      <Ctl title="Runs as" sub="Uses the system’s service manager to stay running." help="The same way on every system: systemd on Linux, launchd on a Mac, a task on Windows." off="Needs the engine to report how it was started." />
       {lv >= 2 ? (
         <>
-          <CodeRow title="Start, stop and status" code="branch gateway status --json" sub="Also: branch gateway start, branch gateway stop, branch gateway restart." />
+          <CodeRow title="Start, stop and status" code="branch gateway status --json" sub="Start, stop and restart the Gateway from a terminal." help="Also: branch gateway start, branch gateway stop, branch gateway restart." />
           <Ctl title="Control socket" sub="Only programs on this computer can use it." off="Needs the engine to report its control socket." />
           <Ctl title="Status files" sub="Other programs read these to tell whether Branch runs." off="Needs the engine to report its status files." />
           <Ctl title="Process names" sub="How they show in Task Manager and ps."><Val code>{sys.pid ? `node · process ${str(sys.pid)}` : ""}</Val></Ctl>
         </>
       ) : null}
       <Connected engine={engine} />
-      <Ctl title="If it freezes" sub="A watchdog outside the engine notices a stuck start, a frozen loop or a hung shutdown." off="Needs the engine’s outside watchdog." />
+      <Ctl title="If it freezes" sub="A watchdog notices a frozen or stuck engine." help="A watchdog outside the engine notices a stuck start, a frozen loop or a hung shutdown." off="Needs the engine’s outside watchdog." />
       <OffSwitches items={RUNS_SWITCHES} />
       <Ctl title="Tasks at once" sub="Branch adds no cap of its own; a service’s own limits still apply."><Val>{typeof max === "number" ? `Up to ${max}` : "As many as this computer allows"}</Val></Ctl>
       <Ctl title="Old temporary files" sub="Downloads, logs and caches past this are cleared in a quiet moment." off={NO_SETTING}>
@@ -316,9 +301,9 @@ function Connected({ engine }: Pick<SettingsPageProps, "engine">) {
   return (
     <>
       <Ctl title="Connected now" sub={clients.length ? `${clients.length} on one engine: ${names.join(", ")}.` : "Windows, terminals, phones and chat apps on this engine."}><Btn sm disabled={!presence.data} onClick={() => setOpen(true)}>See them</Btn></Ctl>
-      <Ctl title="People on this engine" sub="One engine serves everyone’s profile; each starts and stops on its own."><Val>{people.join(", ")}</Val></Ctl>
+      <Ctl title="People on this engine" sub="One engine serves all profiles independently." help="One engine serves everyone’s profile; each starts and stops on its own."><Val>{people.join(", ")}</Val></Ctl>
       {open ? (
-        <Dialog title="Connected now" onClose={() => setOpen(false)} footer={<Btn onClick={() => setOpen(false)}>Close</Btn>}>
+        <Dialog title="Connected now" onClose={() => setOpen(false)}>
           {clients.length ? <div className="rows">{clients.map((p, i) => <div className="prow" key={str(p.connectionId) || i}><span className="grow"><b>{clientName(p)}</b><small>{[str(p.platform), str(p.version), p.lastInputSeconds !== undefined ? `active ${span(Number(p.lastInputSeconds) * 1000) || "now"} ago` : ""].filter(Boolean).join(" · ")}</small></span></div>)}</div> : <p className="hint">Nothing else is connected.</p>}
         </Dialog>
       ) : null}
@@ -351,7 +336,7 @@ function YourSettings({ engine, config }: Ctx) {
       <Ctl title="Where files are kept" sub="Attachments and what Trunks make." off="Needs the engine to keep files somewhere else.">
         <Pick label="Where files are kept" value="local" onChange={() => undefined} options={[{ id: "local", label: "This computer" }, { id: "s3", label: "Amazon S3" }, { id: "gcs", label: "Google Cloud Storage" }, { id: "azure", label: "Azure Blob" }]} />
       </Ctl>
-      <Ctl title="Where your data lives" sub="Moves conversations, memory and settings together. Portable mode (Developer) keeps them beside the program.">
+      <Ctl title="Where your data lives" sub="Moves conversations, memory and settings together." help="Moves conversations, memory and settings together. Portable mode (Developer) keeps them beside the program.">
         {str(sys.diskPath) ? <code className="s2-code">{str(sys.diskPath)}</code> : null}<Btn sm disabled title={APP}>Move…</Btn>
       </Ctl>
       <Ctl title="Put Branch on a USB stick" sub="Runs on Mac, Windows or Linux from the stick." off="Writing a copy to a USB stick needs the Branch app."><Btn sm disabled>Make one</Btn></Ctl>
@@ -389,8 +374,8 @@ function ImportDialog({ config, file, onClose }: Pick<SettingsPageProps, "engine
 function TalkTo() {
   return (
     <Sec title="Settings you can talk to">
-      <Ctl title="Change settings by talking" sub="Ask “why does a Trunk ask before every email?” or “let it book without asking” in any conversation." off="Needs the engine’s settings tool for conversations."><Btn sm>Show an example</Btn></Ctl>
-      <Ctl title="Suggestions made on this computer" sub="Small suggestions from what you do, worked out here without asking a model." off="Needs the engine’s suggestions from what you do."><Btn sm>See them</Btn></Ctl>
+      <Ctl title="Change settings by talking" sub="Ask Branch to explain or change a Trunk’s Access." help="Ask “why does a Trunk ask before every email?” or “let it book without asking” in any conversation." off="Needs the engine’s settings tool for conversations."><Btn sm>Show an example</Btn></Ctl>
+      <Ctl title="Suggestions made on this computer" sub="Suggests small improvements without a model call." help="Small suggestions from what you do, worked out here without asking a model." off="Needs the engine’s suggestions from what you do."><Btn sm>See them</Btn></Ctl>
     </Sec>
   );
 }
@@ -411,14 +396,14 @@ function Storage({ engine, config, lv }: Ctx) {
     <Sec title="Conversation storage">
       {status.error ? <p className="hint s2-err">{status.error}</p> : null}
       {status.data ? <Kv rows={[["Conversations", `${sum("hotTranscripts")} ready · ${sum("coldTranscripts")} archived`], ["Databases", `${bytes(sum("databaseBytes"))} · write-ahead logs ${bytes(sum("walBytes"))}`], ["Archive files", bytes(sum("archiveBytes"))], ["By Trunk", agents.length ? <button type="button" className="link-k" onClick={() => setByTrunk(true)}>See all</button> : ""], ["Background tidy", tidy], ["Last problem", str(m.lastError)]]} /> : null}
-      <Ctl title="Archive older conversations" sub="Moves inactive conversations into compressed files. Off until you choose: the archive files must then be in every backup.">
+      <Ctl title="Archive older conversations" sub="Moves inactive conversations into compressed files." help="Moves inactive conversations into compressed files. Off until you choose: the archive files must then be in every backup.">
         <Switch label="Archive older conversations" checked={on} disabled={config.loading} onChange={(v) => void config.set("session.maintenance.coldStorage.enabled", v)} />
       </Ctl>
       <Ctl title="Archive after" sub="Since the conversation last changed."><Num label="Archive after" unit="days" value={typeof after === "number" ? after : undefined} min={1} onCommit={(v) => void config.set("session.maintenance.coldStorage.afterDays", v)} /></Ctl>
       <Ctl title="Tidy now" sub={on ? run.note ?? run.error ?? "Archives what’s due now." : "Turns on with “Archive older conversations”."}>
         <Btn sm disabled={!on || run.busy} onClick={() => void run.run(() => engine.request("sessions.storage.run", {}), () => { void status.reload(); return "Tidying. The figures above update when it’s done."; })}>Run now</Btn>
       </Ctl>
-      {lv >= 2 ? <CodeRow title="Shrink the shared database" code="branch doctor --state-sqlite compact" sub="Shrinks the shared database. Stop the Gateway and make a checked backup first; it refuses while the Gateway runs." /> : null}
+      {lv >= 2 ? <CodeRow title="Shrink the shared database" code="branch doctor --state-sqlite compact" sub="Shrinks the database after a checked backup." help="Shrinks the shared database. Stop the Gateway and make a checked backup first; it refuses while the Gateway runs." /> : null}
       {lv >= 2 ? <CodeRow title="Conversation databases" code="branch doctor --session-sqlite inspect|dry-run|import|compact|recover|restore" sub="Look at, move, shrink or recover conversation databases." /> : null}
       {byTrunk ? <ByTrunkDialog agents={agents} onClose={() => setByTrunk(false)} /> : null}
     </Sec>
@@ -427,7 +412,7 @@ function Storage({ engine, config, lv }: Ctx) {
 
 function ByTrunkDialog({ agents, onClose }: { agents: RecordValue[]; onClose: () => void }) {
   return (
-    <Dialog title="Conversation storage by Trunk" onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title="Conversation storage by Trunk" onClose={onClose}>
       <div className="rows">{agents.map((a) => <div className="prow" key={str(a.agentId)}><span className="grow"><b>{str(a.agentId)}</b><small>{`${str(a.hotTranscripts) || "0"} ready · ${str(a.coldTranscripts) || "0"} archived · ${bytes(Number(a.databaseBytes) || 0)}`}</small></span></div>)}</div>
     </Dialog>
   );
@@ -435,7 +420,7 @@ function ByTrunkDialog({ agents, onClose }: { agents: RecordValue[]; onClose: ()
 
 function DatabaseTechnical() {
   return (
-    <Sec title="Database, technical">
+    <Sec title="Database, technical" group="Database">
       <CodeRow title="Check a copied database" code="branch database preflight <file>" sub="Says whether a copied database fits this version." />
       <CodeRow title="Who writes the database" code="branch database ownership status" />
       <CodeRow title="Hand writing to a supervisor" code="branch database ownership claim" sub="For a service manager that runs the Gateway." />

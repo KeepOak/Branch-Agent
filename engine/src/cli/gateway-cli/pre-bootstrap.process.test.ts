@@ -110,6 +110,65 @@ describe("Gateway config selection before migration admission", () => {
     expect(fs.readFileSync(`${configPath}.bak`, "utf8")).toBe(original);
   }, 75_000);
 
+  it("admits a standby whose config changed only by Lockdown, and still refuses other drift", async () => {
+    const root = fs.realpathSync(tempDirs.make("branch-startup-lockdown-"));
+    const runtimeRoot = createSourceRuntime(runtimeParent);
+    const stateDir = path.join(root, "state");
+    fs.mkdirSync(stateDir);
+    const configPath = path.join(stateDir, "branch.json");
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ gateway: { mode: "local" }, plugins: { enabled: false } }),
+    );
+    const result = await runIsolatedModuleScript(
+      {
+        PATH: process.env.PATH,
+        TMPDIR: childTempDir,
+        TEMP: childTempDir,
+        TMP: childTempDir,
+        HOME: root,
+        USERPROFILE: root,
+        BRANCH_HOME: root,
+        BRANCH_STATE_DIR: stateDir,
+        BRANCH_CONFIG_PATH: configPath,
+        BRANCH_WORKSPACE_DIR: path.join(root, "workspace"),
+        BRANCH_DISABLE_BUNDLED_PLUGINS: "1",
+        BRANCH_BUNDLED_PLUGINS_DIR: path.join(root, "bundled"),
+      },
+      `
+      import fs from "node:fs";
+      const { selectGatewayRunEnvironment, prepareGatewayRunBootstrap, recheckGatewayRunBootstrap } = await import("./src/cli/gateway-cli/pre-bootstrap.ts");
+      const { ExitError } = await import("./src/runtime.ts");
+      const runtime = { log() {}, error: console.error, exit(code) { throw new ExitError(code); } };
+      const params = { opts: {}, runtime };
+      if (!await selectGatewayRunEnvironment(params)) throw new Error("selection refused");
+      if (!await prepareGatewayRunBootstrap(params)) throw new Error("preparation refused");
+      const raw = JSON.parse(fs.readFileSync(process.env.BRANCH_CONFIG_PATH, "utf8"));
+      raw.security = { lockdown: true };
+      fs.writeFileSync(process.env.BRANCH_CONFIG_PATH, JSON.stringify(raw));
+      const lockdownAdmitted = await recheckGatewayRunBootstrap(params);
+      raw.gateway.mode = "remote";
+      fs.writeFileSync(process.env.BRANCH_CONFIG_PATH, JSON.stringify(raw));
+      let driftRefused = false;
+      try {
+        await recheckGatewayRunBootstrap(params);
+      } catch (error) {
+        if (!(error instanceof ExitError)) throw error;
+        driftRefused = error.code === 1;
+      }
+      console.log("__RESULT__" + JSON.stringify({ lockdownAdmitted, driftRefused }));
+      `,
+      { runtimeRoot, timeoutMs: 60_000 },
+    );
+    const output = `${result.stdout}\n${result.stderr}`;
+    const line = result.stdout.split("\n").find((entry) => entry.startsWith("__RESULT__"));
+    expect(line, output).toBeDefined();
+    expect(JSON.parse(line!.slice("__RESULT__".length)), output).toEqual({
+      lockdownAdmitted: true,
+      driftRefused: true,
+    });
+  }, 75_000);
+
   it.each([
     { name: "managed template", apiKey: "${REPRO_PROVIDER_KEY}", managed: true, included: false },
     {

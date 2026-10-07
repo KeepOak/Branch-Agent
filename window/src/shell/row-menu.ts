@@ -1,6 +1,6 @@
 // The row menu's items for one conversation (DESIGN-SPEC §4.1.6, with its letter keys).
 import type { Conversation } from "../connect/conversations";
-import { snoozeChoices, wakeWords, type Actions } from "./conversation-actions";
+import { snoozeChoices, snoozeTime, wakeWords, type Actions } from "./conversation-actions";
 import { isSnoozed } from "./list-model";
 import type { MenuItem } from "./Menu";
 import { menuIcon } from "./menu-icons";
@@ -12,6 +12,9 @@ type Ctx = {
   now: number;
   trunkName: string;
   open: (key: string) => void;
+  ownWindow: (key: string) => void;
+  ownWindowOpen?: (key: string) => boolean;
+  ownWindowOff?: string | null;
   rename: (row: Conversation) => void;
   confirmDelete: (row: Conversation) => void;
   level: Level;
@@ -32,9 +35,10 @@ type Ctx = {
   whoItKnows?: (contact: Contact) => void;
   muted?: boolean;
   toggleMute?: (contact: Contact) => void;
+  moveToGroup?: (contact: Contact) => void;
+  archiveRoom?: (contact: Contact) => void;
 };
 
-const WINDOW_OFF = "A conversation in its own window needs the desktop app, which doesn't offer it yet.";
 const FORK_OFF = "Copying a conversation needs an engine call that copies up to the last reply; it doesn't have one yet.";
 const MOVE_OFF = "Moving a conversation into a project needs an engine method Branch doesn't have yet.";
 const PAUSE_OFF = "Pausing a Trunk needs an engine method it doesn't have yet.";
@@ -74,7 +78,7 @@ function snoozeItem(row: Conversation, c: Ctx): MenuItem | null {
     label: "Snooze",
     testid: "menu-snooze",
     icon: menuIcon("clock"),
-    items: snoozeChoices(c.now).map((s) => ({ label: s.label, hint: wakeWords(s.until, c.now), run: () => void c.actions.snooze(row, s.until), testid: `snooze-${s.label}` })),
+    items: snoozeChoices(c.now).map((s) => ({ label: s.label, hint: snoozeTime(s.until, s.label), run: () => void c.actions.snooze(row, s.until), testid: `snooze-${s.label}` })),
   };
 }
 
@@ -89,9 +93,9 @@ export function rowMenuItems(row: Conversation, c: Ctx): MenuItem[] {
     row.unread
       ? { label: "Mark as read", letter: "u", run: () => void c.actions.setUnread(row, false), testid: "menu-unread", ...ic("chat") }
       : { label: "Mark as unread", letter: "u", run: () => void c.actions.setUnread(row, true), testid: "menu-unread", ...ic("chat") },
-    row.isMain || row.parentKey ? null : { label: row.pinned ? "Unpin" : "Pin to top", letter: "p", run: () => void c.actions.pin(row), testid: "menu-pin", ...ic("pin") },
+    row.isMain || row.parentKey ? null : { label: row.pinned ? "Unpin" : "Pin", letter: "p", run: () => void c.actions.pin(row), testid: "menu-pin", ...ic("pin") },
     { label: "Rename", letter: "r", run: () => c.rename(row), testid: "menu-rename", ...ic("edit") },
-    { label: "Open in its own window", run: () => undefined, disabled: WINDOW_OFF, ...ic("panel") },
+    { label: c.ownWindowOpen?.(row.key) ? "Show its window" : "Open in its own window", run: () => c.ownWindow(row.key), testid: "menu-own-window", ...(c.ownWindowOff ? { disabled: c.ownWindowOff } : {}), ...ic("panel") },
     { label: "Copy into a new conversation", letter: "f", run: () => undefined, disabled: FORK_OFF, ...ic("copy") },
     copyItem(row, c),
     { kind: "sep" },
@@ -115,15 +119,21 @@ export function rowMenuItems(row: Conversation, c: Ctx): MenuItem[] {
 }
 
 function contactMenuItems(row: Conversation, c: Ctx, contact: Contact): MenuItem[] {
+  if (contact.roomId) return [
+    { label: "Open", run: () => c.open(contact.threadKey), testid: "menu-open", ...ic("chat") },
+    { label: "Archive", letter: "a", run: () => c.archiveRoom?.(contact), testid: "menu-archive", ...ic("box") },
+  ];
   const trunk = contact.kind === "trunk";
   const otherTrunk = trunk && !contact.isDefault;
   const canEdit = Boolean(contact.thread);
   const items: (MenuItem | null)[] = [
     { label: "Open", run: () => c.open(contact.threadKey), testid: "menu-open", ...ic("chat") },
+    { label: c.ownWindowOpen?.(contact.threadKey) ? "Show its window" : "Open in its own window", run: () => c.ownWindow(contact.threadKey), testid: "menu-own-window", ...(c.ownWindowOff ? { disabled: c.ownWindowOff } : {}), ...ic("panel") },
     row.unread
       ? { label: "Mark as read", letter: "u", run: () => c.markContactRead?.(contact), testid: "menu-unread", ...ic("chat") }
       : { label: "Mark as unread", letter: "u", run: () => contact.thread && void c.actions.setUnread(contact.thread, true), testid: "menu-unread", ...ic("chat"), ...(!canEdit ? { disabled: "Send a first message before marking this contact unread." } : {}) },
     { label: row.pinned ? "Unpin" : "Pin", letter: "p", run: () => c.pinContact?.(contact), testid: "menu-pin", ...ic("pin") },
+    contact.kind !== "group" && contact.kind !== "chatGroup" ? { label: "Move to group…", run: () => c.moveToGroup?.(contact), testid: "menu-move-to-group", ...ic("users") } : null,
     !contact.isDefault && canEdit ? snoozeItem(contact.thread!, c) : null,
     canEdit ? { label: row.done ? "Mark not done" : "Mark done", run: () => void c.actions.setDone(contact.thread!, !row.done), testid: "menu-done", ...ic("check") } : null,
     !contact.isDefault && (!trunk || Boolean(contact.archivedAt)) && canEdit

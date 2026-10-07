@@ -1,3 +1,5 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/run.overflow-context-recovery.test.ts (atlas AGENT-LOOP-0103). Changed for Branch: existing recovery assertions retained; Cline gateway raw-error and authoritative status cases added.
+
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BRANCH_EMBEDDED_CONTEXT_ENGINE_HOST } from "../../context-engine/host-compat.js";
@@ -252,6 +254,32 @@ describe("recoverEmbeddedRunOverflow", () => {
     });
     mocks.warn.mockReset();
   });
+
+  it("recovers from an unclassified overflow by classifying the finish message: gateway detail", async () => {
+    const input = makeInput({
+      promptError: {
+        message: "Stream error occurred",
+        value: {
+          error_message: JSON.stringify({
+            error: { code: 400, message: "This model's maximum context length is 40960 tokens." },
+          }),
+        },
+      },
+    });
+    expect(await recoverEmbeddedRunOverflow(input)).toEqual({ action: "retry" });
+    expect(mocks.compact).toHaveBeenCalledOnce();
+    expect(input.prepareCompactedTranscriptRetry).toHaveBeenCalledOnce();
+  });
+  it.each([401, 403, 429, 500])(
+    "does not treat an unrelated stream failure as an overflow: HTTP %s",
+    async (statusCode) => {
+      const input = makeInput({
+        promptError: Object.assign(new Error("context length exceeded"), { statusCode }),
+      });
+      expect(await recoverEmbeddedRunOverflow(input)).toEqual({ action: "none" });
+      expect(mocks.compact).not.toHaveBeenCalled();
+    },
+  );
 
   it("uses the canonical assistant classifier when the text heuristic misses", async () => {
     const assistantOverflowCandidate = makeAssistantMessage({

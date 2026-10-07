@@ -16,12 +16,22 @@ export type RunLine = { title: string; durationMs?: number };
 /** Groups blocks for drawing. `index` is the block's place in the list the actions read. */
 export function layout(blocks: readonly Block[], offset = 0): Item[] {
   const items: Item[] = [];
+  // A steered note that came between two steps waits until the fold ends, so the turn keeps one Steps fold.
+  let held: Item[] = [];
   let replied = false;
   let faced = false;
   blocks.forEach((block, i) => {
     if (block.kind === "user") {
       replied = false;
       faced = false;
+    }
+    if (block.kind === "steer" && items.at(-1)?.type === "steps") {
+      held.push({ type: "block", block, index: offset + i, firstReply: false, face: false });
+      return;
+    }
+    if (block.kind !== "step" && held.length) {
+      items.push(...held);
+      held = [];
     }
     if (block.kind === "step") {
       const last = items[items.length - 1];
@@ -41,7 +51,7 @@ export function layout(blocks: readonly Block[], offset = 0): Item[] {
     }
     items.push({ type: "block", block, index: offset + i, firstReply, face });
   });
-  return items;
+  return [...items, ...held];
 }
 
 /** The first line of a reply, as plain words: no Markdown marks, no closing full stop, at most 80 characters. */
@@ -62,10 +72,10 @@ function runLine(blocks: readonly Block[], from: number): RunLine | undefined {
   return undefined;
 }
 
-/** The blocks of the turn a block belongs to: from after the user message before it to the next user message. */
+/** The blocks of a turn: a user message starts its turn; reply blocks start after that user message. */
 export function turnOf(blocks: readonly Block[], index: number): Block[] {
   let start = index;
-  while (start > 0 && blocks[start - 1].kind !== "user") start -= 1;
+  while (blocks[index].kind !== "user" && start > 0 && blocks[start - 1].kind !== "user") start -= 1;
   let end = index;
   while (end + 1 < blocks.length && blocks[end + 1].kind !== "user") end += 1;
   return blocks.slice(start, end + 1);

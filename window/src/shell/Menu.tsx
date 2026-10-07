@@ -73,6 +73,10 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       moveFocus(ref.current, e.key === "ArrowDown" ? 1 : -1);
+    } else if (e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      const list = focusables(ref.current);
+      (e.key === "Home" ? list[0] : list.at(-1))?.focus();
     } else if (e.key === "Escape" || e.key === "ArrowLeft") {
       e.preventDefault();
       e.stopPropagation();

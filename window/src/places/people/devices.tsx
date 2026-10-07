@@ -43,8 +43,8 @@ export function Devices({ engine, level }: { engine: WindowEngine; level: Level 
     {pending.length > 0 && <><div className="pp-sub"><b>Waiting for approval ({pending.length})</b><button type="button" className="btn ghost sm" onClick={() => setConfirm({ title: "Clear all waiting?", text: "Every device waiting for approval is turned down.", go: "Clear all", run: () => { void clearAll().catch(e => setNote(String(e))); } })}>Clear all waiting…</button></div>
       <div className="pp-rows flat">{pending.map(p => <div key={str(p.requestId)} className="pp-prow"><span className="pp-tile">{glyph(p)}</span>
         <span className="grow"><b>{nameOf(p)}</b><small>{kindOf(p)} · {p.isRepair ? "Wants more" : "Wants"}: {wants(p)}{str(p.remoteIp) && ` · ${str(p.remoteIp)}`}</small></span>
-        <button type="button" className="btn pri sm" disabled={op.busy} onClick={() => act("device.pair.approve", { requestId: str(p.requestId) })}>Approve</button>
-        <button type="button" className="btn ghost sm" disabled={op.busy} onClick={() => setConfirm({ title: `Turn down ${nameOf(p)}?`, text: "It can ask again later.", go: "Don’t allow", run: () => act("device.pair.reject", { requestId: str(p.requestId) }) })}>Don’t</button></div>)}</div></>}
+        <button type="button" className="btn ghost sm" disabled={op.busy} onClick={() => setConfirm({ title: `Turn down ${nameOf(p)}?`, text: "It can ask again later.", go: "Don’t allow", run: () => act("device.pair.reject", { requestId: str(p.requestId) }) })}>Don’t allow</button>
+        <button type="button" className="btn pri sm" disabled={op.busy} onClick={() => act("device.pair.approve", { requestId: str(p.requestId) })}>Allow</button></div>)}</div></>}
     <div className="pp-sub"><b>Paired</b></div>
     {list.data != null && !paired.length && <Empty>No paired devices.</Empty>}
     <div className="pp-rows flat">{paired.map(d => <div key={str(d.deviceId)} className="pp-prow"><span className="pp-tile">{glyph(d)}</span>

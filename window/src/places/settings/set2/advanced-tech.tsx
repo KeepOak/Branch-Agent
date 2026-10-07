@@ -5,7 +5,8 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
-import { Btn, Ctl, Hint, Pill, Prow, Sec, usePinsKit, type Lv } from "../kit";
+import { useBranchVersion, versionParts } from "../../../connect/branch-version";
+import { Btn, Ctl, Empty, Hint, Pill, Prow, Sec, usePinsKit, type Lv } from "../kit";
 import { Icon } from "../../../shell/icons";
 import { errorText, list } from "../adapter";
 import { configStore, type ConfigPath } from "../config-store";
@@ -71,7 +72,7 @@ export function LogsDialog({ engine, source, onClose }: { engine: WindowEngine; 
   useEffect(() => { if (follow && box.current) box.current.scrollTop = box.current.scrollHeight; }, [shown.length, follow]);
   const filtered = Boolean(q) || Object.values(levels).some((v) => !v);
   return (
-    <Dialog title="Logs" wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title="Logs" wide onClose={onClose}>
       <p className="hint s2advanced-gap">{source ? `${source.name}’s lines in the gateway’s log, newest at the bottom.` : "The gateway’s log, newest at the bottom."}</p>
       <div className="s2advanced-logbar">
         <label className="s2advanced-swl"><input className="sw" type="checkbox" checked={follow} aria-label="Follow new lines" onChange={(e) => setFollow(e.target.checked)} /> Follow new lines</label>
@@ -84,7 +85,7 @@ export function LogsDialog({ engine, source, onClose }: { engine: WindowEngine; 
       {tail.error ? <p className="hint s2-err" role="alert">{tail.error}</p> : null}
       <div className="s2advanced-logbox" ref={box} tabIndex={0} aria-label="Log lines" onScroll={(e) => { const b = e.currentTarget; const atEnd = b.scrollHeight - b.scrollTop - b.clientHeight < 4; if (atEnd !== follow) setFollow(atEnd); }}>
         {shown.length ? shown.map((l, i) => <div key={i} className="s2advanced-ll"><time>{clock(l.time)}</time><span className={`s2advanced-lv s2advanced-lv-${chipOf(l.level).toLowerCase()}`}>{l.level || "info"}</span><span>{l.text}</span></div>)
-          : <p className="empty">{tail.lines.length ? "No log lines match." : "No log lines yet."}</p>}
+          : <Empty>{tail.lines.length ? "No log lines match." : "No log lines yet."}</Empty>}
       </div>
       {tail.file ? <p className="hint">{tail.file}</p> : null}
     </Dialog>
@@ -102,9 +103,9 @@ function convOf(r: RecordValue): Conv {
 function Pips({ used }: { used: number }) {
   const n = Math.ceil(used / 20);
   const tone = used >= 80 ? "bad" : used >= 60 ? "warn" : "on";
-  return <span className="s2advanced-pips" title={`${used}% of the room used`} aria-label={`${used}% of the room used`}>{[0, 1, 2, 3, 4].map((i) => <i key={i} className={i < n ? tone : ""} />)}</span>;
+  return <span className="s2advanced-pips" title={`${used}% of context used`} aria-label={`${used}% of context used`}>{[0, 1, 2, 3, 4].map((i) => <i key={i} className={i < n ? tone : ""} />)}</span>;
 }
-const COLS: [SortKey, string][] = [["name", "Name"], ["kind", "Kind"], ["last", "Last active"], ["room", "Room used"], ["status", "Status"], ["goal", "Goal"]];
+const COLS: [SortKey, string][] = [["name", "Name"], ["kind", "Kind"], ["last", "Last active"], ["room", "Context used"], ["status", "Status"], ["goal", "Goal"]];
 
 export function ConvDialog({ engine, lv, onClose }: { engine: WindowEngine; lv: Lv; onClose: () => void }) {
   const [q, setQ] = useState("");
@@ -120,7 +121,7 @@ export function ConvDialog({ engine, lv, onClose }: { engine: WindowEngine; lv: 
   const more = typeof data.nextOffset === "number" || (typeof data.totalCount === "number" ? (page + 1) * per < total : rows.length === per);
   const reset = (fn: () => void) => { fn(); setPage(0); };
   return (
-    <Dialog title="All conversations" wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title="All conversations" wide onClose={onClose}>
       <div className="s2advanced-ctbar">
         <input className="inp" placeholder="Search conversations" aria-label="Search conversations" value={q} onChange={(e) => reset(() => setQ(e.target.value))} />
         <span className="sseg" role="group" aria-label="Which conversations">{(["Active", "Archived", "All"] as const).map((o) => <button key={o} type="button" aria-pressed={seg === o} onClick={() => reset(() => setSeg(o))}>{o}</button>)}</span>
@@ -128,7 +129,7 @@ export function ConvDialog({ engine, lv, onClose }: { engine: WindowEngine; lv: 
       {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
       <div className="s2advanced-ctwrap">
         {rows.length ? <ConvTable rows={rows} lv={lv} sort={sort} onSort={(k) => setSort((s) => ({ k, dir: s.k === k ? (s.dir === 1 ? -1 : 1) : k === "last" ? -1 : 1 }))} engine={engine} onSaved={() => void res.reload()} />
-          : <p className="empty">{res.loading ? "Reading conversations…" : q ? "No conversation matches." : "No conversations yet."}</p>}
+          : res.loading ? <p className="hint">Reading conversations…</p> : <Empty>{q ? "No conversation matches." : "No conversations yet."}</Empty>}
       </div>
       <div className="s2advanced-ctfoot">
         <label>Rows per page <select className="inp" value={per} onChange={(e) => reset(() => setPer(Number(e.target.value)))}>{[10, 25, 50, 100].map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
@@ -249,7 +250,7 @@ export function EverythingElse({ c }: { c: Ctx }) {
   const { fields, error, loading } = useFields(c.engine);
   const hits = q.trim().length > 1 ? fields.filter((f) => `${f.path} ${f.label}`.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 40) : [];
   return (
-    <Sec title="Everything else" hint="Settings that have no page of their own. Every field shows, including the fine ones.">
+    <Sec title="Everything else" hint="Settings that have no page of their own." help="Settings that have no page of their own. Every field shows, including the fine ones.">
       {OTHER.map(([t, k]) => <KeyRow key={k} t={t} k={k} onEdit={() => setOpen([t, k])} />)}
       <Ctl title="Find any setting" sub={error ?? (loading ? "Reading the engine’s settings list…" : `${fields.length} settings. Read only here; edit one in its section.`)} stack after={
         <div className="s2advanced-find">
@@ -264,14 +265,15 @@ export function EverythingElse({ c }: { c: Ctx }) {
 
 /* ---------- health readouts ---------- */
 export function HealthDialog({ engine, onClose }: { engine: WindowEngine; onClose: () => void }) {
+  const version = useBranchVersion(engine.gatewayUrl);
   const status = useLive<RecordValue>(engine, "status", {}, []);
   const health = useLive<RecordValue>(engine, "health", { probe: false }, []);
   const lanes = useLive<RecordValue>(engine, "diagnostics.lanes", {}, []);
   const stab = useLive<RecordValue>(engine, "diagnostics.stability", { limit: 25 }, []);
   const snaps: [string, { data?: unknown; error?: string }][] = [["Status", status], ["Health", health], ["Stability", stab]];
   return (
-    <Dialog title="Health" wide onClose={onClose} footer={<><Btn ghost onClick={() => { void status.reload(); void health.reload(); void lanes.reload(); void stab.reload(); }}>Check again</Btn><Btn onClick={onClose}>Close</Btn></>}>
-      <Kv rows={[["Engine", str(rec(status.data).runtimeVersion)], ["Process", str(rec(status.data).pid)], ["Health check", rec(health.data).ok === true ? `Answered ${when(rec(health.data).ts)}` : str(health.error)], ["Stability events", str(rec(stab.data).count)]]} />
+    <Dialog title="Health" wide onClose={onClose} footer={<><Btn ghost onClick={() => { void status.reload(); void health.reload(); void lanes.reload(); void stab.reload(); }}>Check again</Btn></>}>
+      <Kv rows={[["Branch version", version ? versionParts(version).detail : "Unavailable"], ["Process", str(rec(status.data).pid)], ["Health check", rec(health.data).ok === true ? `Answered ${when(rec(health.data).ts)}` : str(health.error)], ["Stability events", str(rec(stab.data).count)]]} />
       <h3 className="s2-h3">Snapshots</h3>
       {snaps.map(([t, r]) => <details key={t} className="s2advanced-snap"><summary>{t}</summary>{r.error ? <p className="hint s2-err">{r.error}</p> : <pre className="s2-pre">{JSON.stringify(r.data ?? null, null, 2)}</pre>}</details>)}
       <h3 className="s2-h3">Lanes</h3>
@@ -295,7 +297,7 @@ export function WebSearchDialog({ engine, agent, onClose }: { engine: WindowEngi
   const tp = rec(d.testProvider);
   const run = () => void test.run(async () => setResult(rec(await engine.request("webSearch.test", { query: q.trim(), ...(agent ? { agentId: agent } : {}) }))));
   return (
-    <Dialog title="Web search" wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title="Web search" wide onClose={onClose}>
       <p className="hint s2advanced-gap">These apply to every Trunk.</p>
       {st.error ? <p className="hint s2-err" role="alert">{st.error}</p> : null}
       <h3 className="s2-h3">Which search each model uses</h3>
@@ -339,7 +341,7 @@ export function HooksSec({ c }: { c: Ctx }) {
   const other = hooks.filter((h) => (Array.isArray(h.events) ? h.events.map(String) : []).some((e) => !MAPPED.has(e)));
   const add = dir ? `Hooks are folders with a HOOK.md; add one in ${dir}.` : "Hooks are folders with a HOOK.md in the hooks folder.";
   return (
-    <Sec title="Hooks" hint="Your own scripts, run on these events. A script before a tool runs can stop it.">
+    <Sec title="Hooks" hint="Your own scripts, run on these events." help="Your own scripts, run on these events. A script before a tool runs can stop it.">
       {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
       <div className="rows">
         {HOOK_EVENTS.map(([t, events]) => {
@@ -363,7 +365,7 @@ export function MigrateDialog({ engine, agent, onClose }: { engine: WindowEngine
     void apply.run(() => engine.request<RecordValue>("migrations.memory.apply", { idempotencyKey: crypto.randomUUID(), agentId: agent, providerId: str(p.providerId), planFingerprint: str(p.planFingerprint), itemIds }), (r) => { void plan.reload(); return `Brought in ${str(rec(rec(r).summary).migrated) || "0"} notes from ${str(p.label)}.`; });
   };
   return (
-    <Dialog title="Other coding agents’ memory" wide onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title="Other coding agents’ memory" wide onClose={onClose}>
       <p className="hint s2advanced-gap">What other coding tools left on this computer, ready to copy into this Trunk’s memory. Nothing is copied until you choose.</p>
       {plan.error ? <p className="hint s2-err" role="alert">{plan.error}</p> : null}
       {plan.data && !providers.length ? <p className="hint">No other coding agent’s memory was found on this computer.</p> : null}

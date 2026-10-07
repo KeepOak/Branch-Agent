@@ -7,7 +7,7 @@ import { computersChanged } from "./computers";
 import { shownWhy } from "../shell/shown-why";
 
 type View = "choose" | "pair" | "cloud";
-type Pairing = { phase: "loading" } | { phase: "error"; message: string } | { phase: "code"; code: string; setupId?: string; expiresAtMs?: number; done?: boolean };
+type Pairing = { phase: "loading" } | { phase: "error"; message: string } | { phase: "code"; code: string; qr?: string; setupId?: string; expiresAtMs?: number; done?: boolean };
 type Profile = { id: string; name: string; os?: string };
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
@@ -33,12 +33,12 @@ function usePairing(engine: WindowEngine, on: boolean): Pairing {
         );
       }, 2000);
     };
-    engine.request("device.pair.setupCode", { bootstrapProfile: "node" }).then(
+    engine.request("device.pair.setupCode", { bootstrapProfile: "node", includeQr: true }).then(
       (r) => {
         if (!live) return;
         const x = rec(r);
         const setupId = str(x.setupId) || undefined;
-        setState({ phase: "code", code: str(x.setupCode), setupId, expiresAtMs: typeof x.expiresAtMs === "number" ? x.expiresAtMs : undefined });
+        setState({ phase: "code", code: str(x.setupCode), qr: str(x.qrDataUrl), setupId, expiresAtMs: typeof x.expiresAtMs === "number" ? x.expiresAtMs : undefined });
         if (setupId) watch(setupId);
       },
       (e: unknown) => live && setState({ phase: "error", message: message(e) }),
@@ -69,8 +69,14 @@ function PairBody({ pairing }: { pairing: Pairing }) {
     <>
       <p className="p0-st">On that computer, open a terminal and run:</p>
       <code className="code-st">branch node run --pair {pairing.code}</code>
+      {pairing.qr && <img src={pairing.qr} alt="QR code to pair this computer" width={180} height={180} />}
       {pairing.done ? (
-        <p className="hint-st ok-st"><SIcon name="check" small /> That computer is paired. It shows in your computers.</p>
+        <>
+          <p className="hint-st ok-st"><SIcon name="check" small /> That computer is paired. It shows in your computers.</p>
+          <p className="p0-st">To keep lending this computer after logout or a restart, run this on that computer:</p>
+          <code className="code-st">branch node install</code>
+          <p className="hint-st">This installs a service or login item using the saved pairing. You can check it later with branch node status.</p>
+        </>
       ) : (
         <p className="hint-st"><SIcon name="spin" small className="spin-st" /> Waiting for that computer. This updates by itself.</p>
       )}
@@ -171,7 +177,7 @@ export function AddComputer({ engine, onClose, onAdded }: { engine: WindowEngine
     <Dialog title={title} onClose={onClose} wide={view === "cloud"} testid="add-computer" footer={<>{back}<button type="button" className="btn ghost" onClick={onClose}>{view === "pair" && pairing.phase === "code" && pairing.done ? "Done" : "Cancel"}</button></>}>
       {view === "choose" ? (
         <div className="provs-st">
-          <Choice icon="shield" title="A new private computer on this PC" text="A sealed Windows box. Takes about 2 GB and a minute to set up." disabled="The engine has no provider for a private computer on this PC yet." />
+          <Choice icon="shield" title="A new private computer here" text="A sealed Windows box. Takes about 2 GB and a minute to set up." disabled="The engine has no provider for a private computer here yet." />
           <Choice icon="monitor" title="Another computer with Branch" text="A PC, a Mac or a Linux box. Pair it once with a code." onPick={() => setView("pair")} />
           <Choice icon="cloud" title="A cloud computer" text="A fresh machine for each conversation, thrown away when its work stops. Your own cloud account (Amazon, Hetzner and others) or KeepOak; the provider bills while machines run." onPick={() => setView("cloud")} />
         </div>

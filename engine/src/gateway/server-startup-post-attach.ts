@@ -686,6 +686,7 @@ export async function startGatewayPostAttachRuntime(
     getCurrentPluginMetadataSnapshot?: () => PluginMetadataSnapshot | undefined;
     getCurrentActivationSourceConfig?: () => BranchConfig | null;
     getCronService?: () => PluginServiceCronHost | null | undefined;
+    activateCronAuthority?: () => void;
     onChannelsStarted?: () => Awaitable<void>;
     onPluginServices?: (pluginServices: PluginServicesHandle | null) => void;
     onPostReadySidecars: (...sidecars: GatewayPostReadySidecarHandle[]) => void;
@@ -709,20 +710,14 @@ export async function startGatewayPostAttachRuntime(
   const candidateCanary = params.updateCanary === true;
   const controlUiRootLifecycle = params.controlUiRootLifecycle;
   const mainSessionRecoveryStartupCheckedStorePaths = new Set<string>();
+  // Branch's window never loads the old control UI: its asset check, retention copy or rebuild
+  // starts on the first control UI request (requestControlUiRootPreparation), not at every start.
+  // Shutdown still owns the lifecycle so a builder started by a request is stopped.
   const controlUiAssetsSidecar =
     !params.minimalTestGateway && controlUiRootLifecycle
-      ? schedulePostReadySidecarTask({
-          name: "sidecars.control-ui-assets",
-          startupTrace: params.startupTrace,
-          log: params.log,
-          shouldRun: () => params.isClosing?.() !== true,
-          run: controlUiRootLifecycle.start,
-          stop: controlUiRootLifecycle.stop,
-        })
+      ? { stop: controlUiRootLifecycle.stop }
       : undefined;
   if (controlUiAssetsSidecar) {
-    // Publish before the first await: slow CA/plugin startup must not strand
-    // the dashboard or hide its running builder from Gateway shutdown.
     params.onGatewayLifetimeSidecars(controlUiAssetsSidecar);
   }
 
@@ -857,7 +852,10 @@ export async function startGatewayPostAttachRuntime(
   };
   const startSidecars = () =>
     params.minimalTestGateway
-      ? startStartupLog().then(() => pluginRegistry)
+      ? Promise.resolve().then(() => {
+          params.activateCronAuthority?.();
+          return startStartupLog();
+        }).then(() => pluginRegistry)
       : nextTurn().then(async () => {
           if (params.isClosing?.()) {
             skipStartupLog();
@@ -868,6 +866,7 @@ export async function startGatewayPostAttachRuntime(
             skipStartupLog();
             return pluginRegistry;
           }
+          params.activateCronAuthority?.();
           const startupLog = startStartupLog();
           if (candidateCanary) {
             await startupLog;

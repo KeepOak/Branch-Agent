@@ -32,7 +32,7 @@ export type Row =
   | (Base & { k: "pill"; word: string })
   | (Base & { k: "el"; el: (x: Ctx) => ReactNode });
 /** `tail` draws after the section (outside its card), such as the Lockdown box. */
-export type Section = { title: string; lv: Lv; hint?: string; rows: Row[]; tail?: () => ReactNode };
+export type Section = { title: string; group?: string; showHeading?: boolean; lv: Lv; hint?: string; rows: Row[]; tail?: (x: Ctx) => ReactNode };
 
 /** The reasons rows are greyed, in one place. */
 export const WHY = {
@@ -116,13 +116,13 @@ export function SectionView({ s, x }: { s: Section; x: Ctx }) {
   const rows = s.rows.filter((r) => (r.lv ?? 0) <= lv);
   return (
     <>
-      <Sec title={s.title} hint={s.hint}>{rows.map((r) => <RowView key={r.t} r={r} x={x} />)}</Sec>
-      {s.tail ? s.tail() : null}
+      <Sec title={s.title} group={s.group} showHeading={s.showHeading} hint={s.hint}>{rows.map((r) => <RowView key={r.t} r={r} x={x} />)}</Sec>
+      {s.tail ? s.tail(x) : null}
     </>
   );
 }
 
 /** The search entries for a set of sections. */
 export function rowsOf(sections: Section[]): RowEntry[] {
-  return sections.flatMap((s) => s.rows.map((r) => ({ page: "permissions", title: r.t, sec: s.title, lv: Math.max(s.lv, r.lv ?? 0) as Lv, ...(r.words ? { words: r.words } : {}) })));
+  return sections.flatMap((s) => s.rows.map((r) => ({ page: "permissions", title: r.t, sec: s.title, group: s.group ?? s.title, lv: Math.max(s.lv, r.lv ?? 0) as Lv, ...(r.words ? { words: r.words } : {}) })));
 }

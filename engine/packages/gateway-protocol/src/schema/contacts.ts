@@ -40,6 +40,7 @@ export const ContactSchema = closedObject({
       agentId: Type.Optional(NonEmptyString),
       iconUrl: Type.Optional(Type.String()),
       members: Type.Optional(Type.Array(NonEmptyString)),
+      trunks: Type.Optional(Type.Array(closedObject({ name: NonEmptyString, avatar: Type.Optional(Type.String()) }))),
     }),
   ),
   threadKey: NonEmptyString,
@@ -111,6 +112,8 @@ export const OutsideAgentSchema = closedObject({
   // Branch-to-Branch: another Branch grafted in as a device ("branch") and its Trunks ("trunk", via that Branch).
   kind: Type.Optional(Type.Union([Type.Literal("branch"), Type.Literal("trunk")])),
   via: Type.Optional(Type.String({ pattern: "^[a-z0-9][a-z0-9-]{0,63}$" })),
+  avatar: Type.Optional(Type.String({ pattern: "^branch:[a-z0-9-]{1,32}$" })),
+  trunkId: Type.Optional(Type.String({ pattern: "^[a-z0-9][a-z0-9-]{0,63}$" })),
 });
 /** `leaving: true` is the goodbye a client sends when it exits: its id is free for the next session at once. */
 export const ContactsOutsideHelloParamsSchema = closedObject({

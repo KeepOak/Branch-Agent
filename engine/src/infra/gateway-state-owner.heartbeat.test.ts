@@ -1,6 +1,8 @@
 import { once } from "node:events";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { MessageChannel, receiveMessageOnPort, type Worker } from "node:worker_threads";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { afterEach, expect, it, vi } from "vitest";
@@ -11,6 +13,7 @@ import {
   readGatewayLockProcessNamespace,
 } from "./gateway-lock-payload.js";
 import { acquireGatewayLock } from "./gateway-lock.js";
+import { startGatewayStateOwnerHeartbeat } from "./gateway-state-owner-heartbeat.js";
 import type { GatewayStateOwnerHeartbeatData } from "./gateway-state-owner-heartbeat.runtime.js";
 import {
   acquireStateDatabaseSchemaLease,
@@ -29,14 +32,14 @@ afterEach(() => {
   vi.resetModules();
 });
 
-function observeHeartbeatWorkers(fault?: "EIO" | SharedArrayBuffer) {
+function observeHeartbeatWorkers(fault?: "EIO" | "close" | SharedArrayBuffer) {
   const workers: Worker[] = [];
   const ready: Promise<unknown>[] = [];
   const beats: BigInt64Array<SharedArrayBuffer>[] = [];
   const createWorker = workerCpu.createCpuTrackedWorker;
   vi.spyOn(workerCpu, "createCpuTrackedWorker").mockImplementation((url, options) => {
     const data: unknown = options?.workerData;
-    if (!isRecord(data) || !(data.lastBeat instanceof SharedArrayBuffer)) {
+    if (!isRecord(data) || !isRecord(data.locks) || !(data.lastBeat instanceof SharedArrayBuffer)) {
       throw new Error("Expected shared heartbeat observation");
     }
     beats.push(new BigInt64Array(data.lastBeat));
@@ -59,6 +62,15 @@ function observeHeartbeatWorkers(fault?: "EIO" | SharedArrayBuffer) {
                     return touch(...args);
                   };
                 }
+              } else if (workerData.reportClose) {
+                const close = fs.closeSync;
+                fs.closeSync = (fd) => {
+                  const inode = fs.fstatSync(fd, { bigint: true }).ino;
+                  if (inode === fs.statSync(workerData.reportClose, { bigint: true }).ino) {
+                    parentPort.postMessage({ closedInode: inode.toString() });
+                  }
+                  return close(fd);
+                };
               } else {
                 fs.futimesSync = () => { throw Object.assign(new Error("synthetic EIO"), { code: "EIO" }); };
               }
@@ -70,7 +82,9 @@ function observeHeartbeatWorkers(fault?: "EIO" | SharedArrayBuffer) {
       entry,
       fault instanceof SharedArrayBuffer
         ? { ...options, workerData: { ...data, pause: fault, intervalMs: 1 } }
-        : options,
+        : fault === "close"
+          ? { ...options, workerData: { ...data, reportClose: Object.keys(data.locks)[0] } }
+          : options,
     );
     workers.push(worker);
     ready.push(once(worker, "message"));
@@ -79,7 +93,86 @@ function observeHeartbeatWorkers(fault?: "EIO" | SharedArrayBuffer) {
   return { workers, ready, beats };
 }
 
-async function startRuntime(locks: Record<string, string>) {
+it("lets a process with an active owner heartbeat exit naturally", () => {
+  const rootPath = path.join(tempDirs.make("branch-owner-process-exit-"), "root.lock");
+  const moduleUrl = pathToFileURL(path.resolve("src/infra/gateway-state-owner-heartbeat.ts"));
+  const script = `
+    import fs from "node:fs";
+    import { startGatewayStateOwnerHeartbeat } from ${JSON.stringify(moduleUrl.href)};
+    fs.writeFileSync(${JSON.stringify(rootPath)}, "root-owner");
+    startGatewayStateOwnerHeartbeat([{ lockPath: ${JSON.stringify(rootPath)}, verifyStillHeld: () => true }], () => {});
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", "--input-type=module", "--eval", script],
+    { cwd: process.cwd(), encoding: "utf8", timeout: 10_000, windowsHide: true },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr).toBe(0);
+});
+
+it("lets the worker close its lock descriptor before exiting on stop", async () => {
+  const rootPath = path.join(tempDirs.make("branch-owner-worker-stop-"), "root.lock");
+  fs.writeFileSync(rootPath, "root-owner");
+  const oldStamp = new Date(Date.now() - 60_000);
+  fs.utimesSync(rootPath, oldStamp, oldStamp);
+  const { workers, ready } = observeHeartbeatWorkers("close");
+  const heartbeat = startGatewayStateOwnerHeartbeat(
+    [{ lockPath: rootPath, verifyStillHeld: () => true }],
+    () => {},
+  );
+  expect(workers).toHaveLength(1);
+  const worker = workers[0]!;
+  try {
+    await Promise.all(ready);
+    expect(fs.statSync(rootPath).mtimeMs).toBeGreaterThan(oldStamp.getTime());
+    const closed = once(worker, "message");
+    const exited = once(worker, "exit");
+    heartbeat.stop();
+    expect((await closed)[0]).toEqual({
+      closedInode: fs.statSync(rootPath, { bigint: true }).ino.toString(),
+    });
+    await exited;
+  } finally {
+    heartbeat.stop();
+    await worker.terminate();
+  }
+});
+
+it("force-terminates a heartbeat worker that ignores stop after the grace period", async () => {
+  const rootPath = path.join(tempDirs.make("branch-owner-worker-forced-stop-"), "root.lock");
+  fs.writeFileSync(rootPath, "root-owner");
+  const { workers, ready } = observeHeartbeatWorkers();
+  const heartbeat = startGatewayStateOwnerHeartbeat(
+    [{ lockPath: rootPath, verifyStillHeld: () => true }],
+    () => {},
+  );
+  expect(workers).toHaveLength(1);
+  const worker = workers[0]!;
+  try {
+    await Promise.all(ready);
+    vi.spyOn(worker, "postMessage").mockImplementation(() => {});
+    const terminate = vi.spyOn(worker, "terminate");
+    const exited = once(worker, "exit");
+    vi.useFakeTimers();
+    heartbeat.stop();
+    expect(worker.postMessage).toHaveBeenCalledWith("stop", []);
+    vi.advanceTimersByTime(999);
+    expect(terminate).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(terminate).toHaveBeenCalledOnce();
+    await exited;
+  } finally {
+    vi.useRealTimers();
+    heartbeat.stop();
+    await worker.terminate();
+  }
+});
+
+async function startRuntime(
+  locks: Record<string, string>,
+  lastBeat = new BigInt64Array(new SharedArrayBuffer(BigInt64Array.BYTES_PER_ELEMENT)),
+) {
   vi.useFakeTimers();
   vi.resetModules();
   const { runGatewayStateOwnerHeartbeat } =
@@ -87,7 +180,6 @@ async function startRuntime(locks: Record<string, string>) {
   const events = new MessageChannel();
   const parent = new MessageChannel();
   const closed = once(parent.port2, "close");
-  const lastBeat = new BigInt64Array(new SharedArrayBuffer(BigInt64Array.BYTES_PER_ELEMENT));
   Atomics.store(lastBeat, 0, process.hrtime.bigint() / 1_000_000n);
   runGatewayStateOwnerHeartbeat(
     {
@@ -117,6 +209,29 @@ async function startRuntime(locks: Record<string, string>) {
     },
   };
 }
+
+it("does not publish a stale beat after the main thread re-asserts ownership", async () => {
+  const rootPath = path.join(tempDirs.make("branch-owner-beat-publication-"), "root.lock");
+  fs.writeFileSync(rootPath, "root-owner");
+  const lastBeat = new BigInt64Array(new SharedArrayBuffer(BigInt64Array.BYTES_PER_ELEMENT));
+  const touch = fs.futimesSync;
+  let reassertedAt: bigint | undefined;
+  vi.spyOn(fs, "futimesSync").mockImplementation((fd, atime, mtime) => {
+    // The worker entered its syscall with an older observation. The main thread
+    // re-asserts while it is blocked, before the worker can publish its old stamp.
+    reassertedAt = process.hrtime.bigint() / 1_000_000n + 1_000n;
+    Atomics.store(lastBeat, 0, reassertedAt);
+    touch(fd, atime, mtime);
+  });
+  const runtime = await startRuntime({ [rootPath]: "root-owner" }, lastBeat);
+  try {
+    expect(reassertedAt).toBeDefined();
+    expect(Atomics.load(lastBeat, 0)).toBe(reassertedAt);
+    expect(runtime.readEvents()).toEqual([null]);
+  } finally {
+    await runtime.stop();
+  }
+});
 
 it.each(["persistent", "transient"] as const)(
   "bounds %s EIO renewal failures without losing healthy custody",
@@ -187,12 +302,57 @@ it("keeps the failure deadline ahead of mtime expiry after a slow successful tou
   }
 });
 
-it.each(["EIO", "worker exit"] as const)(
-  "fences state admission with a visible reason after %s stops renewal",
+it("fences state admission with a visible reason after EIO stops renewal", async () => {
+  const root = tempDirs.make("branch-owner-heartbeat-lost-");
+  const databasePath = path.join(root, "state", "branch.sqlite");
+  const { workers, ready, beats } = observeHeartbeatWorkers("EIO");
+  const gateway = await acquireGatewayLock({
+    allowInTests: true,
+    env: { BRANCH_STATE_DIR: root },
+    timeoutMs: 0,
+  });
+  if (!gateway) {
+    throw new Error("Expected Gateway custody");
+  }
+  try {
+    const owner = captureGatewayStateOwner(databasePath);
+    if (!owner) {
+      throw new Error("Expected captured Gateway custody");
+    }
+    await Promise.all(ready);
+    const worker = workers[0];
+    const lastBeat = beats[0];
+    if (!worker || !lastBeat) {
+      throw new Error("Expected one heartbeat worker and its shared observation");
+    }
+    expect(() => gateway.assertCurrent()).not.toThrow();
+    Atomics.store(lastBeat, 0, process.hrtime.bigint() / 1_000_000n - 60_001n);
+    const reason = "synthetic EIO";
+    expect(() => gateway.assertCurrent()).toThrow(reason);
+    expect(owner.signal.aborted).toBe(true);
+    expect(owner.signal.reason).toMatchObject({
+      message: expect.stringContaining(gateway.lockPath),
+    });
+    expect(() => owner.assertCurrent()).toThrow(reason);
+    expect(() => acquireStateDatabaseSchemaLease(databasePath)).toThrow(
+      expect.objectContaining({
+        name: "GatewayStateOwnerContentionError",
+        cause: owner.signal.reason,
+      }),
+    );
+    expect(workers).toHaveLength(1);
+  } finally {
+    await gateway.release();
+    await Promise.all(workers.map((worker) => worker.terminate()));
+  }
+});
+
+it.each(["stalled", "worker exit"] as const)(
+  "keeps ownership when the heartbeat is late (%s) and no other process took the lock",
   async (fault) => {
-    const root = tempDirs.make("branch-owner-heartbeat-lost-");
+    const root = tempDirs.make("branch-owner-heartbeat-late-");
     const databasePath = path.join(root, "state", "branch.sqlite");
-    const { workers, ready, beats } = observeHeartbeatWorkers(fault === "EIO" ? fault : undefined);
+    const { workers, ready, beats } = observeHeartbeatWorkers();
     const gateway = await acquireGatewayLock({
       allowInTests: true,
       env: { BRANCH_STATE_DIR: root },
@@ -207,39 +367,147 @@ it.each(["EIO", "worker exit"] as const)(
         throw new Error("Expected captured Gateway custody");
       }
       await Promise.all(ready);
-      const worker = workers[0];
-      const lastBeat = beats[0];
+      const [worker] = workers;
+      const [lastBeat] = beats;
       if (!worker || !lastBeat) {
         throw new Error("Expected one heartbeat worker and its shared observation");
       }
       if (fault === "worker exit") {
         await worker.terminate();
       }
-      expect(() => gateway.assertCurrent()).not.toThrow();
-      Atomics.store(lastBeat, 0, process.hrtime.bigint() / 1_000_000n - 60_001n);
-      const reason =
-        fault === "EIO"
-          ? "synthetic EIO"
-          : "utimes heartbeat renewal did not complete within 60 seconds";
-      expect(() => gateway.assertCurrent()).toThrow(reason);
-      expect(owner.signal.aborted).toBe(true);
-      expect(owner.signal.reason).toMatchObject({
-        message: expect.stringContaining(gateway.lockPath),
+      const shutdown: string[] = [];
+      const post = worker.postMessage.bind(worker);
+      const terminate = worker.terminate.bind(worker);
+      vi.spyOn(worker, "postMessage").mockImplementation((value, transferList) => {
+        if (value === "stop") shutdown.push("stop");
+        return post(value, transferList);
       });
-      expect(() => owner.assertCurrent()).toThrow(reason);
-      expect(() => acquireStateDatabaseSchemaLease(databasePath)).toThrow(
-        expect.objectContaining({
-          name: "GatewayStateOwnerContentionError",
-          cause: owner.signal.reason,
-        }),
+      vi.spyOn(worker, "terminate").mockImplementation(() => {
+        shutdown.push("terminate");
+        return terminate();
+      });
+      const raw = fs.readFileSync(gateway.lockPath, "utf8");
+      const before = fs.statSync(gateway.lockPath).mtimeMs;
+      // The whole process stood still for longer than the renewal deadline (a frozen VM, a blocked disk).
+      Atomics.store(lastBeat, 0, process.hrtime.bigint() / 1_000_000n - 15n * 60_000n);
+      expect(() => gateway.assertCurrent()).not.toThrow();
+      expect(() => owner.assertCurrent()).not.toThrow();
+      expect(owner.signal.aborted).toBe(false);
+      // Re-asserted on the same file: renewed now, and a fresh worker renews from here on.
+      expect(fs.readFileSync(gateway.lockPath, "utf8")).toBe(raw);
+      expect(fs.statSync(gateway.lockPath).mtimeMs).toBeGreaterThanOrEqual(before);
+      expect(workers).toHaveLength(2);
+      expect(shutdown).toEqual(["stop"]);
+      const [, renewed] = beats;
+      expect(Number(process.hrtime.bigint() / 1_000_000n - Atomics.load(renewed!, 0))).toBeLessThan(
+        10_000,
       );
-      expect(workers).toHaveLength(1);
     } finally {
       await gateway.release();
       await Promise.all(workers.map((worker) => worker.terminate()));
     }
   },
 );
+
+it("loses ownership when the heartbeat is late and another process took the lock meanwhile", async () => {
+  const root = tempDirs.make("branch-owner-heartbeat-taken-");
+  const databasePath = path.join(root, "state", "branch.sqlite");
+  const { workers, ready, beats } = observeHeartbeatWorkers();
+  const gateway = await acquireGatewayLock({
+    allowInTests: true,
+    env: { BRANCH_STATE_DIR: root },
+    timeoutMs: 0,
+  });
+  if (!gateway) {
+    throw new Error("Expected Gateway custody");
+  }
+  try {
+    const owner = captureGatewayStateOwner(databasePath);
+    if (!owner) {
+      throw new Error("Expected captured Gateway custody");
+    }
+    await Promise.all(ready);
+    const [worker] = workers;
+    const [lastBeat] = beats;
+    if (!worker || !lastBeat) {
+      throw new Error("Expected one heartbeat worker and its shared observation");
+    }
+    // Stop the worker so it can't notice first; a rival replaces the lock while this process stood still.
+    await worker.terminate();
+    fs.unlinkSync(gateway.lockPath);
+    fs.writeFileSync(gateway.lockPath, "successor");
+    Atomics.store(lastBeat, 0, process.hrtime.bigint() / 1_000_000n - 15n * 60_000n);
+    expect(() => gateway.assertCurrent()).toThrow("no longer current");
+    expect(owner.signal.aborted).toBe(true);
+    expect(fs.readFileSync(gateway.lockPath, "utf8")).toBe("successor");
+    expect(workers).toHaveLength(1);
+  } finally {
+    await gateway.release();
+    await Promise.all(workers.map((worker) => worker.terminate()));
+  }
+});
+
+it("never renews a successor when the lock changes just before a late reassertion touches it", async () => {
+  const root = tempDirs.make("branch-owner-reassert-race-");
+  const { workers, ready, beats } = observeHeartbeatWorkers();
+  const gateway = await acquireGatewayLock({
+    allowInTests: true,
+    env: { BRANCH_STATE_DIR: root },
+    timeoutMs: 0,
+  });
+  if (!gateway) throw new Error("Expected Gateway custody");
+  try {
+    await Promise.all(ready);
+    await workers[0]!.terminate();
+    const successor = "successor";
+    const touch = fs.futimesSync;
+    let replacementMtime: bigint | undefined;
+    const spy = vi.spyOn(fs, "futimesSync").mockImplementation((fd, atime, mtime) => {
+      fs.renameSync(gateway.lockPath, `${gateway.lockPath}.retired`);
+      fs.writeFileSync(gateway.lockPath, successor);
+      replacementMtime = fs.statSync(gateway.lockPath, { bigint: true }).mtimeNs;
+      touch(fd, atime, mtime);
+    });
+    Atomics.store(beats[0]!, 0, process.hrtime.bigint() / 1_000_000n - 60_001n);
+    expect(() => gateway.assertCurrent()).toThrow("no longer current");
+    spy.mockRestore();
+    expect(replacementMtime).toBeDefined();
+    expect(fs.statSync(gateway.lockPath, { bigint: true }).mtimeNs).toBe(replacementMtime);
+    expect(fs.readFileSync(gateway.lockPath, "utf8")).toBe(successor);
+  } finally {
+    await gateway.release();
+    await Promise.all(workers.map((worker) => worker.terminate()));
+  }
+});
+
+it("declares a worker-reported lock replacement lost before the heartbeat deadline", async () => {
+  const root = tempDirs.make("branch-owner-replaced-now-");
+  const databasePath = path.join(root, "state", "branch.sqlite");
+  const { workers, ready } = observeHeartbeatWorkers();
+  const gateway = await acquireGatewayLock({
+    allowInTests: true,
+    env: { BRANCH_STATE_DIR: root },
+    timeoutMs: 0,
+  });
+  if (!gateway) throw new Error("Expected Gateway custody");
+  try {
+    const owner = captureGatewayStateOwner(databasePath);
+    if (!owner) throw new Error("Expected captured Gateway custody");
+    await Promise.all(ready);
+    fs.renameSync(gateway.lockPath, `${gateway.lockPath}.retired`);
+    fs.writeFileSync(gateway.lockPath, "successor");
+    await vi.waitFor(() => expect(owner.signal.aborted).toBe(true), {
+      timeout: 5_000,
+      interval: 50,
+    });
+    expect(owner.signal.reason).toMatchObject({
+      message: expect.stringContaining("owner lock was removed or replaced"),
+    });
+  } finally {
+    await gateway.release();
+    await Promise.all(workers.map((worker) => worker.terminate()));
+  }
+});
 
 it("renews retained custody during synchronous work and never touches a successor", async () => {
   const { workers, ready } = observeHeartbeatWorkers();

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/media-understanding/local-audio.test.ts (atlas VOICE-0065). Changed for Branch: assert the same discovered model path on Windows and POSIX.
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -102,7 +103,9 @@ describe("local audio selection", () => {
 
     const whisper = selection.candidates.find((candidate) => candidate.id === "whisper-cli");
     expect(whisper?.ready).toBe(true);
-    expect(whisper?.entry?.args).toContain("/opt/homebrew/share/whisper-cpp/ggml-base.en.bin");
+    expect(whisper?.entry?.args).toContain(
+      path.join("/opt/homebrew/share/whisper-cpp", "ggml-base.en.bin"),
+    );
   });
 
   it("reports whisper as not ready when no ggml model is installed", async () => {
