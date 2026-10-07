@@ -1,9 +1,21 @@
 /* @vitest-environment jsdom */
 import { render } from "lit";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installDialogPolyfill } from "../../test-helpers/modal-dialog.ts";
 import { renderDevicePairSetup } from "./view-pairing.runtime.ts";
 
+let restoreDialogPolyfill: () => void;
+
 describe("device pairing dialog", () => {
+  beforeEach(() => {
+    restoreDialogPolyfill = installDialogPolyfill();
+  });
+
+  afterEach(() => {
+    document.body.replaceChildren();
+    restoreDialogPolyfill();
+  });
+
   it.each([
     {
       access: "full" as const,
