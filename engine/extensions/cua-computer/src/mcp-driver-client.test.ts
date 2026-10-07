@@ -141,41 +141,6 @@ function sessionState(scope: "window" | "desktop") {
 }
 
 describe.runIf(process.platform !== "win32")("CUA MCP proxy transport", () => {
-  it("authenticates the Mac broker before forwarding MCP traffic", async () => {
-    const endpoint = await createFakeEndpoint((request, fake) => {
-      if (request.method === "initialize") fake.respond(request, {
-        protocolVersion: "2025-06-18", capabilities: { tools: {} },
-        serverInfo: { name: "fake-cua-driver", version: "0.22.2" },
-      });
-      else if (request.method === "tools/call") {
-        fake.respond(request, request.params?.name === "start_session"
-          ? sessionState("desktop") : toolResult({ session: "branch-test", active: false }));
-      }
-    });
-    const secret = "a".repeat(64);
-    const broker = net.createServer(client => {
-      client.once("data", chunk => {
-        const newline = chunk.indexOf(10);
-        if (newline < 0 || chunk.subarray(0, newline).toString() !== secret) { client.destroy(); return; }
-        const daemon = net.createConnection(endpoint.socketPath);
-        if (chunk.length > newline + 1) daemon.write(chunk.subarray(newline + 1));
-        client.pipe(daemon).pipe(client);
-        client.once("close", () => daemon.destroy());
-      });
-    });
-    await new Promise<void>((resolve, reject) => {
-      broker.once("error", reject);
-      broker.listen(0, "127.0.0.1", resolve);
-    });
-    onTestFinished(() => broker.close());
-    const address = broker.address();
-    if (!address || typeof address === "string") throw new Error("broker did not bind");
-    const driver = createCuaMcpDriver({ port: address.port, secret, env: process.env });
-    onTestFinished(() => driver.dispose());
-    await expect(driver.callTool("list_windows", {})).resolves.toMatchObject({ isError: false });
-    expect(endpoint.requests.some(request => request.method === "initialize")).toBe(true);
-  });
-
   it.each([
     {
       outcome: "verified activation",

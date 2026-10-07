@@ -168,7 +168,7 @@ function normalizeMcpToolResult(tool: string, raw: unknown): CuaToolResult {
   };
 }
 
-const MAC_BROKER_CLIENT = `const net=require('node:net');const port=Number(process.env.BRANCH_CUA_BROKER_PORT);const secret=process.env.BRANCH_CUA_BROKER_SECRET;delete process.env.BRANCH_CUA_BROKER_PORT;delete process.env.BRANCH_CUA_BROKER_SECRET;if(!Number.isInteger(port)||!secret)process.exit(1);const socket=net.connect({host:'127.0.0.1',port},()=>{socket.write(secret+'\\n');process.stdin.pipe(socket);socket.pipe(process.stdout)});socket.on('error',()=>process.exit(1));socket.on('close',()=>process.exit(0));`;
+export const MAC_BROKER_CLIENT = `const net=require('node:net');const port=Number(process.env.BRANCH_CUA_BROKER_PORT);const secret=process.env.BRANCH_CUA_BROKER_SECRET;delete process.env.BRANCH_CUA_BROKER_PORT;delete process.env.BRANCH_CUA_BROKER_SECRET;if(!Number.isInteger(port)||!secret)process.exit(1);const socket=net.connect({host:'127.0.0.1',port},()=>{socket.write(secret+'\\n');process.stdin.pipe(socket);socket.pipe(process.stdout)});socket.on('error',()=>process.exit(1));socket.on('close',()=>process.exit(0));`;
 
 function createClient(endpoint: { binaryPath: string; socketPath: string } | { port: number; secret: string }, env: NodeJS.ProcessEnv) {
   const proxyEnvironment = { ...env };
