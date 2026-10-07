@@ -24,7 +24,7 @@ const NO_SETTING = "Needs an engine setting for it.";
 const APP = "Runs in the Branch app on your computer.";
 
 function changeLabel(entry: RecordValue): string {
-  if (entry.kind === "config-write") return "Setup saved";
+  if (entry.kind === "config-write" || entry.kind === "operation") return "Setup saved";
   if (entry.kind === "external-edit") return "Setup changed outside Branch";
   return str(entry.summary) || "Branch changed its setup";
 }

@@ -263,6 +263,22 @@ describe("Settings › Gateway", () => {
 });
 
 describe("Settings › Branch itself", () => {
+  it.each([
+    ["config.set", "Set config gateway.port"],
+    ["config.unset", "Removed config gateway.port"],
+    ["config.setRef", "Saved the secret as saved-key and set config gateway.auth.token SecretRef"],
+  ])("shows config operation %s without its raw summary or paths", async (_operation, summary) => {
+    const { engine } = engineWith({ "branch.changes.list": { entries: [
+      { id: "o1", at: Date.now(), kind: "operation", source: "system-agent", summary, changedPaths: ["gateway.port", "gateway.auth.token"] },
+    ] } });
+    await show("self", engine);
+    const changes = document.querySelector("ol.s2-tl");
+    expect(changes?.textContent).toContain("Setup saved");
+    expect(changes?.textContent).not.toContain(summary);
+    expect(changes?.textContent).not.toContain("gateway.port");
+    expect(changes?.textContent).not.toContain("gateway.auth.token");
+    expect(changes?.textContent).not.toContain("saved-key");
+  });
   it("shows plain-language changes without raw paths or a duplicate restart", async () => {
     const { engine } = engineWith({ health: { ok: true }, "branch.changes.list": { entries: [
       { id: "c1", at: Date.now(), kind: "config-write", source: "config-rpc", summary: "Settings updated configuration: plugins.installs, wizard", changedPaths: ["plugins.installs", "wizard"] },
