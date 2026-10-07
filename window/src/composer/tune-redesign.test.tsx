@@ -19,6 +19,7 @@ async function mount() {
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
     if (method === "agents.list") return { defaultId: "research", agents: [{ id: "research", name: "Research" }] };
     if (method === "sessions.describe") return { session: { ...row } };
+    if (method === "sessions.usage") return { totals: { totalCost: 0.75 } };
     if (method === "sessions.list") return { defaults: { model: "openai/test" }, sessions: [] };
     if (method === "models.list") return { models: [{ id: "test", provider: "openai", name: "Test Model", available: true }, { id: "gpt-6.1-sol", provider: "openai", name: "GPT-6.1-Sol", available: true }] };
     if (method === "models.authStatus") return { providers: [] };
@@ -41,12 +42,14 @@ async function mount() {
 
 describe("P54 one composer symbol", () => {
   it("shows one tune symbol and Model, Access, Thread, Status and Usage in its popover", async () => {
-    const { host } = await mount();
+    const { host, request } = await mount();
     expect(host.querySelectorAll('[data-testid="tune-button"]')).toHaveLength(1);
     expect(host.querySelector('[data-testid="model-chip"], [data-testid="mode-chip"]')).toBeNull();
     await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="tune-button"]')?.click());
     expect([...host.querySelectorAll(".c-tune-section h3")].map((x) => x.textContent)).toEqual(["Model", "Access", "Thread", "Status", "Usage"]);
-    expect(host.textContent).toContain("$0.50 in this conversation");
+    expect(host.textContent).toContain("$0.75 in this conversation");
+    expect(host.textContent).not.toContain("$0.50 in this conversation");
+    expect(request).toHaveBeenCalledWith("sessions.usage", { key: "agent:research:main", range: "all" });
   });
 
   it("starts the next typed message as an engine-backed background job", async () => {

@@ -199,10 +199,17 @@ export function Thread(props: Props) {
   const preparationError = [props.preparationError, props.earlierError].find(isPreparationPending);
   const anchors = anchorQuestions(history, props.questions ?? []);
   const items: RoomItem[] = props.room ? foldTalks(layout(history), props.room.ownAgentId) : layout(history);
+  const helperStartedAt = Math.min(...helpers.map((h) => h.createdAt ?? Number.POSITIVE_INFINITY));
+  const helperUserAt = Number.isFinite(helperStartedAt) ? history.findLastIndex((b) => b.kind === "user" && typeof b.meta?.timestamp === "number" && b.meta.timestamp <= helperStartedAt) : -1;
+  const helperNextUserAt = helperUserAt < 0 ? -1 : history.findIndex((b, i) => i > helperUserAt && b.kind === "user");
   const planWanted = props.plan ? planAnchor(history) : -1;
   const planAt = items.some((i) => i.type === "block" && i.index === planWanted) ? planWanted : -1;
   const lastUser = history.map((b) => b.kind).lastIndexOf("user");
   const stamps = useMemo(() => dayStamps(history), [history]);
+  const helperChip = helpers.length && engine?.sessionKey ? (
+    <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenActivity}
+      onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
+  ) : null;
   const topicEvents = new Map<number, { at: number; node: ReactNode }[]>();
   for (const update of props.topicUpdates ?? []) {
     const add = (position: number, at: number, node: ReactNode) => topicEvents.set(position, [...(topicEvents.get(position) ?? []), { at, node }]);
@@ -272,6 +279,7 @@ export function Thread(props: Props) {
               </Fragment>
             ) : (
               <Fragment key={keyOf(item)}>
+                {item.type === "block" && item.index === helperNextUserAt ? helperChip : null}
                 {item.type === "block" && stamps.has(item.index) ? <div className="stamp" data-testid="day-stamp">{stamps.get(item.index)}</div> : null}
                 <ItemWithQuestions item={item} view={view} asked={item.type === "block" ? anchors.get(item.index) : undefined} plan={item.type === "block" && item.index === planAt ? props.plan : null} />
                 {renderTopicEvents(item.type === "block" ? item.index : history.findIndex((block) => block.key === item.steps.at(-1)?.key))}
@@ -294,10 +302,7 @@ export function Thread(props: Props) {
           {(anchors.get(-1) ?? []).map((r) => <QuestionLine key={r.id} record={r} />)}
           {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} />)}
           {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} /> : null}
-          {helpers.length && engine?.sessionKey ? (
-            <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenActivity}
-              onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
-          ) : null}
+          {helperNextUserAt < 0 ? helperChip : null}
           {props.supplement}
           {suggestions.length ? <div className="suggestion-row" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
             {suggestions.map((text) => <button key={text} type="button" onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}>{text}</button>)}
@@ -470,6 +475,7 @@ function MessageView({ block, index, firstReply, face, view, live }: { block: Ex
   const entryId = block.meta?.entryId;
   const chips = entryId ? view.reactions.get(entryId) ?? [] : [];
   const bar = actions ? <HoverBar isReply={block.kind === "text"} actions={actions} meta={block.meta} /> : null;
+  const putBack = block.meta?.excluded && actions?.context ? <div className="context-line">Left out of context · <button type="button" disabled={Boolean(actions.context.disabled)} title={actions.context.disabled ?? undefined} onClick={actions.context.run}>Put back</button></div> : null;
   const toggle = (emoji: string, remove: boolean) => {
     if (actions && !actions.reactDisabled) actions.react(emoji, remove);
   };
@@ -482,6 +488,7 @@ function MessageView({ block, index, firstReply, face, view, live }: { block: Ex
         ) : (
           <UserMessage block={block}>{bar}</UserMessage>
         )}
+        {putBack}
         <TimeLine block={block} view={view} />
         <ReactionChips list={chips} onToggle={toggle} />
       </>
@@ -490,6 +497,7 @@ function MessageView({ block, index, firstReply, face, view, live }: { block: Ex
   return (
     <>
       <Reply block={block} face={face ? faceFor(view, live) : undefined} working={face && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
+      {putBack}
       {live ? null : <TimeLine block={block} view={view} />}
       <ReactionChips list={chips} onToggle={toggle} />
     </>

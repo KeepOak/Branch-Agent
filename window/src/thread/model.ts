@@ -36,6 +36,8 @@ export type MessageMeta = {
   sender?: Sender;
   /** The engine marks it as the owner's own message (`__branch.senderIsOwner`). */
   owner?: boolean;
+  /** The engine omits this message from future model context while keeping it in the transcript. */
+  excluded?: boolean;
 };
 
 /** A picture, sound, video or file carried by a message. `src` is a data: or http(s) address. */

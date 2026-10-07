@@ -122,7 +122,7 @@ function workWords(s: SessionSnapshot, now: number): string {
   if (step?.kind === "step" && step.status === "running" && /browser|computer|screen|desktop/i.test(step.tool)) {
     return "Working · using the computer";
   }
-  if (step?.kind === "step" && step.status === "running") return [stepLabel(step), step.title].filter(Boolean).join(" · ");
+  if (step?.kind === "step" && step.status === "running") return stepLabel(step);
   const state = agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now });
   return state === "work" || state === "idle" ? "Thinking" : STATE_LABEL[state];
 }
@@ -382,6 +382,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [replyTo, setReplyTo] = useState<{ entryId: string; name: string; text: string } | null>(null);
   const [stage, setStage] = useState<StageMode | null>(null);
   const [pane, setPane] = useState<PaneTab | null>(null);
+  const [focusHelpers, setFocusHelpers] = useState(0);
   const [pip, setPip] = useState<PipTarget | null>(null);
   const [stageComputer, setStageComputer] = useState<string | null>(null);
   const [addingComputer, setAddingComputer] = useState(false);
@@ -721,7 +722,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   const questions = useQuestions(ready ? session.engine : undefined);
   const waitingQuestion = questions.list.find((q) => q.status === "pending" && (!q.expiresAtMs || q.expiresAtMs > now)) ?? null;
-  const faceNow = waitingQuestion ? "waiting" : faceState(s, now);
+  const faceNow = waitingQuestion || (openKey && (pending.get(openKey) ?? 0) > 0) ? "waiting" : faceState(s, now);
   const rowState = useCallback((row: Conversation) => {
     const open = row.key === openKey;
     return { waiting: row.needsYou === true || (pending.get(row.key) ?? 0) > 0 || (open && faceNow === "waiting"), working: row.working || (open && faceNow === "working") };
@@ -1143,7 +1144,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           onStartTopic={activeContact?.kind === "trunk" ? startFromMessage : undefined}
           topicUpdates={topicUpdates}
           focusTopic={focusTopic}
-          onOpenActivity={() => setPane("Activity")}
+          onOpenActivity={() => { setPane("Activity"); setFocusHelpers((n) => n + 1); }}
           supplement={
             <>
               <ComputerActivityCard blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} name={trunkName(openRow?.agentId)} engine={session.engine} gatewayUrl={url} onWatch={(mode, takeOver) => { setStageTakeOver(Boolean(takeOver)); setStage(mode); }} />
@@ -1196,7 +1197,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         />}
         />
         {pane && ready ? (
-          <SidePane key={s.sessionKey} engine={session.engine} name={trunkName(openRow?.agentId)} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} cardError={progress.error} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={notify} title={name} onReload={() => void session.reload()}
+          <SidePane key={s.sessionKey} engine={session.engine} name={trunkName(openRow?.agentId)} blocks={[...s.history, ...s.live]} running={Boolean(s.liveRunId)} card={progress.card} cardError={progress.error} tab={pane} focusHelpers={focusHelpers} onTab={setPane} onClose={() => setPane(null)} toast={notify} title={name} onReload={() => void session.reload()}
             contactTopics={topicContact ? { items: topicItems, name: topicContact.name, onOpen: openTopic } : undefined} />
         ) : null}
       </>
