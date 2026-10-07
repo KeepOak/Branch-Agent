@@ -29,7 +29,7 @@ export const ROWS: RowEntry[] = [
   ["Tailscale access", "Reach", 1], ["Serve Branch’s page to browsers", "Reach", 2], ["Label this computer", "How it’s reached", 1], ["Branch in your browser", "How it’s reached", 1],
   ["Web address path", "How it’s reached", 2], ["Gateway address", "Connection", 2], ["Session key or password", "Connection", 2],
   ["How to reach it", "Another computer", 1], ["Check the SSH host key", "Another computer", 2], ["Sign in through a proxy", "Another computer", 2],
-  ["Pause a chat app from the chat", "Chat apps, more", 1], ["Canary, journal and rollback", "Never break", 1], ["Apply settings changes", "Technical", 2], ["Only join a running Gateway", "Technical", 2],
+  ["Pause a chat app from the chat", "Chat apps, more", 1], ["Relay for chat-app accounts", "Chat apps, even more", 1], ["Relay connector address", "Chat apps, even more", 1], ["Relay platform", "Chat apps, even more", 1], ["Relay bot ID", "Chat apps, even more", 1], ["Canary, journal and rollback", "Never break", 1], ["Apply settings changes", "Technical", 2], ["Only join a running Gateway", "Technical", 2],
   ["Infrastructure settings", "Technical", 2], ["Accept files and pictures", "Exposure", 2], ["HSTS header", "Exposure", 2], ["HTTPS for the Gateway", "Exposure", 2], ["Allowed browser addresses", "Exposure", 2],
   ["Trust the Host header for origins", "Exposure", 2], ["Wrong sign-ins allowed", "Limits", 2], ["Then lock that address for", "Limits", 2], ["Never lock out this computer", "Limits", 2],
   ["Reach previews from other devices", "App previews", 2], ["Send a message", "From scripts", 2], ["Connect a chat app", "From scripts", 2],
@@ -56,7 +56,7 @@ export function GatewayPage(props: SettingsPageProps) {
       {ctx.lv >= 2 ? <Limits {...ctx} /> : null}
       {ctx.lv >= 2 ? <Previews /> : null}
       {ctx.lv >= 1 ? <Another {...ctx} /> : null}
-      {ctx.lv >= 1 ? <ChatApps lv={ctx.lv} /> : null}
+      {ctx.lv >= 1 ? <ChatApps config={ctx.config} lv={ctx.lv} /> : null}
     </Page>
   );
 }
@@ -408,8 +408,14 @@ function Another({ config, lv }: Ctx) {
 }
 
 /** The chat-app sections: what the engine has is a copy row; the rest says where it lives or why not. */
-function ChatApps({ lv }: { lv: number }) {
+function ChatApps({ config, lv }: { config: Config; lv: number }) {
   const demo = "Needs the engine’s chat-app records.";
+  const relay = "channels.chat-relay";
+  const relayUrl = str(config.get(`${relay}.url`));
+  const relayPlatform = str(config.get(`${relay}.platform`));
+  const relayBotId = str(config.get(`${relay}.botId`));
+  const relayIdentities = list(config.get(`${relay}.identities`));
+  const relayReady = Boolean(relayUrl && (relayPlatform || relayIdentities.some((identity) => str(identity.platform))));
   return (
     <>
       <Sec title="Chat apps, more" group="Chat apps">
@@ -426,7 +432,18 @@ function ChatApps({ lv }: { lv: number }) {
       ) : null}
       <Sec title="Chat apps, even more" group="Chat apps" showHeading={false}>
         <Ctl title="Send files into chats" sub="A Trunk can reply with the file itself, not a link." off="Set per chat app in Chat apps."><Switch label="Send files into chats" checked onChange={() => undefined} /></Ctl>
-        <Ctl title="Relay for chat-app accounts" sub="The relay delivers messages using your phone number." help="Your phone number passes through the relay to deliver messages and is never saved. Off until you choose: your number would go through the relay." off="Needs the engine’s chat relay."><Switch label="Relay for chat-app accounts" checked={false} onChange={() => undefined} /></Ctl>
+        <Ctl title="Relay for chat-app accounts" sub="Your phone number passes through the relay to deliver messages and is never saved. Off until you choose: your number would go through the relay." off={!relayReady ? "Set the relay connector address and platform below first." : undefined}>
+          <Switch label="Relay for chat-app accounts" checked={config.get(`${relay}.enabled`) === true} disabled={config.loading} onChange={(on) => void config.set(`${relay}.enabled`, on)} />
+        </Ctl>
+        <Ctl title="Relay connector address" sub="The remote connector’s HTTPS or WebSocket address; Branch dials it directly.">
+          <Field label="Relay connector address" value={relayUrl} placeholder="https://connector.example" disabled={config.loading} onCommit={(value) => void config.set(`${relay}.url`, value.trim() || null)} wide />
+        </Ctl>
+        <Ctl title="Relay platform" sub={relayIdentities.length ? "Multiple platforms are configured in Technical; this single-platform field is optional." : "The chat platform the connector fronts, such as Discord or Telegram."}>
+          <Field label="Relay platform" value={relayPlatform} placeholder="discord" disabled={config.loading} onCommit={(value) => void config.set(`${relay}.platform`, value.trim() || null)} />
+        </Ctl>
+        <Ctl title="Relay bot ID" sub="The connector’s application or bot ID. Leave blank if it does not require one.">
+          <Field label="Relay bot ID" value={relayBotId} placeholder="Application or bot ID" disabled={config.loading} onCommit={(value) => void config.set(`${relay}.botId`, value.trim() || null)} />
+        </Ctl>
         <Ctl title="Push to your phone and browser" sub="When a Trunk needs you and no chat app is set up." off="Set in Notifications."><Switch label="Push to your phone and browser" checked onChange={() => undefined} /></Ctl>
       </Sec>
       <Sec title="Never break" group="If it stops">
