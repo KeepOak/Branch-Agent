@@ -26,6 +26,8 @@ export interface BranchAgent {
   /** Pebble shape 0-4 and eyes (round | wide | sleepy), as in the app. */
   shape?: number;
   eyes?: string;
+  /** The Trunk's emoji face (when look is 'classic' and an emoji is set). */
+  emoji?: string;
   /** Sub-agents the Trunk spawned; each appears as an extra character beside it. */
   subagents?: BranchSubagent[];
   /** Optional context usage for upstream's context gauge. */

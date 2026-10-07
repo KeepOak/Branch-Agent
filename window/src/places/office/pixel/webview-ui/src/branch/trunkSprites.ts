@@ -179,16 +179,57 @@ export function trunkSpriteFactory(key: string): CharacterSprites | null {
   return null;
 }
 
+/** Hash an emoji to generate a stable numeric seed for deriving pebble appearance. */
+function emojiHash(emoji: string): number {
+  let h = 0;
+  for (let i = 0; i < emoji.length; i++) {
+    h = (h * 31 + emoji.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
 /** The look a Trunk gets by default: its app look, else the classic pebble in its own colour. */
 export function defaultSpriteKey(agent: {
   look?: string;
   colorHint?: string;
   shape?: number;
   eyes?: string;
+  emoji?: string;
 }): string {
   if (agent.look && agent.look !== 'classic' && META.looks.some((l) => l.id === agent.look)) {
     return `look:${agent.look}`;
   }
   const color = /^#[0-9a-f]{6}$/i.test(agent.colorHint ?? '') ? agent.colorHint! : '#56616B';
+  // Emoji Trunks: derive a unique pebble appearance from the emoji itself, so different emoji
+  // Trunks are visually distinct even when they share a colour or have no colour.
+  if (agent.emoji) {
+    const hash = emojiHash(agent.emoji);
+    const shape = hash % PEBBLE_SHAPES;
+    const eyes = PEBBLE_EYES[hash % PEBBLE_EYES.length];
+    // Derive a stable hue for the emoji, shifted from the base color or grey if no color.
+    const baseColor = /^#[0-9a-f]{6}$/i.test(agent.colorHint ?? '') ? agent.colorHint! : '#56616B';
+    const hue = (hash * 137) % 360;
+    const emojiColor = shiftHue(baseColor, hue);
+    return `pebble:${shape}:${eyes}:${emojiColor}`;
+  }
   return `pebble:${agent.shape ?? 0}:${agent.eyes ?? 'round'}:${color}`;
+}
+
+/** Shift a #rrggbb color's hue by degrees, keeping its saturation and lightness. */
+function shiftHue(color: string, degrees: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!m) return color;
+  const n = parseInt(m[1], 16);
+  let r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  const l = (max + min) / 2;
+  if (d < 0.001) return color;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = ((h * 60 + degrees + 360) % 360);
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m1 = l - c / 2;
+  [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return hex(255 * (r + m1), 255 * (g + m1), 255 * (b + m1));
 }
