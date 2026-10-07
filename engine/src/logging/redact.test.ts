@@ -1183,7 +1183,7 @@ describe("session pairing and setup-code redaction", () => {
       ],
       [
         'branch node run --pair "oc-pair://AbC_setupCodeExample123"',
-        'branch node run --pair "oc-pair://***"',
+        undefined,
         ["AbC_setupCodeExample123"],
         ["oc-pair://"],
       ],

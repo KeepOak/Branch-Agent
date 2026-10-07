@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
   isRotatedOrRetiredLogName,
+  redactTextInOverlappingChunks,
   resolveLogScrubDirectories,
   SCRUB_CHUNK_OVERLAP,
   SCRUB_CHUNK_SIZE,
@@ -293,7 +294,9 @@ describe("scrubLogDirectory", () => {
     expect(result.scrubbedFiles).toBe(0);
     expect(result.errors.length).toBeGreaterThan(0);
     expect(await fs.readFile(logFile, "utf8")).toBe(original);
-    const leftovers = (await fs.readdir(logDir)).filter((name) => name.includes(".tmp"));
+    const leftovers = (await fs.readdir(logDir)).filter(
+      (name) => name.includes(".tmp") || name.startsWith(".branch-log-scrub"),
+    );
     expect(leftovers).toEqual([]);
   });
 
@@ -342,6 +345,18 @@ describe("scrubLogDirectory", () => {
     const scrubbed = await fs.readFile(logFile, "utf8");
     expect(scrubbed).not.toContain(secret);
     expect(scrubbed.length).toBeGreaterThan(SCRUB_CHUNK_OVERLAP);
+  });
+
+  it("does not duplicate bytes when a secret lands in the chunk overlap", () => {
+    const secret = "sk-overlap-hold-token-1234567890abcdef";
+    const marker = `token=${secret}`;
+    const prefix = "n".repeat(SCRUB_CHUNK_SIZE - Math.floor(marker.length / 2));
+    const suffix = "z".repeat(SCRUB_CHUNK_SIZE);
+    const redacted = redactTextInOverlappingChunks(`${prefix}${marker}${suffix}\n`);
+    expect(redacted).not.toContain(secret);
+    expect(redacted.startsWith(prefix)).toBe(true);
+    expect((redacted.match(/z/g) ?? []).length).toBe(suffix.length);
+    expect((redacted.match(/\n/g) ?? []).length).toBe(1);
   });
 
   it("does not rewrite benign fields that only resemble secret names", async () => {

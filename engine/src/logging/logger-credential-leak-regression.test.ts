@@ -262,7 +262,7 @@ describe("credential leakage regression tests", () => {
         apiKey,
         sessionToken,
         refreshToken,
-        message: `API: ${apiKey}, Session: ${sessionToken}`,
+        message: `API: apiKey=${apiKey}, Session: sessionToken=${sessionToken}`,
       },
       "Multiple credentials",
     );

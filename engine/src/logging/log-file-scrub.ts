@@ -87,7 +87,7 @@ function resolveSkipFiles(skipFiles: readonly string[] | undefined): Set<string>
 }
 
 function redactWindow(text: string, redactOpts: ReturnType<typeof resolveRedactOptions>): string {
-  return redactSensitiveLines([text], redactOpts)[0] ?? "";
+  return redactSensitiveLines(text.split("\n"), redactOpts).join("\n");
 }
 
 /**
@@ -114,10 +114,16 @@ export function redactTextInOverlappingChunks(
       parts.push(redacted);
       break;
     }
-    hold = window.slice(-overlap);
-    parts.push(
-      redacted.endsWith(hold) ? redacted.slice(0, redacted.length - hold.length) : redacted,
-    );
+    const nextHold = window.slice(-overlap);
+    if (redacted.endsWith(nextHold)) {
+      parts.push(redacted.slice(0, redacted.length - nextHold.length));
+      hold = nextHold;
+    } else {
+      // The overlap was redacted. Emit the whole window and do not replay the
+      // original hold — replaying it would duplicate bytes in the output.
+      parts.push(redacted);
+      hold = "";
+    }
     offset = end;
   }
   return parts.join("");
