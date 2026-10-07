@@ -134,10 +134,14 @@ export async function listFolderProcesses(folder: string): Promise<FolderProcess
     return found;
   }
   if (process.platform === "win32") {
-    const script = `$root=[System.IO.Path]::GetFullPath(${JSON.stringify(root)}); Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { [pscustomobject]@{pid=$_.ProcessId;name=$_.Name;executable=$_.ExecutablePath;commandLine=$_.CommandLine} } | ConvertTo-Json -Compress`;
+    // Get-Process by Path (same idea as engine-records' per-PID CIM probe). A full
+    // Win32_Process scan is too slow on Windows CI and missed the node host entirely.
+    const quoted = root.replaceAll("'", "''");
+    const script = `$root='${quoted}'; $matches=@(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $PID -and $(try { $_.Path -and $_.Path.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase) } catch { $false }) }); if(-not $matches){ '' } else { $matches | ForEach-Object { $p=Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" -ErrorAction SilentlyContinue; [pscustomobject]@{pid=$_.Id;name=$_.ProcessName;executable=$_.Path;commandLine=$p.CommandLine} } | ConvertTo-Json -Compress }`;
     try {
-      const output = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand",
-        Buffer.from(script, "utf16le").toString("base64")], { encoding: "utf8", windowsHide: true, timeout: 20_000, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024 }).trim();
+      const output = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+        encoding: "utf8", windowsHide: true, timeout: 15_000, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024,
+      }).replace(/^\uFEFF/, "").trim();
       if (!output) return [];
       const rows = JSON.parse(output) as unknown;
       for (const row of (Array.isArray(rows) ? rows : [rows]) as Array<{ pid?: number; name?: string; executable?: string; commandLine?: string }>) {

@@ -125,7 +125,8 @@ test("a runtime swap stops the install-folder node host before the rename and re
   const child = spawn(oldNode, [host, "run"], { windowsHide: true, stdio: "ignore", detached: true });
   leftover.push(child.pid);
   child.unref();
-  await eventually(async () => (await listFolderProcesses(appDir)).some(proc => proc.pid === child.pid));
+  await eventually(() => alive(child.pid), 5_000);
+  await eventually(async () => (await listFolderProcesses(appDir)).some(proc => proc.pid === child.pid), 20_000);
   assert.equal(await runHelper(plan), "applied");
   assert.equal(await readFile(join(appDir, "Branch Agent.exe"), "utf8"), "new runtime");
   assert.equal(await readFile(join(appDir, "resources", "app.asar"), "utf8"), "new desktop asar");
@@ -150,7 +151,8 @@ test("stopFolderProcesses waits for the host to exit and restartFolderProcesses 
     const child = spawn(nodePath, [host, "run"], { windowsHide: true, stdio: "ignore", detached: true });
     leftover.push(child.pid);
     child.unref();
-    await eventually(async () => (await listFolderProcesses(root)).some(proc => proc.pid === child.pid));
+    await eventually(() => alive(child.pid), 5_000);
+    await eventually(async () => (await listFolderProcesses(root)).some(proc => proc.pid === child.pid), 20_000);
     const lines = [];
     const stopped = await stopFolderProcesses(root, line => lines.push(line));
     assert.ok(stopped.some(proc => proc.pid === child.pid));
