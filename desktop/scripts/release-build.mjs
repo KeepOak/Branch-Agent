@@ -8,6 +8,7 @@ import { smokeProductionEngine } from "./production-engine-smoke.mjs";
 import { assertTrackedSourceClean } from "./release-source-freeze.mjs";
 import { assertHoistedDeployment, extractProductionArchive, productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
 import { makeComponentRelease } from "./make-component-release.mjs";
+import { installLinuxLauncher } from "./linux-launcher.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { engineRoot, windowRoot, toolingRoot, repoRoot, gitHead, run, preparePnpm,
   scratchRoot, verifiedExceptionFlags, publishWindowDependencies } from "../../scripts/feature-batch-ci-runtime.mjs";
@@ -94,6 +95,7 @@ async function packageDesktop(scratch, output, identity) {
       darwin: { icon: join(desktopRoot, "assets/branch.icns") }, linux: { icon: join(desktopRoot, "assets/brand/linux/branch-512.png") } }[identity.platform] ?? {}) });
   assert.equal(folders.length, 1, "Expected one native desktop package");
   const app = folders[0];
+  if (identity.platform === "linux") await installLinuxLauncher(app);
   const resources = identity.platform === "darwin" ? join(app, "Branch Agent.app/Contents/Resources") : join(app, "resources");
   let node = await bundleNode(resources, undefined, identity);
   // Outside app.asar so a fresh package can prove its executable already has the Keeper icon.

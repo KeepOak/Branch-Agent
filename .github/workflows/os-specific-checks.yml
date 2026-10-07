@@ -17,6 +17,9 @@ on:
       - 'engine/src/**/*platform*'
       # State ownership locks: inode, mtime and file-sharing semantics differ by OS.
       - 'engine/src/infra/gateway-state-owner*'
+      # The engine handoff standby: detached processes, loopback port handover and lock timing differ by OS.
+      - 'engine/src/cli/gateway-cli/standby*'
+      - 'engine/src/infra/standby-port-placeholder*'
       - 'engine/scripts/build-installers.mjs'
       - 'engine/pnpm-lock.yaml'
       - 'window/pnpm-lock.yaml'

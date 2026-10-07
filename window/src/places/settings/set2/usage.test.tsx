@@ -18,7 +18,7 @@ function engineWith(answers: Answers) {
 }
 let host: HTMLDivElement; let root: Root;
 beforeEach(() => { (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true; host = document.createElement("div"); host.className = "set-col"; document.body.append(host); root = createRoot(host); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.restoreAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; delete (window as { branchDesktop?: unknown }).branchDesktop; vi.restoreAllMocks(); });
 
 const flush = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
 async function show(engine: WindowEngine, level: "regular" | "advanced" | "technical" = "regular") {
@@ -262,6 +262,8 @@ describe("keeping things", () => {
     expect(document.querySelector('[data-row="session.identityLinks"]')?.textContent).toContain("isn’t valid JSON");
   });
   it("Manage deletes the picked conversations one by one", async () => {
+    const forget = vi.fn(async () => undefined);
+    (window as { branchDesktop?: unknown }).branchDesktop = { conversationWindows: { forget } };
     const { engine, request } = engineWith({ ...BASE, "sessions.list": { sessions: [{ key: "agent:main:x", agentId: "main", label: "Old chat", updatedAt: 1 }] }, "sessions.delete": { ok: true } });
     await show(engine, "advanced");
     await click("Manage");
@@ -270,6 +272,7 @@ describe("keeping things", () => {
     await click("Delete", document.querySelector(".dlg")!);
     await click("Delete", document.querySelector(".dlg")!);
     expect(calls(request, "sessions.delete")[0]).toEqual({ key: "agent:main:x", agentId: "main" });
+    expect(forget).toHaveBeenCalledWith("agent:main:x");
   });
 });
 

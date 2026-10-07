@@ -42,7 +42,7 @@ export function placeWindow(saved: SavedWindowState | undefined, displays: Displ
 }
 
 /** Saves maximized/normal state, the normal bounds and the display on every move, resize and close. */
-export function trackWindowState(w: BrowserWindow, dataDir: string, displayFor: (bounds: Rectangle) => Rectangle, file = FILE): void {
+export function trackWindowState(w: BrowserWindow, dataDir: string, displayFor: (bounds: Rectangle) => Rectangle, file: string | (() => string) = FILE): void {
   let timer: NodeJS.Timeout | undefined;
   const save = (): void => {
     if (timer) clearTimeout(timer);
@@ -51,7 +51,7 @@ export function trackWindowState(w: BrowserWindow, dataDir: string, displayFor: 
     const bounds = w.getNormalBounds();
     const state: SavedWindowState = { mode: w.isMaximized() ? "maximized" : "normal", ...bounds, display: displayFor(bounds) };
     try {
-      writeFileSync(join(dataDir, file), JSON.stringify(state));
+      writeFileSync(join(dataDir, typeof file === "function" ? file() : file), JSON.stringify(state));
     } catch {
       // saving the window state must never stop the app
     }
