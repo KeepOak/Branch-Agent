@@ -63,20 +63,24 @@ function useCatalogs(engine: WindowEngine) {
       live = false;
     };
   }, [engine]);
+  const [known, setKnown] = useState<Record<string, boolean>>({});
   const entries = rec(rec(rec(state?.snap.config).plugins).entries);
   // Preview otherConvPF18 / readNativeSessionCatalogPreference: unset is off, not on.
   const preference = (id: string, from: Record<string, unknown> = entries) => {
+    if (typeof known[id] === "boolean") return known[id];
     const enabled = rec(rec(rec(from[id]).config).sessionCatalog).enabled;
     return typeof enabled === "boolean" ? enabled : undefined;
   };
   const on = (id: string) => preference(id) === true;
   const checked = Boolean(state?.installed.length) && Boolean(state?.installed.every(on));
+  const remember = (ids: string[], value: boolean) => setKnown((prev) => ({ ...prev, ...Object.fromEntries(ids.map((id) => [id, value])) }));
   const set = async (value: boolean) => {
     if (!state) return;
     setBusy(true);
     setError(null);
     try {
       const snap = await saveConfig(engine, state.snap, Object.fromEntries(state.installed.map((id) => [catalogPath(id), value])));
+      remember(state.installed, value);
       setState({ ...state, snap });
     } catch (e) {
       setError(message(e));
@@ -85,11 +89,13 @@ function useCatalogs(engine: WindowEngine) {
     }
   };
   // Leaving the step unticked writes enabled: false only where the person hasn't chosen yet.
+  // Remember those writes locally so a config.get that does not echo them cannot re-persist forever.
   useEffect(() => {
     if (!state?.installed.length) return;
     const unset = state.installed.filter((id) => preference(id, rec(rec(rec(state.snap.config).plugins).entries)) === undefined);
     if (!unset.length) return;
     let live = true;
+    remember(unset, false);
     setBusy(true);
     setError(null);
     saveConfig(engine, state.snap, Object.fromEntries(unset.map((id) => [catalogPath(id), false]))).then(
