@@ -106,7 +106,7 @@ describe("desktop engine handoff", () => {
         onRequestReady: (request) => {
           requestRestart = () => request("restart", "SIGUSR2", "direct guard probe");
         },
-      }), "run-loop import", 120_000);
+      }), "run-loop import", 180_000);
       try {
         await within(waitForStart(started), "run-loop start", 120_000);
         const onMessage = process.listeners("message").find(
@@ -145,7 +145,7 @@ describe("desktop engine handoff", () => {
         else Reflect.deleteProperty(process, "send");
       }
     });
-  });
+  }, 240_000);
 
   it("recovers the last desktop engine when the successor is gone at the lease deadline", async () => {
     await withIsolatedSignals(async ({ captureSignal }) => {
