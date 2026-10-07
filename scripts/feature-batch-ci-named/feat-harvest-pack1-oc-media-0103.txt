@@ -1,0 +1,10 @@
+engine:extensions/anthropic/cli-auth-seam.test.ts
+engine:extensions/ollama/src/provider-models.test.ts
+engine:extensions/ollama/src/stream-runtime.test.ts
+engine:extensions/openai/openai-chatgpt-device-code.behaviour.test.ts
+engine:src/agents/cli-runner/bundle-mcp.test.ts
+engine:src/agents/cli-runner.helpers.test.ts
+engine:src/agents/cli-runner/prepare.test.ts
+engine:src/media/audio-transcode.test.ts
+engine:src/media/playback-transcode.test.ts
+engine:src/media/store.playback-cache.test.ts
