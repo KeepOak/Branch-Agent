@@ -79,6 +79,9 @@ export async function startHandoffModelProvider(): Promise<HandoffModelProvider>
     // A continuation can carry tool output as its newest user item. Keep the most recent marked user input, or the
     // marker of the previous Responses result when only incremental input is sent.
     const input = Array.isArray(body.input) ? body.input : [];
+    const lastUser = [...input]
+      .toReversed()
+      .find((item) => (item as { role?: unknown })?.role === "user");
     const markedUser = [...input]
       .toReversed()
       .filter((item) => (item as { role?: unknown })?.role === "user")
@@ -87,7 +90,7 @@ export async function startHandoffModelProvider(): Promise<HandoffModelProvider>
     const previousId =
       typeof body.previous_response_id === "string" ? body.previous_response_id : undefined;
     const marker = markedUser ?? responseMarkers.get(previousId ?? "") ?? "none";
-    const prompt = JSON.stringify(input.at(-1) ?? body.input ?? "");
+    const prompt = JSON.stringify(lastUser ?? body.input ?? "");
     if (marker === "none") {
       console.info(
         `[handoff-provider] unmarked turn previous=${previousId ?? "none"} roles=${JSON.stringify(input.map((item) => (item as { role?: unknown })?.role ?? null))}`,
