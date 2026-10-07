@@ -189,6 +189,20 @@ export function startCronReceiptAuthorityHost(): void {
   lifetime.closing = false;
 }
 
+/** Undo a handoff close while the same Gateway still owns state. Retired uses
+ * stay retired; restarted cron work must acquire fresh uses. */
+export async function resumeCronReceiptAuthorityHostAfterFailedHandoff(): Promise<void> {
+  await drainCronReceiptAuthority();
+  for (const owner of owners.values()) {
+    assertNoNativeInitiationFailure(owner);
+    if (owner.pending.size > 0) {
+      throw unavailable();
+    }
+    owner.closing = false;
+  }
+  lifetime.closing = false;
+}
+
 /** The database resource owner releases physical custody only after this drain. */
 export async function drainCronReceiptAuthority(): Promise<void> {
   for (const owner of owners.values()) {

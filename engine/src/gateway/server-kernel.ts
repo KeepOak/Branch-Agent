@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { closePreparedModelRuntimeSnapshots } from "../agents/prepared-model-runtime.lifecycle.js";
+import { readConfigFileSnapshotWithPluginMetadata } from "../config/io.js";
 import { isNixMode, resolveIsConfigReadOnly } from "../config/paths.js";
 import {
   beginCronReceiptAuthorityClose,
   startCronReceiptAuthorityHost,
 } from "../cron/store/receipt-authority-owner.js";
-import { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import { clearGatewayAgentCliShim } from "../infra/branch-cli-shim.js";
+import { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import { ensureBranchCliOnPath } from "../infra/path-env.js";
 import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js";
 import { captureRemoteModelCatalogStartupSnapshot } from "../model-catalog/remote-overlay.js";
@@ -21,6 +22,7 @@ import { createPluginRegistryOwner } from "../plugins/runtime.js";
 import { clearSecretsRuntimeSnapshotState } from "../secrets/runtime-state.js";
 import { createLazyRuntimeMethodBinder, createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import { getAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
+import { createGatewayControlUiRootLifecycle } from "./server-control-ui-root.js";
 import { startGatewayCoreRuntime } from "./server-core-runtime.js";
 import { prepareGatewayKernelRequestRuntime } from "./server-kernel-request-runtime.js";
 import { prepareGatewayLifecycle } from "./server-lifecycle.js";
@@ -107,6 +109,9 @@ type GatewayKernelOptions = {
   deferEarlyRuntime?: boolean;
   sdkResourceHost?: LegacyPluginSdkResourceHost;
 };
+type GatewayStateLease = NonNullable<GatewayServerOptions["gatewayStateOwner"]> & {
+  release?: () => Promise<void>;
+};
 
 /** Builds the Gateway kernel and internal dispatch surface without creating HTTP servers. */
 export async function createGatewayKernel(
@@ -114,12 +119,91 @@ export async function createGatewayKernel(
   opts: GatewayServerOptions = {},
   options: GatewayKernelOptions = {},
 ) {
-  const scheduler = new GatewayScheduler();
-  const sdkResourceHost = options.sdkResourceHost ?? new LegacyPluginSdkResourceHost();
-  sdkResourceHost.bindScheduler(scheduler);
-  return await sdkResourceHost.run(() =>
-    createGatewayKernelWithSdkHost(port, opts, options, sdkResourceHost, scheduler),
-  );
+  const prepared = await prepareGatewayKernel(port, opts, options);
+  return prepared.activate();
+}
+
+/** Perform the read-only, owner-independent portion of kernel startup. */
+export async function prepareGatewayKernel(
+  port = 18789,
+  opts: GatewayServerOptions = {},
+  options: GatewayKernelOptions = {},
+) {
+  // Read the same snapshot activation would otherwise read. In particular, do not
+  // run startup maintenance, construct the state runtime, or claim cron authority.
+  const startupConfigSnapshotRead =
+    opts.startupConfigSnapshotRead ??
+    (await readConfigFileSnapshotWithPluginMetadata({ observe: false }));
+  const cfg = startupConfigSnapshotRead.snapshot.config;
+  const preparedControlUiRootLifecycle = createGatewayControlUiRootLifecycle({
+    controlUiRootOverride: cfg.gateway?.controlUi?.root,
+    controlUiEnabled: opts.controlUiEnabled ?? cfg.gateway?.controlUi?.enabled ?? true,
+    gatewayRuntime,
+    log,
+  });
+  const activationOptions = {
+    ...opts,
+    startupConfigSnapshotRead,
+    preparedControlUiRootLifecycle,
+  };
+  let activated = false;
+  return {
+    activationOptions,
+    async activate(stateLease: GatewayStateLease | undefined = opts.gatewayStateOwner) {
+      if (activated) {
+        throw new Error("Prepared Gateway kernel has already been activated");
+      }
+      // Reserve this preparation before the first await: concurrent callers must
+      // never both bootstrap a state-owning kernel.
+      activated = true;
+      stateLease?.assertDatabaseAccess(
+        (await import("../state/branch-state-db.paths.js")).resolveBranchStateSqlitePath(),
+      );
+      (await import("../process/session-handoff-lease-gate.js")).refreshSessionHandoffLeases();
+      process.env.BRANCH_GATEWAY_PORT = String(port);
+      const leasedOptions = {
+        ...activationOptions,
+        gatewayStateOwner: stateLease,
+      };
+      const scheduler = new GatewayScheduler();
+      const sdkResourceHost = options.sdkResourceHost ?? new LegacyPluginSdkResourceHost();
+      sdkResourceHost.bindScheduler(scheduler);
+      let kernel: Awaited<ReturnType<typeof createGatewayKernelWithSdkHost>>;
+      try {
+        await preparedControlUiRootLifecycle.start();
+        kernel = await sdkResourceHost.run(() =>
+          createGatewayKernelWithSdkHost(port, leasedOptions, options, sdkResourceHost, scheduler),
+        );
+      } catch (error) {
+        await preparedControlUiRootLifecycle.stop();
+        throw error;
+      }
+      let deactivation: Promise<void> | undefined;
+      return {
+        ...kernel,
+        deactivate: () =>
+          (deactivation ??= (async () => {
+            await sdkResourceHost.run(() => kernel.deactivate());
+            try {
+              await stateLease?.release?.();
+            } catch (error) {
+              // The lease release may fail before ownership transfers. In that
+              // case this kernel is still the only engine and must take work again.
+              stateLease?.assertDatabaseAccess(
+                (await import("../state/branch-state-db.paths.js")).resolveBranchStateSqlitePath(),
+              );
+              await sdkResourceHost.run(() => kernel.restoreFailedStateRelease());
+              throw error;
+            }
+          })().catch((error: unknown) => {
+            deactivation = undefined;
+            throw error;
+          })),
+        rollbackDeactivation: () => sdkResourceHost.run(() => kernel.rollbackDeactivation()),
+        waitForDeactivatedRuns: () => kernel.waitForDeactivatedRuns(),
+      };
+    },
+  };
 }
 
 async function createGatewayKernelWithSdkHost(
@@ -152,7 +236,6 @@ async function createGatewayKernelWithSdkHost(
   let closeStartupTrace: (() => void) | undefined;
   let startupError: unknown;
   try {
-    startCronReceiptAuthorityHost();
     const bootstrap = await pluginMetadata.runBootstrap(() =>
       prepareGatewayServerBootstrap({
         port,
@@ -236,7 +319,7 @@ async function createGatewayKernelWithSdkHost(
       await coreRuntime.startEarlyRuntime();
     }
     await pluginMetadata.waitForRetirement();
-    return await runtime.startupTrace.measure("gateway.request-runtime", () =>
+    const requestRuntime = await runtime.startupTrace.measure("gateway.request-runtime", () =>
       prepareGatewayKernelRequestRuntime({
         coreRuntime,
         log,
@@ -244,6 +327,7 @@ async function createGatewayKernelWithSdkHost(
         hostLifecycle: opts.hostLifecycle,
       }),
     );
+    return { ...requestRuntime, activateCronAuthority: startCronReceiptAuthorityHost };
   } catch (error) {
     startupError = error;
   }
