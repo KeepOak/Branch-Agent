@@ -2,14 +2,21 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../config/config.js", () => ({ getRuntimeConfig: () => ({}) }));
+const runtimePort = vi.hoisted(() => vi.fn(async (): Promise<number | undefined> => undefined));
+vi.mock("../infra/gateway-lock.js", () => ({ readActiveGatewayLockPort: runtimePort }));
+
 import { graftInviteParams } from "../cli/graft-cli.js";
 import {
   graftBranchIdentity,
   graftTrunkIdentity,
+  isSelfGraftLink,
   joinHost,
   pendingPairingRequestId,
   readGraftLinks,
   resolveGraftLink,
+  resolveGraftGatewayPort,
   saveGraftLink,
   type ConnectOutcome,
 } from "./graft-join.js";
@@ -21,6 +28,7 @@ function scratchEnv(): NodeJS.ProcessEnv {
   return { ...process.env, BRANCH_STATE_DIR: dir };
 }
 afterEach(() => {
+  runtimePort.mockReset();
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -126,6 +134,67 @@ describe("branch graft join", () => {
     expect(() => resolveGraftLink("ws://10.0.0.5:18789", env)).toThrow(
       "has not joined ws://10.0.0.5:18789",
     );
+  });
+
+  it("rejects its own gateway on loopback or a local interface but keeps other ports and hosts", () => {
+    const interfaces = {
+      ethernet: [{
+        address: "192.0.2.10", family: "IPv4", internal: false,
+        netmask: "255.255.255.0", mac: "00:00:00:00:00:00", cidr: "192.0.2.0/24",
+      }],
+    };
+    const self = (url: string) => isSelfGraftLink({ url }, 41001, interfaces, "my-branch");
+    expect(self("ws://localhost:41001")).toBe(true);
+    expect(self("ws://127.0.0.1:41001")).toBe(true);
+    expect(self("ws://192.0.2.10:41001")).toBe(true);
+    expect(self(`ws://[${":".repeat(2)}ffff:${interfaces.ethernet[0].address}]:41001`)).toBe(true);
+    expect(self("ws://my-branch:41001")).toBe(true);
+    expect(self("ws://192.0.2.10:41002")).toBe(false);
+    expect(self("ws://192.0.2.11:41001")).toBe(false);
+    const env = { ...scratchEnv(), BRANCH_GATEWAY_PORT: "41001" };
+    expect(() => saveGraftLink({ url: "ws://localhost:41001", name: "Self", joinedAt: 1 }, env))
+      .toThrow("this Branch's own gateway");
+    expect(readGraftLinks(env)).toEqual([]);
+  });
+
+  it("recognizes IPv6 loopback and IPv4-mapped IPv6 addresses", () => {
+    const loopback = `${":".repeat(2)}1`;
+    const mapped = `${":".repeat(2)}ffff:${[127, 0, 0, 1].join(".")}`;
+    for (const host of [loopback, mapped]) {
+      expect(isSelfGraftLink({ url: `ws://[${host}]:41001` }, 41001, {})).toBe(true);
+      expect(isSelfGraftLink({ url: `ws://[${host}]:41002` }, 41001, {})).toBe(false);
+    }
+  });
+
+  it.each(["ws", "http", "wss", "https"])(
+    "recognizes explicit and implicit default ports for %s",
+    (protocol) => {
+      const port = protocol === "ws" || protocol === "http" ? 80 : 443;
+      for (const url of [`${protocol}://localhost`, `${protocol}://localhost:${port}`]) {
+        expect(isSelfGraftLink({ url }, port, {})).toBe(true);
+        expect(isSelfGraftLink({ url }, port + 1, {})).toBe(false);
+        const env = { ...scratchEnv(), BRANCH_GATEWAY_PORT: String(port) };
+        expect(() => saveGraftLink({ url, name: "Self", joinedAt: 1 }, env)).toThrow(
+          "this Branch's own gateway",
+        );
+        expect(readGraftLinks(env)).toEqual([]);
+      }
+    },
+  );
+
+  it("uses the verified listen port instead of the configured port for a --port override", async () => {
+    const env = { ...scratchEnv(), BRANCH_GATEWAY_PORT: "41001" };
+    runtimePort.mockResolvedValueOnce(41002);
+    const port = await resolveGraftGatewayPort(env);
+    expect(port).toBe(41002);
+    expect(runtimePort).toHaveBeenCalledWith({ env });
+    expect(() =>
+      saveGraftLink({ url: "ws://localhost:41002", name: "Self", joinedAt: 1 }, env, port),
+    ).toThrow("this Branch's own gateway");
+    saveGraftLink({ url: "ws://localhost:41001", name: "Other", joinedAt: 1 }, env, port);
+    expect(readGraftLinks(env)).toHaveLength(1);
+    runtimePort.mockResolvedValueOnce(undefined);
+    expect(await resolveGraftGatewayPort(env)).toBe(41001);
   });
 
   it("invites with a loopback address unless the owner opened the gateway to the network", () => {

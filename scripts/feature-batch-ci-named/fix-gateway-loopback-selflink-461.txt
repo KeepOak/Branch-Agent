@@ -1,0 +1,4 @@
+engine:src/cli/graft-cli.self-link.test.ts
+engine:src/gateway/graft-join-ui.test.ts
+engine:src/mcp/graft-join.test.ts
+engine:src/mcp/graft-link.test.ts

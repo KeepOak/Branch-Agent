@@ -67,6 +67,8 @@ async function runJoin(code: string, opts: JoinOpts): Promise<void> {
     joinedAt: Date.now(),
   };
   // Each attempt uses the code's one-time bootstrap token; once approved, the device token is stored.
+  const port = await graft.resolveGraftGatewayPort();
+  graft.assertNotSelfGraftLink(link, port);
   const joined = await graft.joinHost({
     connect: async () => {
       const { outcome, connection } = await graft.connectAsDevice({
@@ -82,7 +84,7 @@ async function runJoin(code: string, opts: JoinOpts): Promise<void> {
         `Waiting for the other Branch to approve this one. On it: ${formatCliCommand(`branch devices approve ${requestId}`)}`,
       ),
   });
-  graft.saveGraftLink(link);
+  graft.saveGraftLink(link, undefined, port);
   // Say hello once as this Branch and its Trunks, so the host lists them right away.
   const roster = await listGatewayAgentsBasic(getRuntimeConfig());
   const { connection, outcome } = await graft.connectAsDevice({ ...link, displayName: name });

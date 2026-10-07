@@ -2,20 +2,24 @@
 // repeating with the same code after approval completes the join without holding a Gateway RPC open for minutes.
 import os from "node:os";
 import { getRuntimeConfig } from "../config/config.js";
-import { listGatewayAgentsBasic } from "./agent-list.js";
-import { decodePairingSetupCode } from "../pairing/setup-code.js";
 import {
   connectAsDevice,
+  assertNotSelfGraftLink,
   graftBranchIdentity,
   graftTrunkIdentity,
   saveGraftLink,
+  resolveGraftGatewayPort,
   type GraftLink,
 } from "../mcp/graft-join.js";
 import { ensureGraftLinks } from "../mcp/graft-link.js";
+import { decodePairingSetupCode } from "../pairing/setup-code.js";
+import { listGatewayAgentsBasic } from "./agent-list.js";
 
-export async function joinGraftFromWindow(code: string, name = os.hostname()): Promise<
-  | { pending: true; requestId: string }
-  | { pending: false; link: GraftLink; scopes: string[] }
+export async function joinGraftFromWindow(
+  code: string,
+  name = os.hostname(),
+): Promise<
+  { pending: true; requestId: string } | { pending: false; link: GraftLink; scopes: string[] }
 > {
   const payload = decodePairingSetupCode(code.trim());
   const link: GraftLink = {
@@ -24,6 +28,8 @@ export async function joinGraftFromWindow(code: string, name = os.hostname()): P
     name: name.trim() || os.hostname(),
     joinedAt: Date.now(),
   };
+  const port = await resolveGraftGatewayPort();
+  assertNotSelfGraftLink(link, port);
   const first = await connectAsDevice({
     ...link,
     bootstrapToken: payload.bootstrapToken,
@@ -37,11 +43,13 @@ export async function joinGraftFromWindow(code: string, name = os.hostname()): P
     throw new Error(first.outcome.message);
   }
   // The host's saved device token, not the one-time setup token, is used from now on.
-  saveGraftLink(link);
+  saveGraftLink(link, undefined, port);
   const roster = await listGatewayAgentsBasic(getRuntimeConfig());
   const second = await connectAsDevice({ ...link, displayName: link.name });
   if (!second.connection) {
-    throw new Error(second.outcome.ok ? "No connection to the other Branch" : second.outcome.message);
+    throw new Error(
+      second.outcome.ok ? "No connection to the other Branch" : second.outcome.message,
+    );
   }
   try {
     const branch = graftBranchIdentity(link.name);
@@ -54,6 +62,6 @@ export async function joinGraftFromWindow(code: string, name = os.hostname()): P
   } finally {
     second.connection.stop();
   }
-  ensureGraftLinks(() => undefined);
+  ensureGraftLinks(() => undefined, port);
   return { pending: false, link, scopes: first.outcome.scopes };
 }

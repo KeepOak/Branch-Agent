@@ -127,6 +127,7 @@ function hasSavedGraftHost(): boolean {
 
 export async function startGatewaySidecars(params: {
   scheduler: GatewayScheduler;
+  port?: number;
   restartSentinelContext?: DeliveryQueueStateContext;
   cfg: BranchConfig;
   getModelRuntimeConfig?: () => BranchConfig;
@@ -523,7 +524,11 @@ export async function startGatewaySidecars(params: {
           if (isStopped()) {
             return;
           }
-          ensureGraftLinks((line) => params.logChannels.info(line));
+          const { resolveGraftGatewayPort } = await import("../mcp/graft-join.js");
+          ensureGraftLinks(
+            (line) => params.logChannels.info(line),
+            params.port ?? (await resolveGraftGatewayPort()),
+          );
         },
         stop: async () => (await import("../mcp/graft-link.js")).stopGraftLinks(),
       }),
@@ -906,6 +911,7 @@ export async function startGatewayPostAttachRuntime(
               return await measureStartup(params.startupTrace, "sidecars.total", () =>
                 runtimeDeps.startGatewaySidecars({
                   scheduler: params.scheduler,
+                  port: params.port,
                   restartSentinelContext,
                   cfg: startupRuntimeCurrent
                     ? params.gatewayPluginConfigAtStart

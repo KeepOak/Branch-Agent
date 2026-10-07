@@ -7,9 +7,11 @@
 import { readConnectErrorDetailCode } from "../../packages/gateway-protocol/src/connect-error-details.js";
 import { listAgentEntries } from "../agents/agent-scope.js";
 import {
+  forgetGraftLink as forgetSelfGraftLink,
   GRAFT_DEVICE_SCOPES,
   graftBranchIdentity,
   graftTrunkIdentity,
+  isSelfGraftLink,
   readGraftLinks,
   type GraftLink,
 } from "./graft-join.js";
@@ -160,12 +162,16 @@ export class GraftLinkRunner {
  */
 export class GraftLinkSupervisor {
   private readonly runners = new Map<string, GraftLinkRunner>();
+  private readonly reportedSelfLinks = new Set<string>();
   private timer: ReturnType<typeof setInterval> | undefined;
 
   constructor(
     private readonly deps: {
       links: () => GraftLink[];
       createRunner: (link: GraftLink) => GraftLinkRunner;
+      isSelfLink: (link: GraftLink) => boolean;
+      forgetSelfLink: (link: GraftLink) => void;
+      log: (line: string) => void;
       pollMs?: number;
     },
   ) {}
@@ -177,7 +183,18 @@ export class GraftLinkSupervisor {
   }
 
   sync(): void {
-    const saved = new Map(this.deps.links().map((link) => [link.url, link]));
+    const saved = new Map<string, GraftLink>();
+    for (const link of this.deps.links()) {
+      if (this.deps.isSelfLink(link)) {
+        if (!this.reportedSelfLinks.has(link.url)) {
+          this.deps.log(`graft link: removed a link to this Branch's own gateway (${link.url})`);
+          this.reportedSelfLinks.add(link.url);
+        }
+        this.deps.forgetSelfLink(link);
+      } else {
+        saved.set(link.url, link);
+      }
+    }
     for (const [url, runner] of this.runners) {
       const link = saved.get(url);
       if (!link || runner.state === "disconnected" || runner.state === "stopped") {
@@ -186,7 +203,9 @@ export class GraftLinkSupervisor {
       }
     }
     for (const [url, link] of saved) {
-      if (this.runners.has(url)) continue;
+      if (this.runners.has(url)) {
+        continue;
+      }
       const runner = this.deps.createRunner(link);
       this.runners.set(url, runner);
       runner.start();
@@ -242,9 +261,12 @@ export async function createDeviceLinkClient(
 }
 
 /** Start the joined Branch's links to its saved hosts (the gateway's graft-link service). */
-export function startGraftLinks(log: (line: string) => void): GraftLinkSupervisor {
+export function startGraftLinks(log: (line: string) => void, port: number): GraftLinkSupervisor {
   const supervisor: GraftLinkSupervisor = new GraftLinkSupervisor({
     links: () => readGraftLinks(),
+    isSelfLink: (link) => isSelfGraftLink(link, port),
+    forgetSelfLink: (link) => forgetSelfGraftLink(link.url),
+    log,
     createRunner: (link) => {
       let client: LinkClient | undefined;
       let stopped = false;
@@ -335,12 +357,12 @@ let running: GraftLinkSupervisor | undefined;
 
 /** The gateway's one graft-link service: started at gateway start when a saved host exists, or when
  *  `branch graft join` tells the running gateway it saved one (graft.links.sync). */
-export function ensureGraftLinks(log: (line: string) => void): GraftLinkSupervisor {
+export function ensureGraftLinks(log: (line: string) => void, port: number): GraftLinkSupervisor {
   if (running) {
     running.sync();
     return running;
   }
-  running = startGraftLinks(log);
+  running = startGraftLinks(log, port);
   return running;
 }
 
