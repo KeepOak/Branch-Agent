@@ -58,6 +58,7 @@ describe("Gateway operation policy reload", () => {
     "desktop.host.enabled",
     "cloudWorkers.desktop",
     "security.audit.suppressions",
+    "security.lockdown",
     "security.installPolicy",
     "diagnostics.cacheTrace.enabled",
     "acp.runtime.installCommand",

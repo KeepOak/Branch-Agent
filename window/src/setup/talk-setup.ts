@@ -3,13 +3,14 @@
 // wizard does; nothing here is sent to a model. Steps the window can't act on yet (Tools, the gateway) are passed
 // with a line saying where they live.
 import { JOBS, STEPS, type Look } from "./setup-model";
+import { matchPlatformLabel } from "./steps-later";
 
 export type TalkOption = { label: string; line?: string; value: string };
 export type TalkQuestion = { key: string; step: number; part: number; title: string; question: string; options: TalkOption[] };
 export type TalkState = { look: Look; jobs: number[]; apps: { id: string; label: string; connected: boolean }[]; autoUpdate: boolean };
 
 /** The steps asked, in order: Make it yours, Your first Trunks, Reach it anywhere, Keep it running, People, Two more things. */
-export const TALK_STEPS = [3, 4, 5, 7, 8, 9] as const;
+export const TALK_STEPS = [3, 4, 6, 7, 8, 9] as const;
 
 const head = (step: number) => `Setup · ${step + 1} of ${STEPS.length} · ${STEPS[step]}`;
 
@@ -19,7 +20,7 @@ export function talkQuestion(step: number, part: number, s: TalkState): TalkQues
   switch (STEPS[step]) {
     case "Make it yours":
       return q("How should Branch look?", [
-        { label: "Match Windows", line: "Follows the computer", value: "system" },
+        { label: matchPlatformLabel(), line: "Follows the computer", value: "system" },
         { label: "Light", value: "light" },
         { label: "Dark", value: "dark" },
       ]);
@@ -41,7 +42,7 @@ export function talkQuestion(step: number, part: number, s: TalkState): TalkQues
     }
     case "Keep it running":
       return q("Should Branch keep itself up to date?", [
-        { label: "Yes, by itself", line: "It waits until no task is working and keeps a safety copy", value: "yes" },
+        { label: "Yes, by itself", line: "Installs updates automatically and keeps a safety copy", value: "yes" },
         { label: "No, I’ll update it", value: "no" },
       ]);
     case "People":
@@ -50,7 +51,7 @@ export function talkQuestion(step: number, part: number, s: TalkState): TalkQues
         { label: "A teammate on their computer", line: "An invite link or an 8-character code", value: "1" },
         { label: "Just me", value: "none" },
       ]);
-    case "Two more things":
+    case "A few extras":
       return q("Email and calendar, or bringing back a backup?", [
         { label: "Show me the steps", line: "Opens this step of setup", value: "steps" },
         { label: "Neither for now", value: "none" },
@@ -64,7 +65,7 @@ export function talkQuestion(step: number, part: number, s: TalkState): TalkQues
 export function doneLine(q: TalkQuestion, o: TalkOption): string {
   switch (STEPS[q.step]) {
     case "Make it yours":
-      return o.value === "system" ? "Done: Branch matches Windows." : `Done: Branch looks ${o.value}.`;
+      return o.value === "system" ? "Done: Branch matches this computer." : `Done: Branch looks ${o.value}.`;
     case "Your first Trunks":
       return o.value === "enough" ? "Done: that’s your first Trunks." : `Done: ${o.label} is in.`;
     case "Reach it anywhere":

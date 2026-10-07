@@ -71,7 +71,7 @@ function WatchDialog({ engine, run, owner, trunk, onClose }: { engine: WindowEng
   const first = firstName(owner ? nameOf(owner) : run.ownerLabel || "Someone");
   const entry = recs(rec(preview.data).previews).find(p => str(p.key) === run.key);
   const items = recs(entry?.items).filter(i => str(i.text));
-  return <Dialog wide title={`${first}’s ${trunk}`} onClose={onClose} footer={<><button type="button" className="btn ghost" onClick={onClose}>Close</button><button type="button" className="btn" disabled title={shownWhy(ASK_TO_JOIN_OFF)}>Ask to join</button></>}>
+  return <Dialog wide title={`${first}’s ${trunk}`} onClose={onClose} footer={<><button type="button" className="btn" disabled title={shownWhy(ASK_TO_JOIN_OFF)}>Ask to join</button></>}>
     <p className="pp-hint" style={{ margin: 0 }}>Read-only. You see what {first} shares with the team: steps and questions, never their private files.</p>
     <div className="pp-peek"><b>{run.title}</b><Status {...preview} />
       {entry && !items.length && <p className="pp-hint">No steps to show yet.</p>}

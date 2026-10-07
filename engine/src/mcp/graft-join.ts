@@ -10,6 +10,7 @@ import path from "node:path";
 import { readPairingConnectErrorDetails } from "../../packages/gateway-protocol/src/connect-error-details.js";
 import { resolveStateDir } from "../config/paths.js";
 import type { OutsideAgentIdentity } from "./trunk-tools.js";
+import { listAgentEntries } from "../agents/agent-scope.js";
 
 /** What a grafted Branch may do on its host: read and write, never admin, approvals or pairing. */
 export const GRAFT_DEVICE_SCOPES = ["operator.read", "operator.write"];
@@ -49,7 +50,7 @@ export function graftBranchIdentity(name: string, where = os.hostname()): GraftI
 /** One of this Branch's Trunks as a contact on the host, bound to this Branch. */
 export function graftTrunkIdentity(
   branch: GraftIdentity,
-  trunk: { id: string; name?: string },
+  trunk: { id: string; name?: string; avatar?: string },
 ): GraftIdentity {
   const id = `${branch.id}--${slug(trunk.id)}`.slice(0, 64).replace(/-+$/, "");
   return {
@@ -57,7 +58,9 @@ export function graftTrunkIdentity(
     name: (trunk.name?.trim() || trunk.id).slice(0, 100),
     kind: "trunk",
     via: branch.id,
+    trunkId: trunk.id,
     where: branch.name.slice(0, 255),
+    ...(trunk.avatar?.match(/^branch:[a-z0-9-]{1,32}$/) ? { avatar: trunk.avatar } : {}),
   };
 }
 
@@ -225,14 +228,19 @@ export async function connectAsDevice(params: {
 /** What `branch graft --host` serves: the saved host and this Branch's own Trunks (from its config). */
 export async function graftHostOptions(
   host: string,
-): Promise<{ link: GraftLink; trunks: { id: string; name?: string }[] }> {
+): Promise<{ link: GraftLink; trunks: { id: string; name?: string; avatar?: string }[] }> {
   const [{ getRuntimeConfig }, { listGatewayAgentsBasic }] = await Promise.all([
     import("../config/config.js"),
     import("../gateway/agent-list.js"),
   ]);
   const link = resolveGraftLink(host);
-  const roster = await listGatewayAgentsBasic(getRuntimeConfig());
-  return { link, trunks: roster.agents.filter((agent) => agent.kind !== "system") };
+  const cfg = getRuntimeConfig();
+  const roster = await listGatewayAgentsBasic(cfg);
+  const entries = new Map(listAgentEntries(cfg).map((entry) => [entry.id, entry]));
+  return { link, trunks: roster.agents.filter((agent) => agent.kind !== "system").map((agent) => ({
+    ...agent,
+    avatar: entries.get(agent.id)?.identity?.avatar,
+  })) };
 }
 
 /** Forget a host that disconnected this Branch (its pairing is gone there). */
