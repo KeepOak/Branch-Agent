@@ -148,12 +148,24 @@ export function registerGraftBranchCommands(graft: Command): void {
   graft
     .command("join")
     .description("Graft this Branch into another Branch as a scoped device, with its setup code")
-    .argument("<setup-code>", "The setup code from branch graft invite on the other Branch")
+    .argument("[setup-code]", "The setup code from branch graft invite (or '-' for stdin, or omit to prompt)")
+    .option("--code-file <path>", "Read setup code from file (must be mode 0600 on POSIX)")
     .option("--name <name>", "How the other Branch shows this one (default: this computer's name)")
     .option("--json", "Print JSON", false)
-    .action(async (code: string, opts: JoinOpts) => {
+    .action(async (code: string | undefined, opts: JoinOpts & { codeFile?: string }) => {
       try {
-        await runJoin(code, opts);
+        const { resolveSetupCode, warnIfSetupCodeFromArgv } = await import("./setup-code-input.js");
+        
+        const resolved = await resolveSetupCode({
+          argv: code,
+          filePath: opts.codeFile,
+          envVar: "BRANCH_PAIRING_CODE",
+          allowStdin: !code || code === "-",
+        });
+        
+        warnIfSetupCodeFromArgv(resolved.source, defaultRuntime);
+        
+        await runJoin(resolved.code, opts);
       } catch (err) {
         defaultRuntime.error(`Could not join: ${formatErrorMessage(err)}`);
         defaultRuntime.exit(1);

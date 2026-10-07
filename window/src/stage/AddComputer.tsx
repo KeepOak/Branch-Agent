@@ -68,7 +68,7 @@ function PairBody({ pairing }: { pairing: Pairing }) {
   return (
     <>
       <p className="p0-st">On that computer, open a terminal and run:</p>
-      <code className="code-st">branch node run --pair {pairing.code}</code>
+      <code className="code-st">echo '{pairing.code}' | branch node run --pair -</code>
       {pairing.qr && <img src={pairing.qr} alt="QR code to pair this computer" width={180} height={180} />}
       {pairing.done ? (
         <>

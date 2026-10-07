@@ -74,10 +74,26 @@ previously approved capabilities are separate from that pending request.
 ## One-paste node pairing
 
 In the Control UI Devices page, open the pairing dialog, choose **Node host**,
-and copy the generated command to the device:
+and copy the generated command to the device. The command reads the setup code
+from stdin to avoid exposing it in the process list:
 
 ```bash
-branch node run --pair "oc-pair://<setup-code>"
+echo 'oc-pair://<setup-code>' | branch node run --pair -
+```
+
+For interactive use, omit the echo and the node will prompt for the code with
+hidden input:
+
+```bash
+branch node run --pair -
+# Setup code: [hidden input]
+```
+
+Or save the code to a file with mode `0600` and use `--pair-file`:
+
+```bash
+chmod 600 /path/to/code.txt
+branch node run --pair-file /path/to/code.txt
 ```
 
 The setup link carries the Gateway endpoint, a short-lived single-use bootstrap

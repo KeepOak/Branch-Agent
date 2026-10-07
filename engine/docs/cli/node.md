@@ -79,21 +79,33 @@ node-host runtime.
 branch node run --host <gateway-host> --port 18789
 ```
 
-Or paste a short-lived node setup link from the Control UI Devices page:
+Or read a short-lived node setup code from the Control UI Devices page. The safest
+forms read from stdin (interactive prompt or pipe) or from a file with mode `0600`:
 
 ```bash
-branch node run --pair "oc-pair://<setup-code>"
+# Interactive prompt (hidden input)
+branch node run --pair -
+
+# Piped input
+echo 'oc-pair://<setup-code>' | branch node run --pair -
+
+# From a secure file
+chmod 600 /path/to/code.txt
+branch node run --pair-file /path/to/code.txt
 ```
 
 Options:
 
 - `--host <host>`: Gateway WebSocket host (default: `127.0.0.1`)
-- `--pair <code-or-url>`: Read the Gateway endpoint, bootstrap token, TLS mode,
-  and optional certificate pin from a setup code or `oc-pair://` URL. Explicit
-  gateway flags override values from `--pair`.
-- `--pair-if-needed <code-or-url>`: Use the same endpoint options as `--pair`, but
-  prefer the saved device token when present. A supervisor can restart the same
-  command after pairing. Cannot be combined with `--pair`.
+- `--pair -`: Read the Gateway endpoint, bootstrap token, TLS mode, and optional
+  certificate pin from a setup code on stdin (interactive prompt or piped input).
+  Explicit gateway flags override values from `--pair`.
+- `--pair-file <path>`: Read setup code from file (must be mode `0600` on POSIX).
+- `--pair-if-needed -`: Use stdin setup code, but prefer the saved device token when present.
+- `--pair-if-needed-file <path>`: Use file setup code, but prefer saved device token.
+- `--pair <code-or-url>`: **Deprecated.** Read setup code from command line (insecure:
+  visible in process list). Use `--pair -` or `--pair-file` instead.
+- `--pair-if-needed <code-or-url>`: **Deprecated.** Like `--pair`, but prefer saved token.
 - `--port <port>`: Gateway WebSocket port (default: `18789`)
 - `--context-path <path>`: Gateway WebSocket context path (e.g. `/branch-gw`). Appended to the WebSocket URL.
 - `--tls`: Use TLS for the gateway connection
@@ -109,8 +121,8 @@ Options:
 
 ## Gateway auth for node host
 
-`--pair` uses a 10-minute single-use bootstrap token for the first connection.
-After pairing, reconnects use the durable device credential. Administrator-minted
+`--pair` reads a 10-minute single-use bootstrap token from stdin or a secure file
+for the first connection. After pairing, reconnects use the durable device credential. Administrator-minted
 bootstrap enrollment approves the device and its first declared command surface,
 including `system.run` when declared. Later command, capability, or permission
 expansion still requires `branch nodes approve`. Gateway command policy and

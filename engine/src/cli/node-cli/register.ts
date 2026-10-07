@@ -51,13 +51,18 @@ export function registerNodeCli(program: Command) {
     )
       .option(
         "--pair <code-or-url>",
-        "Pair with a setup code or oc-pair URL; explicit gateway flags take precedence",
+        "Pair with a setup code or oc-pair URL (deprecated: use --pair-file or stdin); explicit gateway flags take precedence",
       )
       .addOption(
         new Option(
           "--pair-if-needed <code-or-url>",
-          "Use the saved device token when available; otherwise pair with this setup code",
+          "Use the saved device token when available; otherwise pair with this setup code (deprecated: use --pair-file or stdin)",
         ).conflicts("pair"),
+      )
+      .option("--pair-file <path>", "Read pairing setup code from file (must be mode 0600 on POSIX)")
+      .option(
+        "--pair-if-needed-file <path>",
+        "Use saved device token when available; otherwise read setup code from file",
       ),
   )
     .option("--session-host", "Host worker sessions for this foreground process")
@@ -72,10 +77,28 @@ export function registerNodeCli(program: Command) {
       let pair;
       let gatewayOptions;
       try {
-        const setupCode = opts.pair ?? opts.pairIfNeeded;
+        const { resolveSetupCode, warnIfSetupCodeFromArgv } = await import("../setup-code-input.js");
+        
+        // Determine if we're using --pair or --pair-if-needed
+        const isPairIfNeeded = opts.pairIfNeeded !== undefined || opts.pairIfNeededFile !== undefined;
+        const argvCode = opts.pair ?? opts.pairIfNeeded;
+        const filePath = opts.pairFile ?? opts.pairIfNeededFile;
+
+        let setupCode: string | undefined;
+        if (argvCode || filePath) {
+          const resolved = await resolveSetupCode({
+            argv: argvCode,
+            filePath,
+            envVar: "BRANCH_PAIRING_CODE",
+            allowStdin: argvCode === "-",
+          });
+          setupCode = resolved.code;
+          warnIfSetupCodeFromArgv(resolved.source, defaultRuntime);
+        }
+
         pair = setupCode
           ? resolveNodePairGatewayOptions(setupCode, {
-              allowExpired: opts.pairIfNeeded !== undefined,
+              allowExpired: isPairIfNeeded,
             })
           : undefined;
         const existing = await loadNodeHostConfig();
