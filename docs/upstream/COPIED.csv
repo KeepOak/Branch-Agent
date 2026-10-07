@@ -1,7 +1,4 @@
 branch_path,atlas_id,project,commit,upstream_path,date
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
 engine/extensions/admin-http-rpc/index.test.ts,INTEGRATIONS-0152,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/admin-http-rpc/index.test.ts (verified existing renamed file),2026-10-06
 engine/extensions/admin-http-rpc/src/handler.test.ts,INTEGRATIONS-0152,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/admin-http-rpc/src/handler.test.ts (verified existing renamed file),2026-10-06
 engine/extensions/agentsapi/agentsapi-attempt.harvest.test.ts,AGENT-LOOP-0024,openclaw/openclaw,57e0aaa1c190f1abe16e597008fbcc14f5e609e3,extensions/agentsapi/agentsapi-attempt.test.ts (changed: Branch rename),2026-10-06
