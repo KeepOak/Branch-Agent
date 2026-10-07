@@ -1,5 +1,0 @@
-engine:extensions/gradium/speech-provider.test.ts
-engine:src/auto-reply/reply/commands-tts.test.ts
-engine:src/infra/voicewake-routing.test.ts
-engine:src/tts/tts-auto-mode.behaviour.test.ts
-engine:src/tts/tts-core.summary-agent.test.ts
