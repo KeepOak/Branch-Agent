@@ -15,19 +15,25 @@ type Request = (method: string, params?: unknown) => Promise<unknown>;
 function actionsFor(request: Request): Actions {
   return {
     pin: async (row: Conversation) => {
-      await request("sessions.patch", { key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), pinned: true, snoozedUntil: null });
+      await request("sessions.patch", {
+        key: row.key,
+        ...(row.agentId ? { agentId: row.agentId } : {}),
+        ...(row.sessionId ? { expectedSessionId: row.sessionId } : {}),
+        pinned: true,
+        snoozedUntil: null,
+      });
     },
   } as Actions;
 }
 
 it("adopts a Trunk with no conversation before pinning it", async () => {
   const [contact] = projectContact([raw("oak")], []);
-  const request = vi.fn<Request>(async (method) => method === "sessions.create" ? { key: "agent:oak:main" } : {});
+  const request = vi.fn<Request>(async (method) => method === "sessions.create" ? { key: "agent:oak:main", sessionId: "sess-oak" } : {});
   const refreshContacts = vi.fn();
   await pinContact(contact, [], actionsFor(request), request, refreshContacts);
   expect(request.mock.calls.map(([method, params]) => [method, params])).toEqual([
     ["sessions.create", { key: "agent:oak:main", agentId: "oak" }],
-    ["sessions.patch", { key: "agent:oak:main", agentId: "oak", pinned: true, snoozedUntil: null }],
+    ["sessions.patch", { key: "agent:oak:main", agentId: "oak", expectedSessionId: "sess-oak", pinned: true, snoozedUntil: null }],
   ]);
   expect(refreshContacts).toHaveBeenCalledTimes(1);
 });
