@@ -61,8 +61,11 @@ export async function adoptSharedEngineDist(source, destination, identity) {
 async function buildEnginePackage(pnpm, identity) {
   // Runtime-only package build: the engine component never loads declarations, which were ~75% of build time.
   await run(pnpm, ["build:package"], engineRoot, { ...process.env, BRANCH_RUN_NODE_SKIP_DTS_BUILD: "1" });
+  await run(process.execPath, ["--import", "./scripts/tsx.mjs", "scripts/write-package-dist-inventory.ts"], engineRoot);
   const metadata = JSON.parse(await readFile(join(engineRoot, "dist/build-info.json"), "utf8"));
   assert.equal(metadata.commit, identity.commit, "Engine build metadata differs from source freeze");
+  assert((await stat(join(engineRoot, "dist/index.js"))).isFile(), "Engine package is missing dist/index.js");
+  assert((await stat(join(engineRoot, "dist/postinstall-inventory.json"))).isFile(), "Engine package is missing dist/postinstall-inventory.json");
 }
 
 async function deployEngine(pnpm, scratch, identity) {
