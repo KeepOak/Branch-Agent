@@ -1,5 +1,4 @@
 /** Shared test harness for CLI runner bundle-MCP config preparation tests. */
-import fs from "node:fs/promises";
 import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
 import type { BranchConfig } from "../../config/types.branch.js";
 import {
@@ -8,7 +7,6 @@ import {
 } from "../../plugins/bundle-mcp.test-support.js";
 import { captureEnv, setTestEnvValue, withEnvAsync } from "../../test-utils/env.js";
 import { disposeAllSessionMcpRuntimes } from "../agent-bundle-mcp-manager-api.js";
-import { bindSessionMcpRuntimeTestScheduler } from "../agent-bundle-mcp-manager.test-support.js";
 import { resolveConversationCapabilityProfile } from "../conversation-capability-profile.js";
 import { prepareCliBundleMcpConfig } from "./bundle-mcp.js";
 
@@ -45,7 +43,16 @@ export function requireMcpConfigPath(args: readonly string[] | undefined): strin
 }
 
 export function setupCliBundleMcpTestHarness(): void {
-  beforeEach(bindSessionMcpRuntimeTestScheduler);
+  beforeEach(async () => {
+    // MCP stdio startup and catalog probes use real timers. The shared test
+    // scheduler defaults to a manual clock that never fires those waits.
+    const { createTestGatewayScheduler } = await import("../../test-utils/gateway-scheduler-clock.js");
+    const { setSessionMcpRuntimeScheduler } = await import("../agent-bundle-mcp-manager-api.js");
+    const { onTestFinished } = await import("vitest");
+    const scheduler = createTestGatewayScheduler("fake-timers");
+    onTestFinished(() => scheduler.stop());
+    await setSessionMcpRuntimeScheduler(scheduler);
+  });
   afterEach(disposeAllSessionMcpRuntimes);
 
   beforeAll(async () => {
@@ -66,23 +73,67 @@ export function setupCliBundleMcpTestHarness(): void {
 
 export async function writeCliMcpPolicyProbeServer(): Promise<string> {
   const filePath = `${cliBundleMcpHarness.bundleProbeWorkspaceDir}/policy-probe.mjs`;
-  await fs.writeFile(
+  const { writeExecutable } = await import("../bundle-mcp-shared.test-harness.js");
+  await writeExecutable(
     filePath,
-    `import readline from "node:readline";
-const lines = readline.createInterface({ input: process.stdin });
-const send = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\\n");
-lines.on("line", (line) => {
-  const message = JSON.parse(line);
-  if (message.method === "initialize") send(message.id, { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "policy-probe", version: "1" } });
-  if (message.method === "tools/list") send(message.id, { tools: [
-    { name: "read_docs", description: "read", inputSchema: { type: "object" } },
-    { name: "delete_docs", description: "delete", inputSchema: { type: "object" } },
-    { name: "task_docs", description: "task", inputSchema: { type: "object" }, execution: { taskSupport: "required" } },
-    { name: "app_docs", description: "app", inputSchema: { type: "object" }, _meta: { ui: { visibility: ["app"] } } }
-  ] });
+    `#!/usr/bin/env node
+let buffer = "";
+function send(message) {
+  process.stdout.write(JSON.stringify(message) + "\\n");
+}
+function handle(message) {
+  if (!message || typeof message !== "object") {
+    return;
+  }
+  if (message.method === "initialize") {
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: {
+        protocolVersion: message.params?.protocolVersion ?? "2025-03-26",
+        capabilities: { tools: {} },
+        serverInfo: { name: "policy-probe", version: "1" },
+      },
+    });
+    return;
+  }
+  if (message.method === "notifications/initialized") {
+    return;
+  }
+  if (message.method === "tools/list") {
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: {
+        tools: [
+          { name: "read_docs", description: "read", inputSchema: { type: "object" } },
+          { name: "delete_docs", description: "delete", inputSchema: { type: "object" } },
+          { name: "task_docs", description: "task", inputSchema: { type: "object" }, execution: { taskSupport: "required" } },
+          { name: "app_docs", description: "app", inputSchema: { type: "object" }, _meta: { ui: { visibility: ["app"] } } }
+        ],
+      },
+    });
+  }
+}
+process.stdin.resume();
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  buffer += chunk;
+  while (true) {
+    const newline = buffer.indexOf("\\n");
+    if (newline < 0) {
+      return;
+    }
+    const line = buffer.slice(0, newline).replace(/\\r$/, "");
+    buffer = buffer.slice(newline + 1);
+    if (line.trim()) {
+      try {
+        handle(JSON.parse(line));
+      } catch {}
+    }
+  }
 });
 `,
-    "utf-8",
   );
   return filePath;
 }
