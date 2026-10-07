@@ -5,6 +5,7 @@
 // minute so the host shows them online. When the host disconnects this Branch (Settings › Grafts removes its
 // pairing), the link stops and forgets the host; a new `branch graft join` brings it back.
 import { readConnectErrorDetailCode } from "../../packages/gateway-protocol/src/connect-error-details.js";
+import { listAgentEntries } from "../agents/agent-scope.js";
 import {
   GRAFT_DEVICE_SCOPES,
   graftBranchIdentity,
@@ -28,6 +29,7 @@ export type LinkHandlers = {
   onRefused: (reason: string) => void;
 };
 export type LinkState = "connecting" | "connected" | "disconnected" | "stopped";
+type GraftWorkJob = { id: string; trunkId: string; text: string; sourceAgentId: string };
 
 /** A host refusal that only the owner can undo (a new setup code), as opposed to a dropped connection. */
 export function isHostRefusal(error: unknown): boolean {
@@ -42,16 +44,20 @@ export class GraftLinkRunner {
   state: LinkState = "connecting";
   private client: LinkClient | undefined;
   private timer: ReturnType<typeof setInterval> | undefined;
+  private workTimer: ReturnType<typeof setInterval> | undefined;
+  private polling = false;
 
   constructor(
     private readonly deps: {
       link: GraftLink;
-      trunks: () => Promise<{ id: string; name?: string }[]>;
+      trunks: () => Promise<{ id: string; name?: string; avatar?: string }[]>;
       createClient: (handlers: LinkHandlers) => LinkClient;
       /** Forget the saved host (it disconnected this Branch). */
       forget: (link: GraftLink) => void;
       log: (line: string) => void;
       helloIntervalMs?: number;
+      handleWork?: (job: GraftWorkJob) => Promise<{ reply?: string; error?: string }>;
+      workPollMs?: number;
     },
   ) {}
 
@@ -67,6 +73,11 @@ export class GraftLinkRunner {
           this.deps.helloIntervalMs ?? HELLO_INTERVAL_MS,
         );
         this.timer.unref?.();
+        if (this.deps.handleWork) {
+          void this.pollWork();
+          this.workTimer = setInterval(() => void this.pollWork(), this.deps.workPollMs ?? 2_000);
+          this.workTimer.unref?.();
+        }
       },
       onClose: () => {
         this.clearTimer();
@@ -115,7 +126,31 @@ export class GraftLinkRunner {
 
   private clearTimer(): void {
     if (this.timer) clearInterval(this.timer);
+    if (this.workTimer) clearInterval(this.workTimer);
     this.timer = undefined;
+    this.workTimer = undefined;
+  }
+
+  private async pollWork(): Promise<void> {
+    const client = this.client;
+    if (!client || this.polling || this.state !== "connected" || !this.deps.handleWork) return;
+    this.polling = true;
+    try {
+      const response = await client.request("graft.work.poll", {}) as { job?: GraftWorkJob | null };
+      const job = response.job;
+      if (!job) return;
+      let result: { reply?: string; error?: string };
+      try {
+        result = await this.deps.handleWork(job);
+      } catch (error) {
+        result = { error: String((error as Error)?.message ?? error) };
+      }
+      await client.request("graft.work.complete", { id: job.id, ...result });
+    } catch (error) {
+      if (this.state === "connected") this.deps.log(`graft link: work poll failed: ${String((error as Error)?.message ?? error)}`);
+    } finally {
+      this.polling = false;
+    }
   }
 }
 
@@ -216,13 +251,52 @@ export function startGraftLinks(log: (line: string) => void): GraftLinkSuperviso
       return new GraftLinkRunner({
         link,
         log,
+        handleWork: async (job) => {
+          const [{ callGateway }, { waitForAgentRunReply }] = await Promise.all([
+            import("../gateway/call.js"),
+            import("../agents/run-wait.js"),
+          ]);
+          const key = `agent:${job.trunkId}:graft:${job.id}`;
+          try {
+            await callGateway({ method: "sessions.create", params: { key, agentId: job.trunkId, label: job.text.slice(0, 60) } });
+          } catch (error) {
+            // A reclaimed job may already have made its thread before the link dropped.
+            await callGateway({ method: "sessions.describe", params: { key } }).catch(() => { throw error; });
+          }
+          const sent = await callGateway<{ runId?: string }>({
+            method: "chat.send",
+            params: {
+              sessionKey: key,
+              agentId: job.trunkId,
+              message: job.text,
+              deliver: false,
+              idempotencyKey: `graft-work:${job.id}`,
+              outsideAgent: { id: "branch-host", name: "Host Branch" },
+            },
+          });
+          if (!sent.runId) return { error: "The joined Trunk did not accept the message." };
+          const result = await waitForAgentRunReply({
+            runId: sent.runId,
+            timeoutMs: 10 * 60_000,
+            callGateway: (request) => callGateway(request),
+            untilTerminal: true,
+          });
+          return result.status === "ok"
+            ? { reply: result.replyText?.trim() || "The joined Trunk finished without a visible reply." }
+            : { error: result.error || `The joined Trunk ended with ${result.status}.` };
+        },
         trunks: async () => {
           const [{ getRuntimeConfig }, { listGatewayAgentsBasic }] = await Promise.all([
             import("../config/config.js"),
             import("../gateway/agent-list.js"),
           ]);
-          const roster = await listGatewayAgentsBasic(getRuntimeConfig());
-          return roster.agents.filter((agent) => agent.kind !== "system");
+          const cfg = getRuntimeConfig();
+          const roster = await listGatewayAgentsBasic(cfg);
+          const entries = new Map(listAgentEntries(cfg).map((entry) => [entry.id, entry]));
+          return roster.agents.filter((agent) => agent.kind !== "system").map((agent) => ({
+            ...agent,
+            avatar: entries.get(agent.id)?.identity?.avatar,
+          }));
         },
         forget: (gone) => {
           void import("./graft-join.js").then(({ forgetGraftLink }) => forgetGraftLink(gone.url));

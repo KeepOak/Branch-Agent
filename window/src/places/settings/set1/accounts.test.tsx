@@ -40,6 +40,13 @@ async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
 }
 
 describe("Settings › Accounts", () => {
+  it("opens Add directly when the no-model action routes here", async () => {
+    sessionStorage.setItem("branch.openAddAccount", "1");
+    const { engine } = engineOf({});
+    await render(engine);
+    expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
+    expect(sessionStorage.getItem("branch.openAddAccount")).toBeNull();
+  });
   it("opens Claude browser sign-in first and keeps token paste collapsed", async () => {
     const { engine, request } = engineOf({
       "models.authStatus": { providers: PROVIDERS, providerCapabilities: [...CAPS, { provider: "anthropic", apiKeySupported: true, loginOptions: [{ id: "anthropic/claude-browser", kind: "oauth", label: "Sign in with Claude" }] }] },
@@ -50,7 +57,8 @@ describe("Settings › Accounts", () => {
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Sign in with Claude");
     const fallback = document.querySelector<HTMLDetailsElement>(".dlg details")!;
     expect(fallback.open).toBe(false);
-    expect(fallback.textContent).toContain("claude setup-token");
+    expect(fallback.textContent).not.toContain("claude setup-token");
+    expect(fallback.textContent).not.toContain("terminal");
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg button")].find((b) => b.textContent === "Sign in with Claude")!.click());
     expect(request).toHaveBeenCalledWith("models.authLogin", expect.objectContaining({ authChoice: "anthropic/claude-browser" }));
   });

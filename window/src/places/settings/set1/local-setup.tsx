@@ -14,7 +14,7 @@ export function SetupDialog({ engine, option, agent, onClose }: Props) {
   const close = () => { if (w.view.phase !== "done" && w.view.phase !== "error") w.cancel(); onClose(); };
   return (
     <Dialog title={`Set up ${name}`} onClose={close} testid="local-setup"
-      footer={<Footer view={w.view} value={w.value} busy={w.busy} onAnswer={w.answer} onCancel={close} onClose={onClose} />}>
+      footer={<Footer view={w.view} value={w.value} busy={w.busy} onAnswer={w.answer} onCancel={close} />}>
       <p className="aa-lede">Branch sets up {name} on this computer. It says what it will download and install before it does anything.</p>
       <WizardBody wizard={w} doneText={`${name} is set up on this computer. Free and private.`} />
     </Dialog>

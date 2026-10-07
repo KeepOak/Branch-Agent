@@ -12,6 +12,9 @@ type Ctx = {
   now: number;
   trunkName: string;
   open: (key: string) => void;
+  ownWindow: (key: string) => void;
+  ownWindowOpen?: (key: string) => boolean;
+  ownWindowOff?: string | null;
   rename: (row: Conversation) => void;
   confirmDelete: (row: Conversation) => void;
   level: Level;
@@ -36,7 +39,6 @@ type Ctx = {
   archiveRoom?: (contact: Contact) => void;
 };
 
-const WINDOW_OFF = "A conversation in its own window needs the desktop app, which doesn't offer it yet.";
 const FORK_OFF = "Copying a conversation needs an engine call that copies up to the last reply; it doesn't have one yet.";
 const MOVE_OFF = "Moving a conversation into a project needs an engine method Branch doesn't have yet.";
 const PAUSE_OFF = "Pausing a Trunk needs an engine method it doesn't have yet.";
@@ -91,9 +93,9 @@ export function rowMenuItems(row: Conversation, c: Ctx): MenuItem[] {
     row.unread
       ? { label: "Mark as read", letter: "u", run: () => void c.actions.setUnread(row, false), testid: "menu-unread", ...ic("chat") }
       : { label: "Mark as unread", letter: "u", run: () => void c.actions.setUnread(row, true), testid: "menu-unread", ...ic("chat") },
-    row.isMain || row.parentKey ? null : { label: row.pinned ? "Unpin" : "Pin to top", letter: "p", run: () => void c.actions.pin(row), testid: "menu-pin", ...ic("pin") },
+    row.isMain || row.parentKey ? null : { label: row.pinned ? "Unpin" : "Pin", letter: "p", run: () => void c.actions.pin(row), testid: "menu-pin", ...ic("pin") },
     { label: "Rename", letter: "r", run: () => c.rename(row), testid: "menu-rename", ...ic("edit") },
-    { label: "Open in its own window", run: () => undefined, disabled: WINDOW_OFF, ...ic("panel") },
+    { label: c.ownWindowOpen?.(row.key) ? "Show its window" : "Open in its own window", run: () => c.ownWindow(row.key), testid: "menu-own-window", ...(c.ownWindowOff ? { disabled: c.ownWindowOff } : {}), ...ic("panel") },
     { label: "Copy into a new conversation", letter: "f", run: () => undefined, disabled: FORK_OFF, ...ic("copy") },
     copyItem(row, c),
     { kind: "sep" },
@@ -126,6 +128,7 @@ function contactMenuItems(row: Conversation, c: Ctx, contact: Contact): MenuItem
   const canEdit = Boolean(contact.thread);
   const items: (MenuItem | null)[] = [
     { label: "Open", run: () => c.open(contact.threadKey), testid: "menu-open", ...ic("chat") },
+    { label: c.ownWindowOpen?.(contact.threadKey) ? "Show its window" : "Open in its own window", run: () => c.ownWindow(contact.threadKey), testid: "menu-own-window", ...(c.ownWindowOff ? { disabled: c.ownWindowOff } : {}), ...ic("panel") },
     row.unread
       ? { label: "Mark as read", letter: "u", run: () => c.markContactRead?.(contact), testid: "menu-unread", ...ic("chat") }
       : { label: "Mark as unread", letter: "u", run: () => contact.thread && void c.actions.setUnread(contact.thread, true), testid: "menu-unread", ...ic("chat"), ...(!canEdit ? { disabled: "Send a first message before marking this contact unread." } : {}) },
