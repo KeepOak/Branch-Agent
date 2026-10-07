@@ -2,14 +2,14 @@ import { createHmac, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
-import { readFileWindowFully, safeFileURLToPath } from "@openclaw/fs-safe/advanced";
-import { isWithinDir } from "@openclaw/fs-safe/path";
 import { detectMime, kindFromMime } from "@branch/media-core/mime";
 import {
   asDateTimestampMs,
   resolveTimestampMsToIsoString,
 } from "@branch/normalization-core/number-coercion";
 import { isControlUiFocusPath } from "@branch/session-url-contract";
+import { readFileWindowFully, safeFileURLToPath } from "@openclaw/fs-safe/advanced";
+import { isWithinDir } from "@openclaw/fs-safe/path";
 import { startsWithSvgRootElement } from "../../packages/gateway-protocol/src/svg-image.js";
 import {
   type AgentAvatarResolution,
@@ -54,6 +54,7 @@ import {
   type AssistantMediaSession,
   type AssistantMediaReader,
 } from "./assistant-media-policy.js";
+import { isControlUiPrecompressedAssetExtension } from "./control-ui-asset-manifest.js";
 import { resolveControlUiBootstrapPresentation } from "./control-ui-bootstrap-presentation.js";
 import {
   buildControlUiRootAssetPath,
@@ -88,7 +89,6 @@ import { isControlUiSharePath, serveControlUiShareDocument } from "./control-ui-
 import { normalizeControlUiBasePath } from "./control-ui-shared.js";
 import {
   isControlUiFileUnmodified,
-  isControlUiPrecompressedAssetExtension,
   isControlUiStaticAssetExtension,
   resolveControlUiHtmlEncoding,
   resolveControlUiRepresentation,
@@ -109,7 +109,12 @@ import {
 } from "./http-image-response.js";
 import type { GatewayHttpRequestAuthOptions } from "./http-request-authority.js";
 import { authorizeControlUiReadRequestOrReply } from "./http-utils.js";
-import { readControlUiRootAsset, type ControlUiRootState } from "./server-control-ui-root.js";
+import { resolveAcceptedBrowserOrigin } from "./origin-check.js";
+import {
+  readControlUiRootAsset,
+  requestControlUiRootPreparation,
+  type ControlUiRootState,
+} from "./server-control-ui-root.js";
 import { isTerminalConfigEnabled } from "./terminal/enabled.js";
 
 const ROOT_PREFIX = "/";
@@ -425,6 +430,29 @@ async function resolveAssistantMediaAvailability(
   }
 }
 
+/**
+ * The Branch window is served from its own local origin, not the gateway's. It reads a picture's availability (and
+ * its short-lived media ticket) with `fetch` and an Authorization header, so this route answers CORS for origins the
+ * gateway's browser policy already accepts for its WebSocket (configured Control UI origins, same origin, or a
+ * loopback page on this computer). The picture itself then loads with the ticket alone, never the credential.
+ */
+function applyAssistantMediaCors(
+  req: IncomingMessage,
+  res: ServerResponse,
+  cfg: BranchConfig | undefined,
+): "none" | "allowed" | "refused" {
+  if (typeof req.headers.origin !== "string" || !req.headers.origin.trim()) {
+    return "none";
+  }
+  const origin = resolveAcceptedBrowserOrigin({ req, ...(cfg ? { cfg } : {}) });
+  if (!origin) {
+    return "refused";
+  }
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
+  return "allowed";
+}
+
 export async function handleControlUiAssistantMediaRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -445,6 +473,19 @@ export async function handleControlUiAssistantMediaRequest(
   const isMetaRequest = url.searchParams.get("meta") === "1";
   const explicitAllow =
     req.method === "POST" && isMetaRequest && url.searchParams.get("allow") === "1";
+  const cors = applyAssistantMediaCors(req, res, opts?.cfg ?? opts?.config);
+  if (req.method === "OPTIONS") {
+    if (cors !== "allowed") {
+      sendJson(res, 403, { ok: false, error: { type: "origin_not_allowed" } });
+      return true;
+    }
+    res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, POST");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization");
+    res.setHeader("Access-Control-Max-Age", "600");
+    res.statusCode = 204;
+    res.end();
+    return true;
+  }
   if (!isReadHttpMethod(req.method) && !explicitAllow) {
     return false;
   }
@@ -832,18 +873,11 @@ const CONTROL_UI_DEFAULT_NAMESPACE_BOOTSTRAP_CONFIG_PATH = `${CONTROL_UI_NAMESPA
   "",
 )}${CONTROL_UI_BOOTSTRAP_CONFIG_PATH}`;
 
-// v2026.6.1 clients use this pre-#66946 bootstrap suffix, including under a base path.
-const LEGACY_CONTROL_UI_NAMESPACE_PREFIX = "/__branch";
-const LEGACY_BOOTSTRAP_CONFIG_PATH = `${LEGACY_CONTROL_UI_NAMESPACE_PREFIX}${CONTROL_UI_BOOTSTRAP_CONFIG_PATH}`;
-
 function matchesControlUiBootstrapConfigPath(pathname: string, basePath: string): boolean {
-  if (
+  return (
     pathname === `${basePath}${CONTROL_UI_BOOTSTRAP_CONFIG_PATH}` ||
-    pathname === `${basePath}${LEGACY_BOOTSTRAP_CONFIG_PATH}`
-  ) {
-    return true;
-  }
-  return basePath === "" && pathname === CONTROL_UI_DEFAULT_NAMESPACE_BOOTSTRAP_CONFIG_PATH;
+    (basePath === "" && pathname === CONTROL_UI_DEFAULT_NAMESPACE_BOOTSTRAP_CONFIG_PATH)
+  );
 }
 
 export async function handleControlUiHttpRequest(
@@ -959,6 +993,8 @@ export async function handleControlUiHttpRequest(
   }
 
   const rootState = opts?.root;
+  // The old control UI is requested: prepare its assets now, not at every Gateway start.
+  requestControlUiRootPreparation(rootState);
   if (!rootState || (rootState.kind !== "bundled" && rootState.kind !== "resolved")) {
     respondControlUiAssetsUnavailable(res, rootState);
     return true;

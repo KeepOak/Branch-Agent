@@ -23,3 +23,7 @@
   background: var(--wash17, var(--fill));
   color: var(--ink-3);
 }
+
+/* An info row led by a Trunk's face (Who it knows), as the artifact's list draws it. */
+.mi.info .mi-face { width: 26px; height: 26px; flex: none; display: grid; place-items: center; margin-right: 10px; }
+[data-testid="who-it-knows"] { min-width: 340px; }

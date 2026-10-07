@@ -73,6 +73,6 @@ export function ToolsTab({ engine, level, trunks, kind, setKind, openConversatio
     {adding === "Skills" && <AddSkill ctx={ctx} close={close} />}
     {adding === "Plugins" && <AddPlugin ctx={ctx} close={close} />}
     {adding === "Command-line tools" && <AddTool ctx={ctx} close={close} />}
-    {adding === "Agents" && <AddAgent close={close} />}
+    {adding === "Agents" && <AddAgent ctx={ctx} close={close} />}
   </div>;
 }

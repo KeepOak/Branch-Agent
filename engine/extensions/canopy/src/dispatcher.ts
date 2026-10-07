@@ -35,7 +35,7 @@ const DEFAULT_DISPATCH_MAX_STARTS = 3;
 type CanopySubagentRuntime = Pick<PluginRuntime["subagent"], "run">;
 type CanopyWorktreeRuntime = PluginRuntime["worktrees"];
 
-export type CanopyDispatchStartOptions = {
+type CanopyDispatchStartOptions = {
   cardId?: string;
   maxStarts?: number;
   model?: string;
@@ -83,31 +83,6 @@ const pendingCanopyDispatches = new WeakMap<CanopyStore, Promise<void>>();
 function cardHasActiveClaim(card: CanopyCard, now: number): boolean {
   const claim = card.metadata?.claim;
   return Boolean(claim && isFutureDateTimestampMs(claim.expiresAt, { nowMs: now }));
-}
-
-function buildExecution(params: {
-  card: CanopyCard;
-  sessionKey: string;
-  runId: string;
-  runtime: Awaited<ReturnType<CanopySubagentRuntime["run"]>>["runtime"];
-  now: number;
-}): CanopyExecution {
-  return {
-    id: params.card.execution?.id ?? `${params.card.id}:agent-session`,
-    kind: "agent-session",
-    mode: "autonomous",
-    status: "running",
-    ...(params.runtime
-      ? {
-          engine: params.runtime.harness,
-          model: `${params.runtime.provider}/${params.runtime.model}`,
-        }
-      : {}),
-    sessionKey: params.sessionKey,
-    runId: params.runId,
-    startedAt: params.now,
-    updatedAt: params.now,
-  };
 }
 
 async function materializeWorkspace(params: {
@@ -184,29 +159,6 @@ async function materializeWorkspace(params: {
       ...(sourceBranch ? { sourceBranch } : {}),
     },
   };
-}
-
-function buildWorkerPrompt(params: {
-  card: CanopyCard;
-  context: string;
-  ownerId: string;
-  token: string;
-}): string {
-  return [
-    `Work on this Branch Agent Canopy card: ${params.card.title}`,
-    "",
-    "## Worker protocol",
-    `Card id: ${params.card.id}`,
-    `Claim ownerId: ${params.ownerId}`,
-    `Claim token: ${params.token}`,
-    "",
-    "Heartbeat with canopy_heartbeat using the card id and token while working.",
-    "When done, call canopy_complete with the card id, token, summary, and proof.",
-    "If you recorded proof separately, pass its returned proofId to canopy_complete.",
-    "If blocked, call canopy_block with the card id, token, and reason.",
-    "",
-    params.context,
-  ].join("\n");
 }
 
 function sortReadyCards(a: CanopyCard, b: CanopyCard): number {
@@ -477,12 +429,21 @@ async function runCanopyDispatch(
       const run = await params.subagent.run({
         sessionKey,
         ...(assertOwnerCurrent ? { assertCurrent: assertOwnerCurrent } : {}),
-        message: buildWorkerPrompt({
-          card: claimed.card,
+        message: [
+          `Work on this Branch Agent Canopy card: ${claimed.card.title}`,
+          "",
+          "## Worker protocol",
+          `Card id: ${claimed.card.id}`,
+          `Claim ownerId: ${ownerId}`,
+          `Claim token: ${claimValue}`,
+          "",
+          "Heartbeat with canopy_heartbeat using the card id and token while working.",
+          "When done, call canopy_complete with the card id, token, summary, and proof.",
+          "If you recorded proof separately, pass its returned proofId to canopy_complete.",
+          "If blocked, call canopy_block with the card id, token, and reason.",
+          "",
           context,
-          ownerId,
-          token: claimValue,
-        }),
+        ].join("\n"),
         toolsAlsoAllow: [...CANOPY_REQUIRED_WORKER_TOOLS],
         ...(params.options?.provider ? { provider: params.options.provider } : {}),
         ...(params.options?.model ? { model: params.options.model } : {}),
@@ -494,13 +455,22 @@ async function runCanopyDispatch(
       });
       runStarted = true;
       const acceptedSessionKey = run.sessionKey?.trim() || sessionKey;
-      const acceptedExecution = buildExecution({
-        card: launched,
+      const acceptedExecution: CanopyExecution = {
+        id: launched.execution?.id ?? `${launched.id}:agent-session`,
+        kind: "agent-session",
+        mode: "autonomous",
+        status: "running",
+        ...(run.runtime
+          ? {
+              engine: run.runtime.harness,
+              model: `${run.runtime.provider}/${run.runtime.model}`,
+            }
+          : {}),
         sessionKey: acceptedSessionKey,
         runId: run.runId,
-        runtime: run.runtime,
-        now,
-      });
+        startedAt: now,
+        updatedAt: now,
+      };
       const acceptedCard = {
         ...launched,
         sessionKey: acceptedSessionKey,

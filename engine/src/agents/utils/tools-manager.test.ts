@@ -11,6 +11,7 @@ import os, { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expectDefined } from "@branch/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import "../../test-utils/prepare-compiled-subprocesses.js";
 import type { FileLockOptions } from "../../infra/file-lock.js";
 import { snapshotFiles } from "../../infra/state-migrations.caller-mode.test-helpers.js";
 import { deleteTestEnvValue, setTestEnvValue } from "../../test-utils/env.js";
@@ -690,6 +691,7 @@ describe("ensureTool exit-status handling", () => {
       killSignal: "SIGKILL",
       stdio: "pipe",
       timeout: 5_000,
+      windowsHide: true,
     });
     expect(fetchWithSsrFGuardMock).not.toHaveBeenCalled();
   });

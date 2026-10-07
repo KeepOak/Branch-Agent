@@ -10,12 +10,12 @@ const CANVAS_NODE_CAPABILITY: PluginNodeCapabilitySurface = {
   scopeKey: "canvas:canvas",
 };
 
-/** Returns true only for the core-owned Canvas document subtree. */
+/** Returns true only for the core-owned Clearing document subtree. */
 export function isCanvasDocumentHttpPath(pathname: string): boolean {
   return pathname.startsWith(`${CANVAS_DOCUMENTS_PATH}/`);
 }
 
-/** Resolves auth for any canonicalized candidate targeting core Canvas documents. */
+/** Resolves auth for any canonicalized candidate targeting core Clearing documents. */
 export function resolveCanvasNodeCapability(
   pathCandidates: readonly string[],
 ): PluginNodeCapabilitySurface | undefined {

@@ -83,7 +83,7 @@ export function RunRecord({ engine, job, run, onClose, openConversation }: { eng
     engine.request("cron.history", params).then(r => setState({ messages: rows(rec(r).messages), error: "", loading: false }), () => setState({ messages: [], error: "This run’s record can’t be opened.", loading: false }));
   }, [engine, job, run]);
   const key = str(run.sessionKey);
-  return <Dialog wide title={`${jobName(job)} · ${when(run.runAtMs ?? run.ts)}`} onClose={onClose} footer={<>{key && <button type="button" className="btn sm" onClick={() => { onClose(); openConversation(key); }}>Open the conversation</button>}<button type="button" className="btn pri sm" onClick={onClose}>Close</button></>}>
+  return <Dialog wide title={`${jobName(job)} · ${when(run.runAtMs ?? run.ts)}`} onClose={onClose} footer={<>{key && <button type="button" className="btn sm" onClick={() => { onClose(); openConversation(key); }}>Open the conversation</button>}</>}>
     {state.error && <p className="au-error" role="alert">{state.error}</p>}
     {!state.loading && !state.error && !state.messages.length && <p className="au-hint">Nothing in this run yet.</p>}
     <div className="au-record">{state.messages.map((m, i) => { const t = textOf(m); return t ? <div key={i} className={`au-msg ${str(m.role)}`}><small>{m.role === "user" ? "Asked" : m.role === "assistant" ? "Answered" : "Step"}</small><p>{t}</p></div> : null; })}</div>
@@ -98,7 +98,7 @@ export function Sheet(props: SheetProps) {
   const state = rec(job.state), next = typeof state.nextRunAtMs === "number" ? `Next ${when(state.nextRunAtMs)}` : "";
   const confirm = async () => { setError(""); try { if (await props.save(draft)) onClose(); } catch (e) { setError(errorText(e)); } };
   if (run) return <RunRecord engine={engine} job={job} run={run} onClose={() => setRun(null)} openConversation={props.openConversation} />;
-  return <Dialog wide testid="au-sheet" title={jobName(job)} onClose={onClose} footer={tab === "runs" ? <button type="button" className="btn pri sm" onClick={onClose}>Close</button> : null}>
+  return <Dialog wide testid="au-sheet" title={jobName(job)} onClose={onClose}>
     <p className="au-hint">{scheduleWords(rec(job.schedule))}{next ? ` · ${next}` : ""}</p>
     <div className="au-tabs" role="tablist" aria-label="Automation">{(["runs", "settings"] as const).map(t => <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{t === "runs" ? "Runs" : "Settings"}</button>)}</div>
     {tab === "runs" ? <RunsTab engine={engine} job={job} openRun={setRun} /> : <Proposal inSheet draft={draft} change={p => setDraft(d => ({ ...d, ...p }))} level={props.level} trunks={props.trunks} models={props.models} busy={props.busy} canWrite={props.canWrite} error={error} onCancel={() => setTab("runs")} onConfirm={() => void confirm()} />}

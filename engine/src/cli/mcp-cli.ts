@@ -2,7 +2,10 @@ import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { expectDefined } from "@branch/normalization-core";
-import { parseStrictFiniteNumber } from "@branch/normalization-core/number-coercion";
+import {
+  asPositiveFiniteNumber,
+  parseStrictFiniteNumber,
+} from "@branch/normalization-core/number-coercion";
 import { asNullableRecord as asRecord } from "@branch/normalization-core/record-coerce";
 import {
   normalizeLowercaseStringOrEmpty,
@@ -30,8 +33,8 @@ import {
 import { resolveMcpTransportConfig } from "../agents/mcp-transport-config.js";
 import { parseConfigValue } from "../auto-reply/reply/config-value.js";
 import { listConfiguredMcpServers } from "../config/mcp-config.js";
-import type { McpCodexToolApprovalMode } from "../config/types.mcp.js";
 import type { BranchConfig } from "../config/types.branch.js";
+import type { McpCodexToolApprovalMode } from "../config/types.mcp.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import {
   startOAuthLoopbackCallbackServer,
@@ -44,6 +47,7 @@ import { runTasksWithConcurrency } from "../utils/run-with-concurrency.js";
 import { formatCliCommand } from "./command-format.js";
 import { formatCliJsonFailure } from "./failure-output.js";
 import { resolveGatewayAuthOptions } from "./gateway-secret-options.js";
+import { registerGraftBranchCommands } from "./graft-cli.js";
 import { requestExitAfterOneShotOutput } from "./one-shot-exit.js";
 import { collectOption } from "./program/helpers.js";
 import { applyParentDefaultHelpAction } from "./program/parent-default-help.js";
@@ -169,21 +173,6 @@ function parseMcpApprovalModeOption(
   return mode;
 }
 
-function parseOAuthConfig(opts: {
-  scope?: string;
-  redirectUrl?: string;
-  clientMetadataUrl?: string;
-}): Record<string, string> | undefined {
-  const oauth: Record<string, string> = {};
-  for (const key of ["scope", "redirectUrl", "clientMetadataUrl"] as const) {
-    const value = opts[key]?.trim();
-    if (value) {
-      oauth[key] = value;
-    }
-  }
-  return Object.keys(oauth).length > 0 ? oauth : undefined;
-}
-
 function setOptionalField(target: Record<string, unknown>, key: string, value: unknown): void {
   if (value !== undefined) {
     target[key] = value;
@@ -206,7 +195,6 @@ function applyMcpTimeoutOptions(
 function applyMcpOAuthOptions(
   server: Record<string, unknown>,
   opts: McpServerControlOptions,
-  merge: boolean,
 ): void {
   const auth = normalizeLowercaseStringOrEmpty(normalizeStringifiedOptionalString(opts.auth) ?? "");
   if (auth && auth !== "oauth") {
@@ -215,13 +203,19 @@ function applyMcpOAuthOptions(
   if (auth) {
     server.auth = auth;
   }
-  const oauth = parseOAuthConfig({
-    scope: opts.oauthScope,
-    redirectUrl: opts.oauthRedirectUrl,
-    clientMetadataUrl: opts.oauthClientMetadataUrl,
-  });
-  if (oauth) {
-    server.oauth = merge ? { ...asRecord(server.oauth), ...oauth } : oauth;
+  const oauth: Record<string, string> = {};
+  for (const [field, input] of [
+    ["scope", opts.oauthScope],
+    ["redirectUrl", opts.oauthRedirectUrl],
+    ["clientMetadataUrl", opts.oauthClientMetadataUrl],
+  ] as const) {
+    const value = input?.trim();
+    if (value) {
+      oauth[field] = value;
+    }
+  }
+  if (Object.keys(oauth).length > 0) {
+    server.oauth = { ...asRecord(server.oauth), ...oauth };
   }
 }
 
@@ -380,7 +374,7 @@ async function collectMcpDoctorIssues(params: {
   const { name, server } = params;
   const resolved = resolveMcpTransportConfig(name, server);
   const disabled = server.enabled === false;
-  if (server.enabled === false) {
+  if (disabled) {
     issues.push(issue("warning", "server is disabled"));
   }
   if (!disabled) {
@@ -636,11 +630,7 @@ function createMcpProbeRuntime(
 const DEFAULT_MCP_PROBE_INITIALIZE_TIMEOUT_MS = 5_000;
 
 function applyMcpProbeInitializeTimeout(server: Record<string, unknown>): Record<string, unknown> {
-  if (
-    typeof server.connectionTimeoutMs === "number" &&
-    Number.isFinite(server.connectionTimeoutMs) &&
-    server.connectionTimeoutMs > 0
-  ) {
+  if (asPositiveFiniteNumber(server.connectionTimeoutMs) !== undefined) {
     return server;
   }
   return {
@@ -677,11 +667,7 @@ async function probeMcpServersOrFail(params: {
       applyMcpProbeInitializeTimeout(server),
     ]),
   );
-  const runtime = await createMcpProbeRuntime(
-    "branch-cli-mcp-probe",
-    params.config,
-    probeServers,
-  );
+  const runtime = await createMcpProbeRuntime("branch-cli-mcp-probe", params.config, probeServers);
   try {
     const result = await readMcpProbeResult(runtime);
     const probeIssue = resolveMcpProbeIssue({ result, servers: params.servers, path: params.path });
@@ -697,14 +683,13 @@ async function probeMcpServersOrFail(params: {
 const BRANCH_MCP_REGISTRY_SCOPE_NOTE =
   "Note: this command only shows Branch-managed mcp.servers entries and does not include mcporter servers from config/mcporter.json.";
 
-export function registerMcpCli(program: Command) {
-  const mcp = program
-    .command("mcp")
-    .description("Manage Branch Agent mcp.servers config and channel bridge");
+/** Graft: the stdio MCP server coding agents use to work with Branch. `branch graft` and `branch mcp serve`
+ *  (the upstream name, kept as an alias) are the same command. */
+export const GRAFT_DESCRIPTION =
+  "Graft: work with Branch (Trunks, group chats, the window and channels over MCP stdio)";
 
-  mcp
-    .command("serve")
-    .description("Expose Branch Agent channels over MCP stdio")
+function registerGraftServe(command: Command): void {
+  command
     .option("--url <url>", "Gateway WebSocket URL (defaults to gateway.remote.url when configured)")
     .option("--token <token>", "Gateway token (if required)")
     .option("--token-file <path>", "Read gateway token from file")
@@ -716,6 +701,10 @@ export function registerMcpCli(program: Command) {
       "auto",
     )
     .option("-v, --verbose", "Verbose logging to stderr", false)
+    .option(
+      "--host [url]",
+      "Work with another Branch this one joined (branch graft join), as its paired device",
+    )
     .action(async (opts) => {
       try {
         const { gatewayToken, gatewayPassword } = resolveGatewayAuthOptions(opts);
@@ -730,9 +719,35 @@ export function registerMcpCli(program: Command) {
           throw new Error('Invalid --claude-channel-mode value. Use "auto", "on", or "off".');
         }
         const { serveBranchChannelMcp } = await import("../mcp/channel-server.js");
+        if (opts.host !== undefined) {
+          const { graftHostOptions } = await import("../mcp/graft-join.js");
+          await serveBranchChannelMcp({
+            graftHost: await graftHostOptions(opts.host === true ? "" : String(opts.host)),
+            claudeChannelMode,
+            verbose: Boolean(opts.verbose),
+          });
+          return;
+        }
+        const { desktopDataForEnvToken, liveDesktopGatewayUrl, resolveDesktopGateway } =
+          await import("../mcp/desktop-gateway.js");
+        // With no auth named, use the Branch Agent desktop app's loopback gateway and token file.
+        const desktopAuth = {
+          url: opts.url as string | undefined,
+          token: gatewayToken,
+          password: gatewayPassword,
+        };
+        const desktop = resolveDesktopGateway(desktopAuth);
+        // The desktop app can move its engine to another port in an update; follow it on every reconnect. That
+        // includes the desktop's branch command, which names the desktop's own token and a launch-time port.
+        const shimDir =
+          opts.url || gatewayToken || gatewayPassword
+            ? undefined
+            : desktopDataForEnvToken(process.env);
+        const followDir = desktop?.dataDir ?? shimDir;
         await serveBranchChannelMcp({
-          gatewayUrl: opts.url as string | undefined,
-          gatewayToken,
+          gatewayUrl: desktop?.url ?? (opts.url as string | undefined),
+          ...(followDir ? { resolveGatewayUrl: () => liveDesktopGatewayUrl(followDir) } : {}),
+          gatewayToken: desktop?.token ?? gatewayToken,
           gatewayPassword,
           claudeChannelMode,
           verbose: Boolean(opts.verbose),
@@ -744,6 +759,14 @@ export function registerMcpCli(program: Command) {
         defaultRuntime.exit(1);
       }
     });
+}
+
+export function registerMcpCli(program: Command) {
+  const mcp = program
+    .command("mcp")
+    .description("Manage Branch Agent mcp.servers config and Graft (mcp serve)");
+
+  registerGraftServe(mcp.command("serve").description(GRAFT_DESCRIPTION));
 
   mcp
     .command("list")
@@ -1026,7 +1049,7 @@ export function registerMcpCli(program: Command) {
           server.url = url;
           setOptionalField(server, "transport", normalizeStringifiedOptionalString(opts.transport));
           setOptionalField(server, "headers", parseKeyValueEntries(opts.header, "--header"));
-          applyMcpOAuthOptions(server, opts, false);
+          applyMcpOAuthOptions(server, opts);
           applyMcpTlsOptions(server, opts);
         }
         if (opts.disabled) {
@@ -1206,7 +1229,7 @@ export function registerMcpCli(program: Command) {
           delete next.auth;
           delete next.oauth;
         }
-        applyMcpOAuthOptions(next, opts, true);
+        applyMcpOAuthOptions(next, opts);
         if (opts.clearTls) {
           delete next.sslVerify;
           delete next.ssl_verify;
@@ -1376,3 +1399,10 @@ export function registerMcpCli(program: Command) {
   applyParentDefaultHelpAction(mcp);
 }
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
+
+/** `branch graft`: the primary name of `branch mcp serve`. */
+export function registerGraftCli(program: Command) {
+  const graft = program.command("graft").description(GRAFT_DESCRIPTION);
+  registerGraftServe(graft);
+  registerGraftBranchCommands(graft);
+}

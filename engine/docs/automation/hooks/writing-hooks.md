@@ -142,7 +142,13 @@ Explain the side effects, configuration, and verification steps here.
 
 `name` defaults to the directory name; use a unique, stable name.
 `description` is shown in reports. The following fields belong under
-`metadata.branch`:
+`metadata.branch`.
+
+The pre-July 2026 `metadata.clawdbot` format is no longer read. Update an older
+`HOOK.md` by renaming that metadata block to `branch`, preserving its event
+list and other fields. If an `branch` block already exists, keep its values
+and merge only the legacy fields you still want. Branch Agent does not rewrite the
+file; event declarations and requirements in the old block are ignored.
 
 | Field              | Contract                                                                                                                                                                                                                 |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

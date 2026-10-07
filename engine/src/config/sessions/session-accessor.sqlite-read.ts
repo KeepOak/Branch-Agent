@@ -1,4 +1,5 @@
-import { asOptionalRecord, isRecord } from "@branch/normalization-core/record-coerce";
+import { parseDateFirstTimestampMs } from "@branch/normalization-core/number-coercion";
+import { asOptionalRecord } from "@branch/normalization-core/record-coerce";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
@@ -17,7 +18,6 @@ import { resolveBranchAgentSqlitePath } from "../../state/branch-agent-db.paths.
 import { SessionMetadataUnavailableError } from "../../state/session-metadata-unavailable-error.js";
 import type {
   LatestTranscriptAssistantText,
-  SessionTranscriptContextVersion,
   SessionTranscriptReadScope,
   SessionTranscriptEventRow,
   SessionTranscriptStats,
@@ -45,11 +45,9 @@ import {
   readTranscriptStatsBatchFromDatabase,
   readTranscriptStatsFromDatabase,
 } from "./session-accessor.sqlite-transcript-stats.js";
-import {
-  readHotSessionTranscriptSnapshot,
-  readRestoredSessionTranscript,
-} from "./session-cold-storage-read.js";
+import { readHotSessionTranscriptSnapshot } from "./session-cold-storage-read.js";
 import { assertSessionTranscriptHot } from "./session-cold-storage-state.js";
+import type { SessionTranscriptReadSnapshot } from "./session-history-read.types.js";
 import { SessionTranscriptStorageUnavailableError } from "./session-transcript-projection-error.js";
 import { SessionTranscriptProjectionUnavailableError } from "./session-transcript-projection-error.js";
 import { readCurrentProjectionSnapshot } from "./session-accessor.sqlite-projection-read.js";
@@ -69,7 +67,10 @@ export type SqliteTranscriptStorageRow = SqliteTranscriptSnapshotRow & {
   createdAt: number;
 };
 
-export function createTranscriptIdentityReader(database: BranchAgentDatabase, sessionId: string) {
+export function createTranscriptIdentityReader(
+  database: Pick<BranchAgentDatabase, "db">,
+  sessionId: string,
+) {
   const read = prepareSqliteQuerySync<
     string,
     { event_id: string; parent_id: string | null; seq: number }
@@ -92,18 +93,11 @@ export function createTranscriptIdentityReader(database: BranchAgentDatabase, se
 }
 
 export function readTranscriptIdentityByEventId(
-  database: BranchAgentDatabase,
+  database: Pick<BranchAgentDatabase, "db">,
   sessionId: string,
   eventId: string,
 ): { eventId: string; parentId: string | null; seq: number } | undefined {
   return createTranscriptIdentityReader(database, sessionId)(eventId);
-}
-
-/** Loads raw transcript events from the additive SQLite transcript store. */
-export async function loadTranscriptEvents(
-  scope: SessionTranscriptReadScope,
-): Promise<TranscriptEvent[]> {
-  return readRestoredSessionTranscript(scope, () => loadTranscriptEventsSync(scope));
 }
 
 /** Loads raw transcript events synchronously from the additive SQLite transcript store. */
@@ -167,7 +161,7 @@ export function readTranscriptExportSnapshotReadOnlySync(
 export function loadTranscriptReadSnapshotSync(
   scope: SessionTranscriptReadScope,
   options: { readOnly?: boolean; resolvedScope?: ResolvedTranscriptReadScope } = {},
-): { events: TranscriptEvent[]; version: SessionTranscriptContextVersion } {
+): SessionTranscriptReadSnapshot {
   const resolved = options.resolvedScope ?? resolveSqliteTranscriptReadScope(scope);
   const read = (database: Pick<BranchAgentDatabase, "db" | "path">) =>
     runSqliteDeferredTransactionSync(
@@ -259,20 +253,24 @@ export function loadTranscriptHeaderSync(scope: SessionTranscriptReadScope): unk
 export function loadTranscriptEventRowsAfterSeqSync(
   scope: SessionTranscriptReadScope,
   afterSeq: number,
-  throughSeq?: number,
 ): SessionTranscriptEventRow[] {
   const resolved = resolveSqliteTranscriptReadScope(scope);
   const database = openBranchAgentDatabase(toDatabaseOptions(resolved));
-  return readHotSessionTranscriptSnapshot(database, resolved.sessionId, "incremental", () => {
+  return loadTranscriptEventRowsAfterSeqInDatabase(database, resolved.sessionId, afterSeq);
+}
+
+export function loadTranscriptEventRowsAfterSeqInDatabase(
+  database: Pick<BranchAgentDatabase, "db">,
+  sessionId: string,
+  afterSeq: number,
+): SessionTranscriptEventRow[] {
+  return readHotSessionTranscriptSnapshot(database, sessionId, "incremental", () => {
     const db = getSessionKysely(database.db);
-    let query = db
+    const query = db
       .selectFrom("transcript_events")
       .select([transcriptEventJsonSql(database.db).as("event_json"), "seq"])
-      .where("session_id", "=", resolved.sessionId)
+      .where("session_id", "=", sessionId)
       .where("seq", ">", afterSeq);
-    if (throughSeq !== undefined) {
-      query = query.where("seq", "<=", throughSeq);
-    }
     return executeSqliteQuerySync(database.db, query.orderBy("seq", "asc")).rows.map((row) => ({
       event: JSON.parse(row.event_json) as TranscriptEvent,
       seq: sqliteNumber(row.seq),
@@ -489,70 +487,66 @@ export function readTranscriptStatsBatchReadOnlySync(
 /** Reads the latest visible assistant text from SQLite transcript rows in reverse order. */
 export function loadLatestAssistantText(
   scope: SessionTranscriptReadScope,
-  options: { includeTranscriptOnlyBranchAssistant?: boolean } = {},
 ): LatestTranscriptAssistantText | undefined {
   const resolved = resolveSqliteTranscriptReadScope(scope);
   const database = openBranchAgentDatabase(toDatabaseOptions(resolved));
-  return readLatestAssistantTextFromDatabase(database, resolved, options);
+  return readLatestAssistantTextFromDatabase(database, resolved);
 }
 
 /** Checks physical message history without loading payloads covered by the identity index. */
-export async function hasSessionTranscriptMessage(
-  scope: SessionTranscriptReadScope,
-): Promise<boolean> {
-  return readRestoredSessionTranscript(scope, () => {
-    const resolved = resolveSqliteTranscriptReadScope(scope);
-    const database = openBranchAgentDatabase(toDatabaseOptions(resolved));
-    const db = getSessionKysely(database.db);
-    // Classification can change during a concurrent rewrite. Both probes must see
-    // the same snapshot or an always-present message can disappear between them.
-    return runSqliteDeferredTransactionSync(
-      database.db,
-      () => {
-        assertSessionTranscriptHot(database.db, resolved.sessionId);
-        const message = executeSqliteQueryTakeFirstSync(
-          database.db,
-          db
-            .selectFrom("transcript_event_identities")
-            .select("seq")
-            .where("session_id", "=", resolved.sessionId)
-            .where("event_type", "=", "message")
-            .limit(1),
-        );
-        if (message) {
-          return true;
-        }
-        // Exact imports, id-less records, and nullable types need raw inspection.
-        // Build the classified sequence set once; a type-selecting join can rescan
-        // the covering type index for every event in a metadata-only transcript.
-        const classified = db
+export function hasSessionTranscriptMessageInDatabase(
+  database: Pick<BranchAgentDatabase, "db" | "path">,
+  sessionId: string,
+): boolean {
+  const db = getSessionKysely(database.db);
+  // Classification can change during a concurrent rewrite. Both probes must see
+  // the same snapshot or an always-present message can disappear between them.
+  return runSqliteDeferredTransactionSync(
+    database.db,
+    () => {
+      assertSessionTranscriptHot(database.db, sessionId);
+      const message = executeSqliteQueryTakeFirstSync(
+        database.db,
+        db
           .selectFrom("transcript_event_identities")
           .select("seq")
-          .where("session_id", "=", resolved.sessionId)
-          .where("event_type", "is not", null);
-        const rows = iterateSqliteQuerySync(
-          database.db,
-          db
-            .selectFrom("transcript_events")
-            .select(transcriptEventNavigationSql().as("event_json"))
-            .where("session_id", "=", resolved.sessionId)
-            .where("seq", "not in", classified)
-            .orderBy("seq", "desc"),
-        );
-        return (
-          findTranscriptEventInRows(
-            rows,
-            (event) =>
-              typeof event === "object" &&
-              event !== null &&
-              "type" in event &&
-              event.type === "message",
-          ) !== undefined
-        );
-      },
-      { databaseLabel: database.path, operationLabel: "session transcript presence" },
-    );
-  });
+          .where("session_id", "=", sessionId)
+          .where("event_type", "=", "message")
+          .limit(1),
+      );
+      if (message) {
+        return true;
+      }
+      // Exact imports, id-less records, and nullable types need raw inspection.
+      // Build the classified sequence set once; a type-selecting join can rescan
+      // the covering type index for every event in a metadata-only transcript.
+      const classified = db
+        .selectFrom("transcript_event_identities")
+        .select("seq")
+        .where("session_id", "=", sessionId)
+        .where("event_type", "is not", null);
+      const rows = iterateSqliteQuerySync(
+        database.db,
+        db
+          .selectFrom("transcript_events")
+          .select(transcriptEventNavigationSql().as("event_json"))
+          .where("session_id", "=", sessionId)
+          .where("seq", "not in", classified)
+          .orderBy("seq", "desc"),
+      );
+      return (
+        findTranscriptEventInRows(
+          rows,
+          (event) =>
+            typeof event === "object" &&
+            event !== null &&
+            "type" in event &&
+            event.type === "message",
+        ) !== undefined
+      );
+    },
+    { databaseLabel: database.path, operationLabel: "session transcript presence" },
+  );
 }
 
 export function findTranscriptEventInDatabase(
@@ -652,16 +646,5 @@ export function readTranscriptEventId(event: TranscriptEvent): string | undefine
 }
 
 export function readEventTimestamp(event: unknown): number | undefined {
-  if (!isRecord(event)) {
-    return undefined;
-  }
-  const value = event.timestamp;
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value !== "string" || !value.trim()) {
-    return undefined;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  return parseDateFirstTimestampMs(asOptionalRecord(event)?.timestamp);
 }

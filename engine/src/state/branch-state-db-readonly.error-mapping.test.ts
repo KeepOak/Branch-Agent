@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { OwnedWorkerTask } from "@branch/worker-runtime";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import * as sqliteRuntime from "../infra/bun-sqlite-library.js";
-import { createRetainedOperation, type RetainedOperation } from "../infra/retained-operation.js";
 import { createOwnedWorkerTaskPoolMock } from "../infra/worker-task-pool.mock.test-support.js";
-import type { OwnedWorkerTask, RetainedWorkerTask } from "../infra/worker-task-pool.types.js";
+import type { RetainedWorkerTask } from "../infra/worker-task-pool.types.js";
 import { PluginBlobStoreError } from "../plugin-state/plugin-blob-store.types.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import {
@@ -13,25 +13,15 @@ import {
   closeBranchStateDatabaseByPathAsync,
 } from "./branch-state-db-cache.js";
 import { executeExistingBranchStateRead } from "./branch-state-db-readonly.js";
+import { observeAsyncFixture } from "./branch-state-db-readonly.test-support.js";
 import { withExistingBranchStateSchema } from "./branch-state-db-schema-policy.js";
 import type {
-  BranchStateReadPhase,
+  BranchStateReadReceipt,
   BranchStateReadReply,
   BranchStateReadRequest,
 } from "./branch-state-read.types.js";
 import { captureBranchStateReadWorkerContext } from "./branch-state-worker-context.js";
 import { encodeBranchStateWorkerError } from "./branch-state-worker-error.js";
-
-// These awaited fixtures observe Promise settlement; they do not prove blocked-host progress.
-function observeAsyncFixture<T>(run: () => Promise<T>): RetainedOperation<T> {
-  const completion = createRetainedOperation<T>(() => undefined);
-  try {
-    void run().then(completion.resolve, completion.reject);
-  } catch (error) {
-    completion.reject(error);
-  }
-  return completion.operation;
-}
 
 const mock = vi.hoisted(() => ({
   run: vi.fn<() => Promise<BranchStateReadReply>>(),
@@ -93,7 +83,10 @@ function source() {
 }
 function mapper() {
   const mapped = new Error("mapped read failure");
-  return { mapped, mapError: vi.fn((_error: unknown, _phase: BranchStateReadPhase) => mapped) };
+  return {
+    mapped,
+    mapError: vi.fn((_error: unknown, _phase: BranchStateReadReceipt["phase"]) => mapped),
+  };
 }
 
 it.each([false, true])(
@@ -119,141 +112,115 @@ it.each([false, true])(
   },
 );
 
-it.each(["retired", "different-source"] as const)(
-  "maps %s captured authority before dispatching a read",
+it.each(["retired", "different-source", "capture", "schema"] as const)(
+  "maps %s authority failure once before dispatching a read",
   async (kind) => {
     const options = source();
-    const context = captureBranchStateReadWorkerContext(options);
-    if (kind === "retired") {
-      await closeBranchStateDatabaseByPathAsync(options.path);
-    }
-    const { mapped, mapError } = mapper();
-    await expect(
-      Promise.resolve().then(() =>
-        executeExistingBranchStateRead(
-          kind === "different-source" ? source() : options,
-          { type: "fleet.list" },
-          { context, mapError },
-        ),
-      ),
-    ).rejects.toBe(mapped);
-    expect(mapError).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining(
-        kind === "retired"
-          ? { code: "STATE_DATABASE_READ_ADMISSION_INVALIDATED" }
-          : { message: "Shared-state read context does not match its selected source" },
-      ),
-      "before-read",
-    );
-    expect(mock.run).not.toHaveBeenCalled();
-    expect(mock.close).not.toHaveBeenCalled();
-  },
-);
-
-it("maps synchronous read admission refusal once before read work", () => {
-  const options = source();
-  const original = new Error("original read admission refusal");
-  vi.mocked(captureBranchStateReadWorkerContext).mockImplementationOnce(() => {
-    throw original;
-  });
-  const { mapped, mapError } = mapper();
-  expect(() =>
-    executeExistingBranchStateRead(options, { type: "fleet.list" }, { mapError }),
-  ).toThrow(mapped);
-  expect(mapError).toHaveBeenCalledExactlyOnceWith(original, "before-read");
-  expect(mock.run).not.toHaveBeenCalled();
-  expect(mock.close).not.toHaveBeenCalled();
-});
-
-it.each(["read admission", "schema scope"] as const)(
-  "maps captured %s retirement once before read work",
-  async (kind) => {
-    const options = source();
+    const original = new Error("original read admission refusal");
     const context =
-      kind === "schema scope"
+      kind === "schema"
         ? withExistingBranchStateSchema({ path: options.path }, () =>
             captureBranchStateReadWorkerContext(options),
           )
-        : captureBranchStateReadWorkerContext(options);
-    if (kind === "read admission") {
+        : kind === "capture"
+          ? undefined
+          : captureBranchStateReadWorkerContext(options);
+    if (kind === "retired") {
       await closeBranchStateDatabaseByPathAsync(options.path);
     }
+    if (kind === "capture") {
+      vi.mocked(captureBranchStateReadWorkerContext).mockImplementationOnce(() => {
+        throw original;
+      });
+    }
     const { mapped, mapError } = mapper();
-    expect(() =>
-      executeExistingBranchStateRead(options, { type: "fleet.list" }, { context, mapError }),
-    ).toThrow(mapped);
+    const read = () =>
+      executeExistingBranchStateRead(
+        kind === "different-source" ? source() : options,
+        { type: "fleet.list" },
+        { context, mapError },
+      );
+    if (kind === "capture" || kind === "schema") {
+      expect(read).toThrow(mapped);
+    } else {
+      await expect(Promise.resolve().then(read)).rejects.toBe(mapped);
+    }
     expect(mapError).toHaveBeenCalledOnce();
     expect(mapError.mock.calls[0]?.[1]).toBe("before-read");
+    if (kind !== "schema") {
+      expect(mapError).toHaveBeenCalledExactlyOnceWith(
+        kind === "capture"
+          ? original
+          : expect.objectContaining(
+              kind === "retired"
+                ? { code: "STATE_DATABASE_READ_ADMISSION_INVALIDATED" }
+                : { message: "Shared-state read context does not match its selected source" },
+            ),
+        "before-read",
+      );
+    }
     expect(mock.run).not.toHaveBeenCalled();
     expect(mock.close).not.toHaveBeenCalled();
   },
 );
 
-it("maps an authoritative pre-read error after cleanup", async () => {
-  const original = new Error("source admission failed");
-  mock.run.mockResolvedValue({
-    ok: false,
-    message: original.message,
-    error: encodeBranchStateWorkerError(original, { includeOrdinary: true }),
-  });
-  const { mapped, mapError } = mapper();
-  await expect(
-    executeExistingBranchStateRead(source(), { type: "fleet.list" }, { mapError }),
-  ).rejects.toBe(mapped);
-  expect(mapError).toHaveBeenCalledExactlyOnceWith(
-    expect.objectContaining({ message: original.message }),
-    "before-read",
-  );
-  expect(mock.close).toHaveBeenCalledOnce();
-  expect(mock.close.mock.invocationCallOrder[0]).toBeLessThan(
-    mapError.mock.invocationCallOrder[0]!,
-  );
-});
-
-it("maps the full Blob query and cleanup error graph after observing its receipt", async () => {
-  const original = new PluginBlobStoreError("query failed", {
-    code: "PLUGIN_BLOB_CORRUPT",
-    operation: "lookup",
-    path: "/fixture/blob.sqlite",
-  });
-  mock.run.mockResolvedValue({
-    ok: false,
-    sourceAdmitted: true,
-    message: original.message,
-    error: encodeBranchStateWorkerError(original),
-  });
-  const cleanup = new Error("cleanup failed");
-  mock.close.mockRejectedValueOnce(cleanup);
-  const { mapped, mapError } = mapper();
-  await expect(
-    executeExistingBranchStateRead(source(), { type: "fleet.list" }, { mapError }),
-  ).rejects.toBe(mapped);
-  expect(mapError).toHaveBeenCalledOnce();
-  const [error, phase] = mapError.mock.calls[0]!;
-  expect(phase).toBe("read");
-  expect(error).toBeInstanceOf(AggregateError);
-  if (!(error instanceof AggregateError)) {
-    throw new Error("Expected aggregate");
-  }
-  expect(error.errors[0]).toBeInstanceOf(PluginBlobStoreError);
-  expect(error.errors[0]).toMatchObject({
-    code: original.code,
-    operation: original.operation,
-    path: original.path,
-  });
-  expect(error.errors[1]).toBe(cleanup);
-  expect(error.cause).toBe(error.errors[0]);
-});
-
-it("does not infer pre-read admission from an unobserved transport failure", async () => {
-  const original = new Error("no authoritative reply");
-  mock.run.mockRejectedValue(original);
-  const { mapped, mapError } = mapper();
-  await expect(
-    executeExistingBranchStateRead(source(), { type: "fleet.list" }, { mapError }),
-  ).rejects.toBe(mapped);
-  expect(mapError).toHaveBeenCalledExactlyOnceWith(original, "unobserved");
-});
+it.each(["before-read", "read", "unobserved"] as const)(
+  "maps the complete %s failure after transport cleanup",
+  async (phase) => {
+    const original =
+      phase === "read"
+        ? new PluginBlobStoreError("query failed", {
+            code: "PLUGIN_BLOB_CORRUPT",
+            operation: "lookup",
+            path: "/fixture/blob.sqlite",
+          })
+        : new Error("source admission or transport failed");
+    const cleanup = new Error("cleanup failed");
+    if (phase === "unobserved") {
+      mock.run.mockRejectedValue(original);
+    } else {
+      mock.run.mockResolvedValue({
+        ok: false,
+        ...(phase === "read" ? { sourceAdmitted: true } : {}),
+        message: original.message,
+        error: encodeBranchStateWorkerError(original, { includeOrdinary: true }),
+      });
+      if (phase === "read") {
+        mock.close.mockRejectedValueOnce(cleanup);
+      }
+    }
+    const { mapped, mapError } = mapper();
+    await expect(
+      executeExistingBranchStateRead(source(), { type: "fleet.list" }, { mapError }),
+    ).rejects.toBe(mapped);
+    expect(mapError).toHaveBeenCalledOnce();
+    expect(mock.close).toHaveBeenCalledOnce();
+    expect(mock.close.mock.invocationCallOrder[0]).toBeLessThan(
+      mapError.mock.invocationCallOrder[0]!,
+    );
+    const [error, observedPhase] = mapError.mock.calls[0]!;
+    expect(observedPhase).toBe(phase);
+    if (phase === "read") {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) {
+        throw new Error("Expected aggregate");
+      }
+      expect(error.errors[0]).toBeInstanceOf(PluginBlobStoreError);
+      expect(error.errors[0]).toMatchObject({
+        code: "PLUGIN_BLOB_CORRUPT",
+        operation: "lookup",
+        path: "/fixture/blob.sqlite",
+      });
+      expect(error.errors[1]).toBe(cleanup);
+      expect(error.cause).toBe(error.errors[0]);
+    } else {
+      expect(mapError).toHaveBeenCalledExactlyOnceWith(
+        phase === "unobserved" ? original : expect.objectContaining({ message: original.message }),
+        phase,
+      );
+    }
+  },
+);
 
 it("retains a successful receipt through failed task cleanup and canonical retry", async () => {
   const options = source();

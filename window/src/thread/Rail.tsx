@@ -1,52 +1,74 @@
-// The position rail (the preview's rail-pb18): one tick per message, held at the right edge while the thread scrolls.
-// Your messages are short ticks, the Trunk's are long; the one nearest the middle of the view is dark. Click or
-// Enter jumps there. Shown only when the thread is wider than 960 px and taller than 360 px, with two messages or more.
-import { useEffect, useState, type KeyboardEvent, type RefObject } from "react";
+// The preview's turn rail: transcript ticks, previews and bookmarks.
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { Block } from "./model";
+import { turnOf } from "./layout";
 
-type Tick = { key: string; mine: boolean; label: string };
-
+type Tick = { key: string; mine: boolean; label: string; title: string; body: string; time: string; needs: boolean };
 export function railTicks(blocks: readonly Block[]): Tick[] {
-  return blocks
-    .filter((b): b is Extract<Block, { kind: "user" | "text" }> => b.kind === "user" || b.kind === "text")
-    .map((b) => ({ key: b.key, mine: b.kind === "user", label: b.text.replace(/\s+/g, " ").trim().slice(0, 80) }));
+  const ticks: Tick[] = [];
+  for (let i = 0; i < blocks.length;) {
+    const turn = turnOf(blocks, i);
+    i += turn.length;
+    const question = turn[0]?.kind === "user" ? turn[0] : undefined;
+    let reply: Extract<Block, { kind: "text" }> | undefined;
+    let needs = false;
+    for (const block of turn) {
+      if (block.kind === "text" && !reply) reply = block;
+      if (block.kind === "approval" && block.approval.state === "pending") needs = true;
+    }
+    const anchor = question ?? reply;
+    if (!anchor || (anchor.kind !== "user" && anchor.kind !== "text")) continue;
+    const stamp = anchor.meta?.timestamp ?? reply?.meta?.timestamp;
+    ticks.push({ key: anchor.key, mine: anchor.kind === "user", label: anchor.text.replace(/\s+/g, " ").trim().slice(0, 80),
+      title: anchor.text, body: reply?.text ?? anchor.text, time: stamp ? new Date(stamp).toLocaleString() : "",
+      needs });
+  }
+  return ticks;
 }
-
 const target = (root: HTMLElement | null, key: string) =>
   root?.querySelector<HTMLElement>(`[data-block-key="${CSS.escape(key)}"]`)?.firstElementChild as HTMLElement | null | undefined;
-
+function saved(sessionKey?: string | null): Set<string> {
+  if (!sessionKey) return new Set();
+  try { return new Set(JSON.parse(localStorage.getItem(`branch:turn-bookmarks:${sessionKey}`) ?? "[]") as string[]); }
+  catch { return new Set(); }
+}
 function useRoomy(scroller: RefObject<HTMLDivElement | null>): boolean {
   const [roomy, setRoomy] = useState(false);
   useEffect(() => {
     const el = scroller.current;
-    if (!el || typeof ResizeObserver !== "function") return;
-    const check = () => setRoomy(el.clientWidth > 960 && el.clientHeight > 360);
+    if (!el) return;
+    const check = () => setRoomy(el.clientWidth > 760 && el.clientHeight > 360);
+    if (typeof ResizeObserver !== "function") { check(); return; }
     const ro = new ResizeObserver(check);
     ro.observe(el);
+    window.addEventListener("resize", check);
     check();
-    return () => ro.disconnect();
+    return () => { ro.disconnect(); window.removeEventListener("resize", check); };
   }, [scroller]);
   return roomy;
 }
-
-export function Rail({ scroller, blocks }: { scroller: RefObject<HTMLDivElement | null>; blocks: readonly Block[] }) {
+export function Rail({ scroller, blocks, sessionKey }: { scroller: RefObject<HTMLDivElement | null>; blocks: readonly Block[]; sessionKey?: string | null }) {
   const roomy = useRoomy(scroller);
-  const ticks = railTicks(blocks);
+  const ticks = useMemo(() => railTicks(blocks), [blocks]);
   const [on, setOn] = useState("");
+  const [preview, setPreview] = useState("");
+  const [bookmarks, setBookmarks] = useState(() => saved(sessionKey));
+  const [pointerY, setPointerY] = useState<number | null>(null);
+  const timer = useRef<number | undefined>(undefined);
   const signature = ticks.map((t) => t.key).join(" ");
+  useEffect(() => setBookmarks(saved(sessionKey)), [sessionKey]);
   useEffect(() => {
     const el = scroller.current;
     if (!el || !roomy) return;
     const mark = () => {
-      const r = el.getBoundingClientRect();
-      const mid = r.top + el.clientHeight / 2;
+      const mid = el.getBoundingClientRect().top + 80;
       let best = "", distance = Infinity;
-      for (const key of signature.split(" ")) {
-        const box = target(el, key)?.getBoundingClientRect();
+      for (const tick of ticks) {
+        const box = target(el, tick.key)?.getBoundingClientRect();
         if (!box) continue;
-        const d = Math.abs((box.top + box.bottom) / 2 - mid);
-        if (d < distance) [best, distance] = [key, d];
+        const d = Math.abs(box.top - mid);
+        if (d < distance) [best, distance] = [tick.key, d];
       }
       setOn(best);
     };
@@ -54,30 +76,83 @@ export function Rail({ scroller, blocks }: { scroller: RefObject<HTMLDivElement 
     el.addEventListener("scroll", mark, { passive: true });
     return () => el.removeEventListener("scroll", mark);
   }, [scroller, roomy, signature]);
-  // Held against the whole conversation column (thread and message box), as the preview hangs it on #main.
   const host = scroller.current?.closest<HTMLElement>(".conversation-column") ?? null;
-  if (!roomy || ticks.length < 2 || !host) return null;
-  const go = (key: string) => target(scroller.current, key)?.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    const buttons = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
+  function go(key: string) {
+    const node = target(scroller.current, key);
+    if (!node) return;
+    setPreview("");
+    node.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    node.classList.remove("turn-flash");
+    void node.offsetWidth;
+    node.classList.add("turn-flash");
+    window.setTimeout(() => node.classList.remove("turn-flash"), 1400);
+  }
+  useEffect(() => {
+    const jump = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionKey: string; blockKey: string }>).detail;
+      if (detail.sessionKey === sessionKey) go(detail.blockKey);
+    };
+    window.addEventListener("branch:turn-jump", jump);
+    return () => window.removeEventListener("branch:turn-jump", jump);
+  }, [sessionKey, scroller]);
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown") || !roomy) return;
+      const el = scroller.current;
+      if (!el) return;
+      const mid = el.getBoundingClientRect().top + 80;
+      const choices = ticks.filter((t) => t.mine).map((t) => ({ key: t.key, top: target(el, t.key)?.getBoundingClientRect().top ?? 0 }));
+      const hit = event.key === "ArrowDown" ? choices.find((t) => t.top > mid + 4) : choices.filter((t) => t.top < mid - 4).at(-1);
+      if (hit) { event.preventDefault(); go(hit.key); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [scroller, roomy, signature]);
+  if (!roomy || ticks.length < 4 || !host) return null;
+  const toggle = (key: string) => {
+    const next = new Set(bookmarks);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    setBookmarks(next);
+    try { if (sessionKey) localStorage.setItem(`branch:turn-bookmarks:${sessionKey}`, JSON.stringify([...next])); } catch { /* storage unavailable */ }
+    window.dispatchEvent(new Event("branch:turn-bookmarks-changed"));
+  };
+  const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>(".tick")];
     let at = buttons.findIndex((b) => b === document.activeElement);
     if (at < 0) at = Math.max(0, ticks.findIndex((t) => t.key === on));
     const focus = (n: number) => buttons[Math.max(0, Math.min(buttons.length - 1, n))]?.focus();
-    if (e.key === "ArrowDown" || e.key === "ArrowRight") focus(at + 1);
-    else if (e.key === "ArrowUp" || e.key === "ArrowLeft") focus(at - 1);
-    else if (e.key === "Home") focus(0);
-    else if (e.key === "End") focus(buttons.length - 1);
-    else if (e.key === "Escape") scroller.current?.focus();
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") focus(at + 1);
+    else if (event.key === "ArrowUp" || event.key === "ArrowLeft") focus(at - 1);
+    else if (event.key === "Home") focus(0);
+    else if (event.key === "End") focus(buttons.length - 1);
+    else if (event.key === "Enter" || event.key === " ") go(buttons[at]?.dataset.key ?? "");
+    else if (event.key === "Escape") scroller.current?.focus();
     else return;
-    e.preventDefault();
+    event.preventDefault();
   };
-  return createPortal(
-    <div className="rail" role="listbox" aria-label="Where you are in this conversation" tabIndex={0} onKeyDown={onKey} data-testid="thread-rail">
-      {ticks.map((t) => (
-        <button key={t.key} type="button" role="option" tabIndex={-1} className={`tick${t.mine ? " me" : ""}${t.key === on ? " on" : ""}`}
-          aria-selected={t.key === on} aria-label={t.label} title={t.label} onClick={() => go(t.key)} />
-      ))}
-    </div>,
-    host,
-  );
+  const current = ticks.find((t) => t.key === preview);
+  return createPortal(<>
+    <div className="rail" role="listbox" aria-label="Turns in this conversation. Arrow keys move, Enter jumps." tabIndex={0} onKeyDown={onKey} data-testid="thread-rail"
+      onPointerMove={(event) => {
+        setPointerY(event.clientY);
+        const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>(".tick")];
+        buttons.forEach((button) => {
+          const box = button.getBoundingClientRect();
+          const distance = Math.abs(box.top + box.height / 2 - event.clientY);
+          button.style.setProperty("--mag", String(Math.max(0, 1 - distance / 30) ** 2));
+        });
+        const near = buttons.reduce<HTMLButtonElement | null>((best, button) => !best || Math.abs(button.getBoundingClientRect().top - event.clientY) < Math.abs(best.getBoundingClientRect().top - event.clientY) ? button : best, null);
+        window.clearTimeout(timer.current);
+        if (near) timer.current = window.setTimeout(() => setPreview(near.dataset.key ?? ""), preview ? 0 : 120);
+      }} onPointerLeave={(event) => { setPointerY(null); event.currentTarget.querySelectorAll<HTMLButtonElement>(".tick").forEach((button) => button.style.removeProperty("--mag")); window.clearTimeout(timer.current); timer.current = window.setTimeout(() => setPreview(""), 150); }}>
+      {ticks.map((tick) => <button key={tick.key} type="button" role="option" tabIndex={-1} data-key={tick.key}
+        className={`tick${tick.mine ? " me" : ""}${tick.key === on ? " on" : ""}${tick.needs ? " need" : ""}${bookmarks.has(tick.key) ? " bookmarked" : ""}`}
+        aria-selected={tick.key === on} aria-label={tick.label} onClick={() => go(tick.key)} onFocus={() => setPreview(tick.key)} />)}
+    </div>
+    {current ? <div className="turn-preview" role="tooltip" onPointerEnter={() => window.clearTimeout(timer.current)} onPointerLeave={() => setPreview("")}
+      style={{ right: Math.max(8, window.innerWidth - host.getBoundingClientRect().right + 42), top: Math.max(8, Math.min(window.innerHeight - 130, (pointerY ?? host.getBoundingClientRect().top + 100) - 50)) }}>
+      <div className="turn-preview-head"><b>{current.title.slice(0, 70)}{current.title.length > 70 ? "…" : ""}</b><button type="button" aria-label={bookmarks.has(current.key) ? "Remove bookmark" : "Bookmark this turn"} aria-pressed={bookmarks.has(current.key)} onClick={() => toggle(current.key)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5h8v11l-4-3-4 3z" /></svg></button></div>
+      <p>{current.body.slice(0, 180)}{current.body.length > 180 ? "…" : ""}</p>{current.time ? <small>{current.time}</small> : null}
+    </div> : null}
+  </>, host);
 }

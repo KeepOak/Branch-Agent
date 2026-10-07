@@ -1,10 +1,10 @@
 import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import { PassThrough } from "node:stream";
-import type { ChannelPlugin } from "branch/plugin-sdk/channel-core";
 import type { BranchPluginApi } from "branch/plugin-sdk/channel-entry-contract";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
+import type { PluginServiceSchedulerV1 } from "branch/plugin-sdk/plugin-entry";
 import { createPluginRuntimeStore, type PluginRuntime } from "branch/plugin-sdk/runtime-store";
 import { discordPlugin } from "../../channel-plugin-api.js";
 import { registerDiscordTranscriptSourceProvider } from "../../transcripts-source-api.js";
@@ -33,6 +33,7 @@ export const lateText = "Synthetic late STT must not enter the stopped capture."
 /** Owns only external Discord/codec/STT edges; no routing, authorization or dispatch mocks. */
 export function createDiscordGatewayCaptureFixture(params: {
   cfg: BranchConfig;
+  scheduler: PluginServiceSchedulerV1;
   test: { expect: typeof import("vitest").expect; vi: typeof import("vitest").vi };
 }) {
   const { expect, vi: testVi } = params.test;
@@ -187,6 +188,7 @@ export function createDiscordGatewayCaptureFixture(params: {
   }
   const createManager = (cfg: BranchConfig) => {
     const createdManager = new DiscordVoiceManager({
+      scheduler: params.scheduler,
       client,
       cfg,
       discordConfig: cfg.channels!.discord!.accounts![captureTarget.accountId]!,
@@ -292,8 +294,7 @@ export function createDiscordGatewayCaptureFixture(params: {
   return {
     register(api: BranchPluginApi) {
       runtimeStore.setRuntime(api.runtime);
-      // Same probe-type erasure used by defineBundledChannelEntry at registration.
-      api.registerChannel({ plugin: discordPlugin as ChannelPlugin });
+      api.registerChannel({ plugin: discordPlugin });
       registerDiscordTranscriptSourceProvider(api);
     },
     bindPublishedRuntime() {

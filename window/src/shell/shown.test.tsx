@@ -57,7 +57,7 @@ describe("What's shown", () => {
     await act(async () => root?.render(<StatusBar {...facts} usage={usage} open={null} onItem={() => {}} />));
     const ring = host.querySelector("[data-testid=sb-usage]")?.firstElementChild ?? null;
     expect(hideTarget(ring)).toBe("usage");
-    expect(hideTarget(host.querySelector("[data-testid=sb-gateway] span"))).toBe("gateway");
+    expect(hideTarget(host.querySelector("[data-testid=sb-gateway] svg"))).toBe("gateway");
     expect(hideTarget(host.querySelector("[data-testid=sb-running]"))).toBeNull();
     const heading = document.body.appendChild(document.createElement("button"));
     heading.dataset.hide = "projects";

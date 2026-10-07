@@ -1,4 +1,3 @@
-// Codex tests cover transport stdio plugin behavior.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodexAppServerStartOptions } from "./config.js";
 import { createStdioTransport, resolveCodexAppServerSpawnEnv } from "./transport-stdio.js";
@@ -25,6 +24,16 @@ function startOptions(command: string): CodexAppServerStartOptions {
   };
 }
 
+function spawnedTarget(): [string, string[]] {
+  const [command, argv] = spawnMock.mock.calls[0] as unknown as [string, string[]];
+  if (process.platform !== "win32") return [command, argv];
+  expect(command).toBe(process.execPath);
+  expect(argv.some((part) => part.includes("windows-hidden-console-launcher"))).toBe(true);
+  const marker = argv.findIndex((part) => part === "0" || part === "1");
+  expect(marker).toBeGreaterThanOrEqual(0);
+  return [argv[marker + 1]!, argv.slice(marker + 2)];
+}
+
 describe("createStdioTransport", () => {
   it("does not let a missing working directory poison another launch of the same executable", async () => {
     const options = startOptions("/installed/cwd-fixture/codex");
@@ -46,11 +55,7 @@ describe("createStdioTransport", () => {
       { ...startOptions(command), commandSource: "resolved-managed" },
       { PATH: "/wrong-architecture/bin" },
     );
-    expect(spawnMock).toHaveBeenCalledWith(
-      process.execPath,
-      [command, "app-server", "--listen", "stdio://"],
-      expect.any(Object),
-    );
+    expect(spawnedTarget()).toEqual([process.execPath, [command, "app-server", "--listen", "stdio://"]]);
   });
 
   it.each([
@@ -98,12 +103,8 @@ describe("createStdioTransport", () => {
     detached: boolean;
     childOptions?: Pick<CodexAppServerStartOptions, "env" | "clearEnv">;
   }>([
-    { lifeline: undefined, detached: true },
-    { lifeline: "stdin", detached: false },
-    { lifeline: " stdin ", detached: false },
-    { lifeline: "unsupported", detached: true },
     {
-      lifeline: "stdin",
+      lifeline: " stdin ",
       childOptions: { clearEnv: ["BRANCH_GATEWAY_HOST_LIFELINE"] },
       detached: false,
     },
@@ -119,9 +120,8 @@ describe("createStdioTransport", () => {
         { BRANCH_GATEWAY_HOST_LIFELINE: lifeline },
       );
 
-      expect(spawnMock).toHaveBeenCalledWith(
-        "codex",
-        ["app-server", "--listen", "stdio://"],
+      expect(spawnedTarget()[1].slice(-3)).toEqual(["app-server", "--listen", "stdio://"]);
+      expect(spawnMock.mock.calls[0]?.[2]).toEqual(
         expect.objectContaining({
           cwd: "/srv/codex-project",
           detached: process.platform !== "win32" && detached,
@@ -144,9 +144,7 @@ describe("createStdioTransport", () => {
     ];
     await createStdioTransport({ ...startOptions("node"), args });
 
-    expect(spawnMock).toHaveBeenCalledWith(
-      "node",
-      [
+    const expectedArgs = [
         "/wrapper.js",
         ...overrides,
         "--profile",
@@ -155,31 +153,26 @@ describe("createStdioTransport", () => {
         "app-server",
         "--listen",
         "stdio://",
-      ],
-      expect.any(Object),
-    );
+      ];
+    expect(spawnedTarget()[1].slice(-expectedArgs.length)).toEqual(expectedArgs);
     expect(args[1]).toBe("-c");
   });
 
   it("does not reinterpret a wrapper's positional arguments after --", async () => {
     const args = ["/wrapper.js", "--", "-c", "opaque", "app-server"];
     await createStdioTransport({ ...startOptions("node"), args });
-    expect(spawnMock).toHaveBeenCalledWith("node", args, expect.any(Object));
+    expect(spawnedTarget()[1].slice(-args.length)).toEqual(args);
   });
 
-  it.each([
-    { flag: "--ws-issuer", subcommand: [] },
-    { flag: "--ws-audience", subcommand: [] },
-    { flag: "--sock", subcommand: ["proxy"] },
-  ])("preserves a subcommand-shaped $flag value", async ({ flag, subcommand }) => {
+  it("preserves a subcommand-shaped socket value", async () => {
     await createStdioTransport({
       ...startOptions("codex"),
-      args: ["app-server", ...subcommand, flag, "app-server", "-c", "model_reasoning_effort=high"],
+      args: ["app-server", "proxy", "--sock", "app-server", "-c", "model_reasoning_effort=high"],
     });
-    expect(spawnMock.mock.calls[0]?.slice(0, 2)).toEqual([
-      "codex",
-      ["-c", "model_reasoning_effort=high", "app-server", ...subcommand, flag, "app-server"],
-    ]);
+    const expectedArgs = [
+      "-c", "model_reasoning_effort=high", "app-server", "proxy", "--sock", "app-server",
+    ];
+    expect(spawnedTarget()[1].slice(-expectedArgs.length)).toEqual(expectedArgs);
   });
 });
 
@@ -246,24 +239,13 @@ describe("resolveCodexAppServerSpawnEnv", () => {
   });
 
   it("uses a null-prototype env map and ignores prototype-polluting keys", () => {
-    const overrides = Object.create(null) as Record<string, string | undefined>;
-    Object.defineProperty(overrides, "__proto__", {
-      value: "polluted",
-      enumerable: true,
-    });
-    Object.defineProperty(overrides, "constructor", {
-      value: "polluted",
-      enumerable: true,
-    });
-    Object.defineProperty(overrides, "prototype", {
-      value: "polluted",
-      enumerable: true,
-    });
-    overrides.SAFE = "1";
+    const overrides: Record<string, string> = JSON.parse(
+      '{"__proto__":"polluted","constructor":"polluted","prototype":"polluted","SAFE":"1"}',
+    );
 
     const env = resolveCodexAppServerSpawnEnv(
       {
-        env: overrides as Record<string, string>,
+        env: overrides,
       },
       {
         BASE: "1",

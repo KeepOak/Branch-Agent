@@ -4,6 +4,18 @@ import type { resolveGatewayClientBootstrap } from "../gateway/client-bootstrap.
 const mockState = vi.hoisted(() => ({
   clientOptions: null as Record<string, unknown> | null,
   autoHello: true,
+  order: [] as string[],
+  prepare: null as null | Promise<void>,
+}));
+
+const identity = vi.hoisted(() => ({
+  deviceId: "device-1",
+  publicKeyPem: "pub",
+  privateKeyPem: "priv",
+}));
+
+vi.mock("../infra/device-identity.js", () => ({
+  loadOrCreateDeviceIdentity: () => identity,
 }));
 
 const resolveGatewayClientBootstrapMock = vi.hoisted(() =>
@@ -28,6 +40,11 @@ vi.mock("../gateway/client-bootstrap.js", () => ({
 }));
 
 vi.mock("../gateway/client.js", () => ({
+  prepareGatewayClientDeviceAuth: vi.fn(async (opts: { deviceIdentity: unknown }) => {
+    mockState.order.push(`prepare:${(opts.deviceIdentity as typeof identity).deviceId}`);
+    await mockState.prepare;
+    mockState.order.push("prepared");
+  }),
   GatewayClient: class MockGatewayClient {
     private readonly options: Record<string, unknown>;
 
@@ -37,6 +54,7 @@ vi.mock("../gateway/client.js", () => ({
     }
 
     start(): void {
+      mockState.order.push("start");
       if (!mockState.autoHello) {
         return;
       }
@@ -66,6 +84,7 @@ vi.mock("../../packages/gateway-client/src/readiness.js", () => ({
 }));
 
 vi.mock("../gateway/method-scopes.js", () => ({
+  ADMIN_SCOPE: "operator.admin",
   APPROVALS_SCOPE: "operator.approvals",
   READ_SCOPE: "operator.read",
   WRITE_SCOPE: "operator.write",
@@ -83,6 +102,28 @@ describe("BranchChannelBridge startup", () => {
   beforeEach(() => {
     mockState.clientOptions = null;
     mockState.autoHello = true;
+    mockState.order = [];
+    mockState.prepare = null;
+  });
+
+  it("prepares this process's device auth store before the socket opens", async () => {
+    let release = () => undefined as void;
+    mockState.prepare = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const bridge = new BranchChannelBridge({} as never, {
+      claudeChannelMode: "off",
+      verbose: false,
+    });
+    const started = bridge.start();
+    await vi.waitFor(() => expect(mockState.order).toEqual(["prepare:device-1"]));
+    // A slow first store read (a fresh state dir) must not open the socket inside the gateway's pre-connect budget.
+    expect(mockState.clientOptions).toBeNull();
+    release();
+    await started;
+    expect(mockState.order).toEqual(["prepare:device-1", "prepared", "start"]);
+    expect(mockState.clientOptions?.deviceIdentity).toBe(identity);
+    await bridge.close();
   });
 
   it("passes the resolved TLS fingerprint to the Gateway client", async () => {

@@ -470,46 +470,25 @@ export function renderCardDetailsPanel(props: CanopyProps) {
                                 ${t("canopy.detailExecutionOptions")}
                               </summary>
                               <div class="canopy-detail__engine-groups">
-                                ${
-                                  props.canModelOverride !== false
-                                    ? html`
-                                        <div class="canopy-detail__engine-group">
-                                          <span>${t("canopy.detailRunAutomatically")}</span>
-                                          <div class="canopy-detail__actions">
-                                            ${renderStartExecutionButton(
+                                ${(["autonomous", "manual"] as const).map((mode) =>
+                                  mode === "autonomous" && props.canModelOverride === false
+                                    ? nothing
+                                    : html`<div class="canopy-detail__engine-group">
+                                        <span
+                                          >${t(mode === "autonomous" ? "canopy.detailRunAutomatically" : "canopy.detailOpenManually")}</span
+                                        >
+                                        <div class="canopy-detail__actions">
+                                          ${(["codex", "claude"] as const).map((engine) =>
+                                            renderStartExecutionButton(
                                               actionProps,
                                               card,
-                                              "codex",
-                                              "autonomous",
-                                            )}
-                                            ${renderStartExecutionButton(
-                                              actionProps,
-                                              card,
-                                              "claude",
-                                              "autonomous",
-                                            )}
-                                          </div>
+                                              engine,
+                                              mode,
+                                            ),
+                                          )}
                                         </div>
-                                      `
-                                    : nothing
-                                }
-                                <div class="canopy-detail__engine-group">
-                                  <span>${t("canopy.detailOpenManually")}</span>
-                                  <div class="canopy-detail__actions">
-                                    ${renderStartExecutionButton(
-                                      actionProps,
-                                      card,
-                                      "codex",
-                                      "manual",
-                                    )}
-                                    ${renderStartExecutionButton(
-                                      actionProps,
-                                      card,
-                                      "claude",
-                                      "manual",
-                                    )}
-                                  </div>
-                                </div>
+                                      </div>`,
+                                )}
                               </div>
                             </details>
                           `

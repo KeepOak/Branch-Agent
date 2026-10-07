@@ -5,9 +5,39 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { expect, it, vi } from "vitest";
 import { resolveRuntimeProcessEntrypointUrl } from "../infra/runtime-process-url.js";
 import { withRuntimeWorkerGeneration } from "../infra/runtime-worker-generation.js";
+import { captureRetainedNativeWorkerSource } from "../infra/worker-native-lifecycle.js";
 import { createDeferredCore } from "../shared/deferred.js";
-import { captureBranchStateReadSource } from "./branch-state-read-worker.js";
+import { executeExistingBranchStateRead } from "./branch-state-db-readonly.js";
+import {
+  captureBranchStateReadSource,
+  retireIdleBranchStateReadWorkers,
+} from "./branch-state-read-worker.js";
 import { captureBranchStateWorkerContext } from "./branch-state-worker-context.js";
+
+it("retires cached readers after independent custody joins and permits reuse", async () => {
+  const { options } = source();
+  const nativeSource = captureRetainedNativeWorkerSource();
+  const task = queueTask();
+  const reading = executeExistingBranchStateRead(options, { type: "fleet.list" });
+  try {
+    await task.captured;
+    expect(await retireIdleBranchStateReadWorkers(nativeSource)).toBe(false);
+    expect(mock.closePool).not.toHaveBeenCalled();
+  } finally {
+    task.result.resolve(emptyReply);
+    await reading;
+  }
+  expect(mock.closePool).not.toHaveBeenCalled();
+  expect(await retireIdleBranchStateReadWorkers(nativeSource)).toBe(true);
+  expect(mock.closePool).toHaveBeenCalledOnce();
+
+  const next = queueTask();
+  next.result.resolve(emptyReply);
+  await expect(executeExistingBranchStateRead(options, { type: "fleet.list" })).resolves.toEqual(
+    emptyReply,
+  );
+  expect(mock.create).toHaveBeenCalledTimes(2);
+});
 
 it("keeps lazy reads with their captured generation when another generation dispatches them", async () => {
   const { options } = source();

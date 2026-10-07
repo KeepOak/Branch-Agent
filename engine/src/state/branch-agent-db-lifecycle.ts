@@ -1,11 +1,10 @@
+import { addAbortListener } from "node:events";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import type { DatabaseSync } from "node:sqlite";
 import { isMainThread, threadId } from "node:worker_threads";
-import {
-  disposeNodeSqliteDependents,
-  registerNodeSqliteDisposeCallback,
-} from "../infra/kysely-sync-cache-state.js";
+import { hasLostGatewayStateOwnership } from "../infra/gateway-state-owner.js";
+import { disposeNodeSqliteDependents } from "../infra/kysely-sync-cache-state.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
 import { isPathInside } from "../infra/path-guards.js";
 import { setSqliteBusyTimeout } from "../infra/sqlite-busy-timeout.js";
@@ -15,15 +14,18 @@ import {
   deferSqlitePostCommitPublication,
   hasSqlitePostCommitScope,
 } from "../infra/sqlite-post-commit.js";
+import { runSqliteReadOperationSync } from "../infra/sqlite-schema-facts.js";
 import { createSqliteTerminalOpenLatch } from "../infra/sqlite-terminal-open-latch.js";
 import {
   registerSqliteCacheExitClose,
   runInSqliteMaintenanceContext,
 } from "../infra/sqlite-wal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { getGatewayShutdownCleanupSignal } from "../process/gateway-work-admission.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { VERSION } from "../version.js";
+import { releaseAgentCreationClaimHandle } from "./agent-creation-claim.js";
 import { releaseAgentDeletionDatabaseCleanup } from "./agent-deletion-cleanup.js";
 import type {
   BranchAgentDatabase,
@@ -40,10 +42,12 @@ import {
   releaseBranchAgentDatabaseLease,
   type BranchAgentDatabaseWorkerLeaseReceipt,
 } from "./branch-agent-db-lease.js";
+import { unregisterBranchAgentDatabase } from "./branch-agent-db-registry.js";
 import {
   drainAgentDatabaseResources,
   matchesAgentDatabaseClose,
   revokeAgentDatabaseResources,
+  withAgentDatabaseCloseFence,
   type AgentDatabaseCloseSelection,
 } from "./branch-agent-db-resources.js";
 import {
@@ -52,8 +56,10 @@ import {
 } from "./branch-agent-db-schema-helpers.js";
 import {
   hasRevokedBranchAgentDatabaseValidation,
+  invalidateBranchAgentDatabaseValidation,
   type BranchAgentDatabaseValidation,
 } from "./branch-agent-db-validation-cache.js";
+import { isSameBranchAgentDatabasePath } from "./branch-agent-db.paths.js";
 import {
   clearBranchAgentIntegrityVerification,
   type BranchAgentIntegrityVerification,
@@ -76,7 +82,7 @@ const BRANCH_AGENT_DB_SLOW_OPEN_MS = 1_000;
 type AgentDatabaseLifecycle = {
   databases: Map<string, BranchAgentDatabase>;
   borrowers: WeakMap<DatabaseSync, Set<object>>;
-  idleTimers: WeakMap<DatabaseSync, NodeJS.Timeout>;
+  idleTimers: WeakMap<DatabaseSync, Disposable & { refresh(): void }>;
   incognito: WeakSet<BranchAgentDatabase>;
   generation: number;
   failures: Map<string, unknown>;
@@ -142,14 +148,6 @@ export function deferBranchAgentPostCommitPublication(
   return deferSqlitePostCommitPublication(database.db, () => publish(options));
 }
 
-/** Runtime reads and opens share the generation-aware process-local damage latch. */
-export function assertAgentDatabaseTerminalOpenAllowed(pathname: string): void {
-  const failure = cache.terminal.get(pathname);
-  if (failure) {
-    throw failure;
-  }
-}
-
 function logResourceCloseFailure(pathname: string, error: unknown): void {
   agentDbLog.warn("Agent database resource close failed", { path: pathname, error });
 }
@@ -172,7 +170,7 @@ export function resolveAgentDatabaseIntegrityGateReason(
 ): SqliteIntegrityDiagnostics["integrityGateReason"] {
   const { verification, validation, integrityRevoked, reuseIntegrity } = proof;
   if (integrityRevoked) {
-    return "stale-lease";
+    return "stale-lease-full";
   }
   if (hasRevokedBranchAgentDatabaseValidation(database.path, validation)) {
     return "revoked";
@@ -182,8 +180,7 @@ export function resolveAgentDatabaseIntegrityGateReason(
   }
   return verification?.clean_close === 0 &&
     verification.app_version === VERSION &&
-    `${verification.dev}:${verification.ino}` ===
-      readBranchAgentDatabaseIdentity(database).identity
+    `${verification.dev}:${verification.ino}` === readBranchAgentDatabaseIdentity(database).identity
     ? "dirty-receipt"
     : "no-proof";
 }
@@ -275,7 +272,7 @@ export function retainAgentDatabase(db: DatabaseSync): () => void {
 }
 
 /** Keep live deletion-fence reads warm without creating shared state or preventing explicit close. */
-export function retainIncognitoSharedState(db: DatabaseSync, env?: NodeJS.ProcessEnv): void {
+export function retainIncognitoSharedState(env?: NodeJS.ProcessEnv): () => void {
   const statePath = path.resolve(resolveBranchStateSqlitePath(env));
   let releaseIdle: (() => void) | undefined;
   const unsubscribe = registerBranchStateDatabaseLifecycleListener((event) => {
@@ -284,14 +281,14 @@ export function retainIncognitoSharedState(db: DatabaseSync, env?: NodeJS.Proces
       releaseIdle = retainBranchStateDatabaseForIdle(event.database);
     }
   });
-  registerNodeSqliteDisposeCallback(db, () => {
+  return () => {
     unsubscribe();
     releaseIdle?.();
     releaseIdle = undefined;
-  });
+  };
 }
 
-/** Activity and final borrower release start the same idle window. */
+/** Activity and final borrower release use the same idle or post-grace eviction. */
 export function refreshAgentDatabaseIdleTimer(database: BranchAgentDatabase): void {
   // Incognito's connection is its only durable owner; idle close would erase it.
   if (cache.incognito.has(database)) {
@@ -302,39 +299,58 @@ export function refreshAgentDatabaseIdleTimer(database: BranchAgentDatabase): vo
     existing.refresh();
     return;
   }
+  const cleanupSignal = getGatewayShutdownCleanupSignal();
+  const closeIdle = () => {
+    if (cache.databases.get(database.path) !== database) {
+      cache.idleTimers.get(database.db)?.[Symbol.dispose]();
+      cache.idleTimers.delete(database.db);
+      return;
+    }
+    // Awaiting operations own the exact connection; final release rearms eviction.
+    if (database.db.isOpen && cache.borrowers.get(database.db)?.size) {
+      return;
+    }
+    if (database.db.isOpen && database.db.isTransaction) {
+      timer.refresh();
+      return;
+    }
+    try {
+      // Registry discovery metadata survives eviction; only explicit disposal removes it.
+      closeCachedBranchAgentDatabase(database, { eviction: true });
+      cache.databases.delete(database.path);
+      cache.failures.delete(database.path);
+      unregisterUnusedAgentDatabaseExitClose();
+    } catch (error) {
+      // Keep native/lease custody on the original entry until cleanup succeeds.
+      logResourceCloseFailure(database.path, error);
+      timer.refresh();
+    }
+  };
+  const refresh = () => {
+    if (cleanupSignal.aborted) {
+      // A synchronous opener can still borrow the exact handle before cleanup runs.
+      runInSqliteMaintenanceContext(() => queueMicrotask(closeIdle));
+    } else {
+      timer.refresh();
+    }
+  };
   const timer = runInSqliteMaintenanceContext(() =>
-    setTimeout(() => {
-      if (cache.databases.get(database.path) !== database) {
-        cache.idleTimers.delete(database.db);
-        return;
-      }
-      // Awaiting operations own the exact connection; final release rearms eviction.
-      if (database.db.isOpen && cache.borrowers.get(database.db)?.size) {
-        return;
-      }
-      if (database.db.isOpen && database.db.isTransaction) {
-        timer.refresh();
-        return;
-      }
-      try {
-        // Registry discovery metadata survives eviction; only explicit disposal removes it.
-        closeCachedBranchAgentDatabase(database, { eviction: true });
-        cache.databases.delete(database.path);
-        cache.failures.delete(database.path);
-        unregisterUnusedAgentDatabaseExitClose();
-      } catch (error) {
-        // Keep native/lease custody on the original entry until cleanup succeeds.
-        logResourceCloseFailure(database.path, error);
-        timer.refresh();
-      }
-    }, SQLITE_IDLE_HANDLE_TTL_MS),
+    setTimeout(closeIdle, SQLITE_IDLE_HANDLE_TTL_MS),
   );
+  const cleanupListener = addAbortListener(cleanupSignal, refresh);
   timer.unref();
-  cache.idleTimers.set(database.db, timer);
+  cache.idleTimers.set(database.db, {
+    refresh,
+    [Symbol.dispose]() {
+      clearTimeout(timer);
+      cleanupListener[Symbol.dispose]();
+    },
+  });
 }
 
 /** Dispose only this publication; a later admission at the same path is independent. */
-export function closeMaintenanceAgentDatabase(database: BranchAgentDatabase): void {
+export async function closeMaintenanceAgentDatabase(database: BranchAgentDatabase): Promise<void> {
+  await database.walMaintenance.stop();
   if (cache.databases.get(database.path) !== database) {
     return;
   }
@@ -389,15 +405,32 @@ export function closeCachedBranchAgentDatabase(
     throw error;
   }
   if (lease) {
-    releaseBranchAgentDatabaseLease(
-      lease.leaseId,
-      { env: lease.env, initializationAgentPaths: [database.path] },
-      clean ?? (retainRuntimeProof ? "uncheckpointed" : undefined),
-    );
+    try {
+      releaseBranchAgentDatabaseLease(
+        lease.leaseId,
+        { env: lease.env, initializationAgentPaths: [database.path] },
+        clean ?? (retainRuntimeProof ? "uncheckpointed" : undefined),
+      );
+    } catch (error) {
+      // The native handle is closed. After a real loss of state ownership the lease row (a shared-state write)
+      // is the next owner's to reconcile; failing here would keep the closed database cached and fail every
+      // restart close, so the engine could neither restart nor stop cleanly.
+      if (!hasLostGatewayStateOwnership(resolveBranchStateSqlitePath(lease.env))) {
+        throw error;
+      }
+      agentDbLog.warn(
+        "Agent database lease left for the next state owner (state ownership was lost)",
+        {
+          path: database.path,
+          error,
+        },
+      );
+    }
     cache.leases.delete(database.path);
   }
   releaseAgentDeletionDatabaseCleanup(database);
-  clearTimeout(cache.idleTimers.get(database.db));
+  releaseAgentCreationClaimHandle(database);
+  cache.idleTimers.get(database.db)?.[Symbol.dispose]();
   cache.idleTimers.delete(database.db);
 }
 
@@ -435,6 +468,51 @@ export function closeBranchAgentDatabaseByPath(
     cache.generation += 1;
   }
   unregisterUnusedAgentDatabaseExitClose();
+  return true;
+}
+
+/** Close and unregister one unambiguous transient agent database by filesystem identity. */
+export function disposeBranchAgentDatabaseByPath(
+  pathname: string,
+  options: { env?: NodeJS.ProcessEnv } = {},
+): boolean {
+  const resolvedPath = path.resolve(pathname);
+  for (const pendingPath of cache.pending.keys()) {
+    if (isSameBranchAgentDatabasePath(pendingPath, resolvedPath)) {
+      revokePendingAgentDatabaseOpen(pendingPath);
+    }
+  }
+  for (const retained of cache.retainedCloses) {
+    if (isSameBranchAgentDatabasePath(retained.path, resolvedPath)) {
+      retained.close();
+    }
+  }
+  // Disposal can be followed by file deletion or recreation, so revalidate next open.
+  invalidateBranchAgentDatabaseValidation(resolvedPath);
+  const matchingDatabases = [...cache.databases.values()].filter((candidate) =>
+    isSameBranchAgentDatabasePath(candidate.path, resolvedPath),
+  );
+  if (matchingDatabases.length > 1) {
+    return false;
+  }
+  const database = matchingDatabases[0];
+  if (database && cache.incognito.has(database)) {
+    return closeBranchAgentDatabaseByPath(database.path);
+  }
+  if (!database) {
+    return false;
+  }
+  try {
+    unregisterBranchAgentDatabase({
+      agentId: database.agentId,
+      path: database.path,
+      ...(options.env ? { env: options.env } : {}),
+    });
+  } finally {
+    // Secret-bearing transient DBs must close even when registry maintenance
+    // fails; Windows otherwise cannot remove the file during caller cleanup.
+    closeBranchAgentDatabaseByPath(database.path);
+  }
   return true;
 }
 
@@ -485,7 +563,7 @@ export function settleBranchAgentDatabaseWorkerClose(
       }
     }
     if (!database.db.isOpen) {
-      clearTimeout(cache.idleTimers.get(database.db));
+      cache.idleTimers.get(database.db)?.[Symbol.dispose]();
       cache.idleTimers.delete(database.db);
       const incognito = cache.incognito.has(database);
       cache.databases.delete(resolvedPath);
@@ -569,15 +647,27 @@ async function drainPendingAgentDatabaseOpens(
 
 /** Drain native opens before a lifecycle owner releases shared state or removes its root. */
 export async function closeBranchAgentDatabasesAsync(rootPath?: string): Promise<void> {
-  // Retained resources may drain slowly; revoke native admission before yielding to them.
-  for (const owner of cache.activePending) {
-    if (rootPath === undefined || isPathInside(rootPath, owner.path)) {
-      revokePendingAgentDatabaseOpen(owner.path);
+  const selection = { rootPath };
+  await withAgentDatabaseCloseFence(selection, async (resourcePaths) => {
+    const nativePaths = new Set(
+      [...cache.databases.values(), ...cache.activePending, ...cache.retainedCloses]
+        .filter((owner) => matchesAgentDatabaseClose(selection, owner))
+        .map((owner) => owner.path),
+    );
+    const paths = new Set([...nativePaths, ...resourcePaths]);
+    const results = await Promise.allSettled(
+      [...paths].map((pathname) =>
+        nativePaths.has(pathname)
+          ? closeBranchAgentDatabaseByPathAsync(pathname)
+          : drainAgentDatabaseResources({ ...selection, path: pathname }, async () => {}),
+      ),
+    );
+    const errors = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "Agent database close failed");
     }
-  }
-  await drainAgentDatabaseResources({ rootPath }, async () => {
-    await drainPendingAgentDatabaseOpens({ rootPath });
-    closeBranchAgentDatabases(rootPath);
   });
 }
 
@@ -590,6 +680,10 @@ export async function closeBranchAgentDatabaseByPathAsync(
   revokePendingAgentDatabaseOpen(selection.path, expectedAgentId);
   return drainAgentDatabaseResources(selection, async () => {
     await drainPendingAgentDatabaseOpens(selection);
+    const database = cache.databases.get(selection.path);
+    if (database && (expectedAgentId === undefined || database.agentId === expectedAgentId)) {
+      await database.walMaintenance.stop();
+    }
     return closeBranchAgentDatabaseByPath(selection.path, expectedAgentId);
   });
 }
@@ -605,7 +699,11 @@ export function inspectBranchAgentDatabaseOwner(
     const resolvedPath = path.resolve(pathname);
     const opened = cache.databases.get(resolvedPath);
     if (opened?.db.isOpen && !cache.failures.has(resolvedPath)) {
-      assertSupportedAgentSchemaVersion(opened.db, pathname);
+      runSqliteReadOperationSync(
+        opened.db,
+        () => assertSupportedAgentSchemaVersion(opened.db, pathname),
+        "fresh",
+      );
       refreshAgentDatabaseIdleTimer(opened);
       return { status: "owned", agentId: opened.agentId };
     }

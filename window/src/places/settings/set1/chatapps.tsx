@@ -63,7 +63,7 @@ export function ChatAppsPage(props: SettingsPageProps) {
       <Connected loading={status.loading && !status.data} error={status.error} apps={apps} count={all.length} onOpen={(id) => setOpen({ manage: id })} onAll={() => setOpen({ all: true })} />
       <Asking engine={props.engine} apps={apps} pairing={pairing.data} error={pairing.error} reload={pairing.reload} filter={filter} setFilter={setFilter} trunkFor={trunkFor} />
       <WhoAnswers engine={props.engine} apps={apps} cfg={cfg} trunks={trunks} defaultId={defaultId} />
-      {level >= 1 ? <More level={level} cfg={cfg} apps={apps} all={all} trunks={trunks} /> : null}
+      {level >= 1 ? <More level={level} cfg={cfg} apps={apps} all={all} trunks={trunks} engine={props.engine} /> : null}
       {managed ? <ManageDialog engine={props.engine} app={managed} cfg={cfg} trunks={trunks} defaultId={defaultId} pairing={pairing.data} reload={reloadAll}
         onReview={(app, acct) => { setFilter({ app, acct }); setOpen({}); jump("chatapps-asking"); }} onPerChat={() => { setOpen({}); jump("chatapps-who"); }}
         onSetup={() => setOpen({ connect: managed })} onClose={() => setOpen({})} /> : null}
@@ -92,14 +92,14 @@ function Connected({ loading, error, apps, count, onOpen, onAll }: ConnectedProp
   );
 }
 
-type MoreProps = { level: Lv; cfg: Cfg; apps: App[]; all: CatalogueApp[]; trunks: { id: string; name: string }[] };
+type MoreProps = { level: Lv; cfg: Cfg; apps: App[]; all: CatalogueApp[]; trunks: { id: string; name: string }[]; engine: WindowEngine };
 /** Advanced and Technical: the tables in the preview's order, with the rows that read engine data drawn by id. */
-function More({ level, cfg, apps, all, trunks }: MoreProps) {
+function More({ level, cfg, apps, all, trunks, engine }: MoreProps) {
   const custom = (id: string, row: { t: string; sub?: string } & RecordValue) => {
     if (id === "lists") return <Lists apps={apps} cfg={cfg} />;
     if (id === "msgKeys") return <MsgKeys cfg={cfg} />;
     if (id === "depth") return <Depth catalogue={all} connected={new Set(apps.map((a) => a.id))} cfg={cfg} />;
-    return peoplePart(id, { apps, cfg, trunks }) ?? partFor(id, { apps, cfg, all }, row as never);
+    return peoplePart(id, { apps, cfg, trunks }) ?? partFor(id, { apps, cfg, all, engine }, row as never);
   };
   const secs = [...ADVANCED, ...(level >= 2 ? TECH_A : []), DEPTH, ...LATER];
   return <>{secs.filter((s) => s.lv <= level).map((s) => <TableSec key={s.title} sec={s} cfg={cfg} level={level} custom={custom} />)}</>;
@@ -107,11 +107,11 @@ function More({ level, cfg, apps, all, trunks }: MoreProps) {
 
 /** Every row title, for the settings search. */
 export const CHATAPPS_ROWS: RowEntry[] = [
-  { page: "chatapps", title: "Asking to message", sec: "Asking to message", lv: 0, words: "pairing approve dismiss requests" },
-  { page: "chatapps", title: "Approve by code", sec: "Asking to message", lv: 0 },
-  { page: "chatapps", title: "Who answers", sec: "Who answers", lv: 0, words: "routing trunk per chat" },
+  { page: "chatapps", title: "Asking to message", sec: "Asking to message", group: "Asking to message", lv: 0, words: "pairing approve dismiss requests" },
+  { page: "chatapps", title: "Allow by code", sec: "Asking to message", group: "Asking to message", lv: 0 },
+  { page: "chatapps", title: "Who answers", sec: "Who answers", group: "Who answers", lv: 0, words: "routing trunk per chat" },
   ...rowsOf("chatapps", [...ADVANCED, ...TECH_A, ...LATER].map((s) => ({ ...s, rows: s.rows.filter((r) => r.kind !== "custom" || !["cmdRows", "watchdog", "formatting", "queueByApp", "lists", "actions", "msgKeys", "delayMin", "delayMax", "apprWhere"].includes(r.id ?? "")) }))),
-  ...["/new and /stop", "/model", "/config", "/approve"].map((t) => ({ page: "chatapps", title: t, sec: "Commands in chat apps", lv: 1 as Lv, words: "who may use command" })),
-  ...DEPTH_TITLES.map((t) => ({ page: "chatapps", title: t, sec: DEPTH.title, lv: 1 as Lv })),
-  ...MSG_KEY_TITLES.map((t) => ({ page: "chatapps", title: t, sec: "Messages, every setting", lv: 2 as Lv })),
+  ...["/new and /stop", "/model", "/config", "/approve"].map((t) => ({ page: "chatapps", title: t, sec: "Commands in chat apps", group: "Commands", lv: 1 as Lv, words: "who may use command" })),
+  ...DEPTH_TITLES.map((t) => ({ page: "chatapps", title: t, sec: DEPTH.title, group: DEPTH.group ?? DEPTH.title, lv: 1 as Lv })),
+  ...MSG_KEY_TITLES.map((t) => ({ page: "chatapps", title: t, sec: "Messages, every setting", group: "Messages", lv: 2 as Lv })),
 ];

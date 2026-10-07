@@ -1,6 +1,8 @@
 // Trunk editor › What it may do (preview 30-trunks mayHTMLC18, 31-trunksp mayMorePC18 at Advanced).
 // Each row writes the Trunk's own config entry; rows the engine has no setting for are drawn greyed with the reason.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
+import { shownWhy } from "../../shell/shown-why";
 import type { ModelChoice } from "../../composer/model";
 import type { WindowEngine } from "../../connect/engine";
 import { GitHubSettings } from "../settings/GitHubSettings";
@@ -15,7 +17,7 @@ export const SEND_WHY = "Needs the engine’s per-Trunk setting for asking befor
 export const NOTES_WHY = "Each Trunk keeps its notes in its own folder; the engine has no setting to share them.";
 
 function Row({ title, hint, children, off }: { title: string; hint: string; children: ReactNode; off?: string }) {
-  return <div className={off ? "tk-ctl off" : "tk-ctl"} title={off}><b>{title}</b><span className="tk-right">{children}</span><small>{off || hint}</small></div>;
+  return <div className={off ? "tk-ctl off" : "tk-ctl"} title={shownWhy(off)}><b>{title}</b><span className="tk-right">{children}</span><small>{shownWhy(off) || hint}</small></div>;
 }
 
 const modelName = (models: ModelChoice[], ref: string) => models.find((m) => m.ref === ref)?.name || ref.split("/").pop() || ref;

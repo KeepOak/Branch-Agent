@@ -13,7 +13,7 @@ import { splitTrailingAuthProfile } from "../agents/model-ref-profile.js";
 import { resolveDefaultModelForAgent } from "../agents/model-selection-config.js";
 import { resolveOnboardingSetupTarget } from "../commands/onboard-agent-target.js";
 import type { OnboardOptions } from "../commands/onboard-types.js";
-import { migratePersistedImplicitMainRoster } from "../config/legacy.roster.js";
+import { applyImplicitAgentRosterDefaults } from "../config/implicit-agent-roster.js";
 import { materializeRuntimeConfig } from "../config/materialize.js";
 import { applyMergePatch, createMergePatch } from "../config/merge-patch.js";
 import type { BranchConfig } from "../config/types.branch.js";
@@ -158,7 +158,7 @@ export async function offerLiveModelVerification(params: {
     let result: Awaited<ReturnType<typeof inference.verifySetupInferenceConfig>>;
     try {
       // SAFETY: Canonical roster migration preserves typed config; this runtime view is never persisted.
-      let config = migratePersistedImplicitMainRoster(candidate.config).config as BranchConfig;
+      let config = applyImplicitAgentRosterDefaults(candidate.config) as BranchConfig;
       const agentId = resolveAmbientOwnerAgentId(config);
       if (candidate.authProfiles.length > 0) {
         const { saveSetupCredential, selectSetupCredential } =
@@ -194,7 +194,7 @@ export async function offerLiveModelVerification(params: {
         );
         candidate.authProfiles = [];
         // SAFETY: Canonical roster migration preserves this typed config; this view is not persisted.
-        config = migratePersistedImplicitMainRoster(candidate.config).config as BranchConfig;
+        config = applyImplicitAgentRosterDefaults(candidate.config) as BranchConfig;
       }
       const profileId = splitTrailingAuthProfile(
         resolveAgentEffectiveModelPrimary(config, agentId) ?? "",

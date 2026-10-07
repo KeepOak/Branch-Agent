@@ -147,9 +147,18 @@ function broadcastSessionsChanged(
     return;
   }
   const [eventAgentId, routingAgentId, compatibilityOwnerAgentId] = scope;
+  // The contact roster is a projection of these same sessions. Publish a
+  // debounced invalidation alongside each coalesced session notice.
+  context.broadcastToConnIds(
+    "contacts.changed",
+    { ts: Date.now(), ...(routingAgentId ? { agentId: routingAgentId } : {}) },
+    connIds,
+    { ...(routingAgentId ? { agentId: routingAgentId } : {}), dropIfSlow: true },
+  );
   const routingOptions = {
     ...(routingAgentId ? { agentId: routingAgentId } : {}),
-    dropIfSlow: true,
+    // Persisted patches need an invalidation even when a subscriber is backed up.
+    dropIfSlow: payload.reason !== "patch",
   };
   const eventPayload = {
     ...payload,
@@ -425,7 +434,7 @@ export function emitSessionsChanged(
   if (!catalogOnly) {
     invalidateSessionSharingSnapshot(payload.sessionKey);
     // Inbox subscriptions are independent of session-list subscriptions, including a closed sidebar.
-    context.mentionInbox?.invalidate(payload.sessionKey);
+    void context.mentionInbox?.invalidateAsync(payload.sessionKey);
   }
   const connIds = context.getSessionEventSubscriberConnIds();
   if (!hasSessionChangeReceivers(connIds)) {

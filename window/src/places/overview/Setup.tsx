@@ -58,7 +58,7 @@ export function FinishSetup({ engine, openSettings }: { engine: WindowEngine; op
   const steps: Step[] = [
     { key: "model", label: "A model account", run: () => openSettings?.("accounts") },
     { key: "phone", label: "Your phone", run: () => setOpen("pair") },
-    { key: "chat", label: "A chat app", run: () => window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "customize", tab: "Channels" } })) },
+    { key: "chat", label: "A chat app", run: () => window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "customize", tab: "Chat apps" } })) },
     { key: "interest", label: "What you want help with", run: () => setOpen("interest") },
     { key: "madeYours", label: "Make it yours", run: () => openSettings?.("appearance") },
   ];
@@ -80,8 +80,8 @@ export function FinishSetup({ engine, openSettings }: { engine: WindowEngine; op
       </div>
       {open === "pair" ? <PairDialog engine={engine} close={() => { setOpen(null); devices.reload(); }} /> : null}
       {open === "interest" ? (
-        <Dialog title="What do you want help with?" onClose={() => setOpen(null)} footer={<button type="button" className="btn" onClick={() => setOpen(null)}>Close</button>}>
-          <p className="hint">Pick one. Branch suggests a first Trunk or routine for it; nothing is made until you say so.</p>
+        <Dialog title="What do you want help with?" onClose={() => setOpen(null)}>
+          <p className="hint">Pick one. Branch suggests a first Trunk or automation for it; nothing is made until you say so.</p>
           <div className="ov-picks">
             {INTERESTS.map(([t, sub]) => (
               <button key={t} type="button" className="ov-pick" aria-pressed={look.interest === t} onClick={() => { setOpen(null); void save("interest", t, `Noted: ${t.toLowerCase()}.`); }}>

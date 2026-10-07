@@ -277,12 +277,6 @@ function ensureCanopySchema(db: DatabaseSync): void {
   ensureColumn(db, "canopy_boards", "automation_job_id", "automation_job_id TEXT");
   ensureColumn(db, "canopy_boards", "kind", "kind TEXT");
   ensureColumn(db, "canopy_boards", "sessions_spec", "sessions_spec TEXT");
-  ensureColumn(
-    db,
-    "canopy_cards",
-    "lifecycle_status_source_updated_at",
-    "lifecycle_status_source_updated_at INTEGER",
-  );
   const migrationId = `schema-${SCHEMA_VERSION}`;
   const current = db
     .prepare("SELECT 1 AS found FROM canopy_schema_migrations WHERE id = ?")

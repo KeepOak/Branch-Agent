@@ -22,7 +22,6 @@ import { recordStartupMigrationWarnings } from "../infra/state-migrations.messag
 import { withDeferredPluginDoctorMigrations } from "../plugins/doctor-contract-registry.js";
 import { createPluginCache, getPluginCache, withPluginCache } from "../plugins/plugin-cache.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
-import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import {
   listAgentDatabaseAdmissionRefusals,
   readAgentDatabaseAdmissionRefusal,
@@ -40,10 +39,6 @@ import {
 } from "./doctor-startup-migration-refusal.js";
 import { addDoctorLegacyIssues } from "./doctor/shared/legacy-config-issues.js";
 import { completeDoctorPluginMetadataSnapshot } from "./doctor/shared/plugin-metadata-snapshot-scope.js";
-
-const loadInstalledPluginIndexStoreWrite = createLazyRuntimeModule(
-  () => import("../plugins/installed-plugin-index-store-write.js"),
-);
 
 export type ConfigPreflightSnapshotRead = {
   snapshot: ConfigFileSnapshot;
@@ -193,7 +188,7 @@ export async function persistRefreshedPluginIndex(params: {
       }
       const { writePersistedInstalledPluginIndexWithLeaseSync } = await params.measure(
         "plugin-index-store-import",
-        loadInstalledPluginIndexStoreWrite,
+        () => import("../plugins/installed-plugin-index-store-write.js"),
       );
       // Persist the original workspace scope; a config-wide union cannot pass scoped freshness checks.
       await params.measure("plugin-index-persistence", () =>
@@ -341,45 +336,65 @@ async function assertStartupStateReady(params: {
   cfg: BranchConfig;
   env: NodeJS.ProcessEnv;
 }): Promise<void> {
-  const { assertBranchDatabasesReady } = await measureDoctorConfigPreflightStep(
-    "admission.database-runtime-import",
-    () => import("../state/branch-database-preflight.js"),
-  );
+  const [
+    { assertBranchDatabasesReady },
+    [
+      { assertSessionStoreMigrationComplete },
+      { resolveAllAgentSessionStoreCandidateTargetsSync },
+      { inspectBranchRegisteredAgentDatabases },
+    ],
+    { assertConfiguredWorkspaceStateReady },
+  ] = await Promise.all([
+    measureDoctorConfigPreflightStep("admission.database-runtime-import", () =>
+      import("../state/branch-database-preflight.js"),
+    ),
+    measureDoctorConfigPreflightStep("admission.session-runtime-import", () =>
+      Promise.all([
+        import("../config/sessions/startup-migration.js"),
+        import("../config/sessions/targets.js"),
+        import("../state/branch-agent-db-registry.js"),
+      ]),
+    ),
+    measureDoctorConfigPreflightStep("admission.workspace-runtime-import", () =>
+      import("../agents/workspace-state-dirs.js"),
+    ),
+  ]);
   const agentCount = listAgentIds(params.cfg).length;
   const admissionMetrics: Record<string, number> = { agentCount };
-  await measureDoctorConfigPreflightStep(
-    "admission.database-readiness",
-    () =>
-      assertBranchDatabasesReady({
-        env: params.env,
-        config: params.cfg,
-        operation: "gateway-startup",
-        onAgentInspection: (stats) => {
-          Object.assign(admissionMetrics, stats);
-        },
-      }),
-    undefined,
-    () => admissionMetrics,
-  );
-  const [
-    { assertSessionStoreMigrationComplete },
-    { resolveAllAgentSessionStoreCandidateTargetsSync },
-    { inspectBranchRegisteredAgentDatabases },
-  ] = await measureDoctorConfigPreflightStep("admission.session-runtime-import", () =>
-    Promise.all([
-      import("../config/sessions/startup-migration.js"),
-      import("../config/sessions/targets.js"),
-      import("../state/branch-agent-db-registry.js"),
-    ]),
-  );
-  const registeredDatabases = await measureDoctorConfigPreflightStep(
-    "admission.agent-inventory",
-    () =>
+  // These admission reads share no writer and all finish before a lease is
+  // acquired. Session target selection still waits for database refusals, and
+  // refusals surface in the order the sequential admission reported them.
+  const [databases, inventory, workspace] = await Promise.allSettled([
+    measureDoctorConfigPreflightStep(
+      "admission.database-readiness",
+      () =>
+        assertBranchDatabasesReady({
+          env: params.env,
+          config: params.cfg,
+          operation: "gateway-startup",
+          onAgentInspection: (stats) => {
+            Object.assign(admissionMetrics, stats);
+          },
+        }),
+      undefined,
+      () => admissionMetrics,
+    ),
+    measureDoctorConfigPreflightStep("admission.agent-inventory", () =>
       inspectBranchRegisteredAgentDatabases({
         env: params.env,
         includeIncompatibleSchemaVersions: true,
       }),
-  );
+    ),
+    measureDoctorConfigPreflightStep(
+      "admission.workspace-readiness",
+      () => assertConfiguredWorkspaceStateReady(params),
+      undefined,
+      () => ({ agentCount }),
+    ),
+  ]);
+  if (databases.status === "rejected") throw databases.reason;
+  if (inventory.status === "rejected") throw inventory.reason;
+  const registeredDatabases = inventory.value;
   const targets = await measureDoctorConfigPreflightStep(
     "admission.session-targets",
     () =>
@@ -403,14 +418,5 @@ async function assertStartupStateReady(params: {
       (refusal) => `${refusal.reason}\n${refusal.repairHint}`,
     ),
   );
-  const { assertConfiguredWorkspaceStateReady } = await measureDoctorConfigPreflightStep(
-    "admission.workspace-runtime-import",
-    () => import("../agents/workspace-state-dirs.js"),
-  );
-  await measureDoctorConfigPreflightStep(
-    "admission.workspace-readiness",
-    () => assertConfiguredWorkspaceStateReady(params),
-    undefined,
-    () => ({ agentCount }),
-  );
+  if (workspace.status === "rejected") throw workspace.reason;
 }

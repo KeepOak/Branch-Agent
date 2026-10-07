@@ -54,9 +54,14 @@
 
 .chat-footer__context:not(
   :has(
-    > :not(.agent-chat__composer-notices, branch-plugin-contributions),
+    > :not(
+      .agent-chat__composer-notices,
+      branch-plugin-contributions,
+      branch-chat-outbox-recovery
+    ),
     > .agent-chat__composer-notices > *,
-    > branch-plugin-contributions > *
+    > branch-plugin-contributions > *,
+    > branch-chat-outbox-recovery > *
   )
 ) {
   display: none;

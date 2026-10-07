@@ -7,17 +7,16 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { normalizeCsvOrLooseStringList } from "@branch/normalization-core/string-normalization";
 import type { SystemAgentToolOptions } from "../agents/tools/system-agent-tool.js";
 import { resolveBranchPackageRootSync } from "../infra/branch-root.js";
 import type { BundleMcpConfig } from "../plugins/bundle-mcp.js";
 
 export const BRANCH_TOOLS_MCP_TOOLS_ENV = "BRANCH_TOOLS_MCP_TOOLS";
-export const BRANCH_TOOLS_MCP_SYSTEM_AGENT_SURFACE_ENV =
-  "BRANCH_TOOLS_MCP_SYSTEM_AGENT_SURFACE";
+export const BRANCH_TOOLS_MCP_SYSTEM_AGENT_SURFACE_ENV = "BRANCH_TOOLS_MCP_SYSTEM_AGENT_SURFACE";
 export const BRANCH_TOOLS_MCP_SYSTEM_AGENT_APPROVAL_ARMED_ENV =
   "BRANCH_TOOLS_MCP_SYSTEM_AGENT_APPROVAL_ARMED";
-export const BRANCH_TOOLS_MCP_SYSTEM_AGENT_PROPOSAL_ENV =
-  "BRANCH_TOOLS_MCP_SYSTEM_AGENT_PROPOSAL";
+export const BRANCH_TOOLS_MCP_SYSTEM_AGENT_PROPOSAL_ENV = "BRANCH_TOOLS_MCP_SYSTEM_AGENT_PROPOSAL";
 // Delegation and chat consent are mutually exclusive. Keep both in the existing
 // per-turn transport value so native transcript resume identity stays stable.
 const APPROVAL_ARMED_OPERATOR_ONLY_VALUE = "operator-only";
@@ -37,10 +36,7 @@ export function resolveBranchToolsMcpToolSelection(
   if (!raw) {
     return ["cron"];
   }
-  const entries = raw
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
+  const entries = normalizeCsvOrLooseStringList(raw);
   const selection = entries.filter(isBranchToolsMcpToolId);
   if (selection.length === 0 || selection.length !== entries.length) {
     throw new Error(
@@ -134,9 +130,7 @@ export function buildSystemAgentToolsMcpServerConfig(
     mcpServers: {
       branch: {
         command: entry.command,
-        args: options.agentId
-          ? [...entry.args, "--branch-agent-id", options.agentId]
-          : entry.args,
+        args: options.agentId ? [...entry.args, "--branch-agent-id", options.agentId] : entry.args,
         env: {
           [BRANCH_TOOLS_MCP_TOOLS_ENV]: "branch" satisfies BranchToolsMcpToolId,
           [BRANCH_TOOLS_MCP_SYSTEM_AGENT_SURFACE_ENV]: options.surface,

@@ -4,8 +4,8 @@ import {
   openExistingBranchStateDatabaseReadOnly,
   type BranchStateDatabaseOptions,
 } from "../state/branch-state-db.js";
+import { readGroveInstallRecordFromDatabase } from "./provenance-read.kernel.js";
 import {
-  readGroveInstallRecordFromDatabase,
   readClawPackageRefs,
   type PersistedGroveInstall,
   type PersistedClawPackageRef,
@@ -96,17 +96,14 @@ export async function readGroveResumeStateReadOnly(
     }
   | undefined
 > {
-  const database = await openExistingBranchStateDatabaseReadOnly(options);
+  const database = await openExistingBranchStateDatabaseReadOnly({
+    ...options,
+    requireCanonicalSchema: true,
+  });
   if (!database) {
     return undefined;
   }
   try {
-    const hasInstallTable = database.db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'grove_installs'")
-      .get();
-    if (!hasInstallTable) {
-      return undefined;
-    }
     const record = readGroveInstallRecordFromDatabase(database.db, agentId);
     if (!record) {
       return undefined;

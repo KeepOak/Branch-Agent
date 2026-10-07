@@ -172,7 +172,7 @@ async function captureFinalStatus(
     );
     await page.addInitScript(() => {
       localStorage.setItem(
-        "branch:control-ui:community-invite",
+        "branch:control-ui:community-invite:v2",
         JSON.stringify({ dismissedAtMs: 1770000000000 }),
       );
     });

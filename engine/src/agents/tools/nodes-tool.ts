@@ -160,10 +160,6 @@ const NodesToolSchema = Type.Object({
 export function createNodesTool(options?: {
   agentSessionKey?: string;
   agentId?: string;
-  agentChannel?: string;
-  agentAccountId?: string;
-  currentChannelId?: string;
-  currentThreadTs?: string | number;
   config?: BranchConfig;
   modelHasVision?: boolean;
   allowMediaInvokeCommands?: boolean;

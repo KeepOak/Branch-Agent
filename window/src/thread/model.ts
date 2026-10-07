@@ -25,6 +25,8 @@ export type MessageMeta = {
   /** The transcript entry id (`__branch.id`): what rewind, fork and reactions address. */
   entryId?: string;
   runId?: string;
+  /** Your message's own run (its idempotency key, "<runId>:user"): what this window sent it as. */
+  runKey?: string;
   timestamp?: number;
   model?: string;
   provider?: string;
@@ -36,6 +38,8 @@ export type MessageMeta = {
   sender?: Sender;
   /** The engine marks it as the owner's own message (`__branch.senderIsOwner`). */
   owner?: boolean;
+  /** The engine omits this message from future model context while keeping it in the transcript. */
+  excluded?: boolean;
 };
 
 /** A picture, sound, video or file carried by a message. `src` is a data: or http(s) address. */
@@ -49,15 +53,44 @@ export type Attachment = {
   kept: boolean;
 };
 
+export type FileChange = { path: string; added: number; removed: number; diff?: string };
+const fullOutputs = new Map<string, string>();
+/** Keep large command output outside React snapshots until someone opens it. The block keeps the last 2,000
+ *  characters, so the default view shows the real final lines (where failures and summaries are). */
+export function keepOutput(key: string, value: string): string {
+  if (value.length <= 2_000) { fullOutputs.delete(key); return value; }
+  fullOutputs.delete(key);
+  fullOutputs.set(key, value);
+  if (fullOutputs.size > 100) fullOutputs.delete(fullOutputs.keys().next().value!);
+  return `…\n${value.slice(-2_000)}`;
+}
+export function fullOutput(key: string): string | undefined { return fullOutputs.get(key); }
+export function readFileChanges(args: unknown): FileChange[] {
+  const changes = record(args).changes;
+  if (!Array.isArray(changes)) return [];
+  return changes.map(record).filter((change) => str(change.path)).map((change) => ({
+    path: str(change.path), added: Number(record(change.stat).added) || 0, removed: Number(record(change.stat).removed) || 0,
+    ...(str(change.diff) ? { diff: str(change.diff) } : {}),
+  }));
+}
+
 export type Block =
   | { kind: "user"; key: string; text: string; meta?: MessageMeta; attachments?: Attachment[] }
+  /** Words you sent while the turn worked, which it took at its next step (`__branch.steerTargetRunId`). Part of
+   *  that turn, not a turn of its own. */
+  | { kind: "steer"; key: string; text: string; meta?: MessageMeta }
   | { kind: "text"; key: string; text: string; streaming: boolean; meta?: MessageMeta; attachments?: Attachment[] }
   | { kind: "thinking"; key: string; text: string; live: boolean }
-  | { kind: "step"; key: string; tool: string; title: string; detail: string; status: StepStatus; output?: string; browser?: BrowserPresentation; at?: number }
+  | { kind: "preamble"; key: string; text: string }
+  | { kind: "plan"; key: string; steps: { step: string; status: "pending" | "in_progress" | "completed" }[] }
+  | { kind: "usage"; key: string; input: number; output: number; total: number }
+  /** `codeMode`: an `exec` running code (Code Mode); its result's own status says whether the code failed. */
+  | { kind: "step"; key: string; outputKey?: string; tool: string; title: string; detail: string; status: StepStatus; input?: string; output?: string; changes?: FileChange[]; browser?: BrowserPresentation; at?: number; codeMode?: boolean }
   | { kind: "approval"; key: string; approval: Approval }
-  | { kind: "done"; key: string; runId: string; durationMs?: number }
+  /** The end of a turn. `stopped`: you (or the engine) stopped it; the thread says so instead of "Done in". */
+  | { kind: "done"; key: string; runId: string; durationMs?: number; stopped?: boolean }
   | { kind: "error"; key: string; runId?: string; message: string }
-  | { kind: "notice"; key: string; text: string }
+  | { kind: "notice"; key: string; text: string; at?: number }
   | { kind: "status"; key: string; phase: string; attempt?: number; maxAttempts?: number };
 
 const record = (value: unknown): Record<string, unknown> =>
@@ -70,7 +103,7 @@ export function recordedAt(value: unknown): { at?: number } {
 }
 
 /** One line that says what a tool call does, for the step line. */
-export function describeToolCall(name: string, args: unknown): string {
+export function describeToolCall(_name: string, args: unknown): string {
   const a = record(args);
   const nested = record(a.args);
   const command = str(a.command) || str(nested.command);
@@ -78,9 +111,55 @@ export function describeToolCall(name: string, args: unknown): string {
     return command;
   }
   const path = str(a.path) || str(a.file_path) || str(a.filePath);
+  const changes = Array.isArray(a.changes) ? a.changes.map((change) => str(record(change).path)).filter(Boolean) : [];
+  if (changes.length) return changes.join(", ");
   const query = str(a.query) || str(a.url) || str(a.task) || str(a.label);
-  return path || query || name;
+  const first = Object.values(a).find((value): value is string => typeof value === "string" && value.trim().length > 0 && value.length <= 120);
+  return path || query || first || "";
 }
+
+/** A tool call's whole input, for the step's expanded view, when the one-line title can't carry it. */
+export function toolInput(args: unknown): string | undefined {
+  const a = record(args);
+  if (!Object.keys(a).length || str(a.command) || str(record(a.args).command) || Array.isArray(a.changes)) return undefined;
+  return JSON.stringify(a, null, 2);
+}
+
+/** The statuses a Code Mode run reports when its code failed; any other (completed, yielded, waiting, …) is not. */
+const FAILED_STATUSES = new Set(["failed", "error", "timed_out", "cancelled"]);
+
+/** Whether a Code Mode wrapper's own run failed (an error result, or code that didn't complete), as opposed to what
+ *  its nested calls did: then the wrapper stays a step, so the failure shows. */
+export function wrapperFailed(isError: unknown, text: string, details?: unknown): boolean {
+  if (isError === true) return true;
+  const status = codeModeStatus(text, details);
+  return status !== null && FAILED_STATUSES.has(status);
+}
+
+/**
+ * The status a Code Mode run reports. A guest failure is not an error result: it is a normal result whose payload
+ * (`details`, and the text) says `"status":"failed"` (engine code-mode-execution.ts, tool-search-runtime.ts). When
+ * the code read web content the text is wrapped in external-content markers, so the JSON is found inside it.
+ */
+export function codeModeStatus(text: string, details?: unknown): string | null {
+  const fromDetails = record(details).status;
+  if (typeof fromDetails === "string") return fromDetails;
+  try {
+    const status = record(JSON.parse(text)).status;
+    if (typeof status === "string") return status;
+  } catch {
+    // Wrapped text: read the first JSON object's leading status below.
+  }
+  const start = text.indexOf("{");
+  return start < 0 ? null : /^\{\s*"status"\s*:\s*"([a-z_]+)"/.exec(text.slice(start))?.[1] ?? null;
+}
+
+/** Code Mode's own tool (engine agents/code-mode-control-tools.ts CODE_MODE_EXEC_TOOL_NAME). */
+const CODE_MODE_TOOL = "exec";
+
+/** A Code Mode call: Code Mode's `exec` given code to run rather than a command. Another tool with a `code` argument
+ *  (a plugin's run_python, a sandbox) is not one: its result's status means whatever that tool says. */
+export const isCodeModeCall = (name: string, args: unknown): boolean => name === CODE_MODE_TOOL && typeof record(args).code === "string";
 
 /** Reads whether a tool result means "the person said no". */
 export function isDeniedResultText(text: string): boolean {
@@ -106,7 +185,8 @@ export function readApproval(payload: Record<string, unknown>): Approval | null 
   };
 }
 
-type Builder = { blocks: Block[]; steps: Map<string, number>; text: number | null; thinking: number | null };
+/** `wrappers`: Code Mode `exec` calls whose code called real tools (their events name it `parentToolCallId`). */
+type Builder = { blocks: Block[]; steps: Map<string, number>; items: Map<string, number>; wrappers: Set<string>; text: number | null; thinking: number | null; plan: number | null };
 
 function addText(b: Builder, runId: string, seq: number, delta: string): void {
   if (b.text === null) {
@@ -130,10 +210,10 @@ function addThinking(b: Builder, event: RunEvent): void {
   b.blocks[b.thinking] = { ...block, text: text || block.text + delta };
 }
 
-function startStep(b: Builder, id: string, name: string, args: unknown, at: number): void {
+function startStep(b: Builder, id: string, name: string, args: unknown, at: number, runId: string): void {
   b.text = null;
   b.thinking = null;
-  b.blocks.push({ kind: "step", key: id, tool: name, title: describeToolCall(name, args), detail: "", status: "running", ...recordedAt(at) });
+  b.blocks.push({ kind: "step", key: id, outputKey: `${runId}:${id}`, tool: name, title: describeToolCall(name, args), detail: "", status: "running", input: toolInput(args), changes: readFileChanges(args), ...recordedAt(at), ...(isCodeModeCall(name, args) ? { codeMode: true } : {}) });
   b.steps.set(id, b.blocks.length - 1);
 }
 
@@ -144,8 +224,14 @@ function onTool(b: Builder, event: RunEvent): void {
   if (name === "tool_call" || name === "tool_search" || name === "tool_describe") {
     return; // Tool Search controls; the nested real tool gets its own step line.
   }
+  if (str(d.parentToolCallId)) b.wrappers.add(str(d.parentToolCallId));
   if (d.phase === "start") {
-    startStep(b, id, name, d.args, event.ts);
+    if (!b.steps.has(id)) startStep(b, id, name, d.args, event.ts, event.runId);
+    else {
+      const at = b.steps.get(id)!;
+      const step = b.blocks[at] as Extract<Block, { kind: "step" }>;
+      b.blocks[at] = { ...step, tool: name || step.tool, title: describeToolCall(name, d.args) || step.title, input: toolInput(d.args), changes: readFileChanges(d.args), ...(isCodeModeCall(name || step.tool, d.args) ? { codeMode: true } : {}) };
+    }
     return;
   }
   const at = b.steps.get(id);
@@ -155,20 +241,81 @@ function onTool(b: Builder, event: RunEvent): void {
   const step = b.blocks[at] as Extract<Block, { kind: "step" }>;
   if (d.phase === "update") {
     const output = resultText(d.partialResult);
-    b.blocks[at] = output ? { ...step, output, ...recordedAt(event.ts) } : step;
+    b.blocks[at] = output ? { ...step, output: keepOutput(step.outputKey ?? id, output), ...recordedAt(event.ts) } : step;
     return;
   }
   if (d.phase !== "result") {
     return;
   }
-  const text = resultText(d.result);
-  const status: StepStatus = isDeniedResultText(text) ? "denied" : d.isError ? "failed" : "ok";
-  b.blocks[at] = { ...step, status, detail: text.slice(0, 400), output: text, browser: status === "ok" ? readBrowserPresentation(d.result, step.tool, id) : undefined, ...recordedAt(event.ts) };
+  const text = str(record(d.result).output) || resultText(d.result);
+  const codeFailed = step.codeMode === true && wrapperFailed(d.isError, text, record(d.result).details);
+  if (b.wrappers.has(id) && codeFailed) b.wrappers.delete(id);
+  const exitCode = record(d.result).exitCode;
+  const status: StepStatus = isDeniedResultText(text) ? "denied" : d.isError || codeFailed || (typeof exitCode === "number" && exitCode !== 0) ? "failed" : "ok";
+  b.blocks[at] = { ...step, status, detail: typeof exitCode === "number" ? `Exit ${exitCode}` : text.slice(0, 400), output: text ? keepOutput(step.outputKey ?? id, text) : step.output, browser: status === "ok" ? readBrowserPresentation(d.result, step.tool, id) : undefined, ...recordedAt(event.ts) };
 }
+
+/** Codex's item stream supplies the ordered shell of activity; its tool stream adds inputs/results. */
+function onItem(b: Builder, event: RunEvent): void {
+  const d = event.data;
+  const kind = str(d.kind);
+  const id = str(d.toolCallId) || str(d.itemId) || `${event.runId}:${event.seq}`;
+  if (kind === "answer_candidate") return;
+  if (kind === "analysis") {
+    const value = str(d.text) || str(d.progressText);
+    if (value || !b.blocks.some((block) => block.kind === "thinking")) addThinking(b, { ...event, data: { text: value } });
+    return;
+  }
+  if (kind === "preamble") {
+    const value = str(d.progressText);
+    if (!value) return;
+    const at = b.items.get(id);
+    if (at === undefined) {
+      b.blocks.push({ kind: "preamble", key: `preamble:${id}`, text: value });
+      b.items.set(id, b.blocks.length - 1);
+    } else b.blocks[at] = { kind: "preamble", key: `preamble:${id}`, text: value };
+    b.text = null;
+    return;
+  }
+  if (!["tool", "command", "patch", "search"].includes(kind)) return;
+  const name = str(d.name) || kind;
+  const at = b.steps.get(id);
+  if (at === undefined) {
+    startStep(b, id, name, {}, event.ts, event.runId);
+  }
+  const position = b.steps.get(id)!;
+  const step = b.blocks[position] as Extract<Block, { kind: "step" }>;
+  const meta = str(d.meta);
+  const title = meta || step.title;
+  const status: StepStatus = d.status === "failed" || d.status === "blocked" ? "failed" : d.phase === "end" ? "ok" : "running";
+  // A result already said "failed" or "denied" (not allowed); the item's own end must not turn it back into "ok".
+  const settled = step.status === "failed" || step.status === "denied";
+  b.blocks[position] = { ...step, tool: name, title, status: settled ? step.status : status, ...recordedAt(event.ts) };
+}
+
+function onPlan(b: Builder, event: RunEvent): void {
+  const raw = event.data.steps;
+  if (!Array.isArray(raw)) return;
+  const steps = raw.map((value) => record(value)).filter((value) => str(value.step)).map((value) => ({
+    step: str(value.step),
+    status: value.status === "completed" ? "completed" as const : value.status === "in_progress" ? "in_progress" as const : "pending" as const,
+  }));
+  const block: Block = { kind: "plan", key: `${event.runId}:plan`, steps };
+  if (b.plan === null) {
+    b.blocks.push(block);
+    b.plan = b.blocks.length - 1;
+  } else b.blocks[b.plan] = block;
+}
+
+/** Result fields that describe how a call ended, not what it printed. */
+const RESULT_METADATA = new Set(["status", "exitCode", "exit_code", "durationMs", "duration", "isError", "success", "output"]);
 
 /** The visible text of a tool result: its text blocks, joined. */
 export function resultText(result: unknown): string {
-  const content = record(result).content;
+  if (typeof result === "string") return result;
+  const value = record(result);
+  if (typeof value.text === "string") return value.text;
+  const content = value.content;
   if (typeof content === "string") {
     return content;
   }
@@ -178,7 +325,8 @@ export function resultText(result: unknown): string {
       .map((c) => str(record(c).text))
       .join("\n");
   }
-  return "";
+  const shown = Object.keys(value).filter((key) => !RESULT_METADATA.has(key));
+  return shown.length ? JSON.stringify(value, null, 2) : "";
 }
 
 function onLifecycle(b: Builder, event: RunEvent, approvals: ReadonlyMap<string, Approval>): void {
@@ -238,7 +386,7 @@ function settle(blocks: Block[]): Block[] {
  * `approvals` holds the cards from `exec.approval.requested`, keyed by approval id.
  */
 export function projectRun(events: readonly RunEvent[], approvals: ReadonlyMap<string, Approval>): Block[] {
-  const b: Builder = { blocks: [], steps: new Map(), text: null, thinking: null };
+  const b: Builder = { blocks: [], steps: new Map(), items: new Map(), wrappers: new Set(), text: null, thinking: null, plan: null };
   let ended = false;
   for (const event of events) {
     if (event.stream === "assistant") {
@@ -248,14 +396,31 @@ export function projectRun(events: readonly RunEvent[], approvals: ReadonlyMap<s
       addThinking(b, event);
     } else if (event.stream === "tool") {
       onTool(b, event);
+    } else if (event.stream === "item") {
+      onItem(b, event);
+    } else if (event.stream === "plan") {
+      onPlan(b, event);
+    } else if (event.stream === "usage") {
+      const data = event.data;
+      const input = Number(data.inputTokens ?? data.input) || 0;
+      const output = Number(data.outputTokens ?? data.output) || 0;
+      const total = Number(data.totalTokens ?? data.total) || input + output;
+      const key = `${event.runId}:usage`;
+      const at = b.blocks.findIndex((block) => block.key === key);
+      const block: Block = { kind: "usage", key, input, output, total };
+      if (at < 0) b.blocks.push(block);
+      else b.blocks[at] = block;
     } else if (event.stream === "lifecycle") {
       onLifecycle(b, event, approvals);
       ended ||= event.data.phase === "end" || event.data.phase === "error";
     }
   }
+  // A wrapper's nested calls are the steps (the real command, its approval); the wrapper itself would be a second
+  // row for the same command, and the finished turn (history.ts) doesn't have it either.
+  const blocks = b.wrappers.size ? b.blocks.filter((block) => block.kind !== "step" || !b.wrappers.has(block.key)) : b.blocks;
   if (ended) {
-    return settle(b.blocks);
+    return settle(blocks);
   }
   const status = lastStatus(events);
-  return status ? [...b.blocks, status] : b.blocks;
+  return status ? [...blocks, status] : blocks;
 }
