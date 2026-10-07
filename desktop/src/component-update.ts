@@ -118,7 +118,8 @@ async function runningProcessCommands(): Promise<string> {
 /** Only completed release folders created directly under this data directory are owned by the updater. */
 async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previous: string, reportFailure?: (error: unknown) => void): Promise<void> {
   const updates = join(cfg.dataDir, "updates");
-  const retained = new Set([current, previous].filter(engine => engine && basename(engine) === "engine").map(engine =>
+  const running = await readOrEmpty(join(cfg.dataDir, "engine-running.txt"));
+  const retained = new Set([current, previous, running].filter(engine => engine && basename(engine) === "engine").map(engine =>
     resolve(dirname(engine))).filter(folder => dirname(folder) === resolve(updates)));
   const pending = await publication(cfg);
   if (pending) retained.add(resolve(dirname(pending.engineNext)));
@@ -127,7 +128,7 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
   catch (error) { reportFailure?.(error); return; }
   for (const entry of await readdir(updates, { withFileTypes: true })) {
     if (entry.isDirectory() && entry.name.startsWith(".trash-release-")) {
-      try { await rm(join(updates, entry.name), { recursive: true, force: true }); }
+      try { await rm(join(updates, entry.name), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); }
       catch (error) { reportFailure?.(new Error(`Could not finish pruning ${entry.name}: ${String(error)}`)); }
       continue;
     }
@@ -140,7 +141,7 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
     const trash = join(updates, `.trash-${entry.name}-${process.pid}-${Math.random().toString(36).slice(2)}`);
     try {
       await rename(folder, trash);
-      await rm(trash, { recursive: true, force: true });
+      await rm(trash, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
     } catch (error) { reportFailure?.(new Error(`Could not prune ${entry.name}: ${String(error)}`)); }
   }
 }

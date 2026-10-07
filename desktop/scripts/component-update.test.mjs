@@ -138,16 +138,19 @@ test("confirmed update retains current and previous releases but prunes older up
 test("prune retains live and incomplete releases while deleting an unrelated complete release", async () => fixture(async ({ cfg, request }) => {
   const updates = join(cfg.dataDir, "updates");
   const live = join(updates, "release-0.4.0-111aaa");
+  const desktopRunning = join(updates, "release-0.4.0-444ddd");
   const staging = join(updates, "release-0.4.0-222bbb");
   const stale = join(updates, "release-0.4.0-333ccc");
-  for (const folder of [live, staging, stale]) await mkdir(join(folder, "engine"), { recursive: true });
-  for (const folder of [live, stale]) await writeFile(join(folder, ".release-complete"), "");
+  for (const folder of [live, desktopRunning, staging, stale]) await mkdir(join(folder, "engine"), { recursive: true });
+  for (const folder of [live, desktopRunning, stale]) await writeFile(join(folder, ".release-complete"), "");
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), join(desktopRunning, "engine") + "\n");
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", join(live, "engine", "branch.mjs")], { stdio: "ignore", windowsHide: true });
   try {
     await new Promise((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
     await source.refreshComponentUpdate(cfg, request);
     await source.confirmComponentUpdate(cfg);
     assert.equal(await exists(live), true, "a node host using an older release stays runnable");
+    assert.equal(await exists(desktopRunning), true, "the desktop's running-engine pointer is retained");
     assert.equal(await exists(staging), true, "an incomplete download is not pruned");
     assert.equal(await exists(stale), false, "unrelated completed release is pruned");
   } finally {
