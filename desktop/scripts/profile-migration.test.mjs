@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { lstat, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -153,7 +153,7 @@ test("transient rename locks retry and permanent locks stop after bounded attemp
   assert.equal(attempts, 1);
 }));
 
-test("sockets and FIFOs are ignored while regular profile files migrate", async () => homeFixture(async (_root, home) => {
+test("sockets and FIFOs are ignored while regular profile files migrate", async () => homeFixture(async (root, home) => {
   const workspace = join(home, ".branch-dev", "workspace");
   await mkdir(workspace, { recursive: true });
   await writeFile(join(workspace, "IDENTITY.md"), "kept");
@@ -162,9 +162,12 @@ test("sockets and FIFOs are ignored while regular profile files migrate", async 
     const result = spawnSync("mkfifo", [fifo], { windowsHide: true });
     assert.equal(result.status, 0, result.stderr?.toString());
     const socket = createServer();
-    socket.listen(join(workspace, "service.sock"));
+    // macOS has a short Unix-domain path limit; bind near the temp root, then move the socket entry.
+    const bound = join(root, "service.sock");
+    socket.listen(bound);
     await once(socket, "listening");
     try {
+      await rename(bound, join(workspace, "service.sock"));
       assert.equal(prepareNormalProfile(home).legacyDevMode, false);
     } finally {
       await new Promise((resolve) => socket.close(resolve));
