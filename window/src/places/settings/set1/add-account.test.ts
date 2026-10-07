@@ -39,6 +39,7 @@ describe("servicesOf", () => {
       { provider: "litellm", apiKeySupported: true },
       { provider: "ollama", apiKeySupported: true },
       { provider: "lmstudio", apiKeySupported: true },
+      { provider: "opencode", apiKeySupported: true, loginOptions: [{ id: "opencode/login", kind: "oauth" }] },
     ], [], {
       manualProviders: [{ id: "minimax-token", brandId: "minimax", label: "MiniMax token" }, { id: "ollama", brandId: "ollama", label: "Ollama" }, { id: "opencode-go", brandId: "opencode-go", label: "OpenCode Go" }, { id: "litellm", brandId: "litellm", label: "LiteLLM" }],
       prepareOptions: [{ id: "ollama", label: "Ollama" }, { id: "lmstudio", label: "LM Studio" }, { id: "litellm", label: "LiteLLM" }],
@@ -48,6 +49,7 @@ describe("servicesOf", () => {
     expect(out.filter((s) => s.kind === "key" && s.name === "Google Gemini")).toHaveLength(1);
     expect(out.filter((s) => s.kind === "local").map((s) => s.name)).toEqual(["Ollama", "LM Studio", "LiteLLM"]);
     expect(out.filter((s) => s.kind !== "local").map((s) => s.name)).not.toContain("Ollama");
+    expect(out.filter((s) => s.kind !== "local").map((s) => s.name)).not.toContain("OpenCode");
     expect(out.filter((s) => s.kind === "plan").map((s) => s.name)).not.toContain("OpenCode Go");
     expect(out.filter((s) => s.kind === "plan").map((s) => s.name)).not.toContain("LiteLLM");
     expect(out.filter((s) => s.kind === "key").map((s) => s.name)).toEqual(expect.arrayContaining(["Microsoft Foundry", "OpenCode Go", "Ollama Cloud", "Hugging Face"]));
@@ -73,14 +75,14 @@ it("keeps the catalogue hidden until detection completes, then shows the preview
     expect(host.textContent).toContain("Looking for services…");
     expect(host.querySelectorAll(".aa-grp")).toHaveLength(0);
     expect(host.textContent).not.toContain("3 services");
-    await act(async () => finish({ prepareOptions: [{ id: "ollama", label: "Ollama" }], authOptions: [{ id: "custom-api-key", kind: "custom", label: "Something else" }] }));
-    expect([...host.querySelectorAll(".aa-grp h3")].map((h) => h.textContent?.replace(/\d+$/, "").trim())).toEqual(["Sign in with your plan", "API keys", "On this computer", "Cloud and other"]);
+    await act(async () => finish({ candidates: [{ kind: "ollama", modelRef: "ollama/example", label: "Ollama", credentials: true }], prepareOptions: [{ id: "ollama", label: "Ollama" }], authOptions: [{ id: "custom-api-key", kind: "custom", label: "Something else" }] }));
+    expect([...host.querySelectorAll(".aa-grp h3")].map((h) => h.textContent?.replace(/\d+$/, "").trim())).toEqual(["Found on this computer", "Sign in with your plan", "API keys", "On this computer", "Cloud and other"]);
     expect(host.textContent).toContain("5 services");
     expect(host.querySelectorAll('[role="tab"]')).toHaveLength(0);
-    await act(async () => host.querySelector<HTMLButtonElement>(".aa-grp .prov")!.click());
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".aa-grp button.prov")].find((button) => button.textContent?.includes("ChatGPT"))!.click());
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Back")!.click());
     expect(host.textContent).toContain("5 services");
-    expect(host.querySelectorAll(".aa-grp")).toHaveLength(4);
+    expect(host.querySelectorAll(".aa-grp")).toHaveLength(5);
   } finally {
     await act(async () => root.unmount());
     host.remove();
