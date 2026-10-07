@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Dialog } from "../../shell/Dialog";
+import { BranchLinkDialog } from "../../shell/BranchLinkDialog";
 import { Switch } from "../../shell/Popover";
 import { useResource } from "../library/data";
 import { Status } from "../library/ui";
@@ -121,6 +122,7 @@ export function Agents({ ctx }: { ctx: ToolsCtx }) {
   </>;
 }
 export function AddAgent({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
+  const [linkBranch, setLinkBranch] = useState(false);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [outboundToken, setOutboundToken] = useState("");
@@ -143,6 +145,7 @@ export function AddAgent({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
     } } } } });
     if (ok) { void ctx.engine.request("a2a.peers.refresh", {}).catch(() => undefined); close(); }
   };
+  if (linkBranch) return <BranchLinkDialog engine={ctx.engine} onClose={close} />;
   return <Dialog title="Connect another agent" onClose={close} footer={<><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn pri" disabled={ctx.config.busy} onClick={() => void connect()}>Connect</button></>}>
     <div className="cz-provs">
       <div className="cz-prov"><b>An agent with an A2A card</b><small>Enter its address and outbound token. Your inbound token is generated locally and never shown here.</small>
@@ -150,7 +153,7 @@ export function AddAgent({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
         <label>Address<input aria-label="Agent address" type="url" value={url} onChange={event => setUrl(event.target.value)} /></label>
         <label>Outbound token<input aria-label="Outbound token" type="password" value={outboundToken} onChange={event => setOutboundToken(event.target.value)} /></label>
         {(error || ctx.config.writeError) && <p role="alert" className="cz-error">{error || ctx.config.writeError}</p>}</div>
-      <div className="cz-prov"><b>Branch on another computer</b><small>Its Trunks answer here.</small><Grey reason="Needs the engine's link to another Branch.">Connect</Grey></div>
+      <div className="cz-prov"><b>Branch on another computer</b><small>Its Trunks answer here.</small><button type="button" className="btn sm" onClick={() => setLinkBranch(true)}>Connect</button></div>
       <div className="cz-prov"><b>An agent on your KeepOak computer</b><small>Runs in the cloud, answers here.</small><Grey reason="Needs keepoak.com sign-in in the engine.">Connect</Grey></div>
     </div>
   </Dialog>;

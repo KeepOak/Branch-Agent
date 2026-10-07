@@ -39,7 +39,7 @@ type Props = {
   name: string;
   working: boolean;
   disabled: boolean;
-  onSend: (text: string, extras?: SendExtras) => void | Promise<boolean>;
+  onSend: (text: string, extras?: SendExtras, idempotencyKey?: string) => void | Promise<boolean>;
   onStop: () => void;
   engine?: WindowEngine;
   sessionKey?: string | null;
@@ -64,6 +64,8 @@ type Props = {
   draftTemporary?: boolean;
   onNewTopic?: (agentId: string, options?: Record<string, unknown>) => void;
   mainKey?: string;
+  lockdown?: boolean;
+  onToggleLockdown?: () => void;
 };
 
 type Menu = "plus" | "plug" | "tune" | null;
@@ -152,7 +154,7 @@ export function Composer(props: Props) {
     [onSend, draft.files, draft.people, props.replyTo],
   );
   const line = useWaitingLine(engine?.sessionKey ?? null, working, Boolean(props.offline), (item, steer) => {
-    onSend(item.text, buildExtras(item.text, item.files, [], steer ? "steer" : undefined));
+    onSend(item.text, buildExtras(item.text, item.files, [], steer ? "steer" : undefined), item.id);
     if (steer) toast(`Steered ${trunkName}. It picks this up at its next step.`);
   });
   const bg = useBackground(engine, conv.trunkId, props.mainKey);
@@ -167,10 +169,12 @@ export function Composer(props: Props) {
     return err;
   };
   const pickMode = async (next: EngineMode | null) => {
+    if (props.lockdown) return;
     setMenu(null);
     if ((await patch({ permissionMode: next })) === null) toast(`${next ? modeName(next) : `As set · ${modeName(asSet)}`} in this conversation.`);
   };
   const runBackground = async (text: string) => {
+    if (props.lockdown) { setProblem("Lockdown is on: Trunks cannot run or send anything."); return; }
     if (!text.trim()) {
       toast("Type what to do first, then run it in the background.");
       return;
@@ -186,6 +190,10 @@ export function Composer(props: Props) {
   const submit = (alt: boolean) => {
     const plan = planSend(draft.text, draft.files.length > 0, working, queueMode, alt);
     if (plan.kind === "nothing") return;
+    if (props.lockdown && plan.kind !== "stop") {
+      setProblem(draft.text.trim().startsWith("!") ? "Lockdown is on: commands can't run." : "Lockdown is on: Trunks cannot run or send anything.");
+      return;
+    }
     if (noModel && plan.kind !== "command" && !draft.text.trim().startsWith("/")) return;
     if (nextAsJob && draft.files.length) {
       setProblem("A job starts with words. Send attachments in this conversation instead.");
@@ -308,6 +316,7 @@ export function Composer(props: Props) {
       submit(prefs.sendWith === "ctrl" ? false : mod);
     } else if (e.key === "Tab" && e.shiftKey) {
       e.preventDefault();
+      if (props.lockdown) return;
       const next = nextMode(mode ?? asSet, admin);
       if (next) void pickMode(next);
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
@@ -381,7 +390,7 @@ export function Composer(props: Props) {
   const hasDraft = draft.text.trim().length > 0 || draft.files.length > 0;
   const stopMode = working && !hasDraft;
   // Sessions and history arrive before the engine finishes starting; sending waits for this Trunk.
-  const ready = hasDraft && !disabled && draft.preparing === 0 && !isPreparationPending(conversationProblem) && (!noModel || draft.text.trim().startsWith("/"));
+  const ready = hasDraft && !disabled && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && (!noModel || draft.text.trim().startsWith("/"));
   // The session row's estimatedCostUsd is the latest run, not the conversation total.
   const [usageCost, setUsageCost] = useState<{ key: string; value: number } | null>(null);
   useEffect(() => {
@@ -520,12 +529,12 @@ export function Composer(props: Props) {
           {vimOn ? <span className="c-flag" data-testid="vim-normal">Normal</span> : null}
         </span>
         {engine ? (
-          <button ref={anchors.tune} type="button" className={`c-btn c-tune-button${(mode ?? asSet) === "full" ? " full" : ""}`} data-testid="tune-button" aria-haspopup="dialog" aria-expanded={menu === "tune"}
-            aria-label={`Model, access and usage: ${chipLabel(current?.name ?? currentRef.split("/").pop() ?? "", thinking)} · ${modeName(mode ?? asSet) || "As set"}${cost !== undefined ? ` · $${cost.toFixed(2)} so far` : ""}`}
-            title={`${current?.name ?? currentRef} · ${modeName(mode ?? asSet) || "As set"}${accountEmail ? ` · ${accountEmail}` : ""}`}
+          <button ref={anchors.tune} type="button" className={`c-btn c-tune-button${props.lockdown ? " lockdown" : (mode ?? asSet) === "full" ? " full" : ""}`} data-testid="tune-button" aria-haspopup="dialog" aria-expanded={menu === "tune"}
+            aria-label={`Model, access and usage: ${chipLabel(current?.name ?? currentRef.split("/").pop() ?? "", thinking)} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${cost !== undefined ? ` · $${cost.toFixed(2)} so far` : ""}`}
+            title={`${current?.name ?? currentRef} · ${props.lockdown ? "Lockdown" : modeName(mode ?? asSet) || "As set"}${accountEmail ? ` · ${accountEmail}` : ""}`}
             onClick={() => setMenu(menu === "tune" ? null : "tune")}>
-            <Icon name="sliders" />
-            {(mode ?? asSet) === "full" ? <Icon name="lock" size={10} /> : null}
+            <Icon name={props.lockdown ? "lock" : "sliders"} />
+            {props.lockdown ? <span>Lockdown</span> : (mode ?? asSet) === "full" ? <Icon name="lock" size={10} /> : null}
             {str(row.activeModel) && str(row.activeModel) !== str(row.model) ? <i className="c-tune-attention" aria-hidden="true" /> : null}
           </button>
         ) : null}
@@ -629,7 +638,7 @@ export function Composer(props: Props) {
               <button type="button" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => { setMenu(null); onOpen?.("settings/accounts"); }}>Accounts and order…</button></div>
             </section>
             <section className="c-tune-section"><h3>Access</h3>
-              <ModeMenu embedded anchor={anchors.tune} onClose={() => setMenu(null)} mode={mode} asSet={asSet} canSelectFull={admin} onPick={(m) => void pickMode(m)} onOpen={onOpen} row={row} onElevated={(level) => void patch({ elevatedLevel: level })} />
+              <ModeMenu embedded anchor={anchors.tune} onClose={() => setMenu(null)} mode={mode} asSet={asSet} canSelectFull={admin} lockdown={props.lockdown} onToggleLockdown={props.onToggleLockdown} onPick={(m) => void pickMode(m)} onOpen={onOpen} row={row} onElevated={(level) => void patch({ elevatedLevel: level })} />
             </section>
             <section className="c-tune-section"><h3>Thread</h3>
               <div className="c-tune-line"><span>Start as a job<small>Your next message gets its own card and progress.</small></span><button type="button" aria-pressed={nextAsJob} onClick={() => setNextAsJob((v) => !v)}>{nextAsJob ? "On" : "Off"}</button></div>
@@ -694,9 +703,8 @@ function ToolButton({ refEl, icon, label, tip, open, onClick, disabled, testId }
 function NoModelLine({ onOpen }: { onOpen?: (target: OpenTarget) => void }) {
   return (
     <p className="c-nomodel" data-testid="no-model">
-      Please{" "}
-      <button type="button" className="c-link" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => onOpen?.("settings/models")}>connect a model</button>, or{" "}
-      <button type="button" className="c-link" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => onOpen?.("local-model-setup")}>click here</button> to set up a local model.
+      Trunks can’t answer until a model is connected.{" "}
+      <button type="button" className="c-link" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => onOpen?.("settings/accounts/add")}>Add an account</button>
     </p>
   );
 }

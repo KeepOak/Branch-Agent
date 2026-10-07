@@ -4,6 +4,8 @@ import { readBrowserPresentation } from "./browser-presentation";
 import {
   describeToolCall,
   isDeniedResultText,
+  wrapperFailed,
+  isCodeModeCall,
   keepOutput,
   toolInput,
   resultText,
@@ -30,9 +32,14 @@ type Message = Record<string, unknown>;
 type Builder = {
   blocks: Block[];
   steps: Map<string, { at: number; command: string; ts: number }>;
+  /** Code Mode wrappers (an `exec` whose code called real tools): their nested calls are the steps, not them. */
+  wrappers: Set<string>;
   runId: string | null;
   runStart: number;
   runFinished: boolean;
+  /** The run was stopped (an aborted partial the engine kept: `branchAbort`). */
+  runStopped: boolean;
+  /** When the newest message was written (`__branch.recordTimestampMs`), so a run ends when its last reply ended. */
   lastTs: number;
   /** Keep every tool result whole (complete transcript exports); the thread keeps a tail of long ones. */
   wholeOutput: boolean;
@@ -83,9 +90,11 @@ export function readMeta(m: Message): MessageMeta {
   const sender = readSender(m);
   const usage = rec(m.usage);
   const cost = rec(usage.cost);
+  const key = str(m.idempotencyKey) || str(branch.idempotencyKey);
   return {
     ...(str(branch.id) ? { entryId: str(branch.id) } : {}),
     ...(str(branch.runId) ? { runId: str(branch.runId) } : {}),
+    ...(key.endsWith(":user") ? { runKey: key.slice(0, -":user".length) } : {}),
     ...(num(m.timestamp) ? { timestamp: num(m.timestamp) } : {}),
     ...(str(m.model) ? { model: str(m.model) } : {}),
     ...(str(m.provider) ? { provider: str(m.provider) } : {}),
@@ -142,10 +151,17 @@ function attachmentsOf(content: unknown): Attachment[] {
 
 function closeRun(b: Builder, inFlightRunId: string | null): void {
   if (b.runId && b.runFinished && b.runId !== inFlightRunId) {
-    b.blocks.push({ kind: "done", key: `${b.runId}:done`, runId: b.runId, durationMs: b.lastTs - b.runStart });
+    b.blocks.push({ kind: "done", key: `${b.runId}:done`, runId: b.runId, durationMs: Math.max(0, b.lastTs - b.runStart), ...(b.runStopped ? { stopped: true } : {}) });
   }
   b.runId = null;
   b.runFinished = false;
+  b.runStopped = false;
+}
+
+/** When a message was written: the engine's record time, else the message's own time. An assistant message's own
+ *  `timestamp` is when its stream began, so a long reply would end its run too early ("Done in 7s" for 55 s). */
+function writtenAt(m: Message): number {
+  return num(rec(m.__branch).recordTimestampMs) || num(m.timestamp);
 }
 
 function onAssistantPart(b: Builder, part: unknown, key: string, m: Message): void {
@@ -157,7 +173,7 @@ function onAssistantPart(b: Builder, part: unknown, key: string, m: Message): vo
   } else if (p.type === "toolCall") {
     const id = str(p.id) || key;
     const title = describeToolCall(str(p.name), p.arguments);
-    b.blocks.push({ kind: "step", key: id, outputKey: `${b.runId ?? key}:${id}`, tool: str(p.name), title, detail: "", status: "ok", input: toolInput(p.arguments), changes: readFileChanges(p.arguments), ...recordedAt(m.timestamp) });
+    b.blocks.push({ kind: "step", key: id, outputKey: `${b.runId ?? key}:${id}`, tool: str(p.name), title, detail: "", status: "ok", input: toolInput(p.arguments), changes: readFileChanges(p.arguments), ...recordedAt(m.timestamp), ...(isCodeModeCall(str(p.name), p.arguments) ? { codeMode: true } : {}) });
     b.steps.set(id, { at: b.blocks.length - 1, command: str(rec(p.arguments).command), ts: num(m.timestamp) });
   } else if (typeof part === "string" && part.trim()) {
     b.blocks.push({ kind: "text", key, text: part, streaming: false, meta: readMeta(m) });
@@ -177,6 +193,7 @@ function onAssistant(b: Builder, m: Message, index: number): void {
     b.blocks.push({ kind: "error", key: `h:${index}:error`, runId: b.runId ?? undefined, message: str(m.errorMessage) });
   }
   b.runFinished = str(m.stopReason) !== "toolUse";
+  b.runStopped ||= rec(m.branchAbort).aborted === true;
 }
 
 function findApproval(
@@ -200,12 +217,18 @@ function approvalState(status: string): Approval["state"] {
 
 function onToolResult(b: Builder, m: Message, records: readonly ApprovalRecord[], sessionKey: string): void {
   const step = b.steps.get(str(m.toolCallId));
-  if (!step) {
-    return;
-  }
-  const text = resultText(m);
-  const status: StepStatus = isDeniedResultText(text) ? "denied" : m.isError ? "failed" : "ok";
+  if (!step) return;
   const block = b.blocks[step.at] as Extract<Block, { kind: "step" }>;
+  const text = resultText(m);
+  // A Code Mode run that failed says so in its own result (status "failed", no isError).
+  const codeFailed = block.codeMode === true && wrapperFailed(m.isError, text, m.details);
+  if (b.wrappers.has(str(m.toolCallId))) {
+    // A wrapper's own result is the code's JSON; its nested calls already carry what ran and how it ended, unless
+    // the code itself failed, which shows as the wrapper's step.
+    if (!codeFailed) return;
+    b.wrappers.delete(str(m.toolCallId));
+  }
+  const status: StepStatus = isDeniedResultText(text) ? "denied" : m.isError || codeFailed ? "failed" : "ok";
   b.blocks[step.at] = { ...block, status, detail: text.slice(0, 400), output: b.wholeOutput ? text : keepOutput(block.outputKey ?? block.key, text), browser: status === "ok" ? readBrowserPresentation(m, block.tool, block.key) : undefined, ...recordedAt(m.timestamp) };
   const deniedId = /gateway id=([0-9a-f-]{8,})/i.exec(text)?.[1];
   const found = findApproval(records, sessionKey, step, num(m.timestamp));
@@ -221,6 +244,33 @@ function onToolResult(b: Builder, m: Message, records: readonly ApprovalRecord[]
       b.steps.set(key, { ...value, at: value.at + 1 });
     }
   }
+}
+
+/**
+ * A tool a Code Mode `exec` called from its code (`branch.nested-tool.v1`: the nested call and its result). It is
+ * the step the person reads (the real command, its approval, "Not allowed" when refused); the wrapper around it
+ * (`{title, code}` and a JSON result that always says "completed") is dropped, so a refused command no longer reads
+ * "Ran a command · Done", and the live view and the finished turn count the same steps.
+ */
+function onNestedTool(b: Builder, m: Message, records: readonly ApprovalRecord[], sessionKey: string): void {
+  const parts = Array.isArray(m.content) ? m.content.map(rec) : [];
+  for (const part of parts) {
+    if (part.type === "toolCall" && str(part.id)) {
+      const id = str(part.id);
+      if (str(part.parentToolCallId)) b.wrappers.add(str(part.parentToolCallId));
+      if (b.steps.has(id)) continue;
+      const at = num(part.timestamp) || writtenAt(m);
+      b.blocks.push({ kind: "step", key: id, outputKey: `${b.runId ?? id}:${id}`, tool: str(part.name), title: describeToolCall(str(part.name), part.arguments), detail: "", status: "ok", input: toolInput(part.arguments), changes: readFileChanges(part.arguments), ...recordedAt(at) });
+      b.steps.set(id, { at: b.blocks.length - 1, command: str(rec(part.arguments).command), ts: at });
+    } else if (part.type === "toolResult" || part.role === "toolResult") {
+      onToolResult(b, part, records, sessionKey);
+    }
+  }
+}
+
+/** Removes the Code Mode wrappers whose nested calls became the steps. */
+function dropWrappers(b: Builder): Block[] {
+  return b.wrappers.size ? b.blocks.filter((block) => block.kind !== "step" || !b.wrappers.has(block.key)) : b.blocks;
 }
 
 /** A `custom` transcript entry the engine marks for display: a failed run, or a note. */
@@ -247,8 +297,14 @@ function isRestartResume(m: Message): boolean {
 }
 
 function onUser(b: Builder, m: Message, index: number, inFlightRunId: string | null): void {
+  if (str(rec(m.__branch).steerTargetRunId)) {
+    // Steered into the turn that was running: it stays that turn's, so its Done line and steps stay whole.
+    b.blocks.push({ kind: "steer", key: `h:${index}`, text: messageText(m.content), meta: readMeta(m) });
+    return;
+  }
   closeRun(b, inFlightRunId);
-  b.runStart = num(m.timestamp);
+  // A message sent while the turn before still ran starts its own turn when that one ended.
+  b.runStart = Math.max(num(m.timestamp), b.lastTs);
   if (isRestartResume(m)) {
     b.blocks.push({ kind: "notice", key: `h:${index}`, text: RESUMED_AFTER_RESTART });
     return;
@@ -274,7 +330,7 @@ export function historyToBlocks(
   inFlightRunId: string | null,
   options: { wholeOutput?: boolean } = {},
 ): Block[] {
-  const b: Builder = { blocks: [], steps: new Map(), runId: null, runStart: 0, runFinished: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
+  const b: Builder = { blocks: [], steps: new Map(), wrappers: new Set(), runId: null, runStart: 0, runFinished: false, runStopped: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
   for (const [index, raw] of messages.entries()) {
     const m = rec(raw);
     const runId = str(rec(m.__branch).runId) || null;
@@ -285,12 +341,35 @@ export function historyToBlocks(
       onAssistant(b, m, index);
     } else if (m.role === "toolResult") {
       onToolResult(b, m, records, sessionKey);
+    } else if (m.role === "custom" && str(m.customType) === "branch.nested-tool.v1") {
+      onNestedTool(b, m, records, sessionKey);
     } else if (m.role === "custom") {
       onCustom(b, m, index);
       b.runFinished ||= str(m.customType) === "run-failed-before-reply";
     }
-    b.lastTs = num(m.timestamp) || b.lastTs;
+    // Only a turn's own messages move its end; notes the engine writes between turns (compaction and reset markers,
+    // context) can be stamped "now" and would zero every later "Done in".
+    if ((m.role !== "custom" && m.role !== "system") || ["run-failed-before-reply", "branch.nested-tool.v1"].includes(str(m.customType))) b.lastTs = Math.max(b.lastTs, writtenAt(m));
   }
   closeRun(b, inFlightRunId);
-  return b.blocks;
+  return dropWrappers(b);
+}
+
+/**
+ * Marks the turns of runs that were stopped (`stopped` holds their run ids): their Done line becomes "Stopped". A run
+ * stopped before it wrote anything has no Done line in the history, so one is added after your message's turn.
+ */
+export function markStopped(blocks: readonly Block[], stopped: ReadonlySet<string>): Block[] {
+  if (!stopped.size) return [...blocks];
+  const out = blocks.map((block) => (block.kind === "done" && stopped.has(block.runId) && !block.stopped ? { ...block, stopped: true } : block));
+  const done = new Set(out.filter((block) => block.kind === "done").map((block) => (block as Extract<Block, { kind: "done" }>).runId));
+  for (let i = out.length - 1; i >= 0; i -= 1) {
+    const block = out[i];
+    const runId = block.kind === "user" ? block.meta?.runKey : undefined;
+    if (!runId || !stopped.has(runId) || done.has(runId)) continue;
+    let end = i + 1;
+    while (end < out.length && out[end].kind !== "user") end += 1;
+    out.splice(end, 0, { kind: "done", key: `${runId}:done`, runId, stopped: true });
+  }
+  return out;
 }

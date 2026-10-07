@@ -44,6 +44,33 @@ export function UserMessage({ block, children }: { block: Of<"user">; children?:
   );
 }
 
+/** Steered note (§4.2.2): what you told the Trunk while it worked, inside that turn (the preview's `.steered-b17`). */
+export function SteeredNote({ name, text }: { name: string; text: string }) {
+  return (
+    <div className="steered-note indent" role="note" data-testid="steered-note">
+      <Icon d={ICONS.retry} size={14} />
+      <span>You steered {name}: “{text}”. It takes this at its next step; nothing done so far is lost.</span>
+    </div>
+  );
+}
+
+/** Your message that didn't go (§4.2.2 Parity adds "Not sent"): it stays, with a red pill, the reason, Try again
+ *  and Discard. */
+export function NotSent({ text, reason, onRetry, onDiscard }: { text: string; reason: string; onRetry: () => void; onDiscard: () => void }) {
+  const why = shortReason(reason.replace(/^\s*Error:\s*/i, ""));
+  return (
+    <div className="queued-msg not-sent" data-testid="not-sent">
+      <UserMessage block={{ kind: "user", key: "not-sent", text }} />
+      <div className="send-status mine">
+        <span className="pill bad"><i />Not sent</span>
+        {why ? <span className="send-why" title={reason}>{why}</span> : null}
+        <button type="button" className="btn ghost sm" onClick={onRetry}>Try again</button>
+        <button type="button" className="btn ghost sm" title="Removes this copy." onClick={onDiscard}>Discard</button>
+      </div>
+    </div>
+  );
+}
+
 /** A Trunk's reply. `face` is the gutter character, shown only on the first block of a run (§4.2.2 gutter rule). */
 export function Reply({ block, face, from, working, children }: { block: Of<"text">; face?: ReactNode; from?: string; working?: boolean; children?: ReactNode }) {
   return (
@@ -169,9 +196,18 @@ export function StepsFold({ steps, live, run }: { steps: Of<"step">[]; live: boo
   );
 }
 
-/** "Done in <duration>", starting with this Trunk's 20 px face in its "yay" state (§4.2.2 "Done in"). */
+/** "Done in <duration>", starting with this Trunk's 20 px face in its "yay" state (§4.2.2 "Done in"). A turn you
+ *  stopped says so instead, with the red Stopped pill (§4.2.2 Status pills). */
 export function DoneLine({ block, name, words }: { block: Of<"done">; name: string; words: number }) {
   const state: AgentState = "yay";
+  if (block.stopped) {
+    return (
+      <div className="done-line indent stopped" data-testid="run-stopped">
+        <span className="pill bad"><i />Stopped</span>
+        What it did so far is kept.
+      </div>
+    );
+  }
   return (
     <div className="done-line indent" data-testid="run-done">
       <Face size={20} label={name} state={state} />
@@ -180,7 +216,10 @@ export function DoneLine({ block, name, words }: { block: Of<"done">; name: stri
   );
 }
 
-/** "Couldn't finish" (§4.2.2 Parity adds): the reason, a Details fold, Copy error, and × Dismiss. */
+/** Asks the window to open the Gateway popover (§4.9.3) from the thread ("Couldn't finish" › Check status). */
+export const CHECK_STATUS_EVENT = "branch:check-status";
+
+/** "Couldn't finish" (§4.2.2 Parity adds): the reason, a Details fold, Copy error, Check status and × Dismiss. */
 export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss: () => void }) {
   const { name, toast } = useThread();
   return (
@@ -204,6 +243,9 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
       <div className="row-buttons">
         <button type="button" className="btn sm ghost" onClick={() => void copyText(block.message, toast)}>
           Copy error
+        </button>
+        <button type="button" className="btn sm ghost" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); window.dispatchEvent(new CustomEvent(CHECK_STATUS_EVENT, { detail: { left: r.left, right: r.right, top: r.top } })); }}>
+          Check status
         </button>
       </div>
     </div>

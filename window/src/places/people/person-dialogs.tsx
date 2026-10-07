@@ -30,7 +30,7 @@ type Setup = { setupCode: string; qrDataUrl?: string; gatewayUrl: string; expire
 function useSetupCode(engine: WindowEngine) {
   const op = useOperation(engine);
   const [setup, setSetup] = useState<Setup | null>(null);
-  const make = () => void op.run<unknown>("device.pair.setupCode", { bootstrapProfile: "limited" }, result => {
+  const make = () => void op.run<unknown>("device.pair.setupCode", { bootstrapProfile: "limited", includeQr: true }, result => {
     const r = rec(result);
     setSetup({ setupCode: str(r.setupCode), qrDataUrl: str(r.qrDataUrl) || undefined, gatewayUrl: str(r.gatewayUrl), expiresAtMs: num(r.expiresAtMs) });
   });

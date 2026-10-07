@@ -164,5 +164,6 @@ export function shortReason(message: string): string {
 
 /** A model id as the hover bar shows it: the part after the provider. */
 export function modelName(model?: string): string {
-  return model ? displayModelName(model.replace(/^[^/]+\//, "")) : "";
+  // "gateway-injected" marks text Branch itself kept (a stopped reply's partial), not a model.
+  return model && model !== "gateway-injected" ? displayModelName(model.replace(/^[^/]+\//, "")) : "";
 }

@@ -17,6 +17,11 @@ export function canAnswer(d: ApprovalDetails | undefined, decision: ApprovalDeci
   return isCurrent(d, now) && (d?.allowedDecisions ?? EVERY).includes(decision);
 }
 
+/** Under Lockdown only "Don't" goes through: nothing may leave this computer (preview index.html:18528-18533). */
+export function lockdownAllowsAnswer(lockdown: boolean | undefined, decision: ApprovalDecision): boolean {
+  return !lockdown || decision === "deny";
+}
+
 /** The time, ticking each second while `active`, so a card's buttons go when its request expires. */
 export function useNow(active: boolean): number {
   const [now, setNow] = useState(() => Date.now());

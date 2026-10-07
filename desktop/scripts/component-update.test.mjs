@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile, rename } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile, rename } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createPortProbe } from "node:net";
 import { createRequire } from "node:module";
@@ -161,8 +161,8 @@ test("archive traversal is rejected even when compressed asset hash is valid", a
   await assert.rejects(readFile(join(root, "escaped")), { code: "ENOENT" });
 }, data => damage(data, tar => { tar.fill(0, 0, 100); tar.write("../../escaped", 0); checksum(tar); })));
 
-test("archive symlink entries are rejected before filesystem publication", async () => fixture(async ({ cfg, request }) => {
-  await assert.rejects(source.refreshComponentUpdate(cfg, request), /links/); await unchanged(cfg);
+test("malformed archive symlink entries are rejected before filesystem publication", async () => fixture(async ({ cfg, request }) => {
+  await assert.rejects(source.refreshComponentUpdate(cfg, request), /link has content/); await unchanged(cfg);
 }, data => damage(data, tar => { tar[156] = 50; checksum(tar); })));
 
 test("archive checksum corruption is rejected after asset hash passes", async () => fixture(async ({ cfg, request }) => {
@@ -220,6 +220,7 @@ test("actual desktop caller retains running engine and checks a failing engine b
   const ipcMain = Object.assign(new EventEmitter(), { handle() {} });
   let servedAt, ownerWindow, reloads = 0; const launchedAt = Date.now();
   class BrowserWindow extends EventEmitter {
+    static fromWebContents(sender) { return ownerWindow?.webContents === sender ? ownerWindow : null; }
     constructor() { super(); ownerWindow = this; this.url = ""; this.webContents = new EventEmitter(); Object.assign(this.webContents, {
       getURL: () => this.url, setWindowOpenHandler: () => {}, send: () => {}, reload: () => { reloads++; this.webContents.emit("did-finish-load"); } }); }
     async loadURL(url) { if (url.startsWith("http://")) servedAt = Date.now(); this.url = url; this.webContents.emit("did-finish-load"); }
@@ -300,6 +301,26 @@ test("release maker assembles distinct Windows/macOS descriptors sharing only an
   assert.equal((await readdir(output)).filter(name => name.startsWith(".component-stage-")).length, 0);
 }));
 
+test("macOS runtime component preserves in-bundle framework symlinks", { skip: process.platform !== "darwin" }, async () => fixture(async ({ root, engine, window }) => {
+  const app = join(root, "signed-app"), contents = join(app, "Branch Agent.app/Contents");
+  const framework = join(contents, "Frameworks/Example.framework");
+  await mkdir(join(contents, "Resources"), { recursive: true });
+  await mkdir(join(framework, "Versions/A"), { recursive: true });
+  await writeFile(join(contents, "Resources/app.asar"), "sealed asar");
+  await writeFile(join(framework, "Versions/A/Example"), "signed framework");
+  await symlink("A", join(framework, "Versions/Current"));
+  const asar = join(root, "asar"); await mkdir(asar); await writeFile(join(asar, "app.asar"), "sealed asar");
+  const output = join(root, "mac-runtime-release");
+  const release = await makeComponentRelease({ version: "0.4.3", engine, window, output, platform: "darwin", arch: "arm64",
+    desktop: { app: asar, runtime: app, electronVersion: "44.5.1" } });
+  const asset = release.components.desktopRuntime;
+  const extracted = join(root, "mac-runtime-extracted"); await mkdir(extracted);
+  const { extractComponentArchive } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-archive.js")));
+  await extractComponentArchive(join(output, new URL(asset.url).pathname.split("/").at(-1)), extracted, asset.expandedBytes);
+  assert.equal(await readlink(join(extracted, "Branch Agent.app/Contents/Frameworks/Example.framework/Versions/Current")), "A");
+  assert.equal(await readFile(join(extracted, "Branch Agent.app/Contents/Frameworks/Example.framework/Versions/Current/Example"), "utf8"), "signed framework");
+}));
+
 test("release maker refuses changed shared renderer and preserves existing immutable assets", async () => fixture(async ({ root, engine, window }) => {
   const output = join(root, "assembly");
   await makeComponentRelease({ version: "0.4.3", engine, window, output, platform: "win32", arch: "x64" });
@@ -370,7 +391,8 @@ function coldCallerElectron(state) {
   const app = new EventEmitter(); Object.assign(app, { getVersion: () => "fixture", setPath: () => {}, setAppUserModelId: () => {},
     requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(), quit: () => app.emit("will-quit") });
   class BrowserWindow extends EventEmitter {
-    constructor() { super(); this.url = ""; this.webContents = new EventEmitter(); Object.assign(this.webContents, {
+    static fromWebContents(sender) { return state.window?.webContents === sender ? state.window : null; }
+    constructor() { super(); state.window = this; this.url = ""; this.webContents = new EventEmitter(); Object.assign(this.webContents, {
       getURL: () => this.url, setWindowOpenHandler: () => {}, send: () => {}, reload: () => { state.draft = ""; state.reloads++; } }); }
     async loadURL(url) {
       this.url = url;
@@ -488,6 +510,25 @@ test("an exited staged engine records exit and is not automatically retried", as
   const rejected = JSON.parse(await readFile(join(cfg.dataDir, "component-update-rejected.json"), "utf8"));
   assert.equal(rejected.reason, "exit");
   assert.equal(await source.refreshComponentUpdate(cfg, request), false);
+}));
+
+test("a staged boot that ends because the app quits stops the failed engine and never records, rolls back or retries", async () => fixture(async ({ cfg, request }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  const selected = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  const calls = [];
+  await assert.rejects(bootSelectedEngineWithRollback({
+    boot: async () => { calls.push("boot"); throw new Error("the engine exited with code 0"); },
+    stopFailedGateway: async () => { await new Promise(resolve => setTimeout(resolve, 20)); calls.push("stopped"); },
+    recordTimeout: async () => { calls.push("record"); return 1; },
+    rejectExited: async () => { calls.push("reject"); },
+    rollback: async () => { calls.push("rollback"); return true; },
+    waitForPortRelease: async () => {},
+    quitting: () => true,
+    log: () => {},
+  }), /exited/);
+  assert.deepEqual(calls, ["boot", "stopped"], "a quit was treated as a failed release");
+  assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), selected);
+  await assert.rejects(readFile(join(cfg.dataDir, "component-update-rejected.json")), { code: "ENOENT" });
 }));
 
 async function bootTimedOutRelease(cfg) {

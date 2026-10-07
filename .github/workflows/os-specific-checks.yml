@@ -36,16 +36,16 @@ concurrency:
 
 jobs:
   named:
-    name: Named feature tests on macos-latest (${{ matrix.shard }}/8)
+    name: Named feature tests on macos-latest (${{ matrix.shard }}/12)
     runs-on: macos-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     env:
       CI: 'true'
-      FEATURE_SHARD: ${{ matrix.shard }}/8
+      FEATURE_SHARD: ${{ matrix.shard }}/12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

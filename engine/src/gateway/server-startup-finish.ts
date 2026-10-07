@@ -386,6 +386,24 @@ export async function finishGatewayStartup(params: {
           onSidecarsReady: () => {
             kernel.markSidecarsReady();
             databasePreparationReady.resolve();
+            if (!opts.updateCanary && !minimalTestGateway && !lifecycle.closePreludeStarted) {
+              void import("./server-session-admission-warmup.js")
+                .then(({ startGatewaySessionAdmissionWarmup }) => {
+                  if (lifecycle.closePreludeStarted) {
+                    return;
+                  }
+                  registerGatewayLifetimeSidecars(
+                    startGatewaySessionAdmissionWarmup({
+                      cfg: getRuntimeConfig(),
+                      signal: runtime.connectionWork.signal,
+                      warn: (message) => log.warn(message),
+                    }),
+                  );
+                })
+                .catch((error) =>
+                  log.warn(`session admission warm-up could not start: ${String(error)}`),
+                );
+            }
             activateScheduledServicesWhenReady();
           },
           getReadiness,

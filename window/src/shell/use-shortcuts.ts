@@ -14,6 +14,7 @@ export type ShortcutHandlers = {
   focusSearch: () => void;
   focusPastSearch: () => void;
   archiveOpen: () => void;
+  lockdown: () => void;
   talkBeside: () => void;
   talkLive: () => void;
   stop: () => void;
@@ -73,6 +74,7 @@ const HANDLED: Partial<Record<ActionId, keyof ShortcutHandlers>> = {
   inbox: "inbox",
   nextConversation: "nextConversation",
   archiveOpen: "archiveOpen",
+  lockdown: "lockdown",
   talkBeside: "talkBeside",
   talkLive: "talkLive",
 };

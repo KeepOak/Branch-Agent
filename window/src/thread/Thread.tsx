@@ -5,7 +5,8 @@ import { agentState } from "../face/agentState";
 import { PRIORITY } from "../face/cap";
 import { resolveApproval } from "./actions";
 import { ApprovalCard, ApprovalGroup } from "./ApprovalCard";
-import { DoneLine, ErrorBlock, Notice, Reply, StepsFold, Thinking, Typing, UserMessage } from "./blocks";
+import { lockdownAllowsAnswer } from "./approval-guard";
+import { DoneLine, ErrorBlock, Notice, Reply, SteeredNote, StepsFold, Thinking, Typing, UserMessage } from "./blocks";
 import { ThreadContext, type ThreadContextValue } from "./context";
 import { ReactionChips } from "./dialogs";
 import { DoneCheer } from "./DoneCheer";
@@ -15,7 +16,7 @@ import { HelpersChip } from "./Helpers";
 import { HoverBar } from "./HoverBar";
 import { Rail } from "./Rail";
 import { Icon, ICONS } from "./icons";
-import { layout, shownApprovalIds, turnOf, type Item } from "./layout";
+import { layout, shownApprovalIds, type Item } from "./layout";
 import { PlanCard, planAnchor } from "./PlanCard";
 import { useConversationPrefs } from "./prefs";
 import { isPreparationPending, preparationLabel } from "../connect/preparation-status";
@@ -34,13 +35,14 @@ import { RoomLine } from "../rooms/RoomLine";
 import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
 import { QueuedMessages, useOwnWaitingLine } from "./QueuedMessages";
-import type { QueuedMessage } from "../connect/session";
+import type { QueuedMessage, RunEnd, SteeredNote as Steered } from "../connect/session";
 import { dayStamp, formatDuration, fullTime, messageTime, modelName, stepLabel } from "./format";
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
 import { suggestionsFor } from "./suggestions";
 import type { EarlierPage } from "../shell/useContactSegments";
 
 type Props = {
+  lockdown?: boolean;
   supplement?: ReactNode;
   onOpenActivity?: () => void;
   name: string;
@@ -49,6 +51,8 @@ type Props = {
   pendingUser: string | null;
   /** Messages accepted but waiting for a turn (connect/session.ts queued). */
   queued?: QueuedMessage[];
+  /** What you told the running turn (steered), shown as notes under it until the turn ends. */
+  steered?: Steered[];
   running: boolean;
   /** When the live run started (engine time); the "Working" clock counts from it. */
   liveStartedAt?: number | null;
@@ -67,6 +71,8 @@ type Props = {
   questions?: QuestionRecord[];
   /** Sends a starter from the empty conversation (§4.2.9), the same way the composer sends. */
   onStart?: (text: string) => void;
+  /** How the last run ended; the done cheer plays only for one that finished. */
+  ended?: RunEnd | null;
   /** The conversation's last run error (sessions.list lastRunError); restart recovery's own one shows "Stopped by restart". */
   recoveryFailure?: string;
   /** The Plan card; it goes after the turn that last updated it (planAnchor), else at the end (§4.2.2). */
@@ -95,14 +101,25 @@ const RESTART_NOT_RESUMED = "Interrupted by a restart. Continue?";
 const NEAR_END_PX = 80;
 const LATEST_PX = 450;
 
-function useFollow(signature: string) {
+/** `sent` lists what you just sent (your message over the turn, a steer, the newest waiting one). When one of them
+ *  becomes something new, the thread jumps to the latest message even if you had scrolled up (owner decision 7,
+ *  2026-10-06); everyone else's blocks keep your place. */
+function useFollow(signature: string, sent: readonly (string | null | undefined)[]) {
   const scroller = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const [distance, setDistance] = useState(0);
   const atEnd = useRef(true);
+  const lastSent = useRef(sent);
+  const sentKey = sent.join("\u0000");
+  useEffect(() => {
+    const before = lastSent.current;
+    lastSent.current = sent;
+    if (sent.some((value, i) => value && value !== before[i])) atEnd.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sentKey]);
   useEffect(() => {
     if (atEnd.current) end.current?.scrollIntoView({ block: "end" });
-  }, [signature]);
+  }, [signature, sentKey]);
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
@@ -159,6 +176,7 @@ export function Thread(props: Props) {
   const extras = pendingExtras(details, shownApprovalIds(all), engine?.sessionKey);
   const answer = useCallback(
     (id: string, decision: ApprovalDecision) => {
+      if (!lockdownAllowsAnswer(props.lockdown, decision)) return;
       const plugin = details.get(id)?.plugin ?? false;
       if (engine && (decision === "allow-always" || plugin)) resolveApproval(engine, id, decision, plugin).catch((e: unknown) => toast(e instanceof Error ? e.message : String(e)));
       else if (decision !== "allow-always") props.onAnswer(id, decision);
@@ -175,7 +193,7 @@ export function Thread(props: Props) {
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
   const waitingCount = (props.queued?.length ?? 0) + ownLine.length;
   const signature = `${history.length}:${live.length}:${liveText}:${pendingUser ? 1 : 0}:${running ? 1 : 0}:${extras.length}:${waitingCount}`;
-  const follow = useFollow(signature);
+  const follow = useFollow(signature, [pendingUser, props.steered?.at(-1)?.runId, ownLine.at(-1)?.id]);
   const [finding, setFinding] = useState(false);
   const [findRequest, setFindRequest] = useState({ query: "", nonce: 0 });
   const threadRef = useRef<HTMLDivElement>(null);
@@ -225,7 +243,7 @@ export function Thread(props: Props) {
       .find((node) => node.dataset.testid === `topic-card-${props.focusTopic?.key}`);
     target?.scrollIntoView({ block: "end" });
   }, [props.focusTopic, props.topicUpdates]);
-  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false, liveStartedAt: props.liveStartedAt ?? null };
+  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false, liveStartedAt: props.liveStartedAt ?? null, lockdown: props.lockdown };
   const recoveryEntryId = history.findLast((block) =>
     (block.kind === "user" || block.kind === "text") && Boolean(block.meta?.entryId),
   );
@@ -297,11 +315,13 @@ export function Thread(props: Props) {
               <UserMessage block={{ kind: "user", key: "pending", text: pendingUser }} />
             )
           ) : null}
+          <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} part="delivered" />
           {running ? <LiveRun view={view} offset={history.length} /> : null}
-          <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} />
+          {running ? (props.steered ?? []).map((note) => <SteeredNote key={note.runId} name={name} text={note.text} />) : null}
+          <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
           {(anchors.get(-1) ?? []).map((r) => <QuestionLine key={r.id} record={r} />)}
-          {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} />)}
-          {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} /> : null}
+          {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} disabled={props.lockdown} />)}
+          {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} disabled={props.lockdown} /> : null}
           {helperNextUserAt < 0 ? helperChip : null}
           {props.supplement}
           {suggestions.length ? <div className="suggestion-row" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
@@ -320,7 +340,7 @@ export function Thread(props: Props) {
           <Icon d={ICONS.down} size={16} />
         </button>
       ) : null}
-      {props.room?.isRoom ? null : <DoneCheer name={name} running={running} history={history} />}
+      {props.room?.isRoom ? null : <DoneCheer name={name} ended={props.ended} history={history} />}
       </div>
       {dialog}
     </ThreadContext.Provider>
@@ -328,6 +348,7 @@ export function Thread(props: Props) {
 }
 
 type View = {
+  lockdown?: boolean;
   all: Block[];
   live: Block[];
   actionsFor: ReturnType<typeof useMessageActions>["actionsFor"];
@@ -449,9 +470,15 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
     case "plan":
       return <PlanCard card={{ sessionKey: "run", revision: 1, updatedAt: Date.now(), steps: block.steps }} />;
     case "approval":
-      return view.grouped.has(block.approval.id) ? null : <ApprovalCard approval={block.approval} details={view.details.get(block.approval.id)} name={view.name} onAnswer={view.answer} />;
+      return view.grouped.has(block.approval.id) ? null : <ApprovalCard approval={block.approval} details={view.details.get(block.approval.id)} name={view.name} onAnswer={view.answer} disabled={view.lockdown} />;
     case "done": {
-      const words = turnOf(view.all, index).filter((entry): entry is Extract<Block, { kind: "text" }> => entry.kind === "text")
+      // The turn up to this line only: what streams after it belongs to the next turn.
+      let start = index;
+      while (start > 0 && view.all[start - 1].kind !== "user") start -= 1;
+      const turn = view.all.slice(start, index);
+      // "Done in" closes a task (a turn with steps), not every plain reply (owner decision 5, 2026-10-06).
+      if (!block.stopped && !turn.some((entry) => entry.kind === "step")) return null;
+      const words = turn.filter((entry): entry is Extract<Block, { kind: "text" }> => entry.kind === "text")
         .reduce((count, entry) => count + (entry.text.trim().match(/\S+/g)?.length ?? 0), 0);
       return <DoneLine block={block} name={view.name} words={words} />;
     }
@@ -460,6 +487,8 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
       return view.dismissed.has(block.key) ? null : <ErrorBlock block={block} onDismiss={() => view.setDismissed((s) => new Set(s).add(block.key))} />;
     case "notice":
       return <Notice block={block} />;
+    case "steer":
+      return <SteeredNote name={view.name} text={block.text} />;
     default:
       return null;
   }

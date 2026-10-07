@@ -15,6 +15,23 @@ if (info) {
   let gatewayUrl = info.gatewayUrl;
   contextBridge.exposeInMainWorld("branchDesktop", {
     gatewayUrl: info.gatewayUrl, getGatewayUrl: () => gatewayUrl, gatewayToken: info.gatewayToken,
+    openConversation: (key: string) => ipcRenderer.invoke("branch-desktop:open-conversation", key),
+    conversationWindows: {
+      list: (): Promise<string[]> => ipcRenderer.invoke("branch-desktop:conversation-windows"),
+      onChanged: (listener: (keys: string[]) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, keys: string[]) => listener(keys);
+        ipcRenderer.on("branch-desktop:conversation-windows", handler);
+        return () => ipcRenderer.removeListener("branch-desktop:conversation-windows", handler);
+      },
+    },
+    openInMain: (route: unknown) => ipcRenderer.invoke("branch-desktop:open-main-route", route),
+    closeConversationWindow: () => ipcRenderer.invoke("branch-desktop:close-conversation-window"),
+    retargetConversationWindow: (key: string) => ipcRenderer.invoke("branch-desktop:retarget-conversation-window", key),
+    onOpenMainRoute: (listener: (route: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, route: unknown) => listener(route);
+      ipcRenderer.on("branch-desktop:open-main-route", handler);
+      return () => ipcRenderer.removeListener("branch-desktop:open-main-route", handler);
+    },
     clipboard: { writeText: (text: string) => ipcRenderer.invoke("branch-desktop:clipboard:write-text", text) },
     componentUpdates: {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
@@ -60,6 +77,7 @@ if (info) {
     } catch { /* a malformed target cannot redirect the desktop window */ }
   });
   ipcRenderer.on("branch-desktop:gateway-recovery-failed", (_e, message: string) => showRecoveryError(message));
+  ipcRenderer.on("branch-desktop:engine-update-failed", (_e, message: string) => showUpdateFailure(message));
   ipcRenderer.on("branch-desktop:prepare-swap", (_e, id: number) => {
     saveBeforeSwap();
     ipcRenderer.send("branch-desktop:swap-ready", id);
@@ -125,6 +143,27 @@ function showToast(message: string): void {
     document.body.appendChild(toast);
     setTimeout(() => { toast.style.opacity = "0"; }, 2_400);
     setTimeout(() => toast.remove(), 3_100);
+  };
+  if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
+}
+
+/** Says why an update did not finish, above the update bar, then fades; the engine keeps or regains a working version. */
+function showUpdateFailure(message: string): void {
+  const show = () => {
+    document.getElementById("branch-desktop-update-failed")?.remove();
+    const note = document.createElement("div");
+    note.id = "branch-desktop-update-failed";
+    note.setAttribute("role", "alert");
+    note.dataset.testid = "desktop-update-failed";
+    note.textContent = `The update didn't finish: ${message}`;
+    note.style.cssText = [
+      "position:fixed", "left:50%", "bottom:64px", "transform:translateX(-50%)", "z-index:2147483647",
+      "max-width:min(560px,calc(100vw - 32px))", "padding:8px 14px", "border-radius:10px",
+      "background:#7f1d1d", "color:#fff", "font:13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif",
+      "box-shadow:0 6px 24px rgba(15,23,42,.28)",
+    ].join(";");
+    document.body.appendChild(note);
+    setTimeout(() => note.remove(), 12_000);
   };
   if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
 }

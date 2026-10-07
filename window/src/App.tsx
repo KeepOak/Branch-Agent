@@ -27,6 +27,18 @@ export function App() {
     window.addEventListener("branch:connect-elsewhere", open);
     return () => window.removeEventListener("branch:connect-elsewhere", open);
   }, []);
+  useEffect(() => {
+    const switchComputer = (event: Event) => {
+      const next = (event as CustomEvent<{ url?: unknown }>).detail?.url;
+      if (typeof next !== "string" || !/^wss?:\/\/\S+$/.test(next)) return;
+      saveTarget(next === LOCAL ? null : next);
+      setTyped(null);
+      setUrl(next);
+      setAttempt(n => n + 1);
+    };
+    window.addEventListener("branch:switch-computer", switchComputer);
+    return () => window.removeEventListener("branch:switch-computer", switchComputer);
+  }, []);
   const connect = (to: string, key: string) => {
     saveTarget(to === LOCAL ? null : to);
     setTyped(key.trim());

@@ -6,6 +6,7 @@ import {
   prepareModelForSimpleCompletion,
 } from "@branch/ai/transports";
 import { resolveProviderThinkingLevel, type ThinkLevel } from "../auto-reply/thinking.js";
+import { assertLockdownOff } from "../config/lockdown.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import {
   bindModelLlmRuntime,
@@ -60,6 +61,7 @@ async function completePreparedModel(params: PreparedCompletionParams): Promise<
   await import("./ai-transport-runtime-host.js");
   params.assertCurrent?.();
   params.options?.signal?.throwIfAborted();
+  assertLockdownOff();
   const runtime = getModelLlmRuntime(params.model);
   let completionModel =
     getModelCompletionTransport(params.model) ??
