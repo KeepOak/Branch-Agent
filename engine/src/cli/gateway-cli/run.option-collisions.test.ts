@@ -169,6 +169,12 @@ vi.mock("../../config/config.js", () => ({
     readConfigFileSnapshotWithPluginMetadata(options),
 }));
 
+// Startup's one-time character migration uses config write methods outside this
+// option-collision fixture. Keep these tests focused on gateway run admission.
+vi.mock("../../gateway/trunk-character-startup.js", () => ({
+  assignTrunkCharactersAtStartup: vi.fn(async () => {}),
+}));
+
 vi.mock("../../config/paths.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../config/paths.js")>()),
   CONFIG_PATH: "/tmp/branch-test-missing-config.json",
