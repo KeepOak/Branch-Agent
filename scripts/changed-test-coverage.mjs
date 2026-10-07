@@ -49,10 +49,7 @@ export function additionFor(file) {
   if (lane === 'desktop') {
     return `run: node --test ${parts.join('/')}` + '  (.github/workflows/desktop-checks.yml, a new step after the desktop build)';
   }
-  if (/\.test\.tsx?$/.test(file)) {
-    return `${lane}:${parts.join('/')}` + '  (scripts/feature-batch-ci-named/<branch-name>.txt)';
-  }
-  return `run: node --test ${file}` + '  (a PR workflow with the lane dependencies installed)';
+  return `${lane}:${parts.join('/')}` + '  (scripts/feature-batch-ci-named/<branch-name>.txt)';
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

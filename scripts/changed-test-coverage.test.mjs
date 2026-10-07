@@ -3,9 +3,12 @@ import test from 'node:test';
 import { changedTestPaths, desktopRunTargets, uncoveredTests } from './changed-test-coverage.mjs';
 
 test('covered and uncovered changed tests are distinguished; deleted tests are ignored', () => {
-  const changed = changedTestPaths('M\tengine/src/covered.test.ts\nA\twindow/src/missing.test.tsx\nD\tengine/src/deleted.test.ts\n');
-  assert.deepEqual(changed, ['engine/src/covered.test.ts', 'window/src/missing.test.tsx']);
-  assert.deepEqual(uncoveredTests(changed, new Set(['engine/src/covered.test.ts'])), ['window/src/missing.test.tsx']);
+  const changed = changedTestPaths('M\tengine/src/covered.test.ts\nA\twindow/src/missing.test.tsx\n' +
+    'M\tengine/src/native.test.mts\nA\tdesktop/scripts/desktop.test.mjs\nD\tengine/src/deleted.test.ts\n');
+  assert.deepEqual(changed, ['engine/src/covered.test.ts', 'window/src/missing.test.tsx',
+    'engine/src/native.test.mts', 'desktop/scripts/desktop.test.mjs']);
+  assert.deepEqual(uncoveredTests(changed, new Set(['engine/src/covered.test.ts', 'desktop/scripts/desktop.test.mjs'])),
+    ['engine/src/native.test.mts', 'window/src/missing.test.tsx']);
 });
 
 test('desktop coverage requires an executable --test argument', () => {
