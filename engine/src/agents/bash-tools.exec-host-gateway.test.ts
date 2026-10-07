@@ -10,7 +10,20 @@ import path from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
+import { resolveCronJobConfigRevision } from "../cron/config-revision.js";
+import {
+  loadCronRows,
+  loadedCronStoreFromRows,
+  upsertCronJobRow,
+} from "../cron/store/row-codec.js";
+import type { CronStoredJob } from "../cron/types.js";
+import { buildCronExecOperationBinding } from "../gateway/operator-approval-standing-grants.js";
+import {
+  insertOperatorApproval,
+  resolveOperatorApproval,
+} from "../gateway/operator-approval-store.js";
 import { onAgentEvent } from "../infra/agent-events.js";
+import { registerCronRunExecSource } from "../infra/cron-run-exec-source.js";
 import {
   onInternalDiagnosticEvent,
   resetDiagnosticEventsForTest,
