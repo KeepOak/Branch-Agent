@@ -5,10 +5,13 @@
 // computer unless gateway.nodes.pairing.autoApproveLocal is false; otherwise `branch devices approve <id>`), and
 // hands back a device token this Branch keeps. `branch graft --host <url>` then works with the host as that device.
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { isLoopbackIpAddress, normalizeIpAddress } from "@branch/net-policy/ip";
 import { readPairingConnectErrorDetails } from "../../packages/gateway-protocol/src/connect-error-details.js";
-import { resolveStateDir } from "../config/paths.js";
+import { getRuntimeConfig as readRuntimeConfig } from "../config/config.js";
+import { resolveGatewayPort, resolveStateDir } from "../config/paths.js";
 import type { OutsideAgentIdentity } from "./trunk-tools.js";
 import { listAgentEntries } from "../agents/agent-scope.js";
 
@@ -120,8 +123,40 @@ export function readGraftLinks(env?: NodeJS.ProcessEnv): GraftLink[] {
   }
 }
 
+/** A gateway URL on this Branch's own port and one of this computer's addresses. */
+export function isSelfGraftLink(
+  link: Pick<GraftLink, "url">,
+  port: number,
+  interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = os.networkInterfaces(),
+  hostname = os.hostname(),
+): boolean {
+  let url: URL;
+  try {
+    url = new URL(link.url);
+  } catch {
+    return false;
+  }
+  if (Number(url.port) !== port) {
+    return false;
+  }
+  const host = url.hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "").toLowerCase();
+  if (host === "localhost" || host === hostname.toLowerCase() || isLoopbackIpAddress(host)) {
+    return true;
+  }
+  if (!net.isIP(host)) {
+    return false;
+  }
+  const address = normalizeIpAddress(host);
+  return Object.values(interfaces).some((entries) =>
+    entries?.some((entry) => normalizeIpAddress(entry.address) === address),
+  );
+}
+
 /** Remember the host (its address only; the device token stays in the device-auth store). */
 export function saveGraftLink(link: GraftLink, env?: NodeJS.ProcessEnv): void {
+  if (isSelfGraftLink(link, resolveGatewayPort(readRuntimeConfig(), env))) {
+    throw new Error("This is this Branch's own gateway. Use a code from another Branch.");
+  }
   const file = linksFile(env);
   const rows = [link, ...readGraftLinks(env).filter((row) => row.url !== link.url)];
   fs.mkdirSync(path.dirname(file), { recursive: true });

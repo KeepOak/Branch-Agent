@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../config/config.js", () => ({ getRuntimeConfig: () => ({}) }));
+
 import type { GraftLink } from "./graft-join.js";
 import {
   GraftLinkRunner,
@@ -163,6 +166,9 @@ describe("the gateway's graft-link service", () => {
     const runners: { link: GraftLink; state: string; start: () => void; stop: () => void }[] = [];
     const supervisor = new GraftLinkSupervisor({
       links: () => saved,
+      isSelfLink: () => false,
+      forgetSelfLink: vi.fn(),
+      log: vi.fn(),
       createRunner: (l) => {
         const runner = { link: l, state: "connecting", start: vi.fn(), stop: vi.fn() };
         runners.push(runner);
@@ -186,5 +192,33 @@ describe("the gateway's graft-link service", () => {
     expect(runners).toHaveLength(3);
     supervisor.stop();
     expect(runners[1]!.stop).toHaveBeenCalled();
+  });
+
+  it("removes a saved self-link at startup and on sync without starting it or logging twice", () => {
+    const self: GraftLink = { url: "ws://localhost:41010", name: "Self", joinedAt: 1 };
+    const other: GraftLink = { url: "ws://192.0.2.20:41010", name: "Other", joinedAt: 2 };
+    let saved = [self, other];
+    const createRunner = vi.fn((l: GraftLink) => ({
+      state: "connecting", start: vi.fn(), stop: vi.fn(), link: l,
+    }));
+    const forgetSelfLink = vi.fn();
+    const log = vi.fn();
+    const supervisor = new GraftLinkSupervisor({
+      links: () => saved,
+      createRunner: createRunner as never,
+      isSelfLink: (l) => l.url === self.url,
+      forgetSelfLink,
+      log,
+    });
+    supervisor.start();
+    expect(createRunner).toHaveBeenCalledTimes(1);
+    expect(createRunner).toHaveBeenCalledWith(other);
+    expect(forgetSelfLink).toHaveBeenCalledWith(self);
+    expect(log).toHaveBeenCalledTimes(1);
+    saved = [other, self];
+    supervisor.sync();
+    expect(createRunner).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledTimes(1);
+    supervisor.stop();
   });
 });

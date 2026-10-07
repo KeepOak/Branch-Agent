@@ -2,10 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../config/config.js", () => ({ getRuntimeConfig: () => ({}) }));
+
 import { graftInviteParams } from "../cli/graft-cli.js";
 import {
   graftBranchIdentity,
   graftTrunkIdentity,
+  isSelfGraftLink,
   joinHost,
   pendingPairingRequestId,
   readGraftLinks,
@@ -126,6 +130,26 @@ describe("branch graft join", () => {
     expect(() => resolveGraftLink("ws://10.0.0.5:18789", env)).toThrow(
       "has not joined ws://10.0.0.5:18789",
     );
+  });
+
+  it("rejects its own gateway on loopback or a local interface but keeps other ports and hosts", () => {
+    const interfaces = {
+      ethernet: [{
+        address: "192.0.2.10", family: "IPv4", internal: false,
+        netmask: "255.255.255.0", mac: "00:00:00:00:00:00", cidr: "192.0.2.0/24",
+      }],
+    };
+    const self = (url: string) => isSelfGraftLink({ url }, 41001, interfaces, "my-branch");
+    expect(self("ws://localhost:41001")).toBe(true);
+    expect(self("ws://127.0.0.1:41001")).toBe(true);
+    expect(self("ws://192.0.2.10:41001")).toBe(true);
+    expect(self("ws://my-branch:41001")).toBe(true);
+    expect(self("ws://192.0.2.10:41002")).toBe(false);
+    expect(self("ws://192.0.2.11:41001")).toBe(false);
+    const env = { ...scratchEnv(), BRANCH_GATEWAY_PORT: "41001" };
+    expect(() => saveGraftLink({ url: "ws://localhost:41001", name: "Self", joinedAt: 1 }, env))
+      .toThrow("this Branch's own gateway");
+    expect(readGraftLinks(env)).toEqual([]);
   });
 
   it("invites with a loopback address unless the owner opened the gateway to the network", () => {
