@@ -1,0 +1,6 @@
+# P45 desktop standby (#363): every engine test this PR adds or changes.
+engine:packages/gateway-client/src/protocol-client.socket-factory.test.ts
+engine:src/cli/gateway-cli/standby.test.ts
+engine:src/cli/mcp-cli.test.ts
+engine:src/mcp/graft-fast.test.ts
+engine:src/mcp/trunk-tools.test.ts
