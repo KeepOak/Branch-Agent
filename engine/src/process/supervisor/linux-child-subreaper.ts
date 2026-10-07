@@ -166,6 +166,25 @@ export function acquireLinuxChildSubreaper() {
       }
     }
   };
+  /** When task children files and /proc PPID scans miss a descendant, waitid still names one. */
+  const childPidsFromWaitOwnership = (): number[] => {
+    const info = Buffer.alloc(128);
+    for (;;) {
+      info.fill(0);
+      if (waitid(P_ALL, 0, info, WEXITED | WNOHANG | WNOWAIT | WALL) === 0) {
+        // Generic Linux siginfo_t: si_pid sits at offset 16 after the 16-byte preamble.
+        const pid = info.readInt32LE(16);
+        return Number.isSafeInteger(pid) && pid > 0 ? [pid] : [];
+      }
+      const errno = koffi.errno();
+      if (errno === ECHILD) {
+        return [];
+      }
+      if (errno !== EINTR) {
+        fail("child wait", errno);
+      }
+    }
+  };
   return {
     retainLibuvChild,
     /** Discovery selects candidates; a retained kernel wait pins every signal target. */
@@ -173,7 +192,8 @@ export function acquireLinuxChildSubreaper() {
       if (closed) {
         return true;
       }
-      for (const pid of childPids()) {
+      const discovered = childPids();
+      for (const pid of discovered.length > 0 ? discovered : childPidsFromWaitOwnership()) {
         if (!owns(pid)) {
           continue;
         }
