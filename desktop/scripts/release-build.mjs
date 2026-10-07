@@ -91,7 +91,7 @@ async function packageDesktop(scratch, output, identity) {
   const folders = await packager({ dir: appDirectory, name: "Branch Agent", platform: identity.platform, arch: identity.arch,
     electronVersion: identity.electronVersion, asar: true, out: join(scratch, "desktop-packaged"), prune: false,
     appVersion: packageJson.version, ...({ win32: { icon: join(desktopRoot, "assets/branch.ico") },
-      darwin: { icon: join(desktopRoot, "assets/branch.icns"), appBundleId: "ai.branch.mac" }, linux: { icon: join(desktopRoot, "assets/brand/linux/branch-512.png") } }[identity.platform] ?? {}) });
+      darwin: { icon: join(desktopRoot, "assets/branch.icns") }, linux: { icon: join(desktopRoot, "assets/brand/linux/branch-512.png") } }[identity.platform] ?? {}) });
   assert.equal(folders.length, 1, "Expected one native desktop package");
   const app = folders[0];
   const resources = identity.platform === "darwin" ? join(app, "Branch Agent.app/Contents/Resources") : join(app, "resources");
