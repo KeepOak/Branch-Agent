@@ -46,6 +46,37 @@ export function desktopDataDirectory(
   return path.join(env.XDG_DATA_HOME ?? path.join(home, ".local", "share"), "BranchAgent");
 }
 
+/** The live loopback URL from <data>/gateway-port, re-read on every reconnect; undefined keeps the current URL. */
+export function liveDesktopGatewayUrl(dataDir: string): string | undefined {
+  const port = readDesktopGatewayPort(dataDir);
+  return port ? `ws://127.0.0.1:${port}` : undefined;
+}
+
+function readDesktopToken(dataDir: string): string {
+  try {
+    return fs.readFileSync(path.join(dataDir, "gateway-token"), "utf8").split(/\r?\n/)[0]!.trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The desktop data directory whose own gateway the environment's token names, or undefined. The desktop's `branch`
+ * command (desktop/src/desktop-controls.ts) exports the desktop's token and the port that was live when it ran, so a
+ * long-running `branch mcp serve` or Graft it started must still follow the port an in-place update moves the
+ * engine to. Shims from before BRANCH_DATA was exported still match through the default data directory.
+ */
+export function desktopDataForEnvToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const envToken = env.BRANCH_GATEWAY_TOKEN?.trim();
+  if (!envToken) {
+    return undefined;
+  }
+  const candidates = [env.BRANCH_DATA, desktopDataDirectory(env)].filter((dir): dir is string =>
+    Boolean(dir),
+  );
+  return candidates.find((dir) => readDesktopToken(dir) === envToken);
+}
+
 /**
  * Loopback URL and token of the desktop app's gateway, used only when the command line and environment name no
  * gateway auth. Undefined when the desktop app has never run on this computer.
@@ -54,7 +85,7 @@ export function resolveDesktopGateway(
   opts: { url?: string; token?: string; password?: string },
   env: NodeJS.ProcessEnv = process.env,
   dataDir: string = desktopDataDirectory(env),
-): { url: string; token: string } | undefined {
+): { url: string; token: string; dataDir: string } | undefined {
   // The desktop token only ever goes to the desktop's own loopback port: an explicit --url keeps upstream's
   // rules (it needs its own token), and so do configured gateways when no desktop app exists.
   if (
@@ -66,17 +97,14 @@ export function resolveDesktopGateway(
   ) {
     return undefined;
   }
-  let token = "";
-  try {
-    token = fs.readFileSync(path.join(dataDir, "gateway-token"), "utf8").split(/\r?\n/)[0]!.trim();
-  } catch {
+  const token = readDesktopToken(dataDir);
+  if (!token) {
     return undefined;
   }
-  if (!token) return undefined;
   const envPort = Number(env.BRANCH_GATEWAY_PORT);
   const port =
     (Number.isInteger(envPort) && envPort > 0 ? envPort : undefined) ??
     readDesktopGatewayPort(dataDir) ??
     DESKTOP_GATEWAY_PORT;
-  return { url: `ws://127.0.0.1:${port}`, token };
+  return { url: `ws://127.0.0.1:${port}`, token, dataDir };
 }

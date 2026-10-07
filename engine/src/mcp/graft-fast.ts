@@ -4,7 +4,11 @@
 // this starts the MCP server straight away and talks only to that running gateway. Anything else, and
 // BRANCH_GRAFT_FULL_CLI=1, falls through to the full CLI unchanged.
 import fs from "node:fs";
-import { resolveDesktopGateway } from "./desktop-gateway.js";
+import {
+  desktopDataForEnvToken,
+  liveDesktopGatewayUrl,
+  resolveDesktopGateway,
+} from "./desktop-gateway.js";
 
 export type GraftFastPlan = {
   gatewayUrl: string;
@@ -12,8 +16,8 @@ export type GraftFastPlan = {
   gatewayPassword?: string;
   claudeChannelMode: "auto" | "on" | "off";
   verbose: boolean;
-  /** Found through the desktop app's files: follow its live port on every reconnect. */
-  followDesktopPort?: true;
+  /** The desktop app's own gateway: re-read the live port from this data directory on every reconnect. */
+  followDesktopPort?: { dataDir: string };
 };
 
 const VALUE_FLAGS = new Set(["--url", "--token-file", "--password-file", "--claude-channel-mode"]);
@@ -41,6 +45,7 @@ export function planGraftFast(
   argv: readonly string[],
   env: NodeJS.ProcessEnv = process.env,
   desktop: typeof resolveDesktopGateway = resolveDesktopGateway,
+  desktopForEnvToken: typeof desktopDataForEnvToken = desktopDataForEnvToken,
 ): GraftFastPlan | undefined {
   const args = graftArgs(argv);
   if (!args || env.BRANCH_GRAFT_FULL_CLI === "1") return undefined;
@@ -83,12 +88,24 @@ export function planGraftFast(
   const envToken = env.BRANCH_GATEWAY_TOKEN?.trim();
   const envPort = Number(env.BRANCH_GATEWAY_PORT);
   if (envToken && Number.isInteger(envPort) && envPort > 0) {
-    return { ...base, gatewayUrl: `ws://127.0.0.1:${envPort}`, gatewayToken: envToken };
+    // The env port is a snapshot from when the branch command ran; the desktop's own token follows its live port.
+    const dataDir = desktopForEnvToken(env);
+    return {
+      ...base,
+      gatewayUrl: `ws://127.0.0.1:${envPort}`,
+      gatewayToken: envToken,
+      ...(dataDir ? { followDesktopPort: { dataDir } } : {}),
+    };
   }
   if (envToken || env.BRANCH_GATEWAY_PASSWORD) return undefined;
   const found = desktop({}, env);
   return found
-    ? { ...base, gatewayUrl: found.url, gatewayToken: found.token, followDesktopPort: true }
+    ? {
+        ...base,
+        gatewayUrl: found.url,
+        gatewayToken: found.token,
+        followDesktopPort: { dataDir: found.dataDir },
+      }
     : undefined;
 }
 
@@ -104,7 +121,9 @@ export async function runGraftFast(argv: readonly string[]): Promise<boolean> {
   try {
     await serveBranchChannelMcp({
       gatewayUrl: plan.gatewayUrl,
-      ...(plan.followDesktopPort ? { resolveGatewayUrl: () => resolveDesktopGateway({})?.url } : {}),
+      ...(plan.followDesktopPort
+        ? { resolveGatewayUrl: () => liveDesktopGatewayUrl(plan.followDesktopPort!.dataDir) }
+        : {}),
       gatewayToken: plan.gatewayToken,
       gatewayPassword: plan.gatewayPassword,
       claudeChannelMode: plan.claudeChannelMode,
