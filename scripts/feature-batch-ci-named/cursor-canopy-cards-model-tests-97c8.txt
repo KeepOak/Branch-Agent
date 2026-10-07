@@ -1,0 +1,1 @@
+window:src/places/canopy/cards-model.logic.test.ts
