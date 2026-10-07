@@ -25,6 +25,12 @@ const createMockCtx = (): ToolsCtx => ({
   },
   level: "advanced",
   whose: null,
+  trunks: [],
+  config: {} as never,
+  plugins: { data: null, loading: false, error: null, reload: vi.fn() },
+  agents: { data: null, loading: false, error: null, reload: vi.fn() },
+  catalog: { data: null, loading: false, error: null, reload: vi.fn() },
+  openConversation: vi.fn(),
 });
 
 describe("Skills Remove button", () => {

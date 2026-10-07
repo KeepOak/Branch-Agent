@@ -123,7 +123,7 @@ function SkillDetail({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
       {shows(ctx.level, "technical") && skill.filePath && <><dt>File</dt><dd><code>{skill.filePath}</code></dd></>}</dl></Sec>
     {shows(ctx.level, "advanced") && <KeptVersions ctx={ctx} skill={skill} />}
     <div className="cz-acts">{skill.registry ? <button type="button" className="btn sm" disabled={op.busy} onClick={() => void op.run("skills.update", { ...scopeOf(ctx), source: "clawhub", slug: skill.key }, ctx.skills.reload)}>Check for updates</button> : <Grey reason="Only skills from the skill library can be checked for updates.">Check for updates</Grey>}
-      <span className="cz-grow" />{canRemove ? <button type="button" className="btn ghost sm" disabled={op.busy} onClick={() => setConfirmRemove(true)}>Remove</button> : <Grey className="btn ghost sm" reason={removeReason}>Remove</Grey>}</div>
+      <span className="cz-grow" />{canRemove ? <button type="button" className="btn ghost sm" disabled={op.busy} onClick={() => setConfirmRemove(true)}>Remove</button> : <Grey className="btn ghost sm" reason={removeReason ?? ""}>Remove</Grey>}</div>
     {confirmRemove && <Dialog title={`Remove ${skill.name}?`} onClose={() => setConfirmRemove(false)} footer={<><button type="button" className="btn ghost" onClick={() => setConfirmRemove(false)}>Cancel</button><button type="button" className="btn bad" disabled={op.busy} onClick={handleRemove}>Remove</button></>}>
       <p style={{ margin: 0 }}>This removes {skill.name} from your library. You can install it again later.</p>
     </Dialog>}
