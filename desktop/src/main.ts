@@ -157,6 +157,12 @@ let stopEngineWatch: (() => void) | undefined;
 let stopComponentWatch: (() => void) | undefined;
 let stopWindowWatch: (() => void) | undefined;
 let componentsReady = false;
+let pendingReleasePrune: (() => Promise<void>) | undefined;
+function runConfirmedReleasePrune(): void {
+  const prune = pendingReleasePrune;
+  pendingReleasePrune = undefined;
+  if (prune) void prune().catch(error => log(`Confirmed update cleanup: ${String(error)}`));
+}
 /** The window build the static server serves: the staged one only once its engine runs. */
 let servedWindowDir = cfg.windowDir;
 let engineRestartInProgress = false;
@@ -811,6 +817,7 @@ async function start(): Promise<void> {
   for (const key of savedConversationKeys()) openConversationWindow(key);
   watchUpdates(win);
   componentsReady = true;
+  runConfirmedReleasePrune();
   autoApply.start();
   stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, onStaged: () => {
     offerStagedUpdate().catch(error => log(`Component update status: ${String(error)}`));
@@ -877,16 +884,21 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   await waitForReady({ ...cfg, gatewayPort: port }, child, options.readyTimeoutMs ?? READY_TIMEOUT_MS);
   // Only a confirmed engine moves the live port: a rollback reboots on the port the window already uses.
   // A handoff's standby that is ready owns the state, channels and cron: a failed confirmation never rolls it back.
-  if (confirmUpdate) await confirmComponentUpdate(cfg, error => log(`Confirmed update cleanup: ${String(error)}`)).catch(error => {
-    if (!options.keepOnConfirmFailure) throw error;
-    log(`the new engine serves but its update could not be confirmed (${String(error)}); keeping it`);
-  });
+  if (confirmUpdate) {
+    try {
+      pendingReleasePrune = await confirmComponentUpdate(cfg, error => log(`Confirmed update cleanup: ${String(error)}`), true);
+    } catch (error) {
+      if (!options.keepOnConfirmFailure) throw error;
+      log(`the new engine serves but its update could not be confirmed (${String(error)}); keeping it`);
+    }
+  }
   adoptGatewayPort(port);
   lastGoodEngineDir = engineDir;
   readyGateway = child;
   observed.ready();
   gatewayRecoveryError = undefined;
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
+  if (componentsReady) runConfirmedReleasePrune();
   if (confirmUpdate) engineUpdateReady = false;
   watchEngine();
 }

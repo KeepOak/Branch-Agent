@@ -1493,7 +1493,7 @@ describe("chrome.ts internal", () => {
       }
     });
 
-    it("requires owner choice when AppArmor blocks browser user namespaces", async () => {
+    it("lets Chromium try its own sandbox even when the engine cannot unshare", async () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, "platform", { value: "linux" });
       const readFileSync = fs.readFileSync.bind(fs);
@@ -1519,13 +1519,6 @@ describe("chrome.ts internal", () => {
           realExistsSync(candidate) || Boolean(mockedExistsSync?.(candidate)),
         );
         vi.mocked(fs.statSync).mockRestore();
-        await expect(launchBranchChrome(
-          makeResolved({ noSandbox: false }),
-          makeProfile(55561, { executablePath }),
-        )).rejects.toThrow("Allow user namespaces for this browser, or explicitly set browser.noSandbox: true in Settings");
-        expect(unshareCalled).toBe(true);
-        expect(spawnMock).not.toHaveBeenCalled();
-        execFileSyncMock.mockReturnValue("");
         const proc = makeFakeProc();
         spawnMock.mockReturnValue(proc);
         await withMockChromeCdpServer({
@@ -1536,6 +1529,7 @@ describe("chrome.ts internal", () => {
               makeProfile(Number(new URL(baseUrl).port), { executablePath }),
             );
             expect(requireSpawnCall()[1]).not.toContain("--no-sandbox");
+            expect(unshareCalled).toBe(false);
             running.proc.kill?.("SIGTERM");
           },
         });

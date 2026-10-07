@@ -724,32 +724,6 @@ function resolveBrowserExecutable(
   );
 }
 
-function isAppArmorUserNamespaceRestricted(): boolean {
-  if (process.platform !== "linux") {
-    return false;
-  }
-  let restricted: string;
-  try {
-    restricted = fs.readFileSync("/proc/sys/kernel/apparmor_restrict_unprivileged_userns", "utf8").trim();
-  } catch {
-    return false;
-  }
-  if (restricted !== "1") {
-    return false;
-  }
-  try {
-    execFileSync("unshare", ["-Ur", "true"], {
-      stdio: "ignore",
-      timeout: 2_000,
-      windowsHide: true,
-    });
-    return false;
-  } catch {
-    // AppArmor is enforcing the restriction and this process cannot create a user namespace.
-    return true;
-  }
-}
-
 export function resolveBranchUserDataDir(profileName = DEFAULT_BRANCH_BROWSER_PROFILE_NAME) {
   return path.join(CONFIG_DIR, "browser", profileName, "user-data");
 }
@@ -1025,11 +999,6 @@ export async function launchBranchChrome(
     );
   }
 
-  if (!resolved.noSandbox && isAppArmorUserNamespaceRestricted()) {
-    throw new Error(
-      `Managed browser profile "${profile.name}" cannot start with Chromium's sandbox: AppArmor blocks unprivileged user namespaces. Allow user namespaces for this browser, or explicitly set browser.noSandbox: true in Settings to run it without a sandbox.`,
-    );
-  }
   const launchResolved = resolved;
 
   fs.mkdirSync(userDataDir, { recursive: true });

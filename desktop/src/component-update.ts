@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { DesktopConfig } from "./config";
@@ -144,10 +144,19 @@ async function runningProcessCommands(): Promise<string> {
 async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previous: string, reportFailure?: (error: unknown) => void): Promise<void> {
   const updates = join(cfg.dataDir, "updates");
   const running = await readOrEmpty(join(cfg.dataDir, "engine-running.txt"));
-  const retained = new Set([current, previous, running].filter(engine => engine && basename(engine) === "engine").map(engine =>
-    resolve(dirname(engine))).filter(folder => dirname(folder) === resolve(updates)));
+  const updatesReal = await realpath(updates);
+  const retained = new Set<string>();
+  for (const engine of [current, previous, running]) {
+    if (!engine || basename(engine) !== "engine") continue;
+    try {
+      const folder = await realpath(dirname(engine));
+      if (dirname(folder) === updatesReal) retained.add(folder);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
   const pending = await publication(cfg);
-  if (pending) retained.add(resolve(dirname(pending.engineNext)));
+  if (pending) retained.add(await realpath(dirname(pending.engineNext)));
   let commands: string;
   try { commands = await runningProcessCommands(); }
   catch (error) { reportFailure?.(error); return; }
@@ -160,12 +169,15 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
     if (!entry.isDirectory() || !/^release-[\w.-]+-[A-Za-z0-9]{6}$/.test(entry.name)
       || /(?:^|[-.])(staging|pending)(?:[-.]|$)/i.test(entry.name)) continue;
     const folder = resolve(updates, entry.name);
+    const folderReal = await realpath(folder);
     // A download has the same release-* name until staging completes; never select it for pruning.
     if (!existsSync(join(folder, ".release-complete"))) {
       try { if (!await backfillLegacyReleaseMarker(folder, entry.name)) continue; }
       catch (error) { reportFailure?.(new Error(`Could not verify ${entry.name}: ${String(error)}`)); continue; }
     }
-    if (retained.has(folder) || commands.toLowerCase().includes(`${folder}${process.platform === "win32" ? "\\" : "/"}`.toLowerCase())) continue;
+    const separator = process.platform === "win32" ? "\\" : "/";
+    const commandsLower = commands.toLowerCase();
+    if (retained.has(folderReal) || [folder, folderReal].some(path => commandsLower.includes(`${path}${separator}`.toLowerCase()))) continue;
     const trash = join(updates, `.trash-${entry.name}-${process.pid}-${Math.random().toString(36).slice(2)}`);
     try {
       await rename(folder, trash);
@@ -175,7 +187,7 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
 }
 
 /** Call only after the newly selected engine actually reaches readyz. Keep its predecessor for rollback. */
-export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFailure?: (error: unknown) => void): Promise<void> {
+export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFailure?: (error: unknown) => void, deferPrune = false): Promise<(() => Promise<void>) | undefined> {
   const pending = await publication(cfg);
   if (!pending || pending.phase !== "pending") return;
   if (await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== pending.engineNext) throw new Error("Engine publication changed before update confirmation");
@@ -183,8 +195,12 @@ export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFail
   await rm(journalFile(cfg));
   await rm(timeoutFile(cfg), { force: true });
   // Cleanup is maintenance, not a readiness failure: never roll back a healthy engine because a stale folder is locked.
-  try { await pruneConfirmedReleases(cfg, pending.engineNext, pending.enginePrevious, reportPruneFailure); }
-  catch (error) { reportPruneFailure?.(error); }
+  const prune = async () => {
+    try { await pruneConfirmedReleases(cfg, pending.engineNext, pending.enginePrevious, reportPruneFailure); }
+    catch (error) { reportPruneFailure?.(error); }
+  };
+  if (deferPrune) return prune;
+  await prune();
 }
 
 export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> {

@@ -128,7 +128,10 @@ test("confirmed update retains current and previous releases but prunes older up
   await source.refreshComponentUpdate(cfg, request);
   const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
   assert.equal(await exists(stale), true, "nothing is pruned before readiness confirmation");
-  await source.confirmComponentUpdate(cfg);
+  const prune = await source.confirmComponentUpdate(cfg, undefined, true);
+  assert.equal(await exists(stale), true, "confirmation does not prune before the app reports ready");
+  assert.equal(typeof prune, "function");
+  await prune();
   assert.equal(await exists(current), true);
   assert.equal(await exists(previous), true, "the last healthy engine remains available for rollback");
   assert.equal(await exists(stale), false);
@@ -157,6 +160,23 @@ test("prune retains live and incomplete releases while deleting an unrelated com
     child.kill();
     await new Promise(resolve => child.once("exit", resolve));
   }
+}));
+
+test("prune retains an engine selected through a symlinked data directory", { skip: process.platform === "win32" }, async () => fixture(async ({ root, cfg, request }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const live = join(updates, "release-0.4.0-111aaa");
+  const stale = join(updates, "release-0.4.0-222bbb");
+  for (const folder of [live, stale]) {
+    await mkdir(join(folder, "engine"), { recursive: true });
+    await writeFile(join(folder, ".release-complete"), "");
+  }
+  const alias = join(root, "linked-data");
+  await symlink(cfg.dataDir, alias, "dir");
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), join(alias, "updates", "release-0.4.0-111aaa", "engine") + "\n");
+  await source.refreshComponentUpdate(cfg, request);
+  await source.confirmComponentUpdate(cfg);
+  assert.equal(await exists(live), true, "the running engine's real path is retained");
+  assert.equal(await exists(stale), false, "an unrelated stale release is pruned");
 }));
 
 test("confirmed update adopts only old marker-less releases with matching build hashes", async () => fixture(async ({ cfg, request }) => {
