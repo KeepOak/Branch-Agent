@@ -15,6 +15,8 @@ on:
       - 'engine/src/**/*darwin*'
       - 'engine/src/**/*macos*'
       - 'engine/src/**/*platform*'
+      # State ownership locks: inode, mtime and file-sharing semantics differ by OS.
+      - 'engine/src/infra/gateway-state-owner*'
       - 'engine/scripts/build-installers.mjs'
       - 'engine/pnpm-lock.yaml'
       - 'window/pnpm-lock.yaml'
