@@ -13,11 +13,8 @@ permissions:
   actions: read
 
 concurrency:
-  # Head SHA is in the group so a new commit starts its own run. `edited` (title/body)
-  # keeps the same SHA, so cancel-in-progress is off for that action and cannot abort
-  # the wait already running for this SHA (same pattern as merge-gate-trusted.yml).
-  group: merge-gate-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
-  cancel-in-progress: ${{ github.event.action != 'edited' }}
+  group: merge-gate-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   changed-test-coverage:
