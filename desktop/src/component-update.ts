@@ -1,12 +1,11 @@
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { promisify } from "node:util";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
 import { downloadComponent, move, replaceFile } from "./component-update-files";
 import { parseComponentRelease, RELEASE_MANIFEST_URL, trustedDownloadResponse, type ComponentRelease } from "./component-update-manifest";
+import { checkDiskSpace, pruneOldReleases } from "./component-update-prune";
 import { stageDesktopUpdate, stagedDesktopVersion, type DesktopInstall } from "./desktop-update";
 
 export interface RefreshOptions {
@@ -126,100 +125,6 @@ export async function rollbackComponentUpdate(cfg: DesktopConfig, retryServedWin
   return true;
 }
 
-const runProcessList = promisify(execFile);
-
-/** Adopt only old, fully published release layouts whose build identity matches the folder. */
-async function backfillLegacyReleaseMarker(folder: string, name: string): Promise<boolean> {
-  const match = /^release-(.+-build-([a-f0-9]{12}))-[A-Za-z0-9]{6}$/.exec(name);
-  if (!match) return false;
-  const folderInfo = await stat(folder);
-  // A fresh download uses the same name while extraction is in progress.
-  if (Date.now() - folderInfo.mtimeMs < 24 * 60 * 60 * 1000) return false;
-  try {
-    const manifest = JSON.parse(await readFile(join(folder, "engine", "dist", "build-info.json"), "utf8")) as { commit?: unknown; buildId?: unknown };
-    if (typeof manifest.commit !== "string" || !/^[a-f0-9]{40}$/.test(manifest.commit)
-      || manifest.commit.slice(0, 12) !== match[2]
-      || typeof manifest.buildId !== "string" || !manifest.buildId.includes(manifest.commit.slice(0, 12))) return false;
-    for (const file of ["engine/branch.mjs", "engine/package.json", "engine/dist/build-info.json"]) {
-      if (!(await stat(join(folder, file))).isFile()) return false;
-    }
-    // Existing folders predate the marker. The manifest's source hash and complete
-    // engine layout distinguish them from incomplete downloads before adoption.
-    await writeFile(join(folder, ".release-complete"), "");
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) return false;
-    throw error;
-  }
-}
-
-/** If inspection fails, keep releases: deleting an active engine is worse than retaining an old one. */
-async function runningProcessCommands(): Promise<string> {
-  if (process.platform === "linux") {
-    const commands: string[] = [];
-    for (const entry of await readdir("/proc", { withFileTypes: true })) {
-      if (!/^\d+$/.test(entry.name)) continue;
-      try {
-        commands.push(await readFile(`/proc/${entry.name}/cmdline`, "utf8"));
-        commands.push(await readlink(`/proc/${entry.name}/cwd`));
-      }
-      catch (error) { if (!["ENOENT", "EACCES", "EPERM"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error; }
-    }
-    return commands.join("\n");
-  }
-  const command = process.platform === "win32" ? "powershell.exe" : "ps";
-  const args = process.platform === "win32"
-    ? ["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine"]
-    : ["-axo", "command="];
-  return (await runProcessList(command, args, { encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024 })).stdout;
-}
-
-/** Only completed release folders created directly under this data directory are owned by the updater. */
-async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previous: string, reportFailure?: (error: unknown) => void): Promise<void> {
-  const updates = join(cfg.dataDir, "updates");
-  const running = await readOrEmpty(join(cfg.dataDir, "engine-running.txt"));
-  const updatesReal = await realpath(updates);
-  const retained = new Set<string>();
-  for (const engine of [current, previous, running]) {
-    if (!engine || basename(engine) !== "engine") continue;
-    try {
-      const folder = await realpath(dirname(engine));
-      if (dirname(folder) === updatesReal) retained.add(folder);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-  }
-  const pending = await publication(cfg);
-  if (pending) retained.add(await realpath(dirname(pending.engineNext)));
-  let commands: string;
-  try { commands = await runningProcessCommands(); }
-  catch (error) { reportFailure?.(error); return; }
-  for (const entry of await readdir(updates, { withFileTypes: true })) {
-    if (entry.isDirectory() && entry.name.startsWith(".trash-release-")) {
-      try { await rm(join(updates, entry.name), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); }
-      catch (error) { reportFailure?.(new Error(`Could not finish pruning ${entry.name}: ${String(error)}`)); }
-      continue;
-    }
-    if (!entry.isDirectory() || !/^release-[\w.-]+-[A-Za-z0-9]{6}$/.test(entry.name)
-      || /(?:^|[-.])(staging|pending)(?:[-.]|$)/i.test(entry.name)) continue;
-    const folder = resolve(updates, entry.name);
-    const folderReal = await realpath(folder);
-    // A download has the same release-* name until staging completes; never select it for pruning.
-    if (!existsSync(join(folder, ".release-complete"))) {
-      try { if (!await backfillLegacyReleaseMarker(folder, entry.name)) continue; }
-      catch (error) { reportFailure?.(new Error(`Could not verify ${entry.name}: ${String(error)}`)); continue; }
-    }
-    const separator = process.platform === "win32" ? "\\" : "/";
-    const commandsLower = commands.toLowerCase();
-    if (retained.has(folderReal) || [folder, folderReal].some(path => commandsLower.includes(`${path}${separator}`.toLowerCase()))) continue;
-    const trash = join(updates, `.trash-${entry.name}-${process.pid}-${Math.random().toString(36).slice(2)}`);
-    try {
-      await rename(folder, trash);
-      await rm(trash, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
-    } catch (error) { reportFailure?.(new Error(`Could not prune ${entry.name}: ${String(error)}`)); }
-  }
-}
-
 /** Call only after the newly selected engine actually reaches readyz. Keep its predecessor for rollback. */
 export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFailure?: (error: unknown) => void, deferPrune = false): Promise<(() => Promise<void>) | undefined> {
   const pending = await publication(cfg);
@@ -236,7 +141,7 @@ export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFail
   await rm(timeoutFile(cfg), { force: true });
   // Cleanup is maintenance, not a readiness failure: never roll back a healthy engine because a stale folder is locked.
   const prune = async () => {
-    try { await pruneConfirmedReleases(cfg, pending.engineNext, pending.enginePrevious, reportPruneFailure); }
+    try { await pruneOldReleases(cfg, pending.engineNext, pending.enginePrevious, undefined, reportPruneFailure); }
     catch (error) { reportPruneFailure?.(error); }
   };
   if (deferPrune) return prune;
@@ -303,6 +208,22 @@ export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> 
   if ((await publication(cfg))?.phase === "prepared") await rollbackComponentUpdate(cfg);
 }
 
+/** Run once at launch to clean up old release copies that accumulated. */
+export async function pruneReleasesOnLaunch(cfg: DesktopConfig, reportFailure?: (error: unknown) => void): Promise<void> {
+  const current = await readOrEmpty(join(cfg.dataDir, "engine-current.txt"));
+  const pending = await publication(cfg);
+  let previous = pending?.enginePrevious ?? "";
+  if (!previous) {
+    const raw = await readOrEmpty(undoFile(cfg));
+    if (raw) {
+      try { previous = (JSON.parse(raw) as UndoReceipt).enginePrevious ?? ""; }
+      catch { previous = ""; }
+    }
+  }
+  try { await pruneOldReleases(cfg, current, previous, pending?.engineNext, reportFailure); }
+  catch (error) { reportFailure?.(error); }
+}
+
 export async function readComponentManifest(request: typeof fetch = fetch): Promise<ComponentRelease> {
   const response = await request(RELEASE_MANIFEST_URL, { signal: AbortSignal.timeout(30_000), cache: "no-store" });
   trustedDownloadResponse(response);
@@ -314,9 +235,29 @@ export async function readComponentManifest(request: typeof fetch = fetch): Prom
   return parseComponentRelease(JSON.parse(body));
 }
 
-async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch): Promise<{ engine: string; window: string }> {
+async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, options?: RefreshOptions): Promise<{ engine: string; window: string }> {
   const updates = join(cfg.dataDir, "updates");
   await mkdir(updates, { recursive: true });
+  const totalBytes = release.components.engine.bytes + release.components.window.bytes
+    + release.components.engine.expandedBytes + release.components.window.expandedBytes;
+  const ensureSpace = async (): Promise<void> => {
+    const space = await checkDiskSpace(updates, totalBytes);
+    if (space.enough) return;
+    const current = await readOrEmpty(join(cfg.dataDir, "engine-current.txt"));
+    const pending = await publication(cfg);
+    let previous = pending?.enginePrevious ?? "";
+    if (!previous) {
+      const raw = await readOrEmpty(undoFile(cfg));
+      if (raw) {
+        try { previous = (JSON.parse(raw) as UndoReceipt).enginePrevious ?? ""; }
+        catch { previous = ""; }
+      }
+    }
+    await pruneOldReleases(cfg, current, previous, pending?.engineNext, error => options?.log?.(String(error)));
+    const retry = await checkDiskSpace(updates, totalBytes);
+    if (!retry.enough) throw new Error(retry.message ?? space.message ?? "Not enough disk space to download the update.");
+  };
+  await ensureSpace();
   const directory = await mkdtemp(join(updates, `release-${release.version}-`));
   try {
     for (const name of ["engine", "window"] as const) {
@@ -424,7 +365,7 @@ async function replaceStaged(cfg: DesktopConfig, held: Publication, release: Com
     return withdrawn === true ? "withdrawn" : false;
   }
   if (!options.retryRejected && await componentReleaseRejected(cfg, release)) return false;
-  const next = await stage(cfg, release, request);
+  const next = await stage(cfg, release, request, options);
   let superseded: string[] = [];
   try {
     const replaced = await options.underSwapGuard(async () => {
@@ -461,7 +402,7 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
   }
   let staged = false;
   if (await readOrEmpty(versionFile(cfg)) !== release.version && (options.retryRejected || !await componentReleaseRejected(cfg, release))) {
-    const next = await stage(cfg, release, request);
+    const next = await stage(cfg, release, request, options);
     await publish(cfg, release, next);
     staged = true;
   }

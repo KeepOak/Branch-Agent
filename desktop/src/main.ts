@@ -12,7 +12,7 @@ import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident } from "./resident-window";
-import { canUndoComponentUpdate, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
+import { canUndoComponentUpdate, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneReleasesOnLaunch, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
@@ -951,6 +951,8 @@ async function start(): Promise<void> {
   server = await serveWindow(() => servedWindowDir, cfg.windowPort);
   await win.loadURL(windowUrl());
   log(`window loaded after ${Date.now() - launchStarted} ms`);
+  // Prune old update copies once at launch, so installs that piled up copies get cleaned automatically.
+  void pruneReleasesOnLaunch(cfg, error => log(`Launch prune: ${String(error)}`)).catch(error => log(`Launch prune failed: ${String(error)}`));
   if (await bootSelectedEngine()) {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");

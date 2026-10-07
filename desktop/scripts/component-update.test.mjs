@@ -307,6 +307,73 @@ test("confirmed update retains current and previous releases but prunes older up
   assert.equal(await exists(desktopStage), true, "desktop staging is not an engine release");
 }));
 
+test("after a successful staged update, the releases folder is pruned down to current and previous", async () => fixture(async ({ cfg, request }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const previous = join(updates, "release-0.4.2-prev12");
+  const stales = ["release-0.4.0-old001", "release-0.4.0-old002", "release-0.4.1-old003", "release-0.4.1-old004", "release-0.4.1-old005"];
+  for (const name of [...stales, "release-0.4.2-prev12"]) {
+    const folder = join(updates, name);
+    await mkdir(join(folder, "engine"), { recursive: true });
+    await writeFile(join(folder, "engine", "branch.mjs"), "old engine");
+    await writeFile(join(folder, ".release-complete"), "");
+  }
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(previous, "engine") + "\n");
+  await source.refreshComponentUpdate(cfg, request);
+  const current = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
+  const prune = await source.confirmComponentUpdate(cfg, undefined, true);
+  assert.equal(typeof prune, "function");
+  await prune();
+  const remaining = (await readdir(updates)).filter(name => name.startsWith("release-"));
+  assert.equal(remaining.length, 2, "only the current and previous release folders remain");
+  assert.ok(remaining.includes("release-0.4.2-prev12"), "previous build kept");
+  assert.ok(remaining.some(name => current.startsWith(join(updates, name))), "current build kept");
+  for (const name of stales) assert.equal(await exists(join(updates, name)), false, `${name} should be pruned`);
+}));
+
+test("low free space blocks the download with the plain message", async () => fixture(async ({ cfg, request }) => {
+  await assert.rejects(
+    () => source.refreshComponentUpdate(cfg, request),
+    /Not enough disk space to download the update\. Branch needs about \d+\.\d+ GB free\./,
+  );
+  await unchanged(cfg);
+  assert.deepEqual(await readdir(join(cfg.dataDir, "updates")), []);
+}, ({ release }) => {
+  release.components.engine.bytes = 50 * 1024 * 1024 * 1024 * 1024;
+}));
+
+test("launch-time prune cleans an already-full updates folder", async () => fixture(async ({ cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  const names = ["release-0.4.1-aaaaa1", "release-0.4.2-bbbbb2", "release-0.4.3-ccccc3", "release-0.4.4-ddddd4", "release-0.4.5-eeeee5"];
+  for (const name of names) {
+    const folder = join(updates, name);
+    await mkdir(join(folder, "engine"), { recursive: true });
+    await writeFile(join(folder, ".release-complete"), "");
+  }
+  const current = join(updates, "release-0.4.5-eeeee5", "engine");
+  const previous = join(updates, "release-0.4.4-ddddd4", "engine");
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), current + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-undo.json"), JSON.stringify({
+    version: "0.4.5", previousVersion: "0.4.4", enginePrevious: previous, engineNext: current,
+    windowPrevious: join(cfg.dataDir, "window-previous"), identity: { version: "0.4.5", engineSha256: "a", windowSha256: "b" },
+  }));
+  await source.pruneReleasesOnLaunch(cfg);
+  assert.deepEqual((await readdir(updates)).sort(), ["release-0.4.4-ddddd4", "release-0.4.5-eeeee5"]);
+}));
+
+test("launch-time prune does nothing when the active build is unknown", async () => fixture(async ({ cfg }) => {
+  const updates = join(cfg.dataDir, "updates");
+  await rm(join(cfg.dataDir, "engine-current.txt"), { force: true });
+  for (const name of ["release-0.4.1-aaaaa1", "release-0.4.2-bbbbb2", "release-0.4.3-ccccc3"]) {
+    const folder = join(updates, name);
+    await mkdir(join(folder, "engine"), { recursive: true });
+    await writeFile(join(folder, ".release-complete"), "");
+  }
+  await source.pruneReleasesOnLaunch(cfg);
+  assert.deepEqual((await readdir(updates)).sort(), [
+    "release-0.4.1-aaaaa1", "release-0.4.2-bbbbb2", "release-0.4.3-ccccc3",
+  ]);
+}));
+
 test("prune retains live and incomplete releases while deleting an unrelated complete release", async () => fixture(async ({ cfg, request }) => {
   const updates = join(cfg.dataDir, "updates");
   const live = join(updates, "release-0.4.0-111aaa");
