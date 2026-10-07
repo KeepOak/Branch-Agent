@@ -2,8 +2,22 @@
 .split {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   display: grid;
   grid-template-columns: var(--mainw, 50%) 6px minmax(0, 1fr);
+}
+.split.stacked {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--mainw, 50%) 6px minmax(0, 1fr);
+}
+.split.stacked > .pane-divider {
+  width: 100%;
+  height: 1px;
+  align-self: center;
+}
+.split.stacked > .pane-divider:hover,
+.split.stacked > .pane-divider:focus-visible {
+  height: 3px;
 }
 .split > .split-main {
   display: flex;
@@ -30,6 +44,7 @@
 .split-col {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--line);
@@ -100,11 +115,11 @@
   padding: 6px;
 }
 @media (max-width: 999px) {
-  .split {
+  .split:not(.stacked) {
     grid-template-columns: minmax(0, 1fr);
   }
-  .split > .pane-divider,
-  .split > .split-side {
+  .split:not(.stacked) > .pane-divider,
+  .split:not(.stacked) > .split-side {
     display: none;
   }
 }

@@ -1,7 +1,7 @@
 // Side by side and Split (DESIGN-SPEC §4.2.6, the preview's panesPB18): next to the open conversation, more panes,
 // each a whole conversation with its own header, messages and message box (chat.history and chat.send on its key).
 // "Split right" adds a column, "Split down" stacks a pane under the last column; the divider resizes the main pane.
-import { useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import type { Conversation } from "../connect/conversations";
 import { Pebble } from "../face/Pebble";
 import { Icon } from "./icons";
@@ -107,33 +107,55 @@ function ConversationPane({ n, k, p }: { n: number; k: string; p: Props }) {
 }
 
 /** The divider between the main pane and the rest: drag, or Left and Right, between 25% and 75%. */
-export function PaneDivider({ width, onWidth }: { width: number; onWidth: (w: number) => void }) {
+export function PaneDivider({ width, onWidth, down = false }: { width: number; onWidth: (w: number) => void; down?: boolean }) {
   const clamp = (w: number) => Math.min(75, Math.max(25, w));
-  const down = (e: PointerEvent<HTMLDivElement>) => {
+  const downPointer = (e: PointerEvent<HTMLDivElement>) => {
     const wrap = e.currentTarget.parentElement?.getBoundingClientRect();
     if (!wrap) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    const move = (ev: globalThis.PointerEvent) => onWidth(clamp(((ev.clientX - wrap.left) / wrap.width) * 100));
+    const move = (ev: globalThis.PointerEvent) => onWidth(clamp((down ? (ev.clientY - wrap.top) / wrap.height : (ev.clientX - wrap.left) / wrap.width) * 100));
     const el = e.currentTarget;
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", () => el.removeEventListener("pointermove", move), { once: true });
   };
   const key = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    const before = down ? "ArrowUp" : "ArrowLeft";
+    const after = down ? "ArrowDown" : "ArrowRight";
+    if (e.key === before || e.key === after) {
       e.preventDefault();
-      onWidth(clamp(width + (e.key === "ArrowLeft" ? -5 : 5)));
+      onWidth(clamp(width + (e.key === before ? -5 : 5)));
     }
   };
-  return <div className="pane-divider" style={{ cursor: "col-resize" }} role="separator" aria-orientation="vertical" aria-label="Resize panes" aria-valuenow={Math.round(width)} tabIndex={0} onPointerDown={down} onKeyDown={key} />;
+  return <div className="pane-divider" style={{ cursor: down ? "row-resize" : "col-resize" }} role="separator" aria-orientation={down ? "horizontal" : "vertical"} aria-label="Resize panes" aria-valuenow={Math.round(width)} tabIndex={0} onPointerDown={downPointer} onKeyDown={key} />;
+}
+
+/** Leading down panes share the main column; later right panes start new columns. */
+export function SplitFrame({ panes, width, onWidth, renderPanes, children }: { panes: Pane[]; width: number; onWidth: (w: number) => void; renderPanes: (start: number, end: number) => ReactNode; children: ReactNode }) {
+  const [height, setHeight] = useState(50);
+  if (!panes.length) return <>{children}</>;
+  const firstRight = panes.findIndex((p) => p.dir === "right");
+  const below = firstRight < 0 ? panes.length : firstRight;
+  const frame = (main: ReactNode, side: ReactNode, stacked: boolean) => (
+    <div className={stacked ? "split stacked" : "split"} style={{ ["--mainw" as string]: `${stacked ? height : width}%` }}>
+      <div className="split-main">{main}</div>
+      <PaneDivider width={stacked ? height : width} onWidth={stacked ? setHeight : onWidth} down={stacked} />
+      {side}
+    </div>
+  );
+  const main = below ? frame(children, renderPanes(0, below), true) : children;
+  return below === panes.length ? main : frame(main, renderPanes(below, panes.length), false);
 }
 
 /** The panes beside the main one, column by column. */
-export function SplitPanes(p: Props) {
+export function SplitPanes(p: Props & { start?: number; end?: number }) {
   return (
     <div className="split-side">
-      {paneColumns(p.panes).map((col, i) => (
+      {paneColumns(p.panes.slice(p.start ?? 0, p.end)).map((col, i) => (
         <div key={i} className="split-col">
-          {col.map(([pane, n]) => (pane.key ? <ConversationPane key={`${n}:${pane.key}`} n={n} k={pane.key} p={p} /> : <ChoosePane key={`${n}:choose`} n={n} p={p} />))}
+          {col.map(([pane, index]) => {
+            const n = index + (p.start ?? 0);
+            return pane.key ? <ConversationPane key={`${n}:${pane.key}`} n={n} k={pane.key} p={p} /> : <ChoosePane key={`${n}:choose`} n={n} p={p} />;
+          })}
         </div>
       ))}
     </div>

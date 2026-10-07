@@ -35,7 +35,7 @@ import { AppSections, ReadOnlyThread, useCatalogs, type CatalogThread } from "./
 import { batchMenuItems } from "./batch-menu";
 import { colourHue, iconColourItem } from "./row-look";
 import { RowCard } from "./RowCard";
-import { MIN_PANE, NO_ROOM, PaneDivider, SplitPanes, TOO_NARROW, type Pane } from "./SplitPanes";
+import { MIN_PANE, NO_ROOM, SplitFrame, SplitPanes, TOO_NARROW, type Pane } from "./SplitPanes";
 import { useRowCard, useRowExtras, useSelection } from "./sidebar-state";
 import { machineMenuItems, MachineSwitcher } from "./MachineMenu";
 import { BranchLinkDialog } from "./BranchLinkDialog";
@@ -1077,8 +1077,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       notify(NO_ROOM);
       return;
     }
-    setPanes((cur) => [...cur, { key: null, dir: cur.length ? dir : "right" }]);
-    if (innerWidth < 1000) notify(TOO_NARROW);
+    setPanes((cur) => [...cur, { key: null, dir }]);
+    if (dir === "right" && innerWidth < 1000) notify(TOO_NARROW);
   };
   const conversationMenu = useConversationMenu({
     session,
@@ -1198,9 +1198,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         <StageConversation
         columnRef={setConversationColumn}
         header={compact && header ? <HeaderRow header={header} onCharacter={() => setCharacterShown((v) => !v)} tools={conversationTools} /> : null}
-        thread={<SplitFrame panes={panes} width={splitW} onWidth={setSplitW} side={
+        thread={<SplitFrame panes={panes} width={splitW} onWidth={setSplitW} renderPanes={(start, end) => (
           <SplitPanes
             panes={panes}
+            start={start}
+            end={end}
             rows={lists.rows}
             openKey={openKey}
             request={request}
@@ -1209,11 +1211,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             rowName={rowName}
             onOpen={openConversation}
             onPick={(n, key) => setPanes((cur) => cur.map((x, i) => (i === n ? { ...x, key } : x)))}
-            onClose={(n) => setPanes((cur) => cur.filter((_, i) => i !== n).map((x, i) => (i === 0 ? { ...x, dir: "right" } : x)))}
+            onClose={(n) => setPanes((cur) => cur.filter((_, i) => i !== n))}
             onMenu={(e, id, items, label) => showMenu(e, id, items, label)}
             onSplit={split}
           />
-        }>
+        )}>
         <Thread
           lockdown={lockdown.on}
           {...areaProps}
@@ -1732,17 +1734,5 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     </TrunkEmojiFaces.Provider>
     </TrunkPebbleLooks.Provider>
     </TrunkAppearances.Provider>
-  );
-}
-
-/** The thread alone, or the thread as the first of several panes with a divider (§4.2.6 Split view). */
-function SplitFrame({ panes, width, onWidth, side, children }: { panes: Pane[]; width: number; onWidth: (w: number) => void; side: ReactNode; children: ReactNode }) {
-  if (!panes.length) return <>{children}</>;
-  return (
-    <div className="split" style={{ ["--mainw" as string]: `${width}%` }}>
-      <div className="split-main">{children}</div>
-      <PaneDivider width={width} onWidth={onWidth} />
-      {side}
-    </div>
   );
 }
