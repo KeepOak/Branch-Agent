@@ -102,7 +102,7 @@ import { useShellRoom } from "../rooms/useShellRoom";
 import { NewGroupChatHost } from "../rooms/NewGroupChat";
 import { agentState, DONE_MS, TALK_MS, type AgentState } from "../face/agentState";
 import { conversationLink, useConversationMenu } from "./ConversationMenu";
-import { openConversationWindow, ownWindowUnavailable } from "./own-window";
+import { changeConversationInOwnWindow, openConversationWindow, ownWindowUnavailable, restoreSavedConversationWindows } from "./own-window";
 import { TALK_EVENT, useVoiceCatalog } from "../composer/VoiceParts";
 import { DockQuestion } from "../thread/QuestionCard";
 import { CHECK_STATUS_EVENT } from "../thread/blocks";
@@ -348,6 +348,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const searchFindNonce = useRef(0);
   const routeRef = useRef(route);
   routeRef.current = route;
+  const historyIndexRef = useRef(Number(history.state?.branchIndex) || 0);
   const [draftTopic, setDraftTopic] = useState<{ agentId: string; nonce: string; options: Record<string, unknown> } | null>(null);
   const [topicReturnKey, setTopicReturnKey] = useState<string | null>(null);
   const draftTopicRef = useRef(draftTopic);
@@ -400,6 +401,23 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   useEffect(() => setPanes((cur) => (cur.some((x) => x.key === s.sessionKey) ? cur.filter((x) => x.key !== s.sessionKey) : cur)), [s.sessionKey]);
 
   const request = useCallback(<T,>(m: string, p?: unknown) => session.request<T>(m, p), [session]);
+  useEffect(() => {
+    if (!ready || dedicated) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let delay = 1_000;
+    const check = async () => {
+      let retry = false;
+      try { retry = await restoreSavedConversationWindows(request); }
+      catch (error) { console.warn("Saved conversation windows could not be checked", error); retry = true; }
+      if (retry && !cancelled) {
+        timer = setTimeout(() => void check(), delay);
+        delay = Math.min(delay * 2, 30_000);
+      }
+    };
+    void check();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [ready, dedicated, request]);
   const onGatewayEvent = useCallback((listener: (event: string, payload: unknown) => void) => session.onGatewayEvent(listener), [session]);
   const trunkName = useCallback((id: string | undefined) => trunks.list.find((t) => t.id === id)?.name || s.name || "Sapling", [trunks, s.name]);
   const defaultName = trunkName(trunks.defaultId ?? undefined);
@@ -449,25 +467,25 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         return;
       }
     }
-    if (dedicated && next.kind === "chat" && next.key && (routeRef.current.kind !== "chat" || next.key !== routeRef.current.key)) {
-      const bridge = (window as unknown as { branchDesktop?: { retargetConversationWindow?: (key: string) => Promise<void> } }).branchDesktop;
-      if (bridge?.retargetConversationWindow) {
-        void bridge.retargetConversationWindow(next.key).catch((error: unknown) => notify(`Couldn't change this window: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+    const navigate = () => {
+      if (JSON.stringify(routeRef.current) !== JSON.stringify(next)) {
+        const index = Number(history.state?.branchIndex) || 0;
+        history.pushState({ branchRoute: next, branchIndex: index + 1 }, "");
+        historyIndexRef.current = index + 1;
       }
+      draftTopicRef.current = null;
+      setDraftTopic(null);
+      setStage(null);
+      setRoute(next);
+      setSlideOpen(false); // opening anything closes the slide-over (§4.1.8)
+      saveRoute(next.kind === "chat" ? { kind: "chat", key: next.key ?? session.getSnapshot().sessionKey } : next);
+      if (next.kind === "chat" && next.key) void session.open(next.key);
+    };
+    if (dedicated && next.kind === "chat" && next.key && (routeRef.current.kind !== "chat" || next.key !== routeRef.current.key)) {
+      void changeConversationInOwnWindow(next.key, navigate).catch((error: unknown) => notify(`Couldn't change this window: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+      return;
     }
-    if (JSON.stringify(routeRef.current) !== JSON.stringify(next)) {
-      const index = Number(history.state?.branchIndex) || 0;
-      history.pushState({ branchRoute: next, branchIndex: index + 1 }, "");
-    }
-    draftTopicRef.current = null;
-    setDraftTopic(null);
-    setStage(null);
-    setRoute(next);
-    setSlideOpen(false); // opening anything closes the slide-over (§4.1.8)
-    saveRoute(next.kind === "chat" ? { kind: "chat", key: next.key ?? session.getSnapshot().sessionKey } : next);
-    if (next.kind === "chat" && next.key) {
-      void session.open(next.key);
-    }
+    navigate();
   }, [session, dedicated]);
   useEffect(() => {
     const bridge = (window as unknown as { branchDesktop?: { onOpenMainRoute?: (listener: (route: unknown) => void) => () => void } }).branchDesktop;
@@ -491,19 +509,34 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   }, [dedicated]);
   useEffect(() => {
     history.replaceState({ branchRoute: routeRef.current, branchIndex: Number(history.state?.branchIndex) || 0 }, "");
+    historyIndexRef.current = Number(history.state?.branchIndex) || 0;
+    let reversing = false;
     const pop = (event: PopStateEvent) => {
+      if (reversing) { reversing = false; return; }
       const next = parseRoute(JSON.stringify(event.state?.branchRoute));
       if (!next) return;
-      setDraftTopic(null);
-      setStage(null);
-      setRoute(next);
-      setSlideOpen(false);
-      saveRoute(next);
-      if (next.kind === "chat" && next.key) void session.open(next.key);
+      const nextIndex = Number(event.state?.branchIndex) || 0;
+      const navigate = () => {
+        historyIndexRef.current = nextIndex;
+        setDraftTopic(null);
+        setStage(null);
+        setRoute(next);
+        setSlideOpen(false);
+        saveRoute(next);
+        if (next.kind === "chat" && next.key) void session.open(next.key);
+      };
+      if (dedicated && next.kind === "chat" && next.key && (routeRef.current.kind !== "chat" || next.key !== routeRef.current.key)) {
+        void changeConversationInOwnWindow(next.key, navigate).catch((error: unknown) => {
+          const distance = historyIndexRef.current - nextIndex;
+          if (distance) { reversing = true; history.go(distance); }
+          else history.replaceState({ branchRoute: routeRef.current, branchIndex: historyIndexRef.current }, "");
+          notify(`Couldn't change this window: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" });
+        });
+      } else navigate();
     };
     window.addEventListener("popstate", pop);
     return () => window.removeEventListener("popstate", pop);
-  }, [session]);
+  }, [session, dedicated]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       handleOfficeNavigation(event, routeRef.current.kind === "place" && routeRef.current.place === "office", () => go({ kind: "place", place: "overview" }));
