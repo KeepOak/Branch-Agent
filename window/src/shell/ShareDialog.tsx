@@ -89,10 +89,10 @@ export function ShareDialog({ engine, sessionKey, agentId, sessionId, title, pub
     <Dialog title={`Share ${name}`} wide onClose={onClose} footer={<button type="button" className="btn primary" onClick={onClose}>Done</button>} testid="share-dialog">
       {loading && !state ? <p className="hint" role="status">Loading…</p> : null}
       {error ? (
-        <p className="field-error" role="alert">
-          {error}{" "}
+        <div>
+          <p className="field-error" role="alert">{error}</p>
           <button type="button" className="btn sm" onClick={() => void load()}>Try again</button>
-        </p>
+        </div>
       ) : null}
       {state ? (
         <div className="share-b">
