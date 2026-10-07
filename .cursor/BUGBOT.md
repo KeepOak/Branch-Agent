@@ -1,0 +1,78 @@
+# Bugbot Review Guidance
+
+Conventions and common failure modes for this repository. Bugbot should check these during review.
+
+## Architecture patterns
+
+1. **Window imports engine packages.** The window depends on `@branch/gateway-protocol` and `@branch/gateway-client` from `engine/packages/`. The engine must be built before the window.
+
+2. **Desktop is independent.** `desktop/` is a standalone npm package that does not depend on engine or window sources. It launches them as separate processes.
+
+3. **Three-component release.** `engine/`, `window/`, and `desktop/` release independently. A change touching any of them triggers a component release on merge to main.
+
+## Common mistakes
+
+### Build order
+- **Wrong:** Running `pnpm build` in window/ before building engine packages.
+- **Right:** Build engine first, then window: `cd engine && pnpm build && cd ../window && pnpm build`.
+
+### Test isolation
+- **Wrong:** Tests using hardcoded ports `19031` or `19032`, or reading from the user's app data folder.
+- **Right:** Tests use their own free loopback ports and temporary data folders.
+
+### Windows process spawning
+- **Wrong:** Spawning processes on Windows without `windowsHide: true`.
+- **Right:** Every child process spawn includes `windowsHide: true` on the options object (or `CREATE_NO_WINDOW` for native launches).
+- **Check:** `desktop/scripts/hidden-processes.test.mjs` enforces this for desktop sources.
+
+### Test coverage
+- **Wrong:** Adding a new test file without listing it in CI.
+- **Right:** Engine/window tests go in `scripts/feature-batch-ci-named/<branch-name>.txt`. Desktop tests are added as explicit `node --test` steps in `.github/workflows/desktop-checks.yml`.
+- **Check:** The merge-gate workflow's `changed-test-coverage` job enforces this.
+
+### CI timeout violations
+- **Wrong:** Adding slow operations that push a job over 15 minutes.
+- **Right:** Keep all check jobs under 15 minutes. Split or shard work rather than raising timeouts.
+- **Note:** The merge-gate job has a 35-minute timeout because it waits for other jobs; individual check jobs must not exceed 15.
+
+### Lint and type errors
+- **Wrong:** Pushing code with oxlint errors or TypeScript strict errors.
+- **Right:** Run `pnpm lint` in engine or window, and the appropriate typecheck (`pnpm -C window typecheck` or `node scripts/strict-typecheck.mjs`) before pushing.
+
+### Merge commands
+- **Wrong:** `gh pr merge` without `--squash` and `--match-head-commit`.
+- **Right:** Always use `gh pr merge <number> --squash --match-head-commit <sha>` to ensure the reviewed commit is what lands.
+
+### Auto-merge usage
+- **Wrong:** Using `gh pr merge` with `--auto` flag in automated scripts (races with CI).
+- **Right:** For human workflow use `gh pr merge <number> --auto --merge`. For automated merging after review, use `--squash --match-head-commit <reviewed-sha>` without `--auto`.
+
+## Code style
+
+1. **No placeholder implementations.** A feature is either complete or shown disabled with its reason. No TODOs for the thing you just built.
+
+2. **No stubs or skipped tests.** Tests for new code must pass. Don't skip them with `.skip` or comment them out.
+
+3. **Follow existing patterns.** Check how similar features are implemented before inventing a new approach.
+
+4. **File size limits.** Source files are capped at 700 lines (non-test) or 1000 lines (tests), enforced by oxlint. Split large files.
+
+## Release implications
+
+Every merge to `main` that touches `engine/`, `window/`, or `desktop/` triggers an automatic release. Changes ship to installed apps within an hour and apply on restart.
+
+- Test thoroughly before merging.
+- Visual changes must include screenshots in the PR.
+- Breaking changes need migration paths.
+
+## Review checklist
+
+- [ ] Build order is correct (engine before window).
+- [ ] Tests use isolated ports and data folders.
+- [ ] Windows spawns include `windowsHide: true`.
+- [ ] New test files are listed in CI.
+- [ ] No CI job exceeds 15 minutes (except merge-gate).
+- [ ] Lint and typecheck pass.
+- [ ] No placeholder implementations or skipped tests.
+- [ ] Visual changes include screenshots.
+- [ ] Tests prove the fix (failing on old head, passing on new).
