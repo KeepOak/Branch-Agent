@@ -330,7 +330,11 @@ export const contactHandlers: GatewayRequestHandlers = {
   // Branch-to-Branch: `branch graft join` saved a host while this gateway runs; start (or sync) its link.
   "graft.links.sync": async ({ respond, context }) => {
     const { ensureGraftLinks } = await import("../../mcp/graft-link.js");
-    const links = ensureGraftLinks((line) => context.logGateway.info(line));
+    const { resolveGraftGatewayPort } = await import("../../mcp/graft-join.js");
+    const links = ensureGraftLinks(
+      (line) => context.logGateway.info(line),
+      await resolveGraftGatewayPort(),
+    );
     respond(true, { links: links.states() });
   },
   "graft.links.list": async ({ respond }) => {
@@ -350,7 +354,8 @@ export const contactHandlers: GatewayRequestHandlers = {
     }
     forgetGraftLink(url);
     const { ensureGraftLinks } = await import("../../mcp/graft-link.js");
-    ensureGraftLinks((line) => context.logGateway.info(line));
+    const { resolveGraftGatewayPort } = await import("../../mcp/graft-join.js");
+    ensureGraftLinks((line) => context.logGateway.info(line), await resolveGraftGatewayPort());
     respond(true, { forgotten: url });
   },
   "graft.join": async ({ params, respond }) => {

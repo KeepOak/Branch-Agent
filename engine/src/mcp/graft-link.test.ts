@@ -1,12 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../config/config.js", () => ({ getRuntimeConfig: () => ({}) }));
+const savedHosts = vi.hoisted(() => ({ read: vi.fn((): GraftLink[] => []), forget: vi.fn() }));
+vi.mock("./graft-join.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./graft-join.js")>()),
+  readGraftLinks: savedHosts.read,
+  forgetGraftLink: savedHosts.forget,
+}));
 
-import type { GraftLink } from "./graft-join.js";
+import { isSelfGraftLink, type GraftLink } from "./graft-join.js";
 import {
   GraftLinkRunner,
   GraftLinkSupervisor,
   isHostRefusal,
+  startGraftLinks,
   type LinkClient,
   type LinkHandlers,
 } from "./graft-link.js";
@@ -57,13 +64,23 @@ describe("the joined Branch's link to its host", () => {
       return {};
     });
     const handleWork = vi.fn(async () => ({ reply: "PONG" }));
-    const runner = new GraftLinkRunner({ link, trunks: async () => [], createClient: fake.create, forget: vi.fn(), log: () => undefined, handleWork });
+    const runner = new GraftLinkRunner({
+      link,
+      trunks: async () => [],
+      createClient: fake.create,
+      forget: vi.fn(),
+      log: () => undefined,
+      handleWork,
+    });
     runner.start();
     fake.get().handlers.onHello();
     await flush();
     await flush();
     expect(handleWork).toHaveBeenCalledWith(job);
-    expect(fake.get().calls).toContainEqual(["graft.work.complete", { id: "job-1", reply: "PONG" }]);
+    expect(fake.get().calls).toContainEqual([
+      "graft.work.complete",
+      { id: "job-1", reply: "PONG" },
+    ]);
     runner.stop();
   });
   it("says hello as the Branch and its Trunks on connect and every minute while connected", async () => {
@@ -161,6 +178,29 @@ describe("the joined Branch's link to its host", () => {
 });
 
 describe("the gateway's graft-link service", () => {
+  it.each([80, 443, 41002])(
+    "cleans self-links using the real guard and actual listen port %i",
+    (port) => {
+      const self: GraftLink = {
+        url: `${port === 443 ? "wss" : "ws"}://localhost:${port}`,
+        name: "Self",
+        joinedAt: 1,
+      };
+      savedHosts.read.mockReturnValue([self]);
+      savedHosts.forget.mockClear();
+      const log = vi.fn();
+      const supervisor = startGraftLinks(log, port);
+      try {
+        expect(savedHosts.forget).toHaveBeenCalledWith(self.url);
+        expect(supervisor.states()).toEqual({});
+        expect(log).toHaveBeenCalledOnce();
+      } finally {
+        supervisor.stop();
+        savedHosts.read.mockReturnValue([]);
+      }
+    },
+  );
+
   it("starts a link per saved host, picks up a host saved later, and drops a disconnected one", () => {
     let saved: GraftLink[] = [link];
     const runners: { link: GraftLink; state: string; start: () => void; stop: () => void }[] = [];
@@ -199,14 +239,17 @@ describe("the gateway's graft-link service", () => {
     const other: GraftLink = { url: "ws://192.0.2.20:41010", name: "Other", joinedAt: 2 };
     let saved = [self, other];
     const createRunner = vi.fn((l: GraftLink) => ({
-      state: "connecting", start: vi.fn(), stop: vi.fn(), link: l,
+      state: "connecting",
+      start: vi.fn(),
+      stop: vi.fn(),
+      link: l,
     }));
     const forgetSelfLink = vi.fn();
     const log = vi.fn();
     const supervisor = new GraftLinkSupervisor({
       links: () => saved,
       createRunner: createRunner as never,
-      isSelfLink: (l) => l.url === self.url,
+      isSelfLink: (l) => isSelfGraftLink(l, 41010, {}),
       forgetSelfLink,
       log,
     });

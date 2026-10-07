@@ -6,8 +6,6 @@
 // pairing), the link stops and forgets the host; a new `branch graft join` brings it back.
 import { readConnectErrorDetailCode } from "../../packages/gateway-protocol/src/connect-error-details.js";
 import { listAgentEntries } from "../agents/agent-scope.js";
-import { getRuntimeConfig as readRuntimeConfig } from "../config/config.js";
-import { resolveGatewayPort } from "../config/paths.js";
 import {
   forgetGraftLink as forgetSelfGraftLink,
   GRAFT_DEVICE_SCOPES,
@@ -263,8 +261,7 @@ export async function createDeviceLinkClient(
 }
 
 /** Start the joined Branch's links to its saved hosts (the gateway's graft-link service). */
-export function startGraftLinks(log: (line: string) => void): GraftLinkSupervisor {
-  const port = resolveGatewayPort(readRuntimeConfig());
+export function startGraftLinks(log: (line: string) => void, port: number): GraftLinkSupervisor {
   const supervisor: GraftLinkSupervisor = new GraftLinkSupervisor({
     links: () => readGraftLinks(),
     isSelfLink: (link) => isSelfGraftLink(link, port),
@@ -360,12 +357,12 @@ let running: GraftLinkSupervisor | undefined;
 
 /** The gateway's one graft-link service: started at gateway start when a saved host exists, or when
  *  `branch graft join` tells the running gateway it saved one (graft.links.sync). */
-export function ensureGraftLinks(log: (line: string) => void): GraftLinkSupervisor {
+export function ensureGraftLinks(log: (line: string) => void, port: number): GraftLinkSupervisor {
   if (running) {
     running.sync();
     return running;
   }
-  running = startGraftLinks(log);
+  running = startGraftLinks(log, port);
   return running;
 }
 

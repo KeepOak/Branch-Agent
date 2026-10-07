@@ -10,10 +10,10 @@ import os from "node:os";
 import path from "node:path";
 import { isLoopbackIpAddress, normalizeIpAddress } from "@branch/net-policy/ip";
 import { readPairingConnectErrorDetails } from "../../packages/gateway-protocol/src/connect-error-details.js";
+import { listAgentEntries } from "../agents/agent-scope.js";
 import { getRuntimeConfig as readRuntimeConfig } from "../config/config.js";
 import { resolveGatewayPort, resolveStateDir } from "../config/paths.js";
 import type { OutsideAgentIdentity } from "./trunk-tools.js";
-import { listAgentEntries } from "../agents/agent-scope.js";
 
 /** What a grafted Branch may do on its host: read and write, never admin, approvals or pairing. */
 export const GRAFT_DEVICE_SCOPES = ["operator.read", "operator.write"];
@@ -136,10 +136,19 @@ export function isSelfGraftLink(
   } catch {
     return false;
   }
-  if (Number(url.port) !== port) {
+  const defaultPort =
+    url.protocol === "ws:" || url.protocol === "http:"
+      ? 80
+      : url.protocol === "wss:" || url.protocol === "https:"
+        ? 443
+        : undefined;
+  if ((url.port ? Number(url.port) : defaultPort) !== port) {
     return false;
   }
-  const host = url.hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "").toLowerCase();
+  const host = url.hostname
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, "")
+    .toLowerCase();
   if (host === "localhost" || host === hostname.toLowerCase() || isLoopbackIpAddress(host)) {
     return true;
   }
@@ -152,11 +161,26 @@ export function isSelfGraftLink(
   );
 }
 
-/** Remember the host (its address only; the device token stays in the device-auth store). */
-export function saveGraftLink(link: GraftLink, env?: NodeJS.ProcessEnv): void {
-  if (isSelfGraftLink(link, resolveGatewayPort(readRuntimeConfig(), env))) {
+/** The live gateway lock records --port overrides; configuration is the fallback when it is stopped. */
+export async function resolveGraftGatewayPort(env?: NodeJS.ProcessEnv): Promise<number> {
+  const { readActiveGatewayLockPort } = await import("../infra/gateway-lock.js");
+  return (await readActiveGatewayLockPort({ env })) ?? resolveGatewayPort(readRuntimeConfig(), env);
+}
+
+/** Reject before opening a pairing connection, and again before saving its address. */
+export function assertNotSelfGraftLink(link: Pick<GraftLink, "url">, port: number): void {
+  if (isSelfGraftLink(link, port)) {
     throw new Error("This is this Branch's own gateway. Use a code from another Branch.");
   }
+}
+
+/** Remember the host (its address only; the device token stays in the device-auth store). */
+export function saveGraftLink(
+  link: GraftLink,
+  env?: NodeJS.ProcessEnv,
+  port = resolveGatewayPort(readRuntimeConfig(), env),
+): void {
+  assertNotSelfGraftLink(link, port);
   const file = linksFile(env);
   const rows = [link, ...readGraftLinks(env).filter((row) => row.url !== link.url)];
   fs.mkdirSync(path.dirname(file), { recursive: true });
