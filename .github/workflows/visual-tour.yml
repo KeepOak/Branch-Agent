@@ -94,7 +94,7 @@ jobs:
           name: visual-window
           path: window/dist
       - name: Test the manifest and dead-click detector
-        run: node --test --test-name-pattern='screens loader|dead-click detector' scripts/visual-tour/manifest.test.mjs scripts/visual-tour/dead-click.test.mjs
+        run: node --test --test-name-pattern='screens loader|dead-click detector|tour gateway port requires isolated explicit target' scripts/visual-tour/manifest.test.mjs scripts/visual-tour/dead-click.test.mjs scripts/visual-tour/gateway-port.test.mjs
       - name: Install headless Chromium
         run: pnpm -C engine exec playwright install chromium
       - name: Tour the built app

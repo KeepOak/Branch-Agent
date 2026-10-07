@@ -74,6 +74,8 @@ jobs:
         run: node --test scripts/changed-test-coverage.test.mjs
       - name: Require every changed test to run in CI
         run: node scripts/changed-test-coverage.mjs
+      - name: Check merge command patterns in documentation
+        run: node scripts/check-merge-command.mjs
 
   # Poll for other PR checks - runs in parallel with cache
   wait-for-checks:
