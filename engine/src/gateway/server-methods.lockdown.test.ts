@@ -5,6 +5,7 @@ import {
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
 import { resetGatewayWorkAdmission } from "../process/gateway-work-admission.js";
+import { createGatewayMethodRegistry } from "./methods/registry.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import type { GatewayClient, GatewayRequestHandler } from "./server-methods/types.js";
 
@@ -71,6 +72,19 @@ async function request(
       logGateway: { warn: vi.fn() },
       getRuntimeConfig: () => ({}),
     } as unknown as Parameters<typeof handleGatewayRequest>[0]["context"],
+    // GitHub's shipped plugin declares these methods operator.read. A bare extraHandler
+    // defaults to operator.admin and would be refused regardless of the read denylist.
+    ...(method.startsWith("github.")
+      ? {
+          methodRegistry: createGatewayMethodRegistry([{
+            name: method,
+            handler,
+            owner: { kind: "plugin", pluginId: "github" },
+            scope: "operator.read",
+            profileAccess: "independent",
+          }]),
+        }
+      : {}),
     extraHandlers: { [method]: handler },
   });
   return {
