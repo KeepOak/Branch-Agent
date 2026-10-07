@@ -537,7 +537,7 @@ export function harvestTestFiles(lane, only) {
 export function harvestTests(lane) {
   const targets = [...new Set(harvestTestFiles(lane))].sort();
   const bad = targets.find(file => !/^.+\.test\.(?:ts|tsx|mjs|mts)$/.test(file) || file.includes('..') || file.startsWith('/'));
-  if (bad) throw new Error(`Harvest test "${lane}:${bad}" must be repository-relative *.test.ts or *.test.tsx`);
+  if (bad) throw new Error(`Harvest test "${lane}:${bad}" must be repository-relative *.test.ts, *.test.tsx, *.test.mjs, or *.test.mts`);
   return targets;
 }
 
