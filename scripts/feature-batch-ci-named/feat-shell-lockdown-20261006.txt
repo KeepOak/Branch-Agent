@@ -15,7 +15,6 @@ engine:src/gateway/lockdown-engage.test.ts
 engine:src/gateway/server-methods.lockdown.test.ts
 engine:src/gateway/server-reload-managed-context.test.ts
 engine:src/gateway/server.lockdown-owner.test.ts
-engine:src/gateway/tools-invoke-http.test.ts
 engine:src/llm/stream.lockdown.test.ts
 window:src/composer/tune-redesign.test.tsx
 window:src/places/overview/overview.test.tsx
