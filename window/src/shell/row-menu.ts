@@ -129,6 +129,9 @@ function contactMenuItems(row: Conversation, c: Ctx, contact: Contact): MenuItem
   const items: (MenuItem | null)[] = [
     { label: "Open", run: () => c.open(contact.threadKey), testid: "menu-open", ...ic("chat") },
     { label: c.ownWindowOpen?.(contact.threadKey) ? "Show its window" : "Open in its own window", run: () => c.ownWindow(contact.threadKey), testid: "menu-own-window", ...(c.ownWindowOff ? { disabled: c.ownWindowOff } : {}), ...ic("panel") },
+    canEdit
+      ? { label: "Copy into a new conversation", letter: "f", hint: contact.thread!.working ? "From the last finished reply" : undefined, run: () => c.copyConversation(contact.thread!), testid: "menu-fork", ...ic("copy") }
+      : { label: "Copy into a new conversation", letter: "f", run: () => undefined, disabled: "Send a first message before copying this conversation.", testid: "menu-fork", ...ic("copy") },
     row.unread
       ? { label: "Mark as read", letter: "u", run: () => c.markContactRead?.(contact), testid: "menu-unread", ...ic("chat") }
       : { label: "Mark as unread", letter: "u", run: () => contact.thread && void c.actions.setUnread(contact.thread, true), testid: "menu-unread", ...ic("chat"), ...(!canEdit ? { disabled: "Send a first message before marking this contact unread." } : {}) },

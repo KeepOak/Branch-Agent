@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ConversationList, type Conversation } from "../connect/conversations";
+import type { Contact } from "./contacts-model";
 import { conversationActions } from "./conversation-actions";
 import { rowMenuItems } from "./row-menu";
 
@@ -96,5 +97,40 @@ describe("copy conversation", () => {
     expect(request).toHaveBeenCalledWith("chat.history", { sessionKey: key, agentId: "research" });
     expect(request).not.toHaveBeenCalledWith("sessions.fork", expect.any(Object));
     expect(open).not.toHaveBeenCalled();
+  });
+
+  it("enables Copy into a new conversation on a contact row and forks that thread", async () => {
+    const messages = [
+      { role: "user", content: [], __branch: { id: "e1" } },
+      { role: "assistant", content: [], __branch: { id: "e2" } },
+    ];
+    const request = vi.fn(async (method: string) => {
+      if (method === "chat.history") return { messages };
+      if (method === "sessions.fork") return { sessionKey: "agent:research:xyz" };
+      return {};
+    }) as Parameters<typeof conversationActions>[0];
+    const refresh = vi.fn(async () => {});
+    const open = vi.fn();
+    const actions = conversationActions(request, { refresh } as unknown as ConversationList, () => null);
+    const thread = row(false);
+    const contact: Contact = {
+      id: "trunk:research", kind: "trunk", name: "Research", threadKey: key, isDefault: false,
+      lastActivityAt: 0, preview: { kind: "message", text: "", at: 0 }, unreadTopics: 0,
+      threadUnread: false, needsYou: false, working: false, topicCount: 0, thread,
+    };
+    const items = rowMenuItems(thread, {
+      actions, now: Date.now(), trunkName: "Research", level: "regular",
+      open: () => {}, ownWindow: () => {}, rename: () => {}, confirmDelete: () => {},
+      ask: () => {}, editTrunk: () => {}, tidy: () => {}, copyMarkdown: () => {},
+      copyText: () => {}, copyLink: () => {}, copyConversation: (r) => actions.copyConversation(r, open),
+      contact,
+    });
+    const forkItem = items.find((item) => item.kind === undefined && item.label === "Copy into a new conversation");
+    expect(forkItem).toMatchObject({ label: "Copy into a new conversation", letter: "f" });
+    expect(forkItem && "disabled" in forkItem ? forkItem.disabled : undefined).toBeUndefined();
+    if (!forkItem || forkItem.kind !== undefined) throw new Error("Fork item is missing");
+    await forkItem.run();
+    expect(request).toHaveBeenCalledWith("sessions.fork", { key, agentId: "research", expectedSessionId: "session-1", entryId: "e2" });
+    expect(open).toHaveBeenCalledWith("agent:research:xyz");
   });
 });
