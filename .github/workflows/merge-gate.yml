@@ -36,12 +36,22 @@ jobs:
         run: node scripts/changed-test-coverage.mjs
       - name: Check merge command patterns in documentation
         run: node scripts/check-merge-command.mjs
+      - name: Test merge-gate wait filter and timeout message
+        run: node --test scripts/merge-gate-wait.test.mjs
 
   wait-for-checks:
     runs-on: ubuntu-latest
-    # Same 35-minute allowance as the old merge-gate waiter. The 15-minute cap is for check jobs.
-    timeout-minutes: 35
+    # Check jobs stay under 15 minutes. This waiter is the documented exception.
+    # 60 minutes is longer than today's queue plus the slowest required check
+    # (visual-tour build+tour, feature shards). The loop is ~58 minutes so the
+    # named timeout can print. See scripts/merge-gate-wait.mjs.
+    timeout-minutes: 60
     steps:
+      - name: Check out wait logic
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 1
       - name: Wait for the PR's other checks
         env:
           GH_TOKEN: ${{ github.token }}
@@ -51,21 +61,26 @@ jobs:
           set -euo pipefail
           # Give path-filtered workflows time to register their runs.
           sleep 30
-          for attempt in $(seq 1 190); do
-            runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
-              --jq '[.check_runs[] | select(.name != "merge-gate" and .name != "wait-for-checks" and .name != "changed-test-coverage")]')
-            pending=$(jq '[.[] | select(.status != "completed")] | length' <<<"$runs")
-            failed=$(jq -r '[.[] | select(.status == "completed" and (.conclusion | IN("success","skipped","neutral") | not)) | "\(.name): \(.conclusion)"] | .[]' <<<"$runs")
-            if [ -n "$failed" ]; then
-              echo "Failed checks:"; echo "$failed"; exit 1
+          runs='[]'
+          for attempt in $(seq 1 345); do
+            runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100")
+            set +e
+            decision=$(node scripts/merge-gate-wait.mjs evaluate <<<"$runs")
+            status=$?
+            set -e
+            if [ "$status" -eq 0 ]; then
+              echo "All $(sed -n '2p' <<<"$decision") other checks passed."; exit 0
             fi
-            if [ "$pending" -eq 0 ]; then
-              echo "All $(jq length <<<"$runs") other checks passed."; exit 0
+            if [ "$status" -eq 2 ]; then
+              echo "Failed checks:"; tail -n +2 <<<"$decision"; exit 1
             fi
-            echo "Waiting for $pending check(s)…"
+            if [ "$status" -ne 3 ]; then
+              echo "$decision"; exit 1
+            fi
+            echo "Waiting for $(sed -n '2p' <<<"$decision") check(s): $(tail -n +3 <<<"$decision" | paste -sd ', ' -)"
             sleep 10
           done
-          echo "Timed out waiting for checks."; exit 1
+          node scripts/merge-gate-wait.mjs timeout-message <<<"$runs"
 
   merge-gate:
     needs: [changed-test-coverage, wait-for-checks]
