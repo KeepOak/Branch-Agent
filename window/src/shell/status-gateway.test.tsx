@@ -29,6 +29,14 @@ async function mountStatus(connection: ConnectionPhase, gateway: GatewayPhase) {
 }
 
 describe("independent gateway status", () => {
+  it("keeps the owner's connected wording and shows a glyph-only gateway", async () => {
+    const gateway = await mountStatus("connected", "on");
+    expect(document.querySelector("[data-testid=sb-connection] .status-label")?.textContent).toBe("Online · you are here");
+    expect(gateway.querySelector(".status-label")).toBeNull();
+    await act(async () => root?.render(<StatusFixture connection="offline" gateway="checking" />));
+    expect(document.querySelector("[data-testid=sb-connection] .status-label")?.textContent).toBe("Offline · Fixture");
+    expect(document.querySelector("[data-testid=sb-gateway] .status-label")).toBeNull();
+  });
   it.each(["connected", "offline"] as const)("shows a genuine health check while the socket is %s", async (connection) => {
     const gateway = await mountStatus(connection, "checking");
     expect(gateway.getAttribute("aria-label")).toBe("Gateway · checking");

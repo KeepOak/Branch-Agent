@@ -1,3 +1,4 @@
+import { resolveSessionLane } from "../../agents/embedded-agent-runner/lanes.js";
 import {
   withDispatchProcessedOutcomeSink,
   type DispatchProcessedNote,
@@ -8,6 +9,7 @@ import {
   runWithDiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { waitForSessionHandoffLease } from "../../process/session-handoff-lease-gate.js";
 import { isRecentOutboundMessageIdentity } from "../message/outbound-echo.js";
 import { recordChannelBotPairLoopAndCheckSuppression } from "./bot-loop-protection.js";
 import {
@@ -223,6 +225,9 @@ async function runPreparedChannelTurnCoreInTrace<
   // path before the next group turn can replay stale context.
   try {
     const recordSessionKey = resolveRecordSessionKey(params);
+    // Recording writes the session's entry, last route and transcript context ahead of the lane. While the previous
+    // engine still finishes this session (in-place update), wait for it, as the turn itself would in the lane.
+    if (recordSessionKey) await waitForSessionHandoffLease(resolveSessionLane(recordSessionKey));
     if (params.ctxPayload.SessionTranscriptContext) {
       const { mergeSessionTranscriptContext } =
         await import("../inbound-event/session-transcript-context.runtime.js");
