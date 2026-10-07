@@ -1,6 +1,7 @@
 // Machine-owned values retired from branch.json live in the shared state database.
 import type { DatabaseSync } from "node:sqlite";
 import { executeSqliteQueryTakeFirstSync, getNodeSqliteKysely } from "../infra/kysely-sync.js";
+import { getAdmittedSqliteSchemaFacts } from "../infra/sqlite-schema-facts.js";
 import type { BranchStateDatabaseOptions } from "./branch-state-db-contract.js";
 import {
   withExistingBranchStateDatabaseArtifactPreservingReadOnly,
@@ -8,6 +9,40 @@ import {
 } from "./branch-state-db-readonly.js";
 import { tableExists } from "./branch-state-db-schema-helpers.js";
 import type { DB as BranchStateKyselyDatabase } from "./branch-state-db.generated.js";
+import type {
+  BranchStateReadCommand,
+  BranchStateReadResult,
+} from "./branch-state-read.types.js";
+
+type ConfigMachineStateReadCommand = Extract<
+  BranchStateReadCommand,
+  { type: "nodeHost.config" | "operator.channelPolicy" | "tts.prefsPath" }
+>;
+
+export function isConfigMachineStateReadCommand(
+  command: BranchStateReadCommand,
+): command is ConfigMachineStateReadCommand {
+  return (
+    command.type === "nodeHost.config" ||
+    command.type === "operator.channelPolicy" ||
+    command.type === "tts.prefsPath"
+  );
+}
+
+export function readConfigMachineStateCommandInDatabase(
+  database: DatabaseSync,
+  command: ConfigMachineStateReadCommand,
+): Extract<BranchStateReadResult, { type: ConfigMachineStateReadCommand["type"] }> {
+  return {
+    type: command.type,
+    // Activation may precede deferred publication; never issue authority before v19.
+    row:
+      command.type === "operator.channelPolicy" &&
+      (getAdmittedSqliteSchemaFacts(database)?.userVersion ?? 0) < 19
+        ? undefined
+        : readConfigMachineStateRowInDatabase(database, command.type),
+  };
+}
 
 export type ConfigMachineStateDatabase = Pick<BranchStateKyselyDatabase, "config_machine_state">;
 

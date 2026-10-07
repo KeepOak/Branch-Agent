@@ -144,7 +144,7 @@ describe("runEmbeddedAgent transcript projection retry", () => {
         { ...sessionTarget, expectedWriterRunId: "run-owned-projection-retry" },
         expect.any(AbortSignal),
       );
-      agentDatabase.closeBranchAgentDatabaseByPath(
+      await agentDatabase.closeBranchAgentDatabaseByPathAsync(
         agentDatabase.resolveBranchAgentSqlitePath(databaseOptions),
       );
       expect(

@@ -9,13 +9,19 @@ import { useAutoCleanupTempDirTracker } from "../test/helpers/temp-dir.js";
 const dirs = useAutoCleanupTempDirTracker(afterEach);
 
 it.each([
-  { json: false, phase: "command", trace: false },
-  { json: true, phase: "command", trace: false },
-  { json: true, phase: "finalize", trace: false },
-  { json: true, phase: "finalize", trace: true },
+  { json: false, phase: "command", trace: false, marker: "1" },
+  { json: true, phase: "command", trace: false, marker: "1" },
+  { json: true, phase: "finalize", trace: false, marker: "1" },
+  { json: true, phase: "finalize", trace: true, marker: "1" },
+  { json: false, phase: "command", trace: false, marker: undefined },
+  { json: true, phase: "command", trace: false, marker: undefined },
 ] as const)(
-  "preserves $phase failure output after installation replacement (JSON: $json, trace: $trace)",
-  async ({ json, phase, trace }) => {
+  "preserves $phase failure output after installation replacement (JSON: $json, trace: $trace, updater marker: $marker)",
+  async ({ json, phase, trace, marker }) => {
+    const failureMessage =
+      marker === undefined
+        ? "global-install-failed: original update failure"
+        : "original update failure";
     const root = await fs.realpath(dirs.make("branch-entry-replacement-"));
     const sources = [
       "src/entry.ts",
@@ -48,7 +54,7 @@ it.each([
 import fs from 'node:fs/promises';
 ${trace ? "process.argv.push('gateway');" : ""}
 const { runMainOrRootHelp } = await import(${JSON.stringify(pathToFileURL(relocated.get(path.resolve("src/entry.ts"))!).href)});
-const fail = async () => { throw new Error('original update failure'); };
+const fail = async () => { throw new Error(${JSON.stringify(failureMessage)}); };
 await runMainOrRootHelp(['node', 'branch', 'update', ${json ? "'--json'" : "'--yes'"}], {
   loadRunCli: async () => ({ runCli: async () => {
     await Promise.all(${JSON.stringify([...relocated.values()])}.map(file => fs.rm(file)));
@@ -68,6 +74,7 @@ await runMainOrRootHelp(['node', 'branch', 'update', ${json ? "'--json'" : "'--y
           BRANCH_STATE_DIR: path.join(root, "state"),
           BRANCH_CONFIG_PATH: path.join(root, "branch.json"),
           BRANCH_DEBUG: "0",
+          BRANCH_UPDATE_IN_PROGRESS: marker,
           BRANCH_GATEWAY_STARTUP_TRACE: trace ? "1" : "0",
           NODE_OPTIONS: "",
           VITEST: "",
@@ -92,6 +99,9 @@ await runMainOrRootHelp(['node', 'branch', 'update', ${json ? "'--json'" : "'--y
     );
     expect(result.code, result.stderr).toBe(1);
     expect(result.stderr).toContain("original update failure");
+    if (marker === undefined) {
+      expect(result.stderr).toContain("global-install-failed");
+    }
     expect(result.stderr).not.toContain("ERR_MODULE_NOT_FOUND");
     if (trace) {
       expect(result.stderr).toContain("startup trace: entry.run-main-import");
@@ -99,7 +109,7 @@ await runMainOrRootHelp(['node', 'branch', 'update', ${json ? "'--json'" : "'--y
     if (json) {
       expect(JSON.parse(result.stdout)).toMatchObject({
         ok: false,
-        error: { message: "original update failure" },
+        error: { message: failureMessage },
       });
     } else {
       expect(result.stdout).toBe("");

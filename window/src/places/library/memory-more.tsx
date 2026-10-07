@@ -1,6 +1,9 @@
 // Library › Memory, the sections under the list (preview 94-g4p secR418 + 42-placesbp "How it learns"):
 // How it learns [A], Memory health, What to remember, Pinned memories, About you, Waiting for your yes [T].
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
+import { downloadTranscript } from "../../transcript-export/ExportDialog";
+import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { fileOf, num, optStr, rec, useOperation, useResource, trunkName, type Trunk } from "./data";
@@ -24,7 +27,6 @@ export function statusOf(raw: unknown): MemoryStatus {
 }
 
 export const REASONS = {
-  export: "Needs the engine’s memory export method.",
   whatsapp: "Needs the engine’s chat-export import method.",
   rules: "Needs the engine’s what-to-remember rules.",
   pin: "Needs the engine’s pinned-memory method.",
@@ -83,7 +85,12 @@ function LearnDialog({ engine, trunks, scope, onClose }: { engine: WindowEngine;
   </Dialog>;
 }
 
-export function MemoryHealth({ status, check }: { status: { data: MemoryStatus | null; loading: boolean; error: string | null }; check: () => void }) {
+export function MemoryHealth({ engine, agentId, status, check }: { engine: WindowEngine; agentId: string; status: { data: MemoryStatus | null; loading: boolean; error: string | null }; check: () => void }) {
+  const op = useOperation(engine);
+  const exportAll = () => void op.run<{ agentId: string; files: { path: string; content: string }[] }>("memory.export", { agentId }, result => {
+    const markdown = result.files.map(file => `## ${file.path}\n\n${file.content.trimEnd()}\n`).join("\n");
+    downloadTranscript(markdown, `${result.agentId}-memory-${new Date().toISOString().slice(0, 10)}`, "markdown");
+  });
   const e = status.data?.embedding;
   const checked = e?.checked !== false && e?.checkedAtMs;
   const title = checked ? `Search index: checked ${when(e!.checkedAtMs)}` : "Search index: not checked yet";
@@ -94,19 +101,20 @@ export function MemoryHealth({ status, check }: { status: { data: MemoryStatus |
       {e && <Row icon="search" title={title} line={line}><button type="button" className="btn sm" disabled={status.loading} onClick={check}>Check now</button></Row>}
       <Row icon="clock" title="Loads when a conversation starts" line="What a Trunk learns now shows from its next conversation, so each one starts the same." />
     </div>
-    <div className="lib-acts"><Grey label="Export everything" reason={REASONS.export} /><Grey ghost label="Bring in a WhatsApp export" reason={REASONS.whatsapp} /></div>
+    {op.error && <p className="lib-bad" role="alert">{op.error}</p>}
+    <div className="lib-acts"><button type="button" className="btn" disabled={op.busy || !agentId} onClick={exportAll}>Export everything</button><Grey ghost label="Bring in a WhatsApp export" reason={REASONS.whatsapp} /></div>
   </Section>;
 }
 
 export function WhatToRemember() {
   return <Section title="What to remember" testid="what-to-remember">
-    <div className="lib-form"><input className="inp" disabled placeholder="Never remember my health details" aria-label="A rule about what to remember" title={REASONS.rules} /><Grey label="Add" reason={REASONS.rules} /></div>
+    <div className="lib-form"><input className="inp" disabled placeholder="Never remember my health details" aria-label="A rule about what to remember" title={shownWhy(REASONS.rules)} /><Grey label="Add" reason={REASONS.rules} /></div>
   </Section>;
 }
 
 export function Pinned({ facts }: { facts: Fact[] }) {
   return <Section title="Pinned memories" hint="Pinned memories always go with a message, like a standing rule, and rank first when Trunks share." testid="pinned">
-    <div className="lib-form"><select className="inp" disabled aria-label="A memory to pin" title={REASONS.pin}>{facts.map(f => <option key={f.agentId + f.start}>{f.text}</option>)}</select><Grey label="Pin" reason={REASONS.pin} /></div>
+    <div className="lib-form"><select className="inp" disabled aria-label="A memory to pin" title={shownWhy(REASONS.pin)}>{facts.map(f => <option key={f.agentId + f.start}>{f.text}</option>)}</select><Grey label="Pin" reason={REASONS.pin} /></div>
   </Section>;
 }
 

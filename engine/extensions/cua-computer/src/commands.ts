@@ -45,9 +45,9 @@ const MAX_IMAGE_PIXELS = 40_000_000;
 const CUA_DRIVER_ENDPOINT_ENV = "BRANCH_CUA_DRIVER_ENDPOINT";
 
 const CuaDriverEndpointSchema = z.strictObject({
-  v: z.literal(1),
-  socketPath: z.string(),
-  binaryPath: z.string(),
+  v: z.literal(2),
+  port: z.number().int().min(1).max(65535),
+  secret: z.string().regex(/^[0-9a-f]{64}$/),
 });
 
 const DesktopStateSchema = z.object({
@@ -89,8 +89,10 @@ type CuaComputerProviderOptions = {
 
 function resolveMacOsMcpEndpoint(
   env: NodeJS.ProcessEnv,
-): { socketPath: string; binaryPath: string } | undefined {
-  const rawEndpoint = env[CUA_DRIVER_ENDPOINT_ENV];
+): { port: number; secret: string } | undefined {
+  const rawEndpoint = env[CUA_DRIVER_ENDPOINT_ENV] ??
+    (globalThis as Record<symbol, unknown>)[Symbol.for("branch.macComputerEndpoint")];
+  if (typeof rawEndpoint !== "string") return undefined;
   if (!rawEndpoint || Buffer.byteLength(rawEndpoint, "utf8") > 4 * 1024) {
     return undefined;
   }
@@ -100,17 +102,7 @@ function resolveMacOsMcpEndpoint(
     if (!parsed.success) {
       return undefined;
     }
-    const { socketPath, binaryPath } = parsed.data;
-    if (
-      socketPath.includes("\0") ||
-      binaryPath.includes("\0") ||
-      !path.isAbsolute(socketPath) ||
-      !path.isAbsolute(binaryPath)
-    ) {
-      return undefined;
-    }
-    fs.accessSync(binaryPath, fs.constants.X_OK);
-    return { socketPath, binaryPath };
+    return { port: parsed.data.port, secret: parsed.data.secret };
   } catch {
     return undefined;
   }

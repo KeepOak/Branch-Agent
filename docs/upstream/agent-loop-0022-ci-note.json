@@ -1,0 +1,8 @@
+{
+  "id": "AGENT-LOOP-0022",
+  "state": "partial",
+  "covered_files": "3/4",
+  "excluded_test": "engine/extensions/codex/src/app-server/approval-bridge.harvest.test.ts",
+  "reason": "The pinned upstream Codex approval-bridge suite does not pass in Branch's Ubuntu Harvest CI: five command-approval cases fail closed under the native mutable-file/approval route (two receive decline instead of accept and three do not reach the native failure-disposition callback). The other three Codex files remain registered. This suite is retained for a later native approval fixture/host-binding investigation, not counted as done.",
+  "evidence": "PR #336, Harvest engine 2/3 rerun in actions run 37492311187, job 112384070557 (5 failed, 29 passed in approval-bridge.harvest.test.ts)"
+}

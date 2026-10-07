@@ -1,6 +1,6 @@
 {
   "name": "@branch/msteams",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "description": "Branch Agent Microsoft Teams channel plugin for bot conversations.",
   "repository": {
     "type": "git",
@@ -22,7 +22,7 @@
     "branch": "workspace:*"
   },
   "peerDependencies": {
-    "branch": ">=2026.9.7"
+    "branch": ">=2026.9.9"
   },
   "peerDependenciesMeta": {
     "branch": {
@@ -73,10 +73,10 @@
       "minHostVersion": ">=2026.4.10"
     },
     "compat": {
-      "pluginApi": ">=2026.9.7"
+      "pluginApi": ">=2026.9.9"
     },
     "build": {
-      "branchVersion": "2026.9.7",
+      "branchVersion": "2026.9.8",
       "runtimeFormat": "cjs"
     },
     "release": {

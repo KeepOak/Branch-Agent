@@ -62,6 +62,7 @@ export {
   type SessionsPatchParams,
 } from "./sessions-patch.js";
 export {
+  SessionConversationLinkSchema,
   SessionAncestorRefSchema,
   SessionCreatedActorSchema,
   SessionEventAncestorsSchema,
@@ -71,6 +72,7 @@ export {
   SessionToolOverridesSchema,
   type SessionAncestorRef,
   type SessionCreatedActor,
+  type SessionConversationLink,
   type SessionEventAncestors,
   type SessionOwner,
   type SessionPermissionMode,
@@ -291,6 +293,40 @@ export const SessionsFilesGetResultSchema = closedObject({
   sessionKey: NonEmptyString,
   root: Type.Optional(NonEmptyString),
   file: SessionFileEntrySchema,
+});
+
+export const SESSIONS_FILES_ASSETS_MAX_REFS = 64;
+export const SESSIONS_FILES_ASSET_MAX_BYTES = 1024 * 1024;
+export const SESSIONS_FILES_ASSETS_MAX_TOTAL_BYTES = 4 * 1024 * 1024;
+
+const sessionFileAssetRefSchema = Type.String({ minLength: 1, maxLength: 4096 });
+
+/** Reads relative HTML resources under the session's current file-read authority. */
+export const SessionsFilesAssetsParamsSchema = closedObject({
+  ...SessionsFilesGetParamsSchema.properties,
+  refs: Type.Array(sessionFileAssetRefSchema, { maxItems: SESSIONS_FILES_ASSETS_MAX_REFS }),
+});
+
+export const SessionsFilesAssetsResultSchema = closedObject({
+  assets: Type.Array(
+    Type.Union([
+      closedObject({
+        ref: sessionFileAssetRefSchema,
+        mimeType: NonEmptyString,
+        content: Type.String(),
+      }),
+      closedObject({
+        ref: sessionFileAssetRefSchema,
+        error: Type.Union([
+          Type.Literal("not_found"),
+          Type.Literal("too_large"),
+          Type.Literal("outside_session_boundary"),
+          Type.Literal("unsupported"),
+        ]),
+      }),
+    ]),
+    { maxItems: SESSIONS_FILES_ASSETS_MAX_REFS },
+  ),
 });
 
 /** Overwrites one existing session workspace file with hash-based CAS. */
@@ -646,6 +682,17 @@ export const SessionsBranchesListParamsSchema = closedObject({
   agentId: Type.Optional(NonEmptyString),
 });
 
+export const SessionsSegmentsListParamsSchema = SessionsBranchesListParamsSchema;
+export const SessionSegmentSchema = closedObject({
+  sessionId: NonEmptyString,
+  startedAt: Type.Optional(Type.Number()),
+  endedAt: Type.Optional(Type.Number()),
+  current: Type.Boolean(),
+});
+export const SessionsSegmentsListResultSchema = closedObject({
+  segments: Type.Array(SessionSegmentSchema),
+});
+
 export const SessionsBranchesListResultSchema = closedObject({
   branches: Type.Array(SessionBranchSchema),
 });
@@ -740,6 +787,8 @@ export type SessionsRewindResult = Static<typeof SessionsRewindResultSchema>;
 export type SessionsForkResult = Static<typeof SessionsForkResultSchema>;
 export type SessionBranch = Static<typeof SessionBranchSchema>;
 export type SessionsBranchesListParams = Static<typeof SessionsBranchesListParamsSchema>;
+export type SessionsSegmentsListParams = Static<typeof SessionsSegmentsListParamsSchema>;
+export type SessionsSegmentsListResult = Static<typeof SessionsSegmentsListResultSchema>;
 export type SessionsBranchesListResult = Static<typeof SessionsBranchesListResultSchema>;
 export type SessionsBranchesSwitchParams = Static<typeof SessionsBranchesSwitchParamsSchema>;
 export type SessionsBranchesSwitchResult = Static<typeof SessionsBranchesSwitchResultSchema>;
@@ -784,6 +833,8 @@ export type SessionsFilesListParams = Static<typeof SessionsFilesListParamsSchem
 export type SessionsFilesListResult = Static<typeof SessionsFilesListResultSchema>;
 export type SessionsFilesGetParams = Static<typeof SessionsFilesGetParamsSchema>;
 export type SessionsFilesGetResult = Static<typeof SessionsFilesGetResultSchema>;
+export type SessionsFilesAssetsParams = Static<typeof SessionsFilesAssetsParamsSchema>;
+export type SessionsFilesAssetsResult = Static<typeof SessionsFilesAssetsResultSchema>;
 export type SessionsFilesSetParams = Static<typeof SessionsFilesSetParamsSchema>;
 export type SessionsFilesSetResult = Static<typeof SessionsFilesSetResultSchema>;
 export type SessionsFilesRevealParams = Static<typeof SessionsFilesRevealParamsSchema>;

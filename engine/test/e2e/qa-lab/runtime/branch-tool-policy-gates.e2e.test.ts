@@ -75,15 +75,14 @@ test("Branch Agent applies every configured tool policy as a restrictive interse
   const agentConfig: BranchConfig = {
     tools: providerConfig.tools,
     agents: {
-      list: [
-        {
-          id: "policy",
+      entries: {
+        policy: {
           tools: {
             allow: ["read", "write", "exec", "process"],
             deny: ["process"],
           },
         },
-      ],
+      },
     },
   };
   expectIncluded(toolNames(agentConfig), ["read", "write", "exec"], ["edit", "process", "message"]);

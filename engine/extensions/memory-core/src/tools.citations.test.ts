@@ -74,7 +74,7 @@ describe("memory tools", () => {
 
   it("revokes retained memory tools when live config disables memory", async () => {
     const startupConfig = asBranchConfig({
-      agents: { list: [{ id: "main", default: true }] },
+      agents: { entries: { main: {} } },
     });
     let liveConfig = startupConfig;
     const getConfig = () => liveConfig;
@@ -86,7 +86,7 @@ describe("memory tools", () => {
 
     liveConfig = asBranchConfig({
       agents: {
-        list: [{ id: "main", default: true, memory: { search: { enabled: false } } }],
+        entries: { main: { memory: { search: { enabled: false } } } },
       },
     });
     const disabledMessage =
@@ -125,7 +125,7 @@ describe("memory tools", () => {
       const tool = createMemorySearchToolOrThrow({
         config: asBranchConfig({
           memory: { citations: "on" },
-          agents: { list: [{ id: "main", default: true }] },
+          agents: { entries: { main: {} } },
           plugins: { entries: { "memory-core": { config: { rings: { enabled: true } } } } },
         }),
       });
@@ -175,7 +175,7 @@ describe("memory tools", () => {
       get: async () => null,
     });
     const config = asBranchConfig({
-      agents: { list: [{ id: "marketing-agent", default: true }] },
+      agents: { entries: { "marketing-agent": {} } },
     });
     const tool = createMemorySearchTool({
       config,
@@ -253,6 +253,20 @@ describe("memory tools", () => {
       ],
     });
     expect(result.details).not.toHaveProperty("warning");
+  });
+
+  it("surfaces a warning when an unregistered wiki corpus is explicitly requested", async () => {
+    const tool = createMemorySearchToolOrThrow();
+    const result = await tool.execute("call_wiki_without_registration", {
+      query: "alpha",
+      corpus: "wiki",
+    });
+
+    expect(result.details).toMatchObject({
+      results: [],
+      corpora: [{ corpus: "wiki", outcome: "not-registered" }],
+      warning: "Wiki corpus is not registered; results do not cover that requested corpus.",
+    });
   });
 
   it.each(["memory", "wiki"] as const)(

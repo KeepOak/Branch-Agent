@@ -21,6 +21,7 @@ import {
   renewAgentDatabaseMaintenanceAuthorityIfPresent,
 } from "../state/branch-agent-db-lease.js";
 import { agentDatabaseLifecycle } from "../state/branch-agent-db-lifecycle.js";
+import { withAgentDatabaseMaintenanceLease } from "../state/branch-agent-db-maintenance-lease.js";
 import { assertBranchAgentDatabaseOwner } from "../state/branch-agent-db-maintenance.js";
 import {
   registerBranchAgentDatabase,
@@ -34,11 +35,11 @@ import {
   ensureBranchAgentDatabaseSchemaSteps,
   migrateBranchAgentDatabaseToMediaPrerequisiteSchemaSteps,
 } from "../state/branch-agent-db-schema.js";
+import { assertSupportedAgentMigrationSchemas } from "../state/branch-agent-db-session-migrations.js";
 import type { DB as BranchAgentKyselyDatabase } from "../state/branch-agent-db.generated.js";
 import {
   BRANCH_AGENT_SCHEMA_VERSION,
   clearBranchAgentDatabaseOpenFailure,
-  withAgentDatabaseMaintenanceLease,
 } from "../state/branch-agent-db.js";
 import { withLegacySessionParticipantsSchema } from "../state/branch-agent-participants-migration.js";
 import { BRANCH_AGENT_SCHEMA_SQL } from "../state/branch-agent-schema.js";
@@ -52,7 +53,6 @@ import { formatErrorMessage } from "./errors.js";
 import {
   executeSqliteQuerySync,
   getNodeSqliteKysely,
-  clearNodeSqliteKyselyCacheForDatabase,
   enableNodeSqliteKyselyStatementCache,
 } from "./kysely-sync.js";
 import { openNodeSqliteDatabase } from "./node-sqlite.js";
@@ -62,6 +62,7 @@ import { runSqliteIntegrityOperationInWorker } from "./sqlite-integrity-operatio
 import { assertSqliteIntegrity, isTerminalSqliteIntegrityError } from "./sqlite-integrity.js";
 import { configureSqliteMaintenanceCache } from "./sqlite-maintenance-cache.js";
 import { resolveSqliteInspectionSignal } from "./sqlite-readonly-worker.js";
+import { readSqliteDataVersion } from "./sqlite-schema-facts.js";
 import {
   runSqliteDeferredTransactionSync,
   runSqliteImmediateTransactionSync,
@@ -70,8 +71,6 @@ import { readSqliteUserVersion } from "./sqlite-user-version.js";
 import { createMigrationDatabaseHandle } from "./state-migrations.agent-database.js";
 import { recoverMisplacedAgentDatabaseCopies } from "./state-migrations.agent-owner-recovery.js";
 import {
-  mediaSourceDriftMessage,
-  readMediaSourceVersion,
   scanTranscriptRows,
   scanTrajectoryRows,
 } from "./state-migrations.media-persistence-database.js";
@@ -111,9 +110,14 @@ async function migrateAgentDatabase(params: {
   maintenance: BranchStateLeaseContext;
   preparedArchives?: ReadonlySet<string>;
 }) {
-  invalidateBranchAgentDatabaseIntegrityBeforeMutation(params.pathname);
   const database = openNodeSqliteDatabase(params.pathname);
-  const schemaOptions = { agentId: params.agentId, path: params.pathname, env: params.env };
+  const schemaWarnings: string[] = [];
+  const schemaOptions = {
+    agentId: params.agentId,
+    path: params.pathname,
+    env: params.env,
+    onMigrationWarning: (warning: string) => schemaWarnings.push(warning),
+  };
   const runSchema = (operation: Parameters<typeof runSqliteIntegrityOperationInWorker>[0]) =>
     runSqliteIntegrityOperationInWorker(operation, {
       busyTimeoutMs: BRANCH_SQLITE_BUSY_TIMEOUT_MS,
@@ -144,6 +148,10 @@ async function migrateAgentDatabase(params: {
     });
     assertSupportedAgentSchemaVersion(database, params.pathname);
     let userVersion = readSqliteUserVersion(database);
+    if (userVersion < BRANCH_AGENT_SCHEMA_VERSION) {
+      assertSupportedAgentMigrationSchemas(database, params.pathname, userVersion);
+    }
+    invalidateBranchAgentDatabaseIntegrityBeforeMutation(params.pathname);
     const initialVersion = userVersion;
     const prepareSchema = async () => {
       userVersion = readSqliteUserVersion(database);
@@ -266,13 +274,14 @@ async function migrateAgentDatabase(params: {
           rewrittenSessions: 0,
           rewrittenTrajectoryRows: 0,
           ...archives,
+          warnings: [...schemaWarnings, ...archives.warnings],
           initialVersion,
           finalVersion: userVersion,
         };
       }
     }
 
-    const sourceVersion = readMediaSourceVersion(database, legacyTextStorage);
+    const sourceVersion = readSqliteDataVersion(database);
     const changedLegacySessions = new Set<string>();
     params.beforeTransaction?.();
     const owner = createMigrationDatabaseHandle(database, params.agentId, params.pathname);
@@ -280,11 +289,8 @@ async function migrateAgentDatabase(params: {
       database,
       () => {
         assertMediaSchemaMigration();
-        const currentSourceVersion = readMediaSourceVersion(database, legacyTextStorage);
-        if (currentSourceVersion.dataVersion !== sourceVersion.dataVersion) {
-          throw new Error(
-            mediaSourceDriftMessage(params.pathname, sourceVersion, currentSourceVersion),
-          );
+        if (readSqliteDataVersion(database) !== sourceVersion) {
+          throw new Error(`${params.pathname} source changed before migration transaction`);
         }
         const rewrittenSessions = scanTranscriptRows({
           database,
@@ -350,11 +356,11 @@ async function migrateAgentDatabase(params: {
     return {
       ...rewritten,
       ...archives,
+      warnings: [...schemaWarnings, ...archives.warnings],
       initialVersion,
       finalVersion: readSqliteUserVersion(database),
     };
   } finally {
-    clearNodeSqliteKyselyCacheForDatabase(database);
     database.close();
   }
 }

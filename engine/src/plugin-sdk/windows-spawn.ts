@@ -7,6 +7,8 @@ import {
 } from "../../packages/normalization-core/src/string-coerce.js";
 import { normalizeStringEntries } from "../../packages/normalization-core/src/string-normalization.js";
 import { resolveEnvironmentValue } from "../infra/process-env.js";
+import { runtimeProcessEntrypoints } from "../infra/runtime-process-entrypoints.js";
+import { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";
 
 /** Final execution strategy chosen for a Windows spawn command. */
 export type WindowsSpawnResolution =
@@ -26,7 +28,7 @@ export type WindowsSpawnProgramCandidate = {
   leadingArgv: string[];
   /** Candidate resolution path, or unresolved-wrapper when shell policy must decide. */
   resolution: WindowsSpawnCandidateResolution | "unresolved-wrapper";
-  /** Hide the transient Windows console for Node/exe entrypoint launches. */
+  /** Hide the Windows console window; every win32 candidate sets it. */
   windowsHide?: boolean;
 };
 
@@ -328,50 +330,30 @@ export function resolveWindowsSpawnProgramCandidate(
 
   const resolvedCommand = resolveWindowsExecutablePath(params.command, env);
   const ext = normalizeLowercaseStringOrEmpty(path.extname(resolvedCommand));
-  if (ext === ".js" || ext === ".cjs" || ext === ".mjs") {
+  const isWrapper = ext === ".cmd" || ext === ".bat";
+  const entrypoint = isWrapper
+    ? (resolveEntrypointFromCmdShim(resolvedCommand) ??
+      resolveEntrypointFromPackageJson(resolvedCommand, params.packageName))
+    : ext === ".js" || ext === ".cjs" || ext === ".mjs"
+      ? resolvedCommand
+      : undefined;
+  if (entrypoint) {
+    const isExe = normalizeLowercaseStringOrEmpty(path.extname(entrypoint)) === ".exe";
     return {
-      command: execPath,
-      leadingArgv: [resolvedCommand],
-      resolution: "node-entrypoint",
+      command: isExe ? entrypoint : execPath,
+      leadingArgv: isExe ? [] : [entrypoint],
+      resolution: isExe ? "exe-entrypoint" : "node-entrypoint",
       windowsHide: true,
     };
   }
 
-  if (ext === ".cmd" || ext === ".bat") {
-    const entrypoint =
-      resolveEntrypointFromCmdShim(resolvedCommand) ??
-      resolveEntrypointFromPackageJson(resolvedCommand, params.packageName);
-    if (entrypoint) {
-      const entryExt = normalizeLowercaseStringOrEmpty(path.extname(entrypoint));
-      if (entryExt === ".exe") {
-        return {
-          command: entrypoint,
-          leadingArgv: [],
-          resolution: "exe-entrypoint",
-          windowsHide: true,
-        };
-      }
-      return {
-        command: execPath,
-        leadingArgv: [entrypoint],
-        resolution: "node-entrypoint",
-        windowsHide: true,
-      };
-    }
-
-    // Unresolved .cmd/.bat wrappers are not passed through cmd.exe unless the
-    // caller explicitly accepts shell metacharacter parsing with allowShellFallback.
-    return {
-      command: resolvedCommand,
-      leadingArgv: [],
-      resolution: "unresolved-wrapper",
-    };
-  }
-
+  // Unresolved wrappers need the caller's explicit shell-fallback policy.
+  // Direct .exe launches and cmd.exe fallbacks open a console window unless hidden.
   return {
     command: resolvedCommand,
     leadingArgv: [],
-    resolution: "direct",
+    resolution: isWrapper ? "unresolved-wrapper" : "direct",
+    windowsHide: true,
   };
 }
 
@@ -394,6 +376,7 @@ export function applyWindowsSpawnProgramPolicy(params: {
       leadingArgv: [],
       resolution: "shell-fallback",
       shell: true,
+      windowsHide: true,
     };
   }
   throw new Error(
@@ -423,5 +406,21 @@ export function materializeWindowsSpawnProgram(
     resolution: program.resolution,
     shell: program.shell,
     windowsHide: program.windowsHide,
+  };
+}
+
+/** Keep JSON-RPC pipes while giving a Windows console child a hidden inherited console. */
+export function withHiddenWindowsConsole(
+  invocation: WindowsSpawnInvocation,
+  platform: NodeJS.Platform = process.platform,
+): WindowsSpawnInvocation {
+  if (platform !== "win32") return invocation;
+  const worker = resolveRuntimeWorkerUrl(runtimeProcessEntrypoints.hiddenConsoleLauncher);
+  return {
+    ...invocation,
+    command: process.execPath,
+    argv: [...resolveRuntimeWorkerArgv(worker), invocation.shell ? "1" : "0", invocation.command, ...invocation.argv],
+    shell: false,
+    windowsHide: true,
   };
 }

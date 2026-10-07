@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/auto-reply/reply/commands-compact.ts (atlas AGENT-LOOP-0101). Changed for Branch: Cline aliases share the authorized manual compaction path.
 import { normalizeProviderId } from "@branch/model-catalog-core/provider-id";
 import {
   normalizeLowercaseStringOrEmpty,
@@ -24,12 +25,9 @@ import { resolveSessionStorePathForScope } from "../../config/sessions/session-s
 import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
-import { createLazyImportLoader } from "../../shared/lazy-promise.js";
 import { rejectUnauthorizedCommand } from "./command-gates.js";
 import type { CommandHandler, CommandHandlerResult } from "./commands-types.js";
 import { stripMentions, stripStructuralPrefixes } from "./mentions.js";
-
-const compactRuntimeLoader = createLazyImportLoader(() => import("./commands-compact.runtime.js"));
 
 function extractCompactInstructions(params: {
   rawBody?: string;
@@ -43,10 +41,11 @@ function extractCompactInstructions(params: {
     ? stripMentions(raw, params.ctx, params.cfg, params.agentId)
     : raw;
   const trimmed = stripped.trim();
-  if (!normalizeLowercaseStringOrEmpty(trimmed).startsWith("/compact")) {
+  const match = /^\/(?:compact|smol|newtask)(?=\s|:|$)/i.exec(trimmed);
+  if (!match) {
     return undefined;
   }
-  let rest = trimmed.slice("/compact".length).trimStart();
+  let rest = trimmed.slice(match[0].length).trimStart();
   if (rest.startsWith(":")) {
     rest = rest.slice(1).trimStart();
   }
@@ -174,9 +173,9 @@ export async function handleCompactCommand(
   _allowTextCommands: boolean,
   assertOwnerCurrent?: () => void,
 ): ReturnType<CommandHandler> {
-  const compactRequested =
-    params.command.commandBodyNormalized === "/compact" ||
-    params.command.commandBodyNormalized.startsWith("/compact ");
+  const compactRequested = /^\/(?:compact|smol|newtask)(?:\s|$)/.test(
+    params.command.commandBodyNormalized,
+  );
   if (!compactRequested) {
     return null;
   }
@@ -195,7 +194,7 @@ export async function handleCompactCommand(
       "⚙️ Compaction unavailable (missing session id).",
     );
   }
-  const runtime = await compactRuntimeLoader.load();
+  const runtime = await import("./commands-compact.runtime.js");
   const sessionId = targetSessionEntry.sessionId;
   const sessionAgentId = params.sessionKey
     ? resolveSessionAgentId({

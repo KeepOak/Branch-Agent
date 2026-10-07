@@ -16,7 +16,10 @@ import {
   resolveMemoryDeepRingsConfig,
 } from "branch/plugin-sdk/memory-core-host-status";
 import type { BranchPluginServiceContext } from "branch/plugin-sdk/plugin-entry";
-import { createTestPluginApi } from "branch/plugin-sdk/plugin-test-api";
+import {
+  createTestPluginApi,
+  createTestPluginServiceScheduler,
+} from "branch/plugin-sdk/plugin-test-api";
 import { enqueueSystemEvent } from "branch/plugin-sdk/system-event-runtime";
 import { resetSystemEventsForTest } from "branch/plugin-sdk/test-fixtures";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -102,6 +105,7 @@ type CronHarnessOptions = {
 };
 type RingsPluginApi = Parameters<typeof registerShortTermPromotionRings>[0];
 type RingsPluginApiTestDouble = RingsPluginApi & {
+  scheduler: ReturnType<typeof createTestPluginServiceScheduler>;
   logger: ReturnType<typeof createLogger>;
   on: ReturnType<typeof vi.fn>;
   registerService: ReturnType<typeof vi.fn<RingsPluginApi["registerService"]>>;
@@ -243,6 +247,7 @@ function createRingsTestContext(
     }),
     logger,
     on: onMock,
+    scheduler: createTestPluginServiceScheduler(),
     registerService: vi.fn<RingsPluginApi["registerService"]>(),
   };
   Object.assign(api.runtime, params.runtime);
@@ -250,10 +255,7 @@ function createRingsTestContext(
 }
 
 function mockStringMessages(mock: { mock: { calls: unknown[][] } }): string[] {
-  return mock.mock.calls.map((call) => {
-    const message = call[0];
-    return typeof message === "string" ? message : "";
-  });
+  return mock.mock.calls.map(([message]) => (typeof message === "string" ? message : ""));
 }
 
 function expectLogContains(mock: { mock: { calls: unknown[][] } }, expected: string): void {
@@ -265,11 +267,7 @@ function expectLogNotContains(mock: { mock: { calls: unknown[][] } }, expected: 
 }
 
 function requireAddCall(harness: { addCalls: CronAddInput[] }, index: number): CronAddInput {
-  const call = harness.addCalls[index];
-  if (!call) {
-    throw new Error(`expected cron add call ${index}`);
-  }
-  return call;
+  return expectDefined(harness.addCalls[index], `expected cron add call ${index}`);
 }
 
 function requireAgentTurnPayload(
@@ -291,16 +289,11 @@ function expectCronSchedule(
   expect(schedule?.tz).toBe(tz);
 }
 
-function getBeforeAgentReplyHandler(
-  onMock: ReturnType<typeof vi.fn>,
-): (
-  event: { cleanedBody: string },
-  ctx: { agentId?: string; trigger?: string; workspaceDir?: string; sessionKey?: string },
-) => Promise<unknown> {
-  const call = onMock.mock.calls.find(([eventName]) => eventName === "before_agent_reply");
-  if (!call) {
-    throw new Error("before_agent_reply hook was not registered");
-  }
+function getBeforeAgentReplyHandler(onMock: ReturnType<typeof vi.fn>) {
+  const call = expectDefined(
+    onMock.mock.calls.find(([eventName]) => eventName === "before_agent_reply"),
+    "before_agent_reply hook was not registered",
+  );
   return call[1] as (
     event: { cleanedBody: string },
     ctx: { agentId?: string; trigger?: string; workspaceDir?: string; sessionKey?: string },
@@ -318,19 +311,26 @@ async function triggerRingsServiceStart(
   api: RingsPluginApiTestDouble,
   ctx: { config: BranchConfig; workspaceDir?: string; getCron?: () => unknown },
 ): Promise<void> {
-  await getRingsService(api).start({
+  const context = {
     ...ctx,
     stateDir: ".",
     logger: api.logger,
-  } as BranchPluginServiceContext);
+  } as BranchPluginServiceContext;
+  await getRingsService(api).start({ ...context, scheduler: api.scheduler });
 }
 
 async function triggerRingsServiceStop(api: RingsPluginApiTestDouble): Promise<void> {
-  await getRingsService(api).stop?.({
-    config: api.config,
-    stateDir: ".",
-    logger: api.logger,
-  });
+  api.scheduler.beginClose();
+  try {
+    await getRingsService(api).stop?.({
+      config: api.config,
+      stateDir: ".",
+      logger: api.logger,
+      scheduler: api.scheduler,
+    });
+  } finally {
+    await api.scheduler.stop();
+  }
 }
 
 function registerShortTermPromotionRingsForTest(api: RingsPluginApiTestDouble): void {
@@ -391,7 +391,7 @@ describe("rings service reconciliation", () => {
     const runtimeCurrentConfig = vi.fn(() =>
       createRingsConfig(
         { enabled: true, frequency: "15 4 * * *", timezone: "UTC", limit: 0 },
-        { agents: { list: [{ id: "main", default: true, workspace: workspaceDir }] } },
+        { agents: { entries: { main: { workspace: workspaceDir } } } },
       ),
     );
     const { api, harness, logger } = createRingsTestContext({
@@ -1167,7 +1167,7 @@ describe("rings service reconciliation", () => {
         ({
           agents: {
             defaults: { workspace: workspaceDir },
-            list: [{ id: "main", default: true, workspace: workspaceDir }],
+            entries: { main: { workspace: workspaceDir } },
           },
         }) as BranchConfig,
     );

@@ -1,7 +1,3 @@
-/**
- * Page inspection helpers for visible text, observed errors, network requests,
- * and console messages from Playwright page state.
- */
 import { withTimeout } from "branch/plugin-sdk/text-utility-runtime";
 import type { Page } from "playwright-core";
 import { DEFAULT_AI_SNAPSHOT_MAX_CHARS, DEFAULT_BROWSER_SNAPSHOT_TIMEOUT_MS } from "./constants.js";
@@ -90,7 +86,6 @@ async function readVisiblePageText(
   return { text: text.slice(0, maxChars), truncated: text.length > maxChars };
 }
 
-/** Returns captured page errors, optionally clearing the per-page buffer. */
 export async function getPageErrorsViaPlaywright(opts: {
   cdpUrl: string;
   targetId?: string;
@@ -105,7 +100,6 @@ export async function getPageErrorsViaPlaywright(opts: {
   return { errors };
 }
 
-/** Returns captured requests, optionally filtering URLs/resource types and clearing. */
 export async function getNetworkRequestsViaPlaywright(opts: {
   cdpUrl: string;
   targetId?: string;
@@ -136,7 +130,6 @@ function consolePriority(level: string) {
   return level === "debug" ? 0 : 1;
 }
 
-/** Returns captured console messages at or above the requested priority level. */
 export async function getConsoleMessagesViaPlaywright(opts: {
   cdpUrl: string;
   targetId?: string;

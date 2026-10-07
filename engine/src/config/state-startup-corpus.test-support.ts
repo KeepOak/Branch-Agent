@@ -25,7 +25,7 @@ import {
 import { BRANCH_STATE_SCHEMA_VERSION } from "../state/branch-state-db-contract.js";
 import { closeBranchStateDatabaseAsync } from "../state/branch-state-db.js";
 import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js";
-import { getUserPreferences } from "../state/user-preferences.js";
+import { getUserPreferences } from "../state/user-preferences.test-support.js";
 import {
   listConfigCorpusFixtureNames,
   readConfigCorpusFixture,

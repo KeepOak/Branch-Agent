@@ -13,7 +13,7 @@ import { normalizeMainKey } from "../routing/session-key.js";
 function makeNonDefaultAgentCfg(): BranchConfig {
   return {
     session: { mainKey: "work", scope: "per-sender" },
-    agents: { list: [{ id: "ops", default: true }] },
+    agents: { entries: { ops: {} } },
   } as BranchConfig;
 }
 
@@ -62,7 +62,7 @@ describe("session key write/read round-trip (#29683)", () => {
 
   it("write and gateway canonical keys match when agent is main", () => {
     const cfg = {
-      agents: { entries: { main: { default: true } } },
+      agents: { entries: { main: {} } },
       session: { scope: "per-sender" },
     } as BranchConfig;
     const writeKey = resolveWriteKey(cfg, "main");

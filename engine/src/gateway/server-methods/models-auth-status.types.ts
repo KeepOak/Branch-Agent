@@ -41,6 +41,8 @@ export type ModelAuthStatusProvider = {
   status: AuthProviderHealthStatus;
   expiry?: ModelAuthExpiry;
   profiles: ModelAuthStatusProfile[];
+  /** Account used by this agent's most recently successful run. */
+  lastGoodProfileId?: string;
   /** Explicit stored/config priority. Omitted when selection is automatic. */
   profileOrder?: string[];
   /** True when the selected agent owns a stored priority override that can be reset. */

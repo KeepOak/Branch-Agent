@@ -14,7 +14,7 @@ import { detectBinary } from "branch/plugin-sdk/setup-tools";
 import { resolveOAuthDir } from "branch/plugin-sdk/state-paths";
 import { resolvePreferredBranchTmpDir } from "branch/plugin-sdk/temp-path";
 import { jsonResult } from "branch/plugin-sdk/tool-results";
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
 import { resolveWhatsAppAccount } from "./accounts.js";
 import { getWhatsAppConnectionController } from "./connection-controller-runtime-context.js";
 import { resolveJidToE164 } from "./targets-runtime.js";
@@ -52,10 +52,7 @@ const WhatsAppCallToolSchema = Type.Object(
   { additionalProperties: false },
 );
 
-type WhatsAppCallToolParams = {
-  action: "status" | "call";
-  message?: string;
-};
+type WhatsAppCallToolParams = Static<typeof WhatsAppCallToolSchema>;
 
 async function isRegularFile(filePath: string): Promise<boolean> {
   try {

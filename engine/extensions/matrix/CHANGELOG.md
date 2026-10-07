@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.9.8
+
+### Changes
+- Version alignment with core Branch Agent release numbers.
+
 ## 2026.9.7
 
 ### Changes

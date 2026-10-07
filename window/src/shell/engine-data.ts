@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ConversationList, type ConversationsSnapshot } from "../connect/conversations";
 import type { SaplingSession } from "../connect/session";
+import type { Contact } from "@branch/gateway-protocol";
 import { NO_PEOPLE, type ListPeople } from "./list-model";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
-export type Trunk = { id: string; name: string; isDefault: boolean; avatar?: string; theme?: string; paused?: boolean };
-export type Trunks = { list: Trunk[]; defaultId: string | null; loaded?: boolean };
+export type Trunk = { id: string; name: string; isDefault: boolean; avatar?: string; emoji?: string; colour?: string; shape?: string; eyes?: string; theme?: string; paused?: boolean };
+export type Trunks = { list: Trunk[]; defaultId: string | null; loaded?: boolean; bootstrapDefault?: Trunk };
 
 const EMPTY_LIST: ConversationsSnapshot = { rows: [], loaded: false, error: null };
 
@@ -31,6 +32,44 @@ export function useConversations(session: SaplingSession, ready: boolean, mainKe
   return [ready ? snap : EMPTY_LIST, list];
 }
 
+/** Gateway-owned contacts, refreshed on its own change event (including read watermarks). */
+export function useContacts(session: SaplingSession, ready: boolean): [Contact[], () => void, boolean] {
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const refresh = useMemo(() => {
+    let generation = 0;
+    const load = () => {
+      const current = ++generation;
+      void session.request<{ contacts: Contact[] }>("contacts.list", { includeArchived: true }).then(
+        (result) => { if (current === generation) { setContacts(result.contacts); setLoaded(true); } },
+        (error: unknown) => console.warn("contacts.list failed", error),
+      );
+    };
+    load.cancel = () => { generation++; };
+    return load;
+  }, [session]);
+  useEffect(() => {
+    if (!ready) { setLoaded(false); return; }
+    // A new connection is a new engine: no contact is working until contacts.list says so.
+    setContacts((all) => (all.some((c) => c.working) ? all.map((c) => (c.working ? { ...c, working: false } : c)) : all));
+    refresh();
+    // Read shortly after the event, as ConversationList.refreshSoon does: a run's final chat event can land
+    // just before the engine drops it from its live registry.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const soon = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; refresh(); }, 150);
+    };
+    const off = session.onGatewayEvent((event, payload) => {
+      if (event === "contacts.changed" || event === "agents.changed" || event === "config.changed") soon();
+      // A run ending clears its ring the way the conversation list does (ConversationList.onEvent).
+      else if (event === "chat" && ["final", "error", "aborted"].includes(str(rec(payload).state))) soon();
+    });
+    return () => { off(); if (timer) clearTimeout(timer); refresh.cancel(); };
+  }, [session, ready, refresh]);
+  return [ready ? contacts : [], refresh, ready && loaded];
+}
+
 /** The Trunks, as OpenClaw's agents.list returns them (identity.name, defaultId). */
 export function readTrunks(result: unknown): Trunks {
   const r = rec(result);
@@ -38,13 +77,21 @@ export function readTrunks(result: unknown): Trunks {
   // one named Branch or used as a bootstrap owner) remain ordinary agents.
   const agents = Array.isArray(r.agents) ? r.agents.map(rec).filter((a) => str(a.id) && a.kind !== "system") : [];
   const defaultId = str(r.defaultId) || null;
+  const bootstrap = Array.isArray(r.agents)
+    ? r.agents.map(rec).find((a) => a.kind === "system" && str(a.id) === defaultId)
+    : undefined;
   return {
     defaultId,
+    ...(bootstrap ? { bootstrapDefault: { id: str(bootstrap.id), name: str(rec(bootstrap.identity).name) || str(bootstrap.name) || str(bootstrap.id), isDefault: true } } : {}),
     list: agents.map((a) => ({
       id: str(a.id),
       name: str(rec(a.identity).name) || str(a.name) || str(a.id),
       isDefault: str(a.id) === defaultId || a.default === true,
       avatar: str(rec(a.identity).avatar) || str(a.avatar) || undefined,
+      emoji: str(rec(a.identity).emoji) || undefined,
+      colour: str(rec(a.identity).colour) || undefined,
+      shape: str(rec(a.identity).shape) || undefined,
+      eyes: str(rec(a.identity).eyes) || undefined,
       ...(str(rec(a.identity).theme) ? { theme: str(rec(a.identity).theme) } : {}),
       ...(a.paused === true ? { paused: true } : {}),
     })),
@@ -110,19 +157,17 @@ export function usePendingApprovals(session: SaplingSession, ready: boolean): Ma
   }, [pending]);
 }
 
-export type MachineInfo = { name: string; version: string };
+export type MachineInfo = { name: string };
 
-/** This computer's name (system.info machineName) and the engine's version (hello.server.version). */
+/** This computer's name (system.info machineName). */
 export function useMachine(session: SaplingSession, ready: boolean): MachineInfo | null {
   const [info, setInfo] = useState<MachineInfo | null>(null);
   useEffect(() => {
     if (!ready) {
       return;
     }
-    const s = session.getSnapshot().status;
-    const version = s.phase === "connected" ? s.hello.server.version : "";
     session.request("system.info", {}).then(
-      (r) => setInfo({ name: str(rec(r).machineName) || str(rec(r).hostname), version }),
+      (r) => setInfo({ name: str(rec(r).machineName) || str(rec(r).hostname) }),
       (error: unknown) => console.warn("system.info failed", error),
     );
   }, [session, ready]);

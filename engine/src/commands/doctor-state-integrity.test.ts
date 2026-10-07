@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../config/config.js";
+import type { BranchConfigWithLegacyRoster } from "../config/legacy.roster.js";
 import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
 import {
   deleteSessionEntryLifecycle,
@@ -13,10 +14,9 @@ import { resolveSqliteTargetFromSessionStorePath } from "../config/sessions/sess
 import { recordDeferredPluginMigrations } from "../infra/deferred-plugin-migrations.js";
 import { readDeferredPluginSessionImport } from "../infra/deferred-plugin-session-sources.js";
 import { writeConfigMachineState } from "../state/config-machine-state-write.js";
-import { closeBranchAgentDatabasesForTest } from "../state/branch-agent-db.js";
-import { closeBranchStateDatabaseForTest } from "../state/branch-state-db.js";
 import { captureEnv, deleteTestEnvValue, setTestEnvValue } from "../test-utils/env.js";
 import { withBranchTestState } from "../test-utils/branch-test-state.js";
+import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
 import { seedDeferredPluginSessionSource } from "./doctor-session-sqlite.deferred-plugin.test-support.js";
 import { runDoctorSessionSqlite } from "./doctor-session-sqlite.js";
 import {
@@ -87,10 +87,9 @@ describe("doctor state integrity", () => {
     fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
     noteMock.mockClear();
   });
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks();
-    closeBranchAgentDatabasesForTest();
-    closeBranchStateDatabaseForTest();
+    await cleanupSessionStateForTest({ stateDir, rootPath: tempHome });
     envSnapshot.restore();
     fs.rmSync(tempHome, { recursive: true, force: true });
   });
@@ -262,7 +261,7 @@ describe("doctor state integrity", () => {
         setTestEnvValue("BRANCH_AGENT_DIR", path.join(stateDir, "agents", "legacy", "agent"));
       }
       const researchReachable = fs.existsSync(path.join(stateDir, "agents", "research", "agent"));
-      const cfg: BranchConfig = {
+      const cfg: BranchConfigWithLegacyRoster = {
         agents: relocated
           ? { entries: { ops: { default: true }, research: {} } }
           : { list: [{ id: "main", default: true }, { id: "ops" }, { id: "research" }] },
@@ -288,9 +287,9 @@ describe("doctor state integrity", () => {
 
   it("protects the shared legacy main auth-store for an ops-only roster", async () => {
     createAgentDir("main");
-    expect(
-      await runStateIntegrityText({ agents: { entries: { ops: { default: true } } } }),
-    ).not.toContain("Examples: main");
+    expect(await runStateIntegrityText({ agents: { entries: { ops: {} } } })).not.toContain(
+      "Examples: main",
+    );
   });
 
   it("orders equal-time SQLite recovery warnings by session key", async () => {

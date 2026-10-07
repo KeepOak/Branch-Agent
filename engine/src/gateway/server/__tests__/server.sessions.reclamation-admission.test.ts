@@ -10,6 +10,7 @@ import { resolveSqliteTargetFromSessionStorePath } from "../../../config/session
 import { beginSessionWorkAdmission } from "../../../sessions/session-lifecycle-admission.js";
 import { invalidateBranchAgentDatabaseValidation } from "../../../state/branch-agent-db-validation-cache.js";
 import {
+  closeBranchAgentDatabaseByPathAsync,
   closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
   openBranchAgentDatabase,
@@ -214,15 +215,18 @@ test("sessions.delete admits unrelated same-store patches during Worker validati
     storePath,
   });
   const { ws } = await openClient();
+  const databasePath = resolveSqliteTargetFromSessionStorePath(storePath, { agentId: "main" }).path;
+  // Seeding now warms workers. Keep a host handle so delete preparation cannot
+  // reopen it and publish fresh integrity proof before the cold reclaimer.
+  await closeBranchAgentDatabaseByPathAsync(databasePath, "main");
+  openBranchAgentDatabase({ agentId: "main", path: databasePath });
   const validation = holdReclamationValidation();
   const { gate } = validation;
   try {
     expect(await rpcReq(ws, "sessions.patch", { key: unrelatedKey, label: "warm" })).toMatchObject({
       ok: true,
     });
-    invalidateBranchAgentDatabaseValidation(
-      resolveSqliteTargetFromSessionStorePath(storePath, { agentId: "main" }).path,
-    );
+    invalidateBranchAgentDatabaseValidation(databasePath);
     const deletion = validation.own(rpcReq(ws, "sessions.delete", { key: targetKey }));
     await validation.entered(deletion, signal);
     expect(loadSessionEntry({ sessionKey: targetKey, storePath })?.sessionId).toBe(
@@ -293,6 +297,8 @@ test("sessions.delete rejects revoked authority before repairing the same databa
     agentId: "main",
     path: resolveSqliteTargetFromSessionStorePath(storePath, { agentId: "main" }).path,
   };
+  // Retire the seeded executor so validation must open beside this native handle.
+  await closeBranchAgentDatabaseByPathAsync(databaseOptions.path, "main");
   const database = openBranchAgentDatabase(databaseOptions);
   const stateDatabase = openBranchStateDatabase();
   const readLeases = () =>

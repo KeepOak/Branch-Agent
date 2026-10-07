@@ -105,7 +105,6 @@ import { prepareHostChannelContextAdmissionEvidence } from "branch/plugin-sdk/ch
 import { registerChannelAdmissionEvidenceOwner } from "branch/plugin-sdk/channel-ingress-runtime";
 import { createPluginRuntimeStore, type PluginRuntime } from "branch/plugin-sdk/runtime-store";
 import type { buildModelsProviderData, buildPreparedModelsProviderData, ModelsProviderData } from "branch/plugin-sdk/models-provider-runtime";
-import type { buildModelsProviderData as buildCommandAuthModelsProviderData } from "branch/plugin-sdk/command-auth";
 import type { ClientRequestArgs } from "node:http";
 import type { ClientOptions as PublishedClientOptions, WebSocket as PublishedWebSocket } from "ws";
 import { WebSocket, type ClientOptions } from "branch/plugin-sdk/websocket-runtime";
@@ -180,9 +179,8 @@ const legacyModelsData = {
 };
 const modelsData: ModelsProviderData = legacyModelsData;
 const modelsAdapter: typeof buildModelsProviderData = async () => legacyModelsData;
-const commandAuthModelsAdapter: typeof buildCommandAuthModelsProviderData = modelsAdapter;
 void modelsData;
-void commandAuthModelsAdapter;
+void modelsAdapter;
 declare const preparedModelsData: Awaited<ReturnType<typeof buildPreparedModelsProviderData>>;
 const preparedCatalog: { id: string; provider: string; contextWindow?: number }[] = preparedModelsData.modelCatalog;
 void preparedCatalog;

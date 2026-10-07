@@ -7,12 +7,11 @@ import { tryResolveLegacyCompatibilityAgentId } from "../../../config/legacy.def
 import type { BranchConfig } from "../../../config/types.branch.js";
 import { makeCronJob } from "../../../cron/delivery.test-helpers.js";
 import { cronStoreKey } from "../../../cron/store/key.js";
-import { loadCronRows, replaceCronRows } from "../../../cron/store/row-codec.js";
+import { replaceCronRows } from "../../../cron/store/row-codec.js";
 import { writeConfigMachineState } from "../../../state/config-machine-state-write.js";
-import {
-  closeBranchStateDatabaseForTest,
-  openBranchStateDatabase,
-} from "../../../state/branch-state-db.js";
+import { openBranchStateDatabase } from "../../../state/branch-state-db.js";
+import { createCanonicalAgentConfigFixture } from "../../../test-utils/config-roster.js";
+import { closeStateDatabaseForTest } from "../../../test-utils/database-cleanup.js";
 
 const roots: string[] = [];
 
@@ -27,14 +26,18 @@ function configIO(root: string, env: NodeJS.ProcessEnv = { HOME: root, BRANCH_TE
 }
 
 afterEach(async () => {
-  closeBranchStateDatabaseForTest();
+  await closeStateDatabaseForTest();
   resetConfigRuntimeState();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
 describe("default role materialization authored writes", () => {
   it("preserves env references and includes and is idempotent after persistence", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "branch-default-roles-"));
+    // Windows runners can expose the temp directory through an 8.3 alias (RUNNER~1).
+    // Use its real path so the included file's pinned target matches the write path.
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "branch-default-roles-")),
+    );
     roots.push(root);
     const configPath = path.join(root, "branch.json");
     const channelsPath = path.join(root, "channels.json5");
@@ -67,12 +70,13 @@ describe("default role materialization authored writes", () => {
     });
 
     const snapshot = await io.readConfigFileSnapshot();
-    expect(snapshot.config.agents?.entries?.ops).not.toHaveProperty("default");
-    expect(snapshot.config.agents?.defaults?.heartbeat?.agentId).toBe("ops");
-    const doctorCandidate = {
-      ...snapshot.config,
-      agents: { ...snapshot.config.agents, ownership: "explicit" as const },
-    };
+    expect(snapshot.valid).toBe(false);
+    expect(snapshot.sourceConfig).toHaveProperty("agents.entries.ops.default", true);
+    expect(snapshot.sourceConfig.agents?.defaults?.heartbeat?.agentId).toBeUndefined();
+    const doctorCandidate = createCanonicalAgentConfigFixture(snapshot.sourceConfig, {
+      env: { HOME: root },
+      homedir: () => root,
+    }).config;
     await io.writeConfigFile(doctorCandidate, {
       baseSnapshot: snapshot,
       explicitSetPaths: [
@@ -249,7 +253,7 @@ describe("default role materialization authored writes", () => {
     );
 
     const persisted = JSON.parse(await fs.readFile(configPath, "utf8")) as BranchConfig;
-    expect(persisted.agents?.entries?.research?.workspace).toBe("/srv/fleet/research");
+    expect(persisted.agents?.entries?.research?.workspace).toBe(path.resolve("/srv/fleet/research"));
   });
 
   it.each([
@@ -331,10 +335,10 @@ describe("default role materialization authored writes", () => {
     );
     const io = configIO(root);
     const snapshot = await io.readConfigFileSnapshot();
-    const nextConfig: BranchConfig = {
-      ...snapshot.config,
-      agents: { ...snapshot.config.agents, ownership: "explicit" },
-    };
+    const nextConfig = createCanonicalAgentConfigFixture(snapshot.sourceConfig, {
+      env: { HOME: root },
+      homedir: () => root,
+    }).config;
 
     await io.writeConfigFile(nextConfig, {
       baseSnapshot: snapshot,
@@ -362,7 +366,7 @@ describe("default role materialization authored writes", () => {
     await expect(fs.readFile(configPath, "utf8")).resolves.toBe(firstPersisted);
   });
 
-  it("assigns only ownerless cron rows before retiring the retained legacy owner", async () => {
+  it("refuses to retire the legacy owner while cron rows still need Doctor", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "branch-legacy-cron-owner-write-"));
     roots.push(root);
     const configPath = path.join(root, "branch.json");
@@ -392,37 +396,37 @@ describe("default role materialization authored writes", () => {
       version: 1,
       jobs: [makeCronJob({ id: "other-ownerless" })],
     });
+    const beforeConfig = await fs.readFile(configPath, "utf8");
+    const readRows = () =>
+      openBranchStateDatabase({ env })
+        .db.prepare(
+          "SELECT * FROM cron_jobs WHERE store_key IN (?, ?) ORDER BY store_key, sort_order, job_id",
+        )
+        .all(storeKey, otherStoreKey);
+    const beforeRows = readRows();
     const io = configIO(root, env);
     const snapshot = await io.readConfigFileSnapshot();
-    const nextConfig: BranchConfig = {
-      ...snapshot.config,
-      agents: { ...snapshot.config.agents, ownership: "explicit" },
-    };
+    const nextConfig = createCanonicalAgentConfigFixture(snapshot.sourceConfig, {
+      env,
+      homedir: () => root,
+    }).config;
 
-    await io.writeConfigFile(nextConfig, {
+    const write = io.writeConfigFile(nextConfig, {
       baseSnapshot: snapshot,
       explicitSetPaths: [["agents", "ownership"]],
       explicitSetValueSource: nextConfig,
     });
 
-    const persisted = JSON.parse(await fs.readFile(configPath, "utf8")) as BranchConfig;
-    expect(persisted.agents?.ownership).toBe("explicit");
-    expect(persisted.agents?.entries?.ops).not.toHaveProperty("default");
-    expect(loadCronRows(openBranchStateDatabase({ env }).db, storeKey)).toMatchObject([
-      { job_id: "ownerless", agent_id: "ops" },
-      { job_id: "owned", agent_id: "research" },
-    ]);
-    expect(loadCronRows(database, otherStoreKey)).toMatchObject([
-      { job_id: "other-ownerless", agent_id: null },
-    ]);
-
-    const firstPersisted = await fs.readFile(configPath, "utf8");
-    const reread = await io.readConfigFileSnapshot();
-    await io.writeConfigFile(reread.config, { baseSnapshot: reread });
-    await expect(fs.readFile(configPath, "utf8")).resolves.toBe(firstPersisted);
+    await expect(write).rejects.toMatchObject({
+      code: "CONFIG_WRITE_REJECTED",
+      refusal: "cron-owner-safety",
+      message: expect.stringContaining("branch doctor --fix"),
+    });
+    await expect(fs.readFile(configPath, "utf8")).resolves.toBe(beforeConfig);
+    expect(readRows()).toEqual(beforeRows);
   });
 
-  it("assigns ownerless jobs in an unmigrated legacy cron file", async () => {
+  it("refuses to rewrite an unmigrated legacy cron file during an ordinary config write", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "branch-legacy-json-cron-owner-"));
     roots.push(root);
     const configPath = path.join(root, "branch.json");
@@ -449,31 +453,28 @@ describe("default role materialization authored writes", () => {
       }),
     );
     writeConfigMachineState("cron.store", storePath, { env });
+    const beforeConfig = await fs.readFile(configPath, "utf8");
+    const beforeStore = await fs.readFile(storePath, "utf8");
     const io = configIO(root, env);
     const snapshot = await io.readConfigFileSnapshot();
-    const nextConfig: BranchConfig = {
-      ...snapshot.config,
-      agents: { ...snapshot.config.agents, ownership: "explicit" },
-    };
+    const nextConfig = createCanonicalAgentConfigFixture(snapshot.sourceConfig, {
+      env,
+      homedir: () => root,
+    }).config;
 
-    await io.writeConfigFile(nextConfig, {
+    const write = io.writeConfigFile(nextConfig, {
       baseSnapshot: snapshot,
       explicitSetPaths: [["agents", "ownership"]],
       explicitSetValueSource: nextConfig,
     });
 
-    const persistedConfig = JSON.parse(await fs.readFile(configPath, "utf8"));
-    expect(persistedConfig.agents).toMatchObject({
-      ownership: "explicit",
-      entries: { ops: {}, research: {} },
+    await expect(write).rejects.toMatchObject({
+      code: "CONFIG_WRITE_REJECTED",
+      refusal: "cron-owner-safety",
+      message: expect.stringContaining("branch doctor --fix"),
     });
-    const persistedStore = JSON.parse(await fs.readFile(storePath, "utf8"));
-    expect(persistedStore.jobs).toMatchObject([
-      { id: "ownerless", agentId: "ops" },
-      { id: "owned", agentId: "research" },
-      { id: "session-owned", sessionKey: "agent:research:main" },
-    ]);
-    expect(persistedStore.jobs[2]).not.toHaveProperty("agentId");
+    await expect(fs.readFile(configPath, "utf8")).resolves.toBe(beforeConfig);
+    await expect(fs.readFile(storePath, "utf8")).resolves.toBe(beforeStore);
   });
 
   it("leaves the legacy owner marker intact when a cron row is corrupt", async () => {
@@ -501,10 +502,10 @@ describe("default role materialization authored writes", () => {
       .run("not json", cronStoreKey(storePath), "corrupt");
     const io = configIO(root, env);
     const snapshot = await io.readConfigFileSnapshot();
-    const nextConfig: BranchConfig = {
-      ...snapshot.config,
-      agents: { ...snapshot.config.agents, ownership: "explicit" },
-    };
+    const nextConfig = createCanonicalAgentConfigFixture(snapshot.sourceConfig, {
+      env,
+      homedir: () => root,
+    }).config;
 
     await expect(
       io.writeConfigFile(nextConfig, {
@@ -516,7 +517,7 @@ describe("default role materialization authored writes", () => {
     await expect(fs.readFile(configPath, "utf8")).resolves.toBe(source);
   });
 
-  it("preserves migrated legacy ownership during an unrelated write", async () => {
+  it("requires roster migration before an unrelated write and preserves the canonical owner", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "branch-legacy-owner-roundtrip-"));
     roots.push(root);
     const configPath = path.join(root, "branch.json");
@@ -534,16 +535,47 @@ describe("default role materialization authored writes", () => {
     );
     const io = configIO(root);
     const snapshot = await io.readConfigFileSnapshot();
-    expect(tryResolveLegacyCompatibilityAgentId(snapshot.config)).toBe("research");
+    expect(snapshot.valid).toBe(false);
+    const original = await fs.readFile(configPath, "utf8");
+
+    await expect(
+      io.writeConfigFile(
+        { ...snapshot.config, gateway: { ...snapshot.config.gateway, port: 19001 } },
+        { baseSnapshot: snapshot, explicitSetPaths: [["gateway", "port"]] },
+      ),
+    ).rejects.toMatchObject({
+      code: "CONFIG_VALIDATION_FAILED",
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          path: "agents.entries",
+          message: expect.stringContaining("doctor --fix"),
+        }),
+      ]),
+    });
+    await expect(fs.readFile(configPath, "utf8")).resolves.toBe(original);
+
+    const doctorCandidate = createCanonicalAgentConfigFixture(snapshot.sourceConfig, {
+      env: { HOME: root },
+      homedir: () => root,
+    }).config;
+    await io.writeConfigFile(doctorCandidate, {
+      baseSnapshot: snapshot,
+      persistCanonicalAgentRoster: true,
+    });
+    const canonical = await io.readConfigFileSnapshot();
+    expect(canonical.valid).toBe(true);
+    expect(tryResolveLegacyCompatibilityAgentId(canonical.config)).toBe("research");
 
     await io.writeConfigFile(
-      { ...snapshot.config, gateway: { ...snapshot.config.gateway, port: 19001 } },
-      { baseSnapshot: snapshot, explicitSetPaths: [["gateway", "port"]] },
+      { ...canonical.config, gateway: { ...canonical.config.gateway, port: 19001 } },
+      { baseSnapshot: canonical, explicitSetPaths: [["gateway", "port"]] },
     );
 
     const persisted = JSON.parse(await fs.readFile(configPath, "utf8")) as BranchConfig;
-    expect(persisted.agents?.ownership).toBeUndefined();
-    expect(persisted.agents?.entries?.research?.default).toBe(true);
+    expect(persisted.gateway?.port).toBe(19001);
+    expect(persisted.agents?.ownership).toBe("explicit");
+    expect(persisted.agents?.entries?.research).not.toHaveProperty("default");
+    expect(persisted.agents?.defaults?.systemAgent?.agentId).toBe("research");
     const reread = await io.readConfigFileSnapshot();
     expect(tryResolveLegacyCompatibilityAgentId(reread.config)).toBe("research");
   });

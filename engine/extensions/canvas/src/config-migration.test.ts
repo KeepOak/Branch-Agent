@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { withTempHome } from "branch/plugin-sdk/test-env";
 import { describe, expect, it } from "vitest";

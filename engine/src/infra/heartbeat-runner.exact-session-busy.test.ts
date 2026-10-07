@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_KEY } from "../agents/embedded-agent-runner/run-state.js";
 import {
@@ -9,6 +10,15 @@ import { createReplyOperation } from "../auto-reply/reply/reply-run-registry.js"
 import { replyRunState } from "../auto-reply/reply/reply-run-registry.state.js";
 import { loadExactSessionEntry } from "../config/sessions/session-accessor.js";
 import type { BranchConfig } from "../config/types.branch.js";
+import {
+  resolveSessionHandoffLeaseDir,
+  writeSessionHandoffLease,
+} from "../process/session-handoff-lease-files.js";
+import {
+  refreshSessionHandoffLeases,
+  resetSessionHandoffLeaseGateForTest,
+} from "../process/session-handoff-lease-gate.js";
+import { getFileLockProcessStartTime } from "../shared/pid-alive.js";
 import { getLastHeartbeatEvent, resetHeartbeatEventsForTest } from "./heartbeat-events.js";
 import {
   prepareHeartbeatRunStage,
@@ -193,50 +203,47 @@ describe("heartbeat exact-session busy checks", () => {
     },
   );
 
-  it.each(runKinds)("sees a late %s run after preflight", async (kind) => {
-    await withHeartbeatFixture(false, async (opts, storePath) => {
-      const scope = { agentId: "main", storePath, sessionKey };
-      const entryBefore = loadExactSessionEntry(scope)?.entry;
-      // The real async preflight yields before the exact-session busy fence.
-      const pending = resolveHeartbeatWakeStage(opts);
-      const close = registerRun(kind, sessionKey, `late-${kind}`);
-      try {
-        expect(await pending).toEqual({ kind: "skipped", reason: "requests-in-flight" });
-        expect(loadExactSessionEntry(scope)?.entry).toEqual(entryBefore);
-        expect(getLastHeartbeatEvent()).toMatchObject({
-          status: "skipped",
-          reason: "requests-in-flight",
-        });
-      } finally {
-        close();
-      }
-    });
-  });
-
-  it.each(runKinds)("sees a late isolated %s run after delivery resolution", async (kind) => {
-    await withHeartbeatFixture(true, async (opts, storePath) => {
-      const wake = await resolveHeartbeatWakeStage(opts);
-      expect(wake.kind).toBe("ready");
-      if (wake.kind !== "ready") {
-        throw new Error("expected heartbeat preflight to be ready");
-      }
-      const scope = { agentId: "main", storePath, sessionKey: isolatedSessionKey };
-      expect(loadExactSessionEntry(scope)).toBeUndefined();
-      // Delivery resolves through its real async owner before the isolated fence.
-      const pending = prepareHeartbeatRunStage(wake);
-      const close = registerRun(kind, isolatedSessionKey, `late-isolated-${kind}`);
-      try {
-        expect(await pending).toEqual({ kind: "skipped", reason: "requests-in-flight" });
-        expect(loadExactSessionEntry(scope)).toBeUndefined();
-        expect(getLastHeartbeatEvent()).toMatchObject({
-          status: "skipped",
-          reason: "requests-in-flight",
-        });
-      } finally {
-        close();
-      }
-    });
-  });
+  it.each(
+    runKinds.flatMap((kind) => [false, true].map((isolatedSession) => ({ kind, isolatedSession }))),
+  )(
+    "sees a late $kind run at the isolated=$isolatedSession fence",
+    async ({ kind, isolatedSession }) => {
+      await withHeartbeatFixture(isolatedSession, async (opts, storePath) => {
+        const key = isolatedSession ? isolatedSessionKey : sessionKey;
+        const scope = { agentId: "main", storePath, sessionKey: key };
+        const entryBefore = loadExactSessionEntry(scope)?.entry;
+        let pending:
+          | ReturnType<typeof resolveHeartbeatWakeStage>
+          | ReturnType<typeof prepareHeartbeatRunStage>;
+        if (isolatedSession) {
+          const wake = await resolveHeartbeatWakeStage(opts);
+          expect(wake.kind).toBe("ready");
+          if (wake.kind !== "ready") {
+            throw new Error("expected heartbeat preflight to be ready");
+          }
+          expect(loadExactSessionEntry(scope)).toBeUndefined();
+          pending = prepareHeartbeatRunStage(wake);
+        } else {
+          pending = resolveHeartbeatWakeStage(opts);
+        }
+        // Register after the real asynchronous owner yields, before its busy fence.
+        const close = registerRun(kind, key, `late-${kind}`);
+        try {
+          expect(await pending).toEqual({ kind: "skipped", reason: "requests-in-flight" });
+          expect(loadExactSessionEntry(scope)?.entry).toEqual(entryBefore);
+          if (isolatedSession) {
+            expect(loadExactSessionEntry(scope)).toBeUndefined();
+          }
+          expect(getLastHeartbeatEvent()).toMatchObject({
+            status: "skipped",
+            reason: "requests-in-flight",
+          });
+        } finally {
+          close();
+        }
+      });
+    },
+  );
 
   it("retains reply registry membership when the reply predicate is injected", async () => {
     await withHeartbeatFixture(false, async (opts) => {
@@ -254,65 +261,98 @@ describe("heartbeat exact-session busy checks", () => {
     });
   });
 
-  it("keeps an injected empty list authoritative at both fences", async () => {
-    await withHeartbeatFixture(true, async (opts) => {
-      const closeMain = registerRun("embedded", sessionKey, "injected-main");
-      const closeIsolated = registerRun("embedded", isolatedSessionKey, "injected-isolated");
-      const list = vi.fn(() => []);
-      try {
-        const wake = await resolveHeartbeatWakeStage({
-          ...opts,
-          deps: { ...opts.deps, listActiveEmbeddedRunSessionKeys: list },
-        });
-        expect(wake.kind).toBe("ready");
-        if (wake.kind !== "ready") {
-          throw new Error("expected injected empty list to admit heartbeat");
-        }
-        expect((await prepareHeartbeatRunStage(wake)).kind).toBe("ready");
-        expect(list).toHaveBeenCalledTimes(2);
-      } finally {
-        closeIsolated();
-        closeMain();
-      }
-    });
-  });
-
   it.each([
-    { keys: [sessionKey], expected: "skipped" },
-    { keys: [` ${sessionKey} `], expected: "ready" },
-    { keys: [""], expected: "ready" },
-  ])("preserves exact injected membership for $keys", async ({ keys, expected }) => {
-    await withHeartbeatFixture(false, async (opts) => {
-      const list = vi.fn(() => keys);
-      const wake = await resolveHeartbeatWakeStage({
-        ...opts,
-        sessionKey: ` ${sessionKey} `,
-        deps: { ...opts.deps, listActiveEmbeddedRunSessionKeys: list },
+    {
+      name: "empty list over registered runs",
+      isolated: true,
+      keys: [],
+      registered: true,
+      expected: "ready",
+    },
+    {
+      name: "late isolated run",
+      isolated: true,
+      keys: [],
+      lateKeys: [isolatedSessionKey],
+      expected: "skipped",
+    },
+    { name: "exact membership", isolated: false, keys: [sessionKey], expected: "skipped" },
+    { name: "untrimmed membership", isolated: false, keys: [` ${sessionKey} `], expected: "ready" },
+  ])(
+    "keeps injected $name authoritative",
+    async ({ isolated, keys: initialKeys, lateKeys, registered, expected }) => {
+      await withHeartbeatFixture(isolated, async (opts, storePath) => {
+        const close = registered
+          ? [
+              registerRun("embedded", sessionKey, "injected-main"),
+              registerRun("embedded", isolatedSessionKey, "injected-isolated"),
+            ]
+          : [];
+        let keys = initialKeys;
+        const list = vi.fn(() => keys);
+        try {
+          const wake = await resolveHeartbeatWakeStage({
+            ...opts,
+            sessionKey: isolated ? sessionKey : ` ${sessionKey} `,
+            deps: { ...opts.deps, listActiveEmbeddedRunSessionKeys: list },
+          });
+          if (!isolated) {
+            expect(wake.kind).toBe(expected);
+            expect(list).toHaveBeenCalledOnce();
+            return;
+          }
+          expect(wake.kind).toBe("ready");
+          if (wake.kind !== "ready") {
+            throw new Error("expected injected empty list to admit heartbeat");
+          }
+          const pending = prepareHeartbeatRunStage(wake);
+          if (lateKeys) {
+            keys = lateKeys;
+            expect(await pending).toEqual({ kind: "skipped", reason: "requests-in-flight" });
+            expect(
+              loadExactSessionEntry({ agentId: "main", storePath, sessionKey: isolatedSessionKey }),
+            ).toBeUndefined();
+          } else {
+            expect((await pending).kind).toBe("ready");
+          }
+          expect(list).toHaveBeenCalledTimes(2);
+        } finally {
+          for (const dispose of close.toReversed()) {
+            dispose();
+          }
+        }
       });
-      expect(wake.kind).toBe(expected);
-      expect(list).toHaveBeenCalledOnce();
-    });
-  });
+    },
+  );
 
-  it("rereads the injected list after delivery resolution", async () => {
-    await withHeartbeatFixture(true, async (opts, storePath) => {
-      let keys: string[] = [];
-      const list = vi.fn(() => keys);
-      const wake = await resolveHeartbeatWakeStage({
-        ...opts,
-        deps: { ...opts.deps, listActiveEmbeddedRunSessionKeys: list },
-      });
-      expect(wake.kind).toBe("ready");
-      if (wake.kind !== "ready") {
-        throw new Error("expected heartbeat preflight to be ready");
+  it("skips while the previous engine is still finishing the session, and runs once it let go", async () => {
+    await withHeartbeatFixture(false, async (opts) => {
+      resetSessionHandoffLeaseGateForTest();
+      try {
+        // The previous engine: a live process other than this one (the test runner's parent).
+        const { file, lease } = writeSessionHandoffLease(
+          resolveSessionHandoffLeaseDir(),
+          `session:${sessionKey}`,
+        );
+        fs.writeFileSync(
+          file,
+          JSON.stringify({
+            ...lease,
+            pid: process.ppid,
+            startTime: getFileLockProcessStartTime(process.ppid),
+          }),
+        );
+        refreshSessionHandoffLeases();
+        expect(await resolveHeartbeatWakeStage(opts)).toEqual({
+          kind: "skipped",
+          reason: "requests-in-flight",
+        });
+        fs.unlinkSync(file);
+        resetSessionHandoffLeaseGateForTest();
+        expect((await resolveHeartbeatWakeStage(opts)).kind).toBe("ready");
+      } finally {
+        resetSessionHandoffLeaseGateForTest();
       }
-      const pending = prepareHeartbeatRunStage(wake);
-      keys = [isolatedSessionKey];
-      expect(await pending).toEqual({ kind: "skipped", reason: "requests-in-flight" });
-      expect(list).toHaveBeenCalledTimes(2);
-      expect(
-        loadExactSessionEntry({ agentId: "main", storePath, sessionKey: isolatedSessionKey }),
-      ).toBeUndefined();
     });
   });
 });

@@ -137,7 +137,7 @@ describe("Codex Computer Use setup", () => {
     sharedClientMocks.getLeasedSharedCodexAppServerClient.mockRejectedValueOnce(
       new Error("captured start options"),
     );
-    const config = { agents: { list: [{ id: "worker" }] } };
+    const config = { agents: { entries: { worker: {} } } };
     const agentDir = "/tmp/branch-worker-agent";
 
     await expect(installCodexComputerUse({ pluginConfig: {}, config, agentDir })).rejects.toThrow(

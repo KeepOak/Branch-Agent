@@ -1,8 +1,4 @@
-import {
-  CANOPY_STATUSES,
-  type CanopyCard,
-  type CanopyStatus,
-} from "@branch/canopy-contract";
+import { CANOPY_STATUSES, type CanopyCard } from "@branch/canopy-contract";
 import type { Command } from "commander";
 import { formatErrorMessage } from "branch/plugin-sdk/error-runtime";
 import { addGatewayClientOptions, callGatewayFromCli } from "branch/plugin-sdk/gateway-runtime";
@@ -30,18 +26,14 @@ type DispatchOptions = GatewayOptions & {
   maxStarts?: number;
 };
 
-function invalidCliArgument(message: string): Error & { code: string; exitCode: number } {
-  const error = new Error(message) as Error & { code: string; exitCode: number };
-  error.name = "InvalidArgumentError";
-  error.code = "commander.invalidArgument";
-  error.exitCode = 1;
-  return error;
-}
-
-function parsePositiveIntegerOption(value: string, flag: string): number {
+function parseMaxStarts(value: string): number {
   const parsed = parseStrictPositiveInteger(value);
   if (parsed === undefined) {
-    throw invalidCliArgument(`${flag} must be a positive integer.`);
+    throw Object.assign(new Error("--max-starts must be a positive integer."), {
+      name: "InvalidArgumentError",
+      code: "commander.invalidArgument",
+      exitCode: 1,
+    });
   }
   return parsed;
 }
@@ -52,17 +44,6 @@ function writeJson(value: unknown): void {
 
 function writeLine(value: string): void {
   process.stdout.write(`${value}\n`);
-}
-
-function splitLabels(value: string | undefined): string[] | undefined {
-  return value
-    ?.split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
-function isCanopyStatus(value: string): value is CanopyStatus {
-  return (CANOPY_STATUSES as readonly string[]).includes(value);
 }
 
 function formatCardLine(card: CanopyCard): string {
@@ -78,6 +59,14 @@ function writeCards(cards: CanopyCard[], options: JsonOptions): void {
     return;
   }
   for (const card of cards) {
+    writeLine(formatCardLine(card));
+  }
+}
+
+function writeCard(card: CanopyCard, options: JsonOptions): void {
+  if (options.json) {
+    writeJson({ card: redactClaimToken(card) });
+  } else {
     writeLine(formatCardLine(card));
   }
 }
@@ -191,14 +180,10 @@ export function registerCanopyCli(params: { program: Command; store: CanopyStore
           priority: options.priority,
           agentId: options.agent,
           boardId: options.board,
-          labels: splitLabels(options.labels),
+          labels: options.labels,
           workspaceAccess: { unrestricted: true },
         });
-        if (options.json) {
-          writeJson({ card: redactClaimToken(card) });
-        } else {
-          writeLine(formatCardLine(card));
-        }
+        writeCard(card, options);
       },
     );
 
@@ -213,13 +198,9 @@ export function registerCanopyCli(params: { program: Command; store: CanopyStore
       if (!card) {
         throw new Error(error);
       }
-      if (options.json) {
-        writeJson({ card: redactClaimToken(card) });
-      } else {
-        writeLine(formatCardLine(card));
-        if (card.notes) {
-          writeLine(card.notes);
-        }
+      writeCard(card, options);
+      if (!options.json && card.notes) {
+        writeLine(card.notes);
       }
     });
 
@@ -230,7 +211,7 @@ export function registerCanopyCli(params: { program: Command; store: CanopyStore
     .requiredOption("--status <status>", "Target status")
     .option("--json", "Print JSON", false)
     .action(async (id: string, options: JsonOptions & { status: string }) => {
-      if (!isCanopyStatus(options.status)) {
+      if (!(CANOPY_STATUSES as readonly string[]).includes(options.status)) {
         throw new Error(`--status must be one of: ${CANOPY_STATUSES.join(", ")}.`);
       }
       const cards = await params.store.list();
@@ -239,11 +220,7 @@ export function registerCanopyCli(params: { program: Command; store: CanopyStore
         throw new Error(error);
       }
       const updated = await params.store.move(card.id, options.status, undefined);
-      if (options.json) {
-        writeJson({ card: redactClaimToken(updated) });
-      } else {
-        writeLine(formatCardLine(updated));
-      }
+      writeCard(updated, options);
     });
 
   addGatewayClientOptions(
@@ -254,7 +231,7 @@ export function registerCanopyCli(params: { program: Command; store: CanopyStore
       .option(
         "--max-starts <count>",
         "Maximum new worker runs to start in this pass (default 3)",
-        (value: string) => parsePositiveIntegerOption(value, "--max-starts"),
+        parseMaxStarts,
       )
       .option("--admin", "Request full-host workspace access", false)
       .option("--json", "Print JSON", false),

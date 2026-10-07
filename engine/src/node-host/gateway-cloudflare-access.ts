@@ -2,7 +2,7 @@ import { isRecord } from "@branch/normalization-core/record-coerce";
 import type { CloudflareAccessCredentials } from "../../packages/gateway-client/src/cloudflare-access.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import {
-  coerceSecretRef,
+  parseSecretRef,
   normalizeSecretInputString,
   type SecretInput,
 } from "../config/types.secrets.js";
@@ -18,7 +18,7 @@ export type NodeHostCloudflareAccessConfig = {
 };
 
 function normalizeCloudflareAccessSecretInput(value: unknown, path: string): SecretInput {
-  const ref = coerceSecretRef(value);
+  const ref = parseSecretRef(value);
   if (ref) {
     return ref;
   }

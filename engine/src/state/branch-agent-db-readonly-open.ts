@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { normalizeAgentId } from "@branch/normalization-core/agent-id";
-import { clearNodeSqliteKyselyCacheForDatabase } from "../infra/kysely-sync-cache-state.js";
+import { isDeletedAgentDatabasePath } from "../infra/agent-database-readers.js";
+import { enableNodeSqliteKyselyStatementCache } from "../infra/kysely-sync-cache-state.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
 import { sqlitePrimaryResultCode } from "../infra/sqlite-error-diagnostics.js";
-import { admitSqliteSchema } from "../infra/sqlite-schema-facts.js";
+import { admitSqliteSchema, runSqliteReadOperationSync } from "../infra/sqlite-schema-facts.js";
+import { assertCanonicalSessionValidationSchema } from "./branch-agent-canonical-validation-schema.js";
 import type { BranchAgentDatabaseOptions } from "./branch-agent-db-contract.js";
 import { registerBranchAgentDatabaseIdentity } from "./branch-agent-db-identity.js";
 import {
@@ -17,10 +19,12 @@ import {
   assertSupportedAgentSchemaVersion,
   readExistingAgentSchemaMeta,
 } from "./branch-agent-db-schema-read.js";
+import { assertAgentDatabaseTerminalOpenAllowed } from "./branch-agent-db-terminal.js";
 import {
   isIncognitoBranchAgentSqlitePath,
   resolveBranchAgentSqlitePath,
 } from "./branch-agent-db.paths.js";
+import { readBranchDatabaseQuarantineFailure } from "./branch-quarantine-store.js";
 import { BRANCH_SQLITE_BUSY_TIMEOUT_MS } from "./branch-state-db-contract.js";
 
 export type BranchAgentReadOnlyDatabase = {
@@ -56,14 +60,21 @@ export function readBranchAgentDatabase<T>(
 
 /** Recheck committed admission facts before using an existing read-only connection. */
 export function hasBranchAgentReadOnlySchema(database: BranchAgentReadOnlyDatabase): boolean {
-  const userVersion = assertSupportedAgentSchemaVersion(database.db, database.path);
-  assertCanonicalAgentPersistenceVersion(database.db, database.path, userVersion);
-  const schemaMeta = readExistingAgentSchemaMeta(database.db);
-  if (!schemaMeta) {
-    return false;
-  }
-  assertExistingAgentSchemaOwner(schemaMeta, database.agentId, database.path);
-  return true;
+  return runSqliteReadOperationSync(
+    database.db,
+    () => {
+      const userVersion = assertSupportedAgentSchemaVersion(database.db, database.path);
+      assertCanonicalAgentPersistenceVersion(database.db, database.path, userVersion);
+      const schemaMeta = readExistingAgentSchemaMeta(database.db);
+      if (!schemaMeta) {
+        return false;
+      }
+      assertExistingAgentSchemaOwner(schemaMeta, database.agentId, database.path);
+      assertCanonicalSessionValidationSchema(database.db);
+      return true;
+    },
+    "fresh",
+  );
 }
 
 /** Fresh-only callers do not need the writable runtime's process-held connection cache. */
@@ -93,8 +104,19 @@ export function openBranchAgentDatabaseReadOnly(
   if (isIncognitoBranchAgentSqlitePath(pathname, { agentId, env: options.env })) {
     return { found: false, reason: "database-missing" };
   }
-  if (!fs.existsSync(pathname)) {
+  if (isDeletedAgentDatabasePath(pathname) || !fs.existsSync(pathname)) {
     return { found: false, reason: "database-missing" };
+  }
+  // Verified-corrupt generations stay quarantined for reads as well as writes:
+  // the process terminal latch and the persisted generation-aware quarantine
+  // row must both clear before any fresh read-only physical open proceeds.
+  assertAgentDatabaseTerminalOpenAllowed(pathname);
+  const persistedQuarantine = readBranchDatabaseQuarantineFailure("agent", pathname, {
+    env: options.env,
+  });
+  if (persistedQuarantine) {
+    recordBranchAgentDatabaseReadOpenFailure(persistedQuarantine);
+    throw persistedQuarantine;
   }
   // Lock policy belongs to the open: node:sqlite has no busy handler until one
   // is set, so a later PRAGMA leaves every earlier statement unprotected.
@@ -114,20 +136,20 @@ export function openBranchAgentDatabaseReadOnly(
     if (closed) {
       return;
     }
-    clearNodeSqliteKyselyCacheForDatabase(db);
     if (db.isOpen) {
       db.close();
     }
     closed = true;
   };
   try {
+    enableNodeSqliteKyselyStatementCache(db);
     registerBranchAgentDatabaseIdentity(db);
     const database = { agentId, db, path: pathname, close };
+    admitSqliteSchema(db);
     if (!hasBranchAgentReadOnlySchema(database)) {
       close();
       return { found: false, reason: "schema-missing" };
     }
-    admitSqliteSchema(db);
     return { found: true, database };
   } catch (error) {
     close();

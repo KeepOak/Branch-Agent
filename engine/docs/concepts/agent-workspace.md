@@ -120,14 +120,19 @@ These live under `~/.branch/` and should NOT be committed to the workspace repo:
 
 If you need to migrate sessions or config, copy them separately and keep them out of version control.
 
-Older Branch Agent releases wrote `branch-workspace-state.json`,
-`.branch/workspace-state.json`, and `.attested` workspace sidecars. Current
+Older Branch Agent releases wrote `branch-workspace-state.json` and `.attested`
+workspace sidecars. Current
 runtime uses only the shared SQLite database for that state. If Doctor reports
 one of these files, run `branch doctor --fix`; Doctor imports valid legacy
 state and deletes a source only after verifying the database rows. Empty reserved
 hashed files under `workspace-attestations/` are discarded because they contain
 no importable state; other unreadable sources stay in place and Doctor names
 their paths.
+
+The pre-July `.branch/workspace-state.json` layout is outside the supported
+migration window. Upgrade through `2026.9.7` and run `branch doctor --fix` there
+before updating; current Doctor leaves that file untouched. See the
+[retention policy](/gateway/doctor/config-migrations#retention-policy).
 
 ## Git backup (recommended, private)
 

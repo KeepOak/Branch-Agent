@@ -2,6 +2,7 @@
 // "Make your own" editor shows; the window's tokens follow from them (the App Preview's varsFromEF). The built-in
 // themes' colours are copied from the engine's own Control UI palettes (engine/ui/public/themes/*.css); Grove is the
 // window's Branch Slate tokens (window/src/theme/tokens.css).
+import { LEGACY_PAIRS } from "./appearance-legacy";
 
 export const EF_KEYS = ["bg", "side", "raise", "ink", "ink2", "ink3", "line", "accent", "btn", "onBtn", "ok", "warn", "bad"] as const;
 export type EfKey = (typeof EF_KEYS)[number];
@@ -37,6 +38,8 @@ export const BUILTIN: Record<string, Pair> = {
   manuscript: pair("#f6f1e4 #efe8d6 #fdfbf3 #1d1a12 #322d22 #6a604e #ddd2b8 #31549b #1d1a12 #f6f1e4 #166534 #92400e #b91c1c", "#211e18 #262218 #2a271f #efe8d6 #d8d0bc #ab9f84 #3b3527 #8fa8e0 #efe8d6 #211e18 #22c55e #f59e0b #f87171", "lora"),
   rose: pair("#faf4ed #f5ece2 #fffaf3 #292339 #3e3857 #665d87 #e3d9cb #9c4f66 #292339 #faf4ed #166534 #92400e #b91c1c", "#191724 #1d1b2a #1f1d2e #efedfa #d5d2eb #9793b0 #29263c #ebbcba #efedfa #191724 #22c55e #f59e0b #f87171", "dm-sans"),
   miami: pair("#f7f3f6 #f1e9f0 #fefcfe #241c2b #3c3244 #6b5f74 #e2d7e0 #b0246f #241c2b #f7f3f6 #166534 #92400e #b91c1c", "#140f1e #181226 #1c1530 #efeaf9 #cfc7e8 #968bbd #2c2150 #f472b6 #efeaf9 #140f1e #22c55e #f59e0b #f87171", "space-grotesk"),
+  paper: pair("#faf8f2 #f2efe7 #fffdf9 #252b2d #50595b #727a79 #e2dfd7 #484ce5 #16212a #fffdf9 #2f8f5b #a86e12 #c2412d", "#191d20 #22272a #2a3033 #f2f0eb #c9cfcd #9fa9a7 #3b4548 #9396ff #9396ff #191d20 #78c58d #dfba71 #ee9387"),
+  ...Object.fromEntries(Object.entries(LEGACY_PAIRS).map(([id, modes]) => [id, { light: ef(modes.light.join(" ")), dark: ef(modes.dark.join(" ")) }])),
 };
 
 export const isHex = (v: unknown): v is string => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);

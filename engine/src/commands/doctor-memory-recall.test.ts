@@ -11,6 +11,11 @@ const resolveAgentWorkspaceDir = vi.hoisted(() =>
   vi.fn((_cfg: BranchConfig, agentId: string) => `/tmp/${agentId}/workspace`),
 );
 const getActiveMemorySearchManagerCore = vi.hoisted(() => vi.fn());
+const resolveActiveMemoryBackendConfig = vi.hoisted(() =>
+  vi.fn<() => { backend: "builtin" } | { backend: "provider-runtime"; providerId: string }>(() => ({
+    backend: "builtin",
+  })),
+);
 const auditRingsArtifacts = vi.hoisted(() => vi.fn());
 const auditShortTermPromotionArtifacts = vi.hoisted(() => vi.fn());
 const repairRingsArtifacts = vi.hoisted(() => vi.fn());
@@ -23,7 +28,10 @@ vi.mock("../agents/agent-scope.js", () => ({
   resolveAgentDir,
   resolveAgentWorkspaceDir,
 }));
-vi.mock("../plugins/memory-runtime.js", () => ({ getActiveMemorySearchManagerCore }));
+vi.mock("../plugins/memory-runtime.js", () => ({
+  getActiveMemorySearchManagerCore,
+  resolveActiveMemoryBackendConfig,
+}));
 vi.mock("../plugin-sdk/memory-core-bundled-runtime.js", () => ({
   auditRingsArtifacts,
   auditShortTermPromotionArtifacts,
@@ -63,6 +71,7 @@ function ringsAudit(overrides: Record<string, unknown> = {}) {
 }
 
 function resetMemoryRecallMocks() {
+  resolveActiveMemoryBackendConfig.mockReset().mockReturnValue({ backend: "builtin" });
   auditShortTermPromotionArtifacts.mockReset().mockResolvedValue(shortTermAudit());
   auditRingsArtifacts.mockReset().mockResolvedValue(ringsAudit());
   repairRingsArtifacts.mockReset().mockResolvedValue({
@@ -130,44 +139,58 @@ describe("memory recall doctor integration", () => {
     };
   }
 
-  it("notes recall-store audit problems with doctor guidance", async () => {
-    auditShortTermPromotionArtifacts.mockResolvedValueOnce(
-      shortTermAudit({
-        entryCount: 12,
-        promotedCount: 4,
-        spacedEntryCount: 2,
-        conceptTaggedEntryCount: 10,
-        invalidEntryCount: 1,
-        issues: [
-          {
-            severity: "warn",
-            code: "recall-store-invalid",
-            message: "Short-term recall store contains 1 invalid entry.",
-            fixable: true,
-          },
-          {
-            severity: "warn",
-            code: "recall-lock-stale",
-            message: "Short-term promotion lock appears stale.",
-            fixable: true,
-          },
-        ],
-      }),
-    );
+  it.each(["provider-runtime", "builtin"] as const)(
+    "reports %s recall health with appropriate guidance",
+    async (backend) => {
+      if (backend === "provider-runtime") {
+        resolveActiveMemoryBackendConfig.mockReturnValue({ backend, providerId: "records" });
+      }
+      auditShortTermPromotionArtifacts.mockResolvedValueOnce(
+        shortTermAudit({
+          entryCount: 12,
+          promotedCount: 4,
+          spacedEntryCount: 2,
+          conceptTaggedEntryCount: 10,
+          invalidEntryCount: 1,
+          issues: [
+            {
+              severity: "warn",
+              code: "recall-store-invalid",
+              message: "Short-term recall store contains 1 invalid entry.",
+              fixable: true,
+            },
+            {
+              severity: "warn",
+              code: "recall-lock-stale",
+              message: "Short-term promotion lock appears stale.",
+              fixable: true,
+            },
+          ],
+        }),
+      );
 
-    await noteMemoryRecallHealth(cfg);
+      await noteMemoryRecallHealth(cfg);
 
-    expect(auditShortTermPromotionArtifacts).toHaveBeenCalledWith({
-      workspaceDir: "/tmp/agent-default/workspace",
-    });
-    expect(note).toHaveBeenCalledTimes(2);
-    expectFirstNoteContains(
-      "Memory recall artifacts need attention:",
-      "doctor --fix",
-      "memory status --fix",
-    );
-    expect(String(note.mock.calls[1]?.[0] ?? "")).toContain("Rings: enabled");
-  });
+      if (backend === "provider-runtime") {
+        expect(String(note.mock.calls[0]?.[0] ?? "")).toContain(
+          "Not applicable: records uses the provider runtime; see its health.",
+        );
+        expect(auditShortTermPromotionArtifacts).not.toHaveBeenCalled();
+        expect(getActiveMemorySearchManagerCore).not.toHaveBeenCalled();
+        return;
+      }
+      expect(auditShortTermPromotionArtifacts).toHaveBeenCalledWith({
+        workspaceDir: "/tmp/agent-default/workspace",
+      });
+      expect(note).toHaveBeenCalledTimes(2);
+      expectFirstNoteContains(
+        "Memory recall artifacts need attention:",
+        "doctor --fix",
+        "memory status --fix",
+      );
+      expect(String(note.mock.calls[1]?.[0] ?? "")).toContain("Rings: enabled");
+    },
+  );
 
   it("runs rings artifact repair during doctor --fix", async () => {
     auditRingsArtifacts.mockResolvedValueOnce(
