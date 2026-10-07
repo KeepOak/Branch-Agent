@@ -1,4 +1,4 @@
-/** Tests agent scope config, model selection, fallbacks, and workspace resolution. */
+/** Tests agent scope config, model selection, fallbacks, and workspace resolution. Coverage-gate probe. */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
