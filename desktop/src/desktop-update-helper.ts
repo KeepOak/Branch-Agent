@@ -2,10 +2,9 @@
 // Waits for the desktop app to exit, swaps the staged copy in, relaunches it and waits for the new app to confirm
 // its start (it removes the journal). No confirmation in time: stop the new app by its PID, put the previous copy
 // back, remember the release as rejected and relaunch the previous app.
-// A whole-folder (runtime) swap first stops every process whose executable is the bundled node.exe under the
-// install folder — the device-link host, leftover `mcp serve` / mcporter daemons, and their children (Playwright
-// Chrome). Windows cannot rename the folder while that node.exe is running. Node from outside the folder, and
-// this helper, are left alone.
+// A whole-folder (runtime) swap first asks Windows Restart Manager who holds the install folder (including
+// session 0). It stops only bundled node.exe lockers this user can stop, plus their children. Node from
+// outside the folder, and this helper, are left alone. A locker we cannot stop leaves the update staged.
 import { spawn, execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { readdir, rename, rm, writeFile } from "node:fs/promises";
@@ -26,16 +25,31 @@ export interface FolderProcess {
   name: string;
   executable: string;
   args: string[];
+  /** Windows terminal-services session; 0 is the service/background session. */
+  sessionId?: number;
 }
+export type FolderLocker = FolderProcess;
 /** Tests inject these; production uses the real rename, sleep and process tools. */
 export interface HelperIo {
   rename?: (source: string, target: string) => Promise<void>;
   sleep?: (ms: number) => Promise<void>;
   listFolderProcesses?: (folder: string) => Promise<FolderProcess[]>;
+  listLockers?: (folder: string) => Promise<FolderLocker[]>;
   stopProcess?: (pid: number) => void;
   spawnRestart?: (executable: string, args: string[]) => { pid?: number; unref(): void };
   /** Override of BUSY_RETRY_ATTEMPTS; production keeps the existing 120-attempt budget. */
   busyAttempts?: number;
+}
+/** A locker of the install-folder node.exe that this user cannot stop (session 0, access denied). */
+export class UnstoppableLockersError extends Error {
+  readonly lockers: FolderLocker[];
+  readonly folder: string;
+  constructor(lockers: FolderLocker[], folder: string) {
+    super("install-folder node.exe is still held");
+    this.name = "UnstoppableLockersError";
+    this.lockers = lockers;
+    this.folder = folder;
+  }
 }
 interface Journal { version: string; sha256: string; kind: "asar" | "runtime"; staged: string; target: string; phase: string; heldUntil?: number }
 /** After a swap that found the app in use, starts leave the update staged this long (Restart retries at once). */
@@ -112,8 +126,33 @@ function describeProcess(proc: FolderProcess): string {
   return `${processKind(proc)} pid ${proc.pid}`;
 }
 
-function describeHolders(holders: FolderProcess[]): string {
-  return holders.length ? holders.map(describeProcess).join(", ") : "unknown process";
+/** Image path relative to the install folder, or the basename — never a user or machine prefix. */
+export function lockerImageLabel(executable: string, folder: string): string {
+  if (underFolder(executable, folder)) {
+    const root = resolve(folder);
+    const full = resolve(executable);
+    const slice = process.platform === "win32"
+      ? full.slice(root.length).replace(/^[\\/]/, "")
+      : full.slice(root.length).replace(/^\//, "");
+    return slice || basename(executable);
+  }
+  return basename(executable);
+}
+
+export function describeLocker(locker: FolderLocker, folder: string): string {
+  const session = locker.sessionId === undefined ? "" : ` session ${locker.sessionId}`;
+  return `${processKind(locker)} pid ${locker.pid} image ${lockerImageLabel(locker.executable, folder)}${session}`;
+}
+
+function describeHolders(holders: FolderProcess[], folder?: string): string {
+  if (!holders.length) return "unknown process";
+  return holders.map(proc => folder ? describeLocker(proc, folder) : describeProcess(proc)).join(", ");
+}
+
+function isAccessDenied(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code ?? "";
+  if (code === "EACCES" || code === "EPERM") return true;
+  return /access is denied/i.test(String(error));
 }
 
 /** True only when the process image is node/node.exe whose resolved path is under `folder`. */
@@ -189,18 +228,19 @@ export async function listFolderProcesses(folder: string): Promise<FolderProcess
     // Get-Process by Path (same idea as engine-records' per-PID CIM probe). A full
     // Win32_Process scan is too slow on Windows CI and missed the node host entirely.
     const quoted = root.replaceAll("'", "''");
-    const script = `$root='${quoted}'; $matches=@(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $PID -and $(try { $_.Path -and $_.Path.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase) } catch { $false }) }); if(-not $matches){ '' } else { $matches | ForEach-Object { $p=Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" -ErrorAction SilentlyContinue; [pscustomobject]@{pid=$_.Id;name=$_.ProcessName;executable=$_.Path;commandLine=$p.CommandLine} } | ConvertTo-Json -Compress }`;
+    const script = `$root='${quoted}'; $matches=@(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $PID -and $(try { $_.Path -and $_.Path.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase) } catch { $false }) }); if(-not $matches){ '' } else { $matches | ForEach-Object { $p=Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" -ErrorAction SilentlyContinue; [pscustomobject]@{pid=$_.Id;name=$_.ProcessName;executable=$_.Path;commandLine=$p.CommandLine;session=$_.SessionId} } | ConvertTo-Json -Compress }`;
     try {
       const output = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
         encoding: "utf8", windowsHide: true, timeout: 15_000, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 16 * 1024 * 1024,
       }).replace(/^\uFEFF/, "").trim();
       if (!output) return [];
       const rows = JSON.parse(output) as unknown;
-      for (const row of (Array.isArray(rows) ? rows : [rows]) as Array<{ pid?: number; name?: string; executable?: string; commandLine?: string }>) {
+      for (const row of (Array.isArray(rows) ? rows : [rows]) as Array<{ pid?: number; name?: string; executable?: string; commandLine?: string; session?: number }>) {
         if (!Number.isInteger(row.pid) || row.pid === process.pid || !row.executable) continue;
         found.push({
           pid: row.pid!, name: row.name || basename(row.executable), executable: row.executable,
           args: argsFromCommandLine(row.executable, row.commandLine),
+          sessionId: Number.isInteger(row.session) ? row.session : undefined,
         });
       }
     } catch { /* listing is best effort: the rename still retries */ }
@@ -222,42 +262,130 @@ export async function listFolderProcesses(folder: string): Promise<FolderProcess
   return found;
 }
 
+/** Every process Restart Manager reports as locking `folder`, including other sessions (session 0). */
+export function listRestartManagerLockers(folder: string): FolderLocker[] {
+  if (process.platform !== "win32") return [];
+  const root = resolve(folder);
+  const node = join(root, "resources", "node", "node.exe");
+  const files = [node, join(root, "Branch Agent.exe")].filter(file => existsSync(file));
+  if (!files.length) return [];
+  const fileList = files.map(file => `'${file.replaceAll("'", "''")}'`).join(",");
+  const script = `
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public class BranchRm {
+  [StructLayout(LayoutKind.Sequential)]
+  public struct RM_UNIQUE_PROCESS { public int dwProcessId; public System.Runtime.InteropServices.ComTypes.FILETIME ProcessStartTime; }
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+  public struct RM_PROCESS_INFO {
+    public RM_UNIQUE_PROCESS Process;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst=256)] public string strAppName;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst=64)] public string strServiceShortName;
+    public uint ApplicationType; public uint AppStatus; public uint TSSessionId;
+    [MarshalAs(UnmanagedType.Bool)] public bool bRestartable;
+  }
+  [DllImport("rstrtmgr.dll", CharSet=CharSet.Unicode)]
+  public static extern int RmStartSession(out uint pSessionHandle, int dwSessionFlags, StringBuilder strSessionKey);
+  [DllImport("rstrtmgr.dll")] public static extern int RmEndSession(uint pSessionHandle);
+  [DllImport("rstrtmgr.dll", CharSet=CharSet.Unicode)]
+  public static extern int RmRegisterResources(uint pSessionHandle, uint nFiles, string[] rgsFilenames, uint nApplications, System.IntPtr rgApplications, uint nServices, string[] rgsServiceNames);
+  [DllImport("rstrtmgr.dll")]
+  public static extern int RmGetList(uint dwSessionHandle, out uint pnProcInfoNeeded, ref uint pnProcInfo, [In, Out] RM_PROCESS_INFO[] rgAffectedApps, ref uint lpdwRebootReasons);
+}
+'@
+$session = [uint32]0
+$key = New-Object System.Text.StringBuilder 32
+if ([BranchRm]::RmStartSession([ref]$session, 0, $key) -ne 0) { '' ; return }
+try {
+  $files = @(${fileList})
+  [void][BranchRm]::RmRegisterResources($session, [uint32]$files.Count, $files, 0, [IntPtr]::Zero, 0, $null)
+  $needed = [uint32]0; $count = [uint32]0; $reason = [uint32]0
+  [void][BranchRm]::RmGetList($session, [ref]$needed, [ref]$count, $null, [ref]$reason)
+  if ($needed -eq 0) { '' ; return }
+  $count = $needed
+  $infos = New-Object BranchRm+RM_PROCESS_INFO[] $needed
+  [void][BranchRm]::RmGetList($session, [ref]$needed, [ref]$count, $infos, [ref]$reason)
+  $node = '${node.replaceAll("'", "''")}'
+  $infos | ForEach-Object {
+    $id = $_.Process.dwProcessId
+    if ($id -eq $PID) { return }
+    $path = $(try { (Get-Process -Id $id -ErrorAction SilentlyContinue).Path } catch { $null })
+    [pscustomobject]@{pid=$id;name=$_.strAppName;executable=$(if($path){$path}else{$node});session=$_.TSSessionId}
+  } | ConvertTo-Json -Compress
+} finally { [void][BranchRm]::RmEndSession($session) }
+`;
+  try {
+    const output = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand",
+      Buffer.from(script, "utf16le").toString("base64")], {
+      encoding: "utf8", windowsHide: true, timeout: 15_000, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 4 * 1024 * 1024,
+    }).replace(/^\uFEFF/, "").trim();
+    if (!output) return [];
+    const rows = JSON.parse(output) as unknown;
+    const found: FolderLocker[] = [];
+    for (const row of (Array.isArray(rows) ? rows : [rows]) as Array<{ pid?: number; name?: string; executable?: string; session?: number }>) {
+      if (!Number.isInteger(row.pid) || row.pid === process.pid || !row.executable) continue;
+      found.push({
+        pid: row.pid!, name: row.name || basename(row.executable), executable: row.executable,
+        args: [], sessionId: Number.isInteger(row.session) ? row.session : undefined,
+      });
+    }
+    return found;
+  } catch { return []; }
+}
+
+export async function listFolderLockers(folder: string): Promise<FolderLocker[]> {
+  if (process.platform === "win32") {
+    const fromRm = listRestartManagerLockers(folder);
+    if (fromRm.length) return fromRm;
+  }
+  return listFolderProcesses(folder);
+}
+
 function stopPid(pid: number): void {
   if (pid === process.pid) return;
   try {
-    if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10_000 });
+    if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"], timeout: 10_000 });
     else process.kill(pid, "SIGTERM");
-  } catch { /* already gone */ }
+  } catch (error) {
+    if (isAccessDenied(error)) throw Object.assign(error instanceof Error ? error : new Error(String(error)), { code: "EACCES" });
+    /* already gone */
+  }
 }
 
-/** Stops install-folder node.exe processes and their children. Returns node-host processes to restart after the swap. */
+/** Stops install-folder node.exe lockers and their children. Throws if a locker cannot be stopped. */
 export async function stopFolderProcesses(folder: string, log: (line: string) => void, io: HelperIo = {}, keepPids: Iterable<number> = []): Promise<FolderProcess[]> {
   const keep = new Set<number>([process.pid, ...keepPids]);
-  const listed = await (io.listFolderProcesses ?? listFolderProcesses)(folder);
+  const listed = await (io.listLockers ?? io.listFolderProcesses ?? listFolderLockers)(folder);
   const victims = listed.filter(proc => !keep.has(proc.pid) && isInstallFolderNode(proc, folder));
   const stop = io.stopProcess ?? stopPid;
   const sleep = io.sleep ?? defaultSleep;
   const restartable: FolderProcess[] = [];
+  const blocked: FolderLocker[] = [];
   const trees: number[] = [];
   for (const proc of victims) {
-    const children = io.stopProcess ? [] : listDescendants(proc.pid).filter(pid => !keep.has(pid));
+    const children = io.stopProcess ? [] : listDescendants(proc.pid).filter(pid => !keep.has(pid) && pid !== process.pid);
     const extra = children.length || process.platform === "win32" ? " and child processes" : "";
-    log(`desktop update: stopping ${describeProcess(proc)}${extra} so the install folder can be swapped`);
-    stop(proc.pid);
-    if (process.platform !== "win32") for (const kid of children) stop(kid);
-    trees.push(proc.pid, ...children);
-    if (processKind(proc) === "node host") restartable.push(proc);
+    log(`desktop update: stopping ${describeLocker(proc, folder)}${extra} so the install folder can be swapped`);
+    try {
+      stop(proc.pid);
+      if (process.platform !== "win32") for (const kid of children) stop(kid);
+      trees.push(proc.pid, ...children);
+      if (processKind(proc) === "node host") restartable.push(proc);
+    } catch (error) {
+      if (!isAccessDenied(error)) throw error;
+      blocked.push(proc);
+    }
   }
   for (const end = Date.now() + 5_000; Date.now() < end; await sleep(100)) {
     if (trees.every(pid => !alive(pid))) break;
   }
-  for (const pid of trees) {
-    if (!alive(pid) || keep.has(pid) || pid === process.pid) continue;
-    try {
-      if (process.platform === "win32") stop(pid);
-      else process.kill(pid, "SIGKILL");
-    } catch { /* already gone */ }
+  for (const proc of victims) {
+    if (blocked.includes(proc) || keep.has(proc.pid) || proc.pid === process.pid) continue;
+    if (alive(proc.pid)) blocked.push(proc);
   }
+  if (blocked.length) throw new UnstoppableLockersError(blocked, folder);
   return restartable;
 }
 
@@ -286,7 +414,7 @@ export async function move(source: string, target: string, io: HelperIo = {}, lo
   const attempts = io.busyAttempts ?? BUSY_RETRY_ATTEMPTS;
   const doRename = io.rename ?? rename;
   const sleep = io.sleep ?? defaultSleep;
-  const list = io.listFolderProcesses ?? listFolderProcesses;
+  const list = io.listLockers ?? io.listFolderProcesses ?? listFolderLockers;
   for (let attempt = 0;; attempt++) {
     try { await doRename(source, target); return; } catch (error) {
       const code = (error as NodeJS.ErrnoException).code ?? "";
@@ -294,7 +422,7 @@ export async function move(source: string, target: string, io: HelperIo = {}, lo
       if (log && (attempt === 0 || attempt % 20 === 0)) {
         const folder = existsSync(source) ? source : target;
         let holders = "unknown process";
-        try { holders = describeHolders(await list(folder)); } catch { /* listing is best effort */ }
+        try { holders = describeHolders(await list(folder), folder); } catch { /* listing is best effort */ }
         log(`desktop update: ${code} renaming (attempt ${attempt + 1}/${attempts + 1}); held by ${holders}`);
       }
       await sleep(BUSY_RETRY_DELAY_MS);
@@ -346,23 +474,37 @@ async function restoreAsarNames(folder: string): Promise<void> {
 }
 
 async function busyHolders(folder: string, io: HelperIo): Promise<string> {
-  try { return describeHolders(await (io.listFolderProcesses ?? listFolderProcesses)(folder)); }
+  try { return describeHolders(await (io.listLockers ?? io.listFolderProcesses ?? listFolderLockers)(folder), folder); }
   catch { return "unknown process"; }
+}
+
+function keepStaged(plan: HelperPlan, journal: Journal, log: (line: string) => void, detail: string): Promise<void> {
+  return writeJournal(plan.journal, { ...journal, phase: "staged", heldUntil: Date.now() + RETRY_AFTER_MS }).then(() => {
+    log(`desktop update ${journal.version}: the app is still in use (${detail}); kept staged for the next scheduled check`);
+  });
 }
 
 /** Old copy aside, new copy in. On failure the old copy is put back and the update stays staged. */
 async function swap(plan: HelperPlan, journal: Journal, previous: string, log: (line: string) => void, io: HelperIo): Promise<boolean> {
   await rm(previous, { recursive: true, force: true });
   if (journal.kind === "runtime") await restoreAsarNames(journal.staged);
-  const stopped = journal.kind === "runtime"
-    ? await stopFolderProcesses(journal.target, log, io, [plan.waitPid])
-    : [];
+  let stopped: FolderProcess[] = [];
+  if (journal.kind === "runtime") {
+    try {
+      stopped = await stopFolderProcesses(journal.target, log, io, [plan.waitPid]);
+    } catch (error) {
+      if (!(error instanceof UnstoppableLockersError)) throw error;
+      const detail = error.lockers.map(locker => describeLocker(locker, journal.target)).join("; ");
+      await keepStaged(plan, journal, log, `could not stop locker(s): ${detail}`);
+      return false;
+    }
+  }
   const restart = (): void => restartFolderProcesses(stopped.filter(proc => !isAppImage(proc, plan)), log, io);
   await writeJournal(plan.journal, { ...journal, phase: "applying" });
   try { await move(journal.target, previous, io, log); } catch (error) {
     restart();
     await writeJournal(plan.journal, { ...journal, phase: "staged", heldUntil: Date.now() + RETRY_AFTER_MS });
-    log(`desktop update ${journal.version}: the app is still in use (${String(error)}; held by ${await busyHolders(journal.target, io)}); kept staged for the next start`);
+    log(`desktop update ${journal.version}: the app is still in use (${String(error)}; held by ${await busyHolders(journal.target, io)}); kept staged for the next scheduled check`);
     return false;
   }
   try { await move(journal.staged, journal.target, io, log); } catch (error) {

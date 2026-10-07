@@ -12,13 +12,16 @@ const desktopUpdate = await import(pathToFileURL(join(dist, "desktop-update.js")
 const {
   BUSY_RETRY_ATTEMPTS,
   BUSY_RETRY_DELAY_MS,
+  describeLocker,
   isInstallFolderNode,
   listFolderProcesses,
+  lockerImageLabel,
   move,
   processKind,
   restartFolderProcesses,
   runHelper,
   stopFolderProcesses,
+  UnstoppableLockersError,
 } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
 
 const pause = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -120,7 +123,7 @@ test("a persistent EBUSY leaves the old app folder in place and names the holder
   assert.match(log, /EBUSY/);
   assert.match(log, /node host pid 4242/);
   assert.doesNotMatch(log, /[/\\](?:Users|home|AppData)[/\\]/i);
-  assert.match(log, /kept staged for the next start/);
+  assert.match(log, /kept staged for the next scheduled check/);
 }));
 
 test("a runtime swap stops the install-folder node host before the rename and restarts it after", () => fixture(async ({ root, appDir, staged, dataDir, plan, leftover }) => {
@@ -250,3 +253,76 @@ test("a node.exe outside the install folder is left alone", async () => {
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });
+
+test("lockerImageLabel is the path under the install folder, never a user or machine prefix", () => {
+  const folder = join("C:", "dist", "Branch Agent-win32-x64");
+  assert.equal(
+    lockerImageLabel(join(folder, "resources", "node", nodeName), folder),
+    join("resources", "node", nodeName),
+  );
+  assert.equal(lockerImageLabel(join("C:", "Program Files", "nodejs", nodeName), folder), nodeName);
+  assert.match(
+    describeLocker({
+      pid: 77, name: "node.exe", executable: join(folder, "resources", "node", nodeName),
+      args: [], sessionId: 0,
+    }, folder),
+    /node pid 77 image resources[/\\]node[/\\]node(?:\.exe)? session 0/,
+  );
+});
+
+test("a session-0 install-folder node locker is stopped; an outside node in the same session is not", async () => {
+  const folder = join("C:", "dist", "Branch Agent-win32-x64");
+  const bundled = join(folder, "resources", "node", nodeName);
+  const stopped = [];
+  const lines = [];
+  const restartable = await stopFolderProcesses(folder, line => lines.push(line), {
+    sleep: async () => {},
+    listLockers: async () => [
+      { pid: 501, name: "node.exe", executable: bundled, args: ["mcporter"], sessionId: 0 },
+      { pid: 502, name: "node.exe", executable: bundled, args: ["branch.mjs", "node", "run"], sessionId: 1 },
+      { pid: 503, name: "node.exe", executable: join("C:", "Program Files", "nodejs", nodeName), args: [], sessionId: 0 },
+    ],
+    stopProcess: (pid) => { stopped.push(pid); },
+  });
+  assert.deepEqual(stopped.sort((a, b) => a - b), [501, 502]);
+  assert.ok(restartable.some(proc => proc.pid === 502));
+  assert.equal(restartable.some(proc => proc.pid === 501), false, "mcporter leftovers are not restarted");
+  assert.match(lines.join("\n"), /session 0/);
+  assert.match(lines.join("\n"), /session 1/);
+  assert.doesNotMatch(lines.join("\n"), /pid 503/);
+  assert.doesNotMatch(lines.join("\n"), /[/\\](?:Users|home|AppData)[/\\]/i);
+});
+
+test("an unstoppable session-0 locker leaves the update staged without retrying the rename", () => fixture(async ({ appDir, dataDir, plan }) => {
+  const bundled = join(appDir, "resources", "node", nodeName);
+  let renames = 0;
+  const denied = Object.assign(new Error("Access is denied."), { code: "EACCES" });
+  assert.equal(await runHelper(plan, {
+    sleep: async () => {},
+    listLockers: async () => [
+      { pid: 88, name: "node.exe", executable: bundled, args: [], sessionId: 0 },
+    ],
+    stopProcess: () => { throw denied; },
+    rename: async () => { renames += 1; },
+  }), "kept");
+  assert.equal(renames, 0, "do not loop on the rename when a locker cannot be stopped");
+  assert.equal(await readFile(join(appDir, "Branch Agent.exe"), "utf8"), "old runtime");
+  const journal = await desktopUpdate.readDesktopJournal({ dataDir });
+  assert.equal(journal.phase, "staged");
+  assert.ok(journal.heldUntil > Date.now());
+  const log = await readFile(join(dataDir, "desktop.log"), "utf8");
+  assert.match(log, /could not stop locker/);
+  assert.match(log, /pid 88/);
+  assert.match(log, /session 0/);
+  assert.match(log, /image resources[/\\]node[/\\]node(?:\.exe)?/);
+  assert.match(log, /kept staged for the next scheduled check/);
+  assert.doesNotMatch(log, /[/\\](?:Users|home|AppData)[/\\]/i);
+  await assert.rejects(
+    stopFolderProcesses(appDir, () => {}, {
+      sleep: async () => {},
+      listLockers: async () => [{ pid: 88, name: "node.exe", executable: bundled, args: [], sessionId: 0 }],
+      stopProcess: () => { throw denied; },
+    }),
+    error => error instanceof UnstoppableLockersError && error.lockers[0]?.pid === 88,
+  );
+}));
