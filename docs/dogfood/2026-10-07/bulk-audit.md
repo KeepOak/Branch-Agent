@@ -10,7 +10,7 @@ Window source: `origin/main` `725e2905f`; scratch gateway source: its preceding 
 
 | Checkpoint | NAS post-fix | Local scratch diagnostic |
 | --- | ---: | ---: |
-| Window shown | Not measured | Not measured as an Electron window. A headless Chromium first-paint probe of the built window was 2,408 ms in one connected run; a prior cold-ish run was 3,220 ms, and a warmed repeat was 700 ms. These are browser probes, not desktop startup. |
+| Window shown | Not measured | Not measured as an Electron window. Headless Chromium probes of the earlier `8a82c40b1` window build yielded 2,408 ms first paint in one connected run, 3,220 ms in a cold-ish run, and 700 ms in a warmed repeat. These are browser probes, not desktop startup or timings of the later `725e2905f` build. |
 | Gateway ready | Not measured | 383,205 ms from the gateway's startup clock on an untraced, busy Windows run. `http.bound` was at 128,194 ms; readiness waited for plugins and sidecars. Not a representative latency estimate. |
 | First Trunk message admitted | Not measured | Not measured from cold start. A post-ready `chat.send` trace was 72.9 ms, but does not answer the requested checkpoint. |
 
