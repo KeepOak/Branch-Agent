@@ -191,7 +191,7 @@ export function ReadOnlyThread({ request, thread, label, onClose, onBringIn }: {
     );
   }, [request, thread, label]);
   return (
-    <Dialog title={thread.name} wide onClose={onClose} testid="ext-thread" footer={<><button type="button" className="btn ghost" onClick={onClose}>Close</button><button type="button" className="btn primary" onClick={onBringIn}>Bring it in</button></>}>
+    <Dialog title={thread.name} wide onClose={onClose} testid="ext-thread" footer={<button type="button" className="btn primary" onClick={onBringIn}>Bring it in</button>}>
       <div className="exts" role="note">
         <Icon name="eye" small />
         <span>This conversation belongs to {label} and can only be read here.</span>

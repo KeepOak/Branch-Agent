@@ -28,7 +28,7 @@ export function WebAddress() {
 export function WorkStalls() {
   return (
     <Sec title="When work stalls">
-      <Ctl title="A conversation stopped moving" sub="Once, when a Trunk has something to do but has made no progress for a while." off="Branch doesn’t watch for stalled conversations yet.">
+      <Ctl title="A conversation stopped moving" sub="Remind you when a Trunk stops making progress." help="Once, when a Trunk has something to do but has made no progress for a while." off="Branch doesn’t watch for stalled conversations yet.">
         <Switch checked={false} disabled label="A conversation stopped moving" onChange={() => undefined} />
       </Ctl>
     </Sec>
@@ -39,7 +39,7 @@ export function LiveActivity() {
   const title = isMac() ? "Live activity at the top of the screen" : "Live activity at the top of the screen (Mac)";
   return (
     <Sec title="Live activity">
-      <Ctl title={title} sub="A small pill under the menu bar shows each working Trunk’s current step; it opens when one needs you." off="Only in the Branch app on a Mac.">
+      <Ctl title={title} sub="Show working Trunks beneath the menu bar." help="A small pill under the menu bar shows each working Trunk’s current step; it opens when one needs you." off="Only in the Branch app on a Mac.">
         <Switch checked={false} disabled label={title} onChange={() => undefined} />
       </Ctl>
     </Sec>
@@ -48,7 +48,7 @@ export function LiveActivity() {
 
 export function KindsOfNotice() {
   return (
-    <Sec title="Kinds of notice" hint="A notice a Trunk sends you is sorted into one of these. Turning a kind off stops its pop-ups; it still shows in Recent notifications.">
+    <Sec title="Kinds of notice" showHeading={false} group="Tell me when…" hint="A notice a Trunk sends you is sorted into one of these." help="A notice a Trunk sends you is sorted into one of these. Turning a kind off stops its pop-ups; it still shows in Recent notifications.">
       <Hint>{KIND_OFF}</Hint>
       {KINDS.map((k) => (
         <Ctl key={k} title={k} sub="" keep="everywhere" off={KIND_OFF}>
@@ -63,8 +63,8 @@ export function SortingRules() {
   const level = useLevel();
   if (level < 2) return null;
   return (
-    <Sec title="Sorting notifications">
-      <Ctl title="Use the kind a Trunk gives" sub="When a Trunk marks a notice urgent, a reminder and so on, that wins over your rules." off={RULE_OFF}>
+    <Sec title="Sorting notifications" showHeading={false} group="Tell me when…">
+      <Ctl title="Use the kind a Trunk gives" sub="Let urgent Trunk notices take priority." help="When a Trunk marks a notice urgent, a reminder and so on, that wins over your rules." off={RULE_OFF}>
         <Switch checked={false} disabled label="Use the kind a Trunk gives" onChange={() => undefined} />
       </Ctl>
       <p className="hint nt-tight">No rules yet.</p>

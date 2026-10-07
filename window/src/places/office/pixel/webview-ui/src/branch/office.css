@@ -226,12 +226,14 @@
 .pa-root *::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .pa-root canvas { image-rendering: pixelated; }
 .pa-name {
+  font-family: 'FS Pixel Sans', sans-serif;
   color: #fff;
   background: rgba(16, 16, 28, 0.72);
   padding: 2px 5px 3px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   letter-spacing: 0.02em;
 }
+.pa-name-three { font-family: Consolas, monospace; font-weight: 700; font-size: .9em; }
 .pa-root[data-theme='light'] .pa-name { background: rgba(255, 252, 244, 0.86); color: #1c1a16; border-color: rgba(0, 0, 0, 0.18); }
 .pa-tag {
   display: inline-block;

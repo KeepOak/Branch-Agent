@@ -17,7 +17,7 @@ describe("permission modes", () => {
   it("blocks Full access for anyone but the owner, and Plan first as an engine gap", () => {
     expect(blockedReason(MODE_ROWS[4], false)).toBe(FULL_ACCESS_BLOCKED);
     expect(blockedReason(MODE_ROWS[4], true)).toBeNull();
-    expect(blockedReason(MODE_ROWS[2], true)).toMatch(/Not available in this engine yet/);
+    expect(blockedReason(MODE_ROWS[2], true)).toMatch(/Plan first isn't available/);
   });
   it("Shift+Tab never lands on a blocked mode", () => {
     expect(nextMode("guarded", true)).toBe("read-only");

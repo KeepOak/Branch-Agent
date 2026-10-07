@@ -36,13 +36,13 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
         : "Your conversations and settings stay in place." : current ? `You have Branch ${versionParts(current).detail}. Checks for a new verified Branch release.` : "Checks for a new verified Branch release."}
     </Status>
     <Sec title="Updating">
-      <Ctl title="Apply updates by themselves when no Trunk is working" off={auto.off}>
-        <Switch label="Apply updates by themselves when no Trunk is working" checked={auto.state?.autoApplyUpdates ?? true}
+      <Ctl title="Apply updates automatically" off={auto.off}>
+        <Switch label="Apply updates automatically" checked={auto.state?.autoApplyUpdates ?? true}
           disabled={auto.busy !== null} onChange={on => void auto.set("autoApplyUpdates", on)} />
       </Ctl>
       <Ctl title="Check for updates"><Btn sm disabled={busy} onClick={() => void run("check")}>{busy ? "Working…" : "Check now"}</Btn></Ctl>
-      {data.status?.phase === "available" ? <Ctl title="Install Branch update"><Btn disabled={busy} onClick={() => void run("stage")}>Install when idle</Btn></Ctl> : null}
-      <Hint>Branch checks when it starts and every 10 minutes. A downloaded update applies after your Trunks finish.</Hint>
+      {data.status?.phase === "available" ? <Ctl title="Update available"><Btn disabled={busy} onClick={() => void run("stage")}>Download update</Btn></Ctl> : null}
+      <Hint>Branch checks when it starts and every 10 minutes. With seamless handoff enabled, new work moves to a ready standby while ongoing runs finish in the previous engine. Otherwise, Branch waits for a safe idle period before the guarded swap.</Hint>
     </Sec>
   </Page>;
 }
@@ -68,7 +68,7 @@ function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title
 
 function statusLine(status: ComponentUpdateStatus | null, autoApply: boolean): string {
   if (!status) return "Reading desktop update status…";
-  if (status.phase === "staged") return autoApply ? "Update ready, applying when your Trunks finish" : "A Branch update is ready; restart to finish";
+  if (status.phase === "staged") return autoApply ? "Update staged; waiting for a safe switch" : "A Branch update is ready; restart to finish";
   if (status.phase === "available") return "A Branch update is ready";
   if (status.phase === "current") return "Branch is up to date.";
   if (status.phase === "checking") return "Checking for updates…";

@@ -72,7 +72,7 @@ async function verifyTarget(directory, proof, inventory) {
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.version, proof.version);
   assert.equal(manifest.sourceCommit, proof.commit, "Manifest source identity mismatch");
-  const components = ["engine", "window", "desktop", ...(proof.platform === "darwin" ? [] : ["desktopRuntime"])];
+  const components = ["engine", "window", "desktop", "desktopRuntime"];
   for (const component of components) verifyComponent(manifest.components?.[component], proof, inventory, component);
   assert.equal(manifest.components.engine.expandedBytes, proof.smoke.expandedBytes, "Extracted archive receipt byte count mismatch");
 }
