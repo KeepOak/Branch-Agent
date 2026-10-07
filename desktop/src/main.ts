@@ -353,7 +353,7 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     if (!priorServing && gateway === priorGateway) notServing(priorGateway);
     if (priorServing) {
       recoveryDeferred = false;
-      if (explicit) sendToBranchWindows("branch-desktop:engine-update", "ready");
+      if (explicit) sendToBranchWindows("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
     } else {
       // A new engine that failed may still be alive: stop it (SIGKILL after a grace) before recovery starts another.
       const failed = gateway;
