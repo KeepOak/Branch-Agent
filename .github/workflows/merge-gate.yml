@@ -32,6 +32,8 @@ jobs:
           package-manager-cache: false
       - name: Test the coverage check
         run: node --test scripts/changed-test-coverage.test.mjs
+      - name: Test the screenshot proof helpers
+        run: node --test --test-name-pattern='proof Node check accepts CI version and newer 24.x patches|proof Node mismatch prints the install command for the CI version|proof --screens selects tour ids and reserved ports stay clear of the app and CI tour' scripts/proof.test.mjs
       - name: Require every changed test to run in CI
         run: node scripts/changed-test-coverage.mjs
       - name: Check merge command patterns in documentation

@@ -7,7 +7,14 @@ import { gatewayPort } from './gateway-port.mjs';
 
 const require = createRequire(new URL('../../engine/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
-const screens = await readScreens(new URL('./screens.json', import.meta.url));
+const allScreens = await readScreens(new URL('./screens.json', import.meta.url));
+const wanted = (process.env.VISUAL_SCREENS ?? '').split(',').map((id) => id.trim()).filter(Boolean);
+const screens = wanted.length ? allScreens.filter((screen) => wanted.includes(screen.id)) : allScreens;
+if (wanted.length && screens.length !== wanted.length) {
+  const known = new Set(allScreens.map((screen) => screen.id));
+  throw new Error(`Unknown VISUAL_SCREENS id(s): ${wanted.filter((id) => !known.has(id)).join(', ')}`);
+}
+if (!screens.length) throw new Error('No screens selected');
 const out = resolve(process.env.VISUAL_OUT ?? 'visual-tour-output');
 const fixture = JSON.parse(await readFile(resolve(out, 'fixture.json'), 'utf8'));
 const token = (await readFile(process.env.VISUAL_TOKEN_FILE, 'utf8')).trim();

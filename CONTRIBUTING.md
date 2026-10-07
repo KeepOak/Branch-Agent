@@ -137,7 +137,15 @@ An agent connected over MCP appears in Branch as an outside agent contact, the s
 
 ### Self-testing a change
 
-Before opening a pull request with a visible effect, an agent (or a person) checks it in a running window:
+Before opening a pull request with a visible effect, an agent (or a person) checks it in a running window. The one-command path is:
+
+```bash
+pnpm proof -- --screens <ids>
+```
+
+That builds the `ciBuildSeed` engine, starts a scratch gateway and window preview on free ports (never `19031`/`19032` or the visual-tour ports `19651`/`5651`), seeds the visual-tour fixtures, and writes PNGs to `artifacts/proof/`. Screen ids come from `scripts/visual-tour/screens.json` (for example `main-chat,settings-general`). Attach those PNGs to the pull request.
+
+Manual equivalent:
 
 1. Build the change and start a scratch engine and the built window on free loopback ports, with their own data folders. Never use a running desktop app's ports or data.
 2. Click through the changed flow, using the engine's browser tool or computer control, or Playwright (`playwright-core` is an engine dependency) where those cannot reach a loopback page.

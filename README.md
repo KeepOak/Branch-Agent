@@ -7,6 +7,7 @@ This is a source snapshot under active development. A feature being present in s
 ## Requirements
 
 - Node.js matching the engine requirement: `>=24.16.0 <25 || >=26.1.0`.
+- CI and agent VMs pin Node `24.19.0` (`.nvmrc`, `.node-version`, `actions/setup-node`). That pin is not the engine range.
 - pnpm `12.5.1` (the engine pins its exact package-manager integrity).
 - Git; npm for the desktop package.
 - A configured model provider for assistant replies.
@@ -78,6 +79,16 @@ Saved `dist/` outputs are source build artifacts. `Source builds` does not creat
 ## Working on Branch
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) is the contributor workflow: repository layout, setting up a worktree with `node scripts/install-worktree.mjs`, the local strict type checks, running tests by name, the merge gate and the 15-minute CI cap, component releases and updates, and working with AI agents through Graft (`branch graft`). [`AGENTS.md`](AGENTS.md) is the short rule list for coding agents.
+
+## Screenshot proof for UI changes
+
+After making UI changes, capture proof screenshots with:
+
+```bash
+pnpm proof -- --screens <screen-ids>
+```
+
+For example, `pnpm proof -- --screens main-chat,settings-general` captures those two screens. Omit `--screens` to capture all screens listed in `scripts/visual-tour/screens.json`. Each selected screen is captured in light and dark at 1280px and 700px. PNGs land in `artifacts/proof/`. If Node is older than 24.19.0, the script prints the exact install command and exits.
 
 ## Working with AI agents
 
