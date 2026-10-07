@@ -735,6 +735,14 @@ export function assertStateDatabaseAccessAllowed(
   });
 }
 
+/**
+ * Whether this process held state ownership for `databasePath` and lost it (its lock was taken, or renewal
+ * failed). Closing then still has to finish: shared-state bookkeeping is the next owner's to reconcile.
+ */
+export function hasLostGatewayStateOwnership(databasePath: string): boolean {
+  return owners.get(resolveGatewayStateOwnerPath(databasePath))?.lost.signal.aborted === true;
+}
+
 /** Cleanup must compete with local roots too; it cannot borrow a live Gateway's authority. */
 export function tryAcquireGatewayStateOwner(databasePath: string): StateDatabaseSchemaLease | null {
   try {
