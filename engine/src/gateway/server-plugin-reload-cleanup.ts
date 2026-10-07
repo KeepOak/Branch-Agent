@@ -352,7 +352,18 @@ export function createPluginReloadCleanup({
               record.format !== "bundle" &&
               previousRegistry.plugins.some(
                 (previous) => previous.id === record.id && getPluginInstance(previous),
-              ),
+              ) &&
+              // Enabling the Gateway computer adds its first provider. The old
+              // CUA generation has only node policy, so it has no provider
+              // resource to hand off and its retained model work may retire
+              // after the new generation is published.
+              !(record.id === "cua-computer" &&
+                nextRegistry.nodeHostCommands.some(
+                  (entry) => entry.pluginId === record.id && entry.command.command === "computer.act",
+                ) &&
+                !previousRegistry.nodeHostCommands.some(
+                  (entry) => entry.pluginId === record.id && entry.command.command === "computer.act",
+                )),
           )
           .map((record) => record.id),
       );

@@ -20,7 +20,8 @@ export type People = {
   keep: Set<string>; trunks: Map<string, string>; reload: () => Promise<void>; openSettings?: (page: string) => void; pic: Picture;
 };
 
-const LEDE = "Everyone who uses Branch: on this computer, on their own devices, and your keepoak.com team. The same list as People › People in the People place.";
+const LEDE = "Everyone who uses Branch, on this computer or their own.";
+const HELP = "Everyone who uses Branch: on this computer, on their own devices, and your keepoak.com team. The same list as People › People in the People place.";
 
 export function PeoplePage(props: SettingsPageProps) {
   const lv = useLevel();
@@ -29,7 +30,7 @@ export function PeoplePage(props: SettingsPageProps) {
   const [invite, setInvite] = useState(false);
   const sel = ctx.people.find((p) => p.id === selId) ?? ctx.self ?? ctx.people[0] ?? null;
   return (
-    <Page title={props.title} lede={LEDE}>
+    <Page title={props.title} lede={LEDE} help={HELP}>
       {ctx.error ? <Status tone="bad" title="Branch couldn’t read who uses it">{visible(ctx.error)}</Status> : null}
       <div className="t10-pp">
         <div className="plist-pp">
@@ -123,7 +124,7 @@ function PersonItem({ ctx, p, current, onSel }: { ctx: People; p: Profile; curre
   );
 }
 
-const row = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "people", title, sec, lv }));
+const row = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "people", title, sec, group: sec, lv }));
 export const PEOPLE_ROWS: RowEntry[] = [
   ...row("You", 0, ["Your own instructions", "Your own accounts"]),
   ...row("Each person", 0, ["Ask for a PIN when switching person", "Keep conversations separate"]),

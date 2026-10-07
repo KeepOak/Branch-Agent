@@ -10,7 +10,7 @@ import work from "./art/branch-work.webp";
 import yay from "./art/branch-yay.webp";
 
 /** The step poses (§4.8.1 "Step performer"); Make it yours and Two more things have none. */
-const POSES: Record<number, string> = { 1: point, 2: think, 4: work, 5: mail, 6: work, 7: sleep, 8: wave, 10: yay };
+const POSES: Record<number, string> = { 1: point, 2: think, 4: work, 5: work, 6: mail, 7: sleep, 8: wave, 10: yay };
 
 export function SetupBrand() {
   return (
@@ -31,5 +31,5 @@ export function WelcomeHero() {
 
 export function StepPose({ step }: { step: number }) {
   const src = POSES[step];
-  return src ? <img className="pose11 ob-pose11" src={src} alt="" draggable={false} /> : null;
+  return src ? <img className={`pose11 ob-pose11 ob-pose-step-${step}`} src={src} alt="" draggable={false} /> : null;
 }

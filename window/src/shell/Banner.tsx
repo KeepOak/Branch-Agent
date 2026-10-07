@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { Pebble } from "../face/Pebble";
 import { Icon } from "./icons";
+import { dismiss, getToasts } from "./notify";
 
 // The notification banner (DESIGN-SPEC §4.10.1): one at a time, top right, 9 s, × and "Open". It says that a
 // Trunk finished something or needs the person, about a conversation that is not the one on screen.
@@ -26,6 +27,7 @@ const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
 export function raiseBanner(news: BannerNews): void {
+  for (const toast of getToasts()) dismiss(toast.id);
   if (current && news.sameAs && current.sameAs === news.sameAs) {
     current = { ...current, count: current.count + 1, at: Date.now() };
   } else {
@@ -47,7 +49,7 @@ const subscribe = (l: () => void) => {
 };
 const snapshot = () => current;
 
-export function BannerView({ onOpen }: { onOpen: (sessionKey: string) => void }) {
+export function BannerView({ onOpen, setupOpen = false }: { onOpen: (sessionKey: string) => void; setupOpen?: boolean }) {
   const banner = useSyncExternalStore(subscribe, snapshot);
   useEffect(() => {
     if (!banner) {
@@ -56,7 +58,7 @@ export function BannerView({ onOpen }: { onOpen: (sessionKey: string) => void })
     const timer = setTimeout(() => clearBanner(banner.id), Math.max(0, banner.at + BANNER_MS - Date.now()));
     return () => clearTimeout(timer);
   }, [banner]);
-  if (!banner) {
+  if (!banner || setupOpen) {
     return null;
   }
   return (

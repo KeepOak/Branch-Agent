@@ -1,4 +1,5 @@
 import { resolveCronTriggerMinIntervalMs } from "../../config/cron-limits.js";
+import { isLockdownError, isLockdownOn } from "../../config/lockdown.js";
 import type { CronActiveJobMarker } from "../active-jobs.js";
 import { resolveAdmittedCronCompletionStatus } from "../completion-status.js";
 import { resolveCronDeliveryPlan } from "../delivery-plan.js";
@@ -115,6 +116,16 @@ export function applyJobResult(
   job.state.runningAtMs = undefined;
   job.state.runningReceiptId = undefined;
   delete job.state.runningScheduleChangeId;
+  // Lockdown (Seasons is resting): a run refused or stopped by Lockdown is not a failure. No error count,
+  // backoff, alert or auto-disable, and the occurrence (one-shot included) stays due for after Lockdown.
+  if (result.status === "error" && (isLockdownError(result.error) || isLockdownOn())) {
+    job.enabled = previousScheduleState.enabled;
+    job.state.nextRunAtMs = previousScheduleState.nextRunAtMs;
+    job.state.pacedNextRunAtMs = previousScheduleState.pacedNextRunAtMs;
+    job.state.forcePreservedNextRunAtMs = previousScheduleState.forcePreservedNextRunAtMs;
+    state.deps.log.info({ jobId: job.id, jobName: job.name }, "cron: run rested under Lockdown");
+    return false;
+  }
   job.state.pacedNextRunAtMs = undefined;
   job.state.forcePreservedNextRunAtMs = undefined;
   job.state.lastRunAtMs = result.startedAt;

@@ -77,13 +77,13 @@ export function OfficePlace({ engine, openConversation, createTrunk }: PlaceProp
   const host = useRef<HTMLDivElement>(null);
   const office = useRef<Office | null>(null);
   const count = useRef(0);
-  const [data, setData] = useState<{ agents: unknown; sessions: unknown; contacts: unknown; outside: unknown } | null>(null);
+  const [data, setData] = useState<{ agents: unknown; sessions: unknown; contacts: unknown; outside: unknown; approvals: unknown } | null>(null);
   const [error, setError] = useState("");
   const [layoutError, setLayoutError] = useState("");
   const [retry, setRetry] = useState(0);
   const [links, setLinks] = useState<OfficeLink[]>([]);
   const [tools, setTools] = useState<OfficeTools>(() => new Map());
-  const roster = useMemo(() => data ? officeRoster(data.agents, data.sessions, data.contacts, data.outside, tools) : null, [data, tools]);
+  const roster = useMemo(() => data ? officeRoster(data.agents, data.sessions, data.contacts, data.outside, tools, data.approvals) : null, [data, tools]);
   const rosterRef = useRef(roster);
   rosterRef.current = roster;
   const createTrunkRef = useRef(createTrunk);
@@ -93,19 +93,22 @@ export function OfficePlace({ engine, openConversation, createTrunk }: PlaceProp
     let live = true;
     const refresh = async () => {
       try {
-        const [agents, sessions, contacts, outside] = await Promise.all([
+        const [agents, sessions, contacts, outside, approvals] = await Promise.all([
           engine.request("agents.list", {}),
           engine.request("sessions.list", { includeGlobal: true, includeUnknown: true, configuredAgentsOnly: true, archived: "all" }),
           engine.request("contacts.list", { includeArchived: true }),
           engine.request("contacts.outside.list", {}).catch(() => ({})),
+          Promise.all(["exec.approval.list", "plugin.approval.list", "branch.approval.list"].map(method =>
+            engine.request(method, {}).catch((error: unknown) => { console.warn(`${method} failed`, error); return { items: [] }; }),
+          )),
         ]);
-        if (live) { setData({ agents, sessions, contacts, outside }); setError(""); }
+        if (live) { setData({ agents, sessions, contacts, outside, approvals }); setError(""); }
       } catch (e) { if (live) setError(e instanceof Error ? e.message : String(e)); }
     };
     void refresh();
     const off = engine.onEvent(({ event, payload }) => {
       if (event === "session.tool" || event === "agent") setTools(current => officeToolEvent(current, event, payload));
-      if (["agents.changed", "contacts.changed", "sessions.changed"].includes(event) || event === "chat" && ["final", "error", "aborted"].includes(str(obj(payload).state))) void refresh();
+      if (["agents.changed", "contacts.changed", "sessions.changed", "exec.approval.requested", "exec.approval.resolved", "plugin.approval.requested", "plugin.approval.resolved", "branch.approval.requested", "branch.approval.resolved"].includes(event) || event === "chat" && ["final", "error", "aborted"].includes(str(obj(payload).state))) void refresh();
       if (event === "session.message") {
         const visit = a2aVisit(payload);
         if (visit) setLinks(current => [...current.slice(-39), visit]);

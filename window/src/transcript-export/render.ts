@@ -91,6 +91,8 @@ export function buildTranscriptEntries(blocks: readonly Block[], includeToolDeta
       if (split.reasoning) entries.push({ kind: "note", summary: "Thinking", content: split.reasoning, timestamp });
       const content = [split.message, attachments].filter(Boolean).join("\n");
       if (content) entries.push({ kind: "message", author: block.kind === "user" ? "user" : "assistant", content, timestamp });
+    } else if (block.kind === "steer") {
+      entries.push({ kind: "message", author: "user", content: block.text, timestamp: block.meta?.timestamp ? new Date(block.meta.timestamp).toISOString() : "" });
     } else if (block.kind === "thinking") {
       if (block.text.trim()) entries.push({ kind: "note", summary: "Thinking", content: block.text, timestamp: "" });
     } else if (block.kind === "step") {

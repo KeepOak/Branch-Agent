@@ -69,7 +69,22 @@ export async function startGatewayServer(
         closeServer({ reason: String(reason) }),
       );
     }
-    return { ...server, close };
+    return {
+      ...server,
+      deactivate: () => {
+        // Releasing our own lock aborts its signal; this is a deliberate transfer,
+        // not a lost owner that should close the still-serving listener.
+        detachOwner?.();
+        return server.deactivate().catch((error: unknown) => {
+          // A failed handoff retained ownership; keep unexpected loss handling.
+          if (signal && !signal.aborted) {
+            signal.addEventListener("abort", onOwnerLost, { once: true });
+          }
+          throw error;
+        });
+      },
+      close,
+    };
   } catch (error) {
     detachOwner?.();
     if (!close && !(error instanceof GatewayStartupCleanupError)) {
@@ -104,6 +119,9 @@ async function startGatewayServerWithRuntime(
       );
       return {
         ...server,
+        deactivate: () => readOnlyWorkers.run(() => server.deactivate()),
+        rollbackDeactivation: () => readOnlyWorkers.run(() => server.rollbackDeactivation()),
+        waitForDeactivatedRuns: () => server.waitForDeactivatedRuns(),
         close: (closeOptions: Parameters<typeof server.close>[0]) =>
           readOnlyWorkers.run(async () => {
             try {
@@ -150,6 +168,9 @@ async function startGatewayServerWithRuntime(
     const server = await runWithSpawnBroker(broker, start);
     return {
       ...server,
+      deactivate: () => runWithSpawnBroker(broker, () => server.deactivate()),
+      rollbackDeactivation: () => runWithSpawnBroker(broker, () => server.rollbackDeactivation()),
+      waitForDeactivatedRuns: () => server.waitForDeactivatedRuns(),
       close: (closeOptions) =>
         runWithSpawnBroker(broker, async () => {
           try {

@@ -1,0 +1,177 @@
+name: Visual tour
+
+on:
+  pull_request:
+    paths: ['window/**', 'engine/**', 'desktop/**', 'scripts/visual-tour/**', 'design/spec-v23/**', '.github/workflows/visual-tour.yml']
+  workflow_dispatch:
+    inputs:
+      parity:
+        description: Capture the v23 preview beside the app
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-tour-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - run: npm install --global pnpm@12.5.1
+      - run: pnpm install --frozen-lockfile && node --import ./scripts/tsx.mjs scripts/build-all.mts ciBuildSeed
+        working-directory: engine
+      - run: pnpm install --frozen-lockfile && pnpm build
+        working-directory: window
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: visual-engine
+          path: |
+            engine/dist/
+            engine/packages/**/dist/
+          retention-days: 3
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: visual-window
+          path: window/dist/
+          retention-days: 3
+
+  tour:
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - run: npm install --global pnpm@12.5.1
+      - run: pnpm install --frozen-lockfile
+        working-directory: engine
+      - run: pnpm install --frozen-lockfile
+        working-directory: window
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: visual-engine
+          path: engine
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: visual-window
+          path: window/dist
+      - name: Test the manifest and dead-click detector
+        run: node --test --test-name-pattern='screens loader|dead-click detector|tour gateway port requires isolated explicit target' scripts/visual-tour/manifest.test.mjs scripts/visual-tour/dead-click.test.mjs scripts/visual-tour/gateway-port.test.mjs
+      - name: Install headless Chromium
+        run: pnpm -C engine exec playwright install chromium
+      - name: Tour the built app
+        env:
+          VISUAL_PARITY: ${{ inputs.parity || 'false' }}
+        run: |
+          set -euo pipefail
+          export BRANCH_HOME="$RUNNER_TEMP/visual-tour-home"
+          export BRANCH_SKIP_CHANNELS=1
+          export BRANCH_GATEWAY_TOKEN="$(openssl rand -hex 32)"
+          export VISUAL_GATEWAY_PORT=19651
+          export VISUAL_WINDOW_PORT=5651
+          export VISUAL_OUT="$RUNNER_TEMP/visual-tour-shots"
+          export VISUAL_TOKEN_FILE="$RUNNER_TEMP/visual-tour-token"
+          printf '%s' "$BRANCH_GATEWAY_TOKEN" > "$VISUAL_TOKEN_FILE"
+          chmod 600 "$VISUAL_TOKEN_FILE"
+          mkdir -p "$BRANCH_HOME" "$VISUAL_OUT"
+          (cd engine && node branch.mjs gateway --dev --port "$VISUAL_GATEWAY_PORT") > "$RUNNER_TEMP/visual-gateway.log" 2>&1 & gateway_pid=$!
+          pnpm -C window exec vite preview --host 127.0.0.1 --port "$VISUAL_WINDOW_PORT" --strictPort > "$RUNNER_TEMP/visual-window.log" 2>&1 & window_pid=$!
+          if [ "$VISUAL_PARITY" = true ]; then
+            export VISUAL_PREVIEW_PORT=5652
+            (cd design/spec-v23 && python3 -m http.server "$VISUAL_PREVIEW_PORT" --bind 127.0.0.1) > "$RUNNER_TEMP/visual-preview.log" 2>&1 & preview_pid=$!
+          fi
+          trap 'kill "$gateway_pid" "$window_pid" "${preview_pid:-}" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 90); do
+            if curl -fsS "http://127.0.0.1:$VISUAL_GATEWAY_PORT/readyz" >/dev/null && curl -fsS "http://127.0.0.1:$VISUAL_WINDOW_PORT/" >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS "http://127.0.0.1:$VISUAL_GATEWAY_PORT/readyz" >/dev/null
+          node scripts/visual-tour/seed.mjs
+          node scripts/visual-tour/tour.mjs
+      - name: Publish summary
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/visual-tour-shots"
+          if [ ! -f "$RUNNER_TEMP/visual-tour-shots/report.md" ]; then
+            printf '# Visual tour could not start\n\nThe build, gateway, or seed failed before screenshots. Inspect the workflow logs.\n' > "$RUNNER_TEMP/visual-tour-shots/report.md"
+          fi
+          cat "$RUNNER_TEMP/visual-tour-shots/report.md" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: visual-tour-shots
+          path: ${{ runner.temp }}/visual-tour-shots/
+          if-no-files-found: warn
+          retention-days: 14
+
+  comment:
+    if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [tour]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        if: needs.tour.result != 'skipped'
+        with:
+          name: visual-tour-shots
+          path: visual-shots
+      - name: Publish screenshot grid and sticky report
+        # A convenience only: a failed push or comment must never block a merge.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          marker='<!-- branch-visual-tour -->'
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          mkdir -p /tmp/visual-tour-publish
+          printf '%s\n\n**[Visual tour run](%s)** · %s\n\n' "$marker" "$run_url" '${{ needs.tour.result }}' > /tmp/visual-tour-publish/body.md
+          if [ -f visual-shots/report.md ]; then cat visual-shots/report.md >> /tmp/visual-tour-publish/body.md; fi
+          if compgen -G 'visual-shots/*.png' >/dev/null; then
+            git fetch origin visual-tour:refs/remotes/origin/visual-tour || true
+            if git show-ref --verify --quiet refs/remotes/origin/visual-tour; then git switch -c visual-tour --track origin/visual-tour; else git switch --orphan visual-tour; fi
+            dest="pr-$PR_NUMBER/run-$GITHUB_RUN_ID"
+            mkdir -p "$dest"
+            cp visual-shots/*.png "$dest/"
+            git add "$dest"
+            git -c user.name='Branch CI' -c user.email='ci@users.noreply.github.com' commit -m "ci: visual tour for PR $PR_NUMBER run $GITHUB_RUN_ID"
+            gh auth setup-git
+            for attempt in 1 2 3 4 5; do
+              if git push origin visual-tour; then break; fi
+              if [ "$attempt" -eq 5 ]; then echo 'Could not push screenshots after 5 attempts'; exit 1; fi
+              sleep "$attempt"
+              git fetch origin visual-tour:refs/remotes/origin/visual-tour
+              git rebase origin/visual-tour
+            done
+            printf '\n### Screenshots\n\n' >> /tmp/visual-tour-publish/body.md
+            for shot in "$dest"/*.png; do
+              name="$(basename "$shot" .png)"
+              printf '[![%s](https://raw.githubusercontent.com/%s/visual-tour/%s)](https://raw.githubusercontent.com/%s/visual-tour/%s) ' "$name" "$GITHUB_REPOSITORY" "$shot" "$GITHUB_REPOSITORY" "$shot" >> /tmp/visual-tour-publish/body.md
+            done
+          fi
+          existing="$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -1)"
+          if [ -n "$existing" ]; then gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -F body=@/tmp/visual-tour-publish/body.md >/dev/null; else gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -F body=@/tmp/visual-tour-publish/body.md >/dev/null; fi

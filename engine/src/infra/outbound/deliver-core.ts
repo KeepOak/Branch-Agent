@@ -2,6 +2,7 @@
 import { resolveChunkMode, resolveTextChunkLimit } from "../../auto-reply/chunk.js";
 import { payloadRequiresDurablePayloadTransport } from "../../channels/message/capabilities.js";
 import { renderPresentationForDelivery } from "../../channels/plugins/outbound/presentation-delivery.js";
+import { assertLockdownOff } from "../../config/lockdown.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { getOrCreatePromise } from "../../shared/lazy-promise.js";
 import { diagnosticErrorCategory } from "../diagnostic-error-metadata.js";
@@ -49,6 +50,7 @@ const log = createSubsystemLogger("outbound/deliver");
 export async function deliverOutboundPayloadsCore(
   params: DeliverOutboundPayloadsCoreParams,
 ): Promise<OutboundDeliveryResult[]> {
+  assertLockdownOff();
   const { cfg, channel, to } = params;
   const preparedBatch = params.preparedBatch;
   if (!preparedBatch) {
@@ -174,6 +176,7 @@ export async function deliverOutboundPayloadsCore(
         }),
     });
     for (const unit of units) {
+      assertLockdownOff();
       throwIfAborted(abortSignal);
       const resultIndex = results.length;
       await recordIdentifiedDeliveryResult(
@@ -356,6 +359,7 @@ export async function deliverOutboundPayloadsCore(
             sendTextOnlyErrorPayloads: deliveryHandler.sendTextOnlyErrorPayloads,
           }))
       ) {
+        assertLockdownOff();
         const delivery = await deliveryHandler.sendPayload(
           effectivePayload,
           withPreparedTarget(applySendReplyToConsumption(sendOverrides)),
@@ -375,6 +379,7 @@ export async function deliverOutboundPayloadsCore(
         }
       } else if (payloadSummary.mediaUrls.length === 0) {
         if (deliveryHandler.sendFormattedText) {
+          assertLockdownOff();
           await recordIdentifiedDeliveryResults(
             await deliveryHandler.sendFormattedText(
               payloadSummary.text,
@@ -414,6 +419,7 @@ export async function deliverOutboundPayloadsCore(
         });
         const sendMedia = deliveryHandler.sendFormattedMedia ?? deliveryHandler.sendMedia;
         for (const unit of mediaUnits) {
+          assertLockdownOff();
           throwIfAborted(abortSignal);
           const resultIndex = results.length;
           const delivery = await sendMedia(

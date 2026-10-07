@@ -16,7 +16,7 @@ export const CAN_DO: [string, string, CanDoGo][] = [
   ["Run on a schedule", "A morning brief at 7:00", { kind: "place", place: "automations" }],
   ["Use its own computer", "A browser and a desktop of its own", { kind: "settings", page: "computer" }],
   ["Talk", "Voice, both ways", { kind: "settings", page: "voice" }],
-  ["Work from your phone", "Approve from anywhere", { kind: "pair" }],
+  ["Work from your phone", "Allow requests from anywhere", { kind: "pair" }],
   ["Remember", "What you tell it, and where it came from", { kind: "place", place: "library" }],
 ];
 

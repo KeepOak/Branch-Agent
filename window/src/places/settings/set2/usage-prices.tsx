@@ -34,7 +34,7 @@ export function ModelPrices({ engine }: { engine: WindowEngine }) {
     if (Array.isArray(models)) void config.set(["models", "providers", r.provider, "models"], withPrice(models, r.index, field, v));
   };
   return (
-    <Sec title="Model prices" hint="What Branch counts each model at, in dollars per million tokens. Spend and the report use these.">
+    <Sec title="Model prices" hint="What Branch counts each model at, in dollars per million tokens." help="What Branch counts each model at, in dollars per million tokens. Spend and the report use these.">
       {rows.length ? rows.map((r) => (
         <Ctl key={`${r.provider}/${str(r.model.id)}`} title={str(r.model.name) || str(r.model.id)} sub={`${r.provider} · ${str(r.model.id)}`}>
           {FIELDS.map(([field, label]) => (

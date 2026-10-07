@@ -32,7 +32,7 @@ export function SpecialistsTab({ engine, level, trunks, facts, openAgents }: { e
     <EmptyLine icon={<Glyph name="sparkle" size={22} />}>No specialists yet.</EmptyLine>
     <p className="cz-hint cz-center" title={shownWhy(NO_DEFINITIONS)}>Helper conversations a Trunk starts stay in its conversation list.</p>
     <Fleet engine={engine} trunks={trunks} running={facts.running} />
-    <section className="cz-block"><h2 className="cz-h2">How Trunks work together</h2><p className="cz-hint">The pattern a room or a big task uses. Branch picks one; you can choose.</p>
+    <section className="cz-block"><h2 className="cz-h2">How Trunks work together</h2><p className="cz-hint">The pattern a group or a big job uses. Branch picks one; you can choose.</p>
       <div className="cz-pats" role="radiogroup" aria-label="How Trunks work together">{PATTERNS.map(p => <button key={p.id} type="button" role="radio" aria-checked={false} className="cz-pat" disabled title={shownWhy(NO_PATTERN)}>
         <svg viewBox="0 0 52 52" width="52" height="52" aria-hidden="true">{p.lines.map((l, i) => <line key={i} x1={l[0]} y1={l[1]} x2={l[2]} y2={l[3]} />)}{p.dots.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3.5" className={i === 0 ? "lead" : undefined} />)}</svg>
         <b>{p.title}</b><small>{p.line}</small></button>)}</div></section>
