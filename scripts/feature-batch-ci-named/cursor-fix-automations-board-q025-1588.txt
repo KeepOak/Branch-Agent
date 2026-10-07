@@ -1,2 +1,2 @@
-window:src/places/automations/board-mapping.test.tsx
 window:src/places/automations/Board.test.tsx
+window:src/places/automations/board-mapping.test.tsx
