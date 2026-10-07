@@ -20,6 +20,25 @@ describe("servicesOf", () => {
     expect(out.some((s) => s.id === "key:anthropic")).toBe(true);
     expect(out.find((s) => s.id === "plan:openai")?.logins.map((l) => l.id)).toEqual(["openai/openai-device-code"]);
   });
+
+  it("deduplicates plan services and reports configured local runtimes under On this computer", () => {
+    const out = servicesOf([
+      { provider: "minimax", loginOptions: [{ id: "minimax/oauth", kind: "oauth" }] },
+      { provider: "minimax", loginOptions: [{ id: "minimax/oauth", kind: "oauth" }] },
+      { provider: "opencode", loginOptions: [{ id: "opencode/oauth", kind: "oauth" }] },
+      { provider: "chutes", apiKeySupported: true, loginOptions: [{ id: "chutes/oauth", kind: "oauth" }] },
+      { provider: "llama-cpp", apiKeySupported: true },
+      { provider: "lmstudio", apiKeySupported: true },
+      { provider: "ollama", apiKeySupported: true },
+    ], [], { prepareOptions: [{ id: "llama-cpp", label: "llama.cpp" }] }, [{ provider: "llama-cpp", id: "local", available: true }]);
+    expect(out.filter((s) => s.kind === "plan").map((s) => s.brand)).toEqual(["minimax", "opencode", "chutes"]);
+    expect(out.find((s) => s.brand === "chutes")?.keySupported).toBe(true);
+    expect(out.filter((s) => s.brand === "chutes")).toHaveLength(1);
+    expect(out.filter((s) => s.kind === "key")).toEqual([]);
+    expect(out.filter((s) => s.kind === "local").map((s) => [s.brand, s.state])).toEqual([
+      ["llama-cpp", "Ready to use"], ["lmstudio", "Not set up"], ["ollama", "Not set up"],
+    ]);
+  });
 });
 
 describe("a new Claude sign-in's label", () => {

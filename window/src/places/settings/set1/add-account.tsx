@@ -15,8 +15,8 @@ import { providersOf, tokenLabel, type Provider } from "./accounts";
 export type AddStart = { provider?: string };
 type Kind = "plan" | "key" | "local" | "custom";
 /** One service tile: a provider with plan sign-ins or a key, or an engine setup option (local or your own). */
-export type Service = { id: string; brand: string; name: string; kind: Kind; signedIn: number; logins: RecordValue[]; choice?: string };
-type Step = { n: 1 } | { n: 2; svc: Service } | { n: 2; run: WizardStart; svc: Service } | { n: 3; svc: Service; before: string[] };
+export type Service = { id: string; brand: string; name: string; kind: Kind; signedIn: number; logins: RecordValue[]; choice?: string; state?: string; keySupported?: boolean };
+type Step = { n: 1 } | { n: 2; svc: Service } | { n: 2; run: WizardStart; svc: Service; before: string[] } | { n: 3; svc: Service; before: string[] };
 
 const FRESH_WORD: Record<string, string> = { ok: "Connected", static: "Connected", expiring: "Signing in again soon", expired: "Signed out", missing: "Sign-in missing" };
 const KIND_LABEL: Record<Kind, string> = { plan: "Your plan", key: "A key", local: "On this computer", custom: "Your own" };
@@ -39,44 +39,75 @@ function addSecretLogins(out: Service[], manual: RecordValue[], count: (id: stri
 }
 
 /** Every service, from the engine's provider capabilities and its setup options. */
-export function servicesOf(caps: RecordValue[], providers: Provider[], detect: RecordValue | undefined): Service[] {
+const LOCAL_RUNTIMES = new Set(["llama-cpp", "lmstudio", "ollama"]);
+export function servicesOf(caps: RecordValue[], providers: Provider[], detect: RecordValue | undefined, models: RecordValue[] = []): Service[] {
   const count = (id: string, key: boolean) => providers.filter((p) => p.provider === id).flatMap((p) => p.profiles).filter((a) => (a.type === "api_key") === key).length;
   const out: Service[] = [];
+  const seen = new Set<string>();
   for (const c of caps) {
     const id = text(c.provider);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    if (LOCAL_RUNTIMES.has(id)) continue;
     const logins = list(c.loginOptions).filter((o) => o.kind === "oauth" || o.kind === "device-code");
     const name = providers.find((p) => p.provider === id)?.displayName ?? text(logins[0]?.groupLabel ?? id);
-    if (logins.length) out.push({ id: `plan:${id}`, brand: id, name: serviceName(id, name), kind: "plan", signedIn: count(id, false), logins });
-    if (c.apiKeySupported === true) out.push({ id: `key:${id}`, brand: id, name: serviceName(id, name, true), kind: "key", signedIn: count(id, true), logins: [] });
+    if (logins.length) out.push({ id: `plan:${id}`, brand: id, name: serviceName(id, name), kind: "plan", signedIn: count(id, false) + count(id, true), logins, keySupported: c.apiKeySupported === true });
+    else if (c.apiKeySupported === true) out.push({ id: `key:${id}`, brand: id, name: serviceName(id, name, true), kind: "key", signedIn: count(id, true), logins: [] });
   }
   addSecretLogins(out, list(detect?.manualProviders), count);
-  for (const o of list(detect?.prepareOptions)) out.push({ id: `local:${text(o.id)}`, brand: text(o.brandId ?? o.id), name: visible(o.label), kind: "local", signedIn: 0, logins: [], choice: text(o.id) });
+  for (const o of list(detect?.prepareOptions)) {
+    const brand = text(o.brandId ?? o.id);
+    const ready = models.some((m) => text(m.provider) === brand && m.available !== false);
+    if (!out.some((s) => s.kind === "local" && s.brand === brand)) out.push({ id: `local:${text(o.id)}`, brand, name: visible(o.label), kind: "local", signedIn: 0, logins: [], choice: text(o.id), state: ready ? "Ready to use" : "Not set up" });
+  }
+  for (const c of caps) {
+    const brand = text(c.provider);
+    if (!LOCAL_RUNTIMES.has(brand) || out.some((s) => s.kind === "local" && s.brand === brand)) continue;
+    const ready = models.some((m) => text(m.provider) === brand && m.available !== false);
+    out.push({ id: `local:${brand}`, brand, name: serviceName(brand), kind: "local", signedIn: 0, logins: [], choice: brand, state: ready ? "Ready to use" : "Not set up" });
+  }
   for (const o of list(detect?.authOptions).filter((x) => x.kind === "custom")) out.push({ id: `custom:${text(o.id)}`, brand: text(o.brandId ?? o.id), name: visible(o.label), kind: "custom", signedIn: 0, logins: [], choice: text(o.id) });
-  return out;
+  const unique: Service[] = [];
+  for (const service of out) {
+    const existing = unique.find((s) => s.kind === service.kind && s.name.toLowerCase() === service.name.toLowerCase());
+    if (!existing) { unique.push(service); continue; }
+    existing.signedIn = Math.max(existing.signedIn, service.signedIn);
+    for (const login of service.logins) if (!existing.logins.some((o) => o.id === login.id)) existing.logins.push(login);
+  }
+  return unique;
 }
 
 type Props = { engine: WindowEngine; start: AddStart; caps: RecordValue[]; providers: Provider[]; agent: { agentId?: string }; onClose: (added: boolean) => void };
 
 export function AddAccountDialog({ engine, start, caps, providers, agent, onClose }: Props) {
   const detect = useResource<RecordValue>(engine, "branch.setup.detect", agent);
-  const services = useMemo(() => servicesOf(caps, providers, detect.data), [caps, providers, detect.data]);
-  const first = start.provider && !detect.loading ? services.find((s) => s.brand === start.provider && s.kind === "plan") ?? services.find((s) => s.brand === start.provider) : undefined;
+  const modelList = useResource<RecordValue>(engine, "models.list", { ...agent, includeDetails: true });
+  const services = useMemo(() => servicesOf(caps, providers, detect.data, list(modelList.data?.models)), [caps, providers, detect.data, modelList.data]);
+  const first = start.provider ? services.find((s) => s.brand === start.provider && s.kind === "plan") ?? (!detect.loading ? services.find((s) => s.brand === start.provider) : undefined) : undefined;
   const [step, setStep] = useState<Step>(first ? { n: 2, svc: first } : { n: 1 });
   useEffect(() => {
-    if (!start.provider || detect.loading) return;
-    const preferred = services.find((service) => service.brand === start.provider && service.kind === "plan") ?? services.find((service) => service.brand === start.provider);
-    if (preferred) setStep((current) => current.n === 1 || (current.n === 2 && !("run" in current) && current.svc.brand === start.provider && current.svc.kind === "key" && preferred.kind === "plan") ? { n: 2, svc: preferred } : current);
-  }, [detect.loading, services, start.provider]);
+    if (!start.provider) return;
+    const preferred = services.find((service) => service.brand === start.provider && service.kind === "plan") ?? (!detect.loading ? services.find((service) => service.brand === start.provider) : undefined);
+    if (preferred) setStep((current) => current.n === 1 || (current.n === 2 && !("run" in current) && current.svc.brand === start.provider) ? { n: 2, svc: preferred } : current);
+  }, [services, start.provider, detect.loading]);
+  useEffect(() => {
+    setStep((current) => {
+      if (current.n !== 2 || "run" in current) return current;
+      const refreshed = services.find((service) => service.id === current.svc.id);
+      return refreshed && refreshed !== current.svc ? { n: 2, svc: refreshed } : current;
+    });
+  }, [services]);
   const [added, setAdded] = useState(false);
   const ids = providers.flatMap((p) => p.profiles.map((a) => a.profileId));
-  const signedIn = () => { setAdded(true); if (step.n === 2) setStep({ n: 3, svc: step.svc, before: ids }); };
+  const signedIn = () => { setAdded(true); setStep((current) => current.n === 2 ? { n: 3, svc: current.svc, before: "run" in current ? current.before : ids } : current); };
   const title = step.n === 1 ? "Add an account" : step.n === 2 && step.svc.brand === "anthropic" && step.svc.kind === "plan" ? "Sign in with Claude" : `Add a ${step.svc.name} account`;
   return (
     <Dialog title={title} wide={step.n === 1} onClose={() => onClose(added)} testid="add-account" footer={<StepFoot step={step} onBack={() => setStep({ n: 1 })} onClose={() => onClose(added)} />}>
       <div className="wiz-dots" aria-hidden="true">{[1, 2, 3].map((i) => <i key={i} className={i <= step.n ? "wz" : ""} />)}</div>
-      {step.n === 1 ? <PickService services={services} detect={detect} engine={engine} agent={agent} onPick={(svc) => setStep({ n: 2, svc })} onUsed={() => { setAdded(true); onClose(true); }} /> : null}
-      {step.n === 2 && !("run" in step) ? <SignIn engine={engine} svc={step.svc} agent={agent} onRun={(run) => setStep({ n: 2, svc: step.svc, run })} onKey={signedIn} /> : null}
-      {step.n === 2 && "run" in step ? <RunWizard engine={engine} run={step.run} onDone={signedIn} onBack={() => setStep({ n: 1 })} /> : null}
+      {step.n === 1 && start.provider && detect.loading ? <p className="aa-lede">Finding the {serviceName(start.provider)} sign-in…</p> : null}
+      {step.n === 1 && (!start.provider || !detect.loading) ? <PickService services={services} detect={detect} engine={engine} agent={agent} onPick={(svc) => setStep({ n: 2, svc })} onUsed={() => { setAdded(true); onClose(true); }} /> : null}
+      {step.n === 2 && !("run" in step) ? <SignIn engine={engine} svc={step.svc} agent={agent} onRun={(run) => setStep({ n: 2, svc: step.svc, run, before: ids })} onKey={signedIn} /> : null}
+      {step.n === 2 && "run" in step ? <RunWizard engine={engine} run={step.run} brand={step.svc.brand} before={step.before} onDone={signedIn} onBack={() => setStep({ n: 1 })} /> : null}
       {step.n === 3 ? <Placed engine={engine} svc={step.svc} before={step.before} agent={agent} onDone={() => onClose(true)} /> : null}
     </Dialog>
   );
@@ -121,7 +152,7 @@ function Group({ kind, services, onPick }: { kind: Kind; services: Service[]; on
           <button key={s.id} type="button" className="prov" onClick={() => onPick(s)}>
             <Logo id={s.brand} name={s.name} size={34} />
             <b>{s.name}</b>
-            <small>{s.signedIn ? `${s.signedIn} signed in` : "Not signed in"} · {KIND_SUB[kind]}</small>
+            <small>{s.state ?? (s.signedIn ? `${s.signedIn} signed in` : "Not signed in")} · {KIND_SUB[kind]}</small>
           </button>
         ))}
       </div>
@@ -169,6 +200,7 @@ function SignIn({ engine, svc, agent, onRun, onKey }: SignInProps) {
         {rest.filter((o) => o.kind !== "setup-secret").length ? <div className="acts">{rest.filter((o) => o.kind !== "setup-secret").map((o) => <button key={text(o.id)} type="button" className="btn sm" title={o.hint ? visible(o.hint) : undefined} onClick={() => go(o)}>{o.kind === "device-code" ? "Sign in with a code instead" : visible(o.label)}</button>)}</div> : null}
       </div>
       {rest.filter((o) => o.kind === "setup-secret").map((o) => <details key={text(o.id)}><summary>Paste a token instead</summary><SecretSignIn engine={engine} svc={svc} login={o} agent={agent} onRun={onRun} /></details>)}
+      {svc.keySupported ? <details><summary>Add an API key instead</summary><KeyEntry engine={engine} svc={svc} agent={agent} onSaved={onKey} /></details> : null}
       <p className="hint">Branch never sees or stores your password.</p>
     </>
   );
@@ -262,10 +294,22 @@ function KeyEntry({ engine, svc, agent, onSaved }: { engine: WindowEngine; svc: 
   );
 }
 
-function RunWizard({ engine, run, onDone, onBack }: { engine: WindowEngine; run: WizardStart; onDone: () => void; onBack: () => void }) {
+function RunWizard({ engine, run, brand, before = [], onDone, onBack }: { engine: WindowEngine; run: WizardStart; brand?: string; before?: string[]; onDone: () => void; onBack: () => void }) {
   const w = useWizard(engine, run);
   const phase = w.view.phase;
   useEffect(() => { if (phase === "done") onDone(); }, [phase, onDone]);
+  useEffect(() => {
+    if (brand !== "anthropic" || run.method !== "models.authLogin" || phase === "done" || phase === "error") return;
+    let live = true;
+    const timer = setInterval(() => {
+      void engine.request<RecordValue>("models.authStatus", {}).then((status) => {
+        if (!live) return;
+        const fresh = providersOf(status.providers).find((p) => p.provider === brand)?.profiles.some((a) => !before.includes(a.profileId) && (a.status === "ok" || a.status === "static"));
+        if (fresh) { live = false; clearInterval(timer); w.cancel(); onDone(); }
+      }).catch(() => undefined);
+    }, 1000);
+    return () => { live = false; clearInterval(timer); };
+  }, [brand, run.method, phase, engine, before.join("|"), onDone]);
   return (
     <>
       <WizardBody wizard={w} doneText="Signed in." />

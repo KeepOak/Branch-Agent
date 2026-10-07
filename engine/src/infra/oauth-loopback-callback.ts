@@ -263,7 +263,7 @@ export async function startOAuthLoopbackCallbackServer(params: {
       body: renderOAuthPage({
         title: "Authorization received",
         heading: "Authorization received",
-        message: "Return to the terminal while Branch Agent finishes.",
+        message: "Return to Branch while sign-in finishes.",
       }),
       contentType: "text/html; charset=utf-8",
     }));

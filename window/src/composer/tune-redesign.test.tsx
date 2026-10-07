@@ -14,14 +14,15 @@ afterEach(async () => {
   localStorage.clear();
 });
 
-async function mount() {
+async function mount(options?: { model?: string; patch?: () => Promise<unknown> }) {
+  let model = options?.model ?? "openai/test";
   const request = vi.fn(async (method: string) => {
     if (method === "agents.list") return { defaultId: "research", agents: [{ id: "research", name: "Research" }] };
-    if (method === "sessions.describe") return { session: { model: "openai/test", permissionMode: "ask", estimatedCostUsd: 0.5 } };
+    if (method === "sessions.describe") return { session: { modelOverride: model.split("/").slice(1).join("/"), providerOverride: model.split("/")[0], permissionMode: "ask", estimatedCostUsd: 0.5 } };
     if (method === "sessions.list") return { defaults: { model: "openai/test" }, sessions: [] };
-    if (method === "models.list") return { models: [{ id: "test", provider: "openai", name: "Test Model", available: true }] };
+    if (method === "models.list") return { models: [{ id: "test", provider: "openai", name: "Test Model", available: true }, { id: "gpt-6.1-sol", provider: "openai-codex", name: "GPT-6.1-Sol", available: true }, { id: "local", provider: "llama-cpp", name: "Local", available: true, local: true }] };
     if (method === "models.authStatus") return { providers: [] };
-    if (method === "sessions.patch") return {};
+    if (method === "sessions.patch") { await options?.patch?.(); model = "openai-codex/gpt-6.1-sol"; return {}; }
     if (method === "sessions.create") return { key: "agent:research:job" };
     if (method === "sessions.fork") return { sessionKey: "agent:research:fork" };
     return {};
@@ -29,13 +30,35 @@ async function mount() {
   const engine: WindowEngine = { sessionKey: "agent:research:main", agentId: "research", request: request as unknown as WindowEngine["request"], onEvent: () => () => {}, scopes: ["operator.admin"] };
   const opened = vi.fn();
   const conversation = vi.fn();
+  const sent = vi.fn();
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
-  await act(async () => root?.render(<Composer name="Research" working={false} disabled={false} onSend={() => {}} onStop={() => {}} engine={engine} onOpen={opened} onOpenConversation={conversation} lastUserEntryId="entry-1" />));
-  return { host, request, opened, conversation };
+  await act(async () => root?.render(<Composer name="Research" working={false} disabled={false} onSend={sent} onStop={() => {}} engine={engine} onOpen={opened} onOpenConversation={conversation} lastUserEntryId="entry-1" />));
+  return { host, request, opened, conversation, sent };
 }
 
 describe("P54 one composer symbol", () => {
+  it("does not send the previous local model while a picked model is being saved", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const { host, request, sent } = await mount({ model: "llama-cpp/local", patch: () => pending });
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="tune-button"]')!.click());
+    const choice = [...host.querySelectorAll<HTMLButtonElement>('[data-testid="model-option"]')].find((b) => b.textContent?.includes("GPT-6.1-Sol"))!;
+    await act(async () => choice.click());
+    await act(async () => {
+      const box = host.querySelector<HTMLTextAreaElement>('[data-testid="composer"]')!;
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(box, "Use the picked model");
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(host.querySelector<HTMLButtonElement>('.send')?.disabled).toBe(true);
+    await act(async () => host.querySelector<HTMLFormElement>("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(sent).not.toHaveBeenCalled();
+    await act(async () => release());
+    expect(request).toHaveBeenCalledWith("sessions.patch", expect.objectContaining({ model: "openai-codex/gpt-6.1-sol" }));
+    expect(host.querySelector<HTMLButtonElement>('.send')?.disabled).toBe(false);
+    await act(async () => host.querySelector<HTMLButtonElement>('.send')!.click());
+    expect(sent).toHaveBeenCalledTimes(1);
+  });
   it("shows one tune symbol and Model, Access, Thread, Status and Usage in its popover", async () => {
     const { host } = await mount();
     expect(host.querySelectorAll('[data-testid="tune-button"]')).toHaveLength(1);

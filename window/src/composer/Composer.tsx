@@ -104,6 +104,8 @@ export function Composer(props: Props) {
   const [photo, setPhoto] = useState(false);
   const [picture, setPicture] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [modelChanging, setModelChanging] = useState(false);
+  const modelPatchPending = useRef(false);
   const [caret, setCaret] = useState(0);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [sel, setSel] = useState(0);
@@ -183,6 +185,7 @@ export function Composer(props: Props) {
   };
 
   const submit = (alt: boolean) => {
+    if (modelPatchPending.current) return;
     const plan = planSend(draft.text, draft.files.length > 0, working, queueMode, alt);
     if (plan.kind === "nothing") return;
     if (noModel && plan.kind !== "command" && !draft.text.trim().startsWith("/")) return;
@@ -380,7 +383,7 @@ export function Composer(props: Props) {
   const hasDraft = draft.text.trim().length > 0 || draft.files.length > 0;
   const stopMode = working && !hasDraft;
   // Sessions and history arrive before the engine finishes starting; sending waits for this Trunk.
-  const ready = hasDraft && !disabled && draft.preparing === 0 && !isPreparationPending(conversationProblem) && (!noModel || draft.text.trim().startsWith("/"));
+  const ready = hasDraft && !disabled && !modelChanging && draft.preparing === 0 && !isPreparationPending(conversationProblem) && (!noModel || draft.text.trim().startsWith("/"));
   const cost = num(row.estimatedCostUsd);
   const temporary = props.draftTemporary === true || row.incognito === true;
 
@@ -593,7 +596,11 @@ export function Composer(props: Props) {
             thinking={thinking}
             trunkName={trunkName}
             isAdmin={admin}
-            patch={async (f) => void (await patch(f))}
+            patch={async (f) => {
+              if ("model" in f) { modelPatchPending.current = true; setModelChanging(true); }
+              try { await patch(f); }
+              finally { if ("model" in f) { modelPatchPending.current = false; setModelChanging(false); } }
+            }}
             onKeepForTrunk={async (m) => {
               try {
                 await engine?.request("agents.update", { agentId: conv.trunkId, model: m.ref });

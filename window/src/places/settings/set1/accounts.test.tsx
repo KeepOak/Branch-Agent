@@ -40,6 +40,27 @@ async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
 }
 
 describe("Settings › Accounts", () => {
+  it("advances Claude browser sign-in when the saved OAuth account appears", async () => {
+    let loginStarted = false;
+    let nextCalls = 0;
+    const request = vi.fn(async (method: string) => {
+      if (method === "models.authStatus") return { providers: loginStarted ? [{ provider: "anthropic", displayName: "Claude", status: "ok", profiles: [{ profileId: "anthropic:new@example.test", type: "oauth", status: "ok", email: "new@example.test" }] }] : [], providerCapabilities: [{ provider: "anthropic", loginOptions: [{ id: "anthropic/claude-browser", kind: "oauth", label: "Sign in with Claude" }] }] };
+      if (method === "models.authLogin") { loginStarted = true; return {}; }
+      if (method === "wizard.next") return ++nextCalls === 1
+        ? { done: false, step: { id: "progress", type: "progress", executor: "gateway", message: "Exchanging authorization code for tokens…" } }
+        : await new Promise(() => undefined);
+      if (method === "branch.setup.detect") return {};
+      if (method === "config.get") return { hash: "test", valid: true, config: {} };
+      return {};
+    });
+    const engine = { request, onEvent: () => () => undefined, sessionKey: "test", scopes: [] } as unknown as WindowEngine;
+    await render(engine);
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add a Claude account")!.click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg button")].find((b) => b.textContent === "Sign in with Claude")!.click());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1200)); });
+    expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("new@example.test");
+    expect(document.querySelector('[data-testid="add-account"]')?.textContent).not.toContain("Waiting for the sign-in");
+  });
   it("opens Claude browser sign-in first and keeps token paste collapsed", async () => {
     const { engine, request } = engineOf({
       "models.authStatus": { providers: PROVIDERS, providerCapabilities: [...CAPS, { provider: "anthropic", apiKeySupported: true, loginOptions: [{ id: "anthropic/claude-browser", kind: "oauth", label: "Sign in with Claude" }] }] },
@@ -48,6 +69,7 @@ describe("Settings › Accounts", () => {
     await render(engine);
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add a Claude account")!.click());
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Sign in with Claude");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     const fallback = document.querySelector<HTMLDetailsElement>(".dlg details")!;
     expect(fallback.open).toBe(false);
     expect(fallback.textContent).toContain("claude setup-token");
