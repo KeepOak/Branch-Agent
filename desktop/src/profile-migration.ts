@@ -12,31 +12,40 @@ export function readPreparedNormalProfile(home: string): { legacyDevMode: false;
   return { legacyDevMode: false };
 }
 
-interface MigrationCounts { copied: number; linksSkipped: number }
+interface MigrationCounts { copied: number; linksSkipped: number; failed: number }
 
-function mergeMissing(source: string, destination: string, counts: MigrationCounts, afterCopy?: () => void, root = false): void {
+function mergeMissing(source: string, destination: string, counts: MigrationCounts, log?: (message: string) => void,
+  afterCopy?: () => void, relative = "", resuming = false): void {
   const existing = new Set(readdirSync(destination));
   for (const entry of readdirSync(source, { withFileTypes: true })) {
     const from = join(source, entry.name);
     const to = join(destination, entry.name);
-    if (entry.name === "branch.json" && root) continue;
+    if (entry.name === "branch.json" && !relative) continue;
     if (entry.isFile() && /-(?:wal|shm)$/.test(entry.name) && existing.has(entry.name.replace(/-(?:wal|shm)$/, ""))) continue;
     // Links (on Windows also junctions, such as plugin-skills entries pointing into an engine release that may be gone)
     // are never followed or copied: they point outside the profile, the engine recreates its own, and the original
     // stays in the migrated archive. Following one is how a dangling junction killed the app (fs.cpSync, Node 24).
     if (entry.isSymbolicLink()) { counts.linksSkipped++; continue; }
     if (!entry.isFile() && !entry.isDirectory()) continue; // Sockets and FIFOs are not profile data.
-    if (entry.isDirectory()) {
-      if (!existsSync(to)) {
-        mkdirSync(to);
-      } else if (!lstatSync(to).isDirectory()) {
-        continue; // Keep both versions: the old one remains in the migrated archive.
+    try {
+      if (entry.isDirectory()) {
+        if (!existsSync(to)) {
+          mkdirSync(to);
+        } else if (!lstatSync(to).isDirectory()) {
+          continue; // Keep both versions: the old one remains in the migrated archive.
+        }
+        mergeMissing(from, to, counts, log, afterCopy, join(relative, entry.name), resuming);
+      } else {
+        const preferArchive = resuming && relative === "workspace" && /^(?:AGENTS|SOUL|USER|IDENTITY)\.md$/.test(entry.name);
+        if (existsSync(to) && !preferArchive) continue;
+        // A failed first launch may have let the engine seed these templates before the next migration attempt.
+        copyFileSync(from, to, preferArchive ? 0 : constants.COPYFILE_EXCL);
+        counts.copied++;
+        afterCopy?.();
       }
-      mergeMissing(from, to, counts, afterCopy);
-    } else if (!existsSync(to)) {
-      copyFileSync(from, to, constants.COPYFILE_EXCL); // Never overwrite the normal profile.
-      counts.copied++;
-      afterCopy?.();
+    } catch (error) {
+      counts.failed++;
+      log?.(`Profile migration copy failed (${errorDetails(error, from)})`);
     }
   }
 }
@@ -74,7 +83,7 @@ export function prepareNormalProfile(home: string, afterCopy?: () => void, log?:
   const config = join(normal, "branch.json");
   let archive: string | undefined;
   let started: number | undefined;
-  const counts: MigrationCounts = { copied: 0, linksSkipped: 0 };
+  const counts: MigrationCounts = { copied: 0, linksSkipped: 0, failed: 0 };
   try {
     if (!existsSync(normal)) {
       mkdirSync(normal, { recursive: true });
@@ -93,6 +102,7 @@ export function prepareNormalProfile(home: string, afterCopy?: () => void, log?:
     if (archive) {
       log?.("Profile migration start");
       started = Date.now();
+      const resuming = existsSync(archive);
       if (existsSync(dev) && !existsSync(archive)) renameWithRetry(dev, archive);
       if (!lstatSync(archive).isDirectory()) throw new Error("Legacy profile archive is not a directory");
       // Keep the default profile launchable even if copying a workspace file fails mid-merge.
@@ -102,17 +112,17 @@ export function prepareNormalProfile(home: string, afterCopy?: () => void, log?:
       // workspace and crashed the app on a dangling junction before the engine could start.
       // The desktop's --dev flag selected this workspace, but its config and live
       // databases already lived under .branch. Preserve any separate dev-profile
-      // files without replacing the normal profile's newer files.
-      mergeMissing(archive, normal, counts, afterCopy, true);
+      // files without replacing the normal profile's newer files on the first pass.
+      mergeMissing(archive, normal, counts, log, afterCopy, "", resuming);
     }
     writeDefaultConfig(config, normal);
-    if (!existsSync(marker)) {
+    if (!existsSync(marker) && counts.failed === 0) {
       writeFileSync(marker, JSON.stringify({ archive }) + "\n", { flag: "wx" });
     }
-    if (started !== undefined) log?.(`Profile migration done: ${counts.copied} copied, ${counts.linksSkipped} links skipped, ${Date.now() - started} ms`);
-    return { legacyDevMode: false };
+    if (started !== undefined) log?.(`Profile migration done: ${counts.copied} copied, ${counts.linksSkipped} links skipped, ${counts.failed} failed, ${Date.now() - started} ms`);
+    return { legacyDevMode: false, note: counts.failed ? `${counts.failed} profile migration file(s) failed; will resume on next launch.` : undefined };
   } catch (error) {
-    // Keep the archive and any copied files. The next launch resumes by copying only missing entries.
+    // Keep the archive and any copied files. The next launch resumes the incomplete merge.
     return { legacyDevMode: existsSync(dev), note: `Profile migration failed (${errorDetails(error, archive ?? normal)}); will resume on next launch.` };
   }
 }
