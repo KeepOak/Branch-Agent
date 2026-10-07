@@ -388,8 +388,8 @@ export class BranchServer implements MessageTransport {
         this.ids.set(agent.id, num);
         this.branchIds.set(num, agent.id);
       }
+      const look = this.lookOf(agent);
       if (!os.characters.has(num)) {
-        const look = this.lookOf(agent);
         this.deliver({
           type: 'agentCreated',
           id: num,
@@ -401,6 +401,11 @@ export class BranchServer implements MessageTransport {
           skipSpawnEffect: initial || this.isReducedMotion(),
         });
         this.snaps.delete(agent.id);
+      } else {
+        const ch = os.characters.get(num)!;
+        if (ch.spriteKey !== look.spriteKey || ch.palette !== look.palette || ch.hueShift !== look.hueShift) {
+          this.applyLook(agent.id);
+        }
       }
       this.syncAgent(agent, num);
     }

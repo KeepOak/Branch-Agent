@@ -50,6 +50,8 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 14. **Releases are automatic.** A merge touching `engine/`, `window/` or `desktop/` publishes a component release (engine, window, desktop, desktopRuntime) that installed apps pick up within the hour and apply on restart. Treat every merge as shipping.
 
+15. **Stop processes you start.** Any test, self-test or proof script that starts a process (MCP servers, mcporter, node, browsers) must stop it and its children before finishing. Leftover processes lock the app install folder and block updates.
+
 ## Common tasks
 
 ### Install dependencies
