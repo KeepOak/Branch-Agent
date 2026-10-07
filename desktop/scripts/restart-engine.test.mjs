@@ -63,17 +63,17 @@ if(starts.length===2&&fs.existsSync(root+"/slow-sigterm"))process.on("SIGTERM",(
 process.on("message",m=>{if(!String(m?.type).startsWith("branch-desktop:"))return;
 // slow-drain-reply: a saturated first engine answers the drain request after 7 s (past the desktop's 5 s), then drains:
 // it answers the plain activity check, and refuses stop-if-idle while draining.
-if(starts.length===1&&fs.existsSync(root+"/slow-drain-reply")){if(m.type==="branch-desktop:drain-stop"&&!globalThis.draining){const end=Date.now()+7000;while(Date.now()<end);globalThis.draining=true;setTimeout(()=>{fs.writeFileSync(root+"/drained-"+process.pid,"1");process.exit(0);},3000);}process.send({type:"branch-desktop:activity-result",id:m.id,idle:!globalThis.draining,activeRuns:globalThis.draining?1:0,pendingReplies:0,totalActive:globalThis.draining?1:0});return;}
+if(starts.length===1&&fs.existsSync(root+"/slow-drain-reply")){if(m.type==="branch-desktop:drain-stop"&&!globalThis.draining){const end=Date.now()+7000;while(Date.now()<end);globalThis.draining=true;setTimeout(()=>{fs.writeFileSync(root+"/drained-"+process.pid,"1");process.exit(0);},3000);}process.send({type:"branch-desktop:activity-result",id:m.id,idle:!globalThis.draining,userIdle:!globalThis.draining,activeRuns:globalThis.draining?1:0,userRuns:globalThis.draining?1:0,pendingReplies:0,totalActive:globalThis.draining?1:0});return;}
 // late-drain-ack: a saturated first engine answers nothing, yet the drain request lands and it exits 12 s later.
 if(starts.length===1&&fs.existsSync(root+"/late-drain-ack")){if(m.type==="branch-desktop:drain-stop"&&!globalThis.draining){globalThis.draining=true;setTimeout(()=>{fs.writeFileSync(root+"/drained-"+process.pid,"1");process.exit(0);},12000);}return;}// A current engine steps down for its standby: it releases the state and keeps its run in flight (busy-run).
 // fenced: a stepped-down engine admits nothing new (fence-readyz: its /readyz says so). slow-deactivate: it answers late.
 if(m.type==="branch-desktop:deactivate"){if(fs.existsSync(root+"/older-engine")||fs.existsSync(root+"/no-handoff"))return;if(starts.length===1&&fs.existsSync(root+"/refuse-deactivate-exit")){process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:false},()=>process.exit(1));return;}globalThis.fenced=true;fs.writeFileSync(root+"/released-"+process.pid,"1");if(fs.existsSync(root+"/busy-run")&&!globalThis.run){globalThis.run=new Promise(r=>setTimeout(()=>{fs.appendFileSync(root+"/transcript.txt","old run final\\n");r();},2000));}setTimeout(()=>process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:!fs.existsSync(root+"/refuse-deactivate")}),fs.existsSync(root+"/slow-deactivate")?3000:0);return;}
 // rollback records which other engines were still alive when it ran: the failed standby must already be gone.
 if(m.type==="branch-desktop:rollback"){if(fs.existsSync(root+"/older-engine")||fs.existsSync(root+"/no-handoff"))return;const ok=!fs.existsSync(root+"/refuse-rollback");if(ok){globalThis.fenced=false;if(fs.existsSync(root+"/rollback-ready-delay"))globalThis.rollbackReadyAt=Date.now()+11000;try{fs.unlinkSync(root+"/released-"+process.pid);}catch{}}fs.writeFileSync(root+"/rolled-back-"+process.pid,JSON.stringify(starts.filter(p=>p!==process.pid&&(()=>{try{process.kill(p,0);return true;}catch{return false;}})())));process.send({type:"branch-desktop:rollback-result",id:m.id,ok});return;}
-if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
+if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),userIdle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,userRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
 // retire-hangs: a stepped-down engine that never exits after its drain request (a blocked event loop).
 if(m.type==="branch-desktop:drain-stop"&&!(globalThis.fenced&&fs.existsSync(root+"/retire-hangs"))){Promise.resolve(globalThis.run).then(()=>{fs.writeFileSync(root+"/drained-"+process.pid,"1");setTimeout(()=>process.exit(0),20);});}
-if(m.type==="branch-desktop:stop-if-idle"&&!fs.existsSync(root+"/busy"))setTimeout(()=>process.exit(0),20);});
+if((m.type==="branch-desktop:stop-if-idle"||m.type==="branch-desktop:drain-if-user-idle")&&!fs.existsSync(root+"/busy"))setTimeout(()=>process.exit(0),20);});
 const listener=http.createServer((q,r)=>{r.writeHead(globalThis.rollbackReadyAt&&Date.now()<globalThis.rollbackReadyAt?503:globalThis.fenced&&fs.existsSync(root+"/fence-readyz")?503:starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end();});
 // As a standby since #411: it takes the state over only on its launcher's take-over message, then says so.
 if(process.env.BRANCH_GATEWAY_STANDBY==="1")process.on("message",m=>{if(m?.type!=="branch-desktop:take-over"||globalThis.tookOver)return;globalThis.tookOver=true;if(fs.existsSync(root+"/released-"+starts[0]))fs.writeFileSync(root+"/took-over-after-step-down-"+process.pid,"1");fs.writeFileSync(root+"/took-over-"+process.pid,JSON.stringify({oldEngineAlive:(()=>{try{process.kill(starts[0],0);return true;}catch{return false;}})()}));process.send?.({type:"branch-desktop:taking-over",pid:process.pid,port:Number(process.argv.at(-1))});});
@@ -177,6 +177,13 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
           throw Error("The gateway became busy before it could stop");
         }
         return source.stopGatewayCleanly(...args);
+      }, drainIfUserIdleGateway: async (...args) => {
+        if (existsSync(join(root, "fail-auto-stop"))) {
+          const count = Number(await readFile(join(root, "fail-auto-stop"), "utf8"));
+          await writeFile(join(root, "fail-auto-stop"), String(count + 1));
+          throw Error("The gateway became busy before it could stop");
+        }
+        return source.drainIfUserIdleGateway(...args);
       }, drainStopGateway: async (...args) => {
         if (existsSync(join(root, "fail-undo-stop"))) {
           await unlink(join(root, "fail-undo-stop"));
