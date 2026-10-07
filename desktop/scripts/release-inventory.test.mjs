@@ -24,12 +24,16 @@ async function fixture(body) {
     await mkdir(asar); await mkdir(join(app, "resources"), { recursive: true });
     await writeFile(join(asar, "app.asar"), "offline fixture asar");
     await writeFile(join(app, "Branch Agent.exe"), "offline fixture app"); await writeFile(join(app, "resources/app.asar"), "offline fixture asar");
+    const macApp = join(app, "Branch Agent.app", "Contents");
+    await mkdir(join(macApp, "Resources"), { recursive: true });
+    await mkdir(join(macApp, "MacOS"), { recursive: true });
+    await writeFile(join(macApp, "Resources/app.asar"), "offline fixture asar");
+    await writeFile(join(macApp, "MacOS/Branch Agent"), "offline fixture app");
     for (const [platform, arch] of targets) {
       const output = join(root, platform); await mkdir(output);
-      const desktop = { app: asar, electronVersion: "44.5.1", ...(platform === "darwin" ? {} : { runtime: app }) };
+      const desktop = { app: asar, electronVersion: "44.5.1", runtime: app };
       const manifest = await makeComponentRelease({ version, sourceCommit: commit, tag: `v${version}`, engine, window, desktop, output, platform, arch });
       const name = `branch-desktop-${version}-${platform}-${arch}.tar.gz`;
-      if (platform === "darwin") await writeFile(join(output, name), `${platform}/${arch} offline fixture only`);
       const identity = { commit, version, platform, arch, electronVersion: "44.5.1", runtime: {
         electronVersion: "44.5.1", electron: { sha256: "b".repeat(64), bytes: 1 },
         node: { version: "v24.19.0", platform, arch, sha256: "c".repeat(64) } }, smoke: { commit, ready: true, authenticatedHealth: true, exited: true, elapsedMs: 10, runtime: { version: "v24.19.0", platform, arch }, source: "verified-component-archive", archiveSha256: manifest.components.engine.sha256, archiveBytes: manifest.components.engine.bytes, expandedBytes: manifest.components.engine.expandedBytes } };

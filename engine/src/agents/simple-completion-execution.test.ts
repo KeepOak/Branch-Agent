@@ -1,6 +1,11 @@
 import { reasoningTagTextPolicy } from "@branch/ai/internal/openai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { findSourceImportBackedges } from "../../test/helpers/source-import-closure.js";
+import { LockdownError } from "../config/lockdown.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { bindModelCompletionOwner } from "../llm/model-runtime-binding.js";
 import type { Model } from "../llm/types.js";
 
@@ -257,6 +262,16 @@ describe("completeWithPreparedSimpleCompletionModel", () => {
     expect(completionRequests()).toEqual([
       { model: preparedModel, context, options: { apiKey: "ollama-local" } },
     ]);
+  });
+
+  it("refuses before the provider is called while Lockdown is on", async () => {
+    setRuntimeConfigSnapshot({ security: { lockdown: true } });
+    try {
+      await expect(complete({ model: baseModel })).rejects.toBeInstanceOf(LockdownError);
+      expect(mocks.complete).not.toHaveBeenCalled();
+    } finally {
+      clearRuntimeConfigSnapshot();
+    }
   });
 
   it("carries strict visibility internally without adding a wire option", async () => {

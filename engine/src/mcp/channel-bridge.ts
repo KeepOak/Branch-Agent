@@ -79,6 +79,8 @@ export class BranchChannelBridge {
     private readonly cfg: BranchConfig,
     private readonly params: {
       gatewayUrl?: string;
+      /** The desktop app's gateway can move to another loopback port in an update: re-read on every reconnect. */
+      resolveGatewayUrl?: () => string | undefined;
       gatewayToken?: string;
       gatewayPassword?: string;
       /** Branch-to-Branch: connect to a host Branch as this Branch's paired device (its stored device token and
@@ -167,6 +169,7 @@ export class BranchChannelBridge {
       ...(bootstrap.sshTunnel ? { sshTunnel: bootstrap.sshTunnel } : {}),
       token: bootstrap.auth.token,
       password: bootstrap.auth.password,
+      ...(!device && this.params.resolveGatewayUrl ? { resolveUrl: this.params.resolveGatewayUrl } : {}),
       preauthHandshakeTimeoutMs: bootstrap.preauthHandshakeTimeoutMs,
       tlsFingerprint: bootstrap.tlsFingerprint,
       clientName: GATEWAY_CLIENT_NAMES.CLI,

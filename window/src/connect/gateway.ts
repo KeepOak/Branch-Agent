@@ -43,7 +43,9 @@ const STARTING_RETRY_MS = 1000;
 
 export type GatewayStatus =
   | { phase: "connecting" }
-  | { phase: "pairing"; requestId?: string }
+  /** `reason`: why the engine asks (not-paired: it doesn't know this device, or no longer does; scope-upgrade and
+   *  the like: it does, and wants approval for more). */
+  | { phase: "pairing"; requestId?: string; reason?: string }
   | { phase: "connected"; hello: HelloOk }
   | { phase: "failed"; message: string; /** The engine's connect error detail code (ConnectErrorDetailCodes), when it gave one. */ code?: string };
 
@@ -187,7 +189,7 @@ export class BranchGateway {
     const details = (error as { details?: unknown } | undefined)?.details;
     if (isPairingRequired(details)) {
       const pairing = readPairingConnectErrorDetails(details);
-      this.opts.onStatus({ phase: "pairing", requestId: pairing?.requestId });
+      this.opts.onStatus({ phase: "pairing", requestId: pairing?.requestId, ...(pairing?.reason ? { reason: pairing.reason } : {}) });
       return;
     }
     if (willRetry) {

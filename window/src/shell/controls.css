@@ -581,3 +581,8 @@ mark {
   place-items: center;
   color: var(--ink-2);
 }
+.branch-link-modes { display: flex; gap: 8px; }
+.branch-link-modes > button { flex: 1; }
+.branch-link-modes > button[aria-pressed="true"] { background: var(--raise); font-weight: 600; }
+.branch-link-code { display: flex; align-items: flex-start; gap: 8px; }
+.branch-link-code code { flex: 1; min-width: 0; max-height: 96px; overflow: auto; word-break: break-all; user-select: text; }

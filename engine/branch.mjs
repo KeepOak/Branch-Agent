@@ -786,6 +786,12 @@ if (isBrowserNativeHostInvocation) {
     } else if (!isHelpFastPathDisabled() && tryOutputPrecomputedCommandHelp()) {
       // OK
     } else {
+      // Electron's authenticated Mac driver lease is for this Gateway alone.
+      // Remove it before any engine or plugin can spawn a Trunk shell.
+      if (process.argv.includes("gateway") && process.env.BRANCH_CUA_DRIVER_ENDPOINT) {
+        globalThis[Symbol.for("branch.macComputerEndpoint")] = process.env.BRANCH_CUA_DRIVER_ENDPOINT;
+        delete process.env.BRANCH_CUA_DRIVER_ENDPOINT;
+      }
       await installProcessWarningFilter();
       if (await tryGraftFastStart(process.argv)) {
         // OK: Graft is serving MCP; the full CLI is not loaded.

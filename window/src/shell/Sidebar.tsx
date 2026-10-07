@@ -1,7 +1,6 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { Pebble } from "../face/Pebble";
 import { RoomFaces } from "../rooms/RoomFaces";
-import { CommunityInvite } from "./CommunityInvite";
 import type { Conversation } from "../connect/conversations";
 import type { PlaceId } from "../places-nav/routes";
 import { ConversationRow, type RowExtras, type RowState } from "./ConversationRow";
@@ -22,6 +21,7 @@ export type SidebarProps = {
   currentPlace: PlaceId | null;
   now: number;
   showPreview: boolean;
+  poppedKeys?: readonly string[];
   rowState: (row: Conversation) => RowState;
   trunkName: (agentId: string | undefined) => string;
   personName: string;
@@ -106,6 +106,7 @@ function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row:
     <>
       <ConversationRow
         row={row}
+        popped={p.poppedKeys?.includes(row.key)}
         current={row.key === p.openKey && p.currentPlace === null}
         time={rowTime(row.updatedAt || row.createdAt, p.now)}
         showPreview={p.showPreview}
@@ -273,7 +274,6 @@ export function Sidebar(p: SidebarProps) {
           </div>
         </div>
       )}
-      {!p.rail ? <CommunityInvite /> : null}
       <div className="owner">
         <button type="button" className="me" title="Who is using Branch, look, lock" aria-label={p.personName} data-testid="person" onClick={p.onPerson}>
           <span className="initial" aria-hidden="true">

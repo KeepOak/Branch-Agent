@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ACTIVE_EMBEDDED_RUN_SESSION_IDS_BY_KEY } from "../agents/embedded-agent-runner/run-state.js";
 import {
@@ -9,6 +10,15 @@ import { createReplyOperation } from "../auto-reply/reply/reply-run-registry.js"
 import { replyRunState } from "../auto-reply/reply/reply-run-registry.state.js";
 import { loadExactSessionEntry } from "../config/sessions/session-accessor.js";
 import type { BranchConfig } from "../config/types.branch.js";
+import {
+  resolveSessionHandoffLeaseDir,
+  writeSessionHandoffLease,
+} from "../process/session-handoff-lease-files.js";
+import {
+  refreshSessionHandoffLeases,
+  resetSessionHandoffLeaseGateForTest,
+} from "../process/session-handoff-lease-gate.js";
+import { getFileLockProcessStartTime } from "../shared/pid-alive.js";
 import { getLastHeartbeatEvent, resetHeartbeatEventsForTest } from "./heartbeat-events.js";
 import {
   prepareHeartbeatRunStage,
@@ -314,4 +324,35 @@ describe("heartbeat exact-session busy checks", () => {
       });
     },
   );
+
+  it("skips while the previous engine is still finishing the session, and runs once it let go", async () => {
+    await withHeartbeatFixture(false, async (opts) => {
+      resetSessionHandoffLeaseGateForTest();
+      try {
+        // The previous engine: a live process other than this one (the test runner's parent).
+        const { file, lease } = writeSessionHandoffLease(
+          resolveSessionHandoffLeaseDir(),
+          `session:${sessionKey}`,
+        );
+        fs.writeFileSync(
+          file,
+          JSON.stringify({
+            ...lease,
+            pid: process.ppid,
+            startTime: getFileLockProcessStartTime(process.ppid),
+          }),
+        );
+        refreshSessionHandoffLeases();
+        expect(await resolveHeartbeatWakeStage(opts)).toEqual({
+          kind: "skipped",
+          reason: "requests-in-flight",
+        });
+        fs.unlinkSync(file);
+        resetSessionHandoffLeaseGateForTest();
+        expect((await resolveHeartbeatWakeStage(opts)).kind).toBe("ready");
+      } finally {
+        resetSessionHandoffLeaseGateForTest();
+      }
+    });
+  });
 });
