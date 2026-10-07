@@ -21,5 +21,6 @@
   {"id":"customize-tools-skills","route":{"kind":"place","place":"customize"},"steps":[{"action":"click","by":"text","target":"Tools","expectBy":"testid","expect":"tools"},{"action":"click","by":"text","target":"Skills","expectBy":"text","expect":"Step-by-step know-how"}]},
   {"id":"people","route":{"kind":"place","place":"people"},"steps":[{"action":"assert","by":"text","target":"Live now"}]},
   {"id":"automations-board","route":{"kind":"place","place":"automations"},"steps":[{"action":"click","by":"text","target":"Board","expectBy":"text","expect":"To sort"}]},
-  {"id":"row-menu","steps":[{"action":"click","by":"testid","target":"row-more","expectBy":"css","expect":"[role=menu]"}]}
+  {"id":"row-menu","steps":[{"action":"click","by":"testid","target":"row-more","expectBy":"css","expect":"[role=menu]"}]},
+  {"id":"pane-memory","route":{"kind":"chat","key":"$research"},"steps":[{"action":"click","by":"testid","target":"conversation-menu-button","expectBy":"css","expect":"[role=menu]"},{"action":"click","by":"text","target":"Side panel","expectBy":"css","expect":"[role=tablist][aria-label='Side panel views']"},{"action":"click","by":"text","target":"Memory","expectBy":"css","expect":".memrow-pn,.pane-empty"}]}
 ]
