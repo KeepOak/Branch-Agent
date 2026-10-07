@@ -14,7 +14,7 @@ export function Segmented({ label, items, value, onPick, disabled, reason }: {
   reason?: string;
 }) {
   return (
-    <div className="c-seg" role="radiogroup" aria-label={label} aria-disabled={disabled || undefined} title={shownWhy(reason)}>
+    <div className={`c-seg${items.length >= 5 ? " c-seg-list" : ""}`} role="radiogroup" aria-label={label} aria-disabled={disabled || undefined} title={shownWhy(reason)}>
       {items.map((item) => (
         <button
           key={item.id}
@@ -25,7 +25,7 @@ export function Segmented({ label, items, value, onPick, disabled, reason }: {
           disabled={disabled}
           onClick={() => onPick(item.id)}
         >
-          {item.label}
+          {items.length >= 5 && item.id === value ? <span aria-hidden="true">✓</span> : null}{item.label}
         </button>
       ))}
     </div>

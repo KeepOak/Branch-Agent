@@ -5,9 +5,10 @@ import { Face } from "../face/Face";
 import { PRIORITY } from "../face/cap";
 import type { Members } from "./members";
 import { RoomAvatar } from "./RoomMessage";
+import { trunkAppearance } from "../face/appearance";
 import "./rooms.css";
 
-export type RoomPick = { kind: "trunk"; name: string } | { kind: "person"; id: string; name: string };
+export type RoomPick = { kind: "trunk"; name: string; avatar?: string } | { kind: "person"; id: string; name: string };
 
 export function roomPicks(ownTrunk: string, members: Members, trunkName: (agentId: string) => string): RoomPick[] {
   const trunks = [ownTrunk, ...members.trunks.map(trunkName)].filter((n, i, all) => n && all.indexOf(n) === i);
@@ -16,7 +17,9 @@ export function roomPicks(ownTrunk: string, members: Members, trunkName: (agentI
 }
 
 function One({ pick, size, priority }: { pick: RoomPick; size: number; priority: number }) {
-  return pick.kind === "trunk" ? <Face size={size} label={pick.name} priority={priority} /> : <RoomAvatar id={pick.id} name={pick.name} size={size} />;
+  if (pick.kind === "person") return <RoomAvatar id={pick.id} name={pick.name} size={size} />;
+  const still = trunkAppearance(pick.avatar, pick.name)?.still;
+  return still ? <RoomAvatar id={pick.name} name={pick.name} size={size} src={still} /> : <Face size={size} label={pick.name} priority={priority} />;
 }
 
 export function RoomFaces({ picks, size }: { picks: RoomPick[]; size: number }) {

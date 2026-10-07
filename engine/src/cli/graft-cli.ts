@@ -16,6 +16,7 @@ export function graftInviteParams(cfg: BranchConfig, port: number): Record<strin
   const bind = cfg.gateway?.bind ?? "loopback";
   return {
     includeQr: false,
+    bootstrapProfile: "limited",
     ...(bind === "loopback" ? { publicUrl: `ws://127.0.0.1:${port}` } : {}),
   };
 }

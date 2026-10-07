@@ -13,6 +13,7 @@ type Props = {
   details?: ApprovalDetails;
   name: string;
   onAnswer: (id: string, decision: ApprovalDecision) => void;
+  disabled?: boolean;
 };
 
 const WARN_MS = 120_000;
@@ -83,17 +84,17 @@ function Rows({ approval, details, open }: { approval: Approval; details?: Appro
   );
 }
 
-function Buttons({ approval, details, name, onAnswer, open, setOpen }: Props & { open: boolean; setOpen: (v: boolean) => void }) {
+function Buttons({ approval, details, name, onAnswer, disabled, open, setOpen }: Props & { open: boolean; setOpen: (v: boolean) => void }) {
   const allowed = details?.allowedDecisions ?? ["allow-once", "allow-always", "deny"];
   const always = allowed.includes("allow-always");
   return (
     <>
       <div className="card-buttons">
-        <button type="button" className="btn primary" data-action="allow" title="Allow once · Ctrl Enter" onClick={() => onAnswer(approval.id, "allow-once")}>
+        <button type="button" className="btn primary" data-action="allow" disabled={disabled} title={disabled ? "Lockdown is on: nothing leaves this computer." : "Allow once · Ctrl Enter"} onClick={() => onAnswer(approval.id, "allow-once")}>
           Allow once
         </button>
         {always ? (
-          <button type="button" className="btn" data-action="always" title={`Always allow for ${name} · Ctrl Shift Enter`} onClick={() => onAnswer(approval.id, "allow-always")}>
+          <button type="button" className="btn" data-action="always" disabled={disabled} title={disabled ? "Lockdown is on: nothing leaves this computer." : `Always allow for ${name} · Ctrl Shift Enter`} onClick={() => onAnswer(approval.id, "allow-always")}>
             Always allow for {name}
           </button>
         ) : null}
@@ -140,7 +141,7 @@ export function ApprovalCard(props: Props) {
 
 /** The action-shaped card (the preview's askCard): the question, its rows (To, Subject, Attached…) and body, then
  *  "Send it" / "Always allow for <Trunk>" / "Don’t send" (or Allow / Deny). Answered with plugin.approval.resolve. */
-function ActionCard({ approval, details, name, onAnswer, left }: Props & { details: ApprovalDetails; left: number | null }) {
+function ActionCard({ approval, details, name, onAnswer, disabled, left }: Props & { details: ApprovalDetails; left: number | null }) {
   const title = details.title || "A plugin needs your OK";
   const words = actionWords(title);
   const { fields, body } = actionFields(details.description ?? "");
@@ -166,10 +167,10 @@ function ActionCard({ approval, details, name, onAnswer, left }: Props & { detai
       </dl>
       <div className="card-buttons">
         {allowed.includes("allow-once") ? (
-          <button type="button" className="btn primary" data-action="allow" title={`${words.yes} · Ctrl Enter`} onClick={() => onAnswer(approval.id, "allow-once")}>{words.yes}</button>
+          <button type="button" className="btn primary" data-action="allow" disabled={disabled} title={disabled ? "Lockdown is on: nothing leaves this computer." : `${words.yes} · Ctrl Enter`} onClick={() => onAnswer(approval.id, "allow-once")}>{words.yes}</button>
         ) : null}
         {allowed.includes("allow-always") ? (
-          <button type="button" className="btn" data-action="always" title={`Always allow for ${name} · Ctrl Shift Enter`} onClick={() => onAnswer(approval.id, "allow-always")}>Always allow for {name}</button>
+          <button type="button" className="btn" data-action="always" disabled={disabled} title={disabled ? "Lockdown is on: nothing leaves this computer." : `Always allow for ${name} · Ctrl Shift Enter`} onClick={() => onAnswer(approval.id, "allow-always")}>Always allow for {name}</button>
         ) : null}
         <button type="button" className="btn ghost" data-action="deny" title={`${words.no} · Ctrl D`} onClick={() => onAnswer(approval.id, "deny")}>{words.no}</button>
       </div>
@@ -177,10 +178,10 @@ function ActionCard({ approval, details, name, onAnswer, left }: Props & { detai
   );
 }
 
-type GroupProps = { approvals: Approval[]; details: Map<string, ApprovalDetails>; name: string; onAnswer: (id: string, decision: ApprovalDecision) => void };
+type GroupProps = { approvals: Approval[]; details: Map<string, ApprovalDetails>; name: string; onAnswer: (id: string, decision: ApprovalDecision) => void; disabled?: boolean };
 
 /** One row of the group: the question, then Yes and No as far as the request allows them, or how it ended. */
-function GroupRow({ a, d, name, now, send }: { a: Approval; d?: ApprovalDetails; name: string; now: number; send: (id: string, decision: ApprovalDecision) => void }) {
+function GroupRow({ a, d, name, now, send, disabled }: { a: Approval; d?: ApprovalDetails; name: string; now: number; send: (id: string, decision: ApprovalDecision) => void; disabled?: boolean }) {
   const q = d?.plugin ? d.title ?? "" : "Run this command?";
   const waiting = a.state === "pending" && isCurrent(d, now);
   const allowed = a.state === "allowed" || (a.state === "pending" && Boolean(d?.decision?.startsWith("allow")));
@@ -194,7 +195,7 @@ function GroupRow({ a, d, name, now, send }: { a: Approval; d?: ApprovalDetails;
       </span>
       {waiting ? (
         <span className="g-acts">
-          {canAnswer(d, "allow-once", now) ? <button type="button" className="btn primary sm" onClick={() => send(a.id, "allow-once")}>Yes</button> : null}
+          {canAnswer(d, "allow-once", now) ? <button type="button" className="btn primary sm" disabled={disabled} title={disabled ? "Lockdown is on: nothing leaves this computer." : undefined} onClick={() => send(a.id, "allow-once")}>Yes</button> : null}
           {canAnswer(d, "deny", now) ? <button type="button" className="btn ghost sm" onClick={() => send(a.id, "deny")}>No</button> : null}
         </span>
       ) : (
@@ -207,7 +208,7 @@ function GroupRow({ a, d, name, now, send }: { a: Approval; d?: ApprovalDetails;
 /** Two things need you at once (the preview's ask2): one row each with Yes and No, and "Yes to both", which
  *  answers each the way its own Yes does. The thread shows it when exactly two approvals wait. Each answer is checked
  *  again when sent (approval-guard), and Yes to both is offered and sent only while every row can still be allowed. */
-export function ApprovalGroup({ approvals, details, name, onAnswer }: GroupProps) {
+export function ApprovalGroup({ approvals, details, name, onAnswer, disabled }: GroupProps) {
   const pending = approvals.filter((a) => a.state === "pending");
   const now = useNow(pending.some((a) => Boolean(details.get(a.id)?.expiresAtMs)));
   const waiting = pending.filter((a) => isCurrent(details.get(a.id), now)); // a pending row past its expiry waits no more
@@ -230,10 +231,10 @@ export function ApprovalGroup({ approvals, details, name, onAnswer }: GroupProps
           <span className="pill ok"><i />Answered</span>
         )}
       </div>
-      {approvals.map((a) => <GroupRow key={a.id} a={a} d={details.get(a.id)} name={name} now={now} send={send} />)}
+      {approvals.map((a) => <GroupRow key={a.id} a={a} d={details.get(a.id)} name={name} now={now} send={send} disabled={disabled} />)}
       {allOk(now) ? (
         <div className="card-buttons">
-          <button type="button" className="btn primary" data-testid="yes-to-all" onClick={both}>
+          <button type="button" className="btn primary" data-testid="yes-to-all" disabled={disabled} title={disabled ? "Lockdown is on: nothing leaves this computer." : undefined} onClick={both}>
             Yes to both
           </button>
         </div>

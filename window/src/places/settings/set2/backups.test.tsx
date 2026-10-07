@@ -54,8 +54,10 @@ describe("Settings › Backups", () => {
     const { engine, request } = engineWith({ "backup.status": EMPTY, "backup.schedule.set": { id: "job-1" } });
     await show(engine);
     expect(button("Back up now").disabled).toBe(true);
-    expect(document.body.textContent).toContain("Passwords, keys and sign-ins are never included");
-    expect(document.body.textContent).toContain("you/branch-backups");
+    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Passwords, keys and sign-ins are never included");
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("you/branch-backups");
+    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
     await type("Repository address", "https://github.com/you/branch-backups.git");
     await click("Save");
     expect(calls(request, "backup.schedule.set")).toEqual([

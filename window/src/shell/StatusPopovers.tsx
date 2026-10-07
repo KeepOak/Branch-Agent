@@ -1,11 +1,11 @@
 // The status bar's popovers (DESIGN-SPEC §4.9.3–§4.9.8): Gateway, What each connection has left, Room left,
 // Running in the background and the version menu. Each reads live engine facts.
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Conversation } from "../connect/conversations";
 import type { Level } from "../places-nav/settings-nav";
 import { Icon, type IconName } from "./icons";
 import { Popover, type Above } from "./Popover";
-import { ageWords, comingUp, readLimits, readRoom, readRounds, sizeWords, uptimeWords, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
+import { ageWords, comingUp, monthParams, readLimits, readMonthSpend, readRoom, readRounds, sizeWords, uptimeWords, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
 import "./status.css";
 import { shownWhy } from "./shown-why";
@@ -86,6 +86,7 @@ export function GatewayPopover({ facts, level, onRestart, onSettings, ...base }:
 
 /** Every account keeps its own 5-hour and week windows; no totals are added across accounts. */
 export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & { limits: Limits | null; request: Request; onOpenUsage: () => void }) {
+  const spend = useRead(request, "usage.cost", monthParams(), readMonthSpend);
   const [checked, setChecked] = useState<Limits | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
@@ -93,15 +94,16 @@ export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & {
   const data = checked ?? limits;
   const rows = data?.rows ?? [];
   const groups = Array.from(new Set(rows.map((row) => row.name)));
-  const check = () => {
+  const check = useCallback((refreshAuth = true) => {
     setChecking(true);
     setCheckError(null);
-    request("models.authStatus", { refresh: true })
-      .then(() => request("usage.status", {}))
+    (refreshAuth ? request("models.authStatus", { refresh: true }) : Promise.resolve())
+      .then(() => request("usage.status", { refresh: true }))
       .then((result) => { setChecked(readLimits(result)); window.dispatchEvent(new Event("branch:usage-checked")); },
         (error: unknown) => setCheckError(error instanceof Error ? error.message : String(error)))
       .finally(() => setChecking(false));
-  };
+  }, [request]);
+  useEffect(() => { check(false); }, [check]);
   return (
     <Popover at={{ x: 0, y: 0 }} label="Every account" testid="pop-usage" className="sp sp-wide" {...base}>
       <div className="lims">
@@ -112,7 +114,7 @@ export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & {
             const fiveHour = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
             const week = row.windows.find((window) => /week/i.test(window.name));
             return <div className="sp-account" key={row.id}>
-              <div className="sp-account-head"><span className="sp-email">{row.email || row.account || row.name}</span><span>{row.plan}</span><strong>{fiveHour ? `${fiveHour.left}% left` : "Not published"}</strong></div>
+              <div className="sp-account-head"><span className="sp-email">{row.email || row.account || row.name}</span><span>{row.plan}</span>{row.inUse ? <span className="pill ok">used next</span> : null}<strong>{fiveHour ? `${fiveHour.left}% left` : "Not shared"}</strong></div>
               {fiveHour ? <><span className="sp-account-track"><i style={{ width: `${fiveHour.left}%` }} /></span><small>5-hour {fiveHour.reset || "reset time unavailable"}{week ? ` · week ${week.left}% left` : ""}</small></> : <small>{row.line}</small>}
             </div>;
           })}
@@ -120,9 +122,10 @@ export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & {
         {!limits ? <p className="sp-note">Asking each connection…</p> : null}
         {data && !rows.length ? <p className="sp-note">{data.refreshing ? "Asking each connection…" : "No account reports a limit yet."}</p> : null}
         {data ? <p className="sp-note">Checked {ageWords(data.updatedAt, Date.now())}</p> : null}
-        {checkError ? <p className="sp-note">Couldn’t check accounts: {checkError}</p> : null}
+        {checkError ? <p className="sp-note">Couldn’t check accounts right now. Branch will try again.</p> : null}
         <div className="lim-foot">
-          <Item icon="retry" label={checking ? "Checking…" : "Check every account now"} testid="usage-check" onClick={check} off={checking ? "Checking accounts now." : undefined} />
+          {spend.data ? <span>This month: <b>{spend.data}</b></span> : null}
+          <Item icon="retry" label={checking ? "Checking…" : "Check every account now"} testid="usage-check" onClick={() => check()} off={checking ? "Checking accounts now." : undefined} />
           <Item icon="gear" label="Accounts and usage…" testid="open-usage" onClick={onOpenUsage} />
         </div>
       </div>

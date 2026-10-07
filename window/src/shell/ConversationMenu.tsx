@@ -25,6 +25,7 @@ import { ShareDialog } from "./ShareDialog";
 import { whoItKnowsItems } from "./who-it-knows-menu";
 import { roomMenuItems } from "../rooms/room-menu";
 import "./conversation-menu.css";
+import { conversationLink, openConversationWindow, ownWindowUnavailable } from "./own-window";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -73,6 +74,7 @@ export type ConversationMenuProps = {
   onManageComputers: () => void;
   /** A room (rooms/): its rule on the Room rules row, and the Room rules menu. */
   room?: { ruleWords: string | null; rules: () => MenuItem[]; members?: ReactNode[] } | null;
+  ownWindowOpen?: boolean;
 };
 
 type Open =
@@ -84,13 +86,7 @@ type Open =
   | { kind: "export"; format: TranscriptExportFormat }
   | null;
 
-/** The window's own address for a conversation: the window opens it from `?conversation=` (routes.ts). */
-export function conversationLink(key: string, href = location.href): string {
-  const url = new URL(href);
-  url.search = new URLSearchParams({ conversation: key }).toString();
-  url.hash = "";
-  return url.toString();
-}
+export { conversationLink } from "./own-window";
 
 /** The public link for a share token, on the engine's web address (session-url-contract public-share.ts). */
 export function publicShareLink(token: string, gatewayUrl: string, controlUiUrl?: string): string {
@@ -148,6 +144,8 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     characterHidden: p.characterHidden,
     besideOpen: p.besideOpen,
     canMove: computers.list.length > 1,
+    ownWindowOpen: p.ownWindowOpen,
+    ownWindowOff: ownWindowUnavailable(),
     hasContactReturn: p.hasContactReturn,
     hasContactConversations: p.hasContactConversations,
     towerVisible: p.towerVisible,
@@ -205,7 +203,7 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     restore: () => row && void p.actions.restore(row),
     snooze: (until) => row && void p.actions.snooze(row, until),
     copyLink: () => key && copy(conversationLink(key)),
-    ownWindow: () => key && window.open(conversationLink(key)),
+    ownWindow: () => key && void openConversationWindow(key).catch(bad),
     pin: () => row && void p.actions.pin(row),
     rename: p.onRename,
     profile: () => openTrunk(p, "profile"),
@@ -278,7 +276,7 @@ function Overlays({ p, open, items, close, target, lastReply, computers }: Overl
   if (!open) return null;
   if (open.kind === "menu") return <Menu at={open.at} items={items} label="Conversation" testid="conversation-menu" onClose={close} />;
   if (open.kind === "known") return <Menu at={open.at} items={open.items} label="Who it knows" testid="who-it-knows" onClose={close} />;
-  if (open.kind === "rules") return p.room ? <Menu at={open.at} items={p.room.rules()} label="Room rules" testid="room-rules" onClose={close} /> : null;
+  if (open.kind === "rules") return p.room ? <Menu at={open.at} items={p.room.rules()} label="Group rules" testid="room-rules" onClose={close} /> : null;
   if (!target) return null;
   const engine = p.session.engine;
   const copy = (text: string) => void copyText(text, notify);

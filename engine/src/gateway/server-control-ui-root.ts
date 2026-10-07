@@ -238,6 +238,15 @@ function prepareResolvedRootState({
   }
 }
 
+const rootPreparationRequests = new WeakMap<ControlUiRootState, () => void>();
+
+/** Starts asset preparation the first time the old control UI is actually requested. */
+export function requestControlUiRootPreparation(root: ControlUiRootState | undefined): void {
+  if (root) {
+    rootPreparationRequests.get(root)?.();
+  }
+}
+
 /** Prepare the stable root reference shared by every HTTP listener. */
 export function createGatewayControlUiRootLifecycle(
   params: GatewayControlUiRootParams,
@@ -354,6 +363,8 @@ export function createGatewayControlUiRootLifecycle(
     return promise;
   };
 
+  // Branch's window never loads the old control UI, so its assets are prepared on first use.
+  rootPreparationRequests.set(state, () => void start());
   return {
     state,
     start,

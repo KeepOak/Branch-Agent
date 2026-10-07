@@ -1,27 +1,20 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Pebble } from "../face/Pebble";
+import type { AgentState } from "../face/agentState";
 import { useTrunkAppearance } from "../face/appearance";
 import { Icon } from "./icons";
 import { syncTitleBar } from "../connect/title-bar";
 
-export type FaceState = "here" | "working" | "waiting" | "done";
-
-const STATE_WORDS: Record<FaceState, string> = {
-  here: "ready",
-  working: "Working on it",
-  waiting: "Waiting for you",
-  done: "Done",
-};
+export type FaceState = AgentState;
 
 export type HeaderInfo = {
   name: string;
   trunkName: string;
   state: FaceState;
+  paused?: boolean;
   isDefaultTrunk: boolean;
   /** What the Trunk is for (its identity theme), the words before "· ready" (the preview's c.role). */
   role?: string;
-  /** While working: "Working · using the computer" when a computer step runs, else the face's state words. */
-  workWords?: string;
   renaming: boolean;
   onRename: (name: string | null) => void;
   /** Opens the Trunk's profile (§4.2.1: the header character and name open it). */
@@ -47,22 +40,19 @@ type Props = {
   onGuide?: (event: MouseEvent<HTMLElement>) => void;
   conversationTools?: ReactNode;
   /** On a place or Settings page: "Ask <default Trunk>", which shows that Trunk beside the page (§3.3). */
-  ask?: { name: string; open: boolean; onToggle: () => void } | null;
+  ask?: { name: string; open: boolean; onToggle: () => void; help?: boolean } | null;
   /** On a place page: the gear at the start of the header half, which opens Settings (the preview's placeHead). */
   onSettings?: () => void;
 };
 
-/** The header's state line (the preview's statusLine): "<role> · ready", the working words, or Waiting / Done. */
-export function stateWords(h: Pick<HeaderInfo, "state" | "isDefaultTrunk" | "trunkName" | "role" | "workWords" | "room">): string {
+/** The preview's five header forms, projected from the shared Trunk state. */
+export function stateWords(h: Pick<HeaderInfo, "state" | "paused" | "isDefaultTrunk" | "trunkName" | "role" | "room">): string {
   if (h.room) return h.room.line;
-  if (h.state === "here") {
-    const role = h.role || (h.isDefaultTrunk ? "The assistant on this computer" : h.trunkName);
-    return `${role} · ${STATE_WORDS.here}`;
-  }
-  if (h.state === "working") {
-    return h.workWords || STATE_WORDS.working;
-  }
-  return STATE_WORDS[h.state];
+  if (h.paused) return "Paused · won’t start anything new";
+  if (h.state === "wait") return "Waiting for you";
+  if (["think", "work", "search", "read"].includes(h.state)) return "Working · using the computer";
+  const role = h.role || (h.isDefaultTrunk ? "Your Trunk on this computer" : h.trunkName);
+  return `${role} · ready`;
 }
 
 /** The header name, or its edit field while renaming (§4.1.6 "Rename": the name in an edit field). */
@@ -109,10 +99,10 @@ function HeadName({ h }: { h: HeaderInfo }) {
 
 /** The Trunk's face in the header; clicking it shows or hides the character panel. */
 function HeaderFace({ header, onCharacter, size = 32 }: { header: HeaderInfo; onCharacter?: () => void; size?: number }) {
-  const state = header.state === "working" ? "work" : header.state === "waiting" ? "wait" : header.state === "done" ? "yay" : "idle";
+  const state = header.state;
   if (header.room) return <span className="header-face">{header.room.faces(size)}</span>;
   return (
-    <button className={header.state === "working" ? "header-face working-ring" : "header-face"} type="button" aria-label={header.onProfile ? `${header.trunkName}’s profile` : "Show or hide character"} title={header.onProfile ? `${header.trunkName}’s profile` : undefined} onClick={header.onProfile ?? onCharacter}>
+    <button className={["think", "work", "search", "read"].includes(state) ? "header-face working-ring" : "header-face"} type="button" aria-label={header.onProfile ? `${header.trunkName}’s profile` : "Show or hide character"} title={header.onProfile ? `${header.trunkName}’s profile` : undefined} onClick={header.onProfile ?? onCharacter}>
       <Pebble size={size} label={header.trunkName} state={state} priority={300} />
     </button>
   );
@@ -120,7 +110,7 @@ function HeaderFace({ header, onCharacter, size = 32 }: { header: HeaderInfo; on
 
 /** The conversation header as its own row in the main column (narrow windows and focus mode, §3.2). */
 export function HeaderRow({ header, onCharacter, tools, onList, onBack, onForward }: { header: HeaderInfo; onCharacter?: () => void; tools?: ReactNode; onList?: () => void; onBack?: () => void; onForward?: () => void }) {
-  const live = !header.room && (header.state === "working" || header.state === "waiting");
+  const live = !header.room && ["think", "work", "search", "read", "wait"].includes(header.state);
   const tint = useHeaderTint(header);
   return (
     <div className={`head-row${live ? " live" : ""}${tint ? " tinted" : ""}`} style={tint ? ({ "--tint": tint } as CSSProperties) : undefined}>
@@ -128,6 +118,7 @@ export function HeaderRow({ header, onCharacter, tools, onList, onBack, onForwar
       <button type="button" className="ib" aria-label="Forward" title="Forward" onClick={onForward}><Icon name="forward" /></button>
       {onList ? <button type="button" className="ib" aria-label="Conversations" title="Conversations" onClick={onList}><Icon name="menu" /></button> : null}
       <HeaderFace header={header} onCharacter={onCharacter} size={56} />
+      {!header.room ? <span className="head-status-announcement" role="status" aria-live="polite" aria-atomic="true">{header.trunkName}: {stateWords(header)}</span> : null}
       <div className="head-text">
         <HeadName h={header} />
         <span className={live ? "head-state live" : "head-state"} data-face-state={header.state}>
@@ -167,7 +158,7 @@ export function useHeaderTint(header: Pick<HeaderInfo, "colour" | "trunkName" | 
 
 /** The merged 52 px top bar (DESIGN-SPEC §3.2): the machine switcher over the sidebar, the conversation header, the global buttons. */
 export function TopBar({ compact, machine, header, dark, listHidden, onTheme, onToggleList, onBack, onForward, onCharacter, onGuide, conversationTools, ask, onSettings }: Props) {
-  const live = header !== null && !header.room && (header.state === "working" || header.state === "waiting");
+  const live = header !== null && !header.room && ["think", "work", "search", "read", "wait"].includes(header.state);
   const tint = useHeaderTint(compact ? null : header);
   // The app's window buttons sit over this bar's top-right; keep their colours and height matched to it.
   useEffect(syncTitleBar, [dark, compact, listHidden]);
@@ -184,7 +175,7 @@ export function TopBar({ compact, machine, header, dark, listHidden, onTheme, on
             <HeaderFace header={header} onCharacter={onCharacter} />
             <div className="head-text">
               <HeadName h={header} />
-              <span className={live ? "head-state live" : "head-state"} data-face-state={header.state}>
+              <span className={live ? "head-state live" : "head-state"} data-face-state={header.state} aria-live="polite" aria-atomic="true">
                 {live ? <i aria-hidden="true" /> : null}
                 {stateWords(header)}
               </span>
@@ -205,8 +196,8 @@ export function TopBar({ compact, machine, header, dark, listHidden, onTheme, on
           {header && !compact ? <span className="conv-tools">{conversationTools}</span> : null}
           {!header && onGuide ? <button type="button" className="ib guide-btn" title="Guide" data-testid="guide" onClick={onGuide}><Icon name="help" small /><span>Guide</span></button> : null}
           {ask ? (
-            <button type="button" className="ib talk-btn" aria-label={`Ask ${ask.name}`} title={`Ask ${ask.name}`} aria-pressed={ask.open} data-testid="ask-default" onClick={ask.onToggle}>
-              <Icon name="ask" small />
+            <button type="button" className="ib talk-btn" aria-label={ask.help ? "Help for this page" : `Ask ${ask.name}`} title={ask.help ? "Help for this page" : `Ask ${ask.name}`} aria-haspopup={ask.help ? "dialog" : undefined} aria-pressed={ask.help ? undefined : ask.open} data-testid="ask-default" onClick={ask.onToggle}>
+              {ask.help ? "?" : <Icon name="ask" small />}
             </button>
           ) : null}
           {!header ? <button type="button" className="ib" aria-label={dark ? "Light" : "Dark"} title="Switch light or dark" data-testid="theme" onClick={onTheme}>
