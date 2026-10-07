@@ -1,4 +1,4 @@
-// P45 desktop handoff deadlines. The engine test checks the retire backstop against its actual lease constants.
+// P45 desktop handoff deadlines. Engine-only lease bounds are intentionally not duplicated here.
 import shared from "./handoff-timeouts.json";
 
 /**

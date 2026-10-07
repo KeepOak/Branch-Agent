@@ -12,7 +12,7 @@ test("the desktop handoff deadlines fit together", () => {
     t.HANDOFF_RETIRE_KILL_AFTER_MS);
   assert.ok(t.HANDOFF_STEP_DOWN_TIMEOUT_MS < t.HANDOFF_RETIRE_KILL_AFTER_MS);
   for (const [name, value] of Object.entries(t).filter(([name]) => name.startsWith("HANDOFF_"))) assert.ok(Number.isInteger(value) && value > 0, name);
-  // The JSON is the one the desktop compiled in; the engine test checks its lease bounds against the actual constants.
+  // The JSON is the one the desktop compiled in; it contains no unused engine-only lease bounds.
   const shared = JSON.parse(readFileSync(join(process.env.BRANCH_DESKTOP_TEST_DIST, "..", "src", "handoff-timeouts.json"), "utf8"));
   assert.equal(shared.retireKillAfterMs, t.HANDOFF_RETIRE_KILL_AFTER_MS);
 });

@@ -1,2 +1,2 @@
-# P45 desktop handoff (#415): the engine verifies the desktop retire deadline against its lease constants.
+# P45 desktop handoff (#415): no engine-only deadline is duplicated in desktop JSON.
 engine:src/infra/p45-handoff-timeouts.test.ts
