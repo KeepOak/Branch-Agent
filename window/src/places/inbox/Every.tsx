@@ -27,15 +27,17 @@ export function everyRows(list: Session[], f: Filters, level: Level, names: (id:
 }
 
 function WorkingCopies({ engine, open }: { engine: WindowEngine; open: (key: string) => void }) {
-  const [state, setState] = useState<{ list?: Row[]; error?: string }>({});
+  const [state, setState] = useState<{ engine: WindowEngine; list?: Row[]; error?: string }>({ engine });
   useEffect(() => {
     let live = true;
-    engine.request("worktrees.list", {}).then(r => { if (live) setState({ list: rows(rec(r).worktrees) }); }, e => { if (live) setState({ error: errorText(e) }); });
+    setState({ engine });
+    engine.request("worktrees.list", {}).then(r => { if (live) setState({ engine, list: rows(rec(r).worktrees) }); }, e => { if (live) setState({ engine, error: errorText(e) }); });
     return () => { live = false; };
   }, [engine]);
-  if (state.error) return <p className="ib-err" role="alert">{state.error}</p>;
-  if (!state.list) return <p className="ib-hint" role="status">Reading working copies…</p>;
-  const live = state.list.filter(w => !w.removedAt);
+  const current = state.engine === engine ? state : { engine };
+  if (current.error) return <p className="ib-err" role="alert">{current.error}</p>;
+  if (!current.list) return <p className="ib-hint" role="status">Reading working copies…</p>;
+  const live = current.list.filter(w => !w.removedAt);
   return live.length ? <div className="ib-list">{live.map(w => <div className="ib-row" key={str(w.id)}><span className="ib-grow"><b>{str(w.name)} · <code>{str(w.branch)}</code></b><small>{str(w.path)}</small></span>{w.ownerKind === "session" && str(w.ownerId) ? <span className="ib-acts"><button type="button" className="btn sm" onClick={() => open(str(w.ownerId))}>Open</button></span> : null}</div>)}</div> : <p className="ib-empty">No working copies.</p>;
 }
 
