@@ -444,9 +444,6 @@ function ChatApps({ config, lv }: { config: Config; lv: number }) {
         <Ctl title="Relay bot ID" sub="The connector’s application or bot ID. Leave blank if it does not require one.">
           <Field label="Relay bot ID" value={relayBotId} placeholder="Application or bot ID" disabled={config.loading} onCommit={(value) => void config.set(`${relay}.botId`, value.trim() || null)} />
         </Ctl>
-=======
-        <Ctl title="Relay for chat-app accounts" sub="The relay delivers messages using your phone number." help="Your phone number passes through the relay to deliver messages and is never saved. Off until you choose: your number would go through the relay." off="Needs the engine’s chat relay."><Switch label="Relay for chat-app accounts" checked={false} onChange={() => undefined} /></Ctl>
->>>>>>> origin/main
         <Ctl title="Push to your phone and browser" sub="When a Trunk needs you and no chat app is set up." off="Set in Notifications."><Switch label="Push to your phone and browser" checked onChange={() => undefined} /></Ctl>
       </Sec>
       <Sec title="Never break" group="If it stops">
