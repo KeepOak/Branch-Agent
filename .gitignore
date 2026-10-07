@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 *.log
+/artifacts/
 
 /preview-reference/
 /output/library-live/

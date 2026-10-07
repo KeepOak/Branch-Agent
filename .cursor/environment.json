@@ -1,6 +1,4 @@
 {
-  "name": "Branch Development Environment",
-  "nodeVersion": "24.19.0",
-  "installCommand": "command -v pnpm >/dev/null 2>&1 || npm install -g pnpm@12.5.1",
-  "buildCommand": "cd engine && pnpm install --frozen-lockfile && cd ../window && pnpm install --frozen-lockfile"
+  "name": "Branch",
+  "install": "bash scripts/cloud-agent-install.sh"
 }

@@ -6,7 +6,7 @@ This is a source snapshot under active development. A feature being present in s
 
 ## Requirements
 
-- Node.js matching the engine requirement: `>=24.16.0 <25 || >=26.1.0`.
+- Node.js matching CI and the engine requirement: `24.19.0` (range `>=24.19.0 <25 || >=26.1.0`). Pin files: `.nvmrc`, `.node-version`.
 - pnpm `12.5.1` (the engine pins its exact package-manager integrity).
 - Git; npm for the desktop package.
 - A configured model provider for assistant replies.
@@ -87,11 +87,7 @@ After making UI changes, capture proof screenshots with:
 pnpm proof -- --screens <screen-ids>
 ```
 
-For example, `pnpm proof -- --screens main-chat,settings-general` captures those two screens. Omit `--screens` to capture all screens. The script builds the engine and window, seeds test data, and runs Playwright against the visual tour screens (defined in `scripts/visual-tour/screens.json`). Screenshots are written to `artifacts/proof/`.
-
-Available screen IDs: `main-chat`, `new-menu`, `connection`, `gateway`, `usage`, `running`, `header-more`, `composer-plus`, `composer-tune`, `composer-plug`, `settings-general`, `settings-accounts`, `add-claude-account`, `settings-updates`, `pixel-office`, `group-chat`, `topics`. The proof script captures each screen in light/dark themes and at 1280px/700px widths.
-
-Requires Node.js 24.19.0 or higher. If your Node version is too old, the script will print installation instructions.
+For example, `pnpm proof -- --screens main-chat,settings-general` captures those two screens. Omit `--screens` to capture all screens listed in `scripts/visual-tour/screens.json`. Each selected screen is captured in light and dark at 1280px and 700px. PNGs land in `artifacts/proof/`. If Node is older than 24.19.0, the script prints the exact install command and exits.
 
 ## Working with AI agents
 
