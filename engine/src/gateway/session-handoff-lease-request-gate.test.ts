@@ -27,7 +27,11 @@ function leaseFromPreviousEngine(lane: string): string {
   const { file, lease } = writeSessionHandoffLease(resolveSessionHandoffLeaseDir(), lane);
   fs.writeFileSync(
     file,
-    JSON.stringify({ ...lease, pid: process.ppid, startTime: getFileLockProcessStartTime(process.ppid) }),
+    JSON.stringify({
+      ...lease,
+      pid: process.ppid,
+      startTime: getFileLockProcessStartTime(process.ppid),
+    }),
   );
   refreshSessionHandoffLeases();
   return file;
@@ -81,9 +85,9 @@ describe("session handoff lease request gate: which requests", () => {
 
   it("matches a session by stored key, alias, agent-scoped alias, key lists and id; never another session", () => {
     const leased = ["session:agent:main:main", "session:agent:main:work", "session:3f2a-id"];
-    expect(findSessionHandoffLeasedLanes("sessions.patch", { key: "agent:main:work" }, leased)).toEqual([
-      "session:agent:main:work",
-    ]);
+    expect(
+      findSessionHandoffLeasedLanes("sessions.patch", { key: "agent:main:work" }, leased),
+    ).toEqual(["session:agent:main:work"]);
     expect(findSessionHandoffLeasedLanes("chat.send", { sessionKey: "main" }, leased)).toEqual([
       "session:agent:main:main",
     ]);
@@ -91,15 +95,25 @@ describe("session handoff lease request gate: which requests", () => {
       findSessionHandoffLeasedLanes("chat.send", { sessionKey: "work", agentId: "main" }, leased),
     ).toEqual(["session:agent:main:work"]);
     expect(
-      findSessionHandoffLeasedLanes("sessions.patchMany", { keys: ["agent:main:other", "agent:main:main"] }, leased),
+      findSessionHandoffLeasedLanes(
+        "sessions.patchMany",
+        { keys: ["agent:main:other", "agent:main:main"] },
+        leased,
+      ),
     ).toEqual(["session:agent:main:main"]);
-    expect(findSessionHandoffLeasedLanes("sessions.recover", { key: "x", sessionId: "3f2a-id" }, leased)).toEqual([
-      "session:3f2a-id",
-    ]);
-    expect(findSessionHandoffLeasedLanes("sessions.patch", { key: "agent:main:other" }, leased)).toEqual([]);
-    expect(findSessionHandoffLeasedLanes("sessions.messages.subscribe", { key: "agent:main:main" }, leased)).toEqual(
-      [],
-    );
+    expect(
+      findSessionHandoffLeasedLanes("sessions.recover", { key: "x", sessionId: "3f2a-id" }, leased),
+    ).toEqual(["session:3f2a-id"]);
+    expect(
+      findSessionHandoffLeasedLanes("sessions.patch", { key: "agent:main:other" }, leased),
+    ).toEqual([]);
+    expect(
+      findSessionHandoffLeasedLanes(
+        "sessions.messages.subscribe",
+        { key: "agent:main:main" },
+        leased,
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -107,7 +121,10 @@ describe("session handoff lease request gate: waiting", () => {
   it("runs a write to any other session at once, and parks a write to the held one until it is released", async () => {
     const file = leaseFromPreviousEngine("session:agent:main:held");
     expect(
-      waitForSessionHandoffLeasesBeforeRequest({ method: "sessions.patch", params: { key: "agent:main:free" } }),
+      waitForSessionHandoffLeasesBeforeRequest({
+        method: "sessions.patch",
+        params: { key: "agent:main:free" },
+      }),
     ).toBeUndefined();
     const parked = waitForSessionHandoffLeasesBeforeRequest({
       method: "sessions.patch",
@@ -134,7 +151,11 @@ describe("session handoff lease request gate: waiting", () => {
         code: "UNAVAILABLE",
         retryable: true,
         retryAfterMs: 5_000,
-        details: { reason: "session-handoff-lease", method: "sessions.reset", lane: "session:agent:main:held" },
+        details: {
+          reason: "session-handoff-lease",
+          method: "sessions.reset",
+          lane: "session:agent:main:held",
+        },
       }),
     });
     expect(countSessionHandoffLeaseWaiters("session:agent:main:held")).toBe(0);

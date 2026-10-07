@@ -43,7 +43,9 @@ export function isSessionHandoffGatedMethod(method: string): boolean {
 function laneCandidates(key: string, agentId: string | undefined): string[] {
   const lanes = [resolveSessionLane(key)];
   try {
-    lanes.push(resolveSessionLane(canonicalizeSessionKeyForAgent(agentId ?? DEFAULT_AGENT_ID, key)));
+    lanes.push(
+      resolveSessionLane(canonicalizeSessionKeyForAgent(agentId ?? DEFAULT_AGENT_ID, key)),
+    );
   } catch {
     // An unparseable key still matches by its raw lane and alias below.
   }

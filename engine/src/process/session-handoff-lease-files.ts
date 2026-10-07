@@ -11,7 +11,8 @@
 //
 // This gates the session's command lane, which carries turns, compaction, and cron and heartbeat runs. Gateway
 // requests that write a session outside its lane (session RPCs, chat.send's user turn, in-process dispatch) wait in
-// gateway/session-handoff-lease-request-gate.ts.
+// gateway/session-handoff-lease-request-gate.ts. Cron (run-prepare) and heartbeat (its busy check) consult the lease
+// before the session writes they make ahead of the lane.
 //
 // A lease is live only while its holder process is the same process (pid and start time) and it is younger than
 // the longest a handoff may keep a session; anything else is stale and is deleted on sight. The format is version 2
