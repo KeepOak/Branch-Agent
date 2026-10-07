@@ -853,3 +853,15 @@ test("bare unrelated legacy folder and incomplete markers do not capture fresh d
     assert.equal(defaultDataDirectory(), legacy, "an existing real desktop config remains authoritative");
   } finally { home.mock.restore(); if (previous === undefined) delete process.env.BRANCH_DESKTOP_DATA; else process.env.BRANCH_DESKTOP_DATA = previous; }
 }));
+
+test("updater fetches the newest available release directly, skipping intermediate releases", async () => fixture(async ({ cfg, request }) => {
+  // The updater is on 0.4.1, releases 0.4.2 and 0.4.3 exist, and 0.4.3 is the latest.
+  // readComponentManifest fetches from /releases/latest/download/, which always returns
+  // the newest release (0.4.3), not intermediate ones. The updater stages 0.4.3 directly.
+  const manifest = await source.readComponentManifest(request);
+  assert.equal(manifest.version, "0.4.3", "manifest version should be the latest, not an intermediate one");
+  assert.equal(await source.refreshComponentUpdate(cfg, request), true);
+  const status = await source.readComponentUpdateStatus(cfg);
+  assert.equal(status.componentsPendingVersion, "0.4.3", "updater should stage the latest release directly");
+  // If another release (0.4.4) becomes available, the next check fetches that one.
+}));

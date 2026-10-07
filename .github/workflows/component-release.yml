@@ -1,15 +1,10 @@
 name: GitHub component release
 
 on:
-  push:
-    branches: [main]
-    tags: ['v[0-9]*.[0-9]*.[0-9]*']
-    paths:
-      - 'engine/**'
-      - 'window/**'
-      - 'desktop/**'
-      - 'scripts/feature-batch-ci*'
-      - '.github/workflows/component-release.yml'
+  schedule:
+    # Every 45 minutes: batch merges into releases instead of publishing on every push.
+    - cron: '*/45 * * * *'
+  tags: ['v[0-9]*.[0-9]*.[0-9]*']
   # Release-pipeline changes build and smoke every native target before merge; publish stays main-only.
   pull_request:
     paths:
@@ -28,16 +23,91 @@ on:
 permissions:
   contents: read
 
-# Main: an in-flight release always finishes; queued pushes collapse to the newest pending run, so
-# releases keep landing while lanes merge (publish refuses anything older than GitHub latest).
-# Pull requests: a new push replaces the previous check.
+# Scheduled and manual releases run one at a time and never cancel each other: an in-flight release
+# always finishes; a queued run waits. Pull requests: a new push replaces the previous check.
 concurrency:
   group: github-component-release-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  identity:
+  readiness:
     if: github.repository == 'KeepOak/Branch-Agent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      commit: ${{ steps.check.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Check if a release is needed
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          should_release="false"
+          commit=""
+          
+          # PR checks always run without the readiness gate
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            should_release="true"
+            commit="$(git rev-parse HEAD)"
+            printf 'should_release=%s\ncommit=%s\n' "$should_release" "$commit" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          
+          # Tag-triggered releases always run
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            should_release="true"
+            commit="$(git rev-parse HEAD)"
+            printf 'should_release=%s\ncommit=%s\n' "$should_release" "$commit" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          
+          # Scheduled and manual runs: check if main has changes since the last release
+          git fetch origin main
+          commit="$(git rev-parse origin/main)"
+          
+          # Find the last release tag
+          latest_release=$(gh api repos/KeepOak/Branch-Agent/releases/latest --jq .tag_name 2>/dev/null || echo "")
+          
+          if [[ -z "$latest_release" ]]; then
+            echo "No previous release found; proceeding with release"
+            should_release="true"
+          else
+            latest_commit=$(gh api repos/KeepOak/Branch-Agent/git/refs/tags/"$latest_release" --jq .object.sha)
+            # Resolve annotated tags to their commit
+            object_type=$(gh api repos/KeepOak/Branch-Agent/git/tags/"$latest_commit" --jq .object.type 2>/dev/null || echo "commit")
+            if [[ "$object_type" == "commit" ]]; then
+              latest_commit=$(gh api repos/KeepOak/Branch-Agent/git/tags/"$latest_commit" --jq .object.sha)
+            fi
+            
+            if [[ "$commit" == "$latest_commit" ]]; then
+              echo "Main has not changed since $latest_release; skipping release"
+              should_release="false"
+            else
+              # Check if merge-gate CI is green on main's head
+              ci_status=$(gh api "repos/KeepOak/Branch-Agent/commits/$commit/check-runs" \
+                --jq '.check_runs[] | select(.name == "merge-gate") | .conclusion' | head -n1)
+              
+              if [[ "$ci_status" != "success" ]]; then
+                echo "CI check 'merge-gate' is not green on main ($ci_status); skipping release"
+                should_release="false"
+              else
+                echo "Main has new changes since $latest_release and CI is green; proceeding with release"
+                should_release="true"
+              fi
+            fi
+          fi
+          
+          printf 'should_release=%s\ncommit=%s\n' "$should_release" "$commit" >> "$GITHUB_OUTPUT"
+  
+  identity:
+    needs: readiness
+    if: needs.readiness.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -46,6 +116,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ needs.readiness.outputs.commit }}
           persist-credentials: false
       - name: Freeze exact source and release identity
         id: identity
@@ -67,7 +138,8 @@ jobs:
           fi
           printf 'commit=%s\nversion=%s\n' "$commit" "$version" >> "$GITHUB_OUTPUT"
   window:
-    needs: identity
+    needs: [readiness, identity]
+    if: needs.readiness.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -93,7 +165,8 @@ jobs:
   # Native targets start with identity; the engine builds while the shared renderer job runs, and the
   # renderer artifact is fetched only when packaging needs it (release-build.mjs waits for the ready file).
   native:
-    needs: identity
+    needs: [readiness, identity]
+    if: needs.readiness.outputs.should_release == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
@@ -210,7 +283,8 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   publish:
-    needs: [identity, native]
+    needs: [readiness, identity, native]
+    if: needs.readiness.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

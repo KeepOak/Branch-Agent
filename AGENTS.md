@@ -19,7 +19,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 9. **Self-test visible changes** in a scratch engine and window (browser or computer tools, the bridge's `ui_*` tools, or Playwright) and put screenshots in the PR.
 10. **Commits and PRs:** Conventional Commits, files staged by name (never `git add -A`), no tool or AI attribution lines, no force-push to `main`. PR body: what, why, exact test commands and pass counts.
 11. **Merging:** `main` requires the `merge-gate` check. Only the coordinator merges, and only the head that was reviewed: `gh pr merge <n> --squash --match-head-commit <reviewed-sha>`. CI jobs have a hard 15-minute cap: split or shard work rather than raising a timeout.
-12. **Releases are automatic.** A merge touching `engine/`, `window/` or `desktop/` publishes a component release (engine, window, desktop, desktopRuntime) that installed apps pick up within the hour and apply on restart. Treat every merge as shipping.
+12. **Releases are batched.** A merge touching `engine/`, `window/` or `desktop/` is built in CI but only published in scheduled 45-minute batches when the merge-gate check is green. Installed apps pick up the batched release within the hour and apply on restart. Treat every merge as potentially shipping in the next batch.
 
 ## Coordinating Trunks
 
