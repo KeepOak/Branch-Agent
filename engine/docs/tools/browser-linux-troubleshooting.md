@@ -63,8 +63,7 @@ Update `~/.branch/branch.json`:
   "browser": {
     "enabled": true,
     "executablePath": "/usr/bin/google-chrome-stable",
-    "headless": true,
-    "noSandbox": true
+    "headless": true
   }
 }
 ```
