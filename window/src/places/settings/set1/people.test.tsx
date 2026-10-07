@@ -81,7 +81,7 @@ describe("Settings › People", () => {
     expect(dlg.textContent).toContain("Invite someone");
     await act(async () => [...dlg.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "On their own device")!.click());
     await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg button")].find((b) => b.textContent === "Make a one-time code")!.click());
-    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { bootstrapProfile: "limited" });
+    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { bootstrapProfile: "limited", includeQr: true });
     expect(document.querySelector(".dlg .pp-code")?.textContent).toBe("INV-1");
   });
 

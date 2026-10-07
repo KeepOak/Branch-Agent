@@ -28,6 +28,16 @@ describe("Gateway contact projection", () => {
     expect(buildContactSections(projectContact(fallback, []), DEFAULT_PREFS, 100).find((s) => s.id === "recent")?.rows.map((r) => r.title)).toEqual(["Main", "Scout"]);
     expect(fallback.map((c) => c.threadKey)).toEqual(["agent:main:main", "agent:scout:main"]);
   });
+  it("shows a joined computer with its Trunks' character faces", () => {
+    const computer = raw("nas", {
+      id: "a2a:branch-nas", kind: "outside", name: "NAS-linux", threadKey: "a2a:branch-nas",
+      face: { trunks: [{ name: "Tester", avatar: "branch:ember" }, { name: "Scout", avatar: "branch:sorrel" }] },
+    });
+    expect(contactRow(projectContact([computer], [])[0]).roomPicks).toEqual([
+      { kind: "trunk", name: "Tester", avatar: "branch:ember" },
+      { kind: "trunk", name: "Scout", avatar: "branch:sorrel" },
+    ]);
+  });
   it("keeps the canonical key through a session id rotation", () => {
     const source = [row("agent:oak:main", { sessionId: "rotated" })];
     expect(contactRow(projectContact([raw("oak")], source)[0]).key).toBe("agent:oak:main");

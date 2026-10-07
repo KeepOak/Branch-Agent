@@ -54,7 +54,9 @@ export function contactRow(contact: Contact): Conversation {
     isMain: contact.kind === "trunk", pinned: Boolean(contact.pinnedAt), archived: Boolean(contact.archivedAt),
     unread: contact.threadUnread || contact.unreadTopics > 0, snoozedUntil: base?.snoozedUntil ?? null,
     ...(base?.projectId ? { projectId: base.projectId } : {}),
-    ...(contact.roomPicks ? { roomPicks: contact.roomPicks } : {}),
+    ...(contact.roomPicks ? { roomPicks: contact.roomPicks } : contact.face?.trunks?.length
+      ? { roomPicks: contact.face.trunks.map((trunk) => ({ kind: "trunk" as const, name: trunk.name, avatar: trunk.avatar })) }
+      : {}),
     createdAt: base?.createdAt ?? 0, updatedAt: contact.preview.at, preview,
     working: contact.working, needsYou: contact.needsYou, kind: contact.kind, system: false, automation: false,
     totalTokens: base?.totalTokens ?? 0, contextTokens: base?.contextTokens ?? 0,

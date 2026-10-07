@@ -50,7 +50,7 @@ export async function createChannelMcpRuntime(
     verbose?: boolean;
     /** Branch-to-Branch: work with a host Branch this Branch joined, as its paired device. Its own Trunks
      *  appear on the host as contacts, and what its tools send is attributed to this Branch. */
-    graftHost?: { link: GraftLink; trunks: { id: string; name?: string }[] };
+    graftHost?: { link: GraftLink; trunks: { id: string; name?: string; avatar?: string }[] };
   } = {},
 ): Promise<{
   server: McpServer;

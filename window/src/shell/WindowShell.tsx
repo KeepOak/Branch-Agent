@@ -10,7 +10,7 @@ import { Composer, VOICE_OFF } from "../composer/Composer";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
 import { useBranchVersion } from "../connect/branch-version";
-import { saveTargetName } from "../setup/pre-connect-state";
+import { LOCAL_ADDRESS, readTargetName, saveTargetName } from "../setup/pre-connect-state";
 import { Thread } from "../thread/Thread";
 import { stepLabel } from "../thread/format";
 import { PlaceView } from "../places-nav/PlaceView";
@@ -39,6 +39,7 @@ import { RowCard } from "./RowCard";
 import { MIN_PANE, NO_ROOM, PaneDivider, SplitPanes, TOO_NARROW, type Pane } from "./SplitPanes";
 import { useRowCard, useRowExtras, useSelection } from "./sidebar-state";
 import { machineMenuItems, MachineSwitcher } from "./MachineMenu";
+import { BranchLinkDialog } from "./BranchLinkDialog";
 import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import { createTopic, newMenuItems } from "./new-menu";
 import type { TopicListItem } from "./contact-topics";
@@ -397,6 +398,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [pip, setPip] = useState<PipTarget | null>(null);
   const [stageComputer, setStageComputer] = useState<string | null>(null);
   const [addingComputer, setAddingComputer] = useState(false);
+  const [linkingBranch, setLinkingBranch] = useState(false);
   const [stageTakeOver, setStageTakeOver] = useState(false);
   const [guide, setGuide] = useState<"news" | "news-ready" | "tour" | null>(null);
   const [characterShown, setCharacterShown] = useCharacterShown();
@@ -863,8 +865,12 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     // A second click on the button that opened a menu closes it (§5.4 behaviour 1).
     setOverlay((cur) => (cur?.kind === "menu" && cur.id === id ? null : { kind: "menu", id, at, items, label, upward }));
   };
-  const machineMenu = (e: MouseEvent<HTMLElement>, id: string, upward = false) =>
-    showMenu(e, id, machineMenuItems({ machineName: machine?.name ?? "", online: ready, level: readLevel(), roundTripMs: gateway.health?.durationMs ?? null, openSettings }), "Which computer", upward);
+  const machineMenu = (e: MouseEvent<HTMLElement>, id: string, upward = false) => {
+    const bridge = (window as { branchDesktop?: { gatewayUrl?: string; getGatewayUrl?: () => string } }).branchDesktop;
+    const homeUrl = bridge?.getGatewayUrl?.() ?? bridge?.gatewayUrl ?? import.meta.env.VITE_GATEWAY_URL ?? LOCAL_ADDRESS;
+    showMenu(e, id, machineMenuItems({ machineName: machine?.name || readTargetName(url) || "", currentUrl: url, homeUrl, online: ready, level: readLevel(), roundTripMs: gateway.health?.durationMs ?? null, openSettings,
+      onLinkBranch: () => setLinkingBranch(true), onSwitch: target => window.dispatchEvent(new CustomEvent("branch:switch-computer", { detail: { url: target } })) }), "Which computer", upward);
+  };
   const guideItems = (): MenuItem[] => [
     { label: "What’s new", hint: "this version", run: () => setGuide("news"), testid: "guide-news" },
     { label: "Set up Branch", hint: "3 min", run: () => firstRun.open(0), testid: "guide-setup" },
@@ -1310,7 +1316,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       </a>
       <TopBar
         compact={compact}
-        machine={<MachineSwitcher online={ready} connecting={s.status.phase === "connecting"} onOpen={(e) => machineMenu(e, "machine")} />}
+        machine={<MachineSwitcher name={machine?.name || readTargetName(url) || "This computer"} online={ready} connecting={s.status.phase === "connecting"} onOpen={(e) => machineMenu(e, "machine")} />}
         header={header}
         dark={dark}
         listHidden={isNarrow ? !slideOpen : rail || layout.hidden}
@@ -1415,7 +1421,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         allRows={lists.rows}
         onNewProject={() => setNewProject(true)}
         rowExtras={rowExtras}
-        machine={isNarrow ? <MachineSwitcher online={ready} connecting={s.status.phase === "connecting"} onOpen={(e) => machineMenu(e, "machine-side")} /> : undefined}
+        machine={isNarrow ? <MachineSwitcher name={machine?.name || readTargetName(url) || "This computer"} online={ready} connecting={s.status.phase === "connecting"} onOpen={(e) => machineMenu(e, "machine-side")} /> : undefined}
         selected={selection.picked}
         onSelect={selection.select}
         onCard={rowCard.onCard}
@@ -1454,6 +1460,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         {main}
       </main>
       {addingComputer && ready ? <AddComputer engine={session.engine} onClose={() => setAddingComputer(false)} onAdded={computersChanged} /> : null}
+      {linkingBranch && ready ? <BranchLinkDialog engine={session.engine} onClose={() => setLinkingBranch(false)} onOpenGatewaySettings={() => { setLinkingBranch(false); openSettings("gateway"); }} /> : null}
       {route.kind === "chat" && pip && !stage ? (
         <StagePip key={openKey} engine={session.engine} gatewayUrl={url} name={trunkName(openRow?.agentId)} computer={pip} blocks={[...s.history, ...s.live]} onOpen={() => { setPip(null); setStage(pip.kind === "browser" ? "Browser" : "Computer"); }} onClose={() => setPip(null)} />
       ) : null}
