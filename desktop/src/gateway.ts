@@ -283,12 +283,17 @@ export function takeOverStandby(child: ChildProcess, timeoutMs = HANDOFF_TAKE_OV
   });
 }
 
-/** Kills an engine and its process group at once and resolves when it has exited: its state lock is free then. */
-export async function killGatewayAndWait(child: ChildProcess): Promise<void> {
+/** Bounded kill: never hold the update lock forever waiting for a missing exit event. */
+export async function killGatewayAndWait(child: ChildProcess, timeoutMs = 10_000): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
-  const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
-  stopGateway(child, "SIGKILL");
-  await exited;
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => { cleanup(); reject(new Error(`Gateway ${child.pid} did not exit after SIGKILL`)); }, timeoutMs);
+    const onExit = () => { cleanup(); resolve(); };
+    const cleanup = () => { clearTimeout(timer); child.off("exit", onExit); };
+    child.once("exit", onExit);
+    stopGateway(child, "SIGKILL");
+    if (child.exitCode !== null || child.signalCode !== null) onExit();
+  });
 }
 
 /**
@@ -396,7 +401,7 @@ export async function waitForReady(cfg: DesktopConfig, child: ChildProcess, ms: 
 export function stopGateway(child: ChildProcess, signal: "SIGTERM" | "SIGKILL" = "SIGTERM"): void {
   if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
   try {
-    if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+    if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10_000 });
     else process.kill(-child.pid, signal);
   } catch {
     // already gone

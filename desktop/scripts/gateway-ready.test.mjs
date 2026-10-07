@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
-const { GatewayReadinessTimeoutError, waitForReady } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+const { GatewayReadinessTimeoutError, killGatewayAndWait, waitForReady } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+
+test("a child that never emits exit cannot hold the update lock indefinitely", async () => {
+  const child = Object.assign(new EventEmitter(), { pid: undefined, exitCode: null, signalCode: null });
+  await assert.rejects(killGatewayAndWait(child, 30), /did not exit after SIGKILL/);
+  assert.equal(child.listenerCount("exit"), 0);
+});
 
 async function fixture(handler, run) {
   const server = createServer(handler); await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
