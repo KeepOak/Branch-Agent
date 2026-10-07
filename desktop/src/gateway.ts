@@ -44,7 +44,7 @@ function testProfile(): Record<string, string> {
 
 export function startGateway(cfg: DesktopConfig, engineDir: string, token: string): ChildProcess {
   const log = createWriteStream(join(cfg.dataDir, "gateway.log"), { flags: "a" });
-  const profile = prepareNormalProfile(join(cfg.dataDir, "home"));
+  const profile = prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => log.write(message + "\n"));
   if (profile.note) log.write(profile.note + "\n");
   const env = {
     ...process.env,
