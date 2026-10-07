@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  GATE_SCRIPTS,
+  TRUSTED_CHECKOUT_REF,
   TRUSTED_WORKFLOW_PATH,
   coverageFromPrFiles,
   evaluateOtherChecks,
@@ -12,7 +15,9 @@ import {
   missingCoreWorkflows,
   nameStatusFromPrFiles,
   parsePullRequestTrigger,
+  parseTrustedWorkflowPolicy,
   summarizeGateFileChanges,
+  trustedCheckoutRef,
   workflowAppliesToChanges,
 } from './merge-gate-trusted.mjs';
 
@@ -333,4 +338,54 @@ test('listCoreWorkflows reads main workflow path filters and skips the trusted g
     item.path === '.github/workflows/visual-tour.yml'
     && item.pullRequestPaths?.includes('window/**')));
   assert.ok(!workflows.some((item) => item.path === TRUSTED_WORKFLOW_PATH));
+});
+
+test('old-base PR still runs the trusted check from the default branch', () => {
+  const yaml = readFileSync(new URL(`../${TRUSTED_WORKFLOW_PATH}`, import.meta.url), 'utf8');
+  const policy = parseTrustedWorkflowPolicy(yaml);
+  assert.equal(policy.checkoutRef, TRUSTED_CHECKOUT_REF);
+  assert.equal(policy.checksOutDefaultBranch, true);
+  assert.equal(policy.checksOutPrBaseSha, false);
+  assert.equal(policy.checksOutPrHead, false);
+  assert.equal(policy.persistCredentialsFalse, true);
+
+  const oldYaml = [
+    '      - name: Check out the base ref only',
+    '        with:',
+    '          ref: ${{ github.event.pull_request.base.sha }}',
+    '          persist-credentials: false',
+  ].join('\n');
+  const oldPolicy = parseTrustedWorkflowPolicy(oldYaml);
+  assert.equal(oldPolicy.checksOutPrBaseSha, true);
+  assert.equal(oldPolicy.checksOutDefaultBranch, false);
+
+  const oldBaseEvent = {
+    repository: { default_branch: 'main' },
+    pull_request: {
+      base: { sha: '83a339cbaf00ef46e3dfe81499ce8eeff8c40fd9' },
+      head: { sha: '9dcd18243f05dac9b2a7fd26727aa039d1afa019' },
+    },
+  };
+  const checkout = trustedCheckoutRef(oldBaseEvent);
+  assert.equal(checkout, 'main');
+  assert.notEqual(checkout, oldBaseEvent.pull_request.base.sha);
+  assert.notEqual(checkout, oldBaseEvent.pull_request.head.sha);
+
+  const filesAtOldBase = new Set([
+    'scripts/changed-test-coverage.mjs',
+    'scripts/check-merge-command.mjs',
+  ]);
+  assert.equal(filesAtOldBase.has('scripts/merge-gate-trusted.test.mjs'), false);
+  assert.ok(GATE_SCRIPTS.includes('scripts/merge-gate-trusted.test.mjs'));
+});
+
+test('merge-gate also queues on ready_for_review', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /types:\s*\[.*ready_for_review.*\]/);
+});
+
+test('merge-gate recheck fires when Visual tour and Engine build complete', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /^\s+-\s+Visual tour\s*$/m);
+  assert.match(yaml, /^\s+-\s+Engine build \(PR\)\s*$/m);
 });

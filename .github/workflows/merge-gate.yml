@@ -5,6 +5,7 @@ name: Merge gate
 # commit and fails if any of them failed. `main` requires only this check.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read

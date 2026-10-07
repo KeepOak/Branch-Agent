@@ -14,6 +14,7 @@ import { checkMergeCommands, docsToCheck } from './check-merge-command.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const TRUSTED_JOB = 'merge-gate-trusted';
 export const TRUSTED_WORKFLOW_PATH = '.github/workflows/merge-gate-trusted.yml';
+export const TRUSTED_CHECKOUT_REF = '${{ github.event.repository.default_branch }}';
 export const REQUIRED_JOBS = ['merge-gate'];
 export const PASS_CONCLUSIONS = new Set(['success', 'skipped', 'neutral']);
 export const GATE_SCRIPTS = [
@@ -38,6 +39,25 @@ const SKIP_WORKFLOWS = new Set([
   TRUSTED_WORKFLOW_PATH,
   '.github/workflows/merge-gate-recheck.yml',
 ]);
+
+export function trustedCheckoutRef(event) {
+  const defaultBranch = event?.repository?.default_branch;
+  if (typeof defaultBranch !== 'string' || defaultBranch.length === 0) {
+    throw new Error('trusted checkout requires repository.default_branch');
+  }
+  return defaultBranch;
+}
+
+export function parseTrustedWorkflowPolicy(yaml) {
+  const checkoutRef = yaml.match(/^\s+ref:\s*(.+)$/m)?.[1].trim() ?? null;
+  return {
+    checkoutRef,
+    persistCredentialsFalse: /^\s+persist-credentials:\s*false\s*$/m.test(yaml),
+    checksOutDefaultBranch: checkoutRef === TRUSTED_CHECKOUT_REF,
+    checksOutPrBaseSha: /^\s+ref:\s*\$\{\{\s*github\.event\.pull_request\.base\.sha\s*\}\}\s*$/m.test(yaml),
+    checksOutPrHead: /^\s+ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.(?:sha|ref)\s*\}\}\s*$/m.test(yaml),
+  };
+}
 
 export function nameStatusFromPrFiles(files) {
   return files.flatMap((file) => {
