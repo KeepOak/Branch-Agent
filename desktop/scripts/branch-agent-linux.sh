@@ -14,13 +14,21 @@ fi
 if [ "$(stat -c '%u:%a' -- "$sandbox")" != '0:4755' ]; then
   python=/usr/bin/python3
   if [ -x "$python" ]; then
-    setup='import os, stat, sys
+    setup='import hashlib, os, stat, sys
 path, owner = sys.argv[1], int(sys.argv[2])
 fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
 try:
     info = os.fstat(fd)
     if not stat.S_ISREG(info.st_mode) or info.st_uid != owner or info.st_nlink != 1:
         raise SystemExit("Unsafe chrome-sandbox file")
+    digest = hashlib.sha256()
+    while True:
+        chunk = os.read(fd, 1024 * 1024)
+        if not chunk:
+            break
+        digest.update(chunk)
+    if digest.hexdigest() != "__BRANCH_SANDBOX_SHA256__":
+        raise SystemExit("Unexpected chrome-sandbox contents")
     os.fchown(fd, 0, 0)
     os.fchmod(fd, 0o4755)
 finally:

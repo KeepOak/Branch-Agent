@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile, chmod } from "node:fs/promises";
@@ -13,6 +14,7 @@ test("Linux package includes an executable sandbox-checking launcher", async () 
   const root = await mkdtemp(join(tmpdir(), "branch-linux-launcher-"));
   try {
     await writeFile(join(root, "Branch Agent"), "#!/bin/sh\nprintf 'started:%s\\n' \"$1\"\n");
+    await writeFile(join(root, "chrome-sandbox"), "fixture");
     if (process.platform !== "win32") await chmod(join(root, "Branch Agent"), 0o755);
     await installLinuxLauncher(root);
     const launcher = join(root, "branch-agent");
@@ -22,13 +24,14 @@ test("Linux package includes an executable sandbox-checking launcher", async () 
     assert.match(source, /os\.O_NOFOLLOW/);
     assert.match(source, /os\.fchown\(fd, 0, 0\)/);
     assert.match(source, /os\.fchmod\(fd, 0o4755\)/);
+    assert.ok(source.includes(createHash("sha256").update("fixture").digest("hex")));
+    assert.doesNotMatch(source, /__BRANCH_SANDBOX_SHA256__/);
     assert.equal(await readFile(join(root, "Branch Agent"), "utf8"), source);
     assert.match(await readFile(join(root, "Branch Agent.bin"), "utf8"), /started:/);
     assert.match(await readFile(join(root, "LINUX-SETUP.txt"), "utf8"), /one authorization prompt/);
     if (process.platform !== "win32") assert.equal((await stat(launcher)).mode & 0o777, 0o755);
     if (process.platform !== "linux") return;
 
-    await writeFile(join(root, "chrome-sandbox"), "fixture");
     const tools = join(root, "tools");
     await mkdir(tools);
     await writeFile(join(tools, "unshare"), "#!/bin/sh\nexit 1\n");
