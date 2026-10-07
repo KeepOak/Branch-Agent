@@ -221,7 +221,10 @@ test("a manifest that goes back to the running version withdraws the staged pair
   await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
   await writeFile(join(cfg.dataDir, "component-update-version.txt"), "0.4.2\n");
   const back = await newerRelease(context, "0.4.2");
-  assert.equal(await source.refreshComponentUpdate(cfg, back.request, { underSwapGuard: freeGuard }), false);
+  const withdrawn = [];
+  assert.equal(await source.refreshComponentUpdate(cfg, back.request, { underSwapGuard: freeGuard,
+    onWithdrawal: version => withdrawn.push(version) }), false);
+  assert.deepEqual(withdrawn, ["0.4.3"]);
   await unchanged(cfg);
   assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, null);
   assert.deepEqual((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.2-")), [], "a copy of the running version was staged");

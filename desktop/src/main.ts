@@ -175,6 +175,7 @@ const updateLock = createUpdateLock(released => afterUpdateLockRelease(released)
 const RECOVERY = "crash recovery", REPLACING = "replace the staged update";
 /** An Update click that arrived while a newer release replaced the staged one: it runs once the replacement ends. */
 let updateClickQueued = false;
+let withdrawnUpdateVersion: string | undefined;
 /** The engine exited while an update ran: the update's end decides, then recovery runs once with a full budget. */
 let recoveryDeferred = false;
 /** A failed update left nothing serving: once recovery brings the previous build back, the bar says it was kept. */
@@ -365,15 +366,18 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
  */
 async function afterUpdateLockRelease(released: UpdateLockHandle): Promise<void> {
   if (released.purpose === RECOVERY) return;
+  const queuedClick = updateClickQueued;
+  updateClickQueued = false;
   const exitedDuring = recoveryDeferred;
   recoveryDeferred = false;
   if (quitting) return;
   if (!engineServing()) {
     if (gateway && engineRunning()) await stopFailedEngine(gateway);
     gatewaySupervisor.recover(new Error(exitedDuring ? `the engine exited during "${released.purpose}"` : `nothing served after "${released.purpose}"`));
-  } else if (updateClickQueued) {
-    updateClickQueued = false;
-    void restartEngine();
+  } else if (queuedClick) {
+    const staged = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+    if (engineUpdateReady && staged) void restartEngine();
+    else win?.webContents.send("branch-desktop:engine-update", "kept");
   }
 }
 
@@ -625,6 +629,8 @@ const autoApply = createAutoApplyUpdate({
 async function offerStagedUpdate(): Promise<void> {
   const { componentsPendingVersion, previousWindowDir } = await readComponentUpdateStatus(cfg);
   if (!componentsPendingVersion) return;
+  if (componentsPendingVersion === withdrawnUpdateVersion) return;
+  withdrawnUpdateVersion = undefined;
   if (previousWindowDir && !updateLock.held) servedWindowDir = previousWindowDir;
   engineUpdateReady = true;
   sendToBranchWindows("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
@@ -912,7 +918,12 @@ async function start(): Promise<void> {
   componentsReady = true;
   runConfirmedReleasePrune();
   autoApply.start();
-  stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, underSwapGuard, log, onStaged: () => {
+  stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, underSwapGuard, log,
+    onWithdrawal: version => {
+      withdrawnUpdateVersion = version;
+      engineUpdateReady = false;
+      win?.webContents.send("branch-desktop:engine-update", "kept");
+    }, onStaged: () => {
     offerStagedUpdate().catch(error => log(`Component update status: ${String(error)}`));
   } });
   if (macComputerDriver) {
@@ -1003,6 +1014,7 @@ function watchEngine(): void {
     log("new engine build found; offering Update");
     void readComponentUpdateStatus(cfg).then(({ componentsPendingVersion }) => {
       if (componentsPendingVersion) return offerStagedUpdate();
+      if (withdrawnUpdateVersion) return;
       engineUpdateReady = true;
       sendToBranchWindows("branch-desktop:engine-update", "ready");
     }).catch(error => log(`Engine build status: ${String(error)}`));

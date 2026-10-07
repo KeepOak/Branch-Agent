@@ -20,6 +20,8 @@ export interface RefreshOptions {
    */
   underSwapGuard?: (replace: () => Promise<boolean>) => Promise<boolean | undefined>;
   log?: (line: string) => void;
+  /** Clear an offered version as soon as the manifest withdraws it, before Windows folder moves retry. */
+  onWithdrawal?: (version: string) => void;
 }
 
 interface ReleaseIdentity { version: string; engineSha256: string; windowSha256: string }
@@ -83,20 +85,36 @@ export async function rejectFailedComponentUpdate(cfg: DesktopConfig, engineDir:
   await replaceFile(rejectedFile(cfg), JSON.stringify({ ...pending.identity, reason: "exit" }));
 }
 
-export async function rollbackComponentUpdate(cfg: DesktopConfig): Promise<boolean> {
+export async function rollbackComponentUpdate(cfg: DesktopConfig, retryServedWindow = false): Promise<boolean> {
   const pending = await publication(cfg);
   if (!pending) return false;
   const pointer = join(cfg.dataDir, "engine-current.txt");
   const current = await readOrEmpty(pointer);
   if (current !== pending.engineNext && current !== pending.enginePrevious && current !== pending.engineReplaced) throw new Error("Engine publication changed outside this update; retain rollback journal");
+  const moveWindow = async (source: string, target: string) => {
+    for (let attempt = 0;; attempt++) {
+      try { await move(source, target); return; }
+      catch (error) {
+        if (!retryServedWindow || process.platform !== "win32" ||
+          !["EPERM", "EBUSY", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "") || attempt === 2) throw error;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+  };
+  if (existsSync(pending.windowPrevious)) {
+    const displaced = `${pending.engineNext}-failed-window`;
+    const movedServed = existsSync(cfg.windowDir);
+    if (movedServed) await moveWindow(cfg.windowDir, displaced);
+    try { await moveWindow(pending.windowPrevious, cfg.windowDir); }
+    catch (error) {
+      if (movedServed) await moveWindow(displaced, cfg.windowDir);
+      throw error;
+    }
+  } else if (!pending.windowExisted && existsSync(cfg.windowDir)) {
+    await moveWindow(cfg.windowDir, `${pending.engineNext}-failed-window`);
+  }
   if (pending.enginePrevious) await replaceFile(pointer, `${pending.enginePrevious}\n`);
   else await rm(pointer, { force: true });
-  if (existsSync(pending.windowPrevious)) {
-    if (existsSync(cfg.windowDir)) await move(cfg.windowDir, `${pending.engineNext}-failed-window`);
-    await move(pending.windowPrevious, cfg.windowDir);
-  } else if (!pending.windowExisted && existsSync(cfg.windowDir)) {
-    await move(cfg.windowDir, `${pending.engineNext}-failed-window`);
-  }
   await rm(journalFile(cfg));
   return true;
 }
@@ -331,7 +349,8 @@ async function replaceStaged(cfg: DesktopConfig, held: Publication, release: Com
       const current = await publication(cfg);
       if (current?.engineNext !== held.engineNext || !await replaceable(cfg, current)) return false;
       options.log?.(`The staged update ${current.version} was withdrawn; the running ${release.version} stays`);
-      return rollbackComponentUpdate(cfg);
+      options.onWithdrawal?.(current.version);
+      return rollbackComponentUpdate(cfg, true);
     });
     return withdrawn === true ? "withdrawn" : false;
   }

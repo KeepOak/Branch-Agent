@@ -911,6 +911,26 @@ test("an Update click or an automatic update during a staged-update replacement 
   await eventually(() => swapped(root), 30_000);
   assert.equal((await log()).split("update requested (").length - 1, 1);
 }));
+test("a queued Update click is discarded when replacement withdraws the staged release", () => fixture(async ({ root, runtime, starts, restart, offerStaged, swapGuard }) => {
+  const sent = idleWindow(runtime);
+  const cfg = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  await stageFixtureUpdate(root);
+  offerStaged();
+  let releaseGuard;
+  const held = new Promise(resolve => { releaseGuard = resolve; });
+  const updates = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js"));
+  const replacement = swapGuard(async () => { await held; return updates.rollbackComponentUpdate(cfg); });
+  restart();
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "preparing"));
+  releaseGuard();
+  assert.equal(await replacement, true);
+  await pause(200);
+  assert.equal((await starts()).length, 1, "a withdrawn release drained the running engine");
+  assert.equal(sent.at(-1)[1], "kept");
+  await swapGuard(async () => true);
+  await pause(200);
+  assert.equal((await starts()).length, 1, "the stale click fired on an unrelated later release");
+}));
 test("a staged-update replacement that ends rolled back keeps the served window valid and never reloads it", () => fixture(async ({ root, runtime, offerStaged, swapGuard }) => {
   idleWindow(runtime);
   const cfg = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
