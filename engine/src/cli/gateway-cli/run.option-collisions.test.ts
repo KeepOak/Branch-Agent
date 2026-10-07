@@ -51,7 +51,11 @@ const waitForPortBindable = vi.fn(async (_port: number, _opts?: unknown) => 0);
 const findVerifiedGatewayListenerPidsOnPortSync = vi.fn((_port: number) => [] as number[]);
 const formatGatewayPidList = vi.fn((pids: number[]) => pids.join(", "));
 const isTerminalInteractive = vi.fn(() => true);
-const offerInvalidConfigRecovery = vi.fn(async () => ({ status: "declined" as const }));
+const offerInvalidConfigRecovery = vi.fn(
+  async (_options: { retry: () => Promise<void> }): Promise<{ status: "declined" | "recovered" }> => ({
+    status: "declined",
+  }),
+);
 const parkCurrentLaunchAgentForMaintenance = vi.fn(async () => false);
 const ensureDevGatewayConfig = vi.fn(async (_opts?: unknown) => {});
 type GatewayLoopStart = (params?: { startupStartedAt?: number }) => Promise<unknown>;
@@ -163,6 +167,12 @@ vi.mock("../../config/config.js", () => ({
   readConfigFileSnapshot: async () => configState.snapshot,
   readConfigFileSnapshotWithPluginMetadata: (options?: ConfigSnapshotReadOptionsStub) =>
     readConfigFileSnapshotWithPluginMetadata(options),
+}));
+
+// Startup's one-time character migration uses config write methods outside this
+// option-collision fixture. Keep these tests focused on gateway run admission.
+vi.mock("../../gateway/trunk-character-startup.js", () => ({
+  assignTrunkCharactersAtStartup: vi.fn(async () => {}),
 }));
 
 vi.mock("../../config/paths.js", async (importOriginal) => ({
@@ -360,7 +370,8 @@ vi.mock("../terminal-interactivity.js", () => ({
 }));
 
 vi.mock("../invalid-config-recovery.js", () => ({
-  offerInvalidConfigRecovery: () => offerInvalidConfigRecovery(),
+  offerInvalidConfigRecovery: (options: { retry: () => Promise<void> }) =>
+    offerInvalidConfigRecovery(options),
 }));
 
 vi.mock("../ports.js", () => ({
@@ -758,7 +769,7 @@ describe("gateway run option collisions", () => {
       configState.snapshot = repairedSnapshot;
       expect(await selectGatewayRunEnvironment({ opts: {}, runtime: defaultRuntime })).toBe(true);
       expect(await prepareGatewayRunBootstrap({ opts: {}, runtime: defaultRuntime })).toBe(true);
-      expect(process.env.BRANCH_STATE_DIR).toBe(selectedStateDir);
+      expect(process.env.BRANCH_STATE_DIR).toBe(path.resolve(selectedStateDir));
       expect(
         await recheckGatewayRunBootstrap({
           opts: {},
@@ -795,7 +806,7 @@ describe("gateway run option collisions", () => {
 
       expect(await selectGatewayRunEnvironment({ opts: {}, runtime: defaultRuntime })).toBe(true);
       expect(await prepareGatewayRunBootstrap({ opts: {}, runtime: defaultRuntime })).toBe(true);
-      expect(process.env.BRANCH_STATE_DIR).toBe(selectedStateDir);
+      expect(process.env.BRANCH_STATE_DIR).toBe(path.resolve(selectedStateDir));
 
       const invalidSnapshot = {
         ...configState.snapshot,
@@ -1158,7 +1169,7 @@ describe("gateway run option collisions", () => {
         await import("./pre-bootstrap.js");
       await selectGatewayRunEnvironment({ opts: {}, runtime: defaultRuntime });
       await prepareGatewayRunBootstrap({ opts: {}, runtime: defaultRuntime });
-      expect(process.env.BRANCH_STATE_DIR).toBe("/tmp/branch-guarded-state");
+      expect(process.env.BRANCH_STATE_DIR).toBe(path.resolve("/tmp/branch-guarded-state"));
 
       const finalConfig = {
         env: { vars: { BRANCH_STATE_DIR: "/tmp/branch-final-state" } },
@@ -1168,7 +1179,7 @@ describe("gateway run option collisions", () => {
 
       await expect(runGatewayCli(["gateway", "run"])).rejects.toThrow("__exit__:1");
 
-      expect(process.env.BRANCH_STATE_DIR).toBe("/tmp/branch-guarded-state");
+      expect(process.env.BRANCH_STATE_DIR).toBe(path.resolve("/tmp/branch-guarded-state"));
       expect(startGatewayServer).not.toHaveBeenCalled();
       expect(runtimeErrors.join("\n")).toContain(
         "final config read changed config or state selection",
@@ -1676,7 +1687,7 @@ describe("gateway run option collisions", () => {
         expect(ensureDevGatewayConfig).toHaveBeenCalledWith({ reset: true });
       } else {
         const options = gatewayStartOptions();
-        expect(options.bind).toBe("loopback");
+        expect(options.bind).toBeUndefined();
         expect(options.startupConfigSnapshotRead?.snapshot?.valid).toBe(false);
       }
     },
@@ -1694,6 +1705,36 @@ describe("gateway run option collisions", () => {
 
     expect(offerInvalidConfigRecovery).not.toHaveBeenCalled();
     expect(startGatewayServer).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a caller-owned host rendezvous open across invalid-config recovery", async () => {
+    const { createInvalidConfigError } = await import("../../config/io.invalid-config.js");
+    const { runGatewayCommand } = await import("./run.js");
+    const config = { gateway: { mode: "local", auth: { mode: "none" } } };
+    configState.cfg = config;
+    configState.snapshot = configSnapshot(config);
+    const markStarting = vi.fn(async () => {});
+    const close = vi.fn(async () => {});
+    const preparedHost = {
+      decision: { outcome: "start" as const, message: "Host claimed" },
+      markStarting,
+      close,
+    };
+    startGatewayServer.mockRejectedValueOnce(
+      createInvalidConfigError("/tmp/branch.json", "gateway.mode: invalid"),
+    );
+    offerInvalidConfigRecovery.mockImplementationOnce(async (options) => {
+      expect(close).not.toHaveBeenCalled();
+      await options.retry();
+      return { status: "recovered" as const };
+    });
+
+    await runGatewayCommand({}, {}, undefined, preparedHost);
+
+    expect(offerInvalidConfigRecovery).toHaveBeenCalledOnce();
+    expect(startGatewayServer).toHaveBeenCalledTimes(2);
+    expect(markStarting).toHaveBeenCalledTimes(2);
+    expect(close).not.toHaveBeenCalled();
   });
 
   it("prints all supported modes on invalid --auth value", async () => {
@@ -1729,7 +1770,18 @@ describe("gateway run option collisions", () => {
 
     await runGatewayCli(["gateway", "run", "--allow-unconfigured"]);
 
-    expect(gatewayStartOptions().bind).toBe("loopback");
+    expect(gatewayStartOptions().bind).toBeUndefined();
+  });
+
+  it("does not pin a persisted bind across in-process gateway starts", async () => {
+    const config = { gateway: { bind: "loopback", mode: "local" } };
+    configState.cfg = config;
+    configState.snapshot = configSnapshot(config);
+
+    await runGatewayCli(["gateway", "run", "--allow-unconfigured"]);
+
+    expect(startGatewayServer).toHaveBeenCalledOnce();
+    expect(callArg(startGatewayServer, 0, 1)).not.toHaveProperty("bind");
   });
 
   it("reads gateway password from --password-file", async () => {

@@ -48,7 +48,8 @@ describe("Trunk Accounts", () => {
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Which service is the new account with?");
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).not.toContain("Add key");
     await act(async () => resolveDetect({ manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Anthropic setup-token" }] }));
-    expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("claude setup-token");
+    expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Claude");
+    expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Paste a token instead");
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).not.toContain("Add key");
   });
 
@@ -93,7 +94,8 @@ describe("Trunk Accounts", () => {
     expect(useAny.disabled).toBe(true);
     expect(useAny.title).toContain("settings file");
     expect(host.textContent).not.toContain("static");
-    expect(host.textContent).toContain("Claude · Subscription 1");
+    // Opaque token IDs use the P61 account label in both Settings and Trunk.
+    expect(host.textContent).toContain("Claude · Account 1");
     expect(request).not.toHaveBeenCalledWith("models.authOrderSet", expect.anything());
   });
 });

@@ -101,7 +101,7 @@ function RunActs({ r, ctx, steer }: { r: Run; ctx: Ctx; steer: () => void }) {
 function WaitActs({ r, ctx }: { r: Run; ctx: Ctx }) {
   const item = r.ask ?? {}, off = !ctx.approve || ctx.busy, name = trunkName(ctx.d, r.agentId);
   return <>
-    <button className="btn ghost sm" type="button" disabled={off} onClick={() => void ctx.act(() => resolveApproval(ctx.engine, item, "deny"), `Said no. ${name} won’t do it.`)}>Don’t</button>
+    <button className="btn ghost sm" type="button" disabled={off} onClick={() => void ctx.act(() => resolveApproval(ctx.engine, item, "deny"), `Said no. ${name} won’t do it.`)}>Don’t allow</button>
     {r.sessionKey ? <button className="btn sm" type="button" onClick={() => ctx.openConversation(str(r.sessionKey))}>Open</button> : null}
     <button className="btn pri sm" type="button" disabled={off} onClick={() => void ctx.act(() => resolveApproval(ctx.engine, item, "allow-once"), `Allowed. ${name} carries on.`)}>Allow</button>
   </>;

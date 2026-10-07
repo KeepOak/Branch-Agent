@@ -56,7 +56,7 @@ describe("message actions", () => {
 
   it("reads reactions into chips, marking yours", async () => {
     const raw = { e2: [{ emoji: "👍", count: 2, identities: [{ id: "me", label: "Me" }, { id: "x" }] }] };
-    expect(readReactions(raw, "me").get("e2")).toEqual([{ emoji: "👍", count: 2, mine: true, names: ["Me", "x"] }]);
+    expect(readReactions(raw, "me").get("e2")).toEqual([{ emoji: "👍", count: 2, mine: true, names: ["You", "x"] }]);
     const { engine, calls } = recorder({ "session.reactions.set": { messageId: "e2", reactions: [] } });
     await setReaction(engine, "e2", "👍", true);
     expect(calls[0][1]).toMatchObject({ messageId: "e2", emoji: "👍", remove: true });

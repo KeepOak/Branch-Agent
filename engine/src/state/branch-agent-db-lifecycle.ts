@@ -3,6 +3,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import type { DatabaseSync } from "node:sqlite";
 import { isMainThread, threadId } from "node:worker_threads";
+import { hasLostGatewayStateOwnership } from "../infra/gateway-state-owner.js";
 import { disposeNodeSqliteDependents } from "../infra/kysely-sync-cache-state.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
 import { isPathInside } from "../infra/path-guards.js";
@@ -179,8 +180,7 @@ export function resolveAgentDatabaseIntegrityGateReason(
   }
   return verification?.clean_close === 0 &&
     verification.app_version === VERSION &&
-    `${verification.dev}:${verification.ino}` ===
-      readBranchAgentDatabaseIdentity(database).identity
+    `${verification.dev}:${verification.ino}` === readBranchAgentDatabaseIdentity(database).identity
     ? "dirty-receipt"
     : "no-proof";
 }
@@ -349,9 +349,7 @@ export function refreshAgentDatabaseIdleTimer(database: BranchAgentDatabase): vo
 }
 
 /** Dispose only this publication; a later admission at the same path is independent. */
-export async function closeMaintenanceAgentDatabase(
-  database: BranchAgentDatabase,
-): Promise<void> {
+export async function closeMaintenanceAgentDatabase(database: BranchAgentDatabase): Promise<void> {
   await database.walMaintenance.stop();
   if (cache.databases.get(database.path) !== database) {
     return;
@@ -407,11 +405,27 @@ export function closeCachedBranchAgentDatabase(
     throw error;
   }
   if (lease) {
-    releaseBranchAgentDatabaseLease(
-      lease.leaseId,
-      { env: lease.env, initializationAgentPaths: [database.path] },
-      clean ?? (retainRuntimeProof ? "uncheckpointed" : undefined),
-    );
+    try {
+      releaseBranchAgentDatabaseLease(
+        lease.leaseId,
+        { env: lease.env, initializationAgentPaths: [database.path] },
+        clean ?? (retainRuntimeProof ? "uncheckpointed" : undefined),
+      );
+    } catch (error) {
+      // The native handle is closed. After a real loss of state ownership the lease row (a shared-state write)
+      // is the next owner's to reconcile; failing here would keep the closed database cached and fail every
+      // restart close, so the engine could neither restart nor stop cleanly.
+      if (!hasLostGatewayStateOwnership(resolveBranchStateSqlitePath(lease.env))) {
+        throw error;
+      }
+      agentDbLog.warn(
+        "Agent database lease left for the next state owner (state ownership was lost)",
+        {
+          path: database.path,
+          error,
+        },
+      );
+    }
     cache.leases.delete(database.path);
   }
   releaseAgentDeletionDatabaseCleanup(database);

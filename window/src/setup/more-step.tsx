@@ -186,7 +186,7 @@ function RoutineTile({ engine, agentId, trunkName }: { engine: WindowEngine; age
             Added to Automations: <b>{added}</b> · weekdays at 9:00 AM · {trunkName}. Change it any time in Automations › Scheduled.
           </>
         ) : (
-          "One thing you do every week that a Trunk could do. It becomes your first routine."
+          "One thing you do every week that a Trunk could do. It becomes your first automation."
         )
       }
     >
@@ -194,7 +194,7 @@ function RoutineTile({ engine, agentId, trunkName }: { engine: WindowEngine; age
         <form className="formR418" onSubmit={(e) => (e.preventDefault(), void add())}>
           <input className="inp" aria-label="A boring task" placeholder="Sort the receipts in Downloads" value={text} onChange={(e) => setText(e.target.value)} />
           <button type="submit" className="btn sm" data-testid="setup-routine" disabled={busy || !text.trim()}>
-            Make it a routine
+            Make it an automation
           </button>
         </form>
       )}

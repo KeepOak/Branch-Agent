@@ -17,9 +17,9 @@ const sameRect = (a: Rectangle, b: Rectangle): boolean => a.x === b.x && a.y ===
 const finite = (...n: unknown[]): boolean => n.every((v) => typeof v === "number" && Number.isFinite(v));
 
 /** Reads the saved state; anything missing or malformed counts as a first launch. */
-export function readWindowState(dataDir: string): SavedWindowState | undefined {
+export function readWindowState(dataDir: string, file = FILE): SavedWindowState | undefined {
   try {
-    const s = JSON.parse(readFileSync(join(dataDir, FILE), "utf8")) as SavedWindowState;
+    const s = JSON.parse(readFileSync(join(dataDir, file), "utf8")) as SavedWindowState;
     if ((s.mode === "maximized" || s.mode === "normal") && finite(s.x, s.y, s.width, s.height)) return s;
   } catch {
     // first launch or unreadable file
@@ -42,7 +42,7 @@ export function placeWindow(saved: SavedWindowState | undefined, displays: Displ
 }
 
 /** Saves maximized/normal state, the normal bounds and the display on every move, resize and close. */
-export function trackWindowState(w: BrowserWindow, dataDir: string, displayFor: (bounds: Rectangle) => Rectangle): void {
+export function trackWindowState(w: BrowserWindow, dataDir: string, displayFor: (bounds: Rectangle) => Rectangle, file: string | (() => string) = FILE): void {
   let timer: NodeJS.Timeout | undefined;
   const save = (): void => {
     if (timer) clearTimeout(timer);
@@ -51,7 +51,7 @@ export function trackWindowState(w: BrowserWindow, dataDir: string, displayFor: 
     const bounds = w.getNormalBounds();
     const state: SavedWindowState = { mode: w.isMaximized() ? "maximized" : "normal", ...bounds, display: displayFor(bounds) };
     try {
-      writeFileSync(join(dataDir, FILE), JSON.stringify(state));
+      writeFileSync(join(dataDir, typeof file === "function" ? file() : file), JSON.stringify(state));
     } catch {
       // saving the window state must never stop the app
     }

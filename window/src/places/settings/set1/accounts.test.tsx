@@ -26,7 +26,7 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 
 function engineOf(extra: Record<string, unknown> = {}) {
   const request = vi.fn(async (method: string) => {
-    if (method === "models.authStatus") return { ts: 1, providers: PROVIDERS, providerCapabilities: CAPS };
+    if (method === "models.authStatus") return extra[method] ?? { ts: 1, providers: PROVIDERS, providerCapabilities: CAPS };
     if (method === "config.get") return { hash: "h1", valid: true, config: {} };
     if (method in extra) return extra[method];
     return {};
@@ -40,6 +40,28 @@ async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
 }
 
 describe("Settings › Accounts", () => {
+  it("opens Add directly when the no-model action routes here", async () => {
+    sessionStorage.setItem("branch.openAddAccount", "1");
+    const { engine } = engineOf({});
+    await render(engine);
+    expect(document.querySelector('[data-testid="add-account"]')).not.toBeNull();
+    expect(sessionStorage.getItem("branch.openAddAccount")).toBeNull();
+  });
+  it("opens Claude browser sign-in first and keeps token paste collapsed", async () => {
+    const { engine, request } = engineOf({
+      "models.authStatus": { providers: PROVIDERS, providerCapabilities: [...CAPS, { provider: "anthropic", apiKeySupported: true, loginOptions: [{ id: "anthropic/claude-browser", kind: "oauth", label: "Sign in with Claude" }] }] },
+      "branch.setup.detect": { manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Anthropic setup-token" }] },
+    });
+    await render(engine);
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add a Claude account")!.click());
+    expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Sign in with Claude");
+    const fallback = document.querySelector<HTMLDetailsElement>(".dlg details")!;
+    expect(fallback.open).toBe(false);
+    expect(fallback.textContent).not.toContain("claude setup-token");
+    expect(fallback.textContent).not.toContain("terminal");
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg button")].find((b) => b.textContent === "Sign in with Claude")!.click());
+    expect(request).toHaveBeenCalledWith("models.authLogin", expect.objectContaining({ authChoice: "anthropic/claude-browser" }));
+  });
   it("lists each provider's accounts in the engine's order, one list across providers", () => {
     const all = accountsOf(PROVIDERS);
     expect(all.map((a) => a.a.profileId)).toEqual(["openai:b", "openai:a", "anthropic:c"]);
@@ -49,14 +71,14 @@ describe("Settings › Accounts", () => {
   it("names each Claude subscription token as its own Claude account", () => {
     const p: Provider = { provider: "anthropic", displayName: "Claude", status: "ok", profileOrder: ["anthropic:setup-1"], profiles: [
       { profileId: "anthropic:setup-1", type: "token", status: "ok" }, { profileId: "anthropic:setup-2", type: "token", status: "ok" }] };
-    expect(accountsOf([p]).map((acc) => accountName(acc))).toEqual(["Claude · Subscription 1", "Claude · Subscription 2"]);
+    expect(accountsOf([p]).map((acc) => accountName(acc))).toEqual(["Claude · Account 1", "Claude · Account 2"]);
   });
 
   it("names a labelled Claude sign-in by its label, as a ChatGPT account by its email", () => {
     const p: Provider = { provider: "anthropic", displayName: "Claude", status: "ok", profiles: [
       { profileId: "anthropic:claude", type: "token", status: "ok" }, { profileId: "anthropic:work", type: "token", status: "ok" },
       { profileId: "anthropic:default", type: "token", status: "ok" }] };
-    expect(accountsOf([p]).map((acc) => accountName(acc))).toEqual(["Claude · claude", "Claude · work", "Claude · Subscription 3"]);
+    expect(accountsOf([p]).map((acc) => accountName(acc))).toEqual(["Claude · claude", "Claude · work", "Claude · Account 3"]);
   });
 
   it("draws the designed rows from models.authStatus, never a credential", async () => {

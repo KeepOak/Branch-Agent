@@ -18,6 +18,7 @@ export const runtimeProcessEntrypoints = {
   stateRead: runtimeProcessEntrypoint("state/branch-state-read.worker"),
   workerNativeLifecycle: runtimeProcessEntrypoint("infra/worker-native-lifecycle.worker"),
   spawnBroker: runtimeProcessEntrypoint("process/spawn-broker/worker"),
+  hiddenConsoleLauncher: runtimeProcessEntrypoint("process/windows-hidden-console-launcher"),
   cronStreamMatcher: runtimeProcessEntrypoint("gateway/cron-stream-matcher.worker"),
   controlUiFile: runtimeProcessEntrypoint("gateway/control-ui-file.worker"),
   nodeBootstrapArtifact: runtimeProcessEntrypoint(
