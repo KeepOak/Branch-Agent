@@ -1,5 +1,6 @@
 // The thread's dialogs (DESIGN-SPEC §4.2.6): Edit and send again, Branch from here, Look inside; and the
 // reaction chips under a message.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Reaction } from "./actions";
@@ -7,6 +8,7 @@ import { copyText, useThread } from "./context";
 import { Dialog } from "./Dialog";
 import { formatDuration, modelName } from "./format";
 import type { MessageMeta } from "./model";
+import { formatMoney } from "../format/money";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -114,10 +116,10 @@ export function LookInside({ inspect, onClose }: { inspect: Inspect; onClose: ()
   const words = u?.total ? (context ? `${u.total.toLocaleString()} of ${context.toLocaleString()} (${Math.round((u.total / context) * 100)}%)` : u.total.toLocaleString()) : "";
   const rows: [string, string][] = [
     ["Model", modelName(inspect.meta?.model)],
-    ["Words of context", words],
+    ["Context tokens", words],
     ["Tools offered", tools ? tools.join(", ") : ""],
     ["Time", formatDuration(inspect.durationMs)],
-    ["Cost", u ? `$${(u.cost ?? 0).toFixed(2)}` : ""],
+    ["Cost", u ? formatMoney(u.cost ?? 0) : ""],
     ["Steps", `${inspect.steps} in this task · model calls, tools and approvals`],
   ];
   const record = JSON.stringify({ ...inspect, contextTokens: context, tools }, null, 2);

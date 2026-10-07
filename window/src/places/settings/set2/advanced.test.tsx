@@ -19,7 +19,7 @@ function engineWith(answers: Answers) {
 }
 let host: HTMLDivElement; let root: Root;
 beforeEach(() => { (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true; host = document.createElement("div"); host.className = "set-col"; document.body.append(host); root = createRoot(host); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.restoreAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 const flush = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
 async function show(engine: WindowEngine, level: "advanced" | "technical" = "technical") {
   await act(async () => root.render(<AdvancedPage page="advanced" title="Advanced" level={level} engine={engine} />));
@@ -47,11 +47,13 @@ describe("Settings › Advanced", () => {
   });
 
   it("reads the service tiles from status, health and the browser", async () => {
-    const { engine } = engineWith({ ...CONFIG, status: { runtimeVersion: "2.0.1", pid: 77 }, health: { ok: true, ts: 1 }, "system.info": { port: 4000 }, "browser.request": (p: Record<string, unknown>) => (p.path === "/tabs" ? { tabs: [{}, {}] } : { enabled: true, running: true, profile: "branch" }) });
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, text: async () => "0.4.4-build-a300a48dba2f" })));
+    const { engine } = engineWith({ ...CONFIG, status: { runtimeVersion: "2026.9.8", pid: 77 }, health: { ok: true, ts: 1 }, "system.info": { port: 4000 }, "browser.request": (p: Record<string, unknown>) => (p.path === "/tabs" ? { tabs: [{}, {}] } : { enabled: true, running: true, profile: "branch" }) });
     await show(engine);
     const tile = document.querySelector('[data-tile="Branch service"]') as HTMLElement;
     expect(tile.textContent).toContain("Running");
-    expect(tile.textContent).toContain("2.0.1");
+    expect(tile.textContent).toContain("0.4.4 · build a300a48d");
+    expect(tile.textContent).not.toContain("2026.9.8");
     expect(tile.textContent).toContain("127.0.0.1:4000");
     expect((document.querySelector('[data-tile="Browser"]') as HTMLElement).textContent).toContain("2");
   });
@@ -71,6 +73,19 @@ describe("Settings › Advanced", () => {
     await click(row("Show the thinking").querySelector("input") as HTMLElement);
     await click(row("Catch up on runs missed while Branch was off").querySelector("input") as HTMLElement);
     expect(patches(request)).toEqual([{ telemetry: { enabled: true } }, { agents: { defaults: { reasoningDefault: "on" } } }, { cron: { skipMissedJobs: true } }]);
+  });
+
+  it("keeps early-feature rationale in page help, not row descriptions", async () => {
+    const { engine } = engineWith(CONFIG);
+    await show(engine, "advanced");
+    expect(row("Skip tools on plain chat").textContent).toContain("The decision model skips tools for plain chat.");
+    expect(row("Skip tools on plain chat").textContent).not.toContain("Off until you choose");
+    expect(row("Skip tools on plain chat").textContent).not.toContain("How it works");
+    expect(row("Code mode").textContent).not.toContain("How it works");
+    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
+    const help = document.querySelector(".kit-help-pop") as HTMLElement;
+    expect(help.textContent).toContain("Off until you choose: it’s an early feature");
+    expect(help.textContent).toContain("A per-model choice lives in Settings › Models");
   });
 
   it("numbers convert units and empty means the engine's default", async () => {
@@ -96,14 +111,16 @@ describe("Settings › Advanced", () => {
     await show(engine);
     await click(row("Recall before replying").querySelector("input") as HTMLElement);
     expect(patches(request)).toContainEqual({ plugins: { entries: { "active-memory": { enabled: true } } } });
-    expect(row("Memory wiki").textContent).toContain("Its plugin isn’t installed in this engine.");
+    // Greyed, without the developer note (shell/shown-why.ts).
+    expect(row("Memory wiki").getAttribute("aria-disabled")).toBe("true");
+    expect(row("Memory wiki").textContent).not.toContain("Its plugin isn’t installed in this engine.");
   });
 
-  it("greyed rows say why", async () => {
+  it("greyed rows stay greyed without developer notes, and say why otherwise", async () => {
     const { engine } = engineWith(CONFIG);
     await show(engine);
     expect(row("Send crash reports").getAttribute("aria-disabled")).toBe("true");
-    expect(row("Send crash reports").textContent).toContain("The engine doesn’t send crash reports.");
+    expect(row("Send crash reports").textContent).not.toContain("The engine doesn’t send crash reports.");
     expect(row("Report for a bug").textContent).toContain("branch gateway diagnostics export");
   });
 

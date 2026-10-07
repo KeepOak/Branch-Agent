@@ -1,5 +1,6 @@
 import { parseProviderModelRef } from "@branch/model-catalog-core/model-catalog-refs";
 import { z } from "zod";
+import { ALL_THINKING_LEVELS } from "../auto-reply/thinking.shared.js";
 import { AgentModelSchema, DecisionModelSchema } from "./zod-schema.agent-model.js";
 
 export const AgentRuntimePolicySchema = z
@@ -102,9 +103,7 @@ export const AgentEntryBaseSchema = z.strictObject({
   decisionModel: DecisionModelSchema.optional(),
   models: AgentModelMapSchema.optional(),
   modelPolicy: AgentModelPolicySchema.optional(),
-  thinkingDefault: z
-    .enum(["off", "minimal", "low", "medium", "high", "xhigh", "adaptive", "max", "ultra"])
-    .optional(),
+  thinkingDefault: z.enum(ALL_THINKING_LEVELS).optional(),
   verboseDefault: z.enum(["off", "on", "full"]).optional(),
   toolProgressDetail: z.enum(["explain", "raw"]).optional(),
   reasoningDefault: z.enum(["on", "off", "stream"]).optional(),
@@ -127,6 +126,13 @@ export const AgentEntryBaseSchema = z.strictObject({
       model: AgentModelSchema.optional(),
       thinking: z.string().optional(),
       requireAgentId: z.boolean().optional(),
+    })
+    .optional(),
+  /** Outbound permissions from this agent to other agents or A2A peers. */
+  agentToAgent: z
+    .strictObject({
+      allow: z.array(z.string()).optional(),
+      deny: z.array(z.string()).optional(),
     })
     .optional(),
   embeddedAgent: AgentEntryEmbeddedAgentConfigSchema,

@@ -114,6 +114,12 @@ export interface OAuthProviderInterface {
   modifyModels?(models: Model[], credentials: OAuthCredentials): Model[];
 }
 
+/** The built-in Claude subscription browser login, shared with the Anthropic provider plugin. */
+export async function loginAnthropicOAuth(callbacks: OAuthLoginCallbacks): Promise<OAuthCredentials> {
+  const { login } = await import("./provider-anthropic-login.js");
+  return login(callbacks);
+}
+
 /** @deprecated Use OAuthProviderInterface instead. */
 export interface OAuthProviderInfo {
   /** Stable provider id used for credential and config routing. */
@@ -149,14 +155,12 @@ export function parseOAuthAuthorizationInput(
     return {};
   }
 
-  try {
-    const url = new URL(value);
+  const url = URL.parse(value);
+  if (url) {
     return {
       code: url.searchParams.get("code") ?? undefined,
       state: url.searchParams.get("state") ?? undefined,
     };
-  } catch {
-    // Plain pasted code or query-string input.
   }
 
   if (value.includes("#")) {

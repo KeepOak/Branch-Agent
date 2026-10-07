@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import type { DatabaseSync } from "node:sqlite";
 import { getFileLockProcessStartTime } from "../shared/pid-alive.js";
-import { withExistingBranchStateDatabaseReadOnly } from "../state/branch-state-db-readonly.js";
+import {
+  withExistingBranchStateDatabaseCurrentReadOnly,
+  withExistingBranchStateDatabaseReadOnly,
+} from "../state/branch-state-db-readonly.js";
 import type { DB as BranchStateKyselyDatabase } from "../state/branch-state-db.generated.js";
 import { withBranchStateStartupMigrationCheckpointDatabase } from "../state/branch-state-db.js";
 import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js";
@@ -47,6 +50,8 @@ export const STARTUP_MIGRATION_LEASE_TTL_MS = 5 * 60_000;
 export const STARTUP_MIGRATION_HEARTBEAT_INTERVAL_MS = 60_000;
 
 export type StartupMigrationLease = {
+  /** Publication guards may already hold the SQLite writer, so this check must stay read-only. */
+  assertOwned: () => void;
   assertOwnedInTransaction: (database: DatabaseSync, params?: { nowMs?: number }) => void;
   heartbeat: (params?: { nowMs?: number }) => void;
   release: () => void;
@@ -93,16 +98,7 @@ function writeStartupMigrationCheckpointDatabase<T>(
   );
 }
 
-function assertStartupMigrationLeaseOwnedInTransaction(params: {
-  database: DatabaseSync;
-  nowMs?: number;
-  owner: string;
-}): void {
-  const expiresAt = readBranchStateLeaseExpiry(
-    params.database,
-    { ...STARTUP_MIGRATION_LEASE, owner: params.owner },
-    params.nowMs,
-  );
+function assertStartupMigrationLeaseOwned(expiresAt: number | undefined): void {
   if (expiresAt === undefined) {
     throw new Error(
       "Branch Agent startup migration lease was lost before startup migrations completed; retry so migrations can run under a fresh lease.",
@@ -219,12 +215,17 @@ function acquireStartupMigrationLeaseFromDatabase(
 
   return {
     owner,
+    assertOwned: () =>
+      assertStartupMigrationLeaseOwned(
+        withExistingBranchStateDatabaseCurrentReadOnly(
+          ({ db }) => readBranchStateLeaseExpiry(db, identity),
+          { env },
+        ),
+      ),
     assertOwnedInTransaction: (database, assertionParams = {}) => {
-      assertStartupMigrationLeaseOwnedInTransaction({
-        database,
-        owner,
-        nowMs: assertionParams.nowMs,
-      });
+      assertStartupMigrationLeaseOwned(
+        readBranchStateLeaseExpiry(database, identity, assertionParams.nowMs),
+      );
     },
     heartbeat: (heartbeatParams = {}) => {
       const heartbeatNowMs = heartbeatParams.nowMs ?? Date.now();
@@ -236,11 +237,7 @@ function acquireStartupMigrationLeaseFromDatabase(
           undefined,
           heartbeatNowMs,
         );
-        if (renewed === undefined) {
-          throw new Error(
-            "Branch Agent startup migration lease was lost before startup migrations completed; retry so migrations can run under a fresh lease.",
-          );
-        }
+        assertStartupMigrationLeaseOwned(renewed);
       });
     },
     release: () => {

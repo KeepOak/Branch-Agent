@@ -1,8 +1,4 @@
-/** Agent runtime id normalization and retired runtime-selection compatibility helpers. */
-import type { BranchConfig } from "../config/types.branch.js";
-import { normalizeAgentId } from "../routing/session-key.js";
-import { resolveAgentConfig } from "./agent-scope-config.js";
-
+/** Agent runtime id normalization helpers. */
 export type EmbeddedAgentRuntime = "branch" | "auto" | (string & {});
 
 export const BRANCH_AGENT_RUNTIME_ID = "branch";
@@ -33,21 +29,6 @@ export function normalizeOptionalAgentRuntimeId(raw: unknown): EmbeddedAgentRunt
   }
   const value = raw.trim().toLowerCase();
   return value ? normalizeEmbeddedAgentRuntime(value) : undefined;
-}
-
-/** Resolves the deprecated explicit whole-agent runtime override, when present. */
-export function resolveAgentScopedRuntimeOverride(params: {
-  config?: BranchConfig;
-  agentId?: string;
-}): EmbeddedAgentRuntime | undefined {
-  const agentId = params.agentId ? normalizeAgentId(params.agentId) : undefined;
-  const agentRuntime =
-    agentId && params.config
-      ? resolveAgentConfig(params.config, agentId)?.agentRuntime?.id
-      : undefined;
-  return normalizeOptionalAgentRuntimeId(
-    agentRuntime ?? params.config?.agents?.defaults?.agentRuntime?.id,
-  );
 }
 
 /** Returns whether a runtime id should be treated as the default runtime selection. */

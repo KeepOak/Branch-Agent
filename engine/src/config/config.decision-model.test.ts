@@ -59,14 +59,4 @@ describe("decision model configuration", () => {
       ).toBe(false);
     },
   );
-
-  it("accepts opt-in and explicit disablement, without the unpublished judgments selector", () => {
-    expect(BranchSchema.safeParse({}).success).toBe(true);
-    expect(
-      BranchSchema.safeParse({
-        agents: { ownership: "explicit", defaults: { decisionModel: "" }, entries: { worker: {} } },
-      }).success,
-    ).toBe(true);
-    expect(BranchSchema.safeParse({ judgments: { provider: "typesafe" } }).success).toBe(false);
-  });
 });

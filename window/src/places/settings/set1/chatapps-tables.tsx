@@ -1,6 +1,7 @@
 // Settings › Chat apps at Advanced and Technical (§4.7.10): the preview's sections as tables. Each row names the
 // engine config key it saves (messages.*, commands.*, channels.defaults.*, agents.defaults.* reply streaming,
 // approvals.exec.*), its choices as the engine's values and the source default; rows with no engine key are greyed.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Opt, Row, Section } from "./chatapps-kit";
 import { NO_KEY } from "./chatapps-kit";
 
@@ -86,7 +87,7 @@ export const ADVANCED: Section[] = [
 ];
 
 export const TECH_A: Section[] = [
-  { title: "Chat apps, technical", lv: 2, rows: [
+  { title: "Chat apps, technical", group: "Chat apps", lv: 2, rows: [
     { t: "Call it stalled after", sub: "No update from the app for this long. Telegram: 120 seconds; other apps: 30 minutes.", kind: "num", unit: "seconds", def: 120, off: "The engine decides this on its own; Branch can’t change it yet." },
     { t: "Watchdog log", sub: "One line each time it checks or reconnects.", kind: "custom", id: "watchLog" },
     { t: "Smallest part", sub: "How replies are cut into parts.", path: "agents.defaults.blockStreamingChunk.minChars", kind: "num", unit: "characters", def: 800 },
@@ -105,7 +106,7 @@ export const TECH_A: Section[] = [
   { title: "Messages, every setting", lv: 2, hint: "Every message setting the engine has, by its key. The rows above set the common ones.", rows: [{ t: "Message keys", kind: "custom", id: "msgKeys" }] },
 ];
 
-export const DEPTH: Section = { title: "Each app, in depth", lv: 1, hint: "What only one app can do. Each applies once that app is connected.", rows: [{ t: "Apps", kind: "custom", id: "depth" }] };
+export const DEPTH: Section = { title: "Each app, in depth", group: "Each app", lv: 1, hint: "What only one app can do. Each applies once that app is connected.", rows: [{ t: "Apps", kind: "custom", id: "depth" }] };
 
 const EVERY_CHAT = "Branch has no setting for this yet.";
 export const LATER: Section[] = [

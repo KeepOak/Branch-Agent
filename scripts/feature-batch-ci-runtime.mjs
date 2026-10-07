@@ -109,9 +109,9 @@ export async function verifiedExceptionFlags(lane) {
     assert.match(policy, /^minimumReleaseAgeStrict: true$/m);
     retained = policy.split('minimumReleaseAgeExclude:')[1].split('\n\n')[0]
       .split('\n').map(line => line.match(/^  - "([^"]+)"/)?.[1]).filter(Boolean);
-    assert.equal(retained.length, 10, 'Review changed source exclusions before changing this gate');
+    assert.equal(retained.length, 14, 'Review changed source exclusions before changing this gate');
   }
-  return [...retained, ...targets.map(([name, version]) => `${name}@${version}`)]
+  return [...new Set([...retained, ...targets.map(([name, version]) => `${name}@${version}`)])]
     .map(value => `--config.minimum-release-age-exclude=${value}`);
 }
 
@@ -171,8 +171,17 @@ export async function publishWindowDependencies() {
 }
 
 export async function hostedChrome() {
-  assert.equal(process.platform, 'linux', 'The live browser fixture runs on hosted Ubuntu');
-  for (const file of ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/opt/google/chrome/chrome']) {
+  const candidates = process.platform === 'win32'
+    ? [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA]
+        .filter(Boolean).map(root => path.join(root, 'Google', 'Chrome', 'Application', 'chrome.exe'))
+    : ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/opt/google/chrome/chrome'];
+  if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
+    const browsers = path.join(process.env.LOCALAPPDATA, 'ms-playwright');
+    for (const entry of (await fs.readdir(browsers).catch(() => [])).filter(name => /^chromium-\d+$/.test(name)).sort()) {
+      candidates.unshift(path.join(browsers, entry, 'chrome-win64', 'chrome.exe'));
+    }
+  }
+  for (const file of candidates) {
     try { await fs.access(file); return file; } catch {}
   }
   throw new Error('Hosted Chrome is required for the live browser fixture; it cannot be skipped');

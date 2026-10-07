@@ -1,5 +1,6 @@
 import { GatewayClientRequestError } from "@branch/gateway-client";
 import { Command } from "commander";
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const gatewayMocks = vi.hoisted(() => ({

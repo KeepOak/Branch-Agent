@@ -88,5 +88,6 @@ export function registerAgentDeleteFilesystemTests(harness: AgentDeleteFilesyste
       expect(mocks.fsRm).not.toHaveBeenCalled();
       expect(mocks.deleteWorkspaceState).not.toHaveBeenCalled();
     });
+
   });
 }

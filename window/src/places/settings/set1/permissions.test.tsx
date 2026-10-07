@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
 import { PermissionsPage, PERMISSIONS_ROWS } from "./permissions";
+import { notify } from "../../../shell/notify";
+
+vi.mock("../../../shell/notify", () => ({ notify: vi.fn() }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -34,35 +37,101 @@ async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
   await act(async () => root.render(<KitProvider level={level} report={report} scope={null}><PermissionsPage page="permissions" title="Permissions" level="regular" engine={engine} /></KitProvider>));
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 }
-const heads = () => [...host.querySelectorAll(".sec > h2")].map((h) => h.textContent);
-const button = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === label)!;
+const heads = () => [...host.querySelectorAll(".sec > h2:not([hidden])")].map((h) => h.textContent);
+const button = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === label || b.textContent?.trim().startsWith(label))!;
 const patchOf = (request: ReturnType<typeof vi.fn>) => JSON.parse((request.mock.calls.find(([m]) => m === "config.patch") as [string, { raw: string }])[1].raw);
 
 describe("Settings › Permissions", () => {
   it("shows the engine's mode and the Regular sections in the preview's order", async () => {
     const { engine } = engineOf();
     await render(engine);
-    expect(host.textContent).toContain("Full access is on");
-    expect(heads()).toEqual(["This PC", "Without asking, Trunks may…", "Locks and records", "Pinned settings", "Work style"]);
-    expect(button("Full access").getAttribute("aria-pressed")).toBe("true");
+    expect(heads()).toEqual(["This computer", "Access", "Without asking, Trunks may…", "Locks and records", "Pinned settings"]);
+    expect(host.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain("Full access");
+    expect(host.textContent).not.toContain("Work style");
     expect(button("Plan first").disabled).toBe(true);
   });
 
   it("adds the Advanced and Technical sections in place", async () => {
     const { engine } = engineOf();
     await render(engine, 1);
-    expect(heads()).toEqual(["This PC", "Without asking, Trunks may…", "Locks and records", "Pinned settings", "Rules for each tool and folder", "Commands, by default", "Without asking, more", "Checks before anything runs", "Isolation", "Test and explain", "Tools and loops", "Privacy", "Your terminal", "Folders the sandbox may reach", "Work style", "Approvals, more", "Guards, more", "Money", "What each connector may do"]);
+    expect(heads()).toEqual(["This computer", "Access", "Without asking, Trunks may…", "Locks and records", "Pinned settings", "Rules and checks", "Sandbox", "Privacy", "Your terminal", "Approvals", "Guards", "Locks"]);
     await render(engine, 2);
-    expect(heads()).toContain("Tools, technical");
-    expect(heads().indexOf("Security, technical")).toBe(heads().indexOf("Guards that are always on") - 1);
-    expect(heads()).toContain("Network and sandbox, technical");
+    expect(heads()).toContain("Rules and checks");
+    expect(heads()).toContain("Sandbox");
+    expect(heads()).not.toContain("Tools, technical");
   });
 
-  it("Mode everywhere saves tools.exec.mode without the older security/ask keys", async () => {
+  it("Access saves tools.exec.mode without the older security/ask keys", async () => {
     const { engine, request } = engineOf();
     await render(engine);
     await act(async () => button("Ask first").click());
     expect(patchOf(request)).toEqual({ tools: { exec: { mode: "ask", security: null, ask: null } } });
+  });
+
+  it("turns on Lockdown globally and disables Access mode changes", async () => {
+    vi.mocked(notify).mockClear();
+    const { engine, request } = engineOf({
+      "config.patch": (params: unknown) => {
+        // Verify config.patch is called with exactly {raw, baseHash} params (Preview spec-v23 index.html:8378)
+        const p = params as Record<string, unknown>;
+        expect(Object.keys(p).sort()).toEqual(["baseHash", "raw"]);
+        return { ok: true, hash: "h2", config: JSON.parse((params as { raw: string }).raw) };
+      },
+    });
+    await render(engine);
+    const turnOnBtn = button("Turn Lockdown on");
+    expect(turnOnBtn?.className).toContain("bad"); // Preview spec-v23 index.html:8553 button class when off
+    await act(async () => turnOnBtn?.click());
+    expect(patchOf(request)).toEqual({ security: { lockdown: true } });
+    // Verify toast shown on success (Preview spec-v23 index.html:8910)
+    expect(vi.mocked(notify)).toHaveBeenCalledWith("Lockdown is on.");
+    const turnOffBtn = button("Turn Lockdown off");
+    expect(turnOffBtn).toBeTruthy();
+    expect(turnOffBtn?.className).not.toContain("bad"); // Preview spec-v23 index.html:8553 button class when on
+    // Verify status box appears when locked (Preview spec-v23 index.html:8540)
+    expect(host.textContent).toContain("Lockdown is on");
+    expect(host.textContent).toContain("Nothing leaves this computer and nothing is changed until you turn it off.");
+    // The status box opens the page, before every section (preview index.html:8540).
+    const status = host.querySelector('[data-row="Lockdown status"]')!;
+    expect(status.compareDocumentPosition(host.querySelector(".sec")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(button("Ask first").disabled).toBe(true);
+  });
+
+  it("toasts \"Lockdown is off.\" when switched off (preview index.html:8910)", async () => {
+    vi.mocked(notify).mockClear();
+    const { engine } = engineOf({
+      "config.get": { hash: "h1", valid: true, config: { security: { lockdown: true } } },
+      "config.patch": (params: unknown) => ({ ok: true, hash: "h2", config: JSON.parse((params as { raw: string }).raw) }),
+    });
+    await render(engine);
+    await act(async () => button("Turn Lockdown off").click());
+    expect(vi.mocked(notify)).toHaveBeenCalledWith("Lockdown is off.");
+    expect(button("Turn Lockdown on")).toBeTruthy();
+  });
+
+  it("shows the engine's refusal and no success toast when the switch fails", async () => {
+    vi.mocked(notify).mockClear();
+    const { engine } = engineOf({
+      "config.get": { hash: "h1", valid: true, config: { security: { lockdown: true } } },
+      "config.patch": () => { throw new Error("Only the owner can switch Lockdown off."); },
+    });
+    await render(engine);
+    await act(async () => button("Turn Lockdown off").click());
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(vi.mocked(notify)).not.toHaveBeenCalledWith("Lockdown is off.");
+    expect(vi.mocked(notify)).toHaveBeenCalledWith(expect.stringContaining("Only the owner can switch Lockdown off."), { tone: "bad" });
+  });
+
+  it("Access arrows select a mode and show disabled reasons inline", async () => {
+    const { engine, request } = engineOf();
+    await render(engine);
+    const group = host.querySelector<HTMLElement>('[role="radiogroup"][aria-label="Access"]')!;
+    const selected = group.querySelector<HTMLButtonElement>('[role="radio"][aria-checked="true"]')!;
+    expect(selected.textContent).toContain("Full access");
+    expect(button("Plan first").textContent).toContain("Plan first isn't available with this version of Branch.");
+    await act(async () => selected.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    expect(document.activeElement?.textContent).toContain("Auto");
+    expect(patchOf(request)).toEqual({ tools: { exec: { mode: "auto", security: null, ask: null } } });
   });
 
   it("lists the rules from the approvals file and saves with its base hash", async () => {
@@ -84,13 +153,13 @@ describe("Settings › Permissions", () => {
     expect(set[1].file.defaults).toEqual({ security: "allowlist" });
   });
 
-  it("the empty rules list uses the empty line, and greyed rows say why", async () => {
+  it("the empty rules list uses the empty line, and greyed rows hide developer notes", async () => {
     const { engine } = engineOf({ "exec.approvals.get": { ...SNAP, file: { version: 1 } } });
     await render(engine, 1);
     expect(host.textContent).toContain("No rules yet. Everything follows the mode.");
     const lock = host.querySelector('[data-row="App lock"]')!;
     expect(lock.getAttribute("aria-disabled")).toBe("true");
-    expect(lock.textContent).toContain("The engine has no app lock or PIN yet.");
+    expect(lock.textContent).not.toContain("The engine has no app lock or PIN yet.");
   });
 
   it("Stop a Trunk that repeats itself turns off by removing the key, keeping the engine's own guard", async () => {
@@ -104,7 +173,9 @@ describe("Settings › Permissions", () => {
     const grant = { grantId: "g1", cronJobId: "c1", cronJobName: "Morning brief", command: "curl x", useCount: 2, revokedAtMs: null, expiresAtMs: null };
     const { engine, request } = engineOf({ "exec.approval.grants.list": { grants: [grant] }, "exec.approval.grants.revoke": { outcome: "revoked" }, "exec.approval.list": [], "approval.history": { items: [] } });
     await render(engine, 1);
-    await act(async () => button("Open").click());
+    const open = host.querySelector<HTMLButtonElement>('[data-row="Approvals"] button:not(.pin-k)');
+    expect(open).not.toBeNull();
+    await act(async () => open!.click());
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     expect(document.querySelector('[data-testid="approvals"]')!.textContent).toContain("Morning brief");
     await act(async () => button("Revoke").click());
@@ -120,7 +191,7 @@ describe("Settings › Permissions", () => {
 
   it("lists every row for search, at its level", () => {
     const find = (t: string) => PERMISSIONS_ROWS.find((r) => r.title === t);
-    expect(find("Mode everywhere")?.lv).toBe(0);
+    expect(find("Access")?.lv).toBe(0);
     expect(find("Commands may run")?.lv).toBe(1);
     expect(find("Code mode")?.lv).toBe(2);
     expect(find("Sandbox")?.sec).toBe("Isolation");

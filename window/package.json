@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "typecheck": "node ../scripts/window-typecheck.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -20,13 +21,17 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.13.3",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "jsdom": "^30.1.1",
     "oxlint": "^1.81.0",
     "playwright": "^1.63.0",
+    "pngjs": "^7.0.0",
+    "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.3"

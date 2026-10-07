@@ -1,6 +1,6 @@
 {
   "name": "@branch/synology-chat",
-  "version": "2026.9.7",
+  "version": "2026.9.8",
   "description": "Synology Chat channel plugin for Branch Agent channels and direct messages.",
   "repository": {
     "type": "git",
@@ -89,10 +89,10 @@
       "minHostVersion": ">=2026.4.10"
     },
     "compat": {
-      "pluginApi": ">=2026.9.7"
+      "pluginApi": ">=2026.9.8"
     },
     "build": {
-      "branchVersion": "2026.9.7"
+      "branchVersion": "2026.9.8"
     },
     "release": {
       "publishToClawHub": true,

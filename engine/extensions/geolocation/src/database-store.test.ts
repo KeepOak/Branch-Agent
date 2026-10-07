@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/geolocation/src/database-store.test.ts (atlas INTEGRATIONS-0144). Changed for Branch: keep newer publication assertions and restore pinned source-isolation and concurrent-publication cases.
 import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -77,14 +78,6 @@ describe("geolocation database store", () => {
     expect(results.every((r) => r.status === "rejected")).toBe(true);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     await expect(fs.readdir(path.join(stateDir, "geolocation"))).rejects.toThrow();
-  });
-
-  it("names the source in the cache path so a swapped source cannot reuse the old data", async () => {
-    const stateDir = await tempStateDir();
-    const settingsFor = (databaseUrl: string) =>
-      createStore(stateDir, Buffer.alloc(0), { databaseUrl }).databaseFile;
-
-    expect(settingsFor("https://a.test/db.mmdb")).not.toBe(settingsFor("https://b.test/db.mmdb"));
   });
 
   it("rejects an oversized body after its source cancellation settles", async () => {
@@ -203,45 +196,26 @@ function createStore(
 }
 
 describe("geolocation database publication", () => {
-  it.each(["before", "after"] as const)(
-    "serves its download when another process publishes %s its rename",
-    async (publication) => {
-      const stateDir = await tempStateDir();
-      const body = cityDatabase("Vienna");
-      const competingBody = cityDatabase("Paris");
-      const warn = vi.fn();
-      const store = createStore(stateDir, body, { warn });
-      const rename = fs.rename;
-      let competingPublished = false;
-      vi.spyOn(fs, "rename").mockImplementationOnce(async (source, target) => {
-        const publishCompeting = async () => {
-          const oldStaging = `${store.databaseFile}.partial`;
-          await fs.writeFile(oldStaging, competingBody);
-          await rename(oldStaging, store.databaseFile);
-          competingPublished = true;
-        };
-        if (publication === "before") {
-          await publishCompeting();
-        }
-        await rename(source, target);
-        if (publication === "after") {
-          await publishCompeting();
-        }
-      });
-
-      const database = await store.load();
-
-      expect(competingPublished).toBe(true);
-      expect(database.lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
-      expect(await fs.readFile(store.databaseFile)).toEqual(
-        publication === "before" ? body : competingBody,
-      );
-      expect(warn).not.toHaveBeenCalled();
-      expect(await fs.readdir(path.dirname(store.databaseFile))).toEqual([
-        path.basename(store.databaseFile),
-      ]);
-    },
-  );
+  it("serves its own reader after another process replaces its publication", async () => {
+    const stateDir = await tempStateDir();
+    const body = cityDatabase("Vienna");
+    const competingBody = cityDatabase("Paris");
+    const warn = vi.fn();
+    const store = createStore(stateDir, body, { warn });
+    const rename = fs.rename;
+    vi.spyOn(fs, "rename").mockImplementationOnce(async (source, target) => {
+      await rename(source, target);
+      const competing = `${store.databaseFile}.partial`;
+      await fs.writeFile(competing, competingBody);
+      await rename(competing, store.databaseFile);
+    });
+    expect((await store.load()).lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
+    expect(await fs.readFile(store.databaseFile)).toEqual(competingBody);
+    expect(warn).not.toHaveBeenCalled();
+    expect(await fs.readdir(path.dirname(store.databaseFile))).toEqual([
+      path.basename(store.databaseFile),
+    ]);
+  });
 
   it("keeps the first download invisible while its staged file is being written", async () => {
     const stateDir = await tempStateDir();
@@ -387,4 +361,54 @@ describe("geolocation database publication", () => {
     expect((await firstStore.load()).lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
     expect(downloads).toBe(2);
   });
+});
+
+describe("Harvest pinned regression coverage", () => {
+  it("names the source in the cache path so a swapped source cannot reuse the old data", async () => {
+    const stateDir = await tempStateDir();
+    const settingsFor = (databaseUrl: string) =>
+      createStore(stateDir, Buffer.alloc(0), { databaseUrl }).databaseFile;
+
+    expect(settingsFor("https://a.test/db.mmdb")).not.toBe(settingsFor("https://b.test/db.mmdb"));
+  });
+
+  it.each(["before", "after"] as const)(
+    "serves its download when another process publishes %s its rename",
+    async (publication) => {
+      const stateDir = await tempStateDir();
+      const body = cityDatabase("Vienna");
+      const competingBody = cityDatabase("Paris");
+      const warn = vi.fn();
+      const store = createStore(stateDir, body, { warn });
+      const rename = fs.rename;
+      let competingPublished = false;
+      vi.spyOn(fs, "rename").mockImplementationOnce(async (source, target) => {
+        const publishCompeting = async () => {
+          const oldStaging = `${store.databaseFile}.partial`;
+          await fs.writeFile(oldStaging, competingBody);
+          await rename(oldStaging, store.databaseFile);
+          competingPublished = true;
+        };
+        if (publication === "before") {
+          await publishCompeting();
+        }
+        await rename(source, target);
+        if (publication === "after") {
+          await publishCompeting();
+        }
+      });
+
+      const database = await store.load();
+
+      expect(competingPublished).toBe(true);
+      expect(database.lookup("8.8.8.8")?.city?.names.en).toBe("Vienna");
+      expect(await fs.readFile(store.databaseFile)).toEqual(
+        publication === "before" ? body : competingBody,
+      );
+      expect(warn).not.toHaveBeenCalled();
+      expect(await fs.readdir(path.dirname(store.databaseFile))).toEqual([
+        path.basename(store.databaseFile),
+      ]);
+    },
+  );
 });

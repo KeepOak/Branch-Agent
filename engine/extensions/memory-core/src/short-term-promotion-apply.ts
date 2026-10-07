@@ -8,6 +8,7 @@ import {
   formatMemoryRingsDay,
 } from "branch/plugin-sdk/memory-core-host-status";
 import { appendMemoryHostEvent } from "branch/plugin-sdk/memory-host-events";
+import { resolveNonNegativeIntegerOption } from "branch/plugin-sdk/number-runtime";
 import { resolveStateDir } from "branch/plugin-sdk/state-paths";
 import {
   appendConsolidationSkippedSummary,
@@ -187,9 +188,7 @@ export async function applyShortTermPromotions(
   const workspaceDir = options.workspaceDir.trim();
   const nowMs = resolveMemoryCoreNowMs(options.nowMs);
   const nowIso = resolveMemoryCoreTimestamp(nowMs);
-  const limit = Number.isFinite(options.limit)
-    ? Math.max(0, Math.floor(options.limit as number))
-    : options.candidates.length;
+  const limit = resolveNonNegativeIntegerOption(options.limit, options.candidates.length);
   const minScore = toFiniteScore(options.minScore, DEFAULT_PROMOTION_MIN_SCORE);
   const minRecallCount = toFiniteNonNegativeInt(
     options.minRecallCount,
@@ -364,10 +363,10 @@ export async function applyShortTermPromotions(
   );
 
   let compactedDates: string[] = [];
-  const budgetChars =
-    typeof options.memoryFileMaxChars === "number" && Number.isFinite(options.memoryFileMaxChars)
-      ? Math.max(0, Math.floor(options.memoryFileMaxChars))
-      : DEFAULT_MEMORY_FILE_MAX_CHARS;
+  const budgetChars = resolveNonNegativeIntegerOption(
+    options.memoryFileMaxChars,
+    DEFAULT_MEMORY_FILE_MAX_CHARS,
+  );
   const maxPriorEntryLossFraction = Math.max(
     0,
     Math.min(1, options.maxPriorEntryLossFraction ?? 0.25),
@@ -376,6 +375,7 @@ export async function applyShortTermPromotions(
     options.agentId && options.consolidation?.subagent && toAppend.length > 0
       ? await consolidateMemory({
           agentId: options.agentId,
+          workspaceDir,
           subagent: options.consolidation.subagent,
           existingMemory,
           candidates: toAppend,

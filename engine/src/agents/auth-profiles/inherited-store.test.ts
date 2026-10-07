@@ -170,41 +170,60 @@ it.each([
   expect((await read())?.profiles).toMatchObject({ ...inherited.profiles, ...local.profiles });
 });
 
-it.each([
-  { name: "explicit empty ids", runtimeExternalProfileIds: [] },
-  { name: "authoritative empty", runtimeExternalProfileIds: undefined },
-])(
-  "retains durable OAuth without external discovery for $name",
-  async ({ runtimeExternalProfileIds }) => {
-    const root = tempDirs.make("branch-model-auth-empty-");
+it.each(["explicit empty ids", "authoritative empty", "no overlay", "published overlay"] as const)(
+  "prepares model auth from %s while preserving durable credentials and snapshot precedence",
+  async (mode) => {
+    const root = tempDirs.make("branch-model-auth-");
     const env = { BRANCH_STATE_DIR: root };
     const agentDir = path.join(root, "agents/main/agent");
     vi.stubEnv("BRANCH_STATE_DIR", root);
-    const durable: AuthProfileStore = {
-      version: 1,
-      profiles: {
-        "openai:default": {
-          type: "oauth",
-          provider: "openai",
-          access: "durable-access-not-real",
-          refresh: "durable-refresh-not-real",
-          expires: Date.now() + 60_000,
-        },
-      },
-    };
+    const emptyOverlay = mode === "explicit empty ids" || mode === "authoritative empty";
+    const durable: AuthProfileStore = emptyOverlay
+      ? {
+          version: 1,
+          profiles: {
+            "openai:default": {
+              type: "oauth",
+              provider: "openai",
+              access: "durable-access-not-real",
+              refresh: "durable-refresh-not-real",
+              expires: Date.now() + 60_000,
+            },
+          },
+        }
+      : createStore("custom:durable", "durable-fixture");
+    if (mode === "published overlay") {
+      Object.assign(durable.profiles, createStore("custom:updated", "older-fixture").profiles);
+    }
+    const published: AuthProfileStore | undefined =
+      mode === "no overlay"
+        ? undefined
+        : {
+            ...durable,
+            profiles: emptyOverlay
+              ? durable.profiles
+              : {
+                  ...createStore("custom:updated", "published-fixture").profiles,
+                  ...createStore("custom:external", "external-fixture").profiles,
+                },
+            runtimeExternalProfileIds:
+              mode === "published overlay"
+                ? ["custom:external"]
+                : mode === "explicit empty ids"
+                  ? []
+                  : undefined,
+            runtimeExternalProfileIdsAuthoritative: true,
+          };
     const database = openBranchAgentDatabase({ agentId: "main", env });
     writePersistedAuthProfileStoreRaw(durable, agentDir, database);
-    setRuntimeAuthProfileStoreSnapshot(
-      {
-        ...durable,
-        runtimeExternalProfileIds,
-        runtimeExternalProfileIdsAuthoritative: true,
-      },
-      agentDir,
-    );
-    closeBranchAgentDatabasesForTest();
-    closeAuthProfileReadPool();
-    fs.writeFileSync(database.path, "The unused persisted source is unavailable");
+    if (published) {
+      setRuntimeAuthProfileStoreSnapshot(published, agentDir);
+    }
+    if (emptyOverlay) {
+      closeBranchAgentDatabasesForTest();
+      closeAuthProfileReadPool();
+      fs.writeFileSync(database.path, "The unused persisted source is unavailable");
+    }
     const external = vi.fn(() => []);
     const runtime = createAuthProfileStoreRuntime(createExternalAuthRuntime(external));
     const context = captureBranchStateWorkerContext({ env });
@@ -213,65 +232,19 @@ it.each([
       { config: {}, inheritedAuthDir: agentDir },
       () => context.admission.assertCurrent(),
     );
-    expect(result?.profiles["openai:default"]).toEqual(durable.profiles["openai:default"]);
-    expect(result?.runtimeExternalProfileIdsAuthoritative).toBe(true);
-    expect(external).not.toHaveBeenCalled();
+    if (emptyOverlay) {
+      expect(result?.profiles["openai:default"]).toEqual(durable.profiles["openai:default"]);
+      expect(result?.runtimeExternalProfileIdsAuthoritative).toBe(true);
+    } else {
+      expect(result?.profiles).toEqual({ ...durable.profiles, ...published?.profiles });
+      if (published) {
+        expect(result?.runtimeExternalProfileIds).toEqual(["custom:external"]);
+      }
+    }
+    if (published) {
+      expect(external).not.toHaveBeenCalled();
+    } else {
+      expect(external).toHaveBeenCalledOnce();
+    }
   },
 );
-
-it("uses normal external discovery when no external runtime overlay exists", async () => {
-  const root = tempDirs.make("branch-model-auth-fallback-");
-  const env = { BRANCH_STATE_DIR: root };
-  const agentDir = path.join(root, "agents/main/agent");
-  vi.stubEnv("BRANCH_STATE_DIR", root);
-  const durable = createStore("custom:durable", "durable-fixture");
-  const database = openBranchAgentDatabase({ agentId: "main", env });
-  writePersistedAuthProfileStoreRaw(durable, agentDir, database);
-  const external = vi.fn(() => []);
-  const runtime = createAuthProfileStoreRuntime(createExternalAuthRuntime(external));
-  const context = captureBranchStateWorkerContext({ env });
-  const result = await runtime.prepareAuthProfileStoreForModelRuntime(
-    agentDir,
-    { config: {}, inheritedAuthDir: agentDir },
-    () => context.admission.assertCurrent(),
-  );
-  expect(result?.profiles).toEqual(durable.profiles);
-  expect(external).toHaveBeenCalledOnce();
-});
-
-it("reconstructs persisted backing while retaining published external and local snapshot precedence", async () => {
-  const root = tempDirs.make("branch-model-auth-precedence-");
-  const env = { BRANCH_STATE_DIR: root };
-  const agentDir = path.join(root, "agents/main/agent");
-  vi.stubEnv("BRANCH_STATE_DIR", root);
-  const durable: AuthProfileStore = {
-    ...createStore("custom:durable", "durable-fixture"),
-    profiles: {
-      ...createStore("custom:durable", "durable-fixture").profiles,
-      ...createStore("custom:updated", "older-fixture").profiles,
-    },
-  };
-  const published: AuthProfileStore = {
-    version: 1,
-    profiles: {
-      ...createStore("custom:updated", "published-fixture").profiles,
-      ...createStore("custom:external", "external-fixture").profiles,
-    },
-    runtimeExternalProfileIds: ["custom:external"],
-    runtimeExternalProfileIdsAuthoritative: true,
-  };
-  const database = openBranchAgentDatabase({ agentId: "main", env });
-  writePersistedAuthProfileStoreRaw(durable, agentDir, database);
-  setRuntimeAuthProfileStoreSnapshot(published, agentDir);
-  const external = vi.fn(() => []);
-  const runtime = createAuthProfileStoreRuntime(createExternalAuthRuntime(external));
-  const context = captureBranchStateWorkerContext({ env });
-  const result = await runtime.prepareAuthProfileStoreForModelRuntime(
-    agentDir,
-    { config: {}, inheritedAuthDir: agentDir },
-    () => context.admission.assertCurrent(),
-  );
-  expect(result?.profiles).toEqual({ ...durable.profiles, ...published.profiles });
-  expect(result?.runtimeExternalProfileIds).toEqual(["custom:external"]);
-  expect(external).not.toHaveBeenCalled();
-});

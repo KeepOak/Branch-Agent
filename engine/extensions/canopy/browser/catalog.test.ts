@@ -3,13 +3,13 @@
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GatewayBrowserClient } from "./api/gateway.ts";
-import { createCanopyCatalogRuntime } from "./catalog.ts";
+import { CanopyCatalog } from "./catalog.ts";
 import { createCanopyCapability } from "./lib/canopy/capability.ts";
 import { loadCanopy } from "./lib/canopy/loading.ts";
 import { moveCanopyCard } from "./lib/canopy/mutations.ts";
 import { getCanopyState } from "./lib/canopy/runtime.ts";
 import { createCanopyCard } from "./lib/canopy/test/index-helpers.ts";
-type CanopyCatalogSnapshot = Parameters<Parameters<typeof createCanopyCatalogRuntime>[0]>[0];
+type CanopyCatalogSnapshot = Parameters<ConstructorParameters<typeof CanopyCatalog>[0]>[0];
 
 const board = (id: string) => ({
   id,
@@ -31,7 +31,7 @@ describe("Canopy catalog", () => {
     const pending = createDeferred<{ cards: []; boards: ReturnType<typeof board>[] }>();
     const request = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue({ cards: [] });
     const host = createHost();
-    const runtime = createCanopyCatalogRuntime(() => {}, host);
+    const runtime = new CanopyCatalog(() => {}, host);
     const client = { request } as unknown as GatewayBrowserClient;
     try {
       runtime.sync(client, true);
@@ -57,7 +57,7 @@ describe("Canopy catalog", () => {
       .mockReturnValueOnce(pending.promise)
       .mockResolvedValueOnce({ card: moved });
     const host = createHost();
-    const runtime = createCanopyCatalogRuntime(() => {}, host);
+    const runtime = new CanopyCatalog(() => {}, host);
     const client = { request } as unknown as GatewayBrowserClient;
     try {
       runtime.sync(client, true);
@@ -81,7 +81,7 @@ describe("Canopy catalog", () => {
       boards: [{ ...board("ops"), name: "Operations", icon: "⚙", color: "#22c55e" }],
     });
     const host = createHost();
-    const runtime = createCanopyCatalogRuntime((snapshot) => snapshots.push(snapshot), host);
+    const runtime = new CanopyCatalog((snapshot) => snapshots.push(snapshot), host);
 
     runtime.sync({ request } as unknown as GatewayBrowserClient, true);
     await vi.waitFor(() => expect(snapshots.at(-1)?.ready).toBe(true));
@@ -101,10 +101,7 @@ describe("Canopy catalog", () => {
       .mockReturnValueOnce(first.promise)
       .mockResolvedValueOnce({ cards: [], boards: [board("ops")] });
     const snapshots: CanopyCatalogSnapshot[] = [];
-    const runtime = createCanopyCatalogRuntime(
-      (snapshot) => snapshots.push(snapshot),
-      createHost(),
-    );
+    const runtime = new CanopyCatalog((snapshot) => snapshots.push(snapshot), createHost());
     const client = { request } as unknown as GatewayBrowserClient;
 
     runtime.sync(client, true);
@@ -125,10 +122,7 @@ describe("Canopy catalog", () => {
     const firstClient = { request: firstRequest } as unknown as GatewayBrowserClient;
     const secondClient = { request: secondRequest } as unknown as GatewayBrowserClient;
     const snapshots: CanopyCatalogSnapshot[] = [];
-    const runtime = createCanopyCatalogRuntime(
-      (snapshot) => snapshots.push(snapshot),
-      createHost(),
-    );
+    const runtime = new CanopyCatalog((snapshot) => snapshots.push(snapshot), createHost());
 
     runtime.sync(firstClient, true);
     runtime.handleGatewayEvent("plugin.canopy.changed");
@@ -151,7 +145,7 @@ describe("Canopy catalog", () => {
       .mockResolvedValueOnce({ cards: [], boards: [board("platform")] });
     const snapshots: CanopyCatalogSnapshot[] = [];
     const host = createHost();
-    const runtime = createCanopyCatalogRuntime((snapshot) => snapshots.push(snapshot), host);
+    const runtime = new CanopyCatalog((snapshot) => snapshots.push(snapshot), host);
     const client = { request } as unknown as GatewayBrowserClient;
 
     runtime.sync(client, true);
@@ -184,7 +178,7 @@ describe("Canopy catalog", () => {
       .mockResolvedValueOnce({ cards: [], boards: [board("platform")] });
     const snapshots: CanopyCatalogSnapshot[] = [];
     const host = createHost();
-    const runtime = createCanopyCatalogRuntime((snapshot) => snapshots.push(snapshot), host);
+    const runtime = new CanopyCatalog((snapshot) => snapshots.push(snapshot), host);
     const client = { request } as unknown as GatewayBrowserClient;
 
     runtime.sync(client, true);
@@ -217,10 +211,7 @@ describe("Canopy catalog", () => {
       .mockResolvedValueOnce({ ok: true })
       .mockResolvedValueOnce({ cards: [], boards: [board("platform")] });
     const snapshots: CanopyCatalogSnapshot[] = [];
-    const runtime = createCanopyCatalogRuntime(
-      (snapshot) => snapshots.push(snapshot),
-      createHost(),
-    );
+    const runtime = new CanopyCatalog((snapshot) => snapshots.push(snapshot), createHost());
     const client = { request } as unknown as GatewayBrowserClient;
 
     runtime.sync(client, true);

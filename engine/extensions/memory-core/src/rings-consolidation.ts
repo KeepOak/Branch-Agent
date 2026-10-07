@@ -8,6 +8,7 @@ import { truncateUtf16Safe } from "branch/plugin-sdk/text-utility-runtime";
 import type { MemoryConsolidationResult } from "./rings-consolidation-artifacts.js";
 import { filterConsolidationCandidates } from "./rings-consolidation-candidates.js";
 import type { RingsCompletion } from "./rings-narrative.js";
+import { loadWorkspaceDreamPrompt } from "./rings-workspace-prompt.js";
 import { DEFAULT_MEMORY_FILE_MAX_CHARS } from "./memory-budget.js";
 import { buildPromotionMarker } from "./short-term-promotion-memory-write.js";
 import {
@@ -395,6 +396,7 @@ export function applyMemoryConsolidationPlan(params: {
 
 export async function consolidateMemory(params: {
   agentId: string;
+  workspaceDir?: string;
   subagent: RingsCompletion;
   existingMemory: string;
   candidates: PromotionCandidate[];
@@ -416,6 +418,14 @@ export async function consolidateMemory(params: {
     ),
   );
   const groups = groupPromotionCandidatesByProjectKey(candidates);
+  const workspacePrompt = params.workspaceDir
+    ? await loadWorkspaceDreamPrompt(params.workspaceDir)
+    : undefined;
+  // Workspace preferences guide curation; the engine still owns provenance,
+  // operation parsing and bounded writes under its existing contract.
+  const systemPrompt = workspacePrompt
+    ? `${workspacePrompt}\n\nBranch memory operation contract:\n${CONSOLIDATION_SYSTEM_PROMPT}`
+    : CONSOLIDATION_SYSTEM_PROMPT;
   const operations: ConsolidationOperation[] = [];
   let rejected = false;
 
@@ -428,7 +438,7 @@ export async function consolidateMemory(params: {
           group.candidates,
           maxPromotedSnippetTokens,
         ),
-        extraSystemPrompt: CONSOLIDATION_SYSTEM_PROMPT,
+        extraSystemPrompt: systemPrompt,
         ...(params.model ? { model: params.model } : {}),
         timeoutMs: CONSOLIDATION_TIMEOUT_MS,
       });

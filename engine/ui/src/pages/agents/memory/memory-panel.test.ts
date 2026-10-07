@@ -529,7 +529,7 @@ describe.runIf(process.env.BRANCH_UI_MEMORY_CHROMIUM_E2E === "1")(
         content: `# Dream Diary\n\n*April 5, 2026, 3:00 AM*\n\n${agentId} owns this dream.`,
       });
       const config = {
-        agents: { entries: { main: { default: true }, support: {} } },
+        agents: { entries: { main: {}, support: {} } },
         plugins: {
           entries: {
             "memory-core": { enabled: true, config: { rings: { enabled: true } } },

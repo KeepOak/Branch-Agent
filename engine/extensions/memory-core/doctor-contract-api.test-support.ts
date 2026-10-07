@@ -1,3 +1,4 @@
+import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import {
   createPluginStateKeyedStoreForTests,
   getPluginStateCapacityForTests,
@@ -13,6 +14,23 @@ import {
   closeBranchAgentDatabasesForTest,
   closeBranchStateDatabaseAsync,
 } from "branch/plugin-sdk/sqlite-runtime-testing";
+
+type AuthoredAgents = NonNullable<BranchConfig["agents"]>;
+type AuthoredEntry = NonNullable<AuthoredAgents["entries"]>[string];
+type AuthoredMemory = NonNullable<BranchConfig["memory"]>;
+type AuthoredMemorySearch = NonNullable<AuthoredMemory["search"]>;
+type RawLegacyMemorySearch = Omit<AuthoredMemorySearch, "store"> & {
+  store?: NonNullable<AuthoredMemorySearch["store"]> & { path?: string };
+};
+/** Pre-Doctor memory-core config: retired roster rows, default markers, and legacy memory-search keys. */
+export type RawLegacyDoctorConfig = Omit<BranchConfig, "agents" | "memory"> & {
+  agents?: Omit<AuthoredAgents, "entries"> & {
+    entries?: Record<string, AuthoredEntry & { default?: boolean }>;
+    list?: unknown[];
+  };
+  memory?: Omit<AuthoredMemory, "search"> & { search?: RawLegacyMemorySearch };
+  memorySearch?: RawLegacyMemorySearch;
+};
 
 export function createDoctorContext(env: NodeJS.ProcessEnv): PluginDoctorStateMigrationContext {
   return {

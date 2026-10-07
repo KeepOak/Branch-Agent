@@ -1,6 +1,7 @@
 // People › Signing in (§4.6.5.9): how people sign in from their own devices, the Devices list, and from Advanced
 // the engine's pairing rules (gateway.nodes.pairing.sshVerify / autoApproveCidrs) and a shared team Branch's web
 // address (gateway.publicOrigin), saved with config.patch against the read revision.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState } from "react";
 import { Dialog } from "../../shell/Dialog";
 import type { WindowEngine } from "../../connect/engine";
@@ -10,6 +11,7 @@ import { rec, str, strs, type Rec } from "./data";
 import { Devices } from "./devices";
 import { PIN_OFF } from "./person";
 import { Ctl, Section, Seg, Status, Sw } from "./ui";
+import { shownWhy } from "../../shell/shown-why";
 
 export const OWN_DEVICE_OFF = "Needs the engine's own-device sign-in setting.";
 export const PROVE_OFF = "Needs the engine's sign-in methods for people.";
@@ -65,7 +67,7 @@ function TextRow({ title, line, placeholder, value, off, confirm, check, save }:
   const v = draft.trim(), ok = check(v), changed = v !== value;
   return <Ctl title={title} line={line}>
     <input className="inp" aria-label={title} placeholder={placeholder} value={draft} disabled={!!off} aria-invalid={!ok} onChange={e => setDraft(e.target.value)} />
-    {changed && <button type="button" className="btn sm" disabled={!ok || !!off} title={off} onClick={() => confirm && v ? setAsking(true) : save(v)}>Save</button>}
+    {changed && <button type="button" className="btn sm" disabled={!ok || !!off} title={shownWhy(off)} onClick={() => confirm && v ? setAsking(true) : save(v)}>Save</button>}
     {asking && <Dialog title="Open this Branch to other computers?" onClose={() => setAsking(false)} footer={<><button type="button" className="btn ghost" onClick={() => setAsking(false)}>Cancel</button><button type="button" className="btn pri" onClick={() => { setAsking(false); save(v); }}>Open it</button></>}>
       <p style={{ margin: 0 }}>People on other computers can reach this Branch at {v}.</p></Dialog>}
   </Ctl>;

@@ -108,3 +108,6 @@
     display: none;
   }
 }
+/* A face leads each row at its own size; the name takes the rest (the preview's .pane-pick-pb18 .mi). */
+.pane-pick .mi > :first-child { flex: none; }
+.pane-pick .mi > .mi-t { flex: 1; text-align: left; }

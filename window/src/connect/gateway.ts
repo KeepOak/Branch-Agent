@@ -38,10 +38,14 @@ export const OPERATOR_SCOPES = [
 export const CLIENT_CAPS = [GATEWAY_CLIENT_CAPS.TOOL_EVENTS, GATEWAY_CLIENT_CAPS.EXEC_APPROVALS];
 const CONNECT_FAILED_CLOSE_CODE = 4008;
 const PAIRING_RETRY_MS = 2000;
+/** The engine turns connects away while it starts; it says so with this reason. */
+const STARTING_RETRY_MS = 1000;
 
 export type GatewayStatus =
   | { phase: "connecting" }
-  | { phase: "pairing"; requestId?: string }
+  /** `reason`: why the engine asks (not-paired: it doesn't know this device, or no longer does; scope-upgrade and
+   *  the like: it does, and wants approval for more). */
+  | { phase: "pairing"; requestId?: string; reason?: string }
   | { phase: "connected"; hello: HelloOk }
   | { phase: "failed"; message: string; /** The engine's connect error detail code (ConnectErrorDetailCodes), when it gave one. */ code?: string };
 
@@ -76,6 +80,11 @@ function clientInfo(): ConnectParams["client"] {
   };
 }
 
+/** True when the engine turned the connect away only because it is still starting. */
+export function isEngineStarting(details: unknown): boolean {
+  return typeof details === "object" && details !== null && (details as { reason?: unknown }).reason === "startup-sidecars";
+}
+
 function isPairingRequired(details: unknown): boolean {
   return readConnectErrorDetailCode(details) === ConnectErrorDetailCodes.PAIRING_REQUIRED;
 }
@@ -84,6 +93,8 @@ export class BranchGateway {
   private readonly client: GatewayProtocolClient<GatewayBrowserDeviceAuthPlan>;
   private readonly auth: GatewayBrowserDeviceAuthLifecycle;
   private readonly opts: Options;
+
+  private connected = false;
 
   constructor(opts: Options) {
     this.opts = opts;
@@ -105,17 +116,26 @@ export class BranchGateway {
         }),
       buildConnectParams: (plan) => this.connectParams(plan),
       onConnectHello: (hello, context) => this.auth.acceptHello(hello, context.plan),
-      onHello: (hello) => opts.onStatus({ phase: "connected", hello }),
+      onHello: (hello) => {
+        this.connected = true;
+        opts.onStatus({ phase: "connected", hello });
+      },
       onConnectFailure: (error) => ({
         closeCode: CONNECT_FAILED_CLOSE_CODE,
         closeReason: "connect failed",
         ...(isPairingRequired(error.details) ? { reconnectDelayMs: PAIRING_RETRY_MS } : {}),
+        ...(isEngineStarting(error.details) ? { reconnectDelayMs: STARTING_RETRY_MS } : {}),
       }),
       resolveClose: (context) => this.resolveClose(context),
-      onClose: (context, decision) => this.reportClose(context, decision.retry),
+      onClose: (context, decision) => {
+        this.connected = false;
+        this.reportClose(context, decision.retry);
+      },
       onEvent: (event) => opts.onEvent(event),
       handshake: { mode: "require-challenge", timeoutMs: 10_000 },
-      reconnect: { initialMs: 800, multiplier: 1.7, maxMs: 15_000 },
+      // The engine is local: while it restarts or updates, look again every few seconds at most,
+      // so the window is back within moments of the engine accepting connections.
+      reconnect: { initialMs: 800, multiplier: 1.7, maxMs: 3_000 },
     });
   }
 
@@ -126,6 +146,13 @@ export class BranchGateway {
 
   stop(): void {
     this.client.stop();
+  }
+
+  /** The engine came back (the desktop swapped it in place): try now instead of at the next backoff step. */
+  reconnectNow(): void {
+    if (this.connected) return;
+    this.client.stop();
+    this.start();
   }
 
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
@@ -151,6 +178,9 @@ export class BranchGateway {
     if (isPairingRequired(details)) {
       return { retry: true, notify: true, reconnectDelayMs: PAIRING_RETRY_MS, pendingError: error };
     }
+    if (isEngineStarting(details)) {
+      return { retry: true, notify: true, reconnectDelayMs: STARTING_RETRY_MS, pendingError: error };
+    }
     return { retry: !shouldPauseGatewayReconnect({ details }), notify: true, pendingError: error };
   }
 
@@ -159,7 +189,7 @@ export class BranchGateway {
     const details = (error as { details?: unknown } | undefined)?.details;
     if (isPairingRequired(details)) {
       const pairing = readPairingConnectErrorDetails(details);
-      this.opts.onStatus({ phase: "pairing", requestId: pairing?.requestId });
+      this.opts.onStatus({ phase: "pairing", requestId: pairing?.requestId, ...(pairing?.reason ? { reason: pairing.reason } : {}) });
       return;
     }
     if (willRetry) {

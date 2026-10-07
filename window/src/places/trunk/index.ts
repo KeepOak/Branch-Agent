@@ -5,4 +5,4 @@ export { TrunkEditor, type TrunkEditorProps, type EditorTab } from "./TrunkEdito
 export { RemoveTrunkDialog, type RemoveTrunkProps } from "./RemoveTrunk";
 export { TrunkStudio, type TrunkStudioProps } from "./TrunkStudio";
 export { TrunkFace } from "./TrunkFace";
-export { createTrunk, newTrunkName } from "./api";
+export { createTrunk } from "./api";

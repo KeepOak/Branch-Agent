@@ -1,14 +1,10 @@
-import { CANOPY_STATUSES } from "@branch/canopy-contract";
 import { formatErrorMessage } from "branch/plugin-sdk/error-runtime";
 import { ErrorCodes, errorShape } from "branch/plugin-sdk/gateway-runtime";
 import { parseStrictPositiveInteger } from "branch/plugin-sdk/number-runtime";
 import { asRecord, isRecord } from "branch/plugin-sdk/string-coerce-runtime";
 import type { BranchPluginApi } from "../api.js";
 import { redactClaimToken, redactDispatchResult } from "./card-redaction.js";
-import {
-  dispatchAndStartCanopyCards,
-  type CanopyDispatchStartOptions,
-} from "./dispatcher.js";
+import { dispatchAndStartCanopyCards } from "./dispatcher.js";
 import { CanopyCardConflictError, type CanopyStore } from "./store.js";
 import {
   resolveAgentCanopyWorkspaceRuntime,
@@ -117,11 +113,6 @@ export function assertNoCursorAdvance(params: Record<string, unknown>) {
   }
 }
 
-export async function listCanopyCards(store: CanopyStore, boardId: unknown) {
-  const [cards, { boards }] = await Promise.all([store.list({ boardId }), store.listBoards()]);
-  return { cards: cards.map(redactClaimToken), boards, statuses: CANOPY_STATUSES };
-}
-
 export function resolveGatewayCanopyWorkspaceAccess(params: {
   context: GatewayMethodContext["context"];
   client: GatewayMethodContext["client"];
@@ -139,36 +130,6 @@ export function resolveGatewayCanopyWorkspaceAccess(params: {
     config: params.context.getRuntimeConfig(),
     unrestricted: false,
   });
-}
-
-function gatewayDispatchOptions(params: {
-  api: BranchPluginApi;
-  request: Pick<GatewayMethodContext, "client" | "context">;
-  input: Pick<
-    CanopyDispatchStartOptions,
-    "boardId" | "cardId" | "maxStarts" | "provider" | "model"
-  >;
-}): CanopyDispatchStartOptions {
-  const { context, client } = params.request;
-  return {
-    ...params.input,
-    materializeWorktree: true,
-    resolveAgentWorkspace: (agentId) =>
-      resolveCanopyAgentWorkspace(context.getRuntimeConfig(), agentId),
-    resolveAgentWorkspaceRuntime: (agentId, sessionKey, workspaceDir, modelProvider, modelId) => {
-      const config = context.getRuntimeConfig();
-      return resolveAgentCanopyWorkspaceRuntime({
-        config,
-        agentId,
-        sessionKey,
-        workspaceDir,
-        modelProvider,
-        modelId,
-        prepareSandboxWorkspaceAuthority: params.api.runtime.sandbox.prepareWorkspaceAuthority,
-      });
-    },
-    workspaceAccess: resolveGatewayCanopyWorkspaceAccess({ context, client }),
-  };
 }
 
 export function createCanopyDispatchHandler(params: {
@@ -202,17 +163,36 @@ export function createCanopyDispatchHandler(params: {
         store: params.store,
         subagent: params.api.runtime.subagent,
         worktrees: params.api.runtime.worktrees,
-        options: gatewayDispatchOptions({
-          api: params.api,
-          request: { context, client },
-          input: {
-            ...(cardId ? { cardId, maxStarts: 1 } : {}),
-            boardId: typeof boardId === "string" ? boardId : undefined,
-            ...(maxStarts !== undefined ? { maxStarts } : {}),
-            ...(provider ? { provider } : {}),
-            ...(model ? { model } : {}),
+        options: {
+          ...(cardId ? { cardId, maxStarts: 1 } : {}),
+          boardId: typeof boardId === "string" ? boardId : undefined,
+          ...(maxStarts !== undefined ? { maxStarts } : {}),
+          ...(provider ? { provider } : {}),
+          ...(model ? { model } : {}),
+          materializeWorktree: true,
+          resolveAgentWorkspace: (agentId) =>
+            resolveCanopyAgentWorkspace(context.getRuntimeConfig(), agentId),
+          resolveAgentWorkspaceRuntime: (
+            agentId,
+            sessionKey,
+            workspaceDir,
+            modelProvider,
+            modelId,
+          ) => {
+            const config = context.getRuntimeConfig();
+            return resolveAgentCanopyWorkspaceRuntime({
+              config,
+              agentId,
+              sessionKey,
+              workspaceDir,
+              modelProvider,
+              modelId,
+              prepareSandboxWorkspaceAuthority:
+                params.api.runtime.sandbox.prepareWorkspaceAuthority,
+            });
           },
-        }),
+          workspaceAccess: resolveGatewayCanopyWorkspaceAccess({ context, client }),
+        },
       });
       if (cardId) {
         const started = result.started[0];

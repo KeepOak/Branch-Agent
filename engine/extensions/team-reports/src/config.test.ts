@@ -1,5 +1,6 @@
 import fs, { open, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import { buildJsonPluginConfigSchema } from "branch/plugin-sdk/plugin-entry";
 import { useAutoCleanupTempDirTracker } from "branch/plugin-sdk/test-env";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";

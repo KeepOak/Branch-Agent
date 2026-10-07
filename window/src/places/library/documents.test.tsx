@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -266,8 +267,14 @@ describe("Library › Documents", () => {
   it("greys Write a new document, Map, the tool tiles and Recently deleted with their reasons", async () => {
     const { engine } = engineOf(workspace());
     await mount(engine);
-    for (const b of [button("Write a new document"), button("Map"), ...host.querySelectorAll<HTMLButtonElement>(".lib-tool")]) { expect(b!.disabled).toBe(true); expect(b!.title).toMatch(/^Needs /); }
-    expect(host.querySelector('[data-testid="recently-deleted"]')!.textContent).toMatch(/Needs the engine/);
+    for (const b of [button("Write a new document"), button("Map")]) expect(b!.disabled).toBe(true);
+    expect(button("Map")!.title).toBe("");
+    const tiles = [...host.querySelectorAll<HTMLButtonElement>(".lib-tool")];
+    expect(tiles.length).toBeGreaterThan(0);
+    for (const b of tiles) { expect(b.disabled).toBe(true); expect(b.title).toBe(""); expect(b.dataset.reason).toMatch(/^Needs the engine/); }
+    expect(host.querySelector('[data-testid="recently-deleted"]')!.textContent).toBe("Recently deletedRestoreDelete for good");
+    expect([...host.querySelectorAll<HTMLButtonElement>('[data-testid="recently-deleted"] button')].every(b => b.disabled && b.title === "")).toBe(true);
+    expect(visibleDevNotes(host)).toEqual([]);
   });
   it("keeps Managing, Test what it finds and Places it reads from for Advanced", async () => {
     await mount(engineOf(workspace()).engine, "regular");

@@ -148,6 +148,11 @@ describe("handleMessageUpdate text signatures", () => {
         { text: "Visible\n\nDone.", delta: "\n\nDone." },
       ],
     },
+    {
+      name: "split runtime-context header",
+      chunks: ["Branch Agent runtime cont", "ext:\nprivate\nEnd Branch Agent runtime context.\nVisible"],
+      updates: [{ text: "Visible", delta: "Visible" }],
+    },
 
     {
       name: "split voice directive",

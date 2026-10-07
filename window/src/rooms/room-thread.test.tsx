@@ -74,4 +74,20 @@ describe("a room's thread", () => {
     root = undefined;
     expect((await render(room(true))).querySelector("[data-testid=room-line]")).toBeNull();
   });
+
+  it("draws an MCP client (Claude Code) in a Trunk's own thread as an online outside agent, not as the owner", async () => {
+    const fromClaude = [
+      { role: "user", content: "Reply with exactly OK", __branch: { senderIsOwner: true, senderId: "claude-code", senderName: "Claude Code", senderIdentity: { type: "observation", id: "claude-code", pluginId: "a2a", accountId: "mcp", senderKind: "bot" } } },
+      { role: "assistant", content: [{ type: "text", text: "OK" }], stopReason: "stop", __branch: { runId: "r9" } },
+    ];
+    const r: ThreadRoom = { ...room(false), whereRuns: (peer) => (peer === "claude-code" ? "LEGION" : null), isOnline: (peer) => peer === "claude-code" };
+    const host = await render(r, fromClaude);
+    const agent = host.querySelector('[data-role="agent"]');
+    expect(agent?.closest(".rm-ext")).not.toBeNull();
+    expect(agent?.querySelector("b")?.firstChild?.textContent).toBe("Claude Code");
+    expect(agent?.querySelector(".rm-tag")?.textContent).toBe("A2A · LEGION");
+    expect(host.querySelector(".rm-ext .rm-av")?.textContent).toBe("CC");
+    expect(host.querySelector(".rm-ext .rm-av .rm-st-online")).not.toBeNull();
+    expect(host.querySelector('[data-role="user"]')).toBeNull();
+  });
 });
