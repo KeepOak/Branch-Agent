@@ -5,7 +5,7 @@ import "./menu.css";
 // Glass menus (DESIGN-SPEC §5.4): opened at a point, Up/Down move, a letter runs its row, Right opens a
 // submenu, Left or Escape closes; focus returns to what opened it.
 export type MenuItem =
-  | { kind?: "item"; label: string; run: () => void; letter?: string; hint?: string; danger?: boolean; disabled?: string; testid?: string; icon?: ReactNode; sub?: string; checked?: boolean }
+  | { kind?: "item"; label: string; run: () => void; letter?: string; hint?: string; danger?: boolean; disabled?: string; testid?: string; icon?: ReactNode; sub?: string; checked?: boolean; radio?: boolean }
   | { kind: "sub"; label: string; items: MenuItem[]; letter?: string; hint?: string; testid?: string; icon?: ReactNode }
   | { kind: "sep" }
   | { kind: "head"; label: string }
@@ -146,7 +146,7 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
     );
   }
   return (
-    <button key={i} type="button" role={it.checked !== undefined ? "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={shownWhy(it.disabled)}
+    <button key={i} type="button" role={it.checked !== undefined ? it.radio ? "menuitemradio" : "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={shownWhy(it.disabled)}
       onClick={() => {
         onClose();
         it.run();

@@ -243,7 +243,7 @@ export function Thread(props: Props) {
       .find((node) => node.dataset.testid === `topic-card-${props.focusTopic?.key}`);
     target?.scrollIntoView({ block: "end" });
   }, [props.focusTopic, props.topicUpdates]);
-  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false, liveStartedAt: props.liveStartedAt ?? null, lockdown: props.lockdown };
+  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false, liveStartedAt: props.liveStartedAt ?? null, lockdown: props.lockdown, onOpenSession: props.onOpenSession };
   const recoveryEntryId = history.findLast((block) =>
     (block.kind === "user" || block.kind === "text") && Boolean(block.meta?.entryId),
   );
@@ -348,6 +348,7 @@ export function Thread(props: Props) {
 }
 
 type View = {
+  onOpenSession?: (key: string) => void;
   lockdown?: boolean;
   all: Block[];
   live: Block[];
@@ -486,7 +487,7 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
       if (isPreparationPending(block.message)) return <div className="stamp" role="status">Branch retried a startup delay.</div>;
       return view.dismissed.has(block.key) ? null : <ErrorBlock block={block} onDismiss={() => view.setDismissed((s) => new Set(s).add(block.key))} />;
     case "notice":
-      return <Notice block={block} />;
+      return block.topicKey ? <div className="tpLblT5"><button type="button" onClick={() => view.onOpenSession?.(block.topicKey!)}>{block.text}</button></div> : <Notice block={block} />;
     case "steer":
       return <SteeredNote name={view.name} text={block.text} />;
     default:

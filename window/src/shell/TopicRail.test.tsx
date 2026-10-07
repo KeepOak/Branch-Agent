@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { Topic } from "@branch/gateway-protocol";
+import { validateSessionsPatchParams } from "@branch/gateway-protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TopicRail, shortTopicTitle } from "./TopicRail";
 import { patchTopicSession } from "./topic-session";
@@ -16,9 +17,10 @@ const topic: Topic = { key: "agent:oak:trip", contactId: "trunk:oak", title: "Pl
 const render = async (onPatch = vi.fn(async (_topic: Topic, _change: Record<string, unknown>) => {})) => {
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   const onOpen = vi.fn();
-  await act(async () => root!.render(<TopicRail contactId="trunk:oak" contactName="Oak" contactKey="agent:oak:main" generalPreview="Reply" generalUpdatedAt={Date.now()} currentKey="agent:oak:main" items={[{ topic, preview: "Flights found", updatedAt: Date.now() }]} onOpen={onOpen} onAll={() => {}} onPatch={onPatch}/>));
+  const updateTopic = async (item: Topic) => act(async () => root!.render(<TopicRail contactId="trunk:oak" contactName="Oak" contactKey="agent:oak:main" generalPreview="Reply" generalUpdatedAt={Date.now()} currentKey="agent:oak:main" items={[{ topic: item, preview: "Flights found", updatedAt: Date.now() }]} onOpen={onOpen} onAll={() => {}} onPatch={onPatch}/>));
+  await updateTopic(topic);
   const click = async (label: string) => { const button = [...host.querySelectorAll("button")].find((x) => x.getAttribute("aria-label") === label || x.textContent?.trim() === label); expect(button, label).toBeTruthy(); await act(async () => button!.click()); };
-  return { host, click, onOpen, onPatch };
+  return { host, click, onOpen, onPatch, updateTopic };
 };
 
 describe("preview thread row", () => {
@@ -41,12 +43,13 @@ describe("preview thread row", () => {
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Portugal"); input.dispatchEvent(new Event("input", { bubbles: true })); });
     await t.click("Rename");
     expect(t.onPatch).toHaveBeenCalledWith(topic, { label: "Portugal" });
+    await t.updateTopic({ ...topic, title: "Portugal", labelled: true });
     await t.click("More for Portugal");
     await t.click("Close");
-    expect(t.onPatch).toHaveBeenCalledWith(topic, { archived: true });
+    expect(t.onPatch).toHaveBeenCalledWith({ ...topic, title: "Portugal", labelled: true }, { archived: true });
     await t.click("How threads show: Column");
     await t.click("Tabs above the chat");
-    expect(JSON.parse(localStorage.getItem("branch-topics-t5")!)).toEqual({ layout: "tabs", width: 0 });
+    expect(JSON.parse(localStorage.getItem("branch-topics-t5")!)).toEqual({ layout: "tabs", width: 0, per: {} });
   });
 
   it("mutes unread badges as the preview does and remembers the choice", async () => {
@@ -62,14 +65,29 @@ describe("preview thread row", () => {
     expect(t.host.querySelector(".tpBadgeT5")).toBeTruthy();
   });
 
+  it("uses explicit engine names and syncs local choices from another window", async () => {
+    const t = await render();
+    await t.updateTopic({ ...topic, title: "Fix the parser for CSV", labelled: true });
+    expect(t.host.textContent).toContain("Fix the parser for CSV");
+    await act(async () => {
+      localStorage.setItem("branch-topic-emoji-t5", JSON.stringify({ [topic.key]: "🧪", other: "📌" }));
+      window.dispatchEvent(new StorageEvent("storage", { key: "branch-topic-emoji-t5" }));
+    });
+    expect(t.host.querySelector(".tpEmoBtnT5")?.textContent).toBe("🧪");
+    await t.click("More for Fix the parser for CSV");
+    await t.click("Mute");
+    expect(JSON.parse(localStorage.getItem("branch-topic-emoji-t5")!)).toEqual({ [topic.key]: "🧪", other: "📌" });
+  });
+
   it("persists rename and close on the actual engine session with its transcript guard", async () => {
-    const request = vi.fn(async () => ({}));
+    const request = vi.fn(async (_method: string, _params: unknown) => ({}));
     await patchTopicSession(request, topic, "transcript-1", { label: "Portugal" });
     await patchTopicSession(request, topic, "transcript-1", { archived: true });
     expect(request.mock.calls).toEqual([
       ["sessions.patch", { key: topic.key, agentId: "oak", expectedSessionId: "transcript-1", label: "Portugal" }],
       ["sessions.patch", { key: topic.key, agentId: "oak", expectedSessionId: "transcript-1", archived: true }],
     ]);
+    expect(request.mock.calls.every(([, params]) => validateSessionsPatchParams(params))).toBe(true);
   });
 
   it("merges All by recorded time and labels the thread when its source changes", () => {
@@ -78,5 +96,10 @@ describe("preview thread row", () => {
       { key: topic.key, title: topic.title, preview: "", updatedAt: 2, blocks: [{ kind: "text", key: "b", text: "Second", streaming: false, meta: { timestamp: 200 } }] },
     ]);
     expect(blocks.map((block) => block.kind === "notice" ? block.text : block.key)).toEqual(["💬 General", "agent:oak:main:a", "✈️ Lisbon trip", "agent:oak:trip:b", "💬 General", "agent:oak:main:c"]);
+    const chosen = mergeTopicTranscripts([
+      { key: "agent:oak:main", title: "General", preview: "", updatedAt: 1, blocks: [] },
+      { key: topic.key, title: "Fix the parser for CSV", labelled: true, preview: "", updatedAt: 2, blocks: [{ kind: "user", key: "b", text: "Second", meta: { timestamp: 200 } }] },
+    ], { [topic.key]: "🧪" });
+    expect(chosen[0]).toMatchObject({ kind: "notice", topicKey: topic.key, text: "🧪 Fix the parser for CSV" });
   });
 });

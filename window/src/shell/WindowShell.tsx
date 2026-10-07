@@ -43,6 +43,8 @@ import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import { createTopic, newMenuItems } from "./new-menu";
 import type { TopicListItem } from "./contact-topics";
 import { TopicRail } from "./TopicRail";
+import { historyToBlocks } from "../thread/history";
+import { topicLayoutFor, readTopicSettings, setContactTopicLayout, type TopicLayout } from "./topic-layout";
 import { patchTopicSession } from "./topic-session";
 import { loadAllTopicTranscripts } from "./topic-all";
 import { useContactSegments } from "./useContactSegments";
@@ -342,11 +344,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     firstRun.isFirstRun && firstRun.requiresContact ? trunks.bootstrapDefault : undefined);
   const now = useNow(s.doneAt);
   const [layout, setLayout] = useLayout();
-  const rail = layout.rail;
   const pinOrder = usePinOrder(session, ready);
   const [liveW, setLiveW] = useState<number | null>(null);
   const isNarrow = useNarrow();
   const [slideOpen, setSlideOpen] = useState(false);
+  const [phoneTopicListFor, setPhoneTopicListFor] = useState<string | null>(null);
   const [searchFind, setSearchFind] = useState<{ key: string; query: string; nonce: number } | null>(null);
   const searchFindNonce = useRef(0);
   const routeRef = useRef(route);
@@ -421,18 +423,28 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const openParentKey = lists.rows.find((row) => row.key === openKey)?.parentKey;
   const topicContact = draftContact ?? activeContact ?? contactRows.find((contact) => contact.threadKey === openParentKey) ?? contactRows.find((contact) => contact.threadKey === topicReturnKey);
   const [activeTopics, setActiveTopics] = useState<Topic[]>([]);
+  const [topicWho, setTopicWho] = useState<Record<string, string>>({});
   const [allTopics, setAllTopics] = useState<{ contactId: string; history: import("../thread/model").Block[]; loading: boolean; error: string } | null>(null);
-  const topicAutoRail = useRef(false);
+  const [topicLayout, setTopicLayout] = useState(() => readTopicSettings().layout);
   useEffect(() => {
-    const preferred = (() => { try { return (JSON.parse(localStorage.getItem("branch-topics-t5") || "null") as { layout?: string } | null)?.layout || "column"; } catch { return "column"; } })();
-    const wantsRail = route.kind === "chat" && Boolean(topicContact && activeTopics.length) && innerWidth > 760 && (preferred === "column" || preferred === "rail");
-    if (wantsRail && !layout.rail && !layout.hidden) { topicAutoRail.current = true; setLayout({ rail: true }); }
-    else if (!wantsRail && topicAutoRail.current) { topicAutoRail.current = false; if (layout.rail) setLayout({ rail: false }); }
-  }, [route.kind, topicContact?.id, activeTopics.length, layout.rail, layout.hidden, setLayout]);
+    const sync = () => setTopicLayout(topicContact ? topicLayoutFor(topicContact.id) : readTopicSettings().layout);
+    sync();
+    window.addEventListener("branch:topic-layout-changed", sync);
+    const storage = (event: StorageEvent) => { if (event.key === "branch-topics-t5") sync(); };
+    window.addEventListener("storage", storage);
+    return () => { window.removeEventListener("branch:topic-layout-changed", sync); window.removeEventListener("storage", storage); };
+  }, [topicContact?.id]);
+  const [fullListFor, setFullListFor] = useState<string | null>(null);
+  const topicAutoRail = route.kind === "chat" && Boolean(topicContact && activeTopics.length) && innerWidth > 760 && (topicLayout === "column" || topicLayout === "rail") && fullListFor !== topicContact?.id;
+  const rail = layout.rail || (topicAutoRail && !layout.hidden);
+  useEffect(() => {
+    setAllTopics((value) => value && (!topicContact || value.contactId !== topicContact.id || openKey !== topicContact.threadKey) ? null : value);
+  }, [openKey, topicContact?.id]);
   const segments = useContactSegments(request, ready && activeContact ? activeContact.threadKey : null);
   const [focusTopic, setFocusTopic] = useState<{ key: string; nonce: number } | null>(null);
   useEffect(() => {
     if (!ready || !topicContact) { setActiveTopics([]); return; }
+    setActiveTopics([]);
     let live = true;
     let generation = 0;
     const load = async () => {
@@ -446,6 +458,20 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     const off = session.onGatewayEvent((event) => { if (event === "contacts.changed") void load(); });
     return () => { live = false; off(); };
   }, [session, ready, topicContact?.id]);
+  useEffect(() => {
+    if (!ready || !topicContact || !activeTopics.length) { setTopicWho({}); return; }
+    let live = true;
+    const contactName = topicContact.name;
+    void Promise.all(activeTopics.map(async (topic) => {
+      try {
+        const result = await request<{ messages?: unknown[] }>("chat.history", { sessionKey: topic.key, limit: 1 });
+        const blocks = historyToBlocks(Array.isArray(result.messages) ? result.messages : [], [], topic.key, null);
+        const last = blocks.findLast((block) => block.kind === "user" || block.kind === "text");
+        return [topic.key, last?.kind === "user" ? "You" : last?.kind === "text" ? contactName : ""] as const;
+      } catch { return [topic.key, ""] as const; }
+    })).then((entries) => { if (live) setTopicWho(Object.fromEntries(entries)); });
+    return () => { live = false; };
+  }, [request, ready, topicContact?.id, activeTopics]);
   const mainKeySuffix = s.mainKey?.split(":").slice(2).join(":") || "main";
   const activeEngine = session.engine;
   const draftEngine = useMemo(() => draftTopic ? {
@@ -812,10 +838,35 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   }) : [];
   const topicItems: TopicListItem[] = activeTopics.map((topic) => {
     const row = lists.rows.find((candidate) => candidate.key === topic.key);
-    return { topic, updatedAt: row?.updatedAt ?? topic.anchor?.at ?? 0, preview: row?.preview ?? "", projectName: projects.projects.find((project) => project.id === topic.projectId)?.name };
+    return { topic, updatedAt: row?.updatedAt ?? topic.anchor?.at ?? 0, preview: row?.preview ?? "", who: topicWho[topic.key] ?? "", projectName: projects.projects.find((project) => project.id === topic.projectId)?.name };
   });
   const topicMainRow = topicContact ? lists.rows.find((row) => row.key === topicContact.threadKey) : null;
   const showingAll = Boolean(allTopics && topicContact && allTopics.contactId === topicContact.id && openKey === topicContact.threadKey);
+  useEffect(() => {
+    if (!showingAll || !topicContact) return;
+    const contactId = topicContact.id;
+    const main = { key: topicContact.threadKey, title: "General", updatedAt: topicMainRow?.updatedAt ?? topicContact.lastActivityAt, preview: topicMainRow?.preview ?? "" };
+    const topics = topicItems.map(({ topic, updatedAt, preview }) => ({ key: topic.key, title: topic.title, labelled: topic.labelled, updatedAt, preview }));
+    let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const reload = () => {
+      let picks: Record<string, string> = {};
+      try { picks = JSON.parse(localStorage.getItem("branch-topic-emoji-t5") || "{}"); } catch { /* A damaged local preference does not hide All. */ }
+      void loadAllTopicTranscripts(request, main, topics, picks).then(
+        (history) => { if (live) setAllTopics((value) => value?.contactId === contactId ? { contactId, history, loading: false, error: "" } : value); },
+        (error: unknown) => { if (live) setAllTopics((value) => value && value.contactId === contactId ? { ...value, loading: false, error: error instanceof Error ? error.message : String(error) } : value); },
+      );
+    };
+    reload();
+    const off = session.onGatewayEvent((event) => {
+      if (event !== "contacts.changed" && event !== "chat") return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(reload, 100);
+    });
+    const storage = (event: StorageEvent) => { if (event.key === "branch-topic-emoji-t5") reload(); };
+    window.addEventListener("storage", storage);
+    return () => { live = false; if (timer) clearTimeout(timer); off(); window.removeEventListener("storage", storage); };
+  }, [showingAll, topicContact?.id, session, activeTopics, lists.rows, ready]);
   const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
   const sections = buildContactSections(contacts, prefs, now);
   const pinnedSection = sections.find((section) => section.id === "pinned");
@@ -878,7 +929,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   const narrow = () => isNarrow;
   const compact = isNarrow || layout.focus;
-  const toggleList = () => (narrow() ? setSlideOpen((o) => !o) : setLayout(toggleListLayout(layout)));
+  const toggleList = () => {
+    if (narrow()) { setSlideOpen((o) => !o); return; }
+    if (topicAutoRail && !layout.rail) { setFullListFor(topicContact?.id ?? null); return; }
+    setLayout(toggleListLayout(layout));
+  };
   const showMenu = (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string, upward = false) => {
     e.preventDefault();
     e.stopPropagation();
@@ -962,6 +1017,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     savePrefs(p);
   };
   const focusSearch = () => {
+    if (topicAutoRail) setFullListFor(topicContact?.id ?? null);
     if (rail || layout.hidden) {
       setLayout({ rail: false, hidden: false });
     }
@@ -1117,6 +1173,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     hasContactReturn: Boolean(topicReturnKey && (draftTopic || openKey !== topicReturnKey)),
     onBackToContact: () => { if (topicReturnKey) { const key = topicReturnKey; setTopicReturnKey(null); openConversation(key); } },
     hasContactConversations: Boolean(topicContact && !draftTopic),
+    threadView: topicContact && activeTopics.length ? { contactName: topicContact.name, layout: topicLayout as TopicLayout, set: (next: TopicLayout) => { setContactTopicLayout(topicContact.id, next); setTopicLayout(next); } } : undefined,
     onConversations: () => setPane((value) => value === "Conversations" ? null : "Conversations"),
     besideOpen: panes.length > 0,
     // The first time, the pane opens straight away with its own chooser (the artifact's pane); after that the menu
@@ -1210,29 +1267,26 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           contactName={topicContact.name}
           contactKey={topicContact.threadKey}
           generalPreview={topicMainRow?.preview ?? ""}
+          generalWho={s.history.findLast((block) => block.kind === "user" || block.kind === "text")?.kind === "user" ? "You" : topicMainRow?.preview ? topicContact.name : ""}
           generalUpdatedAt={topicMainRow?.updatedAt ?? topicContact.lastActivityAt}
           currentKey={openKey}
           allSelected={showingAll}
+          phoneList={phoneTopicListFor === topicContact.id}
           items={topicItems}
-          onOpen={(key) => { setAllTopics(null); if (key === topicContact.threadKey) openConversation(key); else openTopic(key); }}
+          onOpen={(key) => { setPhoneTopicListFor(null); setAllTopics(null); if (key === topicContact.threadKey) openConversation(key); else openTopic(key); }}
           onAll={() => {
+            setPhoneTopicListFor(null);
             const contact = topicContact;
             setAllTopics({ contactId: contact.id, history: [], loading: true, error: "" });
             openConversation(contact.threadKey);
-            void loadAllTopicTranscripts(request, { key: contact.threadKey, title: "General", updatedAt: topicMainRow?.updatedAt ?? contact.lastActivityAt, preview: topicMainRow?.preview ?? "" }, topicItems.map(({ topic, updatedAt, preview }) => ({ key: topic.key, title: topic.title, updatedAt, preview }))).then(
-              (history) => setAllTopics((value) => value?.contactId === contact.id ? { contactId: contact.id, history, loading: false, error: "" } : value),
-              (error: unknown) => setAllTopics((value) => value?.contactId === contact.id ? { contactId: contact.id, history: [], loading: false, error: error instanceof Error ? error.message : String(error) } : value),
-            );
           }}
           onLayout={(next) => {
-            const wantsRail = next === "column" || next === "rail";
-            topicAutoRail.current = wantsRail;
-            setLayout({ rail: wantsRail });
+            setTopicLayout(next);
+            if (next === "tabs" || next === "side") setPhoneTopicListFor(null);
           }}
           onPatch={async (topic, change) => {
             await patchTopicSession(request, topic, lists.rows.find((row) => row.key === topic.key)?.sessionId, change);
             await list.refresh();
-            setActiveTopics(await listContactTopics(topicContact.id, (method, params) => session.request(method, params)));
           }}
         /> : null}
         thread={<SplitFrame panes={panes} width={splitW} onWidth={setSplitW} side={
@@ -1266,9 +1320,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           preparationError={s.error}
           advancedDiagnostics={level !== "regular"}
           onLoadEarlier={segments.loadEarlier}
-          onOpenSession={openTopic}
+          onOpenSession={(key) => { if (showingAll) setAllTopics(null); openTopic(key); }}
           onStartTopic={!showingAll && activeContact?.kind === "trunk" ? startFromMessage : undefined}
-          topicUpdates={showingAll ? [] : topicUpdates}
+          topicUpdates={topicContact && activeTopics.length ? [] : topicUpdates}
           focusTopic={focusTopic}
           onOpenActivity={() => { setPane("Activity"); setFocusHelpers((n) => n + 1); }}
           supplement={
@@ -1280,7 +1334,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           showThinking={conversationMenu.showThinking}
           liveStartedAt={s.liveStartedAt}
           room={room.thread}
-          history={showingAll && !allTopics?.loading ? allTopics!.history : mergeRoomNotices(s.history, roomNotices)}
+          history={showingAll ? allTopics?.loading ? [] : allTopics!.history : mergeRoomNotices(s.history, roomNotices)}
           live={showingAll ? [] : s.live}
           questions={showingAll ? [] : questions.list}
           onStart={(text: string) => void session.send(text)}
@@ -1320,7 +1374,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
                 projectName={projects.projects.find((x) => x.id === openRow?.projectId)?.name ?? null} onStartTopic={(options) => startNew(openRow?.agentId, options)} />
             ) : null
           }
-          onSend={(text: string, extras?: SendExtras, idempotencyKey?: string) => void session.send(text, extras, idempotencyKey)}
+          onSend={(text: string, extras?: SendExtras, idempotencyKey?: string) => { if (showingAll) setAllTopics(null); void session.send(text, extras, idempotencyKey); }}
           onStop={() => void session.stopRun()}
         />}
         />
@@ -1460,12 +1514,13 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           selection.clear();
           setTopicReturnKey(null);
           const contact = contacts.find((candidate) => candidate.threadKey === key);
+          setPhoneTopicListFor(innerWidth <= 640 && contact?.topicCount && topicLayout !== "tabs" && topicLayout !== "side" ? contact.id : null);
           setFocusTopic(contact?.preview.kind === "topic" ? { key: contact.preview.topicKey, nonce: Date.now() } : null);
           openConversation(key);
         }}
         onNew={(e) => showMenu(e, "new", [
           ...newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }),
-          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => setLayout({ rail: false }) }] : []),
+          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { if (topicAutoRail && !layout.rail) setFullListFor(topicContact?.id ?? null); else setLayout({ rail: false }); } }] : []),
         ], "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
