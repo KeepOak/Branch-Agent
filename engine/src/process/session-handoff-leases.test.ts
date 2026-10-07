@@ -540,9 +540,10 @@ await new Promise((resolve) => process.stdin.once("end", resolve));`;
     await cTurn;
     expect(fs.readFileSync(transcript, "utf8")).toBe("A final\nB turn\nC turn\n");
     expect(bLeasesWhenCRan).toBe(0);
-    // Freed by both releases while A and B were still running.
-    expect(a.io.out).toContain("A released");
-    expect(b.io.out).toContain("B released");
+    // Freed by both releases while A and B were still running. Each says so right after removing its lease, and
+    // that line can reach us a little after C's turn ran (slow runners).
+    await a.waitFor("A released");
+    await b.waitFor("B released");
     expect(a.child.exitCode).toBeNull();
     expect(b.child.exitCode).toBeNull();
     a.child.stdin!.end();
@@ -610,8 +611,9 @@ await new Promise((resolve) => process.stdin.once("end", resolve).resume());`;
     expect(fs.readFileSync(transcript, "utf8")).toBe("");
     await nextTurn;
     expect(fs.readFileSync(transcript, "utf8")).toBe("old run final\nnew turn\n");
-    // Freed by the release while the previous engine was still running.
-    expect(stdout).toContain("released");
+    // Freed by the release while the previous engine was still running. It says so right after removing its lease,
+    // and that line can reach us a little after the new turn ran (slow runners).
+    await vi.waitFor(() => expect(stdout).toContain("released"), { timeout: 10_000, interval: 20 });
     expect(previous.exitCode).toBeNull();
     previous.stdin!.end();
     await expect(exited).resolves.toBe(0);
