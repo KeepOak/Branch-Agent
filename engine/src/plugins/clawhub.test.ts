@@ -1367,7 +1367,7 @@ describe("installPluginFromClawHub", () => {
       expected: {
         ok: false,
         code: CLAWHUB_INSTALL_ERROR_CODE.PACKAGE_NOT_FOUND,
-        error: "Package not found on ClawHub.",
+        error: "Package not found on Seedbank.",
       },
     },
     {

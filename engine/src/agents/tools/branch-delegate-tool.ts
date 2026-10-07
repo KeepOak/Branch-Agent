@@ -1,6 +1,6 @@
 /** Regular-agent client for the Branch Agent system agent. */
 import { randomUUID } from "node:crypto";
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
 import { sha256Hex } from "../../infra/crypto-digest.js";
 import { SYSTEM_AGENT_ID } from "../../system-agent/agent-id.js";
 import {
@@ -26,10 +26,8 @@ const BranchDelegateOutputSchema = Type.Object(
   { additionalProperties: false },
 );
 
-type BranchDelegateResult = {
+type BranchDelegateResult = Static<typeof BranchDelegateOutputSchema> & {
   sessionId: string;
-  reply: string;
-  action?: string;
 };
 
 function stableDelegationSessionId(sessionKey: string | undefined, agentId: string): string {

@@ -51,7 +51,11 @@ function createPersonalMetadataFixture(
     sessions: { others: "none" },
   };
   const config = {
-    agents: { entries: { main: { default: true }, other: {} } },
+    agents: {
+      ownership: "explicit",
+      defaults: { systemAgent: { agentId: "main" } },
+      entries: { main: {}, other: {} },
+    },
     gateway: {
       roles: {
         default: "reader",
@@ -133,7 +137,7 @@ describe("chat metadata ownership", () => {
   it("creates and reuses a legacy requester profile through chat.metadata without host SQL", async () => {
     await withBranchTestState({ layout: "state-only" }, async () => {
       ensureProfileForEmail("admitted@example.test");
-      const config: BranchConfig = { agents: { entries: { main: { default: true } } } };
+      const config: BranchConfig = { agents: { entries: { main: {} } } };
       const metadata = { models: [], swarmEnabled: false };
       const readChatMetadata = vi.fn<GatewayRequestContext["readChatMetadata"]>(
         async () => metadata,

@@ -32,7 +32,7 @@ describe("memory forget curated writes", () => {
     vi.stubEnv("BRANCH_STATE_DIR", stateDir);
     await configureMemoryCoreRingsStateForTests();
     cfg = {
-      agents: { defaults: { workspace: workspaceDir }, list: [{ id: "main", default: true }] },
+      agents: { defaults: { workspace: workspaceDir }, entries: { main: {} } },
     } as BranchConfig;
   });
 

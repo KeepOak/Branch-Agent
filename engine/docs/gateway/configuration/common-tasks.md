@@ -100,7 +100,6 @@ read_when:
       agents: {
         entries: {
           main: {
-            default: true,
             groupChat: {
               mentionPatterns: ["@branch", "branch"],
             },
@@ -129,15 +128,20 @@ read_when:
     ```json5
     {
       agents: {
+        ownership: "explicit",
         defaults: {
           skills: ["github", "weather"],
+          heartbeat: { agentId: "writer" },
+          systemAgent: { agentId: "writer" },
+          authInheritance: { agentId: "writer" },
         },
         entries: {
-          writer: { default: true }, // inherits github, weather
+          writer: { workspace: "~/.branch/workspace" }, // inherits github, weather
           docs: { skills: ["docs-search"] }, // replaces defaults
           "locked-down": { skills: [] }, // no skills
         },
       },
+      talk: { agentId: "writer" },
     }
     ```
 
@@ -363,15 +367,23 @@ read_when:
     ```json5
     {
       agents: {
+        ownership: "explicit",
+        defaults: {
+          heartbeat: { agentId: "home" },
+          systemAgent: { agentId: "home" },
+          authInheritance: { agentId: "home" },
+        },
         entries: {
-          home: { default: true, workspace: "~/.branch/workspace-home" },
+          home: { workspace: "~/.branch/workspace-home" },
           work: { workspace: "~/.branch/workspace-work" },
         },
       },
       bindings: [
         { agentId: "home", match: { channel: "whatsapp", accountId: "personal" } },
         { agentId: "work", match: { channel: "whatsapp", accountId: "biz" } },
+        { agentId: "home", match: { channel: "whatsapp", accountId: "*" } },
       ],
+      talk: { agentId: "home" },
     }
     ```
 

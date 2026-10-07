@@ -9,6 +9,7 @@ import { configStore } from "../config-store";
 import { GENERAL_ROWS, GeneralPage } from "./general";
 import { GENERAL_PREFS } from "./general-conversation";
 import { ttlMinutes } from "./general-summaries";
+import { IN_BROWSER } from "../../../connect/desktop-controls";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -35,7 +36,7 @@ async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
   await act(async () => root.render(<KitProvider level={level} report={report} scope={null}><GeneralPage page="general" title="General" level="regular" engine={engine} /></KitProvider>));
   await act(async () => { await configStore(engine).load(); });
 }
-const heads = () => [...host.querySelectorAll(".sec > h2")].map((h) => h.textContent);
+const heads = () => [...host.querySelectorAll(".sec > h2:not([hidden])")].map((h) => h.textContent);
 const row = (title: string) => host.querySelector<HTMLElement>(`.ctl[data-row="${title}"]`)!;
 const patchOf = (request: ReturnType<typeof engineOf>["request"]) => {
   const call = request.mock.calls.find(([m]) => m === "config.patch") as unknown as [string, { raw: string }];
@@ -51,9 +52,9 @@ describe("Settings › General", () => {
     await render(engine, 0);
     expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Cover the screen"]);
     await render(engine, 1);
-    expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Clipboard history", "Cover the screen", "Controllers", "The conversation", "Summaries of older turns", "This PC"]);
+    expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Clipboard history", "Cover the screen", "Controllers", "The conversation", "Summaries", "This computer"]);
     await render(engine, 2);
-    expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Clipboard history", "Cover the screen", "Controllers", "The conversation", "Summaries of older turns", "Summaries, technical", "This PC", "Waiting line", "Summaries, more"]);
+    expect(heads()).toEqual(["Starting up", "Projects", "Keyboard", "Writing", "Clipboard history", "Cover the screen", "Controllers", "The conversation", "Summaries", "This computer", "Waiting line"]);
   });
 
   it("every row the page draws is in the search list, with its exact title", async () => {
@@ -113,7 +114,7 @@ describe("Settings › General", () => {
   it("Trim old tool results reads the engine's pruning and writes its mode", async () => {
     const { engine, request } = engineOf({ "models.authStatus": { providers: [{ provider: "anthropic", profiles: [{ profileId: "a" }] }] } }, { agents: { defaults: { contextPruning: { mode: "cache-ttl", ttl: "1h" } } } });
     await render(engine, 2);
-    expect(row("Trim old tool results").textContent).toContain("On because a Claude account is connected.");
+    expect(row("Trim old tool results").textContent).toContain("Clears old tool output after the cache expires.");
     expect(row("Trim after").querySelector("input")!.value).toBe("60");
     await act(async () => row("Trim old tool results").querySelector<HTMLInputElement>("input")!.click());
     expect(patchOf(request)).toEqual({ agents: { defaults: { contextPruning: { mode: "off" } } } });
@@ -124,27 +125,35 @@ describe("Settings › General", () => {
   it("desktop-only rows are greyed with a reason", async () => {
     const { engine } = engineOf();
     await render(engine, 1);
-    for (const t of ["Start with Windows", "Quick ask from anywhere", "Cover now"]) {
+    for (const t of ["Quick ask from anywhere", "Cover now"]) {
       expect(row(t).getAttribute("aria-disabled")).toBe("true");
       expect(row(t).querySelector(".why-k")?.textContent).toMatch(/window can’t/);
     }
-    expect(row("Keep working when the window closes").querySelector<HTMLInputElement>("input")!.checked).toBe(false);
-    expect(host.querySelector(".status")?.textContent ?? host.textContent).toContain("Branch runs while it’s open");
+    // In a plain browser the Branch app's own rows are greyed and say where they are changed.
+    for (const t of ["Start with Windows"]) {
+      expect(row(t).getAttribute("aria-disabled")).toBe("true");
+      expect(row(t).querySelector(".why-k")?.textContent).toBe(IN_BROWSER);
+    }
+    expect(row("Keep working when the window closes")).toBeNull();
+    expect(host.querySelector(".status")).toBeNull();
   });
 
-  it("in the Branch app on Windows, closing the window keeps it working in the tray", async () => {
+  it("keeps only startup controls in General", async () => {
     const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
     Object.defineProperty(navigator, "platform", { value: "Win32", configurable: true });
-    (window as { branchDesktop?: unknown }).branchDesktop = {};
+    let state = { keepWorking: true, keepAwake: false, trayUsage: false, startWithWindows: false, branchOnPath: false };
+    const set = vi.fn(async (name: keyof typeof state, on: boolean) => (state = { ...state, [name]: on }));
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get: async () => state, set } };
     try {
       const { engine } = engineOf();
       await render(engine, 0);
-      const keep = row("Keep working when the window closes");
-      expect(keep.querySelector<HTMLInputElement>("input")!.checked).toBe(true);
-      expect(keep.getAttribute("aria-disabled")).toBe("true");
-      expect(keep.querySelector(".why-k")?.textContent).toContain("Always on in the Branch app on Windows");
-      expect(host.textContent).toContain("Branch waits in the tray");
-      expect(row("Start with Windows").querySelector<HTMLInputElement>("input")!.checked).toBe(false);
+      expect(row("Keep working when the window closes")).toBeNull();
+      const start = () => row("Start with Windows").querySelector<HTMLInputElement>("input")!;
+      expect(start().checked).toBe(false);
+      expect(row("Start with Windows").getAttribute("aria-disabled")).toBeNull();
+      await act(async () => start().click());
+      expect(set).toHaveBeenCalledWith("startWithWindows", true);
+      expect(start().checked).toBe(true);
     } finally {
       delete (window as { branchDesktop?: unknown }).branchDesktop;
       delete (navigator as { platform?: string }).platform;

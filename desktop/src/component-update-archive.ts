@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
-import { mkdir, open } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, open, symlink } from "node:fs/promises";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { createGunzip } from "node:zlib";
 
 class ArchiveReader {
@@ -42,17 +42,18 @@ export function safeArchivePath(name: string): string {
   return parts.join("/");
 }
 
-function entry(header: Buffer): { name: string; size: number; mode: number; directory: boolean } {
+function entry(header: Buffer): { name: string; size: number; mode: number; directory: boolean; link?: string } {
   const checksum = octal(text(header, 148, 156));
   const actual = header.reduce((sum, byte, index) => sum + (index >= 148 && index < 156 ? 32 : byte), 0);
   if (checksum !== actual || text(header, 257, 263) !== "ustar") throw new Error("Invalid ustar header");
   const type = header[156];
-  if (type !== 0 && type !== 48 && type !== 53) throw new Error("Archive links/extensions are unsupported");
+  if (type !== 0 && type !== 48 && type !== 53 && type !== 50) throw new Error("Archive links/extensions are unsupported");
   const prefix = text(header, 345, 500);
   const name = safeArchivePath((prefix ? `${prefix}/` : "") + text(header, 0, 100));
   const size = octal(text(header, 124, 136));
-  if (type === 53 && size !== 0) throw new Error("Archive directory has content");
-  return { name, size, directory: type === 53, mode: octal(text(header, 100, 108)) & 0o777 };
+  if ((type === 53 || type === 50) && size !== 0) throw new Error("Archive directory or link has content");
+  return { name, size, directory: type === 53, mode: octal(text(header, 100, 108)) & 0o777,
+    ...(type === 50 ? { link: text(header, 157, 257) } : {}) };
 }
 
 async function writeEntry(reader: ArchiveReader, file: string, size: number, mode: number): Promise<void> {
@@ -69,14 +70,18 @@ async function writeEntry(reader: ArchiveReader, file: string, size: number, mod
   if (padding) await reader.take(padding);
 }
 
-/** Only regular ustar files/directories; extraction always targets a new, private staging directory. */
-export async function extractComponentArchive(archive: string, destination: string, expectedBytes: number): Promise<void> {
+/**
+ * Only regular ustar files/directories; extraction always targets a new, private staging directory.
+ * `rename` maps each member's local name (the desktop component keeps Electron's fs off its .asar files).
+ */
+export async function extractComponentArchive(archive: string, destination: string, expectedBytes: number, rename = (name: string): string => name): Promise<void> {
   const input = createReadStream(archive);
   const gzip = createGunzip();
   input.on("error", error => gzip.destroy(error));
   input.pipe(gzip);
   const reader = new ArchiveReader(gzip);
   const names = new Set<string>();
+  const links = new Set<string>();
   let expanded = 0;
   try {
     for (;;) {
@@ -85,11 +90,19 @@ export async function extractComponentArchive(archive: string, destination: stri
       const item = entry(header);
       const key = process.platform === "win32" ? item.name.toLowerCase() : item.name;
       if (names.has(key)) throw new Error("Duplicate archive entry");
+      if ([...links].some(link => key.startsWith(`${link}/`))) throw new Error("Archive entry traverses a link");
       names.add(key);
       expanded += item.size;
       if (expanded > expectedBytes) throw new Error("Expanded component size mismatch");
-      const file = join(destination, item.name);
+      const file = join(destination, rename(item.name));
       if (item.directory) await mkdir(file, { recursive: true });
+      else if (item.link !== undefined) {
+        if (!item.link || isAbsolute(item.link) || item.link.includes("\\") || /[\x00-\x1f]/.test(item.link)
+          || !resolve(dirname(file), item.link).startsWith(resolve(destination) + sep)) throw new Error("Unsafe archive link target");
+        await mkdir(dirname(file), { recursive: true });
+        await symlink(item.link, file);
+        links.add(key);
+      }
       else await writeEntry(reader, file, item.size, item.mode);
     }
     if (expanded !== expectedBytes) throw new Error("Expanded component size mismatch");

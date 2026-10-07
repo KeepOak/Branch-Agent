@@ -79,7 +79,6 @@ export function buildChannelAccountBindings(cfg: BranchConfig) {
 }
 
 export function resolvePreferredAccountId(params: {
-  accountIds: string[];
   defaultAccountId: string;
   boundAccounts: string[];
 }): string {

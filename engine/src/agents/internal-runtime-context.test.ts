@@ -20,10 +20,20 @@ import {
 const LEGACY_NEXT_TURN_RUNTIME_CONTEXT_HEADER =
   "Branch Agent runtime context for the active user request in this turn. Do not reply to or describe this context. Use it to continue answering the active user request now. Do not wait for another message.";
 
-type TestMessage = { role: string; content: string; customType?: string };
+type TestMessage = {
+  role: string;
+  content: string;
+  customType?: string;
+  details?: { source: string };
+};
 
 function carrier(content = "runtime ctx"): TestMessage {
-  return { role: "custom", customType: BRANCH_RUNTIME_CONTEXT_CUSTOM_TYPE, content };
+  return {
+    role: "custom",
+    customType: BRANCH_RUNTIME_CONTEXT_CUSTOM_TYPE,
+    content,
+    details: { source: "branch-runtime-context" },
+  };
 }
 function user(content: string): TestMessage {
   return { role: "user", content };
@@ -44,6 +54,36 @@ function createDeterministicRng(seed: number): () => number {
 }
 
 describe("internal runtime context codec", () => {
+  it("strips the current delimiter-free carrier without matching inline mentions", () => {
+    expect(
+      stripInternalRuntimeContext(
+        "Visible intro\n\nBranch runtime context:\nprivate current-turn facts\nEnd Branch Agent runtime context.\n\nVisible outro",
+      ),
+    ).toBe("Visible intro\n\nVisible outro");
+    expect(
+      stripInternalRuntimeContext("The phrase Branch Agent runtime context: is ordinary text."),
+    ).toBe("The phrase Branch Agent runtime context: is ordinary text.");
+  });
+
+  it("strips every current carrier block from one response", () => {
+    const block = "Branch Agent runtime context:\nprivate facts\nEnd Branch Agent runtime context.";
+    expect(
+      stripInternalRuntimeContext(`Visible before\n\n${block}\n\n${block}\n\nVisible after`),
+    ).toBe("Visible before\n\nVisible after");
+  });
+
+  it("holds a partial current carrier header during streaming", () => {
+    expect(stripInternalRuntimeContext("Visible\nBranch runtime cont", { streaming: true })).toBe(
+      "Visible",
+    );
+  });
+
+  it("strips an unfinished current carrier from previews and final output", () => {
+    const text = "Branch Agent runtime context:\nThis phrase is part of the answer.";
+    expect(stripInternalRuntimeContext(text)).toBe("");
+    expect(stripInternalRuntimeContext(text, { streaming: true })).toBe("");
+  });
+
   it("strips a marked internal runtime block and preserves surrounding text", () => {
     const input = [
       "Visible intro",

@@ -13,6 +13,10 @@ const retainedCustodyKey = Symbol.for("branch.sqliteTestRetainedCustody");
 // Keep their native custody intact through drainage, then retire the whole generation.
 export const sqliteTestSingletonPublications: ReadonlyMap<string, symbol> = new Map([
   [
+    source("src/cron/store/receipt-authority-owner.ts"),
+    Symbol.for("branch.cron.receiptAuthority"),
+  ],
+  [
     source("src/state/branch-state-worker-owner.ts"),
     Symbol.for("branch.sharedStateWorkerOwner"),
   ],

@@ -1,11 +1,12 @@
 import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveRunWorkspaceDir } from "../agents/workspace-run.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { redactToolPayloadText } from "../logging/redact.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { resolveSystemAgentConfiguredRouteFromConfig } from "./inference-route.js";
 import { getSetupAppRecommendations } from "./setup-app-recommendations.js";
+import * as inference from "./setup-inference.js";
 import {
   completeSetupInferenceConfig,
   type CompleteSetupInferenceResult,
@@ -13,6 +14,8 @@ import {
 
 const LIVE = process.env.BRANCH_LIVE_TEST === "1" && Boolean(process.env.OPENAI_API_KEY?.trim());
 const describeLive = LIVE ? describe : describe.skip;
+afterEach(() => vi.restoreAllMocks());
+
 const modelId = process.env.BRANCH_LIVE_APP_RECOMMENDATIONS_MODEL ?? "gpt-5.6-luna";
 
 const config: BranchConfig = {
@@ -77,6 +80,15 @@ describe("setup app recommendations fixture", () => {
 describeLive("setup app recommendations live", () => {
   it("uses real Seedbank search and OpenAI while rejecting substring traps", async () => {
     let completion: CompleteSetupInferenceResult | undefined;
+    vi.spyOn(inference, "completeSetupInference").mockImplementation(async ({ prompt }) => {
+      completion = await completeSetupInferenceConfig({
+        config,
+        prompt,
+        runtime,
+        timeoutMs: 240_000,
+      });
+      return completion;
+    });
     const result = await getSetupAppRecommendations({
       inventorySource: async () => [
         { label: "Notion", bundleId: "notion.id" },
@@ -90,17 +102,6 @@ describeLive("setup app recommendations live", () => {
         { label: "ChatGPT", bundleId: "com.openai.codex" },
       ],
       runtime,
-      deps: {
-        complete: async (prompt) => {
-          completion = await completeSetupInferenceConfig({
-            config,
-            prompt,
-            runtime,
-            timeoutMs: 240_000,
-          });
-          return completion;
-        },
-      },
     });
 
     const status = result.status === "ok" ? "ok" : `skipped:${result.reason}`;

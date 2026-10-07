@@ -18,7 +18,7 @@ import {
   closeBranchStateDatabaseByPathAsync,
   openBranchStateDatabase,
 } from "../state/branch-state-db.js";
-import { agentExecCommand } from "./agent-exec.js";
+import { runAgentExecWithMock } from "./agent-exec.test-helpers.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
@@ -48,9 +48,11 @@ it.each([false, true])(
       await remove(pathname, options);
     });
     try {
-      const result = await agentExecCommand("inspect", { authEnvOnly: true }, runtime, {
-        baseConfig: { agents: { entries: { main: {} } } },
-        runAgent: async () => {
+      const result = await runAgentExecWithMock(
+        "inspect",
+        { authEnvOnly: true },
+        runtime,
+        async () => {
           runStateDir = process.env.BRANCH_STATE_DIR;
           const shared = openBranchStateDatabase();
           handles.push(shared.db);
@@ -85,7 +87,7 @@ it.each([false, true])(
           }
           return { payloads: [{ text: "done" }], meta: { durationMs: 1 } };
         },
-      });
+      );
       expect(result.exitCode).toBe(runError ? 1 : 0);
       expect(runtime.error).not.toHaveBeenCalledWith(expect.stringContaining("cleanup failed"));
       expect(process.env.BRANCH_STATE_DIR).toBe(previousStateDir);

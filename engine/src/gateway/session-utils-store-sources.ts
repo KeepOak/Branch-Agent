@@ -24,7 +24,7 @@ import {
   readBranchAgentDatabaseRegistryToken,
 } from "../state/branch-agent-db-registry-listing.js";
 import { createBranchAgentDatabasePathMatcher } from "../state/branch-agent-db.paths.js";
-import { resolveGatewaySessionStoreLookupCandidates } from "./session-utils-store-lookup.js";
+import { resolveGatewaySessionStoreLookupCandidates } from "./session-utils-store-candidates.js";
 import type {
   GatewaySessionStoreReadSources,
   GatewaySessionStoreSourceRequest,
@@ -167,8 +167,6 @@ export function prepareGatewaySessionStoreReadSources(params: {
   currentSource: SessionEntryReadSource;
   env: NodeJS.ProcessEnv;
   registryPath: string;
-  /** Only synchronous consumers may defer binding filesystem addresses. */
-  deferSources?: boolean;
 }): { sources: GatewaySessionStoreReadSources; assertCurrent: () => void } {
   const registryOptions = {
     env: cloneEnvWithPlatformSemantics(params.env),
@@ -197,43 +195,32 @@ export function prepareGatewaySessionStoreReadSources(params: {
     }
     throw new Error("Session store changed while preparing its metadata. Retry the request.");
   };
-  const bindSources = () =>
-    withAgentRosterFactsBatch(params.cfg, () => {
-      let registered: ReturnType<typeof listBranchRegisteredAgentDatabases>;
-      try {
-        registered = listBranchRegisteredAgentDatabases(registryOptions);
-      } catch {
-        return {};
-      }
-      const registryFacts = registered;
-      const resolved = resolveGatewaySessionStoreReadSources({
-        routing: captureSessionStoreRouting(params.cfg),
-        currentSource,
-        env: params.env,
-        registeredDatabases: registered,
-      });
-      discoveryIsCurrent = () => {
-        const current = listBranchRegisteredAgentDatabases(registryOptions);
-        return (
-          currentSource.agentId === currentSourceAgentId &&
-          currentSource.path === currentSourcePath &&
-          sameRegistrations(current, registryFacts) &&
-          resolved.isCurrent()
-        );
-      };
-      return resolved.sources;
+  const sources = withAgentRosterFactsBatch(params.cfg, () => {
+    let registered: ReturnType<typeof listBranchRegisteredAgentDatabases>;
+    try {
+      registered = listBranchRegisteredAgentDatabases(registryOptions);
+    } catch {
+      return {};
+    }
+    const registryFacts = registered;
+    const resolved = resolveGatewaySessionStoreReadSources({
+      routing: captureSessionStoreRouting(params.cfg),
+      currentSource,
+      env: params.env,
+      registeredDatabases: registered,
     });
-  let sources = params.deferSources ? undefined : bindSources();
-  return {
-    get sources() {
-      if (!sources) {
-        assertCurrent();
-        sources = bindSources();
-      }
-      return sources;
-    },
-    assertCurrent,
-  };
+    discoveryIsCurrent = () => {
+      const current = listBranchRegisteredAgentDatabases(registryOptions);
+      return (
+        currentSource.agentId === currentSourceAgentId &&
+        currentSource.path === currentSourcePath &&
+        sameRegistrations(current, registryFacts) &&
+        resolved.isCurrent()
+      );
+    };
+    return resolved.sources;
+  });
+  return { sources, assertCurrent };
 }
 
 /** Capture source routing for the existing history worker; no native discovery runs here. */

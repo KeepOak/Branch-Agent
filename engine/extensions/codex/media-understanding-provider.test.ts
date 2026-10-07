@@ -1,4 +1,5 @@
 // Codex tests cover media understanding provider plugin behavior.
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import type {
   ImageDescriptionRequest,

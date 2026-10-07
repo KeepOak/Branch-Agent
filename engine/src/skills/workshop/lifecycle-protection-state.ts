@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { inspectCronRowsForDoctor } from "../../cron/store/doctor-inventory.js";
+import { inspectCronRowsForDoctor } from "../../commands/doctor/cron/store-inventory.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
 import { tableExists } from "../../state/branch-state-db-schema-helpers.js";
 import type { DB } from "../../state/branch-state-db.generated.js";

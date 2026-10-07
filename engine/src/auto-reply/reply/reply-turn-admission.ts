@@ -1,3 +1,4 @@
+import { addAbortListener } from "node:events";
 import { MAIN_SESSION_RECOVERY_WORK_ADMISSION_OWNER } from "../../agents/main-session-recovery/main-session-recovery-admission.js";
 import { scheduleMainSessionRecoveryPendingTarget } from "../../agents/main-session-recovery/main-session-recovery-owner-release.js";
 import { isMainRestartRecoveryCandidate } from "../../agents/main-session-recovery/main-session-recovery-state.js";
@@ -7,6 +8,7 @@ import {
   type MainSessionRecoveryPendingTarget,
   type MainSessionRecoveryOwnerLease,
 } from "../../agents/main-session-recovery/main-session-recovery-store.js";
+import { isAgentRunRestartAbortReason } from "../../agents/run-termination.js";
 import { beginForegroundSessionMaintenance } from "../../agents/session-maintenance/coordinator.js";
 import {
   isRestartRecoveryTombstone,
@@ -23,6 +25,7 @@ import type { GatewayRecoveryRuntime } from "../../gateway/server-instance-runti
 import type { GatewayContextResolver } from "../../gateway/server-methods/types.js";
 import { racePromiseWithAbortSignal } from "../../infra/abort-signal.js";
 import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
+import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
@@ -37,6 +40,7 @@ import {
   getSessionWorkAdmissionOwnerRelease,
   type SessionWorkAdmissionLease,
 } from "../../sessions/session-lifecycle-admission.js";
+import { getAsyncWorkSignal } from "../../shared/async-work-scope.js";
 import {
   createReplyOperation,
   isReplyRunSuccessorAdmissionBlocked,
@@ -55,6 +59,7 @@ import {
 } from "./reply-run-registry.js";
 import {
   expireVisibleStaleOperation,
+  getAttachedBackend,
   lifecycleAdmissionByOperation,
   resolveVisibleActiveWaitMs,
 } from "./reply-run-registry.state.js";
@@ -172,10 +177,13 @@ type ReplyTurnAdmissionParams = {
 export async function admitReplyTurn(
   params: ReplyTurnAdmissionParams,
 ): Promise<ReplyTurnAdmission> {
+  const workSignal = getAsyncWorkSignal();
   const activeAtAdmission = replyRunRegistry.get(params.sessionKey);
   const releaseForeground =
     params.kind === "visible"
-      ? await beginForegroundSessionMaintenance(params.sessionKey)
+      ? await measureDiagnosticsTimelineSpan("reply.admission.foreground_maintenance", () =>
+          beginForegroundSessionMaintenance(params.sessionKey),
+        )
       : undefined;
   let foregroundTransferred = false;
   // Maintenance may finish after the observed reply rotates and clears its slot.
@@ -289,115 +297,124 @@ export async function admitReplyTurn(
         let interruptedBeforeOperation = false;
         let recoveryClaimStarted = false;
         const admission = storePath
-          ? await beginSessionWorkAdmission({
-              scope: storePath,
-              resolveGatewayContext,
-              identities: [params.sessionKey],
-              storeWriterIdentities:
-                parseAgentSessionKey(params.sessionKey) &&
-                normalizeStoreSessionKey(params.sessionKey) === params.sessionKey
-                  ? [params.sessionKey]
-                  : undefined,
-              signal: params.upstreamAbortSignal,
-              onInterrupt: () => {
-                interruptedBeforeOperation = true;
-                operation?.abortForRestart();
-                params.onLifecycleInterrupt?.();
-              },
-              assertAllowed: async (signal) => {
-                assertDatabaseOwnerCurrent();
-                const assertCurrent = () => {
-                  params.assertRequestCurrent?.();
+          ? await measureDiagnosticsTimelineSpan("reply.admission.session_work", () =>
+              beginSessionWorkAdmission({
+                scope: storePath,
+                resolveGatewayContext,
+                identities: [params.sessionKey],
+                storeWriterIdentities:
+                  parseAgentSessionKey(params.sessionKey) &&
+                  normalizeStoreSessionKey(params.sessionKey) === params.sessionKey
+                    ? [params.sessionKey]
+                    : undefined,
+                signal: params.upstreamAbortSignal,
+                onInterrupt: () => {
+                  interruptedBeforeOperation = true;
+                  operation?.abortForRestart();
+                  params.onLifecycleInterrupt?.();
+                },
+                assertAllowed: async (signal) => {
                   assertDatabaseOwnerCurrent();
+                  const assertCurrent = () => {
+                    params.assertRequestCurrent?.();
+                    assertDatabaseOwnerCurrent();
+                    if (
+                      !admitting ||
+                      interruptedBeforeOperation ||
+                      lifecycleGeneration !== getAgentEventLifecycleGeneration()
+                    ) {
+                      throw new SessionWorkStartChangedError(
+                        "Session changed while waiting for state admission.",
+                      );
+                    }
+                  };
+                  const current = await measureDiagnosticsTimelineSpan(
+                    "reply.admission.session_entry",
+                    () =>
+                      loadSessionEntryForAdmission(
+                        {
+                          agentId: params.agentId,
+                          storePath,
+                          sessionKey: params.sessionKey,
+                          readConsistency: "latest",
+                        },
+                        {
+                          signal,
+                          assertCurrent,
+                        },
+                      ),
+                  );
                   if (
                     !admitting ||
                     interruptedBeforeOperation ||
-                    lifecycleGeneration !== getAgentEventLifecycleGeneration()
+                    params.upstreamAbortSignal?.aborted
                   ) {
+                    await current.databaseClaim.release();
                     throw new SessionWorkStartChangedError(
-                      "Session changed while waiting for state admission.",
+                      "Session changed during state admission.",
                     );
                   }
-                };
-                const current = await loadSessionEntryForAdmission(
-                  {
-                    agentId: params.agentId,
-                    storePath,
-                    sessionKey: params.sessionKey,
-                    readConsistency: "latest",
-                  },
-                  {
-                    signal,
-                    assertCurrent,
-                  },
-                );
-                if (
-                  !admitting ||
-                  interruptedBeforeOperation ||
-                  params.upstreamAbortSignal?.aborted
-                ) {
-                  await current.databaseClaim.release();
-                  throw new SessionWorkStartChangedError("Session changed during state admission.");
-                }
-                try {
-                  params.assertRequestCurrent?.();
-                } catch (error) {
-                  await current.databaseClaim.release();
-                  throw error;
-                }
-                assertDatabaseOwnerCurrent(current.databaseClaim);
-                const previousDatabaseClaim = admittedDatabaseClaim;
-                admittedDatabaseClaim = current.databaseClaim;
-                await previousDatabaseClaim?.release();
-                signal.throwIfAborted();
-                assertCurrent();
-                const currentEntry = current.entry;
-                admittedSessionEntry = currentEntry;
-                if (expectedSessionId && !currentEntry) {
-                  rejectSessionChange(
-                    `Session "${params.sessionKey}" was deleted while starting work. Retry.`,
-                  );
-                }
-                rotationObservation?.recordCompletions();
-                const activeOperationRotatedExpectedSession = rotations.hasExpectedSessionRotation({
-                  expectedSessionId,
-                  sessionId: currentEntry?.sessionId,
-                  databaseIdentity: admittedDatabaseClaim?.identity,
-                });
-                if (
-                  expectedSessionId &&
-                  currentEntry?.sessionId !== expectedSessionId &&
-                  !activeOperationRotatedExpectedSession
-                ) {
-                  rejectSessionChange();
-                }
-                if (activeOperationRotatedExpectedSession) {
-                  expectedSessionId = currentEntry?.sessionId;
-                }
-                const archivedSessionError = resolveSessionWorkStartError(
-                  params.sessionKey || sessionId,
-                  currentEntry,
-                  {
-                    providerReviewAcknowledgment: params.providerReviewAcknowledgment,
-                    allowRestartTombstoneReplacement:
-                      (params.resetTriggered && params.allowRestartTombstoneReset === true) ||
-                      params.allowRestartTombstoneParentFork === true,
-                  },
-                );
-                if (archivedSessionError) {
-                  const tombstone = currentEntry?.mainRestartRecovery?.tombstone;
-                  if (params.kind === "visible" && tombstone) {
-                    log.warn(`${archivedSessionError} Recovery reason: ${tombstone.reason}`);
+                  try {
+                    params.assertRequestCurrent?.();
+                  } catch (error) {
+                    await current.databaseClaim.release();
+                    throw error;
                   }
-                  rejectLifecycleInvalidatedWork({
-                    kind: params.kind,
-                    message: archivedSessionError,
-                    restartRecoveryTombstone: isRestartRecoveryTombstone(currentEntry),
-                  });
-                }
-                sessionId = currentEntry?.sessionId ?? sessionId;
-              },
-            })
+                  assertDatabaseOwnerCurrent(current.databaseClaim);
+                  const previousDatabaseClaim = admittedDatabaseClaim;
+                  admittedDatabaseClaim = current.databaseClaim;
+                  await previousDatabaseClaim?.release();
+                  signal.throwIfAborted();
+                  assertCurrent();
+                  const currentEntry = current.entry;
+                  admittedSessionEntry = currentEntry;
+                  if (expectedSessionId && !currentEntry) {
+                    rejectSessionChange(
+                      `Session "${params.sessionKey}" was deleted while starting work. Retry.`,
+                    );
+                  }
+                  rotationObservation?.recordCompletions();
+                  const activeOperationRotatedExpectedSession =
+                    rotations.hasExpectedSessionRotation({
+                      expectedSessionId,
+                      sessionId: currentEntry?.sessionId,
+                      databaseIdentity: admittedDatabaseClaim?.identity,
+                    });
+                  if (
+                    expectedSessionId &&
+                    currentEntry?.sessionId !== expectedSessionId &&
+                    !activeOperationRotatedExpectedSession
+                  ) {
+                    rejectSessionChange();
+                  }
+                  if (activeOperationRotatedExpectedSession) {
+                    expectedSessionId = currentEntry?.sessionId;
+                  }
+                  const archivedSessionError = resolveSessionWorkStartError(
+                    params.sessionKey || sessionId,
+                    currentEntry,
+                    {
+                      providerReviewAcknowledgment: params.providerReviewAcknowledgment,
+                      allowRestartTombstoneReplacement:
+                        (params.resetTriggered && params.allowRestartTombstoneReset === true) ||
+                        params.allowRestartTombstoneParentFork === true,
+                    },
+                  );
+                  if (archivedSessionError) {
+                    const tombstone = currentEntry?.mainRestartRecovery?.tombstone;
+                    if (params.kind === "visible" && tombstone) {
+                      log.warn(`${archivedSessionError} Recovery reason: ${tombstone.reason}`);
+                    }
+                    rejectLifecycleInvalidatedWork({
+                      kind: params.kind,
+                      message: archivedSessionError,
+                      restartRecoveryTombstone: isRestartRecoveryTombstone(currentEntry),
+                    });
+                  }
+                  sessionId = currentEntry?.sessionId ?? sessionId;
+                },
+              }),
+            )
           : undefined;
         try {
           if (isReplyRunSuccessorAdmissionBlocked(params.sessionKey)) {
@@ -563,6 +580,36 @@ export async function admitReplyTurn(
         const releaseWorkerDatabaseClaim =
           databaseClaim && "kind" in databaseClaim ? () => databaseClaim.release() : undefined;
         if (releaseWorkerDatabaseClaim) {
+          const admittedOperation = operation;
+          let releasingForRestart = false;
+          const releaseForRestart = (signal: AbortSignal) => {
+            if (releasingForRestart || !isAgentRunRestartAbortReason(signal.reason)) {
+              return;
+            }
+            releasingForRestart = true;
+            const runId = getAttachedBackend(admittedOperation)?.runId ?? "unbound";
+            // Admission's read has settled; model/tool finalization owns no native work here.
+            void releaseWorkerDatabaseClaim().then(
+              () =>
+                log.info(
+                  `lease released: reason=restart-abort runId=${runId} kind=reply-admission`,
+                  { sessionId },
+                ),
+              (error: unknown) =>
+                log.warn(
+                  `failed to release restart-aborted reply database owner: ${formatErrorMessage(error)}`,
+                ),
+            );
+          };
+          // Shutdown can cancel the owning work after terminal settlement freezes reply abort.
+          const restartReleases = [...new Set([operation.abortSignal, workSignal])].flatMap(
+            (signal) => (signal ? [addAbortListener(signal, () => releaseForRestart(signal))] : []),
+          );
+          runAfterReplyOperationClear(operation, () => {
+            for (const listener of restartReleases) {
+              listener[Symbol.dispose]();
+            }
+          });
           registerReplyOperationSuccessorBarrier({
             operation,
             sessionId,

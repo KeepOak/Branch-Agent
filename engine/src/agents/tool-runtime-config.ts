@@ -9,21 +9,9 @@ import type { BranchConfig } from "../config/types.branch.js";
 export function resolveAgentRuntimeToolConfig(
   inputConfig?: BranchConfig,
 ): BranchConfig | undefined {
-  const runtimeConfig = getRuntimeConfigSnapshot() ?? undefined;
-  if (!runtimeConfig) {
-    return inputConfig;
-  }
-  if (!inputConfig || inputConfig === runtimeConfig) {
-    return runtimeConfig;
-  }
-  const runtimeSourceConfig = getRuntimeConfigSourceSnapshot() ?? undefined;
-  // Without source identity, a process-global snapshot must not replace an explicit run config.
-  if (!runtimeSourceConfig) {
-    return inputConfig;
-  }
   return selectApplicableRuntimeConfig({
     inputConfig,
-    runtimeConfig,
-    runtimeSourceConfig,
+    runtimeConfig: getRuntimeConfigSnapshot(),
+    runtimeSourceConfig: getRuntimeConfigSourceSnapshot(),
   });
 }

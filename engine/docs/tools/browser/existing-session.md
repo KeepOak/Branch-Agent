@@ -144,7 +144,7 @@ Notes:
 
 ### Custom Chrome MCP launch
 
-Branch Agent includes an exact-pinned Chrome DevTools MCP 1.9.0 dependency with a
+Branch Agent includes an exact-pinned Chrome DevTools MCP 1.10.1 dependency with a
 temporary document-identity patch and starts its CLI directly with the runtime
 running Branch Agent, Node or Bun.
 The npm package carries the patched dependency; source checkouts obtain it through

@@ -1,5 +1,6 @@
 // Preview 40-places newdocD18: the first free Untitled document name, then unsent help.
 // agents.documents.create performs the exclusive durable write; the acknowledgement owns the file path.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { loadDraft, safeStorage, saveDraft } from "../../composer/drafts";

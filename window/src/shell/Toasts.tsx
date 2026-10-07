@@ -61,11 +61,12 @@ function ToastItem({ toast }: { toast: Toast }) {
   );
 }
 
-export function Toasts() {
+export function Toasts({ setupOpen = false }: { setupOpen?: boolean }) {
   const toasts = useSyncExternalStore(subscribeToasts, getToasts);
+  const visible = setupOpen ? toasts.find((toast) => toast.tone === "bad") : toasts[0];
   return (
     <div className="toasts" aria-live="polite">
-      {toasts.length ? <ToastItem key={toasts[0].id} toast={toasts[0]} /> : null}
+      {visible ? <ToastItem key={visible.id} toast={visible} /> : null}
     </div>
   );
 }

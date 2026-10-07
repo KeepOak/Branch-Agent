@@ -2,18 +2,14 @@ import { formatErrorMessage } from "../infra/errors.js";
 import { LegacyPluginSdkResourceHost } from "../plugins/legacy-sdk-resource-host.js";
 import { hasRetainedPluginRuntimeCloseError } from "../plugins/runtime-close-error.js";
 import { createDeferredCore } from "../shared/deferred.js";
-import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import { bumpSkillsSnapshotVersion } from "../skills/runtime/refresh-state.js";
-import { createGatewayKernel, gatewayKernelLogs } from "./server-kernel.js";
+import { prepareGatewayKernel, gatewayKernelLogs } from "./server-kernel.js";
 import type { GatewayServer, GatewayServerOptions } from "./server-public.js";
 import { createGatewayHttpTransport } from "./server-runtime-state.js";
 import { rethrowGatewayStartupError, runGatewayCloseSteps } from "./server-shutdown.js";
 import { finishGatewayStartup } from "./server-startup-finish.js";
 import { beginMacOSSystemCaWarmupOnce } from "./system-ca-warmup.js";
-
-const loadGatewayStartupPostAttachModule = createLazyRuntimeModule(
-  () => import("./server-startup-post-attach.js"),
-);
+import { assignTrunkCharactersAtStartup } from "./trunk-character-startup.js";
 
 const { log, logTailscale, logChannels, logHealth, logCron, logReload, logHooks, logWsControl } =
   gatewayKernelLogs;
@@ -35,10 +31,13 @@ async function startGatewayServerWithSdkHost(
   sdkResourceHost: LegacyPluginSdkResourceHost,
 ): Promise<GatewayServer> {
   const { promise: postReadyWorkBarrier, resolve: releasePostReadyWork } = createDeferredCore();
-  const gatewayKernel = await createGatewayKernel(port, opts, {
+  if (!opts.startupConfigSnapshotRead && !opts.updateCanary) await assignTrunkCharactersAtStartup();
+  const preparedKernel = await prepareGatewayKernel(port, opts, {
     deferEarlyRuntime: true,
     sdkResourceHost,
   });
+  const activationOptions = preparedKernel.activationOptions;
+  const gatewayKernel = await preparedKernel.activate();
   // A Gateway restart must refresh restored skill catalogs, even in the same process.
   bumpSkillsSnapshotVersion({ reason: "manual" });
   if (!gatewayKernel.minimalTestGateway) {
@@ -81,7 +80,7 @@ async function startGatewayServerWithSdkHost(
     const startup = await finishGatewayStartup({
       kernelRuntime: { ...gatewayKernel, ...transport },
       port,
-      opts,
+      opts: activationOptions,
       bootId: gatewayKernel.bootId,
       log,
       logHealth,
@@ -90,7 +89,6 @@ async function startGatewayServerWithSdkHost(
       logChannels,
       logCron,
       logReload,
-      loadGatewayStartupPostAttachModule,
       waitForPostReadyWork: () => postReadyWorkBarrier,
     });
     startupSettled = startup.startupSettled;
@@ -120,6 +118,9 @@ async function startGatewayServerWithSdkHost(
   return {
     startupSettled,
     getTailscaleIngressEndpoint: gatewayKernel.transportBridge.getTailscaleIngressEndpoint,
+    deactivate: () => sdkResourceHost.run(() => gatewayKernel.deactivate()),
+    rollbackDeactivation: () => sdkResourceHost.run(() => gatewayKernel.rollbackDeactivation()),
+    waitForDeactivatedRuns: () => gatewayKernel.waitForDeactivatedRuns(),
     close: (optsLocal) => {
       if (!closePromise) {
         closePromise = sdkResourceHost

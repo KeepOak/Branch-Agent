@@ -84,6 +84,9 @@ export async function createNostrRelayFixture(
   let closePromise: Promise<void> | undefined;
   const close = () => {
     closePromise ??= (async () => {
+      const closedConnections = Array.from(connections, (connection) =>
+        new Promise<void>((resolve) => connection.once("close", () => resolve())),
+      );
       for (const socket of sockets.clients) {
         socket.terminate();
       }
@@ -108,6 +111,7 @@ export async function createNostrRelayFixture(
       if (failures.length > 0) {
         throw new AggregateError(failures, "Nostr fixture shutdown failed");
       }
+      await Promise.all(closedConnections);
     })();
     return closePromise;
   };

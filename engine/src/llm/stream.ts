@@ -5,7 +5,10 @@
 import { defaultApiRegistry, defaultLlmRuntime } from "@branch/ai/internal/runtime";
 import { registerBuiltInApiProviders } from "@branch/ai/providers";
 import { makeZeroUsageSnapshot } from "../agents/usage.js";
+import { assertLockdownOff } from "../config/lockdown.js";
 import { classifyGatewayStorageFailure } from "../infra/sqlite-error-diagnostics.js";
+import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
+import { createLazyPromise } from "../shared/lazy-promise.js";
 import { getModelLlmRuntime } from "./model-runtime-binding.js";
 import "./ai-transport-host.js";
 import type {
@@ -21,16 +24,11 @@ import { createAssistantMessageEventStream } from "./utils/event-stream.js";
 
 registerBuiltInApiProviders(defaultApiRegistry);
 
-let transportRuntimeHostPromise: Promise<void> | undefined;
-
-async function ensureTransportRuntimeHost(): Promise<void> {
-  // Async completion entry points install heavy provider ports before the runtime
-  // can invoke them, without adding their plugin graph to this eager facade.
-  transportRuntimeHostPromise ??= import("../agents/ai-transport-runtime-host.js").then(
-    ({ configureAiTransportRuntimeHost }) => configureAiTransportRuntimeHost(),
-  );
-  await transportRuntimeHostPromise;
-}
+// The process host outlives requests; only provider invocation carries caller authority.
+const ensureTransportRuntimeHost = createLazyPromise(
+  () => runInDetachedAsyncContext(() => import("../agents/ai-transport-runtime-host.js")),
+  { cacheRejections: true },
+);
 
 function createRuntimeHostErrorMessage(model: Model, error: unknown): AssistantMessage {
   return {
@@ -55,6 +53,8 @@ function deferUntilTransportRuntimeHost(
   void (async () => {
     try {
       await ensureTransportRuntimeHost();
+      // Lockdown: no model is called, so nothing is spent; the caller sees an error event.
+      assertLockdownOff();
       for await (const event of start()) {
         output.push(event);
       }
@@ -91,6 +91,7 @@ export async function complete<TApi extends Api>(
   await ensureTransportRuntimeHost();
   assertCurrent?.();
   options?.signal?.throwIfAborted();
+  assertLockdownOff();
   return await resolveRuntime(model).complete(model, context, options);
 }
 
@@ -114,5 +115,6 @@ export async function completeSimple<TApi extends Api>(
   // Runtime setup can outlive its caller. Admit only a current request to the provider.
   assertCurrent?.();
   options?.signal?.throwIfAborted();
+  assertLockdownOff();
   return await resolveRuntime(model).completeSimple(model, context, options);
 }

@@ -6,15 +6,30 @@ import { toErrorObject } from "../infra/errors.js";
 import { getSpawnBroker } from "./spawn-broker/context.js";
 import { brokerSpawnOptions } from "./spawn-broker/host.js";
 import { recordChildProcessSpawn } from "./spawn-diagnostics.js";
+import { hiddenWindowsOptions } from "./windows-hidden-options.js";
+import type { SpawnInitiation } from "./spawn-initiation.js";
 
-/** Select the process-scoped native spawn transport without changing launch options. */
-export function spawnProcess(command: string, args: string[], options: SpawnOptions): ChildProcess {
+/** Default supervised Windows children to hidden, without overriding intentional GUI launches. */
+export function hiddenSpawnOptions(options: SpawnOptions, platform: NodeJS.Platform = process.platform): SpawnOptions {
+  return hiddenWindowsOptions(options, platform);
+}
+
+/** Select the process-scoped native spawn transport. */
+export function spawnProcess(
+  command: string,
+  args: string[],
+  options: SpawnOptions,
+  initiateSpawn?: SpawnInitiation,
+): ChildProcess {
+  options = hiddenSpawnOptions(options);
   const broker = getSpawnBroker();
   // Anonymous secret pipes and inherited numeric descriptors belong to this process.
   const child =
     broker && brokerSpawnOptions(options)
-      ? broker.spawn(command, args, options)
-      : spawn(command, args, options);
+      ? broker.spawn(command, args, options, initiateSpawn)
+      : initiateSpawn
+        ? initiateSpawn(() => spawn(command, args, options))
+        : spawn(command, args, options);
   recordChildProcessSpawn(command, child);
   return child;
 }
@@ -26,10 +41,11 @@ type SpawnWithFallbackResult = {
 
 type SpawnWithFallbackParams = {
   assertCurrent?: () => void;
+  initiateSpawn?: SpawnInitiation;
   argv: string[];
   options: SpawnOptions;
   fallbacks?: SpawnOptions[];
-  spawnImpl?: (command: string, args: string[], options: SpawnOptions) => ChildProcess;
+  spawnImpl?: typeof spawnProcess;
 };
 
 function shouldRetry(err: unknown): boolean {
@@ -42,8 +58,14 @@ async function spawnAndWaitForSpawn(
   spawnImpl: NonNullable<SpawnWithFallbackParams["spawnImpl"]>,
   argv: string[],
   options: SpawnOptions,
+  initiateSpawn?: SpawnInitiation,
 ): Promise<ChildProcess> {
-  const child = spawnImpl(expectDefined(argv[0], "argv entry at 0"), argv.slice(1), options);
+  const child = spawnImpl(
+    expectDefined(argv[0], "argv entry at 0"),
+    argv.slice(1),
+    options,
+    initiateSpawn,
+  );
 
   try {
     await once(child, "spawn");
@@ -66,7 +88,12 @@ export async function spawnWithFallback(
     // Caller revocation is not a spawn failure and cannot select a fallback.
     params.assertCurrent?.();
     try {
-      const child = await spawnAndWaitForSpawn(spawnImpl, params.argv, attempt);
+      const child = await spawnAndWaitForSpawn(
+        spawnImpl,
+        params.argv,
+        attempt,
+        params.initiateSpawn,
+      );
       return {
         child,
         usedFallback: index > 0,

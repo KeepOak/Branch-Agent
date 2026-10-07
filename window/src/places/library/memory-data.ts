@@ -1,5 +1,6 @@
 // What a Trunk remembers is its MEMORY.md (agents.files.*). Each top-level bullet is one memory; the indented
 // lines under it belong to it. Forgetting removes that block and leaves every other byte as it was.
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { entriesOf, errorText, fileOf, trunkName, type Trunk } from "./data";

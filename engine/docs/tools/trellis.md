@@ -103,7 +103,6 @@ Or per-agent:
   "agents": {
     "entries": {
       "main": {
-        "default": true,
         "tools": {
           "alsoAllow": ["trellis"]
         }
@@ -177,7 +176,6 @@ For a **structured LLM step** inside a workflow, enable the optional
   "agents": {
     "entries": {
       "main": {
-        "default": true,
         "tools": { "alsoAllow": ["llm-task"] }
       }
     }

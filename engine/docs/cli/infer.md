@@ -286,6 +286,10 @@ branch infer embedding create --text "customer support ticket: delayed shipment"
 branch infer embedding providers --agent <id> --json
 ```
 
+Without `--json`, `embedding create` shows the provider and model, followed by
+each input, its dimension count, and a preview of the first eight vector values.
+Longer vectors end with `...`; use `--json` to retrieve complete vectors.
+
 ## JSON output
 
 Infer commands normalize JSON output under a shared envelope:

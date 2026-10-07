@@ -1,4 +1,4 @@
-import type { AssistantMessage, Message } from "@branch/llm-core";
+import { hasRuntimeContextMarker, type AssistantMessage, type Message } from "@branch/llm-core";
 import { asOptionalRecord as asRecord } from "@branch/normalization-core/record-coerce";
 import { sliceUtf16Safe, truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
 import type { AgentMessage } from "../../types.js";
@@ -306,7 +306,7 @@ export function serializeConversation(messages: Message[]): string {
   for (const msg of messages) {
     // Carriers remain in replay for thinking-prefix binding, not in summaries
     // where runtime-only context could become durable assistant-authored text.
-    if (msg.role === "user" && msg.runtimeContextCarrier === true) {
+    if (hasRuntimeContextMarker(msg)) {
       continue;
     }
     if (msg.role === "user" || msg.role === "toolResult") {

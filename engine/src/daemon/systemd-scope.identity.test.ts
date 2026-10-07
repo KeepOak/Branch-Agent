@@ -1,339 +1,135 @@
 import fs from "node:fs/promises";
 import os from "node:os";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { findInstalledSystemdGatewayScope, isNonFatalSystemdInstallProbeError } from "./systemd.js";
 
-const findSystemGatewayServicesMock = vi.hoisted(() =>
+const findServices = vi.hoisted(() =>
   vi.fn<typeof import("./inspect.js").findSystemGatewayServices>(async () => []),
 );
+vi.mock("./inspect.js", () => ({ findSystemGatewayServices: () => findServices() }));
+const HOME = "/tmp/branch-test-home";
+const systemPath = (name: string) => `/etc/systemd/system/${name}.service`;
+let files: string[];
 
-vi.mock("./inspect.js", () => ({
-  findSystemGatewayServices: () => findSystemGatewayServicesMock(),
-}));
-
-const TEST_MANAGED_HOME = "/tmp/branch-test-home";
-
-function pathLikeToString(pathname: unknown): string {
-  if (typeof pathname === "string") {
-    return pathname;
-  }
-  if (pathname instanceof URL) {
-    return pathname.pathname;
-  }
-  if (pathname instanceof Uint8Array) {
-    return Buffer.from(pathname).toString("utf8");
-  }
-  return "";
-}
-
-function mockUnitFileLayout(layout: {
-  user?: boolean | string | string[];
-  system?: string | false;
-}) {
-  vi.spyOn(fs, "access").mockImplementation(async (pathArg) => {
-    const p = pathLikeToString(pathArg);
-    const userOk = (() => {
-      if (!layout.user) {
-        return false;
-      }
-      if (layout.user === true) {
-        return p.includes("/.config/systemd/user/");
-      }
-      const names = Array.isArray(layout.user) ? layout.user : [layout.user];
-      return names.some((name) => p.includes("/.config/systemd/user/") && p.endsWith(`/${name}`));
-    })();
-    if (userOk) {
-      return undefined;
-    }
-    if (typeof layout.system === "string" && p === layout.system) {
-      return undefined;
-    }
-    const err = new Error("ENOENT") as NodeJS.ErrnoException;
-    err.code = "ENOENT";
-    throw err;
-  });
-}
-
-describe("systemd gateway identity (openclaw#119648)", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    findSystemGatewayServicesMock.mockReset().mockResolvedValue([]);
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("findInstalledSystemdGatewayScope falls back to marker-owned system unit with custom name", async () => {
-    mockUnitFileLayout({ system: false });
-    findSystemGatewayServicesMock.mockResolvedValueOnce([
-      {
-        platform: "linux",
-        label: "branch.service",
-        detail: "unit: /etc/systemd/system/branch.service",
-        sourcePath: "/etc/systemd/system/branch.service",
-        scope: "system",
-        marker: "branch",
-      },
-    ]);
-    const result = await findInstalledSystemdGatewayScope({ HOME: TEST_MANAGED_HOME });
-    expect(result).toEqual({
+function marker(name: string) {
+  findServices.mockResolvedValueOnce([
+    {
+      platform: "linux",
+      label: `${name}.service`,
+      detail: `unit: ${systemPath(name)}`,
+      sourcePath: systemPath(name),
       scope: "system",
-      unitName: "branch.service",
-      unitPath: "/etc/systemd/system/branch.service",
-    });
-  });
-
-  it("findInstalledSystemdGatewayScope refuses marker-owned units from another profile", async () => {
-    mockUnitFileLayout({ system: false });
-    findSystemGatewayServicesMock.mockResolvedValueOnce([
-      {
-        platform: "linux",
-        label: "branch-darlene.service",
-        detail: "unit: /etc/systemd/system/branch-darlene.service",
-        sourcePath: "/etc/systemd/system/branch-darlene.service",
-        scope: "system",
-        marker: "branch",
-      },
-    ]);
-    const result = await findInstalledSystemdGatewayScope({
-      HOME: TEST_MANAGED_HOME,
-      BRANCH_PROFILE: "lisa",
-    });
-    expect(result).toBeNull();
-  });
-
-  it("keeps Linux profile unit names case-sensitive", async () => {
-    mockUnitFileLayout({ system: false });
-    findSystemGatewayServicesMock.mockResolvedValueOnce([
-      {
-        platform: "linux",
-        label: "branch-gateway-lisa.service",
-        detail: "unit: /etc/systemd/system/branch-gateway-lisa.service",
-        sourcePath: "/etc/systemd/system/branch-gateway-lisa.service",
-        scope: "system",
-        marker: "branch",
-      },
-    ]);
-    const result = await findInstalledSystemdGatewayScope({
-      HOME: TEST_MANAGED_HOME,
-      BRANCH_PROFILE: "Lisa",
-    });
-    expect(result).toBeNull();
-  });
-
-  it("does not let an isolated home adopt a custom system unit", async () => {
-    mockUnitFileLayout({ system: false });
-    findSystemGatewayServicesMock.mockResolvedValueOnce([
-      {
-        platform: "linux",
-        label: "my-custom-gateway.service",
-        detail: "unit: /etc/systemd/system/my-custom-gateway.service",
-        sourcePath: "/etc/systemd/system/my-custom-gateway.service",
-        scope: "system",
-        marker: "branch",
-      },
-    ]);
-    const result = await findInstalledSystemdGatewayScope({ HOME: TEST_MANAGED_HOME });
-    expect(result).toBeNull();
-  });
-
-  it("findInstalledSystemdGatewayScope accepts legacy branch-<profile> system unit", async () => {
-    mockUnitFileLayout({ system: "/etc/systemd/system/branch-lisa.service" });
-    const result = await findInstalledSystemdGatewayScope({
-      HOME: TEST_MANAGED_HOME,
-      BRANCH_PROFILE: "lisa",
-    });
-    expect(result).toEqual({
-      scope: "system",
-      unitName: "branch-lisa.service",
-      unitPath: "/etc/systemd/system/branch-lisa.service",
-    });
-  });
-
-  it("does not adopt Node or another profile's canonical unit as this profile's legacy name", async () => {
-    mockUnitFileLayout({
-      user: ["branch-node.service", "branch-gateway.service", "branch-gateway-lisa.service"],
-    });
-    await expect(
-      findInstalledSystemdGatewayScope({
-        HOME: TEST_MANAGED_HOME,
-        BRANCH_PROFILE: "node",
-      }),
-    ).resolves.toBeNull();
-    await expect(
-      findInstalledSystemdGatewayScope({
-        HOME: TEST_MANAGED_HOME,
-        BRANCH_PROFILE: "gateway",
-      }),
-    ).resolves.toBeNull();
-    await expect(
-      findInstalledSystemdGatewayScope({
-        HOME: TEST_MANAGED_HOME,
-        BRANCH_PROFILE: "gateway-lisa",
-      }),
-    ).resolves.toBeNull();
-  });
-
-  it("findInstalledSystemdGatewayScope honors BRANCH_SYSTEMD_UNIT for Node unit", async () => {
-    mockUnitFileLayout({ system: "/etc/systemd/system/branch-node.service" });
-    const result = await findInstalledSystemdGatewayScope({
-      HOME: TEST_MANAGED_HOME,
-      BRANCH_PROFILE: "lisa",
-      BRANCH_SYSTEMD_UNIT: "branch-node",
-    });
-    expect(result).toEqual({
-      scope: "system",
-      unitName: "branch-node.service",
-      unitPath: "/etc/systemd/system/branch-node.service",
-    });
-  });
-
-  it("findInstalledSystemdGatewayScope honors BRANCH_SYSTEMD_UNIT for custom user unit", async () => {
-    mockUnitFileLayout({ user: true, system: false });
-    const result = await findInstalledSystemdGatewayScope({
-      HOME: TEST_MANAGED_HOME,
-      BRANCH_PROFILE: "lisa",
-      BRANCH_SYSTEMD_UNIT: "branch-gateway-lisa",
-    });
-    expect(result?.scope).toBe("user");
-    expect(result?.unitName).toBe("branch-gateway-lisa.service");
-    expect(result?.unitPath).toContain("/.config/systemd/user/branch-gateway-lisa.service");
-  });
-
-  it.each(["my-gateway@.service", "my-gateway@gateway.service"])(
-    "does not expand an explicit plain unit into %s",
-    async (label) => {
-      mockUnitFileLayout({ system: false });
-      findSystemGatewayServicesMock.mockResolvedValueOnce([
-        {
-          platform: "linux",
-          label,
-          detail: `unit: /etc/systemd/system/${label}`,
-          sourcePath: `/etc/systemd/system/${label}`,
-          scope: "system",
-          marker: "branch",
-        },
-      ]);
-      await expect(
-        findInstalledSystemdGatewayScope({
-          HOME: TEST_MANAGED_HOME,
-          BRANCH_SYSTEMD_UNIT: "my-gateway",
-        }),
-      ).resolves.toBeNull();
+      marker: "branch",
     },
-  );
+  ]);
+}
 
-  it("explicit instance override resolves a template-only system install", async () => {
-    mockUnitFileLayout({ system: false });
-    vi.spyOn(os, "userInfo").mockReturnValue({
-      username: "unrelated-login",
-      uid: 1000,
-      gid: 1000,
-      homedir: TEST_MANAGED_HOME,
-      shell: "/bin/sh",
-    });
-    findSystemGatewayServicesMock.mockResolvedValueOnce([
-      {
-        platform: "linux",
-        label: "branch@.service",
-        detail: "unit: /etc/systemd/system/branch@.service",
-        sourcePath: "/etc/systemd/system/branch@.service",
-        scope: "system",
-        marker: "branch",
-      },
-    ]);
-    const result = await findInstalledSystemdGatewayScope({
-      HOME: TEST_MANAGED_HOME,
-      BRANCH_SYSTEMD_UNIT: "branch@gateway.service",
-    });
-    expect(result).toEqual({
-      scope: "system",
-      unitName: "branch@gateway.service",
-      unitPath: "/etc/systemd/system/branch@.service",
-    });
-  });
-
-  it("explicit instance override does not adopt a different template instance", async () => {
-    mockUnitFileLayout({ system: false });
-    findSystemGatewayServicesMock.mockResolvedValueOnce([
-      {
-        platform: "linux",
-        label: "branch@other.service",
-        detail: "unit: /etc/systemd/system/branch@other.service",
-        sourcePath: "/etc/systemd/system/branch@other.service",
-        scope: "system",
-        marker: "branch",
-      },
-    ]);
-    const result = await findInstalledSystemdGatewayScope({
-      HOME: TEST_MANAGED_HOME,
-      BRANCH_SYSTEMD_UNIT: "branch@gateway.service",
-    });
-    expect(result).toBeNull();
-  });
-
-  it("explicit instance override finds the backing template on disk", async () => {
-    mockUnitFileLayout({ system: "/etc/systemd/system/branch@.service" });
-    vi.spyOn(os, "userInfo").mockReturnValue({
-      username: "unrelated-login",
-      uid: 1000,
-      gid: 1000,
-      homedir: TEST_MANAGED_HOME,
-      shell: "/bin/sh",
-    });
-    const result = await findInstalledSystemdGatewayScope({
-      HOME: TEST_MANAGED_HOME,
-      BRANCH_SYSTEMD_UNIT: "branch@gateway.service",
-    });
-    expect(result).toEqual({
-      scope: "system",
-      unitName: "branch@gateway.service",
-      unitPath: "/etc/systemd/system/branch@.service",
-    });
-  });
-
-  it("explicit BRANCH_SYSTEMD_UNIT does not adopt an unrelated profile unit", async () => {
-    mockUnitFileLayout({ system: false });
-    findSystemGatewayServicesMock.mockResolvedValueOnce([
-      {
-        platform: "linux",
-        label: "branch-darlene.service",
-        detail: "unit: /etc/systemd/system/branch-darlene.service",
-        sourcePath: "/etc/systemd/system/branch-darlene.service",
-        scope: "system",
-        marker: "branch",
-      },
-    ]);
-    const result = await findInstalledSystemdGatewayScope({
-      HOME: TEST_MANAGED_HOME,
-      BRANCH_SYSTEMD_UNIT: "branch-node",
-    });
-    expect(result).toBeNull();
+beforeEach(() => {
+  files = [];
+  findServices.mockReset().mockResolvedValue([]);
+  vi.spyOn(fs, "access").mockImplementation(async (file) => {
+    if (!files.includes(String(file))) {
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    }
   });
 });
+afterEach(() => vi.restoreAllMocks());
 
-describe("isNonFatalSystemdInstallProbeError", () => {
-  it("matches wrapper-only WSL install probe failures", () => {
-    expect(
-      isNonFatalSystemdInstallProbeError(
-        new Error("Command failed: systemctl --user is-enabled branch-gateway.service"),
-      ),
-    ).toBe(true);
-  });
+it("selects marker-owned, legacy, and explicitly requested units (openclaw#119648)", async () => {
+  const cases = [
+    { profile: undefined, override: undefined, name: "branch", discovered: true },
+    { profile: "lisa", override: undefined, name: "branch-lisa", discovered: false },
+    { profile: "lisa", override: "branch-node", name: "branch-node", discovered: false },
+    {
+      profile: "lisa",
+      override: "branch-gateway-lisa",
+      name: "branch-gateway-lisa",
+      user: true,
+    },
+  ];
+  for (const { profile, override, name, discovered, user } of cases) {
+    const unitPath = user ? `${HOME}/.config/systemd/user/${name}.service` : systemPath(name);
+    files = discovered ? [] : [unitPath];
+    if (discovered) {
+      marker(name);
+    }
+    await expect(
+      findInstalledSystemdGatewayScope({
+        HOME,
+        BRANCH_PROFILE: profile,
+        BRANCH_SYSTEMD_UNIT: override,
+      }),
+    ).resolves.toEqual({ scope: user ? "user" : "system", unitName: `${name}.service`, unitPath });
+  }
+});
 
-  it("matches bus-unavailable install probe failures", () => {
-    expect(
-      isNonFatalSystemdInstallProbeError(
-        new Error("systemctl is-enabled unavailable: Failed to connect to bus"),
-      ),
-    ).toBe(true);
-  });
+it("refuses marker units outside the selected profile or explicit identity", async () => {
+  const cases = [
+    ["lisa", undefined, "branch-darlene"],
+    ["Lisa", undefined, "branch-gateway-lisa"],
+    [undefined, undefined, "my-custom-gateway"],
+    [undefined, "my-gateway", "my-gateway@"],
+    [undefined, "my-gateway", "my-gateway@gateway"],
+    [undefined, "branch@gateway.service", "branch@other"],
+    [undefined, "branch-node", "branch-darlene"],
+  ] as const;
+  for (const [profile, override, name] of cases) {
+    marker(name);
+    await expect(
+      findInstalledSystemdGatewayScope({
+        HOME,
+        BRANCH_PROFILE: profile,
+        BRANCH_SYSTEMD_UNIT: override,
+      }),
+    ).resolves.toBeNull();
+  }
+});
 
-  it("does not match real infrastructure failures", () => {
-    expect(
-      isNonFatalSystemdInstallProbeError(
-        new Error("systemctl is-enabled unavailable: read-only file system"),
-      ),
-    ).toBe(false);
-  });
+it("rejects legacy aliases that collide with Node or another canonical profile", async () => {
+  files = ["branch-node", "branch-gateway", "branch-gateway-lisa"].map(
+    (name) => `${HOME}/.config/systemd/user/${name}.service`,
+  );
+  for (const profile of ["node", "gateway", "gateway-lisa"]) {
+    await expect(
+      findInstalledSystemdGatewayScope({ HOME, BRANCH_PROFILE: profile }),
+    ).resolves.toBeNull();
+  }
+});
+
+it.each(["disk", "marker"])(
+  "preserves an explicit instance with only its template on %s",
+  async (source) => {
+    vi.spyOn(os, "userInfo").mockReturnValue({
+      username: "unrelated-login",
+      uid: 1000,
+      gid: 1000,
+      homedir: HOME,
+      shell: "/bin/sh",
+    });
+    if (source === "disk") {
+      files = [systemPath("branch@")];
+    } else {
+      marker("branch@");
+    }
+    await expect(
+      findInstalledSystemdGatewayScope({
+        HOME,
+        BRANCH_SYSTEMD_UNIT: "branch@gateway.service",
+      }),
+    ).resolves.toEqual({
+      scope: "system",
+      unitName: "branch@gateway.service",
+      unitPath: systemPath("branch@"),
+    });
+  },
+);
+
+it("classifies unavailable install probes without hiding infrastructure failures", () => {
+  for (const [message, expected] of [
+    ["Command failed: systemctl --user is-enabled branch-gateway.service", true],
+    ["systemctl is-enabled unavailable: Failed to connect to bus", true],
+    ["systemctl is-enabled unavailable: read-only file system", false],
+  ] as const) {
+    expect(isNonFatalSystemdInstallProbeError(new Error(message))).toBe(expected);
+  }
 });

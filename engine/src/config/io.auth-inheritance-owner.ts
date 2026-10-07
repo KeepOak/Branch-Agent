@@ -1,6 +1,7 @@
 import {
   assertSafeLegacyInheritedAuthDirTransition,
   pinLegacyInheritedAuthOwnerForRosterTransition,
+  resolveLegacyInheritedAuthAgentId,
 } from "../agents/legacy-inherited-auth-dir.js";
 import type { BranchConfig } from "./types.branch.js";
 
@@ -22,13 +23,20 @@ export function prepareAuthInheritanceOwnerForWrite(params: {
   explicitSetPaths?: readonly (readonly string[])[];
   env?: NodeJS.ProcessEnv;
 }): { config: BranchConfig; insertedPaths: string[][] } {
-  if (!params.writesOwnershipTopology || explicitlySetsAuthInheritance(params.explicitSetPaths)) {
+  if (explicitlySetsAuthInheritance(params.explicitSetPaths)) {
+    return { config: params.targetConfig, insertedPaths: [] };
+  }
+  const recoveredOwner =
+    params.currentConfig.agents?.defaults?.authInheritance?.agentId === "main" &&
+    resolveLegacyInheritedAuthAgentId(params.currentConfig, params.env) !== "main";
+  if (!params.writesOwnershipTopology && !recoveredOwner) {
     return { config: params.targetConfig, insertedPaths: [] };
   }
   assertSafeLegacyInheritedAuthDirTransition(params.currentConfig, params.targetConfig, params.env);
   const config = pinLegacyInheritedAuthOwnerForRosterTransition(
     params.currentConfig,
     params.targetConfig,
+    params.env,
   );
   return {
     config,

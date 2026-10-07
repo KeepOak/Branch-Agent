@@ -6,23 +6,22 @@ import {
 } from "./legacy.default-agent-owner-state.js";
 import type { BranchConfig } from "./types.branch.js";
 
-export function retainLegacyDefaultAgentId(
-  config: BranchConfig,
+export function retainLegacyDefaultAgentId<T extends object>(
+  config: T,
   agentId: string | undefined,
-): BranchConfig {
+): T {
   setRetainedLegacyDefaultAgentId(config, agentId ? normalizeAgentId(agentId) : undefined);
   return config;
 }
 
-export function inheritLegacyDefaultAgentId(
-  source: BranchConfig,
-  target: BranchConfig,
-): BranchConfig {
+export function inheritLegacyDefaultAgentId<T extends object>(source: unknown, target: T): T {
   return retainLegacyDefaultAgentId(target, tryGetLegacyDefaultAgentId(source));
 }
 
-export function tryGetLegacyDefaultAgentId(config: BranchConfig): string | undefined {
-  return getRetainedLegacyDefaultAgentId(config);
+export function tryGetLegacyDefaultAgentId(config: unknown): string | undefined {
+  return (typeof config === "object" && config !== null) || typeof config === "function"
+    ? getRetainedLegacyDefaultAgentId(config)
+    : undefined;
 }
 export { tryResolveLegacyCompatibilityAgentId } from "../agents/agent-scope-config.js";
 

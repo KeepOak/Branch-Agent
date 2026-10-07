@@ -10,7 +10,10 @@ import {
   deleteSessionEntryLifecycle,
   upsertSessionEntryCore,
 } from "../../../../src/config/sessions/session-accessor.js";
-import { closeBranchAgentDatabasesForTest } from "../../../../src/state/branch-agent-db.js";
+import {
+  closeBranchAgentDatabasesAsync,
+  closeBranchAgentDatabasesForTest,
+} from "../../../../src/state/branch-agent-db.js";
 import { withBranchTestState } from "../../../../src/test-utils/branch-test-state.js";
 import { listSessionTranscriptCorpusEntriesForAgent } from "./session-files.js";
 
@@ -38,6 +41,7 @@ describe("session archive identity", () => {
         storePath,
         target: { canonicalKey: sessionKey, storeKeys: [sessionKey] },
       });
+      await closeBranchAgentDatabasesAsync(state.root);
       closeBranchAgentDatabasesForTest();
 
       const archivedPath = deleted.archivedTranscripts[0]?.archivedPath;

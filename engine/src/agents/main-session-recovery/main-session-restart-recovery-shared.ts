@@ -5,11 +5,12 @@ import {
   listConfiguredSessionStoreAgentIds,
   resolveSessionStorePathCore,
   type InternalSessionEntry as SessionEntry,
-  resolveAllAgentSessionStoreTargetsSync,
   type SessionStoreTarget,
 } from "../../config/sessions.js";
 import { hasSessionEntriesByStatusReadOnly } from "../../config/sessions/session-accessor.js";
-import { resolveSqliteTargetFromSessionStorePath } from "../../config/sessions/session-sqlite-target.js";
+import { resolveUnsuffixedSqliteTargetFromSessionStorePath } from "../../config/sessions/session-sqlite-target-paths.js";
+import { prepareSessionStoreTargetInventory } from "../../config/sessions/session-store-target-inventory.js";
+import { prepareSessionStoreTargetInventoryRead } from "../../config/sessions/session-store-target-runtime.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { LEGACY_IMPLICIT_AGENT_ID } from "../../routing/session-key.js";
@@ -40,14 +41,44 @@ export function resolveRestartRecoveryTerminalClientRunId(
     : undefined;
 }
 
+function resolveRestartRecoveryEnv(stateDir?: string) {
+  return { ...process.env, BRANCH_STATE_DIR: stateDir ?? resolveStateDir(process.env) };
+}
+
+/** True while any of these agents still waits for startup database admission. */
+export function hasPendingRestartRecoveryAdmission(
+  agentIds: Iterable<string>,
+  stateDir?: string,
+): boolean {
+  const env = resolveRestartRecoveryEnv(stateDir);
+  return [...agentIds].some(
+    (agentId) =>
+      readAgentDatabaseAdmissionRefusal(agentId, { env })?.code ===
+      "agent-database-inspection-pending",
+  );
+}
+
 export async function discoverRestartRecoveryStoreTargets(params: {
   cfg?: BranchConfig;
   stateDir?: string;
   statuses?: Parameters<typeof hasSessionEntriesByStatusReadOnly>[1];
+  shouldContinue?: () => boolean;
+  /** Reports agents skipped only because startup admission is still preparing them. */
+  onPendingAdmission?: (agentId: string) => void;
 }): Promise<SessionStoreTarget[]> {
+  if (params.shouldContinue?.() === false) {
+    return [];
+  }
   const storeTargets: SessionStoreTarget[] = [];
   const stateDir = params.stateDir ?? resolveStateDir(process.env);
-  const env = { ...process.env, BRANCH_STATE_DIR: stateDir };
+  const env = resolveRestartRecoveryEnv(stateDir);
+  const isAdmitted = (agentId: string) => {
+    const refusal = readAgentDatabaseAdmissionRefusal(agentId, { env });
+    if (refusal?.code === "agent-database-inspection-pending") {
+      params.onPendingAdmission?.(agentId);
+    }
+    return !refusal;
+  };
   if (params.cfg) {
     // Recovery must not reopen a deleted or otherwise unconfigured agent database merely
     // because its old directory still exists on disk. Those stores are intentionally fenced
@@ -59,7 +90,16 @@ export async function discoverRestartRecoveryStoreTargets(params: {
       ),
     );
     const configuredAgentIdSet = new Set(configuredAgentIds);
-    for (const target of resolveAllAgentSessionStoreTargetsSync(params.cfg, { env })) {
+    const inventory = prepareSessionStoreTargetInventoryRead(
+      prepareSessionStoreTargetInventory(params.cfg, configuredAgentIds, env, "recovery"),
+    );
+    const targets = await inventory.withRead(async (snapshot) =>
+      snapshot.agents.flatMap(({ result }) => (result.available ? result.targets : [])),
+    );
+    if (params.shouldContinue?.() === false) {
+      return [];
+    }
+    for (const target of targets) {
       const storePath = path.resolve(target.storePath);
       // Fixed configured stores can retain a durable owner whose ID differs from the
       // current roster entry. The validated path is the configuration fact; the target's
@@ -74,18 +114,32 @@ export async function discoverRestartRecoveryStoreTargets(params: {
       const storePath = path.join(sessionsDir, "sessions.json");
       storeTargets.push({
         agentId:
-          resolveSqliteTargetFromSessionStorePath(storePath).agentId ?? LEGACY_IMPLICIT_AGENT_ID,
+          resolveUnsuffixedSqliteTargetFromSessionStorePath(storePath).agentId ??
+          LEGACY_IMPLICIT_AGENT_ID,
         storePath,
       });
     }
   }
-  return storeTargets
-    .filter(
-      (target) =>
-        !readAgentDatabaseAdmissionRefusal(target.agentId, { env }) &&
-        (!params.statuses ||
-          hasSessionEntriesByStatusReadOnly({ ...target, env }, params.statuses)),
-    )
+  const eligibleTargets: SessionStoreTarget[] = [];
+  for (const target of storeTargets) {
+    if (params.shouldContinue?.() === false) {
+      return [];
+    }
+    if (!isAdmitted(target.agentId)) {
+      continue;
+    }
+    const hasStatus =
+      !params.statuses ||
+      (await hasSessionEntriesByStatusReadOnly({ ...target, env }, params.statuses));
+    if (params.shouldContinue?.() === false) {
+      return [];
+    }
+    if (hasStatus) {
+      eligibleTargets.push(target);
+    }
+  }
+  return eligibleTargets
+    .filter((target) => isAdmitted(target.agentId))
     .toSorted(
       (a, b) => a.storePath.localeCompare(b.storePath) || a.agentId.localeCompare(b.agentId),
     );

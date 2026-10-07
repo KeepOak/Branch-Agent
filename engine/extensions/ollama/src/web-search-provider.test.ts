@@ -1,4 +1,5 @@
 // Ollama tests cover web search provider plugin behavior.
+import "branch/plugin-sdk/compiled-subprocess-testing";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import type { SecretInput } from "branch/plugin-sdk/secret-input";
 import { withEnvAsync } from "branch/plugin-sdk/test-env";

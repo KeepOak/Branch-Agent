@@ -2,9 +2,11 @@
 // Command-line tools: the programs the skills need (skills.status requirements), with the commands
 // exec.approvals allows. Agents: the coding agents the engine can hand work to (acpx.agents.list), switched
 // in config. Toolsets: the engine's tool groups (tools.catalog) and starting set (tools.profile).
+// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState } from "react";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Dialog } from "../../shell/Dialog";
+import { BranchLinkDialog } from "../../shell/BranchLinkDialog";
 import { Switch } from "../../shell/Popover";
 import { useResource } from "../library/data";
 import { Status } from "../library/ui";
@@ -119,11 +121,39 @@ export function Agents({ ctx }: { ctx: ToolsCtx }) {
     </div> : <div className="t9-detail cz-empty-detail" />}
   </>;
 }
-export function AddAgent({ close }: { close: () => void }) {
-  return <Dialog title="Connect another agent" onClose={close} footer={<button type="button" className="btn ghost" onClick={close}>Cancel</button>}>
+export function AddAgent({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
+  const [linkBranch, setLinkBranch] = useState(false);
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  const [outboundToken, setOutboundToken] = useState("");
+  const [error, setError] = useState("");
+  const connect = async () => {
+    const peerName = name.trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(peerName)) { setError("Use a short name with letters, numbers, dots, dashes or underscores."); return; }
+    let address: string;
+    try {
+      const parsed = new URL(url.trim());
+      if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("protocol");
+      address = parsed.href;
+    } catch { setError("Enter an HTTP or HTTPS address."); return; }
+    const peers = rec(rec(rec(ctx.config.data?.file?.channels).a2a).peers);
+    if (Object.hasOwn(peers, peerName)) { setError("That agent name is already connected."); return; }
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const token = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+    const ok = await ctx.config.patch({ channels: { a2a: { enabled: true, peers: { [peerName]: {
+      token, url: address, ...(outboundToken.trim() ? { outboundToken: outboundToken.trim() } : {}),
+    } } } } });
+    if (ok) { void ctx.engine.request("a2a.peers.refresh", {}).catch(() => undefined); close(); }
+  };
+  if (linkBranch) return <BranchLinkDialog engine={ctx.engine} onClose={close} />;
+  return <Dialog title="Connect another agent" onClose={close} footer={<><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn pri" disabled={ctx.config.busy} onClick={() => void connect()}>Connect</button></>}>
     <div className="cz-provs">
-      <div className="cz-prov"><b>An agent with an A2A card</b><small>Paste the address of its card.</small><Grey reason="Needs the engine's A2A connection method.">Connect</Grey></div>
-      <div className="cz-prov"><b>Branch on another computer</b><small>Its Trunks answer here.</small><Grey reason="Needs the engine's link to another Branch.">Connect</Grey></div>
+      <div className="cz-prov"><b>An agent with an A2A card</b><small>Enter its address and outbound token. Your inbound token is generated locally and never shown here.</small>
+        <label>Name<input aria-label="Agent name" value={name} onChange={event => setName(event.target.value)} /></label>
+        <label>Address<input aria-label="Agent address" type="url" value={url} onChange={event => setUrl(event.target.value)} /></label>
+        <label>Outbound token<input aria-label="Outbound token" type="password" value={outboundToken} onChange={event => setOutboundToken(event.target.value)} /></label>
+        {(error || ctx.config.writeError) && <p role="alert" className="cz-error">{error || ctx.config.writeError}</p>}</div>
+      <div className="cz-prov"><b>Branch on another computer</b><small>Its Trunks answer here.</small><button type="button" className="btn sm" onClick={() => setLinkBranch(true)}>Connect</button></div>
       <div className="cz-prov"><b>An agent on your KeepOak computer</b><small>Runs in the cloud, answers here.</small><Grey reason="Needs keepoak.com sign-in in the engine.">Connect</Grey></div>
     </div>
   </Dialog>;
@@ -160,7 +190,7 @@ export function Toolsets({ ctx }: { ctx: ToolsCtx }) {
   const toolOn = (t: { id: string; profiles: string[] }, g: Group) => groupOn(ctx, g, ctx.whose) && !deny.includes(t.id) && (profile.value === "full" || t.profiles.includes(profile.value));
   const total = groups.reduce((n, g) => n + g.tools.length, 0);
   const on = groups.reduce((n, g) => n + g.tools.filter(t => toolOn(t, g)).length, 0);
-  const setProfile = (v: string) => { const value = v === "same" ? null : v; void ctx.config.patch(ctx.whose ? { agents: { list: [{ id: ctx.whose, tools: { profile: value } }] } } : { tools: { profile: value } }); };
+  const setProfile = (v: string) => { const value = v === "same" ? null : v; void ctx.config.patch(ctx.whose ? { agents: { entries: { [ctx.whose]: { tools: { profile: value } } } } } : { tools: { profile: value } }); };
   const setAll = (enable: boolean) => { const next = deny.filter(d => !groups.some(g => groupKey(g) === d)); const p = denyPatch(ctx.whose, enable ? next : [...next, ...groups.map(groupKey)]); void ctx.config.patch(p.raw, p.replacePaths); };
   const options = [{ id: "minimal", name: "Minimal" }, { id: "coding", name: "Coding" }, { id: "messaging", name: "Messaging" }, { id: "full", name: "Full" }, ...(ctx.whose ? [{ id: "same", name: "Same as every Trunk" }] : [])];
   return <>

@@ -1,3 +1,4 @@
+import "../src/test-utils/prepare-compiled-subprocesses.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { withTempHome } from "branch/plugin-sdk/test-env";
@@ -159,7 +160,8 @@ describe("cli json stdout contract", () => {
             message,
           },
         });
-        expect(result.stderr).toContain(message);
+        expect(result.stderr).toContain("[branch] The CLI command failed.");
+        expect(result.stderr).not.toContain(message);
         expect(result.stderr.length).toBeLessThan(2_048);
       },
       { prefix: "branch-skills-json-failure-e2e-" },

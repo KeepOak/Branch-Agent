@@ -1,12 +1,23 @@
 // Settings › Chat apps: the rows of the Advanced and Technical tables that read engine data (each connected app's
 // watchdog, per-app reply queue, formatting) or that the engine has no key for, drawn greyed with why.
+import { useState } from "react";
+import type { WindowEngine } from "../../../connect/engine";
+import { LogsDialog } from "../set2/advanced-tech";
 import { Btn, Ctl, Hint, Pick, Pill, Plist, Prow, Seg, Switch, Val } from "../kit";
 import { ChatLogo as Logo } from "./chatapps-logo";
 import { acctTone, ago, PILL_WORDS, type App, type CatalogueApp } from "./chatapps-data";
 import { KeyRow, NO_KEY, type Cfg, type Row } from "./chatapps-kit";
 import { CMD_OFF, CMD_WHO, QUEUE_MODES } from "./chatapps-tables";
 
-type Ctx = { apps: App[]; cfg: Cfg; all?: CatalogueApp[] };
+type Ctx = { apps: App[]; cfg: Cfg; all?: CatalogueApp[]; engine: WindowEngine };
+
+function WatchLog({ engine }: { engine: WindowEngine }) {
+  const [open, setOpen] = useState(false);
+  return <Ctl title="Watchdog log" sub="One line each time a chat app stalls or reconnects.">
+    <Btn sm onClick={() => setOpen(true)}>Open watchdog log</Btn>
+    {open ? <LogsDialog engine={engine} source={{ name: "Watchdog", filter: "health-monitor" }} onClose={() => setOpen(false)} /> : null}
+  </Ctl>;
+}
 /** The app surfaces messages.queue.byChannel accepts (engine zod-schema.messages.ts QueueModeBySurfaceSchema). */
 const QUEUE_SURFACES = new Set(["whatsapp", "telegram", "discord", "irc", "googlechat", "slack", "mattermost", "signal", "imessage", "msteams", "webchat", "matrix"]);
 
@@ -64,7 +75,7 @@ const PROGRESS_APPS = ["Slack", "Discord", "Signal", "Telegram", "WhatsApp"];
 function Progress({ cfg }: Ctx) {
   const on = cfg.get("messages.statusReactions.enabled");
   return (
-    <Ctl title="Show progress as reactions" sub="The reaction on your message changes as the Trunk works and finishes. Slack keeps its own “is thinking” status as well. Off in Slack, Signal, Telegram and WhatsApp until you choose: it adds reactions to every message." off="Branch has one switch for every app (Technical › messages.statusReactions.enabled).">
+    <Ctl title="Show progress as reactions" sub="The reaction on your message changes as the Trunk works and finishes." help="The reaction on your message changes as the Trunk works and finishes. Slack keeps its own “is thinking” status as well. Off in Slack, Signal, Telegram and WhatsApp until you choose: it adds reactions to every message." off="Branch has one switch for every app (Technical › messages.statusReactions.enabled).">
       <span className="chips-ca">{PROGRESS_APPS.map((n) => <button key={n} type="button" className="chip-ca" aria-pressed={n === "Discord" ? on !== false : on === true} disabled>{n}</button>)}</span>
     </Ctl>
   );
@@ -96,12 +107,11 @@ function CmdRows() {
 function Greyed({ id }: { id: string }) {
   const off = NO_KEY;
   if (id === "slackFile") return <Ctl title="Slack app file" sub="Every Branch command becomes a Slack command." off="Branch can’t make a Slack app file yet."><Btn sm disabled>Make it</Btn></Ctl>;
-  if (id === "watchLog") return <Ctl title="Watchdog log" sub="One line each time it checks or reconnects." off="Branch can’t show where the engine writes it yet." />;
   if (id === "updates") return <Ctl title="Stays connected through updates" sub="Chat apps keep running while Branch updates." off="Branch can’t tell yet whether an update keeps them running."><Pill tone="idle">Not known</Pill></Ctl>;
   if (id === "relay") return <Ctl title="A relay sends only to chats it knows" sub="Messages through a relay go only to chats Branch has heard from." off="Branch can’t tell yet how a relay sends." ><Pill tone="idle">Not known</Pill></Ctl>;
   if (id === "muted") return <Ctl title="Muted chats" sub="A muted chat is read but not answered." off={off}><Pick label="Chat to mute" value="" disabled options={[{ id: "", label: "Choose a chat" }]} onChange={() => undefined} /><Pick label="For how long" value="1" disabled options={[{ id: "1", label: "1 hour" }, { id: "t", label: "Until tomorrow" }, { id: "u", label: "Until I unmute it" }]} onChange={() => undefined} /><Btn sm disabled>Mute</Btn></Ctl>;
   if (id === "takeover") return <Ctl title="Take over a chat" sub="While you answer a chat yourself, the Trunk stays quiet there." off={off}><Btn ghost sm disabled>Take over</Btn></Ctl>;
-  if (id === "forward") return <Ctl title="Forward between chats" sub="Copy messages from one chat to another, from now on, through your filters." off={off}><Btn sm disabled>Add a rule</Btn></Ctl>;
+  if (id === "forward") return <Ctl title="Forward between chats" sub="Copies new messages between chat apps through your filters." help="Copy messages from one chat to another, from now on, through your filters." off={off}><Btn sm disabled>Add a rule</Btn></Ctl>;
   if (id === "ownCmds") return <Ctl title="Your own commands" sub="A word that answers with your text, in any chat. Owners only." off="Only Telegram has its own commands, on its page."><Btn sm disabled>Add a command</Btn></Ctl>;
   return null;
 }
@@ -115,6 +125,7 @@ function Code({ title, sub, code }: { title: string; sub?: string; code: string 
 export function partFor(id: string, ctx: Ctx, row?: Row) {
   if (id.startsWith("code:")) return <Code title={row?.t ?? ""} sub={row?.sub} code={id.slice(5)} />;
   if (id === "watch") return <Watch {...ctx} />;
+  if (id === "watchLog") return <WatchLog engine={ctx.engine} />;
   if (id === "cmdRows") return <CmdRows />;
   if (id === "watchdog") return <Watchdog {...ctx} />;
   if (id === "formatting") return <Formatting {...ctx} />;

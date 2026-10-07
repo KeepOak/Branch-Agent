@@ -96,80 +96,84 @@ For traces, logs, OTLP push, and OpenTelemetry GenAI semantic attributes, see [O
 
 ## Metrics exported
 
-| Metric                                               | Type      | Labels                                                                                    |
-| ---------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------- |
-| `branch_gateway_build_info`                        | gauge     | `process_instance_id`, optional `build_id`                                                |
-| `branch_gc_duration_seconds`                       | histogram | none                                                                                      |
-| `branch_gateway_rpc_requests_total`                | counter   | `method`                                                                                  |
-| `branch_gateway_rpc_first_response_seconds`        | histogram | `method`                                                                                  |
-| `branch_gateway_rpc_handler_seconds`               | histogram | `method`                                                                                  |
-| `branch_gateway_rpc_admission_seconds`             | histogram | `method`                                                                                  |
-| `branch_gateway_rpc_queue_wait_seconds`            | histogram | `method`                                                                                  |
-| `branch_gateway_rpc_stage_seconds`                 | histogram | `method`, `phase`                                                                         |
-| `branch_gateway_rpc_stage_thread_cpu_seconds`      | histogram | `method`, `phase`                                                                         |
-| `branch_gateway_rpc_outcomes_total`                | counter   | `phase`, `outcome`                                                                        |
-| `branch_run_completed_total`                       | counter   | `channel`, `model`, `outcome`, `provider`, `trigger`                                      |
-| `branch_run_duration_seconds`                      | histogram | `channel`, `model`, `outcome`, `provider`, `trigger`                                      |
-| `branch_model_call_total`                          | counter   | `api`, `error_category`, `model`, `observation_unit`, `outcome`, `provider`, `transport`  |
-| `branch_model_call_duration_seconds`               | histogram | `api`, `error_category`, `model`, `observation_unit`, `outcome`, `provider`, `transport`  |
-| `branch_model_failover_total`                      | counter   | `from_model`, `from_provider`, `lane`, `reason`, `suspended`, `to_model`, `to_provider`   |
-| `branch_model_tokens_total`                        | counter   | `agent`, `channel`, `model`, `provider`, `token_type`                                     |
-| `branch_gen_ai_client_token_usage`                 | histogram | `model`, `provider`, `token_type`                                                         |
-| `branch_model_cost_usd_total`                      | counter   | `agent`, `channel`, `model`, `provider`                                                   |
-| `branch_model_usage_duration_seconds`              | histogram | `agent`, `channel`, `model`, `provider`                                                   |
-| `branch_skill_used_total`                          | counter   | `activation`, `agent`, `skill`, `source`                                                  |
-| `branch_tool_execution_total`                      | counter   | `error_category`, `outcome`, `params_kind`, `tool`, `tool_owner`, `tool_source`           |
-| `branch_tool_execution_duration_seconds`           | histogram | `error_category`, `outcome`, `params_kind`, `tool`, `tool_owner`, `tool_source`           |
-| `branch_tool_execution_blocked_total`              | counter   | `denied_reason`, `params_kind`, `tool`, `tool_owner`, `tool_source`                       |
-| `branch_harness_run_total`                         | counter   | `channel`, `error_category`, `harness`, `model`, `outcome`, `phase`, `plugin`, `provider` |
-| `branch_harness_run_duration_seconds`              | histogram | `channel`, `error_category`, `harness`, `model`, `outcome`, `phase`, `plugin`, `provider` |
-| `branch_webhook_received_total`                    | counter   | `channel`, `webhook`                                                                      |
-| `branch_webhook_error_total`                       | counter   | `channel`, `webhook`                                                                      |
-| `branch_webhook_duration_seconds`                  | histogram | `channel`, `webhook`                                                                      |
-| `branch_message_received_total`                    | counter   | `channel`, `source`                                                                       |
-| `branch_message_dispatch_started_total`            | counter   | `channel`, `source`                                                                       |
-| `branch_message_dispatch_completed_total`          | counter   | `channel`, `outcome`, `reason`, `source`                                                  |
-| `branch_message_dispatch_duration_seconds`         | histogram | `channel`, `outcome`, `reason`, `source`                                                  |
-| `branch_message_processed_total`                   | counter   | `channel`, `outcome`, `reason`                                                            |
-| `branch_message_processed_duration_seconds`        | histogram | `channel`, `outcome`, `reason`                                                            |
-| `branch_message_delivery_started_total`            | counter   | `channel`, `delivery_kind`                                                                |
-| `branch_message_delivery_total`                    | counter   | `channel`, `delivery_kind`, `error_category`, `outcome`                                   |
-| `branch_message_delivery_duration_seconds`         | histogram | `channel`, `delivery_kind`, `error_category`, `outcome`                                   |
-| `branch_talk_event_total`                          | counter   | `brain`, `event_type`, `mode`, `provider`, `transport`                                    |
-| `branch_talk_event_duration_seconds`               | histogram | `brain`, `event_type`, `mode`, `provider`, `transport`                                    |
-| `branch_talk_audio_bytes`                          | histogram | `brain`, `event_type`, `mode`, `provider`, `transport`                                    |
-| `branch_queue_lane_size`                           | gauge     | `lane`                                                                                    |
-| `branch_queue_lane_wait_seconds`                   | histogram | `lane`                                                                                    |
-| `branch_session_state_total`                       | counter   | `reason`, `state`                                                                         |
-| `branch_session_queue_depth`                       | gauge     | `state`                                                                                   |
-| `branch_session_turn_created_total`                | counter   | `agent`, `channel`, `trigger`                                                             |
-| `branch_session_stuck_total`                       | counter   | `reason`, `state`                                                                         |
-| `branch_session_stuck_age_seconds`                 | histogram | `reason`, `state`                                                                         |
-| `branch_session_recovery_total`                    | counter   | `action`, `active_work_kind`, `state`, `status`                                           |
-| `branch_session_recovery_age_seconds`              | histogram | `action`, `active_work_kind`, `state`, `status`                                           |
-| `branch_gateway_event_loop_delay_max_seconds`      | histogram | none                                                                                      |
-| `branch_gateway_event_loop_observed_seconds_total` | counter   | none                                                                                      |
-| `branch_liveness_warning_total`                    | counter   | `reason`                                                                                  |
-| `branch_liveness_sessions`                         | gauge     | `state`                                                                                   |
-| `branch_liveness_event_loop_delay_p99_seconds`     | histogram | `reason`                                                                                  |
-| `branch_liveness_event_loop_delay_max_seconds`     | histogram | `reason`                                                                                  |
-| `branch_liveness_event_loop_utilization_ratio`     | histogram | `reason`                                                                                  |
-| `branch_liveness_cpu_core_ratio`                   | histogram | `reason`                                                                                  |
-| `branch_payload_large_total`                       | counter   | `action`, `channel`, `plugin`, `reason`, `surface`                                        |
-| `branch_payload_large_bytes`                       | histogram | `action`, `channel`, `plugin`, `reason`, `surface`                                        |
-| `branch_memory_bytes`                              | gauge     | `kind`                                                                                    |
-| `branch_worker_count`                              | gauge     | none                                                                                      |
-| `branch_worker_heap_sampled_count`                 | gauge     | none                                                                                      |
-| `branch_worker_heap_used_bytes`                    | gauge     | `script`                                                                                  |
-| `branch_worker_started_total`                      | counter   | `script`                                                                                  |
-| `branch_worker_retired_total`                      | counter   | `script`, `reason`                                                                        |
-| `branch_child_process_spawn_total`                 | counter   | `family`                                                                                  |
-| `branch_memory_rss_bytes`                          | histogram | none                                                                                      |
-| `branch_memory_pressure_total`                     | counter   | `level`, `reason`                                                                         |
-| `branch_telemetry_exporter_total`                  | counter   | `exporter`, `reason`, `signal`, `status`                                                  |
-| `branch_prometheus_series_dropped_total`           | counter   | none                                                                                      |
-| `branch_diagnostic_async_queue_dropped_total`      | counter   | `drop_class`                                                                              |
-| `branch_diagnostic_async_queue_length`             | gauge     | none                                                                                      |
+| Metric                                                    | Type      | Labels                                                                                    |
+| --------------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------- |
+| `branch_gateway_build_info`                             | gauge     | `process_instance_id`, optional `build_id`                                                |
+| `branch_gc_duration_seconds`                            | histogram | none                                                                                      |
+| `branch_gateway_rpc_requests_total`                     | counter   | `method`                                                                                  |
+| `branch_gateway_rpc_first_response_seconds`             | histogram | `method`                                                                                  |
+| `branch_gateway_rpc_response_bytes`                     | histogram | `method`                                                                                  |
+| `branch_gateway_rpc_handler_heap_delta_bytes`           | histogram | `method`                                                                                  |
+| `branch_gateway_rpc_handler_heap_delta_exclusive_total` | counter   | `method`                                                                                  |
+| `branch_gateway_rpc_handler_seconds`                    | histogram | `method`                                                                                  |
+| `branch_gateway_rpc_admission_seconds`                  | histogram | `method`                                                                                  |
+| `branch_gateway_rpc_queue_wait_seconds`                 | histogram | `method`                                                                                  |
+| `branch_gateway_rpc_stage_seconds`                      | histogram | `method`, `phase`                                                                         |
+| `branch_gateway_rpc_stage_thread_cpu_seconds`           | histogram | `method`, `phase`                                                                         |
+| `branch_gateway_rpc_outcomes_total`                     | counter   | `phase`, `outcome`                                                                        |
+| `branch_run_completed_total`                            | counter   | `channel`, `model`, `outcome`, `provider`, `trigger`                                      |
+| `branch_run_duration_seconds`                           | histogram | `channel`, `model`, `outcome`, `provider`, `trigger`                                      |
+| `branch_model_call_total`                               | counter   | `api`, `error_category`, `model`, `observation_unit`, `outcome`, `provider`, `transport`  |
+| `branch_model_call_duration_seconds`                    | histogram | `api`, `error_category`, `model`, `observation_unit`, `outcome`, `provider`, `transport`  |
+| `branch_model_failover_total`                           | counter   | `from_model`, `from_provider`, `lane`, `reason`, `suspended`, `to_model`, `to_provider`   |
+| `branch_model_tokens_total`                             | counter   | `agent`, `channel`, `model`, `provider`, `token_type`                                     |
+| `branch_gen_ai_client_token_usage`                      | histogram | `model`, `provider`, `token_type`                                                         |
+| `branch_model_cost_usd_total`                           | counter   | `agent`, `channel`, `model`, `provider`                                                   |
+| `branch_model_usage_duration_seconds`                   | histogram | `agent`, `channel`, `model`, `provider`                                                   |
+| `branch_skill_used_total`                               | counter   | `activation`, `agent`, `skill`, `source`                                                  |
+| `branch_tool_execution_total`                           | counter   | `error_category`, `outcome`, `params_kind`, `tool`, `tool_owner`, `tool_source`           |
+| `branch_tool_execution_duration_seconds`                | histogram | `error_category`, `outcome`, `params_kind`, `tool`, `tool_owner`, `tool_source`           |
+| `branch_tool_execution_blocked_total`                   | counter   | `denied_reason`, `params_kind`, `tool`, `tool_owner`, `tool_source`                       |
+| `branch_harness_run_total`                              | counter   | `channel`, `error_category`, `harness`, `model`, `outcome`, `phase`, `plugin`, `provider` |
+| `branch_harness_run_duration_seconds`                   | histogram | `channel`, `error_category`, `harness`, `model`, `outcome`, `phase`, `plugin`, `provider` |
+| `branch_webhook_received_total`                         | counter   | `channel`, `webhook`                                                                      |
+| `branch_webhook_error_total`                            | counter   | `channel`, `webhook`                                                                      |
+| `branch_webhook_duration_seconds`                       | histogram | `channel`, `webhook`                                                                      |
+| `branch_message_received_total`                         | counter   | `channel`, `source`                                                                       |
+| `branch_message_dispatch_started_total`                 | counter   | `channel`, `source`                                                                       |
+| `branch_message_dispatch_completed_total`               | counter   | `channel`, `outcome`, `reason`, `source`                                                  |
+| `branch_message_dispatch_duration_seconds`              | histogram | `channel`, `outcome`, `reason`, `source`                                                  |
+| `branch_message_processed_total`                        | counter   | `channel`, `outcome`, `reason`                                                            |
+| `branch_message_processed_duration_seconds`             | histogram | `channel`, `outcome`, `reason`                                                            |
+| `branch_message_delivery_started_total`                 | counter   | `channel`, `delivery_kind`                                                                |
+| `branch_message_delivery_total`                         | counter   | `channel`, `delivery_kind`, `error_category`, `outcome`                                   |
+| `branch_message_delivery_duration_seconds`              | histogram | `channel`, `delivery_kind`, `error_category`, `outcome`                                   |
+| `branch_talk_event_total`                               | counter   | `brain`, `event_type`, `mode`, `provider`, `transport`                                    |
+| `branch_talk_event_duration_seconds`                    | histogram | `brain`, `event_type`, `mode`, `provider`, `transport`                                    |
+| `branch_talk_audio_bytes`                               | histogram | `brain`, `event_type`, `mode`, `provider`, `transport`                                    |
+| `branch_queue_lane_size`                                | gauge     | `lane`                                                                                    |
+| `branch_queue_lane_wait_seconds`                        | histogram | `lane`                                                                                    |
+| `branch_session_state_total`                            | counter   | `reason`, `state`                                                                         |
+| `branch_session_queue_depth`                            | gauge     | `state`                                                                                   |
+| `branch_session_turn_created_total`                     | counter   | `agent`, `channel`, `trigger`                                                             |
+| `branch_session_stuck_total`                            | counter   | `reason`, `state`                                                                         |
+| `branch_session_stuck_age_seconds`                      | histogram | `reason`, `state`                                                                         |
+| `branch_session_recovery_total`                         | counter   | `action`, `active_work_kind`, `state`, `status`                                           |
+| `branch_session_recovery_age_seconds`                   | histogram | `action`, `active_work_kind`, `state`, `status`                                           |
+| `branch_gateway_event_loop_delay_max_seconds`           | histogram | none                                                                                      |
+| `branch_gateway_event_loop_observed_seconds_total`      | counter   | none                                                                                      |
+| `branch_liveness_warning_total`                         | counter   | `reason`                                                                                  |
+| `branch_liveness_sessions`                              | gauge     | `state`                                                                                   |
+| `branch_liveness_event_loop_delay_p99_seconds`          | histogram | `reason`                                                                                  |
+| `branch_liveness_event_loop_delay_max_seconds`          | histogram | `reason`                                                                                  |
+| `branch_liveness_event_loop_utilization_ratio`          | histogram | `reason`                                                                                  |
+| `branch_liveness_cpu_core_ratio`                        | histogram | `reason`                                                                                  |
+| `branch_payload_large_total`                            | counter   | `action`, `channel`, `plugin`, `reason`, `surface`                                        |
+| `branch_payload_large_bytes`                            | histogram | `action`, `channel`, `plugin`, `reason`, `surface`                                        |
+| `branch_memory_bytes`                                   | gauge     | `kind`                                                                                    |
+| `branch_heap_space_bytes`                               | gauge     | `space`, `stat`                                                                           |
+| `branch_worker_count`                                   | gauge     | none                                                                                      |
+| `branch_worker_heap_sampled_count`                      | gauge     | none                                                                                      |
+| `branch_worker_heap_used_bytes`                         | gauge     | `script`                                                                                  |
+| `branch_worker_started_total`                           | counter   | `script`                                                                                  |
+| `branch_worker_retired_total`                           | counter   | `script`, `reason`                                                                        |
+| `branch_child_process_spawn_total`                      | counter   | `family`, `operation`                                                                     |
+| `branch_memory_rss_bytes`                               | histogram | none                                                                                      |
+| `branch_memory_pressure_total`                          | counter   | `level`, `reason`                                                                         |
+| `branch_telemetry_exporter_total`                       | counter   | `exporter`, `reason`, `signal`, `status`                                                  |
+| `branch_prometheus_series_dropped_total`                | counter   | none                                                                                      |
+| `branch_diagnostic_async_queue_dropped_total`           | counter   | `drop_class`                                                                              |
+| `branch_diagnostic_async_queue_length`                  | gauge     | none                                                                                      |
 
 For model-call metrics, `observation_unit="request"` measures one observable
 provider request. `observation_unit="turn"` measures a synthetic Claude Code
@@ -193,11 +197,16 @@ observations: an unfinished handler has no handler-duration sample yet. Compare
 request counts, completed timings, and event-loop observations when investigating
 a timeout; low handler latency alone does not establish a responsive client path.
 
-RPC method labels contain canonical core method names, `other` for plugin
-methods, or `unknown`. Outcome totals aggregate by phase and outcome without a
-method dimension. Each method with all four timings occupies five aggregate
+RPC method labels contain exact core and registered plugin method names, `other`
+for unregistered requests, or `unknown` for unrecognized dedicated worker RPCs.
+Catalog membership is checked at request receipt, so plugin registry replacement
+affects subsequent requests without a separate label cache.
+Outcome totals aggregate by phase and outcome without a
+method dimension. Each method with all four timings, both byte histograms, and the exclusive-sample counter occupies eight aggregate
 samples in the shared 2,048-sample cap. A duration histogram occupies one sample
-but expands into 19 scrape series (buckets, sum, and count). Existing samples keep
+but expands into 19 scrape series (buckets, sum, and count). The response-size
+and signed heap-delta histograms expand into 20 and 38 series respectively; see
+[RPC response size and heap changes](/gateway/diagnostics#rpc-response-size-and-heap-changes). Existing samples keep
 updating when the cap fills; unseen RPC or other operational samples are refused
 and increment `branch_prometheus_series_dropped_total`. Monitor that counter:
 coverage of every core method can fill the cap, so a zero value matters when
@@ -337,17 +346,34 @@ include pending retirements until native exit and disappear when a pool has no
 live Workers. Direct Workers contribute to `workerCount` without a pool entry.
 These are JavaScript Worker counts, not an operating-system thread census.
 
-`branch_child_process_spawn_total{family="..."}` counts successful launches
+`branch_child_process_spawn_total{family="...",operation="..."}` counts successful launches
 through Branch Agent's shared spawn and exec owners, including brokered launches.
 Diagnostics must be enabled. The existing heartbeat publishes accumulated
 counts after at least one minute, with debug logs reporting counts and rates
 using the actual elapsed interval. Failed launches, direct calls bypassing
 these owners, and descendants started by children are excluded. Families are
 a fixed executable-name allowlist; unrecognized commands become `other`.
-Arguments and paths are never recorded. For launches per minute, use
-`60 * rate(branch_child_process_spawn_total[5m])`; this window accommodates
+Git launches carry a bounded owner/operation label: `repository.identities`,
+`repository.branches`, `checkout.revision`, `checkout.context`, `checkout.diff`,
+`checkout.baseline`, `pull-request.branch-facts`, `worktree.snapshot`,
+`worktree.cleanup`, `worktree.provision`, `worktree.inspect`,
+`worktree.recovery`, `workspace.inventory`, `workspace.manifest`, `project.clone`,
+`workspace.result-cleanup`, `session.materialize`, or `publication`. Worker operations retain their admitted
+owner when the parent launches Git, including parallel batches and retries.
+Unattributed Git launches use `unknown`; other executable families use `none`.
+Arguments, repository paths, session IDs, and free-text caller names are never recorded.
+For launches per minute grouped by Git owner, use
+`60 * sum by (operation) (rate(branch_child_process_spawn_total{family="git"}[5m]))`.
+To retain the previous per-family view, use
+`60 * sum by (family) (rate(branch_child_process_spawn_total[5m]))`; this window accommodates
 the minute-batched publication. Neither accounting path changes pressure
 thresholds or user-tool execution.
+
+`workspace.result-cleanup` identifies the post-start worker-placement orphan-ref
+inventory. It examines at most eight checkout roots per full recovery sweep,
+serially, and yields to active Gateway requests. The existing recovery scheduler
+continues unfinished work; completed roots remain recorded only for that startup
+cleanup pass. Normal result settlement still removes its own refs immediately.
 
 ### Garbage collection duration
 

@@ -12,7 +12,8 @@ import {
   groveMonitorSnapshotSchema,
   type GroveMonitorSnapshot,
 } from "../../groves/monitor-cleanup-contract.js";
-import { readGroveInstallRecord } from "../../groves/provenance.js";
+import { readClawPackageOwnership } from "../../groves/provenance-async.js";
+import type { PersistedGroveInstall } from "../../groves/provenance.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { hasActiveCronJobsForAgent } from "../../cron/active-jobs.js";
 import { resolveCronJobConfigRevision } from "../../cron/config-revision.js";
@@ -114,12 +115,21 @@ function inspectMonitors(
   });
 }
 
-function assertDeletionFence(agentId: string, operationId: string, config: BranchConfig) {
+function readDeletionFenceJournal(agentId: string, operationId: string) {
   const journal = readAgentDeletionJournal(agentId);
-  const install = readGroveInstallRecord(agentId);
   if (!journal || journal.operationId !== operationId || journal.cleanupCompleted) {
     throw new Error("Grove removal no longer owns the serving Gateway's deletion fence.");
   }
+  return journal;
+}
+
+function assertDeletionFence(
+  agentId: string,
+  operationId: string,
+  config: BranchConfig,
+  install: PersistedGroveInstall | undefined,
+) {
+  const journal = readDeletionFenceJournal(agentId, operationId);
   // Orphaned ownership can outlive its install row, but must never remove a configured replacement.
   const agent = listAgentEntries(config).find((entry) => entry.id === agentId);
   if (agent && digestGroveValue(agent) !== install?.agentConfigDigest) {
@@ -209,9 +219,16 @@ export const grovesMonitorHandlers = {
         respond(true, { monitors: inspectMonitors(context, input.agentId, jobs) }, undefined);
         return;
       }
+      readDeletionFenceJournal(input.agentId, input.operationId);
+      const { install } = await readClawPackageOwnership({ agentId: input.agentId });
       const assertCurrent = () => {
         assertBinding();
-        return assertDeletionFence(input.agentId, input.operationId, context.getRuntimeConfig());
+        return assertDeletionFence(
+          input.agentId,
+          input.operationId,
+          context.getRuntimeConfig(),
+          install,
+        );
       };
       assertCurrent();
       if (input.phase === "quiesce") {

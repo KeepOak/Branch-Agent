@@ -17,9 +17,14 @@ const TYPES: Record<string, string> = {
   ".ico": "image/x-icon",
 };
 
-export function serveWindow(root: string, port: number): Promise<Server> {
-  const base = normalize(root) + sep;
+/**
+ * `root` is read on every request: while a staged update waits, the desktop keeps serving the window build that
+ * matches the running engine (its lazy chunks stay loadable), and switches to the new build when it applies it.
+ */
+export function serveWindow(root: string | (() => string), port: number): Promise<Server> {
+  const rootNow = typeof root === "string" ? () => root : root;
   const server = createServer(async (req, res) => {
+    const base = normalize(rootNow()) + sep;
     const path = decodeURIComponent(new URL(req.url ?? "/", "http://127.0.0.1").pathname);
     const file = normalize(join(base, path === "/" ? "index.html" : path));
     if (!file.startsWith(base)) {
@@ -30,8 +35,13 @@ export function serveWindow(root: string, port: number): Promise<Server> {
       const body = await readFile(file);
       res.writeHead(200, { "Content-Type": TYPES[extname(file)] ?? "application/octet-stream" }).end(body);
     } catch {
-      const index = await readFile(join(base, "index.html"));
-      res.writeHead(200, { "Content-Type": TYPES[".html"] }).end(index);
+      try {
+        const index = await readFile(join(base, "index.html"));
+        res.writeHead(200, { "Content-Type": TYPES[".html"] }).end(index);
+      } catch {
+        // Mid-swap: the folder is being moved. The page retries its request.
+        res.writeHead(503, { "Retry-After": "1" }).end();
+      }
     }
   });
   return new Promise((resolve, reject) => {

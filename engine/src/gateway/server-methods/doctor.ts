@@ -2,19 +2,13 @@ import { expectDefined } from "@branch/normalization-core";
 import { parseDateStringTimestampMs } from "@branch/normalization-core/number-coercion";
 import { asOptionalRecord } from "@branch/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
-import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
-import {
-  AgentSelectionRequiredError,
-  tryResolveAmbientOwnerAgentId,
-} from "../../agents/agent-scope-config.js";
-import {
-  listAgentIds,
-  resolveAgentWorkspaceDir,
-  resolveDefaultAgentId,
-} from "../../agents/agent-scope.js";
 import type { BranchConfig } from "../../config/types.branch.js";
+import type { CronJob } from "../../cron/types.js";
 import { formatErrorMessage as formatError } from "../../infra/errors.js";
 import {
+  MANAGED_MEMORY_RINGS_CRON_NAME,
+  MANAGED_MEMORY_RINGS_CRON_TAG,
+  MEMORY_RINGS_SYSTEM_EVENT_TEXT,
   resolveMemoryRingsPluginConfig,
   resolveMemoryRingsConfig,
   resolveMemoryRingsWorkspaces,
@@ -23,20 +17,27 @@ import {
   type ShortTermRingsStatsEntry,
 } from "../../memory-host-sdk/rings.js";
 import * as defaultMemoryCoreRuntime from "../../plugin-sdk/memory-core-bundled-runtime.js";
-import { getActiveMemorySearchManagerCore } from "../../plugins/memory-runtime.js";
-import { normalizeAgentId } from "../../routing/session-key.js";
+import type { MemoryHealth } from "../../plugins/memory-provider-types.js";
+import {
+  getActiveMemorySearchManagerCore,
+  resolveActiveMemoryBackendConfig,
+} from "../../plugins/memory-runtime.js";
 import { sortAndLimitBy } from "../../shared/sort-and-limit.js";
 import {
   listWorkspaceDailyFiles,
   readDreamDiary,
   type DoctorMemoryDreamDiaryPayload,
 } from "./doctor-memory-files.js";
-import type {
-  GatewayRequestContext,
-  GatewayRequestHandler,
-  GatewayRequestHandlers,
-  RespondFn,
-} from "./types.js";
+import {
+  respondProviderMemoryStatus,
+  SKIPPED_MEMORY_EMBEDDING_PROBE,
+} from "./doctor-memory-provider-status.js";
+import {
+  memoryActionHandler,
+  resolveDoctorMemoryAgent,
+  resolveDoctorMemoryTarget,
+} from "./doctor-memory-target.js";
+import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 
 export type { DoctorMemoryDreamDiaryPayload } from "./doctor-memory-files.js";
 
@@ -51,65 +52,19 @@ type DoctorMemoryCoreRuntime = Pick<
   | "writeBackfillDiaryEntries"
 >;
 
-const MANAGED_DEEP_SLEEP_CRON_NAME = "Memory Rings Promotion";
-const MANAGED_DEEP_SLEEP_CRON_TAG = "[managed-by=memory-core.short-term-promotion]";
-const DEEP_SLEEP_SYSTEM_EVENT_TEXT = "__branch_memory_core_short_term_promotion_dream__";
-
-type DoctorMemoryRingsPhasePayload = {
-  enabled: boolean;
-  cron: string;
-  managedCronPresent: boolean;
-  nextRunAtMs?: number;
-};
-
-type DoctorMemoryLightRingsPayload = DoctorMemoryRingsPhasePayload & {
-  lookbackDays: number;
-  limit: number;
-};
-
-type DoctorMemoryDeepRingsPayload = DoctorMemoryRingsPhasePayload & {
-  minScore: number;
-  minRecallCount: number;
-  minUniqueQueries: number;
-  recencyHalfLifeDays: number;
-  maxAgeDays?: number;
-  limit: number;
-};
-
-type DoctorMemoryRemRingsPayload = DoctorMemoryRingsPhasePayload & {
-  lookbackDays: number;
-  limit: number;
-  minPatternStrength: number;
-};
-
 type RingsStoreStats = Omit<ShortTermRingsStats, "storePath" | "phaseSignalPath"> & {
   storePath?: string;
   phaseSignalPath?: string;
   storeError?: string;
 };
 
-type DoctorMemoryRingsConfigPayload = {
-  enabled: boolean;
-  timezone?: string;
-  verboseLogging: boolean;
-  storageMode: "inline" | "separate" | "both";
-  separateReports: boolean;
-  shortTermEntries: ShortTermRingsStatsEntry[];
-  signalEntries: ShortTermRingsStatsEntry[];
-  promotedEntries: ShortTermRingsStatsEntry[];
-  phases: {
-    light: DoctorMemoryLightRingsPayload;
-    deep: DoctorMemoryDeepRingsPayload;
-    rem: DoctorMemoryRemRingsPayload;
-  };
-};
-
-type DoctorMemoryRingsPayload = DoctorMemoryRingsConfigPayload & RingsStoreStats;
+type DoctorMemoryRingsPayload = ReturnType<typeof resolveRingsConfig> & RingsStoreStats;
 
 export type DoctorMemoryStatusPayload = {
   agentId: string;
   searchRuntimeRegistered?: boolean;
   provider?: string;
+  health?: MemoryHealth;
   embedding: {
     ok: boolean;
     error?: string;
@@ -133,30 +88,7 @@ export type DoctorMemoryEmbeddingRuntimePayload = {
   loadError?: string;
 };
 
-export type DoctorMemoryDreamActionPayload = {
-  agentId: string;
-  action:
-    | "backfill"
-    | "reset"
-    | "resetGroundedShortTerm"
-    | "repairRingsArtifacts"
-    | "dedupeDreamDiary";
-  path?: string;
-  found?: boolean;
-  scannedFiles?: number;
-  written?: number;
-  replaced?: number;
-  removedEntries?: number;
-  removedShortTermEntries?: number;
-  changed?: boolean;
-  archiveDir?: string;
-  archivedDreamsDiary?: boolean;
-  archivedSessionCorpus?: boolean;
-  archivedSessionIngestion?: boolean;
-  warnings?: string[];
-  dedupedEntries?: number;
-  keptEntries?: number;
-};
+export type { DoctorMemoryDreamActionPayload } from "./doctor-memory-target.js";
 
 function extractIsoDayFromPath(filePath: string): string | null {
   const match = filePath.replaceAll("\\", "/").match(/(\d{4}-\d{2}-\d{2})(?:-[^/]+)?\.md$/i);
@@ -174,28 +106,26 @@ function groundedMarkdownToDiaryLines(markdown: string): string[] {
     );
 }
 
-function resolveRingsConfig(cfg: BranchConfig): DoctorMemoryRingsConfigPayload {
+function resolveRingsConfig(cfg: BranchConfig) {
   const resolved = resolveMemoryRingsConfig({
     pluginConfig: resolveMemoryRingsPluginConfig(cfg),
     cfg,
   });
   const { light, deep, rem } = resolved.phases;
+  const cronStatus: ManagedRingsCronStatus = { managedCronPresent: false };
   return {
     enabled: resolved.enabled,
     ...(resolved.timezone ? { timezone: resolved.timezone } : {}),
     verboseLogging: resolved.verboseLogging,
     storageMode: resolved.storage.mode,
     separateReports: resolved.storage.separateReports,
-    shortTermEntries: [],
-    signalEntries: [],
-    promotedEntries: [],
     phases: {
       light: {
         enabled: resolved.enabled && light.enabled,
         cron: light.cron,
         lookbackDays: light.lookbackDays,
         limit: light.limit,
-        managedCronPresent: false,
+        ...cronStatus,
       },
       deep: {
         enabled: resolved.enabled && deep.enabled,
@@ -205,7 +135,7 @@ function resolveRingsConfig(cfg: BranchConfig): DoctorMemoryRingsConfigPayload {
         minRecallCount: deep.minRecallCount,
         minUniqueQueries: deep.minUniqueQueries,
         recencyHalfLifeDays: deep.recencyHalfLifeDays,
-        managedCronPresent: false,
+        ...cronStatus,
         ...(typeof deep.maxAgeDays === "number" ? { maxAgeDays: deep.maxAgeDays } : {}),
       },
       rem: {
@@ -214,7 +144,7 @@ function resolveRingsConfig(cfg: BranchConfig): DoctorMemoryRingsConfigPayload {
         lookbackDays: rem.lookbackDays,
         limit: rem.limit,
         minPatternStrength: rem.minPatternStrength,
-        managedCronPresent: false,
+        ...cronStatus,
       },
     },
   };
@@ -385,44 +315,29 @@ type ManagedRingsCronStatus = {
   nextRunAtMs?: number;
 };
 
-type ManagedCronJobLike = {
-  name?: string;
-  description?: string;
-  enabled?: boolean;
-  payload?: { kind?: string; text?: string };
-  state?: { nextRunAtMs?: number };
-};
-
-function isManagedRingsJob(job: ManagedCronJobLike): boolean {
+function isManagedRingsJob(job: CronJob): boolean {
   const description = normalizeOptionalString(job.description);
-  if (description?.includes(MANAGED_DEEP_SLEEP_CRON_TAG)) {
+  if (description?.includes(MANAGED_MEMORY_RINGS_CRON_TAG)) {
     return true;
   }
   // Older managed jobs may lack the tag, so fall back to the exact system-event signature.
   const name = normalizeOptionalString(job.name);
-  const payloadKind = normalizeOptionalString(job.payload?.kind)?.toLowerCase();
-  const payloadText = normalizeOptionalString(job.payload?.text);
   return (
-    name === MANAGED_DEEP_SLEEP_CRON_NAME &&
-    payloadKind === "systemevent" &&
-    payloadText === DEEP_SLEEP_SYSTEM_EVENT_TEXT
+    name === MANAGED_MEMORY_RINGS_CRON_NAME &&
+    job.payload.kind === "systemEvent" &&
+    normalizeOptionalString(job.payload.text) === MEMORY_RINGS_SYSTEM_EVENT_TEXT
   );
 }
 
-async function resolveManagedRingsCronStatus(context: {
-  cron?: { list?: (opts?: { includeDisabled?: boolean }) => Promise<unknown[]> };
-}): Promise<ManagedRingsCronStatus> {
-  if (!context.cron || typeof context.cron.list !== "function") {
-    return { managedCronPresent: false };
-  }
+async function resolveManagedRingsCronStatus(
+  context: Pick<GatewayRequestContext, "cron">,
+): Promise<ManagedRingsCronStatus> {
   try {
     const jobs = await context.cron.list({ includeDisabled: true });
-    const managed = jobs
-      .filter((job): job is ManagedCronJobLike => typeof job === "object" && job !== null)
-      .filter(isManagedRingsJob);
+    const managed = jobs.filter(isManagedRingsJob);
     let nextRunAtMs: number | undefined;
     for (const job of managed) {
-      if (job.enabled !== true) {
+      if (!job.enabled) {
         continue;
       }
       const candidate = job.state?.nextRunAtMs;
@@ -442,116 +357,36 @@ async function resolveManagedRingsCronStatus(context: {
   }
 }
 
-function shouldProbeMemoryEmbeddings(params: unknown): boolean {
-  if (!params || typeof params !== "object") {
-    return false;
-  }
-  const record = params as Record<string, unknown>;
-  return record.probe === true || record.deep === true;
-}
-
-function resolveDoctorMemoryAgent(
-  context: GatewayRequestContext,
-  params: unknown,
-  respond: RespondFn,
-  omittedAgentId?: string,
-): {
-  cfg: BranchConfig;
-  agentId: string;
-  requestedAgentId?: string;
-} | null {
-  const cfg = context.getRuntimeConfig();
-  const record = asOptionalRecord(params);
-  const rawAgentId = record?.agentId;
-  // Validate before resolving workspace or manager state; both paths can create agent storage.
-  if (rawAgentId !== undefined && typeof rawAgentId !== "string") {
-    respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "agentId must be a string"));
-    return null;
-  }
-  const requestedAgentId =
-    typeof rawAgentId === "string" ? normalizeAgentId(rawAgentId) : undefined;
-  let agentId = requestedAgentId ?? omittedAgentId;
-  if (!agentId) {
-    try {
-      agentId = resolveDefaultAgentId(cfg, {
-        surface: "doctor memory",
-        hint: "Pass agentId to select a configured agent.",
-      });
-    } catch (error) {
-      if (!(error instanceof AgentSelectionRequiredError)) {
-        throw error;
-      }
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, error.message));
-      return null;
-    }
-  }
-  if (requestedAgentId && !listAgentIds(cfg).includes(agentId)) {
-    respond(
-      false,
-      undefined,
-      errorShape(ErrorCodes.INVALID_REQUEST, `unknown agent id "${requestedAgentId}"`),
-    );
-    return null;
-  }
-  return { cfg, agentId, ...(requestedAgentId ? { requestedAgentId } : {}) };
-}
-
-function resolveDoctorMemoryTarget(
-  context: GatewayRequestContext,
-  params: unknown,
-  respond: RespondFn,
-): {
-  cfg: BranchConfig;
-  agentId: string;
-  workspaceDir: string;
-} | null {
-  // Apply the same ambient-owner fallback that doctor.memory.status uses so
-  // that legacy clients (e.g. embedded UI builds that pre-date the agent-
-  // selection gate) do not get a hard rejection on multi-agent installs when
-  // a single default agent can be unambiguously resolved.
-  const omittedAgentId = tryResolveAmbientOwnerAgentId(context.getRuntimeConfig());
-  const resolved = resolveDoctorMemoryAgent(context, params, respond, omittedAgentId);
-  if (!resolved) {
-    return null;
-  }
-  return {
-    cfg: resolved.cfg,
-    agentId: resolved.agentId,
-    workspaceDir: resolveAgentWorkspaceDir(resolved.cfg, resolved.agentId),
-  };
-}
-
-function memoryActionHandler(
-  action: DoctorMemoryDreamActionPayload["action"],
-  run: (
-    target: NonNullable<ReturnType<typeof resolveDoctorMemoryTarget>>,
-  ) => Promise<Omit<DoctorMemoryDreamActionPayload, "agentId" | "action">>,
-): GatewayRequestHandler {
-  return async ({ respond, context, params }) => {
-    const target = resolveDoctorMemoryTarget(context, params, respond);
-    if (!target) {
-      return;
-    }
-    respond(true, { agentId: target.agentId, action, ...(await run(target)) }, undefined);
-  };
-}
-
-const SKIPPED_MEMORY_EMBEDDING_PROBE = {
-  ok: false,
-  checked: false,
-  error: "memory embedding readiness not checked; run `branch memory status --deep` to probe",
-} as const;
-
 export const createDoctorHandlers = (
   memoryCoreRuntime: DoctorMemoryCoreRuntime = defaultMemoryCoreRuntime,
 ): GatewayRequestHandlers => ({
-  "doctor.memory.status": async ({ respond, context, params }) => {
-    const omittedAgentId = tryResolveAmbientOwnerAgentId(context.getRuntimeConfig());
-    const resolved = resolveDoctorMemoryAgent(context, params, respond, omittedAgentId);
+  "doctor.memory.status": async ({
+    respond,
+    context,
+    params,
+    client,
+    signal,
+    hasCurrentClientAuthority,
+  }) => {
+    const resolved = resolveDoctorMemoryAgent(context, params, respond);
     if (!resolved) {
       return;
     }
     const { cfg, agentId, requestedAgentId } = resolved;
+    const backend = resolveActiveMemoryBackendConfig({ cfg, agentId });
+    if (backend?.backend === "provider-runtime") {
+      await respondProviderMemoryStatus({
+        cfg,
+        agentId,
+        providerId: backend.providerId,
+        respond,
+        context,
+        client,
+        signal,
+        hasCurrentClientAuthority,
+      });
+      return;
+    }
     const { manager, error, searchRuntimeRegistered } = await getActiveMemorySearchManagerCore({
       cfg,
       agentId,
@@ -572,7 +407,7 @@ export const createDoctorHandlers = (
 
     try {
       let status = manager.status();
-      const shouldProbe = shouldProbeMemoryEmbeddings(params);
+      const shouldProbe = params.probe === true || params.deep === true;
       let embedding = shouldProbe
         ? await manager.probeEmbeddingAvailability()
         : (manager.getCachedEmbeddingAvailability?.() ?? SKIPPED_MEMORY_EMBEDDING_PROBE);
@@ -761,4 +596,3 @@ export const createDoctorHandlers = (
     },
   ),
 });
-/* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
