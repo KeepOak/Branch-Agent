@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { UsagePage, daysFrom, gbFrom, matches, parseQuery, resetWords, tidyNote } from "./usage";
 import { SaveProgressOffer } from "../../../shell/SaveProgress";
+import type { Limits } from "../../../shell/status-data";
 
 type Answers = Record<string, unknown | ((params: Record<string, unknown>) => unknown)>;
 function engineWith(answers: Answers) {
@@ -70,6 +71,11 @@ describe("Settings › Data & usage", () => {
     expect(button("Show me").disabled).toBe(false);
     await click("Show me");
     expect(document.querySelector('[role="alertdialog"][aria-label="Save progress?"]')?.textContent).toContain("Example");
+    await click("Not now");
+    const limits: Limits = { updatedAt: 1, refreshing: false, rows: [{ id: "sample", name: "Sample plan", account: "", pill: "Measured", line: "", inUse: false, windows: [{ name: "5-hour", left: 100, reset: "", low: false }] }] };
+    await act(async () => root.render(<><UsagePage page="usage" title="Data & usage" level="regular" engine={engine} /><SaveProgressOffer engine={engine} limits={limits} on runningKeys={[]} /></>));
+    await click("Show me");
+    expect(document.querySelector('[role="alertdialog"][aria-label="Save progress?"]')?.textContent).toContain("Example: 95%");
   });
   it("draws the spend card from sessions.usage across every Trunk, in local days", async () => {
     const { engine, request } = engineWith(BASE);

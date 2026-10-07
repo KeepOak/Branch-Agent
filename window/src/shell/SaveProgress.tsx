@@ -1,7 +1,7 @@
 // "Offer to save progress at 95%" (the preview's checkpointPrompt): when a measured limit window is 95% used, ask once
 // per connection per window whether running tasks should save their progress. "Save progress" steers each running
 // conversation with chat.send (queueMode "steer", as the Canopy run card does); nothing is paused. The switch is the
-// look pref "usage.ckpt" (on unless turned off); Settings › Data & usage › "Show me" asks at once with the real figures.
+// look pref "usage.ckpt" (on unless turned off); Settings › Data & usage › "Show me" previews the offer.
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Limits } from "./status-data";
@@ -55,7 +55,7 @@ export function SaveProgressOffer({ engine, limits, on, runningKeys }: { engine:
     if (on && near && !asked().includes(near.key)) { markAsked(near.key); setShown(near); }
   }, [on, near?.key]);
   useEffect(() => {
-    const show = () => setShown(almostOut(limits, 100) ?? { key: "example", name: "a connection", account: "", window: "5-hour", used: 95, example: true });
+    const show = () => setShown(almostOut(limits) ?? { key: "example", name: "a connection", account: "", window: "5-hour", used: 95, example: true });
     window.addEventListener(CKPT_SHOW, show);
     return () => window.removeEventListener(CKPT_SHOW, show);
   }, [limits]);
@@ -81,9 +81,9 @@ export function SaveProgressOffer({ engine, limits, on, runningKeys }: { engine:
       </svg>
       <div className="grow">
         <b>Almost out on {shown.name}{shown.account ? ` (${shown.account})` : ""}. Ask running tasks to save their progress?</b>
-        <small>{shown.example ? "Example: " : ""}{shown.used}% of {/^this /i.test(shown.window) ? shown.window.toLowerCase() : `the ${shown.window.toLowerCase()} window`} is used. {shown.example ? "No measured limit is available." : "Measured."} Nothing is paused.</small>
+        <small>{shown.example ? "Example: " : ""}{shown.used}% of {/^this /i.test(shown.window) ? shown.window.toLowerCase() : `the ${shown.window.toLowerCase()} window`} is used. {shown.example ? "No measured window is at 95%." : "Measured."} Nothing is paused.</small>
       </div>
-      <button className="btn pri sm" type="button" disabled={shown.example} title={shown.example ? "This is an example; no measured limit is near 95%." : undefined} onClick={() => void save()}>Save progress</button>
+      <button className="btn pri sm" type="button" disabled={shown.example} title={shown.example ? "This is an example; no measured window is at 95%." : undefined} onClick={() => void save()}>Save progress</button>
       <button className="btn ghost sm" type="button" onClick={() => setShown(null)}>Not now</button>
     </div>
   );
