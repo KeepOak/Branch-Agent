@@ -1,0 +1,1 @@
+window:src/places/people/person-sign-out.test.tsx

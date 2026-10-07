@@ -31,10 +31,10 @@ export function personColour(id: string): string {
 }
 
 /** One live connection from system-presence (schema/snapshot.ts PresenceEntry). */
-export type Presence = { profileId: string; name: string; host: string; platform: string; family: string; mode: string; ip: string; timeZone: string; version: string; lastInputSeconds?: number; lastActivityAt?: number; onlineSince?: number; watched: string[] };
+export type Presence = { profileId: string; name: string; deviceId: string; host: string; platform: string; family: string; mode: string; ip: string; timeZone: string; version: string; lastInputSeconds?: number; lastActivityAt?: number; onlineSince?: number; watched: string[] };
 export function presence(value: unknown): Presence[] {
   return recs(value).filter(e => str(rec(e.user).id)).map(e => ({
-    profileId: str(rec(e.user).id), name: str(rec(e.user).name), host: str(e.host), platform: str(e.platform), family: str(e.deviceFamily),
+    profileId: str(rec(e.user).id), name: str(rec(e.user).name), deviceId: str(e.deviceId), host: str(e.host), platform: str(e.platform), family: str(e.deviceFamily),
     mode: str(e.mode), ip: str(e.ip), timeZone: str(e.timeZone), version: str(e.version), lastInputSeconds: num(e.lastInputSeconds),
     lastActivityAt: num(e.lastActivityAt), onlineSince: num(e.onlineSince), watched: strs(e.watchedSessions),
   }));
