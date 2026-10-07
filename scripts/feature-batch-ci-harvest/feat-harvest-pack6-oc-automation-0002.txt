@@ -14,7 +14,6 @@ engine:src/cron/service.failure-repair.test.ts
 engine:src/cron/service.restart-catchup-pacing.test.ts
 engine:src/cron/service.trigger-eval.test.ts
 engine:src/cron/service/agent-watchdog.test.ts
-engine:src/cron/service/restart-recovery.behaviour.test.ts
 engine:src/cron/service/run-recovery.test.ts
 engine:src/cron/service/timeout-policy.test.ts
 engine:src/cron/service/timer.timeout-watchdog.test.ts
