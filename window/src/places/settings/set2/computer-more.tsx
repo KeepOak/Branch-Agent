@@ -31,7 +31,7 @@ export type Spec = {
   opts?: Opt[]; unit?: string; ph?: string; val?: string; tone?: "ok" | "warn" | "bad" | "idle"; btns?: string[]; bare?: boolean; upTo?: Lv; min?: number; max?: number; csv?: boolean; off?: string; btn?: string; tag?: string;
   code?: string; cmds?: string[]; danger?: boolean; arg?: string; render?: (c: Ctx) => ReactNode;
 };
-export type SecSpec = { t: string; lv: Lv; hint?: string; id?: string; rows?: Spec[]; body?: (c: Ctx) => ReactNode; titles?: [string, Lv][] };
+export type SecSpec = { t: string; group?: string; showHeading?: boolean; lv: Lv; hint?: string; id?: string; rows?: Spec[]; body?: (c: Ctx) => ReactNode; titles?: [string, Lv][] };
 
 const LINUX = "Linux only";
 const PAIR_EVENTS = ["device.pair", "node.pair", "node"];
@@ -41,7 +41,7 @@ const NODE_IMAGE = "node:24.21.0-slim";
 const SCREEN_DRIVER = "Needs the screen driver to report this.";
 
 const ON_COMPUTER: SecSpec = { t: "On a computer", lv: 0, rows: [
-  { t: "See the screen and use the mouse", k: "sw", key: "plugins.entries.cua-computer.enabled", def: true, sub: "Needed for apps without a connection. You can always take over." },
+  { t: "See the screen and use the mouse", k: "sw", key: "plugins.entries.cua-computer.enabled", def: false, sub: "Needed for apps without a connection. Turn it on to let Trunks use this screen and mouse. You can always take over." },
   { t: "Ask before opening an app it hasn’t used", sub: "Once per app, per Trunk. Off until you choose: apps open without asking each one.", k: "sw", off: "Needs the engine to keep the apps each Trunk has opened." },
   { t: "Use the camera", k: "cmd", cmds: ["camera.snap", "camera.clip"], danger: true, sub: "A Trunk can take a photo or a short clip with a computer’s camera. Applies to every paired computer and phone." },
   { t: "Cameras", sub: "Each camera on this computer, and what it can do.", k: "btn", lv: 1, btn: "See", off: "Needs the engine to list this computer’s cameras." },
@@ -63,7 +63,7 @@ const USING_SCREEN: SecSpec = { t: "Using the screen", lv: 0, rows: [
   { t: "Check what works", k: "custom", render: (c) => <CheckWorks c={c} /> },
 ] };
 
-const TECHNICAL: SecSpec = { t: "Technical", lv: 2, body: (c) => <TechKv c={c} /> };
+const TECHNICAL: SecSpec = { t: "Technical", group: "Connections", showHeading: false, lv: 2, body: (c) => <TechKv c={c} /> };
 
 const LET_TRUNKS: SecSpec = { t: "Let Trunks use this computer", lv: 0, hint: "Lend this computer to Branch on another computer.", rows: [
   { t: "Code from the other computer", k: "custom", render: () => <PairRow /> },
@@ -74,7 +74,7 @@ const PHONES_LENT: SecSpec = { t: "Phones lent to Branch", lv: 0, body: (c) => <
 
 const LOGBOOK_KEY = "plugins.entries.logbook";
 const LB = `${LOGBOOK_KEY}.config`;
-const LOGBOOK: SecSpec = { t: "Logbook", lv: 1, rows: [
+const LOGBOOK: SecSpec = { t: "Logbook", group: "Connections", showHeading: false, lv: 1, rows: [
   { t: "Logbook", k: "sw", key: `${LOGBOOK_KEY}.enabled`, def: false, sub: "Pictures of your screen at intervals, read by a model into a timeline in Library › Logbook. Off until you choose: it takes pictures of your screen and a model reads them." },
   { t: "Picture every", k: "num", key: `${LB}.captureIntervalSeconds`, def: 30, unit: "seconds", min: 5, max: 600, sub: "From 5 to 600." },
   { t: "Look at them every", k: "num", key: `${LB}.analysisIntervalMinutes`, def: 15, unit: "minutes", min: 3, max: 120, sub: "From 3 to 120." },
@@ -85,7 +85,7 @@ const LOGBOOK: SecSpec = { t: "Logbook", lv: 1, rows: [
   { t: "Picture width", k: "num", lv: 2, key: `${LB}.maxWidth`, def: 1440, unit: "px", min: 480, max: 3840, sub: "From 480 to 3840." },
 ] };
 
-const LENT_TECH: SecSpec = { t: "Lent computer, technical", lv: 2, rows: [
+const LENT_TECH: SecSpec = { t: "Lent computer, technical", group: "Lending", showHeading: false, lv: 2, rows: [
   { t: "Update this lent computer by itself", k: "sw", key: "nodeHost.autoUpdate.enabled", def: true, sub: "Checks hourly, waits for work to finish, restarts at most every 12 hours." },
   { t: "Run whole conversations here", k: "sw", key: "nodeHost.workerRuns.enabled", def: false, sub: "Hosts conversations sent from the other Branch." },
   { t: "Let Claude Code continue here", k: "sw", key: "nodeHost.agentRuns.claude.enabled", def: false, sub: "Runs still ask for your yes." },
@@ -98,7 +98,7 @@ const LENT_TECH: SecSpec = { t: "Lent computer, technical", lv: 2, rows: [
   { t: "Connectors on this computer", k: "code", code: "nodeHost.mcp", sub: "The settings file section." },
 ] };
 
-const SCREEN_TECH: SecSpec = { t: "Screen sharing, technical", lv: 2, rows: [
+const SCREEN_TECH: SecSpec = { t: "Screen sharing, technical", group: "Using the screen", showHeading: false, lv: 2, rows: [
   { t: "Screen sharing", k: "custom", render: (c) => <ShareKv c={c} /> },
   { t: "Run a managed desktop", k: "sw", key: "desktop.host.managed", def: false, tag: LINUX, sub: "Starts a private headless desktop just for Branch. Off until you choose: it runs a second desktop." },
   { t: "Screen-sharing port", k: "num", key: "desktop.host.port", ph: "5900", min: 1, max: 65535, sub: "From 1 to 65535." },
@@ -106,7 +106,7 @@ const SCREEN_TECH: SecSpec = { t: "Screen sharing, technical", lv: 2, rows: [
 ] };
 
 const PAIRING = "gateway.nodes.pairing";
-const ALLOWING: SecSpec = { t: "Allowing connections by themselves", lv: 2, rows: [
+const ALLOWING: SecSpec = { t: "Allowing connections by themselves", group: "Connections", showHeading: false, lv: 2, rows: [
   { t: "Allow connections from this computer by themselves", k: "sw", key: `${PAIRING}.autoApproveLocal`, def: true, sub: "A browser or app on this same computer, or through an SSH tunnel to it, connects without asking." },
   { t: "Allow a computer that proves it is yours", k: "sw", key: `${PAIRING}.sshVerify`, def: true, is: (v) => v !== false, sub: "Branch signs in to it over SSH and checks its key matches; anything else still asks." },
   { t: "Networks that connect without asking", k: "list", key: `${PAIRING}.autoApproveCidrs`, ph: "192.168.1.0/24", sub: "Only a brand-new computer with no extra access; phones, browsers and upgrades still ask. Turns on when you add a network." },
@@ -119,12 +119,12 @@ const CODE_COMMITS: SecSpec = { t: "Code and commits", lv: 0, rows: [
   { t: "Linux computers", sub: "What a paired Linux computer lends to Trunks.", k: "val", lv: 1, val: "Notifications, camera, location", off: "Needs the engine to report what a Linux computer lends." },
 ] };
 
-const NETWORK_MORE: SecSpec = { t: "Network, more", lv: 1, rows: [
+const NETWORK_MORE: SecSpec = { t: "Network, more", group: "Network", lv: 1, rows: [
   { t: "Its computer joins a private network", sub: "So a Trunk’s computer reaches your private machines without opening them to the internet.", k: "seg", opts: [{ v: "off", l: "Off" }, { v: "tailscale", l: "Tailscale" }, { v: "netbird", l: "NetBird" }], off: "Needs the engine to join a Trunk’s computer to a private network." },
   { t: "Previews on your other computers", sub: "See a preview server running on taofik-ai, such as an app a Trunk is building, here in Branch’s browser.", k: "sw", off: "Needs the engine to forward preview servers from other computers." },
 ] };
 
-const ON_MORE: SecSpec = { t: "On a computer, more", lv: 1, rows: [
+const ON_MORE: SecSpec = { t: "On a computer, more", group: "On a computer", showHeading: false, lv: 1, rows: [
   { t: "Let Trunks show you pages", sub: "A Trunk can open a page in the side panel’s Clearing tab.", k: "sw", off: "Needs the engine’s live panel command." },
   { t: "Work in apps in the background", sub: "Through the accessibility tree, without taking the screen.", k: "sw", off: "Needs the screen driver to read apps without the screen." },
   { t: "Read Jupyter notebooks", sub: "Cells, outputs and charts.", k: "sw", off: "Needs the engine to read notebooks." },
@@ -132,7 +132,7 @@ const ON_MORE: SecSpec = { t: "On a computer, more", lv: 1, rows: [
   { t: "Write AGENTS.md for a project", sub: "Branch reads the project and writes its house rules.", k: "val", val: "/init", code: "/init", off: "Needs the engine’s /init command." },
 ] };
 
-const USING_MORE: SecSpec = { t: "Using the screen, more", lv: 1, rows: [
+const USING_MORE: SecSpec = { t: "Using the screen, more", group: "Using the screen", showHeading: false, lv: 1, rows: [
   { t: "Hide Branch while it works here", sub: "Branch’s window hides and a small status window shows while a Trunk uses this computer’s screen. It comes back when the task ends.", k: "sw", off: "Hiding the window is done by the Branch app on your computer." },
   { t: "Most steps in one task", sub: "A task stops and tells you when it reaches this many steps.", k: "num", unit: "steps", off: SCREEN_DRIVER },
   { t: "Wait between steps", sub: "Slows it down so you can follow along. Empty means no wait.", k: "num", unit: "ms", off: SCREEN_DRIVER },
@@ -146,7 +146,7 @@ const USING_MORE: SecSpec = { t: "Using the screen, more", lv: 1, rows: [
   { t: "Covering this computer’s screens", sub: "While someone controls this computer from another device, its own screens are covered. Touching the mouse or keyboard here asks to disconnect, then locks this computer.", k: "val", val: "Always", tone: "idle", off: "Needs the screen driver to cover screens during remote control." },
 ] };
 
-const PHONES_SMALL: SecSpec = { t: "Phones and small devices", lv: 1, rows: [
+const PHONES_SMALL: SecSpec = { t: "Phones and small devices", group: "Lending", lv: 1, rows: [
   { t: "Android phones over USB", sub: "With USB debugging on, a Trunk takes pictures of the phone’s screen, taps, swipes, types and opens apps.", k: "btn", btn: "Set up", off: "Needs the engine to drive a phone over USB." },
   { t: "What it learned on phones", sub: "After each phone task it writes down tips and short cuts, so the next task is quicker and steadier.", k: "btn", btn: "See", off: "Needs the engine to keep phone notes." },
   { t: "iPhone simulator beside the conversation", sub: "Shows the simulator of the app being built next to the chat, so you and the Trunk both use it. Pick the device per conversation.", k: "btn", btn: "Show", off: "The simulator is shown by the Branch app on a Mac." },
@@ -161,14 +161,14 @@ const MORE_PLACES: SecSpec = { t: "More places to run work", lv: 1, rows: [
   { t: "An editor inside the box", sub: "Opens a code editor running in the box, in Branch’s browser.", k: "btn", btn: "Open", off: "Needs the engine to run an editor in a sealed box." },
   { t: "Cloud storage in the box", sub: "Mounts cloud storage buckets beside your folders, under one folder in the box.", k: "btn", btn: "Add", off: "Needs the engine to mount cloud storage in a sealed box." },
   { t: "A Kubernetes cluster", sub: "Each sandbox runs in its own pod on your cluster, with spares ready.", k: "btn", btn: "Add", off: "Needs the engine’s Kubernetes sandbox backend." },
-  { t: "A lasting virtual computer", sub: "A Trunk’s own virtual computer on this PC that keeps its files and memory between sessions. Pause it and pick up where it left off.", k: "btn", btn: "Set up", off: "Needs the engine’s virtual computer backend." },
+  { t: "A lasting virtual computer", sub: "A Trunk’s own virtual computer here keeps its files and memory.", k: "btn", btn: "Set up", off: "Needs the engine’s virtual computer backend." },
   { t: "Virtual computers on your own machines", sub: "Start in a moment, save a snapshot, copy a sandbox, roll back to any saved point, or move it to another machine.", k: "btn", btn: "Set up", off: "Needs the engine’s virtual computer backend." },
   { t: "Throwaway virtual computers", sub: "A full Linux computer made fresh from a fixed image for each task. It reaches only a package cache; any other address asks you first.", k: "btn", btn: "Set up", off: "Needs the engine’s virtual computer backend." },
   { t: "New addresses waiting for your yes", sub: "None. When a throwaway virtual computer asks to reach a new address, it shows here.", k: "info", off: "Needs the engine’s virtual computer backend." },
   { t: "Each conversation’s folders", k: "info", lv: 2, off: "Needs the engine to keep folders per conversation." },
 ] };
 
-const USING_TECH: SecSpec = { t: "Using the screen, technical", lv: 2, rows: [
+const USING_TECH: SecSpec = { t: "Using the screen, technical", group: "Using the screen", showHeading: false, lv: 2, rows: [
   { t: "Screen driver", k: "custom", render: (c) => <ScreenDriver c={c} /> },
   { t: "How it drives the screen", sub: "Apps in the background first; it takes the screen only when it has to.", k: "info", off: SCREEN_DRIVER },
   { t: "When a step fails", sub: "A failed picture, model call or action isn’t tried again. It stops after 10 failed pictures in a row.", k: "info", off: SCREEN_DRIVER },
@@ -178,12 +178,12 @@ const USING_TECH: SecSpec = { t: "Using the screen, technical", lv: 2, rows: [
   { t: "Desktop apps built from web pages", sub: "Slack and apps like it are reopened once with a debugging link (port 9223), so it reads them like a web page.", k: "info", off: SCREEN_DRIVER },
   { t: "Its browser on a box’s desktop", sub: "Skips first-run screens, blocks notifications and never saves passwords.", k: "info", off: "Needs the engine to give a sealed box its own desktop." },
   { t: "Offer these screen tools to other apps", sub: "Other AI apps on this computer may use the screen tools through a connector. Off until you choose: another app could use your screen.", k: "sw", off: "Needs the engine to offer the screen tools as a connector." },
-  { t: "Linux on this PC may take screen pictures", sub: "Through Windows’ own tools: the whole screen, one screen or one window, with marked parts blacked out first. Off until you choose: it can see your screen.", k: "sw", off: "Needs the engine to take pictures through Windows for Linux." },
+  { t: "Linux here may take screen pictures", sub: "Uses Windows tools and blacks out marked parts first.", k: "sw", off: "Needs the engine to take pictures through Windows for Linux." },
   { t: "From the terminal", sub: "Starts a computer, browser or phone task from a command line.", k: "code", code: "branch computer run", off: "Needs the engine’s computer command line." },
 ] };
 
 const EXTRA: Spec = { t: "Extra folders", k: "list", key: `${SANDBOX}.docker.binds`, ph: "C:\\path\\to\\folder:/data:ro", sub: "Folders on this computer the box can reach, as host path:box path." };
-const WHERE_MORE: SecSpec = { t: "Where scripts run, more", lv: 1, rows: [
+const WHERE_MORE: SecSpec = { t: "Where scripts run, more", group: "On a computer", showHeading: false, lv: 1, rows: [
   { t: "Your project folder in the box", k: "seg", key: `${SANDBOX}.workspaceAccess`, def: "none", opts: [{ v: "none", l: "Not shared" }, { v: "ro", l: "Read only" }, { v: "rw", l: "Read and write" }], sub: "Scripts work in the box’s own folder unless it is shared." },
   { ...EXTRA, k: "custom", render: (c) => <FoldersRow s={EXTRA} c={c} /> },
   { t: "Sealed boxes running", sub: "Each Trunk’s box, and whether it uses the latest settings.", k: "btn", btn: "See", off: "Needs the engine to list running sealed boxes." },
@@ -196,8 +196,8 @@ const WHERE_MORE: SecSpec = { t: "Where scripts run, more", lv: 1, rows: [
 ] };
 
 const NO_CONTAIN = "Needs the engine to contain scripts on this computer.";
-const SCRIPTS: SecSpec = { t: "Scripts on this computer", lv: 1, rows: [
-  { t: "Contain scripts on this PC", sub: "Each script a Trunk starts runs in its own container, with only what the rows below allow.", k: "sw", off: NO_CONTAIN },
+const SCRIPTS: SecSpec = { t: "Scripts on this computer", group: "On a computer", showHeading: false, lv: 1, rows: [
+  { t: "Contain scripts on this computer", sub: "Each script a Trunk starts runs in its own container.", k: "sw", off: NO_CONTAIN },
   { t: "Starting point", sub: "No internet, no clipboard, no folders.", k: "seg", opts: [{ v: "locked", l: "Locked down" }, { v: "rec", l: "Recommended" }, { v: "open", l: "Open" }], off: NO_CONTAIN },
   { t: "Internet", sub: "Contained scripts can reach public internet addresses. Your local network and shares are not included. Off until you choose: scripts could send what they read over the internet.", k: "sw", off: NO_CONTAIN },
   { t: "Clipboard", sub: "Scripts can’t see or change your clipboard. Off until you choose: the clipboard often holds passwords.", k: "seg", opts: [{ v: "none", l: "None" }, { v: "r", l: "Read" }, { v: "w", l: "Write" }, { v: "rw", l: "Read and write" }], off: NO_CONTAIN },
@@ -207,7 +207,7 @@ const SCRIPTS: SecSpec = { t: "Scripts on this computer", lv: 1, rows: [
   { t: "Allow Windows UI calls", sub: "PowerShell and some console tools need these to start. Off until you choose: it widens what contained scripts can call.", k: "sw", lv: 2, off: NO_CONTAIN },
 ] };
 
-const SEALED_TECH: SecSpec = { t: "Sealed box, technical", lv: 2, rows: [
+const SEALED_TECH: SecSpec = { t: "Sealed box, technical", group: "On a computer", showHeading: false, lv: 2, rows: [
   { t: "Box image", k: "custom", render: (c) => <BoxImage c={c} /> },
   { t: "Use another image", k: "change", btn: "Change", bare: true, key: `${SANDBOX}.docker.image`, ph: SANDBOX_IMAGE, sub: "Any image you built or pulled." },
   { t: "Run once when a box is made", k: "copy", key: `${SANDBOX}.docker.setupCommand`, ph: "(none)", sub: "Needs internet, a writable box and the root user." },
@@ -215,7 +215,7 @@ const SEALED_TECH: SecSpec = { t: "Sealed box, technical", lv: 2, rows: [
   { t: "Graphics cards", k: "pick", key: `${SANDBOX}.docker.gpus`, opts: [{ v: null, l: "None" }, { v: "all", l: "All" }], sub: "Graphics cards the box may use." },
 ] };
 
-const LIMITS_TECH: SecSpec = { t: "Limits, technical", lv: 2, rows: [
+const LIMITS_TECH: SecSpec = { t: "Limits, technical", group: "Limits", lv: 2, rows: [
   { t: "Limits for commands", sub: "On Windows, commands run inside a job with a memory and processor ceiling.", k: "btn", btn: "Show limits", off: "Needs the engine to report the limits it puts on commands." },
 ] };
 
@@ -227,7 +227,7 @@ export function ComputerMore(props: SettingsPageProps) {
 
 function SecView({ s, c }: { s: SecSpec; c: Ctx }) {
   return (
-    <Sec title={s.t} hint={s.hint} id={s.id}>
+    <Sec title={s.t} group={s.group} showHeading={s.showHeading} hint={s.hint} id={s.id}>
       {s.body ? s.body(c) : null}
       {(s.rows ?? []).filter((r) => (r.lv ?? 0) <= c.lv && c.lv <= (r.upTo ?? 2)).map((r) => <Row key={r.t} s={r} c={c} />)}
     </Sec>
@@ -415,7 +415,7 @@ function ArgRow({ s, c }: { s: Spec; c: Ctx }) {
 function CheckWorks({ c }: { c: Ctx }) {
   const [open, setOpen] = useState(false);
   return (
-    <Ctl title="Check what works" sub="Screen pictures, the mouse and keyboard, reading apps, each screen, and the stop key on this computer.">
+    <Ctl title="Check what works" sub="Checks screen, mouse, keyboard, apps and the stop key." help="Screen pictures, the mouse and keyboard, reading apps, each screen, and the stop key on this computer.">
       <Btn sm onClick={() => setOpen(true)}>Check</Btn>
       {open ? <CheckDialog engine={c.engine} onClose={() => setOpen(false)} /> : null}
     </Ctl>
@@ -428,7 +428,7 @@ function CheckDialog({ engine, onClose }: { engine: WindowEngine; onClose: () =>
   const use = rec(d.computerUse);
   const caps = Object.entries(use).filter(([k, v]) => k !== "provider" && typeof v !== "object").map(([k, v]): [string, ReactNode] => [k, String(v)]);
   return (
-    <Dialog title="Check what works" onClose={onClose} footer={<><Btn ghost onClick={() => void st.reload()}>Check again</Btn><Btn onClick={onClose}>Close</Btn></>}>
+    <Dialog title="Check what works" onClose={onClose} footer={<><Btn ghost onClick={() => void st.reload()}>Check again</Btn></>}>
       {st.error ? <p className="hint s2-err" role="alert">{st.error}</p> : null}
       {st.loading && !st.data ? <p>Checking…</p> : null}
       {st.data ? (
@@ -452,7 +452,7 @@ function TechKv({ c }: { c: Ctx }) {
 /** Stop-everything key: the keys drawn inert until the engine has a stop key on this computer. */
 function StopKey() {
   return (
-    <Ctl title="Stop-everything key" sub="Press it anywhere to stop every Trunk’s mouse and keyboard on every computer at once. It stays stopped until you let them resume." off="Needs the engine’s stop key on this computer.">
+    <Ctl title="Stop-everything key" sub="Stops every Trunk’s mouse and keyboard on every computer." help="Press it anywhere to stop every Trunk’s mouse and keyboard on every computer at once. It stays stopped until you let them resume." off="Needs the engine’s stop key on this computer.">
       <span className="s2cm-kbd">{["Ctrl", "Alt", "Shift", "Esc"].map((k) => <kbd key={k}>{k}</kbd>)}</span>
     </Ctl>
   );
@@ -461,7 +461,7 @@ function StopKey() {
 /** Lending this computer starts on this computer's node: the Branch app pairs it with the other Branch. */
 function PairRow() {
   return (
-    <Ctl title="Code from the other computer" sub="8 characters, two groups of 4. Make it on the other computer: Add a computer › Another computer with Branch." off="Lending this computer is done by the Branch app on it.">
+    <Ctl title="Code from the other computer" sub="8 characters, two groups of 4." help="8 characters, two groups of 4. Make it on the other computer: Add a computer › Another computer with Branch." off="Lending this computer is done by the Branch app on it.">
       <input className="inp s2cm-code" aria-label="Code from the other computer" placeholder="ABCD-1234" disabled />
       <Btn pri sm disabled>Pair</Btn>
     </Ctl>
@@ -476,7 +476,7 @@ function ShareScreen({ c }: { c: Ctx }) {
   const setup = localSetup(rec(envs.data), nodes.data);
   const on = cfg.get("desktop.host.enabled") === true;
   return (
-    <Ctl title="Share this computer’s screen" sub="Watch and control this computer from Branch on another computer. A change reconnects it briefly; a new ability may need a yes there."
+    <Ctl title="Share this computer’s screen" sub="Watch and control this computer from Branch on another computer." help="Watch and control this computer from Branch on another computer. A change reconnects it briefly; a new ability may need a yes there."
       after={setup ? <div className="s2cm-x"><div className="s2cm-stat"><span>Screen sharing</span><Pill tone={setup.ok ? "ok" : "bad"}>{setup.word}</Pill>{setup.detail ? <small>{setup.detail}</small> : null}</div></div> : null}>
       <Switch label="Share this computer’s screen" checked={on} disabled={cfg.loading} onChange={(v) => void cfg.set("desktop.host.enabled", v)} />
     </Ctl>
@@ -513,7 +513,7 @@ function PhonesLent({ c }: { c: Ctx }) {
           <span className="grow"><b>{str(n.displayName) || str(n.nodeId)}</b><small>{[str(n.platform), str(n.version)].filter(Boolean).join(" · ")}</small></span>
           <Pill tone={n.connected === true ? "ok" : "idle"}>{n.connected === true ? "Lent" : "Offline"}</Pill>
         </div>
-      )) : <p className="empty">No phone is lent. Turn it on from the phone: Settings › Lend this phone.</p>}
+      )) : <Empty>No phone is lent. Turn it on from the phone’s settings.</Empty>}
     </div>
   );
 }
@@ -672,7 +672,7 @@ function SparesMax({ c }: { c: Ctx }) {
   const ok = n === null || (Number.isInteger(n) && n >= 0);
   const save = () => { if (!ok) return; void cfg.set("cloudWorkers.preparedPool.maxTotal", n); setDraft(null); };
   return (
-    <Ctl title="Most spares at once" sub="Across every repository and cloud computer. Empty means 4; 0 stops spares and lets the unused ones go.">
+    <Ctl title="Most spares at once" sub="Across every repository and cloud computer." help="Across every repository and cloud computer. Empty means 4; 0 stops spares and lets the unused ones go.">
       <input className="inp s2cm-num" inputMode="numeric" aria-label="Most spares at once" placeholder="4" value={shown} disabled={cfg.loading} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") save(); }} />
       <Btn sm disabled={cfg.loading || !ok} onClick={save}>Save</Btn>
     </Ctl>
@@ -681,7 +681,7 @@ function SparesMax({ c }: { c: Ctx }) {
 
 /* ---------- Everything connected ---------- */
 
-const EVERYTHING: SecSpec = { t: "Everything connected", lv: 1, hint: "Every app, browser, phone and computer that can reach this Branch.", body: (c) => <Everything c={c} /> };
+const EVERYTHING: SecSpec = { t: "Everything connected", group: "Connections", lv: 1, hint: "Every app, browser, phone and computer that can reach this Branch.", body: (c) => <Everything c={c} /> };
 
 type Group = "Computers" | "Phones" | "Browsers and apps";
 type Thing = {
@@ -849,7 +849,7 @@ function KeyRow({ c, t, k, onChanged }: { c: Ctx; t: Thing; k: RecordValue; onCh
       {dlg === "revoke" ? <Confirm title={`Revoke the ${role} key?`} body="It stops working at once and can’t be brought back." yes="Revoke" danger
         onYes={async () => { await c.engine.request("device.token.revoke", { deviceId: t.id, role }); onChanged(); }} onClose={() => setDlg("")} /> : null}
       {done ? (
-        <Dialog title={`Key replaced · ${t.name}`} onClose={() => setDone(null)} footer={<Btn onClick={() => setDone(null)}>Close</Btn>}>
+        <Dialog title={`Key replaced · ${t.name}`} onClose={() => setDone(null)}>
           <p>{done.tokenDelivery === "in-band" ? "This device has its new key already; there is nothing else to do." : "It reconnects with the new key by itself; there is nothing else to do. If it doesn’t, pair it again. For safety, the new key is shown only on the device itself."}</p>
         </Dialog>
       ) : null}
@@ -859,7 +859,7 @@ function KeyRow({ c, t, k, onChanged }: { c: Ctx; t: Thing; k: RecordValue; onCh
 
 /* ---------- Who is connected now ---------- */
 
-const WHO: SecSpec = { t: "Who is connected now", lv: 1, hint: "Every app, browser, phone and computer reporting in right now.", body: (c) => <Who c={c} /> };
+const WHO: SecSpec = { t: "Who is connected now", group: "Connections", showHeading: false, lv: 1, hint: "Every app, browser, phone and computer reporting in right now.", body: (c) => <Who c={c} /> };
 
 const MODE: Record<string, string> = { ui: "the window", webchat: "a browser", cli: "the terminal", node: "a computer", backend: "a service", gateway: "this Branch" };
 const IDLE_S = 300;
@@ -922,7 +922,7 @@ const SECTIONS: SecSpec[] = [
 ];
 
 export const ROWS: RowEntry[] = SECTIONS.flatMap((s) => [
-  { page: "computer", title: s.t, lv: s.lv },
-  ...(s.rows ?? []).filter((r) => r.k !== "hint").map((r) => ({ page: "computer", title: r.t, sec: s.t, lv: Math.max(s.lv, r.lv ?? 0) as Lv })),
-  ...(s.titles ?? []).map(([title, lv]) => ({ page: "computer", title, sec: s.t, lv: Math.max(s.lv, lv) as Lv })),
+  { page: "computer", title: s.t, sec: s.t, group: s.group ?? s.t, lv: s.lv },
+  ...(s.rows ?? []).filter((r) => r.k !== "hint").map((r) => ({ page: "computer", title: r.t, sec: s.t, group: s.group ?? s.t, lv: Math.max(s.lv, r.lv ?? 0) as Lv })),
+  ...(s.titles ?? []).map(([title, lv]) => ({ page: "computer", title, sec: s.t, group: s.group ?? s.t, lv: Math.max(s.lv, lv) as Lv })),
 ]);

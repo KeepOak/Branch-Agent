@@ -70,7 +70,7 @@ function CommandsTechnical({ engine, canWrite }: { engine: WindowEngine; canWrit
 export function ProceduresTab({ engine, level }: { engine: WindowEngine; level: Level }) {
   const canWrite = engine.scopes.includes("operator.admin");
   return <div className="au-tab">
-    <p className="au-hint">Saved step-by-step routines, including ones a Trunk learned by watching you.</p>
+    <p className="au-hint">Saved steps a Trunk can run again.</p>
     <div className="au-actions"><button type="button" className="btn" disabled title={shownWhy(PROCEDURE_NEEDS.store)}><Glyph name="teach" size={14} />Show a Trunk how, once</button></div>
     <EmptyLine icon={<Glyph name="flow" size={22} />}>No procedures yet. Show a Trunk how once, and it saves the steps to run again.</EmptyLine>
     <Section title="Your saved prompts" hint="Things you ask for often. Each has its own command that works in the window, on the phone, in the terminal and in chat apps.">

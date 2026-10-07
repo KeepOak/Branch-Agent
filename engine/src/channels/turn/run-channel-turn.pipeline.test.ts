@@ -1,6 +1,7 @@
 // Preserve mock setup before modules that consume it.
 // oxfmt-ignore
 import { channelTurnMocks } from "./run-channel-turn.test-support.js";
+import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
@@ -12,6 +13,15 @@ import { getReplySystemEventContext } from "../../auto-reply/reply/system-event-
 import { resetDiagnosticEventsForTest } from "../../infra/diagnostic-events.js";
 import { PlatformMessageNotDispatchedError } from "../../infra/outbound/deliver-types.js";
 import { resetLogger, setLoggerOverride } from "../../logging/logger.js";
+import {
+  resolveSessionHandoffLeaseDir,
+  writeSessionHandoffLease,
+} from "../../process/session-handoff-lease-files.js";
+import {
+  refreshSessionHandoffLeases,
+  resetSessionHandoffLeaseGateForTest,
+} from "../../process/session-handoff-lease-gate.js";
+import { getFileLockProcessStartTime } from "../../shared/pid-alive.js";
 import { outboundMessageIdentities } from "../message/outbound-echo-state.js";
 import { runPreparedChannelTurn } from "./execution.js";
 import { dispatchAssembledChannelTurn } from "./lifecycle.js";
@@ -391,6 +401,42 @@ describe("channel turn pipeline", () => {
         storePath,
       }),
     );
+  });
+
+  it("records an inbound message for a session the previous engine still finishes only once it let go", async () => {
+    vi.stubEnv("BRANCH_STATE_DIR", tempDirs.make("branch-channel-turn-lease-"));
+    resetSessionHandoffLeaseGateForTest();
+    const targetSessionKey = "agent:main:telegram:group:42";
+    // The previous engine: a live process other than this one (the test runner's parent).
+    const { file, lease } = writeSessionHandoffLease(
+      resolveSessionHandoffLeaseDir(),
+      `session:${targetSessionKey}`,
+    );
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        ...lease,
+        pid: process.ppid,
+        startTime: getFileLockProcessStartTime(process.ppid),
+      }),
+    );
+    refreshSessionHandoffLeases();
+    const events: string[] = [];
+    try {
+      const turn = dispatchTestAssembledTurn({
+        channel: "telegram",
+        recordInboundSession: createRecordInboundSession(events),
+        record: { sessionKey: targetSessionKey },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(events).toEqual([]);
+      fs.unlinkSync(file);
+      expectDispatched(await turn);
+      expect(events[0]).toBe("record");
+    } finally {
+      resetSessionHandoffLeaseGateForTest();
+      vi.unstubAllEnvs();
+    }
   });
 
   it("rejects surrounding whitespace in an explicit record session", async () => {

@@ -38,6 +38,15 @@ const CONFIG = { "config.get": { hash: "h", valid: true, config: {} }, "config.p
 const PAIRED = { pending: [], paired: [{ deviceId: "dev-1", publicKey: "k", displayName: "Desk", platform: "linux", roles: ["node"], scopes: ["node.invoke"], approvedAtMs: 1, createdAtMs: 1, connected: true, tokens: [{ role: "node", scopes: [], createdAtMs: Date.now() }] }] };
 
 describe("Settings › Computer & browser, below Which Trunk uses which", () => {
+  it("shows Gateway screen control off until it is enabled in engine config", async () => {
+    const { engine, request } = engineWith(CONFIG);
+    await show(engine, "regular");
+    const screen = row("See the screen and use the mouse")!.querySelector<HTMLInputElement>("input[role=switch]")!;
+    expect(screen.checked).toBe(false);
+    await click(screen);
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "cua-computer": { enabled: true } } } });
+  });
+
   it("places the sections by level: Technical-only sections stay out of Advanced", async () => {
     const { engine } = engineWith(CONFIG);
     await show(engine, "regular");

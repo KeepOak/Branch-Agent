@@ -30,6 +30,7 @@ import {
 import { resolveCronSession } from "../cron/isolated-agent/session.js";
 import { getQueueSize, isCommandLaneTaskMarkerCurrent } from "../process/command-queue.js";
 import { CommandLane } from "../process/lanes.js";
+import { isSessionLaneHeldByPredecessor } from "../process/session-handoff-lease-gate.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { isCronRunSessionKey } from "../sessions/session-key-utils.js";
@@ -333,8 +334,9 @@ export async function resolveHeartbeatWakeStage(opts: HeartbeatRunOptions) {
 
   // Do not interrupt an active streaming turn. Payload/admitted work retries;
   // an event-free, never-started monitor poll waits for its next persisted tick.
+  // A session the previous engine is still finishing (in-place update) is busy too: its writes come first.
   const sessionLaneKey = resolveEmbeddedSessionLane(sessionKey);
-  if (getSize(sessionLaneKey) > 0) {
+  if (getSize(sessionLaneKey) > 0 || isSessionLaneHeldByPredecessor(sessionLaneKey)) {
     return skippedBusyStage(HEARTBEAT_SKIP_REQUESTS_IN_FLIGHT);
   }
 

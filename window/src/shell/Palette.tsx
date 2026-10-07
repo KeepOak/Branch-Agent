@@ -9,12 +9,12 @@ type Props = {
   rows: PaletteRow[];
   request: Request;
   rowName: (key: string) => string;
-  onOpenConversation: (key: string) => void;
+  onOpenMessage: (key: string, query: string) => void;
   onClose: () => void;
 };
 
 /** Message rows from sessions.search after a 200 ms pause in typing (§4.1.7 Parity adds, palette-session-search). */
-function useMessageRows(request: Request, query: string, rowName: (k: string) => string, open: (k: string) => void) {
+function useMessageRows(request: Request, query: string, rowName: (k: string) => string, open: (key: string, query: string) => void) {
   const [hits, setHits] = useState<MessageHit[]>([]);
   const [note, setNote] = useState("");
   useEffect(() => {
@@ -43,16 +43,21 @@ function useMessageRows(request: Request, query: string, rowName: (k: string) =>
       clearTimeout(timer);
     };
   }, [request, query]);
-  const rows: PaletteRow[] = hits.map((h, i) => ({ id: `msg:${i}`, group: "Messages", label: h.snippet, hint: rowName(h.key), run: () => open(h.key) }));
+  const rows = messagePaletteRows(hits, query, rowName, open);
   return { rows, note };
 }
 
+/** Palette message rows carry the searched words into the destination conversation's Find bar. */
+export function messagePaletteRows(hits: MessageHit[], query: string, rowName: (key: string) => string, open: (key: string, query: string) => void): PaletteRow[] {
+  return hits.map((hit, i) => ({ id: `msg:${i}`, group: "Messages", label: hit.snippet, hint: rowName(hit.key), run: () => open(hit.key, query) }));
+}
+
 /** Find anything (DESIGN-SPEC §4.1.7): the field, the grouped list, Up/Down/Enter/Escape, and the footer. */
-export function Palette({ rows, request, rowName, onOpenConversation, onClose }: Props) {
+export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [sel, setSel] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
-  const messages = useMessageRows(request, query, rowName, onOpenConversation);
+  const messages = useMessageRows(request, query, rowName, onOpenMessage);
   const typing = query.trim() !== "";
   // Trunks and Messages show only while typing (§4.1.7 Parity adds); groups keep their order.
   const base = filterPalette(typing ? rows : rows.filter((r) => r.group !== "Trunks"), query);
