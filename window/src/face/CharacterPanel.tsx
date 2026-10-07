@@ -6,7 +6,7 @@ import { Menu } from "../shell/Menu";
 import { notify } from "../shell/notify";
 import { AGENT_SIZE_PX, useLookPrefs } from "./look-prefs";
 import { PRIORITY } from "./cap";
-import { panelLimits, panelPlaceAt, panelPoint, readPanelPlace, savePanelPlace, USUAL_PLACE, type PanelBounds, type PanelPlace } from "./panel-position";
+import { panelLimits, panelNearestCorner, panelPlaceAt, panelPlaceOnResize, panelPoint, readPanelPlace, savePanelPlace, USUAL_PLACE, type PanelBounds, type PanelPlace } from "./panel-position";
 
 export function CharacterPanel({ name, state, onClose, others = [], column }: {
   name: string; state: AgentState; onClose: () => void; others?: string[]; column: HTMLElement | null;
@@ -36,6 +36,7 @@ export function CharacterPanel({ name, state, onClose, others = [], column }: {
       document.querySelector<HTMLElement>(".focus-exit")?.getBoundingClientRect().bottom ?? rect.top,
     );
     const next = panelLimits(rect, el.offsetWidth, el.offsetHeight, composer?.getBoundingClientRect().top, headerBottom);
+    if (limits.current) place.current = panelPlaceOnResize(place.current, limits.current, next);
     limits.current = next;
     column.style.setProperty("--agent-window-clearance", `${el.offsetHeight + 24}px`);
     setPoint(panelPoint(place.current, next));
@@ -107,10 +108,11 @@ export function CharacterPanel({ name, state, onClose, others = [], column }: {
       </div>
     </aside>
     {menu ? <Menu at={menu} label="Move the agent window" onClose={() => setMenu(null)} items={[
-      { label: "Bottom right", run: () => moveTo({ corner: "bottom-right" }) },
-      { label: "Bottom left", run: () => moveTo({ corner: "bottom-left" }) },
-      { label: "Top right", run: () => moveTo({ corner: "top-right" }) },
-      { label: "Top left", run: () => moveTo({ corner: "top-left" }) },
+      { kind: "head", label: "Move the agent" },
+      { label: "Bottom right", checked: panelNearestCorner(place.current) === "bottom-right", run: () => moveTo({ corner: "bottom-right" }) },
+      { label: "Bottom left", checked: panelNearestCorner(place.current) === "bottom-left", run: () => moveTo({ corner: "bottom-left" }) },
+      { label: "Top right", checked: panelNearestCorner(place.current) === "top-right", run: () => moveTo({ corner: "top-right" }) },
+      { label: "Top left", checked: panelNearestCorner(place.current) === "top-left", run: () => moveTo({ corner: "top-left" }) },
       { kind: "sep" },
       { label: "Back to the usual place", run: () => moveTo(USUAL_PLACE, true) },
     ]} /> : null}

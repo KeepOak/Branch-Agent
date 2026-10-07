@@ -86,7 +86,8 @@ export type Block =
   | { kind: "usage"; key: string; input: number; output: number; total: number }
   | { kind: "step"; key: string; outputKey?: string; tool: string; title: string; detail: string; status: StepStatus; input?: string; output?: string; changes?: FileChange[]; browser?: BrowserPresentation; at?: number }
   | { kind: "approval"; key: string; approval: Approval }
-  | { kind: "done"; key: string; runId: string; durationMs?: number }
+  /** The end of a turn. `stopped`: you (or the engine) stopped it; the thread says so instead of "Done in". */
+  | { kind: "done"; key: string; runId: string; durationMs?: number; stopped?: boolean }
   | { kind: "error"; key: string; runId?: string; message: string }
   | { kind: "notice"; key: string; text: string; at?: number }
   | { kind: "status"; key: string; phase: string; attempt?: number; maxAttempts?: number };

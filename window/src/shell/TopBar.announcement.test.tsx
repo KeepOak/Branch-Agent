@@ -10,13 +10,13 @@ vi.mock("../face/Pebble", () => ({ Pebble: () => <span aria-hidden="true" /> }))
 it("announces the living header avatar's state politely at narrow widths", async () => {
   const host = document.body.appendChild(document.createElement("div"));
   const root = createRoot(host);
-  const header: HeaderInfo = { name: "Juniper", trunkName: "Juniper", state: "working", activityState: "search", isDefaultTrunk: false, renaming: false, onRename: () => {} };
+  const header: HeaderInfo = { name: "Juniper", trunkName: "Juniper", state: "search", isDefaultTrunk: false, renaming: false, onRename: () => {} };
   await act(async () => root.render(<HeaderRow header={header} />));
   const status = host.querySelector('[role="status"][aria-live="polite"]');
-  expect(status?.textContent).toBe("Juniper: Searching");
-  await act(async () => root.render(<HeaderRow header={{ ...header, state: "working", activityState: "read" }} />));
+  expect(status?.textContent).toBe("Juniper: Working · using the computer");
+  await act(async () => root.render(<HeaderRow header={{ ...header, state: "wait" }} />));
   expect(host.querySelectorAll('[role="status"][aria-live="polite"]')).toHaveLength(1);
-  expect(status?.textContent).toBe("Juniper: Reading");
+  expect(status?.textContent).toBe("Juniper: Waiting for you");
   await act(async () => root.unmount());
   host.remove();
 });

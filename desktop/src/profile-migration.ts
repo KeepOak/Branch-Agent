@@ -3,6 +3,15 @@ import { join } from "node:path";
 
 const MARKER = ".normal-profile-migrated.json";
 
+/** A standby may inspect the established profile, but must not run migrations beside its owner. */
+export function readPreparedNormalProfile(home: string): { legacyDevMode: false; note?: string } {
+  const normal = join(home, ".branch");
+  if (!existsSync(join(normal, MARKER)) || !existsSync(join(normal, "branch.json"))) {
+    throw new Error("The profile is not ready for read-only standby preparation");
+  }
+  return { legacyDevMode: false };
+}
+
 interface MigrationCounts { copied: number; linksSkipped: number }
 
 function mergeMissing(source: string, destination: string, counts: MigrationCounts, afterCopy?: () => void, root = false): void {

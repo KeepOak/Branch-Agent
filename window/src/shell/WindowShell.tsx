@@ -3,7 +3,7 @@ import type { Conversation } from "../connect/conversations";
 import type { Topic } from "@branch/gateway-protocol";
 import type { TopicUpdate } from "../thread/TopicCard";
 import type { SendExtras } from "../connect/engine";
-import { roomIdOf, type SaplingSession, type SessionSnapshot } from "../connect/session";
+import { roomIdOf, type SaplingSession } from "../connect/session";
 import { withOwner } from "../connect/agent-owner";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { Composer, VOICE_OFF } from "../composer/Composer";
@@ -12,7 +12,6 @@ import { componentDesktop } from "../connect/desktop-component-updates";
 import { useBranchVersion } from "../connect/branch-version";
 import { LOCAL_ADDRESS, readTargetName, saveTargetName } from "../setup/pre-connect-state";
 import { Thread } from "../thread/Thread";
-import { stepLabel } from "../thread/format";
 import { PlaceView } from "../places-nav/PlaceView";
 import { handleOfficeNavigation } from "../places/office/navigation";
 import { SettingsFrame } from "../places-nav/SettingsFrame";
@@ -82,7 +81,7 @@ import { useLockdown } from "./use-lockdown";
 import { LockdownBanner } from "./LockdownBanner";
 import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
-import { HeaderRow, PlaceHead, TopBar, type FaceState } from "./TopBar";
+import { HeaderRow, PlaceHead, TopBar } from "./TopBar";
 import { toggleListLayout, useLayout } from "./use-layout";
 import { usePinOrder } from "./use-pin-order";
 import { hideMenuItems, hideTarget, HIDEABLE, usePetLook, useShown } from "./shown";
@@ -101,11 +100,12 @@ import { TrunkAppearances, TrunkPebbleLooks, TrunkEmojiFaces, trunkAppearance, t
 import { CharacterPanel } from "../face/CharacterPanel";
 import { useShellRoom } from "../rooms/useShellRoom";
 import { NewGroupChatHost } from "../rooms/NewGroupChat";
-import { agentState, STATE_LABEL } from "../face/agentState";
+import { agentState, DONE_MS, TALK_MS, type AgentState } from "../face/agentState";
 import { conversationLink, useConversationMenu } from "./ConversationMenu";
 import { openConversationWindow, ownWindowUnavailable } from "./own-window";
 import { TALK_EVENT, useVoiceCatalog } from "../composer/VoiceParts";
 import { DockQuestion } from "../thread/QuestionCard";
+import { CHECK_STATUS_EVENT } from "../thread/blocks";
 import { WhereChips } from "../thread/WhereChips";
 import { FIND_EVENT } from "../thread/FindBar";
 import { useQuestions } from "../thread/questions";
@@ -116,30 +116,6 @@ import { useFirstRun } from "../setup/use-first-run";
 import { useNeedsCount } from "../places/inbox";
 import { TrunkStudio } from "../places/trunk";
 import "./preview.css";
-
-const DONE_MS = 7000;
-
-/** While working: "Working · using the computer" when the step running now uses a computer, else what the face says
- *  it is doing (the preview's statusLine and AG_LABEL). */
-function workWords(s: SessionSnapshot, now: number): string {
-  const step = [...s.live].reverse().find((b) => b.kind === "step");
-  if (step?.kind === "step" && step.status === "running" && /browser|computer|screen|desktop/i.test(step.tool)) {
-    return "Working · using the computer";
-  }
-  if (step?.kind === "step" && step.status === "running") return stepLabel(step);
-  const state = agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now });
-  return state === "work" || state === "idle" ? "Thinking" : STATE_LABEL[state];
-}
-
-function faceState(s: SessionSnapshot, now: number): FaceState {
-  if (s.live.some((b) => b.kind === "approval" && b.approval.state === "pending")) {
-    return "waiting";
-  }
-  if (s.liveRunId) {
-    return "working";
-  }
-  return s.doneAt && now - s.doneAt < DONE_MS ? "done" : "here";
-}
 
 /** The clock for row times; it also ticks just after a "Done" so the header goes back to ready (§4.2.5). */
 function useNow(doneAt: number | null): number {
@@ -153,8 +129,8 @@ function useNow(doneAt: number | null): number {
     if (!doneAt) {
       return;
     }
-    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, doneAt + DONE_MS - Date.now()) + 50);
-    return () => clearTimeout(timer);
+    const timers = [TALK_MS, DONE_MS].map(delay => setTimeout(() => setNow(Date.now()), Math.max(0, doneAt + delay - Date.now()) + 50));
+    return () => timers.forEach(clearTimeout);
   }, [doneAt]);
   return now;
 }
@@ -292,15 +268,9 @@ function useCharacterShown() {
   return [shown, setShown] as const;
 }
 
-/** The character panel keeps its own one-second clock, so its talk, cheer and sleep faces change on time
- *  without re-rendering the whole shell every second. */
-function LiveCharacter({ name, snapshot: s, onClose, others, column }: { name: string; snapshot: SessionSnapshot; onClose: () => void; others?: string[]; column: HTMLElement | null }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  return <CharacterPanel name={name} state={agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now })} onClose={onClose} others={others} column={column} />;
+/** The header and character panel receive the same Trunk state. */
+function LiveCharacter({ name, state, onClose, others, column }: { name: string; state: AgentState; onClose: () => void; others?: string[]; column: HTMLElement | null }) {
+  return <CharacterPanel name={name} state={state} onClose={onClose} others={others} column={column} />;
 }
 
 /** Engine reads the shell needs, in one place. */
@@ -612,6 +582,20 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     window.addEventListener("branch:navigate-settings", navigate);
     return () => window.removeEventListener("branch:navigate-settings", navigate);
   }, [openSettings]);
+  useEffect(() => {
+    // "Couldn't finish" › Check status: the Gateway popover (§4.9.3) at the clicked button, as the preview opens it
+    // (openPop(el, POPS.gateway())); else over its status bar item.
+    const check = (event: Event) => {
+      const at = (event as CustomEvent<{ left?: number; right?: number; top?: number }>).detail;
+      const r = at && typeof at.left === "number" && typeof at.right === "number" && typeof at.top === "number"
+        ? { left: at.left, right: at.right, top: at.top, width: at.right - at.left }
+        : document.querySelector("[data-testid=sb-gateway]")?.getBoundingClientRect();
+      const above = r && r.width ? { left: r.left, right: r.right, top: r.top, align: "left" as const } : { left: 8, right: 8, top: innerHeight - 40, align: "left" as const };
+      setOverlay({ kind: "status", item: "gateway", above });
+    };
+    window.addEventListener(CHECK_STATUS_EVENT, check);
+    return () => window.removeEventListener(CHECK_STATUS_EVENT, check);
+  }, []);
   // The Branch app's tray: its usage ring shows the same reading as the ring bottom right, and a click opens Usage.
   const trayLeft = ringReading(limits)?.left ?? null;
   useEffect(() => {
@@ -784,10 +768,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
 
   const questions = useQuestions(ready ? session.engine : undefined);
   const waitingQuestion = questions.list.find((q) => q.status === "pending" && (!q.expiresAtMs || q.expiresAtMs > now)) ?? null;
-  const faceNow = waitingQuestion || (openKey && (pending.get(openKey) ?? 0) > 0) ? "waiting" : faceState(s, now);
+  const openTrunkPaused = trunks.list.some(t => t.paused && openKey?.startsWith(`agent:${t.id}:`));
+  const faceNow = waitingQuestion || (openKey && (pending.get(openKey) ?? 0) > 0) ? "wait" : agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now, paused: openTrunkPaused, lastActivityAt: s.lastActivityAt });
   const rowState = useCallback((row: Conversation) => {
     const open = row.key === openKey;
-    return { waiting: row.needsYou === true || (pending.get(row.key) ?? 0) > 0 || (open && faceNow === "waiting"), working: row.working || (open && faceNow === "working") };
+    return { waiting: row.needsYou === true || (pending.get(row.key) ?? 0) > 0 || (open && faceNow === "wait"), working: row.working || (open && ["think", "work", "search", "read"].includes(faceNow)) };
   }, [pending, openKey, faceNow]);
   const topicUpdates: TopicUpdate[] = activeContact ? activeTopics.map((topic) => {
     const row = lists.rows.find((candidate) => candidate.key === topic.key);
@@ -1017,11 +1002,10 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       ? {
           name,
           trunkName: trunkName(draftTopic?.agentId ?? openRow?.agentId),
-          state: draftTopic ? "here" as const : faceNow,
-          activityState: draftTopic ? "idle" as const : agentState({ live: s.live, running: Boolean(s.liveRunId), history: s.history, endedAt: s.doneAt, now }),
+          state: draftTopic ? "idle" as const : faceNow,
+          paused: !draftTopic && openTrunkPaused,
           isDefaultTrunk: (draftTopic?.agentId ?? openRow?.agentId) === trunks.defaultId,
           role: trunks.list.find((t) => t.id === (draftTopic?.agentId ?? openRow?.agentId ?? trunks.defaultId))?.theme,
-          workWords: draftTopic ? "" : workWords(s, now),
           renaming: !draftTopic && renaming !== null && renaming === openKey,
           onProfile: !draftTopic && room.header ? undefined : () => openTrunkProfile(draftTopic?.agentId ?? openRow?.agentId ?? trunks.defaultId ?? undefined),
           room: draftTopic ? null : room.header,
@@ -1237,6 +1221,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           pendingUser={s.pendingUser}
           queued={s.queued}
           steered={s.steered}
+          ended={s.ended}
           running={Boolean(s.liveRunId)}
           onAnswer={(id, decision) => void session.answer(id, decision)}
         />
@@ -1666,7 +1651,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       ) : null}
       {removingTrunk ? <RemoveTrunkDialog engine={session.engine} agentId={removingTrunk.agentId} name={removingTrunk.name} onClose={() => setRemovingTrunk(null)} /> : null}
       {route.kind === "chat" && characterShown ? (
-        <LiveCharacter name={trunkName(openRow?.agentId)} snapshot={s} onClose={() => setCharacterShown(false)} others={room.others} column={conversationColumn} />
+        <LiveCharacter name={trunkName(openRow?.agentId)} state={faceNow} onClose={() => setCharacterShown(false)} others={room.others} column={conversationColumn} />
       ) : null}
       <NewGroupChatHost engine={ready ? session.engine : undefined} onOpen={openConversation} />
       {guide === "tour" ? <Walkthrough defaultName={defaultName} onClose={() => setGuide(null)} /> : null}
