@@ -37,7 +37,7 @@ describe("copy conversation", () => {
     const open = vi.fn();
     const actions = conversationActions(request, { refresh } as unknown as ConversationList, () => null);
 
-    const items = menu(false, actions, (r) => void actions.copyConversation(r, open));
+    const items = menu(false, actions, (r) => actions.copyConversation(r, open));
     const forkItem = items.find((item) => item.kind === undefined && item.label === "Copy into a new conversation");
     expect(forkItem).toMatchObject({ label: "Copy into a new conversation", letter: "f" });
     expect(forkItem && "disabled" in forkItem ? forkItem.disabled : undefined).toBeUndefined();
@@ -68,7 +68,7 @@ describe("copy conversation", () => {
     const open = vi.fn();
     const actions = conversationActions(request, { refresh } as unknown as ConversationList, () => null);
 
-    const items = menu(true, actions, (r) => void actions.copyConversation(r, open));
+    const items = menu(true, actions, (r) => actions.copyConversation(r, open));
     const forkItem = items.find((item) => item.kind === undefined && item.label === "Copy into a new conversation");
     expect(forkItem).toMatchObject({ label: "Copy into a new conversation", letter: "f", hint: "From the last finished reply" });
     expect(forkItem && "disabled" in forkItem ? forkItem.disabled : undefined).toBeUndefined();
