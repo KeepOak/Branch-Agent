@@ -26,7 +26,7 @@ import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
 import { freemem } from "node:os";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
-import { MacComputerDriver } from "./mac-computer-driver";
+import { MacComputerDriver, macScreenControlEnabled } from "./mac-computer-driver";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 /** Scratch test copies: never grouped with, or mistaken for, the owner's app (they also start hidden). */
@@ -117,6 +117,7 @@ function handWindowToGateway(always = false): void {
   sendToBranchWindows("branch-desktop:engine-handoff", gatewayUrl());
 }
 const macComputerDriver = process.platform === "darwin" ? new MacComputerDriver(log) : undefined;
+const screenControlEnabled = () => macScreenControlEnabled(join(cfg.dataDir, "home", ".branch", "branch.json"));
 let server: Server | undefined;
 let win: BrowserWindow | undefined;
 const conversationWindows = new Map<string, BrowserWindow>();
@@ -665,6 +666,21 @@ async function start(): Promise<void> {
   stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, onStaged: () => {
     offerStagedUpdate().catch(error => log(`Component update status: ${String(error)}`));
   } });
+  if (macComputerDriver) {
+    let enabled = screenControlEnabled();
+    let granted = enabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
+    const timer = setInterval(() => {
+      const nextEnabled = screenControlEnabled();
+      const nextGranted = nextEnabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
+      if ((nextEnabled !== enabled || nextGranted && !granted) && !engineRestartInProgress) {
+        enabled = nextEnabled;
+        granted = nextGranted;
+        void restartEngine();
+      } else { enabled = nextEnabled; granted = nextGranted; }
+    }, 3_000);
+    timer.unref();
+    app.once("will-quit", () => clearInterval(timer));
+  }
 }
 
 /**
@@ -688,7 +704,8 @@ async function waitForGatewayPort(): Promise<void> {
 /** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
 async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = true, prepared?: PreparedGateway, port = prepared?.port ?? gatewayPort): Promise<void> {
   const started = Date.now();
-  const macComputerEndpoint = await macComputerDriver?.start(engineDir).catch(error => {
+  if (macComputerDriver && !screenControlEnabled()) await macComputerDriver.stop();
+  const macComputerEndpoint = await (screenControlEnabled() ? macComputerDriver?.start(engineDir) : undefined)?.catch(error => {
     log(`Mac computer driver unavailable: ${String(error)}`);
     return undefined;
   });

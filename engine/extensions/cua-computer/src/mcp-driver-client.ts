@@ -168,7 +168,9 @@ function normalizeMcpToolResult(tool: string, raw: unknown): CuaToolResult {
   };
 }
 
-function createClient(binaryPath: string, socketPath: string, env: NodeJS.ProcessEnv) {
+const MAC_BROKER_CLIENT = `const net=require('node:net');const port=Number(process.env.BRANCH_CUA_BROKER_PORT);const secret=process.env.BRANCH_CUA_BROKER_SECRET;delete process.env.BRANCH_CUA_BROKER_PORT;delete process.env.BRANCH_CUA_BROKER_SECRET;if(!Number.isInteger(port)||!secret)process.exit(1);const socket=net.connect({host:'127.0.0.1',port},()=>{socket.write(secret+'\\n');process.stdin.pipe(socket);socket.pipe(process.stdout)});socket.on('error',()=>process.exit(1));socket.on('close',()=>process.exit(0));`;
+
+function createClient(endpoint: { binaryPath: string; socketPath: string } | { port: number; secret: string }, env: NodeJS.ProcessEnv) {
   const proxyEnvironment = { ...env };
   for (const key of Object.keys(proxyEnvironment)) {
     if (key.startsWith("CUA_DRIVER_") || key === "CUA_TELEMETRY_ENABLED") {
@@ -180,12 +182,16 @@ function createClient(binaryPath: string, socketPath: string, env: NodeJS.Proces
     .then(({ mcpStdioRuntime }) => mcpStdioRuntime.load())
     .then(({ createMcpStdioClient }) =>
       createMcpStdioClient({
-        command: binaryPath,
-        args: ["mcp", "--embedded", "--socket", socketPath],
+        command: "port" in endpoint ? process.execPath : endpoint.binaryPath,
+        args: "port" in endpoint ? ["-e", MAC_BROKER_CLIENT] : ["mcp", "--embedded", "--socket", endpoint.socketPath],
         env: {
           ...proxyEnvironment,
           CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
           CUA_DRIVER_RS_UPDATE_CHECK: "false",
+          ...("port" in endpoint ? {
+            BRANCH_CUA_BROKER_PORT: String(endpoint.port),
+            BRANCH_CUA_BROKER_SECRET: endpoint.secret,
+          } : {}),
         },
         clientInfo: { name: "branch-cua-computer", version: "1" },
         protocolVersion: MCP_PROTOCOL_VERSION,
@@ -454,8 +460,8 @@ export function createCuaMcpDriver(options: {
   binaryPath: string;
   socketPath: string;
   env?: NodeJS.ProcessEnv;
-}): CuaDriverSession {
+} | { port: number; secret: string; env?: NodeJS.ProcessEnv }): CuaDriverSession {
   return new McpCuaDriverSession(
-    createClient(options.binaryPath, options.socketPath, options.env ?? process.env),
+    createClient(options, options.env ?? process.env),
   );
 }
