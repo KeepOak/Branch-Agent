@@ -1,0 +1,17 @@
+engine:extensions/active-memory/index.test.ts
+engine:extensions/active-memory/trigger-recall.test.ts
+engine:extensions/memory-core/src/memory-budget.test.ts
+engine:extensions/memory-core/src/memory-entry-origins.test.ts
+engine:extensions/memory-core/src/memory/mmr.test.ts
+engine:extensions/memory-core/src/rings-dreams-file.test.ts
+engine:extensions/memory-core/src/rings-narrative.test.ts
+engine:extensions/memory-core/src/rings-phases.test.ts
+engine:extensions/memory-core/src/rings.test.ts
+engine:extensions/memory-core/src/session-backfill.test.ts
+engine:extensions/memory-core/src/short-term-promotion.test.ts
+engine:extensions/memory-core/src/tools.citations.test.ts
+engine:extensions/memory-core/src/tools.recall-tracking.test.ts
+engine:extensions/memory-core/src/tools.test.ts
+engine:extensions/memory-wiki/src/chatgpt-import.test.ts
+engine:src/transcripts/library.test.ts
+engine:src/transcripts/store.test.ts
