@@ -21,6 +21,8 @@ const FIXED: [string, string[], string?][] = [
   ["Steer with the waiting message", ["Ctrl", "Enter"]],
   ["Your earlier messages", ["↑", "↓"]],
   ["Find in this conversation", ["Ctrl", "F"]],
+  ["Focus sidebar search", ["Ctrl", "G"]],
+  ["Search past sessions", ["Ctrl", "P"]],
   ["Cancel a quoted reply or dictation", ["Esc"]],
   ["Save an edit to a waiting message", ["Ctrl", "Enter"]],
   ["Pick one of the first nine computers", ["Ctrl", "1", "…", "Ctrl", "9"]],

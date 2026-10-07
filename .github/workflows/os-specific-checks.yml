@@ -15,6 +15,11 @@ on:
       - 'engine/src/**/*darwin*'
       - 'engine/src/**/*macos*'
       - 'engine/src/**/*platform*'
+      # State ownership locks: inode, mtime and file-sharing semantics differ by OS.
+      - 'engine/src/infra/gateway-state-owner*'
+      # The engine handoff standby: detached processes, loopback port handover and lock timing differ by OS.
+      - 'engine/src/cli/gateway-cli/standby*'
+      - 'engine/src/infra/standby-port-placeholder*'
       - 'engine/scripts/build-installers.mjs'
       - 'engine/pnpm-lock.yaml'
       - 'window/pnpm-lock.yaml'
@@ -34,16 +39,16 @@ concurrency:
 
 jobs:
   named:
-    name: Named feature tests on macos-latest (${{ matrix.shard }}/5)
+    name: Named feature tests on macos-latest (${{ matrix.shard }}/12)
     runs-on: macos-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     env:
       CI: 'true'
-      FEATURE_SHARD: ${{ matrix.shard }}/5
+      FEATURE_SHARD: ${{ matrix.shard }}/12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -75,11 +80,16 @@ jobs:
         run: node scripts/feature-batch-ci.mjs capabilities
 
   slices:
-    name: Exact feature slices on macos-latest
+    name: Exact feature slices on macos-latest (${{ matrix.shard }}/2)
     runs-on: macos-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     env:
       CI: 'true'
+      FEATURE_SLICE_SHARD: ${{ matrix.shard }}/2
       NODE_OPTIONS: '--max-old-space-size=1024'
       GOMEMLIMIT: '2GiB'
       GOMAXPROCS: '2'

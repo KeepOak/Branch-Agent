@@ -40,4 +40,6 @@ export type GatewayCronServiceContract = CronServiceContract & {
   prepareWake?(): Promise<void>;
   /** Stop cron and await scheduler-owned child process teardown. */
   stopAndDrain?(): Promise<void>;
+  /** Stop scheduling but finish active runs before releasing state. */
+  stopAndDrainForHandoff?(): Promise<void>;
 };

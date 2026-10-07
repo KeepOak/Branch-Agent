@@ -31,7 +31,7 @@ export const MODE_ROWS: readonly ModeRow[] = [
     name: "Plan first",
     icon: "plan",
     line: "Writes a plan and waits for your OK before doing anything.",
-    gap: "Not available in this engine yet: sessions.patch has no plan mode.",
+    gap: "Plan first isn't available with this version of Branch.",
   },
   {
     engine: "read-only",

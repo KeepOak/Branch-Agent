@@ -3,8 +3,11 @@
 // contacts.outside.list / contacts.outside.set; "may message" is each Trunk's agentToAgent deny list for a2a:<id>,
 // the same rule Who it knows writes (shell/who-it-knows-menu.tsx) and the gateway enforces on every send.
 import type { SettingsPageProps } from "../index";
+import { useState } from "react";
+import { BranchLinkDialog } from "../../../shell/BranchLinkDialog";
 import { Btn, Ctl, Empty, Page, Sec, Switch, useConfig, type RowEntry } from "../kit";
 import { RoomAvatar, a2aBadge } from "../../../rooms/RoomMessage";
+import { trunkAppearance } from "../../../face/appearance";
 import { DesktopCtl } from "../desktop-ctl";
 import { CodeRow, rec, str, useCall, useLive, when } from "./common";
 import "./agents.css";
@@ -16,6 +19,7 @@ export type OutsideAgentRow = {
   lastSeenAt: number; online: boolean; revoked: boolean; mayDriveWindow: boolean;
   /** "branch": another Branch grafted in as a device; "trunk": one of its Trunks (via = that Branch's id). */
   kind?: "branch" | "trunk"; via?: string;
+  avatar?: string;
 };
 
 export function readAgents(result: unknown): { enabled: boolean; agents: OutsideAgentRow[] } {
@@ -25,6 +29,7 @@ export function readAgents(result: unknown): { enabled: boolean; agents: Outside
     activity: str(a.activity) || undefined, activityAt: typeof a.activityAt === "number" ? a.activityAt : undefined,
     lastSeenAt: typeof a.lastSeenAt === "number" ? a.lastSeenAt : 0, online: a.online === true, revoked: a.revoked === true, mayDriveWindow: a.mayDriveWindow === true,
     ...(a.kind === "branch" || a.kind === "trunk" ? { kind: a.kind as "branch" | "trunk" } : {}), ...(str(a.via) ? { via: str(a.via) } : {}),
+    ...(str(a.avatar).startsWith("branch:") ? { avatar: str(a.avatar) } : {}),
   }));
   return { enabled: r.enabled !== false, agents: agents.toSorted((x, y) => Number(y.online) - Number(x.online) || y.lastSeenAt - x.lastSeenAt) };
 }
@@ -47,8 +52,8 @@ export const CONNECT_LINES: [string, string][] = [
 ];
 
 export const ROWS: RowEntry[] = [
-  { page: "agents", title: "Let other agents work with Branch", lv: 0 },
-  ...CONNECT_LINES.map(([title]) => ({ page: "agents", title, sec: "Graft an agent", lv: 0 as const })),
+  { page: "agents", title: "Let other agents work with Branch", group: "Grafts", lv: 0 },
+  ...CONNECT_LINES.map(([title]) => ({ page: "agents", title, sec: "Graft an agent", group: "Graft an agent", lv: 0 as const })),
 ];
 
 type Trunk = { id: string; name: string };
@@ -113,7 +118,7 @@ function AgentRow({ agent, trunks, props, reload, sessions, nested = [] }: { age
         <ul className="ca-trunks" aria-label={`${agent.name}'s Trunks`}>
           {nested.map((t) => (
             <li key={t.id} className="ca-trunk" data-testid="grafted-trunk" data-agent={t.id}>
-              <RoomAvatar id={t.id} name={t.name} size={20} online={t.online && !agent.revoked} />
+              <RoomAvatar id={t.id} name={t.name} size={20} src={trunkAppearance(t.avatar, t.name)?.still} online={t.online && !agent.revoked} />
               <span className="ca-name">{t.name}</span>
               <span className="hint">{agent.revoked || t.revoked ? "Disconnected" : t.online ? "Online now" : t.lastSeenAt ? `Last seen ${when(t.lastSeenAt)}` : "Not seen yet"}</span>
             </li>
@@ -125,7 +130,7 @@ function AgentRow({ agent, trunks, props, reload, sessions, nested = [] }: { age
           <Switch label={`${agent.name} may message ${t.name}`} checked={!denied(t.id)} disabled={config.loading} onChange={(on) => allow(t.id, on)} />
         </Ctl>
       ))}
-      <Ctl id={`${agent.id}-window`} title="May use your Branch window" sub="Also needs Branch itself › Let agents use this window. Without it the agent gets its own test Branch." noPin>
+      <Ctl id={`${agent.id}-window`} title="May use your Branch window" sub="Also needs Branch itself › Let agents use this window." help="Also needs Branch itself › Let agents use this window. Without it the agent gets its own test Branch." noPin>
         <Switch label={`${agent.name} may use your Branch window`} checked={agent.mayDriveWindow} disabled={call.busy} onChange={(on) => set({ mayDriveWindow: on })} />
       </Ctl>
       {isBranch ? (
@@ -143,6 +148,7 @@ function AgentRow({ agent, trunks, props, reload, sessions, nested = [] }: { age
 }
 
 export function AgentsPage(props: SettingsPageProps) {
+  const [linking, setLinking] = useState(false);
   const live = useLive<unknown>(props.engine, "contacts.outside.list", {}, ["contacts.changed"]);
   const roster = useLive<unknown>(props.engine, "agents.list", {}, ["config.changed"]);
   const call = useCall();
@@ -152,17 +158,21 @@ export function AgentsPage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede={LEDE}>
       <Sec title="">
-        <Ctl title="Let other agents work with Branch" sub="Claude Code, Codex, Hermes and other agents grafted with branch graft may see your Trunks, message them and join group chats. Off turns every one of them away." off={live.error ? String(live.error) : undefined}>
+        <Ctl title="Let other agents work with Branch" sub="Grafted agents may message Trunks and join groups." help="Claude Code, Codex, Hermes and other agents grafted with branch graft may see your Trunks, message them and join group chats. Off turns every one of them away." off={live.error ? String(live.error) : undefined}>
           <Switch label="Let other agents work with Branch" checked={enabled} disabled={live.loading || call.busy} onChange={(on) => void call.run(async () => { await props.engine.request("contacts.outside.set", { enabled: on }); reload(); })} />
         </Ctl>
       </Sec>
       {agents.length ? groupAgents(agents).map(({ row, trunks: nested }) => <AgentRow key={row.id} agent={row} nested={nested} trunks={trunks} props={props} reload={reload} sessions={agents.map((x) => x.id)} />) : (
         <Sec title="Grafts"><Empty>No agent is grafted yet. Paste one of the lines below into it.</Empty></Sec>
       )}
-      <Sec title="Graft an agent" hint="Each line is pasted once. It runs the branch command, which always uses the Branch on this computer, so it keeps working after updates.">
+      <Sec title="Another Branch" hint="Link a teammate's computer with a one-time code or QR.">
+        <button type="button" className="btn" onClick={() => setLinking(true)}>Link another Branch</button>
+      </Sec>
+      <Sec title="Graft an agent" hint="Each line is pasted once." help="Each line is pasted once. It runs the branch command, which always uses the Branch on this computer, so it keeps working after updates.">
         <DesktopCtl title="Type branch in any terminal" sub="Needed for these lines: adds the branch command." name="branchOnPath" />
         {CONNECT_LINES.map(([title, code]) => <CodeRow key={title} title={title} code={code} />)}
       </Sec>
+      {linking && <BranchLinkDialog engine={props.engine} onClose={() => setLinking(false)} onLinked={reload} />}
     </Page>
   );
 }
