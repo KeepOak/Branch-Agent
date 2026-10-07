@@ -72,10 +72,14 @@ async function findFreePorts(base, count, avoid) {
 }
 
 function run(cmd, args, opts = {}) {
+  const env = { ...process.env, ...opts.env };
+  const nodeBin = require('path').dirname(process.execPath);
+  env.PATH = `${nodeBin}${require('path').delimiter}${env.PATH}`;
+  
   const result = spawnSync(cmd, args, { 
     cwd: opts.cwd || root, 
     encoding: 'utf8', 
-    env: { ...process.env, ...opts.env },
+    env,
     windowsHide: true,
     stdio: opts.stdio || 'pipe',
     timeout: opts.timeout || 120000
