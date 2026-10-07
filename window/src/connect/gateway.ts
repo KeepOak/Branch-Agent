@@ -23,6 +23,7 @@ import {
 } from "@branch/gateway-client/browser";
 import { loadBrowserDeviceIdentity } from "./device-identity";
 import { createDeviceTokenStore } from "./device-token-store";
+import { readLimitedSetupCode } from "./start-key";
 
 export const OPERATOR_ROLE = "operator";
 /** The same scopes OpenClaw's own browser UI asks for (ui/src/api/gateway-connect-plan.ts, CONTROL_UI_OPERATOR_SCOPES). */
@@ -33,6 +34,10 @@ export const OPERATOR_SCOPES = [
   "operator.approvals",
   "operator.questions",
   "operator.pairing",
+] as const;
+/** Match the engine's bounded PAIRING_SETUP_BOOTSTRAP_PROFILE, never admin or pairing mutation. */
+export const LIMITED_OPERATOR_SCOPES = [
+  "operator.approvals", "operator.questions", "operator.read", "operator.talk.secrets", "operator.write",
 ] as const;
 /** Only what the window implements: live tool steps and exec approval cards. */
 export const CLIENT_CAPS = [GATEWAY_CLIENT_CAPS.TOOL_EVENTS, GATEWAY_CLIENT_CAPS.EXEC_APPROVALS];
@@ -98,6 +103,10 @@ export class BranchGateway {
 
   constructor(opts: Options) {
     this.opts = opts;
+    const setup = readLimitedSetupCode(opts.sharedToken);
+    if (setup && setup.url !== opts.url) {
+      throw new Error("Setup code is for a different Gateway address.");
+    }
     this.auth = new GatewayBrowserDeviceAuthLifecycle({
       loadIdentity: loadBrowserDeviceIdentity,
       tokenStore: createDeviceTokenStore(opts.url),
@@ -110,7 +119,9 @@ export class BranchGateway {
           client: clientInfo(),
           role: OPERATOR_ROLE,
           defaultScopes: OPERATOR_SCOPES,
-          token: opts.sharedToken,
+          bootstrapScopes: setup ? LIMITED_OPERATOR_SCOPES : undefined,
+          token: setup ? undefined : opts.sharedToken,
+          bootstrapToken: setup?.bootstrapToken,
           nonce,
           challengeTs,
         }),

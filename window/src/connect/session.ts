@@ -6,6 +6,7 @@ import { BranchGateway, type GatewayStatus } from "./gateway";
 import type { SendExtras, WindowEngine } from "./engine";
 import { RunStreams, readRunEvent } from "./stream-order";
 import { storedOperatorToken } from "./device-token-store";
+import { readLimitedSetupCode } from "./start-key";
 import { withOwner } from "./agent-owner";
 import { projectRun, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/history";
@@ -146,7 +147,7 @@ export class SaplingSession {
   /** `initialKey` reopens the conversation the window last showed (§3.3 "Reopen where you were"). */
   constructor(url: string, sharedToken: string | undefined, initialKey: string | null = null) {
     this.gatewayUrl = url;
-    this.sharedToken = sharedToken;
+    this.sharedToken = readLimitedSetupCode(sharedToken) ? undefined : sharedToken;
     this.wanted = initialKey;
     this.snapshot = {
       status: { phase: "connecting" },

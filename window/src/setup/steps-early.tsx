@@ -1,6 +1,7 @@
 // Setup steps 1–3 (DESIGN-SPEC §4.8.1.1–§4.8.1.3): Welcome, Where Branch runs and Models. Welcome and Where also
 // run before the window is connected (the plain pre-connect screens); Models needs the engine.
 import { useState, type ReactNode } from "react";
+import { readLimitedSetupCode } from "../connect/start-key";
 import { brandOf, Logo } from "../places/settings/set1/service";
 import { Icon, type IconName } from "../shell/icons";
 import type { Candidate, Detected, TestResult, Where } from "./setup-model";
@@ -64,19 +65,29 @@ export function WhereBody({ where, onWhere, remote }: { where: Where; onWhere: (
 export function RemoteForm({ address, onConnect, busy, problem }: { address: string; onConnect: (url: string, key: string) => void; busy: boolean; problem: string | null }) {
   const [url, setUrl] = useState(address);
   const [key, setKey] = useState("");
+  const [codeProblem, setCodeProblem] = useState<string | null>(null);
   const valid = /^wss?:\/\/\S+$/.test(url.trim());
+  const submit = () => {
+    const setup = readLimitedSetupCode(key);
+    if (setup && setup.url !== url.trim()) {
+      setCodeProblem("This code is for a different address. Use the address in the code, or make a new code for this address.");
+      return;
+    }
+    setCodeProblem(null);
+    onConnect(url.trim(), key);
+  };
   return (
-    <form className="ob-remote" onSubmit={(e) => (e.preventDefault(), valid && onConnect(url.trim(), key))}>
+    <form className="ob-remote" onSubmit={(e) => (e.preventDefault(), valid && submit())}>
       <label className="fld">
         <span>Its address</span>
         <input className="inp" data-testid="setup-address" value={url} placeholder="wss://desk-pc.tailnet.ts.net" onChange={(e) => setUrl(e.target.value)} />
         <small className="hint">Use wss:// when it sits behind HTTPS or Tailscale Serve.</small>
       </label>
       <label className="fld">
-        <span>Its gateway key</span>
+        <span>Its gateway key or LIMITED setup code</span>
         <input className="inp" type="password" autoComplete="off" data-testid="setup-key" value={key} onChange={(e) => setKey(e.target.value)} />
       </label>
-      {problem ? <p className="ob-problem" role="alert">{problem}</p> : null}
+      {codeProblem || problem ? <p className="ob-problem" role="alert">{codeProblem || problem}</p> : null}
       <button type="submit" className="btn pri sm" data-testid="setup-connect" disabled={!valid || busy}>
         {busy ? "Connecting…" : "Connect"}
       </button>
