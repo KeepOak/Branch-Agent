@@ -17,7 +17,7 @@ describe("P54 composer plus menu", () => {
     const host = document.body.appendChild(document.createElement("div"));
     const onFolder = vi.fn();
     root = createRoot(host);
-    await act(async () => root?.render(<PlusMenu anchor={createRef()} onClose={() => {}} trunks={[{ id: "research", name: "Research", defaultMode: "ask", theme: "" }]} trunkId="research"
+    await act(async () => root?.render(<PlusMenu anchor={createRef()} onClose={() => {}} trunks={[{ id: "research", name: "Research", defaultMode: "ask", theme: "", model: "" }]} trunkId="research"
       onAttach={() => {}} onFolder={onFolder} onPhoto={() => {}} onInsert={() => {}} onBackground={() => {}} temporary={false} />));
     expect([...host.querySelectorAll(".c-ph")].map((x) => x.textContent)).toEqual(["Add", "Insert", "Make", "Run", "Who answers here"]);
     const rows = [...host.querySelectorAll<HTMLElement>("[data-mi]")];

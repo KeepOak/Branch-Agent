@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WindowEngine } from "./engine";
 import { UpdatesPage } from "../places/settings/set2/updates";
-import { stageWindowUpdate } from "./desktop-component-updates";
+import { componentDesktop, stageWindowUpdate } from "./desktop-component-updates";
 import { StatusPopover, type StatusContext } from "../shell/StatusLayer";
 import { useUpdate } from "../shell/use-status";
 import type { SaplingSession } from "./session";
@@ -28,14 +28,14 @@ async function click(text: string) {
   await act(async () => button.click());
 }
 
-it("actual native Check now and Install buttons use component bridge and never generic gateway updates", async () => {
+it("actual native Check now and Download update use component bridge and never generic gateway updates", async () => {
   const status = vi.fn(async () => state); const check = vi.fn(async () => state);
   const stage = vi.fn(async () => ({ ...state, phase: "staged", pendingVersion: "1.1" }));
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status, check, stage } };
-  await show(); await click("Check now"); await click("Install when idle");
+  await show(); await click("Check now"); await click("Download update");
   expect(status).toHaveBeenCalledTimes(1); expect(check).toHaveBeenCalledTimes(1); expect(stage).toHaveBeenCalledTimes(1);
   expect(request).not.toHaveBeenCalled();
-  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
+  expect(host.textContent).toContain("Update staged; waiting for a safe switch");
   expect(localStorage.getItem("branch-draft")).toBe("unfinished input");
 });
 
@@ -48,9 +48,9 @@ it("Updates toggle is on by default and staged updates wait for Trunks in Settin
     controls: { get: async () => ({ keepWorking: true, keepAwake: false, trayUsage: false,
       autoApplyUpdates: true, startWithWindows: false, branchOnPath: false }), set } };
   await show();
-  const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Apply updates by themselves when no Trunk is working"]');
+  const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Apply updates automatically"]');
   expect(toggle?.checked).toBe(true);
-  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
+  expect(host.textContent).toContain("Update staged; waiting for a safe switch");
   if (!toggle) throw new Error("missing auto-apply toggle");
   await act(async () => toggle.click());
   expect(set).toHaveBeenCalledWith("autoApplyUpdates", false);
@@ -69,9 +69,9 @@ it("legacy native bootstrap says it checks every ten minutes, greys Check now, a
   await show(); expect(host.textContent).toContain("Branch checks for updates every 10 minutes and lets you know when one is ready to apply.");
   expect(host.textContent).not.toContain("aren’t available");
   const check = [...host.querySelectorAll("button")].find(row => row.textContent === "Check now");
-  expect(check?.disabled).toBe(true); expect(host.textContent).toContain("Checking by hand needs a newer Branch Agent app.");
+  expect(check?.disabled).toBe(true); expect(host.textContent).toContain("Update the Branch app to check by hand.");
   expect(updateCalls()).toEqual([]);
-  await expect(stageWindowUpdate(engine)).rejects.toThrow("Checking by hand needs a newer Branch Agent app.");
+  await expect(stageWindowUpdate(engine)).rejects.toThrow("Update the Branch app to check by hand.");
   expect(updateCalls()).toEqual([]);
 });
 
@@ -142,7 +142,7 @@ it("native shell status uses component status and legacy shell reports unsupport
   await act(async () => root.unmount()); root = createRoot(host);
   desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl };
   await act(async () => root.render(<UpdateProbe gatewayUrl="ws://127.0.0.1:1" />));
-  expect(document.body.textContent).toContain("Checking by hand needs a newer Branch Agent app.");
+  expect(document.body.textContent).toContain("Update the Branch app to check by hand.");
   expect(document.body.textContent).not.toContain("Branch is up to date."); expect(request).not.toHaveBeenCalled();
 });
 
@@ -154,4 +154,11 @@ it("actual Settings Check now for Connect elsewhere keeps the remote gateway dis
   await click("Check now");
   expect(status).not.toHaveBeenCalled(); expect(check).not.toHaveBeenCalled();
   expect(request).toHaveBeenCalledWith("update.status", { refreshCheckout: true });
+});
+
+it("keeps native update controls scoped to the live handoff target", () => {
+  const native = { gatewayUrl: "ws://127.0.0.1:1", getGatewayUrl: () => "ws://127.0.0.1:2", componentUpdates: { status: async () => state, check: async () => state, stage: async () => state } };
+  desktopWindow.branchDesktop = native;
+  expect(componentDesktop("ws://127.0.0.1:2")).toBe(native);
+  expect(componentDesktop("ws://127.0.0.1:1")).toBeUndefined();
 });

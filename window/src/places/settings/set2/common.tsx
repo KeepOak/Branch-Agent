@@ -93,8 +93,8 @@ export function CopyBtn({ text, label = "Copy" }: { text: string; label?: string
 }
 
 /** A row that shows a command or address with a Copy button. */
-export function CodeRow({ title, code, sub }: { title: string; code: string; sub?: ReactNode }) {
-  return <Ctl title={title} sub={sub}><code className="s2-code">{code}</code><CopyBtn text={code} /></Ctl>;
+export function CodeRow({ title, code, sub, help }: { title: string; code: string; sub?: ReactNode; help?: string }) {
+  return <Ctl title={title} sub={sub} help={help}><code className="s2-code">{code}</code><CopyBtn text={code} /></Ctl>;
 }
 
 /** A small definition list (Technical readouts). Empty values are left out. */

@@ -1,5 +1,6 @@
 import { closeAuthProfileUsage } from "../agents/auth-profiles/usage-lifecycle.js";
 import { resolveActiveEmbeddedRunSessionId } from "../agents/embedded-agent-runner/active-run-projections.js";
+import { resolveEmbeddedSessionLane } from "../agents/embedded-agent-runner/lanes.js";
 import { createAgentRunRestartAbortError } from "../agents/run-termination.js";
 import { fenceSessionSuspensionWritesForGatewayShutdown } from "../agents/session-suspension.js";
 import { prepareWorktreeRunEndClose } from "../agents/worktrees/run-end-lifecycle.js";
@@ -7,7 +8,13 @@ import { getTotalPendingReplies } from "../auto-reply/reply/dispatcher-registry.
 import { listLoadedChannelPluginsForRegistry } from "../channels/plugins/registry-loaded.js";
 import { getRuntimeConfig } from "../config/io.js";
 import type { BranchConfig } from "../config/types.branch.js";
-import { beginCronReceiptAuthorityClose } from "../cron/store/receipt-authority-owner.js";
+import { startCronMaintenance } from "../cron/maintenance.js";
+import {
+  beginCronReceiptAuthorityClose,
+  drainCronReceiptAuthority,
+  releaseCronReceiptAuthorityForHandoff,
+  resumeCronReceiptAuthorityHostAfterFailedHandoff,
+} from "../cron/store/receipt-authority-owner.js";
 import {
   isDiagnosticsEnabled,
   setDiagnosticsEnabledForProcess,
@@ -25,6 +32,16 @@ import {
   getGatewayContextLifetime,
   withPluginRuntimeRegistryScope,
 } from "../plugins/runtime/gateway-request-scope.js";
+import {
+  getActiveGatewayRootWorkCount,
+  isGatewayRestartDraining,
+  tryBeginGatewaySuspendAdmission,
+} from "../process/gateway-work-admission.js";
+import {
+  holdSessionHandoffLeases,
+  isSessionLaneBusy,
+  listBusySessionLanes,
+} from "../process/session-handoff-lease-holder.js";
 import { clearSecretsRuntimeSnapshotState } from "../secrets/runtime-state.js";
 import { AsyncWorkScope } from "../shared/async-work-scope.js";
 import {
@@ -45,6 +62,7 @@ import { waitForNodeWorkerSupervisor } from "./node-registry-private.js";
 import { clearNodeWakeState } from "./node-wake-state.js";
 import { createLazyGatewayCronState } from "./server-cron-lazy.js";
 import { createGatewayCronReconciliation } from "./server-cron-reconciled.js";
+import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import { applyGatewayLaneConcurrency, resolveGatewayLaneConcurrency } from "./server-lanes.js";
 import { createGatewayServerLiveState } from "./server-live-state.js";
 import { createGatewayPluginRuntimeGeneration } from "./server-plugin-runtime-generation.js";
@@ -60,6 +78,27 @@ import { createSessionViewerPresenceDeclarations } from "./session-viewer-presen
 
 type GatewayRuntimePreparation = Awaited<ReturnType<typeof prepareGatewayKernelState>>;
 type GatewayLogger = ReturnType<typeof createSubsystemLogger>;
+
+async function beforeHandoffDeadline<T>(work: Promise<T>, deadline: number): Promise<T> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) {
+    throw new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds");
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds")),
+          remaining,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export async function prepareGatewayLifecycle(params: {
   runtime: GatewayRuntimePreparation;
@@ -482,6 +521,137 @@ export async function prepareGatewayLifecycle(params: {
   };
   const { getRuntimeSnapshot, startChannels, startChannel, stopChannel, markChannelLoggedOut } =
     channelManager;
+  let deactivation: Promise<void> | undefined;
+  let handoffAdmission: ReturnType<typeof tryBeginGatewaySuspendAdmission>;
+  let handoffLeases: ReturnType<typeof holdSessionHandoffLeases> | undefined;
+  const restoreHandoffProducers = async () => {
+    await resumeCronReceiptAuthorityHostAfterFailedHandoff();
+    await runtimeState.cronState.cron.start();
+    startCronMaintenance(runtime.scheduler);
+    await startChannels();
+  };
+  const deactivate = (deadline = Date.now() + 18_000) =>
+    (deactivation ??= (async () => {
+      // Close new roots, while admitted runs retain their dispatch context and
+      // may start required follow-up work through their existing root custody.
+      handoffAdmission = tryBeginGatewaySuspendAdmission(() => {});
+      if (!handoffAdmission) {
+        throw new Error("Gateway handoff could not fence new work");
+      }
+      const busyLanes = () =>
+        new Set(
+          Array.from(chatAbortControllers.values(), (entry) =>
+            resolveEmbeddedSessionLane(entry.sessionKey),
+          ),
+        );
+      handoffLeases = holdSessionHandoffLeases({
+        lanes: [...new Set([...listBusySessionLanes(), ...busyLanes()])],
+        isBusy: (lane) => isSessionLaneBusy(lane) || busyLanes().has(lane),
+        hasPendingWork: () => getActiveGatewayRootWorkCount() > 0,
+        leaseNewLanes: true,
+      });
+      beginCronReceiptAuthorityClose();
+      const stoppedChannels = await beforeHandoffDeadline(
+        Promise.allSettled(
+          listLoadedChannelPluginsForRegistry(pluginRuntime.registry).map((plugin) =>
+            stopChannel(plugin.id),
+          ),
+        ),
+        deadline,
+      );
+      const failedChannel = stoppedChannels.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
+      if (failedChannel) throw failedChannel.reason;
+      const cron = runtimeState.cronState.cron;
+      await beforeHandoffDeadline(
+        cron.stopAndDrainForHandoff
+          ? cron.stopAndDrainForHandoff()
+          : cron.stopAndDrain
+            ? cron.stopAndDrain()
+            : Promise.resolve(cron.stop()),
+        deadline,
+      );
+      await beforeHandoffDeadline(shutdownRuntime.stopCronMaintenance(), deadline);
+      await beforeHandoffDeadline(drainCronReceiptAuthority(), deadline);
+      await beforeHandoffDeadline(releaseCronReceiptAuthorityForHandoff(), deadline);
+      handoffLeases.seal();
+      if (!handoffAdmission.commit()) {
+        throw new Error("Gateway handoff admission was invalidated before state release");
+      }
+    })().catch(async (error: unknown) => {
+      if (error instanceof GatewayHandoffFatalError) {
+        // Timed-out work may still settle. Keep admission and leases fenced;
+        // the run loop must stop this owner instead of racing a rollback.
+        throw error;
+      }
+      handoffLeases?.releaseAll();
+      if (isGatewayRestartDraining()) {
+        handoffAdmission = null;
+        handoffLeases = undefined;
+        deactivation = undefined;
+        throw error;
+      }
+      let restored = false;
+      try {
+        // This engine still owns state on a failed handoff. Restore every
+        // producer before reopening admission to new work.
+        await beforeHandoffDeadline(restoreHandoffProducers(), deadline);
+        restored = true;
+      } catch (restoreError) {
+        if (restoreError instanceof GatewayHandoffFatalError) throw restoreError;
+        throw new GatewayHandoffFatalError("Gateway handoff restoration failed", {
+          cause: new AggregateError([error, restoreError]),
+        });
+      } finally {
+        if (restored) {
+          handoffAdmission?.release();
+          handoffAdmission?.rollback();
+        }
+        handoffAdmission = null;
+        handoffLeases = undefined;
+        deactivation = undefined;
+      }
+      throw error;
+    }));
+  const rollbackDeactivation = async () => {
+    await deactivation;
+    handoffLeases?.releaseAll();
+    // Rollback is followed by a one-way restart fence in the run loop. Do not
+    // briefly admit fresh work against the lock already given to a successor.
+    handoffAdmission = null;
+    handoffLeases = undefined;
+    deactivation = undefined;
+  };
+  const restoreFailedStateRelease = async () => {
+    await deactivation;
+    handoffLeases?.releaseAll();
+    let restored = false;
+    try {
+      await restoreHandoffProducers();
+      restored = true;
+    } catch (error) {
+      throw new GatewayHandoffFatalError("Gateway handoff restoration failed", { cause: error });
+    } finally {
+      if (restored) {
+        handoffAdmission?.release();
+        handoffAdmission?.rollback();
+      }
+      handoffAdmission = null;
+      handoffLeases = undefined;
+      deactivation = undefined;
+    }
+  };
+  const waitForDeactivatedRuns = async () => {
+    await deactivation;
+    if (!handoffLeases) return { deadlineElapsed: false, expiresAt: undefined };
+    const expiresAt = handoffLeases.expiresAt;
+    const deadlineElapsed = await Promise.race([
+      handoffLeases.released.then(() => false),
+      handoffLeases.deadline,
+    ]);
+    return { deadlineElapsed, expiresAt };
+  };
   const refreshGatewayHealthSnapshotWithRuntime: typeof refreshGatewayHealthSnapshot = (
     optsResult,
   ) => {
@@ -625,6 +795,10 @@ export async function prepareGatewayLifecycle(params: {
       }
       await requestEntryLifetime.sealAndJoin();
       await shutdownRuntime.waitForPluginCacheRetirement();
+      // The predecessor has now finished its writes. Release any sealed hold so
+      // an in-process lifecycle restart can install its own enqueue hook.
+      handoffLeases?.releaseAll();
+      handoffLeases = undefined;
     };
   };
   const closeStepOwner = {
@@ -706,6 +880,10 @@ export async function prepareGatewayLifecycle(params: {
     startChannels,
     startChannel,
     stopChannel,
+    deactivate,
+    restoreFailedStateRelease,
+    rollbackDeactivation,
+    waitForDeactivatedRuns,
     markChannelLoggedOut,
     refreshGatewayHealthSnapshotWithRuntime,
     registerConnectionDependentSidecars: connectionDependentSidecarStopOwner.publish,

@@ -148,8 +148,7 @@ function verifyOwnerLock(owner: ProcessOwner, lock: StateOwnerFile | undefined):
     if (!projection.verifyStillHeld()) {
       return false;
     }
-    owner.heartbeat.worker.postMessage([projection.lockPath, raw], []);
-    owner.heartbeat.paths.add(projection.lockPath);
+    owner.heartbeat.add(projection.lockPath, raw);
   }
   owner.verifiedAt = performance.now();
   return true;
@@ -268,9 +267,7 @@ export function resolveGatewayStateOwnerPath(databasePath: string): string {
           "locks",
           uid === undefined ? "branch-state-owners" : `branch-state-owners-${uid}`,
         )
-      : resolveGatewayLockDirForCanonicalStateDir(
-          resolveBranchStateDirForDatabasePath(canonical),
-        );
+      : resolveGatewayLockDirForCanonicalStateDir(resolveBranchStateDirForDatabasePath(canonical));
   return path.join(
     resolveIdentityPathViaExistingAncestorSync(directory),
     `state.${sha256HexPrefixCore(canonical, 16)}.lock`,
@@ -580,8 +577,7 @@ export function acquireStateDatabaseSchemaLease(
     ));
     const raw = fs.readFileSync(projection.lockPath, "utf8");
     lease.assertCurrent();
-    heartbeat.worker.postMessage([projection.lockPath, raw], []);
-    heartbeat.paths.add(projection.lockPath);
+    heartbeat.add(projection.lockPath, raw);
     return lease;
   } catch (error) {
     return runWithSqliteCleanup(lease, "state schema ownership verification", () => {
@@ -737,6 +733,14 @@ export function assertStateDatabaseAccessAllowed(
     ownerPath: pathname,
     assertMaintenance,
   });
+}
+
+/**
+ * Whether this process held state ownership for `databasePath` and lost it (its lock was taken, or renewal
+ * failed). Closing then still has to finish: shared-state bookkeeping is the next owner's to reconcile.
+ */
+export function hasLostGatewayStateOwnership(databasePath: string): boolean {
+  return owners.get(resolveGatewayStateOwnerPath(databasePath))?.lost.signal.aborted === true;
 }
 
 /** Cleanup must compete with local roots too; it cannot borrow a live Gateway's authority. */

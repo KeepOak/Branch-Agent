@@ -1,8 +1,10 @@
 // Gateway HTTP endpoint helpers.
 // Wraps common POST JSON method, auth, scope, and body handling.
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { isLockdownOn, LOCKDOWN_MESSAGE } from "../config/lockdown.js";
 import {
   readJsonBodyOrError,
+  sendJson,
   sendMethodNotAllowed,
   sendMissingScopeForbidden,
 } from "./http-common.js";
@@ -12,7 +14,15 @@ import {
   type AuthorizedGatewayHttpRequest,
   resolveTrustedHttpOperatorScopes,
 } from "./http-utils.js";
-import { authorizeOperatorScopesForMethod } from "./method-scopes.js";
+import {
+  authorizeOperatorScopesForMethod,
+  resolveLeastPrivilegeOperatorScopesForMethod,
+} from "./method-scopes.js";
+
+function isReadOnlyMethod(method: string): boolean {
+  const scopes = resolveLeastPrivilegeOperatorScopesForMethod(method);
+  return scopes.length > 0 && scopes.every((scope) => scope === "operator.read");
+}
 
 /** Handles a gateway POST JSON endpoint and returns the parsed body when authorized. */
 export async function handleGatewayPostJsonEndpoint(
@@ -60,6 +70,15 @@ export async function handleGatewayPostJsonEndpoint(
       sendMissingScopeForbidden(res, scopeAuth.missingScope);
       return undefined;
     }
+  }
+  if (
+    opts.requiredOperatorMethod &&
+    isLockdownOn() &&
+    !isReadOnlyMethod(opts.requiredOperatorMethod)
+  ) {
+    // Lockdown: /v1/chat/completions, /v1/responses and /v1/embeddings all spend; refuse before the body is read.
+    sendJson(res, 503, { error: { message: LOCKDOWN_MESSAGE, type: "lockdown" } });
+    return undefined;
   }
 
   const body = await readJsonBodyOrError(req, res, opts.maxBodyBytes);

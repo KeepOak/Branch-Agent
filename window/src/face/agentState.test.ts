@@ -46,6 +46,7 @@ describe("agentState (DESIGN-SPEC §6.2)", () => {
 
   it("hits a snag when the last task failed, and rests when paused or idle for two minutes", () => {
     expect(agentState({ ...base, history: [user, { kind: "error", key: "e", message: "boom" }], endedAt: 99_000 })).toBe("oops");
+    expect(agentState({ ...base, history: [user, { kind: "error", key: "e", message: "boom" }, { ...reply, key: "later" }], endedAt: 99_000 })).toBe("talk");
     expect(agentState({ ...base, paused: true })).toBe("sleep");
     expect(agentState({ ...base, lastActivityAt: 1, now: 500_000 })).toBe("sleep");
   });

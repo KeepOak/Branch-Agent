@@ -128,7 +128,8 @@ function stubBrowserExecutableAndPrefs(
       ? value === executablePath
       : value.includes("Google Chrome") ||
         value.includes("google-chrome") ||
-        value.includes("/usr/bin/chromium");
+        value.includes("/usr/bin/chromium") ||
+        value.endsWith("chrome.exe");
     const isPreferences = value.endsWith("Local State") || value.endsWith("Preferences");
     return isExecutable || (preferences === "present" && isPreferences);
   });
@@ -434,6 +435,9 @@ describe("chrome.ts internal", () => {
 
     beforeEach(async () => {
       tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "branch-launch-"));
+      if (process.platform === "win32") {
+        await fsp.writeFile(path.join(tmpDir, "chrome.exe"), "");
+      }
     });
 
     afterEach(async () => {
@@ -463,6 +467,7 @@ describe("chrome.ts internal", () => {
         extraArgs: [],
         localLaunchTimeoutMs: 15_000,
         localCdpReadyTimeoutMs: 8_000,
+        ...(process.platform === "win32" ? { executablePath: path.join(tmpDir, "chrome.exe") } : {}),
         ...overrides,
       }) as unknown as ResolvedBrowserConfig;
 
@@ -545,7 +550,7 @@ describe("chrome.ts internal", () => {
       // path is set, then mock existsSync to return false for everything.
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
       const profile = makeProfile(51111);
-      await expect(launchBranchChrome(makeResolved(), profile)).rejects.toThrow(
+      await expect(launchBranchChrome(makeResolved({ executablePath: undefined }), profile)).rejects.toThrow(
         /No supported browser found/,
       );
       expect(ensurePortAvailableMock).toHaveBeenCalledWith(51111, "127.0.0.1");
@@ -704,7 +709,7 @@ describe("chrome.ts internal", () => {
         });
         const profile = { ...makeProfile(51111), cdpUrl };
 
-        await expect(launchBranchChrome(makeResolved(), profile)).rejects.toThrow(portBusy);
+        await expect(launchBranchChrome(makeResolved({ executablePath: undefined }), profile)).rejects.toThrow(portBusy);
         expect(ensurePortAvailableMock.mock.calls).toEqual([
           [51111, "127.0.0.1"],
           [51111, configuredProbeHost],
@@ -1469,6 +1474,7 @@ describe("chrome.ts internal", () => {
     it("retains launch hints after the stderr tail rolls", async () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, "platform", { value: "linux" });
+      execFileSyncMock.mockReturnValue(""); // This case exercises stderr, not the host's user-namespace policy.
       try {
         const executablePath = path.join(tmpDir, "chrome");
         await fsp.writeFile(executablePath, "");
@@ -1485,6 +1491,84 @@ describe("chrome.ts internal", () => {
       } finally {
         Object.defineProperty(process, "platform", { value: originalPlatform });
       }
+    });
+
+    it("lets Chromium try its own sandbox even when the engine cannot unshare", async () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "linux" });
+      const readFileSync = fs.readFileSync.bind(fs);
+      vi.spyOn(fs, "readFileSync").mockImplementation(((candidate: fs.PathOrFileDescriptor, ...args: unknown[]) =>
+        candidate === "/proc/sys/kernel/apparmor_restrict_unprivileged_userns"
+          ? "1"
+          : (readFileSync as (...values: unknown[]) => unknown)(candidate, ...args)) as typeof fs.readFileSync);
+      let unshareCalled = false;
+      execFileSyncMock.mockImplementation((command: string) => {
+        if (command === "unshare") {
+          unshareCalled = true;
+          throw new Error("Operation not permitted");
+        }
+        return "";
+      });
+      try {
+        const executablePath = path.join(tmpDir, "chrome-apparmor");
+        await fsp.writeFile(executablePath, "");
+        const realExistsSync = fs.existsSync.bind(fs);
+        stubBrowserExecutableAndPrefs("present", executablePath);
+        const mockedExistsSync = vi.mocked(fs.existsSync).getMockImplementation();
+        vi.mocked(fs.existsSync).mockImplementation((candidate) =>
+          realExistsSync(candidate) || Boolean(mockedExistsSync?.(candidate)),
+        );
+        vi.mocked(fs.statSync).mockRestore();
+        const proc = makeFakeProc();
+        spawnMock.mockReturnValue(proc);
+        await withMockChromeCdpServer({
+          wsPath: "/devtools/browser/APPARMOR_SANDBOXED",
+          run: async (baseUrl) => {
+            const running = await launchBranchChrome(
+              makeResolved({ noSandbox: false }),
+              makeProfile(Number(new URL(baseUrl).port), { executablePath }),
+            );
+            expect(requireSpawnCall()[1]).not.toContain("--no-sandbox");
+            expect(unshareCalled).toBe(false);
+            running.proc.kill?.("SIGTERM");
+          },
+        });
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform });
+      }
+    });
+
+    it("reports an unusable Chromium sandbox before the launch timeout", async () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "linux" });
+      try {
+        const { error } = await captureFailedLaunchStderr({
+          port: 55560,
+          resolved: { noSandbox: false },
+          chunks: ["No usable sandbox!\n"],
+        });
+        expect(error.message).toContain("AppArmor");
+        expect(error.message).toContain("browser.noSandbox: true");
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform });
+      }
+    });
+
+    it("reports an unusable sandbox during new-profile bootstrap", async () => {
+      execFileSyncMock.mockReturnValue(""); // Let Chromium reach bootstrap on restricted CI hosts.
+      const executablePath = path.join(tmpDir, "chrome-bootstrap-sandbox");
+      await fsp.writeFile(executablePath, "");
+      stubBrowserExecutableAndPrefs("missing", executablePath);
+      spawnMock.mockImplementation(() => {
+        const proc = makeFakeProc();
+        queueMicrotask(() => proc.stderr.emit("data", "No usable sandbox!\n"));
+        return proc;
+      });
+
+      await expect(
+        launchBranchChrome(makeResolved({ noSandbox: false }), makeProfile(55561, { executablePath })),
+      ).rejects.toThrow("AppArmor's unprivileged user namespace restriction");
+      expect(spawnMock).toHaveBeenCalledTimes(1);
     });
 
     it("reuses existing preferences without bootstrapping another Chrome", async () => {
@@ -1608,7 +1692,8 @@ describe("chrome.ts internal", () => {
         if (
           s.includes("Google Chrome") ||
           s.includes("google-chrome") ||
-          s.includes("/usr/bin/chromium")
+          s.includes("/usr/bin/chromium") ||
+          s.endsWith("chrome.exe")
         ) {
           return true;
         }

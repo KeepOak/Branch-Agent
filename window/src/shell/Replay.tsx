@@ -37,7 +37,7 @@ export function ReplayDialog({ history, trunkName, onClose }: { history: Block[]
     setPlaying(!playing);
   };
   return (
-    <Dialog title="Replay this conversation" wide onClose={onClose} testid="replay" footer={<button type="button" className="btn primary" onClick={onClose}>Close</button>}>
+    <Dialog title="Replay this conversation" wide onClose={onClose} testid="replay">
       <div className="rp">
         <div className="rpc">
           <b>{line?.who ?? ""}</b>

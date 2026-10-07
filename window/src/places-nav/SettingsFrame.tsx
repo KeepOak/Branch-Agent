@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { SettingsPage, SETTINGS_ROWS } from "../places/settings";
 import { KitProvider, SetupLock, type Lv, type SaveReport } from "../places/settings/kit";
@@ -49,6 +49,7 @@ type Props = {
   onBack: () => void;
   /** Starts a conversation with the default Trunk ("Learn more"); absent while no model is set up. */
   onAsk?: (text: string) => void;
+  askName?: string;
 };
 
 /** The segmented "How much to show" control (§4.7.0, §5.2): Left and Right move the choice. */
@@ -143,7 +144,7 @@ function SearchResults({ query, level, shown, onGo }: { query: string; level: Le
               <button type="button" className="set-item" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" data-page={page.id} aria-current={page.id === shown ? "true" : undefined} onClick={() => onGo(page.id)}>{page.name}{tag(page.lv)}</button>
               {rows.map((r) => (
                 <button key={r.title} type="button" className="set-item set-row" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" data-row-hit={r.title} onClick={() => onGo(page.id, r)}>
-                  <span className="grow"><span>{r.title}</span>{r.sec ? <small>{r.sec}</small> : null}</span>{tag(r.lv)}
+                  <span className="grow"><span>{r.title}</span><small>{r.group}</small></span>{tag(r.lv)}
                 </button>
               ))}
             </div>
@@ -196,7 +197,7 @@ function useRowJump(page: string) {
 
 /** The Settings frame (DESIGN-SPEC §4.7.0): the nav column with Back, search, "Settings for", page items, the save
  *  state and the level; one page on the right. */
-export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk }: Props) {
+export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, askName }: Props) {
   const [chosen, setLevel] = useState<Level>(readLevel);
   const level = levelFor(page, chosen); // opening a page this level hides raises the level
   useEffect(() => {
@@ -213,13 +214,22 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk }:
   const maySetup = engine.scopes.length === 0 || engine.scopes.includes("operator.admin");
   const wanted = pageAtLevel(page, level);
   const shown = !maySetup && HIDDEN_PAGES.includes(wanted) ? "general" : wanted;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const levelScroll = useRef<{ page: string; top: number } | null>(null);
+  useLayoutEffect(() => {
+    if (levelScroll.current?.page === shown && scrollRef.current) {
+      scrollRef.current.scrollTop = levelScroll.current.top;
+    }
+    levelScroll.current = null;
+  }, [level, shown]);
   const models = useResource<RecordValue>(engine, "models.list", {});
   const hasModel = list(models.data?.models).some((m) => m.available !== false);
   const changeLevel = (l: Level) => {
+    const next = pageAtLevel(page, l);
+    levelScroll.current = next === shown && scrollRef.current ? { page: shown, top: scrollRef.current.scrollTop } : null;
     setLevel(l);
     saveLevel(l);
     if (l === "regular") setScope(null); // "Settings for" is an Advanced control; Regular shows the default Trunk's
-    const next = pageAtLevel(page, l);
     if (next !== page) onPage(next);
   };
   const go = useCallback((id: string, row?: SearchRow) => {
@@ -268,10 +278,10 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk }:
         <SaveLine state={save} />
         <LevelControl level={level} onLevel={changeLevel} />
       </nav>
-      <div className="set-scroll">
+      <div className="set-scroll" ref={scrollRef}>
         <div className="set-col">
           <FileProblem engine={engine} />
-          <KitProvider level={LV[level]} report={report} scope={LV[level] >= 1 ? scope : null} ask={hasModel ? onAsk : undefined} pins={pins}>
+          <KitProvider level={LV[level]} report={report} scope={LV[level] >= 1 ? scope : null} ask={hasModel ? onAsk : undefined} askName={askName} pins={pins}>
             <SetupLock locked={!maySetup && SETUP_PAGES.includes(shown)}>
               <SettingsPage page={shown} title={pageName(shown)} level={level} engine={engine} openSettings={onPage} />
             </SetupLock>

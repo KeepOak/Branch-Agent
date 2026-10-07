@@ -71,6 +71,8 @@ export type ConversationMenuContext = {
   besideOpen?: boolean;
   /** The engine knows two or more computers, so "Move this conversation…" shows. */
   canMove?: boolean;
+  ownWindowOpen?: boolean;
+  ownWindowOff?: string | null;
   hasContactReturn?: boolean;
   hasContactConversations?: boolean;
   /** In a room, the room rows (rooms/room-menu.ts) in place of the Trunk rows; a room has no Move, Archive or Share this Trunk. */
@@ -166,7 +168,7 @@ export function conversationMenuItems(c: ConversationMenuContext): MenuItem[] {
     item(c.besideOpen ? "Change the conversation beside" : "Open another conversation beside", "cols", c.run.beside),
     item("Split right", "cols", () => c.run.split("right")),
     item("Split down", "cols", () => c.run.split("down")),
-    item("Open in its own window", "panel", c.run.ownWindow),
+    item(c.ownWindowOpen ? "Show its window" : "Open in its own window", "panel", c.run.ownWindow, c.ownWindowOff ? { disabled: c.ownWindowOff } : {}),
     item("Open its computer", "monitor", c.run.computer),
     item("Open the browser", "eye", c.run.browser),
     item("Switch light or dark", "spark", c.run.theme),

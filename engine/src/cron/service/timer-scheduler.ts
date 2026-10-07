@@ -1,5 +1,6 @@
 import pMap, { pMapSkip } from "p-map";
 import { DEFAULT_CRON_MAX_CONCURRENT_RUNS } from "../../config/cron-limits.js";
+import { isLockdownOn } from "../../config/lockdown.js";
 import { isAbortError } from "../../infra/abort-signal.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import type { GatewaySchedulerScope } from "../../infra/gateway-scheduler.js";
@@ -62,6 +63,12 @@ export function armTimer(state: CronServiceState) {
   }
   if (!state.deps.cronEnabled) {
     state.deps.log.debug({}, "cron: armTimer skipped - scheduler disabled");
+    return;
+  }
+  if (isLockdownOn()) {
+    // Resting: due jobs would refire at once; look again each minute until Lockdown is off.
+    armRunningRecheckTimer(state);
+    state.deps.log.debug({}, "cron: resting while Lockdown is on");
     return;
   }
   const { nextWakeAtMs: nextAt, jobCount, enabledCount } = summarizeCronJobSchedule(state);
@@ -240,6 +247,10 @@ async function onAdmittedTimer(state: CronServiceState, scheduler: GatewaySchedu
       }
       // These interruptions already committed; publish them before fencing new scheduling work.
       if (state.stopped || state.startupCatchup || state.lifecycleGeneration !== generation) {
+        return [];
+      }
+      // Lockdown: Seasons rests. Due jobs stay due, untouched, and run after Lockdown is off.
+      if (isLockdownOn()) {
         return [];
       }
       const dueCheckNow = state.deps.nowMs();

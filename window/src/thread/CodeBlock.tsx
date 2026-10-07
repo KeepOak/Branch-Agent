@@ -26,7 +26,7 @@ export function CodeBlock({ lang, text }: { lang: string; text: string }) {
   return (
     <div className="code-block" data-testid="code-block" data-colours={colours}>
       <div className="code-head">
-        <span>{LANGS[lang.toLowerCase()] ?? (lang || "Code")}</span>
+        <span>{!lang || lang.toLowerCase() === "text" ? "Code" : LANGS[lang.toLowerCase()] ?? lang}</span>
         <button type="button" className="icon-sm" aria-label="Copy" title="Copy" onClick={() => void copyText(text, toast)}>
           <Icon d={ICONS.copy} />
         </button>

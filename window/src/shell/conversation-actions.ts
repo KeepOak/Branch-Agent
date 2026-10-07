@@ -4,6 +4,7 @@
 import type { Conversation, ConversationList } from "../connect/conversations";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { notify } from "./notify";
+import { forgetDeletedConversationWindow } from "./own-window";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 
@@ -36,16 +37,16 @@ export function snoozeTime(until: number, label: string): string {
 /** "18:00", "tomorrow 09:00" or "Mon 09:00" (§4.1.6 Snooze: the wake time). */
 export function wakeWords(until: number, now: number): string {
   const d = new Date(until);
-  const hm = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  const hm = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
   const today = new Date(now);
   const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   if (until < dayStart + 86_400_000) {
     return hm;
   }
   if (until < dayStart + 2 * 86_400_000) {
-    return `tomorrow ${hm}`;
+    return `Tomorrow · ${hm}`;
   }
-  return `${d.toLocaleDateString([], { weekday: "short" })} ${hm}`;
+  return `${d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} · ${hm}`;
 }
 
 /** Who a patch is for: key, Trunk and the transcript it expects (archive and snooze need it). */
@@ -104,6 +105,7 @@ export function conversationActions(request: Request, list: ConversationList, op
     async remove(row: Conversation) {
       try {
         await request("sessions.delete", { key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), deleteTranscript: true });
+        await forgetDeletedConversationWindow(row.key).catch((error: unknown) => console.warn("Saved conversation window could not be removed", error));
       } catch (e) {
         notify(`Couldn't delete ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" });
       }
@@ -146,7 +148,10 @@ export function conversationActions(request: Request, list: ConversationList, op
     async removeMany(rows: Conversation[]) {
       const failed: string[] = [];
       for (const row of rows) {
-        await request("sessions.delete", { key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), deleteTranscript: true }).catch(() => failed.push(nameOf(row)));
+        try {
+          await request("sessions.delete", { key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), deleteTranscript: true });
+          await forgetDeletedConversationWindow(row.key).catch((error: unknown) => console.warn("Saved conversation window could not be removed", error));
+        } catch { failed.push(nameOf(row)); }
       }
       notify(failed.length ? `Couldn't delete ${failed.join(", ")}.` : `Deleted ${rows.length} conversations.`, failed.length ? { tone: "bad" } : undefined);
       await list.refresh();
