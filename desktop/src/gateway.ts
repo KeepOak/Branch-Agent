@@ -66,7 +66,7 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   const profile = prepared ?? prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => {
     if (message === "Profile migration start") appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`);
     else log.write(message + "\n");
-  });
+  }, join(engineDir, "docs", "reference", "templates"));
   if (profile.note) log.write(profile.note + "\n");
   const env = {
     ...process.env,
