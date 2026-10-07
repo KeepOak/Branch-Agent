@@ -19,6 +19,7 @@ import { createCpuTrackedWorker } from "./worker-cpu.js";
 
 const monotonic = process.hrtime.bigint.bind(process.hrtime);
 const DEFAULT_FAILURE_MS = 60_000;
+const WORKER_STOP_GRACE_MS = 1_000;
 const log = createSubsystemLogger("gateway/state");
 
 type LockIdentity = { raw: string; dev: bigint; ino: bigint };
@@ -29,18 +30,34 @@ function readLockIdentity(lockPath: string, raw: string): LockIdentity {
 }
 
 /** The lock file is still the one this process wrote: same file (not removed and recreated) and same bytes. */
-function isStillOurs(lockPath: string, identity: LockIdentity): boolean {
+function renewIfStillOurs(lockPath: string, identity: LockIdentity): boolean {
+  let fd: number;
   try {
-    const stat = fs.statSync(lockPath, { bigint: true });
-    return (
-      stat.nlink > 0n &&
-      stat.dev === identity.dev &&
-      stat.ino === identity.ino &&
-      // The raw bytes carry the pid, ownerId and the acquisition token: a rival's lock never matches.
-      fs.readFileSync(lockPath, "utf8") === identity.raw
-    );
+    fd = fs.openSync(lockPath, "r+");
   } catch {
     return false;
+  }
+  try {
+    const held = fs.fstatSync(fd, { bigint: true });
+    const stat = fs.statSync(lockPath, { bigint: true });
+    if (
+      held.nlink === 0n ||
+      held.dev !== stat.dev ||
+      held.ino !== stat.ino ||
+      held.dev !== identity.dev ||
+      held.ino !== identity.ino
+    )
+      return false;
+    const bytes = Buffer.alloc(Buffer.byteLength(identity.raw) + 1);
+    const length = fs.readSync(fd, bytes, 0, bytes.length, 0);
+    if (bytes.subarray(0, length).toString("utf8") !== identity.raw) return false;
+    const stamp = new Date();
+    fs.futimesSync(fd, stamp, stamp);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    fs.closeSync(fd);
   }
 }
 
@@ -68,6 +85,8 @@ export function startGatewayStateOwnerHeartbeat(
     Atomics.store(lastBeat, 0, monotonic() / 1_000_000n);
     const url = resolveRuntimeWorkerUrl(runtimeProcessEntrypoints.gatewayStateOwnerHeartbeat);
     let failure: string | null = null;
+    let replaced = false;
+    let lost = false;
     let worker!: Worker;
     let events!: MessagePort;
     const startWorker = () => {
@@ -87,37 +106,44 @@ export function startGatewayStateOwnerHeartbeat(
         execArgv: resolveRuntimeWorkerThreadExecArgv(url),
       });
       started.unref();
-      port1.unref();
       started.on("error", (error) => {
         if (started === worker) failure = coerceErrorMessage(error);
       });
       worker = started;
       events = port1;
+      port1.on("message", (message) => {
+        if (events !== port1) return;
+        recordEvent(message);
+        if (replaced) inspect();
+      });
+      port1.unref();
     };
     startWorker();
+    const stopWorker = (stopping: Worker) => {
+      stopping.postMessage("stop", []);
+      const force = setTimeout(() => void stopping.terminate(), WORKER_STOP_GRACE_MS);
+      force.unref();
+      stopping.once("exit", () => clearTimeout(force));
+    };
     /**
      * The renewal deadline passed without a renewal error: the whole process stalled (a frozen VM, a suspended
      * process, a blocked disk), or the worker died. That alone is no loss. On one host a live owner's lock is
      * never taken over, and any rival would have replaced the file: when every lock still is the exact file
-     * this process wrote, renew it now and keep going on a fresh worker (the old one never renews again once
-     * its deadline passed). The window after this check is the same one renewal always has, and the new
-     * worker's first file check closes it.
+     * this process wrote, renew its verified open handle and keep going on a fresh worker. That handle cannot
+     * touch a successor if the path is replaced during renewal. Admission's verifyStillHeld check detects any
+     * replacement after this re-assertion, before more state work runs.
      */
     const reassert = (overdueMs: number): boolean => {
       for (const [lockPath, identity] of identities) {
-        if (isStillOurs(lockPath, identity)) continue;
+        if (renewIfStillOurs(lockPath, identity)) continue;
         if (lockPath === rootPath) return false;
         // A projection that was released or replaced is not ours to renew, as the worker treats it.
         identities.delete(lockPath);
       }
-      const stamp = new Date();
-      for (const lockPath of identities.keys()) {
-        fs.utimesSync(lockPath, stamp, stamp);
-      }
       Atomics.store(lastBeat, 0, monotonic() / 1_000_000n);
       const stalled = worker;
       events.close();
-      void stalled.terminate();
+      stopWorker(stalled);
       startWorker();
       log.warn(
         `state ownership heartbeat was ${Math.round(overdueMs / 1000)}s late (the process stalled); ` +
@@ -125,18 +151,32 @@ export function startGatewayStateOwnerHeartbeat(
       );
       return true;
     };
+    const recordEvent = (message: unknown) => {
+      if (
+        typeof message === "object" &&
+        message !== null &&
+        "lost" in message &&
+        typeof message.lost === "string"
+      ) {
+        failure = message.lost;
+        replaced = true;
+      } else {
+        failure = typeof message === "string" ? message : null;
+      }
+    };
     const inspect = () => {
+      if (lost) return 0;
       // Drain diagnostics synchronously when native work resumes before port callbacks.
       let message;
       while ((message = receiveMessageOnPort(events))) {
-        failure = message.message;
+        recordEvent(message.message);
       }
       const overdueMs = Number(monotonic() / 1_000_000n - Atomics.load(lastBeat, 0));
       let remaining = failureMs - overdueMs;
-      if (remaining <= 0) {
+      if (replaced || remaining <= 0) {
         let kept = false;
         // A renewal that failed with an error (EIO, EACCES) is a real loss; only a late one is re-asserted.
-        if (!failure) {
+        if (!failure && !replaced) {
           try {
             kept = reassert(overdueMs);
           } catch (error) {
@@ -146,11 +186,13 @@ export function startGatewayStateOwnerHeartbeat(
         if (kept) {
           remaining = failureMs;
         } else {
+          lost = true;
           onLost(
             new Error(
               `Gateway state ownership is no longer current at ${rootPath}: ${failure ?? "the lock was replaced while the heartbeat was late"}; restart the Gateway.`,
             ),
           );
+          remaining = 0;
         }
       }
       return remaining;
@@ -179,11 +221,11 @@ export function startGatewayStateOwnerHeartbeat(
         worker.postMessage([lockPath, raw], []);
       },
       stop() {
+        if (stopped) return;
         stopped = true;
         clearTimeout(timer);
         events.close();
-        worker.postMessage("stop", []);
-        void worker.terminate();
+        stopWorker(worker);
       },
     };
   });

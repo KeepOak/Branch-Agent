@@ -69,10 +69,15 @@ export function sessionHandoffLeaseFile(dir: string, lane: string, ownerId: stri
 }
 
 /** The lease in `file`, or undefined when there is none (missing or not a lease this format understands). */
-export function readSessionHandoffLease(file: string): SessionHandoffLease | undefined {
+export function readSessionHandoffLease(
+  file: string,
+  retry = false,
+): SessionHandoffLease | undefined {
   let text: string;
   try {
-    text = fs.readFileSync(file, "utf8");
+    text = retry
+      ? withFileRetries(() => fs.readFileSync(file, "utf8"))
+      : fs.readFileSync(file, "utf8");
   } catch {
     return undefined;
   }
@@ -81,13 +86,15 @@ export function readSessionHandoffLease(file: string): SessionHandoffLease | und
 
 /**
  * Like readSessionHandoffLease, for deciding whether a holder still holds: a file that is there but cannot be read
- * right now (Windows: antivirus or an indexer has it open) is retried briefly, then reported as "busy" rather than
- * as gone, so a passing read error never frees a session its holder still writes.
+ * right now (Windows: antivirus or an indexer has it open) is reported as "busy" rather than as gone. Polling
+ * must not pause the serving engine on every attempt while a file stays unreadable.
  */
-export function readHeldSessionHandoffLease(file: string): SessionHandoffLease | undefined | "busy" {
+export function readHeldSessionHandoffLease(
+  file: string,
+): SessionHandoffLease | undefined | "busy" {
   let text: string;
   try {
-    text = withFileRetries(() => fs.readFileSync(file, "utf8"));
+    text = fs.readFileSync(file, "utf8");
   } catch (error) {
     return isTransientFileError(error) ? "busy" : undefined;
   }
@@ -121,6 +128,7 @@ function parseSessionHandoffLease(file: string, text: string): SessionHandoffLea
 export function listSessionHandoffLeases(
   dir: string,
   lane?: string,
+  retryReads = false,
 ): Array<{ file: string; lease: SessionHandoffLease }> {
   let names: string[];
   try {
@@ -132,7 +140,7 @@ export function listSessionHandoffLeases(
   return names.flatMap((name) => {
     if (!name.endsWith(".json") || (prefix && !name.startsWith(prefix))) return [];
     const file = path.join(dir, name);
-    const lease = readSessionHandoffLease(file);
+    const lease = readSessionHandoffLease(file, retryReads);
     return lease ? [{ file, lease }] : [];
   });
 }
@@ -151,7 +159,10 @@ export function sessionHandoffLeaseExpiresAt(lease: SessionHandoffLease): number
   return lease.acquiredAt + SESSION_HANDOFF_LEASE_MAX_AGE_MS;
 }
 
-export function isSessionHandoffLeaseExpired(lease: SessionHandoffLease, now = Date.now()): boolean {
+export function isSessionHandoffLeaseExpired(
+  lease: SessionHandoffLease,
+  now = Date.now(),
+): boolean {
   return now >= sessionHandoffLeaseExpiresAt(lease) || lease.acquiredAt > now + 60_000;
 }
 
@@ -198,7 +209,8 @@ function removeFile(file: string, options: RemoveLeaseOptions = {}): boolean {
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
-    if (!options.quiet) log.warn(`session handoff lease ${file} could not be removed: ${String(error)}`);
+    if (!options.quiet)
+      log.warn(`session handoff lease ${file} could not be removed: ${String(error)}`);
     return false;
   }
 }
@@ -231,7 +243,10 @@ export function sweepSessionHandoffLeaseLeftovers(dir: string, now = Date.now())
 }
 
 /** Writes this process's own lease on `lane`. Another holder's lease is never read, replaced or refused. */
-export function writeSessionHandoffLease(dir: string, lane: string): { file: string; lease: SessionHandoffLease } {
+export function writeSessionHandoffLease(
+  dir: string,
+  lane: string,
+): { file: string; lease: SessionHandoffLease } {
   const lease: SessionHandoffLease = {
     version: 2,
     lane,

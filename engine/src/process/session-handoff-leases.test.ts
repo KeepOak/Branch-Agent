@@ -15,6 +15,7 @@ import {
 import { resetCommandQueueStateForTest } from "./command-queue.test-support.js";
 import {
   listSessionHandoffLeases,
+  readHeldSessionHandoffLease,
   readSessionHandoffLease,
   resolveSessionHandoffLeaseDir,
   SESSION_HANDOFF_LEASE_MAX_AGE_MS,
@@ -401,12 +402,17 @@ describe("session handoff leases", () => {
     const file = leaseFor(LEASED, holder.pid!);
     refreshSessionHandoffLeases();
     const read = fs.readFileSync;
+    const wait = vi.spyOn(Atomics, "wait");
+    let attempts = 0;
     // An indexer opens the lease file exclusively for a while.
     const spy = vi.spyOn(fs, "readFileSync").mockImplementation(((
       target: fs.PathOrFileDescriptor,
       ...rest: unknown[]
     ) => {
-      if (String(target) === file) throw Object.assign(new Error("busy"), { code: "EBUSY" });
+      if (String(target) === file) {
+        attempts += 1;
+        throw Object.assign(new Error("busy"), { code: "EBUSY" });
+      }
       return (read as (...args: unknown[]) => unknown)(target, ...rest);
     }) as typeof fs.readFileSync);
     let ran = false;
@@ -415,7 +421,40 @@ describe("session handoff leases", () => {
     });
     await pause(400);
     expect(ran).toBe(false);
+    expect(attempts).toBeGreaterThan(1);
+    expect(wait).not.toHaveBeenCalled();
+    expect(readHeldSessionHandoffLease(file)).toBe("busy");
     spy.mockRestore();
+    wait.mockRestore();
+    fs.unlinkSync(file);
+    await parked;
+    expect(ran).toBe(true);
+  });
+
+  it("retries a briefly unreadable lease during the startup scan", async () => {
+    const holder = await liveProcess();
+    const file = leaseFor(LEASED, holder.pid!);
+    const read = fs.readFileSync;
+    let attempts = 0;
+    const spy = vi.spyOn(fs, "readFileSync").mockImplementation(((
+      target: fs.PathOrFileDescriptor,
+      ...rest: unknown[]
+    ) => {
+      if (String(target) === file && attempts++ < 2) {
+        throw Object.assign(new Error("busy"), { code: "EBUSY" });
+      }
+      return (read as (...args: unknown[]) => unknown)(target, ...rest);
+    }) as typeof fs.readFileSync);
+    refreshSessionHandoffLeases();
+    spy.mockRestore();
+    // The scan retries twice; leftover cleanup may read the file once more.
+    expect(attempts).toBeGreaterThanOrEqual(3);
+    let ran = false;
+    const parked = enqueueCommandInLane(LEASED, async () => {
+      ran = true;
+    });
+    await pause(200);
+    expect(ran).toBe(false);
     fs.unlinkSync(file);
     await parked;
     expect(ran).toBe(true);
