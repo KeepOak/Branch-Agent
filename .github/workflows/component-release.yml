@@ -92,10 +92,10 @@ jobs:
           path: ${{ runner.temp }}/shared-window/
           if-no-files-found: error
           retention-days: 3
-  # Native targets start with identity; the engine builds while the shared renderer job runs, and the
-  # renderer artifact is fetched only when packaging needs it (release-build.mjs waits for the ready file).
+  # Native packaging waits for the shared renderer artifact. Starting earlier just burns a runner
+  # on the 10-minute poll when the window job is still queued.
   native:
-    needs: identity
+    needs: [identity, window]
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
