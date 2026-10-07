@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/commands/onboard-non-interactive.gateway-health-auth.test.ts (atlas OPS-0325). Changed for Branch: retain async secret-store reads and real setup Gateway health isolation coverage; provenance recorded for Harvest with assertions preserved.
 // Non-interactive onboarding forwards resolved auth to its public health boundaries.
 import fs from "node:fs/promises";
 import path from "node:path";

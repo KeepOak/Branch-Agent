@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/commands/backup-git.test.ts (atlas OPS-0240). Changed for Branch: retain the current upstream entries roster fixture; provenance recorded for Harvest with assertions preserved.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

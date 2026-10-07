@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/cli/config-cli.test.ts (atlas OPS-0211). Changed for Branch: retain Branch CLI validation and stronger candidate-model coverage; provenance recorded for Harvest with assertions preserved.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

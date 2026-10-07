@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/storage/locations.test.ts (atlas OPS-0241). Changed for Branch: retain current upstream compiled subprocess preparation; provenance recorded for Harvest with assertions preserved.
 import "../test-utils/prepare-compiled-subprocesses.js";
 import fs from "node:fs/promises";
 import path from "node:path";

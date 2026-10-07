@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/commands/configure.wizard.test.ts (atlas OPS-0326). Changed for Branch: retain current wizard API and stronger trusted-proxy exposure coverage; provenance recorded for Harvest with assertions preserved.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { formatCliCommand } from "../cli/command-format.js";
 import { ConfigMutationConflictError } from "../config/mutate.js";

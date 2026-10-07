@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/commands/onboard-non-interactive.gateway-auth-token.test.ts (atlas OPS-0325). Changed for Branch: retain async secret-store reads and real setup Gateway health isolation coverage; provenance recorded for Harvest with assertions preserved.
 // Gateway auth-token storage tests cover what onboarding persists at gateway.auth.token:
 // plaintext by default, and env/store SecretRefs under --secret-input-mode ref.
 import path from "node:path";

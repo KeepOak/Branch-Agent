@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:src/commands/configure.gateway.test.ts (atlas OPS-0326). Changed for Branch: retain current wizard API and stronger trusted-proxy exposure coverage; provenance recorded for Harvest with assertions preserved.
 import { IncomingMessage } from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
