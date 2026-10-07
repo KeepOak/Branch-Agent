@@ -3,11 +3,12 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
+import { gatewayPort } from './gateway-port.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const port = process.env.VISUAL_GATEWAY_PORT;
+const port = gatewayPort();
 const token = process.env.BRANCH_GATEWAY_TOKEN;
-if (!port || !token) throw new Error('VISUAL_GATEWAY_PORT and BRANCH_GATEWAY_TOKEN are required');
+if (!token) throw new Error('BRANCH_GATEWAY_TOKEN is required');
 
 function call(method, params = {}) {
   const result = spawnSync(process.execPath, [resolve(root, 'engine/branch.mjs'), 'gateway', 'call', method,

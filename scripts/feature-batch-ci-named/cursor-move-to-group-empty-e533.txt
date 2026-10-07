@@ -1,0 +1,1 @@
+window:src/shell/group-drop-pick.test.tsx
