@@ -1,3 +1,4 @@
+// From openclaw/openclaw@8177060846209e40a506e442785a7736f31db674:extensions/memory-wiki/src/query.test.ts (atlas MEMORY-0077). Changed for Branch: apply the Branch rename map and retain current-main provider and session recall assertions.
 // Memory Wiki tests cover query plugin behavior.
 import fs from "node:fs/promises";
 import os from "node:os";

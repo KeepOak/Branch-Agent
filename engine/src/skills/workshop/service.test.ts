@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/skills/workshop/service.test.ts (atlas SELF-IMPROVEMENT-0053). Changed for Branch: retain Branch SQLite lease serialization and library API assertions.
 // Workshop service tests cover skill workshop generation, storage, and validation behavior.
 import fs from "node:fs/promises";
 import path from "node:path";

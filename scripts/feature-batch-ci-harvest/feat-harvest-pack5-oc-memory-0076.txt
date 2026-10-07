@@ -1,0 +1,29 @@
+# MEMORY-0076 Standing intents
+# MEMORY-0077 Memory wiki
+# MEMORY-0078 Obsidian vault output
+# SELF-IMPROVEMENT-0025 Reflect on negative feedback
+# SELF-IMPROVEMENT-0053 Skill Workshop proposals
+# SELF-IMPROVEMENT-0054 Immediate skill repair
+# SELF-IMPROVEMENT-0154 blocked: the pin requires a Python Slime/Megatron/PyTorch
+# training runtime and CUDA model workers; Branch has no corresponding strict
+# TypeScript trainer or weight-update contract. The sole upstream test proves
+# fetch header injection only; it cannot verify feedback-to-weight training.
+# No header-only implementation is counted as this training capability.
+engine:extensions/memory-core/src/standing-intents.async.test.ts
+engine:extensions/memory-core/src/standing-intents.test.ts
+engine:extensions/memory-wiki/src/compile.test.ts
+engine:extensions/memory-wiki/src/ingest.test.ts
+engine:extensions/memory-wiki/src/lint.test.ts
+engine:extensions/memory-wiki/src/obsidian.discovery.test.ts
+engine:extensions/memory-wiki/src/obsidian.test.ts
+engine:extensions/memory-wiki/src/query.test.ts
+engine:extensions/memory-wiki/src/tool.test.ts
+engine:extensions/msteams/src/feedback-reflection.test.ts
+engine:src/agents/tools/skill-workshop-tool.evaluation.test.ts
+engine:src/agents/tools/skill-workshop-tool.history.test.ts
+engine:src/agents/tools/skill-workshop-tool.lifecycle.test.ts
+engine:src/agents/tools/skill-workshop-tool.review.test.ts
+engine:src/agents/tools/skill-workshop-tool.skill-identity.test.ts
+engine:src/agents/tools/skill-workshop-tool.test.ts
+engine:src/channels/feedback-reflection.test.ts
+engine:src/skills/workshop/service.test.ts
