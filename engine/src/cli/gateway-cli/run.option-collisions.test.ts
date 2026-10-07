@@ -769,7 +769,7 @@ describe("gateway run option collisions", () => {
       configState.snapshot = repairedSnapshot;
       expect(await selectGatewayRunEnvironment({ opts: {}, runtime: defaultRuntime })).toBe(true);
       expect(await prepareGatewayRunBootstrap({ opts: {}, runtime: defaultRuntime })).toBe(true);
-      expect(process.env.BRANCH_STATE_DIR).toBe(selectedStateDir);
+      expect(process.env.BRANCH_STATE_DIR).toBe(path.resolve(selectedStateDir));
       expect(
         await recheckGatewayRunBootstrap({
           opts: {},
@@ -806,7 +806,7 @@ describe("gateway run option collisions", () => {
 
       expect(await selectGatewayRunEnvironment({ opts: {}, runtime: defaultRuntime })).toBe(true);
       expect(await prepareGatewayRunBootstrap({ opts: {}, runtime: defaultRuntime })).toBe(true);
-      expect(process.env.BRANCH_STATE_DIR).toBe(selectedStateDir);
+      expect(process.env.BRANCH_STATE_DIR).toBe(path.resolve(selectedStateDir));
 
       const invalidSnapshot = {
         ...configState.snapshot,
@@ -1169,7 +1169,7 @@ describe("gateway run option collisions", () => {
         await import("./pre-bootstrap.js");
       await selectGatewayRunEnvironment({ opts: {}, runtime: defaultRuntime });
       await prepareGatewayRunBootstrap({ opts: {}, runtime: defaultRuntime });
-      expect(process.env.BRANCH_STATE_DIR).toBe("/tmp/branch-guarded-state");
+      expect(process.env.BRANCH_STATE_DIR).toBe(path.resolve("/tmp/branch-guarded-state"));
 
       const finalConfig = {
         env: { vars: { BRANCH_STATE_DIR: "/tmp/branch-final-state" } },
@@ -1179,7 +1179,7 @@ describe("gateway run option collisions", () => {
 
       await expect(runGatewayCli(["gateway", "run"])).rejects.toThrow("__exit__:1");
 
-      expect(process.env.BRANCH_STATE_DIR).toBe("/tmp/branch-guarded-state");
+      expect(process.env.BRANCH_STATE_DIR).toBe(path.resolve("/tmp/branch-guarded-state"));
       expect(startGatewayServer).not.toHaveBeenCalled();
       expect(runtimeErrors.join("\n")).toContain(
         "final config read changed config or state selection",
