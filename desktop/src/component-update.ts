@@ -38,8 +38,14 @@ interface Publication {
   /** While a staged pair is being replaced in place: the staged engine it replaces. */
   engineReplaced?: string;
 }
+interface UndoReceipt {
+  version: string; previousVersion: string; enginePrevious: string; engineNext: string;
+  windowPrevious: string; identity?: ReleaseIdentity;
+}
 const journalFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-pending.json");
 const versionFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-version.txt");
+const undoFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-undo.json");
+const undoneFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-undone.json");
 const rejectedFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-rejected.json");
 const timeoutFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-timeouts.json");
 const releaseIdentity = (release: ComponentRelease): ReleaseIdentity => ({ version: release.version,
@@ -58,10 +64,11 @@ async function publication(cfg: DesktopConfig): Promise<Publication | undefined>
 }
 
 export async function componentReleaseRejected(cfg: DesktopConfig, release: ComponentRelease): Promise<boolean> {
-  const rejected = await readOrEmpty(rejectedFile(cfg));
-  if (!rejected) return false;
-  const record = JSON.parse(rejected) as RejectedRelease;
-  return sameIdentity(record, releaseIdentity(release));
+  for (const file of [rejectedFile(cfg), undoneFile(cfg)]) {
+    const value = await readOrEmpty(file);
+    if (value && sameIdentity(JSON.parse(value) as RejectedRelease, releaseIdentity(release))) return true;
+  }
+  return false;
 }
 
 /** A first timeout is retryable after rollback; a second timeout rejects this exact release. */
@@ -218,6 +225,12 @@ export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFail
   const pending = await publication(cfg);
   if (!pending || pending.phase !== "pending") return;
   if (await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== pending.engineNext) throw new Error("Engine publication changed before update confirmation");
+  const previousVersion = await readOrEmpty(versionFile(cfg));
+  if (pending.identity && previousVersion && pending.enginePrevious && existsSync(pending.windowPrevious)) {
+    await replaceFile(undoFile(cfg), JSON.stringify({ version: pending.version, previousVersion,
+      enginePrevious: pending.enginePrevious, engineNext: pending.engineNext,
+      windowPrevious: pending.windowPrevious, identity: pending.identity } satisfies UndoReceipt));
+  } else if (!previousVersion) await rm(undoFile(cfg), { force: true });
   await replaceFile(versionFile(cfg), `${pending.version}\n`);
   await rm(journalFile(cfg));
   await rm(timeoutFile(cfg), { force: true });
@@ -228,6 +241,62 @@ export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFail
   };
   if (deferPrune) return prune;
   await prune();
+}
+
+/** Reverse the last confirmed publication while retaining the current release for rollback. */
+export async function prepareComponentUpdateUndo(cfg: DesktopConfig, onOutgoingWindowMoved?: (dir: string) => void): Promise<boolean> {
+  if (await publication(cfg)) return false;
+  const raw = await readOrEmpty(undoFile(cfg));
+  if (!raw) return false;
+  const undo = JSON.parse(raw) as UndoReceipt;
+  if (await readOrEmpty(versionFile(cfg)) !== undo.version ||
+      await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== undo.engineNext ||
+      !existsSync(undo.windowPrevious) || !existsSync(undo.enginePrevious)) return false;
+  const pending: Publication = { version: undo.previousVersion, phase: "prepared",
+    enginePrevious: undo.engineNext, engineNext: undo.enginePrevious,
+    windowPrevious: `${undo.engineNext}-undo-previous-window`, windowExisted: existsSync(cfg.windowDir) };
+  await replaceFile(journalFile(cfg), JSON.stringify(pending));
+  try {
+    if (pending.windowExisted) {
+      await move(cfg.windowDir, pending.windowPrevious);
+      onOutgoingWindowMoved?.(pending.windowPrevious);
+    }
+    await move(undo.windowPrevious, cfg.windowDir);
+    await replaceFile(join(cfg.dataDir, "engine-current.txt"), `${pending.engineNext}\n`);
+    pending.phase = "pending";
+    await replaceFile(journalFile(cfg), JSON.stringify(pending));
+    return true;
+  } catch (error) { await rollbackComponentUpdate(cfg); throw error; }
+}
+
+export async function rollbackComponentUpdateUndo(cfg: DesktopConfig): Promise<void> {
+  const pending = await publication(cfg);
+  const raw = await readOrEmpty(undoFile(cfg));
+  if (!raw) return;
+  const undo = JSON.parse(raw) as UndoReceipt;
+  if (pending && (pending.enginePrevious !== undo.engineNext || pending.engineNext !== undo.enginePrevious)) return;
+  if (pending) await rollbackComponentUpdate(cfg);
+  const failedWindow = `${undo.enginePrevious}-failed-window`;
+  if (!existsSync(undo.windowPrevious) && existsSync(failedWindow)) await move(failedWindow, undo.windowPrevious);
+}
+
+export async function confirmComponentUpdateUndo(cfg: DesktopConfig): Promise<void> {
+  const raw = await readOrEmpty(undoFile(cfg));
+  if (!raw) return;
+  const undo = JSON.parse(raw) as UndoReceipt;
+  if (await readOrEmpty(versionFile(cfg)) === undo.previousVersion && undo.identity) {
+    await replaceFile(undoneFile(cfg), JSON.stringify(undo.identity));
+    await rm(undoFile(cfg), { force: true });
+  }
+}
+
+export async function canUndoComponentUpdate(cfg: DesktopConfig): Promise<boolean> {
+  const raw = await readOrEmpty(undoFile(cfg));
+  if (!raw) return false;
+  const undo = JSON.parse(raw) as UndoReceipt;
+  return await readOrEmpty(versionFile(cfg)) === undo.version &&
+    await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) === undo.engineNext &&
+    existsSync(undo.windowPrevious) && existsSync(undo.enginePrevious);
 }
 
 export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> {
