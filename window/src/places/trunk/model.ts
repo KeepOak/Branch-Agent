@@ -124,7 +124,7 @@ export const creationProblem = (error: unknown) => {
   if (/was created .*but its job instructions were not saved/i.test(message)) return message;
   if (/already exists/i.test(message)) return "That Trunk name is already taken. Choose another name.";
   if (/was created|saved but is not active/i.test(message)) return "Your Trunk was made but isn’t ready yet. Refresh Trunks before trying again.";
-  if (/reserved/i.test(message)) return "That name is kept for Branch. Choose another Trunk name.";
+  if (/is reserved/i.test(message)) return "That name is kept for Branch. Choose another Trunk name.";
   if (/no valid id characters/i.test(message)) return "Use a name with at least one letter or number.";
   return "Couldn’t create your Trunk. Try again.";
 };
