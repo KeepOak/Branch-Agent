@@ -260,6 +260,17 @@ it.each(["stalled", "worker exit"] as const)(
       if (fault === "worker exit") {
         await worker.terminate();
       }
+      const shutdown: string[] = [];
+      const post = worker.postMessage.bind(worker);
+      const terminate = worker.terminate.bind(worker);
+      vi.spyOn(worker, "postMessage").mockImplementation((value, transferList) => {
+        if (value === "stop") shutdown.push("stop");
+        return post(value, transferList);
+      });
+      vi.spyOn(worker, "terminate").mockImplementation(() => {
+        shutdown.push("terminate");
+        return terminate();
+      });
       const raw = fs.readFileSync(gateway.lockPath, "utf8");
       const before = fs.statSync(gateway.lockPath).mtimeMs;
       // The whole process stood still for longer than the renewal deadline (a frozen VM, a blocked disk).
@@ -271,6 +282,7 @@ it.each(["stalled", "worker exit"] as const)(
       expect(fs.readFileSync(gateway.lockPath, "utf8")).toBe(raw);
       expect(fs.statSync(gateway.lockPath).mtimeMs).toBeGreaterThanOrEqual(before);
       expect(workers).toHaveLength(2);
+      expect(shutdown).toEqual(["stop", "terminate"]);
       const [, renewed] = beats;
       expect(Number(process.hrtime.bigint() / 1_000_000n - Atomics.load(renewed!, 0))).toBeLessThan(
         10_000,
@@ -314,6 +326,68 @@ it("loses ownership when the heartbeat is late and another process took the lock
     expect(owner.signal.aborted).toBe(true);
     expect(fs.readFileSync(gateway.lockPath, "utf8")).toBe("successor");
     expect(workers).toHaveLength(1);
+  } finally {
+    await gateway.release();
+    await Promise.all(workers.map((worker) => worker.terminate()));
+  }
+});
+
+it("never renews a successor when the lock changes just before a late reassertion touches it", async () => {
+  const root = tempDirs.make("branch-owner-reassert-race-");
+  const { workers, ready, beats } = observeHeartbeatWorkers();
+  const gateway = await acquireGatewayLock({
+    allowInTests: true,
+    env: { BRANCH_STATE_DIR: root },
+    timeoutMs: 0,
+  });
+  if (!gateway) throw new Error("Expected Gateway custody");
+  try {
+    await Promise.all(ready);
+    await workers[0]!.terminate();
+    const successor = "successor";
+    const touch = fs.futimesSync;
+    let replacementMtime: bigint | undefined;
+    const spy = vi.spyOn(fs, "futimesSync").mockImplementation((fd, atime, mtime) => {
+      fs.renameSync(gateway.lockPath, `${gateway.lockPath}.retired`);
+      fs.writeFileSync(gateway.lockPath, successor);
+      replacementMtime = fs.statSync(gateway.lockPath, { bigint: true }).mtimeNs;
+      touch(fd, atime, mtime);
+    });
+    Atomics.store(beats[0]!, 0, process.hrtime.bigint() / 1_000_000n - 60_001n);
+    expect(() => gateway.assertCurrent()).toThrow("no longer current");
+    spy.mockRestore();
+    expect(replacementMtime).toBeDefined();
+    expect(fs.statSync(gateway.lockPath, { bigint: true }).mtimeNs).toBe(replacementMtime);
+    expect(fs.readFileSync(gateway.lockPath, "utf8")).toBe(successor);
+  } finally {
+    await gateway.release();
+    await Promise.all(workers.map((worker) => worker.terminate()));
+  }
+});
+
+it("declares a worker-reported lock replacement lost before the heartbeat deadline", async () => {
+  const root = tempDirs.make("branch-owner-replaced-now-");
+  const databasePath = path.join(root, "state", "branch.sqlite");
+  const { workers, ready } = observeHeartbeatWorkers();
+  const gateway = await acquireGatewayLock({
+    allowInTests: true,
+    env: { BRANCH_STATE_DIR: root },
+    timeoutMs: 0,
+  });
+  if (!gateway) throw new Error("Expected Gateway custody");
+  try {
+    const owner = captureGatewayStateOwner(databasePath);
+    if (!owner) throw new Error("Expected captured Gateway custody");
+    await Promise.all(ready);
+    fs.renameSync(gateway.lockPath, `${gateway.lockPath}.retired`);
+    fs.writeFileSync(gateway.lockPath, "successor");
+    await vi.waitFor(() => expect(owner.signal.aborted).toBe(true), {
+      timeout: 5_000,
+      interval: 50,
+    });
+    expect(owner.signal.reason).toMatchObject({
+      message: expect.stringContaining("owner lock was removed or replaced"),
+    });
   } finally {
     await gateway.release();
     await Promise.all(workers.map((worker) => worker.terminate()));

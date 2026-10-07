@@ -71,7 +71,10 @@ export function runGatewayStateOwnerHeartbeat(
           bytes.subarray(0, length).toString("utf8") !== raw
         ) {
           if (lockPath === rootPath) {
-            data.events.postMessage(`${lockPath}: owner lock was removed or replaced`, []);
+            data.events.postMessage(
+              { lost: `${lockPath}: owner lock was removed or replaced` },
+              [],
+            );
             stop();
             return;
           }
@@ -90,7 +93,10 @@ export function runGatewayStateOwnerHeartbeat(
       } catch (error) {
         if (hasErrnoCode(error, "ENOENT")) {
           if (lockPath === rootPath) {
-            data.events.postMessage(`${lockPath}: owner lock was removed or replaced`, []);
+            data.events.postMessage(
+              { lost: `${lockPath}: owner lock was removed or replaced` },
+              [],
+            );
             stop();
             return;
           }

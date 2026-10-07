@@ -73,7 +73,9 @@ export function clearOwnSessionHandoffHold(startedAt: number): void {
 
 /** The lane is free once its last holder's lease expires, whatever the holders still do. */
 function laneExpiresAt(held: HeldLane): number {
-  return Math.max(...[...held.holders.values()].map(({ lease }) => sessionHandoffLeaseExpiresAt(lease)));
+  return Math.max(
+    ...[...held.holders.values()].map(({ lease }) => sessionHandoffLeaseExpiresAt(lease)),
+  );
 }
 
 /** Adds a live foreign lease to its lane (creating the lane entry), or deletes it when it is stale. */
@@ -114,10 +116,12 @@ function admitLease(file: string, lease: SessionHandoffLease): void {
  * can slip in before the next periodic scan. Stale leases and old leftovers are deleted on sight.
  */
 export function refreshSessionHandoffLeases(env: NodeJS.ProcessEnv = process.env): void {
+  const starting = gate.scannedAt === Number.NEGATIVE_INFINITY;
   gate.env = env;
   gate.scannedAt = Date.now();
   const dir = resolveSessionHandoffLeaseDir(env);
-  for (const { file, lease } of listSessionHandoffLeases(dir)) admitLease(file, lease);
+  for (const { file, lease } of listSessionHandoffLeases(dir, undefined, starting))
+    admitLease(file, lease);
   sweepSessionHandoffLeaseLeftovers(dir);
   if (gate.lanes.size > 0 && !gate.timer) {
     gate.timer = setInterval(pollSessionHandoffLeases, POLL_MS);
@@ -136,12 +140,16 @@ function holderStillHolds({ file, lease }: Holder): boolean {
 function settleLane(lane: string, held: HeldLane): boolean {
   for (const [ownerId, holder] of held.holders) {
     if (holderStillHolds(holder)) continue;
-    if (readSessionHandoffLease(holder.file)?.ownerId === ownerId) removeStaleSessionHandoffLease(holder.file);
+    if (readSessionHandoffLease(holder.file)?.ownerId === ownerId)
+      removeStaleSessionHandoffLease(holder.file);
     held.holders.delete(ownerId);
   }
   if (held.holders.size > 0) return false;
   // Before freeing the lane, look for a holder that appeared since the last scan (a later step-down).
-  for (const { file, lease } of listSessionHandoffLeases(resolveSessionHandoffLeaseDir(gate.env), lane)) {
+  for (const { file, lease } of listSessionHandoffLeases(
+    resolveSessionHandoffLeaseDir(gate.env),
+    lane,
+  )) {
     admitLease(file, lease);
   }
   if (held.holders.size > 0) return false;
@@ -189,7 +197,10 @@ export function countSessionHandoffLeaseWaiters(lane: string): number {
  * released it or its lease expired (waiters resume in the order they arrived), and rejects when `signal` aborts or
  * the bounded wait runs out first.
  */
-export function waitForSessionHandoffLease(lane: string, signal?: AbortSignal): Promise<void> | undefined {
+export function waitForSessionHandoffLease(
+  lane: string,
+  signal?: AbortSignal,
+): Promise<void> | undefined {
   if (!lane.startsWith(SESSION_LANE_PREFIX)) return undefined;
   if (Date.now() - gate.scannedAt >= RESCAN_MS) refreshSessionHandoffLeases(gate.env);
   const held = gate.lanes.get(lane);
@@ -238,7 +249,9 @@ export function waitForSessionHandoffLease(lane: string, signal?: AbortSignal): 
 }
 
 /** Tests only: a short bounded wait and a clean gate. */
-export function resetSessionHandoffLeaseGateForTest(maxWaitMs = SESSION_HANDOFF_LEASE_MAX_AGE_MS): void {
+export function resetSessionHandoffLeaseGateForTest(
+  maxWaitMs = SESSION_HANDOFF_LEASE_MAX_AGE_MS,
+): void {
   if (gate.timer) clearInterval(gate.timer);
   gate.timer = undefined;
   gate.lanes.clear();
