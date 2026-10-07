@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { parse as parseSemver } from "semver";
+import { assertLockdownOff } from "../../config/lockdown.js";
 import { assertAgentRunLifecycleGenerationCurrent } from "../../infra/agent-events.js";
 import { isTruthyEnvValue } from "../../infra/env.js";
 import { formatErrorMessage, toErrorObject } from "../../infra/errors.js";
@@ -121,6 +122,8 @@ export async function executePreparedCliRun(
   cliSessionIdToUse?: string,
   options?: ExecutePreparedCliRunOptions,
 ): Promise<CliOutput> {
+  // Every CLI model run passes here (chat, side chat, /btw): Lockdown refuses before anything spends.
+  assertLockdownOff();
   // Fresh recovery retains its exact account/read authority across every await
   // and through the process/plugin execution callbacks, not just preparation.
   const context =

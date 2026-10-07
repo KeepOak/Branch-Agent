@@ -182,6 +182,8 @@ function QueuePop(p: Props & PopBase) {
           <input
             aria-label={`Waiting message ${i + 1}`}
             defaultValue={item.text}
+            // A message that may already be with the engine goes again word for word, if at all.
+            readOnly={item.state === "checking"}
             onBlur={(e) => e.target.value !== item.text && p.onReword(item.id, e.target.value)}
           />
           {item.state === "waiting" && p.working ? (
@@ -194,6 +196,7 @@ function QueuePop(p: Props & PopBase) {
           <button type="button" className="c-x" aria-label="Remove" onClick={() => p.onRemove(item.id)}><Icon name="x" size={13} /></button>
           {item.state === "failed" ? <small className="c-qstate">Not sent{item.error ? `: ${item.error}` : ""}</small> : null}
           {item.state === "sending" ? <small className="c-qstate">Sending…</small> : null}
+          {item.state === "checking" ? <small className="c-qstate">Not confirmed yet · Branch checks whether it arrived</small> : null}
           {p.offline && item.state === "waiting" ? <small className="c-qstate">Offline · sends when Branch is back</small> : null}
         </div>
       ))}

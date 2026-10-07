@@ -65,10 +65,15 @@ export function addGatewayRunCommand(cmd: Command, hooks: GatewayRunCommandHooks
       const resolved = resolveGatewayRunOptions(opts, command);
       // Resolve the host before CLI bootstrap tries to migrate state. A second
       // launch otherwise fails the state-owner guard before it can attach.
+      // A desktop's prepared standby is that second launch on purpose: it claims
+      // the host only once it takes over (run.ts), when its predecessor has
+      // handed the host role over with the state.
       const host =
-        resolved.taskSupervisor || resolved.reset
+        resolved.taskSupervisor || resolved.reset || process.env.BRANCH_GATEWAY_STANDBY === "1"
           ? undefined
-          : await (await import("../../infra/host-rendezvous.js")).prepareHostRendezvous({
+          : await (
+              await import("../../infra/host-rendezvous.js")
+            ).prepareHostRendezvous({
               profile: process.env.BRANCH_PROFILE?.trim() || "default",
               home: process.env.BRANCH_HOME?.trim() || (await import("node:os")).homedir(),
               gatewayPort: 0,

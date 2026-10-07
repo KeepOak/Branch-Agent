@@ -127,11 +127,12 @@ describe("People › People", () => {
   });
 
   it("makes a limited one-time code and says how long it works", async () => {
-    const { engine, request } = fakeEngine(table({ "device.pair.setupCode": { setupCode: "CODE-123", gatewayUrl: "wss://home.test", auth: "token", urlSource: "x", expiresAtMs: Date.now() + 10 * 60_000 } }));
+    const { engine, request } = fakeEngine(table({ "device.pair.setupCode": { setupCode: "CODE-123", qrDataUrl: "data:image/png;base64,AA==", gatewayUrl: "wss://home.test", auth: "token", urlSource: "x", expiresAtMs: Date.now() + 10 * 60_000 } }));
     await mount(engine); await click("People2"); await click("Make a one-time code");
     const dialog = document.querySelector('[role="dialog"]')!;
     await act(async () => { (dialog.querySelector(".dlg-f .btn.pri") as HTMLButtonElement).click(); });
-    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { bootstrapProfile: "limited" });
+    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { bootstrapProfile: "limited", includeQr: true });
+    expect(dialog.querySelector("img")?.getAttribute("alt")).toBe("One-time code as a QR code");
     expect(dialog.textContent).toContain("CODE-123"); expect(dialog.textContent).toContain("Works once, for 10 minutes.");
   });
 

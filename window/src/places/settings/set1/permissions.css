@@ -17,7 +17,7 @@
 .set-col .pm-danger .btn.bad:disabled { opacity: 0.5; }
 .set-col .acts .hint { margin: 0; align-self: center; }
 
-.dlg .pm-apr h3 { font: 500 10.5px var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); margin: 16px 0 6px; }
+.dlg .pm-apr h3 { font: 600 12px var(--sans); color: var(--ink-3); margin: 16px 0 6px; }
 .dlg .pm-apr h3:first-child { margin-top: 0; }
 .dlg .pm-apr .prow { flex-wrap: wrap; }
 .dlg .pm-apr code, .dlg .prow code { font: 12px var(--mono); overflow-wrap: anywhere; }

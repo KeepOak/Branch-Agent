@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DraftFile } from "./attachments";
 import { safeStorage } from "./drafts";
-import { enqueue, loadLine, moveUp, nextToSend, remove, reword, saveLine, mark, type QueueItem } from "./queue";
+import { enqueue, loadLine, moveUp, nextToSend, onLineChange, remove, reword, saveLine, type QueueItem } from "./queue";
 
 export type Deliver = (item: QueueItem, steer: boolean) => void;
 
@@ -26,21 +26,40 @@ export function useWaitingLine(sessionKey: string | null, working: boolean, offl
     const stored = readStored(sessionKey);
     setLine(stored.line);
     setError(stored.error);
+    if (!sessionKey) return;
+    // Others write this line too: the session keeps a message that wasn't sent or confirmed here, the thread's Try
+    // again and Discard change it, and so does another window of this computer. Follow them so the line drains (or
+    // stays paused) the same as when the composer writes.
+    return onLineChange(sessionKey, () => {
+      queueMicrotask(() => {
+        const next = readStored(sessionKey).line;
+        setLine((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+      });
+    });
   }, [sessionKey]);
 
   const update = useCallback(
     (fn: (line: QueueItem[]) => QueueItem[]) => {
-      setLine((current) => {
-        const next = fn(current);
-        if (sessionKey) {
-          try {
-            saveLine(safeStorage(), sessionKey, next);
-          } catch (e) {
-            setError(`This computer's storage for waiting messages is full. Send or remove some first. (${e instanceof Error ? e.message : String(e)})`);
-          }
-        }
-        return next;
-      });
+      const storage = safeStorage();
+      if (!sessionKey || !storage) {
+        setLine((current) => fn(current));
+        return;
+      }
+      // Read, change and write the stored line, never this window's copy of it: the copy can miss a record another
+      // window (or the session) just wrote, and writing it back would drop that record.
+      let next: QueueItem[];
+      try {
+        next = fn(loadLine(storage, sessionKey));
+      } catch (e) {
+        setError(`The saved waiting line couldn't be read: ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
+      try {
+        saveLine(storage, sessionKey, next);
+      } catch (e) {
+        setError(`This computer's storage for waiting messages is full. Send or remove some first. (${e instanceof Error ? e.message : String(e)})`);
+      }
+      setLine(next);
     },
     [sessionKey],
   );
@@ -48,11 +67,12 @@ export function useWaitingLine(sessionKey: string | null, working: boolean, offl
   // When the Trunk is free and Branch is connected, the first waiting message goes.
   useEffect(() => {
     if (working || offline) return;
-    const item = nextToSend(line);
+    // What is stored decides, not this window's copy: another window may have just added a record that holds the line.
+    const item = nextToSend(sessionKey && safeStorage() ? readStored(sessionKey).line : line);
     if (!item) return;
     update((l) => remove(l, item.id));
     deliverRef.current(item, false);
-  }, [line, working, offline, update]);
+  }, [line, working, offline, update, sessionKey]);
 
   const add = useCallback((text: string, files: DraftFile[]) => update((l) => enqueue(l, { id: crypto.randomUUID(), text, files, createdAt: Date.now() })), [update]);
   const steerNow = useCallback(
@@ -72,6 +92,6 @@ export function useWaitingLine(sessionKey: string | null, working: boolean, offl
     reword: (id: string, text: string) => update((l) => reword(l, id, text)),
     moveUp: (id: string) => update((l) => moveUp(l, id)),
     remove: (id: string) => update((l) => remove(l, id)),
-    retry: (id: string) => update((l) => mark(l, id, "waiting")),
+    retry: (id: string) => update((l) => l.map((item) => item.id === id ? { ...item, id: crypto.randomUUID(), state: "waiting", error: undefined, sentTo: undefined, sentWith: undefined } : item)),
   };
 }

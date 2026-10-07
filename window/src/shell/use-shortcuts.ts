@@ -12,7 +12,9 @@ export type ShortcutHandlers = {
   toggleList: () => void;
   inbox: () => void;
   focusSearch: () => void;
+  focusPastSearch: () => void;
   archiveOpen: () => void;
+  lockdown: () => void;
   talkBeside: () => void;
   talkLive: () => void;
   stop: () => void;
@@ -23,7 +25,7 @@ export type ShortcutHandlers = {
 
 const DEFAULT_KEYS = currentKeys(keyActions(""), {});
 /** Keys that aren't settable in the dialog (§3.6). */
-const FIXED: Record<string, keyof ShortcutHandlers> = { "Ctrl B": "toggleList", "Ctrl G": "focusSearch", "Ctrl Shift Space": "quickAsk" };
+const FIXED: Record<string, keyof ShortcutHandlers> = { "Ctrl B": "toggleList", "Ctrl G": "focusSearch", "Ctrl P": "focusPastSearch", "Ctrl Shift Space": "quickAsk" };
 
 /** Which shortcut a key press means, or null, under the person's keys. Exported for its test. */
 export function shortcutFor(
@@ -72,6 +74,7 @@ const HANDLED: Partial<Record<ActionId, keyof ShortcutHandlers>> = {
   inbox: "inbox",
   nextConversation: "nextConversation",
   archiveOpen: "archiveOpen",
+  lockdown: "lockdown",
   talkBeside: "talkBeside",
   talkLive: "talkLive",
 };

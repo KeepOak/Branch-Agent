@@ -16,6 +16,7 @@ import {
   type GatewayConfigReloadTransactionOwnership,
   type GatewayReloadPlan,
 } from "./config-reload.js";
+import { isLockdownEngaging, stopRunningWorkForLockdown } from "./lockdown-engage.js";
 import { publishOperatorRoleConfigChange } from "./operator-role-policy.js";
 import {
   assertReloadPublicationCurrent,
@@ -337,6 +338,21 @@ export function startManagedGatewayConfigReloader(
       );
     },
     onRuntimeConfigCommitted: (plan, nextCommittedRuntimeConfig) => {
+      if (isLockdownEngaging(committedRuntimeConfig, nextCommittedRuntimeConfig)) {
+        const context = params.resolveGatewayContext?.();
+        stopRunningWorkForLockdown(
+          context
+            ? {
+                chatAbortControllers: context.chatAbortControllers,
+                chatRunState: context.chatRunState,
+                removeChatRun: context.removeChatRun,
+                agentRunSeq: context.agentRunSeq,
+                broadcast: context.broadcast,
+                nodeSendToSession: context.nodeSendToSession,
+              }
+            : undefined,
+        );
+      }
       const sessionStoresChanged =
         committedRuntimeConfig.session?.store !== nextCommittedRuntimeConfig.session?.store ||
         plan.changedPaths.some((path) => path === "env" || path.startsWith("env."));
