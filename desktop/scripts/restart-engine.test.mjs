@@ -724,9 +724,12 @@ test("restores only existing saved conversations and removes deleted pop-out sta
   const stateFile = key => join(root, `conversation-window-${createHash("sha256").update(key).digest("hex").slice(0, 20)}.json`);
   assert.equal(runtime.windows.length, 1, "saved windows wait for an existence check");
   assert.deepEqual(runtime.handlers.get("branch-desktop:saved-conversation-windows")(event), [one, deleted]);
-  assert.throws(() => runtime.handlers.get("branch-desktop:restore-conversation-windows")(event, ["agent:test:foreign"]));
-  runtime.handlers.get("branch-desktop:restore-conversation-windows")(event, [one]);
+  assert.throws(() => runtime.handlers.get("branch-desktop:restore-conversation-windows")(event, [42]));
+  runtime.handlers.get("branch-desktop:restore-conversation-windows")(event, [one, "agent:test:foreign"], [deleted]);
+  assert.deepEqual(runtime.handlers.get("branch-desktop:saved-conversation-windows")(event), [deleted]);
   assert.equal(runtime.windows.length, 2);
+  assert.equal(existsSync(stateFile(deleted)), true, "a deferred check keeps its saved bounds");
+  runtime.handlers.get("branch-desktop:restore-conversation-windows")(event, []);
   assert.equal(existsSync(stateFile(deleted)), false);
   assert.deepEqual(JSON.parse(await readFile(join(root, "conversation-windows.json"), "utf8")), [one]);
   runtime.handlers.get("branch-desktop:forget-conversation-window")(event, one);

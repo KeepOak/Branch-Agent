@@ -595,17 +595,19 @@ async function start(): Promise<void> {
     if (!isOwnedComponentWindow(e, win?.webContents, windowUrl())) throw new Error("Only the main Branch window can restore conversation windows");
     return [...pendingSavedConversationKeys];
   });
-  ipcMain.handle("branch-desktop:restore-conversation-windows", (e, valid: unknown) => {
+  ipcMain.handle("branch-desktop:restore-conversation-windows", (e, valid: unknown, deferred: unknown = []) => {
     if (!isOwnedComponentWindow(e, win?.webContents, windowUrl())) throw new Error("Only the main Branch window can restore conversation windows");
-    if (!Array.isArray(valid) || !valid.every((key) => typeof key === "string" && pendingSavedConversationKeys.includes(key))) throw new Error("Invalid saved conversations");
-    const keep = new Set<string>(valid);
+    if (!Array.isArray(valid) || !valid.every((key) => typeof key === "string") || !Array.isArray(deferred) || !deferred.every((key) => typeof key === "string")) throw new Error("Invalid saved conversations");
+    const pending = new Set(pendingSavedConversationKeys);
+    const restore = valid.filter((key: string) => pending.has(key) && !conversationWindows.has(key));
+    const retry = deferred.filter((key: string) => pending.has(key) && !valid.includes(key));
+    const keep = new Set<string>([...restore, ...retry]);
     for (const key of pendingSavedConversationKeys) {
       if (!keep.has(key)) {
         try { unlinkSync(join(cfg.dataDir, conversationStateFile(key))); } catch { /* no saved bounds */ }
       }
     }
-    const restore = pendingSavedConversationKeys.filter((key) => keep.has(key));
-    pendingSavedConversationKeys = [];
+    pendingSavedConversationKeys = retry;
     for (const key of restore) openConversationWindow(key);
     saveConversationWindows();
   });

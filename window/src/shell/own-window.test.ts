@@ -44,15 +44,30 @@ it("restores only saved pop-outs whose conversations still exist", async () => {
   (window as { branchDesktop?: unknown }).branchDesktop = { conversationWindows: { saved, restore, forget } };
   const request = vi.fn(async (_method: string, params: unknown) => ({ session: (params as { key: string }).key.endsWith("deleted") ? null : { key: "agent:oak:one" } }));
   await restoreSavedConversationWindows(request);
-  expect(restore).toHaveBeenCalledWith(["agent:oak:one"]);
+  expect(restore).toHaveBeenCalledWith(["agent:oak:one"], []);
   expect(request).toHaveBeenCalledWith("sessions.describe", { key: "agent:oak:one", agentId: "oak" });
   await forgetDeletedConversationWindow("agent:oak:one");
   expect(forget).toHaveBeenCalledWith("agent:oak:one");
 });
 
-it("does not prune saved pop-outs when existence cannot be checked", async () => {
+it("drops a deleted Trunk pop-out without blocking other saved conversations", async () => {
   const restore = vi.fn(async () => undefined);
-  (window as { branchDesktop?: unknown }).branchDesktop = { conversationWindows: { saved: async () => ["agent:oak:one"], restore } };
-  await expect(restoreSavedConversationWindows(async () => { throw new Error("read unavailable"); })).rejects.toThrow("read unavailable");
-  expect(restore).not.toHaveBeenCalled();
+  (window as { branchDesktop?: unknown }).branchDesktop = { conversationWindows: { saved: async () => ["agent:retired:main", "agent:oak:one"], restore } };
+  const request = vi.fn(async (_method: string, params: unknown) => {
+    if ((params as { key: string }).key === "agent:retired:main") throw new Error('Unknown agent id "retired"');
+    return { session: { key: "agent:oak:one" } };
+  });
+  expect(await restoreSavedConversationWindows(request)).toBe(false);
+  expect(restore).toHaveBeenCalledWith(["agent:oak:one"], []);
+});
+
+it("defers a temporarily refused pop-out and restores the others", async () => {
+  const restore = vi.fn(async () => undefined);
+  (window as { branchDesktop?: unknown }).branchDesktop = { conversationWindows: { saved: async () => ["agent:oak:preparing", "agent:oak:one"], restore } };
+  const request = vi.fn(async (_method: string, params: unknown) => {
+    if ((params as { key: string }).key.endsWith("preparing")) throw new Error("Agent database is being prepared");
+    return { session: { key: "agent:oak:one" } };
+  });
+  expect(await restoreSavedConversationWindows(request)).toBe(true);
+  expect(restore).toHaveBeenCalledWith(["agent:oak:one"], ["agent:oak:preparing"]);
 });
