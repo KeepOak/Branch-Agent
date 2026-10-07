@@ -83,11 +83,14 @@ jobs:
           node-version: '24.19.0'
           package-manager-cache: false
       - name: Build one shared engine package from frozen source
-        run: node desktop/scripts/release-build.mjs engine "${{ runner.temp }}/shared-engine"
+        run: |
+          set -euo pipefail
+          node desktop/scripts/release-build.mjs engine "${{ runner.temp }}/shared-engine"
+          tar -C "${{ runner.temp }}/shared-engine" -czf "${{ runner.temp }}/shared-engine.tar.gz" .
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-shared-engine
-          path: ${{ runner.temp }}/shared-engine/
+          path: ${{ runner.temp }}/shared-engine.tar.gz
           if-no-files-found: error
           retention-days: 3
   window:
@@ -151,7 +154,14 @@ jobs:
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: release-shared-engine
-          path: ${{ runner.temp }}/shared-engine
+          path: ${{ runner.temp }}
+      - name: Extract shared engine package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ runner.temp }}/shared-engine"
+          tar -xzf "${{ runner.temp }}/shared-engine.tar.gz" -C "${{ runner.temp }}/shared-engine"
+          test -f "${{ runner.temp }}/shared-engine/build-info.json"
       - name: Prepare stable macOS release signing identity
         if: matrix.target == 'darwin-arm64'
         shell: bash

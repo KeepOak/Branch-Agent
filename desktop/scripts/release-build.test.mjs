@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import { adoptSharedEngineDist } from "./release-build.mjs";
@@ -23,4 +23,12 @@ test("adoptSharedEngineDist copies a matching prebuilt dist and rejects a differ
     await writeFile(join(source, "build-info.json"), `${JSON.stringify({ commit: "b".repeat(40), version: "1.0.0" }, null, 2)}\n`);
     await assert.rejects(() => adoptSharedEngineDist(source, destination, { commit: "a".repeat(40) }), /Shared engine build differs from source freeze/);
   });
+});
+
+test("component-release archives the shared engine dist as a tarball before upload", async () => {
+  const workflow = await readFile(resolve(import.meta.dirname, "../../.github/workflows/component-release.yml"), "utf8");
+  assert.match(workflow, /tar -C "\$\{\{ runner\.temp \}\}\/shared-engine" -czf "\$\{\{ runner\.temp \}\}\/shared-engine\.tar\.gz" \./);
+  assert.match(workflow, /tar -xzf "\$\{\{ runner\.temp \}\}\/shared-engine\.tar\.gz" -C "\$\{\{ runner\.temp \}\}\/shared-engine"/);
+  assert.match(workflow, /test -f "\$\{\{ runner\.temp \}\}\/shared-engine\/build-info\.json"/);
+  assert.match(workflow, /name: release-shared-engine\n          path: \$\{[{][{] runner\.temp [}][}]\}\/shared-engine\.tar\.gz/);
 });
