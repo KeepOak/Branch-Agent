@@ -15,13 +15,14 @@ describe("shownWhy", () => {
       NEEDS_NEWER_APP,
       "Branch has no setting for this yet.",
       "  Needs the engine’s memory watch.",
+      "Needs a per-tool ask setting in the engine.",
     ]) {
       expect(isDevNote(note)).toBe(true);
       expect(shownWhy(note)).toBeUndefined();
     }
   });
   it("keeps every other reason as it is", () => {
-    for (const why of [NOSETUP, IN_BROWSER, "The desktop app owns this; the window can’t change it yet.", "Needs an owner", "Needs a per-tool ask setting in the engine.", "Saving…"]) {
+    for (const why of [NOSETUP, IN_BROWSER, "The desktop app owns this; the window can’t change it yet.", "Needs an owner", "Saving…"]) {
       expect(isDevNote(why)).toBe(false);
       expect(shownWhy(why)).toBe(why);
     }
