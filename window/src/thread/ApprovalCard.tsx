@@ -90,18 +90,18 @@ function Buttons({ approval, details, name, onAnswer, disabled, open, setOpen }:
   return (
     <>
       <div className="card-buttons">
-        <button type="button" className="btn primary" data-action="allow" disabled={disabled} title={disabled ? "Lockdown is on." : "Allow once · Ctrl Enter"} onClick={() => onAnswer(approval.id, "allow-once")}>
+        <button type="button" className="btn primary" data-action="allow" disabled={disabled} title={disabled ? "Lockdown is on: nothing leaves this computer." : "Allow once · Ctrl Enter"} onClick={() => onAnswer(approval.id, "allow-once")}>
           Allow once
         </button>
         {always ? (
-          <button type="button" className="btn" data-action="always" disabled={disabled} title={disabled ? "Lockdown is on." : `Always allow for ${name} · Ctrl Shift Enter`} onClick={() => onAnswer(approval.id, "allow-always")}>
+          <button type="button" className="btn" data-action="always" disabled={disabled} title={disabled ? "Lockdown is on: nothing leaves this computer." : `Always allow for ${name} · Ctrl Shift Enter`} onClick={() => onAnswer(approval.id, "allow-always")}>
             Always allow for {name}
           </button>
         ) : null}
         <button type="button" className="btn ghost" data-action="open" aria-expanded={open} onClick={() => setOpen(!open)}>
           {open ? "Close" : "Open"}
         </button>
-        <button type="button" className="btn ghost" data-action="deny" disabled={disabled} title={disabled ? "Lockdown is on." : "Don’t · Ctrl D"} onClick={() => onAnswer(approval.id, "deny")}>
+        <button type="button" className="btn ghost" data-action="deny" title="Don’t · Ctrl D" onClick={() => onAnswer(approval.id, "deny")}>
           Don’t
         </button>
       </div>
@@ -167,12 +167,12 @@ function ActionCard({ approval, details, name, onAnswer, disabled, left }: Props
       </dl>
       <div className="card-buttons">
         {allowed.includes("allow-once") ? (
-          <button type="button" className="btn primary" data-action="allow" disabled={disabled} title={`${words.yes} · Ctrl Enter`} onClick={() => onAnswer(approval.id, "allow-once")}>{words.yes}</button>
+          <button type="button" className="btn primary" data-action="allow" disabled={disabled} title={disabled ? "Lockdown is on: nothing leaves this computer." : `${words.yes} · Ctrl Enter`} onClick={() => onAnswer(approval.id, "allow-once")}>{words.yes}</button>
         ) : null}
         {allowed.includes("allow-always") ? (
-          <button type="button" className="btn" data-action="always" disabled={disabled} title={`Always allow for ${name} · Ctrl Shift Enter`} onClick={() => onAnswer(approval.id, "allow-always")}>Always allow for {name}</button>
+          <button type="button" className="btn" data-action="always" disabled={disabled} title={disabled ? "Lockdown is on: nothing leaves this computer." : `Always allow for ${name} · Ctrl Shift Enter`} onClick={() => onAnswer(approval.id, "allow-always")}>Always allow for {name}</button>
         ) : null}
-        <button type="button" className="btn ghost" data-action="deny" disabled={disabled} title={`${words.no} · Ctrl D`} onClick={() => onAnswer(approval.id, "deny")}>{words.no}</button>
+        <button type="button" className="btn ghost" data-action="deny" title={`${words.no} · Ctrl D`} onClick={() => onAnswer(approval.id, "deny")}>{words.no}</button>
       </div>
     </div>
   );
@@ -195,8 +195,8 @@ function GroupRow({ a, d, name, now, send, disabled }: { a: Approval; d?: Approv
       </span>
       {waiting ? (
         <span className="g-acts">
-          {canAnswer(d, "allow-once", now) ? <button type="button" className="btn primary sm" disabled={disabled} onClick={() => send(a.id, "allow-once")}>Yes</button> : null}
-          {canAnswer(d, "deny", now) ? <button type="button" className="btn ghost sm" disabled={disabled} onClick={() => send(a.id, "deny")}>No</button> : null}
+          {canAnswer(d, "allow-once", now) ? <button type="button" className="btn primary sm" disabled={disabled} title={disabled ? "Lockdown is on: nothing leaves this computer." : undefined} onClick={() => send(a.id, "allow-once")}>Yes</button> : null}
+          {canAnswer(d, "deny", now) ? <button type="button" className="btn ghost sm" onClick={() => send(a.id, "deny")}>No</button> : null}
         </span>
       ) : (
         <span className={allowed ? "pill ok" : "pill bad"}><i />{ended}</span>
@@ -234,7 +234,7 @@ export function ApprovalGroup({ approvals, details, name, onAnswer, disabled }: 
       {approvals.map((a) => <GroupRow key={a.id} a={a} d={details.get(a.id)} name={name} now={now} send={send} disabled={disabled} />)}
       {allOk(now) ? (
         <div className="card-buttons">
-          <button type="button" className="btn primary" data-testid="yes-to-all" disabled={disabled} onClick={both}>
+          <button type="button" className="btn primary" data-testid="yes-to-all" disabled={disabled} title={disabled ? "Lockdown is on: nothing leaves this computer." : undefined} onClick={both}>
             Yes to both
           </button>
         </div>

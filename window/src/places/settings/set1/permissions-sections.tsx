@@ -45,7 +45,7 @@ export const LOCKS: Section = { title: "Locks and records", lv: 0, rows: [
   { k: "el", t: "Approvals", lv: 1, el: (x) => <ApprovalsRow x={x} /> },
   off("Older file-transfer permissions", "Older yeses for copying files to and from your computers stay paused until you review them. Blocks, size limits and link settings keep working meanwhile.", { btn: "Review" }, "The engine can’t list them here yet; move them by command.", 2),
   { k: "code", t: "Move them by command", lv: 2, code: "branch file-transfer approvals migrate --dry-run" },
-], tail: (x) => <Lockdown cfg={x.cfg} engine={x.engine} /> };
+], tail: (x) => <Lockdown engine={x.engine} /> };
 
 export const PINNED: Section = { title: "Pinned settings", lv: 0, hint: "A pinned setting is fixed. Someone else who uses this computer sees it pinned and can’t change it any way.", rows: [
   { k: "el", t: "Pin a setting", el: () => <Pinned /> },

@@ -118,7 +118,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
       </Tile>
       <Tile title="Controls">
         <p>Mode: <b>{lockdown.on ? "Lockdown" : mode || "As each Trunk is set"}</b> · <button type="button" className="ov-link ov-inline" disabled={!openSettings || lockdown.on} onClick={() => openSettings?.("permissions")}>change</button></p>
-        <div className="ov-acts"><button type="button" className="btn bad sm" disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Lockdown"}</button><button type="button" className="btn sm" disabled title={shownWhy(PAUSE_ALL_GAP)}>Pause all Trunks</button></div>
+        <div className="ov-acts"><button type="button" className={lockdown.on ? "btn sm" : "btn bad sm"} disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Lockdown"}</button><button type="button" className="btn sm" disabled title={shownWhy(PAUSE_ALL_GAP)}>Pause all Trunks</button></div>
       </Tile>
       <Tile title="Who is using Branch">
         {status("people", "people")}{status("presence", "live presence")}

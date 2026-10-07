@@ -128,10 +128,14 @@ describe("Overview screen", () => {
   it("switches Lockdown through the engine while leaving unsupported controls disabled", async () => {
     const request = vi.fn(async (method: string) => method === "config.patch" ? { ok: true, hash: "h2", config: { security: { lockdown: true } } } : FX[method] ?? {});
     const { host } = await render(request);
-    expect(button(host, "Lockdown")?.disabled).toBe(false);
-    await act(async () => button(host, "Lockdown")?.click());
+    const lockdownBtn = button(host, "Lockdown");
+    expect(lockdownBtn?.disabled).toBe(false);
+    expect(lockdownBtn?.className).toContain("bad"); // Preview spec-v23 index.html:8759 button class when off
+    await act(async () => lockdownBtn?.click());
     expect(request).toHaveBeenCalledWith("config.patch", { raw: '{"security":{"lockdown":true}}', baseHash: "h1" });
-    expect(button(host, "Turn Lockdown off")).toBeTruthy();
+    const offBtn = button(host, "Turn Lockdown off");
+    expect(offBtn).toBeTruthy();
+    expect(offBtn?.className).not.toContain("bad"); // Preview spec-v23 index.html:8759 button class when on
     expect(button(host, "Pause all Trunks")).toMatchObject({ disabled: true, title: "" });
     expect(PAUSE_ALL_GAP.startsWith("Needs the engine")).toBe(true);
     expect(visibleDevNotes(host)).toEqual([]);

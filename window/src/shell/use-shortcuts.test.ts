@@ -51,8 +51,8 @@ describe("settable keys (§4.8.8)", () => {
     expect(checkCombo("Ctrl N", "palette", actions, keys)).toEqual({ ok: false, reason: "Ctrl N already does “New conversation”." });
     expect(checkCombo("Ctrl Alt P", "palette", actions, keys)).toEqual({ ok: true });
   });
-  it("leaves keys for actions the window can't run unbound", () => {
-    expect(shortcutFor({ ...key("L", { ctrlKey: true, shiftKey: true }), code: "KeyL" }, false)).toBeNull();
+  it("binds Ctrl+Shift+L now that the engine has a Lockdown switch", () => {
+    expect(shortcutFor({ ...key("L", { ctrlKey: true, shiftKey: true }), code: "KeyL" }, false)).toBe("lockdown");
     expect(shortcutFor({ ...key("K", { ctrlKey: true, shiftKey: true }), code: "KeyK" }, false)).toBe("sidePanel");
   });
 });

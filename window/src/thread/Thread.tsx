@@ -5,6 +5,7 @@ import { agentState } from "../face/agentState";
 import { PRIORITY } from "../face/cap";
 import { resolveApproval } from "./actions";
 import { ApprovalCard, ApprovalGroup } from "./ApprovalCard";
+import { lockdownAllowsAnswer } from "./approval-guard";
 import { DoneLine, ErrorBlock, Notice, Reply, SteeredNote, StepsFold, Thinking, Typing, UserMessage } from "./blocks";
 import { ThreadContext, type ThreadContextValue } from "./context";
 import { ReactionChips } from "./dialogs";
@@ -173,7 +174,7 @@ export function Thread(props: Props) {
   const extras = pendingExtras(details, shownApprovalIds(all), engine?.sessionKey);
   const answer = useCallback(
     (id: string, decision: ApprovalDecision) => {
-      if (props.lockdown) return;
+      if (!lockdownAllowsAnswer(props.lockdown, decision)) return;
       const plugin = details.get(id)?.plugin ?? false;
       if (engine && (decision === "allow-always" || plugin)) resolveApproval(engine, id, decision, plugin).catch((e: unknown) => toast(e instanceof Error ? e.message : String(e)));
       else if (decision !== "allow-always") props.onAnswer(id, decision);
@@ -185,7 +186,7 @@ export function Thread(props: Props) {
   // Exactly two waiting: one "Two things need you" card with Yes to both, in place of the two cards.
   const waitingTwo = allApprovals.filter((a) => a.state === "pending");
   const grouped = useMemo(() => new Set(waitingTwo.length === 2 ? waitingTwo.map((a) => a.id) : []), [waitingTwo.map((a) => a.id).join(" ")]); // eslint-disable-line react-hooks/exhaustive-deps
-  useApprovalKeys(props.lockdown ? null : firstPending, answer);
+  useApprovalKeys(firstPending, answer);
   const { actionsFor, dialog } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, onStartTopic: props.onStartTopic, applyReaction: apply });
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
   const waitingCount = (props.queued?.length ?? 0) + ownLine.length;

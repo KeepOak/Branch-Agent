@@ -20,12 +20,16 @@ type Ctx = {
   openPlace: (p: PlaceId) => void;
   openSettings: (page: string) => void;
   newTrunk: () => void;
+  toggleLockdown?: () => void;
+  lockdownOn?: boolean;
 };
 
 export function paletteRows(c: Ctx): PaletteRow[] {
   const actions: PaletteRow[] = [
     { id: "a:new", group: "Actions", label: "New conversation", hint: "Ctrl N", run: c.newConversation },
     { id: "a:trunk", group: "Actions", label: "New Trunk", hint: "", run: c.newTrunk },
+    // Preview spec-v23 index.html:8674: "Turn Lockdown on/off" follows New Trunk in Actions.
+    ...(c.toggleLockdown ? [{ id: "a:lockdown", group: "Actions", label: c.lockdownOn ? "Turn Lockdown off" : "Turn Lockdown on", hint: "", run: c.toggleLockdown }] : []),
     { id: "a:theme", group: "Actions", label: "Switch light or dark", hint: "", run: c.toggleTheme },
     { id: "a:focus", group: "Actions", label: "Focus mode", hint: "Ctrl .", run: c.focusMode },
     { id: "a:keys", group: "Actions", label: "Keyboard shortcuts", hint: "?", run: c.shortcuts },

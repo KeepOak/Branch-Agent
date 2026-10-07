@@ -13,7 +13,7 @@ import { THIS_PC } from "./permissions-commands";
 import { useApprovalsFile } from "./permissions-file";
 import { SectionView, WHY, rowsOf, type Ctx, type Row, type Section } from "./permissions-rows";
 import { LOWER } from "./permissions-sections";
-import { ModeEverywhere, THIS_PC_ROWS, ThisPc } from "./permissions-top";
+import { LockdownStatus, ModeEverywhere, THIS_PC_ROWS, ThisPc } from "./permissions-top";
 import "./set1.css";
 import "./permissions.css";
 
@@ -40,6 +40,7 @@ export function PermissionsPage(props: SettingsPageProps) {
   };
   return (
     <Page title={props.title} lede="What Trunks may do without asking you first.">
+      <LockdownStatus cfg={cfg} />
       <ThisPc />
       <ModeEverywhere cfg={cfg} agents={agents.data} reload={agents.reload} />
       <SectionView s={WITHOUT} x={x} />

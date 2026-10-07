@@ -79,6 +79,7 @@ import { ringReading } from "./status-data";
 import { desktopControls } from "../connect/desktop-controls";
 import { useGatewayFacts, useLimits, useUpdate } from "./use-status";
 import { useLockdown } from "./use-lockdown";
+import { LockdownBanner } from "./LockdownBanner";
 import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
 import { HeaderRow, PlaceHead, TopBar, type FaceState } from "./TopBar";
@@ -1459,7 +1460,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       {layout.focus || layout.hidden ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
       {slideOpen ? <div className="slide-scrim" onClick={() => setSlideOpen(false)} /> : null}
       <main className={mainClass} id="main">
-        {lockdown.on ? <div className="lockdown-banner" role="status" data-testid="lockdown-banner"><Icon name="shield" size={16} /><span>Lockdown is on. Trunks are stopped; nothing leaves this computer and nothing is changed.</span><button type="button" onClick={toggleLockdown}>Turn it off</button></div> : null}
+        {lockdown.on ? <LockdownBanner onTurnOff={toggleLockdown} /> : null}
         {layout.focus ? (
           <button type="button" className="btn sm focus-exit" onClick={() => setLayout({ focus: false })}>
             Leave focus mode · Ctrl+.
@@ -1583,6 +1584,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             openConversation,
             openPlace,
             openSettings,
+            toggleLockdown: lockdown.supported ? toggleLockdown : undefined,
+            lockdownOn: lockdown.on,
           })}
         />
       ) : null}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { SaplingSession } from "../connect/session";
 import { configStore } from "../places/settings/config-store";
+import { notify } from "./notify";
 
 export function useLockdown(engine: WindowEngine, ready: boolean, session?: SaplingSession) {
   const store = configStore(engine);
@@ -27,6 +28,13 @@ export function useLockdown(engine: WindowEngine, ready: boolean, session?: Sapl
     return () => { current = false; };
   }, [engine, ready]);
   const on = (snapshot?.config as { security?: { lockdown?: boolean } } | undefined)?.security?.lockdown === true;
-  const toggle = useCallback(() => supported ? store.set("security.lockdown", !on) : Promise.reject(new Error("This engine has no Lockdown switch yet.")), [store, on, supported]);
+  const toggle = useCallback(() => {
+    if (!supported) return Promise.reject(new Error("This engine has no Lockdown switch yet."));
+    const next = !on;
+    return store.set("security.lockdown", next).then(() => {
+      // Preview spec-v23 index.html:8910 toast text
+      notify(next ? "Lockdown is on." : "Lockdown is off.");
+    });
+  }, [store, on, supported]);
   return { on, toggle, loaded: Boolean(snapshot), supported, error: store.error };
 }
