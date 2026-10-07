@@ -40,12 +40,19 @@ const commonCredentialFields = {
   copyToAgents: z.boolean().optional(),
 };
 
+const claudeIdentityLookupFields = {
+  /** Startup-only Claude identity lookup cooldown, persisted across restarts. */
+  identityLookupRetryAt: z.number().positive().optional(),
+  identityLookupFailures: z.number().int().positive().optional(),
+};
+
 /** Current inline credentials, without legacy aliases or host-owned secret references. */
 export const inlineAuthProfileCredentialSchema = z.discriminatedUnion("type", [
   z.strictObject({
     ...commonCredentialFields,
     type: z.literal("api_key"),
     key: normalizedSecretSchema,
+    ...claudeIdentityLookupFields,
     /** Optional provider-specific metadata (e.g., account IDs, gateway IDs). */
     metadata: z.record(z.string(), z.string()).optional(),
   }),
@@ -55,6 +62,7 @@ export const inlineAuthProfileCredentialSchema = z.discriminatedUnion("type", [
     token: normalizedSecretSchema,
     /** Optional expiry timestamp (ms since epoch). */
     expires: z.number().positive().optional(),
+    ...claudeIdentityLookupFields,
   }),
   z.strictObject({
     ...commonCredentialFields,

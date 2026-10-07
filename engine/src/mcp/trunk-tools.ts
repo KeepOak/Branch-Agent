@@ -21,6 +21,8 @@ export type OutsideAgentIdentity = {
   where?: string;
   project?: string;
   instance?: string;
+  avatar?: string;
+  trunkId?: string;
 };
 export type TrunkToolsOptions = {
   /** Who is speaking, once the gateway accepted contacts.outside.hello; undefined = plain owner messages. */
@@ -528,6 +530,7 @@ function registerRoomTools(server: McpServer, gw: TrunkGateway, opts: TrunkTools
         roomId: room_id,
         kind: "a2a",
         id: agent.id,
+        outsideAgent: agent,
       });
       return ok("joined", { result });
     },

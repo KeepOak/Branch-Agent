@@ -1,4 +1,5 @@
 import {
+  assertLockdownOff,
   fetchWithSsrFGuard,
   shouldUseEnvHttpProxyForUrl,
   ssrfPolicyFromHttpBaseUrlAllowedHostname,
@@ -26,6 +27,9 @@ export async function withRemoteHttpResponse<T>(params: {
   auditContext?: string;
   onResponse: (response: Response) => Promise<T>;
 }): Promise<T> {
+  // Lockdown: remote memory calls (embeddings included) send text off this computer and spend; refuse them.
+  // Background sync fails this round and indexes the same files once Lockdown is off.
+  assertLockdownOff();
   const guardedFetch = params.fetchWithSsrFGuardImpl ?? fetchWithSsrFGuard;
   const shouldUseEnvProxy = params.shouldUseEnvHttpProxyForUrlImpl ?? shouldUseEnvHttpProxyForUrl;
   const { response, release } = await guardedFetch({

@@ -1,5 +1,6 @@
 // Words and numbers the thread shows (DESIGN-SPEC §4.2, §7.1 rule 9).
 import type { Block } from "./model";
+import { displayModelName } from "../composer/model-display";
 
 export function formatDuration(ms?: number): string {
   if (!ms || ms < 0) {
@@ -113,7 +114,7 @@ export function stepsSummary(steps: readonly Step[], run?: { title: string; dura
   if (running) {
     return stepLabel(running);
   }
-  if (run?.title) {
+  if (run?.title && run.title.toLowerCase() !== "text") {
     return [run.title, steps.length > 1 ? `${steps.length} steps` : "1 step", run.durationMs ? formatDuration(run.durationMs) : ""].filter(Boolean).join(" · ");
   }
   const commands = steps.filter((s) => COMMAND_TOOLS.has(s.tool)).length;
@@ -147,26 +148,11 @@ export function dayStamp(ms: number, now = Date.now()): string {
   return `${d.toLocaleDateString([], sameYear ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" })} ${time}`;
 }
 
-/** "Getting started words" (§4.2.5 Parity adds) for the run_status phases that say something the dots do not.
- *  Phases that only mean "working" (preparing_context, starting_model, waiting_for_state) show the dots alone (P47). */
-export const PHASE_WORDS: Record<string, string> = {
-  preparing_workspace: "Preparing the folder…",
-  naming_worktree: "Naming the separate copy…",
-  creating_worktree: "Making a separate copy…",
-  running_setup: "Running setup…",
-  provisioning_environment: "Getting its computer ready…",
-  memory_flushing: "Saving what it remembers…",
-};
-
-export function phaseWords(status: Extract<Block, { kind: "status" }>): string {
-  if (status.attempt && status.maxAttempts) {
-    return `Trying again… ${status.attempt} of ${status.maxAttempts}`;
-  }
-  return PHASE_WORDS[status.phase] ?? "";
-}
-
 /** The first sentence of an engine error, without the engine's own lead-in and warning sign. */
 export function shortReason(message: string): string {
+  if (/PLUGIN_STATE_READ_FAILED|Session maintenance protection changed|PluginInstanceUnavailableError|^\s*\{|\"telemetry\"/.test(message)) {
+    return "Something went wrong. Try again, or open Diagnostics for details.";
+  }
   const plain = message
     .replace(/^\s*[⚠️❗❌\s]+/u, "")
     .replace(/^Your request couldn['’]t be completed:\s*/i, "")
@@ -178,5 +164,6 @@ export function shortReason(message: string): string {
 
 /** A model id as the hover bar shows it: the part after the provider. */
 export function modelName(model?: string): string {
-  return model ? model.replace(/^[^/]+\//, "") : "";
+  // "gateway-injected" marks text Branch itself kept (a stopped reply's partial), not a model.
+  return model && model !== "gateway-injected" ? displayModelName(model.replace(/^[^/]+\//, "")) : "";
 }

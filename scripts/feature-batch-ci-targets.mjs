@@ -92,6 +92,7 @@ export const windowTests = [
   'src/face/character-arrival.test.tsx',
   'src/face/character-calm.test.tsx',
   'src/face/use-character-motion.test.tsx',
+  'src/format/money.test.ts',
   'src/places-nav/SettingsFrame.test.tsx',
   'src/places/canopy/canopy.test.tsx',
   'src/places/customize/customize.test.tsx',
@@ -126,7 +127,6 @@ export const windowTests = [
   'src/places/trunk/trunk.test.tsx',
   'src/setup/FirstTrunk.test.tsx',
   'src/setup/setup.test.tsx',
-  'src/shell/PetReaction.test.tsx',
   'src/shell/contact-row-routing.test.tsx',
   'src/shell/contact-topics.test.ts',
   'src/shell/contacts-model.test.ts',
@@ -505,9 +505,9 @@ export function namedTests(lane) {
   // Several PRs may name the same test in their own scripts/feature-batch-ci-named/*.txt; run it once.
   const targets = [...new Set([...listed, ...namedTestFiles(lane)])];
   if (!targets.length) throw new Error(`No ${lane} feature test files are listed`);
-  const bad = targets.find(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'));
+  const bad = targets.find(file => !/^.+\.test\.(?:ts|tsx|mjs|mts)$/.test(file) || file.includes('..') || file.startsWith('/'));
   if (bad) {
-    throw new Error(`Feature test "${lane}:${bad}" must be a repository-relative *.test.ts or *.test.tsx file`);
+    throw new Error(`Feature test "${lane}:${bad}" must be a repository-relative *.test.ts, *.test.tsx, *.test.mjs, or *.test.mts file`);
   }
   return targets;
 }
@@ -536,8 +536,8 @@ export function harvestTestFiles(lane, only) {
 
 export function harvestTests(lane) {
   const targets = [...new Set(harvestTestFiles(lane))].sort();
-  const bad = targets.find(file => !/^.+\.test\.tsx?$/.test(file) || file.includes('..') || file.startsWith('/'));
-  if (bad) throw new Error(`Harvest test "${lane}:${bad}" must be repository-relative *.test.ts or *.test.tsx`);
+  const bad = targets.find(file => !/^.+\.test\.(?:ts|tsx|mjs|mts)$/.test(file) || file.includes('..') || file.startsWith('/'));
+  if (bad) throw new Error(`Harvest test "${lane}:${bad}" must be repository-relative *.test.ts, *.test.tsx, *.test.mjs, or *.test.mts`);
   return targets;
 }
 

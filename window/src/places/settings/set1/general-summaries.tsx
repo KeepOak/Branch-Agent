@@ -39,18 +39,18 @@ export function Num({ value, unit, label, onSave, placeholder, disabled }: {
   );
 }
 
-export function OlderTurns({ engine }: { engine: WindowEngine }) {
+export function OlderTurns({ engine, grouped = false }: { engine: WindowEngine; grouped?: boolean }) {
   const cfg = useConfig(engine);
   const models = useResource<RecordValue>(engine, "models.list", {});
   const options = [{ id: "", label: "The conversation’s model" }, ...list(models.data?.models).filter((m) => m.available !== false).map((m) => ({ id: `${text(m.provider)}/${text(m.id)}`, label: visible(m.name ?? m.id) }))];
   const model = cfg.get(`${C}.model`);
   return (
-    <Sec title="Summaries of older turns">
+    <Sec title={grouped ? "" : "Summaries"}>
       <Ctl title="Summarise older turns by themselves" sub="Keeps long conversations fast. The summary card shows what was kept.">
         <Switch checked={cfg.get(`${C}.enabled`) !== false} label="Summarise older turns by themselves" disabled={cfg.loading} onChange={(v) => void cfg.set(`${C}.enabled`, v)} />
       </Ctl>
-      <Ctl title="Summarise when the room left is under" sub="Of the model’s room for this conversation." off={`The engine always keeps at least ${fmt(RESERVE_FLOOR)} tokens free; it has no setting to change that yet.`}>
-        <Num value={RESERVE_FLOOR} unit="tokens" label="Summarise when the room left is under" />
+      <Ctl title="Summarise when context left is under" sub="Of the model’s context for this conversation." off={`The engine always keeps at least ${fmt(RESERVE_FLOOR)} tokens free; it has no setting to change that yet.`}>
+        <Num value={RESERVE_FLOOR} unit="tokens" label="Summarise when context left is under" />
       </Ctl>
       <Ctl title="Always keep the latest" sub="The newest part of the conversation, kept word for word.">
         <Num value={num(cfg.get(`${C}.keepRecentTokens`)) ?? KEEP_RECENT} unit="tokens" label="Always keep the latest" disabled={cfg.loading} onSave={(n) => void cfg.set(`${C}.keepRecentTokens`, n)} />
@@ -63,18 +63,18 @@ export function OlderTurns({ engine }: { engine: WindowEngine }) {
 }
 
 const HOW = [{ id: "safeguard", label: "Careful" }, { id: "default", label: "Quick" }];
-export function SummariesTechnical({ engine }: { engine: WindowEngine }) {
+export function SummariesTechnical({ engine, grouped = false }: { engine: WindowEngine; grouped?: boolean }) {
   const cfg = useConfig(engine);
   const mode = cfg.get(`${C}.mode`) === "default" ? "default" : "safeguard";
   return (
-    <Sec title="Summaries, technical">
-      <Ctl title="Room to plan for" sub="Overrides what the model says it can hold." off="Each model’s room is set with that model; there’s no setting for every model yet.">
-        <Num value={undefined} unit="tokens" label="Room to plan for" placeholder="Model’s own" />
+    <Sec title={grouped ? "" : "Summaries"}>
+      <Ctl title="Context to plan for" sub="Overrides what the model says it can hold." off="Each model’s context is set with that model; there’s no setting for every model yet.">
+        <Num value={undefined} unit="tokens" label="Context to plan for" placeholder="Model’s own" />
       </Ctl>
-      <Ctl title="Repair the history before each call" sub="Fixes a broken tool call or a half-written answer before the model sees it." off="The engine repairs it for the models that need it; there’s no setting for it.">
+      <Ctl title="Repair the history before each call" sub="Repairs broken tool calls before the model sees them." help="Fixes a broken tool call or a half-written answer before the model sees it." off="The engine repairs it for the models that need it; there’s no setting for it.">
         <Switch checked label="Repair the history before each call" onChange={() => undefined} />
       </Ctl>
-      <Ctl title="How it summarises" sub="Careful works in chunks and checks the summary; if the check fails the history is kept as it was.">
+      <Ctl title="How it summarises" sub="Careful mode checks each summary before replacing history." help="Careful works in chunks and checks the summary; if the check fails the history is kept as it was.">
         <Seg label="How it summarises" value={mode} options={HOW} disabled={cfg.loading} onChange={(v) => void cfg.set(`${C}.mode`, v)} />
       </Ctl>
       <Ctl title="Summary time limit">
@@ -105,7 +105,7 @@ function Trim({ engine }: { engine: WindowEngine }) {
   const why = on && claude ? " On because a Claude account is connected." : !on && !claude && !auth.loading ? " Turns on when a Claude account is connected." : "";
   return (
     <>
-      <Ctl title="Trim old tool results" sub={`After the cache expires, old tool output is cleared from what the model sees; the conversation keeps it.${why}`}>
+      <Ctl title="Trim old tool results" sub="Clears old tool output after the cache expires." help={`After the cache expires, old tool output is cleared from what the model sees; the conversation keeps it.${why}`}>
         <Switch checked={on} label="Trim old tool results" disabled={cfg.loading} onChange={(v) => void cfg.set(`${PRUNE}.mode`, v ? "cache-ttl" : "off")} />
       </Ctl>
       <Ctl title="Trim after">
@@ -134,16 +134,16 @@ export function WaitingLine({ engine }: { engine: WindowEngine }) {
   );
 }
 
-export function SummariesMore() {
+export function SummariesMore({ grouped = false }: { grouped?: boolean }) {
   return (
-    <Sec title="Summaries, more">
+    <Sec title={grouped ? "" : "Summaries"}>
       <Ctl stack title="How to write the summary" sub="Your own instructions for summaries. Empty uses Branch’s." off={NO_KEY}>
         <textarea className="inp gen-area-k" rows={2} placeholder="Keep every decision, number and file name. List what’s still open." aria-label="How to write the summary" />
       </Ctl>
       <Ctl title="If a summary can’t be made" sub="The oldest messages are hidden behind a marker until there’s room." off={NO_KEY}>
         <Pick label="If a summary can’t be made" value="hide" options={[{ id: "hide", label: "Hide the oldest messages" }, { id: "ask", label: "Stop and ask me" }]} onChange={() => undefined} />
       </Ctl>
-      <Ctl title="Keep the originals of what it summarises" sub="The summary replaces them for the model only. You can put the originals back from the Tidied up line." off={NO_KEY}>
+      <Ctl title="Keep the originals of what it summarises" sub="The summary replaces them for the model only." help="The summary replaces them for the model only. You can put the originals back from the Tidied up line." off={NO_KEY}>
         <Switch checked label="Keep the originals of what it summarises" onChange={() => undefined} />
       </Ctl>
       <Ctl title="A receipt for each thing left out" sub="Lists what was left out and why, and lets you bring any of it back." off={NO_KEY}>

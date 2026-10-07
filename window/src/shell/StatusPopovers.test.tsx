@@ -50,13 +50,17 @@ describe("status popovers", () => {
     await act(async () => button(host, "Restart the engine").click());
     expect(restart).toHaveBeenCalled();
   });
-  it("Usage: rows and account labels come from seeded limits", async () => {
-    const request = vi.fn(async () => ({}));
+  it("Usage: rows, refreshed limits, and this month from usage.cost", async () => {
+    const request = vi.fn(async (method: string) => method === "usage.status"
+      ? { updatedAt: Date.now(), providers: [{ provider: "openai", displayName: "Plan", windows: [{ label: "Today", usedPercent: 60 }] }] }
+      : { totals: { totalCost: 3.5 } });
     const limits = { updatedAt: Date.now(), refreshing: false, rows: [{ id: "a", name: "Plan", account: "", pill: "Measured" as const, windows: [{ name: "Today", left: 40, reset: "", low: false }], line: "as of just now" }] };
     const host = await show(<UsagePopover above={above} onClose={() => {}} limits={limits} request={request as never} onOpenUsage={() => {}} />);
-    expect(request).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledWith("usage.status", { refresh: true });
+    expect(request).toHaveBeenCalledWith("usage.cost", expect.objectContaining({ agentScope: "all" }));
     expect(host.textContent).toContain("40% left");
     expect(host.textContent).toContain("Checked just now");
+    expect(host.textContent).toContain("This month: $3.50");
   });
   it("Version: up to date has no install item", async () => {
     const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "1.0.0", latest: null, notes: [], installing: false, waiting: null }} version="1.0.0" onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />);
@@ -67,5 +71,16 @@ describe("status popovers", () => {
     const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "0.4.4-build-current", latest: "0.4.5-build-next", notes: [], installing: false, waiting: null }} version="0.4.4-build-current" onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />);
     expect(host.textContent).toContain("Branch 0.4.5 is ready");
     expect(host.textContent).not.toContain("-build-next");
+  });
+  it("Version: install when idle is only available in the desktop app", async () => {
+    const update = { current: "1.0.0", latest: "1.1.0", notes: [], installing: false, waiting: null };
+    const install = vi.fn();
+    const host = await show(<VersionPopover above={above} onClose={() => {}} update={update} version="1.0.0" desktopInstall onWhatsNew={() => {}} onInstall={install} onRemind={() => {}} />);
+    expect(host.textContent).toContain("Installs by itself when nothing is running.");
+    await act(async () => button(host, "Install when idle").click());
+    expect(install).toHaveBeenCalledOnce();
+    await act(async () => root?.render(<VersionPopover above={above} onClose={() => {}} update={update} version="1.0.0" onWhatsNew={() => {}} onInstall={install} onRemind={() => {}} />));
+    expect(host.textContent).toContain("Ready to install on the computer running Branch: open Branch there to install it.");
+    expect(button(host, "Install when idle")).toBeUndefined();
   });
 });

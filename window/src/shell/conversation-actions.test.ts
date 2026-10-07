@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ConversationList } from "../connect/conversations";
-import { conversationActions, snoozeChoices, wakeWords } from "./conversation-actions";
+import { conversationActions, snoozeChoices, snoozeTime, wakeWords } from "./conversation-actions";
 import { notify } from "./notify";
 
 vi.mock("./notify", () => ({ notify: vi.fn() }));
@@ -128,15 +128,15 @@ describe("contact navigation", () => {
 });
 
 describe("snoozeChoices", () => {
-  it("offers This evening only when 18:00 is more than an hour away", () => {
+  it("always offers exactly the four final-pass choices", () => {
     const morning = new Date(2026, 9, 1, 9, 0).getTime(); // a Thursday
-    expect(snoozeChoices(morning).map((c) => c.label)).toEqual(["In 1 hour", "In 3 hours", "This evening", "Tomorrow", "Next week"]);
+    expect(snoozeChoices(morning).map((c) => c.label)).toEqual(["In 1 hour", "In 3 hours", "Tomorrow", "Next week"]);
     const late = new Date(2026, 9, 1, 17, 30).getTime();
-    expect(snoozeChoices(late).map((c) => c.label)).not.toContain("This evening");
+    expect(snoozeChoices(late).map((c) => c.label)).toEqual(["In 1 hour", "In 3 hours", "Tomorrow", "Next week"]);
   });
-  it("leaves out Next week on a Sunday and puts it on Monday 09:00", () => {
+  it("offers Next week even on Sunday and puts it on Monday 09:00", () => {
     const sunday = new Date(2026, 9, 4, 10, 0).getTime();
-    expect(snoozeChoices(sunday).map((c) => c.label)).not.toContain("Next week");
+    expect(snoozeChoices(sunday).map((c) => c.label)).toContain("Next week");
     const thursday = new Date(2026, 9, 1, 10, 0).getTime();
     const next = snoozeChoices(thursday).find((c) => c.label === "Next week");
     const d = new Date(next?.until ?? 0);
@@ -147,13 +147,19 @@ describe("snoozeChoices", () => {
     const d = new Date(t?.until ?? 0);
     expect([d.getDate(), d.getHours()]).toEqual([2, 9]);
   });
+  it("prints a compact 12-hour time without doubling Tomorrow", () => {
+    const choices = snoozeChoices(new Date(2026, 9, 1, 9, 0).getTime());
+    expect(snoozeTime(choices[2].until, choices[2].label)).toMatch(/9:00 AM/);
+    expect(snoozeTime(choices[2].until, choices[2].label)).not.toMatch(/Tomorrow/);
+    expect(snoozeTime(choices[3].until, choices[3].label)).toMatch(/^Mon 9:00 AM$/);
+  });
 });
 
 describe("wakeWords", () => {
   const now = new Date(2026, 9, 1, 9, 0).getTime();
   it("today, tomorrow, then a weekday", () => {
-    expect(wakeWords(new Date(2026, 9, 1, 18, 0).getTime(), now)).toBe("18:00");
-    expect(wakeWords(new Date(2026, 9, 2, 9, 0).getTime(), now)).toBe("tomorrow 09:00");
-    expect(wakeWords(new Date(2026, 9, 5, 9, 0).getTime(), now)).toMatch(/09:00$/);
+    expect(wakeWords(new Date(2026, 9, 1, 18, 0).getTime(), now)).toBe("6:00 PM");
+    expect(wakeWords(new Date(2026, 9, 2, 9, 0).getTime(), now)).toBe("Tomorrow · 9:00 AM");
+    expect(wakeWords(new Date(2026, 9, 5, 9, 0).getTime(), now)).toMatch(/9:00 AM$/);
   });
 });

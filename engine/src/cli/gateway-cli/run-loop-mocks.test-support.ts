@@ -380,6 +380,7 @@ async function runLoopWithStart(params: {
   healthHost?: string;
   beginBoot?: (startedAtMs: number) => void | Promise<void>;
   completeBoot?: (completion: GatewayBootLifecycleCompletion) => void;
+  onRequestReady?: Parameters<typeof import("./run-loop.js").runGatewayLoop>[0]["onRequestReady"];
 }) {
   vi.resetModules();
   const { runGatewayLoop } = await import("./run-loop.js");
@@ -391,6 +392,7 @@ async function runLoopWithStart(params: {
     healthHost: params.healthHost,
     beginBoot: params.beginBoot,
     completeBoot: params.completeBoot,
+    onRequestReady: params.onRequestReady,
   });
   return { loopPromise };
 }

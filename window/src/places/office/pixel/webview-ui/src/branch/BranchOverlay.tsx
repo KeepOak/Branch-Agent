@@ -120,7 +120,7 @@ export function BranchOverlay(p: Props) {
             fontSize: nameFont,
           }}
         >
-          {agent.name}
+          {agent.name.split(/(3)/g).map((part, index) => part === '3' ? <span className="pa-name-three" key={index}>3</span> : part)}
           {agent.kind === 'grafted' && <span className="pa-tag">A2A</span>}
         </div>,
       );

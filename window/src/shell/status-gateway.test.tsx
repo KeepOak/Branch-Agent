@@ -29,6 +29,14 @@ async function mountStatus(connection: ConnectionPhase, gateway: GatewayPhase) {
 }
 
 describe("independent gateway status", () => {
+  it("keeps the owner's connected wording and shows a glyph-only gateway", async () => {
+    const gateway = await mountStatus("connected", "on");
+    expect(document.querySelector("[data-testid=sb-connection] .status-label")?.textContent).toBe("Online · you are here");
+    expect(gateway.querySelector(".status-label")).toBeNull();
+    await act(async () => root?.render(<StatusFixture connection="offline" gateway="checking" />));
+    expect(document.querySelector("[data-testid=sb-connection] .status-label")?.textContent).toBe("Offline · Fixture");
+    expect(document.querySelector("[data-testid=sb-gateway] .status-label")).toBeNull();
+  });
   it.each(["connected", "offline"] as const)("shows a genuine health check while the socket is %s", async (connection) => {
     const gateway = await mountStatus(connection, "checking");
     expect(gateway.getAttribute("aria-label")).toBe("Gateway · checking");
@@ -61,7 +69,7 @@ describe("paused Trunks", () => {
     const host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
     await act(async () => root?.render(<StatusLeftExtras session={{ request } as unknown as SaplingSession} ready={false}
-      paused={[{ id: "a", name: "Rowan" }]} allPaused={false} gfx={false} pet={null}
+      paused={[{ id: "a", name: "Rowan" }]} allPaused={false} gfx={false}
       onMenu={(_e, _id, next) => { items = next; }} onSettings={() => {}} />));
     await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=sb-paused]")!.click());
     await act(async () => root?.render(<Menu at={{ x: 0, y: 0 }} items={items} onClose={() => {}} label="Paused Trunks" />));

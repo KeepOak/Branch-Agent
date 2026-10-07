@@ -25,8 +25,8 @@ type Props = StatusFacts & {
   /** Appearance › What's shown › The gateway in the status bar (on unless switched off). */
   gatewayShown?: boolean;
   usageShown?: boolean;
-  /** Paused Trunks and live calls (after "N running"), the graphics readout (after the spacer), the pet (before the version). */
-  extras?: { left?: ReactNode; gfx?: ReactNode; pet?: ReactNode };
+  /** Paused Trunks and live calls (after "N running"), and the graphics readout (after the spacer). */
+  extras?: { left?: ReactNode; gfx?: ReactNode };
 };
 
 /** The meter's colour by share used (§4.9.1 Room left): under 50% ok, 50–79% warn, 80–94% orange, 95% and over bad. */
@@ -90,6 +90,7 @@ export function StatusBar(p: Props) {
     return () => window.clearTimeout(timer);
   }, [usageExpanded, p.open]);
   const connectionWord = WORDS[p.connection] || "Online";
+  const connectionLabel = p.connection === "connected" ? "Online · you are here" : `${connectionWord} · ${p.machineName}`;
   const connectionColour = p.connection === "connected" ? "var(--ok)" : p.connection === "connecting" ? "var(--warn)" : "var(--bad)";
   const left = p.roomUsed === null ? null : Math.max(0, Math.round((1 - p.roomUsed) * 100));
   const item = (id: StatusItem) => ({ "aria-expanded": p.open === id, "aria-haspopup": "dialog" as const, onClick: (e: MouseEvent<HTMLElement>) => p.onItem(id, e) });
@@ -97,6 +98,7 @@ export function StatusBar(p: Props) {
     <footer className="statusbar" data-testid="statusbar">
       <button type="button" className="sb status-symbol" title={`${p.machineName} · ${connectionWord}`} aria-label={`${p.machineName} · ${connectionWord}`} data-testid="sb-connection" data-state={p.connection} {...item("connection")}>
         <StatusGlyph kind="computer" colour={connectionColour} />
+        <span className="status-label">{connectionLabel}</span>
       </button>
       {p.gatewayShown === false ? null : <GatewayStatus gateway={p.gateway} open={p.open} onItem={p.onItem} />}
       {left !== null && p.roomUsed !== null ? (
@@ -120,7 +122,6 @@ export function StatusBar(p: Props) {
           </span>
         </button>
       )}
-      {p.extras?.pet}
       {p.version ? (
         <button type="button" className="sb status-symbol" title={`${branchVersionLabel(p.version)}${p.readyVersion ? ` · ${branchVersionDetail(p.readyVersion)} ready` : ""}${p.version.includes("-build-") ? ` · ${branchVersionDetail(p.version)}` : ""}`} aria-label={`${branchVersionLabel(p.version)}${p.readyVersion ? ` · ${branchVersionDetail(p.readyVersion)} ready` : ""}`} data-testid="sb-version" {...item("version")}>
           <StatusGlyph kind="update" />

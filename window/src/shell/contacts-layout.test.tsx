@@ -6,7 +6,7 @@ import type { Conversation } from "../connect/conversations";
 import type { SaplingSession } from "../connect/session";
 import { Sidebar, type SidebarProps } from "./Sidebar";
 import { SideResizer } from "./Resizer";
-import { dragResult, readLayout } from "./use-layout";
+import { dragResult, readLayout, toggleListLayout, useLayout } from "./use-layout";
 import { dropZoneAt, reorderedPins } from "./sidebar-drag";
 import { usePinOrder } from "./use-pin-order";
 
@@ -37,16 +37,23 @@ async function show(rail = false) {
 }
 
 describe("contacts layout", () => {
+  it("registers touchmove as non-passive on the sidebar list", async () => {
+    const add = vi.spyOn(HTMLElement.prototype, "addEventListener");
+    const host = await show();
+    const side = host.querySelector(".side");
+    expect(add.mock.calls.some(([type, , options], index) => type === "touchmove" && options && typeof options === "object" && options.passive === false && add.mock.contexts[index] === side)).toBe(true);
+    add.mockRestore();
+  });
   it("snaps below 200 px to the rail, keeps 200 px full, and drags back out to at least 220 px", () => {
     expect(dragResult(199)).toEqual({ rail: true });
     expect(dragResult(200)).toEqual({ sideW: 220, rail: false });
     expect(dragResult(240)).toEqual({ sideW: 240, rail: false });
     expect(dragResult(68 + 180)).toEqual({ sideW: 248, rail: false });
   });
-  it("drags the real resize handle through 320, 240, 200, 199 and out from the rail", async () => {
+  it("drags the real resize handle through full, rail and hidden widths", async () => {
     const commits: unknown[] = [];
     const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
-    const render = async (rail: boolean) => act(async () => root!.render(<SideResizer layout={{ sideW: 320, rail, focus: false }} onLayout={(patch) => commits.push(patch)} onLive={() => {}} />));
+    const render = async (rail: boolean) => act(async () => root!.render(<SideResizer layout={{ sideW: 320, rail, hidden: false, focus: false }} onLayout={(patch) => commits.push(patch)} onLive={() => {}} />));
     const drag = async (from: number, to: number) => {
       const handle = host.querySelector<HTMLElement>("[role=separator]")!;
       Object.defineProperty(handle, "setPointerCapture", { value: () => {}, configurable: true });
@@ -55,10 +62,10 @@ describe("contacts layout", () => {
       }
     };
     await render(false);
-    for (const width of [320, 240, 200, 199]) await drag(320, width);
+    for (const width of [320, 240, 200, 199, 20]) await drag(320, width);
     expect(commits).toEqual([
       { sideW: 320, rail: false }, { sideW: 240, rail: false },
-      { sideW: 220, rail: false }, { rail: true },
+      { sideW: 220, rail: false }, { rail: true }, { hidden: true },
     ]);
     await render(true);
     await drag(68, 320);
@@ -73,6 +80,31 @@ describe("contacts layout", () => {
     localStorage.setItem("branch.layout", JSON.stringify({ sideW: 320, rail: true }));
     expect(readLayout()).toMatchObject({ sideW: 320, rail: true });
     globalThis.matchMedia = originalMatchMedia;
+  });
+  it("Ctrl+B collapses to the rail, expands it, and restores a hidden list at full width", async () => {
+    localStorage.setItem("branch.layout", JSON.stringify({ sideW: 320, rail: true, hidden: false }));
+    let layout!: ReturnType<typeof useLayout>[0];
+    let update!: ReturnType<typeof useLayout>[1];
+    function Probe() { [layout, update] = useLayout(); return <span>{layout.hidden ? "hidden" : layout.rail ? "rail" : "full"}</span>; }
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(<Probe />));
+    expect(host.textContent).toBe("rail");
+    await act(async () => update(toggleListLayout(layout)));
+    expect(host.textContent).toBe("full");
+    expect(readLayout()).toMatchObject({ sideW: 320, rail: false, hidden: false });
+    await act(async () => update({ hidden: true }));
+    expect(host.textContent).toBe("hidden");
+    expect(readLayout()).toMatchObject({ sideW: 320, rail: false, hidden: true });
+    await act(async () => root!.unmount());
+    root = createRoot(host);
+    await act(async () => root!.render(<Probe />));
+    expect(host.textContent).toBe("hidden");
+    await act(async () => update(toggleListLayout(layout)));
+    expect(host.textContent).toBe("full");
+    expect(readLayout()).toMatchObject({ sideW: 320, rail: false, hidden: false });
+    await act(async () => update(toggleListLayout(layout)));
+    expect(host.textContent).toBe("rail");
   });
   it("shows pinned tiles and two-line contact rows without losing the scroll or selection on redraw", async () => {
     const host = await show();
