@@ -38,6 +38,8 @@ jobs:
         run: node --test scripts/feature-map-check.test.mjs
       - name: Validate feature map source paths
         run: node scripts/feature-map-check.mjs
+      - name: Check merge command patterns in documentation
+        run: node scripts/check-merge-command.mjs
 
   merge-gate:
     needs: changed-test-coverage
