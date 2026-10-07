@@ -803,9 +803,11 @@ function Keeping({ engine, lv }: { engine: WindowEngine; lv: number }) {
   const config = useConfig(engine);
   const [manage, setManage] = useState(false);
   const maintenance = rec(config.get("session.maintenance"));
-  const pruneAfter = maintenance.pruneAfter ?? "30d";
-  const days = retentionDays(pruneAfter);
-  const keep = maintenance.mode === "warn" ? "forever" : days === 30 ? "30" : days === 365 ? "365" : "";
+  const pruneAfter = maintenance.pruneAfter;
+  const days = pruneAfter == null || pruneAfter === "" ? null : retentionDays(pruneAfter);
+  const keep = maintenance.mode === "warn" || pruneAfter == null || pruneAfter === "" || days === 0
+    ? "forever"
+    : days === 30 ? "30" : days === 365 ? "365" : "";
   const sub = `Older ones are deleted for good.${keep ? "" : ` Now: ${days === null ? str(pruneAfter) : `${days} day${days === 1 ? "" : "s"}`}.`}`;
   const setKeep = (v: string) => void config.set("session.maintenance", {
     ...maintenance,
