@@ -12,6 +12,7 @@ on:
       - '.github/workflows/component-release.yml'
   # Release-pipeline changes build and smoke every native target before merge; publish stays main-only.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'desktop/scripts/release-*'
       - 'desktop/scripts/make-component-release.mjs'
@@ -37,7 +38,7 @@ concurrency:
 
 jobs:
   identity:
-    if: github.repository == 'KeepOak/Branch-Agent'
+    if: github.repository == 'KeepOak/Branch-Agent' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -68,6 +69,7 @@ jobs:
           printf 'commit=%s\nversion=%s\n' "$commit" "$version" >> "$GITHUB_OUTPUT"
   window:
     needs: identity
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -94,6 +96,7 @@ jobs:
   # renderer artifact is fetched only when packaging needs it (release-build.mjs waits for the ready file).
   native:
     needs: identity
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
@@ -211,6 +214,7 @@ jobs:
           retention-days: 3
   publish:
     needs: [identity, native]
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

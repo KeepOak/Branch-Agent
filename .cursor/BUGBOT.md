@@ -30,6 +30,11 @@ Conventions and common failure modes for this repository. Bugbot should check th
 - **Right:** Engine/window tests go in `scripts/feature-batch-ci-named/<branch-name>.txt`. Desktop tests are added as explicit `node --test` steps in `.github/workflows/desktop-checks.yml`.
 - **Check:** The merge-gate workflow's `changed-test-coverage` job enforces this.
 
+### Draft PR CI
+- **Wrong:** Adding a new PR-triggered check workflow that runs on draft PRs or omits the draft skip.
+- **Right:** PR check workflows list `ready_for_review` and skip drafts with `if: github.event_name != 'pull_request' || github.event.pull_request.draft == false`.
+- **Check:** `scripts/ci-trigger-policy.test.mjs` enforces this.
+
 ### CI timeout violations
 - **Wrong:** Adding slow operations that push a job over 15 minutes.
 - **Right:** Keep all check jobs under 15 minutes. Split or shard work rather than raising timeouts.
@@ -70,6 +75,7 @@ Every merge to `main` that touches `engine/`, `window/`, or `desktop/` triggers 
 - [ ] Tests use isolated ports and data folders.
 - [ ] Windows spawns include `windowsHide: true`.
 - [ ] New test files are listed in CI.
+- [ ] New PR-triggered workflows skip drafts and list `ready_for_review`.
 - [ ] No CI job exceeds 15 minutes (except merge-gate).
 - [ ] Lint and typecheck pass.
 - [ ] No placeholder implementations or skipped tests.

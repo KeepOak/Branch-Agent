@@ -2,6 +2,7 @@ name: Engine build (PR)
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'engine/**'
       - '.github/workflows/engine-build-pr.yml'
@@ -18,6 +19,7 @@ concurrency:
 
 jobs:
   prepare:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -45,6 +47,7 @@ jobs:
 
   declarations:
     needs: prepare
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -82,6 +85,7 @@ jobs:
 
   build:
     needs: declarations
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

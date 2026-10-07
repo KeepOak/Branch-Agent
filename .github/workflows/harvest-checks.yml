@@ -2,6 +2,7 @@ name: Harvest checks
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'engine/**'
       - 'window/**'
@@ -17,10 +18,11 @@ permissions:
 
 concurrency:
   group: harvest-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 jobs:
   select:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -41,7 +43,7 @@ jobs:
 
   test:
     needs: select
-    if: needs.select.outputs.matrix != '{"include":[]}'
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.select.outputs.matrix != '{"include":[]}'
     name: Harvest ${{ matrix.lane }} ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ github.event_name == 'pull_request' && 10 || 15 }}
@@ -81,7 +83,7 @@ jobs:
           retention-days: 7
 
   report-nightly:
-    if: always() && github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: always() && github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     needs: [select, test]
     runs-on: ubuntu-latest
     timeout-minutes: 5
