@@ -1,3 +1,4 @@
+/* @vitest-environment jsdom */
 import "../../test/dom.setup.ts";
 import { expectDefined } from "@branch/normalization-core";
 import type {

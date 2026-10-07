@@ -1,3 +1,4 @@
+/* @vitest-environment jsdom */
 import "../../test/dom.setup.ts";
 import { render } from "lit";
 import { afterEach, expect, it, vi } from "vitest";
