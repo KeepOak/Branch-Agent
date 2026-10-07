@@ -9,6 +9,7 @@ import {
   isSessionHandoffLeaseExpired,
   isSessionHandoffLeaseLive,
   listSessionHandoffLeases,
+  readHeldSessionHandoffLease,
   readSessionHandoffLease,
   removeStaleSessionHandoffLease,
   resolveSessionHandoffLeaseDir,
@@ -62,6 +63,11 @@ export function noteOwnSessionHandoffHold(startedAt: number | undefined): void {
   gate.ownHoldStartedAt = startedAt;
 }
 
+/** Clears the record of this process's own hold, unless a newer hold has replaced it since. */
+export function clearOwnSessionHandoffHold(startedAt: number): void {
+  if (gate.ownHoldStartedAt === startedAt) gate.ownHoldStartedAt = undefined;
+}
+
 /** The lane is free once its last holder's lease expires, whatever the holders still do. */
 function laneExpiresAt(held: HeldLane): number {
   return Math.max(...[...held.holders.values()].map(({ lease }) => sessionHandoffLeaseExpiresAt(lease)));
@@ -72,7 +78,10 @@ function admitLease(file: string, lease: SessionHandoffLease): void {
   // Our own leases (a step-down in this process) never hold our own work back.
   if (lease.pid === process.pid) return;
   // Nor do our successors' (A steps down for B, B for C: A finishing a run must not wait on B's lease for it,
-  // while B waits on A). Every one of them was written after our own step-down started.
+  // while B waits on A). Every one of them was written after our own step-down started. That relies on each
+  // predecessor writing all its leases before its successor activates: the stepping-down engine seals its hold
+  // right before it releases the state, and leases no new session once sealed (session-handoff-lease-holder.ts).
+  // A caller with `leaseNewLanes` that never seals would break it.
   if (gate.ownHoldStartedAt !== undefined && lease.acquiredAt >= gate.ownHoldStartedAt) return;
   const existing = gate.lanes.get(lease.lane);
   if (existing?.holders.has(lease.ownerId)) return;
@@ -114,11 +123,10 @@ export function refreshSessionHandoffLeases(env: NodeJS.ProcessEnv = process.env
 }
 
 function holderStillHolds({ file, lease }: Holder): boolean {
-  return (
-    readSessionHandoffLease(file)?.ownerId === lease.ownerId &&
-    isLeaseHolderAlive(lease.pid) &&
-    !isSessionHandoffLeaseExpired(lease)
-  );
+  if (isSessionHandoffLeaseExpired(lease) || !isLeaseHolderAlive(lease.pid)) return false;
+  // A lease file that is there but unreadable for now still holds; its expiry bounds that.
+  const current = readHeldSessionHandoffLease(file);
+  return current === "busy" || current?.ownerId === lease.ownerId;
 }
 
 /** Drops holders that no longer hold the lane; frees the lane (and its waiters) once none is left. */

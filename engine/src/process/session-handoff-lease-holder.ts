@@ -5,7 +5,7 @@ import {
   registerSessionLaneHandoffEnqueue,
 } from "./command-queue.js";
 import { GatewayDrainingError } from "./gateway-work-admission.js";
-import { noteOwnSessionHandoffHold } from "./session-handoff-lease-gate.js";
+import { clearOwnSessionHandoffHold, noteOwnSessionHandoffHold } from "./session-handoff-lease-gate.js";
 import {
   removeSessionHandoffLease,
   resolveSessionHandoffLeaseDir,
@@ -40,6 +40,8 @@ export type SessionHandoffLeaseHold = {
 };
 
 const POLL_MS = 100;
+/** The longest wait between attempts to remove a lease file something else keeps open. */
+const STUCK_RETRY_MAX_MS = 5_000;
 
 /**
  * The default test of "still in flight": a task runs in the session's lane or waits for it (including turns parked
@@ -94,33 +96,59 @@ export function holdSessionHandoffLeases(
   let sealed = false;
   let finished = false;
   let leftoverTimer: ReturnType<typeof setInterval> | undefined;
+  /**
+   * Released leases whose file could not be removed (Windows: antivirus holds it). They no longer keep the hold
+   * open, since the session is done here and the file goes stale for successors once this process exits. They are
+   * retried with backoff, one quick attempt at a time, until removed or expired (successors then delete them).
+   */
+  const stuck = new Map<string, { file: string; lease: SessionHandoffLease; retryAt: number; delayMs: number }>();
   const lease = (lane: string) => {
     if (!held.has(lane)) held.set(lane, writeSessionHandoffLease(dir, lane));
   };
-  /** Removes a released lane's lease; one that could not be removed stays held and is tried again. */
+  const retryStuck = (now = Date.now()) => {
+    for (const [file, entry] of stuck) {
+      if (now < entry.retryAt) continue;
+      if (
+        removeSessionHandoffLease(file, entry.lease, { once: true, quiet: true }) ||
+        now >= sessionHandoffLeaseExpiresAt(entry.lease)
+      ) {
+        stuck.delete(file);
+        continue;
+      }
+      entry.delayMs = Math.min(entry.delayMs * 2, STUCK_RETRY_MAX_MS);
+      entry.retryAt = now + entry.delayMs;
+    }
+  };
+  /** Removes a released lane's lease; one that could not be removed is retried later. */
   const releaseLane = (lane: string) => {
     const kept = held.get(lane);
-    if (kept && removeSessionHandoffLease(kept.file, kept.lease)) held.delete(lane);
+    if (!kept) return;
+    held.delete(lane);
+    if (removeSessionHandoffLease(kept.file, kept.lease)) return;
+    stuck.set(kept.file, { ...kept, retryAt: Date.now() + POLL_MS, delayMs: POLL_MS });
   };
   const releaseSync = () => {
     for (const lane of [...held.keys()]) releaseLane(lane);
+  };
+  const releaseAtExit = () => {
+    releaseSync();
+    for (const [file, entry] of stuck) removeSessionHandoffLease(file, entry.lease, { quiet: true });
   };
   const stopTimers = () => {
     if (timer) clearInterval(timer);
     if (deadlineTimer) clearTimeout(deadlineTimer);
     timer = undefined;
     deadlineTimer = undefined;
-    // A lease that could not be removed yet is tried again until it is gone, and once more at exit.
-    if (held.size === 0) {
-      process.off("exit", releaseSync);
+    if (stuck.size === 0) {
+      process.off("exit", releaseAtExit);
       return;
     }
     leftoverTimer ??= setInterval(() => {
-      releaseSync();
-      if (held.size > 0) return;
+      retryStuck();
+      if (stuck.size > 0) return;
       clearInterval(leftoverTimer);
       leftoverTimer = undefined;
-      process.off("exit", releaseSync);
+      process.off("exit", releaseAtExit);
     }, POLL_MS);
     leftoverTimer.unref?.();
   };
@@ -154,6 +182,7 @@ export function holdSessionHandoffLeases(
     for (const lane of [...held.keys()]) {
       if (!stillBusy(lane)) releaseLane(lane);
     }
+    retryStuck();
     if (held.size === 0 && !pendingWork()) finish();
   };
   const onEnqueue = (lane: string) => {
@@ -175,7 +204,7 @@ export function holdSessionHandoffLeases(
   noteOwnSessionHandoffHold(holdStartedAt);
   const lanes = [...held.keys()];
   // An engine that exits with leases still held must not leave its successor waiting for a dead holder's files.
-  process.once("exit", releaseSync);
+  process.once("exit", releaseAtExit);
   // Kept referenced: the stepping-down engine stays up until it has released every session it kept.
   timer = setInterval(poll, POLL_MS);
   deadlineTimer = setTimeout(() => resolveDeadline(true), SESSION_HANDOFF_LEASE_MAX_WAIT_MS);
@@ -200,7 +229,7 @@ export function holdSessionHandoffLeases(
       sealed = false;
       finished = false;
       finish();
-      noteOwnSessionHandoffHold(undefined);
+      clearOwnSessionHandoffHold(holdStartedAt);
     },
   };
 }
