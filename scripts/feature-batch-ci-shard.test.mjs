@@ -1,7 +1,7 @@
 // node --test scripts/feature-batch-ci-shard.test.mjs
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { harvestMatrix, harvestTestFiles, harvestTests, namedTests, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
+import { harvestE2eError, harvestMatrix, harvestTestFiles, harvestTests, namedTests, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
 
 test('no FEATURE_SHARD runs everything in one job', () => {
   assert.deepEqual(shardOf(''), { index: 0, total: 1 });
@@ -47,4 +47,12 @@ test('Harvest lists stay out of named tests and PRs select touched lists and tes
   assert.equal(shards.length, Math.ceil(pilot.length / 4));
   assert.deepEqual(shards.flatMap(item => shardTests([...pilot].sort(), shardOf(item.shard))).sort(), [...pilot].sort());
   assert.equal(harvestMatrix().filter(item => item.lane === 'engine').length, Math.ceil(all.length / 8));
+});
+
+test('Harvest lists reject e2e files that Harvest vitest excludes', () => {
+  assert.match(harvestE2eError('engine', 'src/commands/doctor.auth-profile-consumers.e2e.test.ts'), /e2e suite/);
+  assert.match(harvestE2eError('window', 'src/foo.e2e.test.tsx'), /e2e suite/);
+  assert.equal(harvestE2eError('engine', 'src/commands/doctor.test.ts'), undefined);
+  const all = [...harvestTests('engine'), ...harvestTests('window')];
+  assert.equal(all.find(file => harvestE2eError('engine', file) || harvestE2eError('window', file)), undefined);
 });
