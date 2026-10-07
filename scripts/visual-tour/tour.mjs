@@ -36,6 +36,8 @@ try {
     await page.addInitScript(([url, key, look]) => {
       window.branchDesktop = { gatewayUrl: url, gatewayToken: key };
       localStorage.setItem('branch.theme', look);
+      localStorage.setItem('branch-proto-welcomed', '1');
+      localStorage.setItem('branch-proto-seen13', '1');
     }, [gateway, token, theme]);
     for (const screen of screens) {
       const stem = `${theme}-${width}-${screen.id}`;
@@ -66,6 +68,7 @@ try {
     if (previewUrl) {
       const preview = await context.newPage();
       await preview.goto(previewUrl, { waitUntil: 'domcontentloaded' });
+      await preview.waitForFunction(() => typeof closePop === 'function' && typeof closeDlg === 'function' && typeof render === 'function');
       for (const screen of screens) {
         const stem = `${theme}-${width}-${screen.id}`;
         try {

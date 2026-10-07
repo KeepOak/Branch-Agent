@@ -20,6 +20,9 @@ test('screens loader accepts the committed tour and rejects unasserted clicks', 
   assert.equal(previewState('customize-tools-skills').tools9.k, 'skills');
   assert.equal(previewState('people').view, 'team');
   assert.equal(previewState('automations-board').tabs.automations, 'board');
+  const board = screens.find((screen) => screen.id === 'automations-board');
+  assert.equal(board.steps[0].expectBy, 'css');
+  assert.equal(board.steps[0].expect, '.au-board');
   assert.equal(previewState('computer-stage').stage, 'computer');
   assert.equal(previewState('browser-stage').stage, 'browser');
   assert.equal(previewState('pane-memory').pane, 'memory');
