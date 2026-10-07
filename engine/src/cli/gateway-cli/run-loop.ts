@@ -1310,7 +1310,7 @@ export async function runGatewayLoop(params: {
         gatewayLog.error(`desktop handoff rollback failed after disconnect: ${String(error)}`);
       }
     }
-    if (server && desktopDeactivation) stopAfterDeactivatedRuns(server);
+    if (server) stopAfterDeactivatedRuns(server);
     else if (!shuttingDown) onSigterm();
   };
   const onSigint = () => {
