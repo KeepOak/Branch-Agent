@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
@@ -115,6 +115,15 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
   const clock = { skew: 0 };
   Module._load = function(name, ...args) {
     if (name === "electron") return runtime.electron;
+    if (name === "./boot-selected-engine" && existsSync(join(root, "hold-start-continuation"))) {
+      const source = originalLoad.call(this, name, ...args);
+      return { ...source, bootSelectedEngineWithRollback: async options => {
+        const result = await source.bootSelectedEngineWithRollback(options);
+        await writeFile(join(root, "startup-awaiting-continuation"), "1");
+        while (!existsSync(join(root, "release-start-continuation"))) await pause(5);
+        return result;
+      } };
+    }
     if (fastSupervisor && name === "./gateway-supervisor") {
       const source = originalLoad.call(this, name, ...args);
       return { createGatewayCrashSupervisor: options => source.createGatewayCrashSupervisor({ ...options,
@@ -131,6 +140,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     if (name === "./component-update") {
       const source = originalLoad.call(this, name, ...args);
       return { ...source, watchComponentUpdates: (cfg, log, options) => {
+        if (existsSync(join(root, "hold-start-continuation"))) writeFileSync(join(root, "component-watch-started"), "1");
         onStaged = options.onStaged; onWithdrawal = options.onWithdrawal; swapGuard = options.underSwapGuard;
         return source.watchComponentUpdates(cfg, log, options);
       }, confirmComponentUpdate: async (...args) => {
@@ -850,18 +860,38 @@ test("launch retires the engines the last session recorded and left holding thei
       assert.equal(alive(bystander.pid), true, "a reused PID was stopped");
       assert.match(await readFile(join(root, "desktop.log"), "utf8"), new RegExp(`retiring the last session's standby engine ${orphan.pid} on port ${orphanPort}`));
       // Only the engine this launch started is recorded now.
+      await eventually(async () => {
+        const records = JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8"));
+        return records.length === (await starts()).length && records.every(record => record.started);
+      });
       assert.deepEqual(JSON.parse(await readFile(join(root, "gateway-engines.json"), "utf8")).map(record => record.pid), await starts());
     }, false, false, false, "never", false, async (root) => {
       const orphanIdentity = await engineProcessIdentity(orphan.pid), bystanderIdentity = await engineProcessIdentity(bystander.pid);
       assert.ok(orphanIdentity && bystanderIdentity);
       await writeFile(join(root, "gateway-engines.json"), JSON.stringify([
-        { pid: orphan.pid, port: orphanPort, role: "standby", ...orphanIdentity },
+        { pid: orphan.pid, port: orphanPort, role: "standby", executable: orphanIdentity.executable },
         { pid: bystander.pid, port: orphanPort, role: "candidate", ...bystanderIdentity, started: "reused-pid" },
         { pid: bystander.pid, port: orphanPort, role: "candidate", ...bystanderIdentity },
       ]));
     });
   } finally {
     orphan.kill(); bystander.kill();
+  }
+});
+test("a spawned engine has a recovery record before its start-time query finishes", async () => {
+  const { spawn } = await import("node:child_process");
+  const { recordEngine } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "engine-records.js"));
+  const root = await mkdtemp(join(tmpdir(), "branch-record-spawn-"));
+  const child = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore", windowsHide: true });
+  try {
+    recordEngine(root, child, 12345, "engine", process.execPath);
+    const records = JSON.parse(readFileSync(join(root, "gateway-engines.json"), "utf8"));
+    assert.deepEqual(records.map(({ pid, port, role, started }) => ({ pid, port, role, started })),
+      [{ pid: child.pid, port: 12345, role: "engine", started: undefined }]);
+    await eventually(() => Boolean(JSON.parse(readFileSync(join(root, "gateway-engines.json"), "utf8"))[0]?.started));
+  } finally {
+    child.kill();
+    await rm(root, { recursive: true, force: true });
   }
 });
 test("launch refuses plainly when the last session's engine still runs on a moved port", async () => {
@@ -1142,3 +1172,14 @@ test("a restart request during first launch preserves its starting gateway", () 
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway ready"));
   assert.equal((await starts()).length, 1);
 }, true));
+test("quitting after gateway readiness does not arm startup watchers afterward", () => fixture(async ({ root, runtime, starts }) => {
+  try {
+    await eventually(() => existsSync(join(root, "startup-awaiting-continuation")), 30_000);
+    runtime.app.emit("will-quit");
+    await eventually(async () => (await starts()).every(pid => !alive(pid)));
+  } finally {
+    await writeFile(join(root, "release-start-continuation"), "1");
+  }
+  await pause(50);
+  assert.equal(existsSync(join(root, "component-watch-started")), false);
+}, false, false, false, "never", false, async root => writeFile(join(root, "hold-start-continuation"), "1")));
