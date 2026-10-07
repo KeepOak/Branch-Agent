@@ -157,7 +157,7 @@ function assertWindowsSetupCodeFileAcl(filePath: string, onWarn?: (msg: string) 
 
 /**
  * Read setup code from a file, validating that the file has secure permissions
- * (0600 or stricter on POSIX). On Windows, refuse ACLs that grant read access
+ * (0600 or stricter on POSIX). On Windows, warn when ACLs grant read access
  * to Everyone, Users, Authenticated Users, or Guest.
  */
 export function readSetupCodeFromFile(
