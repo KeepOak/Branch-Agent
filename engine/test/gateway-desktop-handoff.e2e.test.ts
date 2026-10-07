@@ -395,7 +395,11 @@ describe("in-place engine handoff between real engines", () => {
       const successor = await withTimeout(pending, 90_000, "B admits queued turn on S");
       await clientB.request("agent.wait", { runId: successor.runId, timeoutMs: 60_000 });
       await waitUntil(() => listLeasedLanes(a.env).length === 0, 60_000, "A releases S");
-      const history = JSON.stringify(await clientB.request("chat.history", { sessionKey: SESSION_S }));
+      let history = "";
+      await waitUntil(async () => {
+        history = JSON.stringify(await clientB.request("chat.history", { sessionKey: SESSION_S }));
+        return history.includes("REPLY_A") && history.includes("REPLY_S");
+      }, 90_000, "both replies on B after the queued turn");
       expect(history.indexOf("REPLY_A")).toBeGreaterThanOrEqual(0);
       expect(history.indexOf("REPLY_S")).toBeGreaterThan(history.indexOf("REPLY_A"));
     },
