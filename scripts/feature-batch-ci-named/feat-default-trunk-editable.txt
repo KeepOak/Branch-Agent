@@ -1,3 +1,2 @@
 engine:src/config/default-trunk-seed.test.ts
 engine:src/gateway/server-methods/default-trunk-delete.test.ts
-window:src/rooms/new-group-chat.test.tsx
