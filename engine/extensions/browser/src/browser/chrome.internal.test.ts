@@ -128,7 +128,8 @@ function stubBrowserExecutableAndPrefs(
       ? value === executablePath
       : value.includes("Google Chrome") ||
         value.includes("google-chrome") ||
-        value.includes("/usr/bin/chromium");
+        value.includes("/usr/bin/chromium") ||
+        value.endsWith("chrome.exe");
     const isPreferences = value.endsWith("Local State") || value.endsWith("Preferences");
     return isExecutable || (preferences === "present" && isPreferences);
   });
@@ -434,6 +435,9 @@ describe("chrome.ts internal", () => {
 
     beforeEach(async () => {
       tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "branch-launch-"));
+      if (process.platform === "win32") {
+        await fsp.writeFile(path.join(tmpDir, "chrome.exe"), "");
+      }
     });
 
     afterEach(async () => {
@@ -463,6 +467,7 @@ describe("chrome.ts internal", () => {
         extraArgs: [],
         localLaunchTimeoutMs: 15_000,
         localCdpReadyTimeoutMs: 8_000,
+        ...(process.platform === "win32" ? { executablePath: path.join(tmpDir, "chrome.exe") } : {}),
         ...overrides,
       }) as unknown as ResolvedBrowserConfig;
 
@@ -545,7 +550,7 @@ describe("chrome.ts internal", () => {
       // path is set, then mock existsSync to return false for everything.
       vi.spyOn(fs, "existsSync").mockReturnValue(false);
       const profile = makeProfile(51111);
-      await expect(launchBranchChrome(makeResolved(), profile)).rejects.toThrow(
+      await expect(launchBranchChrome(makeResolved({ executablePath: undefined }), profile)).rejects.toThrow(
         /No supported browser found/,
       );
       expect(ensurePortAvailableMock).toHaveBeenCalledWith(51111, "127.0.0.1");
@@ -704,7 +709,7 @@ describe("chrome.ts internal", () => {
         });
         const profile = { ...makeProfile(51111), cdpUrl };
 
-        await expect(launchBranchChrome(makeResolved(), profile)).rejects.toThrow(portBusy);
+        await expect(launchBranchChrome(makeResolved({ executablePath: undefined }), profile)).rejects.toThrow(portBusy);
         expect(ensurePortAvailableMock.mock.calls).toEqual([
           [51111, "127.0.0.1"],
           [51111, configuredProbeHost],
@@ -1693,7 +1698,8 @@ describe("chrome.ts internal", () => {
         if (
           s.includes("Google Chrome") ||
           s.includes("google-chrome") ||
-          s.includes("/usr/bin/chromium")
+          s.includes("/usr/bin/chromium") ||
+          s.endsWith("chrome.exe")
         ) {
           return true;
         }
