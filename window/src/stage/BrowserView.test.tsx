@@ -80,12 +80,12 @@ afterEach(async () => {
   document.body.innerHTML = "";
 });
 describe("scoped browser viewing", () => {
-  it("makes no request without a complete recorded browser tab", async () => {
-    const request = vi.fn();
+  it("starts host browser fallback when no recorded browser tab", async () => {
+    const request = vi.fn(async () => ({ running: false })) as any;
     await render(owner(request), []);
-    expect(request).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("Nothing open");
-    expect(container.textContent).toContain("Scout hasn't opened a page in this conversation.");
+    await flush();
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ target: "host", path: "/", query: { profile: "branch" } }));
+    expect(container.textContent).toContain("Starting the browser");
   });
   it("drops a late stream response after navigating to another conversation", async () => {
     let resolve!: (v: any) => void;
@@ -93,7 +93,7 @@ describe("scoped browser viewing", () => {
     const first = owner(routed(() => waiting) as any);
     await render(first);
     await flush();
-    await render(owner(vi.fn(), "agent:ada:two"), []);
+    await render(owner(vi.fn(async () => ({ running: false })) as any, "agent:ada:two"), []);
     await act(async () => {
       resolve({ wsPath: "/stream/one", targetId: "tab-one" });
       await Promise.resolve();
@@ -259,5 +259,82 @@ describe("scoped browser viewing", () => {
       image = { width: 200, height: 100, cssWidth: 1000, cssHeight: 500 };
     expect(browserRemotePoint(rect, image, 200, 200)).toEqual({ x: 500, y: 250 });
     expect(browserRemotePoint(rect, image, 200, 20)).toBeNull();
+  });
+  it("uses host browser fallback when no recorded route, auto-starts and opens a blank tab", async () => {
+    let running = false;
+    const tabs: { targetId: string; title: string; url: string; type: string }[] = [];
+    const request = vi.fn(async (_m: string, params: any) => {
+      if (params.path === "/") return { running };
+      if (params.path === "/start") {
+        running = true;
+        return {};
+      }
+      if (params.path === "/tabs") return { tabs };
+      if (params.path === "/tabs/open") {
+        tabs.push({ targetId: "host-tab-one", title: "", url: "about:blank", type: "page" });
+        return { targetId: "host-tab-one" };
+      }
+      return {};
+    });
+    await render(owner(request as any), []);
+    await flush();
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ target: "host", path: "/", query: { profile: "branch" } }));
+    await flush();
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ target: "host", method: "POST", path: "/start" }));
+    await flush();
+    await flush();
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ method: "POST", path: "/tabs/open", body: { url: "about:blank" } }));
+    await flush();
+    expect(container.querySelector(".br-addr-st")).toBeTruthy();
+    expect(container.textContent).toContain("New tab");
+    expect(container.textContent).toContain("Enter an address and press Enter.");
+  }, 10000);
+  it("navigates to https:// for a plain domain", async () => {
+    const request = routed(() => new Promise(() => {}));
+    await render(owner(request as any));
+    await flush();
+    const input = container.querySelector<HTMLInputElement>(".br-addr-st")!;
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set;
+    await act(async () => {
+      nativeInputValueSetter!.call(input, "example.com");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => input.form!.requestSubmit());
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/navigate", body: { url: "https://example.com", targetId: "tab-one" } }));
+  });
+  it("searches for words that aren't a URL", async () => {
+    const request = routed(() => new Promise(() => {}));
+    await render(owner(request as any));
+    await flush();
+    const input = container.querySelector<HTMLInputElement>(".br-addr-st")!;
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set;
+    await act(async () => {
+      nativeInputValueSetter!.call(input, "weather lisbon");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => input.form!.requestSubmit());
+    expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/navigate", body: { url: "https://www.google.com/search?q=weather%20lisbon", targetId: "tab-one" } }));
+  });
+  it("refuses javascript: and file: with Blocked address and does not navigate", async () => {
+    const request = routed(() => new Promise(() => {}));
+    await render(owner(request as any));
+    await flush();
+    const input = container.querySelector<HTMLInputElement>(".br-addr-st")!;
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set;
+    const before = request.mock.calls.length;
+    await act(async () => {
+      nativeInputValueSetter!.call(input, "javascript:alert(1)");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => input.form!.requestSubmit());
+    expect(request.mock.calls.slice(before).some((c) => c[1]?.path === "/navigate")).toBe(false);
+    expect(container.textContent).toContain("Blocked address");
+    await act(async () => {
+      nativeInputValueSetter!.call(input, "file:///etc/passwd");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => input.form!.requestSubmit());
+    expect(request.mock.calls.slice(before).some((c) => c[1]?.path === "/navigate")).toBe(false);
+    expect(container.textContent).toContain("Blocked address");
   });
 });

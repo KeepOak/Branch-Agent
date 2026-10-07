@@ -1,11 +1,56 @@
-// The conversation's browser route (where its browser runs and which profile), taken only from tool steps the
-// engine recorded, and the browser.request calls the stage makes on it. Never a guessed route.
+// The conversation's browser route (where its browser runs and which profile). Prefer the route recorded by
+// tool steps; when none exists, fall back to Branch's own host browser so a new conversation can still browse.
 import type { WindowEngine } from "../connect/engine";
 import type { Block } from "../thread/model";
 import { browserTabKey, type BrowserPresentation, type BrowserTabTarget } from "../thread/browser-presentation";
 
 export type BrowserRoute = Omit<BrowserTabTarget, "targetId">;
 export type LiveTab = { targetId: string; title: string; url: string };
+
+/** Branch's own host browser and managed profile (engine DEFAULT_BROWSER_DEFAULT_PROFILE_NAME). */
+export const HOST_BROWSER_ROUTE: BrowserRoute = { target: "host", profile: "branch" };
+
+/** A colon followed by digits is a port, not a scheme (engine/ui `normalizeBrowserUrlDraft`). */
+const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:(?![0-9])/i;
+/** Preview `BLOCK_RE_PC18`: these never go to /navigate. */
+const BLOCKED_SCHEME = /^(file|javascript|chrome|data|about:(?!blank))/i;
+
+/** Chromium's default search URL shape; the engine has no separate omnibox search setting. */
+export const DEFAULT_SEARCH_URL = "https://www.google.com/search?q=";
+
+/** Title of the blank page when the address bar refuses a scheme. */
+export const BLOCKED_ADDRESS = "Blocked address";
+
+function parseHttpUrl(candidate: string): URL | null {
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Address bar: http(s) is kept, a host-like value gets https://, blocked schemes return null, anything else is a web search. */
+export function addressBarUrl(raw: string): string | null {
+  const target = raw.trim();
+  if (!target) return "";
+  const hasExplicitScheme = HAS_SCHEME.test(target);
+  if (hasExplicitScheme && !/^https?:\/\//i.test(target)) {
+    if (/^about:blank$/i.test(target)) return target;
+    return null;
+  }
+  if (BLOCKED_SCHEME.test(target)) return null;
+  if (hasExplicitScheme) return target;
+  const parsed = parseHttpUrl(`https://${target}`);
+  const host = parsed?.hostname ?? "";
+  if (parsed && (host === "localhost" || host.includes("."))) return `https://${target}`;
+  return `${DEFAULT_SEARCH_URL}${encodeURIComponent(target)}`;
+}
+
+/** A new tab the person (or fallback) just opened: no page yet. */
+export function isBlankTab(url: string | undefined): boolean {
+  return !url || url === "about:blank";
+}
 
 /** Each recorded tab once, newest last. */
 export function recordedBrowserTabs(blocks: Block[]): BrowserPresentation[] {
@@ -24,6 +69,11 @@ export function routeOf(entries: BrowserPresentation[]): BrowserRoute | null {
   const tab = entries.at(-1)?.tab;
   if (!tab) return null;
   return tab.target === "node" ? { target: "node", node: tab.node, profile: tab.profile } : { target: "host", profile: tab.profile };
+}
+
+/** Recorded route when the conversation used a browser; otherwise Branch's own host browser. */
+export function activeRoute(entries: BrowserPresentation[]): BrowserRoute {
+  return routeOf(entries) ?? HOST_BROWSER_ROUTE;
 }
 
 export const routeKey = (route: BrowserRoute | null) => (route ? JSON.stringify([route.target, route.node, route.profile]) : "");

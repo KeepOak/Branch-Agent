@@ -6,7 +6,7 @@ import type { Level } from "../places-nav/settings-nav";
 import type { BrowserPresentation } from "../thread/browser-presentation";
 import { Menu, type MenuAnchor, type MenuItem } from "../shell/Menu";
 import { BrowserScreencastClient, type BrowserScreencastFrame } from "./browser-screencast-client";
-import { browserCall, readTabs, recordedBrowserTabs, routeKey, routeOf, scopedBrowserRequest, type BrowserRoute, type LiveTab } from "./browser-route";
+import { BLOCKED_ADDRESS, addressBarUrl, activeRoute, browserCall, isBlankTab, readTabs, recordedBrowserTabs, routeKey, routeOf, scopedBrowserRequest, type BrowserRoute, type LiveTab } from "./browser-route";
 import { BrowserTools } from "./BrowserTools";
 import { SIcon } from "./stage-icons";
 
@@ -286,7 +286,8 @@ export function BrowserMini({ engine, gatewayUrl, blocks }: { engine: WindowEngi
 
 export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", onState }: Props) {
   const entries = useMemo(() => recordedBrowserTabs(blocks), [blocks]);
-  const route = useMemo(() => routeOf(entries), [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
+  const recordedRoute = useMemo(() => routeOf(entries), [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
+  const route = useMemo(() => activeRoute(entries), [routeKey(recordedRoute)]); // eslint-disable-line react-hooks/exhaustive-deps
   const steps = blocks.filter((b) => b.kind === "step").length;
   const [tick, setTick] = useState(0);
   const browser = useBrowser(engine, route, tick + steps);
@@ -296,8 +297,15 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const [drawer, setDrawer] = useState(false);
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[] } | null>(null);
   const [note, setNote] = useState("");
+  const [blocked, setBlocked] = useState(false);
   const [find, setFind] = useState<string | null>(null);
   const [view, setView] = useState<{ url?: string; title?: string; phase: BrowserPhase }>({ phase: "empty" });
+  const startedRef = useRef(false);
+  const openedTabRef = useRef(false);
+  useEffect(() => {
+    startedRef.current = false;
+    openedTabRef.current = false;
+  }, [engine.sessionKey]);
   const recordedNewest = entries.at(-1)?.tab.targetId;
   const tab = browser.tabs.find((t) => t.targetId === picked) ?? browser.tabs.find((t) => t.targetId === recordedNewest) ?? browser.tabs[0];
   const entry: BrowserPresentation | null = route && tab ? { tab: { ...route, targetId: tab.targetId } as BrowserPresentation["tab"], revision: String(tick), url: tab.url, title: tab.title } : null;
@@ -324,8 +332,15 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const go = (raw: string) => {
     const target = raw.trim();
     if (!target || !tab) return;
+    const navigateUrl = addressBarUrl(target);
+    if (navigateUrl === null) {
+      setBlocked(true);
+      setNote("");
+      return;
+    }
     onControl?.(true);
-    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: /^[a-z][a-z0-9+.-]*:/i.test(target) ? target : `https://${target}` } }).then(() => {
+    setBlocked(false);
+    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: navigateUrl } }).then(() => {
       setAddress(null);
       refresh();
     }, fail);
@@ -336,6 +351,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     void call("POST", "/act", { targetId: tab.targetId, body: { kind: "evaluate", fn: `() => history.${step}()` } }).then(refresh, fail);
   };
   const newTab = () => {
+    setBlocked(false);
     onControl?.(true);
     void call("POST", "/tabs/open", { body: { url: "about:blank" } }).then((r) => {
       const id = String((r as { targetId?: unknown } | null)?.targetId ?? "");
@@ -371,22 +387,53 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
       fail,
     );
   };
+  useEffect(() => {
+    if (!recordedRoute && browser.phase === "stopped" && !startedRef.current && route) {
+      startedRef.current = true;
+      void browserCall(engine, route, "POST", "/start").then(
+        () => setTick((t) => t + 1),
+        (e) => {
+          startedRef.current = false;
+          setNote(e instanceof Error ? e.message : String(e));
+        },
+      );
+    }
+  }, [engine, recordedRoute, browser.phase, route]);
+  useEffect(() => {
+    if (!recordedRoute && browser.phase === "ready" && !browser.tabs.length && !openedTabRef.current && route) {
+      openedTabRef.current = true;
+      void browserCall(engine, route, "POST", "/tabs/open", { body: { url: "about:blank" } }).then((r) => {
+        const id = String((r as { targetId?: unknown } | null)?.targetId ?? "");
+        if (id) {
+          setMine((m) => new Set(m).add(id));
+          setPicked(id);
+        }
+        setTick((t) => t + 1);
+      }, (e) => {
+        openedTabRef.current = false;
+        setNote(e instanceof Error ? e.message : String(e));
+      });
+    }
+  }, [engine, recordedRoute, browser.phase, browser.tabs.length, route]);
   const working = running && !control;
   let page: ReactNode;
-  if (browser.phase === "none") page = <Blank title="Nothing open" text={`${name} hasn't opened a page in this conversation.`} />;
-  else if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
+  if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
   else if (browser.phase === "error") page = <Blank title="Couldn't connect to the browser" text={browser.error ?? ""}><button type="button" className="btn sm" onClick={refresh}>Try again</button></Blank>;
   else if (browser.phase === "stopped")
     page = (
-      <Blank title="The browser isn't running." text={`${name} hasn't started its browser in this conversation.`}>
-        <button type="button" className="btn sm pri" onClick={() => void call("POST", "/start").then(refresh, fail)}>
-          Start the browser
-        </button>
+      <Blank title="The browser isn't running." text={recordedRoute ? `${name} hasn't started its browser in this conversation.` : "Starting the browser…"}>
+        {recordedRoute ? (
+          <button type="button" className="btn sm pri" onClick={() => void call("POST", "/start").then(refresh, fail)}>
+            Start the browser
+          </button>
+        ) : null}
       </Blank>
     );
-  else if (!tab) page = <Blank title="Nothing open" text={`${name} hasn't opened a page in this conversation.`} />;
+  else if (blocked)
+    page = <Blank icon="lock" title={BLOCKED_ADDRESS} text="Your browser rules block this address. Pick another tab or enter an allowed address." />;
+  else if (!tab || isBlankTab(tab.url)) page = <Blank title="New tab" text="Enter an address and press Enter." />;
   else page = <Screencast key={entry ? `${routeKey(route)}:${tab.targetId}` : "none"} engine={engine} gatewayUrl={gatewayUrl} entry={entry} interact={control} onState={onView} />;
-  const showChrome = browser.phase === "ready" || (browser.phase === "loading" && browser.tabs.length > 0);
+  const showChrome = browser.phase === "ready" || (browser.phase === "loading" && browser.tabs.length > 0) || (!recordedRoute && browser.phase !== "error" && browser.phase !== "none");
   return (
     <div className="browser-st">
       {route ? (
@@ -453,7 +500,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                   <div className="br-tabs-st" role="tablist" aria-label="Tabs">
                     {browser.tabs.map((t) => (
                       <span key={t.targetId} className={t.targetId === tab?.targetId ? "br-tab-st on" : "br-tab-st"} title={mine.has(t.targetId) ? "Your tab" : `${name}'s tab`}>
-                        <button type="button" role="tab" aria-selected={t.targetId === tab?.targetId} onClick={() => setPicked(t.targetId)}>
+                        <button type="button" role="tab" aria-selected={t.targetId === tab?.targetId} onClick={() => { setBlocked(false); setPicked(t.targetId); }}>
                           {mine.has(t.targetId) ? null : <i className="br-dot-st" />}
                           {t.title || "New tab"}
                         </button>
