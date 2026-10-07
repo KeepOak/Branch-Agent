@@ -264,6 +264,8 @@ export async function listFolderProcesses(folder: string): Promise<FolderProcess
 
 /** Every process Restart Manager reports as locking `folder`, including other sessions (session 0). */
 export function listRestartManagerLockers(folder: string): FolderLocker[] {
+  // Registers the bundled node.exe (and the app exe). RmGetList then returns
+  // holders in every session this user can query, which Get-Process can miss.
   if (process.platform !== "win32") return [];
   const root = resolve(folder);
   const node = join(root, "resources", "node", "node.exe");
