@@ -5,14 +5,37 @@ import { join, normalize } from "node:path";
 import { promisify } from "node:util";
 
 export type EngineRole = "engine" | "standby" | "candidate";
-export interface EngineRecord { pid: number; port: number; role: EngineRole; started: string; executable: string }
+export interface EngineRecord { pid: number; port: number; role: EngineRole; spawnedAt?: number; started?: string; executable: string }
+type ProcessIdentity = { started: string; executable: string };
 const recordsFile = (dataDir: string): string => join(dataDir, "gateway-engines.json");
 const run = (file: string, args: string[]): string => execFileSync(file, args, { encoding: "utf8", windowsHide: true, timeout: 5_000, stdio: "pipe" }).trim();
-const runAsync = async (file: string, args: string[]): Promise<string> =>
-  (await promisify(execFile)(file, args, { encoding: "utf8", windowsHide: true, timeout: 5_000 })).stdout.trim();
+const runAsync = async (file: string, args: string[], timeout = 5_000): Promise<string> =>
+  (await promisify(execFile)(file, args, { encoding: "utf8", windowsHide: true, timeout })).stdout.trim();
+const START_TOLERANCE_MS = 5_000;
+
+function startedNearSpawn(started: string, spawnedAt: number): boolean {
+  try {
+    let startedAt: number;
+    if (process.platform === "linux") {
+      const boot = readFileSync("/proc/stat", "utf8").match(/^btime (\d+)$/m)?.[1];
+      const ticksPerSecond = Number(run("getconf", ["CLK_TCK"]));
+      if (!boot || !Number.isFinite(ticksPerSecond) || ticksPerSecond <= 0) return false;
+      startedAt = Number(boot) * 1_000 + Number(started) * 1_000 / ticksPerSecond;
+    } else {
+      startedAt = Date.parse(started);
+    }
+    return Number.isFinite(startedAt) && Math.abs(startedAt - spawnedAt) <= START_TOLERANCE_MS;
+  } catch { return false; }
+}
+
+function identityMatches(record: EngineRecord, actual: ProcessIdentity): boolean {
+  return actual.executable === record.executable &&
+    (record.started === undefined || actual.started === record.started) &&
+    (record.spawnedAt === undefined ? record.started !== undefined : startedNearSpawn(actual.started, record.spawnedAt));
+}
 
 /** An unverifiable identity never authorizes a kill. */
-export async function engineProcessIdentity(pid: number): Promise<Pick<EngineRecord, "started" | "executable"> | undefined> {
+export async function engineProcessIdentity(pid: number): Promise<ProcessIdentity | undefined> {
   try {
     if (process.platform === "linux") {
       const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
@@ -67,7 +90,9 @@ export function readEngineRecords(dataDir: string): EngineRecord[] {
     if (!Array.isArray(value)) return [];
     return value.filter((item): item is EngineRecord => Number.isInteger(item?.pid) && item.pid > 0 &&
       Number.isInteger(item?.port) && item.port > 0 && item.port < 65536 && typeof item?.role === "string" &&
-      typeof item?.started === "string" && !!item.started && typeof item?.executable === "string" && !!item.executable);
+      (item?.spawnedAt === undefined || Number.isSafeInteger(item.spawnedAt) && item.spawnedAt > 0) &&
+      (item?.started === undefined || typeof item.started === "string" && !!item.started) &&
+      typeof item?.executable === "string" && !!item.executable);
   } catch { return []; }
 }
 
@@ -79,22 +104,27 @@ function writeEngineRecords(dataDir: string, records: EngineRecord[]): void {
 let recordGeneration = 0;
 export function clearEngineRecords(dataDir: string): void { recordGeneration++; writeEngineRecords(dataDir, []); }
 
-let pendingRecord: Promise<void> = Promise.resolve();
-export function recordEngine(dataDir: string, child: ChildProcess, port: number, role: EngineRole): void {
+export function recordEngine(dataDir: string, child: ChildProcess, port: number, role: EngineRole, executable: string): void {
   const pid = child.pid;
   if (pid === undefined) return;
   const generation = recordGeneration;
-  pendingRecord = pendingRecord.then(async () => {
+  const record: EngineRecord = { pid, port, role, spawnedAt: Date.now(), executable: process.platform === "win32" ? normalize(executable).toLowerCase() : normalize(executable) };
+  const live = readEngineRecords(dataDir).filter(previous => previous.pid !== pid);
+  writeEngineRecords(dataDir, [...live, record]);
+  void (async () => {
     const identity = await engineProcessIdentity(pid);
     if (!identity || generation !== recordGeneration) return;
-    // Retirement validates every record again; recording does not need to query old PIDs.
-    const live = readEngineRecords(dataDir).filter(record => record.pid !== pid);
-    writeEngineRecords(dataDir, [...live, { pid, port, role, ...identity }]);
-  }).catch(() => { /* recovery hint is best effort */ });
+    // An exited child or reused PID must not turn a provisional record into a verified identity.
+    if (!identityMatches(record, identity)) return;
+    const current = readEngineRecords(dataDir);
+    if (current.some(previous => previous.pid === pid && previous.port === port && previous.role === role && previous.spawnedAt === record.spawnedAt && previous.executable === record.executable))
+      writeEngineRecords(dataDir, current.map(previous => previous.pid === pid && previous.port === port && previous.role === role && previous.spawnedAt === record.spawnedAt && previous.executable === record.executable
+        ? { ...previous, started: identity.started } : previous));
+  })().catch(() => { /* recovery hint is best effort */ });
 }
 async function matches(record: EngineRecord): Promise<boolean> {
   const actual = await engineProcessIdentity(record.pid);
-  return actual?.started === record.started && actual.executable === record.executable;
+  return actual !== undefined && identityMatches(record, actual);
 }
 const pause = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -108,7 +138,8 @@ async function windowsSnapshot(records: EngineRecord[]): Promise<Map<number, { s
     `$listeners=@(Get-NetTCPConnection -State Listen -LocalPort ${ports.join(",")} -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -in '127.0.0.1','0.0.0.0','::' });` +
     `$processes | ForEach-Object { $p=$_; [pscustomobject]@{pid=$p.ProcessId;started=$p.CreationDate.ToUniversalTime().ToString('o');executable=$p.ExecutablePath;ports=@($listeners | Where-Object { $_.OwningProcess -eq $p.ProcessId } | ForEach-Object { $_.LocalPort })} } | ConvertTo-Json -Compress`;
   try {
-    const output = await runAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script]);
+    // A cold Get-NetTCPConnection/CIM probe can exceed the per-PID identity-query budget on Windows CI.
+    const output = await runAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], 20_000);
     const rows = output ? JSON.parse(output) as unknown : [];
     const result = new Map<number, { started: string; executable: string; ports: number[] }>();
     for (const row of Array.isArray(rows) ? rows : [rows]) {
@@ -122,11 +153,10 @@ async function windowsSnapshot(records: EngineRecord[]): Promise<Map<number, { s
 
 function snapshotMatches(record: EngineRecord, snapshot: Map<number, { started: string; executable: string; ports: number[] }>): boolean {
   const actual = snapshot.get(record.pid);
-  return actual?.started === record.started && actual.executable === record.executable && actual.ports.includes(record.port);
+  return actual !== undefined && identityMatches(record, actual) && actual.ports.includes(record.port);
 }
 
 export async function retireRecordedEngines(dataDir: string, log: (line: string) => void): Promise<void> {
-  await pendingRecord;
   if (process.platform === "win32") {
     const records = readEngineRecords(dataDir).filter(record => record.pid !== process.pid);
     const snapshot = await windowsSnapshot(records);

@@ -918,6 +918,8 @@ async function start(): Promise<void> {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");
   }
+  // Quit can run after the gateway becomes ready but before this startup continuation resumes.
+  if (quitting) return;
   watchUpdates(win);
   componentsReady = true;
   runConfirmedReleasePrune();
@@ -1008,7 +1010,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
   if (componentsReady) runConfirmedReleasePrune();
   if (confirmUpdate) engineUpdateReady = false;
-  watchEngine();
+  if (!quitting) watchEngine();
 }
 
 /** Watches the engine pointer and build from their current value (re-armed after a rejected candidate's rollback). */
