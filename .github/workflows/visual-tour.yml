@@ -121,6 +121,75 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  verify-pr-453:
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 453
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - run: npm install --global pnpm@12.5.1
+      - run: pnpm install --frozen-lockfile
+        working-directory: engine
+      - run: pnpm install --frozen-lockfile
+        working-directory: window
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: visual-engine
+          path: engine
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: visual-window
+          path: window/dist
+      - name: Install headless Chromium
+        run: pnpm -C engine exec playwright install chromium
+      - name: Launch and screenshot
+        env:
+          BRANCH_HOME: ${{ runner.temp }}/verify-home
+          BRANCH_SKIP_CHANNELS: "1"
+          VISUAL_GATEWAY_PORT: "19752"
+          VISUAL_WINDOW_PORT: "5752"
+          VISUAL_OUT: ${{ runner.temp }}/verification-shots
+          VISUAL_TOKEN_FILE: ${{ runner.temp }}/verify-token
+        run: |
+          set -euo pipefail
+          TOKEN="$(openssl rand -hex 32)"
+          printf '%s' "$TOKEN" > "$VISUAL_TOKEN_FILE"
+          chmod 600 "$VISUAL_TOKEN_FILE"
+          export BRANCH_GATEWAY_TOKEN="$TOKEN"
+          mkdir -p "$BRANCH_HOME" "$VISUAL_OUT"
+          (cd engine && node branch.mjs gateway --dev --port "$VISUAL_GATEWAY_PORT") > "$RUNNER_TEMP/verify-gateway.log" 2>&1 & gateway_pid=$!
+          pnpm -C window exec vite preview --host 127.0.0.1 --port "$VISUAL_WINDOW_PORT" --strictPort > "$RUNNER_TEMP/verify-window.log" 2>&1 & window_pid=$!
+          trap 'kill "$gateway_pid" "$window_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 90); do
+            if curl -fsS "http://127.0.0.1:$VISUAL_GATEWAY_PORT/readyz" >/dev/null && curl -fsS "http://127.0.0.1:$VISUAL_WINDOW_PORT/" >/dev/null; then
+              echo "✅ Services ready"
+              break
+            fi
+            sleep 2
+          done
+          node scripts/visual-tour/seed.mjs
+          echo "📸 Overview..."
+          node scripts/verify-in-app-screenshot.mjs Overview
+          echo "📸 Canopy..."
+          node scripts/verify-in-app-screenshot.mjs Canopy
+          echo "📸 Settings › Usage..."
+          node scripts/verify-in-app-screenshot.mjs "Settings › Usage"
+          echo "✅ Verification complete"
+          ls -lh "$VISUAL_OUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: verification-screenshots-pr453
+          path: ${{ runner.temp }}/verification-shots/
+          retention-days: 7
+
   comment:
     if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     needs: [tour]
