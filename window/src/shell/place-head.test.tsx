@@ -20,8 +20,8 @@ it("announces the narrow header's shared Trunk state politely", async () => {
   root = createRoot(host);
   await act(async () => root?.render(<HeaderRow header={{ name: "Fern", trunkName: "Fern", state: "oops", isDefaultTrunk: false, renaming: false, onRename: () => {} }} />));
   expect(host.querySelector('[role="status"]')?.getAttribute("aria-live")).toBe("polite");
-  expect(host.querySelector('[role="status"]')?.textContent).toBe("Fern: Hit a snag");
-  expect(host.querySelector('.head-state[data-face-state="oops"]')?.textContent).toBe("Hit a snag");
+  expect(host.querySelector('[role="status"]')?.textContent).toBe("Fern: Fern · ready");
+  expect(host.querySelector('.head-state[data-face-state="oops"]')?.textContent).toBe("Fern · ready");
 });
 
 describe("a place's narrow header row (preview placeHead)", () => {
