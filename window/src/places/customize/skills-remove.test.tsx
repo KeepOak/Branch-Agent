@@ -44,7 +44,7 @@ const WORKSPACE_SKILL = {
   skillKey: "local-notes",
   description: "Notes in this Trunk’s folder",
   bundled: false,
-  source: "workspace",
+  source: "branch-workspace",
   disabled: false,
   eligible: true,
   missing: {},

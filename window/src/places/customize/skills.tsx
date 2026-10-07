@@ -23,7 +23,7 @@ export function readSkillRows(result: unknown): Skill[] {
     const m = rec(s.missing);
     return {
       key: str(s.skillKey) || str(s.name), name: str(s.name), description: str(s.description),
-      source: s.bundled === true ? "Built in" : str(s.source) === "workspace" ? WORKSPACE_SOURCE : "Installed",
+      source: s.bundled === true ? "Built in" : str(s.source) === "workspace" || str(s.source) === "branch-workspace" ? WORKSPACE_SOURCE : "Installed",
       disabled: s.disabled === true, eligible: s.eligible !== false,
       missing: [...strings(m.bins).map(b => `the ${b} program`), ...strings(m.anyBins).map(b => `the ${b} program`), ...strings(m.env).map(e => `the ${e} key`), ...strings(m.config).map(c => `the ${c} setting`), ...strings(m.os).map(o => `${o}`)],
       installs: list(s.install).map(i => ({ id: str(i.id), label: str(i.label) || str(i.id) })).filter(i => i.id),
