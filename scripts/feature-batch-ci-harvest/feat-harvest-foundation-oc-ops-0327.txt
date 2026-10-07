@@ -6,8 +6,6 @@ engine:src/commands/doctor-disk-space.test.ts
 engine:src/commands/doctor-lint.config-snapshot.test.ts
 engine:src/commands/doctor-lint.crabbox.test.ts
 engine:src/commands/doctor-lint.test.ts
-engine:src/commands/doctor.auth-profile-consumers.e2e.test.ts
-engine:src/commands/doctor.refuses-newer-database-schemas.e2e.test.ts
 engine:src/commands/doctor.test.ts
 engine:src/commands/onboard-remote-gateway.test.ts
 engine:src/commands/onboard-remote.test.ts
