@@ -180,7 +180,7 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
       log("gateway recovered after unexpected exit");
       if (keptNoticeAfterRecovery) {
         keptNoticeAfterRecovery = false;
-        win?.webContents.send("branch-desktop:engine-update", "kept");
+        sendToBranchWindows("branch-desktop:engine-update", "kept");
       }
     } catch (error) {
       if (gateway) await stopFailedEngine(gateway);

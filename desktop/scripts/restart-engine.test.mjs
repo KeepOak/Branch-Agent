@@ -527,6 +527,10 @@ test("a new engine that never became ready is stopped, not mistaken for a servin
 }, false, false, false, "never", false, async () => { process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS = "3000"; }));
 test("a failed new engine that outlives its SIGTERM grace is killed, and the previous build serves again", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const main = runtime.window;
+  await runtime.handlers.get("branch-desktop:open-conversation")(
+    { sender: main.webContents, senderFrame: main.webContents.mainFrame }, "agent:test:one");
+  const childSent = []; runtime.windows[1].webContents.send = (channel, value) => childSent.push([channel, value]);
   const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
   const old = (await starts())[0];
   await writeFile(join(root, "slow-sigterm"), "1");
@@ -541,6 +545,8 @@ test("a failed new engine that outlives its SIGTERM grace is killed, and the pre
   assert.deepEqual(JSON.parse(await readFile(join(root, `launch-${recovered}.json`), "utf8")).peers, [], "recovery started beside a live failed engine");
   // After recovery the bar leaves "Updating Branch…": the owner hears the current version was kept.
   await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"));
+  assert.ok(childSent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"),
+    "the recovered pop-out still showed Updating Branch");
   assert.deepEqual(sent.filter(([channel, state]) => channel === "branch-desktop:engine-update" && ["ready", "auto-wait"].includes(state)), []);
 }, false, false, false, "never", false, async () => { process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS = "3000"; }));
 test("a staged engine that times out and outlives its SIGTERM grace is gone before the retained build starts", () => fixture(async ({ root, starts, restart }) => {
@@ -720,6 +726,28 @@ test("engine handoff and update notices reach the main window and every pop-out"
     assert.ok(events.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "updated"));
   }
 }));
+test("a pop-out receives the moved standby URL after engine handoff", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const main = runtime.window;
+  await runtime.handlers.get("branch-desktop:open-conversation")(
+    { sender: main.webContents, senderFrame: main.webContents.mainFrame }, "agent:test:one");
+  const child = runtime.windows[1];
+  const childEvents = [];
+  child.webContents.send = (...args) => childEvents.push(args);
+  const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  await writeFile(join(root, "release-ready"), "ready");
+  restart();
+  await eventually(() => childEvents.some(([channel]) => channel === "branch-desktop:engine-handoff"), 30_000);
+  const standby = (await starts())[1];
+  const launch = JSON.parse(await readFile(join(root, `launch-${standby}.json`), "utf8"));
+  const movedUrl = `ws://127.0.0.1:${launch.port}`;
+  assert.equal(launch.standby, true);
+  assert.notEqual(launch.port, gatewayPort, "the standby did not move the engine port");
+  assert.deepEqual(childEvents.filter(([channel]) => channel === "branch-desktop:engine-handoff"),
+    [["branch-desktop:engine-handoff", movedUrl]]);
+  const info = { sender: child.webContents, senderFrame: child.webContents.mainFrame };
+  runtime.ipcMain.emit("branch-desktop:info", info);
+  assert.equal(info.returnValue.gatewayUrl, movedUrl);
+}, false, false, false, true));
 test("a restart request during first launch preserves its starting gateway", () => fixture(async ({ root, starts, restart }) => {
   await eventually(async () => (await starts()).length === 1);
   const candidate = (await starts())[0]; restart();
