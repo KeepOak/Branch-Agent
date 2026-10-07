@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { parseKeyChord } from "./actions.js";
 import { execution } from "./commands.test-helpers.js";
 import {
   CUA_DRIVER_CONTRACT_FIXTURES,
@@ -38,6 +39,7 @@ const mocks = vi.hoisted(() => ({
     desktopCaptureAuthorized: true,
     desktopUnlocked: true,
   })),
+  hotkey: vi.fn(async () => ({})),
   isAvailable: vi.fn(() => true),
   isToolError: vi.fn((_error: unknown) => false),
   moveCursor: vi.fn(async () => ({})),
@@ -89,6 +91,7 @@ describe("CUA Driver direct session", () => {
       getCursorPosition: mocks.getCursorPosition,
       getDesktopState: mocks.getDesktopState,
       getSessionState: mocks.getSessionState,
+      hotkey: mocks.hotkey,
       moveCursor: mocks.moveCursor,
       pressKey: mocks.pressKey,
       scroll: mocks.scroll,
@@ -183,6 +186,23 @@ describe("CUA Driver direct session", () => {
     await driver.dispose();
     expect(mocks.endSession).toHaveBeenCalledOnce();
     expect(mocks.endSession).toHaveBeenCalledWith({ session: sessionOptions.publicSession });
+  });
+
+  it("serializes Windows Unicode text and sends Win+R as a desktop hotkey", async () => {
+    const driver = createCuaDriver({ loadSdk: async () => sdk as never, platform: "win32" });
+    for (let index = 0; index < 3; index++) {
+      mocks.typeText.mockResolvedValueOnce({ action: { effect: 0 } });
+    }
+    const typed = await driver.typeText("A!😀");
+    expect(mocks.typeText.mock.calls.map(([input]) => input.text)).toEqual(["A", "!", "😀"]);
+    expect(typed.action?.effect).toBe(2); // The last character alone cannot confirm the phrase.
+    await driver.pressKey(parseKeyChord("Win+R", "win32"));
+    expect(mocks.hotkey).toHaveBeenCalledWith(
+      { keys: ["meta", "r"], target: { tag: "Desktop", inner: { displayId: "primary" } } },
+      undefined,
+    );
+    expect(mocks.pressKey).not.toHaveBeenCalled();
+    await driver.dispose();
   });
 
   it("targets desktop input while keeping the global cursor read untargeted", async () => {
