@@ -81,7 +81,7 @@ afterEach(async () => {
 });
 describe("scoped browser viewing", () => {
   it("starts host browser fallback when no recorded browser tab", async () => {
-    const request = vi.fn(async () => ({ running: false }));
+    const request = vi.fn(async () => ({ running: false })) as any;
     await render(owner(request), []);
     await flush();
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ target: "host", path: "/", query: { profile: "branch" } }));
@@ -93,7 +93,7 @@ describe("scoped browser viewing", () => {
     const first = owner(routed(() => waiting) as any);
     await render(first);
     await flush();
-    await render(owner(vi.fn(async () => ({ running: false })), "agent:ada:two"), []);
+    await render(owner(vi.fn(async () => ({ running: false })) as any, "agent:ada:two"), []);
     await act(async () => {
       resolve({ wsPath: "/stream/one", targetId: "tab-one" });
       await Promise.resolve();
