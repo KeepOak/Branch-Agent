@@ -13,6 +13,7 @@ import {
   readGatewayLockProcessNamespace,
 } from "./gateway-lock-payload.js";
 import { acquireGatewayLock } from "./gateway-lock.js";
+import { startGatewayStateOwnerHeartbeat } from "./gateway-state-owner-heartbeat.js";
 import type { GatewayStateOwnerHeartbeatData } from "./gateway-state-owner-heartbeat.runtime.js";
 import {
   acquireStateDatabaseSchemaLease,
@@ -114,7 +115,6 @@ it("lets the worker close its lock descriptor before exiting on stop", async () 
   const rootPath = path.join(tempDirs.make("branch-owner-worker-stop-"), "root.lock");
   fs.writeFileSync(rootPath, "root-owner");
   const { workers, ready } = observeHeartbeatWorkers("close");
-  const { startGatewayStateOwnerHeartbeat } = await import("./gateway-state-owner-heartbeat.js");
   const heartbeat = startGatewayStateOwnerHeartbeat(
     [{ lockPath: rootPath, verifyStillHeld: () => true }],
     () => {},
