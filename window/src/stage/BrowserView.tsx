@@ -286,7 +286,9 @@ export function BrowserMini({ engine, gatewayUrl, blocks }: { engine: WindowEngi
 
 export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", onState }: Props) {
   const entries = useMemo(() => recordedBrowserTabs(blocks), [blocks]);
-  const route = useMemo(() => routeOf(entries), [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
+  const recordedRoute = useMemo(() => routeOf(entries), [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hostFallback: BrowserRoute = useMemo(() => ({ target: "host", profile: "branch" }), []);
+  const route = recordedRoute ?? hostFallback;
   const steps = blocks.filter((b) => b.kind === "step").length;
   const [tick, setTick] = useState(0);
   const browser = useBrowser(engine, route, tick + steps);
@@ -298,6 +300,8 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const [note, setNote] = useState("");
   const [find, setFind] = useState<string | null>(null);
   const [view, setView] = useState<{ url?: string; title?: string; phase: BrowserPhase }>({ phase: "empty" });
+  const startedRef = useRef(false);
+  const openedTabRef = useRef(false);
   const recordedNewest = entries.at(-1)?.tab.targetId;
   const tab = browser.tabs.find((t) => t.targetId === picked) ?? browser.tabs.find((t) => t.targetId === recordedNewest) ?? browser.tabs[0];
   const entry: BrowserPresentation | null = route && tab ? { tab: { ...route, targetId: tab.targetId } as BrowserPresentation["tab"], revision: String(tick), url: tab.url, title: tab.title } : null;
@@ -325,7 +329,15 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     const target = raw.trim();
     if (!target || !tab) return;
     onControl?.(true);
-    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: /^[a-z][a-z0-9+.-]*:/i.test(target) ? target : `https://${target}` } }).then(() => {
+    let navigateUrl: string;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(target)) {
+      navigateUrl = target;
+    } else if (/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(target.split(/[/?#]/)[0])) {
+      navigateUrl = `https://${target}`;
+    } else {
+      navigateUrl = `https://www.google.com/search?q=${encodeURIComponent(target)}`;
+    }
+    void call("POST", "/navigate", { targetId: tab.targetId, body: { url: navigateUrl } }).then(() => {
       setAddress(null);
       refresh();
     }, fail);
@@ -371,20 +383,40 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
       fail,
     );
   };
+  useEffect(() => {
+    if (!recordedRoute && browser.phase === "stopped" && !startedRef.current && route) {
+      startedRef.current = true;
+      void browserCall(engine, route, "POST", "/start").then(() => setTick((t) => t + 1), (e) => setNote(e instanceof Error ? e.message : String(e)));
+    }
+  }, [engine, recordedRoute, browser.phase, route]);
+  useEffect(() => {
+    if (!recordedRoute && browser.phase === "ready" && !browser.tabs.length && !openedTabRef.current && route) {
+      openedTabRef.current = true;
+      void browserCall(engine, route, "POST", "/tabs/open", { body: { url: "about:blank" } }).then((r) => {
+        const id = String((r as { targetId?: unknown } | null)?.targetId ?? "");
+        if (id) {
+          setMine((m) => new Set(m).add(id));
+          setPicked(id);
+        }
+        setTick((t) => t + 1);
+      }, (e) => setNote(e instanceof Error ? e.message : String(e)));
+    }
+  }, [engine, recordedRoute, browser.phase, browser.tabs.length, route]);
   const working = running && !control;
   let page: ReactNode;
-  if (browser.phase === "none") page = <Blank title="Nothing open" text={`${name} hasn't opened a page in this conversation.`} />;
-  else if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
+  if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
   else if (browser.phase === "error") page = <Blank title="Couldn't connect to the browser" text={browser.error ?? ""}><button type="button" className="btn sm" onClick={refresh}>Try again</button></Blank>;
   else if (browser.phase === "stopped")
     page = (
-      <Blank title="The browser isn't running." text={`${name} hasn't started its browser in this conversation.`}>
-        <button type="button" className="btn sm pri" onClick={() => void call("POST", "/start").then(refresh, fail)}>
-          Start the browser
-        </button>
+      <Blank title="The browser isn't running." text={recordedRoute ? `${name} hasn't started its browser in this conversation.` : "Starting the browser…"}>
+        {recordedRoute ? (
+          <button type="button" className="btn sm pri" onClick={() => void call("POST", "/start").then(refresh, fail)}>
+            Start the browser
+          </button>
+        ) : null}
       </Blank>
     );
-  else if (!tab) page = <Blank title="Nothing open" text={`${name} hasn't opened a page in this conversation.`} />;
+  else if (!tab) page = <Blank title="New tab" text="Enter an address and press Enter." />;
   else page = <Screencast key={entry ? `${routeKey(route)}:${tab.targetId}` : "none"} engine={engine} gatewayUrl={gatewayUrl} entry={entry} interact={control} onState={onView} />;
   const showChrome = browser.phase === "ready" || (browser.phase === "loading" && browser.tabs.length > 0);
   return (
