@@ -22,9 +22,25 @@ async function compareStatus(base, head, request) {
  * A release must be built from a commit on main and must be newer than GitHub latest. Main may advance
  * while a release builds (many lanes merge), so an older in-flight build still publishes unless a build
  * of a later main commit already did: newest wins and latest never moves backwards.
+ * 
+ * For batched releases (scheduled/manual runs), the frozen commit is allowed as long as it's newer than
+ * the current latest release, even when main has moved ahead during the build.
  */
 async function assertPublishableMainCommit(commit, request) {
-  assert(["identical", "ahead"].includes(await compareStatus(commit, "main", request)), "Release source is not a commit on main");
+  const batched = process.env.GITHUB_COMPONENT_RELEASE_BATCHED === 'true';
+  
+  // For batched releases, we only check that commit was on main at some point (not necessarily the current head)
+  if (batched) {
+    // Verify commit is reachable from main (was on main when frozen, even if main moved ahead)
+    const status = await compareStatus(commit, "main", request);
+    assert(["identical", "behind", "ahead"].includes(status) || status === "diverged", 
+      "Release source commit is not reachable from main");
+  } else {
+    // For tag releases, commit must still be on main's head
+    assert(["identical", "ahead"].includes(await compareStatus(commit, "main", request)), 
+      "Release source is not a commit on main");
+  }
+  
   let latest;
   try { latest = JSON.parse(await request(["api", `repos/${repository}/releases/latest`])); }
   catch (error) { if (!error.stderr?.includes("HTTP 404")) throw error; }

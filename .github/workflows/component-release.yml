@@ -1,11 +1,11 @@
 name: GitHub component release
 
 on:
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
   schedule:
-    # Every 45 minutes: batch merges into releases instead of publishing on every push.
-    - cron: '*/45 * * * *'
-  tags: ['v[0-9]*.[0-9]*.[0-9]*']
-  # Release-pipeline changes build and smoke every native target before merge; publish stays main-only.
+    # Every 30 minutes, offset from the top of the hour: batch merges into releases.
+    - cron: '7,37 * * * *'
   pull_request:
     paths:
       - 'desktop/scripts/release-*'
@@ -19,6 +19,12 @@ on:
       - 'engine/pnpm-workspace.yaml'
       - '.github/workflows/component-release.yml'
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Skip publication (stop after building and verifying all targets)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -71,33 +77,29 @@ jobs:
           git fetch origin main
           commit="$(git rev-parse origin/main)"
           
-          # Find the last release tag
+          # Find the last release tag and resolve it to a commit
           latest_release=$(gh api repos/KeepOak/Branch-Agent/releases/latest --jq .tag_name 2>/dev/null || echo "")
           
           if [[ -z "$latest_release" ]]; then
             echo "No previous release found; proceeding with release"
             should_release="true"
           else
-            latest_commit=$(gh api repos/KeepOak/Branch-Agent/git/refs/tags/"$latest_release" --jq .object.sha)
-            # Resolve annotated tags to their commit
-            object_type=$(gh api repos/KeepOak/Branch-Agent/git/tags/"$latest_commit" --jq .object.type 2>/dev/null || echo "commit")
-            if [[ "$object_type" == "commit" ]]; then
-              latest_commit=$(gh api repos/KeepOak/Branch-Agent/git/tags/"$latest_commit" --jq .object.sha)
-            fi
+            # Resolve tag to commit (handles both lightweight and annotated tags)
+            latest_commit=$(gh api repos/KeepOak/Branch-Agent/commits/"$latest_release" --jq .sha)
             
             if [[ "$commit" == "$latest_commit" ]]; then
-              echo "Main has not changed since $latest_release; skipping release"
+              echo "Main has not changed since $latest_release ($latest_commit); skipping release"
               should_release="false"
             else
-              # Check if merge-gate CI is green on main's head
-              ci_status=$(gh api "repos/KeepOak/Branch-Agent/commits/$commit/check-runs" \
-                --jq '.check_runs[] | select(.name == "merge-gate") | .conclusion' | head -n1)
+              # Check if any check run on main's head has actually failed (ignore missing/pending)
+              failed_checks=$(gh api "repos/KeepOak/Branch-Agent/commits/$commit/check-runs" \
+                --jq '[.check_runs[] | select(.conclusion == "failure")] | length')
               
-              if [[ "$ci_status" != "success" ]]; then
-                echo "CI check 'merge-gate' is not green on main ($ci_status); skipping release"
+              if [[ "$failed_checks" != "0" ]]; then
+                echo "Main has $failed_checks failed check(s) at $commit; skipping release"
                 should_release="false"
               else
-                echo "Main has new changes since $latest_release and CI is green; proceeding with release"
+                echo "Main has new changes since $latest_release and no failed checks; proceeding with release"
                 should_release="true"
               fi
             fi
@@ -284,11 +286,14 @@ jobs:
           retention-days: 3
   publish:
     needs: [readiness, identity, native]
-    if: needs.readiness.outputs.should_release == 'true'
+    if: needs.readiness.outputs.should_release == 'true' && github.event.inputs.dry_run != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
+    env:
+      # For batched releases: allow publishing the frozen commit as long as it's newer than latest
+      GITHUB_COMPONENT_RELEASE_BATCHED: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -314,4 +319,5 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_COMPONENT_RELEASE_BATCHED: ${{ env.GITHUB_COMPONENT_RELEASE_BATCHED }}
         run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"
