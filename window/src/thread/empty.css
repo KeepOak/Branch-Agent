@@ -6,15 +6,19 @@
 }
 .thread .starters {
   display: flex;
-  overflow-x: auto;
-  white-space: nowrap;
+  flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
   gap: 8px;
   justify-content: flex-start;
 }
 .thread .chipb {
   flex: none;
-  height: 34px;
-  padding: 0 14px;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 6px 14px;
+  white-space: normal;
+  overflow-wrap: anywhere;
   border-radius: 999px;
   border: 1px solid var(--line-2);
   font-size: 13px;

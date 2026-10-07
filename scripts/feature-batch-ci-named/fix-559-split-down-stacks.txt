@@ -1,0 +1,2 @@
+window:src/shell/SplitPanes.test.tsx
+window:src/thread/empty-fit.test.tsx
