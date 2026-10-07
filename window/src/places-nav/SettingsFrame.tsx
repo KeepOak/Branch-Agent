@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { SettingsPage, SETTINGS_ROWS } from "../places/settings";
 import { KitProvider, SetupLock, type Lv, type SaveReport } from "../places/settings/kit";
@@ -214,13 +214,22 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
   const maySetup = engine.scopes.length === 0 || engine.scopes.includes("operator.admin");
   const wanted = pageAtLevel(page, level);
   const shown = !maySetup && HIDDEN_PAGES.includes(wanted) ? "general" : wanted;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const levelScroll = useRef<{ page: string; top: number } | null>(null);
+  useLayoutEffect(() => {
+    if (levelScroll.current?.page === shown && scrollRef.current) {
+      scrollRef.current.scrollTop = levelScroll.current.top;
+    }
+    levelScroll.current = null;
+  }, [level, shown]);
   const models = useResource<RecordValue>(engine, "models.list", {});
   const hasModel = list(models.data?.models).some((m) => m.available !== false);
   const changeLevel = (l: Level) => {
+    const next = pageAtLevel(page, l);
+    levelScroll.current = next === shown && scrollRef.current ? { page: shown, top: scrollRef.current.scrollTop } : null;
     setLevel(l);
     saveLevel(l);
     if (l === "regular") setScope(null); // "Settings for" is an Advanced control; Regular shows the default Trunk's
-    const next = pageAtLevel(page, l);
     if (next !== page) onPage(next);
   };
   const go = useCallback((id: string, row?: SearchRow) => {
@@ -269,7 +278,7 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
         <SaveLine state={save} />
         <LevelControl level={level} onLevel={changeLevel} />
       </nav>
-      <div className="set-scroll">
+      <div className="set-scroll" ref={scrollRef}>
         <div className="set-col">
           <FileProblem engine={engine} />
           <KitProvider level={LV[level]} report={report} scope={LV[level] >= 1 ? scope : null} ask={hasModel ? onAsk : undefined} askName={askName} pins={pins}>

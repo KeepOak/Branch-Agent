@@ -13,6 +13,22 @@ afterEach(() => {
 });
 
 describe("Composer startup preparation", () => {
+  it("offers one account action when no model is connected", async () => {
+    const request = vi.fn(async (method: string) => method === "agents.list" ? { agents: [{ id: "main", name: "Oak" }], defaultId: "main" } : {});
+    const engine = { request: request as WindowEngine["request"], onEvent: () => () => undefined, sessionKey: "agent:main:empty", agentId: "main", scopes: [] } as WindowEngine;
+    const onOpen = vi.fn();
+    const host = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(host);
+    try {
+      await act(async () => root.render(<Composer name="Oak" working={false} disabled={false} onSend={vi.fn()} onStop={vi.fn()} engine={engine} onOpen={onOpen} />));
+      await vi.waitFor(() => expect(host.querySelector('[data-testid="no-model"]')).not.toBeNull());
+      const buttons = host.querySelectorAll<HTMLButtonElement>('[data-testid="no-model"] button');
+      expect(buttons).toHaveLength(1);
+      expect(buttons[0].textContent).toBe("Add an account");
+      await act(async () => buttons[0].click());
+      expect(onOpen).toHaveBeenCalledExactlyOnceWith("settings/accounts/add");
+    } finally { await act(async () => root.unmount()); }
+  });
   it("keeps the draft and sends nothing when Enter is pressed during preparation", async () => {
     const request = vi.fn(async (method: string) => {
       if (method === "agents.list") return { agents: [{ id: "main", name: "Oak" }], defaultId: "main" };

@@ -169,6 +169,12 @@ vi.mock("../../config/config.js", () => ({
     readConfigFileSnapshotWithPluginMetadata(options),
 }));
 
+// Startup's one-time character migration uses config write methods outside this
+// option-collision fixture. Keep these tests focused on gateway run admission.
+vi.mock("../../gateway/trunk-character-startup.js", () => ({
+  assignTrunkCharactersAtStartup: vi.fn(async () => {}),
+}));
+
 vi.mock("../../config/paths.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../config/paths.js")>()),
   CONFIG_PATH: "/tmp/branch-test-missing-config.json",
@@ -763,7 +769,7 @@ describe("gateway run option collisions", () => {
       configState.snapshot = repairedSnapshot;
       expect(await selectGatewayRunEnvironment({ opts: {}, runtime: defaultRuntime })).toBe(true);
       expect(await prepareGatewayRunBootstrap({ opts: {}, runtime: defaultRuntime })).toBe(true);
-      expect(process.env.BRANCH_STATE_DIR).toBe(selectedStateDir);
+      expect(process.env.BRANCH_STATE_DIR).toBe(path.resolve(selectedStateDir));
       expect(
         await recheckGatewayRunBootstrap({
           opts: {},
@@ -800,7 +806,7 @@ describe("gateway run option collisions", () => {
 
       expect(await selectGatewayRunEnvironment({ opts: {}, runtime: defaultRuntime })).toBe(true);
       expect(await prepareGatewayRunBootstrap({ opts: {}, runtime: defaultRuntime })).toBe(true);
-      expect(process.env.BRANCH_STATE_DIR).toBe(selectedStateDir);
+      expect(process.env.BRANCH_STATE_DIR).toBe(path.resolve(selectedStateDir));
 
       const invalidSnapshot = {
         ...configState.snapshot,
@@ -1163,7 +1169,7 @@ describe("gateway run option collisions", () => {
         await import("./pre-bootstrap.js");
       await selectGatewayRunEnvironment({ opts: {}, runtime: defaultRuntime });
       await prepareGatewayRunBootstrap({ opts: {}, runtime: defaultRuntime });
-      expect(process.env.BRANCH_STATE_DIR).toBe("/tmp/branch-guarded-state");
+      expect(process.env.BRANCH_STATE_DIR).toBe(path.resolve("/tmp/branch-guarded-state"));
 
       const finalConfig = {
         env: { vars: { BRANCH_STATE_DIR: "/tmp/branch-final-state" } },
@@ -1173,7 +1179,7 @@ describe("gateway run option collisions", () => {
 
       await expect(runGatewayCli(["gateway", "run"])).rejects.toThrow("__exit__:1");
 
-      expect(process.env.BRANCH_STATE_DIR).toBe("/tmp/branch-guarded-state");
+      expect(process.env.BRANCH_STATE_DIR).toBe(path.resolve("/tmp/branch-guarded-state"));
       expect(startGatewayServer).not.toHaveBeenCalled();
       expect(runtimeErrors.join("\n")).toContain(
         "final config read changed config or state selection",
@@ -1681,7 +1687,7 @@ describe("gateway run option collisions", () => {
         expect(ensureDevGatewayConfig).toHaveBeenCalledWith({ reset: true });
       } else {
         const options = gatewayStartOptions();
-        expect(options.bind).toBe("loopback");
+        expect(options.bind).toBeUndefined();
         expect(options.startupConfigSnapshotRead?.snapshot?.valid).toBe(false);
       }
     },
@@ -1764,7 +1770,18 @@ describe("gateway run option collisions", () => {
 
     await runGatewayCli(["gateway", "run", "--allow-unconfigured"]);
 
-    expect(gatewayStartOptions().bind).toBe("loopback");
+    expect(gatewayStartOptions().bind).toBeUndefined();
+  });
+
+  it("does not pin a persisted bind across in-process gateway starts", async () => {
+    const config = { gateway: { bind: "loopback", mode: "local" } };
+    configState.cfg = config;
+    configState.snapshot = configSnapshot(config);
+
+    await runGatewayCli(["gateway", "run", "--allow-unconfigured"]);
+
+    expect(startGatewayServer).toHaveBeenCalledOnce();
+    expect(callArg(startGatewayServer, 0, 1)).not.toHaveProperty("bind");
   });
 
   it("reads gateway password from --password-file", async () => {

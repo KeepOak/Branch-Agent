@@ -73,7 +73,7 @@ export function useConfig(engine: WindowEngine) {
 type HelpEntry = { label: string; text: string };
 const HelpContext = createContext<((key: string, entry?: HelpEntry) => void) | null>(null);
 
-/** Long explanations are supplied explicitly, never inferred from display copy. */
+/** Only explicitly supplied explanations register with page help. */
 function useHelpEntry(key: string, label: string, help?: string): void {
   const register = useContext(HelpContext);
   useEffect(() => {
@@ -135,7 +135,7 @@ export function Page({ title, lede, help, children, top }: { title: string; lede
           <button type="button" className="kit-help-ask" disabled={!ask} title={ask ? undefined : "Set up a model to ask about this page"} onClick={() => { setOpen(false); ask?.(`Tell me about Settings › ${title}.`); }}>Ask {askName ?? "your Trunk"} about this page</button>
         </div> : null}
       </div></div>
-      <p className="lede">{lede}</p>
+      {lede ? <p className="lede">{lede}</p> : null}
       <HelpContext.Provider value={register}>{children}</HelpContext.Provider>
     </div>
   );

@@ -21,6 +21,7 @@ export type SidebarProps = {
   currentPlace: PlaceId | null;
   now: number;
   showPreview: boolean;
+  poppedKeys?: readonly string[];
   rowState: (row: Conversation) => RowState;
   trunkName: (agentId: string | undefined) => string;
   personName: string;
@@ -105,6 +106,7 @@ function Row({ p, row, kids, depth = 0, child = false }: { p: SidebarProps; row:
     <>
       <ConversationRow
         row={row}
+        popped={p.poppedKeys?.includes(row.key)}
         current={row.key === p.openKey && p.currentPlace === null}
         time={rowTime(row.updatedAt || row.createdAt, p.now)}
         showPreview={p.showPreview}

@@ -130,6 +130,17 @@ describe("Settings › Chat apps", () => {
     expect(patchOf(request)).toEqual({ bindings: [{ agentId: "two", match: { channel: "discord", accountId: "*" } }] });
   });
 
+  it("shows the five messaging policies as one radio list in the manage dialog", async () => {
+    const { engine, request } = engineOf();
+    await render(engine);
+    await act(async () => button("Open", [...host.querySelectorAll(".prow")].find((row) => row.textContent?.includes("Telegram"))!).click());
+    const radios = [...document.querySelectorAll<HTMLButtonElement>('.dlg [role="radiogroup"][aria-label="Who may message it"] [role="radio"]')];
+    expect(radios.map((radio) => radio.textContent?.trim().replace(/^✓/, ""))).toEqual(["Only meAdd yourself below first.", "People I approve", "Anyone in my workspaceBranch can’t tell who is in your workspace yet.", "Anyone", "No one"]);
+    expect(radios.filter((radio) => radio.getAttribute("aria-checked") === "true").map((radio) => radio.textContent)).toEqual(["✓People I approve"]);
+    await act(async () => button("No one", document.querySelector(".dlg")!).click());
+    expect(patchOf(request)).toEqual({ channels: { telegram: { dmPolicy: "disabled" } } });
+  });
+
   it("shows Advanced sections only at Advanced, and the key list only at Technical", async () => {
     const { engine } = engineOf();
     await render(engine, 0);

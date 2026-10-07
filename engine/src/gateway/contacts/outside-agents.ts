@@ -24,6 +24,8 @@ export type OutsideAgent = {
   kind?: "branch" | "trunk";
   /** For a "trunk": the id of the grafted Branch it lives on. */
   via?: string;
+  avatar?: string;
+  trunkId?: string;
 };
 export type OutsideAgentRecord = OutsideAgent & {
   firstSeenAt: number;
@@ -137,6 +139,8 @@ export function recordOutsideAgent(
     ...(agent.instance ? { instance: agent.instance } : {}),
     ...(agent.kind ? { kind: agent.kind } : {}),
     ...(agent.via ? { via: agent.via } : {}),
+    ...(agent.avatar || previous?.avatar ? { avatar: agent.avatar ?? previous?.avatar } : {}),
+    ...(agent.trunkId || previous?.trunkId ? { trunkId: agent.trunkId ?? previous?.trunkId } : {}),
     ...(opts.deviceId ? { deviceId: opts.deviceId } : {}),
     ...(agent.activity
       ? { activity: agent.activity, activityAt: now }
@@ -247,6 +251,9 @@ export function outsideAgentPeers(
     .map((row) => ({
       name: row.id,
       where: row.where ?? null,
+      ...(row.kind ? { kind: row.kind } : {}),
+      ...(row.via ? { via: row.via } : {}),
+      ...(row.avatar ? { avatar: row.avatar } : {}),
       card: {
         name: row.name,
         description: row.version

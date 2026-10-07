@@ -77,7 +77,11 @@ export function AccountsPage(props: SettingsPageProps) {
   const owner = scope || props.engine.agentId;
   const agent = owner ? { agentId: owner } : {};
   const status = useResource<RecordValue>(props.engine, "models.authStatus", agent);
-  const [add, setAdd] = useState<AddStart | null>(null);
+  const [add, setAdd] = useState<AddStart | null>(() => {
+    if (sessionStorage.getItem("branch.openAddAccount") !== "1") return null;
+    sessionStorage.removeItem("branch.openAddAccount");
+    return {};
+  });
   const providers = providersOf(status.data?.providers);
   const caps = list(status.data?.providerCapabilities);
   const all = accountsOf(providers);

@@ -56,6 +56,12 @@ vi.mock("../agents/prepared-model-runtime.js", () => ({
   refreshPreparedModelRuntimeSnapshots: vi.fn(async () => {}),
 }));
 
+const lockdownEngage = vi.hoisted(() => ({ stop: vi.fn() }));
+vi.mock("./lockdown-engage.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./lockdown-engage.js")>()),
+  stopRunningWorkForLockdown: lockdownEngage.stop,
+}));
+
 type ManagedReloaderParams = Parameters<typeof StartManagedGatewayConfigReloader>[0];
 type ConfigWriteListener = (event: ConfigWriteNotification) => void;
 type ConfigWriteListenerRef = { current: ConfigWriteListener | null };
@@ -295,6 +301,47 @@ describe("managed gateway reload context", () => {
       } finally {
         await Promise.all([previousGateway.close(), currentGateway.close()]);
       }
+    }
+  });
+
+  it("stops all running work when Lockdown turns on, even with no gateway context", async () => {
+    const time = createGatewaySchedulerClock();
+    const scheduler = createTestGatewayScheduler(time.clock);
+    const nextConfig: BranchConfig = { security: { lockdown: true } };
+    const writeListenerRef: ConfigWriteListenerRef = { current: null };
+    const logReloadError = vi.fn<(message: string) => void>();
+    lockdownEngage.stop.mockClear();
+    const { startManagedGatewayConfigReloader: startReloader } =
+      await import("./server-reload-managed.js");
+    const reloader = startManagedGatewayConfigReloader(startReloader, {
+      scheduler,
+      initialConfig: {},
+      readSnapshot: async () => createValidConfigSnapshot(nextConfig, "lockdown-on"),
+      subscribeToWrites: captureConfigWriteListener(writeListenerRef),
+      logReload: { info: vi.fn(), warn: vi.fn(), error: logReloadError },
+    });
+    try {
+      await reloader.ready;
+      const application = createRuntimeConfigWriteApplication();
+      writeListenerRef.current?.(
+        attachRuntimeConfigWriteApplication(
+          createConfigWriteNotification(
+            nextConfig,
+            "lockdown-on",
+            1,
+            "runtime-lockdown",
+            "source-lockdown",
+          ),
+          application,
+        ),
+      );
+      await time.advanceBy(0);
+      expect(await application.result, logReloadError.mock.calls.flat().join("\n")).toBe("applied");
+      expect(lockdownEngage.stop).toHaveBeenCalledOnce();
+      expect(lockdownEngage.stop).toHaveBeenCalledWith(undefined);
+    } finally {
+      await reloader.stop();
+      await scheduler.stop();
     }
   });
 });

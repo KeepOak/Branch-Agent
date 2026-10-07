@@ -1,3 +1,4 @@
+import { isLockdownOn } from "../../config/lockdown.js";
 import { isHeartbeatTaskCronJob } from "../heartbeat-task.js";
 import { tryCronScheduleIdentity } from "../schedule-identity.js";
 import type { StartupDeferredJob } from "../store/runtime-worker.types.js";
@@ -105,7 +106,8 @@ export async function runMissedJobs(
   state: CronServiceState,
   opts?: { skipJobIds?: ReadonlySet<string>; deferAgentWork?: boolean },
 ): Promise<void> {
-  if (state.stopped) {
+  // An engine that starts locked leaves missed jobs due; the timer runs them once Lockdown is off.
+  if (state.stopped || isLockdownOn()) {
     return;
   }
   const mutation: StartupMutationContext = {
