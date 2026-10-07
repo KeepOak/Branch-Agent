@@ -376,6 +376,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const [linkingBranch, setLinkingBranch] = useState(false);
   const [stageTakeOver, setStageTakeOver] = useState(false);
   const [guide, setGuide] = useState<"news" | "news-ready" | "tour" | null>(null);
+  useEffect(() => {
+    const openNews = () => setGuide("news");
+    window.addEventListener("branch:whats-new", openNews);
+    return () => window.removeEventListener("branch:whats-new", openNews);
+  }, []);
   const [characterShown, setCharacterShown] = useCharacterShown();
   const [conversationColumn, setConversationColumn] = useState<HTMLDivElement | null>(null);
   const [talk, setTalk] = useTalkLayout(); // the default Trunk beside a place or Settings page (§3.3)
@@ -941,7 +946,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       copyMarkdown: (r) => void copyMarkdown(session.engine, r.key, rowName(r.key)),
       copyText: (text) => void copyText(text),
       copyLink: (r) => void copyText(conversationLink(r.key)),
-      copyConversation: (r) => void actions.copyConversation(r, openConversation),
       lookItem: iconColourItem(row, (change) => actions.setLook(row, change)),
     }), "Conversation", e.type === "contextmenu"); // a right-click opens it above the row, at its left edge, as the artifact does
   const changeTheme = (t: ThemeChoice) => setTheme(setThemeChoice(t));

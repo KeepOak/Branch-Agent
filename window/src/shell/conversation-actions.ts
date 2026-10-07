@@ -191,45 +191,5 @@ export function conversationActions(request: Request, list: ConversationList, op
         return null;
       }
     },
-    async copyConversation(row: Conversation, open: (key: string) => void): Promise<void> {
-      try {
-        const history = await request<{ messages?: unknown[] }>("chat.history", { sessionKey: row.key, ...(row.agentId ? { agentId: row.agentId } : {}) });
-        const messages = Array.isArray(history.messages) ? history.messages : [];
-        const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
-        const str = (v: unknown): string => (typeof v === "string" ? v : "");
-        let lastFinishedEntryId: string | null = null;
-        if (row.working) {
-          for (let i = messages.length - 1; i >= 0; i -= 1) {
-            const msg = rec(messages[i]);
-            const role = str(msg.role);
-            const entryId = str(rec(msg.__branch).id);
-            if (role === "assistant" && entryId) {
-              lastFinishedEntryId = entryId;
-              break;
-            }
-          }
-        } else if (messages.length > 0) {
-          const lastMsg = rec(messages[messages.length - 1]);
-          lastFinishedEntryId = str(rec(lastMsg.__branch).id) || null;
-        }
-        if (!lastFinishedEntryId) {
-          notify("The conversation has no finished entries to copy.", { tone: "bad" });
-          return;
-        }
-        const result = rec(await request("sessions.fork", { ...target(row), entryId: lastFinishedEntryId }));
-        const newKey = str(result.sessionKey);
-        if (!newKey) {
-          notify("The engine didn't return the new conversation.", { tone: "bad" });
-          return;
-        }
-        const label = `${nameOf(row)} (copy)`;
-        await request("sessions.patch", { key: newKey, label });
-        await list.refresh();
-        open(newKey);
-        notify("Copied into a new conversation.");
-      } catch (e) {
-        notify(`Couldn't copy ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" });
-      }
-    },
   };
 }

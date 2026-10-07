@@ -25,7 +25,6 @@ type Ctx = {
   copyMarkdown: (row: Conversation) => void;
   copyText: (text: string) => void;
   copyLink: (row: Conversation) => void;
-  copyConversation: (row: Conversation) => void;
   /** Icon and colour (Advanced): a submenu with the picker, built where JSX is allowed. */
   lookItem?: MenuItem | null;
   contact?: Contact;
@@ -40,6 +39,7 @@ type Ctx = {
   archiveRoom?: (contact: Contact) => void;
 };
 
+const FORK_OFF = "Copying a conversation needs an engine call that copies up to the last reply; it doesn't have one yet.";
 const MOVE_OFF = "Moving a conversation into a project needs an engine method Branch doesn't have yet.";
 const PAUSE_OFF = "Pausing a Trunk needs an engine method it doesn't have yet.";
 export const CARD_LINK_OFF = "A link with a preview card needs the engine's share preview, which it doesn't have yet.";
@@ -96,7 +96,7 @@ export function rowMenuItems(row: Conversation, c: Ctx): MenuItem[] {
     row.isMain || row.parentKey ? null : { label: row.pinned ? "Unpin" : "Pin", letter: "p", run: () => void c.actions.pin(row), testid: "menu-pin", ...ic("pin") },
     { label: "Rename", letter: "r", run: () => c.rename(row), testid: "menu-rename", ...ic("edit") },
     { label: c.ownWindowOpen?.(row.key) ? "Show its window" : "Open in its own window", run: () => c.ownWindow(row.key), testid: "menu-own-window", ...(c.ownWindowOff ? { disabled: c.ownWindowOff } : {}), ...ic("panel") },
-    { label: "Copy into a new conversation", letter: "f", hint: row.working ? "From the last finished reply" : undefined, run: () => c.copyConversation(row), testid: "menu-fork", ...ic("copy") },
+    { label: "Copy into a new conversation", letter: "f", run: () => undefined, disabled: FORK_OFF, ...ic("copy") },
     copyItem(row, c),
     { kind: "sep" },
     snoozeItem(row, c),
