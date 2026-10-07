@@ -31,6 +31,8 @@ test("component-release archives the shared engine dist as a tarball before uplo
   assert.match(workflow, /find "\$\{\{ runner\.temp \}\}\/shared-engine" -type l -delete/);
   assert.match(workflow, /tar -C "\$\{\{ runner\.temp \}\}\/shared-engine" -czf "\$\{\{ runner\.temp \}\}\/shared-engine\.tar\.gz" \./);
   assert.match(workflow, /test -f shared-engine\/postinstall-inventory\.json/);
+  assert.match(workflow, /needs: \[identity, engine, window\]/);
+  assert.doesNotMatch(workflow, /artifacts\/\$artifact\/zip/);
   assert.match(workflow, /cd "\$RUNNER_TEMP"/);
   assert.match(workflow, /tar -xzf shared-engine\.tar\.gz -C shared-engine/);
   assert.match(workflow, /test -f shared-engine\/build-info\.json/);

@@ -123,11 +123,10 @@ jobs:
           path: ${{ runner.temp }}/shared-window/
           if-no-files-found: error
           retention-days: 3
-  # Native targets wait for the shared engine package (the macOS tsdown compile was the 15-minute
-  # risk). They still start the native install while the renderer job runs, and fetch that artifact
-  # only when packaging needs it (release-build.mjs waits for the ready file).
+  # Native targets consume the Ubuntu-built engine package (the macOS tsdown compile was the
+  # 15-minute risk) and the shared renderer. Both artifacts are downloaded; no Actions API poll.
   native:
-    needs: [identity, engine]
+    needs: [identity, engine, window]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     permissions:
@@ -161,6 +160,10 @@ jobs:
         with:
           name: release-shared-engine
           path: ${{ runner.temp }}
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: release-shared-window
+          path: ${{ runner.temp }}/shared-window
       - name: Extract shared engine package
         shell: bash
         run: |
@@ -203,28 +206,10 @@ jobs:
       - name: Verify source slices and package native production components
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
           RELEASE_ASSETS: ${{ runner.temp }}/release-assets
           SHARED_WINDOW: ${{ runner.temp }}/shared-window
-          BRANCH_RELEASE_WINDOW_READY: ${{ runner.temp }}/shared-window.ready
           BRANCH_RELEASE_ENGINE_DIST: ${{ runner.temp }}/shared-engine
-        run: |
-          set -euo pipefail
-          node desktop/scripts/release-build.mjs components "$RELEASE_ASSETS" "$SHARED_WINDOW" &
-          build=$!
-          artifact=""
-          for attempt in $(seq 1 120); do
-            artifact="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '.artifacts[] | select(.name == "release-shared-window") | .id')"
-            [ -n "$artifact" ] && break
-            sleep 5
-          done
-          if [ -z "$artifact" ]; then kill "$build"; echo "The shared renderer artifact never arrived" >&2; exit 1; fi
-          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > "$RUNNER_TEMP/shared-window.zip"
-          mkdir -p "$SHARED_WINDOW"
-          if command -v unzip > /dev/null; then unzip -q "$RUNNER_TEMP/shared-window.zip" -d "$SHARED_WINDOW"
-          else "$SYSTEMROOT/System32/tar.exe" -xf "$RUNNER_TEMP/shared-window.zip" -C "$SHARED_WINDOW"; fi
-          touch "$BRANCH_RELEASE_WINDOW_READY"
-          wait "$build"
+        run: node desktop/scripts/release-build.mjs components "$RELEASE_ASSETS" "$SHARED_WINDOW"
       - name: Verify extracted macOS app signature
         if: matrix.target == 'darwin-arm64'
         shell: bash
