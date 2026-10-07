@@ -16,10 +16,43 @@ const WALL = 0x4000_0000;
 const ECHILD = 10;
 const EINTR = 4;
 
+function isAbsentProcEntry(error: unknown): boolean {
+  return (
+    hasErrnoCode(error, "ENOENT") ||
+    hasErrnoCode(error, "ESRCH") ||
+    hasErrnoCode(error, "EACCES") ||
+    hasErrnoCode(error, "EPERM")
+  );
+}
+
+/** comm can contain whitespace and parentheses; PPID is the second field after the final ')'. */
+function parentPidFromStat(stat: string): number | null {
+  const close = stat.lastIndexOf(")");
+  if (close < 0) {
+    return null;
+  }
+  const fields = stat.slice(close + 1).trim().split(/\s+/u);
+  // fields[0] is state; fields[1] is PPID.
+  if (fields.length < 2) {
+    return null;
+  }
+  const ppid = Number(fields[1]);
+  return Number.isSafeInteger(ppid) && ppid >= 0 ? ppid : null;
+}
+
 /** Kernels without CONFIG_PROC_CHILDREN still expose parent identities in stat. */
 function childPidsFromParentIdentity(): number[] {
   const children: number[] = [];
-  for (const name of readdirSync("/proc")) {
+  let names: string[];
+  try {
+    names = readdirSync("/proc");
+  } catch (error) {
+    if (isAbsentProcEntry(error)) {
+      return children;
+    }
+    throw error;
+  }
+  for (const name of names) {
     if (!/^\d+$/u.test(name)) {
       continue;
     }
@@ -27,17 +60,12 @@ function childPidsFromParentIdentity(): number[] {
     try {
       stat = readFileSync(`/proc/${name}/stat`, "utf8");
     } catch (error) {
-      if (hasErrnoCode(error, "ENOENT") || hasErrnoCode(error, "ESRCH")) {
+      if (isAbsentProcEntry(error)) {
         continue;
       }
       throw error;
     }
-    // comm can contain whitespace and parentheses; PPID follows its final closing parenthesis.
-    const match = /^\d+ \([\s\S]*\) \S (\d+)(?:\s|$)/u.exec(stat);
-    if (!match) {
-      throw new Error("Linux process owner could not read a parent identity");
-    }
-    if (Number(match[1]) === process.pid) {
+    if (parentPidFromStat(stat) === process.pid) {
       children.push(Number(name));
     }
   }
@@ -52,8 +80,9 @@ function childPids(): number[] {
     try {
       value = readFileSync("/proc/self/task/" + thread + "/children", "utf8");
     } catch (error) {
-      // A thread can retire during enumeration. This is not extinction evidence.
-      if (hasErrnoCode(error, "ENOENT")) {
+      // A thread can retire, or this kernel can omit task children files.
+      // Neither is extinction evidence; fall back only when no file was readable.
+      if (isAbsentProcEntry(error)) {
         continue;
       }
       throw error;
