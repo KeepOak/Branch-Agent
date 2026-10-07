@@ -12,7 +12,7 @@ const row = (working: boolean): Conversation => ({
   system: false, automation: false, totalTokens: 0, contextTokens: 0,
 });
 
-function menu(working: boolean, actions: ReturnType<typeof conversationActions>, copyConversation: (row: Conversation) => void) {
+function menu(working: boolean, actions: ReturnType<typeof conversationActions>, copyConversation: (row: Conversation) => void | Promise<void>) {
   return rowMenuItems(row(working), {
     actions, now: Date.now(), trunkName: "Research", level: "regular",
     open: () => {}, ownWindow: () => {}, rename: () => {}, confirmDelete: () => {},
@@ -21,22 +21,19 @@ function menu(working: boolean, actions: ReturnType<typeof conversationActions>,
   });
 }
 
+function actionsOf(request: Parameters<typeof conversationActions>[0], refresh: () => Promise<void>) {
+  return conversationActions(request, { refresh } as unknown as ConversationList, () => null);
+}
+
 describe("copy conversation", () => {
-  it("enables Copy into a new conversation and calls sessions.fork with the last finished entry", async () => {
-    const messages = [
-      { role: "user", content: [], __branch: { id: "e1" } },
-      { role: "assistant", content: [], __branch: { id: "e2" } },
-      { role: "user", content: [], __branch: { id: "e3" } },
-      { role: "assistant", content: [], __branch: { id: "e4" } },
-    ];
+  it("enables Copy into a new conversation and forks the whole idle thread", async () => {
     const request = vi.fn(async (method: string) => {
-      if (method === "chat.history") return { messages };
-      if (method === "sessions.fork") return { sessionKey: "agent:research:xyz" };
+      if (method === "sessions.create") return { key: "agent:research:xyz" };
       return {};
     }) as Parameters<typeof conversationActions>[0];
     const refresh = vi.fn(async () => {});
     const open = vi.fn();
-    const actions = conversationActions(request, { refresh } as unknown as ConversationList, () => null);
+    const actions = actionsOf(request, refresh);
 
     const items = menu(false, actions, (r) => actions.copyConversation(r, open));
     const forkItem = items.find((item) => item.kind === undefined && item.label === "Copy into a new conversation");
@@ -47,27 +44,20 @@ describe("copy conversation", () => {
     if (!forkItem || forkItem.kind !== undefined) throw new Error("Fork item is missing");
     await forkItem.run();
 
-    expect(request).toHaveBeenNthCalledWith(1, "chat.history", { sessionKey: key, agentId: "research" });
-    expect(request).toHaveBeenNthCalledWith(2, "sessions.fork", { sessionKey: key, agentId: "research", entryId: "e4" });
-    expect(request).toHaveBeenNthCalledWith(3, "sessions.patch", { key: "agent:research:xyz", label: "Research (copy)" });
+    expect(request).toHaveBeenNthCalledWith(1, "sessions.create", { parentSessionKey: key, fork: true, agentId: "research" });
+    expect(request).toHaveBeenNthCalledWith(2, "sessions.patch", { key: "agent:research:xyz", label: "Research (copy)" });
     expect(refresh).toHaveBeenCalledOnce();
     expect(open).toHaveBeenCalledWith("agent:research:xyz");
   });
 
-  it("copies up to the last finished assistant entry when the conversation is working", async () => {
-    const messages = [
-      { role: "user", content: [], __branch: { id: "e1" } },
-      { role: "assistant", content: [], __branch: { id: "e2" } },
-      { role: "user", content: [], __branch: { id: "e3" } },
-    ];
+  it("copies from the last finished reply when the conversation is working", async () => {
     const request = vi.fn(async (method: string) => {
-      if (method === "chat.history") return { messages };
-      if (method === "sessions.fork") return { sessionKey: "agent:research:xyz" };
+      if (method === "sessions.create") return { key: "agent:research:xyz" };
       return {};
     }) as Parameters<typeof conversationActions>[0];
     const refresh = vi.fn(async () => {});
     const open = vi.fn();
-    const actions = conversationActions(request, { refresh } as unknown as ConversationList, () => null);
+    const actions = actionsOf(request, refresh);
 
     const items = menu(true, actions, (r) => actions.copyConversation(r, open));
     const forkItem = items.find((item) => item.kind === undefined && item.label === "Copy into a new conversation");
@@ -77,41 +67,36 @@ describe("copy conversation", () => {
     if (!forkItem || forkItem.kind !== undefined) throw new Error("Fork item is missing");
     await forkItem.run();
 
-    expect(request).toHaveBeenCalledWith("sessions.fork", { sessionKey: key, agentId: "research", entryId: "e2" });
+    expect(request).toHaveBeenCalledWith("sessions.create", {
+      parentSessionKey: key, fork: true, forkFrom: "last-completed", agentId: "research",
+    });
   });
 
-  it("shows an error when the conversation has no finished entries", async () => {
-    const messages = [
-      { role: "user", content: [], __branch: { id: "e1" } },
-    ];
+  it("shows an error when the engine refuses the copy", async () => {
     const request = vi.fn(async (method: string) => {
-      if (method === "chat.history") return { messages };
+      if (method === "sessions.create") throw new Error("nothing finished to copy");
       return {};
     }) as Parameters<typeof conversationActions>[0];
     const refresh = vi.fn(async () => {});
     const open = vi.fn();
-    const actions = conversationActions(request, { refresh } as unknown as ConversationList, () => null);
+    const actions = actionsOf(request, refresh);
 
     await actions.copyConversation(row(true), open);
 
-    expect(request).toHaveBeenCalledWith("chat.history", { sessionKey: key, agentId: "research" });
-    expect(request).not.toHaveBeenCalledWith("sessions.fork", expect.any(Object));
+    expect(request).toHaveBeenCalledWith("sessions.create", {
+      parentSessionKey: key, fork: true, forkFrom: "last-completed", agentId: "research",
+    });
     expect(open).not.toHaveBeenCalled();
   });
 
   it("enables Copy into a new conversation on a contact row and forks that thread", async () => {
-    const messages = [
-      { role: "user", content: [], __branch: { id: "e1" } },
-      { role: "assistant", content: [], __branch: { id: "e2" } },
-    ];
     const request = vi.fn(async (method: string) => {
-      if (method === "chat.history") return { messages };
-      if (method === "sessions.fork") return { sessionKey: "agent:research:xyz" };
+      if (method === "sessions.create") return { key: "agent:research:xyz" };
       return {};
     }) as Parameters<typeof conversationActions>[0];
     const refresh = vi.fn(async () => {});
     const open = vi.fn();
-    const actions = conversationActions(request, { refresh } as unknown as ConversationList, () => null);
+    const actions = actionsOf(request, refresh);
     const thread = row(false);
     const contact: Contact = {
       id: "trunk:research", kind: "trunk", name: "Research", threadKey: key, isDefault: false,
@@ -130,7 +115,7 @@ describe("copy conversation", () => {
     expect(forkItem && "disabled" in forkItem ? forkItem.disabled : undefined).toBeUndefined();
     if (!forkItem || forkItem.kind !== undefined) throw new Error("Fork item is missing");
     await forkItem.run();
-    expect(request).toHaveBeenCalledWith("sessions.fork", { sessionKey: key, agentId: "research", entryId: "e2" });
+    expect(request).toHaveBeenCalledWith("sessions.create", { parentSessionKey: key, fork: true, agentId: "research" });
     expect(open).toHaveBeenCalledWith("agent:research:xyz");
   });
 });
