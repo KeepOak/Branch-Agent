@@ -38,6 +38,7 @@ export function context(config: BranchConfig = {}): GatewayRequestContext {
   return {
     getRuntimeConfig: () => config,
     broadcast: vi.fn(),
+    getSessionEventSubscriberConnIds: () => [],
     logGateway: { warn: vi.fn() },
   } as unknown as GatewayRequestContext;
 }
@@ -58,7 +59,7 @@ export async function withReactionState(consume: () => Promise<void>) {
 }
 
 export async function call(
-  method: "session.reactions.set" | "session.reactions.list",
+  method: "session.reactions.set" | "session.reactions.list" | "session.context.set",
   params: Record<string, unknown>,
   requestClient: GatewayClient | null = client("alice", "Alice"),
   requestContext = context(),

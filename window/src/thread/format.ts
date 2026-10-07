@@ -114,7 +114,7 @@ export function stepsSummary(steps: readonly Step[], run?: { title: string; dura
   if (running) {
     return stepLabel(running);
   }
-  if (run?.title) {
+  if (run?.title && run.title.toLowerCase() !== "text") {
     return [run.title, steps.length > 1 ? `${steps.length} steps` : "1 step", run.durationMs ? formatDuration(run.durationMs) : ""].filter(Boolean).join(" · ");
   }
   const commands = steps.filter((s) => COMMAND_TOOLS.has(s.tool)).length;
@@ -150,6 +150,9 @@ export function dayStamp(ms: number, now = Date.now()): string {
 
 /** The first sentence of an engine error, without the engine's own lead-in and warning sign. */
 export function shortReason(message: string): string {
+  if (/PLUGIN_STATE_READ_FAILED|Session maintenance protection changed|PluginInstanceUnavailableError|^\s*\{|\"telemetry\"/.test(message)) {
+    return "Something went wrong. Try again, or open Diagnostics for details.";
+  }
   const plain = message
     .replace(/^\s*[⚠️❗❌\s]+/u, "")
     .replace(/^Your request couldn['’]t be completed:\s*/i, "")
@@ -161,5 +164,6 @@ export function shortReason(message: string): string {
 
 /** A model id as the hover bar shows it: the part after the provider. */
 export function modelName(model?: string): string {
-  return model ? displayModelName(model.replace(/^[^/]+\//, "")) : "";
+  // "gateway-injected" marks text Branch itself kept (a stopped reply's partial), not a model.
+  return model && model !== "gateway-injected" ? displayModelName(model.replace(/^[^/]+\//, "")) : "";
 }

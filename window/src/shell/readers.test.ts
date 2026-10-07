@@ -33,8 +33,9 @@ describe("status and layout", () => {
     expect(roomColour(0.85)).toBe("#E8912F");
     expect(roomColour(0.97)).toBe("var(--bad)");
   });
-  it("sidebar drag: rail or width", () => {
-    expect(dragResult(20)).toEqual({ rail: true });
+  it("sidebar drag: hidden, rail or width", () => {
+    expect(dragResult(20)).toEqual({ hidden: true });
+    expect(dragResult(40)).toEqual({ rail: true });
     expect(dragResult(100)).toEqual({ rail: true });
     expect(dragResult(170)).toEqual({ rail: true });
     expect(dragResult(900)).toEqual({ sideW: 640, rail: false });

@@ -46,7 +46,7 @@ export function keyActions(defaultName: string): KeyAction[] {
     { id: "focusMode", name: "Focus mode", keys: "Ctrl ." },
     { id: "talkLive", name: "Talk live", keys: "Ctrl Shift V" },
     { id: "stop", name: "Stop the current task", keys: "Ctrl Shift S" },
-    { id: "lockdown", name: "Lockdown", keys: "Ctrl Shift L", off: "Lockdown needs an engine switch it doesn't have yet." },
+    { id: "lockdown", name: "Lockdown", keys: "Ctrl Shift L" },
     { id: "inbox", name: "Open the Inbox", keys: "Ctrl I" },
     { id: "nextConversation", name: "Next conversation", keys: "Ctrl Tab" },
     { id: "archiveOpen", name: "Archive this conversation", keys: "Ctrl Shift A" },

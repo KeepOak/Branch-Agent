@@ -18,6 +18,8 @@ type Props = {
   mode: EngineMode | null;
   asSet: EngineMode | null;
   canSelectFull: boolean;
+  lockdown?: boolean;
+  onToggleLockdown?: () => void;
   onPick: (mode: EngineMode | null) => void;
   onOpen?: (target: OpenTarget) => void;
   /** This conversation's row: its sandbox opt-out and elevated level. */
@@ -27,7 +29,6 @@ type Props = {
 };
 
 const FULL_ONLY = "Only the owner can run commands outside the sealed box.";
-const LOCKDOWN_GAP = "Not available in this engine yet: the engine has no Lockdown switch.";
 const ROLE_GAP = "Not available in this engine yet: a conversation can't take a role.";
 // The preview's built-in roles (Roo Code's modes): what each one does in a conversation.
 const ROLES = [
@@ -52,7 +53,7 @@ export function ModeMenu(p: Props) {
   const onKey = (e: React.KeyboardEvent) => {
     if (/^[1-5]$/.test(e.key)) {
       const row = MODE_ROWS[Number(e.key) - 1];
-      if (row && !blockedReason(row, p.canSelectFull)) {
+      if (row && !p.lockdown && !blockedReason(row, p.canSelectFull)) {
         e.preventDefault();
         p.onPick(row.engine);
       }
@@ -72,6 +73,8 @@ export function ModeMenu(p: Props) {
           label={p.asSet ? `As set · ${modeName(p.asSet)}` : "As set"}
           sub="From Settings › Permissions"
           checked={p.mode === null}
+          disabled={p.lockdown}
+          reason={p.lockdown ? "Lockdown is on." : undefined}
           onClick={() => p.onPick(null)}
         />
         {MODE_ROWS.map((row, i) => {
@@ -88,8 +91,8 @@ export function ModeMenu(p: Props) {
               danger={row.engine === "full"}
               checked={on}
               right={on ? undefined : <kbd>{i + 1}</kbd>}
-              disabled={Boolean(reason)}
-              reason={reason ?? undefined}
+              disabled={p.lockdown || Boolean(reason)}
+              reason={p.lockdown ? "Lockdown is on." : reason ?? undefined}
               reasonLine
               onClick={() => p.onPick(row.engine)}
             />
@@ -107,8 +110,8 @@ export function ModeMenu(p: Props) {
                 label="Outside the sealed box"
                 items={ELEVATED}
                 value={p.canSelectFull ? str(p.row.elevatedLevel) : "off"}
-                disabled={!p.canSelectFull}
-                reason={p.canSelectFull ? undefined : FULL_ONLY}
+                disabled={p.lockdown || !p.canSelectFull}
+                reason={p.lockdown ? "Lockdown is on." : p.canSelectFull ? undefined : FULL_ONLY}
                 onPick={(id) => p.onElevated(id)}
               />
             </div>
@@ -125,9 +128,9 @@ export function ModeMenu(p: Props) {
             p.onOpen?.("settings/permissions");
           }}
         />
-        <div className="c-row c-lockdown" title={shownWhy(LOCKDOWN_GAP)}>
+        <div className="c-row c-lockdown" title={p.onToggleLockdown ? undefined : shownWhy("Needs the engine's Lockdown switch.")}>
           <span className="c-lock-t"><Icon name="lock" size={15} />Lockdown</span>
-          <Switch on={false} label="Lockdown" disabled reason={LOCKDOWN_GAP} onChange={() => undefined} />
+          <Switch on={Boolean(p.lockdown)} label="Lockdown" disabled={!p.onToggleLockdown} reason={p.onToggleLockdown ? undefined : "Needs the engine's Lockdown switch."} onChange={() => p.onToggleLockdown?.()} />
         </div>
         <Sep />
         <div className="c-pt">Role here</div>

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -8,6 +8,7 @@ import { smokeProductionEngine } from "./production-engine-smoke.mjs";
 import { assertTrackedSourceClean } from "./release-source-freeze.mjs";
 import { assertHoistedDeployment, extractProductionArchive, productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
 import { makeComponentRelease } from "./make-component-release.mjs";
+import { installLinuxLauncher } from "./linux-launcher.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { engineRoot, windowRoot, toolingRoot, repoRoot, gitHead, run, preparePnpm,
   scratchRoot, verifiedExceptionFlags, publishWindowDependencies } from "../../scripts/feature-batch-ci-runtime.mjs";
@@ -57,6 +58,15 @@ async function deployEngine(pnpm, scratch, identity) {
   const flags = await verifiedExceptionFlags("engine");
   await run(pnpm, productionDeployArguments(deployment, flags), engineRoot, productionDeployEnvironment(process.env));
   await assertHoistedDeployment(deployment);
+  if (identity.platform === "darwin") {
+    const binary = join(deployment, "cua-driver");
+    await run("bash", [join(engineRoot, "scripts/stage-cua-driver-macos.sh"), binary]);
+    const signingP12 = process.env.BRANCH_MACOS_SIGNING_P12_FILE;
+    const signingPassword = process.env.BRANCH_MACOS_SIGNING_PASSWORD_FILE;
+    const rcodesign = process.env.BRANCH_MACOS_RCODESIGN;
+    assert(signingP12 && signingPassword && rcodesign, "macOS computer driver requires the release signing identity");
+    await run(rcodesign, ["sign", "--p12-file", signingP12, "--p12-password-file", signingPassword, binary]);
+  }
   assert.equal(JSON.parse(await readFile(join(deployment, "dist/build-info.json"), "utf8")).commit, identity.commit);
   assert(!(await readdir(deployment)).includes("src"), "Production deployment must not be an unbuilt source checkout");
   // The Codex harness ships in every release: its plugin build and its runtime packages.
@@ -85,8 +95,9 @@ async function packageDesktop(scratch, output, identity) {
       darwin: { icon: join(desktopRoot, "assets/branch.icns") }, linux: { icon: join(desktopRoot, "assets/brand/linux/branch-512.png") } }[identity.platform] ?? {}) });
   assert.equal(folders.length, 1, "Expected one native desktop package");
   const app = folders[0];
+  if (identity.platform === "linux") await installLinuxLauncher(app);
   const resources = identity.platform === "darwin" ? join(app, "Branch Agent.app/Contents/Resources") : join(app, "resources");
-  const node = await bundleNode(resources, undefined, identity);
+  let node = await bundleNode(resources, undefined, identity);
   // Outside app.asar so a fresh package can prove its executable already has the Keeper icon.
   await writeFile(join(resources, "keeper-icon-revision"), "keeper-v1\n");
   // The desktop update component: app.asar alone, plus the whole app (the bootstrap package) for Electron changes.
@@ -98,11 +109,15 @@ async function packageDesktop(scratch, output, identity) {
     const signingPassword = process.env.BRANCH_MACOS_SIGNING_PASSWORD_FILE;
     const rcodesign = process.env.BRANCH_MACOS_RCODESIGN;
     assert(signingP12 && signingPassword && rcodesign, "macOS releases require a stable code-signing identity");
+    // A receipt inside the sealed bundle cannot be rewritten after nested-code signing.
+    // The release proof records the final shipped Node hash instead.
+    await rm(join(resources, "node/node-runtime.json"));
     // Packager signs before the bundled Node and icon revision are added. Sign the finished bundle,
-    // including its nested code, and use system tar to retain _CodeSignature and framework symlinks.
+    // including its nested code, before hashing the Node binary or archiving the app.
     await run(rcodesign, ["sign", "--p12-file", signingP12, "--p12-password-file", signingPassword, join(app, "Branch Agent.app")]);
-    await run("tar", ["-czf", join(output, `branch-desktop-${identity.version}-${identity.platform}-${identity.arch}.tar.gz`), "-C", app, "."]);
-  } else desktop.runtime = app;
+    node = { ...node, sha256: (await fileDigest(join(resources, "node/node"))).sha256 };
+  }
+  desktop.runtime = app;
   return { node, electron, electronVersion: identity.electronVersion, desktop,
     nodePath: join(resources, "node", identity.platform === "win32" ? "node.exe" : "node") };
 }

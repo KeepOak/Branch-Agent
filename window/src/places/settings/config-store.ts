@@ -1,5 +1,5 @@
 // One engine config per window for every Settings row (§4.7.0 "Switches save at once"). Saves run one at a time
-// against the latest revision; config.patch answers with the new hash and config, which every row adopts. A save
+// against the latest revision; config.patch may answer with the new hash and config, which every row adopts. A save
 // refused because the config changed elsewhere reads the config again and retries once.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../connect/engine";
@@ -74,8 +74,8 @@ export class ConfigStore {
     const baseHash = this.snap.hash;
     const result = record(await this.engine.request("config.patch", { raw: JSON.stringify(patch), baseHash }));
     if (result.ok === false) throw new Error(errorText(result.error ?? "The engine did not save the change."));
+    this.revision++;
     if (typeof result.hash === "string" && result.config && typeof result.config === "object") {
-      this.revision++;
       this.snap = { ...this.snap, hash: result.hash, config: record(result.config), valid: true };
       this.emit();
     }
@@ -84,7 +84,7 @@ export class ConfigStore {
     if (this.loading) await this.loading;
     const committed = this.snap;
     await this.load();
-    if (committed && this.snap?.hash !== committed.hash) {
+    if (typeof result.hash === "string" && committed && this.snap?.hash !== committed.hash) {
       this.snap = committed;
       this.emit();
     }

@@ -43,6 +43,7 @@ async function resolveMcpConfig(config: BranchConfig | undefined): Promise<Branc
 export async function createChannelMcpRuntime(
   opts: {
     gatewayUrl?: string;
+    resolveGatewayUrl?: () => string | undefined;
     gatewayToken?: string;
     gatewayPassword?: string;
     config?: BranchConfig;
@@ -50,7 +51,7 @@ export async function createChannelMcpRuntime(
     verbose?: boolean;
     /** Branch-to-Branch: work with a host Branch this Branch joined, as its paired device. Its own Trunks
      *  appear on the host as contacts, and what its tools send is attributed to this Branch. */
-    graftHost?: { link: GraftLink; trunks: { id: string; name?: string }[] };
+    graftHost?: { link: GraftLink; trunks: { id: string; name?: string; avatar?: string }[] };
   } = {},
 ): Promise<{
   server: McpServer;
@@ -67,6 +68,7 @@ export async function createChannelMcpRuntime(
   );
   const bridge = new BranchChannelBridge(cfg, {
     gatewayUrl: opts.gatewayUrl,
+    ...(opts.resolveGatewayUrl ? { resolveGatewayUrl: opts.resolveGatewayUrl } : {}),
     gatewayToken: opts.gatewayToken,
     gatewayPassword: opts.gatewayPassword,
     ...(opts.graftHost

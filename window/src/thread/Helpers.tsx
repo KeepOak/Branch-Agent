@@ -10,20 +10,22 @@ import type { ApprovalDecision } from "./model";
 import type { ApprovalDetails, Helper } from "./useEngineData";
 import { modelName } from "./format";
 
-type Mark = "working" | "done" | "waiting" | "stopped";
+type Mark = "working" | "done" | "waiting" | "stopped" | "stalled";
 
 export function helperMark(h: Helper, waiting: boolean): Mark {
   if (waiting) return "waiting";
+  if ((h.status === "running" || h.status === "queued") && h.updatedAt && Date.now() - h.updatedAt > 10 * 60_000) return "stalled";
   if (h.status === "running" || h.status === "queued") return "working";
   if (h.status === "done") return "done";
   return h.status ? "stopped" : "working";
 }
 
-const MARK_ICON: Record<Mark, string> = { working: ICONS.spin, done: ICONS.check, waiting: ICONS.warn, stopped: ICONS.x };
+const MARK_ICON: Record<Mark, string> = { working: ICONS.spin, done: ICONS.check, waiting: ICONS.warn, stopped: ICONS.x, stalled: ICONS.warn };
 
 function pillWords(h: Helper, mark: Mark): string {
   if (mark === "waiting") return "Waiting for you";
   if (mark === "working") return "Working";
+  if (mark === "stalled") return "No recent update";
   if (mark === "done") return "Done";
   return h.status === "killed" || h.status === "interrupted" ? "Stopped · by you" : "Stopped";
 }
@@ -58,7 +60,7 @@ function Row({ h, depth, props }: { h: Helper; depth: number; props: TreeProps }
           {h.model ? <small>{modelName(h.model)}</small> : null}
         </span>
         <span className={`pill ${mark === "done" ? "ok" : mark === "stopped" ? "bad" : "wait"}`}>{pillWords(h, mark)}</span>
-        {mark === "working" || mark === "waiting" ? (
+        {mark === "working" || mark === "waiting" || mark === "stalled" ? (
           <button type="button" className="btn sm ghost" aria-label={`Stop ${h.name}`} onClick={() => props.onStop(h)}>Stop</button>
         ) : null}
       </div>

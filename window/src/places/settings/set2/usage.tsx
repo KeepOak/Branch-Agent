@@ -18,6 +18,7 @@ import { lookStore } from "../set1/appearance-store";
 import "./usage.css";
 import { DesktopCtl } from "../desktop-ctl";
 import { formatMoney } from "../../../format/money";
+import { forgetDeletedConversationWindow } from "../../../shell/own-window";
 
 /* ---------- figures ---------- */
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -834,7 +835,7 @@ function ManageDialog({ engine, onClose }: { engine: WindowEngine; onClose: () =
   const keys = rows.map((r) => str(r.key));
   const toggle = (k: string, on: boolean) => setSel((s) => { const n = new Set(s); if (on) n.add(k); else n.delete(k); return n; });
   const del = (which: string[], archivedOnly: boolean) => void call.run(async () => {
-    for (const k of which) { const r = rows.find((x) => str(x.key) === k); await engine.request("sessions.delete", { key: k, ...(str(r?.agentId) ? { agentId: str(r?.agentId) } : {}), ...(archivedOnly ? { archivedOnly: true } : {}) }); }
+    for (const k of which) { const r = rows.find((x) => str(x.key) === k); await engine.request("sessions.delete", { key: k, ...(str(r?.agentId) ? { agentId: str(r?.agentId) } : {}), ...(archivedOnly ? { archivedOnly: true } : {}) }); await forgetDeletedConversationWindow(k); }
     setSel(new Set()); setAsk(""); void res.reload();
   }, () => `Deleted ${which.length} ${which.length === 1 ? "conversation" : "conversations"}.`);
   if (ask) {

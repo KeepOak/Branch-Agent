@@ -4,6 +4,7 @@
 import type { Conversation, ConversationList } from "../connect/conversations";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { notify } from "./notify";
+import { forgetDeletedConversationWindow } from "./own-window";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 
@@ -104,6 +105,7 @@ export function conversationActions(request: Request, list: ConversationList, op
     async remove(row: Conversation) {
       try {
         await request("sessions.delete", { key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), deleteTranscript: true });
+        await forgetDeletedConversationWindow(row.key).catch((error: unknown) => console.warn("Saved conversation window could not be removed", error));
       } catch (e) {
         notify(`Couldn't delete ${nameOf(row)}: ${reason(e)}.`, { tone: "bad" });
       }
@@ -146,7 +148,10 @@ export function conversationActions(request: Request, list: ConversationList, op
     async removeMany(rows: Conversation[]) {
       const failed: string[] = [];
       for (const row of rows) {
-        await request("sessions.delete", { key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), deleteTranscript: true }).catch(() => failed.push(nameOf(row)));
+        try {
+          await request("sessions.delete", { key: row.key, ...(row.agentId ? { agentId: row.agentId } : {}), deleteTranscript: true });
+          await forgetDeletedConversationWindow(row.key).catch((error: unknown) => console.warn("Saved conversation window could not be removed", error));
+        } catch { failed.push(nameOf(row)); }
       }
       notify(failed.length ? `Couldn't delete ${failed.join(", ")}.` : `Deleted ${rows.length} conversations.`, failed.length ? { tone: "bad" } : undefined);
       await list.refresh();

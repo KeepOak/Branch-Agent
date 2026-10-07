@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
 import { PermissionsPage, PERMISSIONS_ROWS } from "./permissions";
+import { notify } from "../../../shell/notify";
+
+vi.mock("../../../shell/notify", () => ({ notify: vi.fn() }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -63,6 +66,60 @@ describe("Settings › Permissions", () => {
     await render(engine);
     await act(async () => button("Ask first").click());
     expect(patchOf(request)).toEqual({ tools: { exec: { mode: "ask", security: null, ask: null } } });
+  });
+
+  it("turns on Lockdown globally and disables Access mode changes", async () => {
+    vi.mocked(notify).mockClear();
+    const { engine, request } = engineOf({
+      "config.patch": (params: unknown) => {
+        // Verify config.patch is called with exactly {raw, baseHash} params (Preview spec-v23 index.html:8378)
+        const p = params as Record<string, unknown>;
+        expect(Object.keys(p).sort()).toEqual(["baseHash", "raw"]);
+        return { ok: true, hash: "h2", config: JSON.parse((params as { raw: string }).raw) };
+      },
+    });
+    await render(engine);
+    const turnOnBtn = button("Turn Lockdown on");
+    expect(turnOnBtn?.className).toContain("bad"); // Preview spec-v23 index.html:8553 button class when off
+    await act(async () => turnOnBtn?.click());
+    expect(patchOf(request)).toEqual({ security: { lockdown: true } });
+    // Verify toast shown on success (Preview spec-v23 index.html:8910)
+    expect(vi.mocked(notify)).toHaveBeenCalledWith("Lockdown is on.");
+    const turnOffBtn = button("Turn Lockdown off");
+    expect(turnOffBtn).toBeTruthy();
+    expect(turnOffBtn?.className).not.toContain("bad"); // Preview spec-v23 index.html:8553 button class when on
+    // Verify status box appears when locked (Preview spec-v23 index.html:8540)
+    expect(host.textContent).toContain("Lockdown is on");
+    expect(host.textContent).toContain("Nothing leaves this computer and nothing is changed until you turn it off.");
+    // The status box opens the page, before every section (preview index.html:8540).
+    const status = host.querySelector('[data-row="Lockdown status"]')!;
+    expect(status.compareDocumentPosition(host.querySelector(".sec")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(button("Ask first").disabled).toBe(true);
+  });
+
+  it("toasts \"Lockdown is off.\" when switched off (preview index.html:8910)", async () => {
+    vi.mocked(notify).mockClear();
+    const { engine } = engineOf({
+      "config.get": { hash: "h1", valid: true, config: { security: { lockdown: true } } },
+      "config.patch": (params: unknown) => ({ ok: true, hash: "h2", config: JSON.parse((params as { raw: string }).raw) }),
+    });
+    await render(engine);
+    await act(async () => button("Turn Lockdown off").click());
+    expect(vi.mocked(notify)).toHaveBeenCalledWith("Lockdown is off.");
+    expect(button("Turn Lockdown on")).toBeTruthy();
+  });
+
+  it("shows the engine's refusal and no success toast when the switch fails", async () => {
+    vi.mocked(notify).mockClear();
+    const { engine } = engineOf({
+      "config.get": { hash: "h1", valid: true, config: { security: { lockdown: true } } },
+      "config.patch": () => { throw new Error("Only the owner can switch Lockdown off."); },
+    });
+    await render(engine);
+    await act(async () => button("Turn Lockdown off").click());
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(vi.mocked(notify)).not.toHaveBeenCalledWith("Lockdown is off.");
+    expect(vi.mocked(notify)).toHaveBeenCalledWith(expect.stringContaining("Only the owner can switch Lockdown off."), { tone: "bad" });
   });
 
   it("Access arrows select a mode and show disabled reasons inline", async () => {
