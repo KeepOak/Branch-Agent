@@ -59,8 +59,8 @@ export function Choice({ value, options, onChange, label, disabled }: { value: s
 }
 
 /** A command a person can run, shown as code (Technical). */
-export function CodeRow({ t, code, sub }: { t: string; code: string; sub?: string }) {
-  return <Ctl title={t} sub={sub}><code className="val-k code-k" tabIndex={0}>{code}</code></Ctl>;
+export function CodeRow({ t, code, sub, help }: { t: string; code: string; sub?: string; help?: string }) {
+  return <Ctl title={t} sub={sub} help={help}><code className="val-k code-k" tabIndex={0}>{code}</code></Ctl>;
 }
 
 /** A number field that saves on commit; blank puts the engine's default back (null). */

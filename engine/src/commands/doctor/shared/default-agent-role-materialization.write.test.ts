@@ -9,11 +9,9 @@ import { makeCronJob } from "../../../cron/delivery.test-helpers.js";
 import { cronStoreKey } from "../../../cron/store/key.js";
 import { replaceCronRows } from "../../../cron/store/row-codec.js";
 import { writeConfigMachineState } from "../../../state/config-machine-state-write.js";
-import {
-  closeBranchStateDatabaseForTest,
-  openBranchStateDatabase,
-} from "../../../state/branch-state-db.js";
+import { openBranchStateDatabase } from "../../../state/branch-state-db.js";
 import { createCanonicalAgentConfigFixture } from "../../../test-utils/config-roster.js";
+import { closeStateDatabaseForTest } from "../../../test-utils/database-cleanup.js";
 
 const roots: string[] = [];
 
@@ -28,14 +26,18 @@ function configIO(root: string, env: NodeJS.ProcessEnv = { HOME: root, BRANCH_TE
 }
 
 afterEach(async () => {
-  closeBranchStateDatabaseForTest();
+  await closeStateDatabaseForTest();
   resetConfigRuntimeState();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
 describe("default role materialization authored writes", () => {
   it("preserves env references and includes and is idempotent after persistence", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "branch-default-roles-"));
+    // Windows runners can expose the temp directory through an 8.3 alias (RUNNER~1).
+    // Use its real path so the included file's pinned target matches the write path.
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "branch-default-roles-")),
+    );
     roots.push(root);
     const configPath = path.join(root, "branch.json");
     const channelsPath = path.join(root, "channels.json5");
@@ -251,7 +253,7 @@ describe("default role materialization authored writes", () => {
     );
 
     const persisted = JSON.parse(await fs.readFile(configPath, "utf8")) as BranchConfig;
-    expect(persisted.agents?.entries?.research?.workspace).toBe("/srv/fleet/research");
+    expect(persisted.agents?.entries?.research?.workspace).toBe(path.resolve("/srv/fleet/research"));
   });
 
   it.each([

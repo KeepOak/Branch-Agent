@@ -23,7 +23,7 @@ export function tourCards(defaultName: string): Card[] {
     { title: "Your Trunks are contacts", target: "[data-testid=conversation-list]", side: true, prep: () => sidePanel(false), text: "Each Trunk is an assistant with one job. Message it like a teammate. A moving ring means it’s working; a dot means it needs you." },
     { title: "Your Trunks, in person", target: ".character-panel", text: "Each Trunk can have a character. It acts out what the Trunk is really doing: thinking, searching, reading, working, waiting for you, celebrating, resting. Change it in the Trunk’s Look tab." },
     { title: "Watch it work", target: ".computer-activity-card", text: "When a Trunk uses the browser you see it live, with Take over one click away. Its plan and folded steps sit just above." },
-    { title: "Its own computer, full size", target: ".computer-stage", text: "Pick which computer a Trunk may use: a private sandbox, this PC, the KeepOak computer or a home server. Watch it live, take over, or shrink it to a small window." },
+    { title: "Its own computer, full size", target: ".computer-stage", text: "Pick which computer a Trunk may use: a private box, this computer, the KeepOak computer or a home server. Watch it live, take over, or shrink it to a small window." },
     { title: "It asks before it acts", target: "[data-testid=approval-card]", text: "Anything that sends, deletes, spends or installs waits for your yes: Send it, Always allow, or Don’t. The Inbox collects them all." },
     { title: "Rooms: Trunks together", target: null, text: "Several Trunks in one conversation. Call one with @, choose who answers, and answer two asks with Yes to both." },
     { title: "Model and thinking", target: "[data-testid=model-chip]", text: "GPT-6.1 Sol, Opus 5.5 or the model on this computer, and how long it thinks. The choices change with the model." },
@@ -36,7 +36,7 @@ export function tourCards(defaultName: string): Card[] {
     { title: "Search everything", target: "[data-testid=search]", side: true, text: "Chats, Trunk names, words inside messages and past sessions, as you type. Ctrl F finds words in a conversation; Ctrl K opens every command." },
     { title: "Settings, your way", target: "[data-testid=gear]", side: true, text: "Regular, Advanced or Technical: just the essentials, or every file, port and raw key." },
     { title: "Models on this computer", target: ".lm-grid-k", prep: settings("local"), text: "Branch looks at your memory and graphics card and only offers what fits. One click installs it; it runs free and private." },
-    { title: "Every chat app", target: ".cz-chgrid", prep: place("customize", "Channels"), text: "Each with its real recipe: make the bot, paste what it gives you, Branch checks it, you approve an 8-character code, save." },
+    { title: "Every chat app", target: ".cz-chgrid", prep: place("customize", "Chat apps"), text: "Each has its own setup: paste the code it gives you, let Branch check it, then allow the connection." },
     { title: "Pets and painted scenes", target: ".pets12", prep: settings("appearance"), text: "Pick one of dozens of pets to walk along the list, and a painted scene to sit behind the glass. They nap, cheer and follow what your Trunks are doing." },
     { title: "Your team", target: '.side [data-place="people"]', side: true, text: "Who’s here and what their Trunks are running right now, shared Trunks, teams of Trunks, usage and rules. It comes from your keepoak.com workspace." },
     { title: "People", target: ".ppl", prep: place("people"), text: "On this computer with a PIN, on their own devices with a passkey or a one-time code, or from your keepoak.com team. Seven kinds of action each; groups only take away." },
@@ -145,7 +145,7 @@ export function Walkthrough({ defaultName, onClose }: { defaultName: string; onC
       }}
     >
       <div className={box ? "tour-spot" : "tour-spot none"} style={box ?? undefined} />
-      <div ref={card} className="tour-card" role="dialog" aria-live="polite" aria-label="Tour" style={pos}>
+      <div ref={card} className="tour-card" role="dialog" aria-live="polite" aria-label="Walkthrough" style={pos}>
         <span className="n">
           {i + 1} of {cards.length}
         </span>
@@ -164,7 +164,7 @@ export function Walkthrough({ defaultName, onClose }: { defaultName: string; onC
           ) : null}
           <span className="grow" />
           <button type="button" className="btn ghost sm" data-testid="tour-end" onClick={onClose}>
-            {last ? "Close" : "Skip the tour"}
+            {last ? "Close" : "Skip the walkthrough"}
           </button>
           {last ? null : (
             <button type="button" className="btn pri sm" data-next data-testid="tour-next" onClick={() => go(1)}>

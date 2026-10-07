@@ -36,3 +36,44 @@ export function describeConfigSnapshotInputChange(
   }
   return undefined;
 }
+
+function withoutLockdown(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const root = value as Record<string, unknown>;
+  const security = root.security;
+  if (
+    !security ||
+    typeof security !== "object" ||
+    Array.isArray(security) ||
+    !("lockdown" in security)
+  ) {
+    return value;
+  }
+  const { lockdown: _lockdown, ...rest } = security as Record<string, unknown>;
+  const next: Record<string, unknown> = { ...root, security: rest };
+  if (Object.keys(rest).length === 0) {
+    delete next.security;
+  }
+  return next;
+}
+
+/**
+ * True when the only difference between two reads of the same config is the Lockdown switch. An engine
+ * preparing during a handoff can still start: it reads Lockdown fresh when it starts, so it comes up locked.
+ */
+export function isLockdownOnlyConfigChange(
+  before: ConfigFileSnapshot,
+  after: ConfigFileSnapshot,
+): boolean {
+  return (
+    before.path === after.path &&
+    before.exists &&
+    after.exists &&
+    before.valid === after.valid &&
+    isDeepStrictEqual(before.includedPaths ?? [], after.includedPaths ?? []) &&
+    isDeepStrictEqual(withoutLockdown(before.parsed), withoutLockdown(after.parsed)) &&
+    isDeepStrictEqual(withoutLockdown(before.sourceConfig), withoutLockdown(after.sourceConfig))
+  );
+}

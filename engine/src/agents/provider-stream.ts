@@ -6,7 +6,9 @@
 import type { ApiRegistry } from "@branch/ai";
 import "./ai-transport-runtime-host.js";
 import { createTransportAwareStreamFnForModel } from "@branch/ai/transports";
+import { isLockdownOn } from "../config/lockdown.js";
 import type { BranchConfig } from "../config/types.branch.js";
+import { createLockdownErrorStream } from "../llm/lockdown-stream.js";
 import { getModelLlmRuntime } from "../llm/model-runtime-binding.js";
 import type { Api, Model } from "../llm/types.js";
 import {
@@ -113,12 +115,15 @@ export function registerProviderStreamForModel<TApi extends Api>(params: {
           options,
         )
     : providerWrappedStreamFn;
+  // Lockdown is checked per call, so a stream prepared before it turned on cannot spend after.
+  const guardedStreamFn: StreamFn = (model, context, options) =>
+    isLockdownOn() ? createLockdownErrorStream(model) : preparedStreamFn(model, context, options);
   // Register custom APIs only after a concrete stream exists, so later callers
   // can route by model.api without reloading provider runtime hooks.
   if (apiRegistry) {
-    ensureCustomApiRegistered(apiRegistry, runtimeModel.api, preparedStreamFn);
+    ensureCustomApiRegistered(apiRegistry, runtimeModel.api, guardedStreamFn);
   }
-  return preparedStreamFn;
+  return guardedStreamFn;
 }
 
 function wrapPluginProviderStream(streamFn: StreamFn): StreamFn {

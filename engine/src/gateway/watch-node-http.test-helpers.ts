@@ -17,11 +17,14 @@ import {
   signDevicePayload,
 } from "../infra/device-identity.js";
 import { listNodePairing } from "../infra/device-pairing-node.js";
-import { getPairedDevice, resolveNodePairingState } from "../infra/device-pairing.js";
+import { getPairedDevice, listDevicePairing, resolveNodePairingState } from "../infra/device-pairing.js";
+import { approveDevicePairing } from "../infra/device-pairing-approval.js";
 import type { AuthRateLimiter } from "./auth-rate-limit.js";
 import { buildDeviceAuthPayloadV3 } from "./device-auth.js";
 import { NodeRegistry } from "./node-registry.js";
 import { createWatchNodeHttpRuntime } from "./watch-node-http.js";
+
+const approvalDirs = new Map<string, string>();
 
 export async function startWatchNodeHttpRuntime(
   baseDir: string,
@@ -64,6 +67,7 @@ export async function startWatchNodeHttpRuntime(
     resolveConnectHandled = resolve;
   });
   const requests: Array<Promise<PromiseSettledResult<void>[]>> = [];
+  let baseUrl = "";
   const server = createServer((req, res) => {
     const isConnect = req.url === "/api/nodes/watch/connect";
     if (isConnect && options?.onConnectResponseStart) {
@@ -111,6 +115,7 @@ export async function startWatchNodeHttpRuntime(
         throw result.reason;
       }
     }
+    approvalDirs.delete(baseUrl);
   });
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
@@ -119,6 +124,8 @@ export async function startWatchNodeHttpRuntime(
   if (!address || typeof address === "string") {
     throw new Error("expected TCP server address");
   }
+  baseUrl = `http://127.0.0.1:${address.port}/api/nodes/watch`;
+  approvalDirs.set(baseUrl, baseDir);
   return {
     nodeRegistry,
     broadcasts,
@@ -126,7 +133,7 @@ export async function startWatchNodeHttpRuntime(
     disconnectedNodes,
     runtime,
     connectHandled,
-    baseUrl: `http://127.0.0.1:${address.port}/api/nodes/watch`,
+    baseUrl,
   };
 }
 
@@ -203,9 +210,11 @@ export async function connectWatchNode(params: {
   deviceToken?: string;
   commands?: string[];
   permissions?: ConnectParams["permissions"];
+  approvePending?: boolean;
 }): Promise<Response> {
-  const challenge = await readJson(await fetch(`${params.baseUrl}/challenge`));
-  return await fetch(`${params.baseUrl}/connect`, {
+  const attempt = async () => {
+    const challenge = await readJson(await fetch(`${params.baseUrl}/challenge`));
+    return await fetch(`${params.baseUrl}/connect`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(
@@ -220,7 +229,15 @@ export async function connectWatchNode(params: {
         permissions: params.permissions,
       }),
     ),
-  });
+    });
+  };
+  const response = await attempt();
+  const baseDir = approvalDirs.get(params.baseUrl);
+  if (response.status !== 202 || params.approvePending === false || !baseDir) return response;
+  const pending = (await listDevicePairing(baseDir)).pending.find((row) => row.deviceId === params.identity.deviceId);
+  expect(pending).toBeDefined();
+  expect((await approveDevicePairing(pending!.requestId, { callerScopes: ["operator.admin"] }, baseDir))?.status).toBe("approved");
+  return await attempt();
 }
 
 export function startPartialJsonRequest(params: { url: string; authorization: string }): {

@@ -92,7 +92,7 @@ function AdvancedRun({ draft, change, level, models, trunk }: { draft: Draft; ch
   if (!shows(level, "advanced") || draft.how === "note" || draft.payloadKind !== "agentTurn") return null;
   const tech = shows(level, "technical");
   return <>
-    <Field label="Model" hint="A lighter model costs less for routine jobs."><input className="inp" aria-label="Model" list="au-models" placeholder={`Same as ${trunk}`} value={draft.model} onChange={e => change({ model: e.target.value })} /><datalist id="au-models">{models.map(m => <option key={m} value={m} />)}</datalist></Field>
+    <Field label="Model" hint="A lighter model costs less for recurring jobs."><input className="inp" aria-label="Model" list="au-models" placeholder={`Same as ${trunk}`} value={draft.model} onChange={e => change({ model: e.target.value })} /><datalist id="au-models">{models.map(m => <option key={m} value={m} />)}</datalist></Field>
     {tech && <SwitchRow title="Always use the default Trunk" sub="Ignores the Trunk picked above." on={draft.clearAgent} change={clearAgent => change({ clearAgent })} />}
     {tech && <Field label="Conversation key" hint="Routes the result and the wake-up to one conversation."><input className="inp au-mono" aria-label="Conversation key" value={draft.sessionKey} onChange={e => change({ sessionKey: e.target.value })} /></Field>}
     {tech && <SwitchRow title="Start with a light briefing" sub="Leaves out the project’s files at the start of each run." on={draft.lightContext} change={lightContext => change({ lightContext })} />}
@@ -131,7 +131,7 @@ export function Proposal(props: Props) {
     {tech && <Spread form={draft.form} set={set} />}
     {adv && draft.mode !== "edit" && <SwitchRow title="Start it switched on" on={draft.enabled} change={enabled => change({ enabled })} />}
     {adv && draft.form.repeat === "once" && <SwitchRow title="Remove it after it runs" sub="For one-off reminders that tidy themselves away." on={draft.deleteAfterRun} change={deleteAfterRun => change({ deleteAfterRun })} />}
-    <p className="au-sum"><b>{formWords(draft.form)}</b>{first ? ` · first run ${when(first)}` : ""}</p>
+    <p className="au-sum"><b>{formWords(draft.form)}</b>{first ? ` · starts ${when(first)}` : ""}</p>
     {adv && draft.form.repeat !== "once" && draft.form.repeat !== "every" && (tech ? <Field label="Cron line"><input className="inp au-mono" aria-label="Cron line" placeholder="0 7 * * *" value={draft.form.repeat === "custom" ? draft.form.expr : cronLine(draft.form)} onChange={e => set({ repeat: "custom", expr: e.target.value })} /></Field> : <p className="au-mono au-cron" aria-label="Cron line">{cronLine(draft.form)}</p>)}
     {error && <p className="au-error" role="alert">{error}</p>}
     <Footer {...props} />

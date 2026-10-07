@@ -14,7 +14,7 @@ export interface HelperPlan {
   log: string;
   /** The desktop app that handed off; nothing is touched until it has exited. */
   waitPid: number;
-  relaunch: { command: string; args: string[] };
+  relaunch: { command: string; fallback?: string; args: string[] };
   confirmTimeoutMs: number;
 }
 interface Journal { version: string; sha256: string; kind: "asar" | "runtime"; staged: string; target: string; phase: string; heldUntil?: number }
@@ -48,7 +48,8 @@ function launch(plan: HelperPlan): number | undefined {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   // This relaunches the Branch GUI, whose first ShowWindow must remain visible.
-  const child = spawn(plan.relaunch.command, plan.relaunch.args, { detached: true, stdio: "ignore", windowsHide: false, env });
+  const command = existsSync(plan.relaunch.command) ? plan.relaunch.command : plan.relaunch.fallback ?? plan.relaunch.command;
+  const child = spawn(command, plan.relaunch.args, { detached: true, stdio: "ignore", windowsHide: false, env });
   child.unref();
   return child.pid;
 }
