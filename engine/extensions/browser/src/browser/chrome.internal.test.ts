@@ -1469,6 +1469,7 @@ describe("chrome.ts internal", () => {
     it("retains launch hints after the stderr tail rolls", async () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, "platform", { value: "linux" });
+      execFileSyncMock.mockReturnValue(""); // This case exercises stderr, not the host's user-namespace policy.
       try {
         const executablePath = path.join(tmpDir, "chrome");
         await fsp.writeFile(executablePath, "");
@@ -1555,6 +1556,7 @@ describe("chrome.ts internal", () => {
     });
 
     it("reports an unusable sandbox during new-profile bootstrap", async () => {
+      execFileSyncMock.mockReturnValue(""); // Let Chromium reach bootstrap on restricted CI hosts.
       const executablePath = path.join(tmpDir, "chrome-bootstrap-sandbox");
       await fsp.writeFile(executablePath, "");
       stubBrowserExecutableAndPrefs("missing", executablePath);
