@@ -97,8 +97,8 @@ async function probeCodexCommand(params: {
   const home = params.env.HOME?.trim() || os.homedir();
   const appExecutables = new Set(
     CODEX_MACOS_APP_NAMES.flatMap((appName) => [
-      path.join("/Applications", appName, "Contents", "Resources", "codex"),
-      path.join(home, "Applications", appName, "Contents", "Resources", "codex"),
+      path.posix.join("/Applications", appName, "Contents", "Resources", "codex"),
+      path.posix.join(home, "Applications", appName, "Contents", "Resources", "codex"),
     ]),
   );
   for (const executable of appExecutables) {
