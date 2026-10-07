@@ -56,13 +56,15 @@ test("fresh desktop install starts without dev profile or C3-PO", async () => ho
 }));
 
 test("desktop passes only its app-owned Mac driver lease to the live gateway", async () => homeFixture(async root => {
-  await writeFile(join(root, "branch.mjs"), 'import {writeFileSync,readFileSync,statSync} from "node:fs"; import {spawnSync} from "node:child_process"; const file=process.env.BRANCH_CUA_DRIVER_ENDPOINT_FILE; const helper=spawnSync(process.execPath,["-e","process.stdout.write(process.env.BRANCH_CUA_DRIVER_ENDPOINT || String())"],{encoding:"utf8",windowsHide:true}); writeFileSync("launch.json",JSON.stringify({endpoint:process.env.BRANCH_CUA_DRIVER_ENDPOINT,file,secret:readFileSync(file,"utf8"),mode:statSync(file).mode & 0o777,helper:helper.stdout}));');
+  await writeFile(join(root, "branch.mjs"), 'import {writeFileSync,readFileSync,statSync,existsSync} from "node:fs"; import {spawnSync} from "node:child_process"; const file=process.env.BRANCH_CUA_DRIVER_ENDPOINT_FILE; delete process.env.BRANCH_CUA_DRIVER_ENDPOINT; delete process.env.BRANCH_CUA_DRIVER_ENDPOINT_FILE; const helper=spawnSync(process.execPath,["-e","const file=process.env.BRANCH_CUA_DRIVER_ENDPOINT_FILE; process.stdout.write(JSON.stringify({endpoint:process.env.BRANCH_CUA_DRIVER_ENDPOINT||String(),file:file||String(),fileExists:file?require(\\"fs\\").existsSync(file):false}))"],{encoding:"utf8",windowsHide:true}); writeFileSync("launch.json",JSON.stringify({endpoint:process.env.BRANCH_CUA_DRIVER_ENDPOINT,file,secret:readFileSync(file,"utf8"),mode:statSync(file).mode & 0o777,helper:JSON.parse(helper.stdout)}));');
   const endpoint = JSON.stringify({ v: 2, port: 21831, secret: "a".repeat(64) });
   const child = startGateway({ dataDir: root, nodePath: process.execPath, gatewayPort: 19631 }, root, "fixture-token", false, 19631, endpoint);
   await once(child, "close");
   const launch = JSON.parse(await readFile(join(root, "launch.json"), "utf8"));
   assert.equal(launch.endpoint, undefined);
-  assert.equal(launch.helper, "");
+  assert.equal(launch.helper.endpoint, "");
+  assert.equal(launch.helper.file, "");
+  assert.equal(launch.helper.fileExists, false);
   assert.equal(launch.secret, endpoint);
   if (process.platform !== "win32") assert.equal(launch.mode, 0o600);
   assert.equal(existsSync(launch.file), false);

@@ -788,9 +788,15 @@ if (isBrowserNativeHostInvocation) {
     } else {
       // Electron's authenticated Mac driver lease is for this Gateway alone.
       // Remove it before any engine or plugin can spawn a Trunk shell.
-      if (process.argv.includes("gateway") && process.env.BRANCH_CUA_DRIVER_ENDPOINT) {
-        globalThis[Symbol.for("branch.macComputerEndpoint")] = process.env.BRANCH_CUA_DRIVER_ENDPOINT;
+      if (process.argv.includes("gateway")) {
+        let endpoint = process.env.BRANCH_CUA_DRIVER_ENDPOINT;
+        const endpointFile = process.env.BRANCH_CUA_DRIVER_ENDPOINT_FILE;
+        if (!endpoint && endpointFile) {
+          try { endpoint = fs.readFileSync(endpointFile, "utf8"); } catch { /* file unavailable */ }
+        }
+        if (endpoint) globalThis[Symbol.for("branch.macComputerEndpoint")] = endpoint;
         delete process.env.BRANCH_CUA_DRIVER_ENDPOINT;
+        delete process.env.BRANCH_CUA_DRIVER_ENDPOINT_FILE;
       }
       await installProcessWarningFilter();
       if (await tryGraftFastStart(process.argv)) {

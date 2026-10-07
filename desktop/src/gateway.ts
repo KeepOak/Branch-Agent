@@ -66,10 +66,8 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   if (profile.note) log.write(profile.note + "\n");
   const endpointFile = macComputerEndpoint ? join(cfg.dataDir, `cua-endpoint-${randomBytes(16).toString("hex")}`) : undefined;
   if (endpointFile && macComputerEndpoint) writeFileSync(endpointFile, macComputerEndpoint, { flag: "wx", mode: 0o600 });
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
-    BRANCH_CUA_DRIVER_ENDPOINT: undefined,
-    BRANCH_CUA_DRIVER_ENDPOINT_FILE: endpointFile,
     BRANCH_PROFILE: profile.legacyDevMode ? "dev" : "default",
     BRANCH_HOME: join(cfg.dataDir, "home"),
     ...(profile.legacyDevMode ? { BRANCH_STATE_DIR: undefined, BRANCH_CONFIG_PATH: undefined } : {
@@ -83,8 +81,11 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     BRANCH_GATEWAY_TOKEN: token,
     BRANCH_GATEWAY_STANDBY: standby ? "1" : undefined,
     // Only Electron's Mac host can give the Gateway this app-owned daemon lease.
+    BRANCH_CUA_DRIVER_ENDPOINT_FILE: endpointFile,
     ...testProfile(),
   };
+  // The Mac driver secret must not leak to any child of the gateway.
+  delete env.BRANCH_CUA_DRIVER_ENDPOINT;
   const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(port)];
   let child: ChildProcess;
   try {
