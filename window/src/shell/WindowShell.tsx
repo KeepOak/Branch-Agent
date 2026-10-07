@@ -77,6 +77,8 @@ import type { Above } from "./Popover";
 import { ringReading } from "./status-data";
 import { desktopControls } from "../connect/desktop-controls";
 import { useGatewayFacts, useLimits, useUpdate } from "./use-status";
+import { useLockdown } from "./use-lockdown";
+import { LockdownBanner } from "./LockdownBanner";
 import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
 import { HeaderRow, PlaceHead, TopBar } from "./TopBar";
@@ -319,6 +321,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles() };
   }), [session]);
   const { s, ready, lists, list, gatewayContacts, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  const lockdown = useLockdown(session.engine, ready, session);
+  const toggleLockdown = () => void lockdown.toggle().catch((error: unknown) => notify(`Couldn't change Lockdown: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
   const groupRooms = useGroupRooms(session, ready);
   const [groupDrop, setGroupDrop] = useState<GroupDrop | null>(null);
   const branchVersion = useBranchVersion(url);
@@ -956,6 +960,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         void actions.archive(openRow);
       }
     },
+    lockdown: toggleLockdown,
     talkLive: () => window.dispatchEvent(new Event(TALK_EVENT)),
     stop: () => void session.stopRun(),
     nextConversation: () => {
@@ -1117,6 +1122,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   if (route.kind === "chat") {
     const composerProps = {
       ...areaProps,
+      lockdown: lockdown.on,
+      onToggleLockdown: lockdown.supported ? toggleLockdown : undefined,
       replyTo,
       onClearReply: () => setReplyTo(null),
       onOpenConversation: openConversation,
@@ -1179,6 +1186,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           />
         }>
         <Thread
+          lockdown={lockdown.on}
           {...areaProps}
           findRequest={searchFind?.key === openKey ? searchFind : null}
           onFindRequestHandled={(nonce) => setSearchFind((current) => current?.nonce === nonce ? null : current)}
@@ -1437,6 +1445,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       {layout.focus || layout.hidden ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
       {slideOpen ? <div className="slide-scrim" onClick={() => setSlideOpen(false)} /> : null}
       <main className={mainClass} id="main">
+        {lockdown.on ? <LockdownBanner onTurnOff={toggleLockdown} /> : null}
         {layout.focus ? (
           <button type="button" className="btn sm focus-exit" onClick={() => setLayout({ focus: false })}>
             Leave focus mode · Ctrl+.
@@ -1560,6 +1569,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             openConversation,
             openPlace,
             openSettings,
+            toggleLockdown: lockdown.supported ? toggleLockdown : undefined,
+            lockdownOn: lockdown.on,
           })}
         />
       ) : null}

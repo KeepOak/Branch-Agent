@@ -5,6 +5,7 @@ import { agentState } from "../face/agentState";
 import { PRIORITY } from "../face/cap";
 import { resolveApproval } from "./actions";
 import { ApprovalCard, ApprovalGroup } from "./ApprovalCard";
+import { lockdownAllowsAnswer } from "./approval-guard";
 import { DoneLine, ErrorBlock, Notice, Reply, SteeredNote, StepsFold, Thinking, Typing, UserMessage } from "./blocks";
 import { ThreadContext, type ThreadContextValue } from "./context";
 import { ReactionChips } from "./dialogs";
@@ -41,6 +42,7 @@ import { suggestionsFor } from "./suggestions";
 import type { EarlierPage } from "../shell/useContactSegments";
 
 type Props = {
+  lockdown?: boolean;
   supplement?: ReactNode;
   onOpenActivity?: () => void;
   name: string;
@@ -174,6 +176,7 @@ export function Thread(props: Props) {
   const extras = pendingExtras(details, shownApprovalIds(all), engine?.sessionKey);
   const answer = useCallback(
     (id: string, decision: ApprovalDecision) => {
+      if (!lockdownAllowsAnswer(props.lockdown, decision)) return;
       const plugin = details.get(id)?.plugin ?? false;
       if (engine && (decision === "allow-always" || plugin)) resolveApproval(engine, id, decision, plugin).catch((e: unknown) => toast(e instanceof Error ? e.message : String(e)));
       else if (decision !== "allow-always") props.onAnswer(id, decision);
@@ -240,7 +243,7 @@ export function Thread(props: Props) {
       .find((node) => node.dataset.testid === `topic-card-${props.focusTopic?.key}`);
     target?.scrollIntoView({ block: "end" });
   }, [props.focusTopic, props.topicUpdates]);
-  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false, liveStartedAt: props.liveStartedAt ?? null };
+  const view = { all, actionsFor, reactions, apply, details, answer, dismissed, setDismissed, name, running, live, times: prefs.messageTimes, grouped, room: props.room, lastUser, showThinking: props.showThinking !== false, liveStartedAt: props.liveStartedAt ?? null, lockdown: props.lockdown };
   const recoveryEntryId = history.findLast((block) =>
     (block.kind === "user" || block.kind === "text") && Boolean(block.meta?.entryId),
   );
@@ -317,8 +320,8 @@ export function Thread(props: Props) {
           {running ? (props.steered ?? []).map((note) => <SteeredNote key={note.runId} name={name} text={note.text} />) : null}
           <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
           {(anchors.get(-1) ?? []).map((r) => <QuestionLine key={r.id} record={r} />)}
-          {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} />)}
-          {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} /> : null}
+          {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} disabled={props.lockdown} />)}
+          {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} disabled={props.lockdown} /> : null}
           {helperNextUserAt < 0 ? helperChip : null}
           {props.supplement}
           {suggestions.length ? <div className="suggestion-row" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
@@ -345,6 +348,7 @@ export function Thread(props: Props) {
 }
 
 type View = {
+  lockdown?: boolean;
   all: Block[];
   live: Block[];
   actionsFor: ReturnType<typeof useMessageActions>["actionsFor"];
@@ -466,7 +470,7 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
     case "plan":
       return <PlanCard card={{ sessionKey: "run", revision: 1, updatedAt: Date.now(), steps: block.steps }} />;
     case "approval":
-      return view.grouped.has(block.approval.id) ? null : <ApprovalCard approval={block.approval} details={view.details.get(block.approval.id)} name={view.name} onAnswer={view.answer} />;
+      return view.grouped.has(block.approval.id) ? null : <ApprovalCard approval={block.approval} details={view.details.get(block.approval.id)} name={view.name} onAnswer={view.answer} disabled={view.lockdown} />;
     case "done": {
       // The turn up to this line only: what streams after it belongs to the next turn.
       let start = index;

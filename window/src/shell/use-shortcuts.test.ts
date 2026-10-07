@@ -22,6 +22,7 @@ describe("shortcutFor", () => {
     expect(shortcutFor(key("i", { ctrlKey: true }), false)).toBe("inbox");
     expect(shortcutFor(key("g", { ctrlKey: true }), false)).toBe("focusSearch");
     expect(shortcutFor(key("A", { ctrlKey: true, shiftKey: true }), false)).toBe("archiveOpen");
+    expect(shortcutFor(key("L", { ctrlKey: true, shiftKey: true }), false)).toBe("lockdown");
     expect(shortcutFor(key("S", { ctrlKey: true, shiftKey: true }), false)).toBe("stop");
     expect(shortcutFor(key("?", { shiftKey: true }), false)).toBe("shortcuts");
     expect(shortcutFor(key("Escape"), false)).toBe("escape");
@@ -50,8 +51,8 @@ describe("settable keys (§4.8.8)", () => {
     expect(checkCombo("Ctrl N", "palette", actions, keys)).toEqual({ ok: false, reason: "Ctrl N already does “New conversation”." });
     expect(checkCombo("Ctrl Alt P", "palette", actions, keys)).toEqual({ ok: true });
   });
-  it("leaves keys for actions the window can't run unbound", () => {
-    expect(shortcutFor({ ...key("L", { ctrlKey: true, shiftKey: true }), code: "KeyL" }, false)).toBeNull();
+  it("binds Ctrl+Shift+L now that the engine has a Lockdown switch", () => {
+    expect(shortcutFor({ ...key("L", { ctrlKey: true, shiftKey: true }), code: "KeyL" }, false)).toBe("lockdown");
     expect(shortcutFor({ ...key("K", { ctrlKey: true, shiftKey: true }), code: "KeyK" }, false)).toBe("sidePanel");
   });
 });
@@ -120,7 +121,7 @@ describe("modal shortcut scope (§3.6)", () => {
     function Harness() {
       useShortcuts({ palette, escape, newConversation: noop, settings: noop, sidePanel: noop, quickAsk: noop,
         focusMode: noop, toggleList: noop, inbox: noop, focusSearch: noop, focusPastSearch: noop,
-        archiveOpen: noop, talkBeside: noop, talkLive: noop, stop: noop, nextConversation: noop,
+        archiveOpen: noop, lockdown: noop, talkBeside: noop, talkLive: noop, stop: noop, nextConversation: noop,
         shortcuts: noop });
       return null;
     }

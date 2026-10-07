@@ -25,6 +25,7 @@ import {
 } from "./control-plane-rate-limit.js";
 import { errorShapeFromError } from "./error-shape.js";
 import { createExpectedProfileBinding } from "./expected-profile.js";
+import { lockdownAdmissionError } from "./lockdown-admission.js";
 import { ADMIN_SCOPE } from "./method-scopes.js";
 import {
   createCoreGatewayMethodDescriptors,
@@ -398,6 +399,16 @@ export async function handleGatewayRequest(
       entry?.assertOpen();
       if (authorization.error) {
         respond(false, undefined, authorization.error);
+        return;
+      }
+      const lockdownError = lockdownAdmissionError({
+        method: req.method,
+        params: req.params,
+        scope: methodRegistry.getScope(req.method),
+        client,
+      });
+      if (lockdownError) {
+        respond(false, undefined, lockdownError);
         return;
       }
       const handler = methodRegistry.getHandler(req.method) as GatewayRequestHandler | undefined;

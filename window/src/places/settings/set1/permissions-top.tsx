@@ -3,13 +3,15 @@
 // Lockdown, Pinned settings, who may run commands outside the sandbox (tools.elevated.allowFrom) and connectors.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
+import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
 import { Icon } from "../../../shell/icons";
+import { useLockdown } from "../../../shell/use-lockdown";
+import { notify } from "../../../shell/notify";
 import { MODE_ROWS, blockedReason, modeName, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { record, text, visible, type RecordValue } from "../adapter";
 import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
-import { shownWhy } from "../../../shell/shown-why";
 
 const svg = (d: ReactNode) => <svg className="i s" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
 const MIC = svg(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></>);
@@ -71,19 +73,37 @@ export async function saveMode(cfg: Cfg, mode: string, after: () => Promise<void
 const MODE_OPTS = MODE_ROWS.map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
 export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<void> }) {
   const selected = execMode(cfg, agents);
+  const lockdown = cfg.get("security.lockdown") === true;
   return (
     <Sec title="Access" hint="Every conversation starts here. A conversation can change its own.">
-      <div data-row="Access"><Seg layout="radio" label="Access" value={selected} options={MODE_OPTS} disabled={cfg.loading} onChange={(mode) => void saveMode(cfg, mode, reload)} /></div>
+      <div data-row="Access"><Seg layout="radio" label="Access" value={selected} options={MODE_OPTS} disabled={cfg.loading || lockdown} onChange={(mode) => void saveMode(cfg, mode, reload)} /></div>
     </Sec>
   );
 }
 export const modeLabel = (exec: string) => modeName(MODE_OF[exec]);
 
-export function Lockdown() {
+/** The page's status box while locked (preview index.html:8494 statusBox markup, copy at :8540 and :30785). */
+export function LockdownStatus({ cfg }: { cfg: Cfg }) {
+  if (cfg.get("security.lockdown") !== true) return null;
   return (
-    <div className="pm-danger" data-row="Lockdown" aria-disabled="true">
-      <div><b>Lockdown</b><p>One switch that stops every Trunk from sending, changing or spending anything.</p>{shownWhy(WHY.lock) ? <small className="why-k">{shownWhy(WHY.lock)}</small> : null}</div>
-      <Btn className="bad" disabled>Turn Lockdown on</Btn>
+    <div className="status" data-row="Lockdown status">
+      <span className="sdot bad" />
+      <div>
+        <b>Lockdown is on</b>
+        <p>Nothing leaves this computer and nothing is changed until you turn it off.</p>
+      </div>
+    </div>
+  );
+}
+
+export function Lockdown({ engine }: { engine: WindowEngine }) {
+  const lockdown = useLockdown(engine, true);
+  const toggleLockdown = () => void lockdown.toggle().catch((error: unknown) => notify(`Couldn't change Lockdown: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+  return (
+    <div className="pm-danger" data-row="Lockdown">
+      <div><b>Lockdown</b><p>One switch that stops every Trunk from sending, changing or spending anything.</p></div>
+      {/* Preview spec-v23 index.html:8553: danger-filled only while off; "Turn Lockdown off" is the plain button. */}
+      <Btn className={lockdown.on ? undefined : "bad"} disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Turn Lockdown on"}</Btn>
     </div>
   );
 }

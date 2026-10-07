@@ -14,7 +14,7 @@ afterEach(async () => {
   localStorage.clear();
 });
 
-async function mount() {
+async function mount(lockdown = false) {
   let row: Record<string, unknown> = { model: "openai/test", permissionMode: "ask", estimatedCostUsd: 0.5 };
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
     if (method === "agents.list") return { defaultId: "research", agents: [{ id: "research", name: "Research" }] };
@@ -34,10 +34,12 @@ async function mount() {
   const engine: WindowEngine = { sessionKey: "agent:research:main", agentId: "research", request: request as unknown as WindowEngine["request"], onEvent: () => () => {}, scopes: ["operator.admin"] };
   const opened = vi.fn();
   const conversation = vi.fn();
+  const toggleLockdown = vi.fn();
+  const send = vi.fn();
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
-  await act(async () => root?.render(<Composer name="Research" working={false} disabled={false} onSend={() => {}} onStop={() => {}} engine={engine} onOpen={opened} onOpenConversation={conversation} lastUserEntryId="entry-1" />));
-  return { host, request, opened, conversation };
+  await act(async () => root?.render(<Composer name="Research" working={false} disabled={false} onSend={send} onStop={() => {}} engine={engine} onOpen={opened} onOpenConversation={conversation} lastUserEntryId="entry-1" lockdown={lockdown} onToggleLockdown={toggleLockdown} />));
+  return { host, request, opened, conversation, toggleLockdown, send };
 }
 
 describe("P54 one composer symbol", () => {
@@ -90,5 +92,25 @@ describe("P54 one composer symbol", () => {
     expect(request).toHaveBeenCalledWith("sessions.patch", { key: "agent:research:main", permissionMode: null });
     await act(async () => tune.click());
     expect(host.querySelector('[data-testid="mode-option"][aria-checked="true"]')?.textContent).toContain("As set");
+  });
+
+  it("shows Lockdown, disables modes, and refuses command submission", async () => {
+    const { host, request, send, toggleLockdown } = await mount(true);
+    const tune = host.querySelector<HTMLButtonElement>('[data-testid="tune-button"]')!;
+    expect(tune.textContent).toContain("Lockdown");
+    await act(async () => tune.click());
+    expect([...host.querySelectorAll<HTMLButtonElement>('[data-testid="mode-option"]')].every((button) => button.disabled)).toBe(true);
+    const lockSwitch = host.querySelector<HTMLButtonElement>('[aria-label="Lockdown"]');
+    await act(async () => lockSwitch?.click());
+    expect(toggleLockdown).toHaveBeenCalledOnce();
+    await act(async () => {
+      const box = host.querySelector<HTMLTextAreaElement>('[data-testid="composer"]')!;
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(box, "!echo hi");
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+      box.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+    });
+    expect(host.textContent).toContain("Lockdown is on: commands can't run.");
+    expect(send).not.toHaveBeenCalled();
+    expect(request.mock.calls.some(([method]) => method === "sessions.patch")).toBe(false);
   });
 });
