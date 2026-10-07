@@ -1,0 +1,8 @@
+engine:extensions/chat-relay/src/auth.test.ts
+engine:extensions/chat-relay/src/channel.test.ts
+engine:extensions/chat-relay/src/descriptor.test.ts
+engine:extensions/chat-relay/src/gateway.test.ts
+engine:extensions/chat-relay/src/inbound.test.ts
+engine:extensions/chat-relay/src/target.test.ts
+engine:extensions/chat-relay/src/transport.test.ts
+engine:src/gateway/restart-complete-notice.test.ts
