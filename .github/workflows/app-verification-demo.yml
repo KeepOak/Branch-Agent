@@ -17,6 +17,9 @@ jobs:
   verify-screenshots:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: app-verification-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -42,8 +45,8 @@ jobs:
           BRANCH_HOME: ${{ runner.temp }}/verify-home
           BRANCH_SKIP_CHANNELS: "1"
           BRANCH_GATEWAY_TOKEN: ${{ runner.temp }}/gateway-token
-          VISUAL_GATEWAY_PORT: "19651"
-          VISUAL_WINDOW_PORT: "5651"
+          VISUAL_GATEWAY_PORT: "19752"
+          VISUAL_WINDOW_PORT: "5752"
           VISUAL_OUT: ${{ runner.temp }}/verification-shots
           VISUAL_TOKEN_FILE: ${{ runner.temp }}/verify-token
         run: |
