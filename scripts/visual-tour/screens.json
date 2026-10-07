@@ -15,5 +15,6 @@
   {"id":"settings-updates","steps":[{"action":"click","by":"testid","target":"gear","expectBy":"testid","expect":"settings"},{"action":"click","by":"css","target":".set-item[data-page=updates]","expectBy":"css","expect":".set-item[data-page=updates][aria-current=true]"}]},
   {"id":"pixel-office","route":{"kind":"place","place":"overview"},"steps":[{"action":"click","by":"text","target":"Grove","expectBy":"testid","expect":"pixel-office"}]},
   {"id":"group-chat","steps":[{"action":"click","by":"text","target":"Planning circle","expectBy":"testid","expect":"composer"}]},
-  {"id":"topics","route":{"kind":"chat","key":"$research"},"steps":[{"action":"click","by":"testid","target":"new","expectBy":"testid","expect":"new-menu"},{"action":"click","by":"testid","target":"new-conversation","expectBy":"css","expect":"[data-testid^=new-with-]"},{"action":"click","by":"css","target":"[data-testid^=new-with-]","expectBy":"testid","expect":"new-topic-draft"}]}
+  {"id":"topics","route":{"kind":"chat","key":"$research"},"steps":[{"action":"click","by":"testid","target":"new","expectBy":"testid","expect":"new-menu"},{"action":"click","by":"testid","target":"new-conversation","expectBy":"css","expect":"[data-testid^=new-with-]"},{"action":"click","by":"css","target":"[data-testid^=new-with-]","expectBy":"testid","expect":"new-topic-draft"}]},
+  {"id":"automations-board","route":{"kind":"place","place":"automations"},"steps":[{"action":"click","by":"role","target":"tab Board","expectBy":"css","expect":".au-board"}]}
 ]
