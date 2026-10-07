@@ -95,11 +95,12 @@ export function stagePill(running: boolean, controlling: boolean, steps: PlanSte
   return now >= 0 ? { kind: "work", text: `Working · step ${now + 1} of ${steps.length}` } : { kind: "work", text: "Working" };
 }
 
-/** The computer chip's words: one computer is named; more are counted. */
-export function pickerLabel(computers: Computer[], current: string | null): string {
+/** The computer chip's words: one computer is named; more are counted. When watching a fallback, append "watching". */
+export function pickerLabel(computers: Computer[], current: string | null, watching = false): string {
   const shown = computers.filter((c) => c.desktop || c.id === current);
   if (shown.length > 1) return `${shown.length} computers`;
-  return shown[0]?.name ?? computers.find((c) => c.id === current)?.name ?? "No computer";
+  const name = shown[0]?.name ?? computers.find((c) => c.id === current)?.name ?? "No computer";
+  return watching ? `${name} (watching)` : name;
 }
 
 

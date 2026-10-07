@@ -173,7 +173,9 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
   }, []);
   const current = placementComputer(where.placement);
   const screens = where.computers.filter((c) => c.desktop || c.id === current);
-  const viewing = picked === "grid" ? null : picked ?? current;
+  const gateway = where.computers.find((c) => c.id === "gateway" && c.desktop);
+  const fallback = !current && !picked && gateway ? gateway.id : null;
+  const viewing = picked === "grid" ? null : picked ?? current ?? fallback;
   const viewed = where.computers.find((c) => c.id === viewing);
   const view = useDesktopView(engine, gatewayUrl, mode === "Computer" && picked !== "grid" && where.loaded ? viewing : null, target, control, retry);
   const screenView: DesktopView = !where.loaded ? { phase: "loading" } : where.error && !viewing ? { phase: "error", message: where.error } : view;
@@ -226,7 +228,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
           ) : (
             <button type="button" className="st7-pick" aria-haspopup="dialog" aria-expanded={picker !== null} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPicker(picker ? null : { x: r.left, y: r.bottom + 6 }); }}>
               <SIcon name="layers" small />
-              {where.loaded ? pickerLabel(where.computers, current) : "Computers"}
+              {where.loaded ? pickerLabel(where.computers, current, viewing === fallback) : "Computers"}
               <SIcon name="down" small />
             </button>
           )}
