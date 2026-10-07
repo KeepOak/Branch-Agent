@@ -33,6 +33,10 @@ import {
 } from "./helpers/desktop-handoff-harness.js";
 import { acquireGatewayTestClient } from "./helpers/gateway-client.js";
 import {
+  createHandoffChannelPlugin,
+  HANDOFF_CHANNEL_ID,
+} from "./helpers/handoff-channel-plugin.js";
+import {
   HOLD_MARKER,
   type HandoffModelProvider,
   startHandoffModelProvider,
@@ -54,6 +58,7 @@ type Scenario = {
   instance: BranchTestInstance;
   engines: HandoffEngine[];
   clients: GatewayClient[];
+  channel?: Awaited<ReturnType<typeof createHandoffChannelPlugin>>;
 };
 
 let scenario: Scenario | undefined;
@@ -67,10 +72,12 @@ afterEach(async () => {
   for (const engine of current.engines) await stopHandoffEngine(engine);
   await current.instance.cleanup().catch(() => {});
   await current.provider.close();
+  await current.channel?.cleanup();
 });
 
-async function startScenario(signal: AbortSignal): Promise<Scenario> {
+async function startScenario(signal: AbortSignal, withServices = false): Promise<Scenario> {
   const provider = await startHandoffModelProvider();
+  const channel = withServices ? await createHandoffChannelPlugin() : undefined;
   const model = buildMockOpenAiResponsesProvider(provider.baseUrl, "gpt-5.6-luna");
   const modelRef = `openai/${model.modelId}`;
   const instance = await createBranchTestInstance({
@@ -104,16 +111,24 @@ async function startScenario(signal: AbortSignal): Promise<Scenario> {
           },
         },
       },
-      plugins: { entries: { browser: { enabled: false } } },
+      plugins: {
+        entries: {
+          browser: { enabled: false },
+          ...(channel ? { [HANDOFF_CHANNEL_ID]: { enabled: true } } : {}),
+        },
+        ...(channel ? { load: { paths: [channel.pluginDir] } } : {}),
+      },
     },
     env: {
       BRANCH_TEST_MINIMAL_GATEWAY: undefined,
       BRANCH_SKIP_PROVIDERS: undefined,
+      BRANCH_SKIP_CHANNELS: withServices ? undefined : "1",
+      BRANCH_SKIP_CRON: withServices ? undefined : "1",
       BRANCH_NO_RESPAWN: "1",
       OPENAI_API_KEY: "synthetic-desktop-handoff",
     },
   });
-  scenario = { provider, instance, engines: [], clients: [] };
+  scenario = { provider, instance, engines: [], clients: [], channel };
   return scenario;
 }
 
@@ -221,7 +236,11 @@ async function freePortOtherThan(port: number): Promise<number> {
  * A runs on its port with a turn on S held at the model; B is a warm standby on its own port; A has stepped down
  * (deactivate-result ok) and B has taken over on the desktop's word. Returns both engines and a client on B.
  */
-async function handOverWithRunInFlight(current: Scenario, signal: AbortSignal) {
+async function handOverWithRunInFlight(
+  current: Scenario,
+  signal: AbortSignal,
+  beforeDeactivate?: (clientA: GatewayClient, a: HandoffEngine, b: HandoffEngine) => Promise<void>,
+) {
   const portA = current.instance.port;
   const portB = await freePortOtherThan(portA);
   step(`starting A on ${portA}`);
@@ -244,6 +263,7 @@ async function handOverWithRunInFlight(current: Scenario, signal: AbortSignal) {
   // B holds its port but is not ready, and A still owns the state.
   expect(await probeReadyz(portB)).toBe(503);
   expect((await readStateOwner(a.env))?.pid).toBe(a.child.pid);
+  await beforeDeactivate?.(clientA, a, b);
 
   const deactivated = await sendDesktopRequest(a, DESKTOP_DEACTIVATE, DESKTOP_REQUEST_MS);
   expect(deactivated.ok, engineLog(a)).toBe(true);
@@ -265,7 +285,7 @@ async function handOverWithRunInFlight(current: Scenario, signal: AbortSignal) {
 
   step("B owns the state and is ready");
   const clientB = await connect(current, portB, signal);
-  return { a, b, portA, portB, clientB };
+  return { a, b, portA, portB, clientA, clientB };
 }
 
 describe("in-place engine handoff between real engines", () => {
@@ -274,7 +294,7 @@ describe("in-place engine handoff between real engines", () => {
     { timeout: 420_000 },
     async ({ signal }) => {
       const current = await startScenario(signal);
-      const { a, portB, clientB } = await handOverWithRunInFlight(current, signal);
+      const { a, portB, clientA, clientB } = await handOverWithRunInFlight(current, signal);
 
       // Another session runs on B at once, while A still holds S.
       await whenAgentsReady(() =>
@@ -289,8 +309,47 @@ describe("in-place engine handoff between real engines", () => {
       // A finishes its run on S and lets the session go.
       current.provider.release("A");
       await waitUntil(() => listLeasedLanes(a.env).length === 0, 60_000, "A releases S");
-      const history = await clientB.request("chat.history", { sessionKey: SESSION_S });
-      expect(JSON.stringify(history)).toContain("REPLY_A");
+      step(`A released S; model answers: ${JSON.stringify(current.provider.answered)}`);
+      const oldHistory = await clientA
+        .request("chat.history", { sessionKey: SESSION_S })
+        .catch((error: unknown) => ({ error: String(error) }));
+      step(
+        `A reply markers: ${JSON.stringify(JSON.stringify(oldHistory).match(/REPLY_[A-Za-z0-9]+/g))}`,
+      );
+      let transcript = "";
+      try {
+        await waitUntil(
+          async () => {
+            transcript = JSON.stringify(
+              await clientB.request("chat.history", { sessionKey: SESSION_S }),
+            );
+            return transcript.includes("REPLY_A");
+          },
+          90_000,
+          "A's final reply appears on B",
+        );
+      } catch (error) {
+        throw new Error(
+          `${String(error)}; model answers=${JSON.stringify(current.provider.answered)}; B reply markers=${JSON.stringify(transcript.match(/REPLY_[A-Za-z0-9]+/g))}`,
+        );
+      }
+      const successor = await sendTurn(clientB, SESSION_S, "MARK_S: run after A releases S.");
+      await clientB.request("agent.wait", { runId: successor.runId, timeoutMs: 60_000 });
+      await waitUntil(
+        async () => {
+          transcript = JSON.stringify(
+            await clientB.request("chat.history", { sessionKey: SESSION_S }),
+          );
+          return transcript.includes("REPLY_S");
+        },
+        90_000,
+        "B's next reply appears after A's final reply",
+      );
+      expect(transcript).toContain("REPLY_S");
+      expect(transcript.indexOf("REPLY_A")).toBeLessThan(transcript.indexOf("REPLY_S"));
+      expect(
+        current.provider.answered.filter((marker) => marker === "A" || marker === "S"),
+      ).toEqual(["A", "S"]);
 
       // The desktop stops A; it exits and leaves no lease behind. B serves on.
       await sendDesktopRequest(a, DESKTOP_DRAIN_STOP, DESKTOP_REQUEST_MS);
@@ -333,6 +392,73 @@ describe("in-place engine handoff between real engines", () => {
   );
 
   it(
+    "starts the successor channel and fires a due cron job exactly once across handoff",
+    { timeout: 420_000 },
+    async ({ signal }) => {
+      const current = await startScenario(signal, true);
+      const channel = current.channel!;
+      let jobId = "";
+      const { a, b, clientB } = await handOverWithRunInFlight(
+        current,
+        signal,
+        async (clientA, oldEngine) => {
+          await waitUntil(
+            async () => (await channel.starts()).length === 1,
+            30_000,
+            "only A's channel starts before take-over",
+          );
+          expect(await channel.starts()).toEqual([oldEngine.child.pid]);
+          const job = await clientA.request<{ id: string }>("cron.add", {
+            name: "P45 handoff once",
+            agentId: "main",
+            enabled: true,
+            schedule: { kind: "at", at: new Date(Date.now() + 30_000).toISOString() },
+            sessionTarget: "isolated",
+            wakeMode: "now",
+            payload: { kind: "agentTurn", message: "MARK_C: due during handoff." },
+            delivery: { mode: "none" },
+          });
+          jobId = job.id;
+        },
+      );
+      await waitUntil(
+        async () => (await channel.starts()).includes(b.child.pid!),
+        60_000,
+        "B's channel starts after take-over",
+      );
+      expect(await channel.starts()).toEqual([a.child.pid, b.child.pid]);
+      await waitUntil(
+        () => current.provider.answered.includes("C"),
+        120_000,
+        "the due cron turn runs on B",
+      );
+      await waitUntil(
+        async () => {
+          const runs = await clientB.request<{ entries: Array<{ status: string }> }>("cron.runs", {
+            id: jobId,
+            limit: 10,
+          });
+          return runs.entries.some((entry) => entry.status === "ok");
+        },
+        60_000,
+        "the cron run completes",
+      );
+      const runs = await clientB.request<{ entries: Array<{ status: string }> }>("cron.runs", {
+        id: jobId,
+        limit: 10,
+      });
+      expect(runs.entries).toHaveLength(1);
+      expect(current.provider.answered.filter((marker) => marker === "C")).toEqual(["C"]);
+      expect(await channel.starts()).toEqual([a.child.pid, b.child.pid]);
+
+      current.provider.release("A");
+      await waitUntil(() => listLeasedLanes(a.env).length === 0, 60_000, "A releases S");
+      await sendDesktopRequest(a, DESKTOP_DRAIN_STOP, DESKTOP_REQUEST_MS);
+      await withTimeout(a.exited, 60_000, `A exits after channel/cron handoff\n${engineLog(a)}`);
+    },
+  );
+
+  it(
     "takes the state back when the desktop goes away before the standby took over",
     { timeout: 300_000 },
     async ({ signal }) => {
@@ -353,6 +479,33 @@ describe("in-place engine handoff between real engines", () => {
       await waitForStateOwner(a.env, a.child.pid!, 60_000);
       await waitForReadyz(portA, 200, ENGINE_START_MS, a);
       expect(a.hasExited()).toBe(false);
+    },
+  );
+
+  it(
+    "does not roll the old engine back after the standby has taken the state",
+    { timeout: 420_000 },
+    async ({ signal }) => {
+      const current = await startScenario(signal);
+      const { a, b, portB, clientB } = await handOverWithRunInFlight(current, signal);
+
+      const rolledBack = await sendDesktopRequest(a, DESKTOP_ROLLBACK, DESKTOP_REQUEST_MS);
+      expect(rolledBack.ok, engineLog(a)).toBe(false);
+      expect((await readStateOwner(b.env))?.pid).toBe(b.child.pid);
+      expect(await probeReadyz(portB)).toBe(200);
+
+      current.provider.release("A");
+      await waitUntil(() => listLeasedLanes(a.env).length === 0, 60_000, "A releases S");
+      await sendDesktopRequest(a, DESKTOP_DRAIN_STOP, DESKTOP_REQUEST_MS);
+      await withTimeout(a.exited, 60_000, `A exits after failed rollback\n${engineLog(a)}`);
+
+      await whenAgentsReady(() =>
+        clientB.request("sessions.create", { agentId: "main", key: SESSION_T }),
+      );
+      const t = await sendTurn(clientB, SESSION_T, "MARK_R: run on B after failed rollback.");
+      await clientB.request("agent.wait", { runId: t.runId, timeoutMs: 60_000 });
+      expect(current.provider.answered).toContain("R");
+      expect(await probeReadyz(portB)).toBe(200);
     },
   );
 

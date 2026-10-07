@@ -32,15 +32,17 @@ export async function startHandoffModelProvider(): Promise<HandoffModelProvider>
   const held = new Map<string, Held>();
   const heldWaiters = new Map<string, Array<() => void>>();
   const answered: string[] = [];
+  const responseMarkers = new Map<string, string>();
   let ordinal = 0;
 
   const reply = (response: ServerResponse, body: Record<string, unknown>, text: string) => {
     ordinal += 1;
+    const responseId = `resp_${ordinal}`;
     if (body.stream === false) {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(
         JSON.stringify({
-          id: `resp_${ordinal}`,
+          id: responseId,
           object: "response",
           status: "completed",
           output: [
@@ -55,13 +57,14 @@ export async function startHandoffModelProvider(): Promise<HandoffModelProvider>
           usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
         }),
       );
-      return;
+      return responseId;
     }
     writeOpenAiResponsesText(response, {
       text,
       messageId: `msg_${ordinal}`,
-      responseId: `resp_${ordinal}`,
+      responseId,
     });
+    return responseId;
   };
 
   const handle = async (request: IncomingMessage, response: ServerResponse) => {
@@ -73,13 +76,23 @@ export async function startHandoffModelProvider(): Promise<HandoffModelProvider>
       reply(response, body, "Handoff test");
       return;
     }
-    // Only the newest user message decides: earlier turns' markers stay in the history.
+    // A continuation can carry tool output as its newest user item. Keep the most recent marked user input, or the
+    // marker of the previous Responses result when only incremental input is sent.
     const input = Array.isArray(body.input) ? body.input : [];
-    const lastUser = [...input]
+    const markedUser = [...input]
       .toReversed()
-      .find((item) => (item as { role?: unknown })?.role === "user");
-    const prompt = JSON.stringify(lastUser ?? body.input ?? "");
-    const marker = readMarker(prompt);
+      .filter((item) => (item as { role?: unknown })?.role === "user")
+      .map((item) => readMarker(JSON.stringify(item)))
+      .find((candidate) => candidate !== "none");
+    const previousId =
+      typeof body.previous_response_id === "string" ? body.previous_response_id : undefined;
+    const marker = markedUser ?? responseMarkers.get(previousId ?? "") ?? "none";
+    const prompt = JSON.stringify(input.at(-1) ?? body.input ?? "");
+    if (marker === "none") {
+      console.info(
+        `[handoff-provider] unmarked turn previous=${previousId ?? "none"} roles=${JSON.stringify(input.map((item) => (item as { role?: unknown })?.role ?? null))}`,
+      );
+    }
     if (prompt.includes(HOLD_MARKER) && !held.has(marker)) {
       await new Promise<void>((release) => {
         held.set(marker, { marker, release });
@@ -88,7 +101,7 @@ export async function startHandoffModelProvider(): Promise<HandoffModelProvider>
       });
     }
     answered.push(marker);
-    reply(response, body, `REPLY_${marker}`);
+    responseMarkers.set(reply(response, body, `REPLY_${marker}`), marker);
   };
 
   const server = createServer((request, response) => {

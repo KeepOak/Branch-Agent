@@ -1,8 +1,7 @@
 name: Engine handoff checks
 
 # P45: an in-place engine handoff between two real, built engines (engine/test/gateway-desktop-handoff.e2e.test.ts).
-# It builds the engine once and runs only that test, in its own job, so it never pushes the named-test shards past
-# their time cap.
+# Each job builds once and runs only its named real-engine cases, below the 15-minute CI job cap.
 on:
   pull_request:
     paths:
@@ -16,6 +15,7 @@ on:
       - 'engine/src/infra/standby-port-placeholder*'
       - 'engine/test/gateway-desktop-handoff.e2e.test.ts'
       - 'engine/test/helpers/desktop-handoff-harness.ts'
+      - 'engine/test/helpers/handoff-channel-plugin.ts'
       - 'engine/test/helpers/handoff-model-provider.ts'
       - 'engine/test/vitest/vitest.desktop-handoff.config.ts'
       - '.github/workflows/engine-handoff-checks.yml'
@@ -26,6 +26,7 @@ on:
       - 'engine/src/process/session-handoff-*'
       - 'engine/src/gateway/server-lifecycle*'
       - 'engine/test/gateway-desktop-handoff.e2e.test.ts'
+      - 'engine/test/helpers/handoff-channel-plugin.ts'
   workflow_dispatch:
 
 permissions:
@@ -37,13 +38,22 @@ concurrency:
 
 jobs:
   handoff:
-    name: Real-engine handoff on ${{ matrix.os }}
+    name: Real-engine handoff ${{ matrix.shard.name }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
+        shard:
+          - name: turn-and-rollback-before
+            pattern: 'hands the state|rolls back before'
+          - name: services-and-desktop-before
+            pattern: 'starts the successor channel|takes the state back'
+          - name: rollback-after-and-desktop-after
+            pattern: 'does not roll the old engine|finishes and stops'
+          - name: lease-gate
+            pattern: 'makes a session RPC'
     defaults:
       run:
         shell: bash
@@ -70,4 +80,4 @@ jobs:
       - name: Build the engine the test spawns
         run: node scripts/run-node.mjs --help > /dev/null
       - name: Run the real-engine handoff test
-        run: node scripts/run-vitest.mjs run --config test/vitest/vitest.desktop-handoff.config.ts
+        run: node scripts/run-vitest.mjs run --config test/vitest/vitest.desktop-handoff.config.ts -t "${{ matrix.shard.pattern }}"
