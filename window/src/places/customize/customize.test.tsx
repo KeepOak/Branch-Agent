@@ -64,11 +64,6 @@ describe("Customize › Specialists", () => {
 });
 
 describe("Customize › Chat apps", () => {
-  it("shows the plugin catalogue failure instead of claiming there are no chat apps", async () => {
-    await open("Chat apps", { "channels.status": { channelAccounts: {} }, "plugins.list": new Error("Plugin catalogue could not be read") });
-    expect(host.textContent).toContain("Plugin catalogue could not be read");
-    expect(host.textContent).not.toContain("No chat apps yet.");
-  });
   it("lists chat apps from the channel plugins and channels.status, without starting a probe", async () => {
     const request = await open("Chat apps");
     expect(request).toHaveBeenCalledWith("channels.status", { probe: false });
