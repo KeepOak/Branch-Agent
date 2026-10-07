@@ -1,0 +1,2 @@
+window:src/places/settings/config-store.test.ts
+window:src/setup/setup.test.tsx

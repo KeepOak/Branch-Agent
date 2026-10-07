@@ -67,6 +67,17 @@ describe("setup model", () => {
     expect(params(request, "branch.setup.verify")).toEqual([{ agentId: "main" }]);
     expect(params(request, "branch.setup.activate")).toHaveLength(1);
   });
+  it("chooses a local server before installed CLIs whose sign-ins are unverified", async () => {
+    const detected = readDetected({ candidates: [
+      { kind: "codex-cli", modelRef: "codex-cli/gpt", detail: "installed; login status unverified" },
+      { kind: "claude-cli", modelRef: "claude-cli/sonnet", detail: "installed; login status unverified" },
+      { kind: "llama-cpp", modelRef: "llama-cpp/qwen", credentials: true },
+    ] });
+    expect(firstOn(detected, [])?.modelRef).toBe("llama-cpp/qwen");
+    const { engine: e, request } = engine({ "branch.setup.activate": { ok: true, modelRef: "llama-cpp/qwen", latencyMs: 800 } });
+    expect(await testModel(e, detected, [], null)).toMatchObject({ ok: true, madeDefault: true });
+    expect(params(request, "branch.setup.activate")).toEqual([{ agentId: "main", kind: "llama-cpp", modelRef: "llama-cpp/qwen" }]);
+  });
   it("chat apps from channels.status and connect problems in plain words", () => {
     expect(readChatApps({ channelOrder: ["telegram", "slack"], channelLabels: { telegram: "Telegram", slack: "Slack" }, channelAccounts: { telegram: [{ connected: true }] } })).toEqual([
       { id: "telegram", label: "Telegram", connected: true },
@@ -481,6 +492,26 @@ describe("setup flow", () => {
     // Researcher already exists, so setup prefills it as the only pick and makes nothing twice.
     expect(params(request, "agents.create")).toEqual([]);
     expect(closed).toHaveBeenCalledWith(true);
+  });
+  it("does not repeat a successful Say hello test for the same model at Finish", async () => {
+    sessionStorage.setItem("branch.setupPre", JSON.stringify({ promise: true, where: "this" }));
+    const { engine: e, request } = engine({
+      "branch.setup.detect": { candidates: [{ kind: "saved-auth:openai:a", modelRef: "openai/gpt", credentials: true }] },
+      "branch.setup.activate": { ok: true, modelRef: "openai/gpt", latencyMs: 800 },
+      "branch.setup.verify": { ok: true, modelRef: "openai/gpt", latencyMs: 800 },
+      health: { ok: true }, "system.info": { diskAvailableBytes: 2 * 1024 ** 3 },
+      "channels.status": { channelOrder: [] },
+      "config.get": { hash: "h", config: {} }, "config.patch": { ok: true },
+    });
+    const host = await show(<SetupFlow engine={e} version="1.0" trunkNames={["Sapling"]} defaultAgentId="main" defaultName="Sapling" startAt={2} onClose={() => {}} onLocalModel={() => {}} />);
+    await act(async () => tid(host, "setup-test").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(params(request, "branch.setup.activate")).toHaveLength(1);
+    await act(async () => host.querySelectorAll<HTMLButtonElement>(".ob-rail li button")[10].click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    await act(async () => tid(host, "setup-finish").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(params(request, "branch.setup.activate")).toHaveLength(1);
   });
   it("keeps a selected local setup default even when cloud activation would fail", async () => {
     const { engine: e, request } = engine({
