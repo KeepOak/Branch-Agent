@@ -4,6 +4,7 @@ import type { SaplingSession } from "../connect/session";
 import type { Block } from "../thread/model";
 import type { RoomPick } from "../rooms/RoomFaces";
 import { RoomFaces } from "../rooms/RoomFaces";
+import { openNewGroupChat } from "../rooms/NewGroupChat";
 import type { SidebarDrop } from "./sidebar-drag";
 import "./group-drop.css";
 
@@ -195,12 +196,13 @@ export function GroupDropPopover({ drop, contacts, rooms, defaultTrunk, session,
     finally { starting.current = false; }
   };
   const rect = drop.anchor;
+  const people = contacts.filter((candidate) => !candidate.roomId && candidate.threadKey !== drop.source && memberOf(candidate) && !candidate.archivedAt);
   return <div ref={ref} id="group-drop-popover" className="pop group-drop-popover" role="dialog" aria-label={drop.kind === "add" ? "Add to group" : drop.kind === "pick" ? "Move to group" : "New group"}
     style={{ left: Math.max(8, Math.min(rect.left, innerWidth - 300)), top: Math.max(8, Math.min(rect.bottom + 6, innerHeight - 390)) }}>
     {drop.kind === "pick" ? <>
       {rooms.length ? <><div className="ph">Add {source?.name} to</div>{rooms.map((candidate) => <button key={candidate.roomId} type="button" className="mi" disabled={busy || !source || hasMember(candidate, source)} onClick={() => onPick?.({ kind: "add", source: drop.source, roomId: candidate.roomId, anchor: rect })}>{candidate.name}{source && hasMember(candidate, source) ? " · Already in this group" : ""}</button>)}<hr /></> : null}
-      <div className="ph">Start a group with</div>
-      {contacts.filter((candidate) => !candidate.roomId && candidate.threadKey !== drop.source && memberOf(candidate) && !candidate.archivedAt).map((candidate) => <button key={candidate.id} type="button" className="mi" onClick={() => onPick?.({ kind: "new", source: drop.source, target: candidate.threadKey, anchor: rect })}>{candidate.name}</button>)}
+      {people.length ? <><div className="ph">Start a group with</div>{people.map((candidate) => <button key={candidate.id} type="button" className="mi" onClick={() => onPick?.({ kind: "new", source: drop.source, target: candidate.threadKey, anchor: rect })}>{candidate.name}</button>)}</> : null}
+      {!rooms.length && !people.length ? <><p className="group-drop-empty">Nobody to start a group with.</p><button type="button" className="mi" onClick={() => { onClose(); openNewGroupChat(); }}>New group chat…</button></> : null}
     </> : drop.kind === "add" && room && person ? <>
       <p className="group-drop-question">Add <b>{person.name}</b> to <b>{room.name}</b>?</p>
       {person.offline ? <p className="group-drop-note">{person.name} is offline. It joins when it’s back.</p> : null}
