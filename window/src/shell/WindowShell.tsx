@@ -1351,7 +1351,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   }
   const threadGeneralKey = topicContact?.threadKey ?? (openRow?.isMain ? openKey : null);
   const showThreadColumn = route.kind === "chat" && !layout.focus && !stage && !draftTopic && Boolean(threadGeneralKey);
-  const showTower = route.kind === "chat" && ready && towerOn && !pane && !layout.focus && !stage && !draftTopic;
+  const showTower = route.kind === "chat" && ready && towerOn && !pane && !layout.focus && !stage && !draftTopic && firstRun.step === null;
   const mainClass = route.kind === "chat" ? `main${pane ? " with-pane" : ""}${showThreadColumn || showTower ? " v23-layout" : ""}` : talkShown ? (talk.dock === "bottom" ? "main with-talk talk-bottom" : "main with-talk") : "main";
 
   return (
