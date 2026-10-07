@@ -1869,7 +1869,7 @@ describe("processGatewayAllowlist", () => {
 
   describe("cron standing grants", () => {
     const CRON_STORE_KEY = "/tmp/branch-exec-host-cron-store";
-    const grantCommand = "run-nightly-backup --verbose";
+    const grantCommand = "node --version";
     const grantTempDirs: string[] = [];
     let stateDirBackup: string | undefined;
     let hadStateDirBackup = false;
