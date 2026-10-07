@@ -8,7 +8,7 @@ import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Footer, WizardBody } from "../AccountLogin";
 import { useWizard, type WizardStart, type WizardStep } from "../use-wizard";
-import { useSaveRunner } from "../kit";
+import { Empty, useSaveRunner } from "../kit";
 import { Logo, serviceName } from "./service";
 import { providersOf, tokenLabel, type Provider } from "./accounts";
 
@@ -106,7 +106,7 @@ function PickService({ services, detect, engine, agent, onPick, onUsed }: PickPr
       </div>
       {detect.loading && !services.length ? <p className="hint">Looking for services…</p> : null}
       {kinds.map((k) => <Group key={k} kind={k} services={shown.filter((s) => s.kind === k)} onPick={onPick} />)}
-      {!shown.length && !detect.loading ? <p className="empty">No service matches.</p> : null}
+      {!shown.length && !detect.loading ? <Empty>No service matches.</Empty> : null}
     </>
   );
 }
@@ -160,7 +160,7 @@ function SignIn({ engine, svc, agent, onRun, onKey }: SignInProps) {
   if (svc.kind === "custom") return <Lead text={`Branch asks for the address and sign-in of ${svc.name}.`} action="Start" onGo={() => onRun({ method: "branch.setup.auth.start", params: { authChoice: svc.choice, ...agent } })} />;
   const [main, ...rest] = [...svc.logins].sort((a, b) => Number(b.kind === "oauth") - Number(a.kind === "oauth") || Number(b.featured === true) - Number(a.featured === true));
   const go = (o: RecordValue) => onRun({ method: "models.authLogin", params: { authChoice: text(o.id), ...agent } });
-  if (main?.kind === "setup-secret") return <SecretSignIn engine={engine} svc={svc} login={main} agent={agent} onRun={onRun} />;
+  if (main?.kind === "setup-secret") return <details><summary>Paste a token instead</summary><SecretSignIn engine={engine} svc={svc} login={main} agent={agent} onRun={onRun} /></details>;
   return (
     <>
       <div className="aa-card">
@@ -208,7 +208,6 @@ function SecretSignIn({ engine, svc, login, agent, onRun }: { engine: WindowEngi
   const first = Boolean(status.data) && all.every((p) => !p.profiles.length);
   const label = freshTokenLabel(name, all.flatMap((p) => p.profiles.map((a) => a.profileId)), svc.brand, svc.brand === "anthropic" ? "claude" : svc.brand);
   const claude = svc.brand === "anthropic";
-  const command = claude ? "claude setup-token" : "";
   const ready = Boolean(token.trim()) && !status.loading;
   const start = () => {
     if (!ready) return;
@@ -220,14 +219,7 @@ function SecretSignIn({ engine, svc, login, agent, onRun }: { engine: WindowEngi
     <>
       <div className="aa-card">
         <b>{claude ? "Sign in with your Claude subscription" : visible(login.label)}</b>
-        {claude ? (
-          <ol className="aa-steps">
-            <li>Open a terminal on this computer and run <code>{command}</code> <button type="button" className="btn sm" onClick={() => void navigator.clipboard?.writeText(command)}>Copy</button></li>
-            <li>It opens claude.ai in your browser. Sign in with the Claude account you want to add.</li>
-            <li>Paste the token it prints below. It starts with <code>sk-ant-oat01-</code>.</li>
-          </ol>
-        ) : login.hint ? <p>{visible(login.hint)}</p> : null}
-        {claude ? <p>This creates a Claude subscription token for Branch. <a href="https://code.claude.com/docs/en/env-vars" target="_blank" rel="noreferrer">Claude’s token guide</a></p> : null}
+        {claude ? <p>Paste an existing Claude subscription token. Branch saves it as a Claude account. <a href="https://code.claude.com/docs/en/env-vars" target="_blank" rel="noreferrer">Claude’s token guide</a></p> : login.hint ? <p>{visible(login.hint)}</p> : null}
         <label className="fld"><span>Token</span><input className="inp" type="password" autoComplete="off" aria-label="Token" value={token} onChange={(e) => setToken(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>
         {first ? null : <label className="fld"><span>Call it</span><input className="inp" aria-label="Call it" placeholder={claude ? "Saved by email if blank" : label} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && start()} /></label>}
         <div className="acts"><button type="button" className="btn pri sm" disabled={!ready} onClick={start}>Sign in</button></div>
@@ -269,7 +261,7 @@ function RunWizard({ engine, run, onDone, onBack }: { engine: WindowEngine; run:
   return (
     <>
       <WizardBody wizard={w} doneText="Signed in." />
-      <div className="acts"><Footer view={w.view} value={w.value} busy={w.busy} onAnswer={w.answer} onCancel={() => { w.cancel(); onBack(); }} onClose={phase === "error" ? onBack : onDone} /></div>
+      <div className="acts"><Footer view={w.view} value={w.value} busy={w.busy} onAnswer={w.answer} onCancel={() => { w.cancel(); onBack(); }} /></div>
     </>
   );
 }
@@ -308,7 +300,7 @@ function Placed({ engine, svc, before, agent, onDone }: { engine: WindowEngine; 
       <label className="fld"><span>Call it</span><input className="inp" disabled title="Branch can’t rename an account yet." value={freshName ?? svc.name} readOnly /></label>
       <div className="fld"><span>Where it goes in the order</span>
         <span className="acts"><button type="button" className="btn sm" disabled={!fresh} onClick={() => put("first")}>First</button><button type="button" className="btn sm" disabled={!fresh} onClick={() => put("last")}>Last</button></span>
-        <small className="hint">Branch uses the first one with room left.</small>
+        <small className="hint">Branch uses the first one with allowance left.</small>
       </div>
     </>
   );

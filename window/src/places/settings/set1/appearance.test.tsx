@@ -51,6 +51,56 @@ const sw = (label: string) => host.querySelector<HTMLInputElement>(`input[aria-l
 const rows = () => [...host.querySelectorAll(".ctl > b")].map((b) => b.textContent);
 
 describe("Settings › Appearance", () => {
+  it("keeps pet-sound rationale in help without hiding the row description", async () => {
+    const { engine } = engineOf();
+    await render(engine);
+    const row = host.querySelector('[data-row="Pet sounds"]')!;
+    expect(row.querySelector("small")?.textContent).toContain("A tiny sound when you pat it.");
+    expect(row.textContent).not.toContain("Off until you turn it on.");
+    await act(async () => window.dispatchEvent(new Event("branch-settings-help")));
+    expect(document.querySelector(".kit-help-pop")?.textContent).toContain("Pet sounds");
+    expect(document.querySelector(".kit-help-pop")?.textContent).toContain("Off until you turn it on.");
+  });
+
+  it("draws a selected painted scene and holds to peek without a blank overlay", async () => {
+    const { engine } = engineOf();
+    await render(engine);
+    await act(async () => { await lookStore(engine).set("bg", "painted"); await lookStore(engine).set("scene", "night17-lake"); });
+    expect(document.documentElement.hasAttribute("data-scene")).toBe(true);
+    expect(document.head.querySelector("#branch-look")?.textContent).toContain("/assets/art17/bg/lake-night.webp");
+    const peek = button("See it clearly");
+    expect(peek.disabled).toBe(false);
+    expect(host.textContent).toContain("Hold it to see the background on its own.");
+    await act(async () => peek.dispatchEvent(new Event("pointerdown", { bubbles: true, cancelable: true })));
+    expect(document.documentElement.classList.contains("scene-peek")).toBe(true);
+    await act(async () => window.dispatchEvent(new Event("pointerup")));
+    expect(document.documentElement.classList.contains("scene-peek")).toBe(false);
+    await act(async () => peek.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true })));
+    expect(document.documentElement.classList.contains("scene-peek")).toBe(true);
+    await act(async () => window.dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true })));
+    expect(document.documentElement.classList.contains("scene-peek")).toBe(false);
+    const shellEscape = vi.fn();
+    window.addEventListener("keydown", shellEscape);
+    await act(async () => peek.dispatchEvent(new Event("pointerdown", { bubbles: true, cancelable: true })));
+    await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(document.documentElement.classList.contains("scene-peek")).toBe(false);
+    expect(shellEscape).not.toHaveBeenCalled();
+    window.removeEventListener("keydown", shellEscape);
+    await act(async () => lookStore(engine).set("bg", "oak3d"));
+    expect(button("See it clearly").disabled).toBe(true);
+    expect(host.textContent).toContain("Not drawn yet.");
+    await act(async () => lookStore(engine).set("bg", "rings"));
+    expect(button("See it clearly").disabled).toBe(true);
+  });
+
+  it("uses the full scrim and see-through slider ranges", async () => {
+    const { engine } = engineOf();
+    await render(engine);
+    await act(async () => { await lookStore(engine).set("bg", "painted"); await lookStore(engine).set("scrim", 0); await lookStore(engine).set("see", 0); });
+    expect(document.getElementById("branch-look")?.textContent).toContain("--scene-cover:0%;--scene-panel:100%");
+    await act(async () => { await lookStore(engine).set("scrim", 90); await lookStore(engine).set("see", 60); });
+    expect(document.getElementById("branch-look")?.textContent).toContain("--scene-cover:90%;--scene-panel:40%");
+  });
   it("draws the theme, the gallery button and the mirrors from the engine", async () => {
     const { engine } = engineOf();
     await render(engine);
@@ -78,6 +128,7 @@ describe("Settings › Appearance", () => {
   it("a switch saves the person's look to users.prefs at once", async () => {
     const { engine, request } = engineOf();
     await render(engine);
+    expect([...document.querySelectorAll(".sec h2")].filter((heading) => heading.textContent === "Reading")).toHaveLength(1);
     await act(async () => sw("Keep things still").click());
     expect(request).toHaveBeenCalledWith("users.prefs.set", { entries: { "ui.window.look": { still: true } }, expectedEntries: { "ui.window.look": null } });
     expect(document.documentElement.classList.contains("still-k")).toBe(true);

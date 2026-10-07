@@ -8,6 +8,9 @@ export type ContactAgent = { id: string; name: string; iconUrl?: string };
 export type OutsidePeer = {
   name: string;
   where: string | null;
+  kind?: "branch" | "trunk";
+  via?: string;
+  avatar?: string;
   card?: {
     name: string;
     description: string;
@@ -267,7 +270,7 @@ export function projectContacts(input: ContactProjectionInput): {
     });
   }
   const outsideIds = new Set([
-    ...(input.outsidePeers ?? []).map((peer) => peer.name),
+    ...(input.outsidePeers ?? []).filter((peer) => peer.kind !== "trunk").map((peer) => peer.name),
     ...input.sessions
       .map(contactIdForSession)
       .filter((id): id is string => Boolean(id?.startsWith("a2a:")))
@@ -276,6 +279,10 @@ export function projectContacts(input: ContactProjectionInput): {
   for (const peerName of outsideIds) {
     const id = `a2a:${peerName}`;
     const peer = input.outsidePeers?.find((candidate) => candidate.name === peerName);
+    if (peer?.kind === "trunk") continue;
+    const graftedTrunks = peer?.kind === "branch"
+      ? (input.outsidePeers ?? []).filter((candidate) => candidate.kind === "trunk" && candidate.via === peerName).slice(0, 2)
+      : [];
     const rows = input.sessions
       .filter((row) => contactIdForSession(row) === id)
       .toSorted(
@@ -309,9 +316,11 @@ export function projectContacts(input: ContactProjectionInput): {
       threadKey,
       isDefault: false,
       ...(peer?.where ? { where: peer.where } : {}),
+      ...(peer?.avatar ? { face: { iconUrl: peer.avatar } } : {}),
       ...(peer?.card
         ? { card: peer.card, face: peer.card.iconUrl ? { iconUrl: peer.card.iconUrl } : {} }
         : {}),
+      ...(graftedTrunks.length ? { face: { trunks: graftedTrunks.map((trunk) => ({ name: trunk.card?.name ?? trunk.name, ...(trunk.avatar ? { avatar: trunk.avatar } : {}) })) } } : {}),
       ...(rows.some((row) => row.entry.pinnedAt)
         ? { pinnedAt: Math.max(...rows.map((row) => row.entry.pinnedAt ?? 0)) }
         : {}),

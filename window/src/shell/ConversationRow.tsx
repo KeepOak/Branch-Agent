@@ -28,6 +28,7 @@ type Props = {
   current: boolean;
   time: string;
   showPreview: boolean;
+  popped?: boolean;
   state: RowState;
   trunkName: string;
   dimmed?: boolean;
@@ -81,12 +82,12 @@ function workingText(row: Conversation, x: RowExtras | undefined): string {
 /** The second line (§4.1.1.1): while working, its headline and a health word; failed shows why. */
 function secondLine(row: Conversation, state: RowState, x: RowExtras | undefined): { text: string; word: string; tone: string } | null {
   if (["trunk", "chatGroup", "outside"].includes(row.kind)) {
-    if (state.waiting) return { text: row.preview, word: "Waiting on you", tone: "attn" };
-    if (state.working) return { text: row.headline ? workingText(row, x) : "typing…", word: "", tone: "" };
+    if (state.waiting) return { text: "Waiting on you", word: "", tone: "attn" };
+    if (state.working) return { text: workingText(row, x), word: "", tone: "" };
     return null;
   }
   const mark = row.runMark ? MARKS[row.runMark] : null;
-  if (state.waiting) return { text: (x?.headlines !== false && row.headline) || row.preview, word: "Waiting on you", tone: "attn" };
+  if (state.waiting) return { text: "Waiting on you", word: "", tone: "attn" };
   if (mark?.bad) return { text: row.preview, word: mark.word, tone: "bad" };
   if (state.working) return { text: workingText(row, x), word: "", tone: "" };
   return null;
@@ -96,6 +97,7 @@ function RightColumn({ row, p, mark }: { row: Conversation; p: Props; mark: (typ
   const why = mark ? (mark.bad ? `${mark.word}: ${row.runError || "it stopped"}` : `${mark.word}: waiting for a free slot`) : "";
   return (
     <span className="rc">
+      {p.popped ? <span title="In its own window" aria-label="In its own window"><Icon name="panel" size={15} /></span> : null}
       <time className="row-time">{p.wakes ? `Wakes ${p.wakes}` : p.time}</time>
       {p.extras && p.extras.waitingToSend > 0 ? (
         <span className="cnts" title={`${p.extras.waitingToSend} messages waiting to send`} aria-label={`${p.extras.waitingToSend} messages waiting to send`}>{p.extras.waitingToSend}</span>
@@ -192,7 +194,7 @@ function rowButtons(p: Props, row: Conversation): ReactNode {
   return (
     <>
       {p.onPin && !p.child ? (
-        <button type="button" className="ib sm" aria-label={row.pinned ? "Unpin" : "Pin to top"} title={row.pinned ? "Unpin" : "Pin to top"} onClick={p.onPin}>
+        <button type="button" className="ib sm" aria-label={row.pinned ? "Unpin" : "Pin"} title={row.pinned ? "Unpin" : "Pin"} onClick={p.onPin}>
           <Icon name="pin" small />
         </button>
       ) : null}

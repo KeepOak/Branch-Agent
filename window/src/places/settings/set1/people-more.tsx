@@ -25,7 +25,7 @@ export function EachPerson({ roles }: { roles: Roles }) {
   return (
     <>
       <Sec title="Each person">
-        <Ctl title="Ask for a PIN when switching person" sub="At least four digits, kept on this computer. Five wrong tries in a row tell the owner." off={NO_KEY}>
+        <Ctl title="Ask for a PIN when switching person" sub="At least four digits, kept on this computer." help="At least four digits, kept on this computer. Five wrong tries in a row tell the owner." off={NO_KEY}>
           <Switch checked label="Ask for a PIN when switching person" onChange={() => undefined} />
         </Ctl>
         <Ctl title="Keep conversations separate" sub="People can’t read each other’s conversations unless they share one." off={roles.names.length ? "Each role sets this in the settings file." : "No roles are set up on this Gateway yet."}>
@@ -45,7 +45,7 @@ export function Records({ engine, trunks }: { engine: WindowEngine; trunks: Map<
   const [open, setOpen] = useState(false);
   return (
     <Sec title="Records">
-      <Ctl title="Signed household records" sub="Changes people make are signed, so it’s clear who did what; code changes come as patches.">
+      <Ctl title="Signed household records" sub="Sign people’s changes so you can see who did what." help="Changes people make are signed, so it’s clear who did what; code changes come as patches.">
         <Btn sm onClick={() => setOpen(true)}>See the last</Btn>
       </Ctl>
       {open ? <RecordsDialog engine={engine} trunks={trunks} onClose={() => setOpen(false)} /> : null}
@@ -62,7 +62,7 @@ function RecordsDialog({ engine, trunks, onClose }: { engine: WindowEngine; trun
   const res = useResource(engine, "audit.list", { limit: 20 });
   const events = list(record(res.data).events);
   return (
-    <Dialog title="Signed household records" onClose={onClose} footer={<Btn onClick={onClose}>Close</Btn>}>
+    <Dialog title="Signed household records" onClose={onClose}>
       {res.loading ? <p className="hint">Reading the record…</p> : res.error ? <p className="err-pp">{visible(res.error)}</p> : events.length ? (
         <>
           <p className="lede-pp">Recent:</p>
@@ -102,7 +102,7 @@ export function SigningIn() {
       {sw("One-time sign-in links for other systems", "Short-lived, for a system that opens Branch for someone.", false)}
       {sw("Pass company sign-in on to tools", "A tool can act as the person who signed in.", false)}
       {sw("Let someone start as a guest", "Their work stays when they make an account.", false)}
-      <Ctl title="Recovery key" sub="Resets the owner’s password if every other way is lost. Keep it somewhere safe." off="Shown once, in the Branch app."><Btn sm disabled>Show it</Btn></Ctl>
+      <Ctl title="Recovery key" sub="Resets the owner’s password if every other way is lost." help="Resets the owner’s password if every other way is lost. Keep it somewhere safe." off="Shown once, in the Branch app."><Btn sm disabled>Show it</Btn></Ctl>
     </Sec>
   );
 }

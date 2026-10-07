@@ -1,8 +1,7 @@
 // The hover bar on a message (DESIGN-SPEC §4.2.6): it floats above the message on hover or keyboard focus and
 // never takes space in the thread. Each action calls its row's engine method; an action the engine or this
 // window can't do yet stays visible, greyed, with its reason as the tooltip (§5.1 "Disabled, with the reason").
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Popover } from "./Dialog";
 import { fullTime, messageTime, modelName } from "./format";
 import { Icon, ICONS } from "./icons";
@@ -21,21 +20,22 @@ export type HoverActions = {
   reactDisabled: string | null;
   inspect?: Act;
   branch: Act;
+  context?: Act & { excluded: boolean };
   startConversation?: Act;
   /** Read aloud / Stop reading on a reply (§4.2.6). */
   read?: Act & { reading: boolean };
 };
 
 /** Reasons for the controls this engine has no method for (listed in the ledger's "Engine gaps"). */
-export const NO_FLAG = "Not available in this engine yet: message flags (no engine method keeps a flag with a reply).";
-export const NO_PIN = "Not available in this engine yet: pinned messages (no engine method pins one message).";
-export const NO_LEAVE_OUT = "Not available in this engine yet: leaving one message out of context.";
-export const NO_GOOD = "Not available in this engine yet: marking a good reply (no engine method keeps reply feedback).";
-export const NO_BAD = "Not available in this engine yet: marking a bad reply (no engine method keeps reply feedback).";
-export const NO_COMPARE = "Not available in this engine yet: asking a second model the same thing beside this reply.";
-export const NO_PICTURE = "Not available in this window yet: drawing a message as a picture.";
-export const NO_CODING_APP = "Carrying a conversation into a coding app on this computer needs the Branch app.";
-export const NO_DELETE = "Not available in this engine yet: deleting one message (no engine method removes a transcript entry).";
+export const NO_FLAG = "You can't flag replies here yet.";
+export const NO_PIN = "You can't pin one message here yet.";
+export const NO_LEAVE_OUT = "You can't leave a message out of context here yet.";
+export const NO_GOOD = "Reply feedback isn't available here yet.";
+export const NO_BAD = NO_GOOD;
+export const NO_COMPARE = "Asking another model from this reply isn't available here yet.";
+export const NO_PICTURE = "Sharing a message as a picture isn't available here yet.";
+export const NO_CODING_APP = "This action needs the Branch desktop app.";
+export const NO_DELETE = "You can't delete one message here yet.";
 
 const QUICK = ["👍", "❤️", "🎉", "👀", "🚀", "😂"];
 
@@ -93,32 +93,41 @@ function ReactMenu({ onPick, onClose }: { onPick: (emoji: string) => void; onClo
   );
 }
 
-function MoreMenu({ actions, isReply, onClose }: { actions: HoverActions; isReply: boolean; onClose: () => void }) {
+function MoreMenu({ actions, isReply, onClose, anchor }: { actions: HoverActions; isReply: boolean; onClose: () => void; anchor: HTMLElement | null }) {
   const item = (label: string, act: Act | null, reason?: string) => (
-    <button type="button" className="mi" role="menuitem" disabled={Boolean(reason ?? act?.disabled)} title={shownWhy(reason ?? act?.disabled)}
-      onClick={() => { act?.run(); onClose(); }}>
+    <button type="button" className="mi" role="menuitem" aria-disabled={Boolean(reason ?? act?.disabled)} title={reason ?? act?.disabled ?? undefined}
+      onClick={() => { if (reason ?? act?.disabled) return; act?.run(); onClose(); }}>
       {label}
     </button>
   );
   return (
-    <Popover label="More" onClose={onClose}>
+    <Popover label="More" onClose={onClose} anchor={anchor}>
       <div className="pop-head">Reply tools</div>
       {!isReply ? item("Edit", actions.edit ?? null) : item("Try again", actions.retry ?? null)}
       {item("Branch from here", actions.branch)}
       {actions.startConversation ? item("Start a conversation from here", actions.startConversation) : null}
       {isReply ? item("Ask another model", null, NO_COMPARE) : null}
-      <hr className="msep" />
-      <div className="pop-head">Inspect</div>
-      {isReply ? item("Every step behind this reply", actions.inspect ?? null) : null}
-      {isReply && actions.read ? item(actions.read.reading ? "Stop reading" : "Read aloud", actions.read) : null}
+      {/* Inspect and Feedback hold only reply actions: on your own message the groups go, not just their items. */}
+      {isReply ? (
+        <>
+          <hr className="msep" />
+          <div className="pop-head">Inspect</div>
+          {item("Every step behind this reply", actions.inspect ?? null)}
+          {actions.read ? item(actions.read.reading ? "Stop reading" : "Read aloud", actions.read) : null}
+        </>
+      ) : null}
       <hr className="msep" />
       <div className="pop-head">Context</div>
-      {item("Leave out of context", null, NO_LEAVE_OUT)}
-      <hr className="msep" />
-      <div className="pop-head">Feedback</div>
-      {isReply ? item("Good reply", null, NO_GOOD) : null}
-      {isReply ? item("Bad reply", null, NO_BAD) : null}
-      {isReply ? item("Flag", null, NO_FLAG) : null}
+      {item(actions.context?.excluded ? "Put back in context" : "Leave out of context", actions.context ?? null, actions.context ? undefined : NO_LEAVE_OUT)}
+      {isReply ? (
+        <>
+          <hr className="msep" />
+          <div className="pop-head">Feedback</div>
+          {item("Good reply", null, NO_GOOD)}
+          {item("Bad reply", null, NO_BAD)}
+          {item("Flag", null, NO_FLAG)}
+        </>
+      ) : null}
       <hr className="msep" />
       <div className="pop-head">Share</div>
       {item("As a picture", null, NO_PICTURE)}
@@ -132,11 +141,12 @@ function MoreMenu({ actions, isReply, onClose }: { actions: HoverActions; isRepl
 /** One visible toolbar for either sender; secondary actions live under More (§2.19). */
 export function HoverBar({ isReply, actions, meta }: { isReply: boolean; actions: HoverActions; meta?: MessageMeta }) {
   const [menu, setMenu] = useState<"react" | "more" | null>(null);
+  const bar = useRef<HTMLDivElement>(null);
   const time = meta?.timestamp ? messageTime(meta.timestamp) : "";
   const model = isReply ? modelName(meta?.model) : "";
   const close = () => setMenu(null);
   return (
-    <div className={`hover-bar ${isReply ? "on-reply" : "on-user"}${menu ? " held" : ""}`} data-testid="hover-bar">
+    <div ref={bar} className={`hover-bar ${isReply ? "on-reply" : "on-user"}${menu ? " held" : ""}`} data-testid="hover-bar">
       <Btn label="Copy" d={ICONS.copy} act={actions.copy} />
       <Btn label="Reply" d={ICONS.reply} act={actions.reply} />
       <Btn label="React" d={ICONS.react} act={{ run: () => setMenu("react"), disabled: actions.reactDisabled }} />
@@ -148,7 +158,7 @@ export function HoverBar({ isReply, actions, meta }: { isReply: boolean; actions
         </span>
       ) : null}
       {menu === "react" ? <ReactMenu onClose={close} onPick={(e) => { actions.react(e); close(); }} /> : null}
-      {menu === "more" ? <MoreMenu actions={actions} isReply={isReply} onClose={close} /> : null}
+      {menu === "more" ? <MoreMenu actions={actions} isReply={isReply} onClose={close} anchor={bar.current} /> : null}
     </div>
   );
 }

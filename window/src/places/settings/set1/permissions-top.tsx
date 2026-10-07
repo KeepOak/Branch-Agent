@@ -3,13 +3,15 @@
 // Lockdown, Pinned settings, who may run commands outside the sandbox (tools.elevated.allowFrom) and connectors.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
+import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
 import { Icon } from "../../../shell/icons";
+import { useLockdown } from "../../../shell/use-lockdown";
+import { notify } from "../../../shell/notify";
 import { MODE_ROWS, blockedReason, modeName, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { record, text, visible, type RecordValue } from "../adapter";
-import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg, Status } from "../kit";
+import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
-import { shownWhy } from "../../../shell/shown-why";
 
 const svg = (d: ReactNode) => <svg className="i s" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
 const MIC = svg(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></>);
@@ -27,7 +29,7 @@ export const THIS_PC_ROWS: [string, ReactNode, string, boolean][] = [
 
 export function ThisPc() {
   return (
-    <Sec title="This PC" hint="Windows asks for very little. Seeing the screen and using the mouse need nothing here; Branch still asks you before it takes over.">
+    <Sec title="This computer" hint="Windows asks for very little. Branch asks before taking over.">
       <Plist>
         {THIS_PC_ROWS.map(([t, icon, sub, open]) => (
           <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={sub}>
@@ -37,7 +39,7 @@ export function ThisPc() {
       </Plist>
       <Hint>{WHY.os}</Hint>
       <div className="sec pm-loc">
-        <Ctl title="Location access" sub="Lets a Trunk ask where this computer is when a tool needs it. On Windows it asks the first time a Trunk needs it." off={WHY.os}>{deadControl({ seg: ["Off", "While using", "Always"], v: "While using" }, "Location access")}</Ctl>
+        <Ctl title="Location access" sub="Lets a Trunk ask where this computer is when a tool needs it." help="Lets a Trunk ask where this computer is when a tool needs it. On Windows it asks the first time a Trunk needs it." off={WHY.os}>{deadControl({ seg: ["Off", "While using", "Always"], v: "While using" }, "Location access")}</Ctl>
         <Ctl title="Precise location" sub="The exact spot, not just the area." off={WHY.os}>{deadControl({ sw: true }, "Precise location")}</Ctl>
       </div>
     </Sec>
@@ -47,26 +49,12 @@ export function ThisPc() {
 /** The engine's exec mode for each composer mode (session permissionMode → tools.exec.mode). */
 export const EXEC_OF: Record<EngineMode, string> = { workspace: "auto", guarded: "ask", "read-only": "deny", full: "full" };
 const MODE_OF: Record<string, EngineMode> = { auto: "workspace", ask: "guarded", deny: "read-only", full: "full" };
-const LINE: Record<EngineMode, string> = {
-  workspace: "A reviewer model decides on commands: it allows them, refuses them or asks you.",
-  guarded: "Commands wait for your yes, unless they are on the allowed list.",
-  "read-only": "Trunks never run commands.",
-  full: "Does anything on this computer without asking: files, commands, the internet.",
-};
 
 /** The default Trunk's mode as the engine resolves it (agents.list defaultPermissionMode). */
 export function defaultMode(agents: RecordValue | undefined): EngineMode | null {
   const rows = Array.isArray(agents?.agents) ? (agents.agents as RecordValue[]) : [];
   const def = rows.find((a) => a.id === agents?.defaultId) ?? rows[0];
   return isEngineMode(def?.defaultPermissionMode) ? def.defaultPermissionMode : null;
-}
-
-export function ModeStatus({ agents, loading, error }: { agents?: RecordValue; loading: boolean; error?: string }) {
-  if (loading) return <Status tone="idle" title="Reading the mode…" />;
-  if (error) return <Status tone="bad" title="Branch couldn’t read the mode">{visible(error)}</Status>;
-  const m = defaultMode(agents);
-  if (!m) return <Status tone="idle" title="Each conversation has its own mode">The sandbox or the command defaults below decide what each conversation may do.</Status>;
-  return <Status title={`${modeName(m)} is on`}>{LINE[m]}</Status>;
 }
 
 /** The exec mode in force: the configured tools.exec.mode, or what the engine resolves without one. */
@@ -84,32 +72,38 @@ export async function saveMode(cfg: Cfg, mode: string, after: () => Promise<void
 
 const MODE_OPTS = MODE_ROWS.map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
 export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<void> }) {
+  const selected = execMode(cfg, agents);
+  const lockdown = cfg.get("security.lockdown") === true;
   return (
-    <div className="sec pm-mode">
-      <Ctl title="Mode everywhere" sub="Every conversation starts here. Changing the mode in a conversation changes only that conversation.">
-        <Seg label="Mode everywhere" value={execMode(cfg, agents)} options={MODE_OPTS} disabled={cfg.loading} onChange={(m) => void saveMode(cfg, m, reload)} />
-      </Ctl>
-    </div>
-  );
-}
-
-const STYLE = [{ id: "full", label: "Hands-off" }, { id: "auto", label: "Balanced" }, { id: "ask", label: "Careful" }];
-const STYLE_SUB: Record<string, string> = { full: "Full access everywhere: nothing asks.", auto: "Auto everywhere: only risky things ask.", ask: "Ask first everywhere: anything that changes something asks." };
-export function WorkStyle({ x, agents, reload }: { x: Ctx; agents?: RecordValue; reload: () => Promise<void> }) {
-  const m = execMode(x.cfg, agents);
-  return (
-    <Ctl title="How careful" sub={`${STYLE_SUB[m] ?? "Your own mix. Pick one to start from it."} Sets “Mode everywhere”.`}>
-      <Seg label="How careful" value={m} options={STYLE} disabled={x.cfg.loading} onChange={(v) => void saveMode(x.cfg, v, reload)} />
-    </Ctl>
+    <Sec title="Access" hint="Every conversation starts here. A conversation can change its own.">
+      <div data-row="Access"><Seg layout="radio" label="Access" value={selected} options={MODE_OPTS} disabled={cfg.loading || lockdown} onChange={(mode) => void saveMode(cfg, mode, reload)} /></div>
+    </Sec>
   );
 }
 export const modeLabel = (exec: string) => modeName(MODE_OF[exec]);
 
-export function Lockdown() {
+/** The page's status box while locked (preview index.html:8494 statusBox markup, copy at :8540 and :30785). */
+export function LockdownStatus({ cfg }: { cfg: Cfg }) {
+  if (cfg.get("security.lockdown") !== true) return null;
   return (
-    <div className="pm-danger" data-row="Lockdown" aria-disabled="true">
-      <div><b>Lockdown</b><p>One switch that stops every Trunk from sending, changing or spending anything.</p>{shownWhy(WHY.lock) ? <small className="why-k">{shownWhy(WHY.lock)}</small> : null}</div>
-      <Btn className="bad" disabled>Turn Lockdown on</Btn>
+    <div className="status" data-row="Lockdown status">
+      <span className="sdot bad" />
+      <div>
+        <b>Lockdown is on</b>
+        <p>Nothing leaves this computer and nothing is changed until you turn it off.</p>
+      </div>
+    </div>
+  );
+}
+
+export function Lockdown({ engine }: { engine: WindowEngine }) {
+  const lockdown = useLockdown(engine, true);
+  const toggleLockdown = () => void lockdown.toggle().catch((error: unknown) => notify(`Couldn't change Lockdown: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+  return (
+    <div className="pm-danger" data-row="Lockdown">
+      <div><b>Lockdown</b><p>One switch that stops every Trunk from sending, changing or spending anything.</p></div>
+      {/* Preview spec-v23 index.html:8553: danger-filled only while off; "Turn Lockdown off" is the plain button. */}
+      <Btn className={lockdown.on ? undefined : "bad"} disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Turn Lockdown on"}</Btn>
     </div>
   );
 }
@@ -124,7 +118,7 @@ export function Pinned() {
 }
 
 export function ApprovalsRow({ x }: { x: Ctx }) {
-  return <Ctl title="Approvals" sub="Every yes and no from the last 30 days, and the standing permissions automations hold."><Btn sm onClick={x.openApprovals}>Open</Btn></Ctl>;
+  return <Ctl title="Approvals" sub="Shows recent requests and standing automation permissions." help="Every yes and no from the last 30 days, and the standing permissions automations hold."><Btn sm onClick={x.openApprovals}>Open</Btn></Ctl>;
 }
 
 /** tools.elevated.allowFrom: { provider: [sender ids] }. */
@@ -169,6 +163,6 @@ function WhoDialog({ cfg, onClose }: { cfg: Cfg; onClose: () => void }) {
 export function Connectors({ x }: { x: Ctx }) {
   const names = Object.keys(record(x.cfg.get("mcp.servers")));
   const mark = "What each connector may do";
-  if (!names.length) return <p className="empty" data-row={mark}>No connectors yet.</p>;
+  if (!names.length) return <Empty data-row={mark}>No connectors yet.</Empty>;
   return <><p className="pm-anchor" data-row={mark} aria-hidden="true" />{names.map((n) => <Ctl key={n} id={n} title={visible(n)} off="The engine can’t limit a connector to reading yet.">{deadControl({ seg: ["Nothing", "Read", "Read and write"], v: "" }, `What ${text(n)} may do`)}</Ctl>)}</>;
 }

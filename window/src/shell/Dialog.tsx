@@ -9,7 +9,7 @@ export function Dialog({ title, onClose, children, footer, wide, testid }: Props
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const back = document.activeElement as HTMLElement | null;
-    const first = ref.current?.querySelector<HTMLElement>("[autofocus], .dlg-b input, .dlg-f button:last-child");
+    const first = ref.current?.querySelector<HTMLElement>("[autofocus], .dlg-b input, .dlg-f button:last-child, .dlg-h button");
     first?.focus();
     return () => back?.focus?.();
   }, []);
